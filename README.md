@@ -3,6 +3,8 @@
 > **Zero-dependency, air-gap-safe memory engine that outperforms cloud memory systems while running 100% locally.**
 > No LLM. No API. No GPU required. Sub-millisecond recall.
 
+Built by **Ryan** — designed for local AI systems that need fast, private memory without cloud dependencies or API costs.
+
 ---
 
 ## Benchmark Results (RTX 4050 Laptop · Ryzen 5 8645HS · 40GB RAM)
@@ -239,3 +241,9 @@ GPU batch wins at 18+ simultaneous queries.
 - **Python**: Python 3.9+, NumPy
 - **Native addon**: Visual Studio 2019/2022 (Windows) or gcc/g++ (Linux/Mac)
 - **CUDA bench**: CUDA Toolkit 12.x + VS 2022 (Windows, NVIDIA GPU only)
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE)

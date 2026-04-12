@@ -110,6 +110,37 @@ Napi::Value BatchQuerySparse(const Napi::CallbackInfo& info) {
   return result;
 }
 
+// No-alloc variant: writes into a caller-supplied Float64Array instead of allocating.
+// Use this in tight benchmark loops to eliminate the 200KB allocation + GC per call.
+Napi::Value BatchQuerySparseNoAlloc(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+  auto mat  = info[0].As<Napi::Buffer<int8_t>>();
+  auto nrm  = info[1].As<Napi::Buffer<float>>();
+  int  n    = info[2].As<Napi::Number>().Int32Value();
+  auto idxA = info[3].As<Napi::Int32Array>();
+  auto valA = info[4].As<Napi::Int8Array>();
+  auto outA = info[5].As<Napi::Float64Array>();
+  const int8_t*  matrix = mat.Data();
+  const float*   norms  = nrm.Data();
+  const int32_t* idxs   = idxA.Data();
+  const int8_t*  vals   = valA.Data();
+  double*        scores = outA.Data();
+  int nActive = (int)idxA.ElementLength();
+  double qMag = std::sqrt((double)nActive);
+  if (qMag == 0.0 || n == 0) { std::memset(scores, 0, n*sizeof(double)); return env.Undefined(); }
+  #ifdef _OPENMP
+  #pragma omp parallel for schedule(dynamic,32)
+  #endif
+  for (int i = 0; i < n; i++) {
+    const int8_t* row = matrix + (size_t)i * DIM;
+    int32_t d = 0;
+    for (int k = 0; k < nActive; k++) d += (int32_t)row[idxs[k]] * (int32_t)vals[k];
+    double denom = (double)norms[i] * qMag;
+    scores[i] = denom > 0.0 ? (double)d / denom : 0.0;
+  }
+  return env.Undefined();
+}
+
 Napi::Value Version(const Napi::CallbackInfo& info) {
   std::string v = "rshl-bench-native/1.0 avx2=";
 #if HAS_AVX2
@@ -126,9 +157,10 @@ Napi::Value Version(const Napi::CallbackInfo& info) {
 }
 
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
-  exports.Set("batchQuery",       Napi::Function::New(env, BatchQuery));
-  exports.Set("batchQuerySparse", Napi::Function::New(env, BatchQuerySparse));
-  exports.Set("version",          Napi::Function::New(env, Version));
+  exports.Set("batchQuery",             Napi::Function::New(env, BatchQuery));
+  exports.Set("batchQuerySparse",       Napi::Function::New(env, BatchQuerySparse));
+  exports.Set("batchQuerySparseNoAlloc",Napi::Function::New(env, BatchQuerySparseNoAlloc));
+  exports.Set("version",                Napi::Function::New(env, Version));
   return exports;
 }
 NODE_API_MODULE(rshl_native, Init)
