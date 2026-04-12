@@ -99,7 +99,46 @@ function detectAccelerators() {
 const accel = detectAccelerators();
 
 // ── Dense matrix helpers (for native path) ────────────────────────────────────
-const DIM_INT = DIM;
+const DIM_INT  = DIM;
+const BIN_WORDS = DIM / 64;          // 64 uint64 words per mask
+const BIN_MASK_BYTES = BIN_WORDS * 8; // 512 bytes per mask (pos or neg)
+const BIN_ROW_BYTES  = BIN_MASK_BYTES * 2; // 1024 bytes per row (pos + neg)
+
+// Build binary ternary matrix: each row stored as [pos_mask | neg_mask], 1024 bytes.
+// 4x smaller than int8 format → 4x less DRAM bandwidth for scans.
+function buildBinaryMatrix(vecs) {
+  const n      = vecs.length;
+  const matrix = Buffer.alloc(n * BIN_ROW_BYTES, 0);
+  const norms  = Buffer.alloc(n * 4);
+  const nf     = new Float32Array(norms.buffer);
+  for (let i = 0; i < n; i++) {
+    const posBase = i * BIN_ROW_BYTES;
+    const negBase = posBase + BIN_MASK_BYTES;
+    let nnz = 0;
+    for (const [idx, val] of vecs[i]) {
+      const byte = idx >> 3;
+      const bit  = 1 << (idx & 7);
+      if (val > 0) matrix[posBase + byte] |= bit;
+      else         matrix[negBase + byte] |= bit;
+      nnz++;
+    }
+    nf[i] = Math.sqrt(nnz);
+  }
+  return { matrix, norms };
+}
+
+// Convert a single sparse vec to binary query buffers (pos + neg, 512 bytes each).
+function sparseToQueryBinary(vec) {
+  const qPos = Buffer.alloc(BIN_MASK_BYTES, 0);
+  const qNeg = Buffer.alloc(BIN_MASK_BYTES, 0);
+  for (const [idx, val] of vec) {
+    const byte = idx >> 3;
+    const bit  = 1 << (idx & 7);
+    if (val > 0) qPos[byte] |= bit;
+    else         qNeg[byte] |= bit;
+  }
+  return { qPos, qNeg };
+}
 
 function buildDenseMatrix(vecs) {
   const matrix = Buffer.alloc(vecs.length * DIM_INT, 0);
@@ -440,60 +479,83 @@ function benchThroughput() {
     textVec(`query ${i} recall retrieve find match pattern context`)
   );
 
+  // Build matrices — binary first (primary path), sparse as fallback/comparison
   let sustMatrix = null, sustNorms = null;
+  let binMatrix = null,  binNorms  = null;
   if (native) {
+    if (native.batchQueryBinary) {
+      const built = buildBinaryMatrix(sustVecs);
+      binMatrix = built.matrix;
+      binNorms  = built.norms;
+    }
+    // Sparse matrix only needed if binary unavailable, or for comparison
     const built = buildDenseMatrix(sustVecs);
     sustMatrix = built.matrix;
     sustNorms  = built.norms;
   }
 
-  // Pre-compute sparse indexed form for all 20 pool queries — avoids TypedArray alloc per iteration.
-  // Pre-allocate a single result buffer — avoids 200KB Float64Array alloc per native call.
+  // Pre-convert all 20 pool queries to binary format once
+  const QUERY_POOL_BINARY  = (native && binMatrix) ? QUERY_POOL.map(qv => sparseToQueryBinary(qv)) : null;
   const QUERY_POOL_INDEXED = native ? QUERY_POOL.map(qv => sparseToIndexed(qv)) : null;
-  const sustResultBuf      = (native && native.batchQuerySparseNoAlloc) ? new Float64Array(SUST_SIZE) : null;
+  const sustResultBuf      = native ? new Float64Array(SUST_SIZE) : null;
 
-  const SUST_WINDOW = 5000; // 5 seconds
-  let   sustCount   = 0;
-  const sustStart   = hires();
-  const snapshots   = []; // QPS every 500ms
+  // ── Primary: binary ternary POPCNT path ─────────────────────────────────────
+  function runSustained(useBinary) {
+    const label = useBinary ? "binary POPCNT" : "sparse AVX2+OMP";
+    const SUST_WINDOW = 5000;
+    let   count  = 0;
+    const start  = hires();
+    const snaps  = [];
+    let   lastS  = hires();
+    let   snapC  = 0;
 
-  let lastSnap  = hires();
-  let snapCount = 0;
-
-  while ((hires() - sustStart) < SUST_WINDOW) {
-    if (native && sustMatrix) {
-      if (QUERY_POOL_INDEXED && sustResultBuf) {
-        const qi = QUERY_POOL_INDEXED[sustCount % QUERY_POOL_INDEXED.length];
-        native.batchQuerySparseNoAlloc(sustMatrix, sustNorms, SUST_SIZE, qi.indices, qi.vals, sustResultBuf);
+    while ((hires() - start) < SUST_WINDOW) {
+      const qi = count % 20;
+      if (useBinary && QUERY_POOL_BINARY && binMatrix) {
+        const { qPos, qNeg } = QUERY_POOL_BINARY[qi];
+        native.batchQueryBinary(binMatrix, binNorms, SUST_SIZE, qPos, qNeg, sustResultBuf);
+      } else if (native && sustMatrix && QUERY_POOL_INDEXED) {
+        const { indices, vals } = QUERY_POOL_INDEXED[qi];
+        native.batchQuerySparseNoAlloc(sustMatrix, sustNorms, SUST_SIZE, indices, vals, sustResultBuf);
       } else {
-        const qv = QUERY_POOL[sustCount % QUERY_POOL.length];
-        const { indices, vals } = sparseToIndexed(qv);
-        native.batchQuerySparse(sustMatrix, sustNorms, SUST_SIZE, indices, vals);
+        const qv = QUERY_POOL[qi];
+        sustVecs.forEach(v => resonance(qv, v));
       }
-    } else {
-      const qv = QUERY_POOL[sustCount % QUERY_POOL.length];
-      sustVecs.forEach(v => resonance(qv, v));
+      count++;
+      snapC++;
+      const now = hires();
+      if (now - lastS >= 500) {
+        snaps.push(Math.round(snapC / ((now - lastS) / 1000)));
+        snapC = 0;
+        lastS = now;
+      }
     }
 
-    sustCount++;
-    snapCount++;
-
-    const now = hires();
-    if (now - lastSnap >= 500) {
-      snapshots.push(Math.round(snapCount / ((now - lastSnap) / 1000)));
-      snapCount = 0;
-      lastSnap  = now;
-    }
+    const totalMs = hires() - start;
+    const qps     = Math.round(count / (totalMs / 1000));
+    const minQ    = Math.min(...snaps);
+    const maxQ    = Math.max(...snaps);
+    console.log(`    [${label}]  ${count.toLocaleString()} queries / ${(totalMs/1000).toFixed(1)}s = ${qps.toLocaleString()} q/s avg  (min ${minQ.toLocaleString()} / max ${maxQ.toLocaleString()})`);
+    return { qps, minQ, maxQ, count, totalMs };
   }
 
-  const sustTotalMs  = hires() - sustStart;
-  const sustQps      = Math.round(sustCount / (sustTotalMs / 1000));
-  const snapMin      = Math.min(...snapshots);
-  const snapMax      = Math.max(...snapshots);
-  const sustPath     = (native && sustMatrix) ? "native" : "JS";
+  const binResult    = (native && binMatrix) ? runSustained(true)  : null;
+  const sparseResult = runSustained(false);
 
-  console.log(`    ${sustCount.toLocaleString()} queries completed in ${(sustTotalMs/1000).toFixed(1)}s`);
-  console.log(`    Sustained: ${sustQps.toLocaleString()} q/s avg  |  min ${snapMin.toLocaleString()} / max ${snapMax.toLocaleString()} q/s  [${sustPath}]`);
+  // Primary result for score: binary if available, else sparse
+  const primary     = binResult || sparseResult;
+  const sustCount   = primary.count;
+  const sustTotalMs = primary.totalMs;
+  const sustQps     = primary.qps;
+  const snapMin     = primary.minQ;
+  const snapMax     = primary.maxQ;
+  const sustPath    = binResult ? "binary" : (native && sustMatrix ? "native" : "JS");
+
+  if (binResult) {
+    const speedup = (binResult.qps / sparseResult.qps).toFixed(1);
+    console.log(`    Binary POPCNT is ${speedup}x faster than sparse AVX2 (${binResult.qps.toLocaleString()} vs ${sparseResult.qps.toLocaleString()} q/s)`);
+    console.log(`    Memory: ${BIN_ROW_BYTES} bytes/row vs ${DIM} bytes/row — 4x smaller → 4x less DRAM bandwidth`);
+  }
   console.log(`    Each query searched ${SUST_SIZE.toLocaleString()} entries — total ops: ${(sustCount * SUST_SIZE / 1e6).toFixed(1)}M dot products`);
 
   results.sustained_recall = {
@@ -505,6 +567,8 @@ function benchThroughput() {
     max_qps:        snapMax,
     total_million_ops: +(sustCount * SUST_SIZE / 1e6).toFixed(1),
     path:           sustPath,
+    binary_qps:     binResult ? binResult.qps : null,
+    sparse_qps:     sparseResult.qps,
   };
 
   return results;
