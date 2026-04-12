@@ -10,21 +10,38 @@ Built by **Ryan** — designed for local AI systems that need fast, private memo
 ## Benchmark Results (RTX 4050 Laptop · Ryzen 5 8645HS · 40GB RAM)
 
 ```
-RSHL SCORE:    94–116 pts   (varies with system load)
+RSHL SCORE:    340–359 pts  (varies with system load)
 Real-time cap: 100,000 entries  <16ms/query   (AVX2+OMP)
-Peak recall:   17,000+ q/s      (1K entries · native)
-Throughput:    6+ Mdot/s        (25K entries · 5s sustained)
+Peak recall:   12,000–15,500 q/s  (1K entries · native)
+Throughput:    30–32 Mdot/s       (25K entries · 5s sustained)
+Binary POPCNT: 1,200–1,270 q/s   (25K entries · 5–6x vs sparse AVX2)
+Binary format: 1,024 bytes/row   (vs 4,096 int8 — 4x smaller, 4x less DRAM)
 
 Memory recall:
-    1,000 entries  Native:  0.06ms   (123x faster than JS)
-    5,000 entries  Native:  0.25ms   (140x faster than JS)
-   10,000 entries  Native:  0.61ms   (115x faster than JS)
-   25,000 entries  Native:  1.99ms   ( 89x faster than JS)
-  100,000 entries  Native:  7.47ms
+    1,000 entries  Native:  0.04–0.08ms  (94–213x faster than JS)
+    5,000 entries  Native:  0.34–0.46ms  (111–152x faster than JS)
+   10,000 entries  Native:  0.80–1.49ms  ( 67–94x faster than JS)
+   25,000 entries  Native:  2.38–2.39ms  ( 79x faster than JS)
+   50,000 entries  Native:  4.73ms
+  100,000 entries  Native:  9.19ms
 
 Memory footprint at 10 years of daily use: 82MB
 GPT-4 weights: ~800GB  →  RSHL is 9,744x smaller
 ```
+
+---
+
+## Binary Ternary POPCNT — The Fast Path
+
+The native addon includes a **binary ternary packing** format that is the primary recall path:
+
+- Ternary `{-1, 0, +1}` values are stored as two bitfields: `pos_mask` + `neg_mask`
+- **1,024 bytes/row** vs 4,096 bytes/row for int8 — **4× less DRAM bandwidth**
+- Dot product reduces to 4 POPCNT instructions per 64 bits — single CPU cycle each
+- `dot(row, q) = POPCNT(rp & qp) + POPCNT(rn & qn) − POPCNT(rp & qn) − POPCNT(rn & qp)`
+- **5–6× faster sustained throughput** vs sparse int8 AVX2
+
+This is what drives the score from ~106 (sparse AVX2) to **340–359** (binary POPCNT).
 
 ---
 
@@ -225,13 +242,14 @@ vs GPT-4 weights: **~800 GB** — RSHL is 9,744x smaller at 10 years of use.
 ## GPU Batch Results (RTX 4050 Laptop, cuBLAS SGEMM)
 
 ```
-Bandwidth:    180.9 GB/s  (94% of 192 GB/s spec)
-Batch-1:      11M items/sec   (memory-bandwidth bound)
-Batch-1000:   816M items/sec  (GPU wins over CPU at batch ≥ 18)
+Bandwidth:    179.2 GB/s  (93% of 192 GB/s spec)
+Batch-1:      9M items/sec    (memory-bandwidth bound, PCIe overhead)
+Batch-100:    574M items/sec
+Batch-1000:   775M items/sec  (GPU wins over CPU at batch ≥ 23)
 ```
 
-CPU AVX2+OMP is faster for single-query recall.
-GPU batch wins at 18+ simultaneous queries.
+CPU AVX2+OMP binary POPCNT is faster for single-query recall.
+GPU batch wins at 23+ simultaneous queries.
 
 ---
 
