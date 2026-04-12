@@ -1,0 +1,15 @@
+{
+  "name": "rshl-bench",
+  "version": "1.0.0",
+  "description": "Standalone Sparse Ternary HDC benchmark — runs on any Node.js machine",
+  "main": "bench.js",
+  "scripts": {
+    "bench": "node bench.js",
+    "build-native": "npx node-gyp configure build",
+    "full": "npm run build-native && node bench.js"
+  },
+  "dependencies": {
+    "node-addon-api": "^8.0.0"
+  },
+  "engines": { "node": ">=16" }
+}

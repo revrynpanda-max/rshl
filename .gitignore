@@ -1,0 +1,28 @@
+# Node
+node_modules/
+npm-debug.log*
+
+# Compiled native addon
+build/
+*.node
+*.lib
+*.exp
+*.pdb
+*.iobj
+*.ipdb
+
+# CUDA compiled binary
+cuda/rshl_cuda_bench.exe
+cuda/rshl_cuda_bench.lib
+cuda/rshl_cuda_bench.exp
+cuda/_build_run.bat
+cuda/_build_out.txt
+cuda/_bench_out.txt
+cuda/*.exe
+
+# Benchmark reports (contain hostname — commit manually if you want to share)
+reports/*.json
+
+# OS
+.DS_Store
+Thumbs.db
