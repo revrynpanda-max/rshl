@@ -109,6 +109,13 @@ const _SYNS = {
   'boss':'work','manager':'work','company':'work','firm':'work',
   'office':'work','promoted':'work','promotion':'work',
   'remote':'work','remotely':'work','arrangement':'work',
+  'nurse':'work','nurses':'work','doctor':'work','doctors':'work',
+  'teacher':'work','teachers':'work','professor':'work','professors':'work',
+  'engineer':'work','engineers':'work','programmer':'work',
+  'developer':'work','developers':'work','designer':'work','designers':'work',
+  'analyst':'work','consultant':'work','accountant':'work',
+  'scientist':'work','researcher':'work','instructor':'work',
+  'technician':'work','therapist':'work','chef':'work',
 
   // ── food / eating ─────────────────────────────────────────────────────────
   'meal':'food','meals':'food','diet':'food',
@@ -142,6 +149,7 @@ const _SYNS = {
   'interest':'enjoy','interests':'enjoy','fun':'enjoy','leisure':'enjoy',
   'passion':'enjoy','pastime':'enjoy','pastimes':'enjoy',
   'play':'enjoy','plays':'enjoy','playing':'enjoy',
+  'love':'enjoy','loves':'enjoy','loved':'enjoy','loving':'enjoy',
 
   // ── fitness / exercise ────────────────────────────────────────────────────
   'fitness':'run','exercise':'run','workout':'run','workouts':'run',
@@ -158,6 +166,10 @@ const _SYNS = {
   // ── pets ──────────────────────────────────────────────────────────────────
   'dog':'pet','dogs':'pet','cat':'pet','cats':'pet',
   'animal':'pet','animals':'pet','puppy':'pet','kitten':'pet',
+  'retriever':'pet','retrievers':'pet','labrador':'pet','poodle':'pet',
+  'poodles':'pet','terrier':'pet','terriers':'pet','bulldog':'pet',
+  'bulldogs':'pet','spaniel':'pet','shepherd':'pet','husky':'pet',
+  'huskies':'pet','siamese':'pet','tabby':'pet',
 
   // ── goals / intentions ────────────────────────────────────────────────────
   'aim':'goal','aims':'goal','target':'goal','targets':'goal',
@@ -219,7 +231,7 @@ const _CATS = {
   'schedule':'#sched', // schedule / appointments
   'pet':     '#pet',   // pets / animals
   'goal':    '#goal',  // goals / intentions
-  'save':    '#fin',   // financial / money
+  'save':    ['#fin', '#goal'],  // financial saving is goal-oriented
   'music':   '#mus',   // music / audio
   'language':'#lang',  // language / speaking
   'family':  '#rel',   // relationships
@@ -282,8 +294,11 @@ function textVec(text) {
   const enc = [];
   for (const tok of eff) {
     enc.push(tok);
-    const cat = _CATS[tok];
-    if (cat) enc.push(cat);
+    const cats = _CATS[tok];
+    if (cats) {
+      const arr = Array.isArray(cats) ? cats : [cats];
+      for (const c of arr) enc.push(c);
+    }
   }
 
   if (enc.length === 1) return tokenVec(enc[0]);

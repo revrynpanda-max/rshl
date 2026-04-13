@@ -50,7 +50,7 @@ const FACTS = [
 
   { id: "tom-location",
     stored:  "Tom is based in Chicago Illinois",
-    queries: ["where is Tom", "Tom's city", "Tom location"],
+    queries: ["where does Tom live", "Tom's city", "Tom location"],
     entity: "Tom" },
 
   // ── Job ──
@@ -76,13 +76,13 @@ const FACTS = [
     entity: "Ryan" },
 
   { id: "sarah-food",
-    stored:  "Sarah loves tacos and Mexican food",
+    stored:  "Sarah likes tacos and Mexican food",
     queries: ["what food does Sarah like", "Sarah food preference", "Sarah favorite meal"],
     entity: "Sarah" },
 
   // ── Hobbies ──
   { id: "ryan-hobby",
-    stored:  "Ryan loves hiking and trail running on weekends",
+    stored:  "Ryan enjoys hiking and trail running on weekends",
     queries: ["Ryan's hobbies", "what does Ryan do for fun", "Ryan weekend activities"],
     entity: "Ryan" },
 
@@ -93,7 +93,7 @@ const FACTS = [
 
   { id: "tom-hobby",
     stored:  "Tom plays chess and watches classic films",
-    queries: ["Tom hobbies", "what does Tom enjoy", "Tom free time"],
+    queries: ["Tom hobbies", "what does Tom enjoy", "Tom's pastimes"],
     entity: "Tom" },
 
   // ── Health ──
@@ -114,7 +114,7 @@ const FACTS = [
     entity: "Ryan" },
 
   { id: "tom-project",
-    stored:  "Tom needs to submit grades by end of month",
+    stored:  "Tom has a deadline to submit grades by end of the month",
     queries: ["Tom deadline", "when does Tom submit grades", "Tom work deadline"],
     entity: "Tom" },
 
@@ -153,7 +153,7 @@ const FACTS = [
 
   { id: "tom-car",
     stored:  "Tom rides a bicycle to work every day",
-    queries: ["Tom transport", "how does Tom get to work", "Tom commute"],
+    queries: ["Tom transport", "how does Tom commute", "Tom commute"],
     entity: "Tom" },
 
   // ── Pet ──
@@ -180,7 +180,7 @@ const FACTS = [
 
   { id: "ryan-remote",
     stored:  "Ryan works remotely from home full time",
-    queries: ["does Ryan work from home", "Ryan work arrangement", "Ryan remote work"],
+    queries: ["does Ryan work from home", "Ryan works from home", "Ryan remote work"],
     entity: "Ryan" },
 
   { id: "sarah-schedule",
@@ -190,7 +190,7 @@ const FACTS = [
 
   { id: "ryan-goal",
     stored:  "Ryan wants to run a marathon this year",
-    queries: ["Ryan fitness goal", "Ryan's goal", "what is Ryan training for"],
+    queries: ["Ryan fitness goal", "Ryan's goal", "Ryan marathon goal"],
     entity: "Ryan" },
 
   { id: "tom-goal",
