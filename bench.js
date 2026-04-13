@@ -1208,6 +1208,87 @@ function machineInfo() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// PREFLIGHT — wait until CPU and RAM are in a clean state before benching
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Read current CPU load % (0–100) via PowerShell on Windows, /proc/stat on Linux.
+function getCpuLoad() {
+  try {
+    if (process.platform === "win32") {
+      const out = execSync(
+        `powershell -NoProfile -Command "(Get-WmiObject Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average"`,
+        { timeout: 5000, encoding: "utf8", stdio: ["ignore","pipe","ignore"] }
+      );
+      const v = parseFloat(out.trim());
+      return isNaN(v) ? null : v;
+    } else {
+      // Linux: sample /proc/stat twice 500ms apart
+      function readIdle() {
+        const line = require("fs").readFileSync("/proc/stat","utf8").split("\n")[0];
+        const parts = line.split(/\s+/).slice(1).map(Number);
+        const idle = parts[3] + (parts[4] || 0);
+        const total = parts.reduce((a,b) => a+b, 0);
+        return { idle, total };
+      }
+      const a = readIdle();
+      execSync("sleep 0.5");
+      const b = readIdle();
+      const used = ((b.total - a.total) - (b.idle - a.idle)) / (b.total - a.total);
+      return Math.round(used * 100);
+    }
+  } catch { return null; }
+}
+
+// Thresholds — tuned for Ryzen 5 8645HS / 40GB machine.
+// CPU: < 15% load means Windows background services are quiet.
+// RAM: > 20GB free gives the DRAM bandwidth headroom the score needs.
+const PREFLIGHT_CPU_MAX  = 15;   // % — abort wait if above this
+const PREFLIGHT_RAM_MIN  = 20;   // GB free — need headroom for DRAM bandwidth
+const PREFLIGHT_POLL_MS  = 4000; // re-check every 4 seconds
+const PREFLIGHT_TIMEOUT  = 120;  // give up after 120s and bench anyway
+
+async function preflight() {
+  const totalRam = os.totalmem() / 1e9;
+
+  console.log("\n  ── Pre-flight system check ──────────────────────────────────");
+  console.log("  Waiting for CPU and RAM to reach a clean bench state...");
+  console.log(`  Targets:  CPU load < ${PREFLIGHT_CPU_MAX}%  |  Free RAM > ${PREFLIGHT_RAM_MIN} GB`);
+  console.log("  Tip: close Claude Code, browser, and heavy apps for best score.\n");
+
+  const deadline = Date.now() + PREFLIGHT_TIMEOUT * 1000;
+  let pass = false;
+  let attempts = 0;
+
+  while (Date.now() < deadline) {
+    attempts++;
+    const cpuLoad = getCpuLoad();
+    const freeRam = os.freemem() / 1e9;
+    const cpuOk   = cpuLoad !== null && cpuLoad < PREFLIGHT_CPU_MAX;
+    const ramOk   = freeRam >= PREFLIGHT_RAM_MIN;
+    const cpuStr  = cpuLoad !== null ? `${cpuLoad.toFixed(0)}%` : "n/a";
+    const status  = (cpuOk ? "✓" : "✗") + ` CPU ${cpuStr.padStart(4)}  ` +
+                    (ramOk ? "✓" : "✗") + ` RAM ${freeRam.toFixed(1)} GB free`;
+
+    if (cpuOk && ramOk) {
+      console.log(`  [READY]  ${status}  — starting bench now`);
+      pass = true;
+      break;
+    }
+
+    const waiting = !cpuOk && !ramOk ? "CPU busy + low RAM"
+                  : !cpuOk            ? "CPU busy"
+                  :                     "low free RAM";
+    process.stdout.write(`  [wait ${String(attempts).padStart(2)}]  ${status}  (${waiting})\r`);
+    await new Promise(r => setTimeout(r, PREFLIGHT_POLL_MS));
+  }
+
+  if (!pass) {
+    console.log(`\n  [timeout] ${PREFLIGHT_TIMEOUT}s elapsed — running bench with current state.`);
+  }
+  console.log("");
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // MAIN
 // ═══════════════════════════════════════════════════════════════════════════════
 async function main() {
@@ -1232,6 +1313,8 @@ async function main() {
   } else {
     console.log(`  Accel:    none  (run build-native to enable AVX2+OMP)`);
   }
+
+  await preflight();
 
   const totalStart = hires();
 
