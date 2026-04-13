@@ -1,15 +1,35 @@
 {
-  "name": "rshl-bench",
+  "name": "rshl",
   "version": "1.0.0",
-  "description": "Standalone Sparse Ternary HDC benchmark — runs on any Node.js machine",
-  "main": "bench.js",
-  "scripts": {
-    "bench": "node bench.js",
-    "build-native": "npx node-gyp configure build",
-    "full": "npm run build-native && node bench.js"
+  "description": "Sparse ternary HDC memory engine — deterministic local recall, no LLM, no API, no GPU required",
+  "main": "rshl-core.js",
+  "types": "rshl-core.ts",
+  "exports": {
+    ".":         "./rshl-core.js",
+    "./lattice": "./rshl-lattice.js"
   },
-  "dependencies": {
+  "files": [
+    "rshl-core.js",
+    "rshl-core.ts",
+    "rshl-lattice.js",
+    "rshl_core.py",
+    "examples/",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "bench":        "node bench.js",
+    "bench:native": "npm run build-native && node bench.js",
+    "build-native": "npx node-gyp configure build"
+  },
+  "optionalDependencies": {
     "node-addon-api": "^8.0.0"
   },
+  "keywords": [
+    "memory", "hdc", "hyperdimensional", "ternary", "sparse",
+    "local-ai", "vector", "recall", "deterministic", "offline"
+  ],
+  "author": "Ryan (revrynpanda-max)",
+  "license": "SEE LICENSE IN LICENSE",
   "engines": { "node": ">=16" }
 }
