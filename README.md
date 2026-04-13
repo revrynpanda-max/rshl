@@ -267,4 +267,8 @@ GPU batch wins at 23+ simultaneous queries.
 
 ## License
 
-MIT — see [LICENSE](LICENSE)
+**RSHL Software License** — see [LICENSE](LICENSE)
+
+Free to use for any purpose. You may not sell the source code, claim authorship,
+or rebrand RSHL's algorithms as your own. Attribution required.
+Copyright © 2026 Ryan (revrynpanda-max)

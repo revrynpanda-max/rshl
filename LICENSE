@@ -1,28 +1,61 @@
-MIT License
-
+RSHL Software License
 Copyright (c) 2026 Ryan (revrynpanda-max)
 RSHL — Sparse Ternary Hyperdimensional Memory Engine
 https://github.com/revrynpanda-max/rshl
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+All rights reserved by the original author.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+────────────────────────────────────────────────────────────
+GRANT OF USE
+────────────────────────────────────────────────────────────
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+Permission is granted, free of charge, to any person obtaining a copy
+of this software to USE it for any purpose — personal, commercial,
+research, education, or integration into other products — subject to
+the conditions below.
 
----
+────────────────────────────────────────────────────────────
+CONDITIONS
+────────────────────────────────────────────────────────────
 
-Built to give local AI systems fast, private memory without cloud dependencies,
-API costs, or GPU requirements. If you use it, build something useful with it.
+1. ATTRIBUTION — You must retain this copyright notice and credit the
+   original author (Ryan / revrynpanda-max) in any distribution,
+   product, publication, or derivative work that includes this software
+   or is substantially based on its design. You may not claim authorship
+   of RSHL or its core algorithms.
+
+2. NO RESALE OF SOURCE — You may not sell, sublicense, or commercially
+   distribute the source code itself as a standalone product. Integration
+   into a larger system or product is permitted, but the code alone may
+   not be packaged and sold.
+
+3. NO MISREPRESENTATION — You may not represent this software as your
+   own original work, register it under another name as if you created
+   it, or file patents, trademarks, or copyright claims over the RSHL
+   algorithms, the sparse ternary HDC encoding approach, or the binary
+   POPCNT recall method as defined in this repository.
+
+4. NO REVERSE ENGINEERING FOR REBRANDING — You may study, modify, and
+   build on this code for your own use or products. You may not
+   reverse engineer it solely to create a competing product that
+   replicates RSHL's design while obscuring its origin and removing
+   attribution to the original author.
+
+────────────────────────────────────────────────────────────
+WHAT YOU CAN ALWAYS DO
+────────────────────────────────────────────────────────────
+
+  ✓  Use RSHL in your own software, AI systems, or products
+  ✓  Modify the code for your own needs
+  ✓  Publish benchmarks, research, or articles about it
+  ✓  Distribute it as part of a larger project (with attribution)
+  ✓  Use it commercially inside a product you build
+  ✓  Fork it and contribute improvements
+
+────────────────────────────────────────────────────────────
+DISCLAIMER
+────────────────────────────────────────────────────────────
+
+THIS SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED. THE AUTHOR IS NOT LIABLE FOR ANY DAMAGES OR
+CLAIMS ARISING FROM USE OF THIS SOFTWARE.
