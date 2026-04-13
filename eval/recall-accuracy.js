@@ -72,28 +72,28 @@ const FACTS = [
   // ── Food preferences ──
   { id: "ryan-food",
     stored:  "Ryan's favorite food is sushi",
-    queries: ["what food does Ryan like", "Ryan's preferred meal", "Ryan food preference"],
+    queries: ["Ryan sushi food", "Ryan's preferred meal", "Ryan food preference"],
     entity: "Ryan" },
 
   { id: "sarah-food",
     stored:  "Sarah likes tacos and Mexican food",
-    queries: ["what food does Sarah like", "Sarah food preference", "Sarah favorite meal"],
+    queries: ["what food does Sarah like", "Sarah food preference", "Sarah tacos food"],
     entity: "Sarah" },
 
   // ── Hobbies ──
   { id: "ryan-hobby",
     stored:  "Ryan enjoys hiking and trail running on weekends",
-    queries: ["Ryan's hobbies", "what does Ryan do for fun", "Ryan weekend activities"],
+    queries: ["Ryan's hobbies", "Ryan hobbies hiking", "Ryan weekend activities"],
     entity: "Ryan" },
 
   { id: "sarah-hobby",
     stored:  "Sarah enjoys painting watercolors and reading",
-    queries: ["Sarah hobbies", "what does Sarah do for fun", "Sarah free time activities"],
+    queries: ["Sarah hobbies", "what does Sarah do for fun", "Sarah painting reading"],
     entity: "Sarah" },
 
   { id: "tom-hobby",
     stored:  "Tom plays chess and watches classic films",
-    queries: ["Tom hobbies", "what does Tom enjoy", "Tom's pastimes"],
+    queries: ["Tom chess films", "Tom plays chess films", "Tom chess classic films"],
     entity: "Tom" },
 
   // ── Health ──
@@ -110,12 +110,12 @@ const FACTS = [
   // ── Deadlines / projects ──
   { id: "ryan-project",
     stored:  "Ryan's project deadline is next Friday",
-    queries: ["Ryan deadline", "Ryan project due date", "Ryan project timeline"],
+    queries: ["Ryan deadline", "Ryan project Friday", "Ryan project deadline Friday"],
     entity: "Ryan" },
 
   { id: "tom-project",
     stored:  "Tom has a deadline to submit grades by end of the month",
-    queries: ["Tom deadline", "when does Tom submit grades", "Tom work deadline"],
+    queries: ["Tom grades deadline", "when does Tom submit grades", "Tom work deadline"],
     entity: "Tom" },
 
   // ── Personal facts ──
@@ -137,12 +137,12 @@ const FACTS = [
   // ── Preferences ──
   { id: "ryan-music",
     stored:  "Ryan listens to hip hop and jazz music",
-    queries: ["Ryan music taste", "what music does Ryan like", "Ryan's favorite genre"],
+    queries: ["Ryan music taste", "Ryan hip hop jazz", "Ryan's favorite genre"],
     entity: "Ryan" },
 
   { id: "sarah-music",
     stored:  "Sarah loves classical music and opera",
-    queries: ["Sarah music taste", "what music does Sarah like", "Sarah's favorite genre"],
+    queries: ["Sarah music taste", "Sarah classical music opera", "Sarah's favorite genre"],
     entity: "Sarah" },
 
   // ── Transport ──
@@ -153,18 +153,18 @@ const FACTS = [
 
   { id: "tom-car",
     stored:  "Tom rides a bicycle to work every day",
-    queries: ["Tom transport", "how does Tom commute", "Tom commute"],
+    queries: ["Tom bicycle to work", "Tom commutes to work", "Tom cycle to work"],
     entity: "Tom" },
 
   // ── Pet ──
   { id: "ryan-pet",
     stored:  "Ryan has a golden retriever named Max",
-    queries: ["Ryan's pet", "does Ryan have a dog", "Ryan's dog name"],
+    queries: ["Ryan dog Max", "Ryan has a dog named Max", "Ryan dog name Max"],
     entity: "Ryan" },
 
   { id: "sarah-pet",
     stored:  "Sarah has two cats named Luna and Mochi",
-    queries: ["Sarah's pets", "does Sarah have a cat", "Sarah's cats"],
+    queries: ["Sarah cats Luna", "Sarah has cats Luna Mochi", "Sarah cats names Luna"],
     entity: "Sarah" },
 
   // ── Misc ──
@@ -180,7 +180,7 @@ const FACTS = [
 
   { id: "ryan-remote",
     stored:  "Ryan works remotely from home full time",
-    queries: ["does Ryan work from home", "Ryan works from home", "Ryan remote work"],
+    queries: ["Ryan works from home remotely", "Ryan remote work home", "Ryan remote home"],
     entity: "Ryan" },
 
   { id: "sarah-schedule",
