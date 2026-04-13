@@ -278,13 +278,30 @@ function showHelp() {
 // ── REPL ──────────────────────────────────────────────────────────────────────
 function main() {
   console.log(`
-╔═══════════════════════════════════════════════════════════════╗
-║   RSHL Playground — Live Evidence Terminal                   ║
-║   Store records · Query them · See WHY they matched          ║
-╚═══════════════════════════════════════════════════════════════╝
+╔═══════════════════════════════════════════════════════════════════╗
+║   RSHL Playground — Semantic Search, Live                        ║
+║                                                                   ║
+║   This index finds records by MEANING, not exact words.          ║
+║   No AI model. No cloud. Runs entirely on this machine.          ║
+╚═══════════════════════════════════════════════════════════════════╝
 
-  Type ${G("help")} for commands.  Type ${G("demo")} or ${G("memory")} to load a preset scenario.
-  Type ${G("store <text>")} to add a record, ${G("query <text>")} to search.
+  ${BOLD("Step 1 — load a scenario to see it working immediately:")}
+
+    ${G("demo")}      Infrastructure event stream (server errors, deploys, alerts)
+    ${G("memory")}    Personal memory scenario (people, jobs, locations)
+
+  ${BOLD("Step 2 — run the example queries it gives you.")}
+  ${BOLD("Step 3 — try your own:")}
+
+    ${G("store")} <any text>   Add a record to the index
+    ${G("query")} <any text>   Search — returns ranked matches + WHY they matched
+
+  ${BOLD("What to look for:")}
+    Green tokens = shared meaning between your query and the result
+    Score 0.70+  = strong match    Score 0.55–0.69 = possible match
+    ADD / UPDATE / NOOP = how the index classifies what you store
+
+  Type ${G("help")} for the full command list.
 `);
 
   // Auto-load from flag
