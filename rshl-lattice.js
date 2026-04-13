@@ -42,6 +42,7 @@ const UPDATE_SIGNALS = new Set([
   "got","gotten","became","become","turned",
   "used to","previously","formerly","once","before",
   "updated","update","correcting","correction",
+  "delayed","delay","postponed","postpone","pushed back","rescheduled",
 ]);
 
 const DELETE_SIGNALS = new Set([
@@ -219,35 +220,48 @@ class RSHLLattice {
   }
 
   // ── Internal: classify operation ─────────────────────────────────────────
-  _classify(text, vec, entities) {
+  // preCanon = normalized text before canonicalization (for signal detection)
+  // text     = canonicalized text (used for vectorization — already encoded in vec)
+  _classify(preCanon, text, vec, entities) {
     const scored = this._scoreAll(vec, entities);
     const best   = scored[0] ?? null;
 
-    // DELETE: explicit signal + resonance match — negated signals blocked
-    if (hasDeleteSignal(text)) {
+    // DELETE: use preCanon so negation guard sees original phrasing
+    if (hasDeleteSignal(preCanon)) {
       if (best && best.combined > T_DELETE) return { op:"DELETE", match: best };
       return { op:"ADD", match: null };
     }
 
     if (!best) return { op:"ADD", match: null };
 
-    const updateSig = hasSignal(text, UPDATE_SIGNALS);
+    // Signal detection on preCanon preserves words removed by canonicalization
+    // e.g. "Tom turned 33" → canon → "Tom is 33 years old" loses "turned"
+    const updateSig = hasSignal(preCanon, UPDATE_SIGNALS);
 
-    // UPDATE path 1: explicit temporal/change signal + moderate resonance
-    // Uses this._tUpdate (was hardcoded 0.52 — now respects the constructor knob)
+    // UPDATE path 1: explicit signal + moderate resonance
     if (updateSig && best.sim >= this._tUpdate) {
       return { op:"UPDATE", match: best };
     }
 
-    // NOOP path 1: high similarity alone = essentially same content
-    if (best.sim >= this._tNoop) {
+    // NOOP path 1: high similarity — but block if entities are completely disjoint
+    // prevents structural bleed: "Bob works at Twitter" ≠ "Alice works at Facebook"
+    const entitiesAlign = best.eOvlap > 0
+                       || entities.size === 0
+                       || best.cell.entities.size === 0;
+    if (best.sim >= this._tNoop && entitiesAlign) {
       return { op:"NOOP", match: best };
     }
 
     // NOOP path 2: no signal + strong entity overlap + moderate similarity
-    // Catches same-entity paraphrases that fall below the strict sim threshold.
-    // e.g. "Ryan works at Anthropic" after "Ryan joined Anthropic as engineer"
+    // catches same-entity paraphrases below the strict sim threshold
     if (!updateSig && best.eOvlap >= 0.60 && best.sim >= 0.62) {
+      return { op:"NOOP", match: best };
+    }
+
+    // NOOP path 3: continuity signal ("still", "remains", "continues") + entity match
+    // "Jane is still at Amazon" → NOOP when Amazon/Jane are in memory
+    const continuitySig = /\b(still|remains|remaining|continues|continuing|same as before)\b/i.test(preCanon);
+    if (continuitySig && !updateSig && best.eOvlap >= 0.40 && best.sim >= 0.55) {
       return { op:"NOOP", match: best };
     }
 
@@ -267,12 +281,13 @@ class RSHLLattice {
    *   op: "ADD" | "UPDATE" | "NOOP" | "DELETE"
    */
   store(text, key = null) {
-    const entities   = extractEntities(text, this.userToken);   // original text — preserves caps
-    const normalized = canonicalize(normalizeText(text, this.userToken));
-    const vec        = latticeVec(normalized);
-    const ts         = Date.now();
+    const entities      = extractEntities(text, this.userToken);   // original text — preserves caps
+    const preCanon      = normalizeText(text, this.userToken);     // for signal detection
+    const normalized    = canonicalize(preCanon);                  // for vectorization
+    const vec           = latticeVec(normalized);
+    const ts            = Date.now();
 
-    const { op, match } = this._classify(normalized, vec, entities);
+    const { op, match } = this._classify(preCanon, normalized, vec, entities);
 
     let cell    = null;
     let replaced = null;
@@ -341,6 +356,7 @@ class RSHLLattice {
     const entities   = extractEntities(query, this.userToken);  // original text — preserves caps
     const normalized = canonicalize(normalizeText(query, this.userToken));
     const vec        = latticeVec(normalized);
+    // recall only needs canonicalized form for vector similarity
 
     return this._scoreAll(vec, entities)
       .slice(0, topK)
