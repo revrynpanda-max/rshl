@@ -48,6 +48,7 @@ const DELETE_SIGNALS = new Set([
   "forget","ignore","wrong","incorrect","not true","delete","remove",
   "disregard","cancel","nevermind","never mind","false","mistake",
   "that was wrong","that is wrong","not correct","erase","scratch that",
+  "strike that","take that back","retract","undo that","cross that out",
 ]);
 
 // ── Stop words (excluded from stemmed token set) ──────────────────────────────

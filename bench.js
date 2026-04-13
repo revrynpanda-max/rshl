@@ -871,6 +871,17 @@ function benchLattice() {
   const { RSHLLattice } = require("./rshl-lattice");
   sep("7 / RSHL Lattice  (ADD · UPDATE · NOOP · DELETE — no LLM needed)");
 
+  // ── Extended eval (103 cases, 13 groups) ───────────────────────────────────
+  try {
+    const { runEval } = require("./eval/lattice-eval");
+    const evalResult = runEval({ silent: false });
+    console.log(`\n  Extended eval: ${evalResult.pass}/${evalResult.total} correct  (${evalResult.accuracy}%)`);
+    console.log(`  UPDATE recall: ${Math.round(evalResult.perClass.UPDATE.tp / (evalResult.perClass.UPDATE.tp + evalResult.perClass.UPDATE.fn) * 100)}%  |  NOOP precision: ${Math.round(evalResult.perClass.NOOP.tp / (evalResult.perClass.NOOP.tp + evalResult.perClass.NOOP.fp) * 100)}%`);
+    console.log(`  Run standalone: node eval/lattice-eval.js\n`);
+  } catch(e) {
+    console.log(`  (Extended eval unavailable: ${e.message})`);
+  }
+
   // ── Test suite: same scenarios Mem0 is designed to handle ─────────────────
   const SCENARIOS = [
     // [input text, expected op, description]

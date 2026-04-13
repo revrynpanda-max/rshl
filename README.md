@@ -60,7 +60,13 @@ set is small (15 cases). Treat as a useful heuristic layer, not a fully validate
 `rshl-lattice.js` adds Mem0-comparable ADD/UPDATE/NOOP/DELETE classification
 using only vector resonance + entity overlap. No API calls. No network. No cost.
 
-**15/15 — 100% accuracy** on the same operation scenarios Mem0 is designed for:
+**15/15 on the core Mem0-style scenarios. Extended eval (103 cases, 13 groups): 68% overall, UPDATE recall 96%.**
+
+The 15-case suite covers the same scenarios Mem0 targets. The 103-case extended eval tests
+paraphrase depth, entity isolation, false-positive delete guards, first-person normalization,
+and multi-subject bleed — and honestly reports where the heuristic layer falls short.
+
+Core scenarios (15/15):
 
 ```
   ┌────┬──────────┬──────────┬──────────┬────────────────────────────────────────┐
@@ -84,6 +90,22 @@ using only vector resonance + entity overlap. No API calls. No network. No cost.
   └────┴──────────┴──────────┴──────────┴────────────────────────────────────────┘
   Accuracy: 15/15 correct (100%)
 ```
+
+**Extended eval — 103 cases, 13 groups** (`node eval/lattice-eval.js`):
+
+| Class  | Expected | Correct | Precision | Recall |
+|--------|----------|---------|-----------|--------|
+| ADD    | 40       | 27      | 66%       | 68%    |
+| UPDATE | 26       | 25      | 68%       | **96%**|
+| NOOP   | 27       | 10      | 71%       | 37%    |
+| DELETE | 10       | 8       | 73%       | 80%    |
+| **Overall** | **103** | **70** | — | **68%** |
+
+**UPDATE recall is the strongest signal** — the lattice almost never misses a real change.
+**NOOP recall is the known weak spot** — semantic paraphrases without high word overlap
+score below the 0.81 threshold and land as ADD instead. No LLM means no semantic understanding,
+only vector geometry. Explicit signal words ("moved", "changed", "now", "no longer") are
+required for reliable UPDATE detection.
 
 ---
 
