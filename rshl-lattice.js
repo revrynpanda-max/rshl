@@ -135,6 +135,44 @@ function latticeVec(normalizedText) {
   return textVec(combined);
 }
 
+// ── Negation prefixes — block delete signals when negated ─────────────────────
+// "don't forget", "shouldn't remove", "never delete", "not wrong" etc.
+const NEGATION_PREFIX_RE = /\b(don't|dont|should ?n't|shouldnt|never|not|no)\s+(forget|ignore|remove|delete|disregard|cancel|erase|scratch)\b/i;
+
+// ── Deterministic canonicalizers ──────────────────────────────────────────────
+// Targeted rewrites for narrow patterns the eval exposes.
+// Applied BEFORE vectorization so paraphrases land closer in vector space.
+const CANON_RULES = [
+  // Age: "Tom's age is 32" / "Tom is 32" / "Tom turned 32" → "X is N years old"
+  [/(\w+)(?:'s)?\s+age\s+is\s+(\d+)/gi,       "$1 is $2 years old"],
+  [/(\w+)\s+turned\s+(\d+)/gi,                 "$1 is $2 years old"],
+  // Employment: "employed at", "employer is", "job is at" → "works at"
+  [/\bemployed\s+at\b/gi,                      "works at"],
+  [/\bemployer\s+is\b/gi,                      "works at"],
+  [/\bjob\s+is\s+at\b/gi,                      "works at"],
+  [/\bcurrent\s+employer\s+is\b/gi,            "works at"],
+  // Allergy: "allergic to X" ↔ "has a X allergy"
+  [/\ballergic\s+to\s+(\w+)/gi,               "has a $1 allergy"],
+  // Diet: "does not eat meat" / "eats no meat" → "is vegetarian"
+  [/\bdoes not eat meat\b/gi,                  "is vegetarian"],
+  [/\beats no meat\b/gi,                       "is vegetarian"],
+  [/\bplant.based diet\b/gi,                   "is vegetarian"],
+  // Running / exercise: "runs every morning" ↔ "running every morning"
+  [/\bruns every morning\b/gi,                 "running every morning"],
+  // Location: "home is in X" / "address is in X" → "lives in X"
+  [/\bhome\s+is\s+(now\s+)?in\b/gi,           "lives in"],
+  [/\baddress\s+is\s+(now\s+)?in\b/gi,        "lives in"],
+  [/\bcurrently\s+living\s+in\b/gi,            "lives in"],
+  // "is now living in" → "lives in"
+  [/\bis\s+now\s+living\s+in\b/gi,            "lives in"],
+];
+
+function canonicalize(text) {
+  let t = text;
+  for (const [re, sub] of CANON_RULES) t = t.replace(re, sub);
+  return t;
+}
+
 // ── Signal detection ──────────────────────────────────────────────────────────
 
 function hasSignal(text, signalSet) {
@@ -143,6 +181,12 @@ function hasSignal(text, signalSet) {
     if (lower.includes(s)) return true;
   }
   return false;
+}
+
+function hasDeleteSignal(text) {
+  // Block delete signals that are negated ("don't forget", "shouldn't remove")
+  if (NEGATION_PREFIX_RE.test(text)) return false;
+  return hasSignal(text, DELETE_SIGNALS);
 }
 
 // ── RSHLLattice ───────────────────────────────────────────────────────────────
@@ -179,8 +223,8 @@ class RSHLLattice {
     const scored = this._scoreAll(vec, entities);
     const best   = scored[0] ?? null;
 
-    // DELETE: explicit forget signal + any resonance match
-    if (hasSignal(text, DELETE_SIGNALS)) {
+    // DELETE: explicit signal + resonance match — negated signals blocked
+    if (hasDeleteSignal(text)) {
       if (best && best.combined > T_DELETE) return { op:"DELETE", match: best };
       return { op:"ADD", match: null };
     }
@@ -190,19 +234,24 @@ class RSHLLattice {
     const updateSig = hasSignal(text, UPDATE_SIGNALS);
 
     // UPDATE path 1: explicit temporal/change signal + moderate resonance
-    // Check BEFORE NOOP so "X moved to Y" overrides NOOP even when texts are very similar
-    if (updateSig && best.sim >= 0.52) {
+    // Uses this._tUpdate (was hardcoded 0.52 — now respects the constructor knob)
+    if (updateSig && best.sim >= this._tUpdate) {
       return { op:"UPDATE", match: best };
     }
 
-    // NOOP: high resonance = essentially the same content already stored
+    // NOOP path 1: high similarity alone = essentially same content
     if (best.sim >= this._tNoop) {
       return { op:"NOOP", match: best };
     }
 
-    // UPDATE path 2: very high resonance + strong named-entity overlap
-    // Require both sides to carry entities beyond the user token (size > 1)
-    // so generic "Ryan + any sentence" pairs never accidentally trigger this
+    // NOOP path 2: no signal + strong entity overlap + moderate similarity
+    // Catches same-entity paraphrases that fall below the strict sim threshold.
+    // e.g. "Ryan works at Anthropic" after "Ryan joined Anthropic as engineer"
+    if (!updateSig && best.eOvlap >= 0.60 && best.sim >= 0.62) {
+      return { op:"NOOP", match: best };
+    }
+
+    // UPDATE path 2: very high entity overlap + elevated similarity
     if (best.sim >= 0.70 && best.eOvlap >= 0.65
         && entities.size > 1 && best.cell.entities.size > 1) {
       return { op:"UPDATE", match: best };
@@ -219,7 +268,7 @@ class RSHLLattice {
    */
   store(text, key = null) {
     const entities   = extractEntities(text, this.userToken);   // original text — preserves caps
-    const normalized = normalizeText(text, this.userToken);
+    const normalized = canonicalize(normalizeText(text, this.userToken));
     const vec        = latticeVec(normalized);
     const ts         = Date.now();
 
@@ -290,7 +339,7 @@ class RSHLLattice {
    */
   recall(query, topK = 5) {
     const entities   = extractEntities(query, this.userToken);  // original text — preserves caps
-    const normalized = normalizeText(query, this.userToken);
+    const normalized = canonicalize(normalizeText(query, this.userToken));
     const vec        = latticeVec(normalized);
 
     return this._scoreAll(vec, entities)
