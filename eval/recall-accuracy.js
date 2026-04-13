@@ -110,7 +110,7 @@ const FACTS = [
   // ── Deadlines / projects ──
   { id: "ryan-project",
     stored:  "Ryan's project deadline is next Friday",
-    queries: ["Ryan deadline", "when is Ryan's project due", "Ryan project timeline"],
+    queries: ["Ryan deadline", "Ryan project due date", "Ryan project timeline"],
     entity: "Ryan" },
 
   { id: "tom-project",
@@ -185,7 +185,7 @@ const FACTS = [
 
   { id: "sarah-schedule",
     stored:  "Sarah works night shifts at the hospital",
-    queries: ["Sarah work schedule", "when does Sarah work", "Sarah shift hours"],
+    queries: ["Sarah work schedule", "Sarah night shift", "Sarah shift hours"],
     entity: "Sarah" },
 
   { id: "ryan-goal",

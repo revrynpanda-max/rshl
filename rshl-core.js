@@ -108,7 +108,7 @@ const _SYNS = {
   'role':'work','title':'work','position':'work',
   'boss':'work','manager':'work','company':'work','firm':'work',
   'office':'work','promoted':'work','promotion':'work',
-  'remote':'work','remotely':'work','arrangement':'work',
+  'arrangement':'work',
   'nurse':'work','nurses':'work','doctor':'work','doctors':'work',
   'teacher':'work','teachers':'work','professor':'work','professors':'work',
   'engineer':'work','engineers':'work','programmer':'work',
@@ -148,7 +148,6 @@ const _SYNS = {
   'hobby':'enjoy','hobbies':'enjoy','activity':'enjoy','activities':'enjoy',
   'interest':'enjoy','interests':'enjoy','fun':'enjoy','leisure':'enjoy',
   'passion':'enjoy','pastime':'enjoy','pastimes':'enjoy',
-  'play':'enjoy','plays':'enjoy','playing':'enjoy',
   'love':'enjoy','loves':'enjoy','loved':'enjoy','loving':'enjoy',
 
   // ── fitness / exercise ────────────────────────────────────────────────────
@@ -229,6 +228,8 @@ const _CATS = {
   'enjoy':   '#hby',   // hobbies / leisure
   'run':     '#fit',   // fitness / exercise
   'schedule':'#sched', // schedule / appointments
+  'remot':   '#rem',   // remote work (remotely → remot after stem)
+  'remote':  '#rem',   // remote work
   'pet':     '#pet',   // pets / animals
   'goal':    '#goal',  // goals / intentions
   'save':    ['#fin', '#goal'],  // financial saving is goal-oriented
@@ -291,13 +292,18 @@ function textVec(text) {
   // Inject semantic category anchors alongside domain tokens.
   // "#loc", "#job" etc. are shared across all texts in the same domain —
   // creating overlap even when surface words differ completely.
+  // Deduplicate tokens so double-synonyms (years+old → age×2) don't
+  // distort cosine similarity by artificially concentrating a single dimension.
+  const seen = new Set();
   const enc = [];
   for (const tok of eff) {
-    enc.push(tok);
+    if (!seen.has(tok)) { seen.add(tok); enc.push(tok); }
     const cats = _CATS[tok];
     if (cats) {
       const arr = Array.isArray(cats) ? cats : [cats];
-      for (const c of arr) enc.push(c);
+      for (const c of arr) {
+        if (!seen.has(c)) { seen.add(c); enc.push(c); }
+      }
     }
   }
 
