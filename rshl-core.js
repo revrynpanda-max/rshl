@@ -89,42 +89,141 @@ const _STOPS = new Set([
 ]);
 
 // Maps original word forms to a canonical token before stemming.
-// Only unambiguous domain synonyms — no broad/ambiguous words.
+// Both stored text and queries go through the same map — so "occupation" and
+// "works at" both normalize to "work", "training" and "marathon" → "run", etc.
 const _SYNS = {
-  // location
-  'location':'live', 'city':'live', 'town':'live', 'home':'live',
-  'reside':'live', 'resides':'live', 'resided':'live',
-  'relocate':'live', 'relocates':'live', 'relocated':'live',
-  // job / work
-  'job':'work', 'occupation':'work', 'employer':'work', 'career':'work',
-  'employed':'work', 'employment':'work', 'profession':'work',
-  // food — "food" stays canonical, map alternatives to it
-  'meal':'food', 'meals':'food', 'diet':'food',
-  // allergy / restriction
-  'allergic':'allerg', 'allergy':'allerg', 'allergies':'allerg',
-  'intolerant':'allerg', 'intolerance':'allerg',
-  'restriction':'allerg', 'restrictions':'allerg',
-  // age
-  'old':'age', 'years':'age', 'year':'age',
-  // vehicle / transport
-  'vehicle':'drive', 'vehicles':'drive', 'transport':'drive',
-  'commute':'drive', 'commutes':'drive', 'commuting':'drive', 'commuted':'drive',
-  'car':'drive', 'cars':'drive',
-  // hobbies / activities
-  'hobby':'enjoy', 'hobbies':'enjoy', 'activity':'enjoy', 'activities':'enjoy',
-  'interest':'enjoy', 'interests':'enjoy', 'fun':'enjoy',
-  // schedule / shifts
-  'shift':'schedule', 'shifts':'schedule',
-  // pets
-  'dog':'pet', 'dogs':'pet', 'cat':'pet', 'cats':'pet',
-  // goal / aim
-  'aim':'goal', 'aims':'goal', 'target':'goal', 'targets':'goal',
-  // music / audio
-  'genre':'music', 'genres':'music', 'song':'music', 'songs':'music',
-  'listen':'music', 'listens':'music', 'listening':'music', 'taste':'music',
-  // language / speaking
-  'speak':'language', 'speaks':'language', 'spoken':'language', 'speaking':'language',
-  'fluent':'language', 'fluently':'language',
+  // ── location ──────────────────────────────────────────────────────────────
+  'location':'live','city':'live','town':'live','home':'live','address':'live',
+  'neighborhood':'live','district':'live','street':'live','based':'live',
+  'reside':'live','resides':'live','resided':'live',
+  'relocate':'live','relocates':'live','relocated':'live',
+  'move':'live','moves':'live','moving':'live','moved':'live',
+  'settle':'live','settled':'live','settles':'live',
+
+  // ── employment ────────────────────────────────────────────────────────────
+  'job':'work','occupation':'work','employer':'work','career':'work',
+  'employed':'work','employment':'work','profession':'work',
+  'hire':'work','hired':'work','fired':'work','quit':'work',
+  'resign':'work','resigned':'work','retire':'work','retired':'work',
+  'role':'work','title':'work','position':'work',
+  'boss':'work','manager':'work','company':'work','firm':'work',
+  'office':'work','promoted':'work','promotion':'work',
+  'remote':'work','remotely':'work','arrangement':'work',
+
+  // ── food / eating ─────────────────────────────────────────────────────────
+  'meal':'food','meals':'food','diet':'food',
+  'eat':'food','eats':'food','eating':'food','ate':'food',
+  'cuisine':'food','dish':'food','dishes':'food','recipe':'food',
+  'cook':'food','cooks':'food','cooking':'food',
+  'prefer':'food','prefers':'food','preference':'food',
+  'appetite':'food','hungry':'food','hunger':'food',
+  'snack':'food','lunch':'food','dinner':'food','breakfast':'food',
+  'vegan':'food','vegetarian':'food','pescatarian':'food',
+
+  // ── allergy / health restriction ──────────────────────────────────────────
+  'allergic':'allerg','allergy':'allerg','allergies':'allerg',
+  'intolerant':'allerg','intolerance':'allerg',
+  'restriction':'allerg','restrictions':'allerg',
+  'sensitive':'allerg','sensitivity':'allerg',
+  'avoid':'allerg','avoids':'allerg','avoiding':'allerg',
+  'gluten':'allerg','lactose':'allerg','nut':'allerg','peanut':'allerg',
+
+  // ── age ───────────────────────────────────────────────────────────────────
+  'old':'age','years':'age','year':'age','born':'age','birthday':'age',
+
+  // ── vehicle / transport ───────────────────────────────────────────────────
+  'vehicle':'drive','vehicles':'drive','transport':'drive','transportation':'drive',
+  'commute':'drive','commutes':'drive','commuting':'drive','commuted':'drive',
+  'car':'drive','cars':'drive','bicycle':'drive','bike':'drive','bikes':'drive',
+  'ride':'drive','rides':'drive','riding':'drive',
+
+  // ── hobbies / leisure ─────────────────────────────────────────────────────
+  'hobby':'enjoy','hobbies':'enjoy','activity':'enjoy','activities':'enjoy',
+  'interest':'enjoy','interests':'enjoy','fun':'enjoy','leisure':'enjoy',
+  'passion':'enjoy','pastime':'enjoy','pastimes':'enjoy',
+  'play':'enjoy','plays':'enjoy','playing':'enjoy',
+
+  // ── fitness / exercise ────────────────────────────────────────────────────
+  'fitness':'run','exercise':'run','workout':'run','workouts':'run',
+  'training':'run','train':'run','trains':'run',
+  'marathon':'run','gym':'run','athletic':'run','athlete':'run',
+  'sport':'run','sports':'run','jog':'run','jogging':'run',
+  'hike':'run','hiking':'run','trail':'run','swim':'run','swimming':'run',
+  'cycling':'run','cycle':'run',
+
+  // ── schedule / time ───────────────────────────────────────────────────────
+  'shift':'schedule','shifts':'schedule',
+  'appointment':'schedule','appointments':'schedule','meeting':'schedule',
+
+  // ── pets ──────────────────────────────────────────────────────────────────
+  'dog':'pet','dogs':'pet','cat':'pet','cats':'pet',
+  'animal':'pet','animals':'pet','puppy':'pet','kitten':'pet',
+
+  // ── goals / intentions ────────────────────────────────────────────────────
+  'aim':'goal','aims':'goal','target':'goal','targets':'goal',
+  'want':'goal','wants':'goal','wanted':'goal',
+  'wish':'goal','wishes':'goal','hope':'goal','hopes':'goal',
+  'aspire':'goal','aspires':'goal','aspiration':'goal',
+  'plan':'goal','plans':'goal','planned':'goal',
+  'dream':'goal','dreams':'goal',
+
+  // ── financial / saving ────────────────────────────────────────────────────
+  'financial':'save','finance':'save','finances':'save',
+  'money':'save','saving':'save','savings':'save',
+  'budget':'save','budgeting':'save','earn':'save','earns':'save',
+  'income':'save','salary':'save','wage':'save','wages':'save',
+  'invest':'save','investing':'save','investment':'save',
+  'afford':'save','buy':'save','purchase':'save',
+
+  // ── music / audio ─────────────────────────────────────────────────────────
+  'genre':'music','genres':'music','song':'music','songs':'music',
+  'listen':'music','listens':'music','listening':'music','taste':'music',
+  'band':'music','artist':'music','album':'music','track':'music',
+  'jazz':'music','rock':'music','pop':'music','hip':'music','hop':'music',
+  'classical':'music','opera':'music',
+
+  // ── language / speaking ───────────────────────────────────────────────────
+  'speak':'language','speaks':'language','spoken':'language','speaking':'language',
+  'fluent':'language','fluently':'language',
+  'learn':'language','learns':'language','learning':'language','learned':'language',
+  'study':'language','studying':'language',
+  'french':'language','german':'language','spanish':'language',
+  'mandarin':'language','japanese':'language',
+
+  // ── relationships ─────────────────────────────────────────────────────────
+  'spouse':'family','wife':'family','husband':'family','partner':'family',
+  'parent':'family','parents':'family','mother':'family','father':'family',
+  'child':'family','children':'family','sibling':'family',
+  'friend':'friend','friends':'friend','colleague':'friend',
+};
+
+// ── Semantic category anchors ──────────────────────────────────────────────────
+// After normalization, domain tokens also inject a category anchor token into
+// the superposition at equal weight. This creates cluster-level overlap between
+// texts that use different surface forms of the same concept:
+//   "Ryan lives in Austin" → tokens: [ryan, live, #loc, austin]
+//   "Ryan's location"      → tokens: [ryan, live, #loc]
+//   Shared: [ryan, live, #loc] = 3 tokens  (was 1 before)
+//
+// Category tokens use '#' prefix to avoid colliding with real word hashes.
+// They act as a "soft semantic cluster" — partial overlap even with no exact match.
+const _CATS = {
+  'live':    '#loc',   // location / place
+  'work':    '#job',   // employment
+  'food':    '#food',  // food / eating
+  'allerg':  '#hlth',  // health / allergy
+  'age':     '#age',   // age / time
+  'drive':   '#trn',   // transport / vehicle
+  'enjoy':   '#hby',   // hobbies / leisure
+  'run':     '#fit',   // fitness / exercise
+  'schedule':'#sched', // schedule / appointments
+  'pet':     '#pet',   // pets / animals
+  'goal':    '#goal',  // goals / intentions
+  'save':    '#fin',   // financial / money
+  'music':   '#mus',   // music / audio
+  'language':'#lang',  // language / speaking
+  'family':  '#rel',   // relationships
+  'friend':  '#rel',   // relationships (same anchor as family)
 };
 
 // Suffix rules — longest match first. [suffix, replacement]
@@ -170,17 +269,28 @@ function _normTok(tok) {
 }
 
 // ── Text → superposed ternary vector ─────────────────────────────────────────
-// Splits on whitespace, normalizes tokens, superposes (majority vote).
+// Normalizes tokens then superposes — including semantic category anchors.
 function textVec(text) {
   const raw  = text.toLowerCase().replace(/[^\w\s]/g, ' ').split(/\s+/).filter(Boolean);
   const toks = raw.map(_normTok).filter(Boolean);
-  const eff  = toks.length > 0 ? toks : raw; // fallback: keep raw if all tokens stripped
+  const eff  = toks.length > 0 ? toks : raw; // fallback: keep raw if all stripped
   if (eff.length === 0) return tokenVec(text);
-  if (eff.length === 1) return tokenVec(eff[0]);
+
+  // Inject semantic category anchors alongside domain tokens.
+  // "#loc", "#job" etc. are shared across all texts in the same domain —
+  // creating overlap even when surface words differ completely.
+  const enc = [];
+  for (const tok of eff) {
+    enc.push(tok);
+    const cat = _CATS[tok];
+    if (cat) enc.push(cat);
+  }
+
+  if (enc.length === 1) return tokenVec(enc[0]);
 
   // Accumulate into a dense accumulator then threshold → sparse ternary
   const acc = new Int16Array(DIM);
-  for (const tok of eff) {
+  for (const tok of enc) {
     const v = tokenVec(tok);
     for (const [idx, val] of v) acc[idx] += val;
   }
