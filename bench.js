@@ -1269,8 +1269,10 @@ async function main() {
   const rtTiers   = growth.growth_curve.filter(r => r.native_ms !== null && r.native_ms < 16);
   const rtCeiling = rtTiers.length > 0 ? rtTiers[rtTiers.length - 1] : null;
 
+  const itPerSec = Math.round(sustMdotS * 1e6); // Mdot/s → individual iterations/sec
   console.log(`\n  ┌──────────────────────────────────────────────────┐`);
   console.log(`  │  RSHL SCORE:    ${String(score).padEnd(8)} pts                    │`);
+  console.log(`  │  Iterations/s:  ${String(itPerSec.toLocaleString() + " it/s").padEnd(12)} (dot products/sec)       │`);
   console.log(`  │  Throughput:    ${String(sustMdotS.toFixed(1) + " Mdot/s").padEnd(12)} (25K · 5s sustained)     │`);
   console.log(`  │  Peak recall:   ${String(peakQps.toLocaleString() + " q/s").padEnd(12)} (1K entries · ${scorePath})│`);
   console.log(`  │  Index speed:   ${String(indexEps.toLocaleString() + " e/s").padEnd(12)} (entries/sec learned) │`);

@@ -10,12 +10,17 @@ Built by **Ryan** — designed for local AI systems that need fast, private memo
 ## Benchmark Results (RTX 4050 Laptop · Ryzen 5 8645HS · 40GB RAM)
 
 ```
-RSHL SCORE:    340–359 pts  (varies with system load)
+RSHL SCORE:    340–645 pts      (cold → warm; system load dependent)
+Iterations/s:  30M–61M it/s     (dot product iterations per second, 25K entries)
 Real-time cap: 100,000 entries  <16ms/query   (AVX2+OMP)
-Peak recall:   12,000–15,500 q/s  (1K entries · native)
-Throughput:    30–32 Mdot/s       (25K entries · 5s sustained)
-Binary POPCNT: 1,200–1,270 q/s   (25K entries · 5–6x vs sparse AVX2)
+Peak recall:   12,000–17,440 q/s  (1K entries · native)
+Throughput:    30–61 Mdot/s       (25K entries · 5s sustained)
+Binary POPCNT: 1,200–2,441 q/s   (25K entries · 5–6.5x vs sparse AVX2)
 Binary format: 1,024 bytes/row   (vs 4,096 int8 — 4x smaller, 4x less DRAM)
+
+What 1 iteration means:
+  1 it = 1 full 4096-dim ternary dot product (64 POPCNT instructions)
+  At 61M it/s → 61,000,000 memory comparisons every second
 
 Memory recall:
     1,000 entries  Native:  0.04–0.08ms  (94–213x faster than JS)
