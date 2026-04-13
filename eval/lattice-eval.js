@@ -20,6 +20,18 @@
  *
  * Run standalone:  node eval/lattice-eval.js
  * Run from bench:  imported by bench.js Section 7
+ *
+ * Current results: 81/103 correct (79%)
+ *   UPDATE recall 100% | NOOP precision 86% | NOOP recall 67%
+ *
+ * Remaining 22 failures by pattern (do not chase these with more rules):
+ *   ~10  Semantic paraphrase, no token overlap — "does not eat meat" ≠ "is vegetarian"
+ *    ~6  Cross-topic UPDATE bleed — signal fires against wrong slot, no topic-slot awareness
+ *    ~4  Structural NOOP bleed — different entities, same sentence shape, partial fix
+ *    ~2  One-off edge cases
+ *
+ * To go beyond 79%: add an optional semantic mode (embeddings/small LLM) on top.
+ * Do not bloat the heuristic layer further.
  */
 
 "use strict";

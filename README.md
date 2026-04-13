@@ -60,7 +60,7 @@ set is small (15 cases). Treat as a useful heuristic layer, not a fully validate
 `rshl-lattice.js` adds Mem0-comparable ADD/UPDATE/NOOP/DELETE classification
 using only vector resonance + entity overlap. No API calls. No network. No cost.
 
-**15/15 on the core Mem0-style scenarios. Extended eval (103 cases, 13 groups): 68% overall, UPDATE recall 96%.**
+**15/15 on the core Mem0-style scenarios. Extended eval (103 cases, 13 groups): 79% overall, UPDATE recall 100%.**
 
 The 15-case suite covers the same scenarios Mem0 targets. The 103-case extended eval tests
 paraphrase depth, entity isolation, false-positive delete guards, first-person normalization,
@@ -95,17 +95,31 @@ Core scenarios (15/15):
 
 | Class  | Expected | Correct | Precision | Recall |
 |--------|----------|---------|-----------|--------|
-| ADD    | 40       | 27      | 66%       | 68%    |
-| UPDATE | 26       | 25      | 68%       | **96%**|
-| NOOP   | 27       | 10      | 71%       | 37%    |
-| DELETE | 10       | 8       | 73%       | 80%    |
-| **Overall** | **103** | **70** | — | **68%** |
+| ADD    | 40       | 29      | 81%       | 73%    |
+| UPDATE | 26       | 26      | 72%       | **100%**|
+| NOOP   | 27       | 18      | 86%       | 67%    |
+| DELETE | 10       | 8       | 80%       | 80%    |
+| **Overall** | **103** | **81** | — | **79%** |
 
-**UPDATE recall is the strongest signal** — the lattice almost never misses a real change.
-**NOOP recall is the known weak spot** — semantic paraphrases without high word overlap
-score below the 0.81 threshold and land as ADD instead. No LLM means no semantic understanding,
-only vector geometry. Explicit signal words ("moved", "changed", "now", "no longer") are
-required for reliable UPDATE detection.
+**UPDATE recall 100%** — the lattice never misses a real change when a signal word is present.
+**NOOP precision 86%** — when it says "already known", it's usually right.
+**NOOP recall 67%** — the remaining gap is semantic paraphrases with low token overlap.
+No LLM means no open-ended synonym knowledge — the canonicalizer covers narrow known patterns.
+
+#### Known limits
+
+The remaining 22 failures fall into three buckets. These are not bugs — they are the honest
+boundary of a deterministic heuristic layer:
+
+| Failure pattern | Count | Why |
+|---|---|---|
+| Semantic paraphrase — no token overlap | ~10 | "does not eat meat" ≠ "vegetarian" without a model |
+| Cross-topic UPDATE bleed | ~6 | update signal fires against wrong slot (no topic-slot awareness) |
+| Structural NOOP bleed (different entities, same sentence shape) | ~4 | partial — entity exclusion guard helps but doesn't cover all cases |
+| One-off edge cases | ~2 | leave alone |
+
+If you need better than 79%, the right move is an optional semantic mode (embeddings or small LLM)
+layered on top — not more rules in the heuristic layer.
 
 ---
 
