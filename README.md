@@ -1,7 +1,8 @@
 # RSHL — Sparse Ternary Hyperdimensional Memory Engine
 
-> **Zero-dependency, air-gap-safe memory engine that outperforms cloud memory systems while running 100% locally.**
-> No LLM. No API. No GPU required. Sub-millisecond recall.
+> **Deterministic local memory kernel for AI systems.**
+> Sparse ternary encoding, sub-millisecond recall, no LLM required, no API, no GPU required.
+> The JS/TS core has zero dependencies. Optional native addon (AVX2+OMP) and CUDA bench are separate.
 
 Built by **Ryan** — designed for local AI systems that need fast, private memory without cloud dependencies or API costs.
 
@@ -50,7 +51,11 @@ This is what drives the score from ~106 (sparse AVX2) to **340–359** (binary P
 
 ---
 
-## RSHL Lattice — Smart Memory Operations (No LLM Needed)
+## RSHL Lattice — Smart Memory Operations *(experimental)*
+
+`rshl-lattice.js` adds ADD/UPDATE/NOOP/DELETE classification using vector resonance
+and entity overlap — no LLM, no API. Early eval results are promising but the test
+set is small (15 cases). Treat as a useful heuristic layer, not a fully validated system.
 
 `rshl-lattice.js` adds Mem0-comparable ADD/UPDATE/NOOP/DELETE classification
 using only vector resonance + entity overlap. No API calls. No network. No cost.
