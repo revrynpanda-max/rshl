@@ -343,4 +343,25 @@ function resonance(a, b) {
   return (cosineSim(a, b) + 1) * 0.5;
 }
 
-module.exports = { DIM, ACTIVE, tokenVec, textVec, cosineSim, resonance };
+// Returns the canonical tokens (+ category anchors) that textVec uses.
+// Used by playground.js to show WHY two texts matched.
+function debugTokens(text) {
+  const raw  = text.toLowerCase().replace(/[^\w\s]/g, ' ').split(/\s+/).filter(Boolean);
+  const toks = raw.map(_normTok).filter(Boolean);
+  const eff  = toks.length > 0 ? toks : raw;
+  const enc  = [];
+  const seen = new Set();
+  for (const tok of eff) {
+    if (!seen.has(tok)) { seen.add(tok); enc.push({ tok, type: 'word' }); }
+    const cats = _CATS[tok];
+    if (cats) {
+      const arr = Array.isArray(cats) ? cats : [cats];
+      for (const c of arr) {
+        if (!seen.has(c)) { seen.add(c); enc.push({ tok: c, type: 'category' }); }
+      }
+    }
+  }
+  return enc;
+}
+
+module.exports = { DIM, ACTIVE, tokenVec, textVec, cosineSim, resonance, debugTokens };
