@@ -11,24 +11,27 @@ Built by **Ryan** — designed for local AI systems that need fast, private memo
 ## Benchmark Results (RTX 4050 Laptop · Ryzen 5 8645HS · 40GB RAM)
 
 ```
-RSHL SCORE:    340–645 pts      (cold → warm; system load dependent)
-Iterations/s:  30M–61M it/s     (dot product iterations per second, 25K entries)
+RSHL SCORE:    657 pts          (clean environment, 27GB RAM free — best recorded)
+               340–657 pts      (range: cold/loaded → clean/idle)
+Iterations/s:  61,800,000 it/s  (dot product iterations per second, 25K entries)
 Real-time cap: 100,000 entries  <16ms/query   (AVX2+OMP)
-Peak recall:   12,000–17,440 q/s  (1K entries · native)
-Throughput:    30–61 Mdot/s       (25K entries · 5s sustained)
-Binary POPCNT: 1,200–2,441 q/s   (25K entries · 5–6.5x vs sparse AVX2)
-Binary format: 1,024 bytes/row   (vs 4,096 int8 — 4x smaller, 4x less DRAM)
+Peak recall:   16,753 q/s       (1K entries · native AVX2+OMP)
+Throughput:    61.8 Mdot/s      (25K entries · 5s sustained)
+Binary POPCNT: 2,472 q/s        (7.6x faster than sparse AVX2)
+Binary format: 1,024 bytes/row  (vs 4,096 int8 — 4x smaller, 4x less DRAM)
+Index speed:   3,872 entries/sec learned
 
 What 1 iteration means:
   1 it = 1 full 4096-dim ternary dot product (64 POPCNT instructions)
-  At 61M it/s → 61,000,000 memory comparisons every second
+  At 61.8M it/s → 61,800,000 memory comparisons every second
 
 Memory recall:
-    1,000 entries  Native:  0.04–0.08ms  (94–213x faster than JS)
-    5,000 entries  Native:  0.34–0.46ms  (111–152x faster than JS)
-   10,000 entries  Native:  0.80–1.49ms  ( 67–94x faster than JS)
-   25,000 entries  Native:  2.38–2.39ms  ( 79x faster than JS)
-   50,000 entries  Native:  4.73ms
+    1,000 entries  Native:  0.06ms  (124x faster than JS)
+    5,000 entries  Native:  0.30ms  (121x faster than JS)
+   10,000 entries  Native:  0.68ms  (113x faster than JS)
+   25,000 entries  Native:  2.01ms  ( 92x faster than JS)
+   50,000 entries  Native:  3.96ms
+  100,000 entries  Native:  7.63ms
   100,000 entries  Native:  9.19ms
 
 Memory footprint at 10 years of daily use: 82MB
