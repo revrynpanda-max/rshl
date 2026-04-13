@@ -116,9 +116,12 @@ in a 4096-dimensional space where ~5% of dimensions are non-zero.
 - **Reinforce** — increment strength on access (Hebbian learning)
 - **Decay** — exponential strength decay over time — naturally forgets what isn't revisited
 - **Bind** — XOR-style binding associates key ↔ value vectors (reversible)
+- **Threshold** — minimum recall score (≥ 0.55) filters noise before results reach the LLM
 
 Two unrelated texts produce nearly orthogonal vectors (cosine ≈ 0.5).
 Related texts land close together. You don't train anything — the geometry is emergent.
+The threshold exploits this: scores ≤ 0.5 are noise by definition, so anything below 0.55
+is discarded rather than hallucinated into context.
 
 ---
 

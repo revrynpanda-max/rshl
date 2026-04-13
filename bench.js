@@ -782,6 +782,79 @@ async function benchMemoryPalace() {
   console.log(`    Φg coherence score       — measures how integrated the memory state is`);
   console.log(`    Persistent SQLite store  — survives restarts, grows with every conversation`);
   console.log(`    120-token recall block   — top-5 resonant hits formatted for LLM injection`);
+  console.log(`    Min recall threshold     — score ≥ 0.55 required (noise filtered before LLM)`);
+
+  // ── Threshold self-regulation test ────────────────────────────────────────
+  console.log(`\n  C) Recall Threshold Self-Regulation`);
+  console.log(`     Tests that weak/unrelated memories are filtered and strong ones pass through.`);
+
+  const { textVec: tV, resonance: res } = require("./rshl-core");
+  const MIN_RECALL_SCORE = 0.55;
+
+  // Seed a small memory bank with known entries
+  const memories = [
+    "Ryan works on KAI, a local AI assistant project",
+    "The RSHL engine uses sparse ternary hyperdimensional vectors",
+    "RTX 4050 GPU has 6GB VRAM and runs at 192 GB/s memory bandwidth",
+    "KAI uses AVX2 POPCNT for 30 million dot products per second",
+    "The weather today is sunny and warm",
+  ].map(t => ({ text: t, vec: tV(t), strength: 1.0 }));
+
+  const now = Date.now() / 1000;
+
+  function queryWithThreshold(queryText, minScore) {
+    const qvec = tV(queryText);
+    return memories
+      .map(m => {
+        const sim = res(qvec, m.vec);
+        return { text: m.text, score: sim * m.strength };
+      })
+      .filter(r => r.score >= minScore)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5);
+  }
+
+  // Use a large diverse bank so cosine noise settles near 0.5 (its true mean)
+  const bankSize = 200;
+  const noisePhrases = [
+    "photosynthesis requires sunlight water carbon dioxide chlorophyll",
+    "the ancient romans built aqueducts roads and colosseum structures",
+    "jazz music originated in new orleans louisiana early twentieth century",
+    "ocean tides are caused by gravitational pull of moon and sun",
+    "mitochondria produce atp through cellular respiration oxidative phosphorylation",
+    "the french revolution ended monarchy and established republic in paris",
+    "quantum entanglement connects particles regardless of distance space",
+    "pasta carbonara uses eggs pecorino romano guanciale black pepper",
+    "mount everest stands at 8849 meters above sea level himalayas",
+    "the amazon river flows through brazil into atlantic ocean",
+  ];
+  for (let i = memories.length; i < bankSize; i++) {
+    const t = noisePhrases[i % noisePhrases.length] + ` variant ${i}`;
+    memories.push({ text: t, vec: tV(t), strength: 1.0 });
+  }
+
+  const strongQuery  = "how fast is KAI memory recall RSHL dot products per second";
+  const weakQuery    = "photosynthesis sunlight chlorophyll plant cell biology";
+
+  const strongHits = queryWithThreshold(strongQuery,  MIN_RECALL_SCORE);
+  const weakHits   = queryWithThreshold(weakQuery,    MIN_RECALL_SCORE);
+  const noFilter   = queryWithThreshold(weakQuery,    0.0);
+
+  console.log(`\n     Query: "${strongQuery}"`);
+  console.log(`     Threshold: ${MIN_RECALL_SCORE}  →  ${strongHits.length} hit(s) passed`);
+  strongHits.slice(0,3).forEach(h => console.log(`       [${h.score.toFixed(3)}] ${h.text.slice(0,65)}`));
+
+  console.log(`\n     Query: "${weakQuery}" (unrelated to KAI entries — should be filtered)`);
+  console.log(`     Without threshold: ${noFilter.length} result(s) returned  (noise injected into LLM)`);
+  console.log(`     With threshold ${MIN_RECALL_SCORE}:  ${weakHits.length === 0 ? "0 — nothing returned ✓" : weakHits.length + " returned"}`);
+  if (noFilter.length > 0) {
+    const best = noFilter.find(r => memories.slice(0,5).some(m => m.text === r.text));
+    if (best) console.log(`       Best KAI-entry score for unrelated query: ${best.score.toFixed(3)}  →  ${best.score < MIN_RECALL_SCORE ? "✓ blocked" : "above threshold"}`);
+  }
+
+  const regulated = weakHits.filter(h => memories.slice(0,5).some(m => m.text === h.text)).length === 0
+                    && strongHits.length > 0;
+  console.log(`\n     Self-regulation: ${regulated ? "✓ WORKING — noise blocked, relevant hits pass" : "⚠ CHECK THRESHOLD — review scores above"}`);
 
   const result = { live, port: livePort, tiers, memory_palace: mp, rshl_ops: rshlOps };
 
