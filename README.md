@@ -32,7 +32,6 @@ Memory recall:
    25,000 entries  Native:  2.01ms  ( 92x faster than JS)
    50,000 entries  Native:  3.96ms
   100,000 entries  Native:  7.63ms
-  100,000 entries  Native:  9.19ms
 
 Memory footprint at 10 years of daily use: 82MB
 GPT-4 weights: ~800GB  →  RSHL is 9,744x smaller
@@ -50,18 +49,15 @@ The native addon includes a **binary ternary packing** format that is the primar
 - `dot(row, q) = POPCNT(rp & qp) + POPCNT(rn & qn) − POPCNT(rp & qn) − POPCNT(rn & qp)`
 - **5–6× faster sustained throughput** vs sparse int8 AVX2
 
-This is what drives the score from ~106 (sparse AVX2) to **340–359** (binary POPCNT).
+This is what drives the score from ~106 (sparse AVX2) to **657** (binary POPCNT, clean environment).
 
 ---
 
 ## RSHL Lattice — Smart Memory Operations *(experimental)*
 
-`rshl-lattice.js` adds ADD/UPDATE/NOOP/DELETE classification using vector resonance
-and entity overlap — no LLM, no API. Early eval results are promising but the test
-set is small (15 cases). Treat as a useful heuristic layer, not a fully validated system.
-
 `rshl-lattice.js` adds Mem0-comparable ADD/UPDATE/NOOP/DELETE classification
 using only vector resonance + entity overlap. No API calls. No network. No cost.
+Treat as a useful heuristic layer, not a fully validated system.
 
 **15/15 on the core Mem0-style scenarios. Extended eval (103 cases, 13 groups): 79% overall, UPDATE recall 100%.**
 
@@ -137,7 +133,7 @@ layered on top — not more rules in the heuristic layer.
 | **Works offline / air-gap** | **✓** | ✗ | ✗ | ✗ |
 | **API cost** | **$0** | OpenAI API | LLM + Neo4j | LLM + vector DB |
 | **Dependencies** | **zero** | qdrant + openai | Neo4j/FalkorDB | vector DB + LLM |
-| **Accuracy (same test set)** | **100%** | LLM-dependent | LLM-dependent | LLM-dependent |
+| **Accuracy (15-case Mem0 suite)** | **100%** | LLM-dependent | LLM-dependent | LLM-dependent |
 
 Sources: Mem0 — [arXiv:2504.19413](https://arxiv.org/abs/2504.19413) · Zep/Graphiti — [arXiv:2501.13956](https://arxiv.org/abs/2501.13956) · MemGPT — [arXiv:2310.08560](https://arxiv.org/abs/2310.08560)
 
@@ -213,12 +209,12 @@ const hits = mem.recall("where does Ryan live?");
 ```python
 from rshl_core import RSHLCore
 
-engine = RSHLCore(dim=10_000, sparsity=0.95)
+engine = RSHLCore()
 engine.remember("api-timeout",  "api connection timeout endpoint failed")
 engine.remember("board-pass",   "test station board calibration passed")
 engine.reinforce("api-timeout", amount=0.5)
 
-hits = engine.resonance("api error retry", top_k=3)
+hits = engine.recall("api error retry", top_k=3)
 # [('api-timeout', 0.71, 1.5), ('board-pass', 0.52, 1.0), ...]
 ```
 
