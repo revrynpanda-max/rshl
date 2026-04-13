@@ -1,10 +1,19 @@
 # RSHL — Sparse Ternary Hyperdimensional Memory Engine
 
-> **Deterministic local memory kernel for AI systems.**
-> Sparse ternary encoding, sub-millisecond recall, no LLM required, no API, no GPU required.
-> The JS/TS core has zero dependencies. Optional native addon (AVX2+OMP) and CUDA bench are separate.
+> **Fast, private memory for AI systems — no cloud, no API, no GPU required.**
+> Stores any text as a 4096-dimensional vector. Recalls the right memory in under 1ms.
+> Zero dependencies. Runs on any machine with Node.js.
 
 Built by **Ryan** — designed for local AI systems that need fast, private memory without cloud dependencies or API costs.
+
+## Quick Start
+
+```bash
+node bench.js                    # speed test — how fast is your machine?
+node eval/recall-accuracy.js     # accuracy test — does it return the right memory?
+```
+
+That's it. No install step. No config. Just Node.js 16+.
 
 ---
 
@@ -35,6 +44,12 @@ Memory recall:
 
 Memory footprint at 10 years of daily use: 82MB
 GPT-4 weights: ~800GB  →  RSHL is 9,744x smaller
+
+Recall accuracy (node eval/recall-accuracy.js):
+  Baseline (30 facts, no noise):   100.0% top-1  (92/92 queries correct)
+  +500 noise entries:                95.7% top-1  (4 noise collisions only)
+  +5000 noise entries:               91.3% top-1  (8 noise collisions only)
+  MRR at 5K noise:                   0.926        (1.0 = always rank-1)
 ```
 
 ---

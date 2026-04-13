@@ -1481,6 +1481,27 @@ async function main() {
   } else {
     console.log(`  Tip: run with --save to write a JSON report file for sharing`);
   }
+
+  // ── What these numbers mean in plain English ──────────────────────────────
+  sep("What This Means");
+  console.log(`  RSHL is a memory engine for AI systems. Instead of sending your data`);
+  console.log(`  to a cloud API, it stores everything locally as math — 4096-dimensional`);
+  console.log(`  vectors — and retrieves the right memory in under 1ms.\n`);
+  console.log(`  The score you just got (${score} pts) tells you how fast your machine can`);
+  console.log(`  run memory searches. Higher = faster recall, lower latency for AI replies.\n`);
+  console.log(`  Real-world meaning of the numbers:`);
+  console.log(`    ${growth.index_entries_per_sec.toLocaleString()} entries/sec indexed   — how fast it learns new facts`);
+  console.log(`    <1ms recall at 10K entries  — returns the right memory instantly`);
+  console.log(`    82MB for 10 years of use    — your entire life's memory fits in RAM`);
+  console.log(`    $0 per operation            — no API calls, no cloud, works offline\n`);
+  console.log(`  Speed is only half the story. To verify accuracy:`);
+  console.log(`  ┌─────────────────────────────────────────────────────────────┐`);
+  console.log(`  │  node eval/recall-accuracy.js                               │`);
+  console.log(`  │                                                             │`);
+  console.log(`  │  Tests: does the RIGHT memory come back when you ask?       │`);
+  console.log(`  │  30 personal facts, 92 paraphrase queries, 3 noise scales   │`);
+  console.log(`  │  Reference: 100% baseline · 95.7% +500 noise · 91.3% +5K   │`);
+  console.log(`  └─────────────────────────────────────────────────────────────┘\n`);
 }
 
 main().catch(err => { console.error("Bench error:", err); process.exit(1); });
