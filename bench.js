@@ -1483,25 +1483,35 @@ async function main() {
   }
 
   // ── What these numbers mean in plain English ──────────────────────────────
-  sep("What This Means");
-  console.log(`  RSHL is a memory engine for AI systems. Instead of sending your data`);
-  console.log(`  to a cloud API, it stores everything locally as math — 4096-dimensional`);
-  console.log(`  vectors — and retrieves the right memory in under 1ms.\n`);
-  console.log(`  The score you just got (${score} pts) tells you how fast your machine can`);
-  console.log(`  run memory searches. Higher = faster recall, lower latency for AI replies.\n`);
-  console.log(`  Real-world meaning of the numbers:`);
-  console.log(`    ${growth.index_entries_per_sec.toLocaleString()} entries/sec indexed   — how fast it learns new facts`);
-  console.log(`    <1ms recall at 10K entries  — returns the right memory instantly`);
-  console.log(`    82MB for 10 years of use    — your entire life's memory fits in RAM`);
-  console.log(`    $0 per operation            — no API calls, no cloud, works offline\n`);
-  console.log(`  Speed is only half the story. To verify accuracy:`);
-  console.log(`  ┌─────────────────────────────────────────────────────────────┐`);
-  console.log(`  │  node eval/recall-accuracy.js                               │`);
-  console.log(`  │                                                             │`);
-  console.log(`  │  Tests: does the RIGHT memory come back when you ask?       │`);
-  console.log(`  │  30 personal facts, 92 paraphrase queries, 3 noise scales   │`);
-  console.log(`  │  Reference: 100% baseline · 95.7% +500 noise · 91.3% +5K   │`);
-  console.log(`  └─────────────────────────────────────────────────────────────┘\n`);
+  sep("Reading These Results");
+  console.log(`  RSHL is a semantic index — like a database index, but it matches records`);
+  console.log(`  by meaning instead of exact value. "unit 4 out of spec" and "calibration`);
+  console.log(`  drift station 4" return the same record even with no shared words.\n`);
+  console.log(`  What the numbers above mean:\n`);
+  console.log(`    Score ${score} pts`);
+  console.log(`      Overall throughput rating on this machine. Higher = more records`);
+  console.log(`      searchable per second. Compare scores across machines.\n`);
+  console.log(`    ${(sustMdotS * 1e6).toLocaleString()} comparisons/sec  (shown as "${sustMdotS.toFixed(1)} Mdot/s" above)`);
+  console.log(`      How many individual record comparisons this machine does per second.`);
+  console.log(`      At 25,000 records, that is ${Math.round(sustMdotS * 1e6 / 25000).toLocaleString()} full index scans every second.\n`);
+  console.log(`    "Native" vs "Script" in the recall table`);
+  console.log(`      Script  = runs as-is, no build step needed`);
+  console.log(`      Native  = same code compiled to machine code (C++ / AVX2)`);
+  console.log(`                92–124x faster — run once: npm run build-native\n`);
+  console.log(`    ${growth.index_entries_per_sec.toLocaleString()} records/sec indexed`);
+  console.log(`      How fast new records are written into the index.\n`);
+  console.log(`    ADD / UPDATE / NOOP / DELETE  (Section 7 above)`);
+  console.log(`      Every write is automatically classified — no rules to configure.`);
+  console.log(`      ADD = new record. UPDATE = existing record changed.`);
+  console.log(`      NOOP = already known, skip. DELETE = remove on explicit signal.\n`);
+  console.log(`  Speed is only part of the picture. Run the accuracy test:`);
+  console.log(`  ┌─────────────────────────────────────────────────────────────────┐`);
+  console.log(`  │  node eval/recall-accuracy.js                                   │`);
+  console.log(`  │                                                                 │`);
+  console.log(`  │  Does the correct record come back as result #1?                │`);
+  console.log(`  │  30 records · 92 different queries · 3 noise levels             │`);
+  console.log(`  │  Reference: 100% at baseline · 95.7% at +500 · 91.3% at +5000  │`);
+  console.log(`  └─────────────────────────────────────────────────────────────────┘\n`);
 }
 
 main().catch(err => { console.error("Bench error:", err); process.exit(1); });
