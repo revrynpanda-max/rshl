@@ -408,9 +408,10 @@ function getIntakeLog() {
 
 function getStats() {
     const cells = universe.getCells();
-    const external = cells.filter(c => c.meta &&
-        ['external-intake', 'web-search', 'github', 'rss', 'manual'].includes(c.meta.source)
-    );
+    // Only count cells that actually entered through the bridge — they all have
+    // ingestedAt timestamp set by ingest(). This excludes seed, promoted-dream,
+    // and any cells stored directly via universe.store().
+    const external = cells.filter(c => c.meta && c.meta.ingestedAt);
 
     const bySource = {};
     for (const cell of external) {

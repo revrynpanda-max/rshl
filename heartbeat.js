@@ -34,10 +34,12 @@ const { consolidate }     = require('./rshl-lattice');
 const candidateBuffer     = require('./candidate-buffer');
 const { runPromotion }    = require('./promotion');
 const { runHomeostasis }  = require('./homeostasis');
+const persistence         = require('./persistence');
 
 const DEFAULT_INTERVAL_MS       = 5000;  // 5 seconds between ticks
 const HOMEOSTASIS_EVERY_N       = 10;    // Run homeostasis every N ticks
 const GC_EVERY_N                = 50;    // Run candidate GC every N ticks
+const AUTOSAVE_EVERY_N          = 25;    // Auto-save state every N ticks
 
 let _timer      = null;
 let _tickCount  = 0;
@@ -75,7 +77,17 @@ function _tick() {
         candidateBuffer.gc(30);
     }
 
-    // 6. Callback
+    // 6. Auto-save state (every N ticks)
+    let saveResult = null;
+    if (_tickCount % AUTOSAVE_EVERY_N === 0) {
+        try {
+            saveResult = persistence.save({ heartbeatTick: _tickCount });
+        } catch (_) {
+            // Non-fatal — don't crash the heartbeat over a save failure
+        }
+    }
+
+    // 7. Callback
     if (typeof _opts.onTick === 'function') {
         _opts.onTick({
             tick:        _tickCount,
@@ -84,6 +96,7 @@ function _tick() {
             promoted:    promotionResult.promoted,
             failLog:     promotionResult.failLog,
             homeostasis: homeostasisResult,
+            saved:       saveResult,
             bufferSize:  candidateBuffer.size(),
         });
     }
