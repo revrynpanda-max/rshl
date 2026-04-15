@@ -276,7 +276,7 @@ function _stem(w) {
 function _normTok(tok) {
   if (tok.length < 2) return null;      // drop single chars (Ryan's → 's' artifact)
   if (_STOPS.has(tok)) return null;     // drop stopwords
-  const syn = _SYNS[tok];
+  const syn = Object.hasOwn(_SYNS, tok) ? _SYNS[tok] : undefined;
   if (syn) return syn;                  // pre-stem synonym — already canonical
   return _stem(tok);                    // stem remaining inflections
 }
@@ -298,7 +298,7 @@ function textVec(text) {
   const enc = [];
   for (const tok of eff) {
     if (!seen.has(tok)) { seen.add(tok); enc.push(tok); }
-    const cats = _CATS[tok];
+    const cats = Object.hasOwn(_CATS, tok) ? _CATS[tok] : undefined;
     if (cats) {
       const arr = Array.isArray(cats) ? cats : [cats];
       for (const c of arr) {
@@ -353,7 +353,7 @@ function debugTokens(text) {
   const seen = new Set();
   for (const tok of eff) {
     if (!seen.has(tok)) { seen.add(tok); enc.push({ tok, type: 'word' }); }
-    const cats = _CATS[tok];
+    const cats = Object.hasOwn(_CATS, tok) ? _CATS[tok] : undefined;
     if (cats) {
       const arr = Array.isArray(cats) ? cats : [cats];
       for (const c of arr) {

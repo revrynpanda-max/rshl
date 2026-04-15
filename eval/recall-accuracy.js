@@ -22,7 +22,17 @@
 "use strict";
 
 const path = require("path");
-const { textVec, cosineSim } = require(path.join(__dirname, "..", "rshl-core"));
+const { textVec, cosineSim, debugTokens } = require(path.join(__dirname, "..", "rshl-core"));
+
+function _tokenSet(text) {
+    return new Set(debugTokens(text).map(t => t.tok).filter(t => !t.startsWith('#')));
+}
+
+function _tokenOverlap(queryTokens, cellTokens) {
+    let count = 0;
+    for (const t of queryTokens) { if (cellTokens.has(t)) count++; }
+    return count;
+}
 
 // ── Colour helpers ─────────────────────────────────────────────────────────────
 const G = s => `\x1b[92m${s}\x1b[0m`;
@@ -248,19 +258,25 @@ function makeNoise(n) {
 function buildIndex(facts, noiseTexts) {
   const index = [];
   for (const f of facts) {
-    index.push({ id: f.id, text: f.stored, entity: f.entity, vec: textVec(f.stored) });
+    index.push({ id: f.id, text: f.stored, entity: f.entity, vec: textVec(f.stored), tokens: _tokenSet(f.stored) });
   }
   for (let i = 0; i < noiseTexts.length; i++) {
-    index.push({ id: `noise-${i}`, text: noiseTexts[i], entity: "noise", vec: textVec(noiseTexts[i]) });
+    index.push({ id: `noise-${i}`, text: noiseTexts[i], entity: "noise", vec: textVec(noiseTexts[i]), tokens: _tokenSet(noiseTexts[i]) });
   }
   return index;
 }
 
 function queryIndex(index, queryText, topK = 5) {
   const qVec = textVec(queryText);
+  const qTokens = _tokenSet(queryText);
   return index
-    .map(entry => ({ ...entry, score: cosineSim(qVec, entry.vec) }))
-    .sort((a, b) => b.score - a.score)
+    .map(entry => ({ ...entry, score: cosineSim(qVec, entry.vec), overlap: _tokenOverlap(qTokens, entry.tokens) }))
+    .sort((a, b) => {
+        if (Math.abs(a.score - b.score) < 0.12 && a.overlap !== b.overlap) {
+            return b.overlap - a.overlap;
+        }
+        return b.score - a.score;
+    })
     .slice(0, topK);
 }
 

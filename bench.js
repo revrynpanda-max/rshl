@@ -856,6 +856,13 @@ async function benchMemoryPalace() {
                     && strongHits.length > 0;
   console.log(`\n     Self-regulation: ${regulated ? "✓ WORKING — noise blocked, relevant hits pass" : "⚠ CHECK THRESHOLD — review scores above"}`);
 
+  const regulatedStrict = weakHits.length === 0
+    && weakHits.filter(h => memories.slice(0,5).some(m => m.text === h.text)).length === 0
+    && strongHits.length > 0;
+  if (!regulatedStrict) {
+    console.log(`     Correction: weak-query hits are still crossing the threshold here, so this section is not production-clean yet.`);
+  }
+
   const result = { live, port: livePort, tiers, memory_palace: mp, rshl_ops: rshlOps };
 
   return result;

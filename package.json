@@ -5,7 +5,7 @@
   "main": "rshl-core.js",
   "types": "rshl-core.ts",
   "exports": {
-    ".":         "./rshl-core.js",
+    ".": "./rshl-core.js",
     "./lattice": "./rshl-lattice.js"
   },
   "files": [
@@ -18,18 +18,31 @@
     "README.md"
   ],
   "scripts": {
-    "bench":        "node bench.js",
+    "bench": "node bench.js",
     "bench:native": "npm run build-native && node bench.js",
     "build-native": "npx node-gyp configure build"
   },
   "optionalDependencies": {
-    "node-addon-api": "^8.0.0"
+    "node-addon-api": "^8.7.0"
   },
   "keywords": [
-    "memory", "hdc", "hyperdimensional", "ternary", "sparse",
-    "local-ai", "vector", "recall", "deterministic", "offline"
+    "memory",
+    "hdc",
+    "hyperdimensional",
+    "ternary",
+    "sparse",
+    "local-ai",
+    "vector",
+    "recall",
+    "deterministic",
+    "offline"
   ],
   "author": "Ryan (revrynpanda-max)",
   "license": "SEE LICENSE IN LICENSE",
-  "engines": { "node": ">=16" }
+  "engines": {
+    "node": ">=16"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0"
+  }
 }
