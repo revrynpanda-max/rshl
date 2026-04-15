@@ -1,0 +1,20 @@
+{
+  "userName": "Ryan",
+  "records": [
+    {
+      "text": "The team decided that we will use Vitest for all unit testing in the KAI project.",
+      "region": "memory",
+      "meta": {}
+    },
+    {
+      "text": "I prefer using dark mode with a Neon Cyan accent color for the UI.",
+      "region": "memory",
+      "meta": {}
+    },
+    {
+      "text": "The server backend is located in the Frankfurt region to minimize latency for European users.",
+      "region": "memory",
+      "meta": {}
+    }
+  ]
+}
