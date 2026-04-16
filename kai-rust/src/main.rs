@@ -1,7 +1,9 @@
 mod core;
 mod drive;
+mod cognition;
 
 use crate::core::{FieldState, Universe};
+use crate::cognition::Reasoner;
 use crate::drive::{Drive, Mood};
 use crossterm::{
     event::{self, Event, KeyCode, KeyModifiers},
@@ -64,6 +66,7 @@ struct Turn {
 struct App {
     universe: Universe,
     drive: Drive,
+    reasoner: Reasoner,
     turns: Vec<Turn>,
     input: String,
     tick: u64,
@@ -82,6 +85,7 @@ impl App {
         Self {
             universe,
             drive: Drive::default(),
+            reasoner: Reasoner::new(),
             turns: Vec::new(),
             input: String::new(),
             tick: 0,
@@ -159,23 +163,43 @@ impl App {
             return;
         }
 
-        // Default: query the universe
+        // Default: REASON through the universe (iterative resonance chain)
         self.turns.push(Turn { role: "user".into(), text: input.clone(), region: None, score: None });
 
-        let hits = self.universe.query(&input, 3);
-        if hits.is_empty() || hits[0].score < 0.3 {
+        let result = self.reasoner.reason(&input, &self.universe);
+
+        if result.output_text.is_empty() || result.confidence < 0.05 {
             self.turns.push(Turn {
                 role: "kai".into(),
-                text: format!("No strong resonance for \"{}\"", input),
+                text: format!("No resonance for \"{}\"", input),
                 region: None, score: None,
             });
         } else {
-            let h = &hits[0];
+            // Show the chain depth and confidence
+            let depth_label = if result.depth > 1 {
+                format!(" [{}→ depth:{} Φg:{:.0}%]", 
+                    result.chain.iter().map(|s| {
+                        if s.matched_region.is_empty() { "·" } else { 
+                            match s.matched_region.as_str() {
+                                "memory" => "M",
+                                "reasoning" => "R",
+                                "language" => "L",
+                                "action" => "A",
+                                _ => "?"
+                            }
+                        }
+                    }).collect::<Vec<_>>().join("→"),
+                    result.depth,
+                    result.confidence * 100.0)
+            } else {
+                String::new()
+            };
+
             self.turns.push(Turn {
                 role: "kai".into(),
-                text: h.text.clone(),
-                region: Some(h.region.clone()),
-                score: Some(h.score),
+                text: format!("{}{}", result.output_text, depth_label),
+                region: Some(result.output_region),
+                score: Some(result.confidence),
             });
         }
     }

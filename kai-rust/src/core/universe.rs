@@ -157,6 +157,30 @@ impl Universe {
         }
         Some((&self.cells[i], &self.cells[j]))
     }
+
+    /// Query with a pre-encoded vector (for the reasoner's iterative chain).
+    /// Returns references to cells + scores for zero-copy reasoning.
+    pub fn query_vec(&self, q: &SparseVec, n: usize) -> Vec<(&Cell, f32)> {
+        let mut scored: Vec<(usize, f32)> = self
+            .cells
+            .iter()
+            .enumerate()
+            .map(|(i, cell)| {
+                let raw = q.cosine(&cell.vec);
+                let boosted = raw * (0.5 + 0.5 * cell.strength.min(2.0));
+                (i, boosted)
+            })
+            .filter(|(_, s)| *s > 0.1)
+            .collect();
+
+        scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        scored.truncate(n);
+
+        scored
+            .iter()
+            .map(|&(i, score)| (&self.cells[i], score))
+            .collect()
+    }
 }
 
 impl Default for Universe {
