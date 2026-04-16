@@ -2,9 +2,10 @@
 const { Plasma } = require('./plasma');
 const { bind } = require('./anchors');
 const { textVec, resonance } = require('./rshl-core');
+const universe = require('./universe');
 
-const kai = new Plasma();
-kai.cells = []; 
+universe.clear();
+const kai = new Plasma(false);
 
 // ──────── Mathematical Unbind ────────
 // Because our phase masks are +1/-1 matrices, the inverse of binding is simply 
@@ -18,14 +19,8 @@ const itemMemory = new Map();
 
 function storeConcept(text, region) {
     const cleanVec = textVec(text);
-    const boundVec = bind(cleanVec, region);
     
-    kai.cells.push({
-        id: kai.cells.length + 1,
-        text: text,
-        region: region,
-        vec: boundVec // Store in phase-shifted state
-    });
+    universe.store(text, region, {});
     
     // Store clean version in the cleanup dictionary
     itemMemory.set(text.toLowerCase().trim(), cleanVec);
@@ -60,7 +55,7 @@ function generate(query) {
     const qvec = textVec(query);
     
     // ──────── 2. Retrieval via Resonance ────────
-    const results = kai.cells
+    const results = universe.getCells()
         .map(cell => ({
             text: cell.text,
             region: cell.region,

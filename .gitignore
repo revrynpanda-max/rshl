@@ -8,6 +8,9 @@ dream-output-full.json
 # Node
 node_modules/
 
+# Native addon build artifacts (regenerate: npx node-gyp configure build)
+build/
+
 # IDE / OS
 .vs/
 *.swp

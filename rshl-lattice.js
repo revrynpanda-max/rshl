@@ -190,12 +190,42 @@ class RSHLLattice {
     }
 
     store(text, region = "memory", meta = {}) {
+        const { textVec, resonance: resFn } = require('./rshl-core');
+        const cells = universe.getCells();
+        const qVec = textVec(text);
+
+        // Find best existing match via resonance
+        let bestScore = 0;
+        let bestCell = null;
+        for (const cell of cells) {
+            if (!cell.raw) continue;
+            const sim = resFn(qVec, cell.raw);
+            if (sim > bestScore) { bestScore = sim; bestCell = cell; }
+        }
+
+        // Decide operation: NOOP (duplicate), UPDATE (similar), ADD (new)
+        let op = 'ADD';
+        let replaced = null;
+
+        if (bestScore >= 0.92) {
+            // Near-duplicate — skip it
+            op = 'NOOP';
+            return { op, match_score: bestScore, replaced: null };
+        } else if (bestScore >= 0.72) {
+            // Similar enough to be an update — remove old, store new
+            op = 'UPDATE';
+            replaced = bestCell ? bestCell.text : null;
+            if (bestCell) universe.removeCell(bestCell.id);
+        }
+
         this.records.push({
             text: String(text),
             region: region || "memory",
             meta: meta || {}
         });
         universe.store(text, region || "memory", meta || {});
+
+        return { op, match_score: bestScore, replaced };
     }
 
     recall(query, topK = 5) {

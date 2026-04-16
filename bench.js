@@ -938,9 +938,10 @@ function benchLattice() {
   console.log(`\n  Accuracy: ${pass}/${SCENARIOS.length} correct  (${accuracy}%)`);
 
   // Show what's actually in memory now
-  console.log(`\n  Memory state after all 15 stores  (${mem.cells.length} cells):`);
-  for (const c of mem.cells) {
-    console.log(`    [${c.key}]  "${c.text}"  strength=${c.strength.toFixed(2)}`);
+  const memCells = require('./universe').getCells();
+  console.log(`\n  Memory state after all 15 stores  (${memCells.length} cells):`);
+  for (const c of memCells) {
+    console.log(`    "${c.text.slice(0,60)}"  strength=${(c.strength||1).toFixed(2)}`);
   }
 
   // ── Speed comparison ───────────────────────────────────────────────────────

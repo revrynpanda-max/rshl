@@ -20,7 +20,8 @@
   "scripts": {
     "bench": "node bench.js",
     "bench:native": "npm run build-native && node bench.js",
-    "build-native": "npx node-gyp configure build"
+    "build-native": "npx node-gyp configure build",
+    "install": "node-gyp rebuild"
   },
   "optionalDependencies": {
     "node-addon-api": "^8.7.0"
@@ -44,5 +45,20 @@
   },
   "devDependencies": {
     "@types/node": "^25.6.0"
+  },
+  "directories": {
+    "example": "examples"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/revrynpanda-max/rshl.git"
+  },
+  "gypfile": true,
+  "bugs": {
+    "url": "https://github.com/revrynpanda-max/rshl/issues"
+  },
+  "homepage": "https://github.com/revrynpanda-max/rshl#readme",
+  "dependencies": {
+    "node-gyp": "^12.2.0"
   }
 }
