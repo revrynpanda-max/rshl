@@ -6,7 +6,7 @@
     "cpu_model": "AMD Ryzen 5 8645HS w/ Radeon 760M Graphics",
     "cpu_logical_cores": 12,
     "ram_total_gb": 42.2,
-    "ram_free_gb": 29.2,
+    "ram_free_gb": 27,
     "node_version": "v22.14.0",
     "native_addon": "rshl-bench-native/1.1 avx2=yes omp=yes binary=yes",
     "gpu": [
@@ -17,60 +17,60 @@
     "nvidia_smi": [
       "NVIDIA GeForce RTX 4050 Laptop GPU, 6141 MiB"
     ],
-    "timestamp": "2026-04-16T00:11:56.346Z"
+    "timestamp": "2026-04-16T09:38:40.163Z"
   },
-  "score": 595,
+  "score": 492,
   "raw_throughput": {
-    "tokenVec_ops_per_sec": 31573,
-    "textVec_ops_per_sec": 4812,
-    "cosineSim_ops_per_sec": 283270,
+    "tokenVec_ops_per_sec": 31052,
+    "textVec_ops_per_sec": 5164,
+    "cosineSim_ops_per_sec": 295875,
     "cosineSim_sample": 0.5333
   },
   "memory_growth": {
-    "cache_warm_ms": 607,
-    "index_entries_per_sec": 2814,
+    "cache_warm_ms": 569,
+    "index_entries_per_sec": 4305,
     "growth_curve": [
       {
         "entries": 1000,
-        "js_ms": 9.66,
-        "js_queries_sec": 104,
+        "js_ms": 9.18,
+        "js_queries_sec": 109,
         "native_ms": 0.102,
-        "native_qps": 9772
+        "native_qps": 9758
       },
       {
         "entries": 5000,
-        "js_ms": 46.878,
-        "js_queries_sec": 21,
-        "native_ms": 0.454,
-        "native_qps": 2204
+        "js_ms": 46.2,
+        "js_queries_sec": 22,
+        "native_ms": 0.453,
+        "native_qps": 2207
       },
       {
         "entries": 10000,
-        "js_ms": 92.489,
+        "js_ms": 92.881,
         "js_queries_sec": 11,
-        "native_ms": 0.879,
-        "native_qps": 1138
+        "native_ms": 0.829,
+        "native_qps": 1207
       },
       {
         "entries": 25000,
-        "js_ms": 232.566,
+        "js_ms": 234.455,
         "js_queries_sec": 4,
-        "native_ms": 2.061,
-        "native_qps": 485
+        "native_ms": 2.057,
+        "native_qps": 486
       },
       {
         "entries": 50000,
         "js_ms": null,
         "js_queries_sec": null,
-        "native_ms": 4.135,
-        "native_qps": 242
+        "native_ms": 4.142,
+        "native_qps": 241
       },
       {
         "entries": 100000,
         "js_ms": null,
         "js_queries_sec": null,
-        "native_ms": 7.432,
-        "native_qps": 135
+        "native_ms": 8.131,
+        "native_qps": 123
       }
     ]
   },
@@ -78,51 +78,51 @@
     "scan_throughput": [
       {
         "lib_size": 100,
-        "js_items_per_sec": 89260,
-        "native_items_per_sec": 2970425
+        "js_items_per_sec": 81686,
+        "native_items_per_sec": 3083597
       },
       {
         "lib_size": 500,
-        "js_items_per_sec": 77837,
-        "native_items_per_sec": 7706374
+        "js_items_per_sec": 79338,
+        "native_items_per_sec": 7591568
       },
       {
         "lib_size": 1000,
-        "js_items_per_sec": 75400,
-        "native_items_per_sec": 8472800
+        "js_items_per_sec": 81168,
+        "native_items_per_sec": 9617628
       },
       {
         "lib_size": 5000,
-        "js_items_per_sec": 78149,
-        "native_items_per_sec": 9562141
+        "js_items_per_sec": 90179,
+        "native_items_per_sec": 9381276
       },
       {
         "lib_size": 10000,
-        "js_items_per_sec": 77137,
-        "native_items_per_sec": 582948
+        "js_items_per_sec": 82800,
+        "native_items_per_sec": 668219
       }
     ],
     "index_throughput": [
       {
         "window_sec": 1,
-        "entries_per_sec": 2906
+        "entries_per_sec": 2792
       },
       {
         "window_sec": 3,
-        "entries_per_sec": 2862
+        "entries_per_sec": 3171
       }
     ],
     "sustained_recall": {
       "memory_entries": 25000,
       "duration_sec": 5,
-      "total_queries": 11339,
-      "avg_qps": 2268,
-      "min_qps": 2101,
-      "max_qps": 2466,
-      "total_million_ops": 283.5,
+      "total_queries": 8972,
+      "avg_qps": 1794,
+      "min_qps": 1275,
+      "max_qps": 1969,
+      "total_million_ops": 224.3,
       "path": "binary",
-      "binary_qps": 2268,
-      "sparse_qps": 379
+      "binary_qps": 1794,
+      "sparse_qps": 251
     }
   },
   "memory_palace": {
@@ -217,7 +217,7 @@
         "got": "ADD",
         "pass": true,
         "replaced": null,
-        "score": 0.6501819301458603
+        "score": 0
       },
       {
         "scenario": "Job change (same subject)",
@@ -233,7 +233,7 @@
         "got": "ADD",
         "pass": true,
         "replaced": null,
-        "score": 0.7004396005052926
+        "score": 0
       },
       {
         "scenario": "Preference fact",
@@ -272,16 +272,16 @@
         "expected": "ADD",
         "got": "UPDATE",
         "pass": false,
-        "replaced": "Ryan got promoted to senior engineer",
-        "score": 0.8460427660907501
+        "replaced": "Ryan moved to New York City",
+        "score": 0.7517963942846743
       },
       {
         "scenario": "First-person update",
         "expected": "UPDATE",
         "got": "UPDATE",
         "pass": true,
-        "replaced": "I work remotely from home",
-        "score": 0.7973746281611076
+        "replaced": "Ryan got promoted to senior engineer",
+        "score": 0.8387313890031065
       },
       {
         "scenario": "Project fact",
@@ -289,32 +289,32 @@
         "got": "ADD",
         "pass": true,
         "replaced": null,
-        "score": 0.7169735117068459
+        "score": 0
       },
       {
         "scenario": "Deadline change",
         "expected": "UPDATE",
         "got": "UPDATE",
         "pass": true,
-        "replaced": "The project deadline is Friday",
-        "score": 0.7686218363310948
+        "replaced": "Ryan prefers ramen over sushi",
+        "score": 0.7455377821550854
       },
       {
         "scenario": "Deadline restated",
         "expected": "NOOP",
         "got": "UPDATE",
         "pass": false,
-        "replaced": "The project deadline moved to Monday",
-        "score": 0.9029327544966421
+        "replaced": "The project deadline is Friday",
+        "score": 0.8333333333333333
       }
     ],
-    "lattice_store_ms": 0.376,
-    "lattice_query_ms": 0.202,
-    "base_query_ms": 0.402,
+    "lattice_store_ms": 0.41,
+    "lattice_query_ms": 0.167,
+    "base_query_ms": 0.29,
     "mem0_store_ms_ref": 250,
     "mem0_query_ms_ref": 148,
-    "speedup_store_vs_mem0": 665,
-    "speedup_query_vs_mem0": 731
+    "speedup_store_vs_mem0": 610,
+    "speedup_query_vs_mem0": 885
   },
   "competitive": {
     "rshl_query_ms": 3.13,
@@ -367,5 +367,5 @@
       "size_mb": 225
     }
   ],
-  "total_bench_ms": 73741
+  "total_bench_ms": 68429
 }

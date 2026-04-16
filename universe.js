@@ -184,19 +184,19 @@ function count() {
 
 // ── Similarity search ─────────────────────────────────────────────────────────
 // findSimilar(rawVec, minSim)
-// Scans all cells for the first one whose raw vector exceeds minSim resonance.
-// This is the single point of redundancy checking — world-bridge and RSHLLattice
-// both route through here instead of doing their own scan loops.
+// Scans all cells for the BEST one whose raw vector exceeds minSim resonance.
+// Returns the highest-scoring match, not the first found.
 function findSimilar(rawVec, minSim) {
     const threshold = (typeof minSim === 'number') ? minSim : 0.82;
+    let best = null;
     for (const cell of _cells) {
         if (!cell.raw) continue;
         const sim = resonance(rawVec, cell.raw);
-        if (sim >= threshold) {
-            return { found: true, cell: _copyCell(cell), sim };
+        if (sim >= threshold && (!best || sim > best.sim)) {
+            best = { found: true, cell: _copyCell(cell), sim };
         }
     }
-    return { found: false, sim: 0 };
+    return best || { found: false, sim: 0 };
 }
 
 // ── Query (text → region-bound similarity) ────────────────────────────────────
@@ -418,6 +418,11 @@ function engineInfo() {
     };
 }
 
+// ── Raw cell access (for lattice entity matching) ──────────────────────────────
+function allCells() {
+    return _cells;
+}
+
 module.exports = {
     store,
     query,
@@ -433,4 +438,5 @@ module.exports = {
     removeCell,
     clear,
     engineInfo,
+    allCells,
 };
