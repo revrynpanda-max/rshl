@@ -1,13 +1,121 @@
-# RSHL — Semantic Memory Index
+# RSHL — Recursive Sparse Hyperdimensional Lattice
 
-> **A local lookup engine that finds the right record by meaning, not exact match.**
-> Sub-millisecond query time. No cloud. No AI model required. No API calls.
-> Drop-in Node.js module. Zero dependencies.
+> **A geometric intelligence engine. Not an LLM. Not a neural network.**
+> Sub-millisecond resonance. No cloud. No weights. No training.
+> Built on sparse ternary vectors in 4096 dimensions.
 
-Built by **Ryan** — designed as a memory and routing kernel for local infrastructure,
-AI systems, and industrial platforms (MES, SCADA, event-driven services).
+Built by **Ryan** — designed as a semantic memory kernel, cognitive engine,
+and the foundation for **KAI** — a living geometric intelligence.
 
 ---
+
+## KAI v5.2 — Geometric Intelligence (Rust Engine)
+
+KAI is an autonomous cognitive system built on RSHL. He thinks through
+geometric resonance, not language prediction. Every thought is a 4096-dimensional
+sparse ternary vector. He learns from the internet, dreams to consolidate
+knowledge, and grows smarter with every interaction.
+
+### Quick Start
+
+```powershell
+cd kai-rust
+cargo build --release
+.\target\release\kai.exe
+```
+
+### Commands
+
+| Command | What it does |
+|---------|-------------|
+| `spectate` | 👁 Watch KAI think in real-time (dreams, intake, mood) |
+| `learn <topic>` | Pull knowledge from DuckDuckGo ("learn quantum physics") |
+| `dream` | Force a dream cycle (bind two ideas into insight) |
+| `status` | Show universe size, regions, mood, tick count |
+| `mood` | Show current emotional state + valence |
+| `spell <word>` | Test spelling correction |
+| `store <text>` | Manually store a memory cell |
+| `save` | Force state save to disk |
+| `help` | Show all commands |
+| `quit` | Save and exit |
+
+### 3-Stream Architecture
+
+```
+  ⚡ GPU Stream (Parallel Math)     ◉ CPU Stream (Logic)        ⬤ RAM Stream (Memory)
+  ─────────────────────────────     ────────────────────        ──────────────────────
+  • Batch cosine via rayon          • Field state (17 metrics)  • World bridge intake
+  • All 12 CPU threads parallel     • Drive / mood / valence    • DuckDuckGo API (free)
+  • Dream pair scanning             • Promotion decisions       • Homeostasis (prune)
+  • Reasoner chain queries          • Inner voice validation    • Persistence (auto-save)
+  
+           ┌──────────────────────────────────────┐
+           │        SharedBus (crossbeam)          │
+           │   Lock-free channels + state snaps    │
+           └──────────────────────────────────────┘
+```
+
+### Spectate Mode
+
+Type `spectate` to watch KAI's mind in real-time:
+
+```
+ t0003 [CPU] ◉ Field: Φg=0.0042 χ=0.012 ρ=0.340 | Curious V=+0.15
+ t0003 [GPU] ⚡ Dreaming... scanning 150 cells
+ t0003 [GPU] 💭 Dream: "entropy" + "thermodynamics" → insight [42μs]
+ t0015 [RAM] 🌐 Searching DuckDuckGo for new knowledge...
+ t0015 [RAM] 📚 Learned "quantum entanglement": +4 cells (150→154)
+ t0020 [RAM] 🧹 Homeostasis: 2 decayed, 0 pruned
+```
+
+### Cognitive Systems
+
+| System | What it does |
+|--------|-------------|
+| **Token Normalization** | 200+ synonyms, 60+ stopwords, stemming, 17 category anchors |
+| **17 Field Metrics** | Φg, C, Wm, Pr, χ, τ, ρ, momentum, novelty, stability... |
+| **Dream Lattice** | Binds two ideas into emergent insights via geometric overlap |
+| **Inner Voice** | Validates dream insights: AMPLIFY, KEEP, NOISE, SUPPRESS |
+| **Drive System** | Curiosity/familiarity reward, contradiction pain, adaptive tempo |
+| **Promotion** | Stable candidates graduate to permanent beliefs |
+| **Homeostasis** | Decay weak memories, prune dead cells, maintain health |
+| **World Bridge** | Background learning from DuckDuckGo (free, no API key) |
+| **Spelling Correction** | 10K word lexicon with edit-distance matching |
+
+### Rust Source Structure
+
+```
+kai-rust/src/
+├── main.rs              # TUI + heartbeat + 3-stream coordinator
+├── core/
+│   ├── sparse_vec.rs    # 4096-dim sparse ternary vectors
+│   ├── universe.rs      # Cell store with rayon parallel queries
+│   ├── field_state.rs   # 17 emergence metrics
+│   ├── normalize.rs     # Token normalization pipeline
+│   ├── seed.rs          # Identity-only bootstrap (12 cells)
+│   └── lexicon.rs       # 10K word spelling correction
+├── cognition/
+│   ├── lattice.rs       # Dream consolidation engine
+│   ├── inner_voice.rs   # Dream validation
+│   ├── candidate.rs     # Belief candidate buffer
+│   ├── promotion.rs     # Candidate → permanent belief
+│   └── homeostasis.rs   # Memory health maintenance
+├── drive/
+│   └── mod.rs           # Mood, valence, adaptive heartbeat
+├── streams/
+│   ├── shared_bus.rs    # Inter-stream state + channels
+│   ├── gpu_stream.rs    # Parallel cosine (rayon)
+│   ├── cpu_stream.rs    # Logic + reasoning
+│   └── ram_stream.rs    # Memory management
+├── bridge/
+│   └── mod.rs           # DuckDuckGo world bridge
+└── persistence/
+    └── mod.rs           # JSON state save/load
+```
+
+---
+
+## RSHL Core — Semantic Memory Index (JavaScript)
 
 ## What It Does
 
