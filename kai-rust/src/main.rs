@@ -5,10 +5,10 @@ mod persistence;
 mod streams;
 mod bridge;
 
-use crate::core::{FieldState, Universe, Lexicon, SparseVec};
+use crate::core::{FieldState, Universe, Lexicon, SparseVec, Embeddings};
 use crate::cognition::{
     Reasoner, CandidateBuffer, PromotionThresholds,
-    HomeostasisConfig,
+    HomeostasisConfig, WorkingMemory, compose_response,
 };
 use crate::drive::{Drive, Mood};
 use crossterm::{
@@ -103,6 +103,8 @@ struct App {
     bus: streams::SharedBus,
     spectate_mode: bool,
     mind_log: Vec<MindEvent>,
+    embeddings: Embeddings,
+    working_memory: WorkingMemory,
 }
 
 impl App {
@@ -158,6 +160,8 @@ impl App {
             bus: streams::SharedBus::new(),
             spectate_mode: false,
             mind_log: Vec::new(),
+            embeddings: Embeddings::new(),
+            working_memory: WorkingMemory::new(),
         }
     }
 
@@ -264,6 +268,28 @@ impl App {
             ram.cell_count = self.universe.count();
             ram.candidate_count = self.candidates.count();
             ram.last_tick = Some(Instant::now());
+        }
+
+        // ── EMBEDDING LEARNING — continuous word2vec equivalent ─────
+        if self.embeddings.needs_rebuild(self.universe.count()) {
+            let normalizer = crate::core::get_normalizer();
+            let cell_data: Vec<(String, Vec<String>)> = self.universe.cells()
+                .iter()
+                .map(|c| (c.text.clone(), normalizer.normalize_text(&c.text)))
+                .collect();
+            self.embeddings.learn_from_cells(&cell_data);
+            if self.spectate_mode {
+                self.think("GPU", "🧠", format!(
+                    "Learned embeddings: {} word vectors from {} cells",
+                    self.embeddings.vocab_size, self.embeddings.cells_scanned
+                ));
+            }
+        }
+
+        // ── WORKING MEMORY DECAY ──────────────────────────────────────
+        let decayed = self.working_memory.decay(self.tick);
+        if self.spectate_mode && decayed > 0 {
+            self.think("RAM", "💨", format!("{} working memory slots decayed", decayed));
         }
 
         // Persistence (auto-save)
@@ -549,6 +575,9 @@ impl App {
         // ── REASON through the universe (iterative resonance chain) ──────
         self.turns.push(Turn { role: "user".into(), text: input.clone(), region: None, score: None });
 
+        // ── Working Memory: store the user's turn ─────────────────────
+        self.working_memory.push(&input, "user", self.tick);
+
         // ── Conversation Memory: store the user's question ────────────
         self.universe.store(&format!("user asked: {}", &input), "memory", "conversation", 1.2);
 
@@ -579,6 +608,10 @@ impl App {
                 region: None, score: None,
             });
         } else {
+            // ── Multi-cell composition ────────────────────────────────
+            let hits = self.universe.query(&reasoning_input, 5);
+            let composed = compose_response(&hits, &reasoning_input, 3);
+
             let depth_label = if result.depth > 1 {
                 format!(" [{}→ depth:{} Φg:{:.0}%]",
                     result.chain.iter().map(|s| {
@@ -595,12 +628,31 @@ impl App {
                 String::new()
             };
 
+            // Use composed response if it has more depth
+            let response_text = if composed.depth > 1 && composed.confidence > result.confidence * 0.8 {
+                composed.text.clone()
+            } else {
+                result.output_text.clone()
+            };
+
             // ── Conversation Memory: store KAI's response ────────────
-            self.universe.store(&result.output_text, "reasoning", "conversation", 1.0);
+            self.universe.store(&response_text, "reasoning", "conversation", 1.0);
+
+            // ── Working Memory: store KAI's turn ──────────────────────
+            self.working_memory.push(&response_text, "kai", self.tick);
+
+            // ── Spectate: show composition details ────────────────────
+            if self.spectate_mode {
+                self.think("CPU", "🔗", format!(
+                    "Composed from {} cells (conf:{:.0}%): {}",
+                    composed.depth, composed.confidence * 100.0,
+                    truncate(&response_text, 60)
+                ));
+            }
 
             self.turns.push(Turn {
                 role: "kai".into(),
-                text: format!("{}{}", result.output_text, depth_label),
+                text: format!("{}{}", response_text, depth_label),
                 region: Some(result.output_region),
                 score: Some(result.confidence),
             });

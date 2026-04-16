@@ -4,9 +4,12 @@ pub mod field_state;
 pub mod lexicon;
 pub mod normalize;
 pub mod seed;
+pub mod embeddings;
+pub mod attention;
 
 pub use sparse_vec::SparseVec;
-pub use universe::Universe;
+pub use universe::{Universe, QueryHit};
 pub use field_state::FieldState;
 pub use lexicon::Lexicon;
 pub use normalize::get_normalizer;
+pub use embeddings::Embeddings;
