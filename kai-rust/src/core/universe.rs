@@ -27,7 +27,7 @@ pub struct QueryHit {
 }
 
 /// The Universe holds all of KAI's memory cells.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Universe {
     cells: Vec<Cell>,
 }
