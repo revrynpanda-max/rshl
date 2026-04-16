@@ -1,17 +1,34 @@
-# GitHub Linguist — fix language detection for KAI
-# 
+# GitHub Linguist — KAI language detection
+#
 # KAI's active engine is Rust (kai-rust/).
-# The src/ TypeScript was contributed by Claude as reference/foundation code.
-# It stays in the repo but shouldn't dominate the language chart.
+# Everything else is legacy: the src/ TypeScript was contributed by Claude,
+# the root JS files are the original prototypes that have been ported to Rust.
+# They stay in the repo for reference but the real engine is Rust.
 
-# Claude's TypeScript source contribution — vendored (still tracked, not counted in lang stats)
+# ── Vendored (tracked but not counted in language stats) ──────────────
+
+# Claude's TypeScript source contribution
 src/** linguist-vendored
 
-# Build output — vendored
+# Build output
 build/** linguist-vendored
 
-# Data files
+# Legacy JavaScript prototypes (ported to Rust)
+*.js linguist-vendored
+
+# Eval/benchmark scripts (tooling, not the engine)
+eval/** linguist-vendored
+
+# ── Detected (counted in language stats) ──────────────────────────────
+
+# The real KAI engine — Rust
+kai-rust/src/**/*.rs linguist-detectable=true
+kai-rust/src/**/*.rs linguist-vendored=false
+
+# ── Data/docs (not counted) ───────────────────────────────────────────
 *.txt linguist-documentation
 *.json linguist-data
 *.md linguist-documentation
+*.bat linguist-vendored
+*.cmd linguist-vendored
 google-10000-english-usa.txt linguist-vendored
