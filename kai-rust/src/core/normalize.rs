@@ -26,7 +26,7 @@ fn build_stopwords() -> HashSet<&'static str> {
         "i","me","my","you","your","he","him","his","she","her",
         "we","us","our","they","them","their",
         "it","its","this","these","those",
-        "what","where","who","when","how","which","why","whose",
+        "where","when","how","which","why","whose",
         "not","no","so","just","also","very","much","more","most","some","any","all",
     ].iter().copied().collect()
 }
@@ -149,6 +149,13 @@ fn build_synonyms() -> HashMap<&'static str, &'static str> {
         ("parent","family"),("parents","family"),("mother","family"),("father","family"),
         ("child","family"),("children","family"),("sibling","family"),
         ("friend","friend"),("friends","friend"),("colleague","friend"),
+
+        // ── identity / naming ──
+        ("name","ident"),("named","ident"),("names","ident"),
+        ("called","ident"),("call","ident"),("calls","ident"),
+        ("known","ident"),("am","ident"),("im","ident"),
+        ("who","ident"),("whom","ident"),("what","ident"),
+        ("creator","ident"),("created","ident"),("built","ident"),("made","ident"),
     ];
     entries.into_iter().collect()
 }
@@ -179,6 +186,7 @@ fn build_category_anchors() -> HashMap<&'static str, Vec<&'static str>> {
         ("language", vec!["#lang"]),
         ("family",   vec!["#rel"]),
         ("friend",   vec!["#rel"]),
+        ("ident",    vec!["#id"]),
     ];
     for (key, cats) in entries {
         map.insert(key, cats);
@@ -333,10 +341,14 @@ mod tests {
     fn test_stopword_removal() {
         let n = Normalizer::new();
         let tokens = n.normalize_text("what is your name");
-        // "what", "is", "your" are stopwords → dropped
-        // "name" survives (stemmed: "name" → "nam" after 'e' strip? No, "name" - just "name" after stem check)
-        assert!(!tokens.iter().any(|t| t == "what" || t == "is" || t == "your"),
+        // "is", "your" are stopwords → dropped
+        // "what" and "name" both map to "ident" → deduplicated to one "ident" + #id
+        assert!(!tokens.iter().any(|t| t == "is" || t == "your"),
             "Stopwords should be removed: {:?}", tokens);
+        assert!(tokens.contains(&"ident".to_string()),
+            "what/name should map to ident: {:?}", tokens);
+        assert!(tokens.contains(&"#id".to_string()),
+            "ident should inject #id anchor: {:?}", tokens);
     }
 
     #[test]
