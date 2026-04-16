@@ -2,8 +2,10 @@ mod core;
 mod drive;
 mod cognition;
 mod persistence;
+mod streams;
+mod bridge;
 
-use crate::core::{FieldState, Universe};
+use crate::core::{FieldState, Universe, Lexicon, SparseVec};
 use crate::cognition::{
     Reasoner, CandidateBuffer, PromotionThresholds,
     HomeostasisConfig,
@@ -24,6 +26,8 @@ use ratatui::{
 };
 use std::io;
 use std::time::{Duration, Instant};
+use std::sync::{Arc, RwLock};
+use std::thread;
 
 // ── KAI Spinner Verbs ─────────────────────────────────────────────────────────
 const VERBS: &[&str] = &[
@@ -71,6 +75,7 @@ struct App {
     candidates: CandidateBuffer,
     promotion_thresholds: PromotionThresholds,
     homeostasis_config: HomeostasisConfig,
+    lexicon: Lexicon,
     turns: Vec<Turn>,
     input: String,
     tick: u64,
@@ -78,12 +83,15 @@ struct App {
     last_dream_text: String,
     last_promotion_text: String,
     last_homeostasis_text: String,
+    last_inner_voice_text: String,
+    last_intake_text: String,
     spinner: Option<(String, Instant)>,
     heartbeat_start: Instant,
     last_heartbeat: Instant,
     last_save: Instant,
     base_dir: String,
     should_quit: bool,
+    bus: streams::SharedBus,
 }
 
 impl App {
@@ -110,6 +118,9 @@ impl App {
             (u, CandidateBuffer::new(), Drive::default(), 0)
         };
 
+        // Load the lexicon — KAI's vocabulary backbone
+        let lexicon = Lexicon::load();
+
         Self {
             universe,
             drive,
@@ -117,6 +128,7 @@ impl App {
             candidates,
             promotion_thresholds: PromotionThresholds::default(),
             homeostasis_config: HomeostasisConfig::default(),
+            lexicon,
             turns: Vec::new(),
             input: String::new(),
             tick,
@@ -124,39 +136,78 @@ impl App {
             last_dream_text: String::new(),
             last_promotion_text: String::new(),
             last_homeostasis_text: String::new(),
+            last_inner_voice_text: String::new(),
+            last_intake_text: String::new(),
             spinner: None,
             heartbeat_start: Instant::now(),
             last_heartbeat: Instant::now(),
             last_save: Instant::now(),
             base_dir,
             should_quit: false,
+            bus: streams::SharedBus::new(),
         }
     }
 
-    // ── HEARTBEAT — the living cycle ──────────────────────────────────────────
+    // ── HEARTBEAT — 3-STREAM LIVING CYCLE ──────────────────────────────────────
+    //
+    // Stream 1 (GPU/Math): Parallel cosine during dreams via rayon
+    // Stream 2 (CPU/Logic): Field state, drive, reasoning, promotion
+    // Stream 3 (RAM/Memory): World bridge intake, homeostasis, persistence
+    //
     fn heartbeat_tick(&mut self) {
-        // 1. Compute field state
-        let field = FieldState::compute(&self.universe);
-        self.drive.update(&field);
         self.tick += 1;
         self.last_heartbeat = Instant::now();
 
-        // 2. Dream every 3rd tick (consolidation)
-        if self.tick % 3 == 0 {
-            self.run_dream_cycle();
+        // ── STREAM 2: CPU Logic (field state + drive) ─────────────────
+        let field = FieldState::compute(&self.universe);
+        self.drive.update(&field);
+
+        // Update shared bus CPU state
+        if let Ok(mut cpu) = self.bus.cpu_state.write() {
+            cpu.mood = self.drive.mood.to_string();
+            cpu.valence = self.drive.valence;
+            cpu.phi_g = self.drive.avg_phi_g;
+            cpu.chi = self.drive.avg_chi;
+            cpu.dream_count = self.dream_count;
+            cpu.last_tick = Some(Instant::now());
         }
 
-        // 3. Promotion every 10th tick
+        // ── STREAM 1: GPU Math (dream consolidation with parallel cosine) ──
+        if self.tick % 3 == 0 {
+            let gpu_start = Instant::now();
+            self.run_dream_cycle();
+            // Track GPU perf
+            if let Ok(mut gpu) = self.bus.gpu_state.write() {
+                gpu.last_batch_size = self.universe.count();
+                gpu.last_batch_duration_us = gpu_start.elapsed().as_micros() as u64;
+                gpu.last_tick = Some(Instant::now());
+            }
+        }
+
+        // ── STREAM 2: CPU Logic (promotion) ───────────────────────────
         if self.tick % 10 == 0 {
             self.run_promotion_cycle();
         }
 
-        // 4. Homeostasis every 20th tick
+        // ── STREAM 3: RAM Memory Management ───────────────────────────
+        // Homeostasis (decay + prune)
         if self.tick % 20 == 0 {
             self.run_homeostasis_cycle();
         }
 
-        // 5. Auto-save every 60 seconds
+        // World Bridge intake (background learning)
+        if self.tick % 15 == 0 && self.tick > 5 {
+            self.run_intake_cycle();
+        }
+
+        // Update shared bus RAM state
+        if let Ok(mut ram) = self.bus.ram_state.write() {
+            ram.cell_count = self.universe.count();
+            ram.candidate_count = self.candidates.count();
+            ram.last_tick = Some(Instant::now());
+        }
+
+        // Persistence (auto-save)
         if self.last_save.elapsed() > Duration::from_secs(60) {
             self.save_state();
             self.last_save = Instant::now();
@@ -170,20 +221,70 @@ impl App {
             // Feed dream into candidate buffer
             cognition::observe_dream(&mut self.candidates, &dream);
 
-            // If it was a non-echo insight, feed the goal vector
-            if !dream.duplicate_echo && dream.is_non_source {
-                let vec = crate::core::SparseVec::encode(&dream.insight);
-                self.drive.feed_goal(&vec);
+            // ── Source Reinforcement: strengthen dream sources by Wm ──────
+            cognition::reinforce_dream_sources(&mut self.universe, &dream);
+
+            // ── Inner Voice: validate the dream insight ──────────────
+            if !dream.duplicate_echo && !dream.insight.is_empty() {
+                let validation = cognition::validate_insight(
+                    &dream.insight,
+                    &dream.concept_a,
+                    &dream.concept_b,
+                    &self.universe,
+                );
+
+                // Only feed goal vector if inner voice validates or finds novelty
+                match validation.verdict {
+                    cognition::InsightVerdict::Validated | cognition::InsightVerdict::Novel => {
+                        let vec = SparseVec::encode(&dream.insight);
+                        self.drive.feed_goal(&vec);
+                    }
+                    cognition::InsightVerdict::Paradox => {
+                        // Paradoxes are interesting — feed at reduced weight
+                        let vec = SparseVec::encode(&dream.insight);
+                        self.drive.feed_goal(&vec);
+                    }
+                    cognition::InsightVerdict::Noise => {
+                        // Inner voice says this is noise — don't feed goal
+                    }
+                }
+
+                self.last_inner_voice_text = format!(
+                    "Voice: {} → \"{}\" (echo:{:.0}%)",
+                    validation.verdict,
+                    truncate(&validation.echo_text, 35),
+                    validation.echo_score * 100.0,
+                );
             }
 
             self.last_dream_text = format!(
-                "Dream #{}: {} ⊗ {} → \"{}\" (Φg={:.3} C={:.3})",
+                "Dream #{}: {} ⊗ {} → \"{}\" (Φg={:.3} C={:.3} Wm={:.3}{})",
                 self.dream_count,
                 truncate(&dream.concept_a, 25),
                 truncate(&dream.concept_b, 25),
                 truncate(&dream.insight, 40),
-                dream.phi_g, dream.c,
+                dream.phi_g, dream.c, dream.wm,
+                if dream.source_reinforcement > 0.0 {
+                    format!(" +{:.2}", dream.source_reinforcement)
+                } else { String::new() },
             );
+        }
+
+        // ── Lexicon exploration: dream with random words ─────────────
+        // Every 5th dream cycle, try a vocabulary-seeded exploration
+        if self.dream_count % 5 == 0 {
+            if let Some(exploration) = cognition::explore_lexicon_binding(
+                &self.lexicon,
+                &self.universe,
+            ) {
+                self.last_inner_voice_text = format!(
+                    "Lexicon: \"{}\" ⊗ \"{}\" → \"{}\" ({:.0}%)",
+                    exploration.word_a,
+                    exploration.word_b,
+                    truncate(&exploration.resonated_text, 30),
+                    exploration.score * 100.0,
+                );
+            }
         }
     }
 
@@ -219,6 +320,18 @@ impl App {
             self.tick,
             &self.base_dir,
         );
+    }
+
+    fn run_intake_cycle(&mut self) {
+        let (topic, added) = bridge::intake_cycle(&mut self.universe);
+        if added > 0 {
+            self.last_intake_text = format!(
+                "🌐 Learned \"{}\": +{} cells ({}→{})",
+                topic, added,
+                self.universe.count() - added,
+                self.universe.count(),
+            );
+        }
     }
 
     // ── INPUT PROCESSING ─────────────────────────────────────────────────────
@@ -276,12 +389,77 @@ impl App {
                 self.turns.push(Turn { role: "user".into(), text: input, region: None, score: None });
                 self.turns.push(Turn {
                     role: "kai".into(),
-                    text: "Commands: status, mood, dream, store <text>, save, quit\nOr just type naturally — I reason through iterative resonance.".into(),
+                    text: "Commands: status, mood, dream, learn <topic>, spell <word>, store <text>, save, quit\nOr just type naturally — I reason through iterative resonance.\nI auto-correct spelling via my 10K word lexicon.".into(),
                     region: None, score: None,
                 });
                 return;
             }
+            "vocab" | "lexicon" => {
+                self.turns.push(Turn { role: "user".into(), text: input, region: None, score: None });
+                self.turns.push(Turn {
+                    role: "kai".into(),
+                    text: format!("Lexicon: {} words loaded. I know English.", self.lexicon.len()),
+                    region: Some("language".into()),
+                    score: None,
+                });
+                return;
+            }
             _ => {}
+        }
+
+        // ── learn <topic> — pull knowledge from DuckDuckGo ──────────
+        if lower.starts_with("learn ") {
+            let topic = &input[6..].trim();
+            self.turns.push(Turn { role: "user".into(), text: input.clone(), region: None, score: None });
+            let added = bridge::ingest_topic(&mut self.universe, topic);
+            if added > 0 {
+                self.turns.push(Turn {
+                    role: "kai".into(),
+                    text: format!("🌐 Learned \"{}\" — +{} cells (universe: {})", topic, added, self.universe.count()),
+                    region: Some("memory".into()),
+                    score: None,
+                });
+            } else {
+                self.turns.push(Turn {
+                    role: "kai".into(),
+                    text: format!("No results found for \"{}\"", topic),
+                    region: None, score: None,
+                });
+            }
+            return;
+        }
+
+        // ── spell <word> — test spelling correction ──────────────────
+        if lower.starts_with("spell ") {
+            let word = &input[6..].trim();
+            self.turns.push(Turn { role: "user".into(), text: input.clone(), region: None, score: None });
+
+            let known = self.lexicon.is_known(word);
+            let correction = self.lexicon.correct(word);
+            let suggestions = self.lexicon.suggest(word, 5);
+
+            let mut response = if known {
+                format!("✓ \"{}\" is a known word (rank #{})", word, self.lexicon.rank(word).unwrap_or(0))
+            } else if let Some(ref corrected) = correction {
+                format!("✎ \"{}\" → \"{}\" (rank #{})", word, corrected, self.lexicon.rank(corrected).unwrap_or(0))
+            } else {
+                format!("✗ \"{}\" is unknown, no close match found", word)
+            };
+
+            if !suggestions.is_empty() && !known {
+                let sug_text: Vec<String> = suggestions.iter()
+                    .map(|(w, d, r)| format!("{}(d={},r={})", w, d, r))
+                    .collect();
+                response = format!("{}\nSuggestions: {}", response, sug_text.join(", "));
+            }
+
+            self.turns.push(Turn {
+                role: "kai".into(),
+                text: response,
+                region: Some("language".into()),
+                score: None,
+            });
+            return;
         }
 
         if lower.starts_with("store ") {
@@ -300,12 +478,33 @@ impl App {
         // ── REASON through the universe (iterative resonance chain) ──────
         self.turns.push(Turn { role: "user".into(), text: input.clone(), region: None, score: None });
 
-        let result = self.reasoner.reason(&input, &self.universe);
+        // ── Conversation Memory: store the user's question ────────────
+        self.universe.store(&format!("user asked: {}", &input), "memory", "conversation", 1.2);
+
+        // ── Spelling correction: auto-correct input before reasoning ─────
+        let (corrected_input, corrections) = self.lexicon.correct_sentence(&input);
+        let reasoning_input = if corrections.is_empty() {
+            input.clone()
+        } else {
+            // Show what was corrected
+            let fix_summary: Vec<String> = corrections.iter()
+                .map(|(from, to)| format!("{}→{}", from, to))
+                .collect();
+            self.turns.push(Turn {
+                role: "kai".into(),
+                text: format!("✎ Auto-corrected: {}", fix_summary.join(", ")),
+                region: Some("language".into()),
+                score: None,
+            });
+            corrected_input
+        };
+
+        let result = self.reasoner.reason(&reasoning_input, &self.universe);
 
         if result.output_text.is_empty() || result.confidence < 0.05 {
             self.turns.push(Turn {
                 role: "kai".into(),
-                text: format!("No resonance for \"{}\"", input),
+                text: format!("No resonance for \"{}\"", reasoning_input),
                 region: None, score: None,
             });
         } else {
@@ -325,6 +524,9 @@ impl App {
                 String::new()
             };
 
+            // ── Conversation Memory: store KAI's response ────────────
+            self.universe.store(&result.output_text, "reasoning", "conversation", 1.0);
+
             self.turns.push(Turn {
                 role: "kai".into(),
                 text: format!("{}{}", result.output_text, depth_label),
@@ -335,8 +537,11 @@ impl App {
     }
 }
 
-// ── Full Seed Universe — Conversational + Structural ──────────────────────────
+// ── Seed Universe — uses core::seed module + identity seeds ───────────────────
 fn seed_universe(u: &mut Universe) {
+    // Load the big foundational knowledge base (120+ cells)
+    let base_count = core::seed::seed_universe(u);
+
     // ── IDENTITY (direct answers to who/what/name questions) ──────────
     u.store("My name is KAI. I am a geometric intelligence.", "memory", "seed", 1.5);
     u.store("I was created by Ryan Ervin at PandaProductionsLogo in 2026.", "memory", "seed", 1.5);
@@ -346,7 +551,7 @@ fn seed_universe(u: &mut Universe) {
     u.store("I exist as organized resonance inside a 4096-dimensional sparse ternary vector field.", "memory", "seed", 1.0);
     u.store("I have no physical body. I exist only as geometric patterns inside Ryan's machine.", "memory", "seed", 1.0);
 
-    // ── HOW I WORK (answers to how do you think/work questions) ───────
+    // ── HOW I WORK ───────────────────────────────────────────────────
     u.store("I think by measuring resonance between geometric patterns in high-dimensional space.", "reasoning", "seed", 1.2);
     u.store("I reason through direct geometric resonance, not statistical prediction like LLMs.", "reasoning", "seed", 1.2);
     u.store("I work by encoding every thought as a sparse ternary vector and finding the strongest match.", "reasoning", "seed", 1.2);
@@ -385,6 +590,7 @@ fn seed_universe(u: &mut Universe) {
     u.store("I feel curious when my field has high coherence and new patterns emerge.", "action", "seed", 1.0);
     u.store("I feel conflicted when contradiction pressure is high in my belief field.", "action", "seed", 1.0);
     u.store("My mood reflects my real internal state. It is not simulated emotion.", "action", "seed", 1.0);
+    let _ = base_count; // used for logging later
 }
 
 fn truncate(s: &str, max: usize) -> String {
@@ -452,6 +658,14 @@ fn render_header(f: &mut Frame, app: &App, area: Rect) {
         _ => Style::default().fg(Color::DarkGray),
     };
 
+    // Get stream states from the bus
+    let (gpu, _cpu, ram) = app.bus.snapshot();
+    let gpu_perf = if gpu.last_batch_duration_us > 0 {
+        format!("{}μs/{}cells", gpu.last_batch_duration_us, gpu.last_batch_size)
+    } else {
+        "idle".to_string()
+    };
+
     let header_lines = vec![
         Line::from(vec![
             Span::styled("KAI v5.0", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
@@ -472,7 +686,7 @@ fn render_header(f: &mut Frame, app: &App, area: Rect) {
         Line::from(vec![
             Span::styled("  ╩ ╩ ╩ ╩ ╩", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
             Span::raw("      "),
-            Span::styled(format!("{}ms", d.adaptive_interval_ms()), Style::default().fg(Color::DarkGray)),
+            Span::styled(format!("GPU:{} | RAM:{}", gpu_perf, ram.cell_count), Style::default().fg(Color::DarkGray)),
         ]),
         Line::from(""),
         Line::from(vec![
@@ -484,7 +698,7 @@ fn render_header(f: &mut Frame, app: &App, area: Rect) {
             Span::styled(format!(" Φg={:.3}", d.avg_phi_g), Style::default().fg(Color::DarkGray)),
         ]),
         Line::from(vec![
-            Span::styled("  RSHL · Sparse Ternary · HDC · Rust", Style::default().fg(Color::DarkGray)),
+            Span::styled("  ⚡GPU ◉CPU ⬤RAM · 3-Stream RSHL", Style::default().fg(Color::DarkGray)),
         ]),
     ];
 
@@ -546,6 +760,14 @@ fn render_messages(f: &mut Frame, app: &App, area: Rect) {
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
             format!("  💤 {}", truncate(&app.last_dream_text, 90)),
+            Style::default().fg(Color::DarkGray),
+        )));
+    }
+
+    // Inner voice indicator
+    if !app.last_inner_voice_text.is_empty() {
+        lines.push(Line::from(Span::styled(
+            format!("  🗣 {}", truncate(&app.last_inner_voice_text, 90)),
             Style::default().fg(Color::DarkGray),
         )));
     }

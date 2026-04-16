@@ -1,15 +1,39 @@
-/// Dream Lattice — Consolidation through geometric binding.
+/// Dream Lattice — Autonomous consolidation engine.
 ///
-/// Biology analog: REM sleep replay.
-/// Picks two cells from different regions (or with medium overlap),
-/// binds them, bundles into synthetic vector, cleans up against
-/// universe to find the emergent insight, measures field quality.
+/// Ported from rshl-lattice.js. During dream cycles, KAI:
+///   1. Picks two cells from the universe using replay priority scoring
+///   2. Bundles their vectors to synthesize a new concept
+///   3. Queries the universe for the best "cleanup" match
+///   4. Computes full field state metrics (Φg, C, Wm, etc.)
+///   5. Reinforces source cells based on Wm (memory reinforcement)
+///   6. Tracks dream history for temporal recurrence (τ)
+///
+/// This is how KAI thinks while "asleep" — finding connections between
+/// concepts he already has, and strengthening the ones that matter.
 
 use crate::core::{SparseVec, Universe, FieldState};
-use super::candidates::CandidateBuffer;
+use crate::core::field_state::{FieldInput, DreamHistoryEntry};
 use rand::Rng;
 
-#[derive(Debug)]
+/// Rolling dream history for temporal recurrence.
+static mut DREAM_HISTORY: Vec<DreamHistoryEntry> = Vec::new();
+const MAX_DREAM_HISTORY: usize = 12;
+
+fn push_dream_history(entry: DreamHistoryEntry) {
+    unsafe {
+        DREAM_HISTORY.push(entry);
+        if DREAM_HISTORY.len() > MAX_DREAM_HISTORY {
+            DREAM_HISTORY.remove(0);
+        }
+    }
+}
+
+fn get_dream_history() -> &'static [DreamHistoryEntry] {
+    unsafe { &DREAM_HISTORY }
+}
+
+/// Dream result — the output of a single consolidation cycle.
+#[derive(Debug, Clone)]
 pub struct DreamResult {
     pub concept_a: String,
     pub concept_b: String,
@@ -18,57 +42,199 @@ pub struct DreamResult {
     pub overlap: f32,
     pub insight: String,
     pub insight_region: String,
-    pub confidence: f32,
     pub phi_g: f32,
     pub c: f32,
+    pub wm: f32,
     pub chi: f32,
     pub duplicate_echo: bool,
     pub is_non_source: bool,
+    pub source_reinforcement: f32,
+    pub promotion_ready: bool,
 }
 
-/// Run one dream consolidation cycle.
-pub fn consolidate(universe: &Universe) -> Option<DreamResult> {
+/// Compute replay priority for a cell.
+/// Higher priority = more likely to be picked for dreaming.
+/// Factors: low strength (needs reinforcement), novelty, unresolved, cross-region potential.
+fn replay_priority(
+    cell_idx: usize,
+    cell_strength: f32,
+    cell_source: &str,
+    cell_created: u64,
+    total_cells: usize,
+) -> f32 {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    // Newer cells get slight boost (recently learned)
+    let age_days = (now.saturating_sub(cell_created) as f64 / 86400.0) as f32;
+    let recency_boost = (-age_days / 30.0_f32).exp();
+
+    // Weak cells need more replay (reinforcement)
+    let weakness = (1.0 - (cell_strength / 5.0).min(1.0)) * 0.4;
+
+    // Promoted dreams are interesting to re-explore
+    let source_boost = if cell_source == "promoted-dream" { 0.15 } else { 0.0 };
+
+    // Base priority with some randomness for exploration
+    let mut rng = rand::thread_rng();
+    let noise: f32 = rng.gen_range(0.0..0.15);
+
+    (recency_boost * 0.3 + weakness + source_boost + noise).min(1.0)
+}
+
+/// Select the best dream pair from candidate cells.
+/// Matches the JS selectDreamPair logic: scores pairs by overlap band,
+/// replay priority, cross-region bonus, and duplicate penalty.
+fn select_dream_pair(universe: &Universe) -> Option<(usize, usize, f32)> {
     let cells = universe.cells();
     if cells.len() < 2 { return None; }
 
-    // Select dream pair: medium overlap (0.18 - 0.88), prefer cross-region
-    let pair = select_dream_pair(universe)?;
+    // Rank cells by replay priority, take top candidates
+    let limit = 14.min(cells.len());
+    let mut scored: Vec<(usize, f32)> = cells.iter().enumerate()
+        .map(|(i, c)| (i, replay_priority(i, c.strength, &c.source, c.created, cells.len())))
+        .collect();
+    scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    scored.truncate(limit);
 
-    let (a_idx, b_idx, overlap) = pair;
-    let a = &cells[a_idx];
-    let b = &cells[b_idx];
+    let mut best: Option<(usize, usize, f32, f32)> = None; // (i, j, overlap, pair_score)
 
-    // Bundle the two source vectors into a synthetic "dream thought"
-    let synthetic = SparseVec::bundle(&[&a.vec, &b.vec]);
+    for ci in 0..scored.len() {
+        for cj in (ci + 1)..scored.len() {
+            let i = scored[ci].0;
+            let j = scored[cj].0;
+            let a = &cells[i];
+            let b = &cells[j];
 
-    // Cleanup: find what the synthetic vector most resembles
-    let hits = universe.query_vec(&synthetic, 5);
+            let overlap = a.vec.cosine(&b.vec).max(0.0);
 
-    if hits.is_empty() {
-        return None;
+            // Filter: overlap must be in the productive band [0.18, 0.88]
+            if overlap < 0.18 || overlap > 0.88 { continue; }
+
+            // Target the 0.52 sweet spot — max information from partial overlap
+            let target_band = 1.0 - (overlap - 0.52).abs();
+
+            // Replay priority average
+            let replay_mean = (scored[ci].1 + scored[cj].1) / 2.0;
+
+            // Cross-region diversity bonus
+            let cross_region = if a.region != b.region { 0.12 } else { 0.0 };
+
+            // Penalize near-duplicates
+            let dup_penalty = if overlap > 0.72 { (overlap - 0.72) * 0.65 } else { 0.0 };
+
+            let pair_score = replay_mean * 0.40
+                + target_band * 0.28
+                + cross_region
+                - dup_penalty;
+
+            let is_better = match &best {
+                Some((_, _, _, bs)) => pair_score > *bs,
+                None => true,
+            };
+            if is_better {
+                best = Some((i, j, overlap, pair_score));
+            }
+        }
     }
 
-    // Pick best insight (prefer non-source match)
-    let (insight_text, insight_region, confidence, is_non_source) = {
-        let non_source = hits.iter().find(|(cell, _)| {
-            cell.text != a.text && cell.text != b.text
-        });
+    best.map(|(i, j, overlap, _)| (i, j, overlap))
+}
 
-        if let Some((cell, score)) = non_source {
-            (cell.text.clone(), cell.region.clone(), *score, true)
-        } else {
-            let (cell, score) = &hits[0];
-            (cell.text.clone(), cell.region.clone(), *score, false)
+/// Pick the best insight from query results, preferring non-source matches.
+fn pick_best_insight(
+    hits: &[(&crate::core::universe::Cell, f32)],
+    source_a_text: &str,
+    source_b_text: &str,
+) -> (String, String, f32, bool) {
+    // Prefer the strongest non-source match
+    for (cell, score) in hits {
+        if cell.text.trim() != source_a_text.trim() && cell.text.trim() != source_b_text.trim() {
+            return (cell.text.clone(), cell.region.clone(), *score, true);
         }
+    }
+    // Fall back to best match
+    if let Some((cell, score)) = hits.first() {
+        return (cell.text.clone(), cell.region.clone(), *score, false);
+    }
+    ("no strong concept found".to_string(), String::new(), 0.0, false)
+}
+
+/// Run a single dream consolidation cycle.
+///
+/// This is the full JS rshl-lattice.js consolidate() port — with scored pair
+/// selection, full field state, source reinforcement, and history tracking.
+pub fn consolidate(universe: &Universe) -> Option<DreamResult> {
+    let (idx_a, idx_b, overlap) = select_dream_pair(universe)?;
+
+    let cells = universe.cells();
+    let a = &cells[idx_a];
+    let b = &cells[idx_b];
+
+    // Bundle the two source vectors
+    let synthetic = SparseVec::bundle(&[&a.vec, &b.vec]);
+
+    // Query the universe with the synthetic vec to find the cleanup match
+    let hits = universe.query_vec(&synthetic, 5);
+
+    let (insight_text, insight_region, confidence, is_non_source) =
+        pick_best_insight(&hits, &a.text, &b.text);
+
+    // Winner key for tau tracking
+    let winner_key = insight_text.trim().to_lowercase();
+
+    // Compute full field state
+    let source_vecs: Vec<(&SparseVec, f32, u64)> = vec![
+        (&a.vec, a.strength, a.created),
+        (&b.vec, b.strength, b.created),
+    ];
+
+    let field_input = FieldInput {
+        synthetic_vec: Some(&synthetic),
+        source_vecs,
+        candidate_scores: vec![overlap, confidence.max(0.0)],
+        goal_vec: None, // Will be set by caller if drive has a goal
+        winner_key: winner_key.clone(),
+        history: get_dream_history(),
+        total_count: universe.count(),
+        prev_phi_g: get_dream_history().last().map(|h| h.phi_g).unwrap_or(0.0),
     };
 
-    let duplicate_echo = insight_text == a.text || insight_text == b.text;
+    let field = FieldState::compute_full(&field_input);
 
-    // Compute local field state for this dream
-    let field = FieldState::compute(universe);
+    // Duplicate echo check
+    let duplicate_echo = insight_text.trim() == a.text.trim()
+        || insight_text.trim() == b.text.trim();
 
-    // Compute commit readiness (C = phi_g × (1 - chi) × confidence)
-    let c = field.phi_g * (1.0 - field.pressure) * confidence;
+    // Promotion readiness
+    let promotion_ready = !duplicate_echo
+        && insight_text != "no strong concept found"
+        && confidence >= 0.64
+        && field.c >= 0.16
+        && field.chi <= 0.45
+        && field.phi_g >= 0.03;
+
+    // Source reinforcement based on Wm
+    let reinforce_by = if promotion_ready {
+        field.wm.max(0.05).min(0.30) * 0.60
+    } else if field.wm >= 0.10 {
+        field.wm.max(0.02).min(0.08) * 0.20
+    } else {
+        0.0
+    };
+
+    // Track in dream history
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    push_dream_history(DreamHistoryEntry {
+        winner_key,
+        phi_g: field.phi_g,
+        ts: now,
+    });
 
     Some(DreamResult {
         concept_a: a.text.clone(),
@@ -78,71 +244,48 @@ pub fn consolidate(universe: &Universe) -> Option<DreamResult> {
         overlap,
         insight: insight_text,
         insight_region,
-        confidence,
         phi_g: field.phi_g,
-        c,
-        chi: field.pressure,
+        c: field.c,
+        wm: field.wm,
+        chi: field.chi,
         duplicate_echo,
         is_non_source,
+        source_reinforcement: reinforce_by,
+        promotion_ready,
     })
 }
 
-/// Feed a dream result into the candidate buffer.
-pub fn observe_dream(buffer: &mut CandidateBuffer, dream: &DreamResult) {
+/// Observe a dream result and feed it into the candidate buffer.
+pub fn observe_dream(
+    candidates: &mut super::candidates::CandidateBuffer,
+    dream: &DreamResult,
+) {
     if dream.duplicate_echo { return; }
-    if dream.insight.is_empty() { return; }
+    if dream.insight.is_empty() || dream.insight == "no strong concept found" { return; }
 
-    buffer.observe(
+    candidates.observe(
         &dream.insight,
         dream.phi_g,
         dream.c,
         dream.chi,
-        dream.confidence,
+        0.0, // confidence placeholder
         dream.is_non_source,
     );
 }
 
-/// Select a dream pair with medium overlap, preferring cross-region.
-fn select_dream_pair(universe: &Universe) -> Option<(usize, usize, f32)> {
-    let cells = universe.cells();
-    if cells.len() < 2 { return None; }
+/// Apply source reinforcement to dream source cells.
+/// Call this after consolidate() with mutable universe access.
+pub fn reinforce_dream_sources(
+    universe: &mut Universe,
+    dream: &DreamResult,
+) {
+    if dream.source_reinforcement <= 0.0 { return; }
 
-    let mut rng = rand::thread_rng();
-    let mut best: Option<(usize, usize, f32, f32)> = None; // (i, j, overlap, score)
-
-    // Sample pairs (limit to avoid O(n²) explosion)
-    let sample_limit = cells.len().min(20);
-    let indices: Vec<usize> = if cells.len() <= 20 {
-        (0..cells.len()).collect()
-    } else {
-        let mut v = Vec::new();
-        while v.len() < sample_limit {
-            let idx = rng.gen_range(0..cells.len());
-            if !v.contains(&idx) { v.push(idx); }
-        }
-        v
-    };
-
-    for i in 0..indices.len() {
-        for j in (i + 1)..indices.len() {
-            let ai = indices[i];
-            let bi = indices[j];
-            let overlap = cells[ai].vec.cosine(&cells[bi].vec).abs();
-
-            // Medium overlap band: 0.18 to 0.88
-            if overlap < 0.18 || overlap > 0.88 { continue; }
-
-            // Score: prefer overlap near 0.52, cross-region, mid-strength
-            let target_band = 1.0 - (overlap - 0.52).abs();
-            let cross_region = if cells[ai].region != cells[bi].region { 0.12 } else { 0.0 };
-            let dup_penalty = if overlap > 0.72 { (overlap - 0.72) * 0.65 } else { 0.0 };
-            let pair_score = target_band * 0.60 + cross_region - dup_penalty;
-
-            if best.is_none() || pair_score > best.unwrap().3 {
-                best = Some((ai, bi, overlap, pair_score));
-            }
+    // Find and reinforce both source cells
+    let cells = universe.cells_mut();
+    for cell in cells.iter_mut() {
+        if cell.text == dream.concept_a || cell.text == dream.concept_b {
+            cell.strength = (cell.strength + dream.source_reinforcement).min(5.0);
         }
     }
-
-    best.map(|(i, j, overlap, _)| (i, j, overlap))
 }
