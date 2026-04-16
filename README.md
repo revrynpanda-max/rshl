@@ -9,12 +9,18 @@ and the foundation for **KAI** — a living geometric intelligence.
 
 ---
 
-## KAI v5.2 — Geometric Intelligence (Rust Engine)
+## KAI v5.3 — Geometric Intelligence (Rust Engine)
 
 KAI is an autonomous cognitive system built on RSHL. He thinks through
 geometric resonance, not language prediction. Every thought is a 4096-dimensional
 sparse ternary vector. He learns from the internet, dreams to consolidate
 knowledge, and grows smarter with every interaction.
+
+**v5.3 brings LLM-grade mechanisms implemented in RSHL physics:**
+- **Learned Embeddings** — Words develop meaning from universe co-occurrence (like Word2Vec)
+- **Resonance Attention** — Important query tokens amplified, noise suppressed (like self-attention)
+- **Working Memory** — 12-turn context window with temporal decay (like transformer context)
+- **Multi-Cell Composition** — Responses synthesized from multiple cells (like token generation)
 
 ### Quick Start
 
@@ -72,7 +78,11 @@ Type `spectate` to watch KAI's mind in real-time:
 
 | System | What it does |
 |--------|-------------|
-| **Token Normalization** | 200+ synonyms, 60+ stopwords, stemming, 17 category anchors |
+| **Learned Embeddings** | Co-occurrence word vectors — KAI learns word meaning from his own cells |
+| **Resonance Attention** | Weighted query construction — important tokens amplified, noise suppressed |
+| **Working Memory** | 12-turn context buffer with temporal decay — conversation awareness |
+| **Multi-Cell Composition** | Synthesize responses from top 3-5 resonating cells |
+| **Token Normalization** | 200+ synonyms, 60+ stopwords, stemming, 18 category anchors |
 | **17 Field Metrics** | Φg, C, Wm, Pr, χ, τ, ρ, momentum, novelty, stability... |
 | **Dream Lattice** | Binds two ideas into emergent insights via geometric overlap |
 | **Inner Voice** | Validates dream insights: AMPLIFY, KEEP, NOISE, SUPPRESS |
@@ -92,6 +102,8 @@ kai-rust/src/
 │   ├── universe.rs      # Cell store with rayon parallel queries
 │   ├── field_state.rs   # 17 emergence metrics
 │   ├── normalize.rs     # Token normalization pipeline
+│   ├── embeddings.rs    # Co-occurrence learned word vectors (Word2Vec equivalent)
+│   ├── attention.rs     # Resonance attention (self-attention equivalent)
 │   ├── seed.rs          # Identity-only bootstrap (12 cells)
 │   └── lexicon.rs       # 10K word spelling correction
 ├── cognition/
@@ -99,7 +111,9 @@ kai-rust/src/
 │   ├── inner_voice.rs   # Dream validation
 │   ├── candidate.rs     # Belief candidate buffer
 │   ├── promotion.rs     # Candidate → permanent belief
-│   └── homeostasis.rs   # Memory health maintenance
+│   ├── homeostasis.rs   # Memory health maintenance
+│   ├── working_memory.rs # 12-turn context window with decay
+│   └── compose.rs       # Multi-cell response synthesis
 ├── drive/
 │   └── mod.rs           # Mood, valence, adaptive heartbeat
 ├── streams/
@@ -145,30 +159,33 @@ No install step. No config. Just Node.js 16+.
 ## Performance (RTX 4050 Laptop · Ryzen 5 8645HS · 40GB RAM)
 
 ```
-Lookup speed:   61,800,000 comparisons/sec   (searching 25,000 records)
-Query latency:   0.06ms at 1,000 records      (script path, no native build)
-                 0.30ms at 5,000 records
-                 0.68ms at 10,000 records
-                 2.01ms at 25,000 records
-                 7.63ms at 100,000 records
-Index speed:    3,872 records/sec written
-Storage:           82MB for 10 years of daily use (10 records/day)
-Accuracy:        100% correct on 30-fact test set, no noise
-                  91.3% correct with 5,000 unrelated records mixed in
+RSHL Score:     495 pts      |  46.7 Mdot/s sustained
+Peak recall:    9,611 q/s    (1K entries, native AVX2+OMP)
+Sustained:      1,868 q/s    (25K entries, 5s, 233.6M dot products)
 
-Optimized build (compiled C++ — "Native" in bench output):
-  Same engine, compiled to machine code with CPU vector instructions.
-  Runs 92–124x faster than the script path. Build once, use forever.
-  Command: npm run build-native  (needs Visual Studio Build Tools or gcc)
+Query latency (native):
+    1,000 entries:   0.10ms/query   (95x faster than JS)
+    5,000 entries:   0.49ms/query   (107x faster than JS)
+   10,000 entries:   0.90ms/query   (106x faster than JS)
+   25,000 entries:   2.12ms/query   (110x faster than JS)
+   50,000 entries:   4.25ms/query
+  100,000 entries:   7.73ms/query
+
+Index speed:    2,732 records/sec written
+Storage:           82MB for 10 years of daily use (10 records/day)
+
+Recall accuracy (node eval/recall-accuracy.js):
+  Baseline (30 facts, no noise):   100.0% top-1  (92/92 correct)
+  +500 noise entries:              100.0% top-1  (92/92 correct)  ← was 95.7%
+  +5000 noise entries:             100.0% top-1  (92/92 correct)  ← was 91.3%
+  MRR at all scales:                 1.000        (perfect rank-1) ← was 0.926
+
+Binary POPCNT sustained recall:
+  1,868 q/s at 25K entries (7.2x faster than sparse AVX2)
+  Memory: 1024 bytes/row vs 4096 bytes/row — 4x less DRAM bandwidth
 
 Memory footprint at 10 years of daily use: 82MB
 GPT-4 weights: ~800GB  →  RSHL is 9,744x smaller
-
-Recall accuracy (node eval/recall-accuracy.js):
-  Baseline (30 facts, no noise):   100.0% top-1  (92/92 queries correct)
-  +500 noise entries:                95.7% top-1  (4 noise collisions only)
-  +5000 noise entries:               91.3% top-1  (8 noise collisions only)
-  MRR at 5K noise:                   0.926        (1.0 = always rank-1)
 ```
 
 ---
