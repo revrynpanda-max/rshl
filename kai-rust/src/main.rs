@@ -10,7 +10,7 @@ use crate::cognition::{
 };
 use crate::drive::{Drive, Mood};
 use crossterm::{
-    event::{self, Event, KeyCode, KeyModifiers},
+    event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -589,19 +589,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         if event::poll(tick_rate)? {
             if let Event::Key(key) = event::read()? {
-                match key.code {
-                    KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                        app.save_state();
-                        app.should_quit = true;
+                // Only handle actual key presses, not repeats or releases
+                if key.kind == KeyEventKind::Press {
+                    match key.code {
+                        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                            app.save_state();
+                            app.should_quit = true;
+                        }
+                        KeyCode::Enter => { app.process_input(); }
+                        KeyCode::Char(c) => { app.input.push(c); }
+                        KeyCode::Backspace => { app.input.pop(); }
+                        KeyCode::Esc => {
+                            app.save_state();
+                            app.should_quit = true;
+                        }
+                        _ => {}
                     }
-                    KeyCode::Enter => { app.process_input(); }
-                    KeyCode::Char(c) => { app.input.push(c); }
-                    KeyCode::Backspace => { app.input.pop(); }
-                    KeyCode::Esc => {
-                        app.save_state();
-                        app.should_quit = true;
-                    }
-                    _ => {}
                 }
             }
         }
