@@ -19,6 +19,14 @@
 
 use crate::core::{SparseVec, Universe, FieldState};
 
+/// A context slot from working memory — injected into reasoning.
+#[derive(Clone, Debug)]
+pub struct ContextSlot {
+    pub vec: SparseVec,
+    pub role: String,  // "user" or "kai"
+    pub strength: f32, // 0.0–1.0, higher = more recent
+}
+
 /// A single step in the reasoning chain.
 #[derive(Clone, Debug)]
 pub struct ThoughtStep {
@@ -73,13 +81,62 @@ impl Reasoner {
         Self { config }
     }
 
-    /// Run the iterative resonance chain on a query.
+    /// Run the iterative resonance chain on a query (no context).
     ///
     /// This is KAI's "thinking" — multi-step geometric reasoning.
     pub fn reason(&self, query: &str, universe: &Universe) -> ReasonResult {
+        self.reason_with_context(query, universe, &[])
+    }
+
+    /// Run the iterative resonance chain with working memory context.
+    ///
+    /// Context slots from recent conversation turns are bundled into the
+    /// initial query vector, so KAI's reasoning is aware of what was just said.
+    /// User turns get 1.5x weight (listening > self-echo).
+    /// Recent turns are weighted higher via their strength field.
+    pub fn reason_with_context(
+        &self,
+        query: &str,
+        universe: &Universe,
+        context: &[ContextSlot],
+    ) -> ReasonResult {
         let mut chain: Vec<ThoughtStep> = Vec::new();
         let query_vec = SparseVec::encode(query);
-        let mut current = query_vec.clone();
+
+        // ── Build context-enriched starting vector ─────────────────────
+        // Bundle the raw query with recent conversation context.
+        // This gives KAI conversational awareness — he knows what was just said.
+        let mut current;
+        if context.is_empty() {
+            current = query_vec.clone();
+        } else {
+            // Build weighted bundle: query (dominant) + context (supporting)
+            let mut bundle_vecs: Vec<&SparseVec> = Vec::new();
+
+            // Query gets 3 copies (dominant voice — 60% weight in a 5-vec bundle)
+            bundle_vecs.push(&query_vec);
+            bundle_vecs.push(&query_vec);
+            bundle_vecs.push(&query_vec);
+
+            // Add context slots weighted by recency and role
+            for slot in context.iter().rev().take(6) {
+                // User turns are more important than KAI's own responses
+                let role_weight = if slot.role == "user" { 1.5 } else { 1.0 };
+                let effective_weight = slot.strength * role_weight;
+
+                // Only inject if the context is strong enough to matter
+                if effective_weight > 0.3 {
+                    bundle_vecs.push(&slot.vec);
+                    // Strong recent context gets a second copy
+                    if effective_weight > 0.7 {
+                        bundle_vecs.push(&slot.vec);
+                    }
+                }
+            }
+
+            current = SparseVec::bundle(&bundle_vecs);
+        }
+
         let mut context_vecs: Vec<SparseVec> = vec![query_vec.clone()];
 
         for step in 0..self.config.max_depth {

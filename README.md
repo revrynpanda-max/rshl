@@ -9,14 +9,21 @@ and the foundation for **KAI** — a living geometric intelligence.
 
 ---
 
-## KAI v5.3 — Geometric Intelligence (Rust Engine)
+## KAI v5.4 — Geometric Intelligence (Rust Engine)
 
 KAI is an autonomous cognitive system built on RSHL. He thinks through
 geometric resonance, not language prediction. Every thought is a 4096-dimensional
 sparse ternary vector. He learns from the internet, dreams to consolidate
 knowledge, and grows smarter with every interaction.
 
-**v5.3 brings LLM-grade mechanisms implemented in RSHL physics:**
+**v5.4 — KAI speaks. Natural language generation from pure geometry:**
+- **Voice Engine** — KAI constructs sentences from resonating concepts instead of echoing stored text
+- **Context-Aware Reasoning** — Working memory bundled into queries gives conversational awareness
+- **Mood-Modulated Speech** — Curious KAI talks differently than conflicted KAI
+- **Query Type Detection** — Greetings, questions, statements all get appropriate framing
+- **Self-Awareness** — "KAI is..." → "I am..." — first-person identity
+
+**Previous milestones (v5.0–v5.3):**
 - **Learned Embeddings** — Words develop meaning from universe co-occurrence (like Word2Vec)
 - **Resonance Attention** — Important query tokens amplified, noise suppressed (like self-attention)
 - **Working Memory** — 12-turn context window with temporal decay (like transformer context)
@@ -78,14 +85,18 @@ Type `spectate` to watch KAI's mind in real-time:
 
 | System | What it does |
 |--------|-------------|
+| **Voice Engine** | Constructs natural sentences from geometric resonance — KAI speaks, not retrieves |
+| **Context-Aware Reasoning** | Working memory vectors bundled into queries — conversation awareness across turns |
+| **Query Type Detection** | Classifies input (greeting, question, self-question, explanation, statement) |
+| **Mood Modulation** | Drive state influences word choice, framing, and sentence structure |
 | **Learned Embeddings** | Co-occurrence word vectors — KAI learns word meaning from his own cells |
 | **Resonance Attention** | Weighted query construction — important tokens amplified, noise suppressed |
-| **Working Memory** | 12-turn context buffer with temporal decay — conversation awareness |
-| **Multi-Cell Composition** | Synthesize responses from top 3-5 resonating cells |
+| **Working Memory** | 12-turn context buffer with temporal decay — injected into reasoning |
+| **Iterative Reasoner** | Multi-step bind→bundle→cleanup chain with Φg convergence detection |
 | **Token Normalization** | 200+ synonyms, 60+ stopwords, stemming, 18 category anchors |
 | **17 Field Metrics** | Φg, C, Wm, Pr, χ, τ, ρ, momentum, novelty, stability... |
 | **Dream Lattice** | Binds two ideas into emergent insights via geometric overlap |
-| **Inner Voice** | Validates dream insights: AMPLIFY, KEEP, NOISE, SUPPRESS |
+| **Inner Voice** | Validates dream insights: VALIDATED, NOVEL, NOISE, PARADOX |
 | **Drive System** | Curiosity/familiarity reward, contradiction pain, adaptive tempo |
 | **Promotion** | Stable candidates graduate to permanent beliefs |
 | **Homeostasis** | Decay weak memories, prune dead cells, maintain health |
@@ -107,12 +118,14 @@ kai-rust/src/
 │   ├── seed.rs          # Identity-only bootstrap (12 cells)
 │   └── lexicon.rs       # 10K word spelling correction
 ├── cognition/
+│   ├── voice.rs         # Natural language generation — sentence construction from resonance
+│   ├── reasoner.rs      # Iterative resonance chain + context-aware reasoning
 │   ├── lattice.rs       # Dream consolidation engine
-│   ├── inner_voice.rs   # Dream validation
-│   ├── candidate.rs     # Belief candidate buffer
+│   ├── inner_voice.rs   # Dream insight validation (VALIDATED/NOVEL/NOISE/PARADOX)
+│   ├── candidates.rs    # Belief candidate buffer
 │   ├── promotion.rs     # Candidate → permanent belief
 │   ├── homeostasis.rs   # Memory health maintenance
-│   ├── working_memory.rs # 12-turn context window with decay
+│   ├── working_memory.rs # 12-turn context window with decay (injected into reasoning)
 │   └── compose.rs       # Multi-cell response synthesis
 ├── drive/
 │   └── mod.rs           # Mood, valence, adaptive heartbeat
@@ -123,8 +136,7 @@ kai-rust/src/
 │   └── ram_stream.rs    # Memory management
 ├── bridge/
 │   └── mod.rs           # DuckDuckGo world bridge
-└── persistence/
-    └── mod.rs           # JSON state save/load
+└── persistence.rs       # JSON state save/load
 ```
 
 ---
