@@ -21,3 +21,6 @@ Desktop.ini
 # Backup copies
 *copy.js
 *copy.ts
+
+# Conversation logs (personal, not part of the project)
+conversation-log-*.txt
