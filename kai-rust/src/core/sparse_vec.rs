@@ -23,17 +23,24 @@ impl SparseVec {
         Self { data: vec![0i8; DIM] }
     }
 
+    /// Create from raw data (for inter-stream communication).
+    pub fn from_raw(data: Vec<i8>) -> Self {
+        assert_eq!(data.len(), DIM);
+        Self { data }
+    }
+
     /// Encode a text string into a sparse ternary vector.
     /// Uses three layers of features for robust semantic matching:
-    ///   1. Character trigrams (local shape)
-    ///   2. Individual words (semantic content)
-    ///   3. Word bigrams (word-level context)
+    ///   1. Character trigrams (local shape — raw text, not normalized)
+    ///   2. Normalized words (semantic content — stopwords removed, synonyms collapsed, stemmed, category anchors injected)
+    ///   3. Normalized word bigrams (contextual pairs)
     pub fn encode(text: &str) -> Self {
         let mut v = vec![0i32; DIM];
         let lower = text.to_lowercase();
         let chars: Vec<char> = lower.chars().collect();
 
         // ── Layer 1: Character trigrams (weighted 1x) ────────────────────
+        // Uses RAW text for surface-level pattern matching.
         if chars.len() >= 3 {
             for i in 0..chars.len().saturating_sub(2) {
                 let tri = &chars[i..i + 3];
@@ -54,31 +61,29 @@ impl SparseVec {
             }
         }
 
-        // ── Layer 2: Word-level hashing (weighted 3x — the semantic layer) ──
-        let words: Vec<&str> = lower.split_whitespace()
-            .filter(|w| w.len() >= 2) // skip single chars
-            .collect();
+        // ── Layer 2: NORMALIZED word-level hashing (weighted 3x — the semantic layer)
+        // Uses the full normalization pipeline: stopwords → synonyms → stemming → category anchors.
+        // This is what makes "occupation" encode the same as "job" and injects #job.
+        let normalizer = super::normalize::get_normalizer();
+        let normalized_tokens = normalizer.normalize_text(text);
 
-        for word in &words {
-            // Strip common punctuation
-            let clean = word.trim_matches(|c: char| !c.is_alphanumeric());
-            if clean.len() < 2 { continue; }
-
-            let base = hash_word(clean);
+        for token in &normalized_tokens {
+            let base = hash_word(token);
             let n_active = ((DIM as f32) * SPARSITY) as usize;
             for k in 0..n_active {
                 let idx = (base.wrapping_add(k * 2654435761)) % DIM;
                 let sign = if (base.wrapping_add(k * 1442695040)) % 2 == 0 { 3 } else { -3 };
-                v[idx] += sign; // 3x weight for words
+                v[idx] += sign; // 3x weight for normalized words
             }
         }
 
-        // ── Layer 3: Word bigrams (weighted 2x — contextual pairs) ──────
-        if words.len() >= 2 {
-            for i in 0..words.len() - 1 {
-                let w1 = words[i].trim_matches(|c: char| !c.is_alphanumeric());
-                let w2 = words[i + 1].trim_matches(|c: char| !c.is_alphanumeric());
-                if w1.len() < 2 || w2.len() < 2 { continue; }
+        // ── Layer 3: Normalized word bigrams (weighted 2x — contextual pairs) ──
+        if normalized_tokens.len() >= 2 {
+            for i in 0..normalized_tokens.len() - 1 {
+                let w1 = &normalized_tokens[i];
+                let w2 = &normalized_tokens[i + 1];
+                // Skip category anchors in bigrams (they're cluster signals, not word pairs)
+                if w1.starts_with('#') || w2.starts_with('#') { continue; }
 
                 let base = hash_word_pair(w1, w2);
                 let n_active = ((DIM as f32) * SPARSITY * 0.5) as usize;
@@ -97,6 +102,22 @@ impl SparseVec {
         }
 
         Self { data }
+    }
+
+    /// Encode text with spelling correction via the Lexicon.
+    ///
+    /// Before encoding into the 4096-dimensional space, each word token
+    /// is checked against KAI's vocabulary. Unknown words within edit
+    /// distance ≤ 2 of a known word are corrected to the known form.
+    ///
+    /// This means "wrold" encodes identically to "world" — the
+    /// misspelling is pulled to the nearest known attractor in word-space.
+    ///
+    /// Returns (vector, corrections) where corrections lists what was fixed.
+    pub fn encode_corrected(text: &str, lexicon: &super::lexicon::Lexicon) -> (Self, Vec<(String, String)>) {
+        let (corrected_text, corrections) = lexicon.correct_sentence(text);
+        let vec = Self::encode(&corrected_text);
+        (vec, corrections)
     }
 
     /// Cosine similarity between two vectors. Returns [-1.0, +1.0].
@@ -259,15 +280,26 @@ mod tests {
 
     #[test]
     fn test_word_semantic_matching() {
-        // "what is your name" should match "my name is KAI" through shared word "name"
-        let query = SparseVec::encode("what is your name");
-        let answer = SparseVec::encode("my name is KAI");
+        // With normalization, "where does Ryan live" and "Ryan's city"
+        // should both contain tokens [ryan, live, #loc] — high overlap
+        let query = SparseVec::encode("where does Ryan live");
+        let answer = SparseVec::encode("Ryan's city is Austin");
         let unrelated = SparseVec::encode("quantum physics equations");
         let sim_match = query.cosine(&answer);
         let sim_unrelated = query.cosine(&unrelated);
-        assert!(sim_match > sim_unrelated, 
-            "name query should match name answer ({}) more than unrelated ({})", 
+        assert!(sim_match > sim_unrelated,
+            "location query should match location answer ({:.4}) more than unrelated ({:.4})",
             sim_match, sim_unrelated);
+    }
+
+    #[test]
+    fn test_synonym_equivalence() {
+        // "occupation" and "job" should both normalize to "work" + "#job"
+        let a = SparseVec::encode("Ryan's occupation");
+        let b = SparseVec::encode("Ryan's job");
+        let sim = a.cosine(&b);
+        assert!(sim > 0.5,
+            "synonym-equivalent phrases should have high similarity: {:.4}", sim);
     }
 
     #[test]

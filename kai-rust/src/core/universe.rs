@@ -1,7 +1,9 @@
 /// Universe — The cell store for KAI's memory.
 ///
 /// Each cell is a belief: text + vector + region + strength + metadata.
-/// Queries use cosine similarity against all cells (parallelizable with rayon).
+/// ALL queries use rayon parallel cosine across all 12 CPU threads.
+
+use rayon::prelude::*;
 
 use super::SparseVec;
 use serde::{Deserialize, Serialize};
@@ -54,11 +56,12 @@ impl Universe {
     }
 
     /// Query for the top-N most similar cells.
+    /// Uses rayon parallel iteration — all 12 CPU threads compute cosine simultaneously.
     pub fn query(&self, text: &str, n: usize) -> Vec<QueryHit> {
         let q = SparseVec::encode(text);
         let mut scored: Vec<(usize, f32)> = self
             .cells
-            .iter()
+            .par_iter()
             .enumerate()
             .map(|(i, cell)| {
                 let raw = q.cosine(&cell.vec);
@@ -159,11 +162,11 @@ impl Universe {
     }
 
     /// Query with a pre-encoded vector (for the reasoner's iterative chain).
-    /// Returns references to cells + scores for zero-copy reasoning.
+    /// Uses rayon parallel iteration — all 12 CPU threads compute cosine simultaneously.
     pub fn query_vec(&self, q: &SparseVec, n: usize) -> Vec<(&Cell, f32)> {
         let mut scored: Vec<(usize, f32)> = self
             .cells
-            .iter()
+            .par_iter()
             .enumerate()
             .map(|(i, cell)| {
                 let raw = q.cosine(&cell.vec);
