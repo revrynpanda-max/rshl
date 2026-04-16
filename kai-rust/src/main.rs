@@ -67,6 +67,15 @@ struct Turn {
     score: Option<f32>,
 }
 
+// ── Mind Event (spectate mode) ───────────────────────────────────────────────
+#[derive(Clone)]
+struct MindEvent {
+    tick: u64,
+    stream: String,  // "GPU", "CPU", "RAM"
+    icon: String,
+    text: String,
+}
+
 // ── App State — THE FULL BRAIN ────────────────────────────────────────────────
 struct App {
     universe: Universe,
@@ -92,6 +101,8 @@ struct App {
     base_dir: String,
     should_quit: bool,
     bus: streams::SharedBus,
+    spectate_mode: bool,
+    mind_log: Vec<MindEvent>,
 }
 
 impl App {
@@ -145,6 +156,22 @@ impl App {
             base_dir,
             should_quit: false,
             bus: streams::SharedBus::new(),
+            spectate_mode: false,
+            mind_log: Vec::new(),
+        }
+    }
+
+    /// Log a cognitive event (visible in spectate mode).
+    fn think(&mut self, stream: &str, icon: &str, text: String) {
+        self.mind_log.push(MindEvent {
+            tick: self.tick,
+            stream: stream.to_string(),
+            icon: icon.to_string(),
+            text,
+        });
+        // Keep max 200 entries
+        if self.mind_log.len() > 200 {
+            self.mind_log.drain(0..50);
         }
     }
 
@@ -162,6 +189,15 @@ impl App {
         let field = FieldState::compute(&self.universe);
         self.drive.update(&field);
 
+        // Log field state for spectate
+        if self.spectate_mode && self.tick % 3 == 0 {
+            self.think("CPU", "◉", format!(
+                "Field: Φg={:.4} χ={:.3} ρ={:.3} | {} V={:+.2}",
+                field.phi_g, field.chi, field.rho,
+                self.drive.mood, self.drive.valence,
+            ));
+        }
+
         // Update shared bus CPU state
         if let Ok(mut cpu) = self.bus.cpu_state.write() {
             cpu.mood = self.drive.mood.to_string();
@@ -175,29 +211,52 @@ impl App {
         // ── STREAM 1: GPU Math (dream consolidation with parallel cosine) ──
         if self.tick % 3 == 0 {
             let gpu_start = Instant::now();
+            if self.spectate_mode {
+                self.think("GPU", "⚡", format!("Dreaming... scanning {} cells", self.universe.count()));
+            }
             self.run_dream_cycle();
+            let gpu_us = gpu_start.elapsed().as_micros();
             // Track GPU perf
             if let Ok(mut gpu) = self.bus.gpu_state.write() {
                 gpu.last_batch_size = self.universe.count();
-                gpu.last_batch_duration_us = gpu_start.elapsed().as_micros() as u64;
+                gpu.last_batch_duration_us = gpu_us as u64;
                 gpu.last_tick = Some(Instant::now());
+            }
+            // Log dream result for spectate
+            if self.spectate_mode && !self.last_dream_text.is_empty() {
+                self.think("GPU", "💭", format!("{}  [{}μs]", self.last_dream_text, gpu_us));
+            }
+            if self.spectate_mode && !self.last_inner_voice_text.is_empty() {
+                self.think("CPU", "🔊", self.last_inner_voice_text.clone());
             }
         }
 
         // ── STREAM 2: CPU Logic (promotion) ───────────────────────────
         if self.tick % 10 == 0 {
             self.run_promotion_cycle();
+            if self.spectate_mode && !self.last_promotion_text.is_empty() {
+                self.think("CPU", "🏆", self.last_promotion_text.clone());
+            }
         }
 
         // ── STREAM 3: RAM Memory Management ───────────────────────────
         // Homeostasis (decay + prune)
         if self.tick % 20 == 0 {
             self.run_homeostasis_cycle();
+            if self.spectate_mode && !self.last_homeostasis_text.is_empty() {
+                self.think("RAM", "🧹", self.last_homeostasis_text.clone());
+            }
         }
 
         // World Bridge intake (background learning)
         if self.tick % 15 == 0 && self.tick > 5 {
+            if self.spectate_mode {
+                self.think("RAM", "🌐", "Searching DuckDuckGo for new knowledge...".to_string());
+            }
             self.run_intake_cycle();
+            if self.spectate_mode && !self.last_intake_text.is_empty() {
+                self.think("RAM", "📚", self.last_intake_text.clone());
+            }
         }
 
         // Update shared bus RAM state
@@ -379,6 +438,18 @@ impl App {
                 self.turns.push(Turn { role: "kai".into(), text, region: Some("reasoning".into()), score: None });
                 return;
             }
+            "spectate" | "watch" | "mindview" => {
+                self.spectate_mode = !self.spectate_mode;
+                let msg = if self.spectate_mode {
+                    self.think("CPU", "👁", "Spectate mode ACTIVATED — you can now see inside my mind".into());
+                    "👁 Spectate mode ON — watching KAI think in real-time. Type 'spectate' again to exit."
+                } else {
+                    "Spectate mode OFF — back to conversation."
+                };
+                self.turns.push(Turn { role: "user".into(), text: input, region: None, score: None });
+                self.turns.push(Turn { role: "kai".into(), text: msg.into(), region: None, score: None });
+                return;
+            }
             "save" => {
                 self.turns.push(Turn { role: "user".into(), text: input, region: None, score: None });
                 self.save_state();
@@ -389,7 +460,7 @@ impl App {
                 self.turns.push(Turn { role: "user".into(), text: input, region: None, score: None });
                 self.turns.push(Turn {
                     role: "kai".into(),
-                    text: "Commands: status, mood, dream, learn <topic>, spell <word>, store <text>, save, quit\nOr just type naturally — I reason through iterative resonance.\nI auto-correct spelling via my 10K word lexicon.".into(),
+                    text: "Commands: status, mood, dream, spectate, learn <topic>, spell <word>, store <text>, save, quit\n'spectate' = watch KAI think in real-time (learning, dreams, intake)\nOr just type naturally — I reason through iterative resonance.".into(),
                     region: None, score: None,
                 });
                 return;
@@ -640,7 +711,11 @@ fn ui(f: &mut Frame, app: &App) {
         .split(f.area());
 
     render_header(f, app, chunks[0]);
-    render_messages(f, app, chunks[1]);
+    if app.spectate_mode {
+        render_mindview(f, app, chunks[1]);
+    } else {
+        render_messages(f, app, chunks[1]);
+    }
     render_input(f, app, chunks[2]);
 }
 
@@ -774,6 +849,67 @@ fn render_messages(f: &mut Frame, app: &App, area: Rect) {
 
     let messages = Paragraph::new(lines).wrap(Wrap { trim: false });
     f.render_widget(messages, area);
+}
+
+fn render_mindview(f: &mut Frame, app: &App, area: Rect) {
+    let mut lines: Vec<Line> = Vec::new();
+
+    // Title line
+    lines.push(Line::from(vec![
+        Span::styled("  👁 SPECTATE MODE ", Style::default().fg(Color::LightMagenta).add_modifier(Modifier::BOLD)),
+        Span::styled("— watching KAI think in real-time", Style::default().fg(Color::DarkGray)),
+    ]));
+    lines.push(Line::from(""));
+
+    if app.mind_log.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "  Waiting for cognitive activity...",
+            Style::default().fg(Color::DarkGray),
+        )));
+    } else {
+        // Show the latest events (fit to screen)
+        let max_visible = (area.height as usize).saturating_sub(4);
+        let start = if app.mind_log.len() > max_visible {
+            app.mind_log.len() - max_visible
+        } else {
+            0
+        };
+
+        for event in &app.mind_log[start..] {
+            let stream_style = match event.stream.as_str() {
+                "GPU" => Style::default().fg(Color::LightYellow),
+                "CPU" => Style::default().fg(Color::LightCyan),
+                "RAM" => Style::default().fg(Color::LightGreen),
+                _ => Style::default().fg(Color::DarkGray),
+            };
+
+            let tick_str = format!(" t{:04} ", event.tick);
+            let stream_label = format!("[{}]", event.stream);
+
+            lines.push(Line::from(vec![
+                Span::styled(tick_str, Style::default().fg(Color::DarkGray)),
+                Span::styled(stream_label, stream_style),
+                Span::raw(" "),
+                Span::styled(&event.icon, Style::default()),
+                Span::raw(" "),
+                Span::styled(
+                    truncate(&event.text, 100),
+                    Style::default().fg(Color::White),
+                ),
+            ]));
+        }
+    }
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Magenta))
+        .title(Span::styled(
+            " KAI Mind View ",
+            Style::default().fg(Color::LightMagenta).add_modifier(Modifier::BOLD),
+        ));
+
+    let mindview = Paragraph::new(lines).block(block).wrap(Wrap { trim: false });
+    f.render_widget(mindview, area);
 }
 
 fn render_input(f: &mut Frame, app: &App, area: Rect) {
