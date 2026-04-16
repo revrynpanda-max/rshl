@@ -44,12 +44,17 @@ const AUTOSAVE_EVERY_N          = 25;    // Auto-save state every N ticks
 let _timer      = null;
 let _tickCount  = 0;
 let _running    = false;
+let _busy       = false; // tick lock — prevents overlapping tick execution
 let _plasma     = null;
 let _opts       = {};
 
 function _tick() {
     if (!_running || !_plasma) return;
+    if (_busy) return; // previous tick still processing — skip this interval
+    _busy = true;
     _tickCount++;
+
+    try {
 
     // 1. Dream
     const dreamResult = consolidate(_plasma, {
@@ -99,6 +104,9 @@ function _tick() {
             saved:       saveResult,
             bufferSize:  candidateBuffer.size(),
         });
+    }
+    } finally {
+        _busy = false;
     }
 }
 

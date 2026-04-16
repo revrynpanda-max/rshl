@@ -1,6 +1,13 @@
 "use strict";
 
-const universe = require("./universe");
+/**
+ * field-state.js — Pure Field Metric Computation
+ *
+ * Single responsibility: compute emergence metrics from supplied data.
+ * NO universe access. NO persistence. NO side effects.
+ * All inputs are passed in by the caller.
+ */
+
 const { textVec, resonance } = require("./rshl-core");
 
 function clamp01(n) {
@@ -77,13 +84,14 @@ function computeFieldState({
     goalText = "",
     winnerKey = "",
     history = [],
+    totalCount,       // must be supplied by caller (e.g. universe.count())
 }) {
-    const totalCount = typeof universe.count === "function"
-        ? Math.max(1, universe.count())
-        : Math.max(1, (typeof universe.getCells === "function" ? universe.getCells().length : 1));
+    // totalCount is the full field size — caller is responsible for providing it.
+    // Default to sourceCells.length + 1 only as a safe fallback (should not happen).
+    const N = Math.max(1, typeof totalCount === 'number' ? totalCount : sourceCells.length + 1);
 
     const activeCount = Math.max(1, sourceCells.length + (syntheticVec ? 1 : 0));
-    const rho = clamp01(activeCount / totalCount);
+    const rho = clamp01(activeCount / N);
 
     const coherenceSamples = [];
 

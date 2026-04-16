@@ -1,6 +1,5 @@
 "use strict";
 
-const fs = require("fs");
 const universe = require("./universe");
 const { resonance } = require("./rshl-core");
 const { bundleVectors, cleanup } = require("./generative-core");
@@ -124,12 +123,13 @@ function consolidate(plasma, options = {}) {
     const winnerKey = makeWinnerKey([chosen.text || "no-idea"]);
 
     const field = computeFieldState({
-        syntheticVec: synthetic,
-        sourceCells: [pair.a, pair.b],
-        candidateScores: [pair.overlap, clamp01(chosen.score)],
+        syntheticVec:   synthetic,
+        sourceCells:    [pair.a, pair.b],
+        candidateScores:[pair.overlap, clamp01(chosen.score)],
         goalText,
         winnerKey,
-        history: DREAM_HISTORY,
+        history:        DREAM_HISTORY,
+        totalCount:     universe.count(), // field-state is pure — caller supplies this
     });
 
     const duplicateEcho =
@@ -190,38 +190,29 @@ class RSHLLattice {
     }
 
     store(text, region = "memory", meta = {}) {
-        const { textVec, resonance: resFn } = require('./rshl-core');
-        const cells = universe.getCells();
-        const qVec = textVec(text);
+        const { textVec } = require('./rshl-core');
+        const rawVec = textVec(text);
 
-        // Find best existing match via resonance
-        let bestScore = 0;
-        let bestCell = null;
-        for (const cell of cells) {
-            if (!cell.raw) continue;
-            const sim = resFn(qVec, cell.raw);
-            if (sim > bestScore) { bestScore = sim; bestCell = cell; }
-        }
+        // Dedup via universe.findSimilar — single source of resonance-based search
+        const dup  = universe.findSimilar(rawVec, 0.92);
+        const near = universe.findSimilar(rawVec, 0.72);
 
-        // Decide operation: NOOP (duplicate), UPDATE (similar), ADD (new)
         let op = 'ADD';
         let replaced = null;
+        const bestScore = dup.found ? dup.sim : (near.found ? near.sim : 0);
 
-        if (bestScore >= 0.92) {
-            // Near-duplicate — skip it
-            op = 'NOOP';
-            return { op, match_score: bestScore, replaced: null };
-        } else if (bestScore >= 0.72) {
-            // Similar enough to be an update — remove old, store new
+        if (dup.found) {
+            return { op: 'NOOP', match_score: dup.sim, replaced: null };
+        } else if (near.found) {
             op = 'UPDATE';
-            replaced = bestCell ? bestCell.text : null;
-            if (bestCell) universe.removeCell(bestCell.id);
+            replaced = near.cell.text;
+            universe.removeCell(near.cell.id);
         }
 
         this.records.push({
-            text: String(text),
+            text:   String(text),
             region: region || "memory",
-            meta: meta || {}
+            meta:   meta || {},
         });
         universe.store(text, region || "memory", meta || {});
 
@@ -235,28 +226,8 @@ class RSHLLattice {
         }));
     }
 
-    save(filepath) {
-        const payload = {
-            userName: this.userName,
-            records: this.records
-        };
-        fs.writeFileSync(filepath, JSON.stringify(payload, null, 2), "utf8");
-    }
-
-    load(filepath) {
-        const raw = JSON.parse(fs.readFileSync(filepath, "utf8"));
-        this.userName = raw.userName || this.userName;
-        this.records = Array.isArray(raw.records) ? raw.records : [];
-
-        universe.clear();
-        for (const rec of this.records) {
-            universe.store(
-                rec.text,
-                rec.region || "memory",
-                rec.meta || {}
-            );
-        }
-    }
+    // save() and load() removed — persistence.js is the single persistence layer.
+    // Use: require('./persistence').save() / .load()
 
     clear() {
         this.records = [];

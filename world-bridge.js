@@ -33,8 +33,8 @@
  * summarizing things for us.
  */
 
-const universe = require('./universe');
-const { textVec, resonance } = require('./rshl-core');
+const universe    = require('./universe');
+const { textVec } = require('./rshl-core');
 const { clamp01 } = require('./field-state');
 
 // ── Configuration ──────────────────────────────────────────────────────────────
@@ -114,17 +114,12 @@ function extractFacts(text) {
 // Uses resonance sweep against all cells — same mechanism as query().
 
 function isRedundant(text) {
-    const vec = textVec(text);
-    const cells = universe.getCells();
-
-    for (const cell of cells) {
-        if (!cell.raw) continue;
-        const sim = resonance(vec, cell.raw);
-        if (sim >= CONFIG.redundancyThreshold) {
-            return { redundant: true, matchedText: cell.text, sim };
-        }
+    // Routes through universe.findSimilar() — single dedup scan point.
+    const vec    = textVec(text);
+    const result = universe.findSimilar(vec, CONFIG.redundancyThreshold);
+    if (result.found) {
+        return { redundant: true, matchedText: result.cell.text, sim: result.sim };
     }
-
     return { redundant: false };
 }
 

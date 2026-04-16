@@ -1261,7 +1261,7 @@ async function preflight() {
   console.log("\n  ── Pre-flight system check ──────────────────────────────────");
   console.log("  Waiting for CPU and RAM to reach a clean bench state...");
   console.log(`  Targets:  CPU load < ${PREFLIGHT_CPU_MAX}%  |  Free RAM > ${PREFLIGHT_RAM_MIN} GB`);
-  console.log("  Tip: close Claude Code, browser, and heavy apps for best score.\n");
+  console.log("  Tip: close heavy apps, browser, and background processes for best score.\n");
 
   const deadline = Date.now() + PREFLIGHT_TIMEOUT * 1000;
   let pass = false;
