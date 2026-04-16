@@ -184,6 +184,12 @@ Binary POPCNT sustained recall:
   1,868 q/s at 25K entries (7.2x faster than sparse AVX2)
   Memory: 1024 bytes/row vs 4096 bytes/row — 4x less DRAM bandwidth
 
+Lattice ops (node eval/lattice-eval.js):
+  ADD/UPDATE/NOOP/DELETE classification: 80% correct (82/103)  ← was 46%
+  DELETE recall: 60%+ (was 0%)
+  Entity isolation: 88%
+  No LLM required — pure geometric classification
+
 Memory footprint at 10 years of daily use: 82MB
 GPT-4 weights: ~800GB  →  RSHL is 9,744x smaller
 ```
