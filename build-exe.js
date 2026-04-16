@@ -190,14 +190,51 @@ try {
     }
 }
 
+// ── Step 5: Set icon + metadata with rcedit ──────────────────────────────────
+const ICO_FILE = path.join(ROOT, 'kai-icon.ico');
+const RCEDIT = path.join(process.env.APPDATA || '', 'npm', 'node_modules', 'rcedit', 'bin', 'rcedit-x64.exe');
+
+if (fs.existsSync(RCEDIT) && fs.existsSync(ICO_FILE)) {
+    console.log('  [5/5] Setting icon + metadata...');
+    try {
+        // Do all in one call to avoid repeatedly rewriting the 80MB exe
+        const args = [
+            `"${EXE_NAME}"`,
+            `--set-icon "${ICO_FILE}"`,
+            `--set-file-version "5.0.0"`,
+            `--set-product-version "5.0.0"`,
+            `--set-version-string "CompanyName" "PandaProductionsLogo"`,
+            `--set-version-string "FileDescription" "KAI RSHL UI"`,
+            `--set-version-string "ProductName" "KAI"`,
+            `--set-version-string "LegalCopyright" "Copyright (c) 2026 Ryan Ervin"`,
+            `--set-version-string "OriginalFilename" "KAI.exe"`,
+            `--set-version-string "InternalName" "KAI"`,
+        ].join(' ');
+        execSync(`"${RCEDIT}" ${args}`, { cwd: ROOT, stdio: 'pipe', timeout: 300000 });
+        console.log('    ✓ Icon + metadata set');
+        console.log('      Company: PandaProductionsLogo');
+        console.log('      Description: KAI RSHL UI');
+        console.log('      Copyright: Ryan Ervin');
+    } catch (e) {
+        console.log('    ⚠ rcedit failed (exe still works, just has Node metadata)');
+        console.log('      ' + (e.stderr ? e.stderr.toString().slice(0, 100) : e.message));
+    }
+} else {
+    console.log('  [5/5] Skipping metadata (rcedit or icon not found)');
+    if (!fs.existsSync(RCEDIT)) console.log('    Install: npm install -g rcedit');
+    if (!fs.existsSync(ICO_FILE)) console.log('    Missing: kai-icon.ico');
+}
+
 const exeSize = Math.round(fs.statSync(EXE_NAME).size / (1024 * 1024));
 console.log('');
 console.log(`  ✅ KAI.exe created (${exeSize} MB)`);
+console.log(`     Company: PandaProductionsLogo`);
+console.log(`     Author:  Ryan Ervin`);
 console.log(`     Location: ${EXE_NAME}`);
 console.log('');
 console.log('  Run it:');
-console.log('    .\\KAI.exe');
+console.log('    .\\\\KAI.exe');
 console.log('');
-console.log('  Note: Run from C:\\KAI so it can find data/kai-state.json');
-console.log('  Or set KAI_HOME=C:\\KAI before running from elsewhere.');
+console.log('  Note: Run from C:\\\\KAI so it can find data/kai-state.json');
+console.log('  Or set KAI_HOME=C:\\\\KAI before running from elsewhere.');
 console.log('');
