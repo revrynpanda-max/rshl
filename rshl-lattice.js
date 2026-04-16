@@ -102,6 +102,7 @@ function pickBestInsight(decoded, sourceA, sourceB) {
 function consolidate(plasma, options = {}) {
     const candidateLimit = options.candidateLimit || 14;
     const goalText = options.goalText || DEFAULT_GOAL_TEXT;
+    const goalVec  = options.goalVec || null; // evolving goal vector from drive.js
 
     const candidates = universe.rankReplayCandidates(candidateLimit);
     if (!candidates || candidates.length < 2) return null;
@@ -127,9 +128,10 @@ function consolidate(plasma, options = {}) {
         sourceCells:    [pair.a, pair.b],
         candidateScores:[pair.overlap, clamp01(chosen.score)],
         goalText,
+        goalVec,        // evolving goal vector takes priority if present
         winnerKey,
         history:        DREAM_HISTORY,
-        totalCount:     universe.count(), // field-state is pure — caller supplies this
+        totalCount:     universe.count(),
     });
 
     const duplicateEcho =

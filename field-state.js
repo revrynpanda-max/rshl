@@ -45,10 +45,13 @@ function computeTau(history, winnerKey, windowSize = 8) {
     return clamp01(matches / tail.length);
 }
 
-function computeGoalAlignment(goalText, syntheticVec) {
-    if (!goalText || !syntheticVec) return 1;
-    const goalVec = textVec(goalText);
-    return clamp01(resonance(goalVec, syntheticVec));
+function computeGoalAlignment(goalText, syntheticVec, goalVec) {
+    if (!syntheticVec) return 1;
+    // Prefer pre-computed evolving goal vector over static text
+    if (goalVec) return clamp01(resonance(goalVec, syntheticVec));
+    if (!goalText) return 1;
+    const gVec = textVec(goalText);
+    return clamp01(resonance(gVec, syntheticVec));
 }
 
 function computeContradiction(sourceCells, candidateScores) {
@@ -82,6 +85,7 @@ function computeFieldState({
     sourceCells = [],
     candidateScores = [],
     goalText = "",
+    goalVec = null,   // evolving goal vector from drive.js (takes priority over goalText)
     winnerKey = "",
     history = [],
     totalCount,       // must be supplied by caller (e.g. universe.count())
@@ -118,7 +122,7 @@ function computeFieldState({
     const R = clamp01(mean(coherenceSamples.length ? coherenceSamples : [0]));
     const s = clamp01(1 / (1 + stddev(coherenceSamples.length ? coherenceSamples : [0])));
 
-    const g = computeGoalAlignment(goalText, syntheticVec);
+    const g = computeGoalAlignment(goalText, syntheticVec, goalVec);
     const chi = computeContradiction(sourceCells, coherenceSamples);
     const tau = computeTau(history, winnerKey, 8);
 
