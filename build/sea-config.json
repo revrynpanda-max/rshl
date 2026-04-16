@@ -1,0 +1,7 @@
+{
+  "main": "C:\\KAI\\build\\kai-bundle.js",
+  "output": "C:\\KAI\\build\\kai.blob",
+  "disableExperimentalSEAWarning": true,
+  "useSnapshot": false,
+  "useCodeCache": true
+}
