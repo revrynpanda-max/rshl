@@ -7,8 +7,9 @@ mod bridge;
 
 use crate::core::{FieldState, Universe, Lexicon, SparseVec, Embeddings};
 use crate::cognition::{
-    Reasoner, CandidateBuffer, PromotionThresholds,
+    Reasoner, ContextSlot, CandidateBuffer, PromotionThresholds,
     HomeostasisConfig, WorkingMemory, compose_response,
+    generate_response, detect_query_type, MoodState,
 };
 use crate::drive::{Drive, Mood};
 use crossterm::{
@@ -599,18 +600,54 @@ impl App {
             corrected_input
         };
 
-        let result = self.reasoner.reason(&reasoning_input, &self.universe);
+        // ── Build context slots from working memory ────────────────────
+        let context_slots: Vec<ContextSlot> = self.working_memory
+            .active_slots()
+            .iter()
+            .map(|(vec, strength)| ContextSlot {
+                vec: (*vec).clone(),
+                role: "user".to_string(), // simplified — both roles contribute
+                strength: *strength,
+            })
+            .collect();
 
-        if result.output_text.is_empty() || result.confidence < 0.05 {
+        // ── Reason WITH context (conversation-aware) ─────────────────
+        let result = self.reasoner.reason_with_context(
+            &reasoning_input, &self.universe, &context_slots,
+        );
+
+        // ── Detect query type for voice engine ───────────────────────
+        let query_type = detect_query_type(&reasoning_input);
+
+        // ── Build mood state for voice modulation ────────────────────
+        let mood_state = MoodState {
+            mood_name: self.drive.mood.to_string(),
+            valence: self.drive.valence,
+        };
+
+        // ── Get recent context for follow-up detection ───────────────
+        let recent_ctx = self.working_memory.recent_context(3);
+
+        // ── Query hits for voice engine ──────────────────────────────
+        let hits = self.universe.query(&reasoning_input, 5);
+
+        if hits.is_empty() || (result.output_text.is_empty() && result.confidence < 0.05) {
+            // ── Voice: no resonance response ─────────────────────────
+            let voice_text = generate_response(
+                &reasoning_input, &[], query_type, &mood_state, &recent_ctx,
+            );
             self.turns.push(Turn {
                 role: "kai".into(),
-                text: format!("No resonance for \"{}\"", reasoning_input),
+                text: voice_text.clone(),
                 region: None, score: None,
             });
+            // Still store in working memory
+            self.working_memory.push(&voice_text, "kai", self.tick);
         } else {
-            // ── Multi-cell composition ────────────────────────────────
-            let hits = self.universe.query(&reasoning_input, 5);
-            let composed = compose_response(&hits, &reasoning_input, 3);
+            // ── Voice Engine: generate natural response ──────────────
+            let voice_text = generate_response(
+                &reasoning_input, &hits, query_type, &mood_state, &recent_ctx,
+            );
 
             let depth_label = if result.depth > 1 {
                 format!(" [{}→ depth:{} Φg:{:.0}%]",
@@ -628,31 +665,24 @@ impl App {
                 String::new()
             };
 
-            // Use composed response if it has more depth
-            let response_text = if composed.depth > 1 && composed.confidence > result.confidence * 0.8 {
-                composed.text.clone()
-            } else {
-                result.output_text.clone()
-            };
-
             // ── Conversation Memory: store KAI's response ────────────
-            self.universe.store(&response_text, "reasoning", "conversation", 1.0);
+            self.universe.store(&voice_text, "reasoning", "conversation", 1.0);
 
             // ── Working Memory: store KAI's turn ──────────────────────
-            self.working_memory.push(&response_text, "kai", self.tick);
+            self.working_memory.push(&voice_text, "kai", self.tick);
 
-            // ── Spectate: show composition details ────────────────────
+            // ── Spectate: show voice engine details ───────────────────
             if self.spectate_mode {
-                self.think("CPU", "🔗", format!(
-                    "Composed from {} cells (conf:{:.0}%): {}",
-                    composed.depth, composed.confidence * 100.0,
-                    truncate(&response_text, 60)
+                self.think("CPU", "🗣", format!(
+                    "Voice: {:?} | mood:{} | {}",
+                    query_type, mood_state.mood_name,
+                    truncate(&voice_text, 60)
                 ));
             }
 
             self.turns.push(Turn {
                 role: "kai".into(),
-                text: format!("{}{}", response_text, depth_label),
+                text: format!("{}{}", voice_text, depth_label),
                 region: Some(result.output_region),
                 score: Some(result.confidence),
             });
