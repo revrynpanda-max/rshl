@@ -21,7 +21,9 @@
  *   github <owner/repo>     — ingest from GitHub repository
  *   dream                    — trigger one manual dream cycle
  *   promote                  — run promotion check
- *   status                   — show field metrics and state
+ *   status                   — show field metrics and drive state
+ *   mood                     — show current mood + valence
+ *   drive                    — full drive system snapshot
  *   save                     — force save state
  *   candidates               — show candidate buffer
  *   quit / exit              — save and exit
@@ -38,6 +40,7 @@ const { consolidate } = require('./rshl-lattice');
 const { generateToResult } = require('./generative-core');
 const bridge          = require('./world-bridge');
 const { runHomeostasis } = require('./homeostasis');
+const drive           = require('./drive');
 
 // ── Parse args ─────────────────────────────────────────────────────────────────
 const args = process.argv.slice(2);
@@ -63,6 +66,11 @@ if (!FRESH && persistence.stateExists()) {
     const result = persistence.load();
     if (result.ok) {
         console.log(`  ✓ Restored ${result.cells} cells, ${result.candidates} candidates`);
+        // Restore drive state if persisted
+        if (result.raw && result.raw.drive) {
+            drive.restore(result.raw.drive);
+            console.log(`  ✓ Drive state restored (mood: ${drive.getMood()}, valence: ${drive.getValence().toFixed(3)})`);
+        }
         plasma = new Plasma(false);
     } else {
         console.log(`  ✗ Load failed: ${result.error}`);
@@ -82,13 +90,21 @@ console.log(`  Candidates: ${candidateBuffer.size()} entries\n`);
 
 // ── Start heartbeat ────────────────────────────────────────────────────────────
 heartbeat.start(plasma, {
-    intervalMs: 8000,
+    intervalMs: 5000,
     goalText: GOAL_TEXT,
     onTick: (summary) => {
         if (SILENT) return;
-        const parts = [`  ♥ tick ${summary.tick}`];
+        const moodIcon = {
+            curious: '🔍', engaged: '⚡', neutral: '·',
+            uneasy: '😟', conflicted: '⚔️', dormant: '💤'
+        };
+        const icon = moodIcon[summary.mood] || '·';
+        const v = summary.valence !== undefined ? (summary.valence >= 0 ? '+' : '') + summary.valence.toFixed(3) : '?';
+        const ms = summary.intervalMs || '?';
+
+        const parts = [`  ♥ tick ${summary.tick} ${icon}${summary.mood || '?'} V=${v} ${ms}ms`];
         if (summary.dreamResult) {
-            parts.push(`dream="${summary.dreamResult.insight.slice(0, 40)}..."`);
+            parts.push(`dream="${summary.dreamResult.insight.slice(0, 35)}..."`);
         }
         if (summary.promoted && summary.promoted.length) {
             parts.push(`⬆ PROMOTED ${summary.promoted.length}`);
@@ -106,7 +122,7 @@ heartbeat.start(plasma, {
     },
 });
 
-console.log('  ♥ Heartbeat started (8s interval)\n');
+console.log(`  ♥ Heartbeat started (adaptive, mood: ${drive.getMood()})\n`);
 console.log('  Type "help" for commands. KAI is thinking in the background.\n');
 
 // ── Interactive REPL ───────────────────────────────────────────────────────────
@@ -137,7 +153,9 @@ rl.on('line', async (line) => {
             console.log('    dream                  — trigger one manual dream cycle');
             console.log('    promote                — run promotion check');
             console.log('    homeostasis            — run decay/pruning cycle');
-            console.log('    status                 — show field metrics');
+            console.log('    status                 — show field metrics + drive state');
+            console.log('    mood                   — current mood + valence');
+            console.log('    drive                  — full drive system snapshot');
             console.log('    candidates             — show candidate buffer');
             console.log('    save                   — force save state');
             console.log('    quit / exit            — save and exit\n');
@@ -238,16 +256,20 @@ rl.on('line', async (line) => {
             console.log();
             break;
 
-        case 'status':
+        case 'status': {
             const cells = universe.getCells();
             const cands = candidateBuffer.getAll();
             const promoted_count = cands.filter(c => c.status === 'promoted').length;
             const bridgeStats = bridge.getStats();
+            const ds = drive.getState();
 
             console.log('\n  ── KAI Status ──');
             console.log(`  Universe:    ${cells.length} cells`);
             console.log(`  Candidates:  ${cands.length} (${promoted_count} promoted)`);
-            console.log(`  Heartbeat:   ${heartbeat.isRunning() ? '♥ running' : '✗ stopped'} (tick ${heartbeat.tickCount()})`);
+            console.log(`  Heartbeat:   ${heartbeat.isRunning() ? '♥ running' : '✗ stopped'} (tick ${heartbeat.tickCount()}, ${heartbeat.currentInterval()}ms)`);
+            console.log(`  Mood:        ${ds.mood} (valence: ${ds.valence >= 0 ? '+' : ''}${ds.valence.toFixed(3)})`);
+            console.log(`  Drive:       avgΦg=${ds.avgPhiG.toFixed(4)} avgχ=${ds.avgChi.toFixed(4)} goal=${ds.goalComponents} components`);
+            console.log(`  Tempo:       ${ds.adaptiveMs}ms (${ds.adaptiveMs < 4000 ? 'fast/engaged' : ds.adaptiveMs > 7000 ? 'slow/resting' : 'moderate'})`);
             console.log(`  External:    ${bridgeStats.totalExternal} cells (${(bridgeStats.externalRatio * 100).toFixed(1)}%)`);
             if (Object.keys(bridgeStats.bySource).length) {
                 console.log(`  Sources:     ${JSON.stringify(bridgeStats.bySource)}`);
@@ -269,6 +291,7 @@ rl.on('line', async (line) => {
             }
             console.log();
             break;
+        }
 
         case 'candidates':
             const allCands = candidateBuffer.getAll()
@@ -285,16 +308,44 @@ rl.on('line', async (line) => {
             console.log();
             break;
 
-        case 'save':
-            const sr = persistence.save({ heartbeatTick: heartbeat.tickCount() });
+        case 'mood': {
+            const mds = drive.getState();
+            const moodEmoji = { curious: '🔍', engaged: '⚡', neutral: '·', uneasy: '😟', conflicted: '⚔️', dormant: '💤' };
+            console.log(`\n  ${moodEmoji[mds.mood] || '?'} Mood: ${mds.mood}`);
+            console.log(`  Valence: ${mds.valence >= 0 ? '+' : ''}${mds.valence.toFixed(4)}`);
+            console.log(`  avgΦg: ${mds.avgPhiG.toFixed(4)}  avgχ: ${mds.avgChi.toFixed(4)}`);
+            console.log(`  Tempo: ${mds.adaptiveMs}ms  Goal: ${mds.goalComponents} components\n`);
+            break;
+        }
+
+        case 'drive': {
+            const dsFull = drive.getState();
+            const vh = drive.getValenceHistory();
+            console.log('\n  ── Drive System ──');
+            console.log(`  Mood:          ${dsFull.mood}`);
+            console.log(`  Valence:       ${dsFull.valence >= 0 ? '+' : ''}${dsFull.valence.toFixed(4)}`);
+            console.log(`  ValenceH:      [${vh.slice(-10).map(v => v.toFixed(3)).join(', ')}]`);
+            console.log(`  avgΦg:         ${dsFull.avgPhiG.toFixed(4)}`);
+            console.log(`  avgχ:          ${dsFull.avgChi.toFixed(4)}`);
+            console.log(`  Goal vector:   ${dsFull.hasGoalVector ? 'ACTIVE' : 'not yet built'}`);
+            console.log(`  Goal inputs:   ${dsFull.goalComponents} promoted beliefs`);
+            console.log(`  Adaptive ms:   ${dsFull.adaptiveMs}`);
+            console.log(`  Heartbeat now: ${heartbeat.currentInterval()}ms\n`);
+            break;
+        }
+
+        case 'save': {
+            const sr = persistence.save({ heartbeatTick: heartbeat.tickCount(), drive: drive.serialize() });
             console.log(`  💾 Saved: ${sr.cells} cells, ${sr.candidates} candidates (${Math.round(sr.bytes / 1024)} KB)\n`);
             break;
+        }
 
         case 'quit':
         case 'exit':
             heartbeat.stop();
-            const fr = persistence.save({ heartbeatTick: heartbeat.tickCount() });
+            const fr = persistence.save({ heartbeatTick: heartbeat.tickCount(), drive: drive.serialize() });
             console.log(`\n  💾 Final save: ${fr.cells} cells, ${fr.candidates} candidates`);
+            console.log(`  Mood at shutdown: ${drive.getMood()} (valence: ${drive.getValence().toFixed(3)})`);
             console.log('  KAI entering dormancy. State preserved.\n');
             process.exit(0);
             break;
@@ -316,7 +367,7 @@ rl.on('line', async (line) => {
 
 rl.on('close', () => {
     heartbeat.stop();
-    persistence.save({ heartbeatTick: heartbeat.tickCount() });
+    persistence.save({ heartbeatTick: heartbeat.tickCount(), drive: drive.serialize() });
     console.log('\n  KAI dormant. State preserved.\n');
     process.exit(0);
 });

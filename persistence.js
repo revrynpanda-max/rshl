@@ -107,6 +107,9 @@ function save(options) {
                 rejectedReason:       c.rejectedReason,
             })),
         },
+
+        // Drive system state (goal vector, valence, mood history)
+        drive: opts.drive || null,
     };
 
     // Atomic write: write to tmp, then rename
@@ -242,6 +245,7 @@ function load(options) {
         heartbeatTick: snapshot.heartbeatTick || 0,
         savedAt: snapshot.savedAt,
         filepath,
+        raw: snapshot,  // expose full snapshot for drive restore
     };
 }
 
