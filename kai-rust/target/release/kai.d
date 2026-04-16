@@ -1,0 +1,1 @@
+C:\KAI\kai-rust\target\release\kai.exe: C:\KAI\kai-rust\src\core\field_state.rs C:\KAI\kai-rust\src\core\mod.rs C:\KAI\kai-rust\src\core\sparse_vec.rs C:\KAI\kai-rust\src\core\universe.rs C:\KAI\kai-rust\src\drive\heartbeat.rs C:\KAI\kai-rust\src\drive\mod.rs C:\KAI\kai-rust\src\main.rs
