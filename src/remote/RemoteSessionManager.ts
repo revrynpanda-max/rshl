@@ -56,7 +56,7 @@ export type RemoteSessionConfig = {
   /**
    * When true, this client is a pure viewer. Ctrl+C/Escape do NOT send
    * interrupt to the remote agent; 60s reconnect timeout is disabled;
-   * session title is never updated. Used by `claude assistant`.
+   * session title is never updated. Used by `KAI assistant`.
    */
   viewerOnly?: boolean
 }
@@ -88,7 +88,7 @@ export type RemoteSessionCallbacks = {
  * Manages a remote CCR session.
  *
  * Coordinates:
- * - WebSocket subscription for receiving messages from CCR
+ * - WebSocket local access for receiving messages from CCR
  * - HTTP POST for sending user messages to CCR
  * - Permission request/response flow
  */
@@ -315,7 +315,7 @@ export class RemoteSessionManager {
 
   /**
    * Force reconnect the WebSocket.
-   * Useful when the subscription becomes stale after container shutdown.
+   * Useful when the local access becomes stale after container shutdown.
    */
   reconnect(): void {
     logForDebugging('[RemoteSessionManager] Reconnecting WebSocket')

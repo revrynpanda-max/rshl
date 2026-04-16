@@ -11,8 +11,8 @@ import {
   logEvent,
 } from '../services/analytics/index.js'
 import {
-  getAnthropicApiKey,
-  getClaudeAIOAuthTokens,
+  getKAIApiKey,
+  getKaiAIOAuthTokens,
   handleOAuth401Error,
   hasProfileScope,
 } from './auth.js'
@@ -36,7 +36,7 @@ import {
 import { createSignal } from './signal.js'
 
 export function isFastModeEnabled(): boolean {
-  return !isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_FAST_MODE)
+  return !isEnvTruthy(process.env.KAI_ENGINE_DISABLE_FAST_MODE)
 }
 
 export function isFastModeAvailable(): boolean {
@@ -55,13 +55,13 @@ function getDisabledReasonMessage(
   switch (disabledReason) {
     case 'free':
       return authType === 'oauth'
-        ? 'Fast mode requires a paid subscription'
+        ? 'Fast mode requires a paid local access'
         : 'Fast mode unavailable during evaluation. Please purchase credits.'
     case 'preference':
       return 'Fast mode has been disabled by your organization'
     case 'extra_usage_disabled':
       // Only OAuth users can have extra_usage_disabled; console users don't have this concept
-      return 'Fast mode requires extra usage billing · /extra-usage to enable'
+      return 'Fast mode requires extra usage usage · /extra-usage to enable'
     case 'network_error':
       return 'Fast mode unavailable due to network connectivity issues'
     case 'unknown':
@@ -90,7 +90,7 @@ export function getFastModeUnavailableReason(): string | null {
     !isInBundledMode() &&
     getFeatureValue_CACHED_MAY_BE_STALE('tengu_marble_sandcastle', false)
   ) {
-    return 'Fast mode requires the native binary · Install from: https://claude.com/product/claude-code'
+    return 'Fast mode requires the native binary · Install from: https://kai.local/product/kai-engine'
   }
 
   // Not available in the SDK unless explicitly opted in via --settings.
@@ -122,15 +122,15 @@ export function getFastModeUnavailableReason(): string | null {
       orgStatus.reason === 'unknown'
     ) {
       // The org check can fail behind corporate proxies that block the
-      // endpoint. We add CLAUDE_CODE_SKIP_FAST_MODE_NETWORK_ERRORS=1 to
+      // endpoint. We add KAI_ENGINE_SKIP_FAST_MODE_NETWORK_ERRORS=1 to
       // bypass this check in the CC binary. This is OK since we have
       // another check in the API to error out when disabled by org.
-      if (isEnvTruthy(process.env.CLAUDE_CODE_SKIP_FAST_MODE_NETWORK_ERRORS)) {
+      if (isEnvTruthy(process.env.KAI_ENGINE_SKIP_FAST_MODE_NETWORK_ERRORS)) {
         return null
       }
     }
     const authType: AuthType =
-      getClaudeAIOAuthTokens() !== null ? 'oauth' : 'api-key'
+      getKaiAIOAuthTokens() !== null ? 'oauth' : 'api-key'
     const reason = getDisabledReasonMessage(orgStatus.reason, authType)
     logForDebugging(`Fast mode unavailable: ${reason}`)
     return reason
@@ -256,7 +256,7 @@ export function handleFastModeRejectedByAPI(): void {
 
 // --- Overage rejection listeners ---
 // Fired when a 429 indicates fast mode was rejected because extra usage
-// (overage billing) is not available. Distinct from org-level disabling.
+// (overage usage) is not available. Distinct from org-level disabling.
 const overageRejection = createSignal<[message: string]>()
 export const onFastModeOverageRejection = overageRejection.subscribe
 
@@ -277,7 +277,7 @@ function getOverageDisabledMessage(reason: string | null): string {
       return 'Fast mode disabled · extra usage not available for your plan'
     case 'overage_not_provisioned':
     case 'no_limits_configured':
-      return 'Fast mode requires extra usage billing · /extra-usage to enable'
+      return 'Fast mode requires extra usage usage · /extra-usage to enable'
     default:
       return 'Fast mode disabled · extra usage not available'
   }
@@ -367,12 +367,12 @@ type FastModeResponse = {
 async function fetchFastModeStatus(
   auth: { accessToken: string } | { apiKey: string },
 ): Promise<FastModeResponse> {
-  const endpoint = `${getOauthConfig().BASE_API_URL}/api/claude_code_penguin_mode`
+  const endpoint = `${getOauthConfig().BASE_API_URL}/api/KAI_ENGINE_penguin_mode`
   const headers: Record<string, string> =
     'accessToken' in auth
       ? {
           Authorization: `Bearer ${auth.accessToken}`,
-          'anthropic-beta': OAUTH_BETA_HEADER,
+          'kai-beta': OAUTH_BETA_HEADER,
         }
       : { 'x-api-key': auth.apiKey }
 
@@ -424,9 +424,9 @@ export async function prefetchFastModeStatus(): Promise<void> {
   // Service key OAuth sessions lack user:profile scope → endpoint 403s.
   // Resolve orgStatus from cache and bail before burning the throttle window.
   // API key auth is unaffected.
-  const apiKey = getAnthropicApiKey()
+  const apiKey = getKAIApiKey()
   const hasUsableOAuth =
-    getClaudeAIOAuthTokens()?.accessToken && hasProfileScope()
+    getKaiAIOAuthTokens()?.accessToken && hasProfileScope()
   if (!hasUsableOAuth && !apiKey) {
     const isAnt = process.env.USER_TYPE === 'ant'
     const cachedEnabled = getGlobalConfig().penguinModeOrgEnabled === true
@@ -445,7 +445,7 @@ export async function prefetchFastModeStatus(): Promise<void> {
   lastPrefetchAt = now
 
   const fetchWithCurrentAuth = async (): Promise<FastModeResponse> => {
-    const currentTokens = getClaudeAIOAuthTokens()
+    const currentTokens = getKaiAIOAuthTokens()
     const auth =
       currentTokens?.accessToken && hasProfileScope()
         ? { accessToken: currentTokens.accessToken }
@@ -471,7 +471,7 @@ export async function prefetchFastModeStatus(): Promise<void> {
               typeof err.response?.data === 'string' &&
               err.response.data.includes('OAuth token has been revoked')))
         if (isAuthError) {
-          const failedAccessToken = getClaudeAIOAuthTokens()?.accessToken
+          const failedAccessToken = getKaiAIOAuthTokens()?.accessToken
           if (failedAccessToken) {
             await handleOAuth401Error(failedAccessToken)
             status = await fetchWithCurrentAuth()

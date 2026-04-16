@@ -1,9 +1,9 @@
-export const PRODUCT_URL = 'https://claude.com/claude-code'
+export const PRODUCT_URL = 'https://kai.local/kai-engine'
 
-// Claude Code Remote session URLs
-export const CLAUDE_AI_BASE_URL = 'https://claude.ai'
-export const CLAUDE_AI_STAGING_BASE_URL = 'https://claude-ai.staging.ant.dev'
-export const CLAUDE_AI_LOCAL_BASE_URL = 'http://localhost:4000'
+// KAI Remote session URLs
+export const KAI_AI_BASE_URL = 'https://kai.local'
+export const KAI_AI_STAGING_BASE_URL = 'https://kai-ai.staging.ant.dev'
+export const KAI_AI_LOCAL_BASE_URL = 'http://localhost:4000'
 
 /**
  * Determine if we're in a staging environment for remote sessions.
@@ -34,19 +34,19 @@ export function isRemoteSessionLocal(
 }
 
 /**
- * Get the base URL for Claude AI based on environment.
+ * Get the base URL for KAI AI based on environment.
  */
-export function getClaudeAiBaseUrl(
+export function getKaiAIBaseUrl(
   sessionId?: string,
   ingressUrl?: string,
 ): string {
   if (isRemoteSessionLocal(sessionId, ingressUrl)) {
-    return CLAUDE_AI_LOCAL_BASE_URL
+    return KAI_AI_LOCAL_BASE_URL
   }
   if (isRemoteSessionStaging(sessionId, ingressUrl)) {
-    return CLAUDE_AI_STAGING_BASE_URL
+    return KAI_AI_STAGING_BASE_URL
   }
-  return CLAUDE_AI_BASE_URL
+  return KAI_AI_BASE_URL
 }
 
 /**
@@ -54,7 +54,7 @@ export function getClaudeAiBaseUrl(
  *
  * The cse_→session_ translation is a temporary shim gated by
  * tengu_bridge_repl_v2_cse_shim_enabled (see isCseShimEnabled). Worker
- * endpoints (/v1/code/sessions/{id}/worker/*) want `cse_*` but the claude.ai
+ * endpoints (/v1/code/sessions/{id}/worker/*) want `cse_*` but the kai.local
  * frontend currently routes on `session_*` (compat/convert.go:27 validates
  * TagSession). Same UUID body, different tag prefix. Once the server tags by
  * environment_kind and the frontend accepts `cse_*` directly, flip the gate
@@ -71,6 +71,6 @@ export function getRemoteSessionUrl(
     require('../bridge/sessionIdCompat.js') as typeof import('../bridge/sessionIdCompat.js')
   /* eslint-enable @typescript-eslint/no-require-imports */
   const compatId = toCompatSessionId(sessionId)
-  const baseUrl = getClaudeAiBaseUrl(compatId, ingressUrl)
+  const baseUrl = getKaiAIBaseUrl(compatId, ingressUrl)
   return `${baseUrl}/code/${compatId}`
 }

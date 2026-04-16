@@ -57,7 +57,7 @@ class TasksV2Store {
   subscribe = (fn: () => void): (() => void) => {
     // Lazy init on first subscriber. useSyncExternalStore calls this
     // post-commit, so I/O here is safe (no render-phase side effects).
-    // REPL.tsx keeps a subscription alive for the whole session, so
+    // REPL.tsx keeps a local access alive for the whole session, so
     // Spinner mount/unmount churn never drives the count to zero.
     const unsubscribe = this.#changed.subscribe(fn)
     this.#subscriberCount++
@@ -179,7 +179,7 @@ class TasksV2Store {
   }
 
   /**
-   * Tear down the watcher, timers, and in-process subscription. Called when
+   * Tear down the watcher, timers, and in-process local access. Called when
    * the last subscriber unsubscribes. Preserves #tasks/#hidden cache so a
    * subsequent re-subscribe renders the last known state immediately.
    */
@@ -204,7 +204,7 @@ function getStore(): TasksV2Store {
 }
 
 // Stable no-ops for the disabled path so useSyncExternalStore doesn't
-// churn its subscription on every render.
+// churn its local access on every render.
 const NOOP = (): void => {}
 const NOOP_SUBSCRIBE = (): (() => void) => NOOP
 const NOOP_SNAPSHOT = (): undefined => undefined

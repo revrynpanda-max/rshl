@@ -226,8 +226,30 @@ class RSHLLattice {
         }));
     }
 
-    // save() and load() removed — persistence.js is the single persistence layer.
-    // Use: require('./persistence').save() / .load()
+    save(filepath) {
+        const fs = require('fs');
+        const payload = {
+            userName: this.userName,
+            records: this.records
+        };
+        fs.writeFileSync(filepath, JSON.stringify(payload, null, 2), "utf8");
+    }
+
+    load(filepath) {
+        const fs = require('fs');
+        const raw = JSON.parse(fs.readFileSync(filepath, "utf8"));
+        this.userName = raw.userName || this.userName;
+        this.records = Array.isArray(raw.records) ? raw.records : [];
+
+        universe.clear();
+        for (const rec of this.records) {
+            universe.store(
+                rec.text,
+                rec.region || "memory",
+                rec.meta || {}
+            );
+        }
+    }
 
     clear() {
         this.records = [];

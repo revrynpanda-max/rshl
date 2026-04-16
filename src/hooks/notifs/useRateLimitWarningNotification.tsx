@@ -3,21 +3,21 @@ import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNotifications } from 'src/context/notifications.js';
 import { Text } from 'src/ink.js';
-import { getRateLimitWarning, getUsingOverageText } from 'src/services/claudeAiLimits.js';
-import { useClaudeAiLimits } from 'src/services/claudeAiLimitsHook.js';
-import { getSubscriptionType } from 'src/utils/auth.js';
-import { hasClaudeAiBillingAccess } from 'src/utils/billing.js';
+import { getRateLimitWarning, getUsingOverageText } from 'src/services/kaiAILimits.js';
+import { usekaiAILimits } from 'src/services/kaiAILimitsHook.js';
+import { getlocal accessType } from 'src/utils/auth.js';
+import { haskaiAIusageAccess } from 'src/utils/usage.js';
 import { getIsRemoteMode } from '../../bootstrap/state.js';
 export function useRateLimitWarningNotification(model) {
   const $ = _c(17);
   const {
     addNotification
   } = useNotifications();
-  const claudeAiLimits = useClaudeAiLimits();
+  const kaiAILimits = usekaiAILimits();
   let t0;
-  if ($[0] !== claudeAiLimits || $[1] !== model) {
-    t0 = getRateLimitWarning(claudeAiLimits, model);
-    $[0] = claudeAiLimits;
+  if ($[0] !== kaiAILimits || $[1] !== model) {
+    t0 = getRateLimitWarning(kaiAILimits, model);
+    $[0] = kaiAILimits;
     $[1] = model;
     $[2] = t0;
   } else {
@@ -25,9 +25,9 @@ export function useRateLimitWarningNotification(model) {
   }
   const rateLimitWarning = t0;
   let t1;
-  if ($[3] !== claudeAiLimits) {
-    t1 = getUsingOverageText(claudeAiLimits);
-    $[3] = claudeAiLimits;
+  if ($[3] !== kaiAILimits) {
+    t1 = getUsingOverageText(kaiAILimits);
+    $[3] = kaiAILimits;
     $[4] = t1;
   } else {
     t1 = $[4];
@@ -36,30 +36,30 @@ export function useRateLimitWarningNotification(model) {
   const shownWarningRef = useRef(null);
   let t2;
   if ($[5] === Symbol.for("react.memo_cache_sentinel")) {
-    t2 = getSubscriptionType();
+    t2 = getlocal accessType();
     $[5] = t2;
   } else {
     t2 = $[5];
   }
-  const subscriptionType = t2;
+  const local accessType = t2;
   let t3;
   if ($[6] === Symbol.for("react.memo_cache_sentinel")) {
-    t3 = hasClaudeAiBillingAccess();
+    t3 = haskaiAIusageAccess();
     $[6] = t3;
   } else {
     t3 = $[6];
   }
-  const hasBillingAccess = t3;
-  const isTeamOrEnterprise = subscriptionType === "team" || subscriptionType === "enterprise";
+  const hasusageAccess = t3;
+  const isTeamOrEnterprise = local accessType === "team" || local accessType === "enterprise";
   const [hasShownOverageNotification, setHasShownOverageNotification] = useState(false);
   let t4;
   let t5;
-  if ($[7] !== addNotification || $[8] !== claudeAiLimits.isUsingOverage || $[9] !== hasShownOverageNotification || $[10] !== usingOverageText) {
+  if ($[7] !== addNotification || $[8] !== kaiAILimits.isUsingOverage || $[9] !== hasShownOverageNotification || $[10] !== usingOverageText) {
     t4 = () => {
       if (getIsRemoteMode()) {
         return;
       }
-      if (claudeAiLimits.isUsingOverage && !hasShownOverageNotification && (!isTeamOrEnterprise || hasBillingAccess)) {
+      if (kaiAILimits.isUsingOverage && !hasShownOverageNotification && (!isTeamOrEnterprise || hasusageAccess)) {
         addNotification({
           key: "limit-reached",
           text: usingOverageText,
@@ -67,14 +67,14 @@ export function useRateLimitWarningNotification(model) {
         });
         setHasShownOverageNotification(true);
       } else {
-        if (!claudeAiLimits.isUsingOverage && hasShownOverageNotification) {
+        if (!kaiAILimits.isUsingOverage && hasShownOverageNotification) {
           setHasShownOverageNotification(false);
         }
       }
     };
-    t5 = [claudeAiLimits.isUsingOverage, usingOverageText, hasShownOverageNotification, addNotification, hasBillingAccess, isTeamOrEnterprise];
+    t5 = [kaiAILimits.isUsingOverage, usingOverageText, hasShownOverageNotification, addNotification, hasusageAccess, isTeamOrEnterprise];
     $[7] = addNotification;
-    $[8] = claudeAiLimits.isUsingOverage;
+    $[8] = kaiAILimits.isUsingOverage;
     $[9] = hasShownOverageNotification;
     $[10] = usingOverageText;
     $[11] = t4;

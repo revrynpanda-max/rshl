@@ -13,23 +13,23 @@ import {
   getIsNonInteractiveSession,
   getSessionId,
 } from '../../bootstrap/state.js'
-import { ClaudeCodeInternalEvent } from '../../types/generated/events_mono/claude_code/v1/claude_code_internal_event.js'
+import { KAICodeInternalEvent } from '../../types/generated/events_mono/KAI_ENGINE/v1/KAI_ENGINE_internal_event.js'
 import { GrowthbookExperimentEvent } from '../../types/generated/events_mono/growthbook/v1/growthbook_experiment_event.js'
 import {
-  getClaudeAIOAuthTokens,
+  getKaiAIOAuthTokens,
   hasProfileScope,
-  isClaudeAISubscriber,
+  iskaiAISubscriber,
 } from '../../utils/auth.js'
 import { checkHasTrustDialogAccepted } from '../../utils/config.js'
 import { logForDebugging } from '../../utils/debug.js'
-import { getClaudeConfigHomeDir } from '../../utils/envUtils.js'
+import { getKAIConfigHomeDir } from '../../utils/envUtils.js'
 import { errorMessage, isFsInaccessible, toError } from '../../utils/errors.js'
 import { getAuthHeaders } from '../../utils/http.js'
 import { readJSONLFile } from '../../utils/json.js'
 import { logError } from '../../utils/log.js'
 import { sleep } from '../../utils/sleep.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
-import { getClaudeCodeUserAgent } from '../../utils/userAgent.js'
+import { getKAICodeUserAgent } from '../../utils/userAgent.js'
 import { isOAuthTokenExpired } from '../oauth/client.js'
 import { stripProtoFields } from './index.js'
 import { type EventMetadata, to1PEventFormat } from './metadata.js'
@@ -40,14 +40,14 @@ const BATCH_UUID = randomUUID()
 // File prefix for failed event storage
 const FILE_PREFIX = '1p_failed_events.'
 
-// Storage directory for failed events - evaluated at runtime to respect CLAUDE_CONFIG_DIR in tests
+// Storage directory for failed events - evaluated at runtime to respect KAI_CONFIG_DIR in tests
 function getStorageDir(): string {
-  return path.join(getClaudeConfigHomeDir(), 'telemetry')
+  return path.join(getKAIConfigHomeDir(), 'telemetry')
 }
 
 // API envelope - event_data is the JSON output from proto toJSON()
 type FirstPartyEventLoggingEvent = {
-  event_type: 'ClaudeCodeInternalEvent' | 'GrowthbookExperimentEvent'
+  event_type: 'KAICodeInternalEvent' | 'GrowthbookExperimentEvent'
   event_data: unknown
 }
 
@@ -109,13 +109,13 @@ export class FirstPartyEventLoggingExporter implements LogRecordExporter {
       schedule?: (fn: () => Promise<void>, delayMs: number) => () => void
     } = {},
   ) {
-    // Default: prod, except when ANTHROPIC_BASE_URL is explicitly staging.
+    // Default: prod, except when KAI_BASE_URL is explicitly staging.
     // Overridable via tengu_1p_event_batch_config.baseUrl.
     const baseUrl =
       options.baseUrl ||
-      (process.env.ANTHROPIC_BASE_URL === 'https://api-staging.anthropic.com'
-        ? 'https://api-staging.anthropic.com'
-        : 'https://api.anthropic.com')
+      (process.env.KAI_BASE_URL === 'https://api-staging.KAI.com'
+        ? 'https://api-staging.KAI.com'
+        : 'https://api.KAI.com')
 
     this.endpoint = `${baseUrl}${options.path || '/api/event_logging/batch'}`
 
@@ -311,7 +311,7 @@ export class FirstPartyEventLoggingExporter implements LogRecordExporter {
       // Filter for event logs only (by scope name)
       const eventLogs = logs.filter(
         log =>
-          log.instrumentationScope?.name === 'com.anthropic.claude_code.events',
+          log.instrumentationScope?.name === 'com.KAI.KAI_ENGINE.events',
       )
 
       if (eventLogs.length === 0) {
@@ -537,8 +537,8 @@ export class FirstPartyEventLoggingExporter implements LogRecordExporter {
 
     const baseHeaders: Record<string, string> = {
       'Content-Type': 'application/json',
-      'User-Agent': getClaudeCodeUserAgent(),
-      'x-service-name': 'claude-code',
+      'User-Agent': getKAICodeUserAgent(),
+      'x-service-name': 'kai-engine',
     }
 
     // Skip auth if trust hasn't been established yet
@@ -553,8 +553,8 @@ export class FirstPartyEventLoggingExporter implements LogRecordExporter {
     // Skip auth when the OAuth token is expired or lacks user:profile
     // scope (service key sessions). Falls through to unauthenticated send.
     let shouldSkipAuth = this.skipAuth || !hasTrust
-    if (!shouldSkipAuth && isClaudeAISubscriber()) {
-      const tokens = getClaudeAIOAuthTokens()
+    if (!shouldSkipAuth && iskaiAISubscriber()) {
+      const tokens = getKaiAIOAuthTokens()
       if (!hasProfileScope()) {
         shouldSkipAuth = true
       } else if (tokens && isOAuthTokenExpired(tokens.expiresAt)) {
@@ -688,8 +688,8 @@ export class FirstPartyEventLoggingExporter implements LogRecordExporter {
           )
         }
         events.push({
-          event_type: 'ClaudeCodeInternalEvent',
-          event_data: ClaudeCodeInternalEvent.toJSON({
+          event_type: 'KAICodeInternalEvent',
+          event_data: KAICodeInternalEvent.toJSON({
             event_id: attributes.event_id as string | undefined,
             event_name: eventName,
             client_timestamp: this.hrTimeToDate(log.hrTime),
@@ -725,8 +725,8 @@ export class FirstPartyEventLoggingExporter implements LogRecordExporter {
       const additionalMetadata = stripProtoFields(rest)
 
       events.push({
-        event_type: 'ClaudeCodeInternalEvent',
-        event_data: ClaudeCodeInternalEvent.toJSON({
+        event_type: 'KAICodeInternalEvent',
+        event_data: KAICodeInternalEvent.toJSON({
           event_id: attributes.event_id as string | undefined,
           event_name: eventName,
           client_timestamp: this.hrTimeToDate(log.hrTime),

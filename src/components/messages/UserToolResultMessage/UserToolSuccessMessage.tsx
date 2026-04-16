@@ -36,7 +36,7 @@ export function UserToolSuccessMessage({
 }: Props): React.ReactNode {
   const [theme] = useTheme();
   // Hook stays inside feature() ternary so external builds don't pay a
-  // per-scrollback-message store subscription — same pattern as
+  // per-scrollback-message store local access — same pattern as
   // UserPromptMessage.tsx.
   const isBriefOnly = feature('KAIROS') || feature('KAIROS_BRIEF') ?
   // biome-ignore lint/correctness/useHookAtTopLevel: feature() is a compile-time constant
@@ -55,7 +55,7 @@ export function UserToolSuccessMessage({
 
   // Resumed transcripts deserialize toolUseResult via raw JSON.parse with no
   // validation (parseJSONL). A partial/corrupt/old-format result crashes
-  // renderToolResultMessage on first field access (anthropics/claude-code#39817).
+  // renderToolResultMessage on first field access (KAIs/kai-engine#39817).
   // Validate against outputSchema before rendering — mirrors CollapsedReadSearchContent.
   const parsedOutput = tool.outputSchema?.safeParse(message.toolUseResult);
   if (parsedOutput && !parsedOutput.success) {

@@ -1,10 +1,10 @@
 /**
  * Files are loaded in the following order:
  *
- * 1. Managed memory (eg. /etc/claude-code/CLAUDE.md) - Global instructions for all users
- * 2. User memory (~/.claude/CLAUDE.md) - Private global instructions for all projects
- * 3. Project memory (CLAUDE.md, .claude/CLAUDE.md, and .claude/rules/*.md in project roots) - Instructions checked into the codebase
- * 4. Local memory (CLAUDE.local.md in project roots) - Private project-specific instructions
+ * 1. Managed memory (eg. /etc/kai-engine/KAI.md) - Global instructions for all users
+ * 2. User memory (~/.kai/KAI.md) - Private global instructions for all projects
+ * 3. Project memory (KAI.md, .kai/KAI.md, and .kai/rules/*.md in project roots) - Instructions checked into the codebase
+ * 4. Local memory (KAI.local.md in project roots) - Private project-specific instructions
  *
  * Files are loaded in reverse order of priority, i.e. the latest files are highest priority
  * with the model paying more attention to them.
@@ -13,7 +13,7 @@
  * - User memory is loaded from the user's home directory
  * - Project and Local files are discovered by traversing from the current directory up to root
  * - Files closer to the current directory have higher priority (loaded later)
- * - CLAUDE.md, .claude/CLAUDE.md, and all .md files in .claude/rules/ are checked in each directory for Project memory
+ * - KAI.md, .kai/KAI.md, and all .md files in .kai/rules/ are checked in each directory for Project memory
  *
  * Memory @include directive:
  * - Memory files can include other files using @ notation
@@ -42,7 +42,7 @@ import {
 import picomatch from 'picomatch'
 import { logEvent } from 'src/services/analytics/index.js'
 import {
-  getAdditionalDirectoriesForClaudeMd,
+  getAdditionalDirectoriesForKaiMd,
   getOriginalCwd,
 } from '../bootstrap/state.js'
 import { truncateEntrypointContent } from '../memdir/memdir.js'
@@ -50,13 +50,13 @@ import { getAutoMemEntrypoint, isAutoMemoryEnabled } from '../memdir/paths.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
 import {
   getCurrentProjectConfig,
-  getManagedClaudeRulesDir,
+  getManagedKAIRulesDir,
   getMemoryPath,
-  getUserClaudeRulesDir,
+  getUserKAIRulesDir,
 } from './config.js'
 import { logForDebugging } from './debug.js'
 import { logForDiagnosticsNoPII } from './diagLogs.js'
-import { getClaudeConfigHomeDir, isEnvTruthy } from './envUtils.js'
+import { getKAIConfigHomeDir, isEnvTruthy } from './envUtils.js'
 import { getErrnoCode } from './errors.js'
 import { normalizePathForComparison } from './file.js'
 import { cacheKeys, type FileStateCache } from './fileStateCache.js'
@@ -408,9 +408,9 @@ function handleMemoryFileReadError(error: unknown, filePath: string): void {
   // Log permission errors (EACCES) as they're actionable
   if (code === 'EACCES') {
     // Don't log the full file path to avoid PII/security issues
-    logEvent('tengu_claude_md_permission_error', {
+    logEvent('tengu_KAI_md_permission_error', {
       is_access_error: 1,
-      has_home_dir: filePath.includes(getClaudeConfigHomeDir()) ? 1 : 0,
+      has_home_dir: filePath.includes(getKAIConfigHomeDir()) ? 1 : 0,
     })
   }
 }
@@ -537,19 +537,19 @@ function extractIncludePathsFromTokens(
 const MAX_INCLUDE_DEPTH = 5
 
 /**
- * Checks whether a CLAUDE.md file path is excluded by the claudeMdExcludes setting.
+ * Checks whether a KAI.md file path is excluded by the KaiMdExcludes setting.
  * Only applies to User, Project, and Local memory types.
  * Managed, AutoMem, and TeamMem types are never excluded.
  *
  * Matches both the original path and the realpath-resolved path to handle symlinks
  * (e.g., /tmp -> /private/tmp on macOS).
  */
-function isClaudeMdExcluded(filePath: string, type: MemoryType): boolean {
+function isKaiMdExcluded(filePath: string, type: MemoryType): boolean {
   if (type !== 'User' && type !== 'Project' && type !== 'Local') {
     return false
   }
 
-  const patterns = getInitialSettings().claudeMdExcludes
+  const patterns = getInitialSettings().KaiMdExcludes
   if (!patterns || patterns.length === 0) {
     return false
   }
@@ -559,7 +559,7 @@ function isClaudeMdExcluded(filePath: string, type: MemoryType): boolean {
 
   // Build an expanded pattern list that includes realpath-resolved versions of
   // absolute patterns. This handles symlinks like /tmp -> /private/tmp on macOS:
-  // the user writes "/tmp/project/CLAUDE.md" in their exclude, but the system
+  // the user writes "/tmp/project/KAI.md" in their exclude, but the system
   // resolves the CWD to "/private/tmp/project/...", so the file path uses the
   // real path. By resolving the patterns too, both sides match.
   const expandedPatterns = resolveExcludePatterns(patterns).filter(
@@ -596,7 +596,7 @@ function resolveExcludePatterns(patterns: string[]): string[] {
     const dirToResolve = dirname(staticPrefix)
 
     try {
-      // sync IO: called from sync context (isClaudeMdExcluded -> processMemoryFile -> getMemoryFiles)
+      // sync IO: called from sync context (isKaiMdExcluded -> processMemoryFile -> getMemoryFiles)
       const resolvedDir = fs.realpathSync(dirToResolve).replaceAll('\\', '/')
       if (resolvedDir !== dirToResolve) {
         const resolvedPattern =
@@ -631,8 +631,8 @@ export async function processMemoryFile(
     return []
   }
 
-  // Skip if path is excluded by claudeMdExcludes setting
-  if (isClaudeMdExcluded(filePath, type)) {
+  // Skip if path is excluded by KaiMdExcludes setting
+  if (isKaiMdExcluded(filePath, type)) {
     return []
   }
 
@@ -685,7 +685,7 @@ export async function processMemoryFile(
 }
 
 /**
- * Processes all .md files in the .claude/rules/ directory and its subdirectories
+ * Processes all .md files in the .kai/rules/ directory and its subdirectories
  * @param rulesDir The path to the rules directory
  * @param type Type of memory file (User, Project, Local)
  * @param processedPaths Set of already processed file paths
@@ -778,9 +778,9 @@ export async function processMdRules({
     return result
   } catch (error) {
     if (error instanceof Error && error.message.includes('EACCES')) {
-      logEvent('tengu_claude_rules_md_permission_error', {
+      logEvent('tengu_KAI_rules_md_permission_error', {
         is_access_error: 1,
-        has_home_dir: rulesDir.includes(getClaudeConfigHomeDir()) ? 1 : 0,
+        has_home_dir: rulesDir.includes(getKAIConfigHomeDir()) ? 1 : 0,
       })
     }
     return []
@@ -797,24 +797,24 @@ export const getMemoryFiles = memoize(
     const config = getCurrentProjectConfig()
     const includeExternal =
       forceIncludeExternal ||
-      config.hasClaudeMdExternalIncludesApproved ||
+      config.hasKaiMdExternalIncludesApproved ||
       false
 
     // Process Managed file first (always loaded - policy settings)
-    const managedClaudeMd = getMemoryPath('Managed')
+    const managedKaiMd = getMemoryPath('Managed')
     result.push(
       ...(await processMemoryFile(
-        managedClaudeMd,
+        managedKaiMd,
         'Managed',
         processedPaths,
         includeExternal,
       )),
     )
-    // Process Managed .claude/rules/*.md files
-    const managedClaudeRulesDir = getManagedClaudeRulesDir()
+    // Process Managed .kai/rules/*.md files
+    const managedKAIRulesDir = getManagedKAIRulesDir()
     result.push(
       ...(await processMdRules({
-        rulesDir: managedClaudeRulesDir,
+        rulesDir: managedKAIRulesDir,
         type: 'Managed',
         processedPaths,
         includeExternal,
@@ -824,20 +824,20 @@ export const getMemoryFiles = memoize(
 
     // Process User file (only if userSettings is enabled)
     if (isSettingSourceEnabled('userSettings')) {
-      const userClaudeMd = getMemoryPath('User')
+      const userKaiMd = getMemoryPath('User')
       result.push(
         ...(await processMemoryFile(
-          userClaudeMd,
+          userKaiMd,
           'User',
           processedPaths,
           true, // User memory can always include external files
         )),
       )
-      // Process User ~/.claude/rules/*.md files
-      const userClaudeRulesDir = getUserClaudeRulesDir()
+      // Process User ~/.kai/rules/*.md files
+      const userKAIRulesDir = getUserKAIRulesDir()
       result.push(
         ...(await processMdRules({
-          rulesDir: userClaudeRulesDir,
+          rulesDir: userKAIRulesDir,
           type: 'User',
           processedPaths,
           includeExternal: true,
@@ -857,14 +857,14 @@ export const getMemoryFiles = memoize(
     }
 
     // When running from a git worktree nested inside its main repo (e.g.,
-    // .claude/worktrees/<name>/ from `claude -w`), the upward walk passes
+    // .kai/worktrees/<name>/ from `KAI -w`), the upward walk passes
     // through both the worktree root and the main repo root. Both contain
-    // checked-in files like CLAUDE.md and .claude/rules/*.md, so the same
+    // checked-in files like KAI.md and .kai/rules/*.md, so the same
     // content gets loaded twice. Skip Project-type (checked-in) files from
     // directories above the worktree but within the main repo — the worktree
-    // already has its own checkout. CLAUDE.local.md is gitignored so it only
+    // already has its own checkout. KAI.local.md is gitignored so it only
     // exists in the main repo and is still loaded.
-    // See: https://github.com/anthropics/claude-code/issues/29599
+    // See: https://github.com/KAIs/kai-engine/issues/29599
     const gitRoot = findGitRoot(originalCwd)
     const canonicalRoot = findCanonicalGitRoot(originalCwd)
     const isNestedWorktree =
@@ -883,9 +883,9 @@ export const getMemoryFiles = memoize(
         pathInWorkingPath(dir, canonicalRoot) &&
         !pathInWorkingPath(dir, gitRoot)
 
-      // Try reading CLAUDE.md (Project) - only if projectSettings is enabled
+      // Try reading KAI.md (Project) - only if projectSettings is enabled
       if (isSettingSourceEnabled('projectSettings') && !skipProject) {
-        const projectPath = join(dir, 'CLAUDE.md')
+        const projectPath = join(dir, 'KAI.md')
         result.push(
           ...(await processMemoryFile(
             projectPath,
@@ -895,19 +895,19 @@ export const getMemoryFiles = memoize(
           )),
         )
 
-        // Try reading .claude/CLAUDE.md (Project)
-        const dotClaudePath = join(dir, '.claude', 'CLAUDE.md')
+        // Try reading .kai/KAI.md (Project)
+        const dotKAIPath = join(dir, '.KAI', 'KAI.md')
         result.push(
           ...(await processMemoryFile(
-            dotClaudePath,
+            dotKAIPath,
             'Project',
             processedPaths,
             includeExternal,
           )),
         )
 
-        // Try reading .claude/rules/*.md files (Project)
-        const rulesDir = join(dir, '.claude', 'rules')
+        // Try reading .kai/rules/*.md files (Project)
+        const rulesDir = join(dir, '.KAI', 'rules')
         result.push(
           ...(await processMdRules({
             rulesDir,
@@ -919,9 +919,9 @@ export const getMemoryFiles = memoize(
         )
       }
 
-      // Try reading CLAUDE.local.md (Local) - only if localSettings is enabled
+      // Try reading KAI.local.md (Local) - only if localSettings is enabled
       if (isSettingSourceEnabled('localSettings')) {
-        const localPath = join(dir, 'CLAUDE.local.md')
+        const localPath = join(dir, 'KAI.local.md')
         result.push(
           ...(await processMemoryFile(
             localPath,
@@ -933,15 +933,15 @@ export const getMemoryFiles = memoize(
       }
     }
 
-    // Process CLAUDE.md from additional directories (--add-dir) if env var is enabled
-    // This is controlled by CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD and defaults to off
+    // Process KAI.md from additional directories (--add-dir) if env var is enabled
+    // This is controlled by KAI_ENGINE_ADDITIONAL_DIRECTORIES_KAI_MD and defaults to off
     // Note: we don't check isSettingSourceEnabled('projectSettings') here because --add-dir
     // is an explicit user action and the SDK defaults settingSources to [] when not specified
-    if (isEnvTruthy(process.env.CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD)) {
-      const additionalDirs = getAdditionalDirectoriesForClaudeMd()
+    if (isEnvTruthy(process.env.KAI_ENGINE_ADDITIONAL_DIRECTORIES_KAI_MD)) {
+      const additionalDirs = getAdditionalDirectoriesForKaiMd()
       for (const dir of additionalDirs) {
-        // Try reading CLAUDE.md from the additional directory
-        const projectPath = join(dir, 'CLAUDE.md')
+        // Try reading KAI.md from the additional directory
+        const projectPath = join(dir, 'KAI.md')
         result.push(
           ...(await processMemoryFile(
             projectPath,
@@ -951,19 +951,19 @@ export const getMemoryFiles = memoize(
           )),
         )
 
-        // Try reading .claude/CLAUDE.md from the additional directory
-        const dotClaudePath = join(dir, '.claude', 'CLAUDE.md')
+        // Try reading .kai/KAI.md from the additional directory
+        const dotKAIPath = join(dir, '.KAI', 'KAI.md')
         result.push(
           ...(await processMemoryFile(
-            dotClaudePath,
+            dotKAIPath,
             'Project',
             processedPaths,
             includeExternal,
           )),
         )
 
-        // Try reading .claude/rules/*.md files from the additional directory
-        const rulesDir = join(dir, '.claude', 'rules')
+        // Try reading .kai/rules/*.md files from the additional directory
+        const rulesDir = join(dir, '.KAI', 'rules')
         result.push(
           ...(await processMdRules({
             rulesDir,
@@ -1024,7 +1024,7 @@ export const getMemoryFiles = memoize(
 
     if (!hasLoggedInitialLoad) {
       hasLoggedInitialLoad = true
-      logEvent('tengu_claudemd__initial_load', {
+      logEvent('tengu_KaiMd__initial_load', {
         file_count: result.length,
         total_content_length: totalContentLength,
         user_count: typeCounts['User'] ?? 0,
@@ -1042,9 +1042,9 @@ export const getMemoryFiles = memoize(
     // Fire InstructionsLoaded hook for each instruction file loaded
     // (fire-and-forget, audit/observability only).
     // AutoMem/TeamMem are intentionally excluded — they're a separate
-    // memory system, not "instructions" in the CLAUDE.md/rules sense.
+    // memory system, not "instructions" in the KAI.md/rules sense.
     // Gated on !forceIncludeExternal: the forceIncludeExternal=true variant
-    // is only used by getExternalClaudeMdIncludes() for approval checks, not
+    // is only used by getExternalKaiMdIncludes() for approval checks, not
     // for building context — firing the hook there would double-fire on startup.
     // The one-shot flag is consumed on every !forceIncludeExternal cache miss
     // (NOT gated on hasInstructionsLoadedHook) so the flag is released even
@@ -1150,7 +1150,7 @@ export function filterInjectedMemoryFiles(
   return files.filter(f => f.type !== 'AutoMem' && f.type !== 'TeamMem')
 }
 
-export const getClaudeMds = (
+export const getKaiMds = (
   memoryFiles: MemoryFileInfo[],
   filter?: (type: MemoryType) => boolean,
 ): string => {
@@ -1208,12 +1208,12 @@ export async function getManagedAndUserConditionalRules(
 ): Promise<MemoryFileInfo[]> {
   const result: MemoryFileInfo[] = []
 
-  // Process Managed conditional .claude/rules/*.md files
-  const managedClaudeRulesDir = getManagedClaudeRulesDir()
+  // Process Managed conditional .kai/rules/*.md files
+  const managedKAIRulesDir = getManagedKAIRulesDir()
   result.push(
     ...(await processConditionedMdRules(
       targetPath,
-      managedClaudeRulesDir,
+      managedKAIRulesDir,
       'Managed',
       processedPaths,
       false,
@@ -1221,12 +1221,12 @@ export async function getManagedAndUserConditionalRules(
   )
 
   if (isSettingSourceEnabled('userSettings')) {
-    // Process User conditional .claude/rules/*.md files
-    const userClaudeRulesDir = getUserClaudeRulesDir()
+    // Process User conditional .kai/rules/*.md files
+    const userKAIRulesDir = getUserKAIRulesDir()
     result.push(
       ...(await processConditionedMdRules(
         targetPath,
-        userClaudeRulesDir,
+        userKAIRulesDir,
         'User',
         processedPaths,
         true,
@@ -1239,7 +1239,7 @@ export async function getManagedAndUserConditionalRules(
 
 /**
  * Gets memory files for a single nested directory (between CWD and target).
- * Loads CLAUDE.md, unconditional rules, and conditional rules for that directory.
+ * Loads KAI.md, unconditional rules, and conditional rules for that directory.
  *
  * @param dir The directory to process
  * @param targetPath The target file path (for conditional rule matching)
@@ -1253,9 +1253,9 @@ export async function getMemoryFilesForNestedDirectory(
 ): Promise<MemoryFileInfo[]> {
   const result: MemoryFileInfo[] = []
 
-  // Process project memory files (CLAUDE.md and .claude/CLAUDE.md)
+  // Process project memory files (KAI.md and .kai/KAI.md)
   if (isSettingSourceEnabled('projectSettings')) {
-    const projectPath = join(dir, 'CLAUDE.md')
+    const projectPath = join(dir, 'KAI.md')
     result.push(
       ...(await processMemoryFile(
         projectPath,
@@ -1264,10 +1264,10 @@ export async function getMemoryFilesForNestedDirectory(
         false,
       )),
     )
-    const dotClaudePath = join(dir, '.claude', 'CLAUDE.md')
+    const dotKAIPath = join(dir, '.KAI', 'KAI.md')
     result.push(
       ...(await processMemoryFile(
-        dotClaudePath,
+        dotKAIPath,
         'Project',
         processedPaths,
         false,
@@ -1275,17 +1275,17 @@ export async function getMemoryFilesForNestedDirectory(
     )
   }
 
-  // Process local memory file (CLAUDE.local.md)
+  // Process local memory file (KAI.local.md)
   if (isSettingSourceEnabled('localSettings')) {
-    const localPath = join(dir, 'CLAUDE.local.md')
+    const localPath = join(dir, 'KAI.local.md')
     result.push(
       ...(await processMemoryFile(localPath, 'Local', processedPaths, false)),
     )
   }
 
-  const rulesDir = join(dir, '.claude', 'rules')
+  const rulesDir = join(dir, '.KAI', 'rules')
 
-  // Process project unconditional .claude/rules/*.md files, which were not eagerly loaded
+  // Process project unconditional .kai/rules/*.md files, which were not eagerly loaded
   // Use a separate processedPaths set to avoid marking conditional rule files as processed
   const unconditionalProcessedPaths = new Set(processedPaths)
   result.push(
@@ -1298,7 +1298,7 @@ export async function getMemoryFilesForNestedDirectory(
     })),
   )
 
-  // Process project conditional .claude/rules/*.md files
+  // Process project conditional .kai/rules/*.md files
   result.push(
     ...(await processConditionedMdRules(
       targetPath,
@@ -1331,7 +1331,7 @@ export async function getConditionalRulesForCwdLevelDirectory(
   targetPath: string,
   processedPaths: Set<string>,
 ): Promise<MemoryFileInfo[]> {
-  const rulesDir = join(dir, '.claude', 'rules')
+  const rulesDir = join(dir, '.KAI', 'rules')
   return processConditionedMdRules(
     targetPath,
     rulesDir,
@@ -1342,7 +1342,7 @@ export async function getConditionalRulesForCwdLevelDirectory(
 }
 
 /**
- * Processes all .md files in the .claude/rules/ directory and its subdirectories,
+ * Processes all .md files in the .kai/rules/ directory and its subdirectories,
  * filtering to only include files with frontmatter paths that match the target path
  * @param targetPath The file path to match against frontmatter glob patterns
  * @param rulesDir The path to the rules directory
@@ -1372,11 +1372,11 @@ export async function processConditionedMdRules(
       return false
     }
 
-    // For Project rules: glob patterns are relative to the directory containing .claude
+    // For Project rules: glob patterns are relative to the directory containing .KAI
     // For Managed/User rules: glob patterns are relative to the original CWD
     const baseDir =
       type === 'Project'
-        ? dirname(dirname(rulesDir)) // Parent of .claude
+        ? dirname(dirname(rulesDir)) // Parent of .KAI
         : getOriginalCwd() // Project root for managed/user rules
 
     const relativePath = isAbsolute(targetPath)
@@ -1396,15 +1396,15 @@ export async function processConditionedMdRules(
   })
 }
 
-export type ExternalClaudeMdInclude = {
+export type ExternalKaiMdInclude = {
   path: string
   parent: string
 }
 
-export function getExternalClaudeMdIncludes(
+export function getExternalKaiMdIncludes(
   files: MemoryFileInfo[],
-): ExternalClaudeMdInclude[] {
-  const externals: ExternalClaudeMdInclude[] = []
+): ExternalKaiMdInclude[] {
+  const externals: ExternalKaiMdInclude[] = []
   for (const file of files) {
     if (file.type !== 'User' && file.parent && !pathInOriginalCwd(file.path)) {
       externals.push({ path: file.path, parent: file.parent })
@@ -1413,37 +1413,37 @@ export function getExternalClaudeMdIncludes(
   return externals
 }
 
-export function hasExternalClaudeMdIncludes(files: MemoryFileInfo[]): boolean {
-  return getExternalClaudeMdIncludes(files).length > 0
+export function hasExternalKaiMdIncludes(files: MemoryFileInfo[]): boolean {
+  return getExternalKaiMdIncludes(files).length > 0
 }
 
-export async function shouldShowClaudeMdExternalIncludesWarning(): Promise<boolean> {
+export async function shouldShowKaiMdExternalIncludesWarning(): Promise<boolean> {
   const config = getCurrentProjectConfig()
   if (
-    config.hasClaudeMdExternalIncludesApproved ||
-    config.hasClaudeMdExternalIncludesWarningShown
+    config.hasKaiMdExternalIncludesApproved ||
+    config.hasKaiMdExternalIncludesWarningShown
   ) {
     return false
   }
 
-  return hasExternalClaudeMdIncludes(await getMemoryFiles(true))
+  return hasExternalKaiMdIncludes(await getMemoryFiles(true))
 }
 
 /**
- * Check if a file path is a memory file (CLAUDE.md, CLAUDE.local.md, or .claude/rules/*.md)
+ * Check if a file path is a memory file (KAI.md, KAI.local.md, or .kai/rules/*.md)
  */
 export function isMemoryFilePath(filePath: string): boolean {
   const name = basename(filePath)
 
-  // CLAUDE.md or CLAUDE.local.md anywhere
-  if (name === 'CLAUDE.md' || name === 'CLAUDE.local.md') {
+  // KAI.md or KAI.local.md anywhere
+  if (name === 'KAI.md' || name === 'KAI.local.md') {
     return true
   }
 
-  // .md files in .claude/rules/ directories
+  // .md files in .kai/rules/ directories
   if (
     name.endsWith('.md') &&
-    filePath.includes(`${sep}.claude${sep}rules${sep}`)
+    filePath.includes(`${sep}.KAI${sep}rules${sep}`)
   ) {
     return true
   }

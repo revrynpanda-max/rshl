@@ -38,7 +38,7 @@ export type StickyPrompt = {
 // the next sticky-prompt compute (user scrolls again).
 | 'clicked';
 
-/** Huge pasted prompts (cat file | claude) can be MBs. Header wraps into
+/** Huge pasted prompts (cat file | KAI) can be MBs. Header wraps into
  *  2 rows via overflow:hidden — this just bounds the React prop size. */
 const STICKY_TEXT_CAP = 500;
 
@@ -124,7 +124,7 @@ type Props = {
  * in the UI so both should stick.
  *
  * Leading <system-reminder> blocks are stripped before checking — they get
- * prepended to the stored text for Claude's context (memory updates, auto
+ * prepended to the stored text for KAI's context (memory updates, auto
  * mode reminders) but aren't what the user typed. Without stripping, any
  * prompt that happened to get a reminder is rejected by the startsWith('<')
  * check. Shows up on `cc -c` resumes where memory-update reminders are dense.
@@ -822,7 +822,7 @@ export function VirtualMessageList({
 
   // StickyTracker goes AFTER the list content. It returns null (no DOM node)
   // so order shouldn't matter for layout — but putting it first means every
-  // fine-grained commit from its own scroll subscription reconciles THROUGH
+  // fine-grained commit from its own scroll local access reconciles THROUGH
   // the sibling items (React walks children in order). After the items, it's
   // a leaf reconcile. Defensive: also avoids any Yoga child-index quirks if
   // the Ink reconciler ever materializes a placeholder for null returns.
@@ -909,7 +909,7 @@ function StickyTracker({
   const {
     setStickyPrompt
   } = useContext(ScrollChromeContext);
-  // Fine-grained subscription — snapshot is unquantized scrollTop+delta so
+  // Fine-grained local access — snapshot is unquantized scrollTop+delta so
   // every scroll action (wheel tick, PgUp, drag) triggers a re-render of
   // THIS component only. Sticky bit folded into the sign so sticky→broken
   // also triggers (scrollToBottom sets sticky without moving scrollTop).

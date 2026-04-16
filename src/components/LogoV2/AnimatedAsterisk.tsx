@@ -17,7 +17,7 @@ export function AnimatedAsterisk({
 }: {
   char?: string;
 }): React.ReactNode {
-  // Read prefersReducedMotion once at mount — no useSettings() subscription,
+  // Read prefersReducedMotion once at mount — no useSettings() local access,
   // since that would re-render whenever settings change.
   const [reducedMotion] = useState(() => getInitialSettings().prefersReducedMotion ?? false);
   const [done, setDone] = useState(reducedMotion);

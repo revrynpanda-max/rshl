@@ -21,7 +21,7 @@ import {
 } from '../../bootstrap/state.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
 import { isOfficialMcpUrl } from '../mcp/officialRegistry.js'
-import { isClaudeAISubscriber, getSubscriptionType } from '../../utils/auth.js'
+import { iskaiAISubscriber, getlocal accessType } from '../../utils/auth.js'
 import { getRepoRemoteHash } from '../../utils/git.js'
 import {
   getWslVersion,
@@ -30,7 +30,7 @@ import {
 } from '../../utils/platform.js'
 import type { CoreUserData } from 'src/utils/user.js'
 import { getAgentContext } from '../../utils/agentContext.js'
-import type { EnvironmentMetadata } from '../../types/generated/events_mono/claude_code/v1/claude_code_internal_event.js'
+import type { EnvironmentMetadata } from '../../types/generated/events_mono/KAI_ENGINE/v1/KAI_ENGINE_internal_event.js'
 import type { PublicApiAuth } from '../../types/generated/events_mono/common/v1/auth.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
 import {
@@ -93,9 +93,9 @@ export function isToolDetailsLoggingEnabled(): boolean {
  *
  * Per go/taxonomy, MCP names are medium PII. We log them for:
  * - Cowork (entrypoint=local-agent) — no ZDR concept, log all MCPs
- * - claude.ai-proxied connectors — always official (from claude.ai's list)
+ * - kai.local-proxied connectors — always official (from kai.local's list)
  * - Servers whose URL matches the official MCP registry — directory
- *   connectors added via `claude mcp add`, not customer-specific config
+ *   connectors added via `KAI mcp add`, not customer-specific config
  *
  * Custom/user-configured MCPs stay sanitized (toolName='mcp_tool').
  */
@@ -103,10 +103,10 @@ export function isAnalyticsToolDetailsLoggingEnabled(
   mcpServerType: string | undefined,
   mcpServerBaseUrl: string | undefined,
 ): boolean {
-  if (process.env.CLAUDE_CODE_ENTRYPOINT === 'local-agent') {
+  if (process.env.KAI_ENGINE_ENTRYPOINT === 'local-agent') {
     return true
   }
-  if (mcpServerType === 'claudeai-proxy') {
+  if (mcpServerType === 'kaiAI-proxy') {
     return true
   }
   if (mcpServerBaseUrl && isOfficialMcpUrl(mcpServerBaseUrl)) {
@@ -425,17 +425,17 @@ export type EnvContext = {
   isRunningWithBun: boolean
   isCi: boolean
   isClaubbit: boolean
-  isClaudeCodeRemote: boolean
+  isKAICodeRemote: boolean
   isLocalAgentMode: boolean
   isConductor: boolean
   remoteEnvironmentType?: string
   coworkerType?: string
-  claudeCodeContainerId?: string
-  claudeCodeRemoteSessionId?: string
+  KAICodeContainerId?: string
+  KAICodeRemoteSessionId?: string
   tags?: string
   isGithubAction: boolean
-  isClaudeCodeAction: boolean
-  isClaudeAiAuth: boolean
+  isKAICodeAction: boolean
+  iskaiAIAuth: boolean
   version: string
   versionBase?: string
   buildTime: string
@@ -484,11 +484,11 @@ export type EventMetadata = {
   sweBenchInstanceId: string
   sweBenchTaskId: string
   // Swarm/team agent identification for analytics attribution
-  agentId?: string // CLAUDE_CODE_AGENT_ID (format: agentName@teamName) or subagent UUID
-  parentSessionId?: string // CLAUDE_CODE_PARENT_SESSION_ID (team lead's session)
+  agentId?: string // KAI_ENGINE_AGENT_ID (format: agentName@teamName) or subagent UUID
+  parentSessionId?: string // KAI_ENGINE_PARENT_SESSION_ID (team lead's session)
   agentType?: 'teammate' | 'subagent' | 'standalone' // Distinguishes swarm teammates, Agent tool subagents, and standalone agents
   teamName?: string // Team name for swarm agents (from env var or AsyncLocalStorage)
-  subscriptionType?: string // OAuth subscription tier (max, pro, enterprise, team)
+  local accessType?: string // OAuth local access tier (max, pro, enterprise, team)
   rh?: string // Hashed repo remote URL (first 16 chars of SHA256), for joining with server-side data
   kairosActive?: true // KAIROS assistant mode active (ant-only; set in main.tsx after gate check)
   skillMode?: 'discovery' | 'coach' | 'discovery_and_coach' // Which skill surfacing mechanism(s) are gated on (ant-only; for BQ session segmentation)
@@ -583,8 +583,8 @@ const buildEnvContext = memoize(async (): Promise<EnvContext> => {
     platform: getHostPlatformForAnalytics(),
     // Raw process.platform so freebsd/openbsd/aix/sunos are visible in BQ.
     // getHostPlatformForAnalytics() buckets those into 'linux'; here we want
-    // the truth. CLAUDE_CODE_HOST_PLATFORM still overrides for container/remote.
-    platformRaw: process.env.CLAUDE_CODE_HOST_PLATFORM || process.platform,
+    // the truth. KAI_ENGINE_HOST_PLATFORM still overrides for container/remote.
+    platformRaw: process.env.KAI_ENGINE_HOST_PLATFORM || process.platform,
     arch: env.arch,
     nodeVersion: env.nodeVersion,
     terminal: envDynamic.terminal,
@@ -593,30 +593,30 @@ const buildEnvContext = memoize(async (): Promise<EnvContext> => {
     isRunningWithBun: env.isRunningWithBun(),
     isCi: isEnvTruthy(process.env.CI),
     isClaubbit: isEnvTruthy(process.env.CLAUBBIT),
-    isClaudeCodeRemote: isEnvTruthy(process.env.CLAUDE_CODE_REMOTE),
-    isLocalAgentMode: process.env.CLAUDE_CODE_ENTRYPOINT === 'local-agent',
+    isKAICodeRemote: isEnvTruthy(process.env.KAI_ENGINE_REMOTE),
+    isLocalAgentMode: process.env.KAI_ENGINE_ENTRYPOINT === 'local-agent',
     isConductor: env.isConductor(),
-    ...(process.env.CLAUDE_CODE_REMOTE_ENVIRONMENT_TYPE && {
-      remoteEnvironmentType: process.env.CLAUDE_CODE_REMOTE_ENVIRONMENT_TYPE,
+    ...(process.env.KAI_ENGINE_REMOTE_ENVIRONMENT_TYPE && {
+      remoteEnvironmentType: process.env.KAI_ENGINE_REMOTE_ENVIRONMENT_TYPE,
     }),
     // Gated by feature flag to prevent leaking "coworkerType" string in external builds
     ...(feature('COWORKER_TYPE_TELEMETRY')
-      ? process.env.CLAUDE_CODE_COWORKER_TYPE
-        ? { coworkerType: process.env.CLAUDE_CODE_COWORKER_TYPE }
+      ? process.env.KAI_ENGINE_COWORKER_TYPE
+        ? { coworkerType: process.env.KAI_ENGINE_COWORKER_TYPE }
         : {}
       : {}),
-    ...(process.env.CLAUDE_CODE_CONTAINER_ID && {
-      claudeCodeContainerId: process.env.CLAUDE_CODE_CONTAINER_ID,
+    ...(process.env.KAI_ENGINE_CONTAINER_ID && {
+      KAICodeContainerId: process.env.KAI_ENGINE_CONTAINER_ID,
     }),
-    ...(process.env.CLAUDE_CODE_REMOTE_SESSION_ID && {
-      claudeCodeRemoteSessionId: process.env.CLAUDE_CODE_REMOTE_SESSION_ID,
+    ...(process.env.KAI_ENGINE_REMOTE_SESSION_ID && {
+      KAICodeRemoteSessionId: process.env.KAI_ENGINE_REMOTE_SESSION_ID,
     }),
-    ...(process.env.CLAUDE_CODE_TAGS && {
-      tags: process.env.CLAUDE_CODE_TAGS,
+    ...(process.env.KAI_ENGINE_TAGS && {
+      tags: process.env.KAI_ENGINE_TAGS,
     }),
     isGithubAction: isEnvTruthy(process.env.GITHUB_ACTIONS),
-    isClaudeCodeAction: isEnvTruthy(process.env.CLAUDE_CODE_ACTION),
-    isClaudeAiAuth: isClaudeAISubscriber(),
+    isKAICodeAction: isEnvTruthy(process.env.KAI_ENGINE_ACTION),
+    iskaiAIAuth: iskaiAISubscriber(),
     version: MACRO.VERSION,
     versionBase: getVersionBase(),
     buildTime: MACRO.BUILD_TIME,
@@ -626,9 +626,9 @@ const buildEnvContext = memoize(async (): Promise<EnvContext> => {
       githubActionsRunnerEnvironment: process.env.RUNNER_ENVIRONMENT,
       githubActionsRunnerOs: process.env.RUNNER_OS,
       githubActionRef: process.env.GITHUB_ACTION_PATH?.includes(
-        'claude-code-action/',
+        'kai-engine-action/',
       )
-        ? process.env.GITHUB_ACTION_PATH.split('claude-code-action/')[1]
+        ? process.env.GITHUB_ACTION_PATH.split('kai-engine-action/')[1]
         : undefined,
     }),
     ...(getWslVersion() && { wslVersion: getWslVersion() }),
@@ -710,11 +710,11 @@ export async function getEventMetadata(
     userType: process.env.USER_TYPE || '',
     ...(betas.length > 0 ? { betas: betas } : {}),
     envContext,
-    ...(process.env.CLAUDE_CODE_ENTRYPOINT && {
-      entrypoint: process.env.CLAUDE_CODE_ENTRYPOINT,
+    ...(process.env.KAI_ENGINE_ENTRYPOINT && {
+      entrypoint: process.env.KAI_ENGINE_ENTRYPOINT,
     }),
-    ...(process.env.CLAUDE_AGENT_SDK_VERSION && {
-      agentSdkVersion: process.env.CLAUDE_AGENT_SDK_VERSION,
+    ...(process.env.KAI_AGENT_SDK_VERSION && {
+      agentSdkVersion: process.env.KAI_AGENT_SDK_VERSION,
     }),
     isInteractive: String(getIsInteractive()),
     clientType: getClientType(),
@@ -725,9 +725,9 @@ export async function getEventMetadata(
     // Swarm/team agent identification
     // Priority: AsyncLocalStorage context (subagents) > env vars (swarm teammates)
     ...getAgentIdentification(),
-    // Subscription tier for DAU-by-tier analytics
-    ...(getSubscriptionType() && {
-      subscriptionType: getSubscriptionType()!,
+    // local access tier for DAU-by-tier analytics
+    ...(getlocal accessType() && {
+      local accessType: getlocal accessType()!,
     }),
     // Assistant mode tag — lives outside memoized buildEnvContext() because
     // setKairosActive() runs at main.tsx:~1648, after the first event may
@@ -771,14 +771,14 @@ export type FirstPartyEventLoggingCoreMetadata = {
 export type FirstPartyEventLoggingMetadata = {
   env: EnvironmentMetadata
   process?: string
-  // auth is a top-level field on ClaudeCodeInternalEvent (proto PublicApiAuth).
+  // auth is a top-level field on KAICodeInternalEvent (proto PublicApiAuth).
   // account_id is intentionally omitted — only UUID fields are populated client-side.
   auth?: PublicApiAuth
-  // core fields correspond to the top level of ClaudeCodeInternalEvent.
+  // core fields correspond to the top level of KAICodeInternalEvent.
   // They get directly exported to their individual columns in the BigQuery tables
   core: FirstPartyEventLoggingCoreMetadata
   // additional fields are populated in the additional_metadata field of the
-  // ClaudeCodeInternalEvent proto. Includes but is not limited to information
+  // KAICodeInternalEvent proto. Includes but is not limited to information
   // that differs by event type.
   additional: Record<string, unknown>
 }
@@ -815,7 +815,7 @@ export function to1PEventFormat(
   // parallel type previously let #11318, #13924, #19448, and coworker_type all
   // ship fields that never reached BQ.
   // Adding a field? Update the monorepo proto first (go/cc-logging):
-  //   event_schemas/.../claude_code/v1/claude_code_internal_event.proto
+  //   event_schemas/.../KAI_ENGINE/v1/KAI_ENGINE_internal_event.proto
   // then run `bun run generate:proto` here.
   const env: EnvironmentMetadata = {
     platform: envContext.platform,
@@ -828,12 +828,12 @@ export function to1PEventFormat(
     is_running_with_bun: envContext.isRunningWithBun,
     is_ci: envContext.isCi,
     is_claubbit: envContext.isClaubbit,
-    is_claude_code_remote: envContext.isClaudeCodeRemote,
+    is_KAI_ENGINE_remote: envContext.isKAICodeRemote,
     is_local_agent_mode: envContext.isLocalAgentMode,
     is_conductor: envContext.isConductor,
     is_github_action: envContext.isGithubAction,
-    is_claude_code_action: envContext.isClaudeCodeAction,
-    is_claude_ai_auth: envContext.isClaudeAiAuth,
+    is_KAI_ENGINE_action: envContext.isKAICodeAction,
+    is_KAI_ai_auth: envContext.iskaiAIAuth,
     version: envContext.version,
     build_time: envContext.buildTime,
     deployment_environment: envContext.deploymentEnvironment,
@@ -846,11 +846,11 @@ export function to1PEventFormat(
   if (feature('COWORKER_TYPE_TELEMETRY') && envContext.coworkerType) {
     env.coworker_type = envContext.coworkerType
   }
-  if (envContext.claudeCodeContainerId) {
-    env.claude_code_container_id = envContext.claudeCodeContainerId
+  if (envContext.KAICodeContainerId) {
+    env.KAI_ENGINE_container_id = envContext.KAICodeContainerId
   }
-  if (envContext.claudeCodeRemoteSessionId) {
-    env.claude_code_remote_session_id = envContext.claudeCodeRemoteSessionId
+  if (envContext.KAICodeRemoteSessionId) {
+    env.KAI_ENGINE_remote_session_id = envContext.KAICodeRemoteSessionId
   }
   if (envContext.tags) {
     env.tags = envContext.tags
@@ -934,10 +934,10 @@ export function to1PEventFormat(
 
   // Map userMetadata to output fields.
   // Based on src/utils/user.ts getUser(), but with fields present in other
-  // parts of ClaudeCodeInternalEvent deduplicated.
+  // parts of KAICodeInternalEvent deduplicated.
   // Convert camelCase GitHubActionsMetadata to snake_case for 1P API
   // Note: github_actions_metadata is placed inside env (EnvironmentMetadata)
-  // rather than at the top level of ClaudeCodeInternalEvent
+  // rather than at the top level of KAICodeInternalEvent
   if (userMetadata.githubActionsMetadata) {
     const ghMeta = userMetadata.githubActionsMetadata
     env.github_actions_metadata = {

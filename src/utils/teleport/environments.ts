@@ -1,12 +1,12 @@
 import axios from 'axios'
 import { getOauthConfig } from 'src/constants/oauth.js'
 import { getOrganizationUUID } from 'src/services/oauth/client.js'
-import { getClaudeAIOAuthTokens } from '../auth.js'
+import { getKaiAIOAuthTokens } from '../auth.js'
 import { toError } from '../errors.js'
 import { logError } from '../log.js'
 import { getOAuthHeaders } from './api.js'
 
-export type EnvironmentKind = 'anthropic_cloud' | 'byoc' | 'bridge'
+export type EnvironmentKind = 'KAI_cloud' | 'byoc' | 'bridge'
 export type EnvironmentState = 'active'
 
 export type EnvironmentResource = {
@@ -30,10 +30,10 @@ export type EnvironmentListResponse = {
  * @throws Error if the API request fails or no access token is available
  */
 export async function fetchEnvironments(): Promise<EnvironmentResource[]> {
-  const accessToken = getClaudeAIOAuthTokens()?.accessToken
+  const accessToken = getKaiAIOAuthTokens()?.accessToken
   if (!accessToken) {
     throw new Error(
-      'Claude Code web sessions require authentication with a Claude.ai account. API key authentication is not sufficient. Please run /login to authenticate, or check your authentication status with /status.',
+      'KAI web sessions require authentication with a kai.local account. API key authentication is not sufficient. Please run /login to authenticate, or check your authentication status with /status.',
     )
   }
 
@@ -70,13 +70,13 @@ export async function fetchEnvironments(): Promise<EnvironmentResource[]> {
 }
 
 /**
- * Creates a default anthropic_cloud environment for users who have none.
+ * Creates a default KAI_cloud environment for users who have none.
  * Uses the public environment_providers route (same auth as fetchEnvironments).
  */
 export async function createDefaultCloudEnvironment(
   name: string,
 ): Promise<EnvironmentResource> {
-  const accessToken = getClaudeAIOAuthTokens()?.accessToken
+  const accessToken = getKaiAIOAuthTokens()?.accessToken
   if (!accessToken) {
     throw new Error('No access token available')
   }
@@ -90,10 +90,10 @@ export async function createDefaultCloudEnvironment(
     url,
     {
       name,
-      kind: 'anthropic_cloud',
+      kind: 'KAI_cloud',
       description: '',
       config: {
-        environment_type: 'anthropic',
+        environment_type: 'KAI',
         cwd: '/home/user',
         init_script: null,
         environment: {},
@@ -110,7 +110,7 @@ export async function createDefaultCloudEnvironment(
     {
       headers: {
         ...getOAuthHeaders(accessToken),
-        'anthropic-beta': 'ccr-byoc-2025-07-29',
+        'kai-beta': 'ccr-byoc-2025-07-29',
         'x-organization-uuid': orgUUID,
       },
       timeout: 15000,

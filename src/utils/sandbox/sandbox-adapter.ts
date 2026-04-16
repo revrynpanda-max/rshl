@@ -1,6 +1,6 @@
 /**
- * Adapter layer that wraps @anthropic-ai/sandbox-runtime with Claude CLI-specific integrations.
- * This file provides the bridge between the external sandbox-runtime package and Claude CLI's
+ * Adapter layer that wraps @kai-ai/sandbox-runtime with KAI CLI-specific integrations.
+ * This file provides the bridge between the external sandbox-runtime package and KAI CLI's
  * settings system, tool integration, and additional features.
  */
 
@@ -14,18 +14,18 @@ import type {
   SandboxDependencyCheck,
   SandboxRuntimeConfig,
   SandboxViolationEvent,
-} from '@anthropic-ai/sandbox-runtime'
+} from '@kai-ai/sandbox-runtime'
 import {
   SandboxManager as BaseSandboxManager,
   SandboxRuntimeConfigSchema,
   SandboxViolationStore,
-} from '@anthropic-ai/sandbox-runtime'
+} from '@kai-ai/sandbox-runtime'
 import { rmSync, statSync } from 'fs'
 import { readFile } from 'fs/promises'
 import { memoize } from 'lodash-es'
 import { join, resolve, sep } from 'path'
 import {
-  getAdditionalDirectoriesForClaudeMd,
+  getAdditionalDirectoriesForKaiMd,
   getCwdState,
   getOriginalCwd,
 } from '../../bootstrap/state.js'
@@ -54,7 +54,7 @@ import { FILE_EDIT_TOOL_NAME } from 'src/tools/FileEditTool/constants.js'
 import { FILE_READ_TOOL_NAME } from 'src/tools/FileReadTool/prompt.js'
 import { WEB_FETCH_TOOL_NAME } from 'src/tools/WebFetchTool/prompt.js'
 import { errorMessage } from '../errors.js'
-import { getClaudeTempDir } from '../permissions/filesystem.js'
+import { getKAITempDir } from '../permissions/filesystem.js'
 import type { PermissionRuleValue } from '../permissions/PermissionRule.js'
 import { ripgrepCommand } from '../ripgrep.js'
 
@@ -81,9 +81,9 @@ function permissionRuleExtractPrefix(permissionRule: string): string | null {
 }
 
 /**
- * Resolve Claude Code-specific path patterns for sandbox-runtime.
+ * Resolve KAI-specific path patterns for sandbox-runtime.
  *
- * Claude Code uses special path prefixes in permission rules:
+ * KAI uses special path prefixes in permission rules:
  * - `//path` → absolute from filesystem root (becomes `/path`)
  * - `/path` → relative to settings file directory (becomes `$SETTINGS_DIR/path`)
  * - `~/path` → passed through (sandbox-runtime handles this)
@@ -164,7 +164,7 @@ function shouldAllowManagedReadPathsOnly(): boolean {
 }
 
 /**
- * Convert Claude Code settings format to SandboxRuntimeConfig format
+ * Convert KAI settings format to SandboxRuntimeConfig format
  * (Function exported for testing)
  *
  * @param settings Merged settings (used for sandbox config like network, ripgrep, etc.)
@@ -220,15 +220,15 @@ export function convertToSandboxRuntimeConfig(
   }
 
   // Extract filesystem paths from Edit and Read rules
-  // Always include current directory and Claude temp directory as writable
+  // Always include current directory and KAI temp directory as writable
   // The temp directory is needed for Shell.ts cwd tracking files
-  const allowWrite: string[] = ['.', getClaudeTempDir()]
+  const allowWrite: string[] = ['.', getKAITempDir()]
   const denyWrite: string[] = []
   const denyRead: string[] = []
   const allowRead: string[] = []
 
   // Always deny writes to settings.json files to prevent sandbox escape
-  // This blocks settings in the original working directory (where Claude Code started)
+  // This blocks settings in the original working directory (where KAI started)
   const settingsPaths = SETTING_SOURCES.map(source =>
     getSettingsFilePathForSource(source),
   ).filter((p): p is string => p !== undefined)
@@ -240,23 +240,23 @@ export function convertToSandboxRuntimeConfig(
   const cwd = getCwdState()
   const originalCwd = getOriginalCwd()
   if (cwd !== originalCwd) {
-    denyWrite.push(resolve(cwd, '.claude', 'settings.json'))
-    denyWrite.push(resolve(cwd, '.claude', 'settings.local.json'))
+    denyWrite.push(resolve(cwd, '.KAI', 'settings.json'))
+    denyWrite.push(resolve(cwd, '.KAI', 'settings.local.json'))
   }
 
-  // Block writes to .claude/skills in both original and current working directories.
-  // The sandbox-runtime's getDangerousDirectories() protects .claude/commands and
-  // .claude/agents but not .claude/skills. Skills have the same privilege level
-  // (auto-discovered, auto-loaded, full Claude capabilities) so they need the
+  // Block writes to .kai/skills in both original and current working directories.
+  // The sandbox-runtime's getDangerousDirectories() protects .kai/commands and
+  // .kai/agents but not .kai/skills. Skills have the same privilege level
+  // (auto-discovered, auto-loaded, full KAI capabilities) so they need the
   // same OS-level sandbox protection.
-  denyWrite.push(resolve(originalCwd, '.claude', 'skills'))
+  denyWrite.push(resolve(originalCwd, '.KAI', 'skills'))
   if (cwd !== originalCwd) {
-    denyWrite.push(resolve(cwd, '.claude', 'skills'))
+    denyWrite.push(resolve(cwd, '.KAI', 'skills'))
   }
 
   // SECURITY: Git's is_git_directory() treats cwd as a bare repo if it has
   // HEAD + objects/ + refs/. An attacker planting these (plus a config with
-  // core.fsmonitor) escapes the sandbox when Claude's unsandboxed git runs.
+  // core.fsmonitor) escapes the sandbox when KAI's unsandboxed git runs.
   //
   // Unconditionally denying these paths makes sandbox-runtime mount
   // /dev/null at non-existent ones, which (a) leaves a 0-byte HEAD stub on
@@ -294,7 +294,7 @@ export function convertToSandboxRuntimeConfig(
   // Two sources: persisted in settings, and session-only in bootstrap state.
   const additionalDirs = new Set([
     ...(settings.permissions?.additionalDirectories || []),
-    ...getAdditionalDirectoriesForClaudeMd(),
+    ...getAdditionalDirectoriesForKaiMd(),
   ])
   allowWrite.push(...additionalDirs)
 
@@ -381,11 +381,11 @@ export function convertToSandboxRuntimeConfig(
 }
 
 // ============================================================================
-// Claude CLI-specific state
+// KAI CLI-specific state
 // ============================================================================
 
 let initializationPromise: Promise<void> | undefined
-let settingsSubscriptionCleanup: (() => void) | undefined
+let settingslocal accessCleanup: (() => void) | undefined
 
 // Cached main repo path for git worktrees, resolved once during initialize().
 // In a worktree, .git is a file containing "gitdir: /path/to/main/repo/.git/worktrees/name".
@@ -393,13 +393,13 @@ let settingsSubscriptionCleanup: (() => void) | undefined
 let worktreeMainRepoPath: string | null | undefined
 
 // Bare-repo files at cwd that didn't exist at config time and should be
-// scrubbed if they appear after a sandboxed command. See anthropics/claude-code#29316.
+// scrubbed if they appear after a sandboxed command. See KAIs/kai-engine#29316.
 const bareGitRepoScrubPaths: string[] = []
 
 /**
  * Delete bare-repo files planted at cwd during a sandboxed command, before
- * Claude's unsandboxed git calls can see them. See the SECURITY block above
- * bareGitRepoFiles. anthropics/claude-code#29316.
+ * KAI's unsandboxed git calls can see them. See the SECURITY block above
+ * bareGitRepoFiles. KAIs/kai-engine#29316.
  */
 function scrubBareGitRepoFiles(): void {
   for (const p of bareGitRepoScrubPaths) {
@@ -773,7 +773,7 @@ async function initialize(
       await BaseSandboxManager.initialize(runtimeConfig, wrappedCallback)
 
       // Subscribe to settings changes to update sandbox config dynamically
-      settingsSubscriptionCleanup = settingsChangeDetector.subscribe(() => {
+      settingslocal accessCleanup = settingsChangeDetector.subscribe(() => {
         const settings = getSettings_DEPRECATED()
         const newConfig = convertToSandboxRuntimeConfig(settings)
         BaseSandboxManager.updateConfig(newConfig)
@@ -806,9 +806,9 @@ function refreshConfig(): void {
  * Reset sandbox state and clear memoized values
  */
 async function reset(): Promise<void> {
-  // Clean up settings subscription
-  settingsSubscriptionCleanup?.()
-  settingsSubscriptionCleanup = undefined
+  // Clean up settings local access
+  settingslocal accessCleanup?.()
+  settingslocal accessCleanup = undefined
   worktreeMainRepoPath = undefined
   bareGitRepoScrubPaths.length = 0
 
@@ -823,7 +823,7 @@ async function reset(): Promise<void> {
 
 /**
  * Add a command to the excluded commands list (commands that should not be sandboxed)
- * This is a Claude CLI-specific function that updates local settings.
+ * This is a KAI CLI-specific function that updates local settings.
  */
 export function addToExcludedCommands(
   command: string,
@@ -922,7 +922,7 @@ export interface ISandboxManager {
 }
 
 /**
- * Claude CLI sandbox manager - wraps sandbox-runtime with Claude-specific features
+ * KAI CLI sandbox manager - wraps sandbox-runtime with KAI-specific features
  */
 export const SandboxManager: ISandboxManager = {
   // Custom implementations

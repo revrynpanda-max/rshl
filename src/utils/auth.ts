@@ -4,7 +4,7 @@ import { execa } from 'execa'
 import { mkdir, stat } from 'fs/promises'
 import memoize from 'lodash-es/memoize.js'
 import { join } from 'path'
-import { CLAUDE_AI_PROFILE_SCOPE } from 'src/constants/oauth.js'
+import { KAI_AI_PROFILE_SCOPE } from 'src/constants/oauth.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -16,16 +16,16 @@ import {
   preferThirdPartyAuthentication,
 } from '../bootstrap/state.js'
 import {
-  getMockSubscriptionType,
-  shouldUseMockSubscription,
+  getMocklocal accessType,
+  shouldUseMocklocal access,
 } from '../services/mockRateLimits.js'
 import {
   isOAuthTokenExpired,
   refreshOAuthToken,
-  shouldUseClaudeAIAuth,
+  shouldUsekaiAIAuth,
 } from '../services/oauth/client.js'
 import { getOauthProfileFromOauthToken } from '../services/oauth/getOauthProfile.js'
-import type { OAuthTokens, SubscriptionType } from '../services/oauth/types.js'
+import type { OAuthTokens, local accessType } from '../services/oauth/types.js'
 import {
   getApiKeyFromFileDescriptor,
   getOAuthTokenFromFileDescriptor,
@@ -49,7 +49,7 @@ import {
 } from './config.js'
 import { logAntError, logForDebugging } from './debug.js'
 import {
-  getClaudeConfigHomeDir,
+  getKAIConfigHomeDir,
   isBareMode,
   isEnvTruthy,
   isRunningOnHomespace,
@@ -81,59 +81,59 @@ import { clearToolSchemaCache } from './toolSchemaCache.js'
 const DEFAULT_API_KEY_HELPER_TTL = 5 * 60 * 1000
 
 /**
- * CCR and Claude Desktop spawn the CLI with OAuth and should never fall back
- * to the user's ~/.claude/settings.json API-key config (apiKeyHelper,
- * env.ANTHROPIC_API_KEY, env.ANTHROPIC_AUTH_TOKEN). Those settings exist for
+ * CCR and KAI Desktop spawn the CLI with OAuth and should never fall back
+ * to the user's ~/.kai/settings.json API-key config (apiKeyHelper,
+ * env.KAI_API_KEY, env.KAI_AUTH_TOKEN). Those settings exist for
  * the user's terminal CLI, not managed sessions. Without this guard, a user
- * who runs `claude` in their terminal with an API key sees every CCD session
+ * who runs `KAI` in their terminal with an API key sees every CCD session
  * also use that key — and fail if it's stale/wrong-org.
  */
 function isManagedOAuthContext(): boolean {
   return (
-    isEnvTruthy(process.env.CLAUDE_CODE_REMOTE) ||
-    process.env.CLAUDE_CODE_ENTRYPOINT === 'claude-desktop'
+    isEnvTruthy(process.env.KAI_ENGINE_REMOTE) ||
+    process.env.KAI_ENGINE_ENTRYPOINT === 'KAI-desktop'
   )
 }
 
 /** Whether we are supporting direct 1P auth. */
 // this code is closely related to getAuthTokenSource
-export function isAnthropicAuthEnabled(): boolean {
+export function isKAIAuthEnabled(): boolean {
   // --bare: API-key-only, never OAuth.
   if (isBareMode()) return false
 
-  // `claude ssh` remote: ANTHROPIC_UNIX_SOCKET tunnels API calls through a
-  // local auth-injecting proxy. The launcher sets CLAUDE_CODE_OAUTH_TOKEN as a
+  // `kai ssh` remote: KAI_UNIX_SOCKET tunnels API calls through a
+  // local auth-injecting proxy. The launcher sets KAI_ENGINE_OAUTH_TOKEN as a
   // placeholder iff the local side is a subscriber (so the remote includes the
   // oauth-2025 beta header to match what the proxy will inject). The remote's
-  // ~/.claude settings (apiKeyHelper, settings.env.ANTHROPIC_API_KEY) MUST NOT
+  // ~/.KAI settings (apiKeyHelper, settings.env.KAI_API_KEY) MUST NOT
   // flip this — they'd cause a header mismatch with the proxy and a bogus
   // "invalid x-api-key" from the API. See src/ssh/sshAuthProxy.ts.
-  if (process.env.ANTHROPIC_UNIX_SOCKET) {
-    return !!process.env.CLAUDE_CODE_OAUTH_TOKEN
+  if (process.env.KAI_UNIX_SOCKET) {
+    return !!process.env.KAI_ENGINE_OAUTH_TOKEN
   }
 
   const is3P =
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_BEDROCK) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_VERTEX) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_FOUNDRY)
+    isEnvTruthy(process.env.KAI_ENGINE_USE_BEDROCK) ||
+    isEnvTruthy(process.env.KAI_ENGINE_USE_VERTEX) ||
+    isEnvTruthy(process.env.KAI_ENGINE_USE_FOUNDRY)
 
   // Check if user has configured an external API key source
   // This allows externally-provided API keys to work (without requiring proxy configuration)
   const settings = getSettings_DEPRECATED() || {}
   const apiKeyHelper = settings.apiKeyHelper
   const hasExternalAuthToken =
-    process.env.ANTHROPIC_AUTH_TOKEN ||
+    process.env.KAI_AUTH_TOKEN ||
     apiKeyHelper ||
-    process.env.CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR
+    process.env.KAI_ENGINE_API_KEY_FILE_DESCRIPTOR
 
   // Check if API key is from an external source (not managed by /login)
-  const { source: apiKeySource } = getAnthropicApiKeyWithSource({
+  const { source: apiKeySource } = getKAIApiKeyWithSource({
     skipRetrievingKeyFromApiKeyHelper: true,
   })
   const hasExternalApiKey =
-    apiKeySource === 'ANTHROPIC_API_KEY' || apiKeySource === 'apiKeyHelper'
+    apiKeySource === 'KAI_API_KEY' || apiKeySource === 'apiKeyHelper'
 
-  // Disable Anthropic auth if:
+  // Disable KAI auth if:
   // 1. Using 3rd party services (Bedrock/Vertex/Foundry)
   // 2. User has an external API key (regardless of proxy configuration)
   // 3. User has an external auth token (regardless of proxy configuration)
@@ -148,7 +148,7 @@ export function isAnthropicAuthEnabled(): boolean {
 }
 
 /** Where the auth token is being sourced from, if any. */
-// this code is closely related to isAnthropicAuthEnabled
+// this code is closely related to isKAIAuthEnabled
 export function getAuthTokenSource() {
   // --bare: API-key-only. apiKeyHelper (from --settings) is the only
   // bearer-token-shaped source allowed. OAuth env vars, FD tokens, and
@@ -160,12 +160,12 @@ export function getAuthTokenSource() {
     return { source: 'none' as const, hasToken: false }
   }
 
-  if (process.env.ANTHROPIC_AUTH_TOKEN && !isManagedOAuthContext()) {
-    return { source: 'ANTHROPIC_AUTH_TOKEN' as const, hasToken: true }
+  if (process.env.KAI_AUTH_TOKEN && !isManagedOAuthContext()) {
+    return { source: 'KAI_AUTH_TOKEN' as const, hasToken: true }
   }
 
-  if (process.env.CLAUDE_CODE_OAUTH_TOKEN) {
-    return { source: 'CLAUDE_CODE_OAUTH_TOKEN' as const, hasToken: true }
+  if (process.env.KAI_ENGINE_OAUTH_TOKEN) {
+    return { source: 'KAI_ENGINE_OAUTH_TOKEN' as const, hasToken: true }
   }
 
   // Check for OAuth token from file descriptor (or its CCR disk fallback)
@@ -177,9 +177,9 @@ export function getAuthTokenSource() {
     // doesn't exist. Call sites fall through correctly — the new source is
     // !== 'none' (cli/handlers/auth.ts → oauth_token) and not in the
     // isEnvVarToken set (auth.ts:1844 → generic re-login message).
-    if (process.env.CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR) {
+    if (process.env.KAI_ENGINE_OAUTH_TOKEN_FILE_DESCRIPTOR) {
       return {
-        source: 'CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR' as const,
+        source: 'KAI_ENGINE_OAUTH_TOKEN_FILE_DESCRIPTOR' as const,
         hasToken: true,
       }
     }
@@ -196,44 +196,44 @@ export function getAuthTokenSource() {
     return { source: 'apiKeyHelper' as const, hasToken: true }
   }
 
-  const oauthTokens = getClaudeAIOAuthTokens()
-  if (shouldUseClaudeAIAuth(oauthTokens?.scopes) && oauthTokens?.accessToken) {
-    return { source: 'claude.ai' as const, hasToken: true }
+  const oauthTokens = getKaiAIOAuthTokens()
+  if (shouldUsekaiAIAuth(oauthTokens?.scopes) && oauthTokens?.accessToken) {
+    return { source: 'kai.local' as const, hasToken: true }
   }
 
   return { source: 'none' as const, hasToken: false }
 }
 
 export type ApiKeySource =
-  | 'ANTHROPIC_API_KEY'
+  | 'KAI_API_KEY'
   | 'apiKeyHelper'
   | '/login managed key'
   | 'none'
 
-export function getAnthropicApiKey(): null | string {
-  const { key } = getAnthropicApiKeyWithSource()
+export function getKAIApiKey(): null | string {
+  const { key } = getKAIApiKeyWithSource()
   return key
 }
 
-export function hasAnthropicApiKeyAuth(): boolean {
-  const { key, source } = getAnthropicApiKeyWithSource({
+export function hasKAIApiKeyAuth(): boolean {
+  const { key, source } = getKAIApiKeyWithSource({
     skipRetrievingKeyFromApiKeyHelper: true,
   })
   return key !== null && source !== 'none'
 }
 
-export function getAnthropicApiKeyWithSource(
+export function getKAIApiKeyWithSource(
   opts: { skipRetrievingKeyFromApiKeyHelper?: boolean } = {},
 ): {
   key: null | string
   source: ApiKeySource
 } {
-  // --bare: hermetic auth. Only ANTHROPIC_API_KEY env or apiKeyHelper from
+  // --bare: hermetic auth. Only KAI_API_KEY env or apiKeyHelper from
   // the --settings flag. Never touches keychain, config file, or approval
   // lists. 3P (Bedrock/Vertex/Foundry) uses provider creds, not this path.
   if (isBareMode()) {
-    if (process.env.ANTHROPIC_API_KEY) {
-      return { key: process.env.ANTHROPIC_API_KEY, source: 'ANTHROPIC_API_KEY' }
+    if (process.env.KAI_API_KEY) {
+      return { key: process.env.KAI_API_KEY, source: 'KAI_API_KEY' }
     }
     if (getConfiguredApiKeyHelper()) {
       return {
@@ -246,18 +246,18 @@ export function getAnthropicApiKeyWithSource(
     return { key: null, source: 'none' }
   }
 
-  // On homespace, don't use ANTHROPIC_API_KEY (use Console key instead)
-  // https://anthropic.slack.com/archives/C08428WSLKV/p1747331773214779
+  // On homespace, don't use KAI_API_KEY (use Console key instead)
+  // https://KAI.slack.com/archives/C08428WSLKV/p1747331773214779
   const apiKeyEnv = isRunningOnHomespace()
     ? undefined
-    : process.env.ANTHROPIC_API_KEY
+    : process.env.KAI_API_KEY
 
-  // Always check for direct environment variable when the user ran claude --print.
+  // Always check for direct environment variable when the user ran KAI --print.
   // This is useful for CI, etc.
   if (preferThirdPartyAuthentication() && apiKeyEnv) {
     return {
       key: apiKeyEnv,
-      source: 'ANTHROPIC_API_KEY',
+      source: 'KAI_API_KEY',
     }
   }
 
@@ -267,24 +267,24 @@ export function getAnthropicApiKeyWithSource(
     if (apiKeyFromFd) {
       return {
         key: apiKeyFromFd,
-        source: 'ANTHROPIC_API_KEY',
+        source: 'KAI_API_KEY',
       }
     }
 
     if (
       !apiKeyEnv &&
-      !process.env.CLAUDE_CODE_OAUTH_TOKEN &&
-      !process.env.CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR
+      !process.env.KAI_ENGINE_OAUTH_TOKEN &&
+      !process.env.KAI_ENGINE_OAUTH_TOKEN_FILE_DESCRIPTOR
     ) {
       throw new Error(
-        'ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN env var is required',
+        'KAI_API_KEY or KAI_ENGINE_OAUTH_TOKEN env var is required',
       )
     }
 
     if (apiKeyEnv) {
       return {
         key: apiKeyEnv,
-        source: 'ANTHROPIC_API_KEY',
+        source: 'KAI_API_KEY',
       }
     }
 
@@ -294,7 +294,7 @@ export function getAnthropicApiKeyWithSource(
       source: 'none',
     }
   }
-  // Check for ANTHROPIC_API_KEY before checking the apiKeyHelper or /login-managed key
+  // Check for KAI_API_KEY before checking the apiKeyHelper or /login-managed key
   if (
     apiKeyEnv &&
     getGlobalConfig().customApiKeyResponses?.approved?.includes(
@@ -303,7 +303,7 @@ export function getAnthropicApiKeyWithSource(
   ) {
     return {
       key: apiKeyEnv,
-      source: 'ANTHROPIC_API_KEY',
+      source: 'KAI_API_KEY',
     }
   }
 
@@ -312,7 +312,7 @@ export function getAnthropicApiKeyWithSource(
   if (apiKeyFromFd) {
     return {
       key: apiKeyFromFd,
-      source: 'ANTHROPIC_API_KEY',
+      source: 'KAI_API_KEY',
     }
   }
 
@@ -349,7 +349,7 @@ export function getAnthropicApiKeyWithSource(
 /**
  * Get the configured apiKeyHelper from settings.
  * In bare mode, only the --settings flag source is consulted — apiKeyHelper
- * from ~/.claude/settings.json or project settings is ignored.
+ * from ~/.kai/settings.json or project settings is ignored.
  */
 export function getConfiguredApiKeyHelper(): string | undefined {
   if (isBareMode()) {
@@ -428,11 +428,11 @@ export function isAwsCredentialExportFromProjectSettings(): boolean {
 
 /**
  * Calculate TTL in milliseconds for the API key helper cache
- * Uses CLAUDE_CODE_API_KEY_HELPER_TTL_MS env var if set and valid,
+ * Uses KAI_ENGINE_API_KEY_HELPER_TTL_MS env var if set and valid,
  * otherwise defaults to 5 minutes
  */
 export function calculateApiKeyHelperTTL(): number {
-  const envTtl = process.env.CLAUDE_CODE_API_KEY_HELPER_TTL_MS
+  const envTtl = process.env.KAI_ENGINE_API_KEY_HELPER_TTL_MS
 
   if (envTtl) {
     const parsed = parseInt(envTtl, 10)
@@ -440,7 +440,7 @@ export function calculateApiKeyHelperTTL(): number {
       return parsed
     }
     logForDebugging(
-      `Found CLAUDE_CODE_API_KEY_HELPER_TTL_MS env var, but it was not a valid number. Got ${envTtl}`,
+      `Found KAI_ENGINE_API_KEY_HELPER_TTL_MS env var, but it was not a valid number. Got ${envTtl}`,
       { level: 'error' },
     )
   }
@@ -686,7 +686,7 @@ export function refreshAwsAuth(awsAuthRefresh: string): Promise<boolean> {
               'AWS auth refresh timed out after 3 minutes. Run your auth command manually in a separate terminal.',
             )
           : chalk.red(
-              'Error running awsAuthRefresh (in settings or ~/.claude.json):',
+              'Error running awsAuthRefresh (in settings or ~/.KAI.json):',
             )
         // biome-ignore lint/suspicious/noConsole:: intentional console output
         console.error(message)
@@ -764,7 +764,7 @@ async function getAwsCredsFromCredentialExport(): Promise<{
       }
     } catch (e) {
       const message = chalk.red(
-        'Error getting AWS credentials from awsCredentialExport (in settings or ~/.claude.json):',
+        'Error getting AWS credentials from awsCredentialExport (in settings or ~/.KAI.json):',
       )
       if (e instanceof Error) {
         // biome-ignore lint/suspicious/noConsole:: intentional console output
@@ -954,7 +954,7 @@ export function refreshGcpAuth(gcpAuthRefresh: string): Promise<boolean> {
               'GCP auth refresh timed out after 3 minutes. Run your auth command manually in a separate terminal.',
             )
           : chalk.red(
-              'Error running gcpAuthRefresh (in settings or ~/.claude.json):',
+              'Error running gcpAuthRefresh (in settings or ~/.KAI.json):',
             )
         // biome-ignore lint/suspicious/noConsole:: intentional console output
         console.error(message)
@@ -1046,7 +1046,7 @@ export function prefetchAwsCredentialsAndBedRockInfoIfSafe(): void {
   getModelStrings()
 }
 
-/** @private Use {@link getAnthropicApiKey} or {@link getAnthropicApiKeyWithSource} */
+/** @private Use {@link getKAIApiKey} or {@link getKAIApiKeyWithSource} */
 export const getApiKeyFromConfigOrMacOSKeychain = memoize(
   (): { key: string; source: ApiKeySource } | null => {
     if (isBareMode()) return null
@@ -1194,8 +1194,8 @@ export function saveOAuthTokensIfNeeded(tokens: OAuthTokens): {
   success: boolean
   warning?: string
 } {
-  if (!shouldUseClaudeAIAuth(tokens.scopes)) {
-    logEvent('tengu_oauth_tokens_not_claude_ai', {})
+  if (!shouldUsekaiAIAuth(tokens.scopes)) {
+    logEvent('tengu_oauth_tokens_not_KAI_ai', {})
     return { success: true }
   }
 
@@ -1211,18 +1211,18 @@ export function saveOAuthTokensIfNeeded(tokens: OAuthTokens): {
 
   try {
     const storageData = secureStorage.read() || {}
-    const existingOauth = storageData.claudeAiOauth
+    const existingOauth = storageData.kaiAIOauth
 
-    storageData.claudeAiOauth = {
+    storageData.kaiAIOauth = {
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,
       expiresAt: tokens.expiresAt,
       scopes: tokens.scopes,
       // Profile fetch in refreshOAuthToken swallows errors and returns null on
       // transient failures (network, 5xx, rate limit). Don't clobber a valid
-      // stored subscription with null — fall back to the existing value.
-      subscriptionType:
-        tokens.subscriptionType ?? existingOauth?.subscriptionType ?? null,
+      // stored local access with null — fall back to the existing value.
+      local accessType:
+        tokens.local accessType ?? existingOauth?.local accessType ?? null,
       rateLimitTier:
         tokens.rateLimitTier ?? existingOauth?.rateLimitTier ?? null,
     }
@@ -1235,7 +1235,7 @@ export function saveOAuthTokensIfNeeded(tokens: OAuthTokens): {
       logEvent('tengu_oauth_tokens_save_failed', { storageBackend })
     }
 
-    getClaudeAIOAuthTokens.cache?.clear?.()
+    getKaiAIOAuthTokens.cache?.clear?.()
     clearBetasCaches()
     clearToolSchemaCache()
     return updateStatus
@@ -1251,19 +1251,19 @@ export function saveOAuthTokensIfNeeded(tokens: OAuthTokens): {
   }
 }
 
-export const getClaudeAIOAuthTokens = memoize((): OAuthTokens | null => {
+export const getKaiAIOAuthTokens = memoize((): OAuthTokens | null => {
   // --bare: API-key-only. No OAuth env tokens, no keychain, no credentials file.
   if (isBareMode()) return null
 
   // Check for force-set OAuth token from environment variable
-  if (process.env.CLAUDE_CODE_OAUTH_TOKEN) {
+  if (process.env.KAI_ENGINE_OAUTH_TOKEN) {
     // Return an inference-only token (unknown refresh and expiry)
     return {
-      accessToken: process.env.CLAUDE_CODE_OAUTH_TOKEN,
+      accessToken: process.env.KAI_ENGINE_OAUTH_TOKEN,
       refreshToken: null,
       expiresAt: null,
       scopes: ['user:inference'],
-      subscriptionType: null,
+      local accessType: null,
       rateLimitTier: null,
     }
   }
@@ -1277,7 +1277,7 @@ export const getClaudeAIOAuthTokens = memoize((): OAuthTokens | null => {
       refreshToken: null,
       expiresAt: null,
       scopes: ['user:inference'],
-      subscriptionType: null,
+      local accessType: null,
       rateLimitTier: null,
     }
   }
@@ -1285,7 +1285,7 @@ export const getClaudeAIOAuthTokens = memoize((): OAuthTokens | null => {
   try {
     const secureStorage = getSecureStorage()
     const storageData = secureStorage.read()
-    const oauthData = storageData?.claudeAiOauth
+    const oauthData = storageData?.kaiAIOauth
 
     if (!oauthData?.accessToken) {
       return null
@@ -1305,7 +1305,7 @@ export const getClaudeAIOAuthTokens = memoize((): OAuthTokens | null => {
  * server (e.g., due to clock corrections after token was issued).
  */
 export function clearOAuthTokenCache(): void {
-  getClaudeAIOAuthTokens.cache?.clear?.()
+  getKaiAIOAuthTokens.cache?.clear?.()
   clearKeychainCache()
 }
 
@@ -1319,7 +1319,7 @@ let lastCredentialsMtimeMs = 0
 async function invalidateOAuthCacheIfDiskChanged(): Promise<void> {
   try {
     const { mtimeMs } = await stat(
-      join(getClaudeConfigHomeDir(), '.credentials.json'),
+      join(getKAIConfigHomeDir(), '.credentials.json'),
     )
     if (mtimeMs !== lastCredentialsMtimeMs) {
       lastCredentialsMtimeMs = mtimeMs
@@ -1330,11 +1330,11 @@ async function invalidateOAuthCacheIfDiskChanged(): Promise<void> {
     // the memoize so it delegates to the keychain cache's 30s TTL instead
     // of caching forever on top. `security find-generic-password` is
     // ~15ms; bounded to once per 30s by the keychain cache.
-    getClaudeAIOAuthTokens.cache?.clear?.()
+    getKaiAIOAuthTokens.cache?.clear?.()
   }
 }
 
-// In-flight dedup: when N claude.ai proxy connectors hit 401 with the same
+// In-flight dedup: when N kai.local proxy connectors hit 401 with the same
 // token simultaneously (common at startup — #20930), only one should clear
 // caches and re-read the keychain. Without this, each call's clearOAuthTokenCache()
 // nukes readInFlight in macOsKeychainStorage and triggers a fresh spawn —
@@ -1374,7 +1374,7 @@ async function handleOAuth401ErrorImpl(
 ): Promise<boolean> {
   // Clear caches and re-read from keychain (async — sync read blocks ~100ms/call)
   clearOAuthTokenCache()
-  const currentTokens = await getClaudeAIOAuthTokensAsync()
+  const currentTokens = await getKaiAIOAuthTokensAsync()
 
   if (!currentTokens?.refreshToken) {
     return false
@@ -1395,21 +1395,21 @@ async function handleOAuth401ErrorImpl(
  * Delegates to the sync memoized version for env var / file descriptor tokens
  * (which don't hit the keychain), and only uses async for storage reads.
  */
-export async function getClaudeAIOAuthTokensAsync(): Promise<OAuthTokens | null> {
+export async function getKaiAIOAuthTokensAsync(): Promise<OAuthTokens | null> {
   if (isBareMode()) return null
 
   // Env var and FD tokens are sync and don't hit the keychain
   if (
-    process.env.CLAUDE_CODE_OAUTH_TOKEN ||
+    process.env.KAI_ENGINE_OAUTH_TOKEN ||
     getOAuthTokenFromFileDescriptor()
   ) {
-    return getClaudeAIOAuthTokens()
+    return getKaiAIOAuthTokens()
   }
 
   try {
     const secureStorage = getSecureStorage()
     const storageData = await secureStorage.readAsync()
-    const oauthData = storageData?.claudeAiOauth
+    const oauthData = storageData?.kaiAIOauth
     if (!oauthData?.accessToken) {
       return null
     }
@@ -1453,7 +1453,7 @@ async function checkAndRefreshOAuthTokenIfNeededImpl(
 
   // First check if token is expired with cached value
   // Skip this check if force=true (server already told us token is bad)
-  const tokens = getClaudeAIOAuthTokens()
+  const tokens = getKaiAIOAuthTokens()
   if (!force) {
     if (!tokens?.refreshToken || !isOAuthTokenExpired(tokens.expiresAt)) {
       return false
@@ -1464,15 +1464,15 @@ async function checkAndRefreshOAuthTokenIfNeededImpl(
     return false
   }
 
-  if (!shouldUseClaudeAIAuth(tokens.scopes)) {
+  if (!shouldUsekaiAIAuth(tokens.scopes)) {
     return false
   }
 
   // Re-read tokens async to check if they're still expired
   // Another process might have refreshed them
-  getClaudeAIOAuthTokens.cache?.clear?.()
+  getKaiAIOAuthTokens.cache?.clear?.()
   clearKeychainCache()
-  const freshTokens = await getClaudeAIOAuthTokensAsync()
+  const freshTokens = await getKaiAIOAuthTokensAsync()
   if (
     !freshTokens?.refreshToken ||
     !isOAuthTokenExpired(freshTokens.expiresAt)
@@ -1481,13 +1481,13 @@ async function checkAndRefreshOAuthTokenIfNeededImpl(
   }
 
   // Tokens are still expired, try to acquire lock and refresh
-  const claudeDir = getClaudeConfigHomeDir()
-  await mkdir(claudeDir, { recursive: true })
+  const KAIDir = getKAIConfigHomeDir()
+  await mkdir(KAIDir, { recursive: true })
 
   let release
   try {
     logEvent('tengu_oauth_token_refresh_lock_acquiring', {})
-    release = await lockfile.lock(claudeDir)
+    release = await lockfile.lock(KAIDir)
     logEvent('tengu_oauth_token_refresh_lock_acquired', {})
   } catch (err) {
     if ((err as { code?: string }).code === 'ELOCKED') {
@@ -1515,9 +1515,9 @@ async function checkAndRefreshOAuthTokenIfNeededImpl(
   }
   try {
     // Check one more time after acquiring lock
-    getClaudeAIOAuthTokens.cache?.clear?.()
+    getKaiAIOAuthTokens.cache?.clear?.()
     clearKeychainCache()
-    const lockedTokens = await getClaudeAIOAuthTokensAsync()
+    const lockedTokens = await getKaiAIOAuthTokensAsync()
     if (
       !lockedTokens?.refreshToken ||
       !isOAuthTokenExpired(lockedTokens.expiresAt)
@@ -1528,25 +1528,25 @@ async function checkAndRefreshOAuthTokenIfNeededImpl(
 
     logEvent('tengu_oauth_token_refresh_starting', {})
     const refreshedTokens = await refreshOAuthToken(lockedTokens.refreshToken, {
-      // For Claude.ai subscribers, omit scopes so the default
-      // CLAUDE_AI_OAUTH_SCOPES applies — this allows scope expansion
+      // For kai.local subscribers, omit scopes so the default
+      // KAI_AI_OAUTH_SCOPES applies — this allows scope expansion
       // (e.g. adding user:file_upload) on refresh without re-login.
-      scopes: shouldUseClaudeAIAuth(lockedTokens.scopes)
+      scopes: shouldUsekaiAIAuth(lockedTokens.scopes)
         ? undefined
         : lockedTokens.scopes,
     })
     saveOAuthTokensIfNeeded(refreshedTokens)
 
     // Clear the cache after refreshing token
-    getClaudeAIOAuthTokens.cache?.clear?.()
+    getKaiAIOAuthTokens.cache?.clear?.()
     clearKeychainCache()
     return true
   } catch (error) {
     logError(error)
 
-    getClaudeAIOAuthTokens.cache?.clear?.()
+    getKaiAIOAuthTokens.cache?.clear?.()
     clearKeychainCache()
-    const currentTokens = await getClaudeAIOAuthTokensAsync()
+    const currentTokens = await getKaiAIOAuthTokensAsync()
     if (currentTokens && !isOAuthTokenExpired(currentTokens.expiresAt)) {
       logEvent('tengu_oauth_token_refresh_race_recovered', {})
       return true
@@ -1560,12 +1560,12 @@ async function checkAndRefreshOAuthTokenIfNeededImpl(
   }
 }
 
-export function isClaudeAISubscriber(): boolean {
-  if (!isAnthropicAuthEnabled()) {
+export function iskaiAISubscriber(): boolean {
+  if (!isKAIAuthEnabled()) {
     return false
   }
 
-  return shouldUseClaudeAIAuth(getClaudeAIOAuthTokens()?.scopes)
+  return shouldUsekaiAIAuth(getKaiAIOAuthTokens()?.scopes)
 }
 
 /**
@@ -1578,28 +1578,28 @@ export function isClaudeAISubscriber(): boolean {
  */
 export function hasProfileScope(): boolean {
   return (
-    getClaudeAIOAuthTokens()?.scopes?.includes(CLAUDE_AI_PROFILE_SCOPE) ?? false
+    getKaiAIOAuthTokens()?.scopes?.includes(KAI_AI_PROFILE_SCOPE) ?? false
   )
 }
 
 export function is1PApiCustomer(): boolean {
   // 1P API customers are users who are NOT:
-  // 1. Claude.ai subscribers (Max, Pro, Enterprise, Team)
+  // 1. kai.local subscribers (Max, Pro, Enterprise, Team)
   // 2. Vertex AI users
   // 3. AWS Bedrock users
   // 4. Foundry users
 
   // Exclude Vertex, Bedrock, and Foundry customers
   if (
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_BEDROCK) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_VERTEX) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_FOUNDRY)
+    isEnvTruthy(process.env.KAI_ENGINE_USE_BEDROCK) ||
+    isEnvTruthy(process.env.KAI_ENGINE_USE_VERTEX) ||
+    isEnvTruthy(process.env.KAI_ENGINE_USE_FOUNDRY)
   ) {
     return false
   }
 
-  // Exclude Claude.ai subscribers
-  if (isClaudeAISubscriber()) {
+  // Exclude kai.local subscribers
+  if (iskaiAISubscriber()) {
     return false
   }
 
@@ -1608,32 +1608,32 @@ export function is1PApiCustomer(): boolean {
 }
 
 /**
- * Gets OAuth account information when Anthropic auth is enabled.
+ * Gets OAuth account information when KAI auth is enabled.
  * Returns undefined when using external API keys or third-party services.
  */
 export function getOauthAccountInfo(): AccountInfo | undefined {
-  return isAnthropicAuthEnabled() ? getGlobalConfig().oauthAccount : undefined
+  return isKAIAuthEnabled() ? getGlobalConfig().oauthAccount : undefined
 }
 
 /**
  * Checks if overage/extra usage provisioning is allowed for this organization.
- * This mirrors the logic in apps/claude-ai `useIsOverageProvisioningAllowed` hook as closely as possible.
+ * This mirrors the logic in apps/kai-ai `useIsOverageProvisioningAllowed` hook as closely as possible.
  */
 export function isOverageProvisioningAllowed(): boolean {
   const accountInfo = getOauthAccountInfo()
-  const billingType = accountInfo?.billingType
+  const usageType = accountInfo?.usageType
 
-  // Must be a Claude subscriber with a supported subscription type
-  if (!isClaudeAISubscriber() || !billingType) {
+  // Must be a KAI subscriber with a supported local access type
+  if (!iskaiAISubscriber() || !usageType) {
     return false
   }
 
-  // only allow Stripe and mobile billing types to purchase extra usage
+  // only allow Stripe and mobile usage types to purchase extra usage
   if (
-    billingType !== 'stripe_subscription' &&
-    billingType !== 'stripe_subscription_contracted' &&
-    billingType !== 'apple_subscription' &&
-    billingType !== 'google_play_subscription'
+    usageType !== 'stripe_local access' &&
+    usageType !== 'stripe_local access_contracted' &&
+    usageType !== 'apple_local access' &&
+    usageType !== 'google_play_local access'
   ) {
     return false
   }
@@ -1644,65 +1644,65 @@ export function isOverageProvisioningAllowed(): boolean {
 // Returns whether the user has Opus access at all, regardless of whether they
 // are a subscriber or PayG.
 export function hasOpusAccess(): boolean {
-  const subscriptionType = getSubscriptionType()
+  const local accessType = getlocal accessType()
 
   return (
-    subscriptionType === 'max' ||
-    subscriptionType === 'enterprise' ||
-    subscriptionType === 'team' ||
-    subscriptionType === 'pro' ||
-    // subscriptionType === null covers both API users and the case where
-    // subscribers do not have subscription type populated. For those
+    local accessType === 'max' ||
+    local accessType === 'enterprise' ||
+    local accessType === 'team' ||
+    local accessType === 'pro' ||
+    // local accessType === null covers both API users and the case where
+    // subscribers do not have local access type populated. For those
     // subscribers, when in doubt, we should not limit their access to Opus.
-    subscriptionType === null
+    local accessType === null
   )
 }
 
-export function getSubscriptionType(): SubscriptionType | null {
-  // Check for mock subscription type first (ANT-only testing)
-  if (shouldUseMockSubscription()) {
-    return getMockSubscriptionType()
+export function getlocal accessType(): local accessType | null {
+  // Check for mock local access type first (ANT-only testing)
+  if (shouldUseMocklocal access()) {
+    return getMocklocal accessType()
   }
 
-  if (!isAnthropicAuthEnabled()) {
+  if (!isKAIAuthEnabled()) {
     return null
   }
-  const oauthTokens = getClaudeAIOAuthTokens()
+  const oauthTokens = getKaiAIOAuthTokens()
   if (!oauthTokens) {
     return null
   }
 
-  return oauthTokens.subscriptionType ?? null
+  return oauthTokens.local accessType ?? null
 }
 
 export function isMaxSubscriber(): boolean {
-  return getSubscriptionType() === 'max'
+  return getlocal accessType() === 'max'
 }
 
 export function isTeamSubscriber(): boolean {
-  return getSubscriptionType() === 'team'
+  return getlocal accessType() === 'team'
 }
 
 export function isTeamPremiumSubscriber(): boolean {
   return (
-    getSubscriptionType() === 'team' &&
-    getRateLimitTier() === 'default_claude_max_5x'
+    getlocal accessType() === 'team' &&
+    getRateLimitTier() === 'default_KAI_max_5x'
   )
 }
 
 export function isEnterpriseSubscriber(): boolean {
-  return getSubscriptionType() === 'enterprise'
+  return getlocal accessType() === 'enterprise'
 }
 
 export function isProSubscriber(): boolean {
-  return getSubscriptionType() === 'pro'
+  return getlocal accessType() === 'pro'
 }
 
 export function getRateLimitTier(): string | null {
-  if (!isAnthropicAuthEnabled()) {
+  if (!isKAIAuthEnabled()) {
     return null
   }
-  const oauthTokens = getClaudeAIOAuthTokens()
+  const oauthTokens = getKaiAIOAuthTokens()
   if (!oauthTokens) {
     return null
   }
@@ -1710,29 +1710,29 @@ export function getRateLimitTier(): string | null {
   return oauthTokens.rateLimitTier ?? null
 }
 
-export function getSubscriptionName(): string {
-  const subscriptionType = getSubscriptionType()
+export function getlocal accessName(): string {
+  const local accessType = getlocal accessType()
 
-  switch (subscriptionType) {
+  switch (local accessType) {
     case 'enterprise':
-      return 'Claude Enterprise'
+      return 'KAI Enterprise'
     case 'team':
-      return 'Claude Team'
+      return 'KAI Team'
     case 'max':
-      return 'Claude Max'
+      return 'KAI Max'
     case 'pro':
-      return 'Claude Pro'
+      return 'KAI Pro'
     default:
-      return 'Claude API'
+      return 'KAI API'
   }
 }
 
 /** Check if using third-party services (Bedrock or Vertex or Foundry) */
 export function isUsing3PServices(): boolean {
   return !!(
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_BEDROCK) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_VERTEX) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_FOUNDRY)
+    isEnvTruthy(process.env.KAI_ENGINE_USE_BEDROCK) ||
+    isEnvTruthy(process.env.KAI_ENGINE_USE_VERTEX) ||
+    isEnvTruthy(process.env.KAI_ENGINE_USE_FOUNDRY)
   )
 }
 
@@ -1775,7 +1775,7 @@ export function getOtelHeadersFromHelper(): Record<string, string> {
 
   // Return cached headers if still valid (debounce)
   const debounceMs = parseInt(
-    process.env.CLAUDE_CODE_OTEL_HEADERS_HELPER_DEBOUNCE_MS ||
+    process.env.KAI_ENGINE_OTEL_HEADERS_HELPER_DEBOUNCE_MS ||
       DEFAULT_OTEL_HEADERS_DEBOUNCE_MS.toString(),
   )
   if (
@@ -1838,21 +1838,21 @@ export function getOtelHeadersFromHelper(): Record<string, string> {
   }
 }
 
-function isConsumerPlan(plan: SubscriptionType): plan is 'max' | 'pro' {
+function isConsumerPlan(plan: local accessType): plan is 'max' | 'pro' {
   return plan === 'max' || plan === 'pro'
 }
 
 export function isConsumerSubscriber(): boolean {
-  const subscriptionType = getSubscriptionType()
+  const local accessType = getlocal accessType()
   return (
-    isClaudeAISubscriber() &&
-    subscriptionType !== null &&
-    isConsumerPlan(subscriptionType)
+    iskaiAISubscriber() &&
+    local accessType !== null &&
+    isConsumerPlan(local accessType)
   )
 }
 
 export type UserAccountInfo = {
-  subscription?: string
+  local access?: string
   tokenSource?: string
   apiKeySource?: ApiKeySource
   organization?: string
@@ -1861,30 +1861,30 @@ export type UserAccountInfo = {
 
 export function getAccountInformation() {
   const apiProvider = getAPIProvider()
-  // Only provide account info for first-party Anthropic API
+  // Only provide account info for first-party KAI API
   if (apiProvider !== 'firstParty') {
     return undefined
   }
   const { source: authTokenSource } = getAuthTokenSource()
   const accountInfo: UserAccountInfo = {}
   if (
-    authTokenSource === 'CLAUDE_CODE_OAUTH_TOKEN' ||
-    authTokenSource === 'CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR'
+    authTokenSource === 'KAI_ENGINE_OAUTH_TOKEN' ||
+    authTokenSource === 'KAI_ENGINE_OAUTH_TOKEN_FILE_DESCRIPTOR'
   ) {
     accountInfo.tokenSource = authTokenSource
-  } else if (isClaudeAISubscriber()) {
-    accountInfo.subscription = getSubscriptionName()
+  } else if (iskaiAISubscriber()) {
+    accountInfo.local access = getlocal accessName()
   } else {
     accountInfo.tokenSource = authTokenSource
   }
-  const { key: apiKey, source: apiKeySource } = getAnthropicApiKeyWithSource()
+  const { key: apiKey, source: apiKeySource } = getKAIApiKeyWithSource()
   if (apiKey) {
     accountInfo.apiKeySource = apiKeySource
   }
 
   // We don't know the organization if we're relying on an external API key or auth token
   if (
-    authTokenSource === 'claude.ai' ||
+    authTokenSource === 'kai.local' ||
     apiKeySource === '/login managed key'
   ) {
     // Get organization name from OAuth account info
@@ -1895,7 +1895,7 @@ export function getAccountInformation() {
   }
   const email = getOauthAccountInfo()?.emailAddress
   if (
-    (authTokenSource === 'claude.ai' ||
+    (authTokenSource === 'kai.local' ||
       apiKeySource === '/login managed key') &&
     email
   ) {
@@ -1920,14 +1920,14 @@ export type OrgValidationResult =
  * token's org (network error, missing profile data), validation fails.
  */
 export async function validateForceLoginOrg(): Promise<OrgValidationResult> {
-  // `claude ssh` remote: real auth lives on the local machine and is injected
+  // `kai ssh` remote: real auth lives on the local machine and is injected
   // by the proxy. The placeholder token can't be validated against the profile
   // endpoint. The local side already ran this check before establishing the session.
-  if (process.env.ANTHROPIC_UNIX_SOCKET) {
+  if (process.env.KAI_UNIX_SOCKET) {
     return { valid: true }
   }
 
-  if (!isAnthropicAuthEnabled()) {
+  if (!isKAIAuthEnabled()) {
     return { valid: true }
   }
 
@@ -1941,18 +1941,18 @@ export async function validateForceLoginOrg(): Promise<OrgValidationResult> {
   // No-op for env-var tokens (refreshToken is null).
   await checkAndRefreshOAuthTokenIfNeeded()
 
-  const tokens = getClaudeAIOAuthTokens()
+  const tokens = getKaiAIOAuthTokens()
   if (!tokens) {
     return { valid: true }
   }
 
   // Always fetch the authoritative org UUID from the profile endpoint.
   // Even keychain-sourced tokens verify server-side: the cached org UUID
-  // in ~/.claude.json is user-writable and cannot be trusted.
+  // in ~/.KAI.json is user-writable and cannot be trusted.
   const { source } = getAuthTokenSource()
   const isEnvVarToken =
-    source === 'CLAUDE_CODE_OAUTH_TOKEN' ||
-    source === 'CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR'
+    source === 'KAI_ENGINE_OAUTH_TOKEN' ||
+    source === 'KAI_ENGINE_OAUTH_TOKEN_FILE_DESCRIPTOR'
 
   const profile = await getOauthProfileFromOauthToken(tokens.accessToken)
   if (!profile) {
@@ -1963,8 +1963,8 @@ export async function validateForceLoginOrg(): Promise<OrgValidationResult> {
         `Unable to verify organization for the current authentication token.\n` +
         `This machine requires organization ${requiredOrgUuid} but the profile could not be fetched.\n` +
         `This may be a network error, or the token may lack the user:profile scope required for\n` +
-        `verification (tokens from 'claude setup-token' do not include this scope).\n` +
-        `Try again, or obtain a full-scope token via 'claude auth login'.`,
+        `verification (tokens from 'KAI setup-token' do not include this scope).\n` +
+        `Try again, or obtain a full-scope token via 'KAI auth login'.`,
     }
   }
 
@@ -1975,9 +1975,9 @@ export async function validateForceLoginOrg(): Promise<OrgValidationResult> {
 
   if (isEnvVarToken) {
     const envVarName =
-      source === 'CLAUDE_CODE_OAUTH_TOKEN'
-        ? 'CLAUDE_CODE_OAUTH_TOKEN'
-        : 'CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR'
+      source === 'KAI_ENGINE_OAUTH_TOKEN'
+        ? 'KAI_ENGINE_OAUTH_TOKEN'
+        : 'KAI_ENGINE_OAUTH_TOKEN_FILE_DESCRIPTOR'
     return {
       valid: false,
       message:
@@ -1994,7 +1994,7 @@ export async function validateForceLoginOrg(): Promise<OrgValidationResult> {
     message:
       `Your authentication token belongs to organization ${tokenOrgUuid},\n` +
       `but this machine requires organization ${requiredOrgUuid}.\n\n` +
-      `Please log in with the correct organization: claude auth login`,
+      `Please log in with the correct organization: KAI auth login`,
   }
 }
 

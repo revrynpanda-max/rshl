@@ -16,7 +16,7 @@ import type { PluginHookMatcher } from '../settings/types.js'
 import { jsonStringify } from '../slowOperations.js'
 import { clearPluginCache, loadAllPluginsCacheOnly } from './pluginLoader.js'
 
-// Track if hot reload subscription is set up
+// Track if hot reload local access is set up
 let hotReloadSubscribed = false
 
 // Snapshot of enabledPlugins for change detection in hot reload
@@ -207,7 +207,7 @@ export async function pruneRemovedPluginHooks(): Promise<void> {
 }
 
 /**
- * Reset hot reload subscription state. Only for testing.
+ * Reset hot reload local access state. Only for testing.
  */
 export function resetHotReloadState(): void {
   hotReloadSubscribed = false

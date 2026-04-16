@@ -1,4 +1,4 @@
-import type { BetaUsage as Usage } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
+import type { BetaUsage as Usage } from '@kai-ai/sdk/resources/beta/messages/messages.mjs'
 import { roughTokenCountEstimationForMessages } from '../services/tokenEstimation.js'
 import type { AssistantMessage, Message } from '../types/message.js'
 import { SYNTHETIC_MESSAGES, SYNTHETIC_MODEL } from './messages.js'
@@ -69,7 +69,7 @@ export function tokenCountFromLastAPIResponse(messages: Message[]): number {
  * Final context window size from the last API response's usage.iterations[-1].
  * Used for task_budget.remaining computation across compaction boundaries —
  * the server's budget countdown is context-based, so remaining decrements by
- * the pre-compact final window, not billing spend. See monorepo
+ * the pre-compact final window, not usage spend. See monorepo
  * api/api/sampling/prompt/renderer.py:292 for the server-side computation.
  *
  * Falls back to top-level input_tokens + output_tokens when iterations is
@@ -117,7 +117,7 @@ export function finalContextTokensFromLastResponse(
  *
  * WARNING: Do NOT use this for threshold comparisons (autocompact, session memory).
  * Use tokenCountWithEstimation() instead, which measures full context size.
- * This function is only useful for measuring how many tokens Claude generated
+ * This function is only useful for measuring how many tokens KAI generated
  * in a single response, not how full the context window is.
  */
 export function messageTokenCountFromLastAPIResponse(

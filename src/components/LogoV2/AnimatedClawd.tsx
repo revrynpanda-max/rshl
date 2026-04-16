@@ -94,7 +94,7 @@ function useClawdAnimation(): {
   bounceOffset: number;
   onClick: () => void;
 } {
-  // Read once at mount — no useSettings() subscription, since that would
+  // Read once at mount — no useSettings() local access, since that would
   // re-render on any settings change.
   const [reducedMotion] = useState(() => getInitialSettings().prefersReducedMotion ?? false);
   const [frameIndex, setFrameIndex] = useState(-1);

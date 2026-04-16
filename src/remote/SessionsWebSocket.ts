@@ -75,7 +75,7 @@ type WebSocketLike = {
  * WebSocket client for connecting to CCR sessions via /v1/sessions/ws/{id}/subscribe
  *
  * Protocol:
- * 1. Connect to wss://api.anthropic.com/v1/sessions/ws/{sessionId}/subscribe?organization_uuid=...
+ * 1. Connect to wss://api.KAI.com/v1/sessions/ws/{sessionId}/subscribe?organization_uuid=...
  * 2. Send auth message: { type: 'auth', credential: { type: 'oauth', token: '...' } }
  * 3. Receive SDKMessage stream from the session
  */
@@ -114,7 +114,7 @@ export class SessionsWebSocket {
     const accessToken = this.getAccessToken()
     const headers = {
       Authorization: `Bearer ${accessToken}`,
-      'anthropic-version': '2023-06-01',
+      'kai-version': '2023-06-01',
     }
 
     if (typeof Bun !== 'undefined') {
@@ -388,7 +388,7 @@ export class SessionsWebSocket {
 
   /**
    * Force reconnect - closes existing connection and establishes a new one.
-   * Useful when the subscription becomes stale (e.g., after container shutdown).
+   * Useful when the local access becomes stale (e.g., after container shutdown).
    */
   reconnect(): void {
     logForDebugging('[SessionsWebSocket] Force reconnecting')

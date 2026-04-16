@@ -1,4 +1,4 @@
-import { BROWSER_TOOLS } from '@ant/claude-for-chrome-mcp'
+import { BROWSER_TOOLS } from '@ant/KAI-for-chrome-mcp'
 import { chmod, mkdir, readFile, writeFile } from 'fs/promises'
 import { homedir } from 'os'
 import { join } from 'path'
@@ -14,7 +14,7 @@ import { isInBundledMode } from '../bundledMode.js'
 import { getGlobalConfig, saveGlobalConfig } from '../config.js'
 import { logForDebugging } from '../debug.js'
 import {
-  getClaudeConfigHomeDir,
+  getKAIConfigHomeDir,
   isEnvDefinedFalsy,
   isEnvTruthy,
 } from '../envUtils.js'
@@ -22,7 +22,7 @@ import { execFileNoThrowWithCwd } from '../execFileNoThrow.js'
 import { getPlatform } from '../platform.js'
 import { jsonStringify } from '../slowOperations.js'
 import {
-  CLAUDE_IN_CHROME_MCP_SERVER_NAME,
+  KAI_IN_CHROME_MCP_SERVER_NAME,
   getAllBrowserDataPaths,
   getAllNativeMessagingHostsDirs,
   getAllWindowsRegistryKeys,
@@ -33,10 +33,10 @@ import { isChromeExtensionInstalledPortable } from './setupPortable.js'
 
 const CHROME_EXTENSION_RECONNECT_URL = 'https://clau.de/chrome/reconnect'
 
-const NATIVE_HOST_IDENTIFIER = 'com.anthropic.claude_code_browser_extension'
+const NATIVE_HOST_IDENTIFIER = 'com.KAI.KAI_ENGINE_browser_extension'
 const NATIVE_HOST_MANIFEST_NAME = `${NATIVE_HOST_IDENTIFIER}.json`
 
-export function shouldEnableClaudeInChrome(chromeFlag?: boolean): boolean {
+export function shouldEnableKAIInChrome(chromeFlag?: boolean): boolean {
   // Disable by default in non-interactive sessions (e.g., SDK, CI)
   if (getIsNonInteractiveSession() && chromeFlag !== true) {
     return false
@@ -51,17 +51,17 @@ export function shouldEnableClaudeInChrome(chromeFlag?: boolean): boolean {
   }
 
   // Check environment variables
-  if (isEnvTruthy(process.env.CLAUDE_CODE_ENABLE_CFC)) {
+  if (isEnvTruthy(process.env.KAI_ENGINE_ENABLE_CFC)) {
     return true
   }
-  if (isEnvDefinedFalsy(process.env.CLAUDE_CODE_ENABLE_CFC)) {
+  if (isEnvDefinedFalsy(process.env.KAI_ENGINE_ENABLE_CFC)) {
     return false
   }
 
   // Check default config settings
   const config = getGlobalConfig()
-  if (config.claudeInChromeDefaultEnabled !== undefined) {
-    return config.claudeInChromeDefaultEnabled
+  if (config.KAIInChromeDefaultEnabled !== undefined) {
+    return config.KAIInChromeDefaultEnabled
   }
 
   return false
@@ -69,7 +69,7 @@ export function shouldEnableClaudeInChrome(chromeFlag?: boolean): boolean {
 
 let shouldAutoEnable: boolean | undefined = undefined
 
-export function shouldAutoEnableClaudeInChrome(): boolean {
+export function shouldAutoEnableKAIInChrome(): boolean {
   if (shouldAutoEnable !== undefined) {
     return shouldAutoEnable
   }
@@ -84,23 +84,23 @@ export function shouldAutoEnableClaudeInChrome(): boolean {
 }
 
 /**
- * Setup Claude in Chrome MCP server and tools
+ * Setup KAI in Chrome MCP server and tools
  *
  * @returns MCP config and allowed tools, or throws an error if platform is unsupported
  */
-export function setupClaudeInChrome(): {
+export function setupKAIInChrome(): {
   mcpConfig: Record<string, ScopedMcpServerConfig>
   allowedTools: string[]
   systemPrompt: string
 } {
   const isNativeBuild = isInBundledMode()
   const allowedTools = BROWSER_TOOLS.map(
-    tool => `mcp__claude-in-chrome__${tool.name}`,
+    tool => `mcp__KAI-in-chrome__${tool.name}`,
   )
 
   const env: Record<string, string> = {}
   if (getSessionBypassPermissionsMode()) {
-    env.CLAUDE_CHROME_PERMISSION_MODE = 'skip_all_permission_checks'
+    env.KAI_CHROME_PERMISSION_MODE = 'skip_all_permission_checks'
   }
   const hasEnv = Object.keys(env).length > 0
 
@@ -116,17 +116,17 @@ export function setupClaudeInChrome(): {
       )
       .catch(e =>
         logForDebugging(
-          `[Claude in Chrome] Failed to install native host: ${e}`,
+          `[KAI in Chrome] Failed to install native host: ${e}`,
           { level: 'error' },
         ),
       )
 
     return {
       mcpConfig: {
-        [CLAUDE_IN_CHROME_MCP_SERVER_NAME]: {
+        [KAI_IN_CHROME_MCP_SERVER_NAME]: {
           type: 'stdio' as const,
           command: process.execPath,
-          args: ['--claude-in-chrome-mcp'],
+          args: ['--KAI-in-chrome-mcp'],
           scope: 'dynamic' as const,
           ...(hasEnv && { env }),
         },
@@ -147,16 +147,16 @@ export function setupClaudeInChrome(): {
       )
       .catch(e =>
         logForDebugging(
-          `[Claude in Chrome] Failed to install native host: ${e}`,
+          `[KAI in Chrome] Failed to install native host: ${e}`,
           { level: 'error' },
         ),
       )
 
     const mcpConfig = {
-      [CLAUDE_IN_CHROME_MCP_SERVER_NAME]: {
+      [KAI_IN_CHROME_MCP_SERVER_NAME]: {
         type: 'stdio' as const,
         command: process.execPath,
-        args: [`${cliPath}`, '--claude-in-chrome-mcp'],
+        args: [`${cliPath}`, '--KAI-in-chrome-mcp'],
         scope: 'dynamic' as const,
         ...(hasEnv && { env }),
       },
@@ -181,7 +181,7 @@ function getNativeMessagingHostsDirs(): string[] {
     // Windows uses a single location with registry entries pointing to it
     const home = homedir()
     const appData = process.env.APPDATA || join(home, 'AppData', 'Local')
-    return [join(appData, 'Claude Code', 'ChromeNativeHost')]
+    return [join(appData, 'KAI', 'ChromeNativeHost')]
   }
 
   // macOS and Linux: return all browser native messaging directories
@@ -193,12 +193,12 @@ export async function installChromeNativeHostManifest(
 ): Promise<void> {
   const manifestDirs = getNativeMessagingHostsDirs()
   if (manifestDirs.length === 0) {
-    throw Error('Claude in Chrome Native Host not supported on this platform')
+    throw Error('KAI in Chrome Native Host not supported on this platform')
   }
 
   const manifest = {
     name: NATIVE_HOST_IDENTIFIER,
-    description: 'Claude Code Browser Extension Native Host',
+    description: 'KAI Browser Extension Native Host',
     path: manifestBinaryPath,
     type: 'stdio',
     allowed_origins: [
@@ -231,13 +231,13 @@ export async function installChromeNativeHostManifest(
       await mkdir(manifestDir, { recursive: true })
       await writeFile(manifestPath, manifestContent)
       logForDebugging(
-        `[Claude in Chrome] Installed native host manifest at: ${manifestPath}`,
+        `[KAI in Chrome] Installed native host manifest at: ${manifestPath}`,
       )
       anyManifestUpdated = true
     } catch (error) {
       // Log but don't fail - the browser might not be installed
       logForDebugging(
-        `[Claude in Chrome] Failed to install manifest at ${manifestPath}: ${error}`,
+        `[KAI in Chrome] Failed to install manifest at ${manifestPath}: ${error}`,
       )
     }
   }
@@ -253,12 +253,12 @@ export async function installChromeNativeHostManifest(
     void isChromeExtensionInstalled().then(isInstalled => {
       if (isInstalled) {
         logForDebugging(
-          `[Claude in Chrome] First-time install detected, opening reconnect page in browser`,
+          `[KAI in Chrome] First-time install detected, opening reconnect page in browser`,
         )
         void openInChrome(CHROME_EXTENSION_RECONNECT_URL)
       } else {
         logForDebugging(
-          `[Claude in Chrome] First-time install detected, but extension not installed, skipping reconnect`,
+          `[KAI in Chrome] First-time install detected, but extension not installed, skipping reconnect`,
         )
       }
     })
@@ -287,11 +287,11 @@ function registerWindowsNativeHosts(manifestPath: string): void {
     ]).then(result => {
       if (result.code === 0) {
         logForDebugging(
-          `[Claude in Chrome] Registered native host for ${browser} in Windows registry: ${fullKey}`,
+          `[KAI in Chrome] Registered native host for ${browser} in Windows registry: ${fullKey}`,
         )
       } else {
         logForDebugging(
-          `[Claude in Chrome] Failed to register native host for ${browser} in Windows registry: ${result.stderr}`,
+          `[KAI in Chrome] Failed to register native host for ${browser} in Windows registry: ${result.stderr}`,
         )
       }
     })
@@ -299,15 +299,15 @@ function registerWindowsNativeHosts(manifestPath: string): void {
 }
 
 /**
- * Create a wrapper script in ~/.claude/chrome/ that invokes the given command. This is
+ * Create a wrapper script in ~/.kai/chrome/ that invokes the given command. This is
  * necessary because Chrome's native host manifest "path" field cannot contain arguments.
  *
- * @param command - The full command to execute (e.g., "/path/to/claude --chrome-native-host")
+ * @param command - The full command to execute (e.g., "/path/to/KAI --chrome-native-host")
  * @returns The path to the wrapper script
  */
 async function createWrapperScript(command: string): Promise<string> {
   const platform = getPlatform()
-  const chromeDir = join(getClaudeConfigHomeDir(), 'chrome')
+  const chromeDir = join(getKAIConfigHomeDir(), 'chrome')
   const wrapperPath =
     platform === 'windows'
       ? join(chromeDir, 'chrome-native-host.bat')
@@ -317,12 +317,12 @@ async function createWrapperScript(command: string): Promise<string> {
     platform === 'windows'
       ? `@echo off
 REM Chrome native host wrapper script
-REM Generated by Claude Code - do not edit manually
+REM Generated by KAI - do not edit manually
 ${command}
 `
       : `#!/bin/sh
 # Chrome native host wrapper script
-# Generated by Claude Code - do not edit manually
+# Generated by KAI - do not edit manually
 exec ${command}
 `
 
@@ -340,7 +340,7 @@ exec ${command}
   }
 
   logForDebugging(
-    `[Claude in Chrome] Created Chrome native host wrapper script: ${wrapperPath}`,
+    `[KAI in Chrome] Created Chrome native host wrapper script: ${wrapperPath}`,
   )
   return wrapperPath
 }
@@ -355,7 +355,7 @@ exec ${command}
  *
  * Only positive detections are persisted. A negative result from the
  * filesystem scan is not cached, because it may come from a machine that
- * shares ~/.claude.json but has no local Chrome (e.g. a remote dev
+ * shares ~/.KAI.json but has no local Chrome (e.g. a remote dev
  * environment using the bridge), and caching it would permanently poison
  * auto-enable for every session on every machine that reads that config.
  */
@@ -383,7 +383,7 @@ function isChromeExtensionInstalled_CACHED_MAY_BE_STALE(): boolean {
 }
 
 /**
- * Detects if the Claude in Chrome extension is installed by checking the Extensions
+ * Detects if the KAI in Chrome extension is installed by checking the Extensions
  * directory across all supported Chromium-based browsers and their profiles.
  *
  * @returns Object with isInstalled boolean and the browser where the extension was found
@@ -392,7 +392,7 @@ export async function isChromeExtensionInstalled(): Promise<boolean> {
   const browserPaths = getAllBrowserDataPaths()
   if (browserPaths.length === 0) {
     logForDebugging(
-      `[Claude in Chrome] Unsupported platform for extension detection: ${getPlatform()}`,
+      `[KAI in Chrome] Unsupported platform for extension detection: ${getPlatform()}`,
     )
     return false
   }

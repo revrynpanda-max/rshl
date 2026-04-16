@@ -5,7 +5,7 @@ import { COORDINATOR_MODE_ALLOWED_TOOLS } from '../constants/tools.js'
 import { isMcpTool } from '../services/mcp/utils.js'
 import type { Tool, ToolPermissionContext, Tools } from '../Tool.js'
 
-// MCP tool name suffixes for PR activity subscription. These are lightweight
+// MCP tool name suffixes for PR activity local access. These are lightweight
 // orchestration actions the coordinator calls directly rather than delegating
 // to workers. Matched by suffix since the MCP server name prefix may vary.
 const PR_ACTIVITY_TOOL_SUFFIXES = [
@@ -13,7 +13,7 @@ const PR_ACTIVITY_TOOL_SUFFIXES = [
   'unsubscribe_pr_activity',
 ]
 
-export function isPrActivitySubscriptionTool(name: string): boolean {
+export function isPrActivitylocal accessTool(name: string): boolean {
   return PR_ACTIVITY_TOOL_SUFFIXES.some(suffix => name.endsWith(suffix))
 }
 
@@ -29,14 +29,14 @@ const coordinatorModeModule = feature('COORDINATOR_MODE')
  * Shared between the REPL path (mergeAndFilterTools) and the headless
  * path (main.tsx) so both stay in sync.
  *
- * PR activity subscription tools are always allowed since subscription
+ * PR activity local access tools are always allowed since local access
  * management is orchestration.
  */
 export function applyCoordinatorToolFilter(tools: Tools): Tools {
   return tools.filter(
     t =>
       COORDINATOR_MODE_ALLOWED_TOOLS.has(t.name) ||
-      isPrActivitySubscriptionTool(t.name),
+      isPrActivitylocal accessTool(t.name),
   )
 }
 

@@ -17,11 +17,11 @@ type Props = {
   defaultSelections: Workflow[];
 };
 const WORKFLOWS: WorkflowOption[] = [{
-  value: 'claude' as const,
-  label: '@Claude Code - Tag @claude in issues and PR comments'
+  value: 'kai' as const,
+  label: '@KAI - Tag @KAI in issues and PR comments'
 }, {
-  value: 'claude-review' as const,
-  label: 'Claude Code Review - Automated code review on new PRs'
+  value: 'KAI-review' as const,
+  label: 'KAI Review - Automated code review on new PRs'
 }];
 function renderInputGuide(exitState: ExitState): React.ReactNode {
   if (exitState.pending) {
@@ -79,7 +79,7 @@ export function WorkflowMultiselectDialog(t0) {
   const handleCancel = t3;
   let t4;
   if ($[4] === Symbol.for("react.memo_cache_sentinel")) {
-    t4 = <Box><Text dimColor={true}>More workflow examples (issue triage, CI fixes, etc.) at:{" "}<Link url="https://github.com/anthropics/claude-code-action/blob/main/examples/">https://github.com/anthropics/claude-code-action/blob/main/examples/</Link></Text></Box>;
+    t4 = <Box><Text dimColor={true}>More workflow examples (issue triage, CI fixes, etc.) at:{" "}<Link url="https://github.com/KAIs/kai-engine-action/blob/main/examples/">https://github.com/KAIs/kai-engine-action/blob/main/examples/</Link></Text></Box>;
     $[4] = t4;
   } else {
     t4 = $[4];

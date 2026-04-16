@@ -6,10 +6,10 @@
  *
  * TODO(#22051): pass useBundleMode once landed so local-only / uncommitted
  * repo state is captured. The GitHub-clone path (current) only works for
- * pushed branches on repos with the Claude GitHub app installed.
+ * pushed branches on repos with the KAI GitHub app installed.
  */
 
-import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages.js'
+import type { ContentBlockParam } from '@kai-ai/sdk/resources/messages.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -30,7 +30,7 @@ import { execFileNoThrow } from '../../utils/execFileNoThrow.js'
 import { getDefaultBranch, gitExe } from '../../utils/git.js'
 import { teleportToRemote } from '../../utils/teleport.js'
 
-// One-time session flag: once the user confirms overage billing via the
+// One-time session flag: once the user confirms overage usage via the
 // dialog, all subsequent /ultrareview invocations in this session proceed
 // without re-prompting.
 let sessionOverageConfirmed = false
@@ -40,21 +40,21 @@ export function confirmOverage(): void {
 }
 
 export type OverageGate =
-  | { kind: 'proceed'; billingNote: string }
+  | { kind: 'proceed'; usageNote: string }
   | { kind: 'not-enabled' }
   | { kind: 'low-balance'; available: number }
   | { kind: 'needs-confirm' }
 
 /**
  * Determine whether the user can launch an ultrareview and under what
- * billing terms. Fetches quota and utilization in parallel.
+ * usage terms. Fetches quota and utilization in parallel.
  */
 export async function checkOverageGate(): Promise<OverageGate> {
   // Team and Enterprise plans include ultrareview — no free-review quota
   // or Extra Usage dialog. The quota endpoint is scoped to consumer plans
   // (pro/max); hitting it on team/ent would surface a confusing dialog.
   if (isTeamSubscriber() || isEnterpriseSubscriber()) {
-    return { kind: 'proceed', billingNote: '' }
+    return { kind: 'proceed', usageNote: '' }
   }
 
   const [quota, utilization] = await Promise.all([
@@ -63,22 +63,22 @@ export async function checkOverageGate(): Promise<OverageGate> {
   ])
 
   // No quota info (non-subscriber or endpoint down) — let it through,
-  // server-side billing will handle it.
+  // server-side usage will handle it.
   if (!quota) {
-    return { kind: 'proceed', billingNote: '' }
+    return { kind: 'proceed', usageNote: '' }
   }
 
   if (quota.reviews_remaining > 0) {
     return {
       kind: 'proceed',
-      billingNote: ` This is free ultrareview ${quota.reviews_used + 1} of ${quota.reviews_limit}.`,
+      usageNote: ` This is free ultrareview ${quota.reviews_used + 1} of ${quota.reviews_limit}.`,
     }
   }
 
   // Utilization fetch failed (transient network error, timeout, etc.) —
   // let it through, same rationale as the quota fallback above.
   if (!utilization) {
-    return { kind: 'proceed', billingNote: '' }
+    return { kind: 'proceed', usageNote: '' }
   }
 
   // Free reviews exhausted — check Extra Usage setup.
@@ -108,7 +108,7 @@ export async function checkOverageGate(): Promise<OverageGate> {
 
   return {
     kind: 'proceed',
-    billingNote: ' This review bills as Extra Usage.',
+    usageNote: ' This review bills as Extra Usage.',
   }
 }
 
@@ -128,13 +128,13 @@ export async function checkOverageGate(): Promise<OverageGate> {
 export async function launchRemoteReview(
   args: string,
   context: ToolUseContext,
-  billingNote?: string,
+  usageNote?: string,
 ): Promise<ContentBlockParam[] | null> {
   const eligibility = await checkRemoteAgentEligibility()
   // Synthetic DEFAULT_CODE_REVIEW_ENVIRONMENT_ID works without per-org CCR
   // setup, so no_remote_environment isn't a blocker. Server-side quota
-  // consume at session creation routes billing: first N zero-rate, then
-  // anthropic:cccr org-service-key (overage-only).
+  // consume at session creation routes usage: first N zero-rate, then
+  // KAI:cccr org-service-key (overage-only).
   if (!eligibility.eligible) {
     const blockers = eligibility.errors.filter(
       e => e.type !== 'no_remote_environment',
@@ -157,7 +157,7 @@ export async function launchRemoteReview(
     }
   }
 
-  const resolvedBillingNote = billingNote ?? ''
+  const resolvedusageNote = usageNote ?? ''
 
   const prNumber = args.trim()
   const isPrNumber = /^\d+$/.test(prNumber)
@@ -305,12 +305,12 @@ export async function launchRemoteReview(
   logEvent('tengu_review_remote_launched', {})
   const sessionUrl = getRemoteTaskSessionUrl(session.id)
   // Concise — the tool-output block is visible to the user, so the model
-  // shouldn't echo the same info. Just enough for Claude to acknowledge the
+  // shouldn't echo the same info. Just enough for KAI to acknowledge the
   // launch without restating the target/URL (both already printed above).
   return [
     {
       type: 'text',
-      text: `Ultrareview launched for ${target} (~10–20 min, runs in the cloud). Track: ${sessionUrl}${resolvedBillingNote} Findings arrive via task-notification. Briefly acknowledge the launch to the user without repeating the target or URL — both are already visible in the tool output above.`,
+      text: `Ultrareview launched for ${target} (~10–20 min, runs in the cloud). Track: ${sessionUrl}${resolvedusageNote} Findings arrive via task-notification. Briefly acknowledge the launch to the user without repeating the target or URL — both are already visible in the tool output above.`,
     },
   ]
 }

@@ -16,7 +16,7 @@ const registerProtocolModule = feature('LODESTONE')
 
 import { getIsInteractive, getLastInteractionTime } from '../bootstrap/state.js'
 import {
-  cleanupNpmCacheForAnthropicPackages,
+  cleanupNpmCacheForKAIPackages,
   cleanupOldMessageFilesInBackground,
   cleanupOldVersionsThrottled,
 } from './cleanup.js'
@@ -86,7 +86,7 @@ export function startBackgroundHousekeeping(): void {
   // and skip immediately if another process holds the lock.
   if (process.env.USER_TYPE === 'ant') {
     const interval = setInterval(() => {
-      void cleanupNpmCacheForAnthropicPackages()
+      void cleanupNpmCacheForKAIPackages()
       void cleanupOldVersionsThrottled()
     }, RECURRING_CLEANUP_INTERVAL_MS)
 

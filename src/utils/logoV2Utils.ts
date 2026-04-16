@@ -1,7 +1,7 @@
 import { getDirectConnectServerUrl, getSessionId } from '../bootstrap/state.js'
 import { stringWidth } from '../ink/stringWidth.js'
 import type { LogOption } from '../types/logs.js'
-import { getSubscriptionName, isClaudeAISubscriber } from './auth.js'
+import { getlocal accessName, iskaiAISubscriber } from './auth.js'
 import { getCwd } from './cwd.js'
 import { getDisplayPath } from './file.js'
 import {
@@ -242,52 +242,52 @@ export function formatReleaseNoteForDisplay(
 export function getLogoDisplayData(): {
   version: string
   cwd: string
-  billingType: string
+  usageType: string
   agentName: string | undefined
 } {
   const version = process.env.DEMO_VERSION ?? MACRO.VERSION
   const serverUrl = getDirectConnectServerUrl()
   const displayPath = process.env.DEMO_VERSION
-    ? '/code/claude'
+    ? '/code/KAI'
     : getDisplayPath(getCwd())
   const cwd = serverUrl
     ? `${displayPath} in ${serverUrl.replace(/^https?:\/\//, '')}`
     : displayPath
-  const billingType = isClaudeAISubscriber()
-    ? getSubscriptionName()
-    : 'API Usage Billing'
+  const usageType = iskaiAISubscriber()
+    ? getlocal accessName()
+    : 'API Usage usage'
   const agentName = getInitialSettings().agent
 
   return {
     version,
     cwd,
-    billingType,
+    usageType,
     agentName,
   }
 }
 
 /**
- * Determines how to display model and billing information based on available width
+ * Determines how to display model and usage information based on available width
  */
-export function formatModelAndBilling(
+export function formatModelAndusage(
   modelName: string,
-  billingType: string,
+  usageType: string,
   availableWidth: number,
 ): {
   shouldSplit: boolean
   truncatedModel: string
-  truncatedBilling: string
+  truncatedusage: string
 } {
   const separator = ' · '
   const combinedWidth =
-    stringWidth(modelName) + separator.length + stringWidth(billingType)
+    stringWidth(modelName) + separator.length + stringWidth(usageType)
   const shouldSplit = combinedWidth > availableWidth
 
   if (shouldSplit) {
     return {
       shouldSplit: true,
       truncatedModel: truncate(modelName, availableWidth),
-      truncatedBilling: truncate(billingType, availableWidth),
+      truncatedusage: truncate(usageType, availableWidth),
     }
   }
 
@@ -296,11 +296,11 @@ export function formatModelAndBilling(
     truncatedModel: truncate(
       modelName,
       Math.max(
-        availableWidth - stringWidth(billingType) - separator.length,
+        availableWidth - stringWidth(usageType) - separator.length,
         10,
       ),
     ),
-    truncatedBilling: billingType,
+    truncatedusage: usageType,
   }
 }
 

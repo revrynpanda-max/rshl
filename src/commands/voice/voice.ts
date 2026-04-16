@@ -2,7 +2,7 @@ import { normalizeLanguageForSTT } from '../../hooks/useVoice.js'
 import { getShortcutDisplay } from '../../keybindings/shortcutFormat.js'
 import { logEvent } from '../../services/analytics/index.js'
 import type { LocalCommandCall } from '../../types/command.js'
-import { isAnthropicAuthEnabled } from '../../utils/auth.js'
+import { isKAIAuthEnabled } from '../../utils/auth.js'
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js'
 import { settingsChangeDetector } from '../../utils/settings/changeDetector.js'
 import {
@@ -18,11 +18,11 @@ export const call: LocalCommandCall = async () => {
   if (!isVoiceModeEnabled()) {
     // Differentiate: OAuth-less users get an auth hint, everyone else
     // gets nothing (command shouldn't be reachable when the kill-switch is on).
-    if (!isAnthropicAuthEnabled()) {
+    if (!isKAIAuthEnabled()) {
       return {
         type: 'text' as const,
         value:
-          'Voice mode requires a Claude.ai account. Please run /login to sign in.',
+          'Voice mode requires a kai.local account. Please run /login to sign in.',
       }
     }
     return {
@@ -75,7 +75,7 @@ export const call: LocalCommandCall = async () => {
     return {
       type: 'text' as const,
       value:
-        'Voice mode requires a Claude.ai account. Please run /login to sign in.',
+        'Voice mode requires a kai.local account. Please run /login to sign in.',
     }
   }
 

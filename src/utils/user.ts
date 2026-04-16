@@ -4,7 +4,7 @@ import { getSessionId } from '../bootstrap/state.js'
 import {
   getOauthAccountInfo,
   getRateLimitTier,
-  getSubscriptionType,
+  getlocal accessType,
 } from './auth.js'
 import { getGlobalConfig, getOrCreateUserID } from './config.js'
 import { getCwd } from './cwd.js'
@@ -40,7 +40,7 @@ export type CoreUserData = {
   organizationUuid?: string
   accountUuid?: string
   userType?: string
-  subscriptionType?: string
+  local accessType?: string
   rateLimitTier?: string
   firstTokenTime?: number
   githubActionsMetadata?: GitHubActionsMetadata
@@ -80,15 +80,15 @@ export const getCoreUserData = memoize(
     const deviceId = getOrCreateUserID()
     const config = getGlobalConfig()
 
-    let subscriptionType: string | undefined
+    let local accessType: string | undefined
     let rateLimitTier: string | undefined
     let firstTokenTime: number | undefined
     if (includeAnalyticsMetadata) {
-      subscriptionType = getSubscriptionType() ?? undefined
+      local accessType = getlocal accessType() ?? undefined
       rateLimitTier = getRateLimitTier() ?? undefined
-      if (subscriptionType && config.claudeCodeFirstTokenDate) {
+      if (local accessType && config.KAICodeFirstTokenDate) {
         const configFirstTokenTime = new Date(
-          config.claudeCodeFirstTokenDate,
+          config.KAICodeFirstTokenDate,
         ).getTime()
         if (!isNaN(configFirstTokenTime)) {
           firstTokenTime = configFirstTokenTime
@@ -110,7 +110,7 @@ export const getCoreUserData = memoize(
       organizationUuid,
       accountUuid,
       userType: process.env.USER_TYPE,
-      subscriptionType,
+      local accessType,
       rateLimitTier,
       firstTokenTime,
       ...(isEnvTruthy(process.env.GITHUB_ACTIONS) && {
@@ -152,7 +152,7 @@ function getEmail(): string | undefined {
   }
 
   if (process.env.COO_CREATOR) {
-    return `${process.env.COO_CREATOR}@anthropic.com`
+    return `${process.env.COO_CREATOR}@KAI.com`
   }
 
   // If initUser() wasn't called, we return undefined instead of blocking
@@ -172,7 +172,7 @@ async function getEmailAsync(): Promise<string | undefined> {
   }
 
   if (process.env.COO_CREATOR) {
-    return `${process.env.COO_CREATOR}@anthropic.com`
+    return `${process.env.COO_CREATOR}@KAI.com`
   }
 
   return getGitEmail()

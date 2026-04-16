@@ -1,4 +1,4 @@
-import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs'
+import type { ContentBlockParam } from '@kai-ai/sdk/resources/messages.mjs'
 import type { UUID } from 'crypto'
 import type React from 'react'
 import type { PermissionResult } from '../entrypoints/agentSdkTypes.js'
@@ -340,7 +340,7 @@ export type QueuedCommand = {
    */
   origin?: MessageOrigin
   /**
-   * Workload tag threaded through to cc_workload= in the billing-header
+   * Workload tag threaded through to cc_workload= in the usage-header
    * attribution block. The queue is the async boundary between the cron
    * scheduler firing and the turn actually running — a user prompt can slip
    * in between — so the tag rides on the QueuedCommand itself and is only

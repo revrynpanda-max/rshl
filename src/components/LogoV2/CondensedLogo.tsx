@@ -9,7 +9,7 @@ import { useAppState } from '../../state/AppState.js';
 import { getEffortSuffix } from '../../utils/effort.js';
 import { truncate } from '../../utils/format.js';
 import { isFullscreenEnvEnabled } from '../../utils/fullscreen.js';
-import { formatModelAndBilling, getLogoDisplayData, truncatePath } from '../../utils/logoV2Utils.js';
+import { formatModelAndusage, getLogoDisplayData, truncatePath } from '../../utils/logoV2Utils.js';
 import { renderModelSetting } from '../../utils/model/model.js';
 import { OffscreenFreeze } from '../OffscreenFreeze.js';
 import { AnimatedClawd } from './AnimatedClawd.js';
@@ -28,7 +28,7 @@ export function CondensedLogo() {
   const {
     version,
     cwd,
-    billingType,
+    usageType,
     agentName: agentNameFromSettings
   } = getLogoDisplayData();
   const agentName = agent ?? agentNameFromSettings;
@@ -75,8 +75,8 @@ export function CondensedLogo() {
   const {
     shouldSplit,
     truncatedModel,
-    truncatedBilling
-  } = formatModelAndBilling(modelDisplayName + effortSuffix, billingType, textWidth);
+    truncatedusage
+  } = formatModelAndusage(modelDisplayName + effortSuffix, usageType, textWidth);
   const cwdAvailableWidth = agentName ? textWidth - 1 - stringWidth(agentName) - 3 : textWidth;
   const truncatedCwd = truncatePath(cwd, Math.max(cwdAvailableWidth, 10));
   let t4;
@@ -88,7 +88,7 @@ export function CondensedLogo() {
   }
   let t5;
   if ($[8] === Symbol.for("react.memo_cache_sentinel")) {
-    t5 = <Text bold={true}>Claude Code</Text>;
+    t5 = <Text bold={true}>KAI</Text>;
     $[8] = t5;
   } else {
     t5 = $[8];
@@ -102,10 +102,10 @@ export function CondensedLogo() {
     t6 = $[10];
   }
   let t7;
-  if ($[11] !== shouldSplit || $[12] !== truncatedBilling || $[13] !== truncatedModel) {
-    t7 = shouldSplit ? <><Text dimColor={true}>{truncatedModel}</Text><Text dimColor={true}>{truncatedBilling}</Text></> : <Text dimColor={true}>{truncatedModel} · {truncatedBilling}</Text>;
+  if ($[11] !== shouldSplit || $[12] !== truncatedusage || $[13] !== truncatedModel) {
+    t7 = shouldSplit ? <><Text dimColor={true}>{truncatedModel}</Text><Text dimColor={true}>{truncatedusage}</Text></> : <Text dimColor={true}>{truncatedModel} · {truncatedusage}</Text>;
     $[11] = shouldSplit;
-    $[12] = truncatedBilling;
+    $[12] = truncatedusage;
     $[13] = truncatedModel;
     $[14] = t7;
   } else {

@@ -3,14 +3,14 @@ import figures from 'figures';
 import * as React from 'react';
 import { color, Text } from '../ink.js';
 import type { MCPServerConnection } from '../services/mcp/types.js';
-import { getAccountInformation, isClaudeAISubscriber } from './auth.js';
-import { getLargeMemoryFiles, getMemoryFiles, MAX_MEMORY_CHARACTER_COUNT } from './claudemd.js';
+import { getAccountInformation, iskaiAISubscriber } from './auth.js';
+import { getLargeMemoryFiles, getMemoryFiles, MAX_MEMORY_CHARACTER_COUNT } from './KaiMd.js';
 import { getDoctorDiagnostic } from './doctorDiagnostic.js';
 import { getAWSRegion, getDefaultVertexRegion, isEnvTruthy } from './envUtils.js';
 import { getDisplayPath } from './file.js';
 import { formatNumber } from './format.js';
 import { getIdeClientName, type IDEExtensionInstallationStatus, isJetBrainsIde, toIDEDisplayName } from './ide.js';
-import { getClaudeAiUserDefaultModelDescription, modelDisplayString } from './model/model.js';
+import { getKaiAIUserDefaultModelDescription, modelDisplayString } from './model/model.js';
 import { getAPIProvider } from './model/providers.js';
 import { getMTLSConfig } from './mtls.js';
 import { checkInstall } from './nativeInstaller/index.js';
@@ -203,10 +203,10 @@ export function buildAccountProperties(): Property[] {
     return [];
   }
   const properties: Property[] = [];
-  if (accountInfo.subscription) {
+  if (accountInfo.local access) {
     properties.push({
       label: 'Login method',
-      value: `${accountInfo.subscription} Account`
+      value: `${accountInfo.local access} Account`
     });
   }
   if (accountInfo.tokenSource) {
@@ -252,11 +252,11 @@ export function buildAPIProviderProperties(): Property[] {
     });
   }
   if (apiProvider === 'firstParty') {
-    const anthropicBaseUrl = process.env.ANTHROPIC_BASE_URL;
-    if (anthropicBaseUrl) {
+    const KAIBaseUrl = process.env.KAI_BASE_URL;
+    if (KAIBaseUrl) {
       properties.push({
-        label: 'Anthropic base URL',
-        value: anthropicBaseUrl
+        label: 'KAI base URL',
+        value: KAIBaseUrl
       });
     }
   } else if (apiProvider === 'bedrock') {
@@ -271,7 +271,7 @@ export function buildAPIProviderProperties(): Property[] {
       label: 'AWS region',
       value: getAWSRegion()
     });
-    if (isEnvTruthy(process.env.CLAUDE_CODE_SKIP_BEDROCK_AUTH)) {
+    if (isEnvTruthy(process.env.KAI_ENGINE_SKIP_BEDROCK_AUTH)) {
       properties.push({
         value: 'AWS auth skipped'
       });
@@ -284,7 +284,7 @@ export function buildAPIProviderProperties(): Property[] {
         value: vertexBaseUrl
       });
     }
-    const gcpProject = process.env.ANTHROPIC_VERTEX_PROJECT_ID;
+    const gcpProject = process.env.KAI_VERTEX_PROJECT_ID;
     if (gcpProject) {
       properties.push({
         label: 'GCP project',
@@ -295,27 +295,27 @@ export function buildAPIProviderProperties(): Property[] {
       label: 'Default region',
       value: getDefaultVertexRegion()
     });
-    if (isEnvTruthy(process.env.CLAUDE_CODE_SKIP_VERTEX_AUTH)) {
+    if (isEnvTruthy(process.env.KAI_ENGINE_SKIP_VERTEX_AUTH)) {
       properties.push({
         value: 'GCP auth skipped'
       });
     }
   } else if (apiProvider === 'foundry') {
-    const foundryBaseUrl = process.env.ANTHROPIC_FOUNDRY_BASE_URL;
+    const foundryBaseUrl = process.env.KAI_FOUNDRY_BASE_URL;
     if (foundryBaseUrl) {
       properties.push({
         label: 'Microsoft Foundry base URL',
         value: foundryBaseUrl
       });
     }
-    const foundryResource = process.env.ANTHROPIC_FOUNDRY_RESOURCE;
+    const foundryResource = process.env.KAI_FOUNDRY_RESOURCE;
     if (foundryResource) {
       properties.push({
         label: 'Microsoft Foundry resource',
         value: foundryResource
       });
     }
-    if (isEnvTruthy(process.env.CLAUDE_CODE_SKIP_FOUNDRY_AUTH)) {
+    if (isEnvTruthy(process.env.KAI_ENGINE_SKIP_FOUNDRY_AUTH)) {
       properties.push({
         value: 'Microsoft Foundry auth skipped'
       });
@@ -336,16 +336,16 @@ export function buildAPIProviderProperties(): Property[] {
     });
   }
   if (mtlsConfig) {
-    if (mtlsConfig.cert && process.env.CLAUDE_CODE_CLIENT_CERT) {
+    if (mtlsConfig.cert && process.env.KAI_ENGINE_CLIENT_CERT) {
       properties.push({
         label: 'mTLS client cert',
-        value: process.env.CLAUDE_CODE_CLIENT_CERT
+        value: process.env.KAI_ENGINE_CLIENT_CERT
       });
     }
-    if (mtlsConfig.key && process.env.CLAUDE_CODE_CLIENT_KEY) {
+    if (mtlsConfig.key && process.env.KAI_ENGINE_CLIENT_KEY) {
       properties.push({
         label: 'mTLS client key',
-        value: process.env.CLAUDE_CODE_CLIENT_KEY
+        value: process.env.KAI_ENGINE_CLIENT_KEY
       });
     }
   }
@@ -353,8 +353,8 @@ export function buildAPIProviderProperties(): Property[] {
 }
 export function getModelDisplayLabel(mainLoopModel: string | null): string {
   let modelLabel = modelDisplayString(mainLoopModel);
-  if (mainLoopModel === null && isClaudeAISubscriber()) {
-    const description = getClaudeAiUserDefaultModelDescription();
+  if (mainLoopModel === null && iskaiAISubscriber()) {
+    const description = getKaiAIUserDefaultModelDescription();
     modelLabel = `${chalk.bold('Default')} ${description}`;
   }
   return modelLabel;

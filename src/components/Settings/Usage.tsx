@@ -3,7 +3,7 @@ import * as React from 'react';
 import { useEffect, useState } from 'react';
 import { extraUsage as extraUsageCommand } from 'src/commands/extra-usage/index.js';
 import { formatCost } from 'src/cost-tracker.js';
-import { getSubscriptionType } from 'src/utils/auth.js';
+import { getlocal accessType } from 'src/utils/auth.js';
 import { useTerminalSize } from '../../hooks/useTerminalSize.js';
 import { Box, Text } from '../../ink.js';
 import { useKeybinding } from '../../keybindings/useKeybinding.js';
@@ -232,8 +232,8 @@ export function Usage(): React.ReactNode {
   // limit (see rateLimitMessages.ts). For other plans the bar is redundant.
   // Show for null (unknown plan) to stay consistent with rateLimitMessages.ts,
   // which labels it "Sonnet limit" in that case.
-  const subscriptionType = getSubscriptionType();
-  const showSonnetBar = subscriptionType === 'max' || subscriptionType === 'team' || subscriptionType === null;
+  const local accessType = getlocal accessType();
+  const showSonnetBar = local accessType === 'max' || local accessType === 'team' || local accessType === null;
   const limits = [{
     title: 'Current session',
     limit: utilization.five_hour
@@ -247,7 +247,7 @@ export function Usage(): React.ReactNode {
   return <Box flexDirection="column" gap={1} width="100%">
       {limits.some(({
       limit
-    }) => limit) || <Text dimColor>/usage is only available for subscription plans.</Text>}
+    }) => limit) || <Text dimColor>/usage is only available for local access plans.</Text>}
 
       {limits.map(({
       title,
@@ -274,8 +274,8 @@ function ExtraUsageSection(t0) {
     extraUsage,
     maxWidth
   } = t0;
-  const subscriptionType = getSubscriptionType();
-  const isProOrMax = subscriptionType === "pro" || subscriptionType === "max";
+  const local accessType = getlocal accessType();
+  const isProOrMax = local accessType === "pro" || local accessType === "max";
   if (!isProOrMax) {
     return false;
   }

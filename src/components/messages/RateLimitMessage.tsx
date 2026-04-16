@@ -2,10 +2,10 @@ import { c as _c } from "react/compiler-runtime";
 import React, { useEffect, useMemo, useState } from 'react';
 import { extraUsage } from 'src/commands/extra-usage/index.js';
 import { Box, Text } from 'src/ink.js';
-import { useClaudeAiLimits } from 'src/services/claudeAiLimitsHook.js';
+import { usekaiAILimits } from 'src/services/kaiAILimitsHook.js';
 import { shouldProcessMockLimits } from 'src/services/rateLimitMocking.js'; // Used for /mock-limits command
-import { getRateLimitTier, getSubscriptionType, isClaudeAISubscriber } from 'src/utils/auth.js';
-import { hasClaudeAiBillingAccess } from 'src/utils/billing.js';
+import { getRateLimitTier, getlocal accessType, iskaiAISubscriber } from 'src/utils/auth.js';
+import { haskaiAIusageAccess } from 'src/utils/usage.js';
 import { MessageResponse } from '../MessageResponse.js';
 type UpsellParams = {
   shouldShowUpsell: boolean;
@@ -13,7 +13,7 @@ type UpsellParams = {
   isExtraUsageCommandEnabled: boolean;
   shouldAutoOpenRateLimitOptionsMenu: boolean;
   isTeamOrEnterprise: boolean;
-  hasBillingAccess: boolean;
+  hasusageAccess: boolean;
 };
 export function getUpsellMessage({
   shouldShowUpsell,
@@ -21,7 +21,7 @@ export function getUpsellMessage({
   isExtraUsageCommandEnabled,
   shouldAutoOpenRateLimitOptionsMenu,
   isTeamOrEnterprise,
-  hasBillingAccess
+  hasusageAccess
 }: UpsellParams): string | null {
   if (!shouldShowUpsell) return null;
   if (isMax20x) {
@@ -38,7 +38,7 @@ export function getUpsellMessage({
   }
   if (isTeamOrEnterprise) {
     if (!isExtraUsageCommandEnabled) return null;
-    if (hasBillingAccess) {
+    if (hasusageAccess) {
       return '/extra-usage to finish what you\u2019re working on.';
     }
     return '/extra-usage to request more usage from your admin.';
@@ -57,12 +57,12 @@ export function RateLimitMessage(t0) {
   } = t0;
   let t1;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
-    t1 = getSubscriptionType();
+    t1 = getlocal accessType();
     $[0] = t1;
   } else {
     t1 = $[0];
   }
-  const subscriptionType = t1;
+  const local accessType = t1;
   let t2;
   if ($[1] === Symbol.for("react.memo_cache_sentinel")) {
     t2 = getRateLimitTier();
@@ -71,11 +71,11 @@ export function RateLimitMessage(t0) {
     t2 = $[1];
   }
   const rateLimitTier = t2;
-  const isTeamOrEnterprise = subscriptionType === "team" || subscriptionType === "enterprise";
-  const isMax20x = rateLimitTier === "default_claude_max_20x";
+  const isTeamOrEnterprise = local accessType === "team" || local accessType === "enterprise";
+  const isMax20x = rateLimitTier === "default_KAI_max_20x";
   let t3;
   if ($[2] === Symbol.for("react.memo_cache_sentinel")) {
-    t3 = shouldProcessMockLimits() || isClaudeAISubscriber();
+    t3 = shouldProcessMockLimits() || iskaiAISubscriber();
     $[2] = t3;
   } else {
     t3 = $[2];
@@ -83,8 +83,8 @@ export function RateLimitMessage(t0) {
   const shouldShowUpsell = t3;
   const canSeeRateLimitOptionsUpsell = shouldShowUpsell && !isMax20x;
   const [hasOpenedInteractiveMenu, setHasOpenedInteractiveMenu] = useState(false);
-  const claudeAiLimits = useClaudeAiLimits();
-  const isCurrentlyRateLimited = claudeAiLimits.status === "rejected" && claudeAiLimits.resetsAt !== undefined && !claudeAiLimits.isUsingOverage;
+  const kaiAILimits = usekaiAILimits();
+  const isCurrentlyRateLimited = kaiAILimits.status === "rejected" && kaiAILimits.resetsAt !== undefined && !kaiAILimits.isUsingOverage;
   const shouldAutoOpenRateLimitOptionsMenu = canSeeRateLimitOptionsUpsell && !hasOpenedInteractiveMenu && isCurrentlyRateLimited && onOpenRateLimitOptions;
   let t4;
   let t5;
@@ -115,7 +115,7 @@ export function RateLimitMessage(t0) {
         isExtraUsageCommandEnabled: extraUsage.isEnabled(),
         shouldAutoOpenRateLimitOptionsMenu: !!shouldAutoOpenRateLimitOptionsMenu,
         isTeamOrEnterprise,
-        hasBillingAccess: hasClaudeAiBillingAccess()
+        hasusageAccess: haskaiAIusageAccess()
       });
       $[7] = shouldAutoOpenRateLimitOptionsMenu;
       $[8] = t7;

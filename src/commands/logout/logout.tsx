@@ -6,7 +6,7 @@ import { getGroveNoticeConfig, getGroveSettings } from '../../services/api/grove
 import { clearPolicyLimitsCache } from '../../services/policyLimits/index.js';
 // flushTelemetry is loaded lazily to avoid pulling in ~1.1MB of OpenTelemetry at startup
 import { clearRemoteManagedSettingsCache } from '../../services/remoteManagedSettings/index.js';
-import { getClaudeAIOAuthTokens, removeApiKey } from '../../utils/auth.js';
+import { getKaiAIOAuthTokens, removeApiKey } from '../../utils/auth.js';
 import { clearBetasCaches } from '../../utils/betas.js';
 import { saveGlobalConfig } from '../../utils/config.js';
 import { gracefulShutdownSync } from '../../utils/gracefulShutdown.js';
@@ -33,8 +33,8 @@ export async function performLogout({
     };
     if (clearOnboarding) {
       updated.hasCompletedOnboarding = false;
-      updated.subscriptionNoticeCount = 0;
-      updated.hasAvailableSubscription = false;
+      updated.local accessNoticeCount = 0;
+      updated.hasAvailablelocal access = false;
       if (updated.customApiKeyResponses?.approved) {
         updated.customApiKeyResponses = {
           ...updated.customApiKeyResponses,
@@ -50,7 +50,7 @@ export async function performLogout({
 // clearing anything memoized that must be invalidated when user/session/auth changes
 export async function clearAuthRelatedCaches(): Promise<void> {
   // Clear the OAuth token cache
-  getClaudeAIOAuthTokens.cache?.clear?.();
+  getKaiAIOAuthTokens.cache?.clear?.();
   clearTrustedDeviceTokenCache();
   clearBetasCaches();
   clearToolSchemaCache();
@@ -73,7 +73,7 @@ export async function call(): Promise<React.ReactNode> {
   await performLogout({
     clearOnboarding: true
   });
-  const message = <Text>Successfully logged out from your Anthropic account.</Text>;
+  const message = <Text>KAI session ended.</Text>;
   setTimeout(() => {
     gracefulShutdownSync(0, 'logout');
   }, 200);

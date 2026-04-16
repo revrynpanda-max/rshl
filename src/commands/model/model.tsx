@@ -150,13 +150,13 @@ function SetModelAndClose({
 
       // @[MODEL LAUNCH]: Update check for 1M access.
       if (model && isOpus1mUnavailable(model)) {
-        onDone(`Opus 4.6 with 1M context is not available for your account. Learn more: https://code.claude.com/docs/en/model-config#extended-context-with-1m`, {
+        onDone(`Opus 4.6 with 1M context is not available for your account. Learn more: https://code.kai.local/docs/en/model-config#extended-context-with-1m`, {
           display: 'system'
         });
         return;
       }
       if (model && isSonnet1mUnavailable(model)) {
-        onDone(`Sonnet 4.6 with 1M context is not available for your account. Learn more: https://code.claude.com/docs/en/model-config#extended-context-with-1m`, {
+        onDone(`Sonnet 4.6 with 1M context is not available for your account. Learn more: https://code.kai.local/docs/en/model-config#extended-context-with-1m`, {
           display: 'system'
         });
         return;
@@ -221,7 +221,7 @@ function SetModelAndClose({
         message += ` · Billed as extra usage`;
       }
       if (wasFastModeToggledOn === false) {
-        // Fast mode was toggled off, show suffix after extra usage billing
+        // Fast mode was toggled off, show suffix after extra usage usage
         message += ` · Fast mode OFF`;
       }
       onDone(message);

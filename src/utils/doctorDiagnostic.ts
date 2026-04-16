@@ -36,8 +36,8 @@ import { SandboxManager } from './sandbox/sandbox-adapter.js'
 import { getManagedFilePath } from './settings/managedPath.js'
 import { CUSTOMIZATION_SURFACES } from './settings/types.js'
 import {
-  findClaudeAlias,
-  findValidClaudeAlias,
+  findKAIAlias,
+  findValidKAIAlias,
   getShellConfigPaths,
 } from './shellConfig.js'
 import { jsonParse } from './slowOperations.js'
@@ -162,7 +162,7 @@ async function getInstallationPath(): Promise<string> {
     }
 
     try {
-      const path = await which('claude')
+      const path = await which('kai')
       if (path) {
         return path
       }
@@ -172,8 +172,8 @@ async function getInstallationPath(): Promise<string> {
 
     // If we can't find it, check common locations
     try {
-      await getFsImplementation().stat(join(homedir(), '.local/bin/claude'))
-      return join(homedir(), '.local/bin/claude')
+      await getFsImplementation().stat(join(homedir(), '.local/bin/KAI'))
+      return join(homedir(), '.local/bin/KAI')
     } catch {
       // Not found
     }
@@ -209,14 +209,14 @@ async function detectMultipleInstallations(): Promise<
   const installations: Array<{ type: string; path: string }> = []
 
   // Check for local installation
-  const localPath = join(homedir(), '.claude', 'local')
+  const localPath = join(homedir(), '.KAI', 'local')
   if (await localInstallationExists()) {
     installations.push({ type: 'npm-local', path: localPath })
   }
 
   // Check for global npm installation
-  const packagesToCheck = ['@anthropic-ai/claude-code']
-  if (MACRO.PACKAGE_URL && MACRO.PACKAGE_URL !== '@anthropic-ai/claude-code') {
+  const packagesToCheck = ['@kai-ai/kai-engine']
+  if (MACRO.PACKAGE_URL && MACRO.PACKAGE_URL !== '@kai-ai/kai-engine') {
     packagesToCheck.push(MACRO.PACKAGE_URL)
   }
   const npmResult = await execFileNoThrow('npm', [
@@ -229,12 +229,12 @@ async function detectMultipleInstallations(): Promise<
     const npmPrefix = npmResult.stdout.trim()
     const isWindows = getPlatform() === 'windows'
 
-    // First check for active installations via bin/claude
-    // Linux / macOS have prefix/bin/claude and prefix/lib/node_modules
-    // Windows has prefix/claude and prefix/node_modules
+    // First check for active installations via bin/KAI
+    // Linux / macOS have prefix/bin/KAI and prefix/lib/node_modules
+    // Windows has prefix/KAI and prefix/node_modules
     const globalBinPath = isWindows
-      ? join(npmPrefix, 'claude')
-      : join(npmPrefix, 'bin', 'claude')
+      ? join(npmPrefix, 'kai')
+      : join(npmPrefix, 'bin', 'kai')
 
     let globalBinExists = false
     try {
@@ -246,7 +246,7 @@ async function detectMultipleInstallations(): Promise<
 
     if (globalBinExists) {
       // Check if this is actually a Homebrew cask installation, not npm-global
-      // When npm is installed via Homebrew, both can exist at /opt/homebrew/bin/claude
+      // When npm is installed via Homebrew, both can exist at /opt/homebrew/bin/KAI
       // We need to resolve the symlink to see where it actually points
       let isCurrentHomebrewInstallation = false
 
@@ -267,7 +267,7 @@ async function detectMultipleInstallations(): Promise<
         installations.push({ type: 'npm-global', path: globalBinPath })
       }
     } else {
-      // If no bin/claude exists, check for orphaned packages (no bin/claude symlink)
+      // If no bin/KAI exists, check for orphaned packages (no bin/KAI symlink)
       for (const packageName of packagesToCheck) {
         const globalPackagePath = isWindows
           ? join(npmPrefix, 'node_modules', packageName)
@@ -289,7 +289,7 @@ async function detectMultipleInstallations(): Promise<
   // Check for native installation
 
   // Check common native installation paths
-  const nativeBinPath = join(homedir(), '.local', 'bin', 'claude')
+  const nativeBinPath = join(homedir(), '.local', 'bin', 'kai')
   try {
     await fs.stat(nativeBinPath)
     installations.push({ type: 'native', path: nativeBinPath })
@@ -300,7 +300,7 @@ async function detectMultipleInstallations(): Promise<
   // Also check if config indicates native installation
   const config = getGlobalConfig()
   if (config.installMethod === 'native') {
-    const nativeDataPath = join(homedir(), '.local', 'share', 'claude')
+    const nativeDataPath = join(homedir(), '.local', 'share', 'kai')
     try {
       await fs.stat(nativeDataPath)
       if (!installations.some(i => i.type === 'native')) {
@@ -435,14 +435,14 @@ async function detectConfigurationIssues(
     if (type === 'npm-local' && config.installMethod !== 'local') {
       warnings.push({
         issue: `Running from local installation but config install method is '${config.installMethod}'`,
-        fix: 'Consider using native installation: claude install',
+        fix: 'Consider using native installation: KAI install',
       })
     }
 
     if (type === 'native' && config.installMethod !== 'native') {
       warnings.push({
         issue: `Running native installation but config install method is '${config.installMethod}'`,
-        fix: 'Run claude install to update configuration',
+        fix: 'Run KAI install to update configuration',
       })
     }
   }
@@ -450,32 +450,32 @@ async function detectConfigurationIssues(
   if (type === 'npm-global' && (await localInstallationExists())) {
     warnings.push({
       issue: 'Local installation exists but not being used',
-      fix: 'Consider using native installation: claude install',
+      fix: 'Consider using native installation: KAI install',
     })
   }
 
-  const existingAlias = await findClaudeAlias()
-  const validAlias = await findValidClaudeAlias()
+  const existingAlias = await findKAIAlias()
+  const validAlias = await findValidKAIAlias()
 
   // Check if running local installation but it's not in PATH
   if (type === 'npm-local') {
-    // Check if claude is already accessible via PATH
-    const whichResult = await which('claude')
-    const claudeInPath = !!whichResult
+    // Check if KAI is already accessible via PATH
+    const whichResult = await which('kai')
+    const KAIInPath = !!whichResult
 
-    // Only show warning if claude is NOT in PATH AND no valid alias exists
-    if (!claudeInPath && !validAlias) {
+    // Only show warning if KAI is NOT in PATH AND no valid alias exists
+    if (!KAIInPath && !validAlias) {
       if (existingAlias) {
         // Alias exists but points to invalid target
         warnings.push({
           issue: 'Local installation not accessible',
-          fix: `Alias exists but points to invalid target: ${existingAlias}. Update alias: alias claude="~/.claude/local/claude"`,
+          fix: `Alias exists but points to invalid target: ${existingAlias}. Update alias: alias KAI="~/.kai/local/KAI"`,
         })
       } else {
         // No alias exists and not in PATH
         warnings.push({
           issue: 'Local installation not accessible',
-          fix: 'Create alias: alias claude="~/.claude/local/claude"',
+          fix: 'Create alias: alias KAI="~/.kai/local/KAI"',
         })
       }
     }
@@ -536,10 +536,10 @@ export async function getDoctorDiagnostic(): Promise<DiagnosticInfo> {
 
     for (const install of npmInstalls) {
       if (install.type === 'npm-global') {
-        let uninstallCmd = 'npm -g uninstall @anthropic-ai/claude-code'
+        let uninstallCmd = 'npm -g uninstall @kai-ai/kai-engine'
         if (
           MACRO.PACKAGE_URL &&
-          MACRO.PACKAGE_URL !== '@anthropic-ai/claude-code'
+          MACRO.PACKAGE_URL !== '@kai-ai/kai-engine'
         ) {
           uninstallCmd += ` && npm -g uninstall ${MACRO.PACKAGE_URL}`
         }
@@ -580,7 +580,7 @@ export async function getDoctorDiagnostic(): Promise<DiagnosticInfo> {
     if (!hasUpdatePermissions && !getAutoUpdaterDisabledReason()) {
       warnings.push({
         issue: 'Insufficient permissions for auto-updates',
-        fix: 'Do one of: (1) Re-install node without sudo, or (2) Use `claude install` for native installation',
+        fix: 'Do one of: (1) Re-install node without sudo, or (2) Use `KAI install` for native installation',
       })
     }
   }

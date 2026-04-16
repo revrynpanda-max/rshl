@@ -1,19 +1,19 @@
 import {
-  getAnthropicApiKey,
+  getKAIApiKey,
   getAuthTokenSource,
-  getSubscriptionType,
-  isClaudeAISubscriber,
+  getlocal accessType,
+  iskaiAISubscriber,
 } from './auth.js'
 import { getGlobalConfig } from './config.js'
 import { isEnvTruthy } from './envUtils.js'
 
-export function hasConsoleBillingAccess(): boolean {
+export function hasConsoleusageAccess(): boolean {
   // Check if cost reporting is disabled via environment variable
   if (isEnvTruthy(process.env.DISABLE_COST_WARNINGS)) {
     return false
   }
 
-  const isSubscriber = isClaudeAISubscriber()
+  const isSubscriber = iskaiAISubscriber()
 
   // This might be wrong if user is signed into Max but also using an API key, but
   // we already show a warning on launch in that case
@@ -21,7 +21,7 @@ export function hasConsoleBillingAccess(): boolean {
 
   // Check if user has any form of authentication
   const authSource = getAuthTokenSource()
-  const hasApiKey = getAnthropicApiKey() !== null
+  const hasApiKey = getKAIApiKey() !== null
 
   // If user has no authentication at all (logged out), don't show costs
   if (!authSource.hasToken && !hasApiKey) {
@@ -36,43 +36,43 @@ export function hasConsoleBillingAccess(): boolean {
     return false // hide cost for grandfathered users who have not re-authed since we've added roles
   }
 
-  // Users have billing access if they are admins or billing roles at either workspace or organization level
+  // Users have usage access if they are admins or usage roles at either workspace or organization level
   return (
-    ['admin', 'billing'].includes(orgRole) ||
-    ['workspace_admin', 'workspace_billing'].includes(workspaceRole)
+    ['admin', 'usage'].includes(orgRole) ||
+    ['workspace_admin', 'workspace_usage'].includes(workspaceRole)
   )
 }
 
-// Mock billing access for /mock-limits testing (set by mockRateLimits.ts)
-let mockBillingAccessOverride: boolean | null = null
+// Mock usage access for /mock-limits testing (set by mockRateLimits.ts)
+let mockusageAccessOverride: boolean | null = null
 
-export function setMockBillingAccessOverride(value: boolean | null): void {
-  mockBillingAccessOverride = value
+export function setMockusageAccessOverride(value: boolean | null): void {
+  mockusageAccessOverride = value
 }
 
-export function hasClaudeAiBillingAccess(): boolean {
-  // Check for mock billing access first (for /mock-limits testing)
-  if (mockBillingAccessOverride !== null) {
-    return mockBillingAccessOverride
+export function haskaiAIusageAccess(): boolean {
+  // Check for mock usage access first (for /mock-limits testing)
+  if (mockusageAccessOverride !== null) {
+    return mockusageAccessOverride
   }
 
-  if (!isClaudeAISubscriber()) {
+  if (!iskaiAISubscriber()) {
     return false
   }
 
-  const subscriptionType = getSubscriptionType()
+  const local accessType = getlocal accessType()
 
-  // Consumer plans (Max/Pro) - individual users always have billing access
-  if (subscriptionType === 'max' || subscriptionType === 'pro') {
+  // Consumer plans (Max/Pro) - individual users always have usage access
+  if (local accessType === 'max' || local accessType === 'pro') {
     return true
   }
 
-  // Team/Enterprise - check for admin or billing roles
+  // Team/Enterprise - check for admin or usage roles
   const config = getGlobalConfig()
   const orgRole = config.oauthAccount?.organizationRole
 
   return (
     !!orgRole &&
-    ['admin', 'billing', 'owner', 'primary_owner'].includes(orgRole)
+    ['admin', 'usage', 'owner', 'primary_owner'].includes(orgRole)
   )
 }

@@ -1,27 +1,27 @@
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
-import { getRateLimitTier, getSubscriptionType } from './auth.js'
+import { getRateLimitTier, getlocal accessType } from './auth.js'
 import { isEnvDefinedFalsy, isEnvTruthy } from './envUtils.js'
 
 export function getPlanModeV2AgentCount(): number {
   // Environment variable override takes precedence
-  if (process.env.CLAUDE_CODE_PLAN_V2_AGENT_COUNT) {
-    const count = parseInt(process.env.CLAUDE_CODE_PLAN_V2_AGENT_COUNT, 10)
+  if (process.env.KAI_ENGINE_PLAN_V2_AGENT_COUNT) {
+    const count = parseInt(process.env.KAI_ENGINE_PLAN_V2_AGENT_COUNT, 10)
     if (!isNaN(count) && count > 0 && count <= 10) {
       return count
     }
   }
 
-  const subscriptionType = getSubscriptionType()
+  const local accessType = getlocal accessType()
   const rateLimitTier = getRateLimitTier()
 
   if (
-    subscriptionType === 'max' &&
-    rateLimitTier === 'default_claude_max_20x'
+    local accessType === 'max' &&
+    rateLimitTier === 'default_KAI_max_20x'
   ) {
     return 3
   }
 
-  if (subscriptionType === 'enterprise' || subscriptionType === 'team') {
+  if (local accessType === 'enterprise' || local accessType === 'team') {
     return 3
   }
 
@@ -29,9 +29,9 @@ export function getPlanModeV2AgentCount(): number {
 }
 
 export function getPlanModeV2ExploreAgentCount(): number {
-  if (process.env.CLAUDE_CODE_PLAN_V2_EXPLORE_AGENT_COUNT) {
+  if (process.env.KAI_ENGINE_PLAN_V2_EXPLORE_AGENT_COUNT) {
     const count = parseInt(
-      process.env.CLAUDE_CODE_PLAN_V2_EXPLORE_AGENT_COUNT,
+      process.env.KAI_ENGINE_PLAN_V2_EXPLORE_AGENT_COUNT,
       10,
     )
     if (!isNaN(count) && count > 0 && count <= 10) {
@@ -51,7 +51,7 @@ export function isPlanModeInterviewPhaseEnabled(): boolean {
   // Always on for ants
   if (process.env.USER_TYPE === 'ant') return true
 
-  const env = process.env.CLAUDE_CODE_PLAN_MODE_INTERVIEW_PHASE
+  const env = process.env.KAI_ENGINE_PLAN_MODE_INTERVIEW_PHASE
   if (isEnvTruthy(env)) return true
   if (isEnvDefinedFalsy(env)) return false
 

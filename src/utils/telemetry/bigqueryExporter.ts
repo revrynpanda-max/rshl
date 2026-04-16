@@ -10,14 +10,14 @@ import {
 import axios from 'axios'
 import { checkMetricsEnabled } from 'src/services/api/metricsOptOut.js'
 import { getIsNonInteractiveSession } from '../../bootstrap/state.js'
-import { getSubscriptionType, isClaudeAISubscriber } from '../auth.js'
+import { getlocal accessType, iskaiAISubscriber } from '../auth.js'
 import { checkHasTrustDialogAccepted } from '../config.js'
 import { logForDebugging } from '../debug.js'
 import { errorMessage, toError } from '../errors.js'
 import { getAuthHeaders } from '../http.js'
 import { logError } from '../log.js'
 import { jsonStringify } from '../slowOperations.js'
-import { getClaudeCodeUserAgent } from '../userAgent.js'
+import { getKAICodeUserAgent } from '../userAgent.js'
 
 type DataPoint = {
   attributes: Record<string, string>
@@ -44,15 +44,15 @@ export class BigQueryMetricsExporter implements PushMetricExporter {
   private isShutdown = false
 
   constructor(options: { timeout?: number } = {}) {
-    const defaultEndpoint = 'https://api.anthropic.com/api/claude_code/metrics'
+    const defaultEndpoint = 'https://api.KAI.com/api/KAI_ENGINE/metrics'
 
     if (
       process.env.USER_TYPE === 'ant' &&
-      process.env.ANT_CLAUDE_CODE_METRICS_ENDPOINT
+      process.env.ANT_KAI_ENGINE_METRICS_ENDPOINT
     ) {
       this.endpoint =
-        process.env.ANT_CLAUDE_CODE_METRICS_ENDPOINT +
-        '/api/claude_code/metrics'
+        process.env.ANT_KAI_ENGINE_METRICS_ENDPOINT +
+        '/api/KAI_ENGINE/metrics'
     } else {
       this.endpoint = defaultEndpoint
     }
@@ -123,7 +123,7 @@ export class BigQueryMetricsExporter implements PushMetricExporter {
 
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
-        'User-Agent': getClaudeCodeUserAgent(),
+        'User-Agent': getKAICodeUserAgent(),
         ...authResult.headers,
       }
 
@@ -153,7 +153,7 @@ export class BigQueryMetricsExporter implements PushMetricExporter {
     const attrs = metrics.resource.attributes
 
     const resourceAttributes: Record<string, string> = {
-      'service.name': (attrs['service.name'] as string) || 'claude-code',
+      'service.name': (attrs['service.name'] as string) || 'kai-engine',
       'service.version': (attrs['service.version'] as string) || 'unknown',
       'os.type': (attrs['os.type'] as string) || 'unknown',
       'os.version': (attrs['os.version'] as string) || 'unknown',
@@ -169,12 +169,12 @@ export class BigQueryMetricsExporter implements PushMetricExporter {
       resourceAttributes['wsl.version'] = attrs['wsl.version'] as string
     }
 
-    // Add customer type and subscription type
-    if (isClaudeAISubscriber()) {
-      resourceAttributes['user.customer_type'] = 'claude_ai'
-      const subscriptionType = getSubscriptionType()
-      if (subscriptionType) {
-        resourceAttributes['user.subscription_type'] = subscriptionType
+    // Add customer type and local access type
+    if (iskaiAISubscriber()) {
+      resourceAttributes['user.customer_type'] = 'KAI_ai'
+      const local accessType = getlocal accessType()
+      if (local accessType) {
+        resourceAttributes['user.local access_type'] = local accessType
       }
     } else {
       resourceAttributes['user.customer_type'] = 'api'

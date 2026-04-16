@@ -1,8 +1,8 @@
-import { APIError } from '@anthropic-ai/sdk'
-import type { MessageParam } from '@anthropic-ai/sdk/resources/index.mjs'
+import { APIError } from '@kai-ai/sdk'
+import type { MessageParam } from '@kai-ai/sdk/resources/index.mjs'
 import isEqual from 'lodash-es/isEqual.js'
 import { getIsNonInteractiveSession } from '../bootstrap/state.js'
-import { isClaudeAISubscriber } from '../utils/auth.js'
+import { iskaiAISubscriber } from '../utils/auth.js'
 import { getModelBetas } from '../utils/betas.js'
 import { getGlobalConfig, saveGlobalConfig } from '../utils/config.js'
 import { logError } from '../utils/log.js'
@@ -10,8 +10,8 @@ import { getSmallFastModel } from '../utils/model/model.js'
 import { isEssentialTrafficOnly } from '../utils/privacyLevel.js'
 import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from './analytics/index.js'
 import { logEvent } from './analytics/index.js'
-import { getAPIMetadata } from './api/claude.js'
-import { getAnthropicClient } from './api/client.js'
+import { getAPIMetadata } from './api/KAI.js'
+import { getKAIClient } from './api/client.js'
 import {
   processRateLimitHeaders,
   shouldProcessRateLimits,
@@ -119,7 +119,7 @@ export type OverageDisabledReason =
   | 'no_limits_configured' // No overage limits configured for account
   | 'unknown' // Unknown reason, should not happen
 
-export type ClaudeAILimits = {
+export type kaiAILimits = {
   status: QuotaStatus
   // unifiedRateLimitFallbackAvailable is currently used to warn users that set
   // their model to Opus whenever they are about to run out of quota. It does
@@ -136,7 +136,7 @@ export type ClaudeAILimits = {
 }
 
 // Exported for testing only
-export let currentLimits: ClaudeAILimits = {
+export let currentLimits: kaiAILimits = {
   status: 'allowed',
   unifiedRateLimitFallbackAvailable: false,
   isUsingOverage: false,
@@ -168,9 +168,9 @@ function extractRawUtilization(headers: globalThis.Headers): RawUtilization {
     ['seven_day', '7d'],
   ] as const) {
     const util = headers.get(
-      `anthropic-ratelimit-unified-${abbrev}-utilization`,
+      `kai-ratelimit-unified-${abbrev}-utilization`,
     )
-    const reset = headers.get(`anthropic-ratelimit-unified-${abbrev}-reset`)
+    const reset = headers.get(`kai-ratelimit-unified-${abbrev}-reset`)
     if (util !== null && reset !== null) {
       result[key] = { utilization: Number(util), resets_at: Number(reset) }
     }
@@ -178,17 +178,17 @@ function extractRawUtilization(headers: globalThis.Headers): RawUtilization {
   return result
 }
 
-type StatusChangeListener = (limits: ClaudeAILimits) => void
+type StatusChangeListener = (limits: kaiAILimits) => void
 export const statusListeners: Set<StatusChangeListener> = new Set()
 
-export function emitStatusChange(limits: ClaudeAILimits) {
+export function emitStatusChange(limits: kaiAILimits) {
   currentLimits = limits
   statusListeners.forEach(listener => listener(limits))
   const hoursTillReset = Math.round(
     (limits.resetsAt ? limits.resetsAt - Date.now() / 1000 : 0) / (60 * 60),
   )
 
-  logEvent('tengu_claudeai_limits_status_changed', {
+  logEvent('tengu_kaiAI_limits_status_changed', {
     status:
       limits.status as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     unifiedRateLimitFallbackAvailable: limits.unifiedRateLimitFallbackAvailable,
@@ -198,7 +198,7 @@ export function emitStatusChange(limits: ClaudeAILimits) {
 
 async function makeTestQuery() {
   const model = getSmallFastModel()
-  const anthropic = await getAnthropicClient({
+  const KAI = await getKAIClient({
     maxRetries: 0,
     model,
     source: 'quota_check',
@@ -206,7 +206,7 @@ async function makeTestQuery() {
   const messages: MessageParam[] = [{ role: 'user', content: 'quota' }]
   const betas = getModelBetas(model)
   // biome-ignore lint/plugin: quota check needs raw response access via asResponse()
-  return anthropic.beta.messages
+  return KAI.beta.messages
     .create({
       model,
       max_tokens: 1,
@@ -224,13 +224,13 @@ export async function checkQuotaStatus(): Promise<void> {
   }
 
   // Check if we should process rate limits (real subscriber or mock testing)
-  if (!shouldProcessRateLimits(isClaudeAISubscriber())) {
+  if (!shouldProcessRateLimits(iskaiAISubscriber())) {
     return
   }
 
   // In non-interactive mode (-p), the real query follows immediately and
   // extractQuotaStatusFromHeaders() will update limits from its response
-  // headers (claude.ts), so skip this pre-check API call.
+  // headers (KAI.ts), so skip this pre-check API call.
   if (getIsNonInteractiveSession()) {
     return
   }
@@ -250,27 +250,27 @@ export async function checkQuotaStatus(): Promise<void> {
 
 /**
  * Check if early warning should be triggered based on surpassed-threshold header.
- * Returns ClaudeAILimits if a threshold was surpassed, null otherwise.
+ * Returns kaiAILimits if a threshold was surpassed, null otherwise.
  */
 function getHeaderBasedEarlyWarning(
   headers: globalThis.Headers,
   unifiedRateLimitFallbackAvailable: boolean,
-): ClaudeAILimits | null {
+): kaiAILimits | null {
   // Check each claim type for surpassed threshold header
   for (const [claimAbbrev, rateLimitType] of Object.entries(
     EARLY_WARNING_CLAIM_MAP,
   )) {
     const surpassedThreshold = headers.get(
-      `anthropic-ratelimit-unified-${claimAbbrev}-surpassed-threshold`,
+      `kai-ratelimit-unified-${claimAbbrev}-surpassed-threshold`,
     )
 
     // If threshold header is present, user has crossed a warning threshold
     if (surpassedThreshold !== null) {
       const utilizationHeader = headers.get(
-        `anthropic-ratelimit-unified-${claimAbbrev}-utilization`,
+        `kai-ratelimit-unified-${claimAbbrev}-utilization`,
       )
       const resetHeader = headers.get(
-        `anthropic-ratelimit-unified-${claimAbbrev}-reset`,
+        `kai-ratelimit-unified-${claimAbbrev}-reset`,
       )
 
       const utilization = utilizationHeader
@@ -296,20 +296,20 @@ function getHeaderBasedEarlyWarning(
 /**
  * Check if time-relative early warning should be triggered for a rate limit type.
  * Fallback when server doesn't send surpassed-threshold header.
- * Returns ClaudeAILimits if thresholds are exceeded, null otherwise.
+ * Returns kaiAILimits if thresholds are exceeded, null otherwise.
  */
 function getTimeRelativeEarlyWarning(
   headers: globalThis.Headers,
   config: EarlyWarningConfig,
   unifiedRateLimitFallbackAvailable: boolean,
-): ClaudeAILimits | null {
+): kaiAILimits | null {
   const { rateLimitType, claimAbbrev, windowSeconds, thresholds } = config
 
   const utilizationHeader = headers.get(
-    `anthropic-ratelimit-unified-${claimAbbrev}-utilization`,
+    `kai-ratelimit-unified-${claimAbbrev}-utilization`,
   )
   const resetHeader = headers.get(
-    `anthropic-ratelimit-unified-${claimAbbrev}-reset`,
+    `kai-ratelimit-unified-${claimAbbrev}-reset`,
   )
 
   if (utilizationHeader === null || resetHeader === null) {
@@ -347,7 +347,7 @@ function getTimeRelativeEarlyWarning(
 function getEarlyWarningFromHeaders(
   headers: globalThis.Headers,
   unifiedRateLimitFallbackAvailable: boolean,
-): ClaudeAILimits | null {
+): kaiAILimits | null {
   // Try header-based detection first (preferred when API sends the header)
   const headerBasedWarning = getHeaderBasedEarlyWarning(
     headers,
@@ -375,24 +375,24 @@ function getEarlyWarningFromHeaders(
 
 function computeNewLimitsFromHeaders(
   headers: globalThis.Headers,
-): ClaudeAILimits {
+): kaiAILimits {
   const status =
-    (headers.get('anthropic-ratelimit-unified-status') as QuotaStatus) ||
+    (headers.get('kai-ratelimit-unified-status') as QuotaStatus) ||
     'allowed'
-  const resetsAtHeader = headers.get('anthropic-ratelimit-unified-reset')
+  const resetsAtHeader = headers.get('kai-ratelimit-unified-reset')
   const resetsAt = resetsAtHeader ? Number(resetsAtHeader) : undefined
   const unifiedRateLimitFallbackAvailable =
-    headers.get('anthropic-ratelimit-unified-fallback') === 'available'
+    headers.get('kai-ratelimit-unified-fallback') === 'available'
 
   // Headers for rate limit type and overage support
   const rateLimitType = headers.get(
-    'anthropic-ratelimit-unified-representative-claim',
+    'kai-ratelimit-unified-representative-claim',
   ) as RateLimitType | null
   const overageStatus = headers.get(
-    'anthropic-ratelimit-unified-overage-status',
+    'kai-ratelimit-unified-overage-status',
   ) as QuotaStatus | null
   const overageResetsAtHeader = headers.get(
-    'anthropic-ratelimit-unified-overage-reset',
+    'kai-ratelimit-unified-overage-reset',
   )
   const overageResetsAt = overageResetsAtHeader
     ? Number(overageResetsAtHeader)
@@ -400,7 +400,7 @@ function computeNewLimitsFromHeaders(
 
   // Reason why overage is disabled (spending cap or wallet empty)
   const overageDisabledReason = headers.get(
-    'anthropic-ratelimit-unified-overage-disabled-reason',
+    'kai-ratelimit-unified-overage-disabled-reason',
   ) as OverageDisabledReason | null
 
   // Determine if we're using overage (standard limits rejected but overage allowed)
@@ -441,7 +441,7 @@ function computeNewLimitsFromHeaders(
 function cacheExtraUsageDisabledReason(headers: globalThis.Headers): void {
   // A null reason means extra usage is enabled (no disabled reason header)
   const reason =
-    headers.get('anthropic-ratelimit-unified-overage-disabled-reason') ?? null
+    headers.get('kai-ratelimit-unified-overage-disabled-reason') ?? null
   const cached = getGlobalConfig().cachedExtraUsageDisabledReason
   if (cached !== reason) {
     saveGlobalConfig(current => ({
@@ -455,13 +455,13 @@ export function extractQuotaStatusFromHeaders(
   headers: globalThis.Headers,
 ): void {
   // Check if we need to process rate limits
-  const isSubscriber = isClaudeAISubscriber()
+  const isSubscriber = iskaiAISubscriber()
 
   if (!shouldProcessRateLimits(isSubscriber)) {
     // If we have any rate limit state, clear it
     rawUtilization = {}
     if (currentLimits.status !== 'allowed' || currentLimits.resetsAt) {
-      const defaultLimits: ClaudeAILimits = {
+      const defaultLimits: kaiAILimits = {
         status: 'allowed',
         unifiedRateLimitFallbackAvailable: false,
         isUsingOverage: false,
@@ -486,7 +486,7 @@ export function extractQuotaStatusFromHeaders(
 
 export function extractQuotaStatusFromError(error: APIError): void {
   if (
-    !shouldProcessRateLimits(isClaudeAISubscriber()) ||
+    !shouldProcessRateLimits(iskaiAISubscriber()) ||
     error.status !== 429
   ) {
     return

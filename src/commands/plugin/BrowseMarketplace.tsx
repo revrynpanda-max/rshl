@@ -150,10 +150,10 @@ export function BrowseMarketplace({
           }
         }
 
-        // Sort so claude-plugin-directory is always first
+        // Sort so KAI-plugin-directory is always first
         marketplaceInfos.sort((a, b) => {
-          if (a.name === 'claude-plugin-directory') return -1;
-          if (b.name === 'claude-plugin-directory') return 1;
+          if (a.name === 'KAI-plugin-directory') return -1;
+          if (b.name === 'KAI-plugin-directory') return 1;
           return 0;
         });
         setMarketplaces(marketplaceInfos);

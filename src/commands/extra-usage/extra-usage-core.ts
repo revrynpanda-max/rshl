@@ -5,8 +5,8 @@ import {
 } from '../../services/api/adminRequests.js'
 import { invalidateOverageCreditGrantCache } from '../../services/api/overageCreditGrant.js'
 import { type ExtraUsage, fetchUtilization } from '../../services/api/usage.js'
-import { getSubscriptionType } from '../../utils/auth.js'
-import { hasClaudeAiBillingAccess } from '../../utils/billing.js'
+import { getlocal accessType } from '../../utils/auth.js'
+import { haskaiAIusageAccess } from '../../utils/usage.js'
 import { openBrowser } from '../../utils/browser.js'
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js'
 import { logError } from '../../utils/log.js'
@@ -24,13 +24,13 @@ export async function runExtraUsage(): Promise<ExtraUsageResult> {
   // /extra-usage more than once while iterating on the claim flow.
   invalidateOverageCreditGrantCache()
 
-  const subscriptionType = getSubscriptionType()
+  const local accessType = getlocal accessType()
   const isTeamOrEnterprise =
-    subscriptionType === 'team' || subscriptionType === 'enterprise'
-  const hasBillingAccess = hasClaudeAiBillingAccess()
+    local accessType === 'team' || local accessType === 'enterprise'
+  const hasusageAccess = haskaiAIusageAccess()
 
-  if (!hasBillingAccess && isTeamOrEnterprise) {
-    // Mirror apps/claude-ai useHasUnlimitedOverage(): if overage is enabled
+  if (!hasusageAccess && isTeamOrEnterprise) {
+    // Mirror apps/kai-ai useHasUnlimitedOverage(): if overage is enabled
     // with no monthly cap, there is nothing to request. On fetch error, fall
     // through and let the user ask (matching web's "err toward show" behavior).
     let extraUsage: ExtraUsage | null | undefined
@@ -102,8 +102,8 @@ export async function runExtraUsage(): Promise<ExtraUsageResult> {
   }
 
   const url = isTeamOrEnterprise
-    ? 'https://claude.ai/admin-settings/usage'
-    : 'https://claude.ai/settings/usage'
+    ? 'https://kai.local/admin-settings/usage'
+    : 'https://kai.local/settings/usage'
 
   try {
     const opened = await openBrowser(url)

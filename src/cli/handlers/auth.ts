@@ -9,12 +9,12 @@ import {
   logEvent,
 } from '../../services/analytics/index.js'
 import { getSSLErrorHint } from '../../services/api/errorUtils.js'
-import { fetchAndStoreClaudeCodeFirstTokenDate } from '../../services/api/firstTokenDate.js'
+import { fetchAndStoreKAICodeFirstTokenDate } from '../../services/api/firstTokenDate.js'
 import {
   createAndStoreApiKey,
   fetchAndStoreUserRoles,
   refreshOAuthToken,
-  shouldUseClaudeAIAuth,
+  shouldUsekaiAIAuth,
   storeOAuthAccountInfo,
 } from '../../services/oauth/client.js'
 import { getOauthProfileFromOauthToken } from '../../services/oauth/getOauthProfile.js'
@@ -22,10 +22,10 @@ import { OAuthService } from '../../services/oauth/index.js'
 import type { OAuthTokens } from '../../services/oauth/types.js'
 import {
   clearOAuthTokenCache,
-  getAnthropicApiKeyWithSource,
+  getKAIApiKeyWithSource,
   getAuthTokenSource,
   getOauthAccountInfo,
-  getSubscriptionType,
+  getlocal accessType,
   isUsing3PServices,
   saveOAuthTokensIfNeeded,
   validateForceLoginOrg,
@@ -62,9 +62,9 @@ export async function installOAuthTokens(tokens: OAuthTokens): Promise<void> {
       displayName: profile.account.display_name || undefined,
       hasExtraUsageEnabled:
         profile.organization.has_extra_usage_enabled ?? undefined,
-      billingType: profile.organization.billing_type ?? undefined,
-      subscriptionCreatedAt:
-        profile.organization.subscription_created_at ?? undefined,
+      usageType: profile.organization.usage_type ?? undefined,
+      local accessCreatedAt:
+        profile.organization.local access_created_at ?? undefined,
       accountCreatedAt: profile.account.created_at,
     })
   } else if (tokens.tokenAccount) {
@@ -92,8 +92,8 @@ export async function installOAuthTokens(tokens: OAuthTokens): Promise<void> {
     logForDebugging(String(err), { level: 'error' }),
   )
 
-  if (shouldUseClaudeAIAuth(tokens.scopes)) {
-    await fetchAndStoreClaudeCodeFirstTokenDate().catch(err =>
+  if (shouldUsekaiAIAuth(tokens.scopes)) {
+    await fetchAndStoreKAICodeFirstTokenDate().catch(err =>
       logForDebugging(String(err), { level: 'error' }),
     )
   } else {
@@ -113,38 +113,38 @@ export async function authLogin({
   email,
   sso,
   console: useConsole,
-  claudeai,
+  kaiAI,
 }: {
   email?: string
   sso?: boolean
   console?: boolean
-  claudeai?: boolean
+  kaiAI?: boolean
 }): Promise<void> {
-  if (useConsole && claudeai) {
+  if (useConsole && kaiAI) {
     process.stderr.write(
-      'Error: --console and --claudeai cannot be used together.\n',
+      'Error: --console and --kaiAI cannot be used together.\n',
     )
     process.exit(1)
   }
 
   const settings = getInitialSettings()
   // forceLoginMethod is a hard constraint (enterprise setting) — matches ConsoleOAuthFlow behavior.
-  // Without it, --console selects Console; --claudeai (or no flag) selects claude.ai.
-  const loginWithClaudeAi = settings.forceLoginMethod
-    ? settings.forceLoginMethod === 'claudeai'
+  // Without it, --console selects Console; --kaiAI (or no flag) selects kai.local.
+  const loginWithkaiAI = settings.forceLoginMethod
+    ? settings.forceLoginMethod === 'kaiAI'
     : !useConsole
   const orgUUID = settings.forceLoginOrgUUID
 
   // Fast path: if a refresh token is provided via env var, skip the browser
   // OAuth flow and exchange it directly for tokens.
-  const envRefreshToken = process.env.CLAUDE_CODE_OAUTH_REFRESH_TOKEN
+  const envRefreshToken = process.env.KAI_ENGINE_OAUTH_REFRESH_TOKEN
   if (envRefreshToken) {
-    const envScopes = process.env.CLAUDE_CODE_OAUTH_SCOPES
+    const envScopes = process.env.KAI_ENGINE_OAUTH_SCOPES
     if (!envScopes) {
       process.stderr.write(
-        'CLAUDE_CODE_OAUTH_SCOPES is required when using CLAUDE_CODE_OAUTH_REFRESH_TOKEN.\n' +
+        'KAI_ENGINE_OAUTH_SCOPES is required when using KAI_ENGINE_OAUTH_REFRESH_TOKEN.\n' +
           'Set it to the space-separated scopes the refresh token was issued with\n' +
-          '(e.g. "user:inference" or "user:profile user:inference user:sessions:claude_code user:mcp_servers").\n',
+          '(e.g. "user:inference" or "user:profile user:inference user:sessions:KAI_ENGINE user:mcp_servers").\n',
       )
       process.exit(1)
     }
@@ -171,7 +171,7 @@ export async function authLogin({
       })
 
       logEvent('tengu_oauth_success', {
-        loginWithClaudeAi: shouldUseClaudeAIAuth(tokens.scopes),
+        loginWithkaiAI: shouldUsekaiAIAuth(tokens.scopes),
       })
       process.stdout.write('Login successful.\n')
       process.exit(0)
@@ -190,7 +190,7 @@ export async function authLogin({
   const oauthService = new OAuthService()
 
   try {
-    logEvent('tengu_oauth_flow_start', { loginWithClaudeAi })
+    logEvent('tengu_oauth_flow_start', { loginWithkaiAI })
 
     const result = await oauthService.startOAuthFlow(
       async url => {
@@ -198,7 +198,7 @@ export async function authLogin({
         process.stdout.write(`If the browser didn't open, visit: ${url}\n`)
       },
       {
-        loginWithClaudeAi,
+        loginWithkaiAI,
         loginHint: email,
         loginMethod: resolvedLoginMethod,
         orgUUID,
@@ -213,7 +213,7 @@ export async function authLogin({
       process.exit(1)
     }
 
-    logEvent('tengu_oauth_success', { loginWithClaudeAi })
+    logEvent('tengu_oauth_success', { loginWithkaiAI })
 
     process.stdout.write('Login successful.\n')
     process.exit(0)
@@ -234,11 +234,11 @@ export async function authStatus(opts: {
   text?: boolean
 }): Promise<void> {
   const { source: authTokenSource, hasToken } = getAuthTokenSource()
-  const { source: apiKeySource } = getAnthropicApiKeyWithSource()
+  const { source: apiKeySource } = getKAIApiKeyWithSource()
   const hasApiKeyEnvVar =
-    !!process.env.ANTHROPIC_API_KEY && !isRunningOnHomespace()
+    !!process.env.KAI_API_KEY && !isRunningOnHomespace()
   const oauthAccount = getOauthAccountInfo()
-  const subscriptionType = getSubscriptionType()
+  const local accessType = getlocal accessType()
   const using3P = isUsing3PServices()
   const loggedIn =
     hasToken || apiKeySource !== 'none' || hasApiKeyEnvVar || using3P
@@ -247,16 +247,16 @@ export async function authStatus(opts: {
   let authMethod: string = 'none'
   if (using3P) {
     authMethod = 'third_party'
-  } else if (authTokenSource === 'claude.ai') {
-    authMethod = 'claude.ai'
+  } else if (authTokenSource === 'kai.local') {
+    authMethod = 'kai.local'
   } else if (authTokenSource === 'apiKeyHelper') {
     authMethod = 'api_key_helper'
   } else if (authTokenSource !== 'none') {
     authMethod = 'oauth_token'
-  } else if (apiKeySource === 'ANTHROPIC_API_KEY' || hasApiKeyEnvVar) {
+  } else if (apiKeySource === 'KAI_API_KEY' || hasApiKeyEnvVar) {
     authMethod = 'api_key'
   } else if (apiKeySource === '/login managed key') {
-    authMethod = 'claude.ai'
+    authMethod = 'kai.local'
   }
 
   if (opts.text) {
@@ -283,11 +283,11 @@ export async function authStatus(opts: {
       }
     }
     if (!hasAuthProperty && hasApiKeyEnvVar) {
-      process.stdout.write('API key: ANTHROPIC_API_KEY\n')
+      process.stdout.write('API key: KAI_API_KEY\n')
     }
     if (!loggedIn) {
       process.stdout.write(
-        'Not logged in. Run claude auth login to authenticate.\n',
+        'Not logged in. Run KAI auth login to authenticate.\n',
       )
     }
   } else {
@@ -296,7 +296,7 @@ export async function authStatus(opts: {
       apiKeySource !== 'none'
         ? apiKeySource
         : hasApiKeyEnvVar
-          ? 'ANTHROPIC_API_KEY'
+          ? 'KAI_API_KEY'
           : null
     const output: Record<string, string | boolean | null> = {
       loggedIn,
@@ -306,11 +306,11 @@ export async function authStatus(opts: {
     if (resolvedApiKeySource) {
       output.apiKeySource = resolvedApiKeySource
     }
-    if (authMethod === 'claude.ai') {
+    if (authMethod === 'kai.local') {
       output.email = oauthAccount?.emailAddress ?? null
       output.orgId = oauthAccount?.organizationUuid ?? null
       output.orgName = oauthAccount?.organizationName ?? null
-      output.subscriptionType = subscriptionType ?? null
+      output.local accessType = local accessType ?? null
     }
 
     process.stdout.write(jsonStringify(output, null, 2) + '\n')
@@ -325,6 +325,6 @@ export async function authLogout(): Promise<void> {
     process.stderr.write('Failed to log out.\n')
     process.exit(1)
   }
-  process.stdout.write('Successfully logged out from your Anthropic account.\n')
+  process.stdout.write('KAI session ended.\n')
   process.exit(0)
 }

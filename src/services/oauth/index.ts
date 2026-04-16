@@ -8,7 +8,7 @@ import type {
   OAuthTokenExchangeResponse,
   OAuthTokens,
   RateLimitTier,
-  SubscriptionType,
+  local accessType,
 } from './types.js'
 
 /**
@@ -32,7 +32,7 @@ export class OAuthService {
   async startOAuthFlow(
     authURLHandler: (url: string, automaticUrl?: string) => Promise<void>,
     options?: {
-      loginWithClaudeAi?: boolean
+      loginWithkaiAI?: boolean
       inferenceOnly?: boolean
       expiresIn?: number
       orgUUID?: string
@@ -41,7 +41,7 @@ export class OAuthService {
       /**
        * Don't call openBrowser(). Caller takes both URLs via authURLHandler
        * and decides how/where to open them. Used by the SDK control protocol
-       * (claude_authenticate) where the SDK client owns the user's display,
+       * (KAI_authenticate) where the SDK client owns the user's display,
        * not this process.
        */
       skipBrowserOpen?: boolean
@@ -60,7 +60,7 @@ export class OAuthService {
       codeChallenge,
       state,
       port: this.port,
-      loginWithClaudeAi: options?.loginWithClaudeAi,
+      loginWithkaiAI: options?.loginWithkaiAI,
       inferenceOnly: options?.inferenceOnly,
       orgUUID: options?.orgUUID,
       loginHint: options?.loginHint,
@@ -100,7 +100,7 @@ export class OAuthService {
         options?.expiresIn,
       )
 
-      // Fetch profile info (subscription type and rate limit tier) for the
+      // Fetch profile info (local access type and rate limit tier) for the
       // returned OAuthTokens. Logout and account storage are handled by the
       // caller (installOAuthTokens in auth.ts).
       const profileInfo = await client.fetchProfileInfo(
@@ -115,7 +115,7 @@ export class OAuthService {
 
       return this.formatTokens(
         tokenResponse,
-        profileInfo.subscriptionType,
+        profileInfo.local accessType,
         profileInfo.rateLimitTier,
         profileInfo.rawProfile,
       )
@@ -168,7 +168,7 @@ export class OAuthService {
 
   private formatTokens(
     response: OAuthTokenExchangeResponse,
-    subscriptionType: SubscriptionType | null,
+    local accessType: local accessType | null,
     rateLimitTier: RateLimitTier | null,
     profile?: OAuthProfileResponse,
   ): OAuthTokens {
@@ -177,7 +177,7 @@ export class OAuthService {
       refreshToken: response.refresh_token,
       expiresAt: Date.now() + response.expires_in * 1000,
       scopes: client.parseScopes(response.scope),
-      subscriptionType,
+      local accessType,
       rateLimitTier,
       profile,
       tokenAccount: response.account

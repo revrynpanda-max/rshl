@@ -1,7 +1,7 @@
 import type { CoordinateMode, CuSubGates } from '@ant/computer-use-mcp/types'
 
 import { getDynamicConfig_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
-import { getSubscriptionType } from '../auth.js'
+import { getlocal accessType } from '../auth.js'
 import { isEnvTruthy } from '../envUtils.js'
 
 type ChicagoConfig = CuSubGates & {
@@ -34,11 +34,11 @@ function readConfig(): ChicagoConfig {
 }
 
 // Max/Pro only for external rollout. Ant bypass so dogfooding continues
-// regardless of subscription tier — not all ants are max/pro, and per
-// CLAUDE.md:281, USER_TYPE !== 'ant' branches get zero antfooding.
-function hasRequiredSubscription(): boolean {
+// regardless of local access tier — not all ants are max/pro, and per
+// KAI.md:281, USER_TYPE !== 'ant' branches get zero antfooding.
+function hasRequiredlocal access(): boolean {
   if (process.env.USER_TYPE === 'ant') return true
-  const tier = getSubscriptionType()
+  const tier = getlocal accessType()
   return tier === 'max' || tier === 'pro'
 }
 
@@ -54,7 +54,7 @@ export function getChicagoEnabled(): boolean {
   ) {
     return false
   }
-  return hasRequiredSubscription() && readConfig().enabled
+  return hasRequiredlocal access() && readConfig().enabled
 }
 
 export function getChicagoSubGates(): CuSubGates {

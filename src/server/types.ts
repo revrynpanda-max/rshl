@@ -40,13 +40,13 @@ export type SessionInfo = {
 }
 
 /**
- * Stable session key → session metadata. Persisted to ~/.claude/server-sessions.json
+ * Stable session key → session metadata. Persisted to ~/.kai/server-sessions.json
  * so sessions can be resumed across server restarts.
  */
 export type SessionIndexEntry = {
-  /** Server-assigned session ID (matches the subprocess's claude session). */
+  /** Server-assigned session ID (matches the subprocess's KAI session). */
   sessionId: string
-  /** The claude transcript session ID for --resume. Same as sessionId for direct sessions. */
+  /** The KAI transcript session ID for --resume. Same as sessionId for direct sessions. */
   transcriptSessionId: string
   cwd: string
   permissionMode?: string

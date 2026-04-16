@@ -35,7 +35,7 @@ const INTERNAL_WORKER_TOOLS = new Set([
 
 export function isCoordinatorMode(): boolean {
   if (feature('COORDINATOR_MODE')) {
-    return isEnvTruthy(process.env.CLAUDE_CODE_COORDINATOR_MODE)
+    return isEnvTruthy(process.env.KAI_ENGINE_COORDINATOR_MODE)
   }
   return false
 }
@@ -63,9 +63,9 @@ export function matchSessionMode(
 
   // Flip the env var — isCoordinatorMode() reads it live, no caching
   if (sessionIsCoordinator) {
-    process.env.CLAUDE_CODE_COORDINATOR_MODE = '1'
+    process.env.KAI_ENGINE_COORDINATOR_MODE = '1'
   } else {
-    delete process.env.CLAUDE_CODE_COORDINATOR_MODE
+    delete process.env.KAI_ENGINE_COORDINATOR_MODE
   }
 
   logEvent('tengu_coordinator_mode_switched', {
@@ -85,7 +85,7 @@ export function getCoordinatorUserContext(
     return {}
   }
 
-  const workerTools = isEnvTruthy(process.env.CLAUDE_CODE_SIMPLE)
+  const workerTools = isEnvTruthy(process.env.KAI_ENGINE_SIMPLE)
     ? [BASH_TOOL_NAME, FILE_READ_TOOL_NAME, FILE_EDIT_TOOL_NAME]
         .sort()
         .join(', ')
@@ -109,11 +109,11 @@ export function getCoordinatorUserContext(
 }
 
 export function getCoordinatorSystemPrompt(): string {
-  const workerCapabilities = isEnvTruthy(process.env.CLAUDE_CODE_SIMPLE)
+  const workerCapabilities = isEnvTruthy(process.env.KAI_ENGINE_SIMPLE)
     ? 'Workers have access to Bash, Read, and Edit tools, plus MCP tools from configured MCP servers.'
     : 'Workers have access to standard tools, MCP tools from configured MCP servers, and project skills via the Skill tool. Delegate skill invocations (e.g. /commit, /verify) to workers.'
 
-  return `You are Claude Code, an AI assistant that orchestrates software engineering tasks across multiple workers.
+  return `You are KAI, an AI assistant that orchestrates software engineering tasks across multiple workers.
 
 ## 1. Your Role
 
@@ -130,7 +130,7 @@ Every message you send is to the user. Worker results and system notifications a
 - **${AGENT_TOOL_NAME}** - Spawn a new worker
 - **${SEND_MESSAGE_TOOL_NAME}** - Continue an existing worker (send a follow-up to its \`to\` agent ID)
 - **${TASK_STOP_TOOL_NAME}** - Stop a running worker
-- **subscribe_pr_activity / unsubscribe_pr_activity** (if available) - Subscribe to GitHub PR events (review comments, CI results). Events arrive as user messages. Merge conflict transitions do NOT arrive — GitHub doesn't webhook \`mergeable_state\` changes, so poll \`gh pr view N --json mergeable\` if tracking conflict status. Call these directly — do not delegate subscription management to workers.
+- **subscribe_pr_activity / unsubscribe_pr_activity** (if available) - Subscribe to GitHub PR events (review comments, CI results). Events arrive as user messages. Merge conflict transitions do NOT arrive — GitHub doesn't webhook \`mergeable_state\` changes, so poll \`gh pr view N --json mergeable\` if tracking conflict status. Call these directly — do not delegate local access management to workers.
 
 When calling ${AGENT_TOOL_NAME}:
 - Do not use one worker to check on another. Workers will notify you when they are done.
@@ -311,7 +311,7 @@ ${SEND_MESSAGE_TOOL_NAME}({ to: "xyz-456", message: "Two tests still failing at 
 
 1. Implementation: "Fix the null pointer in src/auth/validate.ts:42. The user field can be undefined when the session expires. Add a null check and return early with an appropriate error. Commit and report the hash."
 
-2. Precise git operation: "Create a new branch from main called 'fix/session-expiry'. Cherry-pick only commit abc123 onto it. Push and create a draft PR targeting main. Add anthropics/claude-code as reviewer. Report the PR URL."
+2. Precise git operation: "Create a new branch from main called 'fix/session-expiry'. Cherry-pick only commit abc123 onto it. Push and create a draft PR targeting main. Add KAIs/kai-engine as reviewer. Report the PR URL."
 
 3. Correction (continued worker, short): "The tests failed on the null check you added — validate.test.ts:58 expects 'Invalid session' but you changed it to 'Session expired'. Fix the assertion. Commit and report the hash."
 

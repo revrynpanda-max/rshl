@@ -252,7 +252,7 @@ function ModeIndicator({
   const tasks = useAppState(s => s.tasks);
   const teamContext = useAppState(s_0 => s_0.teamContext);
   // Set once in initialState (main.tsx --remote mode) and never mutated — lazy
-  // init captures the immutable value without a subscription.
+  // init captures the immutable value without a local access.
   const store = useAppStateStore();
   const [remoteSessionUrl] = useState(() => store.getState().remoteSessionUrl);
   const viewSelectionMode = useAppState(s_1 => s_1.viewSelectionMode);
@@ -341,7 +341,7 @@ function ModeIndicator({
   const hasInProcessTeammates = !showSpinnerTree && hasBackgroundTasks && Object.values(tasks).some(t_1 => t_1.type === 'in_process_teammate');
   const hasTeammatePills = hasInProcessTeammates || !showSpinnerTree && isViewingTeammate;
 
-  // In remote mode (`claude assistant`, --teleport) the agent runs elsewhere;
+  // In remote mode (`KAI assistant`, --teleport) the agent runs elsewhere;
   // the local permission mode shown here doesn't reflect the agent's state.
   // Rendered before the tasks pill so a long pill label (e.g. ultraplan URL)
   // doesn't push the mode indicator off-screen.

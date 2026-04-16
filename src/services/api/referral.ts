@@ -2,8 +2,8 @@ import axios from 'axios'
 import { getOauthConfig } from '../../constants/oauth.js'
 import {
   getOauthAccountInfo,
-  getSubscriptionType,
-  isClaudeAISubscriber,
+  getlocal accessType,
+  iskaiAISubscriber,
 } from '../../utils/auth.js'
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js'
 import { logForDebugging } from '../../utils/debug.js'
@@ -17,14 +17,14 @@ import type {
   ReferrerRewardInfo,
 } from '../oauth/types.js'
 
-// Cache expiration time: 24 hours (eligibility changes only on subscription/experiment changes)
+// Cache expiration time: 24 hours (eligibility changes only on local access/experiment changes)
 const CACHE_EXPIRATION_MS = 24 * 60 * 60 * 1000
 
 // Track in-flight fetch to prevent duplicate API calls
 let fetchInProgress: Promise<ReferralEligibilityResponse | null> | null = null
 
 export async function fetchReferralEligibility(
-  campaign: ReferralCampaign = 'claude_code_guest_pass',
+  campaign: ReferralCampaign = 'KAI_ENGINE_guest_pass',
 ): Promise<ReferralEligibilityResponse> {
   const { accessToken, orgUUID } = await prepareApiRequest()
 
@@ -45,7 +45,7 @@ export async function fetchReferralEligibility(
 }
 
 export async function fetchReferralRedemptions(
-  campaign: string = 'claude_code_guest_pass',
+  campaign: string = 'KAI_ENGINE_guest_pass',
 ): Promise<ReferralRedemptionsResponse> {
   const { accessToken, orgUUID } = await prepareApiRequest()
 
@@ -71,8 +71,8 @@ export async function fetchReferralRedemptions(
 function shouldCheckForPasses(): boolean {
   return !!(
     getOauthAccountInfo()?.organizationUuid &&
-    isClaudeAISubscriber() &&
-    getSubscriptionType() === 'max'
+    iskaiAISubscriber() &&
+    getlocal accessType() === 'max'
   )
 }
 

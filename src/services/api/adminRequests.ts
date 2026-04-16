@@ -40,7 +40,7 @@ export type AdminRequest = {
 /**
  * Create an admin request (limit increase or seat upgrade).
  *
- * For Team/Enterprise users who don't have billing/admin permissions,
+ * For Team/Enterprise users who don't have usage/admin permissions,
  * this creates a request that their admin can act on.
  *
  * If a pending request of the same type already exists for this user,

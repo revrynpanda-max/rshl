@@ -5,12 +5,12 @@
 
 import {
   getOauthAccountInfo,
-  getSubscriptionType,
+  getlocal accessType,
   isOverageProvisioningAllowed,
 } from '../utils/auth.js'
-import { hasClaudeAiBillingAccess } from '../utils/billing.js'
+import { haskaiAIusageAccess } from '../utils/usage.js'
 import { formatResetTime } from '../utils/format.js'
-import type { ClaudeAILimits } from './claudeAiLimits.js'
+import type { kaiAILimits } from './kaiAILimits.js'
 
 const FEEDBACK_CHANNEL_ANT = '#briarpatch-cc'
 
@@ -43,10 +43,10 @@ export type RateLimitMessage = {
  * Returns null if no message should be shown
  */
 export function getRateLimitMessage(
-  limits: ClaudeAILimits,
+  limits: kaiAILimits,
   model: string,
 ): RateLimitMessage | null {
-  // Check overage scenarios first (when subscription is rejected but overage is available)
+  // Check overage scenarios first (when local access is rejected but overage is available)
   // getUsingOverageText is rendered separately from warning.
   if (limits.isUsingOverage) {
     // Show warning if approaching overage spending limit
@@ -77,18 +77,18 @@ export function getRateLimitMessage(
       return null
     }
 
-    // Don't warn non-billing Team/Enterprise users about approaching plan limits
+    // Don't warn non-usage Team/Enterprise users about approaching plan limits
     // if overages are enabled - they'll seamlessly roll into overage
-    const subscriptionType = getSubscriptionType()
+    const local accessType = getlocal accessType()
     const isTeamOrEnterprise =
-      subscriptionType === 'team' || subscriptionType === 'enterprise'
+      local accessType === 'team' || local accessType === 'enterprise'
     const hasExtraUsageEnabled =
       getOauthAccountInfo()?.hasExtraUsageEnabled === true
 
     if (
       isTeamOrEnterprise &&
       hasExtraUsageEnabled &&
-      !hasClaudeAiBillingAccess()
+      !haskaiAIusageAccess()
     ) {
       return null
     }
@@ -108,7 +108,7 @@ export function getRateLimitMessage(
  * Returns the message string or null if no error message should be shown
  */
 export function getRateLimitErrorMessage(
-  limits: ClaudeAILimits,
+  limits: kaiAILimits,
   model: string,
 ): string | null {
   const message = getRateLimitMessage(limits, model)
@@ -126,7 +126,7 @@ export function getRateLimitErrorMessage(
  * Returns the warning message string or null if no warning should be shown
  */
 export function getRateLimitWarning(
-  limits: ClaudeAILimits,
+  limits: kaiAILimits,
   model: string,
 ): string | null {
   const message = getRateLimitMessage(limits, model)
@@ -140,7 +140,7 @@ export function getRateLimitWarning(
   return null
 }
 
-function getLimitReachedText(limits: ClaudeAILimits, model: string): string {
+function getLimitReachedText(limits: kaiAILimits, model: string): string {
   const resetsAt = limits.resetsAt
   const resetTime = resetsAt ? formatResetTime(resetsAt, true) : undefined
   const overageResetTime = limits.overageResetsAt
@@ -148,7 +148,7 @@ function getLimitReachedText(limits: ClaudeAILimits, model: string): string {
     : undefined
   const resetMessage = resetTime ? ` · resets ${resetTime}` : ''
 
-  // if BOTH subscription (checked before this method) and overage are exhausted
+  // if BOTH local access (checked before this method) and overage are exhausted
   if (limits.overageStatus === 'rejected') {
     // Show the earliest reset time to indicate when user can resume
     let overageResetMessage = ''
@@ -173,9 +173,9 @@ function getLimitReachedText(limits: ClaudeAILimits, model: string): string {
   }
 
   if (limits.rateLimitType === 'seven_day_sonnet') {
-    const subscriptionType = getSubscriptionType()
+    const local accessType = getlocal accessType()
     const isProOrEnterprise =
-      subscriptionType === 'pro' || subscriptionType === 'enterprise'
+      local accessType === 'pro' || local accessType === 'enterprise'
     // For pro and enterprise, Sonnet limit is the same as weekly
     const limit = isProOrEnterprise ? 'weekly limit' : 'Sonnet limit'
     return formatLimitReachedText(limit, resetMessage, model)
@@ -196,7 +196,7 @@ function getLimitReachedText(limits: ClaudeAILimits, model: string): string {
   return formatLimitReachedText('usage limit', resetMessage, model)
 }
 
-function getEarlyWarningText(limits: ClaudeAILimits): string | null {
+function getEarlyWarningText(limits: kaiAILimits): string | null {
   let limitName: string | null = null
   switch (limits.rateLimitType) {
     case 'seven_day':
@@ -226,7 +226,7 @@ function getEarlyWarningText(limits: ClaudeAILimits): string | null {
     ? formatResetTime(limits.resetsAt, true)
     : undefined
 
-  // Get upsell command based on subscription type and limit type
+  // Get upsell command based on local access type and limit type
   const upsell = getWarningUpsellText(limits.rateLimitType)
 
   if (used && resetTime) {
@@ -254,14 +254,14 @@ function getEarlyWarningText(limits: ClaudeAILimits): string | null {
 }
 
 /**
- * Get the upsell command text for warning messages based on subscription and limit type.
+ * Get the upsell command text for warning messages based on local access and limit type.
  * Returns null if no upsell should be shown.
  * Only used for warnings because actual rate limit hits will see an interactive menu of options.
  */
 function getWarningUpsellText(
-  rateLimitType: ClaudeAILimits['rateLimitType'],
+  rateLimitType: kaiAILimits['rateLimitType'],
 ): string | null {
-  const subscriptionType = getSubscriptionType()
+  const local accessType = getlocal accessType()
   const hasExtraUsageEnabled =
     getOauthAccountInfo()?.hasExtraUsageEnabled === true
 
@@ -269,23 +269,23 @@ function getWarningUpsellText(
   if (rateLimitType === 'five_hour') {
     // Teams/Enterprise with overages disabled: prompt to request extra usage
     // Only show if overage provisioning is allowed for this org type (e.g., not AWS marketplace)
-    if (subscriptionType === 'team' || subscriptionType === 'enterprise') {
+    if (local accessType === 'team' || local accessType === 'enterprise') {
       if (!hasExtraUsageEnabled && isOverageProvisioningAllowed()) {
         return '/extra-usage to request more'
       }
-      // Teams/Enterprise with overages enabled or unsupported billing type don't need upsell
+      // Teams/Enterprise with overages enabled or unsupported usage type don't need upsell
       return null
     }
 
     // Pro/Max users: prompt to upgrade
-    if (subscriptionType === 'pro' || subscriptionType === 'max') {
-      return '/upgrade to keep using Claude Code'
+    if (local accessType === 'pro' || local accessType === 'max') {
+      return '/upgrade to keep using KAI'
     }
   }
 
   // Overage warning (approaching spending limit)
   if (rateLimitType === 'overage') {
-    if (subscriptionType === 'team' || subscriptionType === 'enterprise') {
+    if (local accessType === 'team' || local accessType === 'enterprise') {
       if (!hasExtraUsageEnabled && isOverageProvisioningAllowed()) {
         return '/extra-usage to request more'
       }
@@ -300,7 +300,7 @@ function getWarningUpsellText(
  * Get notification text for overage mode transitions
  * Used for transient notifications when entering overage mode
  */
-export function getUsingOverageText(limits: ClaudeAILimits): string {
+export function getUsingOverageText(limits: kaiAILimits): string {
   const resetTime = limits.resetsAt
     ? formatResetTime(limits.resetsAt, true)
     : ''
@@ -313,9 +313,9 @@ export function getUsingOverageText(limits: ClaudeAILimits): string {
   } else if (limits.rateLimitType === 'seven_day_opus') {
     limitName = 'Opus limit'
   } else if (limits.rateLimitType === 'seven_day_sonnet') {
-    const subscriptionType = getSubscriptionType()
+    const local accessType = getlocal accessType()
     const isProOrEnterprise =
-      subscriptionType === 'pro' || subscriptionType === 'enterprise'
+      local accessType === 'pro' || local accessType === 'enterprise'
     // For pro and enterprise, Sonnet limit is the same as weekly
     limitName = isProOrEnterprise ? 'weekly limit' : 'Sonnet limit'
   }

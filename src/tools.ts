@@ -88,10 +88,10 @@ import { TaskListTool } from './tools/TaskListTool/TaskListTool.js'
 import uniqBy from 'lodash-es/uniqBy.js'
 import { isToolSearchEnabledOptimistic } from './utils/toolSearch.js'
 import { isTodoV2Enabled } from './utils/tasks.js'
-// Dead code elimination: conditional import for CLAUDE_CODE_VERIFY_PLAN
+// Dead code elimination: conditional import for KAI_ENGINE_VERIFY_PLAN
 /* eslint-disable custom-rules/no-process-env-top-level, @typescript-eslint/no-require-imports */
 const VerifyPlanExecutionTool =
-  process.env.CLAUDE_CODE_VERIFY_PLAN === 'true'
+  process.env.KAI_ENGINE_VERIFY_PLAN === 'true'
     ? require('./tools/VerifyPlanExecutionTool/VerifyPlanExecutionTool.js')
         .VerifyPlanExecutionTool
     : null
@@ -190,7 +190,7 @@ export function getToolsForDefaultPreset(): string[] {
  * This is the source of truth for ALL tools.
  */
 /**
- * NOTE: This MUST stay in sync with https://console.statsig.com/4aF3Ewatb6xPVpCwxb5nA3/dynamic_configs/claude_code_global_system_caching, in order to cache the system prompt across users.
+ * NOTE: This MUST stay in sync with https://console.statsig.com/4aF3Ewatb6xPVpCwxb5nA3/dynamic_configs/KAI_ENGINE_global_system_caching, in order to cache the system prompt across users.
  */
 export function getAllBaseTools(): Tools {
   return [
@@ -198,7 +198,7 @@ export function getAllBaseTools(): Tools {
     TaskOutputTool,
     BashTool,
     // Ant-native builds have bfs/ugrep embedded in the bun binary (same ARGV0
-    // trick as ripgrep). When available, find/grep in Claude's shell are aliased
+    // trick as ripgrep). When available, find/grep in KAI's shell are aliased
     // to these fast tools, so the dedicated Glob/Grep tools are unnecessary.
     ...(hasEmbeddedSearchTools() ? [] : [GlobTool, GrepTool]),
     ExitPlanModeV2Tool,
@@ -247,7 +247,7 @@ export function getAllBaseTools(): Tools {
     ListMcpResourcesTool,
     ReadMcpResourceTool,
     // Include ToolSearchTool when tool search might be enabled (optimistic check)
-    // The actual decision to defer tools happens at request time in claude.ts
+    // The actual decision to defer tools happens at request time in KAI.ts
     ...(isToolSearchEnabledOptimistic() ? [ToolSearchTool] : []),
     RSHLTool,
     KAIGenerativeTool,
@@ -274,7 +274,7 @@ export function filterToolsByDenyRules<
 
 export const getTools = (permissionContext: ToolPermissionContext): Tools => {
   // Simple mode: only Bash, Read, and Edit tools
-  if (isEnvTruthy(process.env.CLAUDE_CODE_SIMPLE)) {
+  if (isEnvTruthy(process.env.KAI_ENGINE_SIMPLE)) {
     // --bare + REPL mode: REPL wraps Bash/Read/Edit/etc inside the VM, so
     // return REPL instead of the raw primitives. Matches the non-bare path
     // below which also hides REPL_ONLY_TOOLS when REPL is enabled.
@@ -356,7 +356,7 @@ export function assembleToolPool(
   const allowedMcpTools = filterToolsByDenyRules(mcpTools, permissionContext)
 
   // Sort each partition for prompt-cache stability, keeping built-ins as a
-  // contiguous prefix. The server's claude_code_system_cache_policy places a
+  // contiguous prefix. The server's KAI_ENGINE_system_cache_policy places a
   // global cache breakpoint after the last prefix-matched built-in tool; a flat
   // sort would interleave MCP tools into built-ins and invalidate all downstream
   // cache keys whenever an MCP tool sorts between existing built-ins. uniqBy

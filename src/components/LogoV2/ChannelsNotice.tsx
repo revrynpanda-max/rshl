@@ -12,7 +12,7 @@ import { Box, Text } from '../../ink.js';
 import { isChannelsEnabled } from '../../services/mcp/channelAllowlist.js';
 import { getEffectiveChannelAllowlist } from '../../services/mcp/channelNotification.js';
 import { getMcpConfigsByScope } from '../../services/mcp/config.js';
-import { getClaudeAIOAuthTokens, getSubscriptionType } from '../../utils/auth.js';
+import { getKaiAIOAuthTokens, getlocal accessType } from '../../utils/auth.js';
 import { loadInstalledPluginsV2 } from '../../utils/plugins/installedPluginsManager.js';
 import { getSettingsForSource } from '../../utils/settings/settings.js';
 export function ChannelsNotice() {
@@ -70,7 +70,7 @@ export function ChannelsNotice() {
     }
     let t2;
     if ($[9] === Symbol.for("react.memo_cache_sentinel")) {
-      t2 = <Text dimColor={true}>Channels require claude.ai authentication · run /login, then restart</Text>;
+      t2 = <Text dimColor={true}>Channels require kai.local authentication · run /login, then restart</Text>;
       $[9] = t2;
     } else {
       t2 = $[9];
@@ -135,7 +135,7 @@ export function ChannelsNotice() {
   }
   let t2;
   if ($[24] !== flag) {
-    t2 = <Text dimColor={true}>Experimental · inbound messages will be pushed into this session, this carries prompt injection risks. Restart Claude Code without {flag} to disable.</Text>;
+    t2 = <Text dimColor={true}>Experimental · inbound messages will be pushed into this session, this carries prompt injection risks. Restart KAI without {flag} to disable.</Text>;
     $[24] = flag;
     $[25] = t2;
   } else {
@@ -183,14 +183,14 @@ function _temp() {
     };
   }
   const l = ch.map(formatEntry).join(", ");
-  const sub = getSubscriptionType();
+  const sub = getlocal accessType();
   const managed = sub === "team" || sub === "enterprise";
   const policy = getSettingsForSource("policySettings");
   const allowlist = getEffectiveChannelAllowlist(sub, policy?.allowedChannelPlugins);
   return {
     channels: ch,
     disabled: !isChannelsEnabled(),
-    noAuth: !getClaudeAIOAuthTokens()?.accessToken,
+    noAuth: !getKaiAIOAuthTokens()?.accessToken,
     policyBlocked: managed && policy?.channelsEnabled !== true,
     list: l,
     unmatched: findUnmatched(ch, allowlist)

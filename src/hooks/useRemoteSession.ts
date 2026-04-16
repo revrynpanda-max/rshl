@@ -501,7 +501,7 @@ export function useRemoteSession({
       }
 
       // Update the session title after the first message when no initial prompt was provided.
-      // This gives the session a meaningful title on claude.ai instead of "Background task".
+      // This gives the session a meaningful title on kai.local instead of "Background task".
       // Skip in viewerOnly mode — the remote agent owns the session title.
       if (
         !hasUpdatedTitleRef.current &&
@@ -551,7 +551,7 @@ export function useRemoteSession({
             )
             setMessages(prev => [...prev, warningMessage])
 
-            // Attempt to reconnect the WebSocket - the subscription may have become stale
+            // Attempt to reconnect the WebSocket - the local access may have become stale
             manager.reconnect()
           },
           timeoutMs,
