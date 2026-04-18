@@ -20,6 +20,40 @@ use std::sync::Mutex;
 static DREAM_HISTORY: Mutex<Vec<DreamHistoryEntry>> = Mutex::new(Vec::new());
 const MAX_DREAM_HISTORY: usize = 12;
 
+/// Gate statistics — how many dreams were rejected vs accepted.
+/// Useful for tuning thresholds and spotting when the field is noisy.
+static GATE_STATS: Mutex<GateStats> = Mutex::new(GateStats {
+    accepted: 0,
+    rejected_confidence: 0,
+    rejected_chi: 0,
+    rejected_phi_drop: 0,
+});
+
+#[derive(Clone, Debug)]
+pub struct GateStats {
+    pub accepted: u64,
+    pub rejected_confidence: u64,
+    pub rejected_chi: u64,
+    pub rejected_phi_drop: u64,
+}
+
+impl GateStats {
+    pub fn total_rejected(&self) -> u64 {
+        self.rejected_confidence + self.rejected_chi + self.rejected_phi_drop
+    }
+
+    pub fn accept_rate(&self) -> f32 {
+        let total = self.accepted + self.total_rejected();
+        if total == 0 { return 1.0; }
+        self.accepted as f32 / total as f32
+    }
+}
+
+/// Get a snapshot of dream gate statistics.
+pub fn gate_stats() -> GateStats {
+    GATE_STATS.lock().unwrap_or_else(|e| e.into_inner()).clone()
+}
+
 fn push_dream_history(entry: DreamHistoryEntry) {
     let mut history = DREAM_HISTORY.lock().unwrap_or_else(|e| e.into_inner());
     history.push(entry);
@@ -207,11 +241,13 @@ pub fn consolidate(universe: &Universe) -> Option<DreamResult> {
     // This directly prevents χ injection from low-quality cross-region smashes.
     let (min_confidence, max_chi) = quality_gate(universe.count());
     if confidence < min_confidence {
+        if let Ok(mut s) = GATE_STATS.lock() { s.rejected_confidence += 1; }
         return None; // Synthetic doesn't resonate — discard, saves field computation
     }
 
     // Also discard immediately if the insight is empty or the fallback text
     if insight_text.is_empty() || insight_text == "no strong concept found" {
+        if let Ok(mut s) = GATE_STATS.lock() { s.rejected_confidence += 1; }
         return None;
     }
 
@@ -244,6 +280,7 @@ pub fn consolidate(universe: &Universe) -> Option<DreamResult> {
     // This catches cases where the pair scored well geometrically but the
     // resulting field is self-contradictory — exactly the χ spike source.
     if field.chi > max_chi {
+        if let Ok(mut s) = GATE_STATS.lock() { s.rejected_chi += 1; }
         return None; // Contradictory binding — discard, prevents χ injection
     }
 
@@ -252,6 +289,7 @@ pub fn consolidate(universe: &Universe) -> Option<DreamResult> {
     // recorded value, it's doing more harm than good. Skip it.
     // Allow a small drop (0.01) for normal variance but reject sharp dips.
     if prev_phi_g > 0.04 && field.phi_g < prev_phi_g - 0.08 {
+        if let Ok(mut s) = GATE_STATS.lock() { s.rejected_phi_drop += 1; }
         return None; // Dream degrades global coherence — discard
     }
 
@@ -275,6 +313,9 @@ pub fn consolidate(universe: &Universe) -> Option<DreamResult> {
     } else {
         0.0
     };
+
+    // ── Accept: increment gate stats ──────────────────────────────────────
+    if let Ok(mut s) = GATE_STATS.lock() { s.accepted += 1; }
 
     // Track in dream history
     let now = std::time::SystemTime::now()

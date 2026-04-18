@@ -25,6 +25,18 @@ This document tracks the precision and throughput metrics for the Recursive Spar
 > [!NOTE]
 > Differences between IPC Latency (18ms) and Engine Recall (2ms) reflect Windows process overhead. For real-time production, KAI should be used via a persistent pipe or as a linked library.
 
+## Cognitive Stability: The Triple-Gate System
+To prevent "garbage geometry" from polluting the cognitive field, KAI v5.4 implements a three-stage validation gate for every autonomous dream (consolidation) cycle.
+
+### 1. Resonance Gate (Confidence)
+Before any field computation, the synthetic bundle is queried against the universe. If resonance falls below the adaptive threshold (**0.10 - 0.36**), the dream is discarded. This stops pure noise from ever entering the field.
+
+### 2. Contradiction Gate (χ Pressure)
+If the resulting field state shows an inherent contradiction (χ) above the threshold (**0.42 - 0.70**), the dream is rejected. This specifically target and kills "χ-injectors" that would otherwise cause cognitive dissonance spikes.
+
+### 3. Coherence Gate (Φg Delta)
+A final guard protects the global emergence score. If a dream would drop the total field coherence (Φg) by more than **0.08**, it is discarded as coherence-degrading.
+
 ### Recall Accuracy
 *Measured using `eval/recall-accuracy.js` protocol*
 - **Baseline (30 facts)**: 100.0% Top-1
