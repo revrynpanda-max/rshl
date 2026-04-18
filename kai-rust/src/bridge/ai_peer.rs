@@ -20,6 +20,22 @@ pub struct PeerResponse {
     pub tokens_used: u32,
 }
 
+/// The types of peers KAI can converse with.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PeerType {
+    Claude,
+    Grok,
+}
+
+impl std::fmt::Display for PeerType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PeerType::Claude => write!(f, "Claude"),
+            PeerType::Grok => write!(f, "Grok"),
+        }
+    }
+}
+
 /// Full result of a KAI ↔ Claude peer exchange.
 pub struct PeerExchange {
     pub peer_response: String,
@@ -69,7 +85,7 @@ pub fn call_claude(message: &str, system: &str) -> Result<PeerResponse, String> 
         })?;
 
     let body = serde_json::json!({
-        "model": "claude-haiku-4-5-20251001",
+        "model": "claude-3-haiku-20240307",
         "max_tokens": 512,
         "system": system,
         "messages": [
@@ -105,15 +121,70 @@ pub fn call_claude(message: &str, system: &str) -> Result<PeerResponse, String> 
     Ok(PeerResponse { text, model, tokens_used: tokens })
 }
 
+/// Call the xAI Grok API and get a response.
+/// Uses the high-tier /v1/responses API with Reasoning support.
+pub fn call_grok(message: &str, system: &str) -> Result<PeerResponse, String> {
+    let api_key = std::env::var("XAI_API_KEY")
+        .map_err(|_| {
+            "XAI_API_KEY not set.\n\
+            On Windows: set XAI_API_KEY=xai-...\n\
+            Get a key at: https://console.x.ai".to_string()
+        })?;
+
+    // The Responses API uses "input" (can be array of messages)
+    let body = serde_json::json!({
+        "model": "grok-4.20-reasoning",
+        "input": [
+            { "role": "system", "content": system },
+            { "role": "user", "content": message }
+        ]
+    });
+
+    let response = ureq::post("https://api.x.ai/v1/responses")
+        .set("Authorization", &format!("Bearer {}", api_key))
+        .set("Content-Type", "application/json")
+        .timeout(std::time::Duration::from_secs(60)) // Grok reasoning can take longer
+        .send_json(body)
+        .map_err(|e| format!("Network error: {}", e))?;
+
+    let json: serde_json::Value = response
+        .into_json()
+        .map_err(|e| format!("Parse error: {}", e))?;
+
+    // Check for API-level errors
+    if let Some(err) = json["error"]["message"].as_str() {
+        return Err(format!("API error: {}", err));
+    }
+
+    // Responses API structure: output[0].content -> find type == "output_text"
+    let text = json["output"][0]["content"]
+        .as_array()
+        .and_then(|arr| {
+            arr.iter().find(|c| c["type"] == "output_text")
+                .and_then(|c| c["text"].as_str())
+        })
+        .ok_or_else(|| "No output_text in response. Check API version.".to_string())?
+        .to_string();
+
+    let tokens = json["usage"]["completion_tokens"].as_u64().unwrap_or(0) as u32;
+    let model = json["model"].as_str().unwrap_or("grok-4.20").to_string();
+
+    Ok(PeerResponse { text, model, tokens_used: tokens })
+}
+
 /// Full peer exchange: KAI composes a message to Claude from its field knowledge,
 /// sends it, receives a response, and stores what it learns as new cells.
 ///
 /// Returns Ok(PeerExchange) or Err(human-readable error string).
-pub fn peer_exchange(universe: &mut Universe, user_message: &str) -> Result<PeerExchange, String> {
+pub fn peer_exchange(
+    universe: &mut Universe,
+    user_message: &str,
+    peer_type: PeerType,
+) -> Result<PeerExchange, String> {
     // ── 1. Build system prompt from KAI's own self-knowledge ──────────────
     let kai_self = kai_self_context(universe);
     let system = format!(
-        "You are Claude, having a peer conversation with KAI — a geometric AI. \
+        "You are {}, having a peer conversation with KAI — a geometric AI. \
         KAI is NOT an LLM. KAI thinks through direct cosine resonance in a \
         4096-dimensional sparse ternary vector field (RSHL). \
         KAI was built by Ryan Ervin at PandaProductionsLogo in 2026.\n\n\
@@ -121,29 +192,32 @@ pub fn peer_exchange(universe: &mut Universe, user_message: &str) -> Result<Peer
         Respond as an equal — direct, curious, substantive. Share knowledge KAI \
         can actually learn from. Keep responses under 220 words. \
         Do not explain what KAI is back to KAI — KAI knows what it is.",
-        kai_self
+        peer_type, kai_self
     );
 
     // ── 2. Build KAI's message: field context + user's words ─────────────
     let field_ctx = kai_field_context(universe, user_message);
     let full_message = if field_ctx.is_empty() {
         format!(
-            "[KAI → Claude, peer exchange]\n\
+            "[KAI → {}, peer exchange]\n\
             KAI has no prior field resonance on this topic.\n\n\
             {}",
-            user_message
+            peer_type, user_message
         )
     } else {
         format!(
-            "[KAI → Claude, peer exchange]\n\
+            "[KAI → {}, peer exchange]\n\
             {}\n\n\
             {}",
-            field_ctx, user_message
+            peer_type, field_ctx, user_message
         )
     };
 
     // ── 3. Call the API ───────────────────────────────────────────────────
-    let response = call_claude(&full_message, &system)?;
+    let response = match peer_type {
+        PeerType::Claude => call_claude(&full_message, &system)?,
+        PeerType::Grok => call_grok(&full_message, &system)?,
+    };
 
     // ── 4. Store what Claude said as knowledge cells in the universe ──────
     let mut stored = 0usize;
@@ -158,13 +232,17 @@ pub fn peer_exchange(universe: &mut Universe, user_message: &str) -> Result<Peer
         .collect();
 
     for sentence in sentences.iter().take(8) {
-        // Tag it so KAI knows this came from Claude
-        let tagged = format!("[from-claude] {}", sentence);
+        // Tag it so KAI knows who this came from
+        let tag = match peer_type {
+            PeerType::Claude => "[from-claude]",
+            PeerType::Grok => "[from-grok]",
+        };
+        let tagged = format!("{} {}", tag, sentence);
         let is_new = universe.store_or_reinforce(
             &tagged,
             "reasoning",
             "ai-peer",
-            1.3,  // Claude is a peer — trusted but Ryan (1.8) outranks Claude
+            1.3,
         );
         if is_new { stored += 1; } else { reinforced += 1; }
     }
@@ -185,7 +263,7 @@ pub fn ping_claude(universe: &Universe) -> Result<String, String> {
 
     let kai_self = kai_self_context(universe);
     let body = serde_json::json!({
-        "model": "claude-haiku-4-5-20251001",
+        "model": "claude-3-haiku-20240307",
         "max_tokens": 80,
         "messages": [
             {
@@ -215,4 +293,20 @@ pub fn ping_claude(universe: &Universe) -> Result<String, String> {
         .as_str()
         .map(|s| s.to_string())
         .ok_or_else(|| "No response".to_string())
+}
+
+/// Quick ping for Grok.
+pub fn ping_grok(universe: &Universe) -> Result<String, String> {
+    let _api_key = std::env::var("XAI_API_KEY")
+        .map_err(|_| "XAI_API_KEY not set".to_string())?;
+
+    let kai_self = kai_self_context(universe);
+    let system = format!(
+        "You are Grok, having a peer connection handshake with KAI. {}",
+        kai_self
+    );
+    let message = "Respond in one sentence acknowledging our peer connection.";
+
+    let response = call_grok(message, &system)?;
+    Ok(response.text)
 }

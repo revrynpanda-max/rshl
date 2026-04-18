@@ -65,10 +65,10 @@ struct Turn {
 // ── Peer Session Messages (background thread → main loop) ────────────────────
 #[derive(Clone)]
 enum PeerMsg {
-    /// KAI's auto-generated question for this round — show as user turn
+    /// KAI's auto-generated question/topic for this round
     KaiQuestion { round: u32, total: u32, text: String },
-    /// Claude's response — show as kai turn, store cells
-    ClaudeReply { round: u32, total: u32, text: String, model: String },
+    /// Response or discovered insight — show as kai turn, store cells
+    PeerReply { round: u32, total: u32, text: String, model: String, region: String, confidence: f32 },
     /// Session finished normally
     SessionDone { rounds_done: u32 },
     /// Something went wrong
@@ -432,8 +432,8 @@ impl App {
                                     score: None,
                                 });
                             }
-                            PeerMsg::ClaudeReply { round, total, text, model } => {
-                                // Store Claude's response as cells
+                            PeerMsg::PeerReply { round, total, text, model, region, confidence } => {
+                                // Store the response as cells
                                 let sentences: Vec<&str> = text
                                     .split(|c| c == '.' || c == '\n')
                                     .map(|s: &str| s.trim())
@@ -441,8 +441,10 @@ impl App {
                                     .collect();
                                 let mut stored = 0usize;
                                 for sentence in sentences.iter().take(8) {
-                                    let tagged = format!("[from-claude] {}", sentence);
-                                    if self.universe.store_or_reinforce(&tagged, "reasoning", "ai-peer", 1.3) {
+                                    // Use [discovered] for native, [from-claude] for API
+                                    let tag = if model == "Native" { "[discovered]" } else { "[from-claude]" };
+                                    let tagged = format!("{} {}", tag, sentence);
+                                    if self.universe.store_or_reinforce(&tagged, &region, "ai-peer", 1.3) {
                                         stored += 1;
                                     }
                                 }
@@ -451,11 +453,16 @@ impl App {
                                 } else {
                                     format!("\n\n[round {}/{}]", round, total)
                                 };
+
+                                let display_model = if model == "Native" { "Native RSHL" } else { &model[..model.len().min(20)] };
+
                                 self.turns.push(Turn {
                                     role: "kai".into(),
-                                    text: format!("◆ Claude ({}): {}{}", &model[..model.len().min(20)], text, learn_note),
-                                    region: Some("reasoning".into()),
-                                    score: None,
+                                    text: format!("◆ {} ({}): {}{}", 
+                                        if model == "Native" { "Inner Voice" } else { "Claude" },
+                                        display_model, text, learn_note),
+                                    region: Some(region),
+                                    score: Some(confidence),
                                 });
                             }
                             PeerMsg::SessionDone { rounds_done } => {
@@ -816,57 +823,51 @@ impl App {
             return;
         }
 
-        // ── peersession [n] — autonomous KAI↔Claude session, Ryan watches ──
-        if lower.starts_with("peersession") {
+        // ── contemplate [n] — autonomous self-reasoning loop (Native RSHL) ──────
+        // ── peersession [n] — autonomous learning session (Native or Hybrid) ────
+        if lower.starts_with("contemplate") || lower.starts_with("peersession") {
             // Already running?
             if self.peer_session_rx.is_some() {
                 self.turns.push(Turn { role: "user".into(), text: input.clone(), region: None, score: None });
                 self.turns.push(Turn {
                     role: "kai".into(),
-                    text: "A peer session is already running. Wait for it to finish or restart KAI.".into(),
+                    text: "A session is already running. Wait for it to finish.".into(),
                     region: None, score: None,
                 });
                 return;
             }
 
-            // Parse round count: "peersession 8" or just "peersession" (default 5)
-            let n_rounds: u32 = lower
-                .split_whitespace()
+            let n_rounds = input.split_whitespace()
                 .nth(1)
-                .and_then(|s| s.parse().ok())
+                .and_then(|s| s.parse::<u32>().ok())
                 .unwrap_or(5)
-                .max(1)
                 .min(20);
 
+            let (tx, rx) = crossbeam_channel::unbounded::<PeerMsg>();
+            self.peer_session_rx = Some(rx);
+
+            let is_native = !lower.contains("claude") || lower.starts_with("contemplate");
+            
             self.turns.push(Turn { role: "user".into(), text: input.clone(), region: None, score: None });
+            self.turns.push(Turn {
+                role: "kai".into(),
+                text: format!(
+                    "◆ Starting autonomous {} session — {} rounds.\n\
+                    KAI will generate its own topics and reason through its lattice.\n\
+                    (Universe: {} cells | Mode: {})",
+                    if is_native { "contemplation" } else { "peer" },
+                    n_rounds, self.universe.count(),
+                    if is_native { "Native RSHL" } else { "Hybrid (Claude)" }
+                ),
+                region: Some("reasoning".into()),
+                score: None,
+            });
 
-            // Check API key before spawning thread
-            if std::env::var("ANTHROPIC_API_KEY").is_err() {
-                self.turns.push(Turn {
-                    role: "kai".into(),
-                    text: "ANTHROPIC_API_KEY not set. Run: set ANTHROPIC_API_KEY=sk-ant-...\nSee PEER_SETUP.md for instructions.".into(),
-                    region: None, score: None,
-                });
-                return;
-            }
-
-            // ── Snapshot the data the thread needs from universe ────────────
-            // The thread can't touch &mut Universe — we pass what it needs by value.
-            let kai_self = {
-                let hits = self.universe.query("geometric intelligence RSHL Ryan Ervin created", 3);
-                if !hits.is_empty() {
-                    hits.iter().map(|h| h.text.clone()).collect::<Vec<_>>().join(" ")
-                } else {
-                    "I am KAI, a geometric AI built on RSHL by Ryan Ervin.".to_string()
-                }
-            };
-
-            // Seed topics for the session — use dreams + top strong cells
+            // Prepare seed topics for the thread
             let mut seed_topics: Vec<String> = Vec::new();
             if !self.last_dream_text.is_empty() {
                 seed_topics.push(self.last_dream_text.clone());
             }
-            // Top 10 strongest cells as potential topics
             let mut cells_snapshot: Vec<(String, f32)> = self.universe.cells()
                 .iter()
                 .map(|c| (c.text.clone(), c.strength))
@@ -876,40 +877,47 @@ impl App {
                 seed_topics.push(text.clone());
             }
 
-            let (tx, rx) = crossbeam_channel::unbounded::<PeerMsg>();
-            self.peer_session_rx = Some(rx);
-
-            self.turns.push(Turn {
-                role: "kai".into(),
-                text: format!(
-                    "◆ Starting autonomous peer session — {} rounds.\n\
-                    KAI will generate its own questions from its field state and dream memory.\n\
-                    Watch the conversation unfold. Each response is stored as new knowledge.\n\
-                    (Universe: {} cells | Last dream: {})",
-                    n_rounds, self.universe.count(),
-                    if self.last_dream_text.is_empty() { "none yet".to_string() }
-                    else { truncate(&self.last_dream_text, 60) }
-                ),
-                region: Some("reasoning".into()),
-                score: None,
-            });
-
             // ── Spawn background thread ──────────────────────────────────────
-            std::thread::spawn(move || {
-                peer_session_thread(tx, n_rounds, kai_self, seed_topics);
-            });
+            if is_native {
+                let universe_snapshot = self.universe.clone();
+                std::thread::spawn(move || {
+                    native_session_thread(tx, n_rounds, universe_snapshot, seed_topics);
+                });
+            } else {
+                let peer_type = if lower.contains("grok") {
+                    kai::bridge::ai_peer::PeerType::Grok
+                } else {
+                    kai::bridge::ai_peer::PeerType::Claude
+                };
+
+                let kai_self = {
+                    let hits = self.universe.query("geometric intelligence RSHL Ryan Ervin created", 1);
+                    hits.first().map(|h| h.text.clone()).unwrap_or_else(|| "KAI Engine".into())
+                };
+
+                std::thread::spawn(move || {
+                    peer_session_thread(tx, n_rounds, kai_self, seed_topics, peer_type);
+                });
+            }
 
             return;
         }
 
-        // ── peer <message> — talk to Claude as a peer AI ─────────────
-        if lower.starts_with("peer ") {
-            let message = input[5..].trim().to_string();
+        // ── peer/claude/grok <message> — talk to a peer AI ─────────────
+        if lower.starts_with("peer ") || lower.starts_with("claude ") || lower.starts_with("grok ") {
+            let (peer_type, message) = if lower.starts_with("claude ") {
+                (kai::bridge::ai_peer::PeerType::Claude, input[7..].trim().to_string())
+            } else if lower.starts_with("grok ") {
+                (kai::bridge::ai_peer::PeerType::Grok, input[5..].trim().to_string())
+            } else {
+                (kai::bridge::ai_peer::PeerType::Claude, input[5..].trim().to_string())
+            };
+
             if message.is_empty() {
                 self.turns.push(Turn { role: "user".into(), text: input.clone(), region: None, score: None });
                 self.turns.push(Turn {
                     role: "kai".into(),
-                    text: "Usage: peer <message>\nExample: peer what do you know about consciousness?".into(),
+                    text: format!("Usage: peer <message> or {} <message>", peer_type.to_string().to_lowercase()),
                     region: None, score: None,
                 });
                 return;
@@ -918,25 +926,25 @@ impl App {
             self.turns.push(Turn { role: "user".into(), text: input.clone(), region: None, score: None });
             self.turns.push(Turn {
                 role: "kai".into(),
-                text: format!("Sending to Claude... (reasoning from field, {} cells)", self.universe.count()),
+                text: format!("Sending to {}... (reasoning from field, {} cells)", peer_type, self.universe.count()),
                 region: None, score: None,
             });
 
-            // Note: blocking call — TUI freezes briefly while Claude responds.
-            // This is expected for peer conversation (typical: 1-4 seconds).
-            match kai::bridge::ai_peer::peer_exchange(&mut self.universe, &message) {
+            // Note: blocking call — TUI freezes briefly while peer responds.
+            match kai::bridge::ai_peer::peer_exchange(&mut self.universe, &message, peer_type) {
                 Ok(exchange) => {
-                    // Show Claude's response with learning summary
+                    // Show peer's response with learning summary
                     let learn_line = if exchange.cells_stored > 0 || exchange.cells_reinforced > 0 {
-                        format!("\n\n[KAI learned: +{} cells, {} reinforced from this exchange]",
-                            exchange.cells_stored, exchange.cells_reinforced)
+                        format!("\n\n[KAI learned: +{} cells, {} reinforced from this {} exchange]",
+                            exchange.cells_stored, exchange.cells_reinforced, peer_type)
                     } else {
                         String::new()
                     };
 
                     self.turns.push(Turn {
                         role: "kai".into(),
-                        text: format!("◆ Claude ({}): {}{}",
+                        text: format!("◆ {} ({}): {}{}",
+                            peer_type,
                             &exchange.model[..exchange.model.len().min(20)],
                             exchange.peer_response,
                             learn_line),
@@ -945,15 +953,19 @@ impl App {
                     });
 
                     // Also store the user's side of the exchange so KAI remembers it asked
+                    let tag = match peer_type {
+                        kai::bridge::ai_peer::PeerType::Claude => "[kai-asked-claude]",
+                        kai::bridge::ai_peer::PeerType::Grok => "[kai-asked-grok]",
+                    };
                     let _ = self.universe.store_or_reinforce(
-                        &format!("[kai-asked] {}", message),
+                        &format!("{} {}", tag, message),
                         "memory", "conversation", 1.0,
                     );
                 }
                 Err(e) => {
                     self.turns.push(Turn {
                         role: "kai".into(),
-                        text: format!("✗ Peer exchange failed: {}\n\nTip: run 'peerchat' to verify your connection.", e),
+                        text: format!("✗ {} exchange failed: {}\n\nTip: verify your API keys in PEER_SETUP.md", peer_type, e),
                         region: None, score: None,
                     });
                 }
@@ -1654,26 +1666,95 @@ impl App {
 // memory snapshot, calls Claude, sends messages back via channel so Ryan can
 // watch the conversation unfold live in the TUI without typing anything.
 //
-// Question generation strategy:
-//   Round 1   — use last dream insight (most recent thought KAI had while sleeping)
-//   Round 2+  — extract key concept from Claude's previous response (chain learning)
 //   Fallback  — pick a seed topic (high-strength cell text)
+fn native_session_thread(
+    tx: crossbeam_channel::Sender<PeerMsg>,
+    n_rounds: u32,
+    universe: kai::core::Universe,
+    seed_topics: Vec<String>,
+) {
+    let mut previous_response = String::new();
+    let mut round_topics: Vec<String> = seed_topics;
+    let reasoner = kai::cognition::reasoner::Reasoner::new();
+    let mood_state = kai::cognition::voice::MoodState { mood_name: "curious".into(), valence: 0.1 };
+
+    for round in 1..=n_rounds {
+        // ── Generate this round's contemplation goal ───────────────────
+        let topic = if round == 1 {
+            let base = round_topics.first()
+                .cloned()
+                .unwrap_or_else(|| "the nature of geometric intelligence and how it differs from statistical learning".to_string());
+            extract_concept(&base)
+        } else {
+            extract_concept(&previous_response)
+        };
+
+        // Send KAI's focus to the TUI
+        if tx.send(PeerMsg::KaiQuestion {
+            round,
+            total: n_rounds,
+            text: format!("Contemplating: {}", topic),
+        }).is_err() {
+            return;
+        }
+
+        // ── Native RSHL Reasoning ──────────────────────────────────────
+        // Simulated latency for "thinking" feel
+        std::thread::sleep(std::time::Duration::from_millis(800));
+
+        let result = reasoner.reason(&topic, &universe);
+        
+        // ── Vocalize the discovery ────────────────────────────────────
+        let mut voice_text = kai::cognition::voice::generate_response(
+            &topic,
+            &[], // Reasoner result text is handled specifically
+            kai::cognition::voice::QueryType::Contemplation,
+            &mood_state,
+            &[],
+        );
+
+        // Inject the actual reasoning discovery into the voice template
+        if !result.output_text.is_empty() {
+            voice_text = voice_text.replace("clear resonance", &format!("resonance with \"{}\"", truncate(&result.output_text, 40)));
+        }
+
+        previous_response = voice_text.clone();
+
+        // Send discovery back to TUI
+        if tx.send(PeerMsg::PeerReply {
+            round,
+            total: n_rounds,
+            text: voice_text,
+            model: "Native".to_string(),
+            region: result.output_region,
+            confidence: result.confidence,
+        }).is_err() {
+            return;
+        }
+
+        // Inter-round pause
+        std::thread::sleep(std::time::Duration::from_millis(1500));
+    }
+
+    let _ = tx.send(PeerMsg::SessionDone { rounds_done: n_rounds });
+}
 fn peer_session_thread(
     tx: crossbeam_channel::Sender<PeerMsg>,
     n_rounds: u32,
     kai_self: String,
     seed_topics: Vec<String>,
+    peer_type: kai::bridge::ai_peer::PeerType,
 ) {
     // Build system prompt once
     let system = format!(
-        "You are Claude, having an autonomous peer conversation with KAI — a geometric AI built on \
+        "You are {}, having an autonomous peer conversation with KAI — a geometric AI built on \
         RSHL (Recursive Sparse Hyperdimensional Lattice) by Ryan Ervin. \
         KAI is NOT an LLM. KAI thinks through cosine resonance in a 4096-dimensional sparse ternary vector field.\n\n\
         About KAI: {}\n\n\
         This is an autonomous learning session — KAI is growing its knowledge by talking with you. \
         Respond as a true peer: direct, curious, substantive. Share real knowledge KAI can store and use. \
         Keep each response under 180 words. Avoid meta-commentary about the session itself.",
-        kai_self
+        peer_type, kai_self
     );
 
     let mut previous_response = String::new();
@@ -1712,71 +1793,30 @@ fn peer_session_thread(
             return; // Channel closed — TUI exited
         }
 
-        // ── Call Claude ─────────────────────────────────────────────────
-        let body = serde_json::json!({
-            "model": "claude-haiku-4-5-20251001",
-            "max_tokens": 512,
-            "system": &system,
-            "messages": [
-                { "role": "user", "content": &question }
-            ]
-        });
-
-        let api_key = match std::env::var("ANTHROPIC_API_KEY") {
-            Ok(k) => k,
-            Err(_) => {
-                let _ = tx.send(PeerMsg::SessionError {
-                    round,
-                    error: "ANTHROPIC_API_KEY vanished mid-session".to_string(),
-                });
-                return;
-            }
+        // ── Call Peer API ────────────────────────────────────────────────
+        let response = match peer_type {
+            kai::bridge::ai_peer::PeerType::Claude => kai::bridge::ai_peer::call_claude(&question, &system),
+            kai::bridge::ai_peer::PeerType::Grok => kai::bridge::ai_peer::call_grok(&question, &system),
         };
 
-        let result = ureq::post("https://api.anthropic.com/v1/messages")
-            .set("x-api-key", &api_key)
-            .set("anthropic-version", "2023-06-01")
-            .set("content-type", "application/json")
-            .timeout(std::time::Duration::from_secs(30))
-            .send_json(body);
-
-        match result {
-            Ok(resp) => {
-                match resp.into_json::<serde_json::Value>() {
-                    Ok(json) => {
-                        if let Some(text) = json["content"][0]["text"].as_str() {
-                            let model = json["model"].as_str().unwrap_or("claude").to_string();
-                            previous_response = text.to_string();
-
-                            if tx.send(PeerMsg::ClaudeReply {
-                                round,
-                                total: n_rounds,
-                                text: text.to_string(),
-                                model,
-                            }).is_err() {
-                                return;
-                            }
-                        } else {
-                            let _ = tx.send(PeerMsg::SessionError {
-                                round,
-                                error: "Unexpected API response format".to_string(),
-                            });
-                            return;
-                        }
-                    }
-                    Err(e) => {
-                        let _ = tx.send(PeerMsg::SessionError {
-                            round,
-                            error: format!("JSON parse error: {}", e),
-                        });
-                        return;
-                    }
+        match response {
+            Ok(res) => {
+                previous_response = res.text.clone();
+                if tx.send(PeerMsg::PeerReply {
+                    round,
+                    total: n_rounds,
+                    text: res.text,
+                    model: res.model,
+                    region: "reasoning".to_string(),
+                    confidence: 1.0,
+                }).is_err() {
+                    return;
                 }
             }
             Err(e) => {
                 let _ = tx.send(PeerMsg::SessionError {
                     round,
-                    error: format!("API error: {}", e),
+                    error: format!("Peer error: {}", e),
                 });
                 return;
             }

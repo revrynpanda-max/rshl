@@ -27,6 +27,7 @@ pub enum QueryType {
     RequestForInfo,      // "tell me about", "explain"
     Statement,
     SelfQuestion,        // "are you", "do you", "can you"
+    Contemplation,       // Native autonomous reasoning
 }
 
 pub fn detect_query_type(input: &str) -> QueryType {
@@ -176,6 +177,9 @@ pub fn generate_response(
         }
         QueryType::Statement => {
             generate_conversational(input, primary, &secondary, &novel, mood, primary.score, is_followup, variant)
+        }
+        QueryType::Contemplation => {
+            generate_contemplation(input, primary, &secondary, &novel, mood, primary.score, variant)
         }
     }
 }
@@ -481,6 +485,66 @@ fn generate_conversational(
             response.push_str(" But I'm not settled on that.");
         }
         _ => {}
+    }
+
+    ensure_punctuation(response)
+}
+
+fn generate_contemplation(
+    _input: &str,
+    primary: &QueryHit,
+    secondary: &[&QueryHit],
+    _novel: &[&String],
+    mood: &MoodState,
+    score: f32,
+    v: usize,
+) -> String {
+    let core = clean_cell_text(&primary.text);
+    let mut response = String::new();
+
+    // Contemplation framing — KAI acknowledging its own discovery
+    let frames = if mood.valence > 0.1 {
+        [
+            "I'm finding a clear resonance here —",
+            "This connection feels stable:",
+            "There's something emerging from my field:",
+            "I'm articulating a new pattern:",
+        ]
+    } else {
+        [
+            "I'm processing a tentative connection —",
+            "Following a thread in my resonance:",
+            "Exploring an adjacent pattern:",
+            "Testing a potential link:",
+        ]
+    };
+    response.push_str(&format!("{} {}", frames[v % 4], lowercase_first(&core)));
+
+    // Deepen with secondary hits
+    if let Some(sec) = secondary.first() {
+        let sec_core = clean_cell_text(&sec.text);
+        if score > 0.3 && !response.contains(&sec_core[..sec_core.len().min(20)]) {
+            let bridges = [
+                ". It seems linked to",
+                ". This patterns with",
+                ". I'm seeing a secondary link to",
+                ". Related to",
+            ];
+            response.push_str(bridges[v % 4]);
+            response.push(' ');
+            response.push_str(&lowercase_first(&sec_core));
+        }
+    }
+
+    // Contemplative closer
+    if v % 2 == 0 {
+        let closers = [
+            " That deepens my field.",
+            " That pattern shows continuity.",
+            " I'll keep that resonance active.",
+            " That feels like a coherent bootstrap.",
+        ];
+        response.push_str(closers[v % 4]);
     }
 
     ensure_punctuation(response)
