@@ -6,7 +6,7 @@
     "cpu_model": "AMD Ryzen 5 8645HS w/ Radeon 760M Graphics",
     "cpu_logical_cores": 12,
     "ram_total_gb": 42.2,
-    "ram_free_gb": 27,
+    "ram_free_gb": 27.1,
     "node_version": "v22.14.0",
     "native_addon": "rshl-bench-native/1.1 avx2=yes omp=yes binary=yes",
     "gpu": [
@@ -17,60 +17,60 @@
     "nvidia_smi": [
       "NVIDIA GeForce RTX 4050 Laptop GPU, 6141 MiB"
     ],
-    "timestamp": "2026-04-16T09:38:40.163Z"
+    "timestamp": "2026-04-16T09:52:12.984Z"
   },
-  "score": 492,
+  "score": 522,
   "raw_throughput": {
-    "tokenVec_ops_per_sec": 31052,
-    "textVec_ops_per_sec": 5164,
-    "cosineSim_ops_per_sec": 295875,
+    "tokenVec_ops_per_sec": 32279,
+    "textVec_ops_per_sec": 5256,
+    "cosineSim_ops_per_sec": 328547,
     "cosineSim_sample": 0.5333
   },
   "memory_growth": {
-    "cache_warm_ms": 569,
-    "index_entries_per_sec": 4305,
+    "cache_warm_ms": 539,
+    "index_entries_per_sec": 4778,
     "growth_curve": [
       {
         "entries": 1000,
-        "js_ms": 9.18,
-        "js_queries_sec": 109,
-        "native_ms": 0.102,
-        "native_qps": 9758
+        "js_ms": 9.768,
+        "js_queries_sec": 102,
+        "native_ms": 0.084,
+        "native_qps": 11866
       },
       {
         "entries": 5000,
-        "js_ms": 46.2,
+        "js_ms": 45.814,
         "js_queries_sec": 22,
-        "native_ms": 0.453,
-        "native_qps": 2207
+        "native_ms": 0.377,
+        "native_qps": 2650
       },
       {
         "entries": 10000,
-        "js_ms": 92.881,
+        "js_ms": 87.549,
         "js_queries_sec": 11,
-        "native_ms": 0.829,
-        "native_qps": 1207
+        "native_ms": 0.776,
+        "native_qps": 1288
       },
       {
         "entries": 25000,
-        "js_ms": 234.455,
-        "js_queries_sec": 4,
-        "native_ms": 2.057,
-        "native_qps": 486
+        "js_ms": 216.136,
+        "js_queries_sec": 5,
+        "native_ms": 1.999,
+        "native_qps": 500
       },
       {
         "entries": 50000,
         "js_ms": null,
         "js_queries_sec": null,
-        "native_ms": 4.142,
-        "native_qps": 241
+        "native_ms": 3.876,
+        "native_qps": 258
       },
       {
         "entries": 100000,
         "js_ms": null,
         "js_queries_sec": null,
-        "native_ms": 8.131,
-        "native_qps": 123
+        "native_ms": 8.03,
+        "native_qps": 125
       }
     ]
   },
@@ -78,51 +78,51 @@
     "scan_throughput": [
       {
         "lib_size": 100,
-        "js_items_per_sec": 81686,
-        "native_items_per_sec": 3083597
+        "js_items_per_sec": 104979,
+        "native_items_per_sec": 3458285
       },
       {
         "lib_size": 500,
-        "js_items_per_sec": 79338,
-        "native_items_per_sec": 7591568
+        "js_items_per_sec": 89635,
+        "native_items_per_sec": 7906163
       },
       {
         "lib_size": 1000,
-        "js_items_per_sec": 81168,
-        "native_items_per_sec": 9617628
+        "js_items_per_sec": 88495,
+        "native_items_per_sec": 9506185
       },
       {
         "lib_size": 5000,
-        "js_items_per_sec": 90179,
-        "native_items_per_sec": 9381276
+        "js_items_per_sec": 90562,
+        "native_items_per_sec": 10691657
       },
       {
         "lib_size": 10000,
-        "js_items_per_sec": 82800,
-        "native_items_per_sec": 668219
+        "js_items_per_sec": 92905,
+        "native_items_per_sec": 776169
       }
     ],
     "index_throughput": [
       {
         "window_sec": 1,
-        "entries_per_sec": 2792
+        "entries_per_sec": 3295
       },
       {
         "window_sec": 3,
-        "entries_per_sec": 3171
+        "entries_per_sec": 3307
       }
     ],
     "sustained_recall": {
       "memory_entries": 25000,
       "duration_sec": 5,
-      "total_queries": 8972,
-      "avg_qps": 1794,
-      "min_qps": 1275,
-      "max_qps": 1969,
-      "total_million_ops": 224.3,
+      "total_queries": 9485,
+      "avg_qps": 1897,
+      "min_qps": 1669,
+      "max_qps": 1954,
+      "total_million_ops": 237.1,
       "path": "binary",
-      "binary_qps": 1794,
-      "sparse_qps": 251
+      "binary_qps": 1897,
+      "sparse_qps": 253
     }
   },
   "memory_palace": {
@@ -183,9 +183,9 @@
     "rshl_ops": 1337
   },
   "lattice": {
-    "accuracy_pct": 60,
-    "pass": 9,
-    "fail": 6,
+    "accuracy_pct": 73,
+    "pass": 11,
+    "fail": 4,
     "scenarios": [
       {
         "scenario": "Initial location fact",
@@ -198,9 +198,9 @@
       {
         "scenario": "Location change (temporal signal)",
         "expected": "UPDATE",
-        "got": "UPDATE",
-        "pass": true,
-        "replaced": "Ryan lives in Austin Texas",
+        "got": "ADD",
+        "pass": false,
+        "replaced": null,
         "score": 0.7678624774198745
       },
       {
@@ -217,7 +217,7 @@
         "got": "ADD",
         "pass": true,
         "replaced": null,
-        "score": 0
+        "score": 0.6625971414955103
       },
       {
         "scenario": "Job change (same subject)",
@@ -233,54 +233,54 @@
         "got": "ADD",
         "pass": true,
         "replaced": null,
-        "score": 0
+        "score": 0.716668935138155
       },
       {
         "scenario": "Preference fact",
         "expected": "ADD",
-        "got": "UPDATE",
+        "got": "NOOP",
         "pass": false,
-        "replaced": "Ryan loves hiking and trail running",
+        "replaced": null,
         "score": 0.7958626525826566
       },
       {
         "scenario": "Exact duplicate",
         "expected": "NOOP",
-        "got": "UPDATE",
-        "pass": false,
-        "replaced": "Ryan's favorite food is sushi",
-        "score": 0.7958626525826566
+        "got": "NOOP",
+        "pass": true,
+        "replaced": null,
+        "score": 0.9999999999999999
       },
       {
         "scenario": "Explicit delete signal",
         "expected": "DELETE",
-        "got": "UPDATE",
-        "pass": false,
+        "got": "DELETE",
+        "pass": true,
         "replaced": "Ryan loves hiking and trail running",
         "score": 0.8200646334820574
       },
       {
         "scenario": "New preference (sushi gone)",
         "expected": "ADD",
-        "got": "UPDATE",
-        "pass": false,
-        "replaced": "Forget that Ryan likes sushi",
-        "score": 0.8036968990036054
+        "got": "ADD",
+        "pass": true,
+        "replaced": null,
+        "score": 0.7212393040623687
       },
       {
         "scenario": "First-person → user token",
         "expected": "ADD",
-        "got": "UPDATE",
-        "pass": false,
-        "replaced": "Ryan moved to New York City",
-        "score": 0.7517963942846743
+        "got": "ADD",
+        "pass": true,
+        "replaced": null,
+        "score": 0.8460427660907501
       },
       {
         "scenario": "First-person update",
         "expected": "UPDATE",
-        "got": "UPDATE",
-        "pass": true,
-        "replaced": "Ryan got promoted to senior engineer",
+        "got": "ADD",
+        "pass": false,
+        "replaced": null,
         "score": 0.8387313890031065
       },
       {
@@ -289,32 +289,32 @@
         "got": "ADD",
         "pass": true,
         "replaced": null,
-        "score": 0
+        "score": 0.7169735117068459
       },
       {
         "scenario": "Deadline change",
         "expected": "UPDATE",
-        "got": "UPDATE",
-        "pass": true,
-        "replaced": "Ryan prefers ramen over sushi",
-        "score": 0.7455377821550854
+        "got": "ADD",
+        "pass": false,
+        "replaced": null,
+        "score": 0.8267629661013487
       },
       {
         "scenario": "Deadline restated",
         "expected": "NOOP",
-        "got": "UPDATE",
-        "pass": false,
-        "replaced": "The project deadline is Friday",
-        "score": 0.8333333333333333
+        "got": "NOOP",
+        "pass": true,
+        "replaced": null,
+        "score": 0.9029327544966421
       }
     ],
-    "lattice_store_ms": 0.41,
-    "lattice_query_ms": 0.167,
-    "base_query_ms": 0.29,
+    "lattice_store_ms": 0.218,
+    "lattice_query_ms": 0.156,
+    "base_query_ms": 0.283,
     "mem0_store_ms_ref": 250,
     "mem0_query_ms_ref": 148,
-    "speedup_store_vs_mem0": 610,
-    "speedup_query_vs_mem0": 885
+    "speedup_store_vs_mem0": 1148,
+    "speedup_query_vs_mem0": 948
   },
   "competitive": {
     "rshl_query_ms": 3.13,
@@ -367,5 +367,5 @@
       "size_mb": 225
     }
   ],
-  "total_bench_ms": 68429
+  "total_bench_ms": 74309
 }

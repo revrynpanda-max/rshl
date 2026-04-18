@@ -24,3 +24,6 @@ Desktop.ini
 
 # Conversation logs (personal, not part of the project)
 conversation-log-*.txt
+
+# Analytics and logs
+*.csv
