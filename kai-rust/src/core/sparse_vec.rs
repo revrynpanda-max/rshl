@@ -95,10 +95,18 @@ impl SparseVec {
             }
         }
 
-        // Ternary threshold: collapse to -1, 0, +1
+        // Ternary threshold + Sparsification: keep only top 4% magnitudes
+        let target_count = ((DIM as f32) * SPARSITY) as usize;
+        let mut magnitudes: Vec<i32> = v.iter().map(|s| s.abs()).collect();
+        magnitudes.sort_unstable_by(|a, b| b.cmp(a));
+        let threshold = if target_count < DIM { magnitudes[target_count] } else { 0 };
+
         let mut data = vec![0i8; DIM];
         for i in 0..DIM {
-            data[i] = if v[i] > 0 { 1 } else if v[i] < 0 { -1 } else { 0 };
+            let val = v[i];
+            if (threshold > 0 && val.abs() >= threshold) || (threshold == 0 && val != 0) {
+                data[i] = if val > 0 { 1 } else { -1 };
+            }
         }
 
         Self { data }
@@ -183,6 +191,31 @@ impl SparseVec {
             };
         }
         Self { data }
+    }
+
+    /// Superpose without consensus threshold, but with a sparsity target.
+    /// Each position takes the sign of the net signed sum across all vectors.
+    /// Use for building active-state vectors.
+    pub fn superpose_sparse(vecs: &[&SparseVec], target_density: f32) -> Self {
+        let mut sums = [0i32; DIM];
+        for v in vecs {
+            for i in 0..DIM {
+                sums[i] += v.data[i] as i32;
+            }
+        }
+        
+        let target_count = ((DIM as f32) * target_density) as usize;
+        let mut magnitudes: Vec<i32> = sums.iter().map(|s| s.abs()).collect();
+        magnitudes.sort_unstable_by(|a, b| b.cmp(a));
+        let threshold = if target_count < DIM { magnitudes[target_count] } else { 0 };
+        
+        let mut out = SparseVec::zero();
+        for i in 0..DIM {
+            if sums[i].abs() > threshold {
+                out.data[i] = sums[i].signum() as i8;
+            }
+        }
+        out
     }
 
     /// Bind two vectors (element-wise multiply).
