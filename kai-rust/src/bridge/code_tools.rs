@@ -13,6 +13,14 @@
 
 use crate::core::Universe;
 
+/// UTF-8 safe byte slice — never splits a multi-byte character.
+fn safe_slice(s: &str, max_bytes: usize) -> &str {
+    if s.len() <= max_bytes { return s; }
+    let mut end = max_bytes;
+    while end > 0 && !s.is_char_boundary(end) { end -= 1; }
+    &s[..end]
+}
+
 /// A structural element extracted from a source file.
 #[derive(Debug, Clone)]
 pub struct CodeElement {
@@ -161,17 +169,17 @@ pub fn analyze_file(path: &str) -> Result<FileAnalysis, String> {
         if let Some(pos) = trimmed.to_uppercase().find("TODO") {
             let todo_text = trimmed[pos..].trim().trim_start_matches(':').trim().to_string();
             if todo_text.len() > 4 {
-                todos.push(format!("line {}: {}", lineno, &todo_text[..todo_text.len().min(80)]));
+                todos.push(format!("line {}: {}", lineno, safe_slice(&todo_text, 80)));
                 elements.push(CodeElement {
                     kind: ElementKind::Todo,
-                    name: todo_text[..todo_text.len().min(60)].to_string(),
+                    name: safe_slice(&todo_text, 60).to_string(),
                     line: lineno,
-                    context: trimmed[..trimmed.len().min(100)].to_string(),
+                    context: safe_slice(trimmed, 100).to_string(),
                 });
             }
         }
         if trimmed.to_uppercase().contains("FIXME") {
-            todos.push(format!("line {}: FIXME: {}", lineno, &trimmed[..trimmed.len().min(60)]));
+            todos.push(format!("line {}: FIXME: {}", lineno, safe_slice(trimmed, 60)));
         }
 
         // Complexity drivers (branches)
@@ -226,7 +234,7 @@ fn parse_rust_line(line: &str, lineno: usize, elements: &mut Vec<CodeElement>) {
                 kind: if is_method { ElementKind::Method } else { ElementKind::Function },
                 name,
                 line: lineno,
-                context: line[..line.len().min(80)].to_string(),
+                context: safe_slice(line, 80).to_string(),
             });
         }
         return;
@@ -235,7 +243,7 @@ fn parse_rust_line(line: &str, lineno: usize, elements: &mut Vec<CodeElement>) {
     if let Some(name) = extract_after_keyword(line, &["pub struct ", "struct "]) {
         let name = name.split(|c: char| !c.is_alphanumeric() && c != '_').next().unwrap_or("").to_string();
         if !name.is_empty() && is_valid_ident(&name) {
-            elements.push(CodeElement { kind: ElementKind::Struct, name, line: lineno, context: line[..line.len().min(80)].to_string() });
+            elements.push(CodeElement { kind: ElementKind::Struct, name, line: lineno, context: safe_slice(line, 80).to_string() });
         }
         return;
     }
@@ -243,7 +251,7 @@ fn parse_rust_line(line: &str, lineno: usize, elements: &mut Vec<CodeElement>) {
     if let Some(name) = extract_after_keyword(line, &["pub enum ", "enum "]) {
         let name = name.split(|c: char| !c.is_alphanumeric() && c != '_').next().unwrap_or("").to_string();
         if !name.is_empty() && is_valid_ident(&name) {
-            elements.push(CodeElement { kind: ElementKind::Enum, name, line: lineno, context: line[..line.len().min(80)].to_string() });
+            elements.push(CodeElement { kind: ElementKind::Enum, name, line: lineno, context: safe_slice(line, 80).to_string() });
         }
         return;
     }
@@ -251,7 +259,7 @@ fn parse_rust_line(line: &str, lineno: usize, elements: &mut Vec<CodeElement>) {
     if let Some(name) = extract_after_keyword(line, &["pub trait ", "trait "]) {
         let name = name.split(|c: char| !c.is_alphanumeric() && c != '_').next().unwrap_or("").to_string();
         if !name.is_empty() && is_valid_ident(&name) {
-            elements.push(CodeElement { kind: ElementKind::Trait, name, line: lineno, context: line[..line.len().min(80)].to_string() });
+            elements.push(CodeElement { kind: ElementKind::Trait, name, line: lineno, context: safe_slice(line, 80).to_string() });
         }
         return;
     }
@@ -259,16 +267,19 @@ fn parse_rust_line(line: &str, lineno: usize, elements: &mut Vec<CodeElement>) {
     if line.starts_with("use ") {
         elements.push(CodeElement {
             kind: ElementKind::Import,
-            name: line[4..].trim_end_matches(';').trim()[..line.len().min(70)].to_string(),
+            name: {
+                let trimmed_name = line[4..].trim_end_matches(';').trim();
+                safe_slice(trimmed_name, 70).to_string()
+            },
             line: lineno,
-            context: line[..line.len().min(80)].to_string(),
+            context: safe_slice(line, 80).to_string(),
         });
     }
     // Constants
     if let Some(name) = extract_after_keyword(line, &["pub const ", "const "]) {
         let name = name.split(':').next().unwrap_or("").trim().to_string();
         if !name.is_empty() && is_valid_ident(&name) {
-            elements.push(CodeElement { kind: ElementKind::Constant, name, line: lineno, context: line[..line.len().min(80)].to_string() });
+            elements.push(CodeElement { kind: ElementKind::Constant, name, line: lineno, context: safe_slice(line, 80).to_string() });
         }
     }
 }
@@ -278,7 +289,7 @@ fn parse_ts_line(line: &str, lineno: usize, elements: &mut Vec<CodeElement>) {
     if let Some(name) = extract_after_keyword(line, &["export function ", "export async function ", "function ", "async function "]) {
         let name = name.split('(').next().unwrap_or("").trim().to_string();
         if !name.is_empty() && is_valid_ident(&name) {
-            elements.push(CodeElement { kind: ElementKind::Function, name, line: lineno, context: line[..line.len().min(80)].to_string() });
+            elements.push(CodeElement { kind: ElementKind::Function, name, line: lineno, context: safe_slice(line, 80).to_string() });
         }
         return;
     }
@@ -287,7 +298,7 @@ fn parse_ts_line(line: &str, lineno: usize, elements: &mut Vec<CodeElement>) {
         if let Some(name) = extract_after_keyword(line, &["export const ", "const "]) {
             let name = name.split(|c: char| c == ' ' || c == '=' || c == ':').next().unwrap_or("").trim().to_string();
             if !name.is_empty() && is_valid_ident(&name) && (line.contains("=>") || line.contains("function")) {
-                elements.push(CodeElement { kind: ElementKind::Function, name, line: lineno, context: line[..line.len().min(80)].to_string() });
+                elements.push(CodeElement { kind: ElementKind::Function, name, line: lineno, context: safe_slice(line, 80).to_string() });
             }
         }
         return;
@@ -296,14 +307,14 @@ fn parse_ts_line(line: &str, lineno: usize, elements: &mut Vec<CodeElement>) {
     if let Some(name) = extract_after_keyword(line, &["export class ", "class ", "export default class "]) {
         let name = name.split(|c: char| c == ' ' || c == '{' || c == '<').next().unwrap_or("").trim().to_string();
         if !name.is_empty() && is_valid_ident(&name) {
-            elements.push(CodeElement { kind: ElementKind::Class, name, line: lineno, context: line[..line.len().min(80)].to_string() });
+            elements.push(CodeElement { kind: ElementKind::Class, name, line: lineno, context: safe_slice(line, 80).to_string() });
         }
         return;
     }
     if let Some(name) = extract_after_keyword(line, &["export interface ", "interface "]) {
         let name = name.split(|c: char| c == ' ' || c == '{' || c == '<').next().unwrap_or("").trim().to_string();
         if !name.is_empty() && is_valid_ident(&name) {
-            elements.push(CodeElement { kind: ElementKind::Interface, name, line: lineno, context: line[..line.len().min(80)].to_string() });
+            elements.push(CodeElement { kind: ElementKind::Interface, name, line: lineno, context: safe_slice(line, 80).to_string() });
         }
         return;
     }
@@ -311,9 +322,9 @@ fn parse_ts_line(line: &str, lineno: usize, elements: &mut Vec<CodeElement>) {
     if line.starts_with("import ") {
         elements.push(CodeElement {
             kind: ElementKind::Import,
-            name: line[..line.len().min(80)].to_string(),
+            name: safe_slice(line, 80).to_string(),
             line: lineno,
-            context: line[..line.len().min(80)].to_string(),
+            context: safe_slice(line, 80).to_string(),
         });
     }
 }
@@ -326,7 +337,7 @@ fn parse_python_line(line: &str, lineno: usize, elements: &mut Vec<CodeElement>)
             elements.push(CodeElement {
                 kind: if is_method { ElementKind::Method } else { ElementKind::Function },
                 name, line: lineno,
-                context: line[..line.len().min(80)].to_string(),
+                context: safe_slice(line, 80).to_string(),
             });
         }
         return;
@@ -334,16 +345,16 @@ fn parse_python_line(line: &str, lineno: usize, elements: &mut Vec<CodeElement>)
     if let Some(name) = extract_after_keyword(line, &["class "]) {
         let name = name.split(|c: char| c == '(' || c == ':').next().unwrap_or("").trim().to_string();
         if !name.is_empty() && is_valid_ident(&name) {
-            elements.push(CodeElement { kind: ElementKind::Class, name, line: lineno, context: line[..line.len().min(80)].to_string() });
+            elements.push(CodeElement { kind: ElementKind::Class, name, line: lineno, context: safe_slice(line, 80).to_string() });
         }
         return;
     }
     if line.starts_with("import ") || line.starts_with("from ") {
         elements.push(CodeElement {
             kind: ElementKind::Import,
-            name: line[..line.len().min(80)].to_string(),
+            name: safe_slice(line, 80).to_string(),
             line: lineno,
-            context: line[..line.len().min(80)].to_string(),
+            context: safe_slice(line, 80).to_string(),
         });
     }
 }
@@ -354,14 +365,14 @@ fn parse_go_line(line: &str, lineno: usize, elements: &mut Vec<CodeElement>) {
         let after_paren = name.split(')').nth(1).unwrap_or("").trim();
         let name = after_paren.split('(').next().unwrap_or("").trim().to_string();
         if !name.is_empty() && is_valid_ident(&name) {
-            elements.push(CodeElement { kind: ElementKind::Method, name, line: lineno, context: line[..line.len().min(80)].to_string() });
+            elements.push(CodeElement { kind: ElementKind::Method, name, line: lineno, context: safe_slice(line, 80).to_string() });
         }
         return;
     }
     if let Some(name) = extract_after_keyword(line, &["func "]) {
         let name = name.split('(').next().unwrap_or("").trim().to_string();
         if !name.is_empty() && is_valid_ident(&name) {
-            elements.push(CodeElement { kind: ElementKind::Function, name, line: lineno, context: line[..line.len().min(80)].to_string() });
+            elements.push(CodeElement { kind: ElementKind::Function, name, line: lineno, context: safe_slice(line, 80).to_string() });
         }
         return;
     }
@@ -375,7 +386,7 @@ fn parse_go_line(line: &str, lineno: usize, elements: &mut Vec<CodeElement>) {
                 _ => ElementKind::Variable,
             };
             if is_valid_ident(&tname) {
-                elements.push(CodeElement { kind: tkind, name: tname, line: lineno, context: line[..line.len().min(80)].to_string() });
+                elements.push(CodeElement { kind: tkind, name: tname, line: lineno, context: safe_slice(line, 80).to_string() });
             }
         }
     }
@@ -428,7 +439,7 @@ pub fn review_file(path: &str, universe: &Universe) -> Result<String, String> {
                 .trim_start_matches("[about-kai] ")
                 .trim();
             if clean.len() > 20 {
-                review.push(format!("  · {}", &clean[..clean.len().min(120)]));
+                review.push(format!("  · {}", safe_slice(clean, 120)));
             }
         }
     }

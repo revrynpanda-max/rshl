@@ -7,6 +7,7 @@ use kai::cognition::{
     HomeostasisConfig, WorkingMemory,
     generate_response, detect_query_type, MoodState,
 };
+use kai::cognition::voice::QueryType;
 use kai::drive::{Drive, Mood};
 use crossterm::{
     event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
@@ -348,7 +349,7 @@ impl App {
                 let gs = kai::cognition::gate_stats();
                 let accept_pct = (gs.accept_rate() * 100.0) as u32;
                 self.think("GPU", "💭", format!(
-                    "{}  [{}μs | gate: {}% pass, {}✗conf {}✗χ {}✗Φ]",
+                    "{}  [{}us | gate: {}% pass, {}xconf {}xchi {}xphi]",
                     self.last_dream_text, gpu_us,
                     accept_pct, gs.rejected_confidence, gs.rejected_chi, gs.rejected_phi_drop,
                 ));
@@ -454,7 +455,7 @@ impl App {
                                     format!("\n\n[round {}/{}]", round, total)
                                 };
 
-                                let display_model = if model == "Native" { "Native RSHL" } else { &model[..model.len().min(20)] };
+                                let display_model = if model == "Native" { "Native RSHL" } else { safe_slice(&model, 20) };
 
                                 self.turns.push(Turn {
                                     role: "kai".into(),
@@ -629,6 +630,25 @@ impl App {
 
         // ── Don't learn from commands or questions ─────────────────────────
         if input.ends_with('?') { return None; }
+        // Don't store question-word sentences — "what is your name" is a question
+        // even without '?' and must not become an echo memory cell.
+        if lower.starts_with("what ") || lower.starts_with("who ")
+            || lower.starts_with("where ") || lower.starts_with("when ")
+            || lower.starts_with("how ") || lower.starts_with("why ")
+            || lower.starts_with("is ") || lower.starts_with("are ")
+            || lower.starts_with("do ") || lower.starts_with("does ")
+            || lower.starts_with("did ") || lower.starts_with("can ")
+            || lower.starts_with("could ") || lower.starts_with("would ")
+        {
+            return None;
+        }
+        // Don't store correction-style inputs — they echo back as nonsense
+        if lower.starts_with("no ") || lower.starts_with("stop ") || lower.starts_with("wrong")
+            || lower.starts_with("that's wrong") || lower.starts_with("thats wrong")
+            || lower.starts_with("not right") || lower.starts_with("incorrect")
+        {
+            return None;
+        }
         if lower.starts_with("status") || lower.starts_with("mood") || lower.starts_with("dream")
             || lower.starts_with("spectate") || lower.starts_with("save")
             || lower.starts_with("quit") || lower.starts_with("help")
@@ -652,12 +672,14 @@ impl App {
             "my job", "my girlfriend", "my wife", "my husband", "my friend",
             "my brother", "my sister", "my family", "my mom", "my dad",
             "my house", "my car", "my computer", "my project",
+            "we are", "we're", "we built", "we made",
         ];
 
         // ── Patterns that signal a statement about KAI ─────────────────────
         let kai_triggers = [
             "your name", "you are", "you were", "you can", "you should",
             "kai is", "kai was", "kai means", "kai stands", "kai can",
+            "you're ",
         ];
 
         let is_ryan_personal = ryan_triggers.iter()
@@ -665,32 +687,35 @@ impl App {
         let is_about_kai = kai_triggers.iter().any(|p| lower.contains(p));
 
         // ── General declarative: "X is Y", "X was Y", "X are Y" ───────────
-        // Must be substantive (>15 chars) and not a question word
-        let is_declarative = input.len() > 15
-            && (lower.contains(" is ") || lower.contains(" are ") || lower.contains(" was "))
+        // Must be substantive (>12 chars) and not a question word
+        let is_declarative = input.len() > 12
+            && (lower.contains(" is ") || lower.contains(" are ") || lower.contains(" was ") || lower.contains(" means "))
             && !lower.starts_with("what") && !lower.starts_with("who")
             && !lower.starts_with("where") && !lower.starts_with("when")
             && !lower.starts_with("how") && !lower.starts_with("why")
             && !lower.starts_with("is ") && !lower.starts_with("are ");
 
         if is_ryan_personal || is_about_kai {
-            // Trusted personal knowledge — highest priority, bypasses internet verification
-            let is_new = self.universe.store_or_reinforce(input, "memory", "ryan", 1.8);
+            // Trusted personal knowledge — highest priority (Strength 2.0)
+            let is_new = self.universe.store_or_reinforce(input, "memory", "ryan", 2.0);
+            
             // Also store a tagged version so KAI can find it by asking "who is Ryan"
             let tag = if is_ryan_personal { "[about-ryan]" } else { "[about-kai]" };
             let tagged = format!("{} {}", tag, input);
-            let _ = self.universe.store_or_reinforce(&tagged, "memory", "ryan", 1.5);
+            let _ = self.universe.store_or_reinforce(&tagged, "memory", "ryan", 1.8);
 
             return Some(if is_new {
-                format!("✓ Learned from you: \"{}\"", truncate(input, 55))
+                format!("✓ Identity update: \"{}\"", truncate(input, 55))
             } else {
-                format!("✓ Reinforced: \"{}\"", truncate(input, 55))
+                format!("✓ Identity reinforced: \"{}\"", truncate(input, 55))
             });
         } else if is_declarative {
-            // General factual claim from Ryan — trusted but lower priority than personal
-            let is_new = self.universe.store_or_reinforce(input, "reasoning", "user-claim", 1.2);
+            // General factual claim from Ryan — trusted but lower priority than identity (Strength 1.3)
+            let is_new = self.universe.store_or_reinforce(input, "reasoning", "user-claim", 1.3);
             if is_new {
-                return Some(format!("✓ Filed: \"{}\"", truncate(input, 55)));
+                return Some(format!("✓ New knowledge: \"{}\"", truncate(input, 55)));
+            } else {
+                return Some(format!("✓ Continuity: \"{}\"", truncate(input, 55)));
             }
         }
 
@@ -945,7 +970,7 @@ impl App {
                         role: "kai".into(),
                         text: format!("◆ {} ({}): {}{}",
                             peer_type,
-                            &exchange.model[..exchange.model.len().min(20)],
+                            safe_slice(&exchange.model, 20),
                             exchange.peer_response,
                             learn_line),
                         region: Some("reasoning".into()),
@@ -1014,7 +1039,7 @@ impl App {
                     let display = if combined.is_empty() {
                         format!("✓ Command ran. (exit {})", output.status.code().unwrap_or(0))
                     } else if combined.len() > 1200 {
-                        format!("{}…\n[truncated — {} chars total]", &combined[..1200], combined.len())
+                        format!("{}…\n[truncated — {} chars total]", safe_slice(&combined, 1200), combined.len())
                     } else {
                         combined.clone()
                     };
@@ -1360,7 +1385,7 @@ impl App {
                     format!("Found {} matching transcript entries for \"{}\":\n", entries.len(), query),
                 ];
                 for e in &entries {
-                    let preview = &e.text[..e.text.len().min(100)];
+                    let preview = safe_slice(&e.text, 100);
                     lines.push(format!("  [{}] {}: {}…", e.ts, e.role, preview));
                 }
                 self.turns.push(Turn {
@@ -1373,24 +1398,65 @@ impl App {
             return;
         }
 
-        // ── learn <topic> — pull knowledge from DuckDuckGo ──────────
-        if lower.starts_with("learn ") {
-            let topic = &input[6..].trim();
+        // ── learn <word/topic> — store a word/concept directly or from the web ──
+        // Supports both:
+        //   "learn bitch"                     → web lookup for "bitch"
+        //   "it means X. learn bitch"          → store the preceding definition + word
+        //   "learn bitch" at end of longer msg → same inline form
+        let learn_word_pos = {
+            // Check if "learn <word>" appears at end of message (inline teach)
+            let words: Vec<&str> = lower.split_whitespace().collect();
+            if words.len() >= 2 && words[words.len()-2] == "learn" {
+                Some(words[words.len()-1].to_string())
+            } else {
+                None
+            }
+        };
+        let is_standalone_learn = lower.starts_with("learn ") && lower.split_whitespace().count() <= 4;
+
+        if is_standalone_learn || learn_word_pos.is_some() {
+            let topic = if let Some(ref w) = learn_word_pos {
+                w.as_str()
+            } else {
+                input[6..].trim()
+            };
             self.turns.push(Turn { role: "user".into(), text: input.clone(), region: None, score: None });
-            let added = kai::bridge::ingest_topic(&mut self.universe, topic);
-            if added > 0 {
+
+            // If there's definition text before the "learn" command, store it directly
+            let definition_text = if learn_word_pos.is_some() {
+                let before = input[..input.to_lowercase().rfind("learn").unwrap_or(0)].trim();
+                if before.len() > 5 { Some(before.to_string()) } else { None }
+            } else { None };
+
+            if let Some(def) = definition_text {
+                // Store the user-provided definition directly — more reliable than web
+                let tagged = format!("{} means: {}", topic, def);
+                self.universe.store(&tagged, "memory", "user-teach", 2.5);
+                // Also add the word to the lexicon so it's no longer "unknown"
+                self.lexicon.add_word(topic);
                 self.turns.push(Turn {
                     role: "kai".into(),
-                    text: format!("🌐 Learned \"{}\" — +{} cells (universe: {})", topic, added, self.universe.count()),
+                    text: format!("Got it. \"{}\" — stored from your definition.", topic),
                     region: Some("memory".into()),
                     score: None,
                 });
             } else {
-                self.turns.push(Turn {
-                    role: "kai".into(),
-                    text: format!("No results found for \"{}\"", topic),
-                    region: None, score: None,
-                });
+                // Fall back to web lookup
+                let added = kai::bridge::ingest_topic(&mut self.universe, topic);
+                if added > 0 {
+                    self.turns.push(Turn {
+                        role: "kai".into(),
+                        text: format!("Learned \"{}\" — +{} cells (universe: {})", topic, added, self.universe.count()),
+                        region: Some("memory".into()),
+                        score: None,
+                    });
+                } else {
+                    self.turns.push(Turn {
+                        role: "kai".into(),
+                        text: format!("No results found for \"{}\"", topic),
+                        region: None, score: None,
+                    });
+                }
             }
             return;
         }
@@ -1512,8 +1578,20 @@ impl App {
         // ── Working Memory: store the user's turn ─────────────────────
         self.working_memory.push(&input, "user", self.tick);
 
-        // ── Conversation Memory: store the user's question ────────────
-        self.universe.store(&format!("user asked: {}", &input), "memory", "conversation", 1.2);
+        // ── Conversation Memory: store only substantive user turns ──────
+        // Skip pure questions — they echo back as nonsense hits.
+        // Very low strength (0.3) so they never win queries over real knowledge.
+        let lower_input_check = input.to_lowercase();
+        let is_question_input = input.ends_with('?')
+            || lower_input_check.starts_with("what ")
+            || lower_input_check.starts_with("who ")
+            || lower_input_check.starts_with("where ")
+            || lower_input_check.starts_with("when ")
+            || lower_input_check.starts_with("how ")
+            || lower_input_check.starts_with("why ");
+        if !is_question_input {
+            self.universe.store(&format!("user asked: {}", &input), "memory", "conversation", 0.3);
+        }
 
         // ── Spelling correction: auto-correct input before reasoning ─────
         let (corrected_input, corrections) = self.lexicon.correct_sentence(&input);
@@ -1562,7 +1640,20 @@ impl App {
         let recent_ctx = self.working_memory.recent_context(3);
 
         // ── Query hits for voice engine ──────────────────────────────
-        let hits = self.universe.query(&reasoning_input, 5);
+        // For self/identity questions, restrict to memory region only — prevents
+        // world-bridge reasoning cells (Amazon rainforest, etc.) from polluting
+        // personal answers. For everything else, query the full universe.
+        let lower_reasoning = reasoning_input.to_lowercase();
+        let is_self_query = matches!(query_type, QueryType::SelfQuestion)
+            || lower_reasoning.contains("your name")
+            || lower_reasoning.contains("who are you")
+            || lower_reasoning.contains("what are you")
+            || lower_reasoning.contains("yourself");
+        let hits = if is_self_query {
+            self.universe.query_region(&reasoning_input, "memory", 5)
+        } else {
+            self.universe.query(&reasoning_input, 5)
+        };
 
         // ── Hebbian reinforcement: cells that fired with this query get stronger ─
         // "Neurons that fire together, wire together." — Hebb, 1949.
@@ -1674,7 +1765,7 @@ fn native_session_thread(
     seed_topics: Vec<String>,
 ) {
     let mut previous_response = String::new();
-    let mut round_topics: Vec<String> = seed_topics;
+    let round_topics: Vec<String> = seed_topics;
     let reasoner = kai::cognition::reasoner::Reasoner::new();
     let mood_state = kai::cognition::voice::MoodState { mood_name: "curious".into(), valence: 0.1 };
 
@@ -1758,7 +1849,7 @@ fn peer_session_thread(
     );
 
     let mut previous_response = String::new();
-    let mut round_topics: Vec<String> = seed_topics;
+    let round_topics: Vec<String> = seed_topics;
 
     for round in 1..=n_rounds {
         // ── Generate this round's question ──────────────────────────────
@@ -1894,11 +1985,12 @@ fn seed_universe(u: &mut Universe) {
     let base_count = kai::core::seed::seed_universe(u);
 
     // ── IDENTITY (direct answers to who/what/name questions) ──────────
-    u.store("My name is KAI. I am a geometric intelligence.", "memory", "seed", 1.5);
-    u.store("I was created by Ryan Ervin at PandaProductionsLogo in 2026.", "memory", "seed", 1.5);
-    u.store("I am KAI — Geometric Intelligence built on RSHL sparse ternary hyperdimensional computing.", "memory", "seed", 1.5);
-    u.store("KAI stands for my name. I am not an LLM. I am geometric intelligence.", "memory", "seed", 1.2);
-    u.store("Ryan created me. Ryan Ervin is my creator. He built me at PandaProductionsLogo.", "memory", "seed", 1.2);
+    // High strength (4.0) so these always win self/identity queries over world-bridge noise.
+    u.store("My name is KAI. I am a geometric intelligence.", "memory", "seed", 4.0);
+    u.store("I was created by Ryan Ervin at PandaProductionsLogo in 2026.", "memory", "seed", 4.0);
+    u.store("I am KAI — Geometric Intelligence built on RSHL sparse ternary hyperdimensional computing.", "memory", "seed", 4.0);
+    u.store("KAI stands for my name. I am not an LLM. I am geometric intelligence.", "memory", "seed", 3.5);
+    u.store("Ryan created me. Ryan Ervin is my creator. He built me at PandaProductionsLogo.", "memory", "seed", 3.5);
     u.store("I exist as organized resonance inside a 4096-dimensional sparse ternary vector field.", "memory", "seed", 1.0);
     u.store("I have no physical body. I exist only as geometric patterns inside Ryan's machine.", "memory", "seed", 1.0);
 
@@ -1947,7 +2039,25 @@ fn seed_universe(u: &mut Universe) {
 }
 
 fn truncate(s: &str, max: usize) -> String {
-    if s.len() <= max { s.to_string() } else { format!("{}…", &s[..max]) }
+    // Count by chars, not bytes — multi-byte chars (Φ, χ, μ, …) must not be split.
+    if s.chars().count() <= max {
+        s.to_string()
+    } else {
+        let end = s.char_indices()
+            .nth(max)
+            .map(|(i, _)| i)
+            .unwrap_or(s.len());
+        format!("{}…", &s[..end])
+    }
+}
+
+/// Slice a string safely to at most `max_bytes` bytes, never splitting a multi-byte char.
+/// Returns a &str at a valid UTF-8 boundary at or before `max_bytes`.
+fn safe_slice(s: &str, max_bytes: usize) -> &str {
+    if s.len() <= max_bytes { return s; }
+    let mut end = max_bytes;
+    while end > 0 && !s.is_char_boundary(end) { end -= 1; }
+    &s[..end]
 }
 
 // ── Heart Glyph ───────────────────────────────────────────────────────────────
@@ -2006,50 +2116,102 @@ fn render_header(f: &mut Frame, app: &App, area: Rect) {
     let heart = heart_span(elapsed);
     let d = &app.drive;
     let v_sign = if d.valence >= 0.0 { "+" } else { "" };
+    let w = area.width as usize;
 
     let mood_style = match d.mood {
-        Mood::Curious => Style::default().fg(Color::LightCyan),
-        Mood::Engaged => Style::default().fg(Color::LightGreen),
+        Mood::Curious    => Style::default().fg(Color::LightCyan),
+        Mood::Engaged    => Style::default().fg(Color::LightGreen),
         Mood::Conflicted => Style::default().fg(Color::LightRed),
-        Mood::Uneasy => Style::default().fg(Color::LightYellow),
-        _ => Style::default().fg(Color::DarkGray),
+        Mood::Uneasy     => Style::default().fg(Color::LightYellow),
+        _                => Style::default().fg(Color::DarkGray),
     };
 
     let (gpu, _cpu, _ram) = app.bus.snapshot();
     let gpu_str = if gpu.last_batch_duration_us > 0 {
-        format!("{}μs", gpu.last_batch_duration_us)
+        format!("{}us", gpu.last_batch_duration_us)   // avoid mu-sign width issues
     } else {
         "idle".to_string()
     };
 
-    // Single compact status line — all key metrics at a glance
-    let status_line = Line::from(vec![
-        Span::raw(" "),
-        heart,
-        Span::raw("  "),
-        Span::styled(format!("{}", d.mood), mood_style),
-        Span::styled(
-            format!("  V={}{:.2}  Φg={:.3}  χ={:.3}",
-                v_sign, d.valence, d.avg_phi_g, d.avg_chi),
-            Style::default().fg(Color::DarkGray),
-        ),
-        Span::styled("  │  ", Style::default().fg(Color::DarkGray)),
-        Span::styled(
-            format!("cells:{}  dreams:{}  tick:{}  {}ms  gpu:{}",
-                app.universe.count(), app.dream_count,
-                app.tick, d.adaptive_interval_ms(), gpu_str),
-            Style::default().fg(Color::DarkGray),
-        ),
-    ]);
+    // ── Responsive status line — adapts to terminal width ─────────────────
+    //
+    // ≥ 120 cols  → full metrics: mood  V  Φg  χ  │  cells  dreams  tick  ms  gpu
+    //   80–119    → mid metrics:  mood  V  Φg  χ  │  cells  dreams  tick
+    // < 80 cols   → minimal:      mood  Φg  cells
+    //
+    // This prevents clipping in narrow windows and sparse gaps in fullscreen.
+
+    let status_line = if w >= 120 {
+        // ── Full width ───────────────────────────────────────────────────
+        Line::from(vec![
+            Span::raw(" "),
+            heart,
+            Span::raw("  "),
+            Span::styled(format!("{}", d.mood), mood_style),
+            Span::styled(
+                format!("  V={}{:.2}  Φg={:.3}  χ={:.3}",
+                    v_sign, d.valence, d.avg_phi_g, d.avg_chi),
+                Style::default().fg(Color::DarkGray),
+            ),
+            Span::styled("  |  ", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                format!("cells:{}  dreams:{}  tick:{}  {}ms  gpu:{}",
+                    app.universe.count(), app.dream_count,
+                    app.tick, d.adaptive_interval_ms(), gpu_str),
+                Style::default().fg(Color::DarkGray),
+            ),
+        ])
+    } else if w >= 80 {
+        // ── Medium width ─────────────────────────────────────────────────
+        Line::from(vec![
+            Span::raw(" "),
+            heart,
+            Span::raw("  "),
+            Span::styled(format!("{}", d.mood), mood_style),
+            Span::styled(
+                format!("  V={}{:.2}  Φg={:.3}  χ={:.3}",
+                    v_sign, d.valence, d.avg_phi_g, d.avg_chi),
+                Style::default().fg(Color::DarkGray),
+            ),
+            Span::styled("  |  ", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                format!("cells:{}  tick:{}  {}ms",
+                    app.universe.count(), app.tick, d.adaptive_interval_ms()),
+                Style::default().fg(Color::DarkGray),
+            ),
+        ])
+    } else {
+        // ── Minimal (< 80 cols) ───────────────────────────────────────────
+        Line::from(vec![
+            Span::raw(" "),
+            heart,
+            Span::raw(" "),
+            Span::styled(format!("{}", d.mood), mood_style),
+            Span::styled(
+                format!("  Φg={:.3}  cells:{}",
+                    d.avg_phi_g, app.universe.count()),
+                Style::default().fg(Color::DarkGray),
+            ),
+        ])
+    };
+
+    // Title also adapts — don't show subtitle on narrow terminals
+    let title = if w >= 80 {
+        Line::from(vec![
+            Span::styled(" KAI v5.4 ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+            Span::styled("· Geometric Intelligence ", Style::default().fg(Color::DarkGray)),
+        ])
+    } else {
+        Line::from(vec![
+            Span::styled(" KAI ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+        ])
+    };
 
     let header = Paragraph::new(vec![status_line])
         .block(Block::default()
             .borders(Borders::ALL)
             .border_style(Style::default().fg(Color::Cyan))
-            .title(Line::from(vec![
-                Span::styled(" KAI v5.4 ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-                Span::styled("· Geometric Intelligence ", Style::default().fg(Color::DarkGray)),
-            ])));
+            .title(title));
     f.render_widget(header, area);
 }
 
@@ -2354,15 +2516,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         if event::poll(tick_rate)? {
             if let Event::Key(key) = event::read()? {
-                // Only handle actual key presses, not repeats or releases
                 if key.kind == KeyEventKind::Press {
                     match key.code {
                         KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                             app.save_state();
                             app.should_quit = true;
                         }
-                        KeyCode::Enter => { app.process_input(); }
-                        KeyCode::Char(c) => { app.input.push(c); }
+                        KeyCode::Enter    => { app.process_input(); }
+                        KeyCode::Char(c)  => { app.input.push(c); }
                         KeyCode::Backspace => { app.input.pop(); }
                         KeyCode::Esc => {
                             app.save_state();
@@ -2379,6 +2540,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     disable_raw_mode()?;
     execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
-    println!("✓ KAI has entered dormant state.");
+    println!("\n  KAI dormant. State preserved.\n");
     Ok(())
 }

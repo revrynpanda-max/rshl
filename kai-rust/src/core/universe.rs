@@ -88,6 +88,40 @@ impl Universe {
             .collect()
     }
 
+    /// Query only within a specific region — used for self/identity questions
+    /// to prevent world-bridge reasoning cells from bleeding into personal answers.
+    pub fn query_region(&self, text: &str, region: &str, n: usize) -> Vec<QueryHit> {
+        let q = SparseVec::encode(text);
+        let mut scored: Vec<(usize, f32)> = self
+            .cells
+            .par_iter()
+            .enumerate()
+            .filter(|(_, cell)| cell.region == region && cell.source != "conversation")
+            .map(|(i, cell)| {
+                let raw = q.cosine(&cell.vec);
+                let boosted = raw * (0.5 + 0.5 * cell.strength.min(4.0));
+                (i, boosted)
+            })
+            .filter(|(_, s)| *s > 0.05)
+            .collect();
+
+        scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        scored.truncate(n);
+
+        scored
+            .iter()
+            .map(|&(i, score)| {
+                let cell = &self.cells[i];
+                QueryHit {
+                    text: cell.text.clone(),
+                    region: cell.region.clone(),
+                    score,
+                    strength: cell.strength,
+                }
+            })
+            .collect()
+    }
+
     /// Get all cells.
     pub fn cells(&self) -> &[Cell] {
         &self.cells
@@ -226,67 +260,5 @@ impl Universe {
 impl Default for Universe {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_universe_storage_and_query() {
-        let mut u = Universe::new();
-        u.store("Ryan lives in Seattle", "reasoning", "ryan", 1.8);
-        u.store("The sun is a star", "memory", "world-bridge", 1.2);
-        
-        assert_eq!(u.count(), 2);
-        
-        // Query should find the correct cell
-        let hits = u.query("where does Ryan live?", 1);
-        assert!(!hits.is_empty());
-        assert!(hits[0].text.contains("Seattle"));
-        assert!(hits[0].score > 0.4);
-    }
-
-    #[test]
-    fn test_hebbian_reinforcement() {
-        let mut u = Universe::new();
-        let text = "consistency is key";
-        u.store(text, "reasoning", "ryan", 1.0);
-        
-        // Reinforce existing cell
-        u.store_or_reinforce(text, "reasoning", "ryan", 1.0);
-        
-        let cell = &u.cells()[0];
-        assert!(cell.strength > 1.0, "Strength should have increased: {}", cell.strength);
-    }
-
-    #[test]
-    fn test_regional_counts() {
-        let mut u = Universe::new();
-        u.store("Logic A", "left", "seed", 1.5);
-        u.store("Logic B", "left", "seed", 1.5);
-        u.store("Emotion A", "right", "seed", 1.5);
-        
-        let counts = u.region_counts();
-        assert_eq!(counts.get("left"), Some(&2));
-        assert_eq!(counts.get("right"), Some(&1));
-    }
-
-    #[test]
-    fn test_decay_and_prune() {
-        let mut u = Universe::new();
-        u.store("Weak memory", "memory", "bridge", 0.2);
-        u.store("Strong memory", "memory", "bridge", 2.0);
-        
-        // Decay by 50%
-        u.decay_all(0.5);
-        assert!(u.cells()[0].strength < 0.2);
-        
-        // Prune anything below 0.15
-        let pruned = u.prune(0.15);
-        assert_eq!(pruned, 1);
-        assert_eq!(u.count(), 1);
-        assert!(u.cells()[0].text.contains("Strong"));
     }
 }

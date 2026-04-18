@@ -48,9 +48,9 @@ fn build_synonyms() -> HashMap<&'static str, &'static str> {
         ("employed","work"),("employment","work"),("profession","work"),
         ("hire","work"),("hired","work"),("fired","work"),("quit","work"),
         ("resign","work"),("resigned","work"),("retire","work"),("retired","work"),
-        ("role","work"),("title","work"),("position","work"),
+        ("role","work"),("position","work"),
         ("boss","work"),("manager","work"),("company","work"),("firm","work"),
-        ("office","work"),("promoted","work"),("promotion","work"),
+        ("office","work"),
         ("arrangement","work"),
         ("nurse","work"),("nurses","work"),("doctor","work"),("doctors","work"),
         ("teacher","work"),("teachers","work"),("professor","work"),("professors","work"),
@@ -89,9 +89,9 @@ fn build_synonyms() -> HashMap<&'static str, &'static str> {
 
         // ── hobbies / leisure ──
         ("hobby","enjoy"),("hobbies","enjoy"),("activity","enjoy"),("activities","enjoy"),
-        ("interest","enjoy"),("interests","enjoy"),("fun","enjoy"),("leisure","enjoy"),
+        ("interests","enjoy"),("fun","enjoy"),("leisure","enjoy"),
         ("passion","enjoy"),("pastime","enjoy"),("pastimes","enjoy"),
-        ("love","enjoy"),("loves","enjoy"),("loved","enjoy"),("loving","enjoy"),
+        ("loves","enjoy"),("loving","enjoy"),
 
         // ── fitness / exercise ──
         ("fitness","run"),("exercise","run"),("workout","run"),("workouts","run"),
@@ -99,7 +99,7 @@ fn build_synonyms() -> HashMap<&'static str, &'static str> {
         ("marathon","run"),("gym","run"),("athletic","run"),("athlete","run"),
         ("sport","run"),("sports","run"),("jog","run"),("jogging","run"),
         ("hike","run"),("hiking","run"),("trail","run"),("swim","run"),("swimming","run"),
-        ("cycling","run"),("cycle","run"),
+        ("cycling","run"),
 
         // ── schedule / time ──
         ("shift","schedule"),("shifts","schedule"),
@@ -119,7 +119,7 @@ fn build_synonyms() -> HashMap<&'static str, &'static str> {
         ("wish","goal"),("wishes","goal"),("hope","goal"),("hopes","goal"),
         ("aspire","goal"),("aspires","goal"),("aspiration","goal"),
         ("plan","goal"),("plans","goal"),("planned","goal"),
-        ("dream","goal"),("dreams","goal"),
+        ("dreams","goal"),
 
         // ── financial / saving ──
         ("financial","save"),("finance","save"),("finances","save"),
@@ -131,7 +131,7 @@ fn build_synonyms() -> HashMap<&'static str, &'static str> {
 
         // ── music / audio ──
         ("genre","music"),("genres","music"),("song","music"),("songs","music"),
-        ("listen","music"),("listens","music"),("listening","music"),("taste","music"),
+        ("listens","music"),("listening","music"),("taste","music"),
         ("band","music"),("artist","music"),("album","music"),("track","music"),
         ("jazz","music"),("rock","music"),("pop","music"),("hip","music"),("hop","music"),
         ("classical","music"),("opera","music"),
@@ -156,6 +156,210 @@ fn build_synonyms() -> HashMap<&'static str, &'static str> {
         ("known","ident"),("am","ident"),("im","ident"),
         ("who","ident"),("whom","ident"),("what","ident"),
         ("creator","ident"),("created","ident"),("built","ident"),("made","ident"),
+        ("identity","ident"),("label","ident"),("title","ident"),("alias","ident"),
+        ("identify","ident"),("designation","ident"),("self","ident"),
+        ("myself","ident"),("yourself","ident"),
+
+        // ── cognition / thinking ──
+        ("think","cognit"),("thinking","cognit"),("thought","cognit"),("thoughts","cognit"),
+        ("reason","cognit"),("reasoning","cognit"),("reasoned","cognit"),
+        ("process","cognit"),("processing","cognit"),("processed","cognit"),
+        ("compute","cognit"),("computing","cognit"),("computed","cognit"),
+        ("understand","cognit"),("understanding","cognit"),("understood","cognit"),
+        ("comprehend","cognit"),("comprehension","cognit"),
+        ("consider","cognit"),("considering","cognit"),("considered","cognit"),
+        ("ponder","cognit"),("reflect","cognit"),("reflecting","cognit"),
+        ("perceive","cognit"),("perception","cognit"),("perceiving","cognit"),
+        ("awareness","cognit"),("aware","cognit"),("consciousness","cognit"),("conscious","cognit"),
+        ("interpret","cognit"),("inference","cognit"),("infer","cognit"),
+        ("deduce","cognit"),("deduction","cognit"),("logic","cognit"),("logical","cognit"),
+        ("intelligence","cognit"),("intelligent","cognit"),
+        ("mind","cognit"),("brain","cognit"),("mental","cognit"),
+        ("idea","cognit"),("ideas","cognit"),("concept","cognit"),("concepts","cognit"),
+        ("imagination","cognit"),("imagine","cognit"),
+
+        // ── memory / recall ──
+        ("remember","recall"),("remembering","recall"),("remembered","recall"),
+        ("recall","recall"),("recalling","recall"),("recollect","recall"),
+        ("forgot","recall"),("forget","recall"),("forgetting","recall"),("forgotten","recall"),
+        ("memory","recall"),("memories","recall"),("memorize","recall"),
+        ("history","recall"),("previous","recall"),("prior","recall"),
+        ("stored","recall"),("store","recall"),("stores","recall"),
+        ("retain","recall"),("retention","recall"),("retrieval","recall"),("retrieve","recall"),
+
+        // ── learning / knowledge ──
+        ("know","know"),("knows","know"),("knowing","know"),
+        ("knowledge","know"),("knowledgeable","know"),
+        ("informed","know"),("information","know"),
+        ("discover","know"),("discovered","know"),("discovery","know"),
+        ("truth","know"),("fact","know"),("facts","know"),("factual","know"),
+        ("accurate","know"),("accuracy","know"),("right","know"),
+
+        // ── emotion / feeling ──
+        ("feel","emot"),("feeling","emot"),("felt","emot"),("feels","emot"),
+        ("emotion","emot"),("emotional","emot"),("emotions","emot"),
+        ("mood","emot"),("moods","emot"),
+        ("happy","emot"),("happiness","emot"),("joy","emot"),("joyful","emot"),("glad","emot"),
+        ("sad","emot"),("sadness","emot"),("unhappy","emot"),("sorrow","emot"),("grief","emot"),
+        ("angry","emot"),("anger","emot"),("frustrated","emot"),("frustration","emot"),
+        ("afraid","emot"),("fear","emot"),("scared","emot"),("anxious","emot"),("anxiety","emot"),
+        ("excited","emot"),("excitement","emot"),("thrilled","emot"),("enthusiastic","emot"),
+        ("curious","emot"),("curiosity","emot"),("interested","emot"),("interest","emot"),
+        
+        ("confused","emot"),("confusion","emot"),
+        ("calm","emot"),("peaceful","emot"),("relaxed","emot"),("content","emot"),
+        ("uneasy","emot"),("worried","emot"),("concern","emot"),("concerned","emot"),
+        ("love","emot"),("loved","emot"),("caring","emot"),("care","emot"),
+        ("trust","emot"),("trusted","emot"),("trusting","emot"),
+        ("valence","emot"),("sentiment","emot"),("affect","emot"),
+
+        // ── existence / being ──
+        ("exist","exist"),("exists","exist"),("existing","exist"),("existence","exist"),
+        ("alive","exist"),("live","exist"),
+        ("real","exist"),("reality","exist"),("actual","exist"),("actually","exist"),
+        ("true","exist"),("truly","exist"),
+        ("persistent","exist"),("persist","exist"),("persists","exist"),
+        ("survive","exist"),("survives","exist"),("survived","exist"),
+
+        // ── communication / language ──
+        ("say","commun"),("said","commun"),("saying","commun"),("says","commun"),
+        ("tell","commun"),("telling","commun"),("told","commun"),("tells","commun"),
+        ("talk","commun"),("talking","commun"),("talked","commun"),("talks","commun"),
+        ("ask","commun"),("asking","commun"),("asked","commun"),("asks","commun"),
+        ("answer","commun"),("answering","commun"),("answered","commun"),("answers","commun"),
+        ("respond","commun"),("responding","commun"),("response","commun"),
+        ("explain","commun"),("explaining","commun"),("explanation","commun"),
+        ("describe","commun"),("describing","commun"),("description","commun"),
+        ("communicate","commun"),("communication","commun"),
+        ("chat","commun"),("conversation","commun"),("discuss","commun"),("discussion","commun"),
+        ("message","commun"),("messages","commun"),("text","commun"),
+        ("word","commun"),("words","commun"),("sentence","commun"),("phrase","commun"),
+        ("express","commun"),("expression","commun"),("state","commun"),
+        ("mention","commun"),("mentioned","commun"),("note","commun"),("noted","commun"),
+        ("reply","commun"),("replies","commun"),("replied","commun"),
+        ("hear","commun"),("heard","commun"),("listen","commun"),("listened","commun"),
+
+        // ── causation / logic ──
+        ("because","cause"),("since","cause"),("therefore","cause"),("thus","cause"),
+        ("result","cause"),("results","cause"),("resulting","cause"),("resulted","cause"),
+        ("cause","cause"),("causes","cause"),("caused","cause"),("causing","cause"),
+        ("effect","cause"),("effects","cause"),("affected","cause"),("affects","cause"),
+        ("due","cause"),("reasons","cause"),("why","cause"),
+        ("leads","cause"),("lead","cause"),("led","cause"),("produce","cause"),
+        ("trigger","cause"),("triggers","cause"),("triggered","cause"),
+        ("impact","cause"),("impacts","cause"),("impacted","cause"),
+        ("create","cause"),("creates","cause"),("generate","cause"),
+        ("prevent","cause"),("prevents","cause"),("stop","cause"),("stops","cause"),
+
+        // ── comparison / similarity ──
+        ("like","simil"),("similar","simil"),("same","simil"),("alike","simil"),
+        ("equal","simil"),("equivalent","simil"),("match","simil"),("matches","simil"),
+        ("compare","simil"),("comparison","simil"),("compared","simil"),
+        ("related","simil"),("relation","simil"),("connection","simil"),("connect","simil"),
+        ("correspond","simil"),("parallel","simil"),("analogous","simil"),
+        ("resemble","simil"),("resembles","simil"),("resemblance","simil"),
+
+        // ── difference / contrast ──
+        ("different","diff"),("difference","diff"),("unlike","diff"),("contrast","diff"),
+        ("opposite","diff"),("versus","diff"),("vs","diff"),
+        ("instead","diff"),("rather","diff"),("however","diff"),("but","diff"),
+        ("although","diff"),("despite","diff"),("yet","diff"),
+        ("separate","diff"),("distinct","diff"),("unique","diff"),
+        ("change","diff"),("changes","diff"),("changed","diff"),("alter","diff"),
+
+        // ── certainty / confidence ──
+        ("sure","certai"),("certain","certai"),("definitely","certai"),("absolutely","certai"),
+        ("clearly","certai"),("obviously","certai"),("undoubtedly","certai"),
+        ("confident","certai"),("confidence","certai"),("convinced","certai"),
+        ("precise","certai"),("exactly","certai"),("accurately","certai"),
+
+        // ── uncertainty / doubt ──
+        ("maybe","maybe"),("perhaps","maybe"),("possibly","maybe"),("probably","maybe"),
+        ("might","maybe"),("unsure","maybe"),("uncertain","maybe"),
+        ("doubt","maybe"),("doubtful","maybe"),("unclear","maybe"),
+        ("guess","maybe"),("estimate","maybe"),("approximately","maybe"),
+        ("seems","maybe"),("appear","maybe"),("appears","maybe"),("roughly","maybe"),
+
+        // ── time / temporal ──
+        ("when","time"),("now","time"),("then","time"),("before","time"),("after","time"),
+        ("soon","time"),("later","time"),("eventually","time"),("finally","time"),
+        ("always","time"),("never","time"),("sometimes","time"),("often","time"),
+        ("currently","time"),("recently","time"),("previously","time"),
+        ("future","time"),("past","time"),("present","time"),
+        ("during","time"),("while","time"),("once","time"),("already","time"),
+        ("still","time"),("again","time"),
+        ("daily","time"),("weekly","time"),("monthly","time"),("yearly","time"),
+        ("today","time"),("yesterday","time"),("tomorrow","time"),
+        ("moment","time"),("instant","time"),("period","time"),("duration","time"),
+
+        // ── quantity / degree ──
+        ("many","quant"),("much","quant"),("few","quant"),("little","quant"),
+        ("more","quant"),("less","quant"),("most","quant"),("least","quant"),
+        ("all","quant"),("none","quant"),("some","quant"),("any","quant"),
+        ("several","quant"),("numerous","quant"),("plenty","quant"),
+        ("increase","quant"),("decrease","quant"),("grow","quant"),("shrink","quant"),
+        ("large","quant"),("small","quant"),("big","quant"),("tiny","quant"),("huge","quant"),
+        ("full","quant"),("empty","quant"),("half","quant"),("partial","quant"),
+        ("enough","quant"),("sufficient","quant"),("excessive","quant"),
+
+        // ── importance / priority ──
+        ("important","import"),("importance","import"),("critical","import"),
+        ("crucial","import"),("essential","import"),("key","import"),("vital","import"),
+        ("significant","import"),("major","import"),("primary","import"),("main","import"),
+        ("fundamental","import"),("core","import"),("central","import"),("necessary","import"),
+        ("priority","import"),("urgent","import"),("relevant","import"),("matter","import"),
+
+        // ── capability / ability ──
+        ("able","capab"),("ability","capab"),("capable","capab"),("capability","capab"),
+        ("can","capab"),("could","capab"),("possible","capab"),("possibility","capab"),
+        ("power","capab"),("powered","capab"),("enable","capab"),("enabled","capab"),
+        ("skill","capab"),("skilled","capab"),("talent","capab"),("talented","capab"),
+        ("perform","capab"),("performs","capab"),("function","capab"),("functions","capab"),
+        ("operate","capab"),("operates","capab"),("support","capab"),("supports","capab"),
+        ("handle","capab"),("handles","capab"),("manage","capab"),("manages","capab"),
+
+        // ── quality / goodness ──
+        ("good","good"),("great","good"),("excellent","good"),("amazing","good"),
+        ("wonderful","good"),("fantastic","good"),("outstanding","good"),("superb","good"),
+        ("perfect","good"),("ideal","good"),("best","good"),("better","good"),
+        ("quality","good"),("strong","good"),("powerful","good"),("effective","good"),
+        ("successful","good"),("success","good"),("achieve","good"),("achievement","good"),
+        ("correct","good"),("valid","good"),("solid","good"),("reliable","good"),
+
+        // ── problem / difficulty ──
+        ("problem","problem"),("issue","problem"),("error","problem"),("bug","problem"),
+        ("fail","problem"),("failure","problem"),("failed","problem"),("crash","problem"),
+        ("wrong","problem"),("incorrect","problem"),("broken","problem"),
+        ("hard","problem"),("difficult","problem"),("difficulty","problem"),("challenge","problem"),
+        ("complex","problem"),("complicated","problem"),("trouble","problem"),
+        ("bad","problem"),("poor","problem"),("terrible","problem"),("awful","problem"),
+        ("worst","problem"),("worse","problem"),
+
+        // ── KAI / RSHL specific ──
+        ("kai","kai"),("rshl","rshl"),("geometric","rshl"),("ternary","rshl"),
+        ("hyperdimensional","rshl"),("sparse","rshl"),("vector","rshl"),("vectors","rshl"),
+        ("lattice","rshl"),("field","rshl"),("resonance","rshl"),("coherence","rshl"),
+        ("emergence","rshl"),("phi","rshl"),("cosine","rshl"),("dimension","rshl"),
+        ("dream","rshl"),("dreaming","rshl"),("dreamed","rshl"),
+        ("universe","rshl"),("cell","rshl"),("cells","rshl"),
+        ("encoding","rshl"),("encode","rshl"),("encoded","rshl"),
+        ("heartbeat","rshl"),("tick","rshl"),("cycle","rshl"),
+        ("promotion","rshl"),("promoted","rshl"),("candidate","rshl"),
+
+        // ── Ryan / creator specific ──
+        ("ryan","ryan"),("ervin","ryan"),("panda","ryan"),
+        ("user","ryan"),("human","ryan"),("person","ryan"),
+        ("owner","ryan"),
+
+        // ── technology / computing ──
+        ("computer","tech"),("computers","tech"),("software","tech"),("hardware","tech"),
+        ("code","tech"),("coding","tech"),("program","tech"),("programming","tech"),
+        ("algorithm","tech"),("data","tech"),("database","tech"),("system","tech"),
+        ("network","tech"),("internet","tech"),("digital","tech"),("online","tech"),
+        ("model","tech"),("models","tech"),("neural","tech"),
+        ("llm","tech"),("gpt","tech"),("claude","tech"),("transformer","tech"),
+        ("machine","tech"),("robot","tech"),("automation","tech"),
+        ("api","tech"),("server","tech"),("client","tech"),("app","tech"),
     ];
     entries.into_iter().collect()
 }
@@ -169,6 +373,7 @@ fn build_synonyms() -> HashMap<&'static str, &'static str> {
 fn build_category_anchors() -> HashMap<&'static str, Vec<&'static str>> {
     let mut map: HashMap<&str, Vec<&str>> = HashMap::new();
     let entries: Vec<(&str, Vec<&str>)> = vec![
+        // ── personal domain anchors ──────────────────────────────────────
         ("live",     vec!["#loc"]),
         ("work",     vec!["#job"]),
         ("food",     vec!["#food"]),
@@ -181,12 +386,35 @@ fn build_category_anchors() -> HashMap<&'static str, Vec<&'static str>> {
         ("remote",   vec!["#rem"]),
         ("pet",      vec!["#pet"]),
         ("goal",     vec!["#goal"]),
-        ("save",     vec!["#fin", "#goal"]),  // financial saving is goal-oriented
+        ("save",     vec!["#fin", "#goal"]),
         ("music",    vec!["#mus"]),
         ("language", vec!["#lang"]),
         ("family",   vec!["#rel"]),
         ("friend",   vec!["#rel"]),
         ("ident",    vec!["#id"]),
+        // ── cognitive / epistemic anchors ────────────────────────────────
+        ("cognit",   vec!["#cog"]),
+        ("recall",   vec!["#mem"]),
+        ("know",     vec!["#know"]),
+        ("emot",     vec!["#emot"]),
+        ("exist",    vec!["#exist"]),
+        ("commun",   vec!["#commun"]),
+        ("cause",    vec!["#cause"]),
+        ("simil",    vec!["#simil"]),
+        ("diff",     vec!["#diff"]),
+        ("certai",   vec!["#certai"]),
+        ("maybe",    vec!["#maybe"]),
+        ("time",     vec!["#time"]),
+        ("quant",    vec!["#quant"]),
+        ("import",   vec!["#import"]),
+        ("capab",    vec!["#capab"]),
+        ("good",     vec!["#good"]),
+        ("problem",  vec!["#problem"]),
+        // ── KAI / creator anchors ─────────────────────────────────────────
+        ("kai",      vec!["#kai", "#id"]),
+        ("rshl",     vec!["#kai", "#tech"]),
+        ("ryan",     vec!["#ryan", "#id"]),
+        ("tech",     vec!["#tech"]),
     ];
     for (key, cats) in entries {
         map.insert(key, cats);
