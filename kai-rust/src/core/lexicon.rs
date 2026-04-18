@@ -19,7 +19,7 @@ use std::collections::HashMap;
 
 /// The raw word list, embedded at compile time.
 /// No file I/O at runtime — the words are baked into the binary.
-const WORD_LIST: &str = include_str!("../../../google-10000-english-usa.txt");
+const WORD_LIST: &str = include_str!("../../../data/google-10000-english-usa.txt");
 
 /// Maximum edit distance to consider for spelling correction.
 /// Distance 2 catches most typos (swapped letters, missing letter, extra letter).
