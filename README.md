@@ -66,8 +66,8 @@ cargo build --release
 | Metric | Target | Result (Native Rust) |
 |--------|--------|----------------------|
 | **Unit Tests** | 100% Pass | **100% (55/55)** |
-| **Query Latency** | < 50ms | **18.5ms** |
-| **Store Latency** | < 50ms | **20.9ms** |
+| **Query Latency** | < 50ms | **19.5ms** |
+| **Store Latency** | < 50ms | **19.9ms** |
 | **Throughput** | 10M+ ops/s | **~30M ops/s (AVX2)** |
 | **Binary Size** | < 10MB | **2.7 MB** |
 
