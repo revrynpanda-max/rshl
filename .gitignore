@@ -28,6 +28,9 @@ conversation-log-*.txt
 # Analytics and logs
 *.csv
 debug_output*.txt
+bench_output.txt
+test_output.txt
+active-memory.json
 
 # Local Reports
 legacy/reports/
