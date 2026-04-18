@@ -27,14 +27,16 @@ KAI maintains an autonomous "heartbeat" across three specialized processing stre
 
 ---
 
-## 🛠 Features (v5.4)
+## 🛠 Features (v5.4 Milestones)
 
+- **Conversational Learning**: KAI extracts declarative facts directly from your chat in real-time. Personal facts ("I am...", "My job is...") are trusted immediately with high authority.
+- **Deep Digest (Import)**: Bulk-load internal knowledge or chat logs via the `import <path>` command.
+- **Spiral Field Dynamics**: Fixed radius scaling [0, 1] allowing the field to "breathe" with golden-ratio frequency.
+- **Density Accuracy ($\rho$)**: Fixed a critical bug where universe density was hardcoded to 1.0; it now reflects real sparsity based on active memory cells.
+- **Grok-4.20 Reasoning**: Full peer integration with xAI's high-tier reasoning API for deliberate, multi-step thinking.
+- **Advanced TUI Overhaul**: Compact, high-density interface inspired by professional developer tools, maximizing conversation space and mind-view telemetry.
 - **Autonomous Contemplation**: Real-time self-learning via on-lattice iterative resonance—KAI learns by talking to himself, no API required.
-- **Hybrid Peer Sessions**: Optional P2P reasoning between KAI and high-tier peers (Claude-3, Grok-4.20-Reasoning) for external knowledge cross-pollination.
-- **Regional Intelligence**: Four-region cognitive split (Left, Right, Bridge, Global) for nuanced state monitoring.
-- **Structural Code Analysis**: Native toolset for analyzing Git repositories and source code structure via geometric mapping.
-- **Natural Voice Generation**: Sentence construction derived directly from resonance clusters, moving beyond robotic retrieval.
-- **Identity Trust Tiers**: Differentiates between core self-identity, user-provided facts, and external peer data.
+- **Natural Voice Generation**: Sentence construction derived directly from resonance clusters, with **Inquisitive Modulation**—KAI asks clarifying questions when confidence is low.
 
 ---
 
@@ -55,11 +57,11 @@ cargo build --release
 | Command | Action |
 |---------|--------|
 | `spectate` | Watch KAI's 3-stream mind process dreams and intake in real-time. |
+| `import <path>`| Bulk-load knowledge from a text file with deep extraction. |
 | `contemplate [n]` | Start a native autonomous self-reasoning loop (no API required). |
-| `peersession [n]` | Start a learning session (defaults to Native; use 'claude' for hybrid). |
+| `peersession [n]` | Start a learning session (defaults to Native; use 'claude' or 'grok'). |
 | `analyze <path>` | Perform structural code analysis on a file or directory. |
-| `git status` | Synchronize KAI's field with the current repository state. |
-| `status` | View global coherence ($\Phi g$), mood, and universe density. |
+| `status` | View global coherence ($\Phi g$), density ($\rho$), and mood metrics. |
 
 ---
 
@@ -72,26 +74,6 @@ cargo build --release
 | **Store Latency** | < 50ms | **19.9ms** |
 | **Throughput** | 10M+ ops/s | **~30M ops/s (AVX2)** |
 | **Binary Size** | < 10MB | **2.7 MB** |
-
----
-
-## 📊 Technical Deep Dive
-
-For detailed benchmarks, POPCNT math, and memory footprint analysis, see **[PERFORMANCE.md](PERFORMANCE.md)**.
-
----
-
-## ✅ Verified State
-*Last verification: 2026-04-18*
-
-- **Core Engine**: 53 unit tests passing (0 failures).
-- **Resonance Loop**: 2 integration tests passing (persistence & logic).
-- **Hardware**: Benchmarked on AMD Ryzen 5 + RTX 4050.
-
-Run the full suite yourself:
-```powershell
-cd kai-rust ; cargo test --release
-```
 
 ---
 

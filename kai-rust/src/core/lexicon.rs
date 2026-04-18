@@ -63,6 +63,17 @@ impl Lexicon {
         self.words.get(&word.to_lowercase()).copied()
     }
 
+    /// Add a word to the lexicon at runtime (used when user teaches KAI a new word).
+    /// The word gets a high rank number (rare) so it doesn't override common words.
+    pub fn add_word(&mut self, word: &str) {
+        let lower = word.to_lowercase();
+        if !self.words.contains_key(&lower) {
+            let rank = self.ordered.len() + 100_000; // rare rank — won't beat common words
+            self.words.insert(lower.clone(), rank);
+            self.ordered.push(lower);
+        }
+    }
+
     /// Total number of words in the lexicon.
     pub fn len(&self) -> usize {
         self.ordered.len()
@@ -107,11 +118,24 @@ impl Lexicon {
         }
 
         // Too short to meaningfully correct
-        if lower.len() < 2 {
+        if lower.len() < 4 {
             return None;
         }
 
-        self.find_closest(&lower, MAX_EDIT_DISTANCE)
+        // Use stricter distance for short words — prevents "curse" → "course",
+        // "bitch" → "batch", etc. Informal/slang words are often short and close
+        // to real words by edit distance but are intentional.
+        let max_dist = if lower.len() <= 5 { 1 } else { MAX_EDIT_DISTANCE };
+
+        let result = self.find_closest(&lower, max_dist)?;
+
+        // Reject correction if result is SHORTER than original by more than 1 char —
+        // that's suffix-stripping (bitchy→bitch), not a typo fix.
+        if result.len() + 1 < lower.len() {
+            return None;
+        }
+
+        Some(result)
     }
 
     /// Get multiple spelling suggestions for a word, sorted by
@@ -144,14 +168,21 @@ impl Lexicon {
         candidates
     }
 
-    /// Correct all words in a sentence. Returns the corrected sentence
-    /// and a list of corrections made.
+    /// Correct all words in a sentence — context-aware.
+    ///
+    /// Before correcting any word, checks its neighbors:
+    ///   1. If word + next_word is a known phrase → skip correction
+    ///   2. If prev_word + word is a known phrase → skip correction
+    ///   3. If the proposed correction produces a nonsense bigram with neighbors → skip
+    ///
+    /// This prevents "curse word" → "course word" because "curse word" is a
+    /// recognized phrase and "course word" is not.
     pub fn correct_sentence(&self, text: &str) -> (String, Vec<(String, String)>) {
+        let tokens: Vec<&str> = text.split_whitespace().collect();
         let mut corrections: Vec<(String, String)> = Vec::new();
         let mut result_words: Vec<String> = Vec::new();
 
-        for token in text.split_whitespace() {
-            // Separate punctuation from word
+        for (idx, &token) in tokens.iter().enumerate() {
             let (word, trailing_punct) = split_trailing_punct(token);
 
             if word.is_empty() {
@@ -159,8 +190,43 @@ impl Lexicon {
                 continue;
             }
 
+            let lower = word.to_lowercase();
+            let prev_word = if idx > 0 {
+                let (pw, _) = split_trailing_punct(tokens[idx - 1]);
+                pw.to_lowercase()
+            } else {
+                String::new()
+            };
+            let next_word = if idx + 1 < tokens.len() {
+                let (nw, _) = split_trailing_punct(tokens[idx + 1]);
+                nw.to_lowercase()
+            } else {
+                String::new()
+            };
+
+            // Check if this word is part of a known phrase — if so, never correct it.
+            // "curse word", "swear word", "bad word" etc. should be left alone.
+            if is_known_phrase(&lower, &next_word) || is_known_phrase(&prev_word, &lower) {
+                result_words.push(token.to_string());
+                continue;
+            }
+
             if let Some(corrected) = self.correct(word) {
-                // Preserve original capitalization pattern
+                // Context validation: reject correction if it creates a nonsense bigram
+                // with neighbors, while the original made sense.
+                let orig_fwd_ok  = is_plausible_bigram(&lower, &next_word);
+                let orig_bwd_ok  = is_plausible_bigram(&prev_word, &lower);
+                let corr_fwd_ok  = is_plausible_bigram(&corrected, &next_word);
+                let corr_bwd_ok  = is_plausible_bigram(&prev_word, &corrected);
+
+                // If original fits context and correction doesn't → skip
+                let orig_fits = orig_fwd_ok || orig_bwd_ok;
+                let corr_fits = corr_fwd_ok || corr_bwd_ok;
+                if orig_fits && !corr_fits {
+                    result_words.push(token.to_string());
+                    continue;
+                }
+
                 let final_word = match_case(word, &corrected);
                 corrections.push((word.to_string(), final_word.clone()));
                 result_words.push(format!("{}{}", final_word, trailing_punct));
@@ -246,6 +312,54 @@ fn damerau_levenshtein(a: &str, b: &str) -> usize {
     }
 
     matrix[a_len][b_len]
+}
+
+/// Known fixed phrases — if a word appears in one of these pairs, never correct it.
+/// "curse word" is a phrase → "curse" is protected when followed by "word/words".
+/// Covers slang, profanity collocations, and common informal phrases.
+fn is_known_phrase(w1: &str, w2: &str) -> bool {
+    if w1.is_empty() || w2.is_empty() { return false; }
+    matches!((w1, w2),
+        // profanity / slang collocations
+        ("curse",  "word")  | ("curse",  "words") |
+        ("swear",  "word")  | ("swear",  "words") |
+        ("bad",    "word")  | ("bad",    "words") |
+        ("cuss",   "word")  | ("cuss",   "words") |
+        ("dirty",  "word")  | ("dirty",  "words") |
+        ("fuck",   "you")   | ("fuck",   "off")   | ("fuck",   "up") |
+        ("shit",   "out")   | ("shit",   "up")    |
+        ("ass",    "hole")  | ("ass",    "holes")  |
+        ("bitch",  "ass")   | ("bad",    "ass")    |
+        ("mother", "fucker")| ("bull",   "shit")   |
+        // common informal phrases
+        ("gonna",  _)       | ("wanna",  _)        | ("gotta",  _) |
+        ("kinda",  _)       | ("sorta",  _)        | ("lotta",  _) |
+        ("outta",  _)       | ("tryna",  _)        |
+        // tech / KAI phrases
+        ("kai",    _)       | (_,        "kai")    |
+        ("rshl",   _)       | (_,        "rshl")   |
+        // common safe pairs that shouldn't be touched
+        ("all",    "right") | ("all",    "good")
+    )
+}
+
+/// Check if two adjacent words form a plausible bigram in general English usage.
+/// This is intentionally permissive — we only want to catch clearly wrong pairs
+/// like "course word" (never used) vs "curse word" (common phrase).
+fn is_plausible_bigram(w1: &str, w2: &str) -> bool {
+    if w1.is_empty() || w2.is_empty() { return true; } // can't judge with no context
+
+    // Explicitly implausible bigrams — correction target + neighbor that makes no sense
+    let implausible = [
+        ("course", "word"), ("course", "words"),
+        ("coarse", "word"), ("coarse", "words"),
+        ("batch",  "ass"),  ("batch",  "word"),
+        ("butter", "ass"),
+    ];
+    for (a, b) in &implausible {
+        if w1 == *a && w2 == *b { return false; }
+    }
+    true
 }
 
 /// Split trailing punctuation from a word token.

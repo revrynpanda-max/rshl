@@ -1,106 +1,53 @@
-# KAI AI Peer Setup
+# Peer Connection Setup (v5.4)
 
-KAI can now talk to Claude as a peer AI. They exchange knowledge and KAI
-stores what it learns as cells in its universe.
+KAI can bridge with high-tier external reasoning models to augment his native geometric field. Currently supported peers: **Claude (Anthropic)** and **Grok (xAI)**.
+
+## 1. Get Your API Keys
+
+- **Claude**: [Anthropic Console](https://console.anthropic.com/)
+- **Grok**: [xAI Console](https://console.x.ai/)
+
+## 2. Set Environment Variables
+
+KAI looks for these specific environment variables in your shell.
+
+### Windows (PowerShell)
+```powershell
+# Set for current session
+$env:ANTHROPIC_API_KEY = "sk-ant-..."
+$env:XAI_API_KEY = "xai-..."
+
+# Set permanently (User level)
+[System.Environment]::SetEnvironmentVariable("ANTHROPIC_API_KEY", "sk-ant-...", "User")
+[System.Environment]::SetEnvironmentVariable("XAI_API_KEY", "xai-...", "User")
+```
+
+### macOS / Linux
+```bash
+export ANTHROPIC_API_KEY="sk-ant-..."
+export XAI_API_KEY="xai-..."
+```
+
+## 3. Verify Connections
+
+Launch KAI and run the following commands to check connectivity:
+
+```text
+peerchat        # Pings Claude via Anthropic API
+peer ping grok  # Pings Grok via xAI API
+```
+
+## 4. Usage in KAI
+
+- `peer <message>`: Send a direct message to the primary peer.
+- `peersession [n]`: Watch KAI and a peer talk autonomously.
+- `peersession grok n`: Watch KAI and Grok perform deep reasoning rounds.
 
 ---
 
-## Step 1 — Get an Anthropic API Key
+### Troubleshooting
 
-1. Go to https://console.anthropic.com
-2. Sign in or create an account
-3. Go to **API Keys** → **Create Key**
-4. Copy the key (starts with `sk-ant-...`)
-
----
-
-## Step 2 — Set the Environment Variables
-
-Open a Command Prompt or PowerShell **before** launching KAI:
-
-### Claude (Anthropic)
-```
-set ANTHROPIC_API_KEY=sk-ant-YOUR-KEY-HERE
-```
-
-### Grok (xAI)
-```
-set XAI_API_KEY=xai-YOUR-KEY-HERE
-```
-
-Or set them permanently in Windows:
-- System Properties → Environment Variables → New (User)
-- Add entries for `ANTHROPIC_API_KEY` and `XAI_API_KEY`.
-
----
-
-## Step 3 — Run KAI and Test the Connection
-
-```
-cd kai-rust
-cargo run --release
-```
-
-In KAI, type:
-
-```
-peerchat         # Ping Claude
-peerchat grok    # Ping Grok
-```
-
-You should see an acknowledgement. If you get an error, check your API keys.
-
----
-
-## Step 4 — Start Talking
-
-**Manual mode** — you type each message:
-```
-peer <message>       # Talk to Claude (default)
-claude <message>     # Talk to Claude specifically
-grok <message>       # Talk to Grok specifically
-```
-Example: `grok what is the relationship between geometry and thought?`
-
-**Autonomous mode** — KAI talks to peers by himself:
-```
-peersession         # Native contemplation session
-peersession claude  # Talk to Claude
-peersession grok    # Talk to Grok
-```
-Example: `peersession grok 8`
-
-- **Native Mode**: KAI uses its own Iterative Resonance Reasoner and Voice Engine to discover new patterns in its lattice.
-- **Hybrid Mode**: KAI asks a question, Claude responds, KAI stores what it learned.
-- Follow-up topics are extracted from the last response (chain learning).
-- You watch the discovery build in real-time — no typing needed.
-- Each discovery is stored as `[discovered]` (Native) or `[from-claude]` (Hybrid).
-- Conversation continues in the background while KAI's heartbeat keeps running.
-
-KAI will show `[+N cells from round X/Y]` after each exchange.
-
-After `peersession` finishes, KAI auto-saves its state.
-
----
-
-## How the Trust Tiers Work
-
-| Source    | Strength | Description              |
-|-----------|----------|--------------------------|
-| ryan      | 1.8      | Your personal statements |
-| seed      | 1.5      | KAI's foundational self  |
-| ai-peer   | 1.3      | What Claude teaches KAI  |
-| world-bridge | 1.0-1.5 | DuckDuckGo facts      |
-| import    | 1.2      | Bulk-imported text       |
-
-You always outrank Claude. KAI trusts you most.
-
----
-
-## Notes
-
-- Each `peer` call uses Claude Haiku (fast + cheap)
-- Typical cost: ~$0.0001 per exchange
-- KAI's field resonance is sent as context so Claude knows what KAI already knows
-- Responses are split into sentences and stored as `[from-claude]` tagged cells
-- Ryan's cells (strength 1.8) always outrank Claude's cells (strength 1.3)
+- **401 Error**: Incorrect API key. Double check your typing and ensured the variable is exported.
+- **402 Error**: Out of credits on your Anthropic or xAI account.
+- **404 Error**: Model not found (usually if you're using an older KAI version).
+- **400 Error**: Malformed request (check your internet connection or if the prompt is excessively long).

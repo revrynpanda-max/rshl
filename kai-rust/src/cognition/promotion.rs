@@ -57,6 +57,7 @@ fn stddev(v: &[f32]) -> f32 {
     var.sqrt()
 }
 
+#[allow(dead_code)]
 fn score(e: &super::candidates::CandidateEntry) -> f32 {
     let nsr = if e.seen_count > 0 { e.non_source_count as f32 / e.seen_count as f32 } else { 0.0 };
     let chi_mean = mean(&e.contradiction_history);

@@ -11,6 +11,14 @@ use serde::{Deserialize, Serialize};
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 
+/// UTF-8 safe byte slice — never splits a multi-byte character.
+fn safe_str_slice(s: &str, max_bytes: usize) -> &str {
+    if s.len() <= max_bytes { return s; }
+    let mut end = max_bytes;
+    while end > 0 && !s.is_char_boundary(end) { end -= 1; }
+    &s[..end]
+}
+
 const TRANSCRIPT_FILE: &str = "data/kai-transcript.jsonl";
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -37,7 +45,7 @@ pub fn append(base_dir: &str, session_id: &str, role: &str, text: &str) {
             .as_secs(),
         session: session_id.to_string(),
         role: role.to_string(),
-        text: text[..text.len().min(2000)].to_string(), // cap at 2k chars
+        text: safe_str_slice(text, 2000).to_string(), // cap at 2k chars, UTF-8 safe
     };
 
     if let Ok(json) = serde_json::to_string(&entry) {
@@ -132,7 +140,7 @@ pub fn brief(base_dir: &str, session_id: &str) -> String {
     for entry in user_turns.iter().take(12) {
         let preview = entry.text.lines().next().unwrap_or("").trim();
         if preview.len() > 5 {
-            lines.push(format!("  ❯ {}", &preview[..preview.len().min(90)]));
+            lines.push(format!("  ❯ {}", safe_str_slice(preview, 90)));
         }
     }
     if user_turns.len() > 12 {

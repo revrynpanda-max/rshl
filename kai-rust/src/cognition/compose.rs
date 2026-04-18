@@ -100,7 +100,12 @@ pub fn compose_response(
         let mut composed = primary.clone();
         for (frag_text, _score, _region) in fragments.iter().skip(1) {
             // Only add if it provides new information
-            if !composed.contains(&frag_text[..frag_text.len().min(30)]) {
+            let check_len = {
+                let mut end = frag_text.len().min(30);
+                while end > 0 && !frag_text.is_char_boundary(end) { end -= 1; }
+                end
+            };
+            if !composed.contains(&frag_text[..check_len]) {
                 composed.push_str(" — ");
                 composed.push_str(frag_text);
             }

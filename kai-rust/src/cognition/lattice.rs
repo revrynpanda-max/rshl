@@ -293,6 +293,15 @@ pub fn consolidate(universe: &Universe) -> Option<DreamResult> {
         return None; // Dream degrades global coherence — discard
     }
 
+    // ── GATE 4: Absolute minimum Φg ──────────────────────────────────────
+    // Near-null Φg (< 0.005) means the binding produced essentially zero
+    // coherent emergence — not a real idea, just arithmetic noise.
+    // Dream #632 (Φg=0.001) was the triggering case for this gate.
+    if field.phi_g < 0.005 {
+        if let Ok(mut s) = GATE_STATS.lock() { s.rejected_phi_drop += 1; }
+        return None; // Zero-emergence dream — discard before any side effects
+    }
+
     // Duplicate echo check
     let duplicate_echo = insight_text.trim() == a.text.trim()
         || insight_text.trim() == b.text.trim();

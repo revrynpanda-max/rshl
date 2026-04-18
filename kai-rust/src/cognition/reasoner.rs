@@ -322,7 +322,11 @@ impl Reasoner {
                     .take(3)
                     .filter(|(_, t, _)| *t != cell.text.as_str())
                     .map(|(phi, text, region)| {
-                        let short = if text.len() > 50 { &text[..50] } else { text };
+                        let short = if text.len() > 50 {
+                            let mut end = 50;
+                            while end > 0 && !text.is_char_boundary(end) { end -= 1; }
+                            &text[..end]
+                        } else { text };
                         format!("[{}·{:.0}%: {}]", region, phi * 100.0, short)
                     })
                     .collect();

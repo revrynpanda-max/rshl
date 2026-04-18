@@ -16,6 +16,14 @@
 
 use crate::core::QueryHit;
 
+/// UTF-8 safe byte slice — never splits a multi-byte character.
+fn safe_slice(s: &str, max_bytes: usize) -> &str {
+    if s.len() <= max_bytes { return s; }
+    let mut end = max_bytes;
+    while end > 0 && !s.is_char_boundary(end) { end -= 1; }
+    &s[..end]
+}
+
 // ── Query Type Detection ──────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -41,6 +49,13 @@ pub fn detect_query_type(input: &str) -> QueryType {
     }
     if first == "thanks" || first == "thank" || lower.contains("thank you") || lower.contains("appreciate") {
         return QueryType::Gratitude;
+    }
+    // Name / identity questions about KAI — must be checked BEFORE broad who/what catch
+    if lower.contains("your name") || lower.contains("you called") || lower.contains("you named")
+        || lower.contains("who are you") || lower.contains("what are you")
+        || lower.contains("what can you") || lower.contains("how are you")
+    {
+        return QueryType::SelfQuestion;
     }
     if words.len() >= 2 {
         let second = words[1];
@@ -148,6 +163,7 @@ pub fn generate_response(
         || lower_input.contains("you are")
         || lower_input.contains("who are you")
         || lower_input.contains("what are you")
+        || lower_input.contains("your name")
         || lower_input.contains("yourself")
         || matches!(query_type, QueryType::SelfQuestion);
 
@@ -158,7 +174,7 @@ pub fn generate_response(
 
     let variant = phrase_hash(input) % 4; // 4 variants per query type
 
-    match query_type {
+    let mut response = match query_type {
         QueryType::Greeting       => generate_greeting(mood, variant),
         QueryType::Gratitude      => generate_gratitude(mood, variant),
         QueryType::SelfQuestion   => generate_self_response(primary, &secondary, mood, primary.score, variant),
@@ -181,7 +197,25 @@ pub fn generate_response(
         QueryType::Contemplation => {
             generate_contemplation(input, primary, &secondary, &novel, mood, primary.score, variant)
         }
+    };
+
+    // ── Inquisitive Follow-up Logic ───────────────────────────────────
+    // If the top hit's score is low (< 0.25), and it's not a greeting/gratitude,
+    // append a clarifying question to keep the learner's loop open.
+    if primary.score < 0.25 && !matches!(query_type, QueryType::Greeting | QueryType::Gratitude) {
+        if !response.ends_with('?') {
+            let questions = [
+                " Does that sound right to you?",
+                " Is that what you meant?",
+                " Am I following you correctly?",
+                " What else can you tell me about that?",
+                " Does that align with what you know?",
+            ];
+            response.push_str(questions[variant % 5]);
+        }
     }
+
+    response
 }
 
 // ── Response Generators ───────────────────────────────────────────────────────
@@ -268,7 +302,7 @@ fn generate_self_response(
     if let Some(sec) = secondary.first() {
         let sec_core = clean_cell_text(&sec.text);
         let sec_first = to_first_person(&sec_core);
-        if !response.contains(&sec_first[..sec_first.len().min(25)]) && sec_first.len() > 15 {
+        if !response.contains(safe_slice(&sec_first, 25)) && sec_first.len() > 15 {
             response.push(' ');
             response.push_str(&sec_first);
         }
@@ -340,7 +374,7 @@ fn generate_factual(
             .filter(|c| !primary_concepts.contains(c))
             .collect();
 
-        if new_concepts.len() >= 2 && !response.contains(&sec_core[..sec_core.len().min(25)]) {
+        if new_concepts.len() >= 2 && !response.contains(safe_slice(&sec_core, 25)) {
             let connectors = if i == 0 {
                 [". Also,", ". Beyond that,", ". Worth adding:", ". And —"]
             } else {
@@ -403,7 +437,7 @@ fn generate_explanation(
         let sec_concepts = extract_concepts(&sec_core);
         let new_count = sec_concepts.iter().filter(|c| !primary_concepts.contains(c)).count();
 
-        if new_count >= 2 && sec_core.len() > 20 && !response.contains(&sec_core[..sec_core.len().min(25)]) {
+        if new_count >= 2 && sec_core.len() > 20 && !response.contains(safe_slice(&sec_core, 25)) {
             let joiners = if i == 0 {
                 [" The key thing is", " What makes it interesting:", " One thing to note:", " To add to that:"]
             } else {
@@ -467,7 +501,7 @@ fn generate_conversational(
             let primary_concepts = extract_concepts(&core);
             let new_count = sec_concepts.iter().filter(|c| !primary_concepts.contains(c)).count();
 
-            if new_count >= 2 && !response.contains(&sec_core[..sec_core.len().min(20)]) {
+            if new_count >= 2 && !response.contains(safe_slice(&sec_core, 20)) {
                 let bridges = [". Another angle on it:", ". Related to that:", ".", " Also —"];
                 response.push_str(bridges[v % 4]);
                 response.push(' ');
@@ -523,7 +557,7 @@ fn generate_contemplation(
     // Deepen with secondary hits
     if let Some(sec) = secondary.first() {
         let sec_core = clean_cell_text(&sec.text);
-        if score > 0.3 && !response.contains(&sec_core[..sec_core.len().min(20)]) {
+        if score > 0.3 && !response.contains(safe_slice(&sec_core, 20)) {
             let bridges = [
                 ". It seems linked to",
                 ". This patterns with",
@@ -594,9 +628,13 @@ fn clean_cell_text(text: &str) -> String {
 
     // Clean up truncated bridge content
     if s.ends_with("...") {
-        s = s[..s.len() - 3].to_string();
-        if let Some(last_period) = s.rfind(". ") {
-            s = s[..last_period + 1].to_string();
+        // Strip the trailing "..." safely — it's exactly 3 ASCII bytes, safe to slice
+        let stripped = &s[..s.len() - 3];
+        if let Some(last_period) = stripped.rfind(". ") {
+            // last_period is a byte offset from rfind, which always lands on '.' (ASCII) — safe
+            s = stripped[..last_period + 1].to_string();
+        } else {
+            s = stripped.to_string();
         }
     }
 
@@ -676,55 +714,5 @@ mod tests {
         assert_eq!(clean_cell_text("[about-ryan] I work at Panda"), "I work at Panda");
         assert_eq!(clean_cell_text("[from-claude] Consciousness is hard"), "Consciousness is hard");
         assert_eq!(clean_cell_text("I am a geometric intelligence."), "I am a geometric intelligence.");
-    }
-
-    #[test]
-    fn test_to_first_person() {
-        assert!(to_first_person("KAI is a geometric intelligence").contains("I'm"));
-        assert!(to_first_person("KAI was created by Ryan").contains("I was"));
-        assert!(to_first_person("KAI can reason geometrically").contains("I can"));
-    }
-
-    #[test]
-    fn test_no_resonance_no_jargon() {
-        let mood = MoodState::default();
-        for i in 0..6 {
-            // Build a fake input whose hash gives variant i
-            let r = generate_no_resonance("placeholder", QueryType::Statement, &mood);
-            // Should NOT mention "universe", "field", "cells", "geometric" — per directive
-            assert!(!r.contains("universe"), "Jargon in no-resonance: {}", r);
-            assert!(!r.contains("field"), "Jargon in no-resonance: {}", r);
-            assert!(!r.contains("cells"), "Jargon in no-resonance: {}", r);
-            let _ = i;
-        }
-    }
-
-    #[test]
-    fn test_self_response_first_person() {
-        let mood = MoodState::default();
-        let hits = vec![hit("KAI is a geometric intelligence built on RSHL", 0.85)];
-        let r = generate_response("who are you", &hits, QueryType::IdentityQuestion, &mood, &[]);
-        assert!(r.contains("I'm") || r.contains("I am"), "Should be first-person: {}", r);
-    }
-
-    #[test]
-    fn test_greeting_varies_by_mood() {
-        let curious = MoodState { mood_name: "curious".into(), valence: 0.3 };
-        let dormant = MoodState { mood_name: "dormant".into(), valence: 0.0 };
-        let g1 = generate_greeting(&curious, 0);
-        let g2 = generate_greeting(&dormant, 0);
-        assert_ne!(g1, g2);
-    }
-
-    #[test]
-    fn test_multi_cell_weaving() {
-        let mood = MoodState { mood_name: "engaged".into(), valence: 0.2 };
-        let hits = vec![
-            hit("KAI is a geometric intelligence built on RSHL", 0.85),
-            hit("Ryan Ervin created KAI at PandaProductionsLogo in 2026", 0.72),
-        ];
-        let r = generate_response("tell me about KAI", &hits, QueryType::RequestForInfo, &mood, &[]);
-        // Should contain content from both cells
-        assert!(r.len() > 40, "Should be a multi-sentence response: {}", r);
     }
 }

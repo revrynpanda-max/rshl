@@ -115,9 +115,11 @@ pub fn ingest_topic(universe: &mut Universe, topic: &str) -> usize {
 
     // Store the main abstract as a reasoning cell
     if !answer.abstract_text.is_empty() && answer.abstract_text.len() > 20 {
-        // Truncate very long abstracts to ~300 chars
+        // Truncate very long abstracts to ~300 chars (UTF-8 safe)
         let text = if answer.abstract_text.len() > 300 {
-            format!("{}...", &answer.abstract_text[..300])
+            let mut end = 300;
+            while end > 0 && !answer.abstract_text.is_char_boundary(end) { end -= 1; }
+            format!("{}...", &answer.abstract_text[..end])
         } else {
             answer.abstract_text.clone()
         };
@@ -130,17 +132,21 @@ pub fn ingest_topic(universe: &mut Universe, topic: &str) -> usize {
         }
     }
 
-    // Store related topics as memory cells
+    // Store related topics as reasoning cells — they are factual knowledge,
+    // not personal memories. Storing in "memory" was flooding the memory region
+    // with web trivia (5 per intake vs 1 reasoning), skewing the region balance.
     for related in &answer.related_topics {
         let text = if related.len() > 250 {
-            format!("{}...", &related[..250])
+            let mut end = 250;
+            while end > 0 && !related.is_char_boundary(end) { end -= 1; }
+            format!("{}...", &related[..end])
         } else {
             related.clone()
         };
 
         let exists = universe.cells().iter().any(|c| c.text == text);
         if !exists {
-            universe.store(&text, "memory", "world-bridge", 1.0);
+            universe.store(&text, "reasoning", "world-bridge", 1.0);
             stored += 1;
         }
     }
