@@ -345,7 +345,13 @@ impl App {
             }
             // Log dream result for spectate
             if self.spectate_mode && !self.last_dream_text.is_empty() {
-                self.think("GPU", "💭", format!("{}  [{}μs]", self.last_dream_text, gpu_us));
+                let gs = kai::cognition::gate_stats();
+                let accept_pct = (gs.accept_rate() * 100.0) as u32;
+                self.think("GPU", "💭", format!(
+                    "{}  [{}μs | gate: {}% pass, {}✗conf {}✗χ {}✗Φ]",
+                    self.last_dream_text, gpu_us,
+                    accept_pct, gs.rejected_confidence, gs.rejected_chi, gs.rejected_phi_drop,
+                ));
             }
             if self.spectate_mode && !self.last_inner_voice_text.is_empty() {
                 self.think("CPU", "🔊", self.last_inner_voice_text.clone());
@@ -2333,6 +2339,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     disable_raw_mode()?;
     execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
-    println!("\n  KAI dormant. State preserved.\n");
+    println!("✓ KAI has entered dormant state.");
     Ok(())
 }
