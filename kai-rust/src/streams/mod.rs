@@ -12,4 +12,4 @@ pub mod gpu_stream;
 pub mod cpu_stream;
 pub mod ram_stream;
 
-pub use shared_bus::{SharedBus, StreamEvent};
+pub use shared_bus::SharedBus;

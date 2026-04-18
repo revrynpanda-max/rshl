@@ -18,6 +18,8 @@ struct Snapshot {
     version: u32,
     saved_at: String,
     tick: u64,
+    #[serde(default)]
+    dream_count: u64,
     universe: Universe,
     candidates: CandidateBuffer,
     drive: Drive,
@@ -46,6 +48,7 @@ pub fn save(
     candidates: &CandidateBuffer,
     drive: &Drive,
     tick: u64,
+    dream_count: u64,
     base_dir: &str,
 ) -> SaveResult {
     let state_path = format!("{}/{}", base_dir, STATE_FILE);
@@ -64,6 +67,7 @@ pub fn save(
         version: 2,
         saved_at: chrono_now(),
         tick,
+        dream_count,
         universe: universe.clone(),
         candidates: candidates.clone(),
         drive: drive.clone(),
@@ -83,7 +87,7 @@ pub fn save(
                                 bytes: json.len(),
                             };
                         }
-                        Err(e) => {
+                        Err(_e) => {
                             // Rename failed — try copy+delete fallback (cross-device)
                             let _ = fs::copy(&tmp_path, &state_path);
                             let _ = fs::remove_file(&tmp_path);
@@ -105,7 +109,7 @@ pub fn save(
 }
 
 /// Load cognitive state from disk.
-pub fn load(base_dir: &str) -> Option<(Universe, CandidateBuffer, Drive, u64)> {
+pub fn load(base_dir: &str) -> Option<(Universe, CandidateBuffer, Drive, u64, u64)> {
     let state_path = format!("{}/{}", base_dir, STATE_FILE);
 
     if !Path::new(&state_path).exists() {
@@ -124,6 +128,7 @@ pub fn load(base_dir: &str) -> Option<(Universe, CandidateBuffer, Drive, u64)> {
         snapshot.candidates,
         snapshot.drive,
         snapshot.tick,
+        snapshot.dream_count,
     ))
 }
 

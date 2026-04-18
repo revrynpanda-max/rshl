@@ -1,3 +1,8 @@
+pub mod ai_peer;
+pub mod git_tools;
+pub mod code_tools;
+pub mod ipc_server;
+
 /// World Bridge — Background knowledge intake for KAI.
 ///
 /// Feeds KAI's universe with facts from the outside world.

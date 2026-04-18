@@ -8,7 +8,7 @@
 /// This is NOT hallucination — every piece of output comes from
 /// a real cell in the universe. It's geometric synthesis.
 
-use crate::core::{Universe, SparseVec, QueryHit};
+use crate::core::QueryHit;
 
 /// Compose a response from the top resonating cells.
 ///
@@ -19,7 +19,7 @@ use crate::core::{Universe, SparseVec, QueryHit};
 /// 4. Build response with attribution
 pub fn compose_response(
     hits: &[QueryHit],
-    query_text: &str,
+    _query_text: &str,
     max_cells: usize,
 ) -> ComposedResponse {
     if hits.is_empty() {
