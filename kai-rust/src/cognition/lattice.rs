@@ -162,10 +162,29 @@ fn pick_best_insight(
     ("no strong concept found".to_string(), String::new(), 0.0, false)
 }
 
+/// Resonance quality gate thresholds.
+///
+/// Scales with universe size — a larger, denser field needs stricter gates
+/// because noisy bindings have more contradictory material to hook into.
+/// A tiny universe (< 50 cells) runs nearly ungated so dreams can bootstrap.
+fn quality_gate(cell_count: usize) -> (f32, f32) {
+    // Returns (min_confidence, max_chi)
+    match cell_count {
+        0..=49   => (0.10, 0.70),   // bootstrapping — very lenient
+        50..=149 => (0.20, 0.60),   // growing — moderate gate
+        150..=499 => (0.28, 0.52),  // mature — normal gate
+        500..=999 => (0.32, 0.46),  // large — stricter
+        _         => (0.36, 0.42),  // very large — tight gate
+    }
+}
+
 /// Run a single dream consolidation cycle.
 ///
 /// This is the full JS rshl-lattice.js consolidate() port — with scored pair
 /// selection, full field state, source reinforcement, and history tracking.
+///
+/// Resonance-gated: bindings that produce low confidence or high contradiction
+/// are discarded before they can inject χ noise into the field.
 pub fn consolidate(universe: &Universe) -> Option<DreamResult> {
     let (idx_a, idx_b, overlap) = select_dream_pair(universe)?;
 
@@ -181,6 +200,20 @@ pub fn consolidate(universe: &Universe) -> Option<DreamResult> {
 
     let (insight_text, insight_region, confidence, is_non_source) =
         pick_best_insight(&hits, &a.text, &b.text);
+
+    // ── GATE 1: Pre-field resonance quality check ─────────────────────────
+    // If the synthetic bundle doesn't resonate meaningfully with the universe,
+    // this is a noise binding. Abort before computing field state — cheap exit.
+    // This directly prevents χ injection from low-quality cross-region smashes.
+    let (min_confidence, max_chi) = quality_gate(universe.count());
+    if confidence < min_confidence {
+        return None; // Synthetic doesn't resonate — discard, saves field computation
+    }
+
+    // Also discard immediately if the insight is empty or the fallback text
+    if insight_text.is_empty() || insight_text == "no strong concept found" {
+        return None;
+    }
 
     // Winner key for tau tracking
     let winner_key = insight_text.trim().to_lowercase();
@@ -205,6 +238,22 @@ pub fn consolidate(universe: &Universe) -> Option<DreamResult> {
     };
 
     let field = FieldState::compute_full(&field_input);
+
+    // ── GATE 2: Post-field contradiction check ────────────────────────────
+    // If this specific binding has high inherent contradiction, discard it.
+    // This catches cases where the pair scored well geometrically but the
+    // resulting field is self-contradictory — exactly the χ spike source.
+    if field.chi > max_chi {
+        return None; // Contradictory binding — discard, prevents χ injection
+    }
+
+    // ── GATE 3: Φg delta check ────────────────────────────────────────────
+    // If this dream would pull coherence DOWN significantly from the last
+    // recorded value, it's doing more harm than good. Skip it.
+    // Allow a small drop (0.01) for normal variance but reject sharp dips.
+    if prev_phi_g > 0.04 && field.phi_g < prev_phi_g - 0.08 {
+        return None; // Dream degrades global coherence — discard
+    }
 
     // Duplicate echo check
     let duplicate_echo = insight_text.trim() == a.text.trim()

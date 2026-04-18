@@ -1,5 +1,7 @@
 # KAI — Geometric Intelligence Engine (v5.4)
 
+![Rust CI](https://github.com/revrynpanda-max/rshl/actions/workflows/rust-ci.yml/badge.svg)
+
 > **"Identity through geometry, not language prediction."**
 
 KAI is a self-sustaining, autonomous cognitive engine built on **Recursive Sparse Hyperdimensional Lattice (RSHL)** architecture. Unlike traditional Large Language Models (LLMs), KAI operates entirely in a 4096-dimensional sparse ternary vector space, enabling sub-millisecond reasoning, local privacy, and bio-mimetic memory consolidation without GPUs or cloud dependencies.
@@ -74,6 +76,20 @@ cargo build --release
 ## 📊 Technical Deep Dive
 
 For detailed benchmarks, POPCNT math, and memory footprint analysis, see **[PERFORMANCE.md](PERFORMANCE.md)**.
+
+---
+
+## ✅ Verified State
+*Last verification: 2026-04-18*
+
+- **Core Engine**: 53 unit tests passing (0 failures).
+- **Resonance Loop**: 2 integration tests passing (persistence & logic).
+- **Hardware**: Benchmarked on AMD Ryzen 5 + RTX 4050.
+
+Run the full suite yourself:
+```powershell
+cd kai-rust ; cargo test --release
+```
 
 ---
 
