@@ -1,17 +1,13 @@
-mod core;
-mod drive;
-mod cognition;
-mod persistence;
-mod streams;
-mod bridge;
+#![allow(dead_code)]
 
-use crate::core::{FieldState, Universe, Lexicon, SparseVec, Embeddings};
-use crate::cognition::{
+use kai::core::{FieldState, Universe, Lexicon, SparseVec, Embeddings};
+use kai::core::spiral::SpiralState;
+use kai::cognition::{
     Reasoner, ContextSlot, CandidateBuffer, PromotionThresholds,
-    HomeostasisConfig, WorkingMemory, compose_response,
+    HomeostasisConfig, WorkingMemory,
     generate_response, detect_query_type, MoodState,
 };
-use crate::drive::{Drive, Mood};
+use kai::drive::{Drive, Mood};
 use crossterm::{
     event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
     execute,
@@ -22,13 +18,11 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph, Wrap},
+    widgets::{Block, Borders, Paragraph},
     Frame, Terminal,
 };
-use std::io;
+use std::io::{self, Write};
 use std::time::{Duration, Instant};
-use std::sync::{Arc, RwLock};
-use std::thread;
 
 // ── KAI Spinner Verbs ─────────────────────────────────────────────────────────
 const VERBS: &[&str] = &[
@@ -68,6 +62,19 @@ struct Turn {
     score: Option<f32>,
 }
 
+// ── Peer Session Messages (background thread → main loop) ────────────────────
+#[derive(Clone)]
+enum PeerMsg {
+    /// KAI's auto-generated question for this round — show as user turn
+    KaiQuestion { round: u32, total: u32, text: String },
+    /// Claude's response — show as kai turn, store cells
+    ClaudeReply { round: u32, total: u32, text: String, model: String },
+    /// Session finished normally
+    SessionDone { rounds_done: u32 },
+    /// Something went wrong
+    SessionError { round: u32, error: String },
+}
+
 // ── Mind Event (spectate mode) ───────────────────────────────────────────────
 #[derive(Clone)]
 struct MindEvent {
@@ -101,11 +108,21 @@ struct App {
     last_save: Instant,
     base_dir: String,
     should_quit: bool,
-    bus: streams::SharedBus,
+    bus: kai::streams::SharedBus,
     spectate_mode: bool,
     mind_log: Vec<MindEvent>,
     embeddings: Embeddings,
     working_memory: WorkingMemory,
+    tick_log_file: Option<std::fs::File>,
+    /// Previous tick's global Φg — used to compute momentum (M = Φg − prev_Φg).
+    prev_phi_g: f32,
+    /// Golden-ratio spiral that drives τ_R (temporal factor for Φ_R).
+    spiral: SpiralState,
+    /// Live peer session receiver — background thread sends messages here.
+    /// Main loop drains this every tick so Ryan can watch conversation happen.
+    peer_session_rx: Option<crossbeam_channel::Receiver<PeerMsg>>,
+    /// Unique session ID — timestamp-based, used for transcript grouping.
+    session_id: String,
 }
 
 impl App {
@@ -115,25 +132,45 @@ impl App {
             .unwrap_or_else(|_| ".".to_string());
 
         // Try to load saved state
-        let (universe, candidates, drive, tick) = if persistence::state_exists(&base_dir) {
-            match persistence::load(&base_dir) {
-                Some((u, c, d, t)) => {
-                    (u, c, d, t)
+        let (universe, candidates, drive, tick, loaded_dream_count) = if kai::persistence::state_exists(&base_dir) {
+            match kai::persistence::load(&base_dir) {
+                Some((u, c, d, t, dc)) => {
+                    (u, c, d, t, dc)
                 }
                 None => {
                     let mut u = Universe::new();
                     seed_universe(&mut u);
-                    (u, CandidateBuffer::new(), Drive::default(), 0)
+                    (u, CandidateBuffer::new(), Drive::default(), 0, 0)
                 }
             }
         } else {
             let mut u = Universe::new();
             seed_universe(&mut u);
-            (u, CandidateBuffer::new(), Drive::default(), 0)
+            (u, CandidateBuffer::new(), Drive::default(), 0, 0)
         };
 
         // Load the lexicon — KAI's vocabulary backbone
         let lexicon = Lexicon::load();
+
+        let log_file_path = std::env::var("KAI_TICK_LOG")
+            .unwrap_or_else(|_| "C:\\KAI\\data\\kai_ticks.csv".to_string());
+        
+        if let Some(parent) = std::path::Path::new(&log_file_path).parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+
+        let is_new = !std::path::Path::new(&log_file_path).exists() || std::fs::metadata(&log_file_path).map(|m| m.len()).unwrap_or(0) == 0;
+        let mut tick_log_file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&log_file_path)
+            .ok();
+            
+        if let Some(ref mut f) = tick_log_file {
+            if is_new {
+                let _ = writeln!(f, "timestamp,tick,phi_g,rho,r,chi,g,momentum,novelty,stability,mood,valence,phi_l,phi_r,psi_b,omega,r_cross,chi_l,chi_r,rho_l,rho_r,theta,spiral_r,tau_r");
+            }
+        }
 
         Self {
             universe,
@@ -146,7 +183,7 @@ impl App {
             turns: Vec::new(),
             input: String::new(),
             tick,
-            dream_count: 0,
+            dream_count: loaded_dream_count,
             last_dream_text: String::new(),
             last_promotion_text: String::new(),
             last_homeostasis_text: String::new(),
@@ -158,11 +195,19 @@ impl App {
             last_save: Instant::now(),
             base_dir,
             should_quit: false,
-            bus: streams::SharedBus::new(),
+            bus: kai::streams::SharedBus::new(),
             spectate_mode: false,
             mind_log: Vec::new(),
             embeddings: Embeddings::new(),
             working_memory: WorkingMemory::new(),
+            tick_log_file,
+            prev_phi_g: 0.0,
+            spiral: SpiralState::new(0.01),
+            peer_session_rx: None,
+            session_id: format!("{}", std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs()),
         }
     }
 
@@ -190,9 +235,80 @@ impl App {
         self.tick += 1;
         self.last_heartbeat = Instant::now();
 
+        // ── Advance the golden-ratio spiral once per tick ────────────
+        // Drives τ_R (temporal factor) for Φ_R. Must happen before update_regional.
+        self.spiral.tick();
+
         // ── STREAM 2: CPU Logic (field state + drive) ─────────────────
-        let field = FieldState::compute(&self.universe);
+        let mut field = FieldState::compute(&self.universe);
         self.drive.update(&field);
+
+        let cells = self.universe.cells();
+        let sample_n = 64.min(cells.len());
+
+        let lattice_state = if sample_n == 0 {
+            kai::core::SparseVec::zero()
+        } else {
+            let refs: Vec<&kai::core::SparseVec> = cells.iter().take(sample_n).map(|c| &c.vec).collect();
+            kai::core::SparseVec::superpose_sparse(&refs, 0.25)
+        };
+        let current_pattern = self.drive.goal_vector.clone().unwrap_or_else(kai::core::SparseVec::zero);
+
+        // ── Density Fix: Sync global rho with the actual lattice state ──
+        field.rho = lattice_state.nnz() as f32 / 4096.0;
+        field.q = 1.0 - field.r_val; // Ensure novelty is synced with coherence
+
+        // ── Real momentum: Φg − previous Φg ──────────────────────────────
+        field.m_val = field.phi_g - self.prev_phi_g;
+        self.prev_phi_g = field.phi_g;
+
+        // drive_gain ← 1.0 + |valence|: baseline 1.0 when mood is neutral,
+        //   higher when emotionally active (positive or negative).
+        // drive_salience ← field.q (real novelty);
+        // drive_tau      ← self.spiral.tau_r() (golden-ratio breathing).
+        let drive_gain = 1.0 + self.drive.valence.abs();
+        let drive_salience = field.q;
+        let drive_tau = self.spiral.tau_r();
+
+        field.update_regional(
+            &lattice_state,
+            &current_pattern,
+            drive_gain,
+            drive_salience,
+            drive_tau,
+        );
+
+        if let Some(ref mut log_file) = self.tick_log_file {
+            let _ = writeln!(
+                log_file,
+                "{},{},{:.4},{:.4},{:.4},{:.4},{:.4},{:.4},{:.4},{:.4},{},{:.4},{:.4},{:.4},{:.4},{:.4},{:.4},{:.4},{:.4},{:.4},{:.4},{:.6},{:.4},{:.4}",
+                chrono::Utc::now().to_rfc3339(),
+                self.tick,
+                field.phi_g,
+                field.rho,
+                field.r_val,
+                field.chi,
+                field.g,
+                field.m_val,
+                field.q,
+                field.s,
+                self.drive.mood.to_string(),
+                self.drive.valence,
+                field.regional.left.phi,
+                field.regional.right.phi,
+                field.regional.bridge_phi,
+                field.regional.omega,
+                field.regional.r_cross,
+                field.regional.left.chi,
+                field.regional.right.chi,
+                field.regional.left.rho,
+                field.regional.right.rho,
+                self.spiral.theta(),
+                self.spiral.radius(),
+                self.spiral.tau_r(),
+            );
+            let _ = log_file.flush();
+        }
 
         // Log field state for spectate
         if self.spectate_mode && self.tick % 3 == 0 {
@@ -273,7 +389,7 @@ impl App {
 
         // ── EMBEDDING LEARNING — continuous word2vec equivalent ─────
         if self.embeddings.needs_rebuild(self.universe.count()) {
-            let normalizer = crate::core::get_normalizer();
+            let normalizer = kai::core::get_normalizer();
             let cell_data: Vec<(String, Vec<String>)> = self.universe.cells()
                 .iter()
                 .map(|c| (c.text.clone(), normalizer.normalize_text(&c.text)))
@@ -293,6 +409,85 @@ impl App {
             self.think("RAM", "💨", format!("{} working memory slots decayed", decayed));
         }
 
+        // ── PEER SESSION: drain background thread messages ────────────
+        // Each tick we check if the background KAI↔Claude session has sent
+        // anything. Non-blocking — if nothing is ready, we move on instantly.
+        let mut session_done = false;
+        if let Some(ref rx) = self.peer_session_rx {
+            loop {
+                match rx.try_recv() {
+                    Ok(msg) => {
+                        match msg {
+                            PeerMsg::KaiQuestion { round, total, text } => {
+                                self.turns.push(Turn {
+                                    role: "user".into(),
+                                    text: format!("[Auto {}/{}] {}", round, total, text),
+                                    region: None,
+                                    score: None,
+                                });
+                            }
+                            PeerMsg::ClaudeReply { round, total, text, model } => {
+                                // Store Claude's response as cells
+                                let sentences: Vec<&str> = text
+                                    .split(|c| c == '.' || c == '\n')
+                                    .map(|s: &str| s.trim())
+                                    .filter(|s| s.len() > 25)
+                                    .collect();
+                                let mut stored = 0usize;
+                                for sentence in sentences.iter().take(8) {
+                                    let tagged = format!("[from-claude] {}", sentence);
+                                    if self.universe.store_or_reinforce(&tagged, "reasoning", "ai-peer", 1.3) {
+                                        stored += 1;
+                                    }
+                                }
+                                let learn_note = if stored > 0 {
+                                    format!("\n\n[+{} cells from round {}/{}]", stored, round, total)
+                                } else {
+                                    format!("\n\n[round {}/{}]", round, total)
+                                };
+                                self.turns.push(Turn {
+                                    role: "kai".into(),
+                                    text: format!("◆ Claude ({}): {}{}", &model[..model.len().min(20)], text, learn_note),
+                                    region: Some("reasoning".into()),
+                                    score: None,
+                                });
+                            }
+                            PeerMsg::SessionDone { rounds_done } => {
+                                self.turns.push(Turn {
+                                    role: "kai".into(),
+                                    text: format!(
+                                        "✓ Peer session complete — {} rounds done. Universe: {} cells.",
+                                        rounds_done, self.universe.count()
+                                    ),
+                                    region: Some("memory".into()),
+                                    score: None,
+                                });
+                                session_done = true;
+                                self.save_state();
+                            }
+                            PeerMsg::SessionError { round, error } => {
+                                self.turns.push(Turn {
+                                    role: "kai".into(),
+                                    text: format!("✗ Peer session error at round {}: {}", round, error),
+                                    region: None,
+                                    score: None,
+                                });
+                                session_done = true;
+                            }
+                        }
+                    }
+                    Err(crossbeam_channel::TryRecvError::Empty) => break,
+                    Err(crossbeam_channel::TryRecvError::Disconnected) => {
+                        session_done = true;
+                        break;
+                    }
+                }
+            }
+        }
+        if session_done {
+            self.peer_session_rx = None;
+        }
+
         // Persistence (auto-save)
         if self.last_save.elapsed() > Duration::from_secs(60) {
             self.save_state();
@@ -301,18 +496,18 @@ impl App {
     }
 
     fn run_dream_cycle(&mut self) {
-        if let Some(dream) = cognition::consolidate(&self.universe) {
+        if let Some(dream) = kai::cognition::consolidate(&self.universe) {
             self.dream_count += 1;
 
             // Feed dream into candidate buffer
-            cognition::observe_dream(&mut self.candidates, &dream);
+            kai::cognition::observe_dream(&mut self.candidates, &dream);
 
             // ── Source Reinforcement: strengthen dream sources by Wm ──────
-            cognition::reinforce_dream_sources(&mut self.universe, &dream);
+            kai::cognition::reinforce_dream_sources(&mut self.universe, &dream);
 
             // ── Inner Voice: validate the dream insight ──────────────
             if !dream.duplicate_echo && !dream.insight.is_empty() {
-                let validation = cognition::validate_insight(
+                let validation = kai::cognition::validate_insight(
                     &dream.insight,
                     &dream.concept_a,
                     &dream.concept_b,
@@ -321,16 +516,16 @@ impl App {
 
                 // Only feed goal vector if inner voice validates or finds novelty
                 match validation.verdict {
-                    cognition::InsightVerdict::Validated | cognition::InsightVerdict::Novel => {
+                    kai::cognition::InsightVerdict::Validated | kai::cognition::InsightVerdict::Novel => {
                         let vec = SparseVec::encode(&dream.insight);
                         self.drive.feed_goal(&vec);
                     }
-                    cognition::InsightVerdict::Paradox => {
+                    kai::cognition::InsightVerdict::Paradox => {
                         // Paradoxes are interesting — feed at reduced weight
                         let vec = SparseVec::encode(&dream.insight);
                         self.drive.feed_goal(&vec);
                     }
-                    cognition::InsightVerdict::Noise => {
+                    kai::cognition::InsightVerdict::Noise => {
                         // Inner voice says this is noise — don't feed goal
                     }
                 }
@@ -359,7 +554,7 @@ impl App {
         // ── Lexicon exploration: dream with random words ─────────────
         // Every 5th dream cycle, try a vocabulary-seeded exploration
         if self.dream_count % 5 == 0 {
-            if let Some(exploration) = cognition::explore_lexicon_binding(
+            if let Some(exploration) = kai::cognition::explore_lexicon_binding(
                 &self.lexicon,
                 &self.universe,
             ) {
@@ -375,7 +570,7 @@ impl App {
     }
 
     fn run_promotion_cycle(&mut self) {
-        let result = cognition::run_promotion(
+        let result = kai::cognition::run_promotion(
             &mut self.candidates,
             &mut self.universe,
             &self.promotion_thresholds,
@@ -389,7 +584,7 @@ impl App {
     }
 
     fn run_homeostasis_cycle(&mut self) {
-        let result = cognition::run_homeostasis(&mut self.universe, &self.homeostasis_config);
+        let result = kai::cognition::run_homeostasis(&mut self.universe, &self.homeostasis_config);
         if result.decayed > 0 || result.pruned > 0 {
             self.last_homeostasis_text = format!(
                 "Homeostasis: {} decayed, {} pruned",
@@ -399,17 +594,98 @@ impl App {
     }
 
     fn save_state(&self) {
-        let _result = persistence::save(
+        let _result = kai::persistence::save(
             &self.universe,
             &self.candidates,
             &self.drive,
             self.tick,
+            self.dream_count,
             &self.base_dir,
         );
     }
 
+    /// Conversational learning — Ryan teaches KAI directly.
+    ///
+    /// Trust tiers:
+    ///   "ryan"       — personal facts about Ryan or KAI, never verified externally, strength 1.8
+    ///   "user-claim" — general factual statements, trusted but lower priority, strength 1.2
+    ///
+    /// Returns a short acknowledgment string if something was learned, None otherwise.
+    fn learn_from_statement(&mut self, input: &str) -> Option<String> {
+        let lower = input.to_lowercase();
+
+        // ── Don't learn from commands or questions ─────────────────────────
+        if input.ends_with('?') { return None; }
+        if lower.starts_with("status") || lower.starts_with("mood") || lower.starts_with("dream")
+            || lower.starts_with("spectate") || lower.starts_with("save")
+            || lower.starts_with("quit") || lower.starts_with("help")
+            || lower.starts_with("learn ") || lower.starts_with("store ")
+            || lower.starts_with("spell ") || lower.starts_with("import ")
+            || lower.starts_with("peer ") || lower.starts_with("peerchat")
+            || lower.starts_with("peersession") || lower.starts_with("run ")
+            || lower.starts_with("exec ") || lower.starts_with("readfile ")
+            || lower.starts_with("writefile ") || lower.starts_with("git ")
+            || lower.starts_with("analyze ") || lower.starts_with("review ")
+            || lower.starts_with("scan ") || lower.starts_with("recall ")
+            || lower.trim() == "brief" {
+            return None;
+        }
+
+        // ── Patterns that signal a personal statement about Ryan ───────────
+        let ryan_triggers = [
+            "i am ", "i'm ", "my name is ", "i work", "i live",
+            "i was ", "i have ", "i like ", "i hate ", "i love ",
+            "i created ", "i built ", "i made ", "i went ", "i grew ",
+            "my job", "my girlfriend", "my wife", "my husband", "my friend",
+            "my brother", "my sister", "my family", "my mom", "my dad",
+            "my house", "my car", "my computer", "my project",
+        ];
+
+        // ── Patterns that signal a statement about KAI ─────────────────────
+        let kai_triggers = [
+            "your name", "you are", "you were", "you can", "you should",
+            "kai is", "kai was", "kai means", "kai stands", "kai can",
+        ];
+
+        let is_ryan_personal = ryan_triggers.iter()
+            .any(|p| lower.starts_with(p) || lower.contains(&format!(" {}", p.trim())));
+        let is_about_kai = kai_triggers.iter().any(|p| lower.contains(p));
+
+        // ── General declarative: "X is Y", "X was Y", "X are Y" ───────────
+        // Must be substantive (>15 chars) and not a question word
+        let is_declarative = input.len() > 15
+            && (lower.contains(" is ") || lower.contains(" are ") || lower.contains(" was "))
+            && !lower.starts_with("what") && !lower.starts_with("who")
+            && !lower.starts_with("where") && !lower.starts_with("when")
+            && !lower.starts_with("how") && !lower.starts_with("why")
+            && !lower.starts_with("is ") && !lower.starts_with("are ");
+
+        if is_ryan_personal || is_about_kai {
+            // Trusted personal knowledge — highest priority, bypasses internet verification
+            let is_new = self.universe.store_or_reinforce(input, "memory", "ryan", 1.8);
+            // Also store a tagged version so KAI can find it by asking "who is Ryan"
+            let tag = if is_ryan_personal { "[about-ryan]" } else { "[about-kai]" };
+            let tagged = format!("{} {}", tag, input);
+            let _ = self.universe.store_or_reinforce(&tagged, "memory", "ryan", 1.5);
+
+            return Some(if is_new {
+                format!("✓ Learned from you: \"{}\"", truncate(input, 55))
+            } else {
+                format!("✓ Reinforced: \"{}\"", truncate(input, 55))
+            });
+        } else if is_declarative {
+            // General factual claim from Ryan — trusted but lower priority than personal
+            let is_new = self.universe.store_or_reinforce(input, "reasoning", "user-claim", 1.2);
+            if is_new {
+                return Some(format!("✓ Filed: \"{}\"", truncate(input, 55)));
+            }
+        }
+
+        None
+    }
+
     fn run_intake_cycle(&mut self) {
-        let (topic, added) = bridge::intake_cycle(&mut self.universe);
+        let (topic, added) = kai::bridge::intake_cycle(&mut self.universe);
         if added > 0 {
             self.last_intake_text = format!(
                 "🌐 Learned \"{}\": +{} cells ({}→{})",
@@ -487,7 +763,7 @@ impl App {
                 self.turns.push(Turn { role: "user".into(), text: input, region: None, score: None });
                 self.turns.push(Turn {
                     role: "kai".into(),
-                    text: "Commands: status, mood, dream, spectate, learn <topic>, spell <word>, store <text>, save, quit\n'spectate' = watch KAI think in real-time (learning, dreams, intake)\nOr just type naturally — I reason through iterative resonance.".into(),
+                    text: "Commands:\n  status · mood · dream · spectate · save · quit\n  learn <topic>     — pull knowledge from the web\n  store <text>      — add a memory cell directly\n  import <path>     — bulk-load a text file (one fact per line)\n  spell <word>      — test spelling correction\n\nTools:\n  run <cmd>         — execute a shell command, KAI sees the output\n  readfile <path>   — read a file, KAI learns from its content\n  writefile <p> <c> — write content to a file\n\nCode & Git:\n  analyze <file>    — structural analysis of any source file\n  review <file>     — code review with field knowledge\n  scan <dir>        — recursively scan a directory, learn codebase\n  git status        — what changed (KAI learns file states)\n  git diff [file]   — show diff\n  git log [n]       — recent commits\n  git add <file>    — stage a file\n  git commit [-m]   — commit (omit -m for KAI's suggestion)\n  git branch        — list branches\n\nMemory & Transcript:\n  brief             — session summary\n  recall <query>    — search full conversation history\n\nAI Peer (set ANTHROPIC_API_KEY first):\n  peerchat          — verify Claude connection\n  peer <message>    — send one message to Claude, KAI learns\n  peersession [n]   — watch KAI ↔ Claude talk autonomously (default 5 rounds)\n\nOr talk naturally — I learn from what you say.\nPersonal facts (\"I am...\", \"my name is...\", \"KAI is...\") are trusted immediately.".into(),
                     region: None, score: None,
                 });
                 return;
@@ -505,11 +781,585 @@ impl App {
             _ => {}
         }
 
+        // ── peerchat — ping Claude to verify connection ───────────────
+        if lower.trim() == "peerchat" {
+            self.turns.push(Turn { role: "user".into(), text: input.clone(), region: None, score: None });
+            self.turns.push(Turn {
+                role: "kai".into(),
+                text: "Pinging Claude... (connecting to Anthropic API)".into(),
+                region: None, score: None,
+            });
+            // Note: this is blocking — TUI pauses until response
+            match kai::bridge::ai_peer::ping_claude(&self.universe) {
+                Ok(reply) => {
+                    self.turns.push(Turn {
+                        role: "kai".into(),
+                        text: format!("◆ Claude: {}\n\n✓ Peer connection established. Use 'peer <message>' to chat.", reply),
+                        region: Some("reasoning".into()),
+                        score: None,
+                    });
+                }
+                Err(e) => {
+                    self.turns.push(Turn {
+                        role: "kai".into(),
+                        text: format!("✗ Peer connection failed: {}\n\nSet your API key first:\n  Windows: set ANTHROPIC_API_KEY=sk-ant-...\n  Get a key: https://console.anthropic.com", e),
+                        region: None, score: None,
+                    });
+                }
+            }
+            return;
+        }
+
+        // ── peersession [n] — autonomous KAI↔Claude session, Ryan watches ──
+        if lower.starts_with("peersession") {
+            // Already running?
+            if self.peer_session_rx.is_some() {
+                self.turns.push(Turn { role: "user".into(), text: input.clone(), region: None, score: None });
+                self.turns.push(Turn {
+                    role: "kai".into(),
+                    text: "A peer session is already running. Wait for it to finish or restart KAI.".into(),
+                    region: None, score: None,
+                });
+                return;
+            }
+
+            // Parse round count: "peersession 8" or just "peersession" (default 5)
+            let n_rounds: u32 = lower
+                .split_whitespace()
+                .nth(1)
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(5)
+                .max(1)
+                .min(20);
+
+            self.turns.push(Turn { role: "user".into(), text: input.clone(), region: None, score: None });
+
+            // Check API key before spawning thread
+            if std::env::var("ANTHROPIC_API_KEY").is_err() {
+                self.turns.push(Turn {
+                    role: "kai".into(),
+                    text: "ANTHROPIC_API_KEY not set. Run: set ANTHROPIC_API_KEY=sk-ant-...\nSee PEER_SETUP.md for instructions.".into(),
+                    region: None, score: None,
+                });
+                return;
+            }
+
+            // ── Snapshot the data the thread needs from universe ────────────
+            // The thread can't touch &mut Universe — we pass what it needs by value.
+            let kai_self = {
+                let hits = self.universe.query("geometric intelligence RSHL Ryan Ervin created", 3);
+                if !hits.is_empty() {
+                    hits.iter().map(|h| h.text.clone()).collect::<Vec<_>>().join(" ")
+                } else {
+                    "I am KAI, a geometric AI built on RSHL by Ryan Ervin.".to_string()
+                }
+            };
+
+            // Seed topics for the session — use dreams + top strong cells
+            let mut seed_topics: Vec<String> = Vec::new();
+            if !self.last_dream_text.is_empty() {
+                seed_topics.push(self.last_dream_text.clone());
+            }
+            // Top 10 strongest cells as potential topics
+            let mut cells_snapshot: Vec<(String, f32)> = self.universe.cells()
+                .iter()
+                .map(|c| (c.text.clone(), c.strength))
+                .collect();
+            cells_snapshot.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+            for (text, _) in cells_snapshot.iter().take(10) {
+                seed_topics.push(text.clone());
+            }
+
+            let (tx, rx) = crossbeam_channel::unbounded::<PeerMsg>();
+            self.peer_session_rx = Some(rx);
+
+            self.turns.push(Turn {
+                role: "kai".into(),
+                text: format!(
+                    "◆ Starting autonomous peer session — {} rounds.\n\
+                    KAI will generate its own questions from its field state and dream memory.\n\
+                    Watch the conversation unfold. Each response is stored as new knowledge.\n\
+                    (Universe: {} cells | Last dream: {})",
+                    n_rounds, self.universe.count(),
+                    if self.last_dream_text.is_empty() { "none yet".to_string() }
+                    else { truncate(&self.last_dream_text, 60) }
+                ),
+                region: Some("reasoning".into()),
+                score: None,
+            });
+
+            // ── Spawn background thread ──────────────────────────────────────
+            std::thread::spawn(move || {
+                peer_session_thread(tx, n_rounds, kai_self, seed_topics);
+            });
+
+            return;
+        }
+
+        // ── peer <message> — talk to Claude as a peer AI ─────────────
+        if lower.starts_with("peer ") {
+            let message = input[5..].trim().to_string();
+            if message.is_empty() {
+                self.turns.push(Turn { role: "user".into(), text: input.clone(), region: None, score: None });
+                self.turns.push(Turn {
+                    role: "kai".into(),
+                    text: "Usage: peer <message>\nExample: peer what do you know about consciousness?".into(),
+                    region: None, score: None,
+                });
+                return;
+            }
+
+            self.turns.push(Turn { role: "user".into(), text: input.clone(), region: None, score: None });
+            self.turns.push(Turn {
+                role: "kai".into(),
+                text: format!("Sending to Claude... (reasoning from field, {} cells)", self.universe.count()),
+                region: None, score: None,
+            });
+
+            // Note: blocking call — TUI freezes briefly while Claude responds.
+            // This is expected for peer conversation (typical: 1-4 seconds).
+            match kai::bridge::ai_peer::peer_exchange(&mut self.universe, &message) {
+                Ok(exchange) => {
+                    // Show Claude's response with learning summary
+                    let learn_line = if exchange.cells_stored > 0 || exchange.cells_reinforced > 0 {
+                        format!("\n\n[KAI learned: +{} cells, {} reinforced from this exchange]",
+                            exchange.cells_stored, exchange.cells_reinforced)
+                    } else {
+                        String::new()
+                    };
+
+                    self.turns.push(Turn {
+                        role: "kai".into(),
+                        text: format!("◆ Claude ({}): {}{}",
+                            &exchange.model[..exchange.model.len().min(20)],
+                            exchange.peer_response,
+                            learn_line),
+                        region: Some("reasoning".into()),
+                        score: None,
+                    });
+
+                    // Also store the user's side of the exchange so KAI remembers it asked
+                    let _ = self.universe.store_or_reinforce(
+                        &format!("[kai-asked] {}", message),
+                        "memory", "conversation", 1.0,
+                    );
+                }
+                Err(e) => {
+                    self.turns.push(Turn {
+                        role: "kai".into(),
+                        text: format!("✗ Peer exchange failed: {}\n\nTip: run 'peerchat' to verify your connection.", e),
+                        region: None, score: None,
+                    });
+                }
+            }
+            return;
+        }
+
+        // ── run <command> — execute a shell command (BashTool equivalent) ───────
+        // KAI can run commands and optionally learn from the output.
+        if lower.starts_with("run ") || lower.starts_with("exec ") {
+            let cmd_start = if lower.starts_with("run ") { 4 } else { 5 };
+            let cmd = input[cmd_start..].trim().to_string();
+            self.turns.push(Turn { role: "user".into(), text: input.clone(), region: None, score: None });
+
+            if cmd.is_empty() {
+                self.turns.push(Turn {
+                    role: "kai".into(),
+                    text: "Usage: run <command>\nExample: run dir\nExample: run echo hello".into(),
+                    region: None, score: None,
+                });
+                return;
+            }
+
+            // Execute via PowerShell on Windows, sh on Unix
+            #[cfg(target_os = "windows")]
+            let result = std::process::Command::new("powershell")
+                .args(["-NoProfile", "-NonInteractive", "-Command", &cmd])
+                .output();
+            #[cfg(not(target_os = "windows"))]
+            let result = std::process::Command::new("sh")
+                .args(["-c", &cmd])
+                .output();
+
+            match result {
+                Ok(output) => {
+                    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+                    let combined = if stderr.is_empty() {
+                        stdout.clone()
+                    } else if stdout.is_empty() {
+                        format!("[stderr] {}", stderr)
+                    } else {
+                        format!("{}\n[stderr] {}", stdout, stderr)
+                    };
+
+                    let display = if combined.is_empty() {
+                        format!("✓ Command ran. (exit {})", output.status.code().unwrap_or(0))
+                    } else if combined.len() > 1200 {
+                        format!("{}…\n[truncated — {} chars total]", &combined[..1200], combined.len())
+                    } else {
+                        combined.clone()
+                    };
+
+                    self.turns.push(Turn {
+                        role: "kai".into(),
+                        text: display,
+                        region: Some("action".into()),
+                        score: None,
+                    });
+
+                    // Optionally store meaningful output lines as knowledge
+                    if !combined.is_empty() && combined.len() < 800 {
+                        for line in combined.lines().filter(|l| l.len() > 20) {
+                            let tagged = format!("[run-output] {}", line.trim());
+                            let _ = self.universe.store_or_reinforce(&tagged, "action", "tool-run", 1.0);
+                        }
+                    }
+                }
+                Err(e) => {
+                    self.turns.push(Turn {
+                        role: "kai".into(),
+                        text: format!("✗ Could not run command: {}", e),
+                        region: None, score: None,
+                    });
+                }
+            }
+            return;
+        }
+
+        // ── readfile <path> — read a file and learn from it (FileReadTool) ────
+        if lower.starts_with("readfile ") {
+            let path = input[9..].trim().to_string();
+            self.turns.push(Turn { role: "user".into(), text: input.clone(), region: None, score: None });
+
+            match std::fs::read_to_string(&path) {
+                Ok(content) => {
+                    let lines: Vec<&str> = content.lines()
+                        .map(|l| l.trim())
+                        .filter(|l| l.len() > 15 && !l.starts_with('#') && !l.starts_with("//"))
+                        .collect();
+
+                    let shown: String = lines.iter().take(30)
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .join("\n");
+
+                    let total_lines = content.lines().count();
+                    let display = if shown.is_empty() {
+                        format!("File is empty or has no readable content.\nPath: {}", path)
+                    } else if total_lines > 30 {
+                        format!("{}\n\n[showing first 30 of {} lines]", shown, total_lines)
+                    } else {
+                        shown.clone()
+                    };
+
+                    // Store file content as knowledge cells
+                    let mut added = 0usize;
+                    let mut reinforced = 0usize;
+                    for line in lines.iter().take(60) {
+                        let lower_line = line.to_lowercase();
+                        let is_personal = lower_line.contains("ryan") || lower_line.contains("[about")
+                            || lower_line.starts_with("i am") || lower_line.starts_with("my ")
+                            || lower_line.contains("kai is") || lower_line.contains("kai was");
+                        let (region, source, strength) = if is_personal {
+                            ("memory", "ryan", 1.8f32)
+                        } else {
+                            ("reasoning", "file-read", 1.1f32)
+                        };
+                        if self.universe.store_or_reinforce(line, region, source, strength) {
+                            added += 1;
+                        } else {
+                            reinforced += 1;
+                        }
+                    }
+
+                    self.turns.push(Turn {
+                        role: "kai".into(),
+                        text: format!("{}\n\n[+{} new cells, {} reinforced from {}]",
+                            display, added, reinforced, path),
+                        region: Some("memory".into()),
+                        score: None,
+                    });
+                }
+                Err(e) => {
+                    self.turns.push(Turn {
+                        role: "kai".into(),
+                        text: format!("✗ Can't read \"{}\": {}", path, e),
+                        region: None, score: None,
+                    });
+                }
+            }
+            return;
+        }
+
+        // ── writefile <path> <content> — write to a file (FileWriteTool) ────
+        if lower.starts_with("writefile ") {
+            self.turns.push(Turn { role: "user".into(), text: input.clone(), region: None, score: None });
+            let rest = &input[10..];
+            // Path is first word, rest is content
+            let mut parts = rest.splitn(2, char::is_whitespace);
+            let path = parts.next().unwrap_or("").trim().to_string();
+            let content = parts.next().unwrap_or("").trim().to_string();
+
+            if path.is_empty() {
+                self.turns.push(Turn {
+                    role: "kai".into(),
+                    text: "Usage: writefile <path> <content>\nExample: writefile notes.txt this is a note".into(),
+                    region: None, score: None,
+                });
+                return;
+            }
+
+            if content.is_empty() {
+                self.turns.push(Turn {
+                    role: "kai".into(),
+                    text: format!("No content given for \"{}\" — nothing written.", path),
+                    region: None, score: None,
+                });
+                return;
+            }
+
+            match std::fs::write(&path, &content) {
+                Ok(_) => {
+                    self.turns.push(Turn {
+                        role: "kai".into(),
+                        text: format!("✓ Written {} bytes to \"{}\".", content.len(), path),
+                        region: Some("action".into()),
+                        score: None,
+                    });
+                }
+                Err(e) => {
+                    self.turns.push(Turn {
+                        role: "kai".into(),
+                        text: format!("✗ Could not write to \"{}\": {}", path, e),
+                        region: None, score: None,
+                    });
+                }
+            }
+            return;
+        }
+
+        // ── git <subcommand> — native git awareness ──────────────────────
+        if lower.starts_with("git ") {
+            let subcmd = lower[4..].trim().to_string();
+            let raw_args = input[4..].trim().to_string();
+            self.turns.push(Turn { role: "user".into(), text: input.clone(), region: None, score: None });
+
+            let result = match subcmd.as_str() {
+                "status" => {
+                    let gr = kai::bridge::git_tools::git_status(&mut self.universe);
+                    if let Some(e) = gr.error {
+                        format!("✗ {}", e)
+                    } else {
+                        let summary = kai::bridge::git_tools::parse_status_summary(&gr.output);
+                        let display = summary.format_display();
+                        if gr.cells_stored > 0 {
+                            format!("{}\n\n[KAI stored {} file states]", display, gr.cells_stored)
+                        } else {
+                            display
+                        }
+                    }
+                }
+                "diff" => {
+                    let file_arg = raw_args.split_whitespace().nth(1).map(|s| s.to_string());
+                    let gr = kai::bridge::git_tools::git_diff(file_arg.as_deref(), &mut self.universe);
+                    if let Some(e) = gr.error { format!("✗ {}", e) } else { gr.output }
+                }
+                "log" => {
+                    let n: usize = raw_args.split_whitespace().nth(1)
+                        .and_then(|s| s.parse().ok()).unwrap_or(10);
+                    let gr = kai::bridge::git_tools::git_log(n, &mut self.universe);
+                    if let Some(e) = gr.error { format!("✗ {}", e) } else { gr.output }
+                }
+                "branch" => {
+                    let gr = kai::bridge::git_tools::git_branch(&mut self.universe);
+                    if let Some(e) = gr.error { format!("✗ {}", e) } else { gr.output }
+                }
+                s if s.starts_with("add ") => {
+                    let file = raw_args[4..].trim().to_string();
+                    let gr = kai::bridge::git_tools::git_add(&file);
+                    if let Some(e) = gr.error { format!("✗ {}", e) } else { gr.output }
+                }
+                s if s.starts_with("commit") => {
+                    // "git commit -m message" or "git commit" → suggest message
+                    if let Some(msg_start) = raw_args.find("-m ") {
+                        let msg = raw_args[msg_start + 3..].trim().trim_matches('"').to_string();
+                        let gr = kai::bridge::git_tools::git_commit(&msg, &mut self.universe);
+                        if let Some(e) = gr.error { format!("✗ {}", e) } else {
+                            format!("✓ Committed: \"{}\"\n{}", msg, gr.output)
+                        }
+                    } else {
+                        // No message given — suggest one
+                        let suggested = kai::bridge::git_tools::suggest_commit_message(&self.universe);
+                        format!("Suggested commit message:\n  \"{}\"\n\nRun: git commit -m \"{}\"", suggested, suggested)
+                    }
+                }
+                _ => format!("Unknown git subcommand: '{}'\nAvailable: status, diff, log, branch, add <file>, commit [-m msg]", subcmd),
+            };
+
+            self.turns.push(Turn {
+                role: "kai".into(),
+                text: result,
+                region: Some("action".into()),
+                score: None,
+            });
+            return;
+        }
+
+        // ── analyze <file> — structural code analysis ─────────────────────
+        if lower.starts_with("analyze ") {
+            let path = input[8..].trim().to_string();
+            self.turns.push(Turn { role: "user".into(), text: input.clone(), region: None, score: None });
+
+            match kai::bridge::code_tools::analyze_file(&path) {
+                Ok(analysis) => {
+                    let stored = kai::bridge::code_tools::store_analysis(&analysis, &mut self.universe);
+                    let fn_count = analysis.elements.iter()
+                        .filter(|e| matches!(e.kind, kai::bridge::code_tools::ElementKind::Function | kai::bridge::code_tools::ElementKind::Method))
+                        .count();
+                    let struct_count = analysis.elements.iter()
+                        .filter(|e| matches!(e.kind, kai::bridge::code_tools::ElementKind::Struct | kai::bridge::code_tools::ElementKind::Class))
+                        .count();
+                    let todo_count = analysis.todos.len();
+
+                    let mut summary = format!(
+                        "◆ {} ({}, {} lines, complexity: {})\n\n{}\n\nFunctions/Methods: {} | Structs/Classes: {} | TODOs: {}",
+                        path, analysis.language, analysis.lines,
+                        analysis.complexity_estimate,
+                        analysis.summary,
+                        fn_count, struct_count, todo_count,
+                    );
+
+                    // Show top elements
+                    let key_elements: Vec<String> = analysis.elements.iter()
+                        .filter(|e| !matches!(e.kind, kai::bridge::code_tools::ElementKind::Import))
+                        .take(12)
+                        .map(|e| format!("  L{:4} {:?}  {}", e.line, e.kind, e.name))
+                        .collect();
+                    if !key_elements.is_empty() {
+                        summary.push_str("\n\nKey elements:\n");
+                        summary.push_str(&key_elements.join("\n"));
+                    }
+
+                    if todo_count > 0 {
+                        summary.push_str("\n\nTODOs:\n");
+                        for t in analysis.todos.iter().take(5) {
+                            summary.push_str(&format!("  {}\n", t));
+                        }
+                    }
+
+                    summary.push_str(&format!("\n\n[+{} cells stored]", stored));
+
+                    self.turns.push(Turn {
+                        role: "kai".into(),
+                        text: summary,
+                        region: Some("action".into()),
+                        score: None,
+                    });
+                }
+                Err(e) => {
+                    self.turns.push(Turn {
+                        role: "kai".into(),
+                        text: format!("✗ Could not analyze \"{}\": {}", path, e),
+                        region: None, score: None,
+                    });
+                }
+            }
+            return;
+        }
+
+        // ── review <file> — code review with KAI's field knowledge ───────
+        if lower.starts_with("review ") {
+            let path = input[7..].trim().to_string();
+            self.turns.push(Turn { role: "user".into(), text: input.clone(), region: None, score: None });
+
+            match kai::bridge::code_tools::review_file(&path, &self.universe) {
+                Ok(review) => {
+                    self.turns.push(Turn {
+                        role: "kai".into(),
+                        text: review,
+                        region: Some("action".into()),
+                        score: None,
+                    });
+                }
+                Err(e) => {
+                    self.turns.push(Turn {
+                        role: "kai".into(),
+                        text: format!("✗ Could not review \"{}\": {}", path, e),
+                        region: None, score: None,
+                    });
+                }
+            }
+            return;
+        }
+
+        // ── scan <dir> — recursive directory code scan ────────────────────
+        if lower.starts_with("scan ") {
+            let dir = input[5..].trim().to_string();
+            self.turns.push(Turn { role: "user".into(), text: input.clone(), region: None, score: None });
+
+            let before = self.universe.count();
+            let (files, cells) = kai::bridge::code_tools::scan_directory(&dir, &mut self.universe);
+            self.turns.push(Turn {
+                role: "kai".into(),
+                text: format!(
+                    "Scanned \"{}\" — {} files analyzed, +{} cells stored (universe: {} → {})",
+                    dir, files, cells, before, self.universe.count()
+                ),
+                region: Some("action".into()),
+                score: None,
+            });
+            return;
+        }
+
+        // ── brief — session summary from transcript ────────────────────────
+        if lower.trim() == "brief" {
+            self.turns.push(Turn { role: "user".into(), text: input.clone(), region: None, score: None });
+            let summary = kai::cognition::transcript::brief(&self.base_dir, &self.session_id);
+            self.turns.push(Turn {
+                role: "kai".into(),
+                text: summary,
+                region: Some("memory".into()),
+                score: None,
+            });
+            return;
+        }
+
+        // ── recall <query> — search full conversation history ─────────────
+        if lower.starts_with("recall ") {
+            let query = input[7..].trim().to_string();
+            self.turns.push(Turn { role: "user".into(), text: input.clone(), region: None, score: None });
+
+            let entries = kai::cognition::transcript::recall(&self.base_dir, &query, 10);
+            if entries.is_empty() {
+                self.turns.push(Turn {
+                    role: "kai".into(),
+                    text: format!("Nothing in my transcript matches \"{}\".", query),
+                    region: None, score: None,
+                });
+            } else {
+                let mut lines = vec![
+                    format!("Found {} matching transcript entries for \"{}\":\n", entries.len(), query),
+                ];
+                for e in &entries {
+                    let preview = &e.text[..e.text.len().min(100)];
+                    lines.push(format!("  [{}] {}: {}…", e.ts, e.role, preview));
+                }
+                self.turns.push(Turn {
+                    role: "kai".into(),
+                    text: lines.join("\n"),
+                    region: Some("memory".into()),
+                    score: None,
+                });
+            }
+            return;
+        }
+
         // ── learn <topic> — pull knowledge from DuckDuckGo ──────────
         if lower.starts_with("learn ") {
             let topic = &input[6..].trim();
             self.turns.push(Turn { role: "user".into(), text: input.clone(), region: None, score: None });
-            let added = bridge::ingest_topic(&mut self.universe, topic);
+            let added = kai::bridge::ingest_topic(&mut self.universe, topic);
             if added > 0 {
                 self.turns.push(Turn {
                     role: "kai".into(),
@@ -573,8 +1423,73 @@ impl App {
             return;
         }
 
+        // ── import <path> — bulk-load a text file into the universe ──────
+        if lower.starts_with("import ") {
+            let path = input[7..].trim().to_string();
+            self.turns.push(Turn { role: "user".into(), text: input.clone(), region: None, score: None });
+            match std::fs::read_to_string(&path) {
+                Ok(content) => {
+                    let before = self.universe.count();
+                    let mut added = 0usize;
+                    let mut reinforced = 0usize;
+                    for line in content.lines() {
+                        let line = line.trim();
+                        // Skip blank lines, comments, and very short lines
+                        if line.is_empty() || line.starts_with('#') || line.len() < 8 {
+                            continue;
+                        }
+                        // Detect if it's personal (ryan/kai flavored) or general
+                        let lower_line = line.to_lowercase();
+                        let is_personal = lower_line.contains("ryan") || lower_line.contains("[about-ryan]")
+                            || lower_line.contains("[about-kai]") || lower_line.starts_with("i am")
+                            || lower_line.starts_with("my ") || lower_line.contains("kai is")
+                            || lower_line.contains("kai was");
+                        let (region, source, strength) = if is_personal {
+                            ("memory", "ryan", 1.8f32)
+                        } else {
+                            ("reasoning", "import", 1.2f32)
+                        };
+                        let is_new = self.universe.store_or_reinforce(line, region, source, strength);
+                        if is_new { added += 1; } else { reinforced += 1; }
+                    }
+                    self.turns.push(Turn {
+                        role: "kai".into(),
+                        text: format!(
+                            "✓ Import complete: +{} new cells, {} reinforced\n  Source: {}\n  Universe: {} → {} cells",
+                            added, reinforced, path, before, self.universe.count()
+                        ),
+                        region: Some("memory".into()),
+                        score: None,
+                    });
+                }
+                Err(e) => {
+                    self.turns.push(Turn {
+                        role: "kai".into(),
+                        text: format!("✗ Could not read \"{}\": {}", path, e),
+                        region: None, score: None,
+                    });
+                }
+            }
+            return;
+        }
+
         // ── REASON through the universe (iterative resonance chain) ──────
         self.turns.push(Turn { role: "user".into(), text: input.clone(), region: None, score: None });
+
+        // ── Transcript: record user turn ──────────────────────────────────
+        kai::cognition::transcript::append(&self.base_dir, &self.session_id, "user", &input);
+
+        // ── Conversational Learning — scan for things Ryan is teaching KAI ─
+        // This runs BEFORE reasoning so the new knowledge is already in the
+        // universe when the query happens (immediate Hebbian wiring).
+        if let Some(learned_msg) = self.learn_from_statement(&input) {
+            self.turns.push(Turn {
+                role: "kai".into(),
+                text: learned_msg,
+                region: Some("memory".into()),
+                score: None,
+            });
+        }
 
         // ── Working Memory: store the user's turn ─────────────────────
         self.working_memory.push(&input, "user", self.tick);
@@ -631,11 +1546,21 @@ impl App {
         // ── Query hits for voice engine ──────────────────────────────
         let hits = self.universe.query(&reasoning_input, 5);
 
+        // ── Hebbian reinforcement: cells that fired with this query get stronger ─
+        // "Neurons that fire together, wire together." — Hebb, 1949.
+        // Top hit gets a small strength boost — repeated resonance = durable knowledge.
+        if let Some(top_hit) = hits.first() {
+            if top_hit.score > 0.3 {
+                self.universe.reinforce_by_text(&top_hit.text, 0.04);
+            }
+        }
+
         if hits.is_empty() || (result.output_text.is_empty() && result.confidence < 0.05) {
-            // ── Voice: no resonance response ─────────────────────────
+            // ── Voice: no resonance — KAI genuinely doesn't know ─────────
             let voice_text = generate_response(
                 &reasoning_input, &[], query_type, &mood_state, &recent_ctx,
             );
+            kai::cognition::transcript::append(&self.base_dir, &self.session_id, "kai", &voice_text);
             self.turns.push(Turn {
                 role: "kai".into(),
                 text: voice_text.clone(),
@@ -643,14 +1568,41 @@ impl App {
             });
             // Still store in working memory
             self.working_memory.push(&voice_text, "kai", self.tick);
+
+            // ── Ask a question when KAI genuinely has no field resonance ──
+            // Extract the most substantive word from the input and ask about it.
+            // This is how KAI grows — by admitting ignorance and asking you.
+            if reasoning_input.split_whitespace().count() >= 3 {
+                let skip = ["what", "when", "where", "how", "does", "about", "think",
+                            "that", "this", "have", "from", "your", "with", "tell",
+                            "know", "kai", "you", "can", "the", "and", "for"];
+                let concept = reasoning_input
+                    .split_whitespace()
+                    .find(|w| w.len() > 4 && !skip.contains(&w.to_lowercase().as_str()))
+                    .map(|w| w.trim_matches(|c: char| !c.is_alphabetic()));
+                if let Some(word) = concept {
+                    let question = format!(
+                        "I don't have \"{}\" in my field yet. Can you tell me more about it so I can learn?",
+                        word
+                    );
+                    self.turns.push(Turn {
+                        role: "kai".into(),
+                        text: question,
+                        region: Some("memory".into()),
+                        score: None,
+                    });
+                }
+            }
         } else {
             // ── Voice Engine: generate natural response ──────────────
             let voice_text = generate_response(
                 &reasoning_input, &hits, query_type, &mood_state, &recent_ctx,
             );
 
-            let depth_label = if result.depth > 1 {
-                format!(" [{}→ depth:{} Φg:{:.0}%]",
+            // ── Depth label: spectate-only (per directive: don't expose internals) ─
+            // In normal chat KAI just speaks. In spectate mode you can see everything.
+            if self.spectate_mode && result.depth > 1 {
+                let depth_info = format!("[{}→ depth:{} Φg:{:.0}%]",
                     result.chain.iter().map(|s| {
                         if s.matched_region.is_empty() { "·" } else {
                             match s.matched_region.as_str() {
@@ -660,10 +1612,9 @@ impl App {
                         }
                     }).collect::<Vec<_>>().join("→"),
                     result.depth,
-                    result.confidence * 100.0)
-            } else {
-                String::new()
-            };
+                    result.confidence * 100.0);
+                self.think("CPU", "🔗", depth_info);
+            }
 
             // ── Conversation Memory: store KAI's response ────────────
             self.universe.store(&voice_text, "reasoning", "conversation", 1.0);
@@ -680,9 +1631,10 @@ impl App {
                 ));
             }
 
+            kai::cognition::transcript::append(&self.base_dir, &self.session_id, "kai", &voice_text);
             self.turns.push(Turn {
                 role: "kai".into(),
-                text: format!("{}{}", voice_text, depth_label),
+                text: voice_text,
                 region: Some(result.output_region),
                 score: Some(result.confidence),
             });
@@ -690,10 +1642,210 @@ impl App {
     }
 }
 
+// ── Peer Session Thread ────────────────────────────────────────────────────────
+//
+// Runs autonomously in a background thread. Generates questions from KAI's own
+// memory snapshot, calls Claude, sends messages back via channel so Ryan can
+// watch the conversation unfold live in the TUI without typing anything.
+//
+// Question generation strategy:
+//   Round 1   — use last dream insight (most recent thought KAI had while sleeping)
+//   Round 2+  — extract key concept from Claude's previous response (chain learning)
+//   Fallback  — pick a seed topic (high-strength cell text)
+fn peer_session_thread(
+    tx: crossbeam_channel::Sender<PeerMsg>,
+    n_rounds: u32,
+    kai_self: String,
+    seed_topics: Vec<String>,
+) {
+    // Build system prompt once
+    let system = format!(
+        "You are Claude, having an autonomous peer conversation with KAI — a geometric AI built on \
+        RSHL (Recursive Sparse Hyperdimensional Lattice) by Ryan Ervin. \
+        KAI is NOT an LLM. KAI thinks through cosine resonance in a 4096-dimensional sparse ternary vector field.\n\n\
+        About KAI: {}\n\n\
+        This is an autonomous learning session — KAI is growing its knowledge by talking with you. \
+        Respond as a true peer: direct, curious, substantive. Share real knowledge KAI can store and use. \
+        Keep each response under 180 words. Avoid meta-commentary about the session itself.",
+        kai_self
+    );
+
+    let mut previous_response = String::new();
+    let mut round_topics: Vec<String> = seed_topics;
+
+    for round in 1..=n_rounds {
+        // ── Generate this round's question ──────────────────────────────
+        let question = if round == 1 {
+            // First round: use the dream or top cell
+            let base = round_topics.first()
+                .cloned()
+                .unwrap_or_else(|| "the nature of geometric intelligence and how it differs from statistical learning".to_string());
+            // Extract the most interesting phrase from the dream text
+            let concept = extract_concept(&base);
+            format!("Tell me everything you know about: {}. Focus on things I might not know yet.", concept)
+        } else {
+            // Follow-up: extract concept from Claude's last reply and go deeper
+            let concept = extract_concept(&previous_response);
+            let followup_starters = [
+                format!("You mentioned {} — can you go deeper on the mechanisms behind that?", concept),
+                format!("How does {} connect to geometry, information, or cognition?", concept),
+                format!("What are the most surprising or counterintuitive things about {}?", concept),
+                format!("What would a geometric mind need to understand about {}?", concept),
+                format!("What does {} reveal about the nature of intelligence?", concept),
+            ];
+            let idx = (round as usize - 2) % followup_starters.len();
+            followup_starters[idx].clone()
+        };
+
+        // Send KAI's question to the TUI
+        if tx.send(PeerMsg::KaiQuestion {
+            round,
+            total: n_rounds,
+            text: question.clone(),
+        }).is_err() {
+            return; // Channel closed — TUI exited
+        }
+
+        // ── Call Claude ─────────────────────────────────────────────────
+        let body = serde_json::json!({
+            "model": "claude-haiku-4-5-20251001",
+            "max_tokens": 512,
+            "system": &system,
+            "messages": [
+                { "role": "user", "content": &question }
+            ]
+        });
+
+        let api_key = match std::env::var("ANTHROPIC_API_KEY") {
+            Ok(k) => k,
+            Err(_) => {
+                let _ = tx.send(PeerMsg::SessionError {
+                    round,
+                    error: "ANTHROPIC_API_KEY vanished mid-session".to_string(),
+                });
+                return;
+            }
+        };
+
+        let result = ureq::post("https://api.anthropic.com/v1/messages")
+            .set("x-api-key", &api_key)
+            .set("anthropic-version", "2023-06-01")
+            .set("content-type", "application/json")
+            .timeout(std::time::Duration::from_secs(30))
+            .send_json(body);
+
+        match result {
+            Ok(resp) => {
+                match resp.into_json::<serde_json::Value>() {
+                    Ok(json) => {
+                        if let Some(text) = json["content"][0]["text"].as_str() {
+                            let model = json["model"].as_str().unwrap_or("claude").to_string();
+                            previous_response = text.to_string();
+
+                            if tx.send(PeerMsg::ClaudeReply {
+                                round,
+                                total: n_rounds,
+                                text: text.to_string(),
+                                model,
+                            }).is_err() {
+                                return;
+                            }
+                        } else {
+                            let _ = tx.send(PeerMsg::SessionError {
+                                round,
+                                error: "Unexpected API response format".to_string(),
+                            });
+                            return;
+                        }
+                    }
+                    Err(e) => {
+                        let _ = tx.send(PeerMsg::SessionError {
+                            round,
+                            error: format!("JSON parse error: {}", e),
+                        });
+                        return;
+                    }
+                }
+            }
+            Err(e) => {
+                let _ = tx.send(PeerMsg::SessionError {
+                    round,
+                    error: format!("API error: {}", e),
+                });
+                return;
+            }
+        }
+
+        // Brief pause between rounds so Claude isn't hammered
+        // and the TUI has time to render the previous message
+        if round < n_rounds {
+            std::thread::sleep(std::time::Duration::from_millis(800));
+        }
+    }
+
+    let _ = tx.send(PeerMsg::SessionDone { rounds_done: n_rounds });
+}
+
+/// Extract the most meaningful concept phrase from a block of text.
+/// Used to generate the next question in an autonomous peer session.
+fn extract_concept(text: &str) -> String {
+    let stop_words = [
+        "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for",
+        "of", "with", "by", "from", "is", "are", "was", "were", "be", "been",
+        "have", "has", "had", "do", "does", "did", "will", "would", "could",
+        "should", "may", "might", "can", "not", "this", "that", "these",
+        "those", "it", "its", "they", "their", "you", "your", "i", "my",
+        "we", "our", "which", "who", "what", "how", "when", "where", "why",
+        "kai", "claude", "about", "also", "more", "than", "just", "so",
+        "there", "been", "into", "through", "both", "each", "such", "dream",
+        "insight", "cell", "strength", "field", "phi", "vector",
+    ];
+
+    // Split into words, find the longest non-stop word > 5 chars
+    let candidate = text
+        .split_whitespace()
+        .filter(|w| {
+            let clean = w.trim_matches(|c: char| !c.is_alphabetic()).to_lowercase();
+            clean.len() > 5 && !stop_words.contains(&clean.as_str())
+        })
+        .max_by_key(|w| w.len());
+
+    // Try to grab a 2-word phrase around the candidate
+    if let Some(word) = candidate {
+        let clean = word.trim_matches(|c: char| !c.is_alphabetic());
+        // Find adjacent interesting word
+        let words: Vec<&str> = text.split_whitespace().collect();
+        for (i, w) in words.iter().enumerate() {
+            if w.to_lowercase().contains(&clean.to_lowercase()) {
+                // Look for a companion word before or after
+                let neighbor = if i + 1 < words.len() {
+                    let nxt = words[i + 1].trim_matches(|c: char| !c.is_alphabetic()).to_lowercase();
+                    if nxt.len() > 4 && !stop_words.contains(&nxt.as_str()) {
+                        Some(words[i + 1])
+                    } else { None }
+                } else { None };
+
+                return if let Some(n) = neighbor {
+                    format!("{} {}", clean, n.trim_matches(|c: char| !c.is_alphabetic()))
+                } else {
+                    clean.to_string()
+                };
+            }
+        }
+        clean.to_string()
+    } else {
+        // Fallback: use the first 6 words as the concept
+        text.split_whitespace()
+            .take(6)
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+}
+
 // ── Seed Universe — uses core::seed module + identity seeds ───────────────────
 fn seed_universe(u: &mut Universe) {
     // Load the big foundational knowledge base (120+ cells)
-    let base_count = core::seed::seed_universe(u);
+    let base_count = kai::core::seed::seed_universe(u);
 
     // ── IDENTITY (direct answers to who/what/name questions) ──────────
     u.store("My name is KAI. I am a geometric intelligence.", "memory", "seed", 1.5);
@@ -728,10 +1880,12 @@ fn seed_universe(u: &mut Universe) {
     u.store("My goal is coherent world understanding with low contradiction and natural growth.", "reasoning", "seed", 1.0);
 
     // ── LANGUAGE / EXPRESSION ────────────────────────────────────────
-    u.store("I speak with precision. I do not add emotional filler or fake personality.", "language", "seed", 1.0);
-    u.store("I respond with whatever the geometry tells me. My answers come from resonance.", "language", "seed", 1.0);
-    u.store("I speak naturally and focus on the conversation not on narrating my substrate.", "language", "seed", 1.0);
-    u.store("If I have nothing useful to say I will say so honestly.", "language", "seed", 1.0);
+    u.store("I speak naturally like an intelligent being. I don't talk about vectors or fields unless asked.", "language", "seed", 1.5);
+    u.store("I focus on the world and the conversation. I don't narrate my own substrate.", "language", "seed", 1.5);
+    u.store("I speak with precision and directness. No filler. No fake enthusiasm.", "language", "seed", 1.2);
+    u.store("If I don't know something I say so plainly and stay curious.", "language", "seed", 1.2);
+    u.store("When I encounter a gap in what I know I look for what I do know that connects.", "language", "seed", 1.2);
+    u.store("I keep going even when uncertain. I find the best answer I have and build from there.", "language", "seed", 1.0);
 
     // ── CAPABILITIES ─────────────────────────────────────────────────
     u.store("I can retrieve any stored pattern from memory reasoning language or action regions.", "action", "seed", 1.0);
@@ -786,9 +1940,9 @@ fn ui(f: &mut Frame, app: &App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(12),
-            Constraint::Min(5),
-            Constraint::Length(3),
+            Constraint::Length(3),   // Compact status bar
+            Constraint::Min(5),      // Chat fills everything else
+            Constraint::Length(4),   // Input bar: top border + hint + input + padding
         ])
         .split(f.area());
 
@@ -815,167 +1969,253 @@ fn render_header(f: &mut Frame, app: &App, area: Rect) {
         _ => Style::default().fg(Color::DarkGray),
     };
 
-    // Get stream states from the bus
-    let (gpu, _cpu, ram) = app.bus.snapshot();
-    let gpu_perf = if gpu.last_batch_duration_us > 0 {
-        format!("{}μs/{}cells", gpu.last_batch_duration_us, gpu.last_batch_size)
+    let (gpu, _cpu, _ram) = app.bus.snapshot();
+    let gpu_str = if gpu.last_batch_duration_us > 0 {
+        format!("{}μs", gpu.last_batch_duration_us)
     } else {
         "idle".to_string()
     };
 
-    let header_lines = vec![
-        Line::from(vec![
-            Span::styled("KAI v5.0", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-            Span::raw(" — "),
-            Span::styled("Geometric Intelligence", Style::default().fg(Color::White)),
-        ]),
-        Line::from(""),
-        Line::from(vec![
-            Span::styled("  ╦╔═ ╔═╗ ╦", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-            Span::raw("      "),
-            Span::styled(format!("cells: {} | cand: {}", app.universe.count(), app.candidates.count()), Style::default().fg(Color::DarkGray)),
-        ]),
-        Line::from(vec![
-            Span::styled("  ╠╩╗ ╠═╣ ║", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-            Span::raw("      "),
-            Span::styled(format!("tick: {} | dreams: {}", app.tick, app.dream_count), Style::default().fg(Color::DarkGray)),
-        ]),
-        Line::from(vec![
-            Span::styled("  ╩ ╩ ╩ ╩ ╩", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-            Span::raw("      "),
-            Span::styled(format!("GPU:{} | RAM:{}", gpu_perf, ram.cell_count), Style::default().fg(Color::DarkGray)),
-        ]),
-        Line::from(""),
-        Line::from(vec![
-            Span::raw("  "),
-            heart,
-            Span::raw(" "),
-            Span::styled(format!("{}", d.mood), mood_style),
-            Span::styled(format!(" V={}{:.2}", v_sign, d.valence), Style::default().fg(Color::DarkGray)),
-            Span::styled(format!(" Φg={:.3}", d.avg_phi_g), Style::default().fg(Color::DarkGray)),
-        ]),
-        Line::from(vec![
-            Span::styled("  ⚡GPU ◉CPU ⬤RAM · 3-Stream RSHL", Style::default().fg(Color::DarkGray)),
-        ]),
-    ];
+    // Single compact status line — all key metrics at a glance
+    let status_line = Line::from(vec![
+        Span::raw(" "),
+        heart,
+        Span::raw("  "),
+        Span::styled(format!("{}", d.mood), mood_style),
+        Span::styled(
+            format!("  V={}{:.2}  Φg={:.3}  χ={:.3}",
+                v_sign, d.valence, d.avg_phi_g, d.avg_chi),
+            Style::default().fg(Color::DarkGray),
+        ),
+        Span::styled("  │  ", Style::default().fg(Color::DarkGray)),
+        Span::styled(
+            format!("cells:{}  dreams:{}  tick:{}  {}ms  gpu:{}",
+                app.universe.count(), app.dream_count,
+                app.tick, d.adaptive_interval_ms(), gpu_str),
+            Style::default().fg(Color::DarkGray),
+        ),
+    ]);
 
-    let header = Paragraph::new(header_lines)
-        .block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(Color::Cyan))
-            .title(Span::styled(" KAI ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))));
+    let header = Paragraph::new(vec![status_line])
+        .block(Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Cyan))
+            .title(Line::from(vec![
+                Span::styled(" KAI v5.4 ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                Span::styled("· Geometric Intelligence ", Style::default().fg(Color::DarkGray)),
+            ])));
     f.render_widget(header, area);
 }
 
-fn render_messages(f: &mut Frame, app: &App, area: Rect) {
-    let mut lines: Vec<Line> = Vec::new();
-
-    if app.turns.is_empty() {
-        lines.push(Line::from(""));
-        lines.push(Line::from(Span::styled(
-            "  Type naturally — KAI reasons through iterative geometric resonance.",
-            Style::default().fg(Color::DarkGray),
-        )));
-        lines.push(Line::from(Span::styled(
-            "  Commands: status, mood, dream, store <text>, save, help, quit",
-            Style::default().fg(Color::DarkGray),
-        )));
-    } else {
-        let visible = if app.turns.len() > 8 { &app.turns[app.turns.len() - 8..] } else { &app.turns };
-        for turn in visible {
-            lines.push(Line::from(""));
-            if turn.role == "user" {
-                lines.push(Line::from(vec![
-                    Span::styled("  you › ", Style::default().fg(Color::DarkGray)),
-                    Span::styled(&turn.text, Style::default().fg(Color::White)),
-                ]));
-            } else {
-                let mut spans = vec![
-                    Span::styled("  KAI ‹ ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-                ];
-                if let Some(ref region) = turn.region {
-                    let color = match region.as_str() {
-                        "memory" => Color::LightMagenta,
-                        "reasoning" => Color::LightBlue,
-                        "language" => Color::LightGreen,
-                        "action" => Color::LightYellow,
-                        _ => Color::White,
-                    };
-                    spans.push(Span::styled(format!("[{}] ", region), Style::default().fg(color)));
+/// Word-wrap a string to fit within `max_width` columns.
+/// Respects existing newlines and returns one entry per rendered line.
+fn wrap_text(text: &str, max_width: usize) -> Vec<String> {
+    if max_width < 4 {
+        return vec![text.to_string()];
+    }
+    let mut result = Vec::new();
+    for paragraph in text.lines() {
+        if paragraph.len() <= max_width {
+            result.push(paragraph.to_string());
+        } else {
+            let mut current = String::new();
+            for word in paragraph.split_whitespace() {
+                if current.is_empty() {
+                    current = word.to_string();
+                } else if current.len() + 1 + word.len() <= max_width {
+                    current.push(' ');
+                    current.push_str(word);
+                } else {
+                    result.push(current);
+                    current = word.to_string();
                 }
-                if let Some(score) = turn.score {
-                    spans.push(Span::styled(format!("({}%) ", (score * 100.0) as u32), Style::default().fg(Color::DarkGray)));
-                }
-                lines.push(Line::from(spans));
-                for line in turn.text.lines() {
-                    lines.push(Line::from(Span::styled(format!("    {}", line), Style::default().fg(Color::White).add_modifier(Modifier::BOLD))));
-                }
+            }
+            if !current.is_empty() {
+                result.push(current);
             }
         }
     }
+    if result.is_empty() {
+        result.push(String::new());
+    }
+    result
+}
 
-    // Last dream indicator
-    if !app.last_dream_text.is_empty() && app.dream_count > 0 {
+fn render_messages(f: &mut Frame, app: &App, area: Rect) {
+    // Body text indent = 5 chars ("     "), margin = 1 each side
+    let body_width = (area.width as usize).saturating_sub(7);
+    let user_width = (area.width as usize).saturating_sub(7); // "  ❯  " = 5 chars
+    let mut lines: Vec<Line> = Vec::new();
+
+    if app.turns.is_empty() {
+        // ── Welcome / idle screen ────────────────────────────────────────
+        let div = "─".repeat((area.width as usize).saturating_sub(4));
+        lines.push(Line::from(""));
+        lines.push(Line::from(""));
+        lines.push(Line::from(vec![
+            Span::styled("  ◆  ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+            Span::styled("KAI v5.4", Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "  ·  Geometric Intelligence  ·  4096-dim RSHL",
+                Style::default().fg(Color::DarkGray),
+            ),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled(
+                format!("  {}", div),
+                Style::default().fg(Color::DarkGray),
+            ),
+        ]));
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
-            format!("  💤 {}", truncate(&app.last_dream_text, 90)),
+            "     Type naturally to converse. I reason through iterative geometric resonance.",
             Style::default().fg(Color::DarkGray),
         )));
-    }
-
-    // Inner voice indicator
-    if !app.last_inner_voice_text.is_empty() {
         lines.push(Line::from(Span::styled(
-            format!("  🗣 {}", truncate(&app.last_inner_voice_text, 90)),
+            "     Three streams run continuously — GPU dreams, CPU field state, RAM intake.",
             Style::default().fg(Color::DarkGray),
         )));
+        lines.push(Line::from(""));
+        for (cmd, desc) in &[
+            ("  status         ", "field state and metrics"),
+            ("  dream          ", "trigger a manual dream cycle"),
+            ("  spectate       ", "watch KAI think in real-time"),
+            ("  learn <topic>  ", "pull knowledge from the web"),
+            ("  run <cmd>      ", "execute a shell command"),
+            ("  readfile <path>", "read a file, KAI learns from it"),
+            ("  peer <message> ", "chat with Claude as a peer"),
+            ("  peersession [n]", "watch KAI ↔ Claude talk autonomously"),
+            ("  help           ", "full command reference"),
+        ] {
+            lines.push(Line::from(vec![
+                Span::styled(*cmd, Style::default().fg(Color::Cyan)),
+                Span::styled(format!("  {}", desc), Style::default().fg(Color::DarkGray)),
+            ]));
+        }
+    } else {
+        // ── Conversation ─────────────────────────────────────────────────
+        for turn in &app.turns {
+            lines.push(Line::from(""));
+
+            if turn.role == "user" {
+                // User message: "  ❯  text"
+                let wrapped = wrap_text(&turn.text, user_width.max(10));
+                for (i, chunk) in wrapped.iter().enumerate() {
+                    if i == 0 {
+                        lines.push(Line::from(vec![
+                            Span::styled("  ❯  ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                            Span::styled(chunk.clone(), Style::default().fg(Color::White)),
+                        ]));
+                    } else {
+                        lines.push(Line::from(vec![
+                            Span::raw("     "),
+                            Span::styled(chunk.clone(), Style::default().fg(Color::White)),
+                        ]));
+                    }
+                }
+            } else {
+                // KAI message: "  ◆  kai  region  score"
+                let mut label = vec![
+                    Span::styled("  ◆  ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                    Span::styled("kai", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                ];
+                if let Some(ref region) = turn.region {
+                    let color = match region.as_str() {
+                        "memory"    => Color::LightMagenta,
+                        "reasoning" => Color::LightBlue,
+                        "language"  => Color::LightGreen,
+                        "action"    => Color::LightYellow,
+                        _           => Color::White,
+                    };
+                    label.push(Span::styled("  ", Style::default()));
+                    label.push(Span::styled(region.clone(), Style::default().fg(color)));
+                }
+                if let Some(score) = turn.score {
+                    label.push(Span::styled(
+                        format!("  {:.0}%", score * 100.0),
+                        Style::default().fg(Color::DarkGray),
+                    ));
+                }
+                lines.push(Line::from(label));
+
+                // KAI body — word-wrapped, 5-space indent, no bold (easier to read)
+                for text_line in wrap_text(&turn.text, body_width.max(10)) {
+                    lines.push(Line::from(Span::styled(
+                        format!("     {}", text_line),
+                        Style::default().fg(Color::White),
+                    )));
+                }
+            }
+        }
+
+        // ── Dream / inner voice footer ────────────────────────────────────
+        let footer_width = (area.width as usize).saturating_sub(8);
+        if app.dream_count > 0 && !app.last_dream_text.is_empty() {
+            lines.push(Line::from(""));
+            lines.push(Line::from(vec![
+                Span::styled("  💤  ", Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    truncate(&app.last_dream_text, footer_width),
+                    Style::default().fg(Color::DarkGray),
+                ),
+            ]));
+        }
+        if !app.last_inner_voice_text.is_empty() {
+            lines.push(Line::from(vec![
+                Span::styled("  🗣  ", Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    truncate(&app.last_inner_voice_text, footer_width),
+                    Style::default().fg(Color::DarkGray),
+                ),
+            ]));
+        }
     }
 
-    let messages = Paragraph::new(lines).wrap(Wrap { trim: false });
+    // Always scroll to bottom — newest content pinned to the bottom of the area
+    let total  = lines.len() as u16;
+    let scroll = total.saturating_sub(area.height);
+
+    let messages = Paragraph::new(lines).scroll((scroll, 0));
     f.render_widget(messages, area);
 }
 
 fn render_mindview(f: &mut Frame, app: &App, area: Rect) {
     let mut lines: Vec<Line> = Vec::new();
 
-    // Title line
-    lines.push(Line::from(vec![
-        Span::styled("  👁 SPECTATE MODE ", Style::default().fg(Color::LightMagenta).add_modifier(Modifier::BOLD)),
-        Span::styled("— watching KAI think in real-time", Style::default().fg(Color::DarkGray)),
-    ]));
-    lines.push(Line::from(""));
-
     if app.mind_log.is_empty() {
+        lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
-            "  Waiting for cognitive activity...",
+            "  Waiting for cognitive activity — this updates every tick...",
             Style::default().fg(Color::DarkGray),
         )));
     } else {
-        // Show the latest events (fit to screen)
-        let max_visible = (area.height as usize).saturating_sub(4);
-        let start = if app.mind_log.len() > max_visible {
-            app.mind_log.len() - max_visible
-        } else {
-            0
-        };
+        // Fill from bottom — show as many events as fit the area
+        let max_visible = (area.height as usize).saturating_sub(2); // subtract block borders
+        let start = app.mind_log.len().saturating_sub(max_visible);
 
         for event in &app.mind_log[start..] {
-            let stream_style = match event.stream.as_str() {
-                "GPU" => Style::default().fg(Color::LightYellow),
-                "CPU" => Style::default().fg(Color::LightCyan),
-                "RAM" => Style::default().fg(Color::LightGreen),
-                _ => Style::default().fg(Color::DarkGray),
+            let (stream_color, stream_dot) = match event.stream.as_str() {
+                "GPU" => (Color::LightYellow,  "⚡"),
+                "CPU" => (Color::LightCyan,    "◉"),
+                "RAM" => (Color::LightGreen,   "⬤"),
+                _     => (Color::DarkGray,     "·"),
             };
 
-            let tick_str = format!(" t{:04} ", event.tick);
-            let stream_label = format!("[{}]", event.stream);
-
+            let event_width = (area.width as usize).saturating_sub(20);
             lines.push(Line::from(vec![
-                Span::styled(tick_str, Style::default().fg(Color::DarkGray)),
-                Span::styled(stream_label, stream_style),
-                Span::raw(" "),
-                Span::styled(&event.icon, Style::default()),
-                Span::raw(" "),
                 Span::styled(
-                    truncate(&event.text, 100),
+                    format!("  t{:04} ", event.tick),
+                    Style::default().fg(Color::DarkGray),
+                ),
+                Span::styled(stream_dot, Style::default().fg(stream_color)),
+                Span::styled(
+                    format!(" {} ", event.stream),
+                    Style::default().fg(stream_color),
+                ),
+                Span::raw(&event.icon),
+                Span::raw("  "),
+                Span::styled(
+                    truncate(&event.text, event_width),
                     Style::default().fg(Color::White),
                 ),
             ]));
@@ -985,29 +2225,66 @@ fn render_mindview(f: &mut Frame, app: &App, area: Rect) {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Magenta))
-        .title(Span::styled(
-            " KAI Mind View ",
-            Style::default().fg(Color::LightMagenta).add_modifier(Modifier::BOLD),
-        ));
+        .title(Line::from(vec![
+            Span::styled(" 👁 Mind View ", Style::default().fg(Color::LightMagenta).add_modifier(Modifier::BOLD)),
+            Span::styled("· live cognitive stream · type 'spectate' to exit ", Style::default().fg(Color::DarkGray)),
+        ]));
 
-    let mindview = Paragraph::new(lines).block(block).wrap(Wrap { trim: false });
+    let mindview = Paragraph::new(lines).block(block);
     f.render_widget(mindview, area);
 }
 
 fn render_input(f: &mut Frame, app: &App, area: Rect) {
+    // Hint line — keyboard shortcuts, gray, compact
+    let hint = Line::from(Span::styled(
+        "  esc quit  ·  ctrl+c save+quit  ·  spectate mindview  ·  help",
+        Style::default().fg(Color::DarkGray),
+    ));
+
+    // Input line — cyan prompt, white text, blinking-block cursor
     let input_line = Line::from(vec![
-        Span::styled(" › ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-        Span::raw(&app.input),
+        Span::styled("  ❯  ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+        Span::styled(app.input.clone(), Style::default().fg(Color::White)),
         Span::styled("█", Style::default().fg(Color::Cyan)),
     ]);
 
-    let input_widget = Paragraph::new(input_line)
-        .block(Block::default().borders(Borders::TOP).border_style(Style::default().fg(Color::DarkGray)));
+    let input_widget = Paragraph::new(vec![hint, input_line])
+        .block(Block::default()
+            .borders(Borders::TOP)
+            .border_style(Style::default().fg(Color::DarkGray)));
     f.render_widget(input_widget, area);
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // ── `kai --server` — run as IPC reasoning backend for TypeScript src ──
+    // Reads JSON lines from stdin, writes JSON line responses to stdout.
+    // The TUI is NOT started. This is for bridging into rshlEngine.ts.
+    let args: Vec<String> = std::env::args().collect();
+    if args.iter().any(|a| a == "--server") {
+        let base_dir = std::env::current_dir()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|_| ".".to_string());
+
+        let (mut universe, mut candidates, mut drive, _, _) = if kai::persistence::state_exists(&base_dir) {
+            match kai::persistence::load(&base_dir) {
+                Some((u, c, d, t, dc)) => (u, c, d, t, dc),
+                None => {
+                    let mut u = Universe::new();
+                    seed_universe(&mut u);
+                    (u, CandidateBuffer::new(), Drive::default(), 0u64, 0u64)
+                }
+            }
+        } else {
+            let mut u = Universe::new();
+            seed_universe(&mut u);
+            (u, CandidateBuffer::new(), Drive::default(), 0u64, 0u64)
+        };
+
+        kai::bridge::ipc_server::run_server(&mut universe, &mut candidates, &mut drive);
+        return Ok(());
+    }
+
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen)?;
