@@ -29,7 +29,8 @@ KAI maintains an autonomous "heartbeat" across three specialized processing stre
 
 ## 🛠 Features (v5.4)
 
-- **AI Peer Sessions**: Autonomous P2P reasoning between KAI and Claude/other peers for decentralized knowledge growth.
+- **Autonomous Contemplation**: Real-time self-learning via on-lattice iterative resonance—KAI learns by talking to himself, no API required.
+- **Hybrid Peer Sessions**: Optional P2P reasoning between KAI and high-tier peers (Claude-3, Grok-4.20-Reasoning) for external knowledge cross-pollination.
 - **Regional Intelligence**: Four-region cognitive split (Left, Right, Bridge, Global) for nuanced state monitoring.
 - **Structural Code Analysis**: Native toolset for analyzing Git repositories and source code structure via geometric mapping.
 - **Natural Voice Generation**: Sentence construction derived directly from resonance clusters, moving beyond robotic retrieval.
@@ -54,7 +55,8 @@ cargo build --release
 | Command | Action |
 |---------|--------|
 | `spectate` | Watch KAI's 3-stream mind process dreams and intake in real-time. |
-| `peersession [n]` | Start an autonomous learning session with an AI peer (Claude). |
+| `contemplate [n]` | Start a native autonomous self-reasoning loop (no API required). |
+| `peersession [n]` | Start a learning session (defaults to Native; use 'claude' for hybrid). |
 | `analyze <path>` | Perform structural code analysis on a file or directory. |
 | `git status` | Synchronize KAI's field with the current repository state. |
 | `status` | View global coherence ($\Phi g$), mood, and universe density. |

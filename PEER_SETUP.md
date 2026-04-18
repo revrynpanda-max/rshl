@@ -14,18 +14,23 @@ stores what it learns as cells in its universe.
 
 ---
 
-## Step 2 — Set the Environment Variable
+## Step 2 — Set the Environment Variables
 
 Open a Command Prompt or PowerShell **before** launching KAI:
 
+### Claude (Anthropic)
 ```
 set ANTHROPIC_API_KEY=sk-ant-YOUR-KEY-HERE
 ```
 
-Or set it permanently in Windows:
+### Grok (xAI)
+```
+set XAI_API_KEY=xai-YOUR-KEY-HERE
+```
+
+Or set them permanently in Windows:
 - System Properties → Environment Variables → New (User)
-- Name: `ANTHROPIC_API_KEY`
-- Value: your key
+- Add entries for `ANTHROPIC_API_KEY` and `XAI_API_KEY`.
 
 ---
 
@@ -39,10 +44,11 @@ cargo run --release
 In KAI, type:
 
 ```
-peerchat
+peerchat         # Ping Claude
+peerchat grok    # Ping Grok
 ```
 
-You should see Claude's greeting. If you get an error, check your API key.
+You should see an acknowledgement. If you get an error, check your API keys.
 
 ---
 
@@ -50,28 +56,28 @@ You should see Claude's greeting. If you get an error, check your API key.
 
 **Manual mode** — you type each message:
 ```
-peer what do you know about consciousness?
-peer tell me something KAI doesn't know yet
-peer what is the relationship between geometry and thought?
+peer <message>       # Talk to Claude (default)
+claude <message>     # Talk to Claude specifically
+grok <message>       # Talk to Grok specifically
 ```
+Example: `grok what is the relationship between geometry and thought?`
 
-**Autonomous mode** — KAI talks to Claude by itself, you just watch:
+**Autonomous mode** — KAI talks to peers by himself:
 ```
-peersession
+peersession         # Native contemplation session
+peersession claude  # Talk to Claude
+peersession grok    # Talk to Grok
 ```
-or specify a round count (1–20):
-```
-peersession 8
-```
+Example: `peersession grok 8`
 
-In autonomous mode:
-- KAI picks its own topics from its dream memory and strongest cells
-- Each round KAI asks a question, Claude responds, KAI stores what it learned
-- Follow-up questions are generated from Claude's previous response (chain learning)
-- You watch the conversation build in real-time — no typing needed
-- Conversation continues in the background while KAI's heartbeat keeps running
+- **Native Mode**: KAI uses its own Iterative Resonance Reasoner and Voice Engine to discover new patterns in its lattice.
+- **Hybrid Mode**: KAI asks a question, Claude responds, KAI stores what it learned.
+- Follow-up topics are extracted from the last response (chain learning).
+- You watch the discovery build in real-time — no typing needed.
+- Each discovery is stored as `[discovered]` (Native) or `[from-claude]` (Hybrid).
+- Conversation continues in the background while KAI's heartbeat keeps running.
 
-KAI will show `[+N cells from round X/Y]` after each exchange so you can watch the universe grow.
+KAI will show `[+N cells from round X/Y]` after each exchange.
 
 After `peersession` finishes, KAI auto-saves its state.
 
