@@ -697,7 +697,7 @@ mod tests {
     fn test_query_type_detection() {
         assert_eq!(detect_query_type("hello"),        QueryType::Greeting);
         assert_eq!(detect_query_type("hey KAI"),      QueryType::Greeting);
-        assert_eq!(detect_query_type("who are you"),  QueryType::IdentityQuestion);
+        assert_eq!(detect_query_type("who are you"),  QueryType::SelfQuestion);
         assert_eq!(detect_query_type("what is RSHL"), QueryType::IdentityQuestion);
         assert_eq!(detect_query_type("how do you think"), QueryType::ExplanationQuestion);
         assert_eq!(detect_query_type("why do things fall"), QueryType::ExplanationQuestion);

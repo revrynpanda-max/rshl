@@ -118,7 +118,7 @@ impl Lexicon {
         }
 
         // Too short to meaningfully correct
-        if lower.len() < 4 {
+        if lower.len() < 3 {
             return None;
         }
 
