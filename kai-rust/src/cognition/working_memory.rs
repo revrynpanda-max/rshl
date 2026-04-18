@@ -9,7 +9,6 @@
 /// polluting the long-term universe.
 
 use crate::core::SparseVec;
-use std::time::Instant;
 
 const MAX_TURNS: usize = 12;
 const DECAY_TICKS: u64 = 80; // turns fully decay after ~80 ticks

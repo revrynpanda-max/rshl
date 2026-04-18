@@ -17,7 +17,7 @@
 /// captures the RELATIONSHIP between them. Bundling accumulates
 /// evidence. The chain naturally gravitates toward coherent thought.
 
-use crate::core::{SparseVec, Universe, FieldState};
+use crate::core::{SparseVec, Universe};
 
 /// A context slot from working memory — injected into reasoning.
 #[derive(Clone, Debug)]

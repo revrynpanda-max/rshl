@@ -6,9 +6,11 @@ pub mod normalize;
 pub mod seed;
 pub mod embeddings;
 pub mod attention;
+pub mod regions;
+pub mod spiral;
 
 pub use sparse_vec::SparseVec;
-pub use universe::{Universe, QueryHit};
+pub use universe::{Universe, QueryHit, Cell};
 pub use field_state::FieldState;
 pub use lexicon::Lexicon;
 pub use normalize::get_normalizer;

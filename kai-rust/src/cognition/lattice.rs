@@ -14,22 +14,22 @@
 use crate::core::{SparseVec, Universe, FieldState};
 use crate::core::field_state::{FieldInput, DreamHistoryEntry};
 use rand::Rng;
+use std::sync::Mutex;
 
 /// Rolling dream history for temporal recurrence.
-static mut DREAM_HISTORY: Vec<DreamHistoryEntry> = Vec::new();
+static DREAM_HISTORY: Mutex<Vec<DreamHistoryEntry>> = Mutex::new(Vec::new());
 const MAX_DREAM_HISTORY: usize = 12;
 
 fn push_dream_history(entry: DreamHistoryEntry) {
-    unsafe {
-        DREAM_HISTORY.push(entry);
-        if DREAM_HISTORY.len() > MAX_DREAM_HISTORY {
-            DREAM_HISTORY.remove(0);
-        }
+    let mut history = DREAM_HISTORY.lock().unwrap_or_else(|e| e.into_inner());
+    history.push(entry);
+    if history.len() > MAX_DREAM_HISTORY {
+        history.remove(0);
     }
 }
 
-fn get_dream_history() -> &'static [DreamHistoryEntry] {
-    unsafe { &DREAM_HISTORY }
+fn get_dream_history() -> Vec<DreamHistoryEntry> {
+    DREAM_HISTORY.lock().unwrap_or_else(|e| e.into_inner()).clone()
 }
 
 /// Dream result — the output of a single consolidation cycle.
@@ -56,11 +56,11 @@ pub struct DreamResult {
 /// Higher priority = more likely to be picked for dreaming.
 /// Factors: low strength (needs reinforcement), novelty, unresolved, cross-region potential.
 fn replay_priority(
-    cell_idx: usize,
+    _cell_idx: usize,
     cell_strength: f32,
     cell_source: &str,
     cell_created: u64,
-    total_cells: usize,
+    _total_cells: usize,
 ) -> f32 {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -191,15 +191,17 @@ pub fn consolidate(universe: &Universe) -> Option<DreamResult> {
         (&b.vec, b.strength, b.created),
     ];
 
+    let history_snapshot = get_dream_history();
+    let prev_phi_g = history_snapshot.last().map(|h| h.phi_g).unwrap_or(0.0);
     let field_input = FieldInput {
         synthetic_vec: Some(&synthetic),
         source_vecs,
         candidate_scores: vec![overlap, confidence.max(0.0)],
         goal_vec: None, // Will be set by caller if drive has a goal
         winner_key: winner_key.clone(),
-        history: get_dream_history(),
+        history: &history_snapshot,
         total_count: universe.count(),
-        prev_phi_g: get_dream_history().last().map(|h| h.phi_g).unwrap_or(0.0),
+        prev_phi_g,
     };
 
     let field = FieldState::compute_full(&field_input);

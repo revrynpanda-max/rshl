@@ -25,6 +25,11 @@
 
 use super::{SparseVec, Universe};
 use serde::{Deserialize, Serialize};
+use crate::core::regions::{
+    Region, RegionalState, RegionMetrics,
+    phi_left, phi_right, psi_bridge, omega,
+    select_top_k, r_cross, compute_region_core,
+};
 
 /// Clamp a value to [0, 1].
 fn clamp01(n: f32) -> f32 {
@@ -88,6 +93,8 @@ pub struct FieldState {
     pub coherence: f32,
     pub mass: f32,
     pub pressure: f32,
+
+    pub regional: RegionalState,
 }
 
 /// Input parameters for field state computation.
@@ -217,6 +224,7 @@ impl FieldState {
             coherence: r_val,
             mass: u * n,
             pressure: chi,
+            regional: RegionalState::default(),
         }
     }
 
@@ -230,28 +238,38 @@ impl FieldState {
 
         let n = cells.len() as f32;
 
-        // Sample pairwise similarities
+        // Strided sample — spreads evenly across the full universe so every
+        // metric reflects the whole field, not just the first N seed cells.
+        let sample_limit = 50.min(cells.len());
+        let stride = (cells.len() / sample_limit).max(1);
+
+        // ── phi_g: mean pairwise cosine across strided sample ─────────────
         let mut phi_sum = 0.0f32;
         let mut phi_count = 0u32;
-        let sample_limit = 50.min(cells.len());
         for i in 0..sample_limit {
+            let ci = i * stride;
             for j in (i + 1)..sample_limit.min(i + 10) {
-                let sim = cells[i].vec.cosine(&cells[j].vec).abs();
+                let cj = j * stride;
+                let sim = cells[ci].vec.cosine(&cells[cj].vec).abs();
                 phi_sum += sim;
                 phi_count += 1;
             }
         }
         let phi_g = if phi_count > 0 { phi_sum / phi_count as f32 } else { 0.0 };
 
-        // Coherence within regions
+        // ── Coherence within regions (strided per region) ─────────────────
         let regions = universe.region_counts();
         let mut coh_sum = 0.0f32;
         let mut coh_count = 0u32;
         for region in regions.keys() {
             let rcells: Vec<_> = cells.iter().filter(|c| c.region == *region).collect();
-            for i in 0..rcells.len().min(10) {
-                for j in (i + 1)..rcells.len().min(10) {
-                    coh_sum += rcells[i].vec.cosine(&rcells[j].vec).abs();
+            let rsample = 10.min(rcells.len());
+            let rstride = (rcells.len() / rsample).max(1);
+            for i in 0..rsample {
+                let ri = i * rstride;
+                for j in (i + 1)..rsample {
+                    let rj = j * rstride;
+                    coh_sum += rcells[ri].vec.cosine(&rcells[rj].vec).abs();
                     coh_count += 1;
                 }
             }
@@ -259,7 +277,8 @@ impl FieldState {
         let coherence = if coh_count > 0 { coh_sum / coh_count as f32 } else { 0.0 };
         let mass = cells.iter().map(|c| c.strength).sum::<f32>() / n;
 
-        // Cross-region pressure
+        // ── Cross-region pressure ─────────────────────────────────────────
+        // Uses the middle cell of each region for a more representative sample.
         let region_keys: Vec<_> = regions.keys().collect();
         let mut pr_sum = 0.0f32;
         let mut pr_count = 0u32;
@@ -267,7 +286,9 @@ impl FieldState {
             for j in (i + 1)..region_keys.len() {
                 let a_cells: Vec<_> = cells.iter().filter(|c| c.region == *region_keys[i]).collect();
                 let b_cells: Vec<_> = cells.iter().filter(|c| c.region == *region_keys[j]).collect();
-                if let (Some(a), Some(b)) = (a_cells.first(), b_cells.first()) {
+                let a = a_cells.get(a_cells.len() / 2);
+                let b = b_cells.get(b_cells.len() / 2);
+                if let (Some(a), Some(b)) = (a, b) {
                     let sim = a.vec.cosine(&b.vec);
                     if sim < 0.0 {
                         pr_sum += sim.abs();
@@ -278,14 +299,87 @@ impl FieldState {
         }
         let pressure = if pr_count > 0 { pr_sum / pr_count as f32 } else { 0.0 };
 
+        // ── Novelty (q = 1 - R) ─────────────────────────────────────────
+        // Populated here so the heartbeat fast path doesn't leave q=0.
+        let q = clamp01(1.0 - coherence);
+
+        // ── Density (ρ): avg fraction of non-zero dims across strided sample ─
+        // Strided so rho reflects the full field, not just the first 50 cells.
+        let rho = if sample_limit > 0 {
+            let total_active: usize = (0..sample_limit)
+                .map(|i| cells[i * stride].vec.nnz())
+                .sum();
+            let dim = cells[0].vec.data.len(); // 4096
+            let total_dims = sample_limit * dim;
+            clamp01(total_active as f32 / total_dims as f32)
+        } else {
+            0.0
+        };
+
+        // ── Stability (s = 1 / (1 + stddev(coherence samples))) ─────────
+        // Approximated: in the legacy path we already averaged pairwise sims,
+        // so use a simple proxy: higher mean coherence → higher stability.
+        let s = clamp01(1.0 / (1.0 + (1.0 - coherence).abs()));
+
         Self {
             phi_g,
             coherence,
             r_val: coherence,
+            rho,
+            s,
+            q,
             mass,
             pressure,
             chi: pressure,
             ..Self::default()
         }
+    }
+
+    pub fn update_regional(
+        &mut self,
+        state: &SparseVec,
+        current_pattern: &SparseVec,
+        drive_gain: f32,       // g_L — from drive system
+        drive_salience: f32,   // s_R — from drive system / novelty
+        drive_tau: f32,        // τ_R — temporal factor
+    ) {
+        // Left
+        let (rho_l, r_l, chi_l) = compute_region_core(state, current_pattern, Region::Left);
+        let left = RegionMetrics {
+            rho: rho_l, r: r_l, chi: chi_l,
+            g: drive_gain, s: 0.0, tau: 0.0,
+            phi: 0.0,
+        };
+        let phi_l = phi_left(&left);
+
+        // Right
+        let (rho_r, r_r, chi_r) = compute_region_core(state, current_pattern, Region::Right);
+        let right = RegionMetrics {
+            rho: rho_r, r: r_r, chi: chi_r,
+            g: 0.0, s: drive_salience, tau: drive_tau,
+            phi: 0.0,
+        };
+        let phi_r = phi_right(&right);
+
+        // Bridge: vector form for R_cross, then scalar Ψ_B
+        let top_l = select_top_k(state, Region::Left, 8);   // k=8 per our earlier decision
+        let top_r = select_top_k(state, Region::Right, 8);
+        let rc = r_cross(&top_l, &top_r);
+
+        let psi_b = psi_bridge(phi_l, phi_r, rc, chi_l, chi_r, self.m_val.max(0.0));
+
+        // Ω
+        let om = omega(phi_l, phi_r, psi_b, chi_l, chi_r);
+
+        self.regional = RegionalState {
+            left:  RegionMetrics { phi: phi_l, ..left },
+            right: RegionMetrics { phi: phi_r, ..right },
+            bridge_phi: psi_b,
+            r_cross: rc,
+            chi_disagreement: (chi_l - chi_r).abs(),
+            momentum: self.m_val,
+            omega: om,
+        };
+
     }
 }

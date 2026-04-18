@@ -4,7 +4,7 @@
 /// the universe as durable memory — it becomes a belief.
 
 use super::candidates::{CandidateBuffer, CandidateStatus};
-use crate::core::{SparseVec, Universe};
+use crate::core::Universe;
 
 pub struct PromotionThresholds {
     pub seen_count: u32,
