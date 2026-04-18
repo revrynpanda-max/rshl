@@ -27,3 +27,8 @@ conversation-log-*.txt
 
 # Analytics and logs
 *.csv
+debug_output*.txt
+
+# Local Reports
+legacy/reports/
+scratch/

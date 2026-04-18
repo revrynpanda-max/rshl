@@ -5,19 +5,25 @@ This document tracks the precision and throughput metrics for the Recursive Spar
 ## Benchmark Results (v5.4)
 *Hardware: RTX 4050 Laptop · Ryzen 5 8645HS · 40GB RAM*
 
-### Throughput (Dot Products)
-- **Peak Recall**: 9,611 queries/sec (1K entries, native binary-packed POPCNT)
-- **Sustained**: 1,868 queries/sec (25K entries, 5s duration)
-- **Aggregated Score**: 657 pts
+### End-to-End Latency (IPC Server Mode)
+*Measured via `kai-bench.ps1` (Process Start + Query + Shutdown)*
+- **Avg Query Latency**: 18.5ms (10-run avg)
+- **Avg Store Latency**: 20.9ms
+- **Ping (Round-trip)**: < 1ms
 
-### Query Latency (Native Rust/C++)
+### Internal Engine Recall (Native Rust)
+*Zero-overhead in-memory resonance scan rates*
+
 | Entries | Latency | Speedup vs JS |
 |---------|---------|----------------|
-| 1,000   | 0.10ms  | 95x            |
-| 5,000   | 0.49ms  | 107x           |
-| 10,000  | 0.90ms  | 106x           |
-| 25,000  | 2.12ms  | 110x           |
-| 100,000 | 7.73ms  | -              |
+| 1,000   | 0.08ms  | 124x           |
+| 5,000   | 0.41ms  | 120x           |
+| 10,000  | 0.82ms  | 122x           |
+| 25,000  | 2.05ms  | 120x           |
+| 100,000 | 7.91ms  | -              |
+
+> [!NOTE]
+> Differences between IPC Latency (18ms) and Engine Recall (2ms) reflect Windows process overhead. For real-time production, KAI should be used via a persistent pipe or as a linked library.
 
 ### Recall Accuracy
 *Measured using `eval/recall-accuracy.js` protocol*
