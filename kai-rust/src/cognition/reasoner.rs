@@ -159,7 +159,8 @@ impl Reasoner {
             let (best_cell, best_score) = &hits[0];
 
             // ── Step 2: Compute local Φg (emergence at this step) ────
-            // Φg = average pairwise similarity among the top hits
+            // Φg = average pairwise similarity among the top hits.
+            // For stability, we blend the primary hit resonance with convergence.
             let phi_g = if hits.len() >= 2 {
                 let mut sum = 0.0f32;
                 let mut count = 0u32;
@@ -169,7 +170,9 @@ impl Reasoner {
                         count += 1;
                     }
                 }
-                if count > 0 { sum / count as f32 } else { 0.0 }
+                let pairwise = if count > 0 { sum / count as f32 } else { 0.0 };
+                // Blend: 70% primary resonance + 30% pairwise convergence
+                (*best_score * 0.7) + (pairwise * 0.3)
             } else {
                 *best_score
             };
