@@ -84,6 +84,8 @@ pub struct GlobalWorkspace {
     pub total_broadcasts: u64,
     /// Tick counter
     tick: u64,
+    /// NE-driven minimum salience for GW entry (updated by norepinephrine)
+    pub salience_floor: f32,
 }
 
 impl GlobalWorkspace {
@@ -95,14 +97,28 @@ impl GlobalWorkspace {
             avg_coherence:    0.5,
             total_broadcasts: 0,
             tick:             0,
+            salience_floor:   0.30,
         }
+    }
+
+    /// Set the minimum salience floor (driven by norepinephrine attention_threshold).
+    /// Signals below this floor are filtered out before entering the workspace.
+    pub fn set_salience_floor(&mut self, floor: f32) {
+        self.salience_floor = floor.clamp(0.10, 0.90);
     }
 
     /// Post content to the workspace from a given module.
     ///
+    /// If salience is below the NE-driven floor, the post is filtered out
+    /// (stress-driven tunnel vision or low-arousal mode).
     /// If the workspace is full, the lowest-salience entry is evicted.
     /// Returns true if this entry immediately becomes the broadcast winner.
     pub fn post(&mut self, source: &str, content: &str, salience: f32) -> bool {
+        // NE-driven salience gate: filter weak signals when floor is elevated
+        if salience < self.salience_floor * 0.6 {
+            return false; // below the noise floor — ignored
+        }
+
         let entry = WorkspaceEntry {
             source:       source.to_string(),
             content:      content.to_string(),
