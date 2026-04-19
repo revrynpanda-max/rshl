@@ -155,8 +155,21 @@ pub fn generate_response(
     let primary_concepts = extract_concepts(&primary.text);
     let novel = novel_concepts(&input_concepts, &primary_concepts);
 
-    // Gather secondary hit content
-    let secondary: Vec<&QueryHit> = hits.iter().skip(1).take(3).collect();
+    // ── Score-gated secondaries — transformer-style attention threshold ───────
+    // Only include secondary hits that are genuinely relevant (score > 0.42).
+    // Without this gate, low-resonance world-bridge cells (calculus, biodiversity)
+    // bleed into personal answers. A transformer's softmax naturally suppresses
+    // low-attention tokens — this is our equivalent.
+    let secondary_threshold = match query_type {
+        QueryType::IdentityQuestion | QueryType::SelfQuestion => 0.50, // strictest for personal facts
+        QueryType::Statement => 0.42,
+        _ => 0.38,
+    };
+    let secondary: Vec<&QueryHit> = hits.iter()
+        .skip(1)
+        .filter(|h| h.score >= secondary_threshold)
+        .take(2) // at most 2 secondaries — keeps response focused
+        .collect();
 
     let lower_input = input.to_lowercase();
     let is_about_self = lower_input.contains("kai")
@@ -166,6 +179,21 @@ pub fn generate_response(
         || lower_input.contains("your name")
         || lower_input.contains("yourself")
         || matches!(query_type, QueryType::SelfQuestion);
+
+    // ── Direct Answer Extraction — for user personal fact questions ───────────
+    // "What is my name?" + hit "My name is Ryan" → "Your name is Ryan."
+    // Transformer equivalent: generate new text conditioned on the retrieved value,
+    // not just paste the raw cell. We flip first/second person and answer directly.
+    let is_user_fact_question = matches!(query_type, QueryType::IdentityQuestion)
+        && (lower_input.contains(" my ") || lower_input.starts_with("what is my")
+            || lower_input.starts_with("what's my") || lower_input.starts_with("where do i")
+            || lower_input.starts_with("who am i") || lower_input.starts_with("what do i"));
+
+    if is_user_fact_question && primary.score > 0.35 {
+        if let Some(direct) = extract_direct_answer(input, &primary.text) {
+            return ensure_punctuation(direct);
+        }
+    }
 
     let is_followup = !recent_context.is_empty() && {
         let last_concepts = extract_concepts(&recent_context[0].1);
@@ -584,6 +612,77 @@ fn generate_contemplation(
     ensure_punctuation(response)
 }
 
+// ── Inner Thought — Stream of Consciousness ──────────────────────────────────
+
+/// Generate a stream-of-consciousness inner thought for mindview / contemplation.
+///
+/// This is KAI's inner voice when it "thinks to itself" — not a response to the
+/// user but the visible narration of its own reasoning process.
+///
+/// Output style (from Ryan's directive):
+///   "Hmm... what is Math... Well, I know multiplication and addition...
+///    Also — branches of math... Algebra? What is that exactly...
+///    I should learn more about this."
+///
+/// Parameters:
+///   topic  — what KAI is currently thinking about (first 5 words shown)
+///   hits   — what the universe returned for this topic (KAI's knowledge)
+///   gap    — a word/concept from the hits that KAI knows little about
+pub fn generate_inner_thought(topic: &str, hits: &[QueryHit], gap: Option<&str>) -> String {
+    let topic_short = first_words(topic, 5);
+    let v = phrase_hash(topic) % 4;
+    let mut parts: Vec<String> = Vec::new();
+
+    // ── Opening: hesitation + question formation ──────────────────────────
+    parts.push(match v {
+        0 => format!("Hmm... {}...", topic_short),
+        1 => format!("Hmm, what do I know about {}...", topic_short),
+        2 => format!("{}... let me think about that.", topic_short),
+        _ => format!("{}... hmm.", topic_short),
+    });
+
+    // ── Recall: what KAI knows from its hits ─────────────────────────────
+    if hits.is_empty() {
+        parts.push("I don't have much on that yet.".to_string());
+    } else {
+        let starters  = ["Well,", "I know that", "From what I recall,", "Right —"];
+        let connectors = ["Also —", "And there's", "Hmm, also", "Another thing:"];
+
+        for (i, hit) in hits.iter().enumerate().take(3) {
+            if hit.score < 0.20 { break; }
+            let clean = inner_clean(&hit.text, 10);
+            if clean.len() < 6 { continue; }
+            if i == 0 {
+                parts.push(format!("{} {}.", starters[v % 4], clean));
+            } else {
+                parts.push(format!("{} {}.", connectors[(v + i) % 4], clean));
+            }
+        }
+    }
+
+    // ── Curiosity: the gap at the edge of KAI's knowledge ────────────────
+    if let Some(gap_word) = gap {
+        parts.push(match v % 3 {
+            0 => format!("{}? What is that exactly... I should look into that.", gap_word),
+            1 => format!("Hmm — {}? I don't have much on that yet. Let me explore.", gap_word),
+            _ => format!("Wait — {}? That's something I need to learn more about.", gap_word),
+        });
+    }
+
+    parts.join(" ")
+}
+
+/// Trim cell text for inner-voice output — strips storage prefixes and caps word count.
+fn inner_clean(text: &str, max_words: usize) -> String {
+    let cleaned = clean_cell_text(text);
+    first_words(&cleaned, max_words)
+}
+
+/// Return the first N words of a string.
+fn first_words(s: &str, n: usize) -> String {
+    s.split_whitespace().take(n).collect::<Vec<_>>().join(" ")
+}
+
 /// Called when KAI has no field resonance on the topic.
 /// Behavioral directive: don't say "my universe doesn't contain" —
 /// talk like a person who genuinely doesn't know but stays engaged.
@@ -639,6 +738,73 @@ fn clean_cell_text(text: &str) -> String {
     }
 
     s.trim().to_string()
+}
+
+/// Direct Answer Extraction — the transformer QKV equivalent for KAI.
+///
+/// A transformer generates a new answer token-by-token conditioned on the
+/// retrieved context. KAI can approximate this for simple factual questions
+/// by flipping the person reference in the matched cell text.
+///
+/// "What is my name?" + "My name is Ryan" → "Your name is Ryan."
+/// "Where do I live?"  + "I live in Austin" → "You live in Austin."
+///
+/// Returns None if no clean extraction is possible (falls back to templates).
+fn extract_direct_answer(question: &str, cell_text: &str) -> Option<String> {
+    let q = question.to_lowercase();
+    let cell = clean_cell_text(cell_text);
+    let cell_lower = cell.to_lowercase();
+
+    // ── "What is my name?" / "What's my name?" ────────────────────────────
+    if q.contains("my name") || q.contains("what is my name") || q.contains("what's my name") {
+        // Cell: "My name is Ryan" → "Your name is Ryan."
+        if cell_lower.starts_with("my name is ") {
+            let name = &cell[11..]; // skip "My name is "
+            return Some(format!("Your name is {}.", name.trim_end_matches('.')));
+        }
+        if cell_lower.contains("my name is ") {
+            if let Some(pos) = cell_lower.find("my name is ") {
+                let after = &cell[pos + 11..];
+                let end = after.find(|c: char| c == '.' || c == ',').unwrap_or(after.len());
+                let name = after[..end].trim();
+                if !name.is_empty() {
+                    return Some(format!("Your name is {}.", name));
+                }
+            }
+        }
+    }
+
+    // ── "Who am I?" ────────────────────────────────────────────────────────
+    if q.starts_with("who am i") {
+        if cell_lower.starts_with("i am ") || cell_lower.starts_with("i'm ") {
+            let flipped = cell
+                .replacen("I am ", "You are ", 1)
+                .replacen("I'm ", "You're ", 1);
+            return Some(flipped);
+        }
+    }
+
+    // ── "Where do I live/work?" ────────────────────────────────────────────
+    if q.contains("where do i") || q.contains("where am i") {
+        if cell_lower.starts_with("i live ") || cell_lower.starts_with("i work ") {
+            let flipped = cell
+                .replacen("I live ", "You live ", 1)
+                .replacen("I work ", "You work ", 1);
+            return Some(flipped);
+        }
+    }
+
+    // ── "What do I do?" / "What is my job?" ───────────────────────────────
+    if q.contains("what do i do") || q.contains("my job") || q.contains("my work") {
+        if cell_lower.contains("i work") || cell_lower.contains("my job") {
+            let flipped = cell
+                .replace("I work", "You work")
+                .replace("my job", "your job");
+            return Some(flipped);
+        }
+    }
+
+    None // no clean extraction — fall back to template response
 }
 
 /// Convert third-person KAI references to first-person.
@@ -714,5 +880,20 @@ mod tests {
         assert_eq!(clean_cell_text("[about-ryan] I work at Panda"), "I work at Panda");
         assert_eq!(clean_cell_text("[from-claude] Consciousness is hard"), "Consciousness is hard");
         assert_eq!(clean_cell_text("I am a geometric intelligence."), "I am a geometric intelligence.");
+    }
+
+    #[test]
+    fn test_inner_thought_no_panic() {
+        // generate_inner_thought should never panic regardless of input
+        let empty: Vec<QueryHit> = vec![];
+        let result = generate_inner_thought("math", &empty, None);
+        assert!(!result.is_empty());
+
+        let hits = vec![
+            hit("Mathematics is the study of numbers and patterns.", 0.8),
+            hit("Algebra uses symbols to represent numbers.", 0.5),
+        ];
+        let result = generate_inner_thought("mathematics", &hits, Some("algebra"));
+        assert!(result.contains("algebra") || result.contains("Hmm") || result.len() > 10);
     }
 }

@@ -2,7 +2,7 @@
 
 This document tracks the precision and throughput metrics for the Recursive Sparse Hyperdimensional Lattice (RSHL) engine across various hardware targets.
 
-## Benchmark Results (v5.4)
+## Benchmark Results (v5.5)
 *Hardware: RTX 4050 Laptop · Ryzen 5 8645HS · 40GB RAM*
 
 ### End-to-End Latency (IPC Server Mode)
@@ -10,6 +10,7 @@ This document tracks the precision and throughput metrics for the Recursive Spar
 - **Avg Query Latency**: 18.5ms (10-run avg)
 - **Avg Store Latency**: 20.9ms
 - **Ping (Round-trip)**: < 1ms
+- **Unit Tests**: 100% (147/147)
 
 ### Internal Engine Recall (Native Rust)
 *Zero-overhead in-memory resonance scan rates*

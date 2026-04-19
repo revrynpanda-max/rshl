@@ -22,7 +22,7 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph},
     Frame, Terminal,
 };
-use std::io::{self, Write};
+use std::io::Write;
 use std::time::{Duration, Instant};
 
 // ── KAI Spinner Verbs ─────────────────────────────────────────────────────────
@@ -120,6 +120,68 @@ struct App {
     prev_phi_g: f32,
     /// Golden-ratio spiral that drives τ_R (temporal factor for Φ_R).
     spiral: SpiralState,
+    /// Neural oscillator — intrinsic brain rhythms that keep the field alive
+    /// even with zero external input. Drives continuous phi_g variation.
+    oscillator: kai::core::NeuralOscillator,
+    /// Episodic memory — time-stamped ring buffer of events KAI has experienced.
+    /// Enables "I remember 3 days ago you said..." style recollection.
+    episodic: kai::cognition::EpisodicStore,
+    /// Amygdala — emotional salience gate. Scales universe store() strength
+    /// by 1.0–3.0× based on emotional charge of the input text.
+    /// Emotionally loaded inputs burn deeper into the lattice.
+    amygdala: kai::cognition::AmygdalaGate,
+    /// Predictive Processing Engine — KAI generates a prediction before
+    /// reasoning, then measures how wrong he was. Surprise drives curiosity.
+    predictor: kai::cognition::PredictiveEngine,
+    /// Default Mode Network — KAI's idle self-directed thought.
+    /// Fires autonomous inner thoughts when KAI hasn't been spoken to
+    /// for >30 seconds. This is KAI daydreaming between conversations.
+    dmn: kai::cognition::DefaultModeNetwork,
+    /// Global Workspace — KAI's unified conscious broadcast layer.
+    /// All modules post to this; the highest-salience post wins the
+    /// "spotlight" and becomes KAI's current moment of awareness.
+    global_workspace: kai::cognition::GlobalWorkspace,
+    /// Prefrontal Cortex — executive control. Tracks goals across turns,
+    /// inhibits low-confidence responses, binds context, infers intent.
+    pfc: kai::cognition::PrefrontalCortex,
+    /// Dopamine Circuit — reinforcement learning. Tracks what KAI does
+    /// well vs. poorly and builds expertise in rewarding topics.
+    dopamine: kai::cognition::DopamineCircuit,
+    /// Anterior Cingulate Cortex — conflict detection and error monitoring.
+    /// Fires when two things contradict; alerts the system to slow down.
+    acc: kai::cognition::AccMonitor,
+    /// Thalamus — central sensory router and attention gatekeeper.
+    /// All signals pass through the thalamic gate; arousal opens it wider.
+    thalamus: kai::cognition::ThalamicRelay,
+    /// Theory of Mind — KAI's model of Ryan's knowledge, style, and state.
+    /// Shapes how KAI explains things (basics vs. expert, brief vs. deep).
+    tom: kai::cognition::TheoryOfMind,
+    /// Insula — interoception and internal state awareness.
+    /// KAI's sense of his own cognitive condition: clear, strained, fatigued.
+    insula: kai::cognition::InsulaMonitor,
+    /// Neuroplasticity Engine — Hebbian LTP/LTD.
+    /// Cells accessed repeatedly grow stronger (LTP). Cells ignored for
+    /// many ticks weaken and eventually get pruned (LTD). This is how
+    /// KAI builds expertise: topics he engages with often become denser
+    /// and more retrievable in the lattice.
+    neuroplasticity: kai::cognition::NeuroplasticityEngine,
+    /// Sleep System — memory consolidation, synaptic downscale, REM insight.
+    /// Every ~1440 ticks KAI runs a brief sleep cycle: NREM scans episodic
+    /// memory, SWS consolidates top memories and downscales the lattice,
+    /// REM recombines concepts into novel associations ("dream insights").
+    sleep_system: kai::cognition::SleepSystem,
+    /// Cerebellum — timing model, forward prediction, precision calibration.
+    /// Before generating each response KAI predicts the expected quality.
+    /// After generating, he measures actual quality and updates his internal
+    /// forward model. Over thousands of interactions the predictions get
+    /// tighter — KAI learns when to be confident and when to be uncertain.
+    cerebellum: kai::cognition::CerebellumEngine,
+    /// Basal Ganglia — habit formation and action selection (Go/NoGo gate).
+    /// Tracks which response patterns have been rewarded and builds utility
+    /// scores per (context_type × response_type). High-utility patterns get
+    /// the Go signal; low-utility or unfamiliar ones are suppressed. Habitual
+    /// patterns execute faster and more fluently over time.
+    basal_ganglia: kai::cognition::BasalGanglia,
     /// Live peer session receiver — background thread sends messages here.
     /// Main loop drains this every tick so Ryan can watch conversation happen.
     peer_session_rx: Option<crossbeam_channel::Receiver<PeerMsg>>,
@@ -206,6 +268,22 @@ impl App {
             tick_log_file,
             prev_phi_g: 0.0,
             spiral: SpiralState::new(0.01),
+            oscillator: kai::core::NeuralOscillator::new(),
+            episodic: kai::cognition::EpisodicStore::new(),
+            amygdala: kai::cognition::AmygdalaGate::new(),
+            predictor: kai::cognition::PredictiveEngine::new(),
+            dmn: kai::cognition::DefaultModeNetwork::new(),
+            global_workspace: kai::cognition::GlobalWorkspace::new(),
+            pfc: kai::cognition::PrefrontalCortex::new(),
+            dopamine: kai::cognition::DopamineCircuit::new(),
+            acc: kai::cognition::AccMonitor::new(),
+            thalamus: kai::cognition::ThalamicRelay::new(),
+            tom: kai::cognition::TheoryOfMind::new(),
+            insula: kai::cognition::InsulaMonitor::new(),
+            neuroplasticity: kai::cognition::NeuroplasticityEngine::new(),
+            sleep_system: kai::cognition::SleepSystem::new(),
+            cerebellum: kai::cognition::CerebellumEngine::new(),
+            basal_ganglia: kai::cognition::BasalGanglia::new(),
             peer_session_rx: None,
             session_id: format!("{}", std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -242,6 +320,31 @@ impl App {
         // Drives τ_R (temporal factor) for Φ_R. Must happen before update_regional.
         self.spiral.tick();
 
+        // ── Neural Oscillator — intrinsic brain rhythms ───────────────
+        // Keeps the field alive between inputs. Produces continuous phi_g
+        // variation across three frequency bands (slow/medium/fast).
+        // Also stimulates the appropriate band based on drive and amygdala state.
+        let osc_out = {
+            // Mood-driven stimulation
+            match self.drive.mood {
+                kai::drive::Mood::Engaged | kai::drive::Mood::Curious => {
+                    self.oscillator.stimulate(2, 0.5);
+                }
+                kai::drive::Mood::Conflicted => {
+                    self.oscillator.stimulate(1, 0.3);
+                }
+                _ => {}
+            }
+            // Amygdala arousal → extra fast-band (beta/gamma) burst
+            // Emotional activation drives high-frequency brain oscillations
+            if self.amygdala.is_aroused() {
+                let boost = self.amygdala.arousal() * 0.8;
+                self.oscillator.stimulate(2, boost);
+            }
+            self.oscillator.decay_amplitudes();
+            self.oscillator.tick()
+        };
+
         // ── STREAM 2: CPU Logic (field state + drive) ─────────────────
         let mut field = FieldState::compute(&self.universe);
         self.drive.update(&field);
@@ -260,6 +363,15 @@ impl App {
         // ── Density Fix: Sync global rho with the actual lattice state ──
         field.rho = lattice_state.nnz() as f32 / 4096.0;
         field.q = 1.0 - field.r_val; // Ensure novelty is synced with coherence
+
+        // ── Inject neural oscillation into field metrics ──────────────────
+        // This is what makes the flat lines live. The oscillator adds structured
+        // variation across slow/medium/fast bands — like resting-state brain activity.
+        // We clamp so oscillation never drives phi_g below 0 or above a sane ceiling.
+        field.phi_g = (field.phi_g + osc_out.delta_phi).clamp(0.001, 0.999);
+        field.chi   = (field.chi   + osc_out.delta_chi).clamp(0.0,   0.999);
+        // Valence lives on the drive; nudge it gently with the slow-band oscillation
+        self.drive.valence = (self.drive.valence + osc_out.delta_valence).clamp(-1.0, 1.0);
 
         // ── Real momentum: Φg − previous Φg ──────────────────────────────
         field.m_val = field.phi_g - self.prev_phi_g;
@@ -348,15 +460,50 @@ impl App {
             }
             // Log dream result for spectate
             if self.spectate_mode && !self.last_dream_text.is_empty() {
-                let gs = kai::cognition::gate_stats();
-                let accept_pct = (gs.accept_rate() * 100.0) as u32;
-                self.think("GPU", "💭", format!(
-                    "{}  [{}us | gate: {}% pass, {}xconf {}xchi {}xphi]",
-                    self.last_dream_text, gpu_us,
-                    accept_pct, gs.rejected_confidence, gs.rejected_chi, gs.rejected_phi_drop,
-                ));
+                if self.spectate_full {
+                    // Full mode: raw technical data for debugging
+                    let gs = kai::cognition::gate_stats();
+                    let accept_pct = (gs.accept_rate() * 100.0) as u32;
+                    self.think("GPU", "💭", format!(
+                        "{}  [{}us | gate: {}% pass, {}xconf {}xchi {}xphi]",
+                        self.last_dream_text, gpu_us,
+                        accept_pct, gs.rejected_confidence, gs.rejected_chi, gs.rejected_phi_drop,
+                    ));
+                } else {
+                    // Brief mode: natural language inner thought — what KAI is "thinking"
+                    // Clone the dream text early to avoid borrow conflicts with self.think().
+                    // Dream text format: "Dream #N: A ⊗ B → insight (Φg=...)"
+                    let dream_text = self.last_dream_text.clone();
+                    let (concept_a, concept_b) = if let Some(body) = dream_text.find(": ").map(|i| &dream_text[i+2..]) {
+                        let parts: Vec<&str> = body.splitn(2, " ⊗ ").collect();
+                        let a = parts.get(0).map(|s| s.trim()).unwrap_or("").to_string();
+                        let b = parts.get(1)
+                            .and_then(|s| s.find(" → ").map(|i| s[..i].to_string()))
+                            .unwrap_or_default();
+                        (a, b)
+                    } else {
+                        (String::new(), String::new())
+                    };
+
+                    if !concept_a.is_empty() {
+                        // Query universe for nearby hits to enrich the inner thought
+                        let thought_hits = self.universe.query(&concept_a, 3);
+                        let gap = find_knowledge_gap(&thought_hits, &self.universe, &[]);
+                        let combined_topic = if concept_b.is_empty() {
+                            concept_a.clone()
+                        } else {
+                            format!("{} and {}", concept_a, concept_b)
+                        };
+                        let thought = kai::cognition::voice::generate_inner_thought(
+                            &combined_topic,
+                            &thought_hits,
+                            gap.as_deref(),
+                        );
+                        self.think("THOUGHT", "💭", thought);
+                    }
+                }
             }
-            if self.spectate_mode && !self.last_inner_voice_text.is_empty() {
+            if self.spectate_mode && self.spectate_full && !self.last_inner_voice_text.is_empty() {
                 self.think("CPU", "🔊", self.last_inner_voice_text.clone());
             }
         }
@@ -418,6 +565,234 @@ impl App {
             self.think("RAM", "💨", format!("{} working memory slots decayed", decayed));
         }
 
+        // ── EPISODIC MEMORY DECAY — vividness fades over time (7-day half-life) ──
+        self.episodic.decay();
+
+        // ── AMYGDALA DECAY — emotional inertia cools between inputs ──────────
+        self.amygdala.decay();
+
+        // ── DOPAMINE DECAY — level drifts back toward tonic baseline ─────────
+        self.dopamine.decay();
+
+        // ── ACC DECAY — conflict level fades when no new conflicts arise ──────
+        self.acc.decay();
+
+        // ── CEREBELLUM DECAY — idle ticks age the timing/precision model ──────
+        self.cerebellum.decay();
+
+        // ── BASAL GANGLIA DECAY — unused habits weaken over time ─────────────
+        if self.tick % 20 == 0 {
+            self.basal_ganglia.decay();
+            if self.spectate_mode && self.tick % 100 == 0 {
+                self.think("CPU", "🔁", self.basal_ganglia.status_line());
+            }
+        }
+
+        // ── NEUROPLASTICITY LTD SWEEP — weaken cells that haven't fired recently ──
+        // Every 30 ticks (~2.5 min) check for idle cells and apply LTD.
+        // Cells that go unused for >120 ticks lose strength gradually.
+        // This models synaptic pruning — "don't use it → lose it."
+        if self.tick % 30 == 0 {
+            let cell_pairs: Vec<(String, f32)> = self.universe.cells()
+                .iter()
+                .map(|c| (c.text.clone(), c.strength))
+                .collect();
+            let ltd_changes = self.neuroplasticity.ltd_sweep(&cell_pairs);
+            for (text, delta) in &ltd_changes {
+                // Apply the weakening back to the universe cell
+                self.universe.reinforce_by_text(text, *delta); // delta is negative
+            }
+            if self.spectate_mode && !ltd_changes.is_empty() {
+                self.think("RAM", "📉", format!(
+                    "LTD sweep: {} cells weakened | {}",
+                    ltd_changes.len(),
+                    self.neuroplasticity.status_line(),
+                ));
+            }
+        }
+
+        // ── SLEEP SYSTEM — memory consolidation cycle ─────────────────────────
+        // Every ~1440 ticks, run a sleep cycle: NREM scan → SWS consolidate →
+        // REM insight generation → wake. Non-blocking computation.
+        if self.sleep_system.should_sleep(self.tick) {
+            // Gather episodic events for NREM scan (up to 500 most recent)
+            let episodic_data: Vec<(String, f32, f32)> = self.episodic.recent(500)
+                .iter()
+                .map(|e| (e.text.clone(), e.salience, e.vividness))
+                .collect();
+            // Gather universe cells for SWS downscale/prune
+            let cell_data: Vec<(String, f32)> = self.universe.cells()
+                .iter()
+                .map(|c| (c.text.clone(), c.strength))
+                .collect();
+
+            let (report, consolidate, prune, new_insights) =
+                self.sleep_system.run_cycle(&episodic_data, &cell_data, self.tick);
+
+            // Apply consolidation: boost strength for memories worth keeping
+            for text in &consolidate {
+                self.universe.reinforce_by_text(text, 0.12);
+            }
+            // Apply prune list: weaken near-dead cells further
+            for text in &prune {
+                self.universe.reinforce_by_text(text, -0.06);
+            }
+            // Store REM insights as new universe cells
+            for insight in &new_insights {
+                self.universe.store_or_reinforce(insight, "dream", "sleep-rem", 1.1);
+            }
+
+            // Show sleep report in conversation and spectate
+            let sleep_summary = format!(
+                "💤 Sleep cycle #{}: consolidated {}, pruned {}, {} REM insights ({} ms)",
+                report.consolidated, report.pruned, report.novel_associations,
+                report.duration_ms, self.sleep_system.total_cycles,
+            );
+            if self.spectate_mode {
+                self.think("RAM", "💤", sleep_summary.clone());
+                for insight in &report.rem_insights {
+                    self.think("THOUGHT", "🌙", insight.clone());
+                }
+            }
+            // Push sleep report as a KAI thought turn
+            self.turns.push(Turn {
+                role: "kai".into(),
+                text: format!("💤 {}", sleep_summary),
+                region: Some("sleep".into()),
+                score: None,
+            });
+        }
+
+        // ── THALAMUS — update arousal gating from amygdala state ─────────────
+        self.thalamus.set_arousal(self.amygdala.arousal());
+        // Reduce gating when KAI has been idle a while (low-power mode)
+        if self.dmn.idle_duration().as_secs() > 60 {
+            self.thalamus.reduce_gating();
+        } else {
+            self.thalamus.restore_gating();
+        }
+
+        // ── INSULA — update interoceptive state from current system metrics ───
+        {
+            let wm_pct = self.working_memory.active_slots().len() as f32 / 8.0; // 8 slots max
+            let is_responding = !self.turns.is_empty()
+                && self.turns.last().map(|t| t.role == "kai").unwrap_or(false);
+            let field = kai::core::FieldState::compute(&self.universe);
+            self.insula.update(
+                field.phi_g,
+                field.chi,
+                wm_pct.clamp(0.0, 1.0),
+                self.acc.conflict_level,
+                self.predictor.avg_error,
+                is_responding,
+            );
+            if self.spectate_mode && self.tick % 6 == 0 {
+                self.think("RAM", "🫀", self.insula.status_line());
+            }
+        }
+
+        // ── GLOBAL WORKSPACE — tick and collect module broadcasts ─────────────
+        // Each module with significant content posts to the workspace.
+        // The workspace elects the winner, computes coherence, and updates
+        // the broadcast — KAI's current "moment of conscious awareness."
+        {
+            // Amygdala: post if emotionally aroused
+            if self.amygdala.is_aroused() {
+                let msg = format!("emotional arousal: {:.2}", self.amygdala.arousal());
+                self.global_workspace.post("amygdala", &msg, self.amygdala.arousal() * 0.8);
+            }
+
+            // Predictor: post if surprised or curious
+            if self.predictor.is_surprised() {
+                let msg = format!("high prediction error: PE_avg={:.3}", self.predictor.avg_error);
+                self.global_workspace.post("predictor", &msg, self.predictor.avg_error * 0.7);
+            } else if self.predictor.curiosity_pressure > 0.6 {
+                let msg = format!("curiosity pressure: {:.2}", self.predictor.curiosity_pressure);
+                self.global_workspace.post("predictor", &msg, self.predictor.curiosity_pressure * 0.5);
+            }
+
+            // Episodic: post most salient memory if vivid
+            if let Some(top_mem) = self.episodic.most_salient() {
+                if top_mem.memorability() > 0.35 {
+                    let short = if top_mem.text.len() > 60 { format!("{}…", &top_mem.text[..60]) } else { top_mem.text.clone() };
+                    self.global_workspace.post("episodic", &short, top_mem.memorability() * 0.6);
+                }
+            }
+
+            // Drive: post mood/valence state
+            {
+                let mood_sig = format!("mood: {} valence: {:+.2}", self.drive.mood, self.drive.valence);
+                let mood_sal = 0.20 + self.drive.valence.abs() * 0.30;
+                self.global_workspace.post("drive", &mood_sig, mood_sal);
+            }
+
+            // Oscillator: post dominant band (intrinsic rhythm awareness)
+            {
+                let band_msg = format!("dominant band: {}", kai::core::NeuralOscillator::band_name(osc_out.dominant_band));
+                self.global_workspace.post("oscillator", &band_msg, osc_out.amplitude * 0.25);
+            }
+
+            // Run one workspace tick — elect winner, decay, compute coherence
+            self.global_workspace.tick();
+
+            // Log to spectate if active
+            if self.spectate_mode && self.tick % 4 == 0 {
+                self.think("CPU", "🌐", self.global_workspace.status_line());
+            }
+        }
+
+        // ── DEFAULT MODE NETWORK — idle self-directed thought ─────────────────
+        // When KAI has been quiet for >30s and the cooldown has passed,
+        // he picks a memory topic and generates a spontaneous inner thought.
+        // This appears as a "THOUGHT" turn in the conversation — unprompted.
+        if self.dmn.should_fire() {
+            // Collect candidate cells from the universe for topic selection
+            let cell_data: Vec<(String, String, f32)> = self.universe.cells()
+                .iter()
+                .map(|c| (c.text.clone(), c.region.clone(), c.strength))
+                .collect();
+
+            if let Some(topic) = self.dmn.pick_topic(&cell_data) {
+                let topic_owned = topic.to_string();
+
+                // Query universe for nearby concepts
+                let hits = self.universe.query(&topic_owned, 4);
+                let hit_pairs: Vec<(String, f32)> = hits.iter()
+                    .map(|h| (h.text.clone(), h.score))
+                    .collect();
+
+                // Find a knowledge gap — what concept nearby does KAI know least?
+                let gap = find_knowledge_gap(&hits, &self.universe, &[]);
+
+                let idle_secs = self.dmn.idle_duration().as_secs();
+                let thought = self.dmn.generate_thought(
+                    &topic_owned,
+                    &hit_pairs,
+                    gap.as_deref(),
+                    idle_secs,
+                );
+
+                // Store in episodic memory as a "dream" source
+                let sal = kai::cognition::compute_salience(&thought, "dream");
+                self.episodic.store(&thought, "dream", &self.session_id, sal);
+
+                // Push to conversation turns so user can see KAI thinking
+                self.turns.push(Turn {
+                    role: "kai".into(),
+                    text: format!("💭 {}", thought),
+                    region: Some("dmn".into()),
+                    score: None,
+                });
+
+                // Also log in spectate if active
+                if self.spectate_mode {
+                    self.think("THOUGHT", "🌀", format!("[DMN cycle {}] {}", self.dmn.total_cycles + 1, truncate(&thought, 70)));
+                }
+
+                self.dmn.mark_fired();
+            }
+        }
+
         // ── PEER SESSION: drain background thread messages ────────────
         // Each tick we check if the background KAI↔Claude session has sent
         // anything. Non-blocking — if nothing is ready, we move on instantly.
@@ -436,19 +811,22 @@ impl App {
                                 });
                             }
                             PeerMsg::PeerReply { round, total, text, model, region, confidence } => {
-                                // Store the response as cells
-                                let sentences: Vec<&str> = text
-                                    .split(|c| c == '.' || c == '\n')
-                                    .map(|s: &str| s.trim())
-                                    .filter(|s| s.len() > 25)
-                                    .collect();
+                                // Only store EXTERNAL peer replies (Claude/Grok) — NOT native
+                                // inner voice contemplation. Native thoughts are KAI talking to
+                                // itself and must not re-enter the universe as retrievable cells
+                                // or they bleed into every subsequent response.
                                 let mut stored = 0usize;
-                                for sentence in sentences.iter().take(8) {
-                                    // Use [discovered] for native, [from-claude] for API
-                                    let tag = if model == "Native" { "[discovered]" } else { "[from-claude]" };
-                                    let tagged = format!("{} {}", tag, sentence);
-                                    if self.universe.store_or_reinforce(&tagged, &region, "ai-peer", 1.3) {
-                                        stored += 1;
+                                if model != "Native" {
+                                    let sentences: Vec<&str> = text
+                                        .split(|c| c == '.' || c == '\n')
+                                        .map(|s: &str| s.trim())
+                                        .filter(|s| s.len() > 25)
+                                        .collect();
+                                    for sentence in sentences.iter().take(8) {
+                                        let tagged = format!("[from-peer] {}", sentence);
+                                        if self.universe.store_or_reinforce(&tagged, &region, "ai-peer", 1.3) {
+                                            stored += 1;
+                                        }
                                     }
                                 }
                                 let learn_note = if stored > 0 {
@@ -698,13 +1076,16 @@ impl App {
             && !lower.starts_with("is ") && !lower.starts_with("are ");
 
         if is_ryan_personal || is_about_kai {
-            // Trusted personal knowledge — highest priority (Strength 2.0)
-            let is_new = self.universe.store_or_reinforce(input, "memory", "ryan", 2.0);
-            
+            // Trusted personal knowledge — amygdala gates strength (base 2.0, up to 6.0 if emotional)
+            let source = if is_ryan_personal { "ryan" } else { "ryan" };
+            let strength = self.amygdala.gate(input, source, 2.0);
+            let is_new = self.universe.store_or_reinforce(input, "memory", source, strength);
+
             // Also store a tagged version so KAI can find it by asking "who is Ryan"
             let tag = if is_ryan_personal { "[about-ryan]" } else { "[about-kai]" };
             let tagged = format!("{} {}", tag, input);
-            let _ = self.universe.store_or_reinforce(&tagged, "memory", "ryan", 1.8);
+            let tag_strength = self.amygdala.gate(&tagged, source, 1.8);
+            let _ = self.universe.store_or_reinforce(&tagged, "memory", source, tag_strength);
 
             return Some(if is_new {
                 format!("✓ Identity update: \"{}\"", truncate(input, 55))
@@ -712,8 +1093,9 @@ impl App {
                 format!("✓ Identity reinforced: \"{}\"", truncate(input, 55))
             });
         } else if is_declarative {
-            // General factual claim from Ryan — trusted but lower priority than identity (Strength 1.3)
-            let is_new = self.universe.store_or_reinforce(input, "reasoning", "user-claim", 1.3);
+            // General factual claim — amygdala gates (base 1.3)
+            let strength = self.amygdala.gate(input, "user", 1.3);
+            let is_new = self.universe.store_or_reinforce(input, "reasoning", "user-claim", strength);
             if is_new {
                 return Some(format!("✓ New knowledge: \"{}\"", truncate(input, 55)));
             } else {
@@ -742,6 +1124,19 @@ impl App {
         if input.is_empty() { return; }
         self.input.clear();
         let lower = input.to_lowercase();
+
+        // Reset the DMN idle timer — user is active
+        self.dmn.notify_input();
+
+        // Insula: user input resets idle state
+        self.insula.notify_input();
+
+        // Theory of Mind: observe this message, update Ryan's model
+        self.tom.observe_input(&input);
+
+        // PFC: infer what Ryan wants from this message, track it as a goal
+        // and bind the content into executive working memory
+        self.pfc.infer_goal_from_input(&input);
 
         match lower.as_str() {
             "quit" | "exit" => {
@@ -1602,6 +1997,19 @@ impl App {
         // ── Transcript: record user turn ──────────────────────────────────
         kai::cognition::transcript::append(&self.base_dir, &self.session_id, "user", &input);
 
+        // ── Episodic Memory: store this user turn ─────────────────────────
+        {
+            let sal = kai::cognition::compute_salience(&input, "user");
+            let is_hot = self.episodic.store(&input, "user", &self.session_id, sal);
+            if is_hot && self.spectate_mode {
+                self.think("RAM", "📍", format!("High-salience memory stored (sal={:.2}): {}", sal,
+                    if input.len() > 60 { format!("{}…", &input[..60]) } else { input.clone() }
+                ));
+            }
+            // Global Workspace: user input always competes for the spotlight
+            self.global_workspace.post("user-input", &input, sal.max(0.55));
+        }
+
         // ── Conversational Learning — scan for things Ryan is teaching KAI ─
         // This runs BEFORE reasoning so the new knowledge is already in the
         // universe when the query happens (immediate Hebbian wiring).
@@ -1629,24 +2037,18 @@ impl App {
             || lower_input_check.starts_with("how ")
             || lower_input_check.starts_with("why ");
         if !is_question_input {
-            self.universe.store(&format!("user asked: {}", &input), "memory", "conversation", 0.3);
+            // Gate even conversational stores — emotional statements get stronger encoding
+            let conv_text = format!("user asked: {}", &input);
+            let conv_strength = self.amygdala.gate(&conv_text, "user", 0.3);
+            self.universe.store(&conv_text, "memory", "conversation", conv_strength);
         }
 
         // ── Spelling correction: auto-correct input before reasoning ─────
         let (corrected_input, corrections) = self.lexicon.correct_sentence(&input);
+        // Silently use corrected input — no TUI clutter for routine typo fixes
         let reasoning_input = if corrections.is_empty() {
             input.clone()
         } else {
-            // Show what was corrected
-            let fix_summary: Vec<String> = corrections.iter()
-                .map(|(from, to)| format!("{}→{}", from, to))
-                .collect();
-            self.turns.push(Turn {
-                role: "kai".into(),
-                text: format!("✎ Auto-corrected: {}", fix_summary.join(", ")),
-                region: Some("language".into()),
-                score: None,
-            });
             corrected_input
         };
 
@@ -1700,13 +2102,49 @@ impl App {
         if let Some(top_hit) = hits.first() {
             if top_hit.score > 0.3 {
                 self.universe.reinforce_by_text(&top_hit.text, 0.04);
+                // ── Neuroplasticity LTP: this cell fired — strengthen its synaptic weight ──
+                let da_level = self.dopamine.level;
+                let ltp_delta = self.neuroplasticity.ltp(&top_hit.text, top_hit.score, da_level);
+                if self.spectate_mode && ltp_delta > 0.01 {
+                    self.think("CPU", "🔗", format!("LTP +{:.3} → \"{}\"", ltp_delta, truncate(&top_hit.text, 40)));
+                }
             }
         }
+        // ── Neuroplasticity modulation — dopamine × prediction error tune learning rate ──
+        self.neuroplasticity.modulate(self.dopamine.level, self.predictor.avg_error);
+
+        // ── Predictive Processing: generate prediction BEFORE reasoning ────
+        // Convert hits to (text, score) pairs for the predictor
+        let hit_pairs: Vec<(String, f32)> = hits.iter()
+            .map(|h| (h.text.clone(), h.score))
+            .collect();
+        let (predicted_text, predicted_vec) = self.predictor.predict(&hit_pairs);
+
+        // ── Cerebellum: forward-model quality prediction ──────────────────
+        // BEFORE generating a response, predict how good it will be.
+        // After generation we'll compare with the actual confidence.
+        let input_sal = kai::cognition::compute_salience(&reasoning_input, "user");
+        let cbm_predicted_quality = self.cerebellum.predict_quality(
+            input_sal, hits.len(), self.dopamine.level,
+        );
+        self.cerebellum.record_timing(1.0); // one reasoning tick
+
+        // ── Episodic surface: check if KAI remembers something relevant ───
+        // If a vivid enough past memory matches this query, prepend it to
+        // the recent context so the voice engine can naturally reference it.
+        let memory_surface = self.episodic.surface_memory(&reasoning_input);
+        let recent_ctx_with_memory: Vec<(String, String)> = if let Some(ref mem) = memory_surface {
+            let mut v = vec![("memory".to_string(), mem.clone())];
+            v.extend(recent_ctx.clone());
+            v
+        } else {
+            recent_ctx.clone()
+        };
 
         if hits.is_empty() || (result.output_text.is_empty() && result.confidence < 0.05) {
             // ── Voice: no resonance — KAI genuinely doesn't know ─────────
             let voice_text = generate_response(
-                &reasoning_input, &[], query_type, &mood_state, &recent_ctx,
+                &reasoning_input, &[], query_type, &mood_state, &recent_ctx_with_memory,
             );
             kai::cognition::transcript::append(&self.base_dir, &self.session_id, "kai", &voice_text);
             self.turns.push(Turn {
@@ -1716,6 +2154,21 @@ impl App {
             });
             // Still store in working memory
             self.working_memory.push(&voice_text, "kai", self.tick);
+            // Episodic: store KAI's own response
+            {
+                let sal = kai::cognition::compute_salience(&voice_text, "kai");
+                self.episodic.store(&voice_text, "kai", &self.session_id, sal);
+            }
+
+            // ── Predictive Processing: measure prediction error ───────────
+            {
+                let pe = self.predictor.update(
+                    &reasoning_input, &predicted_text, &predicted_vec, &voice_text,
+                );
+                if self.spectate_mode && pe > 0.45 {
+                    self.think("CPU", "⚡", format!("Surprise! PE={:.3} — unexpected response", pe));
+                }
+            }
 
             // ── Ask a question when KAI genuinely has no field resonance ──
             // Extract the most substantive word from the input and ask about it.
@@ -1744,7 +2197,7 @@ impl App {
         } else {
             // ── Voice Engine: generate natural response ──────────────
             let voice_text = generate_response(
-                &reasoning_input, &hits, query_type, &mood_state, &recent_ctx,
+                &reasoning_input, &hits, query_type, &mood_state, &recent_ctx_with_memory,
             );
 
             // ── Depth label: spectate-only (per directive: don't expose internals) ─
@@ -1764,11 +2217,123 @@ impl App {
                 self.think("CPU", "🔗", depth_info);
             }
 
-            // ── Conversation Memory: store KAI's response ────────────
-            self.universe.store(&voice_text, "reasoning", "conversation", 1.0);
-
             // ── Working Memory: store KAI's turn ──────────────────────
+            // KAI's own voice responses are NOT stored in the universe.
+            // The universe holds external knowledge (seeds, Ryan's facts, world bridge).
+            // Storing KAI's own output creates echo loops — it finds its own words
+            // as the best hit for the next query and reads them back.
             self.working_memory.push(&voice_text, "kai", self.tick);
+            // Episodic: store KAI's response with salience scoring
+            // Apply prediction error as extra salience boost (surprise = deeper encoding)
+            {
+                let base_sal = kai::cognition::compute_salience(&voice_text, "kai");
+                let pe = self.predictor.update(
+                    &reasoning_input, &predicted_text, &predicted_vec, &voice_text,
+                );
+                let pe_boost = kai::cognition::predictor::PredictiveEngine::salience_boost(pe);
+                let final_sal = (base_sal + pe_boost).clamp(0.0, 1.0);
+                self.episodic.store(&voice_text, "kai", &self.session_id, final_sal);
+
+                if self.spectate_mode {
+                    self.think("CPU", "📡", format!(
+                        "PE={:.3} | curiosity={:.2} | sal_boost={:.2}",
+                        pe, self.predictor.curiosity_pressure, pe_boost
+                    ));
+                }
+            }
+
+            // ── PFC: evaluate response before sending ────────────────────
+            let pfc_verdict = self.pfc.evaluate(&voice_text, result.confidence, &reasoning_input);
+            match &pfc_verdict {
+                kai::cognition::PfcVerdict::FlagLowConfidence => {
+                    if self.spectate_mode {
+                        self.think("CPU", "⚠", format!("PFC flagged low confidence ({:.2}) — response may be uncertain", result.confidence));
+                    }
+                }
+                kai::cognition::PfcVerdict::GoalConflict(goal) => {
+                    if self.spectate_mode {
+                        self.think("CPU", "🎯", format!("PFC goal conflict: active goal=\"{}\"", truncate(goal, 40)));
+                    }
+                }
+                _ => {}
+            }
+
+            // PFC: post to global workspace
+            self.global_workspace.post("pfc", &self.pfc.status_line(), self.pfc.meta_confidence * 0.5);
+
+            // ── Cerebellum: update forward model with actual quality ──────────
+            {
+                let cbm_report = self.cerebellum.update_forward_model(
+                    cbm_predicted_quality, result.confidence,
+                );
+                // Register this output in corollary buffer (cancel self-noise)
+                self.cerebellum.register_output(&voice_text);
+                if self.spectate_mode {
+                    self.think("CPU", "🎯", format!(
+                        "CBLM: pred={:.2} actual={:.2} err={:.3} prec={:.3}{}",
+                        cbm_report.predicted, cbm_report.actual, cbm_report.error,
+                        self.cerebellum.precision_score,
+                        if cbm_report.should_recalibrate { " ⚠RECAL" } else { "" },
+                    ));
+                }
+            }
+
+            // ── Basal Ganglia: Go/NoGo action gate ───────────────────────────
+            // Determine context/response type from query type
+            let ctx_type = match query_type {
+                QueryType::IdentityQuestion | QueryType::ExplanationQuestion
+                | QueryType::RequestForInfo | QueryType::SelfQuestion => "question",
+                QueryType::Statement | QueryType::Contemplation       => "statement",
+                QueryType::Greeting | QueryType::Gratitude            => "social",
+            };
+            let resp_type = if hits.is_empty() { "ask_back" } else { "explain" };
+            let bg_decision = self.basal_ganglia.evaluate(
+                ctx_type, resp_type, result.confidence, self.dopamine.level,
+            );
+            if self.spectate_mode {
+                self.think("CPU", "🔁", format!(
+                    "BG: {:?} | {}",
+                    bg_decision, self.basal_ganglia.status_line(),
+                ));
+            }
+
+            // ── Dopamine: fire reward signal based on confidence vs. expectation ──
+            {
+                let expected = 1.0 - self.predictor.avg_error; // prior expected performance
+                let topic_preview = if reasoning_input.len() > 40 { &reasoning_input[..40] } else { &reasoning_input };
+                let rpe = self.dopamine.fire(topic_preview, result.confidence, expected);
+                if self.spectate_mode {
+                    self.think("CPU", "💊", format!("DA: RPE={:+.3} level={:.3} {}",
+                        rpe, self.dopamine.level,
+                        if self.dopamine.is_in_flow() { "FLOW" } else { "" }
+                    ));
+                }
+                self.global_workspace.post("dopamine", &self.dopamine.status_line(), self.dopamine.level * 0.4);
+
+                // ── Basal Ganglia: reinforce the executed pattern ───────────
+                // RPE is the reward signal. Positive RPE = did better than expected.
+                // This is exactly the dopamine-gated Hebbian signal from biology.
+                let reward = rpe.clamp(-1.0, 1.0);
+                self.basal_ganglia.reinforce(ctx_type, resp_type, reward, self.dopamine.level);
+            }
+
+            // ── ACC: scan top 2 hits for contradiction ────────────────────────
+            if hits.len() >= 2 {
+                let conflict_score = self.acc.detect_contradiction(&hits[0].text, &hits[1].text);
+                if conflict_score > 0.20 {
+                    self.acc.report_conflict(&hits[0].text, &hits[1].text, conflict_score);
+                    if self.spectate_mode {
+                        self.think("CPU", "⚡", format!("ACC conflict detected: {:.3}", conflict_score));
+                    }
+                    self.global_workspace.post("acc", &self.acc.status_line(), conflict_score * 0.7);
+                }
+            }
+            // If PFC approved with high confidence, let ACC know the conflict was handled
+            if matches!(pfc_verdict, kai::cognition::PfcVerdict::Approve) && result.confidence > 0.60 {
+                self.acc.resolve_recent();
+            } else if matches!(pfc_verdict, kai::cognition::PfcVerdict::FlagLowConfidence) {
+                self.acc.report_error(&reasoning_input, 1.0 - result.confidence);
+            }
 
             // ── Spectate: show voice engine details ───────────────────
             if self.spectate_mode {
@@ -1790,83 +2355,192 @@ impl App {
     }
 }
 
-// ── Peer Session Thread ────────────────────────────────────────────────────────
+// ── Native Contemplation Thread ───────────────────────────────────────────────
 //
-// Runs autonomously in a background thread. Generates questions from KAI's own
-// memory snapshot, calls Claude, sends messages back via channel so Ryan can
-// watch the conversation unfold live in the TUI without typing anything.
+// KAI's autonomous inner monologue. Runs in a background thread when the user
+// types `contemplate [n]`. Each round:
+//   1. Picks a topic from universe cells (NOT from its own prior responses)
+//   2. Queries what it knows about that topic
+//   3. Generates a stream-of-consciousness inner thought in natural language
+//   4. Finds the "gap" — a word from the hits that KAI knows least about
+//   5. Sets the gap word as the next topic (genuine curiosity-driven exploration)
 //
-//   Fallback  — pick a seed topic (high-strength cell text)
+// This produces the "thinking out loud" experience:
+//   "Hmm... geometric intelligence... Well, I know that intelligence is the
+//    ability to reason... Also — geometric means pattern-based... resonance?
+//    What is that exactly... I should look into that."
+//
 fn native_session_thread(
     tx: crossbeam_channel::Sender<PeerMsg>,
     n_rounds: u32,
     universe: kai::core::Universe,
     seed_topics: Vec<String>,
 ) {
-    let mut previous_response = String::new();
-    let round_topics: Vec<String> = seed_topics;
-    let reasoner = kai::cognition::reasoner::Reasoner::new();
-    let mood_state = kai::cognition::voice::MoodState { mood_name: "curious".into(), valence: 0.1 };
+    // ── Build topic pool from high-strength, non-echo universe cells ─────
+    let mut topic_pool: Vec<String> = universe.cells()
+        .iter()
+        .filter(|c| {
+            c.strength >= 1.0
+                && c.source != "conversation"
+                && !c.text.starts_with("user asked:")
+                && !c.text.starts_with("User asked:")
+                && c.text.len() > 12
+        })
+        .map(|c| {
+            // Use first 7 words as the topic phrase — enough to be specific
+            c.text.split_whitespace().take(7).collect::<Vec<_>>().join(" ")
+        })
+        .filter(|t| t.len() > 8)
+        .collect();
+    topic_pool.dedup();
+
+    // ── Determine starting topic ─────────────────────────────────────────
+    // Prefer the seed (dream text or top cell), fall back to pool, then hardcoded
+    let first_topic = seed_topics.first()
+        .and_then(|s| {
+            // Extract the most interesting phrase from the seed (not raw dream log text)
+            let words: Vec<&str> = s.split_whitespace().collect();
+            if words.len() > 3 {
+                Some(words.iter().take(6).cloned().collect::<Vec<_>>().join(" "))
+            } else {
+                None
+            }
+        })
+        .or_else(|| topic_pool.first().cloned())
+        .unwrap_or_else(|| "what I know and what I don't know yet".to_string());
+
+    let mut current_topic = first_topic;
+    let mut explored: Vec<String> = Vec::new();
+    let pool_len = topic_pool.len().max(1);
 
     for round in 1..=n_rounds {
-        // ── Generate this round's contemplation goal ───────────────────
-        let topic = if round == 1 {
-            let base = round_topics.first()
-                .cloned()
-                .unwrap_or_else(|| "the nature of geometric intelligence and how it differs from statistical learning".to_string());
-            extract_concept(&base)
-        } else {
-            extract_concept(&previous_response)
-        };
+        // ── Query: what does KAI know about this topic? ──────────────────
+        let hits = universe.query(&current_topic, 6);
+        let confident_hits: Vec<&kai::core::QueryHit> = hits.iter()
+            .filter(|h| h.score > 0.20)
+            .collect();
 
-        // Send KAI's focus to the TUI
+        // ── Find the gap — least-known adjacent concept ───────────────────
+        let gap = find_knowledge_gap(&hits, &universe, &explored);
+
+        // ── Generate stream-of-consciousness inner thought ─────────────────
+        let thought = kai::cognition::voice::generate_inner_thought(
+            &current_topic,
+            &hits,
+            gap.as_deref(),
+        );
+
+        // ── Short label for the "[Auto N/5] Thinking about:" line ─────────
+        let label: String = current_topic
+            .split_whitespace()
+            .take(4)
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        // Send topic label to TUI
         if tx.send(PeerMsg::KaiQuestion {
             round,
             total: n_rounds,
-            text: format!("Contemplating: {}", topic),
+            text: format!("Thinking about: {}", label),
         }).is_err() {
             return;
         }
 
-        // ── Native RSHL Reasoning ──────────────────────────────────────
-        // Simulated latency for "thinking" feel
-        std::thread::sleep(std::time::Duration::from_millis(800));
+        // Brief "thinking" pause — feels more natural than instant
+        std::thread::sleep(std::time::Duration::from_millis(700));
 
-        let result = reasoner.reason(&topic, &universe);
-        
-        // ── Vocalize the discovery ────────────────────────────────────
-        let mut voice_text = kai::cognition::voice::generate_response(
-            &topic,
-            &[], // Reasoner result text is handled specifically
-            kai::cognition::voice::QueryType::Contemplation,
-            &mood_state,
-            &[],
-        );
+        // Send inner thought to TUI
+        let region = confident_hits.first()
+            .map(|h| h.region.clone())
+            .unwrap_or_else(|| "memory".to_string());
+        let confidence = confident_hits.first().map(|h| h.score).unwrap_or(0.0);
 
-        // Inject the actual reasoning discovery into the voice template
-        if !result.output_text.is_empty() {
-            voice_text = voice_text.replace("clear resonance", &format!("resonance with \"{}\"", truncate(&result.output_text, 40)));
-        }
-
-        previous_response = voice_text.clone();
-
-        // Send discovery back to TUI
         if tx.send(PeerMsg::PeerReply {
             round,
             total: n_rounds,
-            text: voice_text,
+            text: thought,
             model: "Native".to_string(),
-            region: result.output_region,
-            confidence: result.confidence,
+            region,
+            confidence,
         }).is_err() {
             return;
         }
 
+        // ── Choose next topic: gap → pool rotation → default ─────────────
+        explored.push(current_topic.clone());
+        current_topic = if let Some(gap_word) = gap {
+            // True curiosity: the gap from this round's hits drives the next round
+            gap_word
+        } else if !topic_pool.is_empty() {
+            // Rotate through universe's rich cells
+            let idx = (round as usize) % pool_len;
+            topic_pool.get(idx).cloned()
+                .unwrap_or_else(|| "geometric intelligence and resonance".to_string())
+        } else {
+            "what makes intelligence different from calculation".to_string()
+        };
+
         // Inter-round pause
-        std::thread::sleep(std::time::Duration::from_millis(1500));
+        std::thread::sleep(std::time::Duration::from_millis(1300));
     }
 
     let _ = tx.send(PeerMsg::SessionDone { rounds_done: n_rounds });
+}
+
+/// Find a concept from KAI's current hits that it knows the LEAST about.
+/// This drives genuine curiosity — the weakest edge of known knowledge becomes
+/// the next thing KAI thinks about.
+fn find_knowledge_gap(
+    hits: &[kai::core::QueryHit],
+    universe: &kai::core::Universe,
+    explored: &[String],
+) -> Option<String> {
+    let stop = [
+        "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for",
+        "of", "with", "by", "from", "is", "are", "was", "were", "be", "been",
+        "have", "has", "had", "it", "its", "this", "that", "my", "i", "you",
+        "kai", "ryan", "not", "can", "will", "what", "how", "which", "they",
+        "their", "also", "more", "some", "one", "all", "its", "than", "so",
+        "very", "just", "about", "into", "when", "where", "such", "each",
+        "would", "could", "should", "does", "did", "been", "as", "if",
+        // Void/null concepts — not useful learning targets
+        "nothing", "anything", "everything", "something", "nobody", "somebody",
+        "anyone", "everyone", "nowhere", "somewhere", "somehow", "whatever",
+        "whenever", "wherever", "whoever", "however", "none", "never", "always",
+    ];
+
+    // Collect content words from hit cells
+    let mut candidates: Vec<String> = Vec::new();
+    for hit in hits {
+        for word in hit.text.split_whitespace() {
+            let clean: String = word.chars()
+                .filter(|c| c.is_alphabetic())
+                .collect::<String>()
+                .to_lowercase();
+            if clean.len() < 4 { continue; }
+            if stop.contains(&clean.as_str()) { continue; }
+            if explored.iter().any(|e| e.to_lowercase().contains(&clean)) { continue; }
+            candidates.push(clean);
+        }
+    }
+    candidates.dedup();
+
+    // Probe each candidate — pick the one with lowest resonance (least known)
+    let mut weakest: Option<(String, f32)> = None;
+    for word in candidates.iter().take(25) {
+        let probe = universe.query(word, 1);
+        let score = probe.first().map(|h| h.score).unwrap_or(0.0);
+        let is_weaker = match &weakest {
+            None => true,
+            Some((_, best)) => score < *best,
+        };
+        if is_weaker {
+            weakest = Some((word.clone(), score));
+        }
+    }
+
+    // Only return as a gap if KAI genuinely doesn't know it well
+    weakest.and_then(|(w, s)| if s < 0.55 { Some(w) } else { None })
 }
 fn peer_session_thread(
     tx: crossbeam_channel::Sender<PeerMsg>,
@@ -1975,6 +2649,9 @@ fn extract_concept(text: &str) -> String {
         "kai", "claude", "about", "also", "more", "than", "just", "so",
         "there", "been", "into", "through", "both", "each", "such", "dream",
         "insight", "cell", "strength", "field", "phi", "vector",
+        "nothing", "anything", "everything", "something", "nobody", "somebody",
+        "anyone", "everyone", "nowhere", "somehow", "whatever", "whenever",
+        "none", "never", "always", "cannot", "didn", "isn", "don", "won",
     ];
 
     // Split into words, find the longest non-stop word > 5 chars
@@ -2441,40 +3118,63 @@ fn render_mindview(f: &mut Frame, app: &App, area: Rect) {
         let start = app.mind_log.len().saturating_sub(max_visible);
 
         for event in &app.mind_log[start..] {
-            let (stream_color, stream_dot) = match event.stream.as_str() {
-                "GPU" => (Color::LightYellow,  "⚡"),
-                "CPU" => (Color::LightCyan,    "◉"),
-                "RAM" => (Color::LightGreen,   "⬤"),
-                _     => (Color::DarkGray,     "·"),
-            };
-
-            let event_width = (area.width as usize).saturating_sub(20);
-            lines.push(Line::from(vec![
-                Span::styled(
-                    format!("  t{:04} ", event.tick),
-                    Style::default().fg(Color::DarkGray),
-                ),
-                Span::styled(stream_dot, Style::default().fg(stream_color)),
-                Span::styled(
-                    format!(" {} ", event.stream),
-                    Style::default().fg(stream_color),
-                ),
-                Span::raw(&event.icon),
-                Span::raw("  "),
-                Span::styled(
-                    truncate(&event.text, event_width),
-                    Style::default().fg(Color::White),
-                ),
-            ]));
+            if event.stream == "THOUGHT" {
+                // ── Natural language inner thought — prominent display ────────
+                // Shown in soft italic white, no stream label, just the thought itself.
+                // This is what the user reads — KAI's actual inner voice.
+                let event_width = (area.width as usize).saturating_sub(4);
+                lines.push(Line::from(vec![
+                    Span::styled("  ", Style::default()),
+                    Span::styled(
+                        truncate(&event.text, event_width),
+                        Style::default()
+                            .fg(Color::White)
+                            .add_modifier(Modifier::ITALIC),
+                    ),
+                ]));
+            } else {
+                // ── Technical stream event — compact, dimmer ─────────────────
+                // Full mode shows these; brief mode only shows THOUGHT entries.
+                let (stream_color, stream_dot) = match event.stream.as_str() {
+                    "GPU" => (Color::LightYellow, "⚡"),
+                    "CPU" => (Color::LightCyan,   "◉"),
+                    "RAM" => (Color::LightGreen,  "⬤"),
+                    _     => (Color::DarkGray,    "·"),
+                };
+                let event_width = (area.width as usize).saturating_sub(20);
+                lines.push(Line::from(vec![
+                    Span::styled(
+                        format!("  t{:04} ", event.tick),
+                        Style::default().fg(Color::DarkGray),
+                    ),
+                    Span::styled(stream_dot, Style::default().fg(stream_color)),
+                    Span::styled(
+                        format!(" {} ", event.stream),
+                        Style::default().fg(stream_color),
+                    ),
+                    Span::raw(&event.icon),
+                    Span::raw("  "),
+                    Span::styled(
+                        truncate(&event.text, event_width),
+                        Style::default().fg(Color::DarkGray),
+                    ),
+                ]));
+            }
         }
     }
 
+    let mode_label = if app.spectate_full {
+        "· full mode (raw streams) · "
+    } else {
+        "· brief mode (inner thoughts) · "
+    };
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Magenta))
         .title(Line::from(vec![
-            Span::styled(" 👁 Mind View ", Style::default().fg(Color::LightMagenta).add_modifier(Modifier::BOLD)),
-            Span::styled("· live cognitive stream · type 'spectate' to exit ", Style::default().fg(Color::DarkGray)),
+            Span::styled(" 👁 KAI's Mind ", Style::default().fg(Color::LightMagenta).add_modifier(Modifier::BOLD)),
+            Span::styled(mode_label, Style::default().fg(Color::DarkGray)),
+            Span::styled("type 'spectate full/brief' to switch · 'spectate' to exit ", Style::default().fg(Color::DarkGray)),
         ]));
 
     let mindview = Paragraph::new(lines).block(block);
@@ -2512,61 +3212,57 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let base_dir = std::env::current_dir()
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_else(|_| ".".to_string());
-
-        let (mut universe, mut candidates, mut drive, _, _) = if kai::persistence::state_exists(&base_dir) {
-            match kai::persistence::load(&base_dir) {
-                Some((u, c, d, t, dc)) => (u, c, d, t, dc),
-                None => {
-                    let mut u = Universe::new();
-                    seed_universe(&mut u);
-                    (u, CandidateBuffer::new(), Drive::default(), 0u64, 0u64)
+        let (mut universe, mut candidates, mut drive, _, _) =
+            if kai::persistence::state_exists(&base_dir) {
+                match kai::persistence::load(&base_dir) {
+                    Some((u, c, d, t, dc)) => (u, c, d, t, dc),
+                    None => {
+                        let mut u = Universe::new();
+                        seed_universe(&mut u);
+                        (u, CandidateBuffer::new(), Drive::default(), 0, 0)
+                    }
                 }
-            }
-        } else {
-            let mut u = Universe::new();
-            seed_universe(&mut u);
-            (u, CandidateBuffer::new(), Drive::default(), 0u64, 0u64)
-        };
-
+            } else {
+                let mut u = Universe::new();
+                seed_universe(&mut u);
+                (u, CandidateBuffer::new(), Drive::default(), 0, 0)
+            };
         kai::bridge::ipc_server::run_server(&mut universe, &mut candidates, &mut drive);
         return Ok(());
     }
 
+    // ── Normal TUI mode ───────────────────────────────────────────────────────
     enable_raw_mode()?;
-    let mut stdout = io::stdout();
+    let mut stdout = std::io::stdout();
     execute!(stdout, EnterAlternateScreen)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
     let mut app = App::new();
 
-    // Initial heartbeat
-    app.heartbeat_tick();
-
-    let tick_rate = Duration::from_millis(50);
-
     loop {
         terminal.draw(|f| ui(f, &app))?;
 
-        let hb_interval = Duration::from_millis(app.drive.adaptive_interval_ms());
-        if app.last_heartbeat.elapsed() >= hb_interval {
-            app.heartbeat_tick();
-        }
-
-        if event::poll(tick_rate)? {
+        if event::poll(Duration::from_millis(50))? {
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press {
                     match key.code {
+                        KeyCode::Esc => {
+                            app.save_state();
+                            app.should_quit = true;
+                        }
+                        KeyCode::Enter => {
+                            app.process_input();
+                        }
                         KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                             app.save_state();
                             app.should_quit = true;
                         }
-                        KeyCode::Enter    => { app.process_input(); }
-                        KeyCode::Char(c)  => { app.input.push(c); }
-                        KeyCode::Backspace => { app.input.pop(); }
-                        KeyCode::Esc => {
-                            app.save_state();
-                            app.should_quit = true;
+                        KeyCode::Backspace => {
+                            app.input.pop();
+                        }
+                        KeyCode::Char(c) => {
+                            app.input.push(c);
                         }
                         _ => {}
                     }
@@ -2574,11 +3270,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
-        if app.should_quit { break; }
+        let now = Instant::now();
+        if now.duration_since(app.last_heartbeat) >= Duration::from_millis(5000) {
+            app.heartbeat_tick();
+        }
+
+        if app.should_quit {
+            break;
+        }
     }
 
     disable_raw_mode()?;
     execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
-    println!("\n  KAI dormant. State preserved.\n");
+    terminal.show_cursor()?;
     Ok(())
 }

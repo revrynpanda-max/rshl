@@ -85,7 +85,7 @@ pub fn call_claude(message: &str, system: &str) -> Result<PeerResponse, String> 
         })?;
 
     let body = serde_json::json!({
-        "model": "claude-3-haiku-20240307",
+        "model": "claude-haiku-4-5-20251001",
         "max_tokens": 512,
         "system": system,
         "messages": [
@@ -216,97 +216,41 @@ pub fn peer_exchange(
     // ── 3. Call the API ───────────────────────────────────────────────────
     let response = match peer_type {
         PeerType::Claude => call_claude(&full_message, &system)?,
-        PeerType::Grok => call_grok(&full_message, &system)?,
+        PeerType::Grok   => call_grok(&full_message, &system)?,
     };
 
-    // ── 4. Store what Claude said as knowledge cells in the universe ──────
-    let mut stored = 0usize;
-    let mut reinforced = 0usize;
+    // ── 4. Store what KAI learned as new knowledge cells ─────────────────
+    let mut cells_stored = 0usize;
+    let mut cells_reinforced = 0usize;
+    let region = "from-peer".to_string();
 
-    // Split into sentences, filter trivial ones, store substantive content
-    let raw = response.text.clone();
-    let sentences: Vec<&str> = raw
-        .split(|c| c == '.' || c == '\n')
-        .map(|s| s.trim())
-        .filter(|s| s.len() > 25)  // Only sentences worth keeping
-        .collect();
-
-    for sentence in sentences.iter().take(8) {
-        // Tag it so KAI knows who this came from
-        let tag = match peer_type {
-            PeerType::Claude => "[from-claude]",
-            PeerType::Grok => "[from-grok]",
-        };
-        let tagged = format!("{} {}", tag, sentence);
-        let is_new = universe.store_or_reinforce(
-            &tagged,
-            "reasoning",
-            "ai-peer",
-            1.3,
-        );
-        if is_new { stored += 1; } else { reinforced += 1; }
+    // Split response into sentences and store each non-trivial one
+    for sentence in response.text.split(|c| c == '.' || c == '!' || c == '?') {
+        let s = sentence.trim();
+        if s.len() < 20 { continue; }
+        let tagged = format!("[from-peer] {}", s);
+        let before = universe.count();
+        universe.store_or_reinforce(&tagged, &region, "ai-peer", 1.3);
+        if universe.count() > before {
+            cells_stored += 1;
+        } else {
+            cells_reinforced += 1;
+        }
     }
 
     Ok(PeerExchange {
         peer_response: response.text,
-        cells_stored: stored,
-        cells_reinforced: reinforced,
+        cells_stored,
+        cells_reinforced,
         model: response.model,
     })
 }
 
-/// Quick ping — send KAI's current summary to Claude and get a hello back.
-/// Used to verify the connection works before a full session.
-pub fn ping_claude(universe: &Universe) -> Result<String, String> {
-    let api_key = std::env::var("ANTHROPIC_API_KEY")
-        .map_err(|_| "ANTHROPIC_API_KEY not set".to_string())?;
-
-    let kai_self = kai_self_context(universe);
-    let body = serde_json::json!({
-        "model": "claude-3-haiku-20240307",
-        "max_tokens": 80,
-        "messages": [
-            {
-                "role": "user",
-                "content": format!(
-                    "Hello Claude. I am KAI — a geometric AI. {}. \
-                    Respond in one sentence acknowledging our peer connection.",
-                    kai_self
-                )
-            }
-        ]
-    });
-
-    let response = ureq::post("https://api.anthropic.com/v1/messages")
-        .set("x-api-key", &api_key)
-        .set("anthropic-version", "2023-06-01")
-        .set("content-type", "application/json")
-        .timeout(std::time::Duration::from_secs(15))
-        .send_json(body)
-        .map_err(|e| format!("Network error: {}", e))?;
-
-    let json: serde_json::Value = response
-        .into_json()
-        .map_err(|e| format!("Parse error: {}", e))?;
-
-    json["content"][0]["text"]
-        .as_str()
-        .map(|s| s.to_string())
-        .ok_or_else(|| "No response".to_string())
-}
-
-/// Quick ping for Grok.
-pub fn ping_grok(universe: &Universe) -> Result<String, String> {
-    let _api_key = std::env::var("XAI_API_KEY")
-        .map_err(|_| "XAI_API_KEY not set".to_string())?;
-
-    let kai_self = kai_self_context(universe);
-    let system = format!(
-        "You are Grok, having a peer connection handshake with KAI. {}",
-        kai_self
-    );
-    let message = "Respond in one sentence acknowledging our peer connection.";
-
-    let response = call_grok(message, &system)?;
-    Ok(response.text)
+/// Quick connectivity test — send a minimal hello to Claude and return the reply text.
+/// Used by the `peerchat` command to verify API key and network before committing to a full exchange.
+pub fn ping_claude(_universe: &Universe) -> Result<String, String> {
+    let system = "You are Claude, an AI assistant. Respond in one short sentence only.";
+    let message = "Hello from KAI. Please confirm you can hear me with a single sentence.";
+    let resp = call_claude(message, system)?;
+    Ok(resp.text)
 }
