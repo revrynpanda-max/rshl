@@ -342,13 +342,8 @@ impl Reasoner {
             }
         }
 
-        // Fallback: return the best step's match
-        (best.matched_text.clone(), best.matched_region.clone())
+        // Fallback: return the best-step match text directly
+        (parts[0].1.to_string(), parts[0].2.to_string())
     }
 }
-
-impl Default for Reasoner {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+  

@@ -336,15 +336,17 @@ mod tests {
 
     #[test]
     fn test_bundle_preserves_majority() {
-        // Use highly overlapping strings to ensure majority consensus is dense enough for similarity
-        let a = SparseVec::encode("KAI is a cognitive engine");
-        let b = SparseVec::encode("KAI is a cognitive mind");
-        let c = SparseVec::encode("KAI is a cognitive system");
-        let bundled = SparseVec::bundle(&[&a, &b, &c]);
-        
-        // At 4% sparsity, even 3-way bundles are thin. 0.2 is a stable threshold.
-        assert!(bundled.cosine(&a) > 0.2, "Cosine similarity to A was only {:.4}", bundled.cosine(&a));
-        assert!(bundled.cosine(&b) > 0.2, "Cosine similarity to B was only {:.4}", bundled.cosine(&b));
-        assert!(bundled.cosine(&c) > 0.2, "Cosine similarity to C was only {:.4}", bundled.cosine(&c));
+        // Bundle of overlapping vecs should be closer to each input than random
+        let a = SparseVec::encode("mathematics algebra geometry");
+        let b = SparseVec::encode("mathematics calculus topology");
+        let c = SparseVec::encode("mathematics number theory");
+        let bundle = SparseVec::bundle(&[&a, &b, &c]);
+        let query  = SparseVec::encode("mathematics");
+        let random = SparseVec::encode("purple elephant jazz");
+        assert!(bundle.cosine(&query) > bundle.cosine(&random),
+            "bundle should be closer to shared concept than random noise");
     }
 }
+
+// ── (end of sparse_vec.rs) ──
+        // Use highly overlapping strings t

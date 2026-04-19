@@ -122,6 +122,12 @@ impl Lexicon {
             return None;
         }
 
+        // Contractions and possessives — never "correct" what's, it's, I'm, Ryan's, etc.
+        // An apostrophe means the word is intentional shorthand, not a typo.
+        if lower.contains('\'') || lower.contains('\u{2019}') {
+            return None;
+        }
+
         // Use stricter distance for short words — prevents "curse" → "course",
         // "bitch" → "batch", etc. Informal/slang words are often short and close
         // to real words by edit distance but are intentional.
@@ -183,22 +189,23 @@ impl Lexicon {
         let mut result_words: Vec<String> = Vec::new();
 
         for (idx, &token) in tokens.iter().enumerate() {
-            let (word, trailing_punct) = split_trailing_punct(token);
+            let (leading_punct, word, trailing_punct) = split_all_punct(token);
 
             if word.is_empty() {
-                result_words.push(trailing_punct.to_string());
+                // Pure punctuation token — keep as-is
+                result_words.push(token.to_string());
                 continue;
             }
 
             let lower = word.to_lowercase();
             let prev_word = if idx > 0 {
-                let (pw, _) = split_trailing_punct(tokens[idx - 1]);
+                let (_, pw, _) = split_all_punct(tokens[idx - 1]);
                 pw.to_lowercase()
             } else {
                 String::new()
             };
             let next_word = if idx + 1 < tokens.len() {
-                let (nw, _) = split_trailing_punct(tokens[idx + 1]);
+                let (_, nw, _) = split_all_punct(tokens[idx + 1]);
                 nw.to_lowercase()
             } else {
                 String::new()
@@ -229,7 +236,8 @@ impl Lexicon {
 
                 let final_word = match_case(word, &corrected);
                 corrections.push((word.to_string(), final_word.clone()));
-                result_words.push(format!("{}{}", final_word, trailing_punct));
+                // Preserve leading + trailing punctuation around corrected word
+                result_words.push(format!("{}{}{}", leading_punct, final_word, trailing_punct));
             } else {
                 result_words.push(token.to_string());
             }
@@ -362,14 +370,16 @@ fn is_plausible_bigram(w1: &str, w2: &str) -> bool {
     true
 }
 
-/// Split trailing punctuation from a word token.
-fn split_trailing_punct(token: &str) -> (&str, &str) {
-    let end = token.len();
-    let word_end = token.trim_end_matches(|c: char| c.is_ascii_punctuation()).len();
-    if word_end == 0 {
-        return ("", token);
-    }
-    (&token[..word_end], &token[word_end..end])
+/// Split a token into (leading_punct, word, trailing_punct).
+/// E.g. `"YOU"` → (`"`, `YOU`, `"`)
+///      `hello,` → (``, `hello`, `,`)
+fn split_all_punct(token: &str) -> (&str, &str, &str) {
+    // Leading
+    let lead_end = token.len() - token.trim_start_matches(|c: char| c.is_ascii_punctuation()).len();
+    let after_lead = &token[lead_end..];
+    // Trailing (on the trimmed part)
+    let trail_start = after_lead.trim_end_matches(|c: char| c.is_ascii_punctuation()).len();
+    (&token[..lead_end], &after_lead[..trail_start], &after_lead[trail_start..])
 }
 
 /// Preserve the capitalization pattern of the original word on the corrected word.
@@ -474,3 +484,4 @@ mod tests {
         assert_eq!(match_case("hello", "World"), "world");
     }
 }
+   
