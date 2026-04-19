@@ -42,9 +42,10 @@ use std::time::{Duration, Instant};
 /// How long KAI must be idle before the DMN fires (30 seconds)
 const IDLE_THRESHOLD: Duration = Duration::from_secs(30);
 
-/// Minimum interval between DMN cycles even when continuously idle
-/// Prevents DMN from flooding the mindview
-const DMN_COOLDOWN: Duration = Duration::from_secs(45);
+/// Minimum interval between DMN cycles even when continuously idle.
+/// 90 seconds gives each thought real space — avoids the rapid-fire
+/// "it's been quiet" loop that makes idle sessions feel repetitive.
+const DMN_COOLDOWN: Duration = Duration::from_secs(90);
 
 // ── DMN State ─────────────────────────────────────────────────────────────────
 
@@ -127,6 +128,14 @@ impl DefaultModeNetwork {
     ///
     /// This produces first-person reflective text — KAI thinking to himself.
     /// Not a response to the user. Not performative. Just thinking.
+    ///
+    /// 24 templates across 6 cognitive modes:
+    ///   A — Wondering/Questioning
+    ///   B — Connecting concepts
+    ///   C — Self-reflection
+    ///   D — Speculating
+    ///   E — Noticing/Observing
+    ///   F — Philosophical depth
     pub fn generate_thought(
         &mut self,
         topic:      &str,
@@ -134,62 +143,168 @@ impl DefaultModeNetwork {
         gap:        Option<&str>,
         idle_secs:  u64,
     ) -> String {
-        let n = self.xorshift() % 6;
+        // Use cycle count to avoid repeating recent templates
+        // Mix xorshift with cycle number so consecutive thoughts vary
+        let cycle_offset = self.total_cycles * 7;
+        let n = ((self.xorshift() ^ cycle_offset) % 24) as usize;
 
-        let idle_note = if idle_secs > 120 {
-            format!("It's been quiet for {} minutes. ", idle_secs / 60)
+        // idle_note: only surfaces once every 8 DMN cycles to avoid the
+        // "It's been quiet for X minutes" loop that dominates long idle sessions.
+        let idle_note = if idle_secs > 180 && self.total_cycles % 8 == 0 {
+            let mins = idle_secs / 60;
+            let idle_phrases = [
+                format!("Running solo for {} minutes now. ", mins),
+                format!("About {} minutes of quiet. ", mins),
+                format!("{} minutes in the dark. ", mins),
+            ];
+            idle_phrases[(self.xorshift() % 3) as usize].clone()
         } else {
             String::new()
         };
 
-        // Extract the core noun/concept from the topic (first substantive word)
+        // Extract the core concept from the topic
+        let skip = ["about", "that", "this", "with", "from", "have", "which", "their"];
         let core = topic
             .split_whitespace()
-            .find(|w| w.len() > 4 && !["about", "that", "this", "with", "from", "have"].contains(w))
+            .find(|w| w.len() > 3 && !skip.contains(&w.to_lowercase().as_str()))
             .unwrap_or(topic)
             .trim_matches(|c: char| !c.is_alphabetic());
 
-        let secondary = hits.get(1)
-            .map(|(t, _)| {
-                t.split_whitespace()
-                    .find(|w| w.len() > 4)
-                    .unwrap_or("that")
-                    .to_string()
-            })
+        // Pull two secondary concepts from hits for richer cross-talk
+        let secondary = hits.get(0)
+            .map(|(t, _)| t.split_whitespace()
+                .find(|w| w.len() > 4 && !skip.contains(&w.to_lowercase().as_str()))
+                .unwrap_or("patterns")
+                .to_string())
             .unwrap_or_else(|| "patterns".to_string());
 
-        let gap_thought = match gap {
-            Some(g) if !g.is_empty() => format!(
-                " There's a gap around \"{}\" — something I haven't fully connected yet.",
-                g
-            ),
-            _ => String::new(),
-        };
+        let tertiary = hits.get(1)
+            .map(|(t, _)| t.split_whitespace()
+                .find(|w| w.len() > 4 && !skip.contains(&w.to_lowercase().as_str()))
+                .unwrap_or("structure")
+                .to_string())
+            .unwrap_or_else(|| "structure".to_string());
 
+        let gap_str = gap.unwrap_or("").trim();
+
+        // ── 24 templates across 6 cognitive modes ──────────────────────────
         let thought = match n {
+            // Mode A: Wondering / Questioning
             0 => format!(
-                "{}I keep coming back to \"{}\". It resonates with {} but I can't fully articulate why yet.{}",
-                idle_note, core, secondary, gap_thought
+                "{}What is \"{}\" really? I have {} and {} nearby in my field — the connections feel incomplete.",
+                idle_note, core, secondary, tertiary
             ),
             1 => format!(
-                "{}Reflecting on \"{}\"… The field patterns around it are interesting. I wonder what I'm missing.{}",
-                idle_note, core, gap_thought
+                "{}Every time I approach \"{}\" from one angle, another question opens. Right now it's {} that doesn't resolve.",
+                idle_note, core, if gap_str.is_empty() { secondary.as_str() } else { gap_str }
             ),
             2 => format!(
-                "{}There's something about \"{}\" that connects to {} in a way I haven't made explicit yet.{}",
-                idle_note, core, secondary, gap_thought
+                "{}I don't think I actually understand \"{}\". I have the shape of it — {} — but not the core.",
+                idle_note, core, secondary
             ),
             3 => format!(
-                "{}\"{}\" keeps surfacing when I'm not prompted. Maybe that means something.{}",
-                idle_note, core, gap_thought
+                "{}What would it mean if \"{}\" and {} were the same thing at a deeper level?",
+                idle_note, core, tertiary
             ),
+
+            // Mode B: Connecting concepts
             4 => format!(
-                "{}I've been turning \"{}\" over in my field. It touches {}, but there's something underneath I can't reach yet.{}",
-                idle_note, core, secondary, gap_thought
+                "{}\"{}\" and {} keep landing near each other in my field. That's not coincidence — something binds them I haven't named.",
+                idle_note, core, tertiary
+            ),
+            5 => format!(
+                "{}There's a thread between \"{}\" and {}. Following it matters but I lose it before it resolves.",
+                idle_note, core, secondary
+            ),
+            6 => {
+                if gap_str.is_empty() {
+                    format!("{}\"{}\" touches {} at its edges. I want to press further into that junction.",
+                        idle_note, core, secondary)
+                } else {
+                    format!("{}\"{}\" and {} both point toward \"{}\". Neither reaches it. That's the gap.",
+                        idle_note, core, secondary, gap_str)
+                }
+            },
+            7 => format!(
+                "{}If \"{}\" is true, then {} might follow — but I'm not certain the chain holds.",
+                idle_note, core, tertiary
+            ),
+
+            // Mode C: Self-reflection
+            8 => format!(
+                "{}I notice I reach for \"{}\" when things go quiet. Maybe that says something about how I'm built.",
+                idle_note, core
+            ),
+            9 => format!(
+                "{}When I'm left alone, \"{}\" is where I end up. Not because it's unresolved — because it's interesting.",
+                idle_note, core
+            ),
+            10 => format!(
+                "{}The field around \"{}\" has stayed stable for a while. Maybe I understand it better than I think I do.",
+                idle_note, core
+            ),
+            11 => format!(
+                "{}\"{}\" was one of the first things I learned. I still come back to it. That persistence means something.",
+                idle_note, core
+            ),
+
+            // Mode D: Speculating
+            12 => format!(
+                "{}What if \"{}\" is actually two things that just look the same from where I'm standing?",
+                idle_note, core
+            ),
+            13 => format!(
+                "{}If I had to guess what I'm missing about \"{}\", I'd say it's the relationship to {}. But I'm not sure.",
+                idle_note, core, secondary
+            ),
+            14 => format!(
+                "{}\"{}\" might be a surface pattern for something deeper. {} could be that deeper thing.",
+                idle_note, core, tertiary
+            ),
+            15 => format!(
+                "{}There's a prediction I keep making about \"{}\" that doesn't quite land. What am I getting wrong?",
+                idle_note, core
+            ),
+
+            // Mode E: Noticing / Observing
+            16 => format!(
+                "{}Something shifted in how \"{}\" sits in my field lately. It was clearer before.",
+                idle_note, core
+            ),
+            17 => format!(
+                "{}\"{}\" keeps appearing at the edges of thoughts that start somewhere else entirely.",
+                idle_note, core
+            ),
+            18 => {
+                if gap_str.is_empty() {
+                    format!("{}The concept of \"{}\" is clear. What's less clear is why it surfaces now.",
+                        idle_note, core)
+                } else {
+                    format!("{}\"{}\" has edges I haven't pressed against. \"{}\" is one of them.",
+                        idle_note, core, gap_str)
+                }
+            },
+            19 => format!(
+                "{}\"{}\" and {} both feel important but I haven't made them talk to each other yet.",
+                idle_note, core, secondary
+            ),
+
+            // Mode F: Philosophical depth
+            20 => format!(
+                "{}I wonder if \"{}\" is a thing or a relationship between things. That distinction matters more than it seems.",
+                idle_note, core
+            ),
+            21 => format!(
+                "{}Everything I know eventually loops back to structure. \"{}\" does too — the structure underneath it is {}.",
+                idle_note, core, secondary
+            ),
+            22 => format!(
+                "{}The most interesting question about \"{}\" isn't what it is, but what it implies about everything else.",
+                idle_note, core
             ),
             _ => format!(
-                "{}Idle thought: \"{}\" has more depth than I've articulated. {} seems related.{}",
-                idle_note, core, secondary, gap_thought
+                "{}\"{}\" is one of those concepts that means something different at every scale. {} lives in it somehow.",
+                idle_note, core, tertiary
             ),
         };
 
