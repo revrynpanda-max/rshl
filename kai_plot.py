@@ -36,6 +36,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import matplotlib.patches as mpatches
+from matplotlib.lines import Line2D
 import numpy as np
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -120,6 +121,7 @@ fig, axes = plt.subplots(
     len(PANELS), 1,
     figsize=(15, 11),
     sharex=True,
+    constrained_layout=True,
     gridspec_kw={"hspace": 0.08},
 )
 fig.patch.set_facecolor("#0d0d0d")
@@ -202,7 +204,6 @@ legend_handles = [
 ]
 # Add session-break entry
 if session_break_times:
-    from matplotlib.lines import Line2D
     legend_handles.append(
         Line2D([0], [0], color="white", linewidth=1.2, linestyle="--",
                alpha=0.5, label="session restart")
@@ -217,7 +218,6 @@ axes[0].legend(
 )
 
 # ── Save & show ───────────────────────────────────────────────────────────────
-plt.tight_layout()
 fig.savefig(PNG_PATH, dpi=DPI, bbox_inches="tight", facecolor="#0d0d0d")
 print(f"Saved  →  {PNG_PATH}")
 plt.show()
