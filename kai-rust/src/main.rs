@@ -111,6 +111,7 @@ struct App {
     should_quit: bool,
     bus: kai::streams::SharedBus,
     spectate_mode: bool,
+    spectate_full: bool,
     mind_log: Vec<MindEvent>,
     embeddings: Embeddings,
     working_memory: WorkingMemory,
@@ -198,6 +199,7 @@ impl App {
             should_quit: false,
             bus: kai::streams::SharedBus::new(),
             spectate_mode: false,
+            spectate_full: false,
             mind_log: Vec::new(),
             embeddings: Embeddings::new(),
             working_memory: WorkingMemory::new(),
@@ -311,8 +313,8 @@ impl App {
             let _ = log_file.flush();
         }
 
-        // Log field state for spectate
-        if self.spectate_mode && self.tick % 3 == 0 {
+        // Log field state for spectate (verbose only)
+        if self.spectate_mode && self.spectate_full && self.tick % 3 == 0 {
             self.think("CPU", "◉", format!(
                 "Field: Φg={:.4} χ={:.3} ρ={:.3} | {} V={:+.2}",
                 field.phi_g, field.chi, field.rho,
@@ -333,7 +335,7 @@ impl App {
         // ── STREAM 1: GPU Math (dream consolidation with parallel cosine) ──
         if self.tick % 3 == 0 {
             let gpu_start = Instant::now();
-            if self.spectate_mode {
+            if self.spectate_mode && self.spectate_full {
                 self.think("GPU", "⚡", format!("Dreaming... scanning {} cells", self.universe.count()));
             }
             self.run_dream_cycle();
@@ -780,15 +782,52 @@ impl App {
                 return;
             }
             "spectate" | "watch" | "mindview" => {
-                self.spectate_mode = !self.spectate_mode;
-                let msg = if self.spectate_mode {
-                    self.think("CPU", "👁", "Spectate mode ACTIVATED — you can now see inside my mind".into());
-                    "👁 Spectate mode ON — watching KAI think in real-time. Type 'spectate' again to exit."
+                let arg = input.split_whitespace().nth(1).map(|s| s.to_lowercase());
+                
+                if self.spectate_mode {
+                    // If already on, check if we're switching modes or turning off
+                    if let Some(ref a) = arg {
+                        if a == "full" && !self.spectate_full {
+                            self.spectate_full = true;
+                            self.think("CPU", "👁", "Status pulses ENABLED (verbose mode)".into());
+                        } else if a == "brief" && self.spectate_full {
+                            self.spectate_full = false;
+                            self.think("CPU", "👁", "Status pulses DISABLED (brief mode)".into());
+                        } else {
+                            // No change in mode, so toggle off
+                            self.spectate_mode = false;
+                            self.spectate_full = false;
+                            self.turns.push(Turn { role: "user".into(), text: input.clone(), region: None, score: None });
+                            self.turns.push(Turn { role: "kai".into(), text: "Spectate mode OFF — back to conversation.".into(), region: None, score: None });
+                        }
+                    } else {
+                        // Toggle off
+                        self.spectate_mode = false;
+                        self.spectate_full = false;
+                        self.turns.push(Turn { role: "user".into(), text: input.clone(), region: None, score: None });
+                        self.turns.push(Turn { role: "kai".into(), text: "Spectate mode OFF — back to conversation.".into(), region: None, score: None });
+                    }
                 } else {
-                    "Spectate mode OFF — back to conversation."
-                };
-                self.turns.push(Turn { role: "user".into(), text: input, region: None, score: None });
-                self.turns.push(Turn { role: "kai".into(), text: msg.into(), region: None, score: None });
+                    // Turning on
+                    self.spectate_mode = true;
+                    self.spectate_full = arg.as_deref() == Some("full");
+                    
+                    self.think("CPU", "👁", format!(
+                        "Spectate mode ACTIVATED ({}) — you can now see inside my mind",
+                        if self.spectate_full { "full" } else { "brief" }
+                    ));
+                    
+                    self.turns.push(Turn { role: "user".into(), text: input.clone(), region: None, score: None });
+                    self.turns.push(Turn {
+                        role: "kai".into(),
+                        text: format!(
+                            "👁 Spectate mode ON ({}) — watching KAI think in real-time. Type 'spectate' again to exit.",
+                            if self.spectate_full { "full" } else { "brief" }
+                        ),
+                        region: None,
+                        score: None
+                    });
+                }
                 return;
             }
             "save" => {
