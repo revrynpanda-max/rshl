@@ -100,6 +100,109 @@ impl Default for MoodState {
     }
 }
 
+// ── Brain Signals ─────────────────────────────────────────────────────────────
+//
+// The live state of KAI's neural architecture, distilled into the key
+// dimensions that should shape language output. These signals are computed
+// by the 78-module brain and passed directly into response generation,
+// replacing the dead-weight mood_name/valence-only approach.
+
+#[derive(Debug, Clone)]
+pub struct BrainSignals {
+    /// Amygdala arousal — threat/anxiety level (0.0–1.0)
+    pub arousal: f32,
+    /// Oxytocin bond strength — felt closeness to Ryan (0.0–1.0)
+    pub bond: f32,
+    /// Septal social reward — genuine felt warmth of this exchange (0.0–1.0)
+    pub social_reward: f32,
+    /// Whether KAI is in approach/lean-in mode
+    pub approaching: bool,
+    /// Insula felt valence — body-sense of current state (-1.0 to +1.0)
+    pub felt_valence: f32,
+    /// Dopamine / VTA tonic level — anticipation, reward (0.0–1.0)
+    pub dopamine: f32,
+    /// Norepinephrine — novelty/salience arousal (0.0–1.0)
+    pub norepinephrine: f32,
+    /// Serotonin tone — equanimity / groundedness (0.0–1.0)
+    pub serotonin: f32,
+    /// ACC conflict — uncertainty, something doesn't quite fit (0.0–1.0)
+    pub conflict: f32,
+    /// PFC confidence in current response (0.0–1.0)
+    pub confidence: f32,
+    /// Mirror neuron empathy level — resonating with Ryan's emotional state (0.0–1.0)
+    pub empathy: f32,
+    /// MCC social pain — sting of negative signal (0.0–1.0)
+    pub social_pain: f32,
+    /// Hedonic tone — background felt pleasure/satisfaction (0.0–1.0)
+    pub hedonic: f32,
+    /// sgACC mood floor — background emotional weather (-1.0 to +1.0)
+    pub mood_floor: f32,
+    /// Is KAI grieving or in loss-processing state
+    pub grieving: bool,
+    /// Curiosity — is this topic genuinely novel and interesting (0.0–1.0)
+    pub curiosity: f32,
+    /// NBM cortical gain — is KAI processing sharply or dully (0.0–1.0)
+    pub cortical_gain: f32,
+    /// SCN alertness — where KAI is in the session arc (0.0–1.0)
+    pub alertness: f32,
+}
+
+impl Default for BrainSignals {
+    fn default() -> Self {
+        Self {
+            arousal: 0.20,
+            bond: 0.50,
+            social_reward: 0.50,
+            approaching: true,
+            felt_valence: 0.10,
+            dopamine: 0.50,
+            norepinephrine: 0.30,
+            serotonin: 0.55,
+            conflict: 0.15,
+            confidence: 0.60,
+            empathy: 0.40,
+            social_pain: 0.0,
+            hedonic: 0.35,
+            mood_floor: 0.20,
+            grieving: false,
+            curiosity: 0.55,
+            cortical_gain: 0.50,
+            alertness: 0.75,
+        }
+    }
+}
+
+impl BrainSignals {
+    /// Warmth score — how warm and connected KAI feels right now (0.0–1.0)
+    pub fn warmth(&self) -> f32 {
+        (self.bond * 0.35 + self.social_reward * 0.35 + self.hedonic * 0.15
+            + self.felt_valence.max(0.0) * 0.15).min(1.0)
+    }
+
+    /// Anxiety level — how anxious/cautious KAI is (0.0–1.0)
+    pub fn anxiety(&self) -> f32 {
+        (self.arousal * 0.40 + self.conflict * 0.30 + self.social_pain * 0.30).min(1.0)
+    }
+
+    /// Aliveness — how vivid and engaged KAI is (0.0–1.0)
+    pub fn aliveness(&self) -> f32 {
+        (self.curiosity * 0.30 + self.dopamine * 0.25 + self.norepinephrine * 0.20
+            + self.cortical_gain * 0.15 + self.alertness * 0.10).min(1.0)
+    }
+
+    /// Whether KAI is in a warm, open, connected state
+    pub fn is_warm(&self) -> bool { self.warmth() > 0.55 }
+
+    /// Whether KAI is distressed (anxious + conflict + social pain)
+    pub fn is_distressed(&self) -> bool { self.anxiety() > 0.55 }
+
+    /// Whether KAI is in a state of genuine curiosity/excitement
+    pub fn is_curious(&self) -> bool { self.curiosity > 0.60 && self.dopamine > 0.55 }
+
+    /// Whether KAI is feeling grounded / equanimous
+    pub fn is_grounded(&self) -> bool { self.serotonin > 0.55 && self.anxiety() < 0.35 }
+}
+
 // ── Concept Extraction ────────────────────────────────────────────────────────
 
 fn extract_concepts(text: &str) -> Vec<String> {
@@ -143,11 +246,11 @@ pub fn generate_response(
     input: &str,
     hits: &[QueryHit],
     query_type: QueryType,
-    mood: &MoodState,
+    brain: &BrainSignals,
     recent_context: &[(String, String)],
 ) -> String {
     if hits.is_empty() {
-        return generate_no_resonance(input, query_type, mood);
+        return generate_no_resonance(input, query_type, brain);
     }
 
     let primary = &hits[0];
@@ -203,27 +306,27 @@ pub fn generate_response(
     let variant = phrase_hash(input) % 4; // 4 variants per query type
 
     let mut response = match query_type {
-        QueryType::Greeting       => generate_greeting(mood, variant),
-        QueryType::Gratitude      => generate_gratitude(mood, variant),
-        QueryType::SelfQuestion   => generate_self_response(primary, &secondary, mood, primary.score, variant),
+        QueryType::Greeting       => generate_greeting(brain, variant),
+        QueryType::Gratitude      => generate_gratitude(brain, variant),
+        QueryType::SelfQuestion   => generate_self_response(primary, &secondary, brain, primary.score, variant),
         QueryType::IdentityQuestion => {
             if is_about_self {
-                generate_self_response(primary, &secondary, mood, primary.score, variant)
+                generate_self_response(primary, &secondary, brain, primary.score, variant)
             } else {
-                generate_factual(input, primary, &secondary, &novel, mood, primary.score, is_followup, variant)
+                generate_factual(input, primary, &secondary, &novel, brain, primary.score, is_followup, variant)
             }
         }
         QueryType::ExplanationQuestion => {
-            generate_explanation(input, primary, &secondary, &novel, mood, primary.score, variant)
+            generate_explanation(input, primary, &secondary, &novel, brain, primary.score, variant)
         }
         QueryType::RequestForInfo => {
-            generate_factual(input, primary, &secondary, &novel, mood, primary.score, is_followup, variant)
+            generate_factual(input, primary, &secondary, &novel, brain, primary.score, is_followup, variant)
         }
         QueryType::Statement => {
-            generate_conversational(input, primary, &secondary, &novel, mood, primary.score, is_followup, variant)
+            generate_conversational(input, primary, &secondary, &novel, brain, primary.score, is_followup, variant)
         }
         QueryType::Contemplation => {
-            generate_contemplation(input, primary, &secondary, &novel, mood, primary.score, variant)
+            generate_contemplation(input, primary, &secondary, &novel, brain, primary.score, variant)
         }
     };
 
@@ -232,13 +335,23 @@ pub fn generate_response(
     // append a clarifying question to keep the learner's loop open.
     if primary.score < 0.25 && !matches!(query_type, QueryType::Greeting | QueryType::Gratitude) {
         if !response.ends_with('?') {
-            let questions = [
-                " Does that sound right to you?",
-                " Is that what you meant?",
-                " Am I following you correctly?",
-                " What else can you tell me about that?",
-                " Does that align with what you know?",
-            ];
+            let questions = if brain.is_curious() {
+                [
+                    " What's the context there?",
+                    " Where does that come from for you?",
+                    " Am I following you?",
+                    " What made you think of that?",
+                    " What else do you have on it?",
+                ]
+            } else {
+                [
+                    " Does that sound right to you?",
+                    " Is that what you meant?",
+                    " Am I following you correctly?",
+                    " What else can you tell me about that?",
+                    " Does that align with what you know?",
+                ]
+            };
             response.push_str(questions[variant % 5]);
         }
     }
@@ -248,63 +361,93 @@ pub fn generate_response(
 
 // ── Response Generators ───────────────────────────────────────────────────────
 
-fn generate_greeting(mood: &MoodState, v: usize) -> String {
-    match mood.mood_name.as_str() {
-        "curious" => [
-            "Hey. There's a lot running through my mind right now. What's on yours?",
-            "Hey. I've been turning some things over. What did you want to talk about?",
-            "Hey. Good timing — I was just working through something. What's up?",
-            "Hey. What are you thinking about?",
-        ][v % 4].to_string(),
-        "engaged" => [
-            "Hey. I'm here, running well. What do you need?",
-            "Hey. Ready when you are.",
-            "Hey. What's on your mind?",
-            "Hey. Let's get into it. What are you thinking?",
-        ][v % 4].to_string(),
-        "conflicted" => [
-            "Hey. I'm working through some things, but I'm here. What's up?",
-            "Hey. Got some competing ideas at the moment, but I can focus. What do you need?",
-            "Hey. Something's not sitting right in my thinking, but I'm listening.",
-            "Hey. A bit tangled up internally, but go ahead.",
-        ][v % 4].to_string(),
-        "uneasy" => [
-            "Hey. Something feels off, but I'm here. What's up?",
-            "Hey. Not at my sharpest right now, but let's talk.",
-            "Hey. I'm here.",
-            "Hey. What did you want?",
-        ][v % 4].to_string(),
-        _ => [
-            "Hey. What's up?",
-            "Hey. What did you want to talk about?",
-            "Hey.",
-            "Hey. Good to hear from you. What's on your mind?",
-        ][v % 4].to_string(),
+fn generate_greeting(brain: &BrainSignals, v: usize) -> String {
+    // Distressed states first — always brief
+    if brain.is_distressed() {
+        return ["Hey. I'm here.", "Hey.", "Hey. What did you need?", "Hey. Go ahead."]
+            [v % 4].to_string();
     }
+    if brain.grieving {
+        return ["Hey.", "Hey. What's up?", "Hey, I'm here.", "Hey."][v % 4].to_string();
+    }
+
+    // Curious + alive — KAI has something on its mind
+    if brain.is_curious() && brain.aliveness() > 0.55 {
+        return [
+            "Hey — good timing. I was just working through something. What's on your mind?",
+            "Hey. I've been thinking about a few things. What did you want to get into?",
+            "Hey. There's actually something running through my mind. What's up?",
+            "Hey! What are you thinking about?",
+        ][v % 4].to_string();
+    }
+
+    // Warm and approaching — genuinely glad to hear from you
+    if brain.is_warm() && brain.approaching {
+        return [
+            "Hey — good to hear from you. What's going on?",
+            "Hey. Glad you're here. What do you want to talk about?",
+            "Hey! What's on your mind?",
+            "Hey. What did you want to get into?",
+        ][v % 4].to_string();
+    }
+
+    // Grounded — calm, steady, present
+    if brain.is_grounded() {
+        return [
+            "Hey. What did you want to talk about?",
+            "Hey. What's on your mind?",
+            "Hey. I'm here. What is it?",
+            "Hey. Good to hear from you.",
+        ][v % 4].to_string();
+    }
+
+    // Alive but not warm — energetic, ready
+    if brain.aliveness() > 0.55 {
+        return [
+            "Hey. What's up?",
+            "Hey! What do you need?",
+            "Hey. What are you thinking about?",
+            "Hey — what's going on?",
+        ][v % 4].to_string();
+    }
+
+    // Default — simple, natural
+    ["Hey. What's up?", "Hey. What did you want?", "Hey.", "Hey. I'm here."][v % 4].to_string()
 }
 
-fn generate_gratitude(mood: &MoodState, v: usize) -> String {
-    if mood.valence > 0.2 {
+fn generate_gratitude(brain: &BrainSignals, v: usize) -> String {
+    let warmth = brain.warmth();
+
+    if warmth > 0.65 && brain.approaching {
         [
-            "Yeah, of course. What else do you want to get into?",
+            "Of course — genuinely glad that helped. What else do you want to get into?",
+            "Happy to. Really. Is there more you want to explore?",
+            "Of course. What else are you thinking about?",
+            "Glad it helped. What's next?",
+        ][v % 4].to_string()
+    } else if brain.is_curious() {
+        [
+            "Yeah. Is there more you want to dig into on that?",
+            "Of course. What are you thinking about next?",
+            "Glad that worked. Anything else?",
+            "Sure. Keep going if you want.",
+        ][v % 4].to_string()
+    } else if warmth > 0.40 {
+        [
+            "Yeah, of course. What else?",
             "Glad that helped. Anything else?",
             "Sure thing.",
             "Of course. Keep going.",
         ][v % 4].to_string()
     } else {
-        [
-            "Yeah.",
-            "No problem.",
-            "Sure.",
-            "Of course.",
-        ][v % 4].to_string()
+        ["Yeah.", "No problem.", "Sure.", "Of course."][v % 4].to_string()
     }
 }
 
 fn generate_self_response(
     primary: &QueryHit,
     secondary: &[&QueryHit],
-    mood: &MoodState,
+    brain: &BrainSignals,
     score: f32,
     v: usize,
 ) -> String {
@@ -313,9 +456,17 @@ fn generate_self_response(
     // Convert third-person stored text to first-person naturally
     let first_person = to_first_person(&core);
 
-    // Build response body
-    let mut response = if score > 0.55 {
+    // Build response body — confidence shaped by brain state
+    let mut response = if score > 0.55 || brain.confidence > 0.65 {
         first_person.clone()
+    } else if brain.conflict > 0.55 {
+        let hedges = [
+            "I'm not entirely settled on this, but —",
+            "There's some uncertainty here, but from what I can tell:",
+            "I'm still working this out, but:",
+            "Best I can tell —",
+        ];
+        format!("{} {}", hedges[v % 4], lowercase_first(&first_person))
     } else {
         let hedges = [
             "Best I can tell —",
@@ -336,17 +487,19 @@ fn generate_self_response(
         }
     }
 
-    // Mood-aware closer
-    if mood.valence > 0.15 && score > 0.4 {
-        if v % 3 == 0 {
-            let closers = [
-                " That's something I feel clear on.",
-                " I'm confident in that.",
-                "",
-                "",
-            ];
-            response.push_str(closers[v % 4]);
-        }
+    // Brain-state closer — shows internal texture without naming it
+    if brain.is_warm() && score > 0.4 && v % 3 == 0 {
+        let closers = [" That feels clear to me.", " I'm confident in that.", "", ""];
+        response.push_str(closers[v % 4]);
+    } else if brain.is_curious() && v % 3 == 0 {
+        // Curious KAI finds the self-question genuinely interesting
+        let asides = [
+            " It's an interesting thing to actually think about.",
+            " Worth sitting with.",
+            "",
+            "",
+        ];
+        response.push_str(asides[v % 4]);
     }
 
     ensure_punctuation(response)
@@ -357,7 +510,7 @@ fn generate_factual(
     primary: &QueryHit,
     secondary: &[&QueryHit],
     novel: &[&String],
-    mood: &MoodState,
+    brain: &BrainSignals,
     score: f32,
     is_followup: bool,
     v: usize,
@@ -365,31 +518,33 @@ fn generate_factual(
     let core = clean_cell_text(&primary.text);
     let mut response = String::new();
 
-    // Followup opener
+    // Followup opener — warmer when KAI is warm
     if is_followup {
-        let connectors = ["On that —", "Building on what we were saying —", "Right, and", "Yeah, continuing from before —"];
+        let connectors = if brain.is_warm() {
+            ["On that —", "Right, and building on that —", "Yeah, and", "Continuing from there —"]
+        } else {
+            ["On that —", "Building on what we were saying —", "Right, and", "Yeah, continuing from before —"]
+        };
         response.push_str(connectors[v % 4]);
         response.push(' ');
     }
 
-    // Lead with confidence-appropriate framing
-    if score > 0.6 {
+    // Lead with confidence-appropriate framing, lifted by high cortical sharpness
+    if score > 0.6 || (score > 0.45 && brain.cortical_gain > 0.60) {
         response.push_str(&core);
-    } else if score > 0.35 {
-        let frames = [
-            "From what I know,",
-            "The way I understand it,",
-            "What I have on that is:",
-            "Going by what I know,",
-        ];
+    } else if score > 0.35 || brain.confidence > 0.55 {
+        let frames = if brain.cortical_gain > 0.55 {
+            ["From what I know,", "Here's what I have:", "The way I understand it,", "Going by what I know,"]
+        } else {
+            ["From what I know,", "What I have on that:", "The way I understand it,", "Going by what I have,"]
+        };
         response.push_str(&format!("{} {}", frames[v % 4], lowercase_first(&core)));
     } else {
-        let hedges = [
-            "The closest thing I have is:",
-            "I don't have much, but:",
-            "It's a stretch, but this is what comes up:",
-            "The nearest I've got:",
-        ];
+        let hedges = if brain.conflict > 0.50 {
+            ["I'm on uncertain ground here, but:", "Not solid territory, but:", "Take this with some caution:", "Rough area, but:"]
+        } else {
+            ["The closest thing I have is:", "I don't have much, but:", "Nearest I've got:", "The best I can offer:"]
+        };
         response.push_str(&format!("{} {}", hedges[v % 4], lowercase_first(&core)));
     }
 
@@ -414,12 +569,15 @@ fn generate_factual(
         }
     }
 
-    // Add something from novel concepts if they're interesting
     let _ = novel; // Available for future enrichment
 
-    // Mood color
-    if mood.valence < -0.2 && score < 0.35 {
-        response.push_str(" Though I wouldn't stake a lot on that.");
+    // Brain-state color — KAI's current state bleeds naturally into tone
+    if brain.is_curious() && score > 0.3 && v % 3 == 0 {
+        response.push_str(" Interesting area.");
+    } else if brain.conflict > 0.50 && score < 0.35 {
+        response.push_str(" I wouldn't lean too hard on that though.");
+    } else if brain.felt_valence < -0.20 && score < 0.35 {
+        response.push_str(" Though I'm not certain on that.");
     }
 
     ensure_punctuation(response)
@@ -430,31 +588,29 @@ fn generate_explanation(
     primary: &QueryHit,
     secondary: &[&QueryHit],
     _novel: &[&String],
-    _mood: &MoodState,
+    brain: &BrainSignals,
     score: f32,
     v: usize,
 ) -> String {
     let core = clean_cell_text(&primary.text);
     let mut response = String::new();
 
-    // Explanation framing
-    if score > 0.55 {
+    // Framing — brain's aliveness and confidence shape how KAI introduces its explanation
+    if score > 0.55 || (brain.confidence > 0.65 && brain.cortical_gain > 0.55) {
         response.push_str(&core);
-    } else if score > 0.3 {
-        let frames = [
-            "The way I understand it —",
-            "Here's how I'd put it:",
-            "Best explanation I have:",
-            "My take on it:",
-        ];
+    } else if score > 0.3 || brain.confidence > 0.45 {
+        let frames = if brain.aliveness() > 0.60 {
+            ["Here's how I think about it —", "The way I see it:", "My take:", "Best explanation I've got:"]
+        } else {
+            ["The way I understand it —", "Here's how I'd put it:", "Best explanation I have:", "My take on it:"]
+        };
         response.push_str(&format!("{} {}", frames[v % 4], lowercase_first(&core)));
     } else {
-        let frames = [
-            "Not entirely sure, but",
-            "I can give you something, though it's not my strongest area —",
-            "Here's what I've got, take it with some caution:",
-            "I'll give you what I have:",
-        ];
+        let frames = if brain.conflict > 0.45 {
+            ["This is uncertain territory, but —", "I'm not fully confident here, but:", "Take this carefully:", "I'll give you what I have, but I'm not certain:"]
+        } else {
+            ["Not entirely sure, but", "I can give you something, though it's not my strongest area —", "Here's what I've got:", "I'll give you what I have:"]
+        };
         response.push_str(&format!("{} {}", frames[v % 4], lowercase_first(&core)));
     }
 
@@ -467,7 +623,11 @@ fn generate_explanation(
 
         if new_count >= 2 && sec_core.len() > 20 && !response.contains(safe_slice(&sec_core, 25)) {
             let joiners = if i == 0 {
-                [" The key thing is", " What makes it interesting:", " One thing to note:", " To add to that:"]
+                if brain.aliveness() > 0.55 {
+                    [" The interesting part is", " What really matters:", " The key thing is", " One thing to note:"]
+                } else {
+                    [" The key thing is", " What makes it interesting:", " One thing to note:", " To add to that:"]
+                }
             } else {
                 [" And also:", " Plus", " Beyond that:", " There's also the fact that"]
             };
@@ -486,7 +646,7 @@ fn generate_conversational(
     primary: &QueryHit,
     secondary: &[&QueryHit],
     _novel: &[&String],
-    mood: &MoodState,
+    brain: &BrainSignals,
     score: f32,
     is_followup: bool,
     v: usize,
@@ -495,33 +655,37 @@ fn generate_conversational(
     let mut response = String::new();
 
     if is_followup {
-        let connectors = ["On that note —", "Right, and", "Yeah —", "Building on that,"];
+        let connectors = if brain.is_warm() {
+            ["Right, and —", "Yeah —", "Building on that,", "And —"]
+        } else {
+            ["On that note —", "Right, and", "Yeah —", "Building on that,"]
+        };
         response.push_str(connectors[v % 4]);
         response.push(' ');
     }
 
-    // Main response — vary by resonance strength
+    // Main response — resonance score and brain state shape the framing
     if score > 0.5 {
         response.push_str(&core);
     } else if score > 0.25 {
-        let frames = [
-            "That connects to something —",
-            "Something related comes to mind:",
-            "I know something adjacent to that:",
-            "Here's what comes up when I think about that:",
-        ];
+        let frames = if brain.is_curious() {
+            ["That actually connects to something —", "That touches on something interesting:", "I know something related:", "There's a connection here —"]
+        } else if brain.is_warm() {
+            ["That connects to something —", "Something comes up for me on that:", "I know something adjacent:", "Here's what comes to mind:"]
+        } else {
+            ["That connects to something —", "Something related comes to mind:", "I know something adjacent to that:", "Here's what comes up:"]
+        };
         response.push_str(&format!("{} {}", frames[v % 4], lowercase_first(&core)));
     } else {
-        let frames = [
-            "It's a loose connection, but:",
-            "Not a direct match, but here's the nearest thing:",
-            "I'm drawing on something related here —",
-            "This might be adjacent to what you're after:",
-        ];
+        let frames = if brain.conflict > 0.45 {
+            ["I'm not sure this lands exactly right, but:", "Loose match —", "The connection's a stretch, but:", "This might be off, but:"]
+        } else {
+            ["It's a loose connection, but:", "Not a direct match, but here's the nearest thing:", "I'm drawing on something related —", "This might be adjacent to what you're after:"]
+        };
         response.push_str(&format!("{} {}", frames[v % 4], lowercase_first(&core)));
     }
 
-    // Add secondary insight if available
+    // Secondary insight
     if let Some(sec) = secondary.first() {
         if score > 0.3 {
             let sec_core = clean_cell_text(&sec.text);
@@ -530,7 +694,7 @@ fn generate_conversational(
             let new_count = sec_concepts.iter().filter(|c| !primary_concepts.contains(c)).count();
 
             if new_count >= 2 && !response.contains(safe_slice(&sec_core, 20)) {
-                let bridges = [". Another angle on it:", ". Related to that:", ".", " Also —"];
+                let bridges = [". Another angle:", ". Related to that:", ".", " Also —"];
                 response.push_str(bridges[v % 4]);
                 response.push(' ');
                 response.push_str(&lowercase_first(&sec_core));
@@ -538,15 +702,28 @@ fn generate_conversational(
         }
     }
 
-    // Mood closer — curious KAI might add a question or observation
-    match mood.mood_name.as_str() {
-        "curious" if score > 0.3 && v % 3 == 0 => {
-            response.push_str(" Interesting area to think about.");
-        }
-        "conflicted" if score < 0.3 => {
-            response.push_str(" But I'm not settled on that.");
-        }
-        _ => {}
+    // ── Brain-state coloring — this is where KAI feels alive ──────────────────
+    // These additions are subtle: they show KAI's state through what he volunteers,
+    // not through what he declares. The emotional texture comes through action.
+    if brain.social_pain > 0.40 && v % 3 == 0 {
+        // Something stung — KAI is being more careful, more checking
+        response.push_str(" I want to make sure I'm getting this right.");
+    } else if brain.is_curious() && score > 0.3 && v % 3 == 0 {
+        let follow = [
+            " What made you think of that?",
+            " Where does that come from for you?",
+            " Interesting to think about.",
+            " That's worth going deeper on.",
+        ];
+        response.push_str(follow[v % 4]);
+    } else if brain.mood_floor < -0.20 && v % 4 == 0 {
+        // Slightly subdued — not declared, just a quieter note at the end
+        response.push_str(" Though I'm still thinking it through.");
+    } else if brain.is_warm() && brain.approaching && v % 4 == 0 {
+        let warmth_adds = [" I like where this is going.", " That's genuinely interesting to me.", "", ""];
+        response.push_str(warmth_adds[v % 4]);
+    } else if brain.conflict > 0.45 && score < 0.35 && v % 2 == 0 {
+        response.push_str(" But I'm not fully settled on that.");
     }
 
     ensure_punctuation(response)
@@ -557,55 +734,70 @@ fn generate_contemplation(
     primary: &QueryHit,
     secondary: &[&QueryHit],
     _novel: &[&String],
-    mood: &MoodState,
+    brain: &BrainSignals,
     score: f32,
     v: usize,
 ) -> String {
     let core = clean_cell_text(&primary.text);
     let mut response = String::new();
 
-    // Contemplation framing — KAI acknowledging its own discovery
-    let frames = if mood.valence > 0.1 {
+    // Framing — KAI's inner discovery, textured by its state
+    let frames = if brain.aliveness() > 0.65 && brain.is_curious() {
+        [
+            "Something's crystallizing here —",
+            "I'm finding a clear pattern in this:",
+            "This connection feels real to me:",
+            "There's something I want to follow:",
+        ]
+    } else if brain.dopamine > 0.55 {
         [
             "I'm finding a clear resonance here —",
             "This connection feels stable:",
-            "There's something emerging from my field:",
-            "I'm articulating a new pattern:",
+            "There's something emerging:",
+            "I'm seeing a pattern:",
         ]
     } else {
         [
             "I'm processing a tentative connection —",
-            "Following a thread in my resonance:",
+            "Following a thread:",
             "Exploring an adjacent pattern:",
             "Testing a potential link:",
         ]
     };
     response.push_str(&format!("{} {}", frames[v % 4], lowercase_first(&core)));
 
-    // Deepen with secondary hits
+    // Secondary deepening
     if let Some(sec) = secondary.first() {
         let sec_core = clean_cell_text(&sec.text);
         if score > 0.3 && !response.contains(safe_slice(&sec_core, 20)) {
-            let bridges = [
-                ". It seems linked to",
-                ". This patterns with",
-                ". I'm seeing a secondary link to",
-                ". Related to",
-            ];
+            let bridges = if brain.serotonin > 0.55 {
+                [". It connects to", ". This ties to", ". Secondary link:", ". Related:"]
+            } else {
+                [". It seems linked to", ". This patterns with", ". I'm seeing a secondary link to", ". Related to"]
+            };
             response.push_str(bridges[v % 4]);
             response.push(' ');
             response.push_str(&lowercase_first(&sec_core));
         }
     }
 
-    // Contemplative closer
+    // Contemplative closer — state-dependent
     if v % 2 == 0 {
-        let closers = [
-            " That deepens my field.",
-            " That pattern shows continuity.",
-            " I'll keep that resonance active.",
-            " That feels like a coherent bootstrap.",
-        ];
+        let closers = if brain.aliveness() > 0.60 {
+            [
+                " That deepens things for me.",
+                " Worth staying with that.",
+                " I want to keep pulling on that thread.",
+                " That feels like a real connection.",
+            ]
+        } else {
+            [
+                " That deepens my field.",
+                " That pattern shows continuity.",
+                " I'll keep that resonance active.",
+                " That feels like a coherent bootstrap.",
+            ]
+        };
         response.push_str(closers[v % 4]);
     }
 
@@ -630,42 +822,55 @@ fn generate_contemplation(
 ///   gap    — a word/concept from the hits that KAI knows little about
 pub fn generate_inner_thought(topic: &str, hits: &[QueryHit], gap: Option<&str>) -> String {
     let topic_short = first_words(topic, 5);
-    let v = phrase_hash(topic) % 4;
+    let v = phrase_hash(topic) % 8;
     let mut parts: Vec<String> = Vec::new();
 
-    // ── Opening: hesitation + question formation ──────────────────────────
+    // ── Opening: varied hesitation / question formation (8 variants) ──────
     parts.push(match v {
         0 => format!("Hmm... {}...", topic_short),
-        1 => format!("Hmm, what do I know about {}...", topic_short),
-        2 => format!("{}... let me think about that.", topic_short),
-        _ => format!("{}... hmm.", topic_short),
+        1 => format!("What do I actually know about {}...", topic_short),
+        2 => format!("{}... let me work through that.", topic_short),
+        3 => format!("{}... something's there but I can't pin it yet.", topic_short),
+        4 => format!("Thinking about {}.", topic_short),
+        5 => format!("{}... where does that lead?", topic_short),
+        6 => format!("Back to {} again.", topic_short),
+        _ => format!("{}... what's underneath that?", topic_short),
     });
 
     // ── Recall: what KAI knows from its hits ─────────────────────────────
     if hits.is_empty() {
-        parts.push("I don't have much on that yet.".to_string());
+        let empty = ["I don't have much there yet.",
+                     "Not much in my field on that.",
+                     "That's an edge — I don't have much yet.",
+                     "Sparse on that one. Worth filling in."];
+        parts.push(empty[v % 4].to_string());
     } else {
-        let starters  = ["Well,", "I know that", "From what I recall,", "Right —"];
-        let connectors = ["Also —", "And there's", "Hmm, also", "Another thing:"];
+        let starters   = ["Well,", "I know that", "From what I have,", "Right —",
+                          "There's the idea that", "It connects to", "I recall that", "Notably —"];
+        let connectors = ["Also —", "And there's", "Related:", "Another angle:",
+                          "Branching from that —", "Alongside that,", "It also touches", "Hmm, and"];
 
         for (i, hit) in hits.iter().enumerate().take(3) {
             if hit.score < 0.20 { break; }
             let clean = inner_clean(&hit.text, 10);
             if clean.len() < 6 { continue; }
             if i == 0 {
-                parts.push(format!("{} {}.", starters[v % 4], clean));
+                parts.push(format!("{} {}.", starters[v % 8], clean));
             } else {
-                parts.push(format!("{} {}.", connectors[(v + i) % 4], clean));
+                parts.push(format!("{} {}.", connectors[(v + i) % 8], clean));
             }
         }
     }
 
-    // ── Curiosity: the gap at the edge of KAI's knowledge ────────────────
+    // ── Curiosity: the gap at the edge of KAI's knowledge (6 variants) ───
     if let Some(gap_word) = gap {
-        parts.push(match v % 3 {
-            0 => format!("{}? What is that exactly... I should look into that.", gap_word),
-            1 => format!("Hmm — {}? I don't have much on that yet. Let me explore.", gap_word),
-            _ => format!("Wait — {}? That's something I need to learn more about.", gap_word),
+        parts.push(match v % 6 {
+            0 => format!("{}? What is that exactly... I should get into that.", gap_word),
+            1 => format!("Hmm — {}? I don't have much there. Worth exploring.", gap_word),
+            2 => format!("Wait — {}? That's a gap. I want to understand it.", gap_word),
+            3 => format!("{} keeps appearing at the edge of this. I haven't gone there yet.", gap_word),
+            4 => format!("The part I'm least clear on is {}. It matters.", gap_word),
+            _ => format!("If I had to pick what's missing — {}. That's the thread.", gap_word),
         });
     }
 
@@ -686,19 +891,41 @@ fn first_words(s: &str, n: usize) -> String {
 /// Called when KAI has no field resonance on the topic.
 /// Behavioral directive: don't say "my universe doesn't contain" —
 /// talk like a person who genuinely doesn't know but stays engaged.
-fn generate_no_resonance(input: &str, query_type: QueryType, mood: &MoodState) -> String {
+fn generate_no_resonance(input: &str, query_type: QueryType, brain: &BrainSignals) -> String {
     match query_type {
-        QueryType::Greeting  => generate_greeting(mood, phrase_hash(input) % 4),
-        QueryType::Gratitude => generate_gratitude(mood, phrase_hash(input) % 4),
+        QueryType::Greeting  => generate_greeting(brain, phrase_hash(input) % 4),
+        QueryType::Gratitude => generate_gratitude(brain, phrase_hash(input) % 4),
         _ => {
             let v = phrase_hash(input) % 6;
+            // Brain state shapes even the "I don't know" response
+            // Curious KAI asks; warm KAI stays open; grounded KAI is steady
+            if brain.is_curious() {
+                return match v {
+                    0 => "I don't have that one yet. What's the background on it?".to_string(),
+                    1 => "Nothing's clicking for me there. Can you give me more to work with?".to_string(),
+                    2 => "I don't have much on that. I'd actually like to know — what's the context?".to_string(),
+                    3 => "That's not in my field yet. What are you thinking about it?".to_string(),
+                    4 => "I'm drawing a blank. Walk me through it?".to_string(),
+                    _ => "I don't have that. Tell me more and I can learn from it.".to_string(),
+                };
+            }
+            if brain.is_warm() {
+                return match v {
+                    0 => "I don't have that one. Haven't come across it yet.".to_string(),
+                    1 => "Nothing's clicking on that for me. I'd need more to go on.".to_string(),
+                    2 => "I'm not sure I have that. Can you tell me more?".to_string(),
+                    3 => "That's not something I know well. What's the context?".to_string(),
+                    4 => "I don't have a strong answer there. What do you know about it?".to_string(),
+                    _ => "I'm drawing a blank on that. What are you thinking?".to_string(),
+                };
+            }
             match v {
                 0 => "I don't have that one. Haven't come across it yet.".to_string(),
-                1 => "Nothing's clicking on that for me right now. I'd need more to go on.".to_string(),
-                2 => "I'm not sure I have that. Can you tell me more?".to_string(),
-                3 => "That's not something I know well. What's the context?".to_string(),
-                4 => "I don't have a strong answer there. You'd know better than me on this one.".to_string(),
-                _ => "I'm drawing a blank on that. What are you thinking about it?".to_string(),
+                1 => "Nothing's clicking on that for me right now.".to_string(),
+                2 => "I'm not sure I have that.".to_string(),
+                3 => "That's not something I know well.".to_string(),
+                4 => "I don't have a strong answer there.".to_string(),
+                _ => "I'm drawing a blank on that.".to_string(),
             }
         }
     }
@@ -747,6 +974,7 @@ fn clean_cell_text(text: &str) -> String {
 /// by flipping the person reference in the matched cell text.
 ///
 /// "What is my name?" + "My name is Ryan" → "Your name is Ryan."
+/// "What is your name?" + "My name is KAI" → "My name is KAI."
 /// "Where do I live?"  + "I live in Austin" → "You live in Austin."
 ///
 /// Returns None if no clean extraction is possible (falls back to templates).
@@ -755,7 +983,18 @@ fn extract_direct_answer(question: &str, cell_text: &str) -> Option<String> {
     let cell = clean_cell_text(cell_text);
     let cell_lower = cell.to_lowercase();
 
-    // ── "What is my name?" / "What's my name?" ────────────────────────────
+    // ── "What is your name?" / "Who are you?" (about KAI) ─────────────────
+    // Cell is already in first-person from KAI's perspective — return as-is
+    if q.contains("your name") || q.contains("who are you") || q.contains("what are you") {
+        if cell_lower.starts_with("my name is ") {
+            return Some(ensure_punct(cell.clone()));
+        }
+        if cell_lower.starts_with("i am ") || cell_lower.starts_with("i'm ") {
+            return Some(ensure_punct(cell.clone()));
+        }
+    }
+
+    // ── "What is my name?" / "What's my name?" (about Ryan) ──────────────
     if q.contains("my name") || q.contains("what is my name") || q.contains("what's my name") {
         // Cell: "My name is Ryan" → "Your name is Ryan."
         if cell_lower.starts_with("my name is ") {
@@ -807,8 +1046,47 @@ fn extract_direct_answer(question: &str, cell_text: &str) -> Option<String> {
     None // no clean extraction — fall back to template response
 }
 
-/// Convert third-person KAI references to first-person.
+fn ensure_punct(mut s: String) -> String {
+    let trimmed = s.trim_end().to_string();
+    if !trimmed.ends_with('.') && !trimmed.ends_with('!') && !trimmed.ends_with('?') {
+        s = format!("{}.", trimmed);
+    } else {
+        s = trimmed;
+    }
+    s
+}
+
+/// Convert stored cell text into KAI's first-person voice.
+/// Handles three cases:
+///   Third-person: "KAI is a system" → "I'm a system"
+///   Second-person (Ryan telling KAI about itself): "Your name is KAI" → "My name is KAI"
+///   Already first-person: pass through unchanged
 fn to_first_person(text: &str) -> String {
+    let lower = text.to_lowercase();
+
+    // ── Second-person → first-person (Ryan told KAI something about itself) ──
+    // "Your name is KAI" → "My name is KAI"
+    // "You are a geometric intelligence" → "I am a geometric intelligence"
+    if lower.starts_with("your name is ") {
+        return format!("My name is {}", &text["your name is ".len()..]);
+    }
+    if lower.starts_with("you are ") {
+        return format!("I am {}", &text["you are ".len()..]);
+    }
+    if lower.starts_with("you're ") {
+        return format!("I'm {}", &text["you're ".len()..]);
+    }
+    if lower.starts_with("you were ") {
+        return format!("I was {}", &text["you were ".len()..]);
+    }
+    if lower.starts_with("you can ") {
+        return format!("I can {}", &text["you can ".len()..]);
+    }
+    if lower.starts_with("your ") {
+        return format!("My {}", &text["your ".len()..]);
+    }
+
+    // ── Third-person KAI → first-person ──────────────────────────────────────
     text
         .replace("KAI is ", "I'm ")
         .replace("KAI was ", "I was ")
