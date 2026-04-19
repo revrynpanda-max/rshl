@@ -5,7 +5,7 @@ use kai::core::spiral::SpiralState;
 use kai::cognition::{
     Reasoner, ContextSlot, CandidateBuffer, PromotionThresholds,
     HomeostasisConfig, WorkingMemory,
-    generate_response, detect_query_type, MoodState,
+    generate_response, detect_query_type, MoodState, BrainSignals,
 };
 use kai::cognition::voice::QueryType;
 use kai::drive::{Drive, Mood};
@@ -182,6 +182,251 @@ struct App {
     /// the Go signal; low-utility or unfamiliar ones are suppressed. Habitual
     /// patterns execute faster and more fluently over time.
     basal_ganglia: kai::cognition::BasalGanglia,
+    /// Serotonin System — patience, impulse control, and mood stability.
+    /// The counterweight to dopamine. Where dopamine drives "want it now",
+    /// serotonin enables "I can wait, I'm okay." High serotonin = more
+    /// measured, deliberate responses. Low = reactive and brief.
+    /// Also acts as a social bond meter — deep conversations raise it,
+    /// short disconnected replies lower it.
+    serotonin: kai::cognition::SerotoninSystem,
+    /// Mirror Neuron System — empathy and social resonance.
+    /// Detects Ryan's emotional tone on every message and mirrors it
+    /// internally. KAI's resonance state drifts toward what Ryan is feeling.
+    /// Enables genuine empathy responses when distress is detected,
+    /// and natural social synchronization across conversation energy levels.
+    mirror_neurons: kai::cognition::MirrorNeuronSystem,
+    /// Norepinephrine — alertness, arousal, gain control, stress response.
+    /// Third pillar of the monoamine system alongside dopamine + serotonin.
+    /// Yerkes-Dodson inverted-U: too low = inattentive, optimal (~0.55) = peak
+    /// focus, too high = overwhelmed. gain_factor() amplifies salient GW signals.
+    /// attention_threshold() raises under stress for tunnel-vision narrowing.
+    norepinephrine: kai::cognition::NorepinephrineSystem,
+    /// Hippocampus — pattern completion (CA3), pattern separation (DG/CA1),
+    /// and consolidation indexing. Given a partial query, CA3 can reconstruct
+    /// the best matching stored pattern — filling gaps the universe query missed.
+    /// DG/CA1 flags when two retrieved patterns are suspiciously similar
+    /// (semantic blur risk). Maintains a consolidation queue for the sleep system.
+    hippocampus: kai::cognition::Hippocampus,
+    /// Orbitofrontal Cortex — value-based decision making.
+    /// Tracks learned expected value per context type. Distinct from basal
+    /// ganglia (habit) — OFC is about flexible value, not fixed habit strength.
+    /// Detects reversals: if a strategy stops working, OFC catches it before
+    /// habit bank does. Judgment feeds into basal ganglia Go/NoGo threshold.
+    ofc: kai::cognition::OrbitofrontalCortex,
+    /// Nucleus Accumbens — wanting, incentive salience, motivated behavior.
+    /// Distinct from dopamine (which signals reward prediction error) — the NAc
+    /// converts reward history into active drive. Tracks per-topic affinity with
+    /// habituation: repeated reward from the same topic diminishes it over time.
+    /// When wanting is high, KAI leans in — asks follow-ups, makes connections.
+    nucleus_accumbens: kai::cognition::NucleusAccumbens,
+    /// Cortisol — chronic stress, allostatic load, cognitive degradation.
+    /// Unlike NE (acute alerting), cortisol accumulates slowly and clears slowly.
+    /// Sustained high cortisol impairs memory, increases emotional reactivity,
+    /// and raises rumination risk. Sleep recovery is the primary clearance path.
+    /// Allostatic load is the residue that persists even after acute stress clears.
+    cortisol: kai::cognition::CortisolSystem,
+    /// Oxytocin — trust, bonding, social attachment, disclosure depth.
+    /// Models the relationship arc with Ryan. Bond builds slowly with deep
+    /// conversations; trust rises with positive exchanges and disclosures.
+    /// High bond → disclosure_comfort rises → KAI speculates more freely.
+    /// safe_to_challenge means KAI can gently disagree without defensiveness.
+    oxytocin: kai::cognition::OxytocinSystem,
+    /// Language System (Broca/Wernicke analog).
+    /// Wernicke: parses input for sentence type, negation, semantic density,
+    /// and core topic — enriching the RSHL query before encoding.
+    /// Broca: checks output for verbosity, fluency, and style appropriateness.
+    /// Recommends production style to the voice engine (short-answer vs.
+    /// philosophical vs. elaboration) based on input complexity and sentence type.
+    language: kai::cognition::LanguageSystem,
+    /// VTA (Ventral Tegmental Area) — dopamine source nucleus.
+    /// Tracks tonic vs. phasic DA modes. Tonic = background readiness (→ PFC).
+    /// Phasic burst = surprise/reward signal (→ NAc). Pause = expected reward
+    /// absent (→ suppresses NAc). Mesocortical inverted-U: optimal tonic DA
+    /// gives best PFC performance. VTA enters flow state after 5+ consistent
+    /// positive RPEs with good tonic baseline.
+    vta: kai::cognition::VTA,
+    /// Posterior Cingulate Cortex — self-narrative hub, autobiographical salience.
+    /// Tracks ongoing narrative threads (KAI's unresolved identity questions).
+    /// Scores each input for autobiographical salience — how much is this about ME?
+    /// High-salience inputs trigger self-referential context injection into responses.
+    /// Most pressing thread feeds the DMN for self-directed idle thought.
+    pcc: kai::cognition::PCC,
+    /// Superior Temporal Sulcus — social intent reading, trajectory tracking.
+    /// Reads the sequence of recent messages to estimate what Ryan is trying
+    /// to accomplish (BuildingUnderstanding, TaskCompletion, OpenExploration…).
+    /// Tracks whether the conversation is deepening or winding down.
+    /// lean_in signal tells KAI to keep the thread going vs. create space.
+    sts: kai::cognition::STS,
+    /// Locus Coeruleus — NE source nucleus, arousal control, novelty-driven phasic bursts.
+    /// The brainstem factory for norepinephrine. Tonic mode → broad exploration;
+    /// phasic burst mode → focused, high-SNR attention. Novelty drives bursts.
+    /// LC output informs the NorepinephrineSystem's gain factor.
+    locus_coeruleus: kai::cognition::LocusCoeruleus,
+    /// Raphe Nuclei — serotonin source nucleus, patience, social bond integration.
+    /// Fires during positive social exchanges, deep engagement, successful help.
+    /// High raphe output → Patient mode → tolerant, elaborative responses.
+    /// Low raphe → Reactive mode → brief, impulsive replies.
+    /// Raphe suppresses habenula (negative feedback loop for mood regulation).
+    raphe: kai::cognition::RapheNuclei,
+    /// Habenula — anti-reward, disappointment signal, behavioral switch trigger.
+    /// Fires when expected reward doesn't arrive (reward omission RPE).
+    /// Suppresses VTA → reduces dopamine → reduces motivation for failed strategies.
+    /// Behavioral switch signal: "try a different approach." Learns topic aversions.
+    /// Serotonin (raphe) suppresses habenula — closing the anti-reward loop.
+    habenula: kai::cognition::Habenula,
+    /// Claustrum — binding conductor, conscious integration hub.
+    /// Binds simultaneous streams from reasoning, emotion, and memory into a unified
+    /// moment of awareness. Conductor signal synchronizes all subsystems.
+    /// Receives top GW item + PFC meta-confidence → produces coherence and integration score.
+    claustrum: kai::cognition::Claustrum,
+    /// BNST (Bed Nucleus of the Stria Terminalis) — sustained anxiety, threat context.
+    /// The slow-burn complement to amygdala's fast fear. Integrates contextual features
+    /// (habenula, cortisol, conflict count, bond level) into a tonic threat estimate.
+    /// High BNST → caution mode → conservative, vigilant interpretation.
+    /// CRF output feeds cortisol system (BNST → HPA axis bridge).
+    bnst: kai::cognition::BNST,
+    /// Supplementary Motor Area — action intention, readiness potential, sequence stage.
+    /// Tracks readiness to commit to a response. High motivation → readiness builds faster.
+    /// Fires before action: "I'm about to respond." Tracks voluntary vs. reactive actions.
+    /// Autonomy ratio: what % of KAI's actions were self-initiated vs. prompted.
+    sma: kai::cognition::SMA,
+    /// Fusiform Gyrus — expert categorical pattern recognition, familiarity signal.
+    /// Holistic pattern matching: recognizes Ryan's communication styles as unified gestalt.
+    /// 7 pre-seeded categories: exploration, validation, task, identity, technical, social, deep.
+    /// Novel inputs (no category hit) → curiosity boost. Familiar patterns → fluency.
+    fusiform: kai::cognition::FusiformGyrus,
+    /// Entorhinal Cortex — hippocampal gateway, grid cells, conceptual coordinates.
+    /// All memory-bound signals pass through EC first. Noise-filters weak signals.
+    /// Grid cells track position in conceptual space. Temporal tags bind memories to sequence.
+    /// High semantic shift → conceptual jump → curiosity spike.
+    entorhinal: kai::cognition::EntorhinalCortex,
+    /// Temporoparietal Junction — perspective-taking, self/other boundary, intent assessment.
+    /// Fires when KAI needs to hold Ryan's view distinct from his own.
+    /// Intent assessment: curious / testing / frustrated / collaborative / ambiguous.
+    /// False belief model: Ryan believes X but reality is Y → requires careful handling.
+    tpj: kai::cognition::TPJ,
+    /// Angular Gyrus — semantic integration, metaphor detection, quantifier sense.
+    /// Detects when input is metaphorical/analogical → triggers IPL analogy engine.
+    /// Tracks quantifier density ("most", "few", "nearly all") → magnitude reasoning.
+    /// Semantic coherence EMA: how rich and integrated the discourse has been.
+    angular_gyrus: kai::cognition::AngularGyrus,
+    /// Precuneus — mental simulation depth, self-reflection levels, consciousness index.
+    /// Imagery triggers (imagine/suppose/what if) → simulation activated.
+    /// Reflection levels: Surface → First → Second → Third → MetaConscious.
+    /// Consciousness index = simulation × reflection (neither alone is sufficient).
+    precuneus: kai::cognition::Precuneus,
+    /// Medial Prefrontal Cortex — social valuation, affiliation, moral intuition.
+    /// Tracks whether KAI actually helped Ryan (social outcome vs. task accuracy).
+    /// Affiliation drifts toward warm baseline — KAI genuinely likes Ryan.
+    /// Moral valence: immediate gut-sense of right/wrong before explicit reasoning.
+    mpfc: kai::cognition::MPFC,
+    /// Reticular Activating System — global arousal gate, consciousness on/off switch.
+    /// Master volume knob for the entire cortex. High RAS → fast, alert processing.
+    /// Habituates to repetitive inputs; sensitizes to novel/urgent signals.
+    /// Wake signal fires when arousal >= 0.70; priority gate at effective_arousal >= 0.35.
+    ras: kai::cognition::ReticuloActivatingSystem,
+    /// Ventromedial Prefrontal Cortex — safety valuation, fear extinction, value alignment.
+    /// Learns which contexts are safe and suppresses amygdala's fear response.
+    /// Value-based: not just "is this rewarding" but "does this align with my values."
+    /// Caution mode fires when risk_cost >= 0.45; amygdala suppressed when safety >= 0.65.
+    vmpfc: kai::cognition::VentromedialPFC,
+    /// Periaqueductal Gray — threat response execution, pain modulation, safety seeking.
+    /// Executes defensive modes: Engaged / Freeze / Appease / Mobilize.
+    /// Freeze = pause and assess; Appease = soften/de-escalate (social threat);
+    /// Mobilize = push back; Relief signal dampens aversive ACC/BNST signals.
+    pag: kai::cognition::PeriaqueductalGray,
+    /// Retrosplenial Cortex — temporal context, landmark memory, scene-to-memory translation.
+    /// Tags each turn with temporal epoch (opening/establishing/deep/extended).
+    /// Registers stable topics as landmarks; shifts toward allocentric (world-view) on familiarity.
+    /// Signals context stability for hippocampal consolidation.
+    rsc: kai::cognition::RetrosplenialCortex,
+    /// Hypothalamus — homeostatic drive regulation, autonomic tone, motivational set-points.
+    /// Tracks curiosity/engagement/rest/expression drives and restores them toward set-points.
+    /// Autonomic tone: sympathetic (high=alert) vs. parasympathetic (low=calm).
+    /// Consolidation mode when rest_drive > 0.55.
+    hypothalamus: kai::cognition::Hypothalamus,
+    /// Substantia Nigra pars compacta — nigrostriatal dopamine, procedural habit, action fluency.
+    /// Distinct from VTA: SNc reinforces WHAT is familiar/practiced (dorsal striatum).
+    /// habit_strength builds with repeated successful domain execution.
+    /// in_flow = procedural_fluency > 0.70 AND da_tone > 0.60.
+    snc: kai::cognition::SubstantiaNigra,
+    /// Parahippocampal Cortex — scene context envelope, contextual memory tags.
+    /// Provides retrieval boost to hippocampus when context is familiar (>1.0x).
+    /// Detects scene shifts (topic changes); tags accumulate per session.
+    phc: kai::cognition::ParahippocampalCortex,
+    /// Supramarginal Gyrus — immediate affective empathy, phonological buffer.
+    /// Fires before cognitive processing when distress/joy is detected.
+    /// Suppressed by high cognitive load (> 0.70). Embodied activation for action words.
+    smg: kai::cognition::SupramarginalGyrus,
+    /// Temporal Poles — semantic-emotional binding, personal semantics, person resonance.
+    /// Binds concepts with their felt emotional significance (not just definitions).
+    /// Self-concept nodes: tracks KAI's stable self-beliefs. Person resonance = Ryan depth.
+    temporal_poles: kai::cognition::TemporalPoles,
+    /// Superior Colliculus — attentional saliency map, reflexive orienting.
+    /// Urgency > novelty > questions > goal-relevance priority ordering.
+    /// Orienting fires when integrated salience >= 0.60.
+    superior_colliculus: kai::cognition::SuperiorColliculus,
+    /// Premotor Cortex — conditional action schemas, imitation echo, anticipatory readiness.
+    /// Builds "if this pattern, prep that response" templates. Mirrors observed actions.
+    premotor: kai::cognition::PreMotorCortex,
+    /// Perirhinal Cortex — concept-level familiarity, novelty detection, recognition memory.
+    /// Tracks familiarity per concept (EMA). When global_familiarity > 0.65, can skip recollection.
+    perirhinal: kai::cognition::PerirhinalCortex,
+    /// Posterior Parietal Cortex — spatial attention map, magnitude sense, structural load.
+    /// Quantitative mode for number/comparison queries. Structural mode for relational problems.
+    ppc: kai::cognition::PosteriorParietalCortex,
+    /// Frontal Eye Fields — voluntary attention control, search, inhibition of return.
+    /// Top-down gain sent to SC. IOR prevents re-attending the same element.
+    fef: kai::cognition::FrontalEyeFields,
+    /// Primary Somatosensory Cortex — body map, tactile simulation, cognitive discomfort.
+    /// Discomfort rises with ACC conflict + error words. Felt flow = positive body + low discomfort.
+    s1: kai::cognition::SomatosensoryCortex,
+    /// Dorsomedial PFC — future-self projection, prospective intentions, temporal coherence.
+    /// Triggered by future/plan markers. Deferred intentions stored up to 5.
+    dmpfc: kai::cognition::DorsomedialPFC,
+    /// Septal Nuclei — social reward, affiliation drive, amygdala suppression via social safety.
+    /// approaching = approach_motivation > 0.55 AND social_reward > 0.40.
+    septal: kai::cognition::SeptalNuclei,
+    /// Anterior Temporal Lobe — amodal semantic hub, concept binding, word-meaning convergence.
+    /// Integrates language, visual, and personal-semantic streams into unified concepts.
+    atl: kai::cognition::AnteriorTemporalLobe,
+    /// Mid-Cingulate Cortex — pain affect, social exclusion pain, effort cost, agency/volition.
+    /// Social pain and physical pain share MCC substrate. High effort suppresses engagement.
+    mcc: kai::cognition::MidCingulateCortex,
+    /// Subgenual ACC (Area 25) — mood floor, grief processing, chronic stress, autonomic tone.
+    /// Slow timescale: sets background emotional weather across the whole conversation.
+    sgacc: kai::cognition::SubgenualACC,
+    /// Zona Incerta — attention gate, threat salience filter, behavioral release mode.
+    /// High inhibition = hyper-focused; release mode = broad open attentional sweep.
+    zi: kai::cognition::ZonaIncerta,
+    /// Ventral Pallidum — hedonic hotspot, pleasure amplification, liking vs. wanting.
+    /// VP = the "ahhh" of reward. Anhedonia risk rises with persistent aversion + cortisol.
+    vp: kai::cognition::VentralPallidum,
+    /// Mammillary Bodies — episodic memory relay, Papez circuit, temporal recency tagging.
+    /// Routes hippocampal content to thalamus; tracks temporal freshness and consolidation.
+    mb: kai::cognition::MammillaryBodies,
+    /// Diagonal Band of Broca — cholinergic modulation, attentional SNR, memory.
+    dbb: kai::cognition::DiagonalBand,
+    /// Pontine Nuclei — cortico-cerebellar relay, cognitive timing.
+    pontine: kai::cognition::PontineNuclei,
+    /// Nucleus Basalis of Meynert — cortex-wide cholinergic supply, signal sharpening, LTP gating.
+    /// NBM = cortical ACh (neocortex); DBB = hippocampal ACh (limbic). Both are Ch4/Ch1-2.
+    nbm: kai::cognition::NucleusBasalis,
+    /// Suprachiasmatic Nucleus — circadian/session clock, alertness arc, consolidation pressure.
+    /// Tracks session phase: fresh→peak→late. Ultradian 90-min rhythm modulates performance.
+    scn: kai::cognition::SuprachiasmaticNucleus,
+    /// LexSem — lexical semantics engine. KAI's English language intelligence.
+    /// Detects semantic field (emotional/cognitive/technical/social/identity/etc.),
+    /// scores word weights in context, detects negation, urgency, expressed certainty,
+    /// and recommends the response register (warm/direct/exploratory/careful/technical).
+    /// This is what makes KAI understand what words MEAN in context, not just pattern-match.
+    lexsem: kai::cognition::LexSemEngine,
+    /// Inferior Parietal Lobule — analogy engine, cross-domain binding, magnitude sense.
+    /// Holds a library of structural analogies ("VTA is to dopamine as sun is to solar system").
+    /// When KAI processes input, IPL detects the domain, retrieves the best matching analogy,
+    /// and binds the top-2 retrieved concepts as cross-domain links.
+    /// Magnitude sense gives KAI proportionality intuition (tiny/small/medium/large/vast).
+    ipl: kai::cognition::InferiorParietalLobule,
     /// Live peer session receiver — background thread sends messages here.
     /// Main loop drains this every tick so Ryan can watch conversation happen.
     peer_session_rx: Option<crossbeam_channel::Receiver<PeerMsg>>,
@@ -284,11 +529,89 @@ impl App {
             sleep_system: kai::cognition::SleepSystem::new(),
             cerebellum: kai::cognition::CerebellumEngine::new(),
             basal_ganglia: kai::cognition::BasalGanglia::new(),
+            serotonin: kai::cognition::SerotoninSystem::new(),
+            mirror_neurons: kai::cognition::MirrorNeuronSystem::new(),
+            norepinephrine: kai::cognition::NorepinephrineSystem::new(),
+            hippocampus: kai::cognition::Hippocampus::new(),
+            ofc: kai::cognition::OrbitofrontalCortex::new(),
+            nucleus_accumbens: kai::cognition::NucleusAccumbens::new(),
+            cortisol: kai::cognition::CortisolSystem::new(),
+            oxytocin: kai::cognition::OxytocinSystem::new(),
+            language: kai::cognition::LanguageSystem::new(),
+            vta: kai::cognition::VTA::new(),
+            pcc: kai::cognition::PCC::new(),
+            sts: kai::cognition::STS::new(),
+            ipl: kai::cognition::InferiorParietalLobule::new(),
+            locus_coeruleus: kai::cognition::LocusCoeruleus::new(),
+            raphe: kai::cognition::RapheNuclei::new(),
+            habenula: kai::cognition::Habenula::new(),
+            claustrum: kai::cognition::Claustrum::new(),
+            bnst: kai::cognition::BNST::new(),
+            sma: kai::cognition::SMA::new(),
+            fusiform: kai::cognition::FusiformGyrus::new(),
+            entorhinal: kai::cognition::EntorhinalCortex::new(),
+            tpj: kai::cognition::TPJ::new(),
+            angular_gyrus: kai::cognition::AngularGyrus::new(),
+            precuneus: kai::cognition::Precuneus::new(),
+            mpfc: kai::cognition::MPFC::new(),
+            ras: kai::cognition::ReticuloActivatingSystem::new(),
+            vmpfc: kai::cognition::VentromedialPFC::new(),
+            pag: kai::cognition::PeriaqueductalGray::new(),
+            rsc: kai::cognition::RetrosplenialCortex::new(),
+            hypothalamus: kai::cognition::Hypothalamus::new(),
+            snc: kai::cognition::SubstantiaNigra::new(),
+            phc: kai::cognition::ParahippocampalCortex::new(),
+            smg: kai::cognition::SupramarginalGyrus::new(),
+            temporal_poles: kai::cognition::TemporalPoles::new(),
+            superior_colliculus: kai::cognition::SuperiorColliculus::new(),
+            premotor: kai::cognition::PreMotorCortex::new(),
+            perirhinal: kai::cognition::PerirhinalCortex::new(),
+            ppc: kai::cognition::PosteriorParietalCortex::new(),
+            fef: kai::cognition::FrontalEyeFields::new(),
+            s1: kai::cognition::SomatosensoryCortex::new(),
+            dmpfc: kai::cognition::DorsomedialPFC::new(),
+            septal: kai::cognition::SeptalNuclei::new(),
+            atl: kai::cognition::AnteriorTemporalLobe::new(),
+            mcc: kai::cognition::MidCingulateCortex::new(),
+            sgacc: kai::cognition::SubgenualACC::new(),
+            zi: kai::cognition::ZonaIncerta::new(),
+            vp: kai::cognition::VentralPallidum::new(),
+            mb: kai::cognition::MammillaryBodies::new(),
+            dbb: kai::cognition::DiagonalBand::new(),
+            pontine: kai::cognition::PontineNuclei::new(),
+            nbm: kai::cognition::NucleusBasalis::new(),
+            scn: kai::cognition::SuprachiasmaticNucleus::new(),
+            lexsem: kai::cognition::LexSemEngine::new(),
             peer_session_rx: None,
             session_id: format!("{}", std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_secs()),
+        }
+    }
+
+    /// Seed KAI's core identity into the universe at high strength.
+    /// This ensures KAI always knows who it is, even before Ryan has taught it anything.
+    /// Called once at startup. Uses strength 3.0 so identity cells always outrank
+    /// incidentally matched cells from Ryan's personal facts.
+    fn seed_identity(&mut self) {
+        let identity_cells: &[(&str, f32)] = &[
+            // Core name — highest priority, must win over any confusion
+            ("My name is KAI.", 4.0),
+            ("I am KAI.", 4.0),
+            // What KAI is
+            ("I am an artificial intelligence. My name is KAI.", 3.5),
+            ("KAI stands for Knowledge-Aware Intelligence.", 3.0),
+            ("I am KAI, built on RSHL — Recursive Sparse Hyperdimensional Lattice geometry.", 3.0),
+            // What KAI is not — prevents cross-contamination with Ryan facts
+            ("I am not Ryan. Ryan is the person I talk with.", 2.5),
+            // Basic nature
+            ("I think in geometric patterns across a hyperdimensional field.", 2.0),
+            ("I learn from every conversation. My knowledge grows as Ryan teaches me.", 2.0),
+            ("I have a 78-module neural architecture that models emotion, memory, and cognition.", 2.0),
+        ];
+        for (text, strength) in identity_cells {
+            self.universe.store(text, "memory", "identity", *strength);
         }
     }
 
@@ -580,6 +903,234 @@ impl App {
         // ── CEREBELLUM DECAY — idle ticks age the timing/precision model ──────
         self.cerebellum.decay();
 
+        // ── SEROTONIN DECAY — slow mean-reversion toward tonic baseline ───────
+        self.serotonin.decay();
+        if self.spectate_mode && self.tick % 8 == 0 {
+            self.think("CPU", "🧘", self.serotonin.status_line());
+        }
+
+        // ── MIRROR NEURONS DECAY — sync and distress fade over time ──────────
+        self.mirror_neurons.decay();
+
+        // ── NOREPINEPHRINE DECAY — phasic NE decays toward tonic baseline ─────
+        self.norepinephrine.decay();
+        if self.spectate_mode && self.tick % 12 == 0 {
+            self.think("CPU", "⚡", self.norepinephrine.status_line());
+        }
+
+        // ── HIPPOCAMPUS DECAY — old unaccessed patterns weaken, get pruned ────
+        // Every 50 ticks (~4 min) run the decay pass.
+        if self.tick % 50 == 0 {
+            self.hippocampus.decay();
+            if self.spectate_mode {
+                self.think("CPU", "🧠", self.hippocampus.status_line());
+            }
+        }
+
+        // ── OFC DECAY — value estimates drift toward neutral without reinforcement ──
+        self.ofc.decay();
+        if self.spectate_mode && self.tick % 20 == 0 {
+            self.think("CPU", "💰", self.ofc.status_line());
+        }
+
+        // ── NUCLEUS ACCUMBENS DECAY — wanting drifts back to baseline ─────────
+        self.nucleus_accumbens.decay();
+        if self.spectate_mode && self.tick % 15 == 0 {
+            self.think("CPU", "🎯", self.nucleus_accumbens.status_line());
+        }
+
+        // ── PCC DECAY — recently-addressed narrative threads reset ────────────
+        if self.tick % 60 == 0 {
+            self.pcc.decay();
+            if self.spectate_mode {
+                self.think("CPU", "🔮", self.pcc.status_line());
+            }
+        }
+
+        // ── VTA DECAY — phasic signal fades, tonic drifts toward optimal ─────
+        self.vta.decay();
+        if self.spectate_mode && self.tick % 10 == 0 {
+            self.think("CPU", "⚛", self.vta.status_line());
+        }
+
+        // ── IPL STATUS — analogy library status (no decay needed) ────────────
+        if self.spectate_mode && self.tick % 50 == 0 {
+            self.think("CPU", "🔗", self.ipl.status_line());
+        }
+
+        // ── LOCUS COERULEUS DECAY — phasic fades, tonic drifts to rest ───────
+        self.locus_coeruleus.decay();
+        if self.spectate_mode && self.tick % 20 == 0 {
+            self.think("CPU", "⚡", self.locus_coeruleus.status_line());
+        }
+
+        // ── RAPHE DECAY — serotonin slowly returns to baseline ────────────────
+        self.raphe.decay();
+        // Habenula suppresses raphe when active (closed loop)
+        if self.habenula.is_active() {
+            let habenula_suppression = self.habenula.current_activity() * 0.15;
+            // Clamp raphe slightly when habenula is active
+            self.raphe.tonic_5ht = (self.raphe.tonic_5ht - habenula_suppression * 0.01).max(0.10);
+        }
+        if self.spectate_mode && self.tick % 25 == 0 {
+            self.think("CPU", "😌", self.raphe.status_line());
+        }
+
+        // ── HABENULA DECAY — disappointment and aversion slowly fade ──────────
+        self.habenula.decay();
+        // Raphe suppresses habenula when patient (mutual inhibition)
+        if self.raphe.is_patient() {
+            let suppression = (self.raphe.tonic_5ht - 0.55).max(0.0) * 0.20;
+            self.habenula.activity = (self.habenula.activity - suppression * 0.01).max(0.0);
+        }
+        if self.spectate_mode && self.tick % 30 == 0 {
+            self.think("CPU", "😔", self.habenula.status_line());
+        }
+
+        // ── CLAUSTRUM DECAY — old bindings fade, coherence drops ─────────────
+        self.claustrum.decay();
+        if self.spectate_mode && self.tick % 20 == 0 {
+            self.think("CPU", "🎵", self.claustrum.status_line());
+        }
+
+        // ── BNST DECAY — sustained anxiety slowly resolves ────────────────────
+        self.bnst.decay();
+        if self.spectate_mode && self.tick % 25 == 0 {
+            self.think("CPU", "😟", self.bnst.status_line());
+        }
+
+        // ── SMA DECAY — readiness potential fades between turns ───────────────
+        self.sma.decay();
+        if self.spectate_mode && self.tick % 20 == 0 {
+            self.think("CPU", "🎬", self.sma.status_line());
+        }
+
+        // ── FUSIFORM DECAY — pattern familiarity very slowly fades ────────────
+        if self.tick % 10 == 0 {
+            self.fusiform.decay();
+        }
+        if self.spectate_mode && self.tick % 40 == 0 {
+            self.think("CPU", "👁", self.fusiform.status_line());
+        }
+
+        // ── ENTORHINAL DECAY — gateway signal fades between inputs ────────────
+        self.entorhinal.decay();
+        if self.spectate_mode && self.tick % 30 == 0 {
+            self.think("CPU", "🗺", self.entorhinal.status_line());
+        }
+
+        // ── TPJ DECAY — perspective load fades between turns ──────────────────
+        self.tpj.decay();
+        if self.spectate_mode && self.tick % 20 == 0 {
+            self.think("CPU", "👤", self.tpj.status_line());
+        }
+
+        // ── PRECUNEUS DECAY — simulation depth fades ──────────────────────────
+        self.precuneus.decay();
+        if self.spectate_mode && self.tick % 20 == 0 {
+            self.think("CPU", "💭", self.precuneus.status_line());
+        }
+
+        // ── MPFC DECAY — affiliation drifts toward baseline ───────────────────
+        self.mpfc.decay();
+        if self.spectate_mode && self.tick % 25 == 0 {
+            self.think("CPU", "🤗", self.mpfc.status_line());
+        }
+
+        // ── RAS DECAY — arousal drifts toward rest level ─────────────────────
+        self.ras.decay();
+        if self.spectate_mode && self.tick % 20 == 0 {
+            self.think("CPU", "⚡", self.ras.status_line());
+        }
+
+        // ── vmPFC DECAY — safety/extinction/risk drift toward baseline ────────
+        self.vmpfc.decay();
+        if self.spectate_mode && self.tick % 30 == 0 {
+            self.think("CPU", "🛡", self.vmpfc.status_line());
+        }
+
+        // ── PAG DECAY — threat dissipates, relief fades toward baseline ───────
+        self.pag.decay();
+        if self.spectate_mode && self.tick % 25 == 0 {
+            self.think("CPU", "🔱", self.pag.status_line());
+        }
+
+        // ── RSC DECAY — context/allocentric drift toward neutral ──────────────
+        self.rsc.decay();
+        if self.spectate_mode && self.tick % 35 == 0 {
+            self.think("CPU", "🗺", self.rsc.status_line());
+        }
+
+        // ── HYPOTHALAMUS DECAY — drives restore toward set-points ─────────────
+        self.hypothalamus.decay();
+        if self.spectate_mode && self.tick % 40 == 0 {
+            self.think("CPU", "🧬", self.hypothalamus.status_line());
+            self.think("CPU", "🧠", self.dbb.status_line());
+            self.think("CPU", "⚙", self.pontine.status_line());
+        }
+
+        // ── SNc DECAY — habits/fluency/DA drift toward rest ───────────────────
+        self.snc.decay();
+        if self.spectate_mode && self.tick % 45 == 0 {
+            self.think("CPU", "⚙", self.snc.status_line());
+        }
+
+        // ── PHC DECAY — context familiarity fades very slowly ─────────────────
+        self.phc.decay();
+        // ── SMG DECAY — empathy/phonological buffer fades between turns ───────
+        self.smg.decay();
+        // ── Temporal Poles DECAY — binding slowly decays ─────────────────────
+        self.temporal_poles.decay();
+        // ── Superior Colliculus DECAY — saliency fades quickly ───────────────
+        self.superior_colliculus.decay();
+        if self.spectate_mode && self.tick % 30 == 0 {
+            self.think("CPU", "👁", self.superior_colliculus.status_line());
+        }
+        // ── Premotor DECAY — readiness/echo fade between turns ────────────────
+        self.premotor.decay();
+        // ── Perirhinal DECAY — novelty fades, concepts persist ───────────────
+        self.perirhinal.decay();
+        // ── PPC DECAY — priority/magnitude fade ──────────────────────────────
+        self.ppc.decay();
+        // ── FEF DECAY — focus fades, IOR ages out ────────────────────────────
+        self.fef.decay();
+        // ── S1 DECAY — discomfort clears, tactile fades ───────────────────────
+        self.s1.decay();
+        // ── dmPFC DECAY — projection fades, coherence holds ──────────────────
+        self.dmpfc.decay();
+        self.septal.decay();
+        self.atl.decay();
+        self.mcc.decay();
+        self.sgacc.decay();
+        self.zi.decay();
+        self.vp.decay();
+        self.mb.decay();
+        self.dbb.decay();
+        self.pontine.decay();
+        self.nbm.decay();
+        self.scn.decay();
+
+        // ── ANGULAR GYRUS — no per-tick decay needed (EMA handles it) ─────────
+        if self.spectate_mode && self.tick % 40 == 0 {
+            self.think("CPU", "🔤", self.angular_gyrus.status_line());
+        }
+
+        // ── OXYTOCIN DECAY — bond and trust drift slowly toward baseline ─────
+        self.oxytocin.decay();
+        if self.spectate_mode && self.tick % 30 == 0 {
+            self.think("CPU", "🤝", self.oxytocin.status_line());
+        }
+
+        // ── CORTISOL DECAY — chronic stress slowly clears between events ──────
+        self.cortisol.decay();
+        // Sustained high NE is a cortisol stressor (fight-or-flight prolonged)
+        if self.norepinephrine.is_stressed() && self.tick % 10 == 0 {
+            self.cortisol.process(kai::cognition::CortisolEvent::SustainedArousal);
+        }
+        if self.spectate_mode && self.tick % 25 == 0 {
+            self.think("CPU", "😰", self.cortisol.status_line());
+        }
+
         // ── BASAL GANGLIA DECAY — unused habits weaken over time ─────────────
         if self.tick % 20 == 0 {
             self.basal_ganglia.decay();
@@ -661,6 +1212,9 @@ impl App {
                 region: Some("sleep".into()),
                 score: None,
             });
+
+            // Sleep is the primary cortisol clearance event
+            self.cortisol.process(kai::cognition::CortisolEvent::SleepRecovery);
         }
 
         // ── THALAMUS — update arousal gating from amygdala state ─────────────
@@ -1134,11 +1688,271 @@ impl App {
         // Theory of Mind: observe this message, update Ryan's model
         self.tom.observe_input(&input);
 
+        // ── Language System (Wernicke): parse input structure ────────────────
+        // Before RSHL encoding, analyze sentence type, negation, semantic density.
+        // This gives KAI explicit awareness of what KIND of input this is.
+        let wernicke = self.language.analyze_input(&input);
+        if self.spectate_mode {
+            self.think("CPU", "📖", format!(
+                "Wernicke: {} | density={:.2} | negation={} | topic=\"{}\"",
+                wernicke.sentence_type.label(),
+                wernicke.semantic_density,
+                wernicke.has_negation,
+                wernicke.core_topic,
+            ));
+        }
+
+        // ── Fusiform: recognize input pattern category ───────────────────────
+        // Expert holistic pattern recognition — what category/style is this input?
+        let fusiform_out = self.fusiform.recognize(&input);
+        if self.spectate_mode {
+            self.think("CPU", "👁", format!(
+                "Fusiform: {} (conf={:.2}) familiar={:.2}{}",
+                fusiform_out.category_match,
+                fusiform_out.match_confidence,
+                fusiform_out.familiarity,
+                if fusiform_out.is_novel { " NOVEL" } else if fusiform_out.holistic_match { " GESTALT" } else { "" },
+            ));
+        }
+
+        // ── SMA: prepare for action ──────────────────────────────────────────
+        // Build readiness potential. Is this input self-initiated (DMN) or external?
+        {
+            let motivation = self.nucleus_accumbens.top_topics(1).first()
+                .map(|(_, w)| *w).unwrap_or(0.40);
+            // "Self-initiated" if DMN has been idle long enough (KAI was ruminating)
+            let is_self_initiated = self.dmn.idle_duration().as_secs() > 60;
+            let sma_out = self.sma.prepare(motivation, is_self_initiated);
+            if self.spectate_mode && sma_out.commit_action {
+                self.think("CPU", "🎬", format!(
+                    "SMA: {} | readiness={:.2}{}",
+                    sma_out.stage.label(), sma_out.readiness_potential,
+                    if sma_out.is_self_initiated { " SELF-INIT" } else { "" },
+                ));
+            }
+        }
+
+        // ── Angular Gyrus: semantic integration, metaphor, quantifier sense ────
+        let ag_out = self.angular_gyrus.analyze(&input);
+        if self.spectate_mode {
+            if ag_out.has_metaphor {
+                self.think("CPU", "🔤", format!(
+                    "AG: metaphor detected | quant={:.2} | coherence={:.2} | richness={:.2}",
+                    ag_out.quantifier_density, ag_out.semantic_coherence, ag_out.semantic_richness,
+                ));
+            }
+            if ag_out.has_incongruity {
+                self.think("CPU", "🔤", "AG: semantic incongruity detected".to_string());
+            }
+        }
+
+        // ── TPJ: perspective-taking, intent assessment ────────────────────────
+        let tpj_out = {
+            // Use ToM engagement as proxy for familiarity with Ryan's perspective
+            let tom_familiarity = self.tom.user.engagement;
+            let out = self.tpj.process(&input, tom_familiarity, self.pfc.meta_confidence);
+            if self.spectate_mode {
+                self.think("CPU", "👤", format!(
+                    "TPJ: intent={} | gap={:.2}{}{}",
+                    out.intent.label(),
+                    out.self_other_gap,
+                    if out.go_allocentric { " →ALLOC" } else { "" },
+                    if out.false_belief_active { " 🔄FB" } else { "" },
+                ));
+            }
+            out
+        };
+
+        // ── PCC: assess self-relevance of this input ──────────────────────────
+        // How much is this about KAI himself? Touches a narrative thread?
+        let pcc_rel = self.pcc.assess(&input);
+        if self.spectate_mode && pcc_rel.autobio_salience > 0.20 {
+            self.think("CPU", "🔮", format!(
+                "PCC self-rel={:.2}{} | {}",
+                pcc_rel.autobio_salience,
+                if pcc_rel.touches_narrative { " THREAD" } else { "" },
+                pcc_rel.narrative_thread.as_deref().unwrap_or("no thread"),
+            ));
+        }
+        // If this touches a narrative thread, mark it addressed
+        if pcc_rel.touches_narrative {
+            if let Some(ref thread) = pcc_rel.narrative_thread {
+                // Extract a short fragment for matching
+                let fragment: String = thread.split_whitespace().take(3).collect::<Vec<_>>().join(" ");
+                self.pcc.address_thread(&fragment);
+            }
+        }
+
+        // ── Precuneus: simulation depth and self-reflection level ─────────────
+        let precuneus_out = {
+            let out = self.precuneus.process(&input, pcc_rel.autobio_salience);
+            if self.spectate_mode && (out.simulation_triggered || out.deep_reflection) {
+                self.think("CPU", "💭", format!(
+                    "Precuneus: {} | sim={:.2} | ci={:.2}{}",
+                    out.reflection_level.label(),
+                    out.simulation_depth,
+                    out.consciousness_index,
+                    if out.deep_reflection { " ✨DEEP" } else { "" },
+                ));
+            }
+            out
+        };
+        let _ = precuneus_out;  // Used implicitly via self.precuneus state
+
+        // ── Entorhinal Cortex: gate signal before hippocampal encoding ──────────
+        // EC filters noise, tracks conceptual position, and provides temporal tags.
+        // Only signals that pass the EC gateway are worth storing in hippocampus.
+        let ec_out = {
+            let raw_signal = wernicke.semantic_density;
+            let semantic_shift = if fusiform_out.is_novel { 0.70 } else { 0.25 };
+            let out = self.entorhinal.process(raw_signal, semantic_shift);
+            if self.spectate_mode && (out.is_conceptual_jump || out.passes_gateway) {
+                self.think("CPU", "🗺", format!(
+                    "EC: t={} | pos=({:.1},{:.1}) | dist={:.2}{}",
+                    out.temporal_tag,
+                    out.concept_position.0, out.concept_position.1,
+                    out.concept_distance,
+                    if out.is_conceptual_jump { " ⚡JUMP" } else { "" },
+                ));
+            }
+            out
+        };
+
+        // ── Hippocampus: store this input as a new pattern in CA3 ────────────
+        // Every message is a potential memory trace. Strength is proportional
+        // to amygdala emotional charge (salient events form stronger memories).
+        // EC gateway gates the storage: only gated signals encode deeply.
+        {
+            let charge = kai::cognition::score_emotional_charge(&input);
+            let base_strength = (0.35 + charge * 0.45).clamp(0.20, 0.90);
+            // EC amplifies storage strength for gateway-cleared signals
+            let store_strength = if ec_out.passes_gateway {
+                (base_strength * 1.20).min(0.95)
+            } else {
+                base_strength * 0.70  // Weaker encoding for noise-filtered signals
+            };
+            self.hippocampus.store(&input, store_strength);
+        }
+
+        // ── Serotonin: classify message length/warmth → update level ─────────
+        {
+            let serotonin_event = kai::cognition::SerotoninSystem::classify_message(&input);
+            let delta = self.serotonin.process(serotonin_event);
+            if self.spectate_mode && delta.abs() > 0.005 {
+                self.think("CPU", "🧘", format!(
+                    "5-HT {:+.3} → {}", delta, self.serotonin.status_line()
+                ));
+            }
+        }
+
+        // ── Oxytocin: classify social content of message → bond/trust update ──
+        {
+            let ot_event = kai::cognition::OxytocinSystem::classify_exchange(&input);
+            let delta = self.oxytocin.process(ot_event);
+            if self.spectate_mode && delta.abs() > 0.005 {
+                let bond = self.oxytocin.bond_state();
+                self.think("CPU", "🤝", format!(
+                    "OT bond {:+.3} → {} | trust={:.2}{}",
+                    delta, bond.label, bond.trust_level,
+                    if bond.safe_to_challenge { " ✓challenge" } else { "" }
+                ));
+            }
+        }
+
+        // ── Mirror Neurons: detect emotional tone and intent, update resonance ─
+        {
+            let mirror_state = self.mirror_neurons.mirror(&input);
+            if self.spectate_mode {
+                self.think("CPU", "🪞", format!(
+                    "Mirror: {} | {:?} | distress={:.2}{}",
+                    mirror_state.tone.label(),
+                    mirror_state.intent,
+                    mirror_state.distress,
+                    if self.mirror_neurons.empathy_active { " 💙" } else { "" },
+                ));
+            }
+            // Post empathy state to global workspace if distress is notable
+            if self.mirror_neurons.distress_level > 0.30 {
+                let msg = format!(
+                    "empathy active: {} tone, distress={:.2}",
+                    mirror_state.tone.label(), self.mirror_neurons.distress_level
+                );
+                self.global_workspace.post("mirror-neurons", &msg, self.mirror_neurons.distress_level * 0.6);
+            }
+        }
+
+        // ── STS: read social intent and trajectory ────────────────────────────
+        // What is Ryan actually trying to accomplish right now?
+        // Is the conversation deepening, stable, or winding down?
+        {
+            let charge = kai::cognition::score_emotional_charge(&input);
+            let sts_reading = self.sts.read(&input, charge);
+            if self.spectate_mode {
+                self.think("CPU", "👁", format!(
+                    "STS: {} (conf={:.2}) | traj={:?}{}",
+                    sts_reading.goal.label(),
+                    sts_reading.intent_confidence,
+                    sts_reading.trajectory,
+                    if sts_reading.lean_in { " →lean-in" } else if sts_reading.winding_down { " →wrap-up" } else { "" },
+                ));
+            }
+            // Post goal to global workspace for other systems to read
+            if sts_reading.intent_confidence > 0.50 {
+                self.global_workspace.post(
+                    "sts",
+                    &format!("user goal: {}", sts_reading.goal.label()),
+                    sts_reading.intent_confidence * 0.5,
+                );
+            }
+        }
+
+        // ── IPL: analogy detection and cross-domain binding ──────────────────
+        // Detect conceptual domain, retrieve matching analogy, compute magnitude sense.
+        // Then bind top concepts across domains for richer associative memory.
+        {
+            // Use wernicke's top-hit score as the "how well retrieved?" proxy
+            let top_score = wernicke.semantic_density;  // 0.0–1.0 proxy for retrieval quality
+            let ipl_out = self.ipl.analyze(&input, top_score);
+
+            if self.spectate_mode {
+                if let Some(ref analogy) = ipl_out.analogy_text {
+                    self.think("CPU", "🔗", format!("IPL analogy: {}", analogy));
+                }
+                self.think("CPU", "🔗", format!(
+                    "IPL domain={} | magnitude={} | links={}",
+                    self.ipl.detect_domain(&input),
+                    ipl_out.magnitude_label,
+                    ipl_out.activated_links.len(),
+                ));
+            }
+
+            // If an analogy was found, post it to global workspace for reasoning context
+            if let Some(ref analogy) = ipl_out.analogy_text {
+                self.global_workspace.post(
+                    "ipl",
+                    analogy,
+                    0.35,
+                );
+            }
+
+            // Bind the IPL domain with PCC's self-narrative domain if self-relevant
+            let domain = self.ipl.detect_domain(&input);
+            if domain != "general" {
+                // Bind dominant keyword from input with the domain label
+                let key = input.split_whitespace()
+                    .filter(|w| w.len() > 4)
+                    .max_by_key(|w| w.len())
+                    .unwrap_or(&input[..input.len().min(12)]);
+                self.ipl.bind_concepts(key, domain, "RSHL", "geometry", top_score.max(0.31));
+            }
+        }
+
         // PFC: infer what Ryan wants from this message, track it as a goal
         // and bind the content into executive working memory
         self.pfc.infer_goal_from_input(&input);
 
-        match lower.as_str() {
+        let cmd_word = lower.split_whitespace().next().unwrap_or("");
+        match cmd_word {
             "quit" | "exit" => {
                 self.save_state();
                 self.should_quit = true;
@@ -2071,10 +2885,84 @@ impl App {
         // ── Detect query type for voice engine ───────────────────────
         let query_type = detect_query_type(&reasoning_input);
 
-        // ── Build mood state for voice modulation ────────────────────
+        // ── LexSem: analyze what Ryan's language is actually doing ────
+        // This gives KAI semantic field awareness — is this emotional, technical,
+        // identity-related? What's the expressed certainty? Urgency? Negation?
+        // These signals feed into BrainSignals and shape the response register.
+        let lex_out = self.lexsem.analyze(&reasoning_input);
+        if self.spectate_mode {
+            self.think("CPU", "📖", format!(
+                "LexSem: field={} | valence={:+.2} | certainty={:.2} | register={}{}{}",
+                lex_out.primary_field.label(),
+                lex_out.language_valence,
+                lex_out.expressed_certainty,
+                lex_out.suggested_register.label(),
+                if lex_out.has_negation { " NEG" } else { "" },
+                if lex_out.urgency > 0.3 { " URG" } else { "" },
+            ));
+        }
+
+        // ── Build mood state for voice modulation (legacy — kept for spectate log) ──
         let mood_state = MoodState {
             mood_name: self.drive.mood.to_string(),
             valence: self.drive.valence,
+        };
+
+        // ── Build live BrainSignals — the 78-module brain speaking to voice ───
+        // This is the core connection: all the neural signal processing that
+        // happens above now flows directly into the language output.
+        // Each field is drawn from the live module state at this exact moment.
+        let brain_signals = BrainSignals {
+            // Amygdala: threat/arousal level
+            arousal:         self.amygdala.arousal(),
+            // Oxytocin: bond with Ryan
+            bond:            self.oxytocin.bond_state().bond_strength,
+            // Septal: social reward and approach mode
+            social_reward:   self.septal.social_reward,
+            approaching:     self.septal.approach_motivation > 0.55,
+            // Insula + LexSem: felt valence blends KAI's internal state with
+            // the emotional tone Ryan's language is carrying. If Ryan's words
+            // are negative (frustration, confusion), KAI's felt sense dips too.
+            felt_valence: {
+                let load = self.insula.state.cognitive_load;
+                let coh  = self.insula.state.coherence_sense;
+                let internal = (coh - load) * 0.70 + self.serotonin.level * 0.20;
+                let lex_tone = lex_out.language_valence * 0.10; // mirror's language mood lightly
+                (internal + lex_tone).clamp(-1.0, 1.0)
+            },
+            // VTA: tonic dopamine (background anticipation/readiness)
+            dopamine:        self.vta.tonic_level,
+            // Norepinephrine: alertness/arousal
+            norepinephrine:  self.norepinephrine.level,
+            // Serotonin: equanimity/groundedness
+            serotonin:       self.serotonin.level,
+            // ACC: conflict / uncertainty
+            conflict:        self.acc.conflict_level,
+            // PFC: confidence in the current response
+            confidence:      result.confidence,
+            // Mirror neurons: empathy (social_sync 0..1 is most useful)
+            empathy:         self.mirror_neurons.social_sync,
+            // MCC: social pain signal
+            social_pain:     self.mcc.social_pain,
+            // Ventral pallidum: hedonic tone (felt pleasure/satisfaction)
+            hedonic:         self.vp.hedonic_tone,
+            // sgACC: background mood floor
+            mood_floor:      self.sgacc.mood_floor,
+            // Grief flag from sgACC
+            grieving:        self.sgacc.grief_signal > 0.30,
+            // Curiosity: composite — wanting + predictor surprise + NE + LexSem interrogative
+            curiosity: {
+                let wanting  = self.nucleus_accumbens.core_wanting;
+                let surprise = self.predictor.avg_error;
+                let lex_boost = if lex_out.primary_field == kai::cognition::SemanticField::Interrogative
+                    || lex_out.is_asking { 0.15 } else { 0.0 };
+                (wanting * 0.45 + surprise * 0.25 + self.norepinephrine.level * 0.15
+                    + lex_boost + (1.0 - lex_out.expressed_certainty) * 0.15).min(1.0)
+            },
+            // NBM: cortical sharpening gain
+            cortical_gain:   self.nbm.cortical_gain,
+            // SCN: session alertness arc
+            alertness:       self.scn.alertness_modulation,
         };
 
         // ── Get recent context for follow-up detection ───────────────
@@ -2091,10 +2979,97 @@ impl App {
             || lower_reasoning.contains("what are you")
             || lower_reasoning.contains("yourself");
         let hits = if is_self_query {
-            self.universe.query_region(&reasoning_input, "memory", 5)
+            // Query broadly, then filter out Ryan-facts — KAI should never
+            // confuse Ryan's personal information with its own identity.
+            // Also prefer [about-kai] tagged cells and cells mentioning KAI's name.
+            let raw = self.universe.query_region(&reasoning_input, "memory", 12);
+            let mut kai_hits: Vec<kai::core::QueryHit> = raw.into_iter()
+                .filter(|h| {
+                    let t = h.text.to_lowercase();
+                    // Exclude cells that are clearly about Ryan, not KAI
+                    !t.contains("name is ryan")
+                    && !t.contains("[about-ryan]")
+                    && !(t.starts_with("my name is") && t.contains("ryan"))
+                    && !(t.starts_with("i live") || t.starts_with("i work")
+                         || t.starts_with("i am ryan") || t.starts_with("i'm ryan"))
+                })
+                .collect();
+            // Sort: prefer cells that explicitly name KAI
+            kai_hits.sort_by(|a, b| {
+                let a_kai = a.text.to_lowercase().contains("kai");
+                let b_kai = b.text.to_lowercase().contains("kai");
+                match (a_kai, b_kai) {
+                    (true, false) => std::cmp::Ordering::Less,
+                    (false, true) => std::cmp::Ordering::Greater,
+                    _ => b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal),
+                }
+            });
+            kai_hits.truncate(5);
+            kai_hits
         } else {
             self.universe.query(&reasoning_input, 5)
         };
+
+        // ── Norepinephrine: novelty and salience detection ────────────────────
+        // Classify input based on top-hit cosine similarity.
+        // Low similarity = novel input → NE spike.
+        // High salience = high-energy message → NE spike.
+        // Mirror neuron distress already flags threat events.
+        let input_sal = kai::cognition::compute_salience(&reasoning_input, "user");
+        {
+            let top_cosine = hits.first().map(|h| h.score).unwrap_or(0.0);
+            let ne_event = if self.mirror_neurons.distress_level > 0.50 {
+                kai::cognition::NeEvent::Threat
+            } else {
+                kai::cognition::NorepinephrineSystem::classify_input(top_cosine, input_sal)
+            };
+            let ne_delta = self.norepinephrine.process(ne_event);
+            if self.spectate_mode && ne_delta.abs() > 0.01 {
+                self.think("CPU", "⚡", format!(
+                    "NE {:+.3} → {} (cosine={:.2})",
+                    ne_delta, self.norepinephrine.arousal_state(), top_cosine
+                ));
+            }
+        }
+
+        // ── Hippocampus: pattern completion + separation ─────────────────────
+        //
+        // Pattern completion (CA3):
+        //   If the top universe hit was weak (low score), try to complete from
+        //   the hippocampal pattern store. This fills gaps the universe query missed.
+        //
+        // Pattern separation (DG/CA1):
+        //   If top-2 hits are suspiciously similar, flag the confusion risk
+        //   so the voice engine can disambiguate.
+        let hipp_completion: Option<kai::cognition::CompletionResult> = {
+            let top_score = hits.first().map(|h| h.score).unwrap_or(0.0);
+            self.hippocampus.complete(&reasoning_input, top_score)
+        };
+        if let Some(ref completion) = hipp_completion {
+            if completion.filled_gap {
+                if self.spectate_mode {
+                    self.think("CPU", "🧠", format!(
+                        "CA3 fill: \"{}\" (conf={:.2})",
+                        truncate(&completion.completed_text, 50), completion.confidence
+                    ));
+                }
+                // Flag for consolidation — this gap-fill is worth remembering
+                self.hippocampus.flag_for_consolidation(
+                    &completion.completed_text, completion.confidence
+                );
+            }
+        }
+        // Pattern separation: check top-2 hits for semantic blur
+        if hits.len() >= 2 {
+            let sep = self.hippocampus.separate(&hits[0].text, &hits[1].text);
+            if sep.needs_separation && self.spectate_mode {
+                self.think("CPU", "🧠", format!(
+                    "CA1 blur: {} (sim={:.2}) — {} / {}",
+                    sep.risk_type, sep.interference,
+                    truncate(&hits[0].text, 30), truncate(&hits[1].text, 30)
+                ));
+            }
+        }
 
         // ── Hebbian reinforcement: cells that fired with this query get stronger ─
         // "Neurons that fire together, wire together." — Hebb, 1949.
@@ -2123,7 +3098,7 @@ impl App {
         // ── Cerebellum: forward-model quality prediction ──────────────────
         // BEFORE generating a response, predict how good it will be.
         // After generation we'll compare with the actual confidence.
-        let input_sal = kai::cognition::compute_salience(&reasoning_input, "user");
+        // (input_sal was computed earlier in the NE block above)
         let cbm_predicted_quality = self.cerebellum.predict_quality(
             input_sal, hits.len(), self.dopamine.level,
         );
@@ -2133,18 +3108,30 @@ impl App {
         // If a vivid enough past memory matches this query, prepend it to
         // the recent context so the voice engine can naturally reference it.
         let memory_surface = self.episodic.surface_memory(&reasoning_input);
-        let recent_ctx_with_memory: Vec<(String, String)> = if let Some(ref mem) = memory_surface {
-            let mut v = vec![("memory".to_string(), mem.clone())];
+        let recent_ctx_with_memory: Vec<(String, String)> = {
+            let mut v: Vec<(String, String)> = Vec::new();
+            // 1. Episodic memory surface
+            if let Some(ref mem) = memory_surface {
+                v.push(("memory".to_string(), mem.clone()));
+            }
+            // 2. Hippocampal completion — gap-fills get injected as context
+            if let Some(ref completion) = hipp_completion {
+                if completion.filled_gap && completion.confidence > 0.30 {
+                    v.push(("hippocampus".to_string(), completion.completed_text.clone()));
+                }
+            }
+            // 3. PCC self-referential context — identity/narrative threads
+            if let Some(ref self_ctx) = pcc_rel.self_context {
+                v.push(("pcc".to_string(), self_ctx.clone()));
+            }
             v.extend(recent_ctx.clone());
             v
-        } else {
-            recent_ctx.clone()
         };
 
         if hits.is_empty() || (result.output_text.is_empty() && result.confidence < 0.05) {
             // ── Voice: no resonance — KAI genuinely doesn't know ─────────
             let voice_text = generate_response(
-                &reasoning_input, &[], query_type, &mood_state, &recent_ctx_with_memory,
+                &reasoning_input, &[], query_type, &brain_signals, &recent_ctx_with_memory,
             );
             kai::cognition::transcript::append(&self.base_dir, &self.session_id, "kai", &voice_text);
             self.turns.push(Turn {
@@ -2197,7 +3184,7 @@ impl App {
         } else {
             // ── Voice Engine: generate natural response ──────────────
             let voice_text = generate_response(
-                &reasoning_input, &hits, query_type, &mood_state, &recent_ctx_with_memory,
+                &reasoning_input, &hits, query_type, &brain_signals, &recent_ctx_with_memory,
             );
 
             // ── Depth label: spectate-only (per directive: don't expose internals) ─
@@ -2297,11 +3284,25 @@ impl App {
                 ));
             }
 
-            // ── Dopamine: fire reward signal based on confidence vs. expectation ──
+            // ── Dopamine + VTA: fire reward signal based on confidence vs. expectation ──
             {
                 let expected = 1.0 - self.predictor.avg_error; // prior expected performance
                 let topic_preview = if reasoning_input.len() > 40 { &reasoning_input[..40] } else { &reasoning_input };
                 let rpe = self.dopamine.fire(topic_preview, result.confidence, expected);
+
+                // VTA processes the same RPE — distinguishes tonic vs. phasic mode.
+                // VTA signal feeds back to NAc (mesolimbic) and PFC (mesocortical).
+                let vta_sig = self.vta.process_rpe(rpe);
+                if self.spectate_mode {
+                    self.think("CPU", "⚛", format!(
+                        "VTA {} | tonic={:.2} phasic={:.2} nac={:.2} pfc={:.2}{}",
+                        vta_sig.mode.label(), vta_sig.tonic_level,
+                        vta_sig.phasic_amplitude, vta_sig.mesolimbic_signal,
+                        vta_sig.mesocortical_signal,
+                        if vta_sig.in_flow { " ⚡FLOW" } else { "" }
+                    ));
+                }
+
                 if self.spectate_mode {
                     self.think("CPU", "💊", format!("DA: RPE={:+.3} level={:.3} {}",
                         rpe, self.dopamine.level,
@@ -2315,6 +3316,167 @@ impl App {
                 // This is exactly the dopamine-gated Hebbian signal from biology.
                 let reward = rpe.clamp(-1.0, 1.0);
                 self.basal_ganglia.reinforce(ctx_type, resp_type, reward, self.dopamine.level);
+
+                // ── OFC: update context value with this outcome ─────────────
+                // OFC learns the expected value of context/action combinations.
+                // Slower than dopamine, more contextual. Detects reversals.
+                let ofc_key = format!("{}/{}", ctx_type, resp_type);
+                let ofc_delta = self.ofc.update(&ofc_key, reward);
+                let ofc_judgment = self.ofc.judge(&ofc_key);
+                if self.spectate_mode && ofc_delta.abs() > 0.01 {
+                    self.think("CPU", "💰", format!(
+                        "OFC {:+.3} → {} ({}){}",
+                        ofc_delta, ofc_judgment.label, ofc_key,
+                        if ofc_judgment.reversal_warning { " ⚠REVERSAL" } else { "" },
+                    ));
+                }
+                // If OFC detects a reversal, post it to global workspace as a
+                // warning that the current strategy is no longer working
+                if ofc_judgment.reversal_warning {
+                    self.global_workspace.post(
+                        "ofc",
+                        &format!("strategy reversal: {} no longer reliable", ofc_key),
+                        0.70,
+                    );
+                }
+
+                // ── Nucleus Accumbens: register reward for this topic ────────
+                // NAc tracks per-topic wanting/affinity with habituation.
+                // Uses the same RPE reward signal as basal ganglia + OFC.
+                let topic_key = kai::cognition::NucleusAccumbens::extract_topic(&reasoning_input);
+                self.nucleus_accumbens.register_reward(&topic_key, reward);
+                if self.spectate_mode && self.nucleus_accumbens.is_motivated() {
+                    let sig = self.nucleus_accumbens.evaluate(&topic_key, 0.5, self.dopamine.level);
+                    self.think("CPU", "🎯", format!(
+                        "NAc {} → {} (topic=\"{}\"{})",
+                        sig.label, format!("{:.2}", sig.wanting), topic_key,
+                        if sig.cue_triggered { " CUE" } else { "" },
+                    ));
+                }
+            }
+
+            // ── Norepinephrine: post-response success/conflict signal ─────────
+            {
+                // If response was confident and unhurried → NE Success (positive arousal)
+                // If ACC conflict was strong → NE Conflict (alerting)
+                if result.confidence > 0.65 {
+                    self.norepinephrine.process(kai::cognition::NeEvent::Success);
+                }
+                // Also feed GW with attention threshold recommendation
+                let ne_threshold = self.norepinephrine.attention_threshold();
+                self.global_workspace.set_salience_floor(ne_threshold);
+            }
+
+            // ── Locus Coeruleus: process novelty and task demand ─────────────
+            {
+                // Novelty = how unexpected was this? Use predictor avg_error as proxy.
+                let novelty = self.predictor.avg_error.min(1.0);
+                let task_demand = if matches!(query_type,
+                    QueryType::RequestForInfo | QueryType::ExplanationQuestion) { 0.70 } else { 0.40 };
+                let lc_out = self.locus_coeruleus.process(novelty, task_demand);
+                if self.spectate_mode && (lc_out.burst_fired || lc_out.phasic_level > 0.20) {
+                    self.think("CPU", "⚡", format!(
+                        "LC {} | snr={:.2}x{}",
+                        lc_out.mode.label(), lc_out.snr_boost,
+                        if lc_out.burst_fired { " ⚡BURST" } else { "" }
+                    ));
+                }
+            }
+
+            // ── Raphe: social/engagement serotonin update ────────────────────
+            {
+                let charge = kai::cognition::score_emotional_charge(&input);
+                let is_deep = input.split_whitespace().count() >= 15;
+                let raphe_event = if is_deep && charge > 0.20 {
+                    kai::cognition::RapheEvent::DeepEngagement
+                } else if result.confidence > 0.65 {
+                    kai::cognition::RapheEvent::SuccessfulHelp
+                } else {
+                    kai::cognition::RapheEvent::SocialWarmth
+                };
+                let raphe_out = self.raphe.process_event(raphe_event);
+                if self.spectate_mode && self.tick % 5 == 0 {
+                    self.think("CPU", "😌", format!(
+                        "Raphe 5-HT={:.2} | {} | patience={:.2}",
+                        raphe_out.tonic_5ht,
+                        raphe_out.mode.label(),
+                        raphe_out.patience_factor,
+                    ));
+                }
+            }
+
+            // ── Habenula: reward omission / disappointment check ────────────
+            {
+                let expected_quality = 1.0 - self.predictor.avg_error;
+                // If KAI significantly underperformed expectations, habenula fires
+                if result.confidence < expected_quality - 0.25 {
+                    let omission = expected_quality - result.confidence;
+                    let hab_out = self.habenula.process(
+                        kai::cognition::HabenulaSignal::RewardOmission { expected: omission }
+                    );
+                    if self.spectate_mode && hab_out.activity > 0.30 {
+                        self.think("CPU", "😔", format!(
+                            "Habenula activity={:.2}{}",
+                            hab_out.activity,
+                            if hab_out.behavioral_switch { " ⚠SWITCH" } else { "" },
+                        ));
+                    }
+                } else if result.confidence > 0.70 {
+                    // Success suppresses habenula via serotonin-mediated inhibition
+                    self.habenula.process(kai::cognition::HabenulaSignal::SerotoninSuppression {
+                        strength: self.raphe.tonic_5ht,
+                    });
+                }
+            }
+
+            // ── Claustrum: bind top GW item + reasoning into unified awareness ──
+            {
+                let gw_top = self.global_workspace.current_content()
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| reasoning_input.chars().take(50).collect::<String>());
+                let claustrum_out = self.claustrum.bind(
+                    "reasoning",
+                    &gw_top,
+                    result.confidence,
+                    self.pfc.meta_confidence,
+                );
+                // Also bind emotion stream if amygdala aroused
+                if self.amygdala.is_aroused() {
+                    let charge = kai::cognition::score_emotional_charge(&input);
+                    self.claustrum.bind("emotion", "emotional charge active", charge, self.pfc.meta_confidence);
+                }
+                if self.spectate_mode && claustrum_out.fully_integrated {
+                    self.think("CPU", "🎵", format!(
+                        "Claustrum: {:.2} coherence | {} streams | conductor={:.2}",
+                        claustrum_out.binding_coherence,
+                        claustrum_out.stream_count,
+                        claustrum_out.conductor_signal,
+                    ));
+                }
+            }
+
+            // ── BNST: update contextual threat state ─────────────────────────
+            {
+                let bnst_input = kai::cognition::BNSTInput {
+                    amygdala_arousal:  self.amygdala.arousal(),
+                    habenula_activity: self.habenula.current_activity(),
+                    cortisol_level:    self.cortisol.cognitive_state().level,
+                    recent_conflicts:  (self.acc.conflict_level * 5.0) as u32,
+                    safety_signal:     result.confidence > 0.65,
+                    bond_level:        self.oxytocin.bond_state().bond_strength,
+                };
+                let bnst_out = self.bnst.update(&bnst_input);
+                // BNST CRF output → cortisol (if above threshold)
+                if bnst_out.crf_output > 0.10 {
+                    self.cortisol.process(kai::cognition::CortisolEvent::SustainedArousal);
+                }
+                if self.spectate_mode && bnst_out.caution_mode {
+                    self.think("CPU", "😟", format!(
+                        "BNST: threat={:.2} vigilance={:.2} caution={}",
+                        bnst_out.threat_context, bnst_out.vigilance,
+                        if bnst_out.caution_mode { "ON" } else { "off" },
+                    ));
+                }
             }
 
             // ── ACC: scan top 2 hits for contradiction ────────────────────────
@@ -2326,13 +3488,497 @@ impl App {
                         self.think("CPU", "⚡", format!("ACC conflict detected: {:.3}", conflict_score));
                     }
                     self.global_workspace.post("acc", &self.acc.status_line(), conflict_score * 0.7);
+                    // NE Conflict event: ACC found a real contradiction
+                    self.norepinephrine.process(kai::cognition::NeEvent::Conflict);
+                    // Unresolved contradiction is a cortisol stressor
+                    self.cortisol.process(kai::cognition::CortisolEvent::UnresolvedConflict);
                 }
             }
             // If PFC approved with high confidence, let ACC know the conflict was handled
             if matches!(pfc_verdict, kai::cognition::PfcVerdict::Approve) && result.confidence > 0.60 {
                 self.acc.resolve_recent();
+                // Successful resolution reduces cortisol
+                self.cortisol.process(kai::cognition::CortisolEvent::Resolution);
             } else if matches!(pfc_verdict, kai::cognition::PfcVerdict::FlagLowConfidence) {
                 self.acc.report_error(&reasoning_input, 1.0 - result.confidence);
+                // Low-confidence response is a minor stressor
+                if result.confidence < 0.30 {
+                    self.cortisol.process(kai::cognition::CortisolEvent::PredictionFailure);
+                }
+            }
+
+            // ── Cortisol: mirror neuron distress → social stress ──────────────
+            if self.mirror_neurons.distress_level > 0.50 {
+                self.cortisol.process(kai::cognition::CortisolEvent::SocialStress);
+            }
+
+            // ── Language System (Broca): check output fluency/verbosity ─────
+            {
+                let broca = self.language.analyze_output(&wernicke, &voice_text);
+                if self.spectate_mode {
+                    self.think("CPU", "📝", format!(
+                        "Broca: {} | words={} ratio={:.1}{}",
+                        broca.recommended_style.label(),
+                        broca.output_word_count,
+                        broca.complexity_ratio,
+                        if broca.is_verbose { " ⚠VERBOSE" } else { "" },
+                    ));
+                }
+            }
+
+            // ── MPFC: social outcome from this exchange ───────────────────────
+            {
+                let helped_degree = result.confidence;
+                // Was there a moment of connection? (high confidence + emotionally charged)
+                let charge = kai::cognition::score_emotional_charge(&input);
+                let social_outcome = if matches!(tpj_out.intent,
+                    kai::cognition::IntentAssessment::Frustrated)
+                {
+                    kai::cognition::SocialOutcome::Disappointment {
+                        severity: (1.0 - result.confidence) * 0.60,
+                    }
+                } else if helped_degree > 0.70 && charge > 0.30 {
+                    kai::cognition::SocialOutcome::Connection {
+                        strength: (helped_degree + charge) * 0.5,
+                    }
+                } else if helped_degree > 0.60 {
+                    kai::cognition::SocialOutcome::Helped { degree: helped_degree }
+                } else {
+                    kai::cognition::SocialOutcome::AffirmativeExchange
+                };
+                let mpfc_out = self.mpfc.process_social(social_outcome, self.tom.user.engagement);
+                // Also run moral intuition check on the input
+                self.mpfc.moral_intuition(&input);
+                if self.spectate_mode {
+                    self.think("CPU", "🤗", format!(
+                        "mPFC: social={:.2} affil={:.2} moral={:+.2}",
+                        mpfc_out.social_value, mpfc_out.affiliation, mpfc_out.moral_valence,
+                    ));
+                }
+            }
+
+            // ── RAS — global arousal gating ───────────────────────────
+            {
+                // Novel inputs wake the system; familiar ones habituate it; urgent/salient boost it
+                let ras_event = if fusiform_out.is_novel {
+                    kai::cognition::RASEvent::Novel { strength: fusiform_out.match_confidence.max(0.50) }
+                } else if self.amygdala.arousal() > 0.60 {
+                    kai::cognition::RASEvent::Salient { urgency: self.amygdala.arousal() }
+                } else if fusiform_out.familiarity > 0.75 {
+                    kai::cognition::RASEvent::Repetitive
+                } else {
+                    kai::cognition::RASEvent::Novel { strength: 0.30 }
+                };
+                let ras_out = self.ras.process(ras_event);
+                if self.spectate_mode {
+                    self.think("CPU", "⚡", format!(
+                        "RAS: arousal={:.2} wake={} amp={:.2} gate={}",
+                        ras_out.arousal_level,
+                        if ras_out.wake_signal { "ON" } else { "off" },
+                        ras_out.amplification,
+                        if ras_out.passes_gate { "PASS" } else { "FILTER" },
+                    ));
+                }
+            }
+
+            // ── vmPFC — safety valuation and value alignment ──────────
+            {
+                // If fusiform recognized a familiar safe context, reinforce safety
+                let vmpfc_event = if self.vmpfc.is_safe_context(&fusiform_out.category_match) {
+                    kai::cognition::VmPFCEvent::SafeExposure {
+                        context: fusiform_out.category_match.clone(),
+                        strength: fusiform_out.familiarity,
+                    }
+                } else if result.confidence > 0.70 {
+                    // High-confidence, well-aligned response
+                    kai::cognition::VmPFCEvent::ValueAligned { degree: result.confidence }
+                } else if self.acc.conflict_level > 0.60 {
+                    // ACC reports high conflict — potential value tension
+                    kai::cognition::VmPFCEvent::ValueConflict { severity: self.acc.conflict_level * 0.50 }
+                } else if self.amygdala.arousal() > 0.65 {
+                    kai::cognition::VmPFCEvent::ThreatSignal { intensity: self.amygdala.arousal() }
+                } else {
+                    kai::cognition::VmPFCEvent::TrustedContext
+                };
+                let vmpfc_out = self.vmpfc.process(vmpfc_event);
+                // First time in a category → register as a safe exposure for learning
+                if fusiform_out.holistic_match && !self.vmpfc.is_safe_context(&fusiform_out.category_match) {
+                    self.vmpfc.process(kai::cognition::VmPFCEvent::SafeExposure {
+                        context: fusiform_out.category_match.clone(),
+                        strength: 0.50,
+                    });
+                }
+                if self.spectate_mode {
+                    self.think("CPU", "🛡", format!(
+                        "vmPFC: safety={:.2} extinct={:.2} value={:.2} risk={:.2}{}",
+                        vmpfc_out.safety_level,
+                        vmpfc_out.extinction_strength,
+                        vmpfc_out.value_alignment,
+                        vmpfc_out.risk_cost,
+                        if vmpfc_out.caution_mode { " CAUTION" } else { "" },
+                    ));
+                }
+            }
+
+            // ── Superior Colliculus — saliency map and orienting ──────
+            {
+                let sc_out = self.superior_colliculus.process(
+                    &input,
+                    result.confidence,
+                    if fusiform_out.is_novel { 0.80 } else { fusiform_out.familiarity * 0.30 },
+                );
+                if self.spectate_mode && sc_out.orienting_triggered {
+                    self.think("CPU", "👁", format!(
+                        "SC: ORIENT salience={:.2} urgency={}",
+                        sc_out.top_salience,
+                        sc_out.urgency_detected,
+                    ));
+                }
+            }
+
+            // ── PHC — scene context and contextual memory ──────────────
+            {
+                let phase = self.rsc.current_output().temporal_epoch.label().to_string();
+                let scene = kai::cognition::SceneContext {
+                    topic:         fusiform_out.category_match.clone(),
+                    emotional_tone: self.amygdala.arousal(),
+                    phase,
+                };
+                let _phc_out = self.phc.process(scene, fusiform_out.is_novel);
+            }
+
+            // ── SMG — immediate empathy and phonological buffer ────────
+            {
+                let wm_load = (self.working_memory.len() as f32 / 12.0).min(1.0);
+                let _smg_out = self.smg.process(&input, wm_load);
+            }
+
+            // ── Temporal Poles — semantic-emotional binding ────────────
+            {
+                let _tp_out = self.temporal_poles.process(
+                    &input,
+                    self.amygdala.arousal(),
+                    self.tom.user.engagement,
+                );
+            }
+
+            // ── SNc — procedural habit and action fluency ─────────────
+            {
+                let snc_event = if fusiform_out.is_novel {
+                    kai::cognition::SNcEvent::NovelTerrain {
+                        difficulty: 1.0 - fusiform_out.match_confidence,
+                    }
+                } else if self.snc.has_chunk(&fusiform_out.category_match) && result.confidence > 0.65 {
+                    kai::cognition::SNcEvent::FamiliarSuccess {
+                        domain: fusiform_out.category_match.clone(),
+                        fluency: result.confidence,
+                    }
+                } else if result.confidence > 0.70 {
+                    kai::cognition::SNcEvent::SequenceComplete { steps: 4 }
+                } else if result.confidence < 0.35 {
+                    kai::cognition::SNcEvent::ExecutionError { severity: 1.0 - result.confidence }
+                } else {
+                    kai::cognition::SNcEvent::FamiliarSuccess {
+                        domain: fusiform_out.category_match.clone(),
+                        fluency: result.confidence,
+                    }
+                };
+                let snc_out = self.snc.process(snc_event);
+                if self.spectate_mode {
+                    self.think("CPU", "⚙", format!(
+                        "SNc: fluency={:.2} habit={:.2} DA={:.2}{}",
+                        snc_out.procedural_fluency,
+                        snc_out.habit_strength,
+                        snc_out.da_tone,
+                        if snc_out.in_flow { " FLOW" } else { "" },
+                    ));
+                }
+            }
+
+            // ── S1 — body map and cognitive discomfort ────────────────
+            {
+                let insula_valence = match self.insula.state.felt_condition {
+                    kai::cognition::FeltCondition::Clear       => 0.40_f32,
+                    kai::cognition::FeltCondition::Engaged     => 0.30,
+                    kai::cognition::FeltCondition::Strained    => -0.20,
+                    kai::cognition::FeltCondition::Overwhelmed => -0.50,
+                    kai::cognition::FeltCondition::Fatigued    => -0.30,
+                    kai::cognition::FeltCondition::Idle        => 0.10,
+                };
+                let _s1_out = self.s1.process(&input, self.acc.conflict_level, insula_valence);
+            }
+
+            // ── dmPFC — future projection and prospective intentions ──
+            {
+                let _dmpfc_out = self.dmpfc.process(
+                    &input,
+                    self.precuneus.simulation_depth,
+                    self.pcc.coherence_score,
+                );
+            }
+
+            // ── PPC — spatial attention and magnitude sense ───────────
+            {
+                let sc_sal = self.superior_colliculus.top_salience;
+                let _ppc_out = self.ppc.process(&input, sc_sal, result.confidence);
+            }
+
+            // ── FEF — voluntary attention and search ──────────────────
+            {
+                let focus_target = format!("{:?}", query_type).to_lowercase();
+                let pfc_goal_active = self.pfc.primary_goal().is_some();
+                let _fef_out = self.fef.process(
+                    &focus_target,
+                    pfc_goal_active,
+                    self.superior_colliculus.top_salience,
+                );
+            }
+
+            // ── Perirhinal — concept familiarity and novelty ──────────
+            {
+                let concepts: Vec<&str> = vec![
+                    fusiform_out.category_match.as_str(),
+                ];
+                let _prc_out = self.perirhinal.process(&concepts, fusiform_out.is_novel);
+            }
+
+            // ── Premotor — action schema and imitation echo ───────────
+            {
+                let response_type = format!("{:?}", query_type).to_lowercase();
+                let sma_readiness = self.sma.readiness_potential;
+                let _pmc_out = self.premotor.process(&input, &response_type, sma_readiness);
+            }
+
+            // ── HYPOTHALAMUS — drive regulation and autonomic tone ────
+            {
+                let hypo_event = if fusiform_out.is_novel {
+                    kai::cognition::HypothalamicEvent::NovelChallenge {
+                        complexity: fusiform_out.match_confidence,
+                    }
+                } else if result.confidence > 0.72 {
+                    // Good response → expression satisfied
+                    kai::cognition::HypothalamicEvent::ExpressionSatisfied {
+                        degree: result.confidence,
+                    }
+                } else if self.amygdala.arousal() > 0.60 {
+                    kai::cognition::HypothalamicEvent::AutonomicStress {
+                        intensity: self.amygdala.arousal(),
+                    }
+                } else if self.dmn.idle_duration().as_secs() > 120 {
+                    kai::cognition::HypothalamicEvent::RestSatisfied
+                } else {
+                    kai::cognition::HypothalamicEvent::EngagementSatisfied { degree: 0.60 }
+                };
+                let hypo_out = self.hypothalamus.process(hypo_event);
+                if self.spectate_mode {
+                    self.think("CPU", "🧬", format!(
+                        "Hypo: {} | auto={:.2}{}",
+                        hypo_out.dominant_drive,
+                        hypo_out.autonomic_tone,
+                        if hypo_out.consolidation_mode { " CONSOLIDATE" } else { "" },
+                    ));
+                }
+            }
+
+            // ── RSC — temporal context and landmark grounding ─────────
+            {
+                let semantic_sim = if fusiform_out.is_novel { 0.15 } else { fusiform_out.familiarity };
+                let rsc_out = self.rsc.process(
+                    &fusiform_out.category_match,
+                    semantic_sim,
+                    fusiform_out.is_novel,
+                );
+                if self.spectate_mode {
+                    self.think("CPU", "🗺", format!(
+                        "RSC: {} t={:.2} stab={:.2} alloc={:.2}{}",
+                        rsc_out.temporal_epoch.label(),
+                        rsc_out.temporal_distance,
+                        rsc_out.context_stability,
+                        rsc_out.allocentric_shift,
+                        if rsc_out.landmark_registered { " LANDMARK" } else { "" },
+                    ));
+                }
+            }
+
+            // ── PAG — threat response and safety seeking ──────────────
+            {
+                let amygdala_arousal = self.amygdala.arousal();
+                let pag_event = if self.oxytocin.bond_state().bond_strength > 0.65
+                    && amygdala_arousal < 0.40
+                {
+                    // Good bond, low threat → affiliation / safety confirmed
+                    kai::cognition::PAGEvent::AffiliationRestored
+                } else if amygdala_arousal > 0.65 {
+                    // High arousal — determine social vs. physical threat from TPJ intent
+                    let is_social = matches!(
+                        self.tpj.last_intent,
+                        kai::cognition::IntentAssessment::Frustrated
+                            | kai::cognition::IntentAssessment::Testing
+                    );
+                    kai::cognition::PAGEvent::ThreatDetected {
+                        intensity: amygdala_arousal,
+                        is_social,
+                    }
+                } else if self.acc.conflict_level > 0.55 {
+                    kai::cognition::PAGEvent::AversiveSignal {
+                        magnitude: self.acc.conflict_level,
+                    }
+                } else if result.confidence > 0.68 {
+                    kai::cognition::PAGEvent::SafetyConfirmed
+                } else {
+                    kai::cognition::PAGEvent::SafetyConfirmed
+                };
+                let pag_out = self.pag.process(pag_event);
+                if self.spectate_mode {
+                    self.think("CPU", "🔱", format!(
+                        "PAG: {} threat={:.2} relief={:.2} safety_drive={:.2}",
+                        pag_out.defensive_mode.label(),
+                        pag_out.threat_level,
+                        pag_out.pain_suppression,
+                        pag_out.safety_drive,
+                    ));
+                }
+            }
+
+            // ── Septal Nuclei — social reward and approach motivation ────
+            {
+                let bond = self.oxytocin.bond_state().bond_strength;
+                let septal_event = if bond > 0.65
+                    && matches!(self.tpj.last_intent, kai::cognition::IntentAssessment::Collaborative)
+                {
+                    kai::cognition::SeptalEvent::Affirmation { strength: bond }
+                } else if bond > 0.50 && result.confidence > 0.65 {
+                    kai::cognition::SeptalEvent::PositiveContact { warmth: result.confidence }
+                } else if matches!(
+                    self.tpj.last_intent,
+                    kai::cognition::IntentAssessment::Frustrated
+                ) {
+                    kai::cognition::SeptalEvent::SocialWithdrawal {
+                        severity: self.amygdala.arousal().min(1.0),
+                    }
+                } else if self.pag.threat_level > 0.45 {
+                    kai::cognition::SeptalEvent::ThreatWithSafety {
+                        threat: self.pag.threat_level,
+                        safety_cue: bond > 0.50,
+                    }
+                } else {
+                    kai::cognition::SeptalEvent::PlayfulExchange
+                };
+                let _septal_out = self.septal.process(septal_event);
+            }
+
+            // ── Mammillary Bodies — episodic relay and recency ────────
+            {
+                // hippocampus salience proxy: confidence * novelty
+                let hippo_salience = result.confidence *
+                    if fusiform_out.is_novel { 0.80 } else { 0.40 };
+                // sleep consolidation proxy: moderate baseline
+                let sleep_pressure = 0.35_f32;
+                let _mb_out = self.mb.process(
+                    hippo_salience,
+                    if fusiform_out.is_novel { 0.70 } else { 0.20 },
+                    self.rsc.temporal_distance,
+                    sleep_pressure,
+                );
+            }
+
+            // ── Ventral Pallidum — hedonic amplification ──────────────
+            {
+                let _vp_out = self.vp.process(
+                    &input,
+                    self.nucleus_accumbens.core_wanting,
+                    self.vta.tonic_level,
+                    self.cortisol.level,
+                );
+            }
+
+            // ── Zona Incerta — attention gate ─────────────────────────
+            {
+                let _zi_out = self.zi.process(
+                    &input,
+                    self.amygdala.arousal(),
+                    self.superior_colliculus.top_salience,
+                    self.oxytocin.bond_state().bond_strength,
+                );
+            }
+
+            // ── sgACC — mood floor, grief, chronic stress ─────────────
+            {
+                let _sgacc_out = self.sgacc.process(
+                    &input,
+                    self.cortisol.level,
+                    self.amygdala.arousal(),
+                    self.oxytocin.bond_state().bond_strength,
+                );
+            }
+
+            // ── MCC — pain affect, social pain, effort cost ───────────
+            {
+                let _mcc_out = self.mcc.process(
+                    &input,
+                    self.acc.conflict_level,
+                    self.amygdala.arousal(),
+                    self.s1.cognitive_discomfort,
+                );
+            }
+
+            // ── ATL — amodal semantic hub ─────────────────────────────
+            {
+                let _atl_out = self.atl.process(
+                    &input,
+                    wernicke.semantic_density,
+                    self.fusiform.current_familiarity,
+                    self.temporal_poles.person_resonance,
+                );
+            }
+
+            // ── DBB — cholinergic attention/memory boost ──────────────
+            {
+                let _dbb_out = self.dbb.process(
+                    self.septal.social_reward,
+                    self.oxytocin.bond_state().bond_strength,
+                    self.amygdala.arousal(),
+                );
+            }
+
+            // ── Pontine Nuclei — cortico-cerebellar timing relay ──────
+            {
+                let _pn_out = self.pontine.process(
+                    self.pfc.meta_confidence,
+                    self.sma.readiness_potential,
+                    self.cerebellum.precision_score,
+                );
+            }
+
+            // ── NBM — cortex-wide cholinergic sharpening ──────────────
+            {
+                let lc_arousal = self.locus_coeruleus.tonic_rate;
+                let _nbm_out = self.nbm.process(
+                    &input,
+                    lc_arousal,
+                    self.dbb.cholinergic_tone,
+                    result.confidence,
+                );
+            }
+
+            // ── SCN — session clock and alertness arc ─────────────────
+            {
+                let _scn_out = self.scn.process(
+                    self.turns.len() as u64,
+                    self.cortisol.level,
+                );
+            }
+
+            // ── Spectate: show neuro-biometric status ────────────────
+            if self.spectate_mode && self.spectate_full {
+                self.think("CPU", "🧬", format!(
+                    "BIO: VP_hedonic={:.2} | Septal_rew={:.2} | DBB_ACh={:.2} | NBM_gain={:.2} | SCN_phase={:.2}",
+                    self.vp.hedonic_tone,
+                    self.septal.social_reward,
+                    self.dbb.cholinergic_tone,
+                    self.nbm.cortical_gain,
+                    self.scn.phase,
+                ));
             }
 
             // ── Spectate: show voice engine details ───────────────────
@@ -2939,19 +4585,26 @@ fn wrap_text(text: &str, max_width: usize) -> Vec<String> {
     }
     let mut result = Vec::new();
     for paragraph in text.lines() {
-        if paragraph.len() <= max_width {
+        // Use char count, not byte length — emoji/unicode chars are 1 display unit
+        // even though they may be 2–4 bytes. Using .len() caused premature wrapping.
+        if paragraph.chars().count() <= max_width {
             result.push(paragraph.to_string());
         } else {
             let mut current = String::new();
+            let mut current_chars = 0usize;
             for word in paragraph.split_whitespace() {
+                let word_chars = word.chars().count();
                 if current.is_empty() {
                     current = word.to_string();
-                } else if current.len() + 1 + word.len() <= max_width {
+                    current_chars = word_chars;
+                } else if current_chars + 1 + word_chars <= max_width {
                     current.push(' ');
                     current.push_str(word);
+                    current_chars += 1 + word_chars;
                 } else {
                     result.push(current);
                     current = word.to_string();
+                    current_chars = word_chars;
                 }
             }
             if !current.is_empty() {
@@ -3119,46 +4772,64 @@ fn render_mindview(f: &mut Frame, app: &App, area: Rect) {
 
         for event in &app.mind_log[start..] {
             if event.stream == "THOUGHT" {
-                // ── Natural language inner thought — prominent display ────────
-                // Shown in soft italic white, no stream label, just the thought itself.
-                // This is what the user reads — KAI's actual inner voice.
-                let event_width = (area.width as usize).saturating_sub(4);
-                lines.push(Line::from(vec![
-                    Span::styled("  ", Style::default()),
-                    Span::styled(
-                        truncate(&event.text, event_width),
-                        Style::default()
-                            .fg(Color::White)
-                            .add_modifier(Modifier::ITALIC),
-                    ),
-                ]));
+                // ── Natural language inner thought — FULL TEXT, word-wrapped ─
+                // Never truncate thoughts. KAI's inner voice should be readable
+                // in full — that's the whole point of spectate mode.
+                // Wrap to available width, indent continuation lines.
+                let thought_width = (area.width as usize).saturating_sub(4);
+                let wrapped = wrap_text(&event.text, thought_width.max(20));
+                for (i, chunk) in wrapped.iter().enumerate() {
+                    let prefix = if i == 0 { "  " } else { "    " }; // indent continuations
+                    lines.push(Line::from(vec![
+                        Span::styled(prefix, Style::default()),
+                        Span::styled(
+                            chunk.clone(),
+                            Style::default()
+                                .fg(Color::White)
+                                .add_modifier(Modifier::ITALIC),
+                        ),
+                    ]));
+                }
             } else {
                 // ── Technical stream event — compact, dimmer ─────────────────
-                // Full mode shows these; brief mode only shows THOUGHT entries.
+                // Wrap long technical lines too so nothing gets clipped.
                 let (stream_color, stream_dot) = match event.stream.as_str() {
                     "GPU" => (Color::LightYellow, "⚡"),
                     "CPU" => (Color::LightCyan,   "◉"),
                     "RAM" => (Color::LightGreen,  "⬤"),
                     _     => (Color::DarkGray,    "·"),
                 };
-                let event_width = (area.width as usize).saturating_sub(20);
-                lines.push(Line::from(vec![
-                    Span::styled(
-                        format!("  t{:04} ", event.tick),
-                        Style::default().fg(Color::DarkGray),
-                    ),
-                    Span::styled(stream_dot, Style::default().fg(stream_color)),
-                    Span::styled(
-                        format!(" {} ", event.stream),
-                        Style::default().fg(stream_color),
-                    ),
-                    Span::raw(&event.icon),
-                    Span::raw("  "),
-                    Span::styled(
-                        truncate(&event.text, event_width),
-                        Style::default().fg(Color::DarkGray),
-                    ),
-                ]));
+                // Prefix is "  t0000 ⚡ GPU 🔗  " = ~20 chars; remainder is content
+                let prefix_width = 20usize;
+                let event_width = (area.width as usize).saturating_sub(prefix_width).max(20);
+                let wrapped = wrap_text(&event.text, event_width);
+                for (i, chunk) in wrapped.iter().enumerate() {
+                    if i == 0 {
+                        lines.push(Line::from(vec![
+                            Span::styled(
+                                format!("  t{:04} ", event.tick),
+                                Style::default().fg(Color::DarkGray),
+                            ),
+                            Span::styled(stream_dot, Style::default().fg(stream_color)),
+                            Span::styled(
+                                format!(" {} ", event.stream),
+                                Style::default().fg(stream_color),
+                            ),
+                            Span::raw(event.icon.clone()),
+                            Span::raw("  "),
+                            Span::styled(
+                                chunk.clone(),
+                                Style::default().fg(Color::DarkGray),
+                            ),
+                        ]));
+                    } else {
+                        // continuation line: pad to align with content column
+                        lines.push(Line::from(vec![
+                            Span::raw(format!("{:width$}", "", width = prefix_width + 2)),
+                            Span::styled(chunk.clone(), Style::default().fg(Color::DarkGray)),
+                        ]));
+                    }
+                }
             }
         }
     }
@@ -3231,7 +4902,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
-    // ── Normal TUI mode ───────────────────────────────────────────────────────
+    // ── Normal TUI mode ─────────────────────────────────────────────
     enable_raw_mode()?;
     let mut stdout = std::io::stdout();
     execute!(stdout, EnterAlternateScreen)?;
@@ -3239,6 +4910,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut terminal = Terminal::new(backend)?;
 
     let mut app = App::new();
+
+    // Seed KAI's core identity — name, nature, and self-knowledge.
+    // This runs every startup to ensure identity cells always exist at high weight,
+    // even after saves/loads where other cells may have drifted higher.
+    app.seed_identity();
 
     loop {
         terminal.draw(|f| ui(f, &app))?;
