@@ -32,6 +32,11 @@ bench_output.txt
 test_output.txt
 active-memory.json
 
+# Persistent state & transcripts
+**/data/kai-state.json
+**/data/kai-state.backup.json
+**/data/kai-transcript.jsonl
+
 # Local Reports
 legacy/reports/
 scratch/
