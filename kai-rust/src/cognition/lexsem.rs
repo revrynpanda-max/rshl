@@ -59,6 +59,7 @@ pub enum SemanticField {
     Identity,       // self, being, existence, nature
     Technical,      // systems, structures, code, logic
     Creative,       // ideas, imagination, possibility
+    Occupation,     // roles, jobs, careers, professions — what someone DOES for work
 }
 
 impl SemanticField {
@@ -74,6 +75,7 @@ impl SemanticField {
             SemanticField::Identity     => "identity",
             SemanticField::Technical    => "technical",
             SemanticField::Creative     => "creative",
+            SemanticField::Occupation   => "occupation",
         }
     }
 }
@@ -213,6 +215,15 @@ impl LexSemEngine {
         for word in CREATIVE_WORDS {
             self.field_lexicon.entry(word).or_default()
                 .push((SemanticField::Creative, 0.80));
+        }
+        // Occupation field — roles, jobs, professions, and work-query terms.
+        // Weight 0.92 is highest in the lexicon so occupation signals dominate
+        // when both an occupation noun ("engineer") and a work-query term ("work",
+        // "job") are present. This ensures LexSem correctly identifies both
+        // "I'm a software engineer" and "what do I do for work?" as Occupation field.
+        for word in OCCUPATION_WORDS {
+            self.field_lexicon.entry(word).or_default()
+                .push((SemanticField::Occupation, 0.92));
         }
     }
 
@@ -432,6 +443,7 @@ impl LexSemEngine {
             }
             SemanticField::Identity => ResponseRegister::Exploratory,
             SemanticField::Technical => ResponseRegister::Technical,
+            SemanticField::Occupation => ResponseRegister::Direct,
             SemanticField::Interrogative => {
                 if certainty < 0.45 { ResponseRegister::Careful }
                 else if is_asking { ResponseRegister::Exploratory }
@@ -466,6 +478,7 @@ fn label_to_field(label: &str) -> SemanticField {
         "identity"      => SemanticField::Identity,
         "technical"     => SemanticField::Technical,
         "creative"      => SemanticField::Creative,
+        "occupation"    => SemanticField::Occupation,
         _               => SemanticField::Cognitive,
     }
 }
@@ -596,6 +609,62 @@ const CREATIVE_WORDS: &[&str] = &[
     "possibility", "possibilities", "potential", "dream", "vision",
     "inspiration", "inspired", "art", "artistic", "beautiful", "beauty",
     "interesting", "fascinating", "wonder", "wonderful", "amazing",
+];
+
+/// Occupation field — two distinct sub-vocabularies that BOTH map to the same
+/// SemanticField::Occupation so field detection fires for either type of input.
+///
+/// ROLE NOUNS   — what someone IS: engineer, teacher, developer…
+///                These are stored as "occupation:[concept]" cells.
+///
+/// QUERY TERMS  — how occupation is asked about: work, job, career…
+///                These trigger field detection but are NOT stored as cells.
+///                They only contribute to LexSem's field score, making queries
+///                like "what do I do for work?" register as Occupation field.
+///
+/// The shared field tag "occupation" then becomes the geometric bridge:
+///   stored "occupation:engineer" + enriched query "…occupation" → BM25 match.
+
+/// Role nouns: what someone IS. Stored as "occupation:[concept]" cells.
+/// Public so store_concept_cells can filter key_concepts to role nouns only.
+pub const OCCUPATION_ROLE_WORDS: &[&str] = &[
+    "engineer", "developer", "programmer", "coder", "architect",
+    "designer", "analyst", "consultant", "researcher", "scientist",
+    "teacher", "professor", "instructor", "educator",
+    "doctor", "physician", "nurse", "therapist", "counselor",
+    "lawyer", "attorney", "accountant", "auditor",
+    "manager", "director", "founder", "ceo", "executive", "lead",
+    "artist", "writer", "author", "journalist", "editor",
+    "mechanic", "technician", "electrician", "plumber", "contractor",
+    "student", "intern", "apprentice", "trainee",
+    "freelancer", "entrepreneur", "operator", "specialist",
+];
+
+/// Query terms: how occupation is asked about. Field detection only — NOT stored as cells.
+#[allow(dead_code)]
+const OCCUPATION_QUERY_WORDS: &[&str] = &[
+    "work", "job", "career", "profession", "occupation", "role",
+    "employment", "position", "title", "industry",
+    "trade", "vocation", "livelihood",
+];
+
+// Combined for build_field_lexicon — both maps to Occupation field.
+const OCCUPATION_WORDS: &[&str] = &[
+    // role nouns
+    "engineer", "developer", "programmer", "coder", "architect",
+    "designer", "analyst", "consultant", "researcher", "scientist",
+    "teacher", "professor", "instructor", "educator",
+    "doctor", "physician", "nurse", "therapist", "counselor",
+    "lawyer", "attorney", "accountant", "auditor",
+    "manager", "director", "founder", "ceo", "executive", "lead",
+    "artist", "writer", "author", "journalist", "editor",
+    "mechanic", "technician", "electrician", "plumber", "contractor",
+    "student", "intern", "apprentice", "trainee",
+    "freelancer", "entrepreneur", "operator", "specialist",
+    // query terms
+    "work", "job", "career", "profession", "occupation", "role",
+    "employment", "position", "title", "industry",
+    "trade", "vocation", "livelihood",
 ];
 
 const POSITIVE_WORDS: &[&str] = &[
