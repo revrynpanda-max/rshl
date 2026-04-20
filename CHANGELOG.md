@@ -1,5 +1,22 @@
 # KAI Development Changelog
 
+## v5.5.2 — Neuro-Biometric Overhaul & Parameter Tuning (April 20, 2026)
+
+### Commit 4 — Docs: 78-Slot Neuro-Biometric Architecture Map
+`COGNITION.md`
+- Replaced stale Neuro-Biometric overview with a detailed 78-slot numbered architecture map.
+- Mapped implemented modules to actual Rust files (`amygdala.rs`, `insula.rs`, `vta.rs`, etc.).
+- Identified "Partial" and "Missing" gaps (Glutamate/GABA, Salience Network controller, White-matter integration).
+- Added explicit Lattice Communication Plan for cross-module signaling logic.
+- Added comprehensive research anchors from NCBI/PMC for biological grounding.
+
+### Commit 5 — Engine: Neural Oscillator & Grounding Refine
+`src/main.rs`, `src/cognition/voice.rs`
+- Finalized neural oscillator amplitudes: `[0.045, 0.028, 0.014]`.
+- Adjusted `chi` clamp to `0.05` for clear TUI rhythmic visualization.
+- Refined `is_kai_self_grounding_query` for precise location-based gating.
+- Synchronized `theta_step` to `0.05` in `spiral.rs` for ~42-minute cycles.
+
 ## v5.5.1 — Lattice-Driven NLG + Occupation Semantic Bridge (April 20, 2026)
 
 ### Commit 1 — Fix: QueryHit source field in test fixtures
