@@ -44,7 +44,7 @@ pub struct SpiralState {
 
 impl Default for SpiralState {
     fn default() -> Self {
-        Self::new(0.01)
+        Self::new(0.05)
     }
 }
 
@@ -105,7 +105,7 @@ mod tests {
 
     #[test]
     fn theta_monotonic_across_many_ticks() {
-        let mut s = SpiralState::new(0.01);
+        let mut s = SpiralState::new(0.05);
         let mut prev = s.theta();
         for _ in 0..10_000 {
             s.tick();
