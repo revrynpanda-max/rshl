@@ -1,4 +1,4 @@
-# Peer Connection Setup (v5.4)
+# Peer Connection Setup (v5.5.1)
 
 KAI can bridge with high-tier external reasoning models to augment his native geometric field. Currently supported peers: **Claude (Anthropic)** and **Grok (xAI)**.
 

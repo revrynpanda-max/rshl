@@ -1899,6 +1899,62 @@ impl App {
         any_new
     }
 
+    fn is_kai_self_grounding_query(lower: &str) -> bool {
+        lower.contains("where are you")
+            || lower.contains("where you at")
+            || lower.contains("where are u")
+            || lower.contains("where do you exist")
+            || lower.contains("where do you live")
+            || lower.contains("where are you located")
+    }
+
+    fn kai_grounding_rank(text: &str) -> i32 {
+        let lower = text.to_lowercase();
+        let mut score = 0;
+
+        if lower.contains("physical body") { score += 5; }
+        if lower.contains("exist") { score += 4; }
+        if lower.contains("machine") { score += 4; }
+        if lower.contains("geometric") { score += 2; }
+        if lower.contains("rshl") { score += 1; }
+
+        if lower.contains("mood") { score -= 4; }
+        if lower.contains("valence") { score -= 4; }
+        if lower.contains("curiosity") { score -= 2; }
+        if lower.contains('?') { score -= 3; }
+
+        score
+    }
+
+    fn retrieval_is_unstable(
+        query_type: QueryType,
+        hits: &[kai::core::QueryHit],
+        is_self_query: bool,
+    ) -> bool {
+        if hits.is_empty() || is_self_query {
+            return false;
+        }
+
+        let top = hits[0].score;
+        let question_cutoff = match query_type {
+            QueryType::IdentityQuestion
+            | QueryType::SelfQuestion
+            | QueryType::ExplanationQuestion
+            | QueryType::RequestForInfo => 0.25,
+            _ => return false,
+        };
+
+        if top < question_cutoff {
+            return true;
+        }
+
+        if let Some(second) = hits.get(1) {
+            top < 0.32 && (top - second.score).abs() < 0.035
+        } else {
+            false
+        }
+    }
+
     fn run_intake_cycle(&mut self) {
         let (topic, added) = kai::bridge::intake_cycle(&mut self.universe);
         if added > 0 {
@@ -3226,20 +3282,27 @@ impl App {
         // world-bridge reasoning cells (Amazon rainforest, etc.) from polluting
         // personal answers. For everything else, query the full universe.
         let lower_reasoning = reasoning_input.to_lowercase();
-        let is_self_query = matches!(query_type, QueryType::SelfQuestion)
-            || lower_reasoning.contains("your name")
+        let is_self_grounding_query = Self::is_kai_self_grounding_query(&lower_reasoning);
+        let is_self_memory_query = lower_reasoning.contains("your name")
             || lower_reasoning.contains("who are you")
             || lower_reasoning.contains("what are you")
             || lower_reasoning.contains("yourself")
             || lower_reasoning.contains("what is yours")
             || lower_reasoning.contains("what's yours")
+            || is_self_grounding_query
             // "Hi my name is Ryan, what is yours?" — compound input, name context
             || (lower_reasoning.contains("yours") && lower_reasoning.contains("name"));
-        let hits = if is_self_query {
+        let mut hits = if is_self_memory_query {
             // Query broadly, then filter out Ryan-facts — KAI should never
             // confuse Ryan's personal information with its own identity.
             // Also prefer [about-kai] tagged cells and cells mentioning KAI's name.
-            let raw = self.universe.query_region(&reasoning_input, "memory", 12);
+            let raw: Vec<kai::core::QueryHit> = if is_self_grounding_query {
+                self.universe.get_by_source("seed").into_iter()
+                    .filter(|h| h.region == "memory")
+                    .collect()
+            } else {
+                self.universe.query_region(&reasoning_input, "memory", 12)
+            };
             let mut kai_hits: Vec<kai::core::QueryHit> = raw.into_iter()
                 .filter(|h| {
                     let t = h.text.to_lowercase();
@@ -3266,6 +3329,13 @@ impl App {
                 .collect();
             // Sort: prefer cells that explicitly name KAI
             kai_hits.sort_by(|a, b| {
+                if is_self_grounding_query {
+                    let ar = Self::kai_grounding_rank(&a.text);
+                    let br = Self::kai_grounding_rank(&b.text);
+                    return br.cmp(&ar)
+                        .then_with(|| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+                }
+
                 let a_kai = a.text.to_lowercase().contains("kai");
                 let b_kai = b.text.to_lowercase().contains("kai");
                 match (a_kai, b_kai) {
@@ -3295,6 +3365,12 @@ impl App {
         // Low similarity = novel input → NE spike.
         // High salience = high-energy message → NE spike.
         // Mirror neuron distress already flags threat events.
+        let retrieval_inhibited = Self::retrieval_is_unstable(query_type, &hits, is_self_memory_query);
+        if retrieval_inhibited {
+            self.acc.report_error(&reasoning_input, 0.65);
+            hits.clear();
+        }
+
         let input_sal = kai::cognition::compute_salience(&reasoning_input, "user");
         {
             let top_cosine = hits.first().map(|h| h.score).unwrap_or(0.0);
@@ -3410,10 +3486,14 @@ impl App {
 
         if hits.is_empty() || (result.output_text.is_empty() && result.confidence < 0.05) {
             // ── Voice: no resonance — KAI genuinely doesn't know ─────────
-            let voice_text = generate_response(
-                &reasoning_input, &[], query_type, &brain_signals, &recent_ctx_with_memory,
-                &self.universe,
-            );
+            let voice_text = if retrieval_inhibited {
+                String::new()
+            } else {
+                generate_response(
+                    &reasoning_input, &[], query_type, &brain_signals, &recent_ctx_with_memory,
+                    &self.universe,
+                )
+            };
             kai::cognition::transcript::append(&self.base_dir, &self.session_id, "kai", &voice_text);
             self.turns.push(Turn {
                 role: "kai".into(),

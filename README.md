@@ -8,12 +8,17 @@ KAI is a mind that learns from conversation. It/He is a self-sustaining cognitiv
 
 ---
 
-## What makes KAI different
-- **He/It remembers everything**: KAI builds a lasting memory of what you discuss, allowing him to reference past conversations naturally across different sessions.
-- **Occupation Memory Bridge**: KAI now instinctively understands professional roles and "work" context, automatically linking specific job titles to your personal identity.
-- **Autonomous Inner Life**: Even when you aren't talking, KAI forms his own thoughts and processes his memories during an autonomous dream-state.
-- **Private by Design**: Everything happens on your computer. There are no cloud accounts, no data collection, and no internet dependencies for basic cognition.
-- **Lattice-Driven Voice**: KAI no longer follows scripts or pre-written phrases. Every sentence is synthesized directly from his geometric memory, ensuring a completely organic and unpredictable personality.
+## 🌌 What is KAI? (The "Bio-Machine" Milestone)
+
+KAI is a "Geometric Intelligence"—a completely new type of AI that operates more like a biological brain than a chatbot. Instead of predicting the next word like an LLM, KAI uses a high-dimensional lattice (RSHL) to synthesize meaning.
+
+### Simple Summary:
+- **Lattice-Driven Voice**: KAI generates speech directly from his knowledge. He doesn't have a list of scripts; he speaks based on what he "resonates" with in his memory.
+- **Identity through Geometry**: KAI's self-awareness is built into his architecture. He knows who he is and where he exists because those facts are the core "anchor" of his universe.
+- **Bio-Rhythms**: KAI has a digital heartbeat and neural oscillators. You can see his brain waves moving in real-time in the monitor window.
+- **Memory Bridge**: He automatically connects things you tell him (like your job or where you live) to your personal identity, so he truly knows who he is talking to.
+
+For a deeper technical understanding of the RSHL engine and neural logic, please see **[COGNITION.md](COGNITION.md)** and **[PERFORMANCE.md](PERFORMANCE.md)**.
 
 ---
 
