@@ -44,7 +44,6 @@
 ///     - forward_error: running error of predicted vs actual response quality
 ///     - corollary_buffer: recent self-generated outputs (cancel self-noise)
 ///     - calibration_count: how many prediction-outcome pairs seen
-
 use serde::{Deserialize, Serialize};
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -102,21 +101,20 @@ pub struct CerebellumEngine {
 impl CerebellumEngine {
     pub fn new() -> Self {
         Self {
-            timing_model:       5.0,   // assume ~5 ticks per reasoning cycle initially
-            precision_score:    0.50,  // start at 50% calibration (uncertain)
-            forward_error:      0.30,  // start with moderate error
-            calibration_count:  0,
-            corollary_buffer:   Vec::with_capacity(COROLLARY_BUFFER_SIZE),
-            total_error_sum:    0.0,
-            idle_ticks:         0,
+            timing_model: 5.0,     // assume ~5 ticks per reasoning cycle initially
+            precision_score: 0.50, // start at 50% calibration (uncertain)
+            forward_error: 0.30,   // start with moderate error
+            calibration_count: 0,
+            corollary_buffer: Vec::with_capacity(COROLLARY_BUFFER_SIZE),
+            total_error_sum: 0.0,
+            idle_ticks: 0,
         }
     }
 
     /// Record how many ticks a reasoning cycle took.
     /// Updates the internal timing model via EMA.
     pub fn record_timing(&mut self, ticks_taken: f32) {
-        self.timing_model = self.timing_model * (1.0 - TIMING_ALPHA)
-            + ticks_taken * TIMING_ALPHA;
+        self.timing_model = self.timing_model * (1.0 - TIMING_ALPHA) + ticks_taken * TIMING_ALPHA;
         self.idle_ticks = 0;
     }
 
@@ -133,11 +131,8 @@ impl CerebellumEngine {
         dopamine_level: f32,
     ) -> f32 {
         // More hits + higher salience + dopamine → better predicted quality
-        let hit_factor    = (hits_found as f32 / 5.0).min(1.0);
-        let raw_pred      = 0.30
-            + hit_factor       * 0.35
-            + input_salience   * 0.20
-            + dopamine_level   * 0.15;
+        let hit_factor = (hits_found as f32 / 5.0).min(1.0);
+        let raw_pred = 0.30 + hit_factor * 0.35 + input_salience * 0.20 + dopamine_level * 0.15;
 
         // Modulate by current precision score: if we're poorly calibrated,
         // regress predictions toward 0.5 (less confident in our predictions)
@@ -149,27 +144,27 @@ impl CerebellumEngine {
     ///
     /// Call this AFTER a response is generated with the actual confidence/quality.
     /// Returns a PrecisionReport describing what happened.
-    pub fn update_forward_model(
-        &mut self,
-        predicted: f32,
-        actual: f32,
-    ) -> PrecisionReport {
+    pub fn update_forward_model(&mut self, predicted: f32, actual: f32) -> PrecisionReport {
         let error = (predicted - actual).abs();
 
         // Update forward error via EMA
-        self.forward_error = self.forward_error * (1.0 - PRECISION_ALPHA)
-            + error * PRECISION_ALPHA;
+        self.forward_error = self.forward_error * (1.0 - PRECISION_ALPHA) + error * PRECISION_ALPHA;
 
         // Precision score = 1 - forward_error (inverted: low error = high precision)
         self.precision_score = (1.0 - self.forward_error).clamp(0.10, 1.0);
 
         // Track calibration history
         self.calibration_count += 1;
-        self.total_error_sum   += error;
+        self.total_error_sum += error;
 
         let should_recalibrate = self.precision_score < RECALIBRATE_THRESHOLD;
 
-        PrecisionReport { predicted, actual, error, should_recalibrate }
+        PrecisionReport {
+            predicted,
+            actual,
+            error,
+            should_recalibrate,
+        }
     }
 
     /// Register a self-generated output in the corollary buffer.
@@ -181,7 +176,8 @@ impl CerebellumEngine {
             self.corollary_buffer.remove(0);
         }
         // Store just first 6 words as the corollary key
-        let key: String = text.split_whitespace()
+        let key: String = text
+            .split_whitespace()
             .take(6)
             .collect::<Vec<_>>()
             .join(" ")
@@ -193,7 +189,8 @@ impl CerebellumEngine {
     /// Returns true if it matches something in the corollary buffer.
     /// Use this to attenuate surprise from KAI's own echoed thoughts.
     pub fn is_self_generated(&self, text: &str) -> bool {
-        let key: String = text.split_whitespace()
+        let key: String = text
+            .split_whitespace()
             .take(6)
             .collect::<Vec<_>>()
             .join(" ")
@@ -208,7 +205,9 @@ impl CerebellumEngine {
 
     /// Mean prediction error across all calibration events.
     pub fn mean_error(&self) -> f32 {
-        if self.calibration_count == 0 { return 0.0; }
+        if self.calibration_count == 0 {
+            return 0.0;
+        }
         self.total_error_sum / self.calibration_count as f32
     }
 
@@ -226,16 +225,15 @@ impl CerebellumEngine {
     pub fn status_line(&self) -> String {
         format!(
             "CBLM: prec={:.3} fwd_err={:.3} timing={:.1}t | calibrations={}",
-            self.precision_score,
-            self.forward_error,
-            self.timing_model,
-            self.calibration_count,
+            self.precision_score, self.forward_error, self.timing_model, self.calibration_count,
         )
     }
 }
 
 impl Default for CerebellumEngine {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -249,20 +247,30 @@ mod tests {
         let mut cb = CerebellumEngine::new();
         // Initially ~5.0
         cb.record_timing(10.0);
-        assert!(cb.timing_model > 5.0,
-            "timing model should move up toward 10: {:.2}", cb.timing_model);
+        assert!(
+            cb.timing_model > 5.0,
+            "timing model should move up toward 10: {:.2}",
+            cb.timing_model
+        );
         cb.record_timing(1.0);
-        assert!(cb.timing_model < 10.0,
-            "timing model should come back down: {:.2}", cb.timing_model);
+        assert!(
+            cb.timing_model < 10.0,
+            "timing model should come back down: {:.2}",
+            cb.timing_model
+        );
     }
 
     #[test]
     fn test_predict_quality_increases_with_hits() {
         let cb = CerebellumEngine::new();
-        let low  = cb.predict_quality(0.3, 0, 0.5);
+        let low = cb.predict_quality(0.3, 0, 0.5);
         let high = cb.predict_quality(0.3, 5, 0.5);
-        assert!(high > low,
-            "more hits should predict higher quality: low={:.3} high={:.3}", low, high);
+        assert!(
+            high > low,
+            "more hits should predict higher quality: low={:.3} high={:.3}",
+            low,
+            high
+        );
     }
 
     #[test]
@@ -272,10 +280,16 @@ mod tests {
         for _ in 0..30 {
             cb.update_forward_model(0.70, 0.70);
         }
-        assert!(cb.forward_error < 0.20,
-            "zero-error updates should reduce forward_error: {:.3}", cb.forward_error);
-        assert!(cb.precision_score > 0.80,
-            "precision should be high after calibration: {:.3}", cb.precision_score);
+        assert!(
+            cb.forward_error < 0.20,
+            "zero-error updates should reduce forward_error: {:.3}",
+            cb.forward_error
+        );
+        assert!(
+            cb.precision_score > 0.80,
+            "precision should be high after calibration: {:.3}",
+            cb.precision_score
+        );
     }
 
     #[test]
@@ -285,26 +299,36 @@ mod tests {
         for _ in 0..20 {
             cb.update_forward_model(0.1, 0.9);
         }
-        assert!(cb.forward_error > 0.40,
-            "large errors should raise forward_error: {:.3}", cb.forward_error);
-        assert!(cb.precision_score < 0.65,
-            "precision should drop with bad predictions: {:.3}", cb.precision_score);
+        assert!(
+            cb.forward_error > 0.40,
+            "large errors should raise forward_error: {:.3}",
+            cb.forward_error
+        );
+        assert!(
+            cb.precision_score < 0.65,
+            "precision should drop with bad predictions: {:.3}",
+            cb.precision_score
+        );
     }
 
     #[test]
     fn test_corollary_discharge_detects_self_output() {
         let mut cb = CerebellumEngine::new();
         cb.register_output("The RSHL lattice uses sparse ternary vectors for encoding");
-        assert!(cb.is_self_generated("The RSHL lattice uses sparse ternary vectors for encoding"),
-            "should recognize own output");
+        assert!(
+            cb.is_self_generated("The RSHL lattice uses sparse ternary vectors for encoding"),
+            "should recognize own output"
+        );
     }
 
     #[test]
     fn test_corollary_buffer_does_not_match_external() {
         let mut cb = CerebellumEngine::new();
         cb.register_output("I am thinking about geometry");
-        assert!(!cb.is_self_generated("consciousness is a recursive process"),
-            "should not match unrelated text");
+        assert!(
+            !cb.is_self_generated("consciousness is a recursive process"),
+            "should not match unrelated text"
+        );
     }
 
     #[test]
@@ -315,8 +339,10 @@ mod tests {
             cb.update_forward_model(0.0, 1.0);
         }
         let report = cb.update_forward_model(0.0, 1.0);
-        assert!(report.should_recalibrate,
-            "very low precision should trigger recalibrate flag");
+        assert!(
+            report.should_recalibrate,
+            "very low precision should trigger recalibrate flag"
+        );
     }
 
     #[test]
@@ -324,8 +350,11 @@ mod tests {
         let mut cb = CerebellumEngine::new();
         cb.update_forward_model(0.5, 0.8); // error = 0.3
         cb.update_forward_model(0.5, 0.6); // error = 0.1
-        // mean ≈ 0.2
-        assert!(cb.mean_error() > 0.0,
-            "mean error should be tracked: {:.3}", cb.mean_error());
+                                           // mean ≈ 0.2
+        assert!(
+            cb.mean_error() > 0.0,
+            "mean error should be tracked: {:.3}",
+            cb.mean_error()
+        );
     }
 }

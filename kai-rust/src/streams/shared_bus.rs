@@ -1,12 +1,11 @@
+use crossbeam_channel::{unbounded, Receiver, Sender};
 /// Shared Bus — The nervous system connecting all 3 streams.
 ///
 /// Each stream publishes its state to the bus. Any stream can read
 /// any other stream's state at any time (read-optimized via RwLock).
 /// Commands between streams use crossbeam lock-free channels (<1ms).
-
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
-use crossbeam_channel::{Sender, Receiver, unbounded};
 
 // ── Stream State Snapshots ─────────────────────────────────────────────────
 
@@ -123,9 +122,12 @@ impl SharedBus {
             gpu_state: Arc::new(RwLock::new(GpuState::default())),
             cpu_state: Arc::new(RwLock::new(CpuState::default())),
             ram_state: Arc::new(RwLock::new(RamState::default())),
-            gpu_tx, gpu_rx,
-            cpu_tx, cpu_rx,
-            ram_tx, ram_rx,
+            gpu_tx,
+            gpu_rx,
+            cpu_tx,
+            cpu_rx,
+            ram_tx,
+            ram_rx,
         }
     }
 

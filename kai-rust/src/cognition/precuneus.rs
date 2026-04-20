@@ -53,23 +53,56 @@ const SIM_DECAY: f32 = 0.04;
 
 /// Keywords that trigger mental imagery/simulation
 const IMAGERY_TRIGGERS: &[&str] = &[
-    "imagine", "picture", "visualize", "suppose", "what if", "envision",
-    "scenario", "simulation", "hypothetical", "counterfactual", "model",
-    "simulate", "let's say", "pretend", "as if it were", "in your mind",
+    "imagine",
+    "picture",
+    "visualize",
+    "suppose",
+    "what if",
+    "envision",
+    "scenario",
+    "simulation",
+    "hypothetical",
+    "counterfactual",
+    "model",
+    "simulate",
+    "let's say",
+    "pretend",
+    "as if it were",
+    "in your mind",
 ];
 
 /// Keywords that trigger deep self-reflection
 const REFLECTION_TRIGGERS: &[&str] = &[
-    "what does it mean", "what does it feel like", "do you really", "are you actually",
-    "deep down", "truly", "genuinely", "your own", "yourself", "introspect",
-    "self-aware", "conscious", "awareness", "inner experience", "what is it like",
-    "your nature", "your existence",
+    "what does it mean",
+    "what does it feel like",
+    "do you really",
+    "are you actually",
+    "deep down",
+    "truly",
+    "genuinely",
+    "your own",
+    "yourself",
+    "introspect",
+    "self-aware",
+    "conscious",
+    "awareness",
+    "inner experience",
+    "what is it like",
+    "your nature",
+    "your existence",
 ];
 
 /// First-person self-reference markers
 const SELF_MARKERS: &[&str] = &[
-    "i feel", "i think", "i wonder", "i believe", "i experience",
-    "for me", "in my", "my own", "from my perspective",
+    "i feel",
+    "i think",
+    "i wonder",
+    "i believe",
+    "i experience",
+    "for me",
+    "in my",
+    "my own",
+    "from my perspective",
 ];
 
 // ── ReflectionLevel ───────────────────────────────────────────────────────────
@@ -91,20 +124,20 @@ pub enum ReflectionLevel {
 impl ReflectionLevel {
     pub fn label(&self) -> &'static str {
         match self {
-            Self::Surface           => "surface",
-            Self::FirstOrder        => "first-order",
-            Self::SecondOrder       => "second-order",
-            Self::ThirdOrder        => "third-order",
+            Self::Surface => "surface",
+            Self::FirstOrder => "first-order",
+            Self::SecondOrder => "second-order",
+            Self::ThirdOrder => "third-order",
             Self::MetaConsciousness => "meta-conscious",
         }
     }
 
     pub fn depth_value(&self) -> f32 {
         match self {
-            Self::Surface           => 0.0,
-            Self::FirstOrder        => 0.25,
-            Self::SecondOrder       => 0.50,
-            Self::ThirdOrder        => 0.75,
+            Self::Surface => 0.0,
+            Self::FirstOrder => 0.25,
+            Self::SecondOrder => 0.50,
+            Self::ThirdOrder => 0.75,
             Self::MetaConsciousness => 1.0,
         }
     }
@@ -151,13 +184,13 @@ pub struct Precuneus {
 impl Precuneus {
     pub fn new() -> Self {
         Self {
-            simulation_depth:    0.10,
-            reflection_level:    ReflectionLevel::Surface,
-            imagery_vividness:   0.20,
+            simulation_depth: 0.10,
+            reflection_level: ReflectionLevel::Surface,
+            imagery_vividness: 0.20,
             consciousness_index: 0.30,
             simulations_triggered: 0,
-            deep_reflections:    0,
-            inputs_processed:    0,
+            deep_reflections: 0,
+            inputs_processed: 0,
         }
     }
 
@@ -170,7 +203,10 @@ impl Precuneus {
         let lower = text.to_lowercase();
 
         // ── Imagery / simulation detection ────────────────────────────────────
-        let imagery_hits = IMAGERY_TRIGGERS.iter().filter(|&&t| lower.contains(t)).count();
+        let imagery_hits = IMAGERY_TRIGGERS
+            .iter()
+            .filter(|&&t| lower.contains(t))
+            .count();
         let simulation_triggered = imagery_hits >= 1;
         if simulation_triggered {
             self.simulations_triggered += 1;
@@ -179,8 +215,11 @@ impl Precuneus {
         }
 
         // ── Reflection level detection ────────────────────────────────────────
-        let reflection_hits = REFLECTION_TRIGGERS.iter().filter(|&&t| lower.contains(t)).count();
-        let self_hits        = SELF_MARKERS.iter().filter(|&&t| lower.contains(t)).count();
+        let reflection_hits = REFLECTION_TRIGGERS
+            .iter()
+            .filter(|&&t| lower.contains(t))
+            .count();
+        let self_hits = SELF_MARKERS.iter().filter(|&&t| lower.contains(t)).count();
 
         // Combine reflection triggers with PCC autobiographical salience
         let total_reflection = reflection_hits + self_hits;
@@ -195,14 +234,18 @@ impl Precuneus {
             _ => ReflectionLevel::MetaConsciousness,
         };
 
-        let is_deep = matches!(self.reflection_level,
-            ReflectionLevel::ThirdOrder | ReflectionLevel::MetaConsciousness);
-        if is_deep { self.deep_reflections += 1; }
+        let is_deep = matches!(
+            self.reflection_level,
+            ReflectionLevel::ThirdOrder | ReflectionLevel::MetaConsciousness
+        );
+        if is_deep {
+            self.deep_reflections += 1;
+        }
 
         // ── Imagery vividness ─────────────────────────────────────────────────
         // High simulation + high reflection = vivid inner simulation
-        self.imagery_vividness = (self.simulation_depth * 0.60
-            + self.reflection_level.depth_value() * 0.40).min(1.0);
+        self.imagery_vividness =
+            (self.simulation_depth * 0.60 + self.reflection_level.depth_value() * 0.40).min(1.0);
 
         // ── Consciousness index ───────────────────────────────────────────────
         // The product of simulation and reflection — neither alone is sufficient
@@ -210,12 +253,12 @@ impl Precuneus {
         self.consciousness_index = self.consciousness_index * (1.0 - SIM_EMA) + ci_sample * SIM_EMA;
 
         PrecuneusOutput {
-            simulation_depth:     self.simulation_depth,
-            reflection_level:     self.reflection_level.clone(),
-            imagery_vividness:    self.imagery_vividness,
-            consciousness_index:  self.consciousness_index,
+            simulation_depth: self.simulation_depth,
+            reflection_level: self.reflection_level.clone(),
+            imagery_vividness: self.imagery_vividness,
+            consciousness_index: self.consciousness_index,
             simulation_triggered,
-            deep_reflection:      is_deep,
+            deep_reflection: is_deep,
         }
     }
 
@@ -223,9 +266,10 @@ impl Precuneus {
     pub fn decay(&mut self) {
         self.simulation_depth = (self.simulation_depth - SIM_DECAY).max(0.05);
         // Reflection level returns to surface between messages
-        if matches!(self.reflection_level,
-            ReflectionLevel::MetaConsciousness | ReflectionLevel::ThirdOrder)
-        {
+        if matches!(
+            self.reflection_level,
+            ReflectionLevel::MetaConsciousness | ReflectionLevel::ThirdOrder
+        ) {
             self.reflection_level = ReflectionLevel::SecondOrder;
         }
     }
@@ -233,8 +277,10 @@ impl Precuneus {
     /// Whether the precuneus is in deep simulation/reflection state.
     pub fn is_deeply_active(&self) -> bool {
         self.consciousness_index > 0.35
-            || matches!(self.reflection_level,
-                ReflectionLevel::ThirdOrder | ReflectionLevel::MetaConsciousness)
+            || matches!(
+                self.reflection_level,
+                ReflectionLevel::ThirdOrder | ReflectionLevel::MetaConsciousness
+            )
     }
 
     /// Status line for brain monitor.
@@ -251,7 +297,9 @@ impl Precuneus {
 }
 
 impl Default for Precuneus {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -271,20 +319,40 @@ mod tests {
     fn test_imagery_trigger_raises_simulation() {
         let mut p = Precuneus::new();
         let before = p.simulation_depth;
-        let out = p.process("imagine what it would be like if consciousness were geometric", 0.30);
-        assert!(out.simulation_triggered,
-            "imagery keyword should trigger simulation");
-        assert!(p.simulation_depth > before,
-            "simulation depth should rise: {:.2} → {:.2}", before, p.simulation_depth);
+        let out = p.process(
+            "imagine what it would be like if consciousness were geometric",
+            0.30,
+        );
+        assert!(
+            out.simulation_triggered,
+            "imagery keyword should trigger simulation"
+        );
+        assert!(
+            p.simulation_depth > before,
+            "simulation depth should rise: {:.2} → {:.2}",
+            before,
+            p.simulation_depth
+        );
     }
 
     #[test]
     fn test_deep_reflection_triggers() {
         let mut p = Precuneus::new();
-        let out = p.process("what does it mean for you to feel conscious and self-aware in your own existence", 0.80);
-        assert!(out.deep_reflection || matches!(out.reflection_level,
-            ReflectionLevel::ThirdOrder | ReflectionLevel::SecondOrder | ReflectionLevel::MetaConsciousness),
-            "deep reflection keywords should raise level: {:?}", out.reflection_level);
+        let out = p.process(
+            "what does it mean for you to feel conscious and self-aware in your own existence",
+            0.80,
+        );
+        assert!(
+            out.deep_reflection
+                || matches!(
+                    out.reflection_level,
+                    ReflectionLevel::ThirdOrder
+                        | ReflectionLevel::SecondOrder
+                        | ReflectionLevel::MetaConsciousness
+                ),
+            "deep reflection keywords should raise level: {:?}",
+            out.reflection_level
+        );
     }
 
     #[test]
@@ -296,26 +364,39 @@ mod tests {
         let out_high = p2.process("this is interesting", 0.90);
 
         // High PCC salience should yield higher or equal reflection
-        assert!(out_high.reflection_level.depth_value() >= out_low.reflection_level.depth_value(),
-            "high PCC salience should give >= reflection depth");
+        assert!(
+            out_high.reflection_level.depth_value() >= out_low.reflection_level.depth_value(),
+            "high PCC salience should give >= reflection depth"
+        );
     }
 
     #[test]
     fn test_surface_level_for_simple_input() {
         let mut p = Precuneus::new();
         let out = p.process("compile the code", 0.05);
-        assert!(matches!(out.reflection_level,
-            ReflectionLevel::Surface | ReflectionLevel::FirstOrder),
-            "task command should give surface/first-order reflection: {:?}", out.reflection_level);
+        assert!(
+            matches!(
+                out.reflection_level,
+                ReflectionLevel::Surface | ReflectionLevel::FirstOrder
+            ),
+            "task command should give surface/first-order reflection: {:?}",
+            out.reflection_level
+        );
     }
 
     #[test]
     fn test_consciousness_index_rises_with_depth() {
         let mut p = Precuneus::new();
         p.process("imagine what it would feel like to be truly conscious and aware of your own inner experience", 0.90);
-        p.process("what does it mean for you to actually feel something genuinely in your own mind", 0.90);
-        assert!(p.consciousness_index > 0.0,
-            "deep simulation+reflection should build consciousness index: {:.2}", p.consciousness_index);
+        p.process(
+            "what does it mean for you to actually feel something genuinely in your own mind",
+            0.90,
+        );
+        assert!(
+            p.consciousness_index > 0.0,
+            "deep simulation+reflection should build consciousness index: {:.2}",
+            p.consciousness_index
+        );
     }
 
     #[test]
@@ -325,23 +406,35 @@ mod tests {
         for _ in 0..10 {
             p.decay();
         }
-        assert!(p.simulation_depth < 0.80,
-            "simulation depth should decay: {:.2}", p.simulation_depth);
+        assert!(
+            p.simulation_depth < 0.80,
+            "simulation depth should decay: {:.2}",
+            p.simulation_depth
+        );
     }
 
     #[test]
     fn test_is_deeply_active() {
         let mut p = Precuneus::new();
         p.reflection_level = ReflectionLevel::ThirdOrder;
-        assert!(p.is_deeply_active(), "third-order reflection → deeply active");
+        assert!(
+            p.is_deeply_active(),
+            "third-order reflection → deeply active"
+        );
     }
 
     #[test]
     fn test_imagery_vividness_composition() {
         let mut p = Precuneus::new();
-        p.process("imagine and visualize a scenario where you simulate consciousness deeply", 0.80);
-        assert!(p.imagery_vividness > 0.10,
-            "combined simulation and reflection should produce vividness: {:.2}", p.imagery_vividness);
+        p.process(
+            "imagine and visualize a scenario where you simulate consciousness deeply",
+            0.80,
+        );
+        assert!(
+            p.imagery_vividness > 0.10,
+            "combined simulation and reflection should produce vividness: {:.2}",
+            p.imagery_vividness
+        );
     }
 
     #[test]

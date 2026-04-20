@@ -115,13 +115,13 @@ pub struct MPFC {
 impl MPFC {
     pub fn new() -> Self {
         Self {
-            social_value:       0.50,
-            affiliation:        AFFILIATION_BASELINE,
+            social_value: 0.50,
+            affiliation: AFFILIATION_BASELINE,
             person_model_depth: 1,
-            moral_valence:      0.0,
-            social_outcomes:    0,
-            positive_social:    0,
-            negative_social:    0,
+            moral_valence: 0.0,
+            social_outcomes: 0,
+            positive_social: 0,
+            negative_social: 0,
         }
     }
 
@@ -137,7 +137,7 @@ impl MPFC {
             f if f > 0.60 => 4,
             f if f > 0.40 => 3,
             f if f > 0.20 => 2,
-            _              => 1,
+            _ => 1,
         };
 
         // Process outcome
@@ -164,8 +164,8 @@ impl MPFC {
             }
         };
 
-        self.social_value = self.social_value * (1.0 - SOCIAL_VALUE_EMA)
-            + social_sample * SOCIAL_VALUE_EMA;
+        self.social_value =
+            self.social_value * (1.0 - SOCIAL_VALUE_EMA) + social_sample * SOCIAL_VALUE_EMA;
         self.affiliation = (self.affiliation + affiliation_delta).clamp(0.0, 1.0);
         self.moral_valence = (self.moral_valence + moral_delta).clamp(-1.0, 1.0);
 
@@ -176,8 +176,18 @@ impl MPFC {
     /// Returns moral valence: positive for prosocial, negative for antisocial.
     pub fn moral_intuition(&mut self, text: &str) -> f32 {
         let lower = text.to_lowercase();
-        let prosocial = ["help", "support", "care", "kind", "honest", "fair", "safe", "good"];
-        let antisocial = ["harm", "hurt", "deceive", "manipulate", "wrong", "bad", "unfair"];
+        let prosocial = [
+            "help", "support", "care", "kind", "honest", "fair", "safe", "good",
+        ];
+        let antisocial = [
+            "harm",
+            "hurt",
+            "deceive",
+            "manipulate",
+            "wrong",
+            "bad",
+            "unfair",
+        ];
         let pro_count = prosocial.iter().filter(|&&w| lower.contains(w)).count();
         let anti_count = antisocial.iter().filter(|&&w| lower.contains(w)).count();
         let intuition = (pro_count as f32 * 0.15 - anti_count as f32 * 0.20).clamp(-1.0, 1.0);
@@ -191,27 +201,32 @@ impl MPFC {
         if self.affiliation > AFFILIATION_BASELINE {
             self.affiliation -= AFFILIATION_DRIFT;
         } else if self.affiliation < AFFILIATION_BASELINE {
-            self.affiliation = (self.affiliation + AFFILIATION_DRIFT * 0.5).min(AFFILIATION_BASELINE);
+            self.affiliation =
+                (self.affiliation + AFFILIATION_DRIFT * 0.5).min(AFFILIATION_BASELINE);
         }
         self.moral_valence = self.moral_valence * (1.0 - MORAL_DECAY * 0.5);
     }
 
     fn build_output(&self) -> MPFCOutput {
         MPFCOutput {
-            social_value:       self.social_value,
-            affiliation:        self.affiliation,
+            social_value: self.social_value,
+            affiliation: self.affiliation,
             person_model_depth: self.person_model_depth,
-            moral_valence:      self.moral_valence,
-            prioritize_social:  self.social_value < 0.40 || self.affiliation < 0.40,
+            moral_valence: self.moral_valence,
+            prioritize_social: self.social_value < 0.40 || self.affiliation < 0.40,
         }
     }
 
     /// Get current output without processing.
-    pub fn current_output(&self) -> MPFCOutput { self.build_output() }
+    pub fn current_output(&self) -> MPFCOutput {
+        self.build_output()
+    }
 
     /// Social success ratio (positive / total).
     pub fn social_success_rate(&self) -> f32 {
-        if self.social_outcomes == 0 { return 0.50; }
+        if self.social_outcomes == 0 {
+            return 0.50;
+        }
         self.positive_social as f32 / self.social_outcomes as f32
     }
 
@@ -229,7 +244,9 @@ impl MPFC {
 }
 
 impl Default for MPFC {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -251,8 +268,10 @@ mod tests {
         let before = m.social_value;
         m.process_social(SocialOutcome::Helped { degree: 0.90 }, 0.50);
         // Should move social_value toward 0.90
-        assert!(m.social_value != before || true,  // EMA changes it
-            "Helped outcome should update social value");
+        assert!(
+            m.social_value != before || true, // EMA changes it
+            "Helped outcome should update social value"
+        );
     }
 
     #[test]
@@ -260,8 +279,12 @@ mod tests {
         let mut m = MPFC::new();
         let before = m.affiliation;
         m.process_social(SocialOutcome::Connection { strength: 0.85 }, 0.60);
-        assert!(m.affiliation >= before,
-            "connection should raise affiliation: {:.2} → {:.2}", before, m.affiliation);
+        assert!(
+            m.affiliation >= before,
+            "connection should raise affiliation: {:.2} → {:.2}",
+            before,
+            m.affiliation
+        );
     }
 
     #[test]
@@ -269,32 +292,44 @@ mod tests {
         let mut m = MPFC::new();
         let before = m.affiliation;
         m.process_social(SocialOutcome::Disappointment { severity: 0.70 }, 0.50);
-        assert!(m.affiliation <= before,
-            "disappointment should lower affiliation: {:.2} → {:.2}", before, m.affiliation);
+        assert!(
+            m.affiliation <= before,
+            "disappointment should lower affiliation: {:.2} → {:.2}",
+            before,
+            m.affiliation
+        );
     }
 
     #[test]
     fn test_person_model_depth_with_familiarity() {
         let mut m = MPFC::new();
         m.process_social(SocialOutcome::AffirmativeExchange, 0.85);
-        assert_eq!(m.person_model_depth, MAX_PERSON_DEPTH,
-            "high ToM familiarity should give max person depth");
+        assert_eq!(
+            m.person_model_depth, MAX_PERSON_DEPTH,
+            "high ToM familiarity should give max person depth"
+        );
     }
 
     #[test]
     fn test_moral_intuition_prosocial() {
         let mut m = MPFC::new();
         let valence = m.moral_intuition("I want to help and support you fairly and honestly");
-        assert!(valence >= 0.0,
-            "prosocial language should give non-negative moral valence: {:.2}", valence);
+        assert!(
+            valence >= 0.0,
+            "prosocial language should give non-negative moral valence: {:.2}",
+            valence
+        );
     }
 
     #[test]
     fn test_moral_intuition_antisocial() {
         let mut m = MPFC::new();
         let valence = m.moral_intuition("this would harm and hurt and deceive people unfairly");
-        assert!(valence <= 0.0,
-            "antisocial language should give non-positive moral valence: {:.2}", valence);
+        assert!(
+            valence <= 0.0,
+            "antisocial language should give non-positive moral valence: {:.2}",
+            valence
+        );
     }
 
     #[test]
@@ -304,10 +339,16 @@ mod tests {
         for _ in 0..50 {
             m.decay();
         }
-        assert!(m.affiliation < 0.90,
-            "affiliation should drift toward baseline: {:.2}", m.affiliation);
-        assert!(m.affiliation >= AFFILIATION_BASELINE - 0.05,
-            "should not fall much below baseline: {:.2}", m.affiliation);
+        assert!(
+            m.affiliation < 0.90,
+            "affiliation should drift toward baseline: {:.2}",
+            m.affiliation
+        );
+        assert!(
+            m.affiliation >= AFFILIATION_BASELINE - 0.05,
+            "should not fall much below baseline: {:.2}",
+            m.affiliation
+        );
     }
 
     #[test]
@@ -317,8 +358,11 @@ mod tests {
         m.process_social(SocialOutcome::Helped { degree: 0.70 }, 0.50);
         m.process_social(SocialOutcome::Disappointment { severity: 0.60 }, 0.50);
         let rate = m.social_success_rate();
-        assert!(rate > 0.0 && rate < 1.0,
-            "success rate should reflect positive/negative balance: {:.2}", rate);
+        assert!(
+            rate > 0.0 && rate < 1.0,
+            "success rate should reflect positive/negative balance: {:.2}",
+            rate
+        );
     }
 
     #[test]
@@ -326,8 +370,11 @@ mod tests {
         let mut m = MPFC::new();
         let before_affil = m.affiliation;
         m.process_social(SocialOutcome::ConstructiveChallenge, 0.50);
-        assert!(m.affiliation >= before_affil - 0.01,
-            "constructive challenge should not lower affiliation: {:.2}", m.affiliation);
+        assert!(
+            m.affiliation >= before_affil - 0.01,
+            "constructive challenge should not lower affiliation: {:.2}",
+            m.affiliation
+        );
     }
 
     #[test]

@@ -6,16 +6,19 @@
 ///
 /// Format (one JSON object per line):
 /// {"ts": 1234567890, "session": "abc123", "role": "user", "text": "..."}
-
 use serde::{Deserialize, Serialize};
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 
 /// UTF-8 safe byte slice — never splits a multi-byte character.
 fn safe_str_slice(s: &str, max_bytes: usize) -> &str {
-    if s.len() <= max_bytes { return s; }
+    if s.len() <= max_bytes {
+        return s;
+    }
     let mut end = max_bytes;
-    while end > 0 && !s.is_char_boundary(end) { end -= 1; }
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
     &s[..end]
 }
 
@@ -75,7 +78,8 @@ pub fn recall(base_dir: &str, query: &str, max_results: usize) -> Vec<Transcript
     if query_words.is_empty() {
         // No meaningful words — return recent entries
         let reader = BufReader::new(file);
-        let all: Vec<TranscriptEntry> = reader.lines()
+        let all: Vec<TranscriptEntry> = reader
+            .lines()
             .flatten()
             .filter_map(|l| serde_json::from_str(&l).ok())
             .collect();
@@ -86,7 +90,10 @@ pub fn recall(base_dir: &str, query: &str, max_results: usize) -> Vec<Transcript
     for line in reader.lines().flatten() {
         if let Ok(entry) = serde_json::from_str::<TranscriptEntry>(&line) {
             let text_lower = entry.text.to_lowercase();
-            let matches = query_words.iter().filter(|w| text_lower.contains(*w)).count();
+            let matches = query_words
+                .iter()
+                .filter(|w| text_lower.contains(*w))
+                .count();
             if matches > 0 {
                 results.push(entry);
             }
@@ -122,16 +129,16 @@ pub fn brief(base_dir: &str, session_id: &str) -> String {
         return "No turns recorded in this session yet.".to_string();
     }
 
-    let user_turns: Vec<&TranscriptEntry> = entries.iter()
-        .filter(|e| e.role == "user")
-        .collect();
-    let kai_turns: Vec<&TranscriptEntry> = entries.iter()
-        .filter(|e| e.role == "kai")
-        .collect();
+    let user_turns: Vec<&TranscriptEntry> = entries.iter().filter(|e| e.role == "user").collect();
+    let kai_turns: Vec<&TranscriptEntry> = entries.iter().filter(|e| e.role == "kai").collect();
 
     let mut lines = vec![
-        format!("Session brief — {} total turns ({} from you, {} from KAI):",
-            entries.len(), user_turns.len(), kai_turns.len()),
+        format!(
+            "Session brief — {} total turns ({} from you, {} from KAI):",
+            entries.len(),
+            user_turns.len(),
+            kai_turns.len()
+        ),
         String::new(),
     ];
 

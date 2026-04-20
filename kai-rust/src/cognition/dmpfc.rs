@@ -58,17 +58,44 @@ const MAX_INTENTIONS: usize = 5;
 
 /// Future/prospective markers in text
 const FUTURE_MARKERS: &[&str] = &[
-    "will", "going to", "plan to", "next", "later", "eventually", "soon",
-    "future", "ahead", "upcoming", "anticipate", "expect", "predict",
-    "when you", "next time", "afterwards", "in the future", "eventually",
-    "what if", "imagine if", "suppose", "hypothetically",
+    "will",
+    "going to",
+    "plan to",
+    "next",
+    "later",
+    "eventually",
+    "soon",
+    "future",
+    "ahead",
+    "upcoming",
+    "anticipate",
+    "expect",
+    "predict",
+    "when you",
+    "next time",
+    "afterwards",
+    "in the future",
+    "eventually",
+    "what if",
+    "imagine if",
+    "suppose",
+    "hypothetically",
 ];
 
 /// Intention/deferred action markers
 const INTENTION_MARKERS: &[&str] = &[
-    "remember to", "don't forget", "need to", "should", "remind",
-    "keep in mind", "make sure", "note that", "when we get to",
-    "next session", "come back to", "follow up",
+    "remember to",
+    "don't forget",
+    "need to",
+    "should",
+    "remind",
+    "keep in mind",
+    "make sure",
+    "note that",
+    "when we get to",
+    "next session",
+    "come back to",
+    "follow up",
 ];
 
 // ── DmPFCOutput ───────────────────────────────────────────────────────────────
@@ -108,12 +135,12 @@ pub struct DorsomedialPFC {
 impl DorsomedialPFC {
     pub fn new() -> Self {
         Self {
-            projection_depth:        0.20,
-            temporal_coherence:      COHERENCE_BASELINE,
-            prospective_intentions:  Vec::new(),
-            projections:             0,
-            intentions_registered:   0,
-            inputs_processed:        0,
+            projection_depth: 0.20,
+            temporal_coherence: COHERENCE_BASELINE,
+            prospective_intentions: Vec::new(),
+            projections: 0,
+            intentions_registered: 0,
+            inputs_processed: 0,
         }
     }
 
@@ -123,32 +150,42 @@ impl DorsomedialPFC {
     /// - `text`: the input
     /// - `precuneus_sim_depth`: Precuneus simulation depth (0.0–1.0)
     /// - `pcc_autobio_salience`: PCC autobiographical relevance (0.0–1.0)
-    pub fn process(&mut self, text: &str, precuneus_sim_depth: f32, pcc_autobio_salience: f32) -> DmPFCOutput {
+    pub fn process(
+        &mut self,
+        text: &str,
+        precuneus_sim_depth: f32,
+        pcc_autobio_salience: f32,
+    ) -> DmPFCOutput {
         self.inputs_processed += 1;
         let lower = text.to_lowercase();
 
         // ── Future projection detection ────────────────────────────────────────
-        let future_hits = FUTURE_MARKERS.iter()
-            .filter(|&&w| lower.contains(w)).count();
+        let future_hits = FUTURE_MARKERS
+            .iter()
+            .filter(|&&w| lower.contains(w))
+            .count();
         let projection_triggered = future_hits >= 1;
         if projection_triggered {
             self.projections += 1;
-            let proj_target = (0.30 + future_hits as f32 * 0.12
-                + precuneus_sim_depth * 0.20).min(1.0);
-            self.projection_depth = self.projection_depth * (1.0 - PROJECTION_EMA)
-                + proj_target * PROJECTION_EMA;
+            let proj_target =
+                (0.30 + future_hits as f32 * 0.12 + precuneus_sim_depth * 0.20).min(1.0);
+            self.projection_depth =
+                self.projection_depth * (1.0 - PROJECTION_EMA) + proj_target * PROJECTION_EMA;
         } else {
             self.projection_depth = (self.projection_depth - 0.03).max(0.05);
         }
 
         // ── Prospective intention detection ───────────────────────────────────
-        let intention_hits = INTENTION_MARKERS.iter()
-            .filter(|&&w| lower.contains(w)).count();
+        let intention_hits = INTENTION_MARKERS
+            .iter()
+            .filter(|&&w| lower.contains(w))
+            .count();
         let intention_registered = intention_hits >= 1;
         if intention_registered {
             self.intentions_registered += 1;
             // Extract a simplified intention label from the first matching marker
-            let label = INTENTION_MARKERS.iter()
+            let label = INTENTION_MARKERS
+                .iter()
                 .find(|&&w| lower.contains(w))
                 .map(|&w| w.to_string())
                 .unwrap_or_else(|| "deferred".to_string());
@@ -168,9 +205,9 @@ impl DorsomedialPFC {
         }
 
         DmPFCOutput {
-            projection_depth:       self.projection_depth,
-            temporal_coherence:     self.temporal_coherence,
-            intention_count:        self.prospective_intentions.len(),
+            projection_depth: self.projection_depth,
+            temporal_coherence: self.temporal_coherence,
+            intention_count: self.prospective_intentions.len(),
             projection_triggered,
             intention_registered,
         }
@@ -186,20 +223,22 @@ impl DorsomedialPFC {
         self.projection_depth = (self.projection_depth - 0.02).max(0.05);
         // Temporal coherence is very stable — drifts toward baseline slowly
         if self.temporal_coherence > COHERENCE_BASELINE {
-            self.temporal_coherence = (self.temporal_coherence - COHERENCE_DECAY).max(COHERENCE_BASELINE);
+            self.temporal_coherence =
+                (self.temporal_coherence - COHERENCE_DECAY).max(COHERENCE_BASELINE);
         } else if self.temporal_coherence < COHERENCE_BASELINE {
-            self.temporal_coherence = (self.temporal_coherence + COHERENCE_DECAY * 0.50).min(COHERENCE_BASELINE);
+            self.temporal_coherence =
+                (self.temporal_coherence + COHERENCE_DECAY * 0.50).min(COHERENCE_BASELINE);
         }
     }
 
     /// Current output without processing.
     pub fn current_output(&self) -> DmPFCOutput {
         DmPFCOutput {
-            projection_depth:       self.projection_depth,
-            temporal_coherence:     self.temporal_coherence,
-            intention_count:        self.prospective_intentions.len(),
-            projection_triggered:   false,
-            intention_registered:   false,
+            projection_depth: self.projection_depth,
+            temporal_coherence: self.temporal_coherence,
+            intention_count: self.prospective_intentions.len(),
+            projection_triggered: false,
+            intention_registered: false,
         }
     }
 
@@ -216,7 +255,9 @@ impl DorsomedialPFC {
 }
 
 impl Default for DorsomedialPFC {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -235,9 +276,15 @@ mod tests {
     #[test]
     fn test_future_markers_trigger_projection() {
         let mut d = DorsomedialPFC::new();
-        let out = d.process("what will happen next and what should we plan for", 0.30, 0.40);
-        assert!(out.projection_triggered,
-            "future markers should trigger projection");
+        let out = d.process(
+            "what will happen next and what should we plan for",
+            0.30,
+            0.40,
+        );
+        assert!(
+            out.projection_triggered,
+            "future markers should trigger projection"
+        );
         assert!(d.projections >= 1);
     }
 
@@ -245,19 +292,35 @@ mod tests {
     fn test_projection_depth_rises_with_future_content() {
         let mut d = DorsomedialPFC::new();
         let before = d.projection_depth;
-        d.process("in the future we will need to plan ahead and anticipate what comes next", 0.40, 0.50);
-        assert!(d.projection_depth > before,
-            "future content should raise projection depth: {:.2} → {:.2}", before, d.projection_depth);
+        d.process(
+            "in the future we will need to plan ahead and anticipate what comes next",
+            0.40,
+            0.50,
+        );
+        assert!(
+            d.projection_depth > before,
+            "future content should raise projection depth: {:.2} → {:.2}",
+            before,
+            d.projection_depth
+        );
     }
 
     #[test]
     fn test_intention_registered_from_deferred_markers() {
         let mut d = DorsomedialPFC::new();
-        let out = d.process("remember to check this later and make sure we follow up", 0.20, 0.30);
-        assert!(out.intention_registered,
-            "intention markers should register prospective intentions");
-        assert!(!d.prospective_intentions.is_empty(),
-            "at least one intention should be stored");
+        let out = d.process(
+            "remember to check this later and make sure we follow up",
+            0.20,
+            0.30,
+        );
+        assert!(
+            out.intention_registered,
+            "intention markers should register prospective intentions"
+        );
+        assert!(
+            !d.prospective_intentions.is_empty(),
+            "at least one intention should be stored"
+        );
     }
 
     #[test]
@@ -265,8 +328,11 @@ mod tests {
         let mut d = DorsomedialPFC::new();
         let before = d.temporal_coherence;
         d.process("let me tell you about myself and what I think", 0.30, 0.80);
-        assert!(d.temporal_coherence >= before,
-            "high autobio salience should not lower coherence: {:.2}", d.temporal_coherence);
+        assert!(
+            d.temporal_coherence >= before,
+            "high autobio salience should not lower coherence: {:.2}",
+            d.temporal_coherence
+        );
     }
 
     #[test]
@@ -277,8 +343,10 @@ mod tests {
         if before_count > 0 {
             let label = d.prospective_intentions[0].clone();
             d.fulfill_intention(&label);
-            assert!(d.prospective_intentions.len() < before_count,
-                "fulfilling should remove intention");
+            assert!(
+                d.prospective_intentions.len() < before_count,
+                "fulfilling should remove intention"
+            );
         }
     }
 
@@ -286,18 +354,30 @@ mod tests {
     fn test_no_future_markers_low_projection() {
         let mut d = DorsomedialPFC::new();
         let out = d.process("compile the code", 0.10, 0.10);
-        assert!(!out.projection_triggered,
-            "task command should not trigger future projection");
+        assert!(
+            !out.projection_triggered,
+            "task command should not trigger future projection"
+        );
     }
 
     #[test]
     fn test_max_intentions_not_exceeded() {
         let mut d = DorsomedialPFC::new();
         for i in 0..8 {
-            d.process(&format!("remember to check item {} and note that we need to follow up", i), 0.20, 0.30);
+            d.process(
+                &format!(
+                    "remember to check item {} and note that we need to follow up",
+                    i
+                ),
+                0.20,
+                0.30,
+            );
         }
-        assert!(d.prospective_intentions.len() <= MAX_INTENTIONS,
-            "intentions should not exceed max: {}", d.prospective_intentions.len());
+        assert!(
+            d.prospective_intentions.len() <= MAX_INTENTIONS,
+            "intentions should not exceed max: {}",
+            d.prospective_intentions.len()
+        );
     }
 
     #[test]
@@ -307,8 +387,11 @@ mod tests {
         for _ in 0..10 {
             d.decay();
         }
-        assert!(d.projection_depth < 0.80,
-            "projection depth should decay: {:.2}", d.projection_depth);
+        assert!(
+            d.projection_depth < 0.80,
+            "projection depth should decay: {:.2}",
+            d.projection_depth
+        );
     }
 
     #[test]

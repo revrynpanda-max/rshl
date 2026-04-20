@@ -50,7 +50,6 @@
 ///     - social_sync: how synchronized KAI is with Ryan's energy
 ///     - empathy_active: whether the empathy response is live
 ///     - mirror_history: rolling record of detected states
-
 use serde::{Deserialize, Serialize};
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -72,14 +71,14 @@ const MAX_HISTORY: usize = 10;
 /// The detected emotional quality of a message.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum EmotionalTone {
-    Curious,      // exploration, questions, wonder
-    Excited,      // high energy, enthusiasm, momentum
-    Frustrated,   // short replies, repetition, pushback
-    Confused,     // uncertainty markers, "?", "not sure"
-    Satisfied,    // "good", "got it", "makes sense"
-    Neutral,      // baseline, no strong signal
-    Playful,      // humor, casual, informal
-    Serious,      // focused, task-oriented, formal
+    Curious,    // exploration, questions, wonder
+    Excited,    // high energy, enthusiasm, momentum
+    Frustrated, // short replies, repetition, pushback
+    Confused,   // uncertainty markers, "?", "not sure"
+    Satisfied,  // "good", "got it", "makes sense"
+    Neutral,    // baseline, no strong signal
+    Playful,    // humor, casual, informal
+    Serious,    // focused, task-oriented, formal
 }
 
 impl EmotionalTone {
@@ -87,27 +86,27 @@ impl EmotionalTone {
     /// Positive = warm/approach, negative = avoidance/stress.
     pub fn valence_weight(&self) -> f32 {
         match self {
-            EmotionalTone::Curious   =>  0.30,
-            EmotionalTone::Excited   =>  0.60,
+            EmotionalTone::Curious => 0.30,
+            EmotionalTone::Excited => 0.60,
             EmotionalTone::Frustrated => -0.50,
-            EmotionalTone::Confused  => -0.20,
-            EmotionalTone::Satisfied =>  0.50,
-            EmotionalTone::Neutral   =>  0.00,
-            EmotionalTone::Playful   =>  0.40,
-            EmotionalTone::Serious   =>  0.10,
+            EmotionalTone::Confused => -0.20,
+            EmotionalTone::Satisfied => 0.50,
+            EmotionalTone::Neutral => 0.00,
+            EmotionalTone::Playful => 0.40,
+            EmotionalTone::Serious => 0.10,
         }
     }
 
     pub fn label(&self) -> &'static str {
         match self {
-            EmotionalTone::Curious    => "curious",
-            EmotionalTone::Excited    => "excited",
+            EmotionalTone::Curious => "curious",
+            EmotionalTone::Excited => "excited",
             EmotionalTone::Frustrated => "frustrated",
-            EmotionalTone::Confused   => "confused",
-            EmotionalTone::Satisfied  => "satisfied",
-            EmotionalTone::Neutral    => "neutral",
-            EmotionalTone::Playful    => "playful",
-            EmotionalTone::Serious    => "serious",
+            EmotionalTone::Confused => "confused",
+            EmotionalTone::Satisfied => "satisfied",
+            EmotionalTone::Neutral => "neutral",
+            EmotionalTone::Playful => "playful",
+            EmotionalTone::Serious => "serious",
         }
     }
 }
@@ -117,11 +116,11 @@ impl EmotionalTone {
 /// The inferred intent / goal behind a message.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum IntentSignal {
-    WantsInformation,    // factual query, explain/teach
-    WantsValidation,     // seeking confirmation or agreement
-    WantsConnection,     // social, small talk, checking in
-    WantsProblemSolved,  // has a concrete task/problem
-    WantsToTeach,        // correcting or adding to KAI's knowledge
+    WantsInformation,   // factual query, explain/teach
+    WantsValidation,    // seeking confirmation or agreement
+    WantsConnection,    // social, small talk, checking in
+    WantsProblemSolved, // has a concrete task/problem
+    WantsToTeach,       // correcting or adding to KAI's knowledge
     Unknown,
 }
 
@@ -129,12 +128,12 @@ pub enum IntentSignal {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MirrorState {
-    pub tone:    EmotionalTone,
-    pub intent:  IntentSignal,
+    pub tone: EmotionalTone,
+    pub intent: IntentSignal,
     /// Distress level detected (0 = calm, 1 = high distress)
     pub distress: f32,
     /// Energy level detected (0 = low, 1 = high energy)
-    pub energy:   f32,
+    pub energy: f32,
 }
 
 // ── Mirror Neuron System ──────────────────────────────────────────────────────
@@ -163,13 +162,13 @@ impl MirrorNeuronSystem {
     pub fn new() -> Self {
         Self {
             resonance_valence: 0.0,
-            current_tone:      EmotionalTone::Neutral,
-            current_intent:    IntentSignal::Unknown,
-            social_sync:       0.50,
-            empathy_active:    false,
-            distress_level:    0.0,
-            total_mirrored:    0,
-            mirror_history:    Vec::with_capacity(MAX_HISTORY),
+            current_tone: EmotionalTone::Neutral,
+            current_intent: IntentSignal::Unknown,
+            social_sync: 0.50,
+            empathy_active: false,
+            distress_level: 0.0,
+            total_mirrored: 0,
+            mirror_history: Vec::with_capacity(MAX_HISTORY),
         }
     }
 
@@ -178,15 +177,15 @@ impl MirrorNeuronSystem {
     ///
     /// Returns a MirrorState describing what was detected.
     pub fn mirror(&mut self, text: &str) -> MirrorState {
-        let tone   = Self::detect_tone(text);
+        let tone = Self::detect_tone(text);
         let intent = Self::detect_intent(text);
         let distress = Self::measure_distress(text, &tone);
-        let energy   = Self::measure_energy(text, &tone);
+        let energy = Self::measure_energy(text, &tone);
 
         // Update resonance via EMA — KAI's internal state drifts toward Ryan's
         let tone_valence = tone.valence_weight();
-        self.resonance_valence = self.resonance_valence * (1.0 - RESONANCE_ALPHA)
-            + tone_valence * RESONANCE_ALPHA;
+        self.resonance_valence =
+            self.resonance_valence * (1.0 - RESONANCE_ALPHA) + tone_valence * RESONANCE_ALPHA;
 
         // Update social sync — high energy messages sync faster
         let sync_target = 0.50 + energy * 0.40;
@@ -198,11 +197,16 @@ impl MirrorNeuronSystem {
         // Trigger empathy response if distress crosses threshold
         self.empathy_active = self.distress_level >= EMPATHY_THRESHOLD;
 
-        self.current_tone   = tone.clone();
+        self.current_tone = tone.clone();
         self.current_intent = intent.clone();
         self.total_mirrored += 1;
 
-        let state = MirrorState { tone, intent, distress, energy };
+        let state = MirrorState {
+            tone,
+            intent,
+            distress,
+            energy,
+        };
 
         // Record in history
         if self.mirror_history.len() >= MAX_HISTORY {
@@ -219,32 +223,71 @@ impl MirrorNeuronSystem {
         let word_count = text.split_whitespace().count();
 
         // Frustration signals (check first — these override others)
-        let frustration_words = ["wrong", "not right", "no that", "stop", "ugh",
-                                  "frustrated", "broken", "failing", "doesn't work",
-                                  "still not", "again", "why isn't", "why doesn't"];
+        let frustration_words = [
+            "wrong",
+            "not right",
+            "no that",
+            "stop",
+            "ugh",
+            "frustrated",
+            "broken",
+            "failing",
+            "doesn't work",
+            "still not",
+            "again",
+            "why isn't",
+            "why doesn't",
+        ];
         if frustration_words.iter().any(|w| lower.contains(w)) {
             return EmotionalTone::Frustrated;
         }
 
         // Confusion signals
-        let confusion_words = ["confused", "not sure", "don't understand", "unclear",
-                                "what do you mean", "huh", "wait", "i'm lost"];
+        let confusion_words = [
+            "confused",
+            "not sure",
+            "don't understand",
+            "unclear",
+            "what do you mean",
+            "huh",
+            "wait",
+            "i'm lost",
+        ];
         if confusion_words.iter().any(|w| lower.contains(w)) {
             return EmotionalTone::Confused;
         }
 
         // Satisfaction signals
-        let satisfaction_words = ["makes sense", "got it", "i see", "that's it", "perfect",
-                                   "exactly", "yes!", "correct", "good", "great"];
+        let satisfaction_words = [
+            "makes sense",
+            "got it",
+            "i see",
+            "that's it",
+            "perfect",
+            "exactly",
+            "yes!",
+            "correct",
+            "good",
+            "great",
+        ];
         if satisfaction_words.iter().any(|w| lower.contains(w)) {
             return EmotionalTone::Satisfied;
         }
 
         // Excitement signals
-        let excitement_words = ["amazing", "awesome", "love it", "this is great",
-                                 "wow", "incredible", "let's go", "yes!!"];
+        let excitement_words = [
+            "amazing",
+            "awesome",
+            "love it",
+            "this is great",
+            "wow",
+            "incredible",
+            "let's go",
+            "yes!!",
+        ];
         if excitement_words.iter().any(|w| lower.contains(w))
-            || text.contains('!') && word_count > 5 {
+            || text.contains('!') && word_count > 5
+        {
             return EmotionalTone::Excited;
         }
 
@@ -255,8 +298,12 @@ impl MirrorNeuronSystem {
         }
 
         // Curious signals
-        if text.contains('?') || lower.starts_with("what ") || lower.starts_with("how ")
-            || lower.starts_with("why ") || lower.starts_with("can you") {
+        if text.contains('?')
+            || lower.starts_with("what ")
+            || lower.starts_with("how ")
+            || lower.starts_with("why ")
+            || lower.starts_with("can you")
+        {
             return EmotionalTone::Curious;
         }
 
@@ -273,29 +320,61 @@ impl MirrorNeuronSystem {
         let lower = text.to_lowercase();
 
         // Teaching intent — correcting, adding knowledge
-        let teaching_markers = ["actually", "that's not", "you should know", "let me clarify",
-                                  "the correct", "to clarify", "fyi", "note that"];
+        let teaching_markers = [
+            "actually",
+            "that's not",
+            "you should know",
+            "let me clarify",
+            "the correct",
+            "to clarify",
+            "fyi",
+            "note that",
+        ];
         if teaching_markers.iter().any(|m| lower.contains(m)) {
             return IntentSignal::WantsToTeach;
         }
 
         // Problem-solving intent
-        let task_markers = ["fix", "build", "create", "implement", "help me", "i need",
-                             "how do i", "can you make", "write", "code"];
+        let task_markers = [
+            "fix",
+            "build",
+            "create",
+            "implement",
+            "help me",
+            "i need",
+            "how do i",
+            "can you make",
+            "write",
+            "code",
+        ];
         if task_markers.iter().any(|m| lower.contains(m)) {
             return IntentSignal::WantsProblemSolved;
         }
 
         // Validation intent
-        let validation_markers = ["right?", "is that", "does that", "makes sense?",
-                                   "correct?", "am i", "would you agree"];
+        let validation_markers = [
+            "right?",
+            "is that",
+            "does that",
+            "makes sense?",
+            "correct?",
+            "am i",
+            "would you agree",
+        ];
         if validation_markers.iter().any(|m| lower.contains(m)) {
             return IntentSignal::WantsValidation;
         }
 
         // Connection intent (casual, social)
-        let social_markers = ["how are", "how's it", "what's up", "hey", "just checking",
-                               "wanted to say", "appreciate"];
+        let social_markers = [
+            "how are",
+            "how's it",
+            "what's up",
+            "hey",
+            "just checking",
+            "wanted to say",
+            "appreciate",
+        ];
         if social_markers.iter().any(|m| lower.contains(m)) {
             return IntentSignal::WantsConnection;
         }
@@ -315,19 +394,47 @@ impl MirrorNeuronSystem {
         // Base from tone
         distress += match tone {
             EmotionalTone::Frustrated => 0.70,
-            EmotionalTone::Confused   => 0.35,
-            EmotionalTone::Neutral    => 0.05,
-            _                         => 0.0,
+            EmotionalTone::Confused => 0.35,
+            EmotionalTone::Neutral => 0.05,
+            _ => 0.0,
         };
 
         // Text signals
         let lower = text.to_lowercase();
-        if lower.contains("stuck") || lower.contains("can't get") { distress += 0.20; }
-        if lower.contains("broken") || lower.contains("failing") { distress += 0.15; }
-        if text.ends_with("???") { distress += 0.15; }
+        let social_loss = [
+            "broke up",
+            "break up",
+            "breakup",
+            "left me",
+            "dumped me",
+            "lost",
+            "died",
+            "passed away",
+            "heartbroken",
+        ];
+        if social_loss.iter().any(|w| lower.contains(w)) {
+            distress += 0.65;
+        }
+        let pain_signals = [
+            "rough", "hard", "hurt", "hurts", "pain", "painful", "sad", "lonely", "alone", "empty",
+            "heavy",
+        ];
+        if pain_signals.iter().any(|w| lower.contains(w)) {
+            distress += 0.35;
+        }
+        if lower.contains("stuck") || lower.contains("can't get") {
+            distress += 0.20;
+        }
+        if lower.contains("broken") || lower.contains("failing") {
+            distress += 0.15;
+        }
+        if text.ends_with("???") {
+            distress += 0.15;
+        }
         // Very short replies when frustrated = higher distress
-        if text.split_whitespace().count() <= 3
-            && matches!(tone, EmotionalTone::Frustrated) { distress += 0.10; }
+        if text.split_whitespace().count() <= 3 && matches!(tone, EmotionalTone::Frustrated) {
+            distress += 0.10;
+        }
 
         distress.min(1.0)
     }
@@ -335,13 +442,13 @@ impl MirrorNeuronSystem {
     /// Measure energy/engagement level.
     fn measure_energy(text: &str, tone: &EmotionalTone) -> f32 {
         let base = match tone {
-            EmotionalTone::Excited   => 0.90,
-            EmotionalTone::Curious   => 0.65,
-            EmotionalTone::Playful   => 0.70,
-            EmotionalTone::Serious   => 0.55,
+            EmotionalTone::Excited => 0.90,
+            EmotionalTone::Curious => 0.65,
+            EmotionalTone::Playful => 0.70,
+            EmotionalTone::Serious => 0.55,
             EmotionalTone::Satisfied => 0.50,
-            EmotionalTone::Neutral   => 0.40,
-            EmotionalTone::Confused  => 0.35,
+            EmotionalTone::Neutral => 0.40,
+            EmotionalTone::Confused => 0.35,
             EmotionalTone::Frustrated => 0.30,
         };
         // Word count boosts energy estimate (longer = more engaged)
@@ -359,8 +466,11 @@ impl MirrorNeuronSystem {
     /// True if the last 3 states had mostly negative tone.
     pub fn trending_frustrated(&self) -> bool {
         let recent = self.recent_states(3);
-        if recent.len() < 2 { return false; }
-        let frustrated_count = recent.iter()
+        if recent.len() < 2 {
+            return false;
+        }
+        let frustrated_count = recent
+            .iter()
             .filter(|s| matches!(s.tone, EmotionalTone::Frustrated | EmotionalTone::Confused))
             .count();
         frustrated_count >= 2
@@ -383,13 +493,19 @@ impl MirrorNeuronSystem {
             self.current_intent,
             self.social_sync,
             self.distress_level,
-            if self.empathy_active { " 💙EMPATHY" } else { "" },
+            if self.empathy_active {
+                " 💙EMPATHY"
+            } else {
+                ""
+            },
         )
     }
 }
 
 impl Default for MirrorNeuronSystem {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -401,29 +517,41 @@ mod tests {
     #[test]
     fn test_detects_frustration() {
         let tone = MirrorNeuronSystem::detect_tone("This still doesn't work, why isn't it fixed?");
-        assert_eq!(tone, EmotionalTone::Frustrated,
-            "frustration language should detect as Frustrated");
+        assert_eq!(
+            tone,
+            EmotionalTone::Frustrated,
+            "frustration language should detect as Frustrated"
+        );
     }
 
     #[test]
     fn test_detects_curiosity() {
         let tone = MirrorNeuronSystem::detect_tone("How does the RSHL encoding work?");
-        assert_eq!(tone, EmotionalTone::Curious,
-            "question should detect as Curious");
+        assert_eq!(
+            tone,
+            EmotionalTone::Curious,
+            "question should detect as Curious"
+        );
     }
 
     #[test]
     fn test_detects_satisfaction() {
         let tone = MirrorNeuronSystem::detect_tone("Got it, makes sense now!");
-        assert_eq!(tone, EmotionalTone::Satisfied,
-            "satisfaction language should detect as Satisfied");
+        assert_eq!(
+            tone,
+            EmotionalTone::Satisfied,
+            "satisfaction language should detect as Satisfied"
+        );
     }
 
     #[test]
     fn test_detects_excitement() {
         let tone = MirrorNeuronSystem::detect_tone("This is amazing, I love how this works!");
-        assert_eq!(tone, EmotionalTone::Excited,
-            "excitement language should detect as Excited");
+        assert_eq!(
+            tone,
+            EmotionalTone::Excited,
+            "excitement language should detect as Excited"
+        );
     }
 
     #[test]
@@ -433,8 +561,11 @@ mod tests {
         for _ in 0..5 {
             mn.mirror("This is amazing I love it!");
         }
-        assert!(mn.resonance_valence > 0.0,
-            "excited input should produce positive resonance: {:.3}", mn.resonance_valence);
+        assert!(
+            mn.resonance_valence > 0.0,
+            "excited input should produce positive resonance: {:.3}",
+            mn.resonance_valence
+        );
     }
 
     #[test]
@@ -443,8 +574,11 @@ mod tests {
         for _ in 0..4 {
             mn.mirror("This still doesn't work!");
         }
-        assert!(mn.distress_level > 0.20,
-            "repeated frustration should raise distress: {:.3}", mn.distress_level);
+        assert!(
+            mn.distress_level > 0.20,
+            "repeated frustration should raise distress: {:.3}",
+            mn.distress_level
+        );
     }
 
     #[test]
@@ -454,8 +588,11 @@ mod tests {
         for _ in 0..6 {
             mn.mirror("Why is this broken? It keeps failing. I'm stuck.");
         }
-        assert!(mn.empathy_active,
-            "sustained distress should activate empathy (distress={:.3})", mn.distress_level);
+        assert!(
+            mn.empathy_active,
+            "sustained distress should activate empathy (distress={:.3})",
+            mn.distress_level
+        );
     }
 
     #[test]
@@ -464,29 +601,43 @@ mod tests {
         mn.mirror("This doesn't work");
         mn.mirror("Still broken");
         mn.mirror("Why is this failing");
-        assert!(mn.trending_frustrated(), "three frustrated messages should trend frustrated");
+        assert!(
+            mn.trending_frustrated(),
+            "three frustrated messages should trend frustrated"
+        );
     }
 
     #[test]
     fn test_intent_detects_problem_solving() {
         let intent = MirrorNeuronSystem::detect_intent("Can you help me fix this bug in the code?");
-        assert_eq!(intent, IntentSignal::WantsProblemSolved,
-            "fix/help request should detect as WantsProblemSolved");
+        assert_eq!(
+            intent,
+            IntentSignal::WantsProblemSolved,
+            "fix/help request should detect as WantsProblemSolved"
+        );
     }
 
     #[test]
     fn test_intent_detects_teaching() {
         let intent = MirrorNeuronSystem::detect_intent("Actually that's not right, let me clarify");
-        assert_eq!(intent, IntentSignal::WantsToTeach,
-            "correction markers should detect as WantsToTeach");
+        assert_eq!(
+            intent,
+            IntentSignal::WantsToTeach,
+            "correction markers should detect as WantsToTeach"
+        );
     }
 
     #[test]
     fn test_decay_reduces_distress() {
         let mut mn = MirrorNeuronSystem::new();
         mn.distress_level = 0.80;
-        for _ in 0..20 { mn.decay(); }
-        assert!(mn.distress_level < 0.80,
-            "decay should reduce distress: {:.3}", mn.distress_level);
+        for _ in 0..20 {
+            mn.decay();
+        }
+        assert!(
+            mn.distress_level < 0.80,
+            "decay should reduce distress: {:.3}",
+            mn.distress_level
+        );
     }
 }

@@ -1,3 +1,7 @@
+use super::shared_bus::{GpuState, StreamEvent};
+use crate::core::{SparseVec, Universe};
+use crossbeam_channel::{Receiver, Sender};
+use rayon::prelude::*;
 /// GPU Stream — Parallel vector math engine.
 ///
 /// Uses rayon parallel iterators to compute batch cosine similarity
@@ -5,13 +9,8 @@
 /// this can process 10K+ vectors in ~1ms.
 ///
 /// Upgradable to CUDA/wgpu compute shaders when cell count exceeds 50K.
-
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
-use rayon::prelude::*;
-use super::shared_bus::{GpuState, StreamEvent};
-use crossbeam_channel::{Receiver, Sender};
-use crate::core::{SparseVec, Universe};
 
 /// Run one tick of the GPU stream.
 /// Checks for batch cosine requests and processes them in parallel.
@@ -24,7 +23,10 @@ pub fn gpu_tick(
     // Process any pending batch cosine requests
     while let Ok(event) = rx.try_recv() {
         match event {
-            StreamEvent::BatchCosineRequest { query_id, query_vec } => {
+            StreamEvent::BatchCosineRequest {
+                query_id,
+                query_vec,
+            } => {
                 let start = Instant::now();
 
                 // Reconstruct the query vector

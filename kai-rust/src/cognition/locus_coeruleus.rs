@@ -76,9 +76,9 @@ pub enum LCMode {
 impl LCMode {
     pub fn label(&self) -> &'static str {
         match self {
-            Self::Focused    => "focused",
-            Self::Exploring  => "exploring",
-            Self::Resting    => "resting",
+            Self::Focused => "focused",
+            Self::Exploring => "exploring",
+            Self::Resting => "resting",
         }
     }
 }
@@ -121,12 +121,12 @@ pub struct LocusCoeruleus {
 impl LocusCoeruleus {
     pub fn new() -> Self {
         Self {
-            tonic_rate:    TONIC_REST,
-            phasic_level:  0.0,
+            tonic_rate: TONIC_REST,
+            phasic_level: 0.0,
             novelty_accum: 0.0,
-            mode:          LCMode::Resting,
-            bursts_fired:  0,
-            total_ticks:   0,
+            mode: LCMode::Resting,
+            bursts_fired: 0,
+            total_ticks: 0,
         }
     }
 
@@ -145,7 +145,7 @@ impl LocusCoeruleus {
         let burst_fired = self.novelty_accum >= NOVELTY_BURST_THRESHOLD;
         if burst_fired {
             self.phasic_level = (self.phasic_level + PHASIC_BURST_AMPLITUDE).min(1.0);
-            self.novelty_accum *= 0.3;  // Consume the novelty
+            self.novelty_accum *= 0.3; // Consume the novelty
             self.bursts_fired += 1;
         }
 
@@ -166,17 +166,18 @@ impl LocusCoeruleus {
         // SNR boost: phasic bursts sharpen signal dramatically,
         // high tonic in Exploring mode gives modest broad boost
         let snr_boost = match self.mode {
-            LCMode::Focused   => 1.0 + self.phasic_level * 1.5,
+            LCMode::Focused => 1.0 + self.phasic_level * 1.5,
             LCMode::Exploring => 1.0 + self.tonic_rate * 0.5,
-            LCMode::Resting   => 1.0,
-        }.min(MAX_SNR_BOOST);
+            LCMode::Resting => 1.0,
+        }
+        .min(MAX_SNR_BOOST);
 
         LCOutput {
-            tonic_rate:   self.tonic_rate,
+            tonic_rate: self.tonic_rate,
             phasic_level: self.phasic_level,
             snr_boost,
             burst_fired,
-            mode:         self.mode.clone(),
+            mode: self.mode.clone(),
         }
     }
 
@@ -201,9 +202,9 @@ impl LocusCoeruleus {
     /// Current SNR boost factor (used by NorepinephrineSystem).
     pub fn snr_boost(&self) -> f32 {
         match self.mode {
-            LCMode::Focused   => (1.0 + self.phasic_level * 1.5).min(MAX_SNR_BOOST),
+            LCMode::Focused => (1.0 + self.phasic_level * 1.5).min(MAX_SNR_BOOST),
             LCMode::Exploring => (1.0 + self.tonic_rate * 0.5).min(MAX_SNR_BOOST),
-            LCMode::Resting   => 1.0,
+            LCMode::Resting => 1.0,
         }
     }
 
@@ -221,7 +222,9 @@ impl LocusCoeruleus {
 }
 
 impl Default for LocusCoeruleus {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -244,8 +247,10 @@ mod tests {
         // Feed high novelty to trigger a burst
         lc.process(0.9, 0.3);
         let out = lc.process(0.9, 0.3);
-        assert!(out.burst_fired || lc.phasic_level > 0.0,
-            "high novelty should eventually trigger a phasic burst");
+        assert!(
+            out.burst_fired || lc.phasic_level > 0.0,
+            "high novelty should eventually trigger a phasic burst"
+        );
     }
 
     #[test]
@@ -255,8 +260,11 @@ mod tests {
         lc.novelty_accum = NOVELTY_BURST_THRESHOLD;
         let out = lc.process(0.5, 0.5);
         if out.burst_fired {
-            assert_eq!(out.mode, LCMode::Focused,
-                "burst should put LC into Focused mode");
+            assert_eq!(
+                out.mode,
+                LCMode::Focused,
+                "burst should put LC into Focused mode"
+            );
         }
     }
 
@@ -266,8 +274,11 @@ mod tests {
         lc.novelty_accum = NOVELTY_BURST_THRESHOLD;
         let out = lc.process(1.0, 1.0);
         if out.mode == LCMode::Focused {
-            assert!(out.snr_boost > 1.0,
-                "Focused mode should boost SNR: got {:.2}", out.snr_boost);
+            assert!(
+                out.snr_boost > 1.0,
+                "Focused mode should boost SNR: got {:.2}",
+                out.snr_boost
+            );
         }
     }
 
@@ -279,8 +290,11 @@ mod tests {
         for _ in 0..10 {
             lc.decay();
         }
-        assert!(lc.phasic_level < 0.80,
-            "phasic should decay over ticks: {:.2}", lc.phasic_level);
+        assert!(
+            lc.phasic_level < 0.80,
+            "phasic should decay over ticks: {:.2}",
+            lc.phasic_level
+        );
     }
 
     #[test]
@@ -290,9 +304,12 @@ mod tests {
         for _ in 0..10 {
             lc.process(0.0, 0.8);
         }
-        assert!(lc.tonic_rate > initial_tonic,
+        assert!(
+            lc.tonic_rate > initial_tonic,
             "sustained task demand should raise tonic: {:.2} → {:.2}",
-            initial_tonic, lc.tonic_rate);
+            initial_tonic,
+            lc.tonic_rate
+        );
     }
 
     #[test]
@@ -302,8 +319,11 @@ mod tests {
         for _ in 0..50 {
             lc.decay();
         }
-        assert!(lc.tonic_rate < 0.70,
-            "tonic should drift toward rest: {:.2}", lc.tonic_rate);
+        assert!(
+            lc.tonic_rate < 0.70,
+            "tonic should drift toward rest: {:.2}",
+            lc.tonic_rate
+        );
     }
 
     #[test]
@@ -312,8 +332,10 @@ mod tests {
         let out = lc.process(0.05, 0.1);
         // After just one tick with very low novelty, no burst expected
         if lc.novelty_accum < NOVELTY_BURST_THRESHOLD {
-            assert!(!out.burst_fired,
-                "low novelty should not trigger burst on first tick");
+            assert!(
+                !out.burst_fired,
+                "low novelty should not trigger burst on first tick"
+            );
         }
     }
 
@@ -322,7 +344,10 @@ mod tests {
         let mut lc = LocusCoeruleus::new();
         lc.novelty_accum = NOVELTY_BURST_THRESHOLD;
         lc.process(1.0, 1.0);
-        assert!(lc.bursts_fired > 0, "burst counter should increment on burst");
+        assert!(
+            lc.bursts_fired > 0,
+            "burst counter should increment on burst"
+        );
     }
 
     #[test]
@@ -335,7 +360,10 @@ mod tests {
     fn test_is_bursting_true_after_burst() {
         let mut lc = LocusCoeruleus::new();
         lc.phasic_level = 0.50;
-        assert!(lc.is_bursting(), "elevated phasic should be is_bursting=true");
+        assert!(
+            lc.is_bursting(),
+            "elevated phasic should be is_bursting=true"
+        );
     }
 
     #[test]

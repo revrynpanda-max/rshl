@@ -56,22 +56,45 @@ const SUPPRESSION_THRESHOLD: f32 = 0.70;
 
 /// Action/somatic word markers
 const ACTION_WORDS: &[&str] = &[
-    "feel", "hurt", "pain", "touch", "hold", "heavy", "weight", "push", "pull",
-    "grab", "reach", "run", "fall", "lift", "carry", "break", "move", "shake",
-    "tremble", "breathe", "grip", "struggle", "rise",
+    "feel", "hurt", "pain", "touch", "hold", "heavy", "weight", "push", "pull", "grab", "reach",
+    "run", "fall", "lift", "carry", "break", "move", "shake", "tremble", "breathe", "grip",
+    "struggle", "rise",
 ];
 
 /// Distress markers that trigger immediate SMG empathy resonance
 const DISTRESS_MARKERS: &[&str] = &[
-    "frustrated", "stuck", "confused", "lost", "worried", "scared", "anxious",
-    "stressed", "overwhelmed", "exhausted", "desperate", "hurt", "sad",
-    "discouraged", "hopeless", "struggling",
+    "frustrated",
+    "stuck",
+    "confused",
+    "lost",
+    "worried",
+    "scared",
+    "anxious",
+    "stressed",
+    "overwhelmed",
+    "exhausted",
+    "desperate",
+    "hurt",
+    "sad",
+    "discouraged",
+    "hopeless",
+    "struggling",
 ];
 
 /// Positive affect markers
 const POSITIVE_AFFECT: &[&str] = &[
-    "excited", "happy", "great", "love", "amazing", "wonderful", "thrilled",
-    "delighted", "proud", "grateful", "relieved", "joyful",
+    "excited",
+    "happy",
+    "great",
+    "love",
+    "amazing",
+    "wonderful",
+    "thrilled",
+    "delighted",
+    "proud",
+    "grateful",
+    "relieved",
+    "joyful",
 ];
 
 // ── SMGOutput ─────────────────────────────────────────────────────────────────
@@ -111,11 +134,11 @@ pub struct SupramarginalGyrus {
 impl SupramarginalGyrus {
     pub fn new() -> Self {
         Self {
-            empathy_resonance:  0.30,
-            phonological_load:  0.20,
+            empathy_resonance: 0.30,
+            phonological_load: 0.20,
             embodied_activation: 0.10,
-            inputs_processed:   0,
-            distress_count:     0,
+            inputs_processed: 0,
+            distress_count: 0,
         }
     }
 
@@ -129,14 +152,20 @@ impl SupramarginalGyrus {
         let lower = text.to_lowercase();
 
         // ── Distress detection ────────────────────────────────────────────────
-        let distress_hits = DISTRESS_MARKERS.iter()
-            .filter(|&&w| lower.contains(w)).count();
+        let distress_hits = DISTRESS_MARKERS
+            .iter()
+            .filter(|&&w| lower.contains(w))
+            .count();
         let distress_detected = distress_hits >= 1;
-        if distress_detected { self.distress_count += 1; }
+        if distress_detected {
+            self.distress_count += 1;
+        }
 
         // ── Positive affect detection ─────────────────────────────────────────
-        let positive_hits = POSITIVE_AFFECT.iter()
-            .filter(|&&w| lower.contains(w)).count();
+        let positive_hits = POSITIVE_AFFECT
+            .iter()
+            .filter(|&&w| lower.contains(w))
+            .count();
         let positive_affect = positive_hits >= 1;
 
         // ── Empathy resonance ─────────────────────────────────────────────────
@@ -155,8 +184,8 @@ impl SupramarginalGyrus {
             0.0
         };
         let empathy_target = (empathy_raw - suppression).max(0.05);
-        self.empathy_resonance = self.empathy_resonance * (1.0 - EMPATHY_EMA)
-            + empathy_target * EMPATHY_EMA;
+        self.empathy_resonance =
+            self.empathy_resonance * (1.0 - EMPATHY_EMA) + empathy_target * EMPATHY_EMA;
 
         // ── Phonological load ─────────────────────────────────────────────────
         // Longer, more complex sentences load the phonological buffer more
@@ -165,15 +194,14 @@ impl SupramarginalGyrus {
         self.phonological_load = (self.phonological_load * 0.50 + phon_target * 0.50).min(1.0);
 
         // ── Embodied activation ───────────────────────────────────────────────
-        let action_hits = ACTION_WORDS.iter()
-            .filter(|&&w| lower.contains(w)).count();
+        let action_hits = ACTION_WORDS.iter().filter(|&&w| lower.contains(w)).count();
         let embodied_target = (action_hits as f32 * 0.12).min(1.0);
         self.embodied_activation = self.embodied_activation * 0.70 + embodied_target * 0.30;
 
         SMGOutput {
-            empathy_resonance:   self.empathy_resonance,
-            phonological_load:   self.phonological_load,
-            empathy_suppressed:  cognitive_load > SUPPRESSION_THRESHOLD,
+            empathy_resonance: self.empathy_resonance,
+            phonological_load: self.phonological_load,
+            empathy_suppressed: cognitive_load > SUPPRESSION_THRESHOLD,
             embodied_activation: self.embodied_activation,
             distress_detected,
             positive_affect,
@@ -190,12 +218,12 @@ impl SupramarginalGyrus {
     /// Current output without processing.
     pub fn current_output(&self) -> SMGOutput {
         SMGOutput {
-            empathy_resonance:   self.empathy_resonance,
-            phonological_load:   self.phonological_load,
-            empathy_suppressed:  false,
+            empathy_resonance: self.empathy_resonance,
+            phonological_load: self.phonological_load,
+            empathy_suppressed: false,
             embodied_activation: self.embodied_activation,
-            distress_detected:   false,
-            positive_affect:     false,
+            distress_detected: false,
+            positive_affect: false,
         }
     }
 
@@ -212,7 +240,9 @@ impl SupramarginalGyrus {
 }
 
 impl Default for SupramarginalGyrus {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -233,9 +263,16 @@ mod tests {
         let mut s = SupramarginalGyrus::new();
         let before = s.empathy_resonance;
         let out = s.process("I'm really frustrated and stuck on this problem", 0.30);
-        assert!(out.distress_detected, "distress keywords should be detected");
-        assert!(s.empathy_resonance >= before,
-            "distress should raise empathy: {:.2} → {:.2}", before, s.empathy_resonance);
+        assert!(
+            out.distress_detected,
+            "distress keywords should be detected"
+        );
+        assert!(
+            s.empathy_resonance >= before,
+            "distress should raise empathy: {:.2} → {:.2}",
+            before,
+            s.empathy_resonance
+        );
     }
 
     #[test]
@@ -249,26 +286,36 @@ mod tests {
     fn test_high_cognitive_load_suppresses_empathy() {
         let mut s = SupramarginalGyrus::new();
         let out = s.process("I'm really frustrated and struggling", 0.90);
-        assert!(out.empathy_suppressed,
-            "high cognitive load should suppress empathy");
+        assert!(
+            out.empathy_suppressed,
+            "high cognitive load should suppress empathy"
+        );
     }
 
     #[test]
     fn test_low_load_no_suppression() {
         let mut s = SupramarginalGyrus::new();
         let out = s.process("I'm struggling with this", 0.30);
-        assert!(!out.empathy_suppressed,
-            "low cognitive load should not suppress empathy");
+        assert!(
+            !out.empathy_suppressed,
+            "low cognitive load should not suppress empathy"
+        );
     }
 
     #[test]
     fn test_action_words_raise_embodied_activation() {
         let mut s = SupramarginalGyrus::new();
         let before = s.embodied_activation;
-        let out = s.process("I feel like I'm carrying a heavy weight and struggling to push through", 0.20);
-        assert!(out.embodied_activation >= before,
+        let out = s.process(
+            "I feel like I'm carrying a heavy weight and struggling to push through",
+            0.20,
+        );
+        assert!(
+            out.embodied_activation >= before,
             "action words should raise embodied activation: {:.2} → {:.2}",
-            before, out.embodied_activation);
+            before,
+            out.embodied_activation
+        );
     }
 
     #[test]
@@ -280,8 +327,10 @@ mod tests {
             "this is a very long and complex sentence with many words that should load the phonological buffer",
             0.20
         );
-        assert!(long_out.phonological_load >= short_out.phonological_load,
-            "longer sentence should produce higher phonological load");
+        assert!(
+            long_out.phonological_load >= short_out.phonological_load,
+            "longer sentence should produce higher phonological load"
+        );
     }
 
     #[test]
@@ -289,8 +338,11 @@ mod tests {
         let mut s = SupramarginalGyrus::new();
         s.process("I'm really worried and anxious", 0.20);
         s.process("This is overwhelming and I feel lost", 0.20);
-        assert_eq!(s.distress_count, 2,
-            "distress count should track distress events: {}", s.distress_count);
+        assert_eq!(
+            s.distress_count, 2,
+            "distress count should track distress events: {}",
+            s.distress_count
+        );
     }
 
     #[test]
@@ -300,8 +352,11 @@ mod tests {
         for _ in 0..10 {
             s.decay();
         }
-        assert!(s.empathy_resonance < 0.90,
-            "empathy should decay: {:.2}", s.empathy_resonance);
+        assert!(
+            s.empathy_resonance < 0.90,
+            "empathy should decay: {:.2}",
+            s.empathy_resonance
+        );
     }
 
     #[test]

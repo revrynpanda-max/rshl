@@ -50,7 +50,6 @@
 ///     - Synaptic weight log: running record of total LTP/LTD applied
 ///     - Learning rate: modulated by dopamine level and novelty
 ///     - Critical period flag: early in life, plasticity is higher
-
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -69,7 +68,7 @@ const MAX_STRENGTH: f32 = 5.0;
 const MIN_STRENGTH: f32 = 0.05;
 
 /// How many ticks a cell can be idle before LTD starts applying
-const LTD_IDLE_THRESHOLD: u64 = 120;  // ~10 minutes at 12 ticks/min
+const LTD_IDLE_THRESHOLD: u64 = 120; // ~10 minutes at 12 ticks/min
 
 /// LTP is stronger when dopamine is high (reward = learn more)
 const DOPAMINE_LTP_BOOST: f32 = 0.8;
@@ -78,16 +77,16 @@ const DOPAMINE_LTP_BOOST: f32 = 0.8;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PlasticityEvent {
-    pub kind:         PlasticityKind,
+    pub kind: PlasticityKind,
     pub cell_preview: String,
-    pub delta:        f32,
-    pub tick:         u64,
+    pub delta: f32,
+    pub tick: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum PlasticityKind {
-    LTP,  // strengthening
-    LTD,  // weakening
+    LTP, // strengthening
+    LTD, // weakening
 }
 
 // ── Neuroplasticity Engine ────────────────────────────────────────────────────
@@ -117,15 +116,15 @@ pub struct NeuroplasticityEngine {
 impl NeuroplasticityEngine {
     pub fn new() -> Self {
         Self {
-            last_access:     HashMap::new(),
-            total_ltp:       0,
-            total_ltd:       0,
-            total_ltp_gain:  0.0,
-            total_ltd_loss:  0.0,
-            learning_rate:   1.0,
-            critical_period: true,   // starts in critical period
-            recent_events:   Vec::with_capacity(20),
-            tick:            0,
+            last_access: HashMap::new(),
+            total_ltp: 0,
+            total_ltd: 0,
+            total_ltp_gain: 0.0,
+            total_ltd_loss: 0.0,
+            learning_rate: 1.0,
+            critical_period: true, // starts in critical period
+            recent_events: Vec::with_capacity(20),
+            tick: 0,
         }
     }
 
@@ -138,7 +137,7 @@ impl NeuroplasticityEngine {
 
         // LTP gain: base × learning_rate × dopamine boost × critical period
         let dopamine_boost = 1.0 + dopamine_level * DOPAMINE_LTP_BOOST;
-        let critical_mult  = if self.critical_period { 1.5 } else { 1.0 };
+        let critical_mult = if self.critical_period { 1.5 } else { 1.0 };
         let delta = (BASE_LTP * self.learning_rate * dopamine_boost * critical_mult)
             .min(MAX_STRENGTH - current_strength)
             .max(0.0);
@@ -157,10 +156,7 @@ impl NeuroplasticityEngine {
     /// Returns a list of (cell_text, strength_delta) — negative values = weaken.
     ///
     /// Call this every N ticks (e.g., every 30 ticks = every ~2.5 minutes).
-    pub fn ltd_sweep(
-        &mut self,
-        cells: &[(String, f32)],
-    ) -> Vec<(String, f32)> {
+    pub fn ltd_sweep(&mut self, cells: &[(String, f32)]) -> Vec<(String, f32)> {
         self.tick += 1;
         let mut changes = Vec::new();
 
@@ -195,15 +191,10 @@ impl NeuroplasticityEngine {
 
     /// Modulate learning rate from external signals.
     /// High dopamine + high novelty = more plasticity.
-    pub fn modulate(
-        &mut self,
-        dopamine_level: f32,
-        prediction_error: f32,
-    ) {
+    pub fn modulate(&mut self, dopamine_level: f32, prediction_error: f32) {
         // High PE (surprise) + high dopamine = peak learning moment
         let target_lr = 0.40 + dopamine_level * 0.35 + prediction_error * 0.25;
-        self.learning_rate = (self.learning_rate * 0.90 + target_lr * 0.10)
-            .clamp(0.20, 2.0);
+        self.learning_rate = (self.learning_rate * 0.90 + target_lr * 0.10).clamp(0.20, 2.0);
     }
 
     /// How strongly is KAI currently learning? (0=dormant, 1=peak plasticity)
@@ -214,7 +205,9 @@ impl NeuroplasticityEngine {
     /// Ratio of LTP to total events — >0.5 means net growth, <0.5 means net pruning
     pub fn ltp_ratio(&self) -> f32 {
         let total = self.total_ltp + self.total_ltd;
-        if total == 0 { return 0.5; }
+        if total == 0 {
+            return 0.5;
+        }
         self.total_ltp as f32 / total as f32
     }
 
@@ -223,9 +216,14 @@ impl NeuroplasticityEngine {
         format!(
             "NP: lr={:.3} LTP={} LTD={} | ratio={:.2} | {}",
             self.learning_rate,
-            self.total_ltp, self.total_ltd,
+            self.total_ltp,
+            self.total_ltd,
             self.ltp_ratio(),
-            if self.critical_period { "CRITICAL_PERIOD" } else { "mature" },
+            if self.critical_period {
+                "CRITICAL_PERIOD"
+            } else {
+                "mature"
+            },
         )
     }
 
@@ -243,11 +241,17 @@ impl NeuroplasticityEngine {
 }
 
 impl Default for NeuroplasticityEngine {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 fn cell_key(text: &str) -> String {
-    text.split_whitespace().take(4).collect::<Vec<_>>().join("_").to_lowercase()
+    text.split_whitespace()
+        .take(4)
+        .collect::<Vec<_>>()
+        .join("_")
+        .to_lowercase()
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -260,7 +264,11 @@ mod tests {
     fn test_ltp_strengthens_cell() {
         let mut np = NeuroplasticityEngine::new();
         let delta = np.ltp("consciousness is recursive", 1.0, 0.5);
-        assert!(delta > 0.0, "LTP should produce positive delta: {:.4}", delta);
+        assert!(
+            delta > 0.0,
+            "LTP should produce positive delta: {:.4}",
+            delta
+        );
         assert!(delta < 0.10, "LTP delta should be small: {:.4}", delta);
     }
 
@@ -268,10 +276,14 @@ mod tests {
     fn test_dopamine_boosts_ltp() {
         let mut np1 = NeuroplasticityEngine::new();
         let mut np2 = NeuroplasticityEngine::new();
-        let low_da  = np1.ltp("geometry patterns", 1.0, 0.1);
+        let low_da = np1.ltp("geometry patterns", 1.0, 0.1);
         let high_da = np2.ltp("geometry patterns", 1.0, 0.9);
-        assert!(high_da > low_da,
-            "high dopamine should boost LTP: low={:.4} high={:.4}", low_da, high_da);
+        assert!(
+            high_da > low_da,
+            "high dopamine should boost LTP: low={:.4} high={:.4}",
+            low_da,
+            high_da
+        );
     }
 
     #[test]
@@ -285,7 +297,11 @@ mod tests {
         let cells = vec![("old memory cell".to_string(), 1.0_f32)];
         let changes = np.ltd_sweep(&cells);
         assert!(!changes.is_empty(), "idle cell should receive LTD");
-        assert!(changes[0].1 < 0.0, "LTD delta should be negative: {:.4}", changes[0].1);
+        assert!(
+            changes[0].1 < 0.0,
+            "LTD delta should be negative: {:.4}",
+            changes[0].1
+        );
     }
 
     #[test]
@@ -297,7 +313,10 @@ mod tests {
         np.tick = 10;
         let cells = vec![("fresh memory".to_string(), 1.0_f32)];
         let changes = np.ltd_sweep(&cells);
-        assert!(changes.is_empty(), "recently accessed cell should not receive LTD");
+        assert!(
+            changes.is_empty(),
+            "recently accessed cell should not receive LTD"
+        );
     }
 
     #[test]
@@ -305,7 +324,11 @@ mod tests {
         let mut np = NeuroplasticityEngine::new();
         // Cell already near max
         let delta = np.ltp("very strong concept", MAX_STRENGTH - 0.001, 1.0);
-        assert!(delta <= 0.001, "LTP should not push past MAX_STRENGTH: {:.6}", delta);
+        assert!(
+            delta <= 0.001,
+            "LTP should not push past MAX_STRENGTH: {:.6}",
+            delta
+        );
     }
 
     #[test]
@@ -316,20 +339,26 @@ mod tests {
         np.modulate(0.9, 0.9);
         // target ≈ 0.40 + 0.9*0.35 + 0.9*0.25 = 0.40 + 0.315 + 0.225 = 0.94
         // After one modulate: lr = before*0.9 + 0.94*0.1 ≈ 1.0*0.9 + 0.094 = 0.994
-        assert!(np.learning_rate != before || (np.learning_rate - before).abs() < 0.01,
-            "learning rate should update: {:.4}", np.learning_rate);
+        assert!(
+            np.learning_rate != before || (np.learning_rate - before).abs() < 0.01,
+            "learning rate should update: {:.4}",
+            np.learning_rate
+        );
     }
 
     #[test]
     fn test_critical_period_boosts_ltp() {
-        let mut np_crit   = NeuroplasticityEngine::new();
+        let mut np_crit = NeuroplasticityEngine::new();
         let mut np_mature = NeuroplasticityEngine::new();
         np_mature.critical_period = false;
 
-        let crit_delta   = np_crit.ltp("new concept", 1.0, 0.5);
+        let crit_delta = np_crit.ltp("new concept", 1.0, 0.5);
         let mature_delta = np_mature.ltp("new concept", 1.0, 0.5);
-        assert!(crit_delta > mature_delta,
+        assert!(
+            crit_delta > mature_delta,
             "critical period should boost LTP: crit={:.4} mature={:.4}",
-            crit_delta, mature_delta);
+            crit_delta,
+            mature_delta
+        );
     }
 }

@@ -114,9 +114,9 @@ impl BNST {
     pub fn new() -> Self {
         Self {
             threat_context: THREAT_BASELINE,
-            vigilance:      THREAT_BASELINE,
-            updates:        0,
-            crf_events:     0,
+            vigilance: THREAT_BASELINE,
+            updates: 0,
+            crf_events: 0,
         }
     }
 
@@ -139,7 +139,8 @@ impl BNST {
             threat_delta += THREAT_BOOST_PER_FEATURE * (input.cortisol_level - 0.40);
         }
         if input.recent_conflicts >= 2 {
-            threat_delta += THREAT_BOOST_PER_FEATURE * (input.recent_conflicts as f32 * 0.3).min(0.30);
+            threat_delta +=
+                THREAT_BOOST_PER_FEATURE * (input.recent_conflicts as f32 * 0.3).min(0.30);
         }
 
         // Safety signals reduce threat
@@ -153,13 +154,13 @@ impl BNST {
         self.threat_context = (self.threat_context + threat_delta).clamp(0.0, 1.0);
 
         // Vigilance = EMA of threat context
-        self.vigilance = self.vigilance * (1.0 - VIGILANCE_EMA)
-            + self.threat_context * VIGILANCE_EMA;
+        self.vigilance =
+            self.vigilance * (1.0 - VIGILANCE_EMA) + self.threat_context * VIGILANCE_EMA;
 
         // CRF output (for cortisol)
         let crf_output = if self.threat_context > CRF_THRESHOLD {
             self.crf_events += 1;
-            (self.threat_context - CRF_THRESHOLD) * 2.0  // amplified
+            (self.threat_context - CRF_THRESHOLD) * 2.0 // amplified
         } else {
             0.0
         };
@@ -184,10 +185,14 @@ impl BNST {
     }
 
     /// Whether BNST is currently in a high-threat state.
-    pub fn is_anxious(&self) -> bool { self.threat_context > 0.50 }
+    pub fn is_anxious(&self) -> bool {
+        self.threat_context > 0.50
+    }
 
     /// Whether caution mode is active.
-    pub fn caution_mode(&self) -> bool { self.vigilance > 0.45 }
+    pub fn caution_mode(&self) -> bool {
+        self.vigilance > 0.45
+    }
 
     /// Status line for brain monitor.
     pub fn status_line(&self) -> String {
@@ -202,7 +207,9 @@ impl BNST {
 }
 
 impl Default for BNST {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -213,12 +220,12 @@ mod tests {
 
     fn default_input() -> BNSTInput {
         BNSTInput {
-            amygdala_arousal:  0.0,
+            amygdala_arousal: 0.0,
             habenula_activity: 0.0,
-            cortisol_level:    0.20,
-            recent_conflicts:  0,
-            safety_signal:     false,
-            bond_level:        0.40,
+            cortisol_level: 0.20,
+            recent_conflicts: 0,
+            safety_signal: false,
+            bond_level: 0.40,
         }
     }
 
@@ -235,8 +242,11 @@ mod tests {
         let mut input = default_input();
         input.amygdala_arousal = 0.90;
         let out = b.update(&input);
-        assert!(out.threat_context > THREAT_BASELINE,
-            "high amygdala should raise threat: {:.2}", out.threat_context);
+        assert!(
+            out.threat_context > THREAT_BASELINE,
+            "high amygdala should raise threat: {:.2}",
+            out.threat_context
+        );
     }
 
     #[test]
@@ -245,8 +255,11 @@ mod tests {
         let mut input = default_input();
         input.habenula_activity = 0.70;
         let out = b.update(&input);
-        assert!(out.threat_context > THREAT_BASELINE,
-            "habenula activity should raise threat: {:.2}", out.threat_context);
+        assert!(
+            out.threat_context > THREAT_BASELINE,
+            "habenula activity should raise threat: {:.2}",
+            out.threat_context
+        );
     }
 
     #[test]
@@ -256,8 +269,11 @@ mod tests {
         let mut input = default_input();
         input.safety_signal = true;
         let out = b.update(&input);
-        assert!(out.threat_context < 0.50,
-            "safety signal should reduce threat: {:.2}", out.threat_context);
+        assert!(
+            out.threat_context < 0.50,
+            "safety signal should reduce threat: {:.2}",
+            out.threat_context
+        );
     }
 
     #[test]
@@ -267,8 +283,11 @@ mod tests {
         let mut input = default_input();
         input.bond_level = 0.85;
         let out = b.update(&input);
-        assert!(out.threat_context <= 0.55,
-            "high bond level should not increase threat: {:.2}", out.threat_context);
+        assert!(
+            out.threat_context <= 0.55,
+            "high bond level should not increase threat: {:.2}",
+            out.threat_context
+        );
     }
 
     #[test]
@@ -277,8 +296,11 @@ mod tests {
         let mut input = default_input();
         input.recent_conflicts = 3;
         let out = b.update(&input);
-        assert!(out.threat_context > THREAT_BASELINE,
-            "multiple conflicts should raise threat: {:.2}", out.threat_context);
+        assert!(
+            out.threat_context > THREAT_BASELINE,
+            "multiple conflicts should raise threat: {:.2}",
+            out.threat_context
+        );
     }
 
     #[test]
@@ -289,8 +311,11 @@ mod tests {
         input.amygdala_arousal = 0.80;
         let out = b.update(&input);
         if out.threat_context > CRF_THRESHOLD {
-            assert!(out.crf_output > 0.0,
-                "high threat should produce CRF output: {:.2}", out.crf_output);
+            assert!(
+                out.crf_output > 0.0,
+                "high threat should produce CRF output: {:.2}",
+                out.crf_output
+            );
         }
     }
 
@@ -301,17 +326,26 @@ mod tests {
         for _ in 0..20 {
             b.decay();
         }
-        assert!(b.threat_context < 0.70,
-            "threat should decay: {:.2}", b.threat_context);
-        assert!(b.threat_context >= THREAT_BASELINE,
-            "should not go below baseline: {:.2}", b.threat_context);
+        assert!(
+            b.threat_context < 0.70,
+            "threat should decay: {:.2}",
+            b.threat_context
+        );
+        assert!(
+            b.threat_context >= THREAT_BASELINE,
+            "should not go below baseline: {:.2}",
+            b.threat_context
+        );
     }
 
     #[test]
     fn test_caution_mode_at_high_vigilance() {
         let mut b = BNST::new();
         b.vigilance = 0.60;
-        assert!(b.caution_mode(), "high vigilance should trigger caution mode");
+        assert!(
+            b.caution_mode(),
+            "high vigilance should trigger caution mode"
+        );
     }
 
     #[test]

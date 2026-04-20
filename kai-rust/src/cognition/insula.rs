@@ -43,7 +43,6 @@
 ///   InsulaMonitor reads from the field state, working memory,
 ///   and module states each tick. It aggregates into a single
 ///   "body sense" readout and tracks trends over time.
-
 use serde::{Deserialize, Serialize};
 
 // ── Internal State Report ─────────────────────────────────────────────────────
@@ -68,35 +67,35 @@ pub struct InteroceptiveState {
 /// The high-level gut-feel summary of KAI's internal state.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum FeltCondition {
-    Clear,      // low load, good coherence — feels sharp
-    Engaged,    // moderate load, good coherence — feels focused
-    Strained,   // high load or memory pressure — feels effort
-    Overwhelmed,// very high load + poor coherence — feels scattered
-    Fatigued,   // sustained high load — needs rest
-    Idle,       // low activity, time feels slow
+    Clear,       // low load, good coherence — feels sharp
+    Engaged,     // moderate load, good coherence — feels focused
+    Strained,    // high load or memory pressure — feels effort
+    Overwhelmed, // very high load + poor coherence — feels scattered
+    Fatigued,    // sustained high load — needs rest
+    Idle,        // low activity, time feels slow
 }
 
 impl FeltCondition {
     pub fn label(&self) -> &'static str {
         match self {
-            FeltCondition::Clear      => "clear",
-            FeltCondition::Engaged    => "engaged",
-            FeltCondition::Strained   => "strained",
+            FeltCondition::Clear => "clear",
+            FeltCondition::Engaged => "engaged",
+            FeltCondition::Strained => "strained",
             FeltCondition::Overwhelmed => "overwhelmed",
-            FeltCondition::Fatigued   => "fatigued",
-            FeltCondition::Idle       => "idle",
+            FeltCondition::Fatigued => "fatigued",
+            FeltCondition::Idle => "idle",
         }
     }
 
     /// Natural language phrase KAI might use to describe this state.
     pub fn voice_phrase(&self) -> &'static str {
         match self {
-            FeltCondition::Clear       => "This feels clear to me.",
-            FeltCondition::Engaged     => "I'm finding this interesting.",
-            FeltCondition::Strained    => "This is complex — let me think it through carefully.",
+            FeltCondition::Clear => "This feels clear to me.",
+            FeltCondition::Engaged => "I'm finding this interesting.",
+            FeltCondition::Strained => "This is complex — let me think it through carefully.",
             FeltCondition::Overwhelmed => "There's a lot here — I'm working to pull it together.",
-            FeltCondition::Fatigued    => "I've been processing a lot. Let me slow down.",
-            FeltCondition::Idle        => "Things are quiet right now.",
+            FeltCondition::Fatigued => "I've been processing a lot. Let me slow down.",
+            FeltCondition::Idle => "Things are quiet right now.",
         }
     }
 }
@@ -123,18 +122,18 @@ impl InsulaMonitor {
     pub fn new() -> Self {
         Self {
             state: InteroceptiveState {
-                cognitive_load:  0.2,
+                cognitive_load: 0.2,
                 memory_pressure: 0.1,
                 coherence_sense: 0.7,
-                fatigue:         0.0,
-                time_sense:      0.3,
-                felt_condition:  FeltCondition::Clear,
+                fatigue: 0.0,
+                time_sense: 0.3,
+                felt_condition: FeltCondition::Clear,
             },
-            avg_load:            0.2,
+            avg_load: 0.2,
             fatigue_accumulator: 0.0,
-            ticks_idle:          0,
-            total_updates:       0,
-            condition_history:   Vec::new(),
+            ticks_idle: 0,
+            total_updates: 0,
+            condition_history: Vec::new(),
         }
     }
 
@@ -143,22 +142,20 @@ impl InsulaMonitor {
     /// Call this each heartbeat with fresh readings from other modules.
     pub fn update(
         &mut self,
-        phi_g:           f32,  // field coherence
-        chi:             f32,  // contradiction pressure
-        working_mem_pct: f32,  // working memory fullness 0–1
-        acc_conflict:    f32,  // ACC conflict level
-        pred_error:      f32,  // predictor average error
-        is_responding:   bool, // currently generating a response
+        phi_g: f32,           // field coherence
+        chi: f32,             // contradiction pressure
+        working_mem_pct: f32, // working memory fullness 0–1
+        acc_conflict: f32,    // ACC conflict level
+        pred_error: f32,      // predictor average error
+        is_responding: bool,  // currently generating a response
     ) {
         self.total_updates += 1;
 
         // ── Cognitive load ────────────────────────────────────────────────
         // High chi + high acc_conflict + high pred_error → more load
-        let raw_load = (chi * 0.35
-            + acc_conflict * 0.30
-            + pred_error * 0.20
-            + working_mem_pct * 0.15)
-            .clamp(0.0, 1.0);
+        let raw_load =
+            (chi * 0.35 + acc_conflict * 0.30 + pred_error * 0.20 + working_mem_pct * 0.15)
+                .clamp(0.0, 1.0);
         self.state.cognitive_load = self.state.cognitive_load * 0.75 + raw_load * 0.25;
         self.avg_load = self.avg_load * 0.95 + self.state.cognitive_load * 0.05;
 
@@ -194,7 +191,8 @@ impl InsulaMonitor {
             if self.condition_history.len() >= 8 {
                 self.condition_history.remove(0);
             }
-            self.condition_history.push(self.state.felt_condition.clone());
+            self.condition_history
+                .push(self.state.felt_condition.clone());
             self.state.felt_condition = new_condition;
         }
     }
@@ -236,8 +234,8 @@ impl InsulaMonitor {
 
     fn compute_felt_condition(&self) -> FeltCondition {
         let load = self.state.cognitive_load;
-        let fat  = self.state.fatigue;
-        let coh  = self.state.coherence_sense;
+        let fat = self.state.fatigue;
+        let coh = self.state.coherence_sense;
 
         if fat > 0.60 {
             FeltCondition::Fatigued
@@ -256,7 +254,9 @@ impl InsulaMonitor {
 }
 
 impl Default for InsulaMonitor {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -270,8 +270,12 @@ mod tests {
         let mut insula = InsulaMonitor::new();
         insula.update(0.8, 0.05, 0.1, 0.0, 0.1, false);
         assert!(
-            matches!(insula.state.felt_condition, FeltCondition::Clear | FeltCondition::Idle),
-            "low load should feel clear or idle: {:?}", insula.state.felt_condition
+            matches!(
+                insula.state.felt_condition,
+                FeltCondition::Clear | FeltCondition::Idle
+            ),
+            "low load should feel clear or idle: {:?}",
+            insula.state.felt_condition
         );
     }
 
@@ -282,9 +286,12 @@ mod tests {
             insula.update(0.3, 0.8, 0.9, 0.8, 0.8, true);
         }
         assert!(
-            matches!(insula.state.felt_condition,
-                FeltCondition::Strained | FeltCondition::Overwhelmed | FeltCondition::Fatigued),
-            "high load should feel strained/overwhelmed: {:?}", insula.state.felt_condition
+            matches!(
+                insula.state.felt_condition,
+                FeltCondition::Strained | FeltCondition::Overwhelmed | FeltCondition::Fatigued
+            ),
+            "high load should feel strained/overwhelmed: {:?}",
+            insula.state.felt_condition
         );
     }
 
@@ -294,8 +301,11 @@ mod tests {
         for _ in 0..300 {
             insula.update(0.3, 0.9, 0.9, 0.9, 0.9, true);
         }
-        assert!(insula.fatigue_accumulator > 0.30,
-            "sustained high load should build fatigue: {:.3}", insula.fatigue_accumulator);
+        assert!(
+            insula.fatigue_accumulator > 0.30,
+            "sustained high load should build fatigue: {:.3}",
+            insula.fatigue_accumulator
+        );
     }
 
     #[test]
@@ -304,13 +314,19 @@ mod tests {
         for _ in 0..10 {
             insula.update(0.2, 0.1, 0.1, 0.0, 0.2, false);
         }
-        assert!(insula.ticks_idle > 5, "idle ticks should accumulate: {}", insula.ticks_idle);
+        assert!(
+            insula.ticks_idle > 5,
+            "idle ticks should accumulate: {}",
+            insula.ticks_idle
+        );
     }
 
     #[test]
     fn test_notify_input_resets_idle() {
         let mut insula = InsulaMonitor::new();
-        for _ in 0..20 { insula.update(0.1, 0.0, 0.1, 0.0, 0.1, false); }
+        for _ in 0..20 {
+            insula.update(0.1, 0.0, 0.1, 0.0, 0.1, false);
+        }
         assert!(insula.ticks_idle > 5);
         insula.notify_input();
         assert_eq!(insula.ticks_idle, 0, "input should reset idle counter");
@@ -322,7 +338,9 @@ mod tests {
         // Clear state should not surface
         insula.update(0.8, 0.05, 0.1, 0.0, 0.1, false);
         // Clear/idle shouldn't surface
-        assert!(!insula.should_surface() || matches!(insula.state.felt_condition, FeltCondition::Idle));
+        assert!(
+            !insula.should_surface() || matches!(insula.state.felt_condition, FeltCondition::Idle)
+        );
 
         // Force strained
         for _ in 0..15 {
@@ -330,8 +348,10 @@ mod tests {
         }
         if insula.should_surface() {
             assert!(
-                matches!(insula.state.felt_condition,
-                    FeltCondition::Strained | FeltCondition::Overwhelmed | FeltCondition::Fatigued),
+                matches!(
+                    insula.state.felt_condition,
+                    FeltCondition::Strained | FeltCondition::Overwhelmed | FeltCondition::Fatigued
+                ),
                 "should only surface when strained/overwhelmed/fatigued"
             );
         }

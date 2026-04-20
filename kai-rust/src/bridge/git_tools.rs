@@ -11,7 +11,6 @@
 ///   git commit      — KAI generates a commit message from its field
 ///   git branch      — current branch info
 ///   git add <file>  — stage files
-
 use crate::core::Universe;
 
 /// Result of a git operation.
@@ -48,7 +47,9 @@ pub fn git_status(universe: &mut Universe) -> GitResult {
             // Parse status lines and store meaningful ones
             for line in output.lines() {
                 let trimmed = line.trim();
-                if trimmed.is_empty() || trimmed.starts_with("##") { continue; }
+                if trimmed.is_empty() || trimmed.starts_with("##") {
+                    continue;
+                }
                 // e.g. " M src/main.rs" or "?? new_file.rs"
                 let cell = format!("[git-status] {}", trimmed);
                 if universe.store_or_reinforce(&cell, "action", "git", 1.1) {
@@ -61,9 +62,17 @@ pub fn git_status(universe: &mut Universe) -> GitResult {
                 let cell = format!("[git-branch] {}", branch);
                 let _ = universe.store_or_reinforce(&cell, "action", "git", 1.2);
             }
-            GitResult { output, cells_stored: stored, error: None }
+            GitResult {
+                output,
+                cells_stored: stored,
+                error: None,
+            }
         }
-        Err(e) => GitResult { output: String::new(), cells_stored: 0, error: Some(e) },
+        Err(e) => GitResult {
+            output: String::new(),
+            cells_stored: 0,
+            error: Some(e),
+        },
     }
 }
 
@@ -71,7 +80,7 @@ pub fn git_status(universe: &mut Universe) -> GitResult {
 pub fn git_diff(file: Option<&str>, universe: &mut Universe) -> GitResult {
     let args: Vec<&str> = match file {
         Some(f) => vec!["diff", "--stat", f],
-        None    => vec!["diff", "--stat"],
+        None => vec!["diff", "--stat"],
     };
 
     match run_git(&args) {
@@ -79,12 +88,10 @@ pub fn git_diff(file: Option<&str>, universe: &mut Universe) -> GitResult {
             // Also get the actual diff (limited to first 100 lines)
             let full_args: Vec<&str> = match file {
                 Some(f) => vec!["diff", f],
-                None    => vec!["diff"],
+                None => vec!["diff"],
             };
             let full_diff = run_git(&full_args).unwrap_or_default();
-            let diff_preview: String = full_diff.lines().take(80)
-                .collect::<Vec<_>>()
-                .join("\n");
+            let diff_preview: String = full_diff.lines().take(80).collect::<Vec<_>>().join("\n");
 
             let mut stored = 0;
             // Store changed file names as knowledge
@@ -110,9 +117,17 @@ pub fn git_diff(file: Option<&str>, universe: &mut Universe) -> GitResult {
                 format!("{}\n\n{}", stat_output, diff_preview)
             };
 
-            GitResult { output: display, cells_stored: stored, error: None }
+            GitResult {
+                output: display,
+                cells_stored: stored,
+                error: None,
+            }
         }
-        Err(e) => GitResult { output: String::new(), cells_stored: 0, error: Some(e) },
+        Err(e) => GitResult {
+            output: String::new(),
+            cells_stored: 0,
+            error: Some(e),
+        },
     }
 }
 
@@ -133,9 +148,17 @@ pub fn git_log(n: usize, universe: &mut Universe) -> GitResult {
                     }
                 }
             }
-            GitResult { output, cells_stored: stored, error: None }
+            GitResult {
+                output,
+                cells_stored: stored,
+                error: None,
+            }
         }
-        Err(e) => GitResult { output: String::new(), cells_stored: 0, error: Some(e) },
+        Err(e) => GitResult {
+            output: String::new(),
+            cells_stored: 0,
+            error: Some(e),
+        },
     }
 }
 
@@ -146,15 +169,26 @@ pub fn git_branch(universe: &mut Universe) -> GitResult {
             let mut stored = 0;
             for line in output.lines() {
                 if line.starts_with('*') {
-                    let cell = format!("[git-branch] current: {}", line.trim_start_matches("* ").trim());
+                    let cell = format!(
+                        "[git-branch] current: {}",
+                        line.trim_start_matches("* ").trim()
+                    );
                     if universe.store_or_reinforce(&cell, "action", "git", 1.2) {
                         stored += 1;
                     }
                 }
             }
-            GitResult { output, cells_stored: stored, error: None }
+            GitResult {
+                output,
+                cells_stored: stored,
+                error: None,
+            }
         }
-        Err(e) => GitResult { output: String::new(), cells_stored: 0, error: Some(e) },
+        Err(e) => GitResult {
+            output: String::new(),
+            cells_stored: 0,
+            error: Some(e),
+        },
     }
 }
 
@@ -166,7 +200,11 @@ pub fn git_add(file: &str) -> GitResult {
             cells_stored: 0,
             error: None,
         },
-        Err(e) => GitResult { output: String::new(), cells_stored: 0, error: Some(e) },
+        Err(e) => GitResult {
+            output: String::new(),
+            cells_stored: 0,
+            error: Some(e),
+        },
     }
 }
 
@@ -175,10 +213,22 @@ pub fn git_commit(message: &str, universe: &mut Universe) -> GitResult {
     match run_git(&["commit", "-m", message]) {
         Ok(output) => {
             let cell = format!("[git-commit] {}", message);
-            let stored = if universe.store_or_reinforce(&cell, "action", "git", 1.3) { 1 } else { 0 };
-            GitResult { output, cells_stored: stored, error: None }
+            let stored = if universe.store_or_reinforce(&cell, "action", "git", 1.3) {
+                1
+            } else {
+                0
+            };
+            GitResult {
+                output,
+                cells_stored: stored,
+                error: None,
+            }
         }
-        Err(e) => GitResult { output: String::new(), cells_stored: 0, error: Some(e) },
+        Err(e) => GitResult {
+            output: String::new(),
+            cells_stored: 0,
+            error: Some(e),
+        },
     }
 }
 
@@ -191,7 +241,8 @@ pub fn suggest_commit_message(universe: &Universe) -> String {
 
     let mut changed_files: Vec<String> = Vec::new();
     for hit in recent_diff_hits.iter().chain(recent_status_hits.iter()) {
-        let text = hit.text
+        let text = hit
+            .text
             .trim_start_matches("[git-diff] modified: ")
             .trim_start_matches("[git-status] ")
             .trim()
@@ -206,18 +257,32 @@ pub fn suggest_commit_message(universe: &Universe) -> String {
     }
 
     // Simple heuristic: classify files to guess change type
-    let has_tests = changed_files.iter().any(|f| f.contains("test") || f.contains("spec"));
-    let has_docs  = changed_files.iter().any(|f| f.ends_with(".md") || f.ends_with(".txt"));
-    let has_config = changed_files.iter().any(|f| f.ends_with(".toml") || f.ends_with(".json") || f.ends_with(".yml"));
-    let has_src   = changed_files.iter().any(|f| f.ends_with(".rs") || f.ends_with(".ts") || f.ends_with(".js") || f.ends_with(".py"));
+    let has_tests = changed_files
+        .iter()
+        .any(|f| f.contains("test") || f.contains("spec"));
+    let has_docs = changed_files
+        .iter()
+        .any(|f| f.ends_with(".md") || f.ends_with(".txt"));
+    let has_config = changed_files
+        .iter()
+        .any(|f| f.ends_with(".toml") || f.ends_with(".json") || f.ends_with(".yml"));
+    let has_src = changed_files.iter().any(|f| {
+        f.ends_with(".rs") || f.ends_with(".ts") || f.ends_with(".js") || f.ends_with(".py")
+    });
 
-    let verb = if has_tests && !has_src { "test" }
-        else if has_docs && !has_src   { "docs" }
-        else if has_config && !has_src { "config" }
-        else                           { "update" };
+    let verb = if has_tests && !has_src {
+        "test"
+    } else if has_docs && !has_src {
+        "docs"
+    } else if has_config && !has_src {
+        "config"
+    } else {
+        "update"
+    };
 
     // Take first 2 changed files as subject
-    let subject_files: Vec<&str> = changed_files.iter()
+    let subject_files: Vec<&str> = changed_files
+        .iter()
         .filter(|f| !f.starts_with('['))
         .take(2)
         .map(|s| s.as_str())
@@ -240,23 +305,36 @@ pub fn parse_status_summary(status_output: &str) -> StatusSummary {
 
     for line in status_output.lines() {
         if line.starts_with("##") {
-            branch = line.trim_start_matches("## ").split("...").next()
-                .unwrap_or("").trim().to_string();
+            branch = line
+                .trim_start_matches("## ")
+                .split("...")
+                .next()
+                .unwrap_or("")
+                .trim()
+                .to_string();
             continue;
         }
-        if line.len() < 3 { continue; }
+        if line.len() < 3 {
+            continue;
+        }
         let status_code = &line[..2];
         let filename = line[3..].trim().to_string();
         match status_code.trim() {
             "M" | " M" | "MM" => modified.push(filename),
-            "A" | "AM"        => added.push(filename),
-            "D" | " D"        => deleted.push(filename),
-            "??"              => untracked.push(filename),
-            _                 => modified.push(filename),
+            "A" | "AM" => added.push(filename),
+            "D" | " D" => deleted.push(filename),
+            "??" => untracked.push(filename),
+            _ => modified.push(filename),
         }
     }
 
-    StatusSummary { branch, modified, added, deleted, untracked }
+    StatusSummary {
+        branch,
+        modified,
+        added,
+        deleted,
+        untracked,
+    }
 }
 
 pub struct StatusSummary {
@@ -269,8 +347,10 @@ pub struct StatusSummary {
 
 impl StatusSummary {
     pub fn is_clean(&self) -> bool {
-        self.modified.is_empty() && self.added.is_empty()
-            && self.deleted.is_empty() && self.untracked.is_empty()
+        self.modified.is_empty()
+            && self.added.is_empty()
+            && self.deleted.is_empty()
+            && self.untracked.is_empty()
     }
 
     pub fn format_display(&self) -> String {
@@ -280,19 +360,27 @@ impl StatusSummary {
         let mut lines = vec![format!("Branch: {}", self.branch)];
         if !self.modified.is_empty() {
             lines.push(format!("Modified  ({}):", self.modified.len()));
-            for f in &self.modified { lines.push(format!("  ~ {}", f)); }
+            for f in &self.modified {
+                lines.push(format!("  ~ {}", f));
+            }
         }
         if !self.added.is_empty() {
             lines.push(format!("Staged    ({}):", self.added.len()));
-            for f in &self.added { lines.push(format!("  + {}", f)); }
+            for f in &self.added {
+                lines.push(format!("  + {}", f));
+            }
         }
         if !self.deleted.is_empty() {
             lines.push(format!("Deleted   ({}):", self.deleted.len()));
-            for f in &self.deleted { lines.push(format!("  - {}", f)); }
+            for f in &self.deleted {
+                lines.push(format!("  - {}", f));
+            }
         }
         if !self.untracked.is_empty() {
             lines.push(format!("Untracked ({}):", self.untracked.len()));
-            for f in self.untracked.iter().take(8) { lines.push(format!("  ? {}", f)); }
+            for f in self.untracked.iter().take(8) {
+                lines.push(format!("  ? {}", f));
+            }
             if self.untracked.len() > 8 {
                 lines.push(format!("  ... and {} more", self.untracked.len() - 8));
             }

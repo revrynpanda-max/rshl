@@ -2,7 +2,6 @@
 ///
 /// A dream candidate that meets ALL thresholds gets written into
 /// the universe as durable memory — it becomes a belief.
-
 use super::candidates::{CandidateBuffer, CandidateStatus};
 use crate::core::Universe;
 
@@ -46,12 +45,16 @@ pub struct PromotedBelief {
 }
 
 fn mean(v: &[f32]) -> f32 {
-    if v.is_empty() { return 0.0; }
+    if v.is_empty() {
+        return 0.0;
+    }
     v.iter().sum::<f32>() / v.len() as f32
 }
 
 fn stddev(v: &[f32]) -> f32 {
-    if v.len() < 2 { return 0.0; }
+    if v.len() < 2 {
+        return 0.0;
+    }
     let m = mean(v);
     let var = v.iter().map(|x| (x - m).powi(2)).sum::<f32>() / v.len() as f32;
     var.sqrt()
@@ -59,7 +62,11 @@ fn stddev(v: &[f32]) -> f32 {
 
 #[allow(dead_code)]
 fn score(e: &super::candidates::CandidateEntry) -> f32 {
-    let nsr = if e.seen_count > 0 { e.non_source_count as f32 / e.seen_count as f32 } else { 0.0 };
+    let nsr = if e.seen_count > 0 {
+        e.non_source_count as f32 / e.seen_count as f32
+    } else {
+        0.0
+    };
     let chi_mean = mean(&e.contradiction_history);
     let stability = (1.0 - stddev(&e.phi_history)).clamp(0.0, 1.0);
     e.best_phi_g * 0.30
@@ -80,22 +87,40 @@ pub fn run_promotion(
     let mut eligible_keys: Vec<String> = Vec::new();
 
     for entry in &all {
-        if entry.status != CandidateStatus::Candidate { continue; }
-        if entry.seen_count < thresholds.seen_count { continue; }
-        if entry.best_c < thresholds.best_c { continue; }
-        if entry.best_phi_g < thresholds.best_phi_g { continue; }
-        if entry.best_confidence < thresholds.best_confidence { continue; }
+        if entry.status != CandidateStatus::Candidate {
+            continue;
+        }
+        if entry.seen_count < thresholds.seen_count {
+            continue;
+        }
+        if entry.best_c < thresholds.best_c {
+            continue;
+        }
+        if entry.best_phi_g < thresholds.best_phi_g {
+            continue;
+        }
+        if entry.best_confidence < thresholds.best_confidence {
+            continue;
+        }
 
         let chi_mean = mean(&entry.contradiction_history);
-        if chi_mean > thresholds.max_chi { continue; }
+        if chi_mean > thresholds.max_chi {
+            continue;
+        }
 
         let chi_sd = stddev(&entry.contradiction_history);
-        if chi_sd > thresholds.max_chi_sd { continue; }
+        if chi_sd > thresholds.max_chi_sd {
+            continue;
+        }
 
         let nsr = if entry.seen_count > 0 {
             entry.non_source_count as f32 / entry.seen_count as f32
-        } else { 0.0 };
-        if nsr < thresholds.min_nsr { continue; }
+        } else {
+            0.0
+        };
+        if nsr < thresholds.min_nsr {
+            continue;
+        }
 
         eligible_keys.push(entry.key.clone());
     }
@@ -109,7 +134,8 @@ pub fn run_promotion(
         let entry = candidates.get_all().into_iter().find(|e| e.key == *key);
         if let Some(entry) = entry {
             let stability = (1.0 - stddev(&entry.phi_history)).clamp(0.0, 1.0);
-            let raw_strength = (entry.best_c * 2.5 + entry.best_phi_g * 1.5 + stability * 0.5).clamp(0.0, 1.0);
+            let raw_strength =
+                (entry.best_c * 2.5 + entry.best_phi_g * 1.5 + stability * 0.5).clamp(0.0, 1.0);
             let strength = 1.5 + raw_strength * 2.5; // maps [0,1] → [1.5, 4.0]
 
             universe.store(&entry.text, "memory", "promoted-dream", strength);

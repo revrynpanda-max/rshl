@@ -100,10 +100,10 @@ pub struct NorepinephrineSystem {
 impl NorepinephrineSystem {
     pub fn new() -> Self {
         Self {
-            level:       NE_BASELINE,
+            level: NE_BASELINE,
             stress_load: 0.0,
-            baseline:    NE_BASELINE,
-            gain:        1.0,
+            baseline: NE_BASELINE,
+            gain: 1.0,
             event_count: 0,
         }
     }
@@ -205,7 +205,7 @@ impl NorepinephrineSystem {
             l if l < 0.62 => "focused",
             l if l < 0.78 => "heightened",
             l if l < 0.90 => "high-alert",
-            _             => "overwhelmed",
+            _ => "overwhelmed",
         }
     }
 
@@ -220,7 +220,7 @@ impl NorepinephrineSystem {
         } else if cosine < 0.40 && salience > 0.50 {
             NeEvent::NovelInput
         } else {
-            NeEvent::Decay  // nothing special — passive
+            NeEvent::Decay // nothing special — passive
         }
     }
 
@@ -237,7 +237,9 @@ impl NorepinephrineSystem {
 }
 
 impl Default for NorepinephrineSystem {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -249,7 +251,10 @@ mod tests {
     #[test]
     fn test_initial_state() {
         let ne = NorepinephrineSystem::new();
-        assert!((ne.level - 0.50).abs() < 0.01, "initial level should be 0.50");
+        assert!(
+            (ne.level - 0.50).abs() < 0.01,
+            "initial level should be 0.50"
+        );
         assert_eq!(ne.stress_load, 0.0);
         assert!(!ne.is_stressed());
     }
@@ -268,7 +273,10 @@ mod tests {
         for _ in 0..12 {
             ne.process(NeEvent::Threat);
         }
-        assert!(ne.is_stressed(), "repeated threats should build stress load");
+        assert!(
+            ne.is_stressed(),
+            "repeated threats should build stress load"
+        );
     }
 
     #[test]
@@ -292,9 +300,18 @@ mod tests {
         ne.level = 1.0;
         let at_max = ne.alertness_score();
 
-        assert!(at_optimal > at_zero, "optimal NE should beat low NE for alertness");
-        assert!(at_optimal > at_max, "optimal NE should beat high NE for alertness");
-        assert!((at_optimal - 1.0).abs() < 0.01, "alertness at optimal should be ~1.0");
+        assert!(
+            at_optimal > at_zero,
+            "optimal NE should beat low NE for alertness"
+        );
+        assert!(
+            at_optimal > at_max,
+            "optimal NE should beat high NE for alertness"
+        );
+        assert!(
+            (at_optimal - 1.0).abs() < 0.01,
+            "alertness at optimal should be ~1.0"
+        );
     }
 
     #[test]
@@ -306,7 +323,12 @@ mod tests {
         ne.level = 0.55 + 0.15; // 0.70
         let above = ne.alertness_score();
         // Should be approximately equal (symmetric curve)
-        assert!((below - above).abs() < 0.05, "alertness curve should be roughly symmetric: below={:.3} above={:.3}", below, above);
+        assert!(
+            (below - above).abs() < 0.05,
+            "alertness curve should be roughly symmetric: below={:.3} above={:.3}",
+            below,
+            above
+        );
     }
 
     #[test]
@@ -328,9 +350,12 @@ mod tests {
         let stressed_threshold = ne.attention_threshold();
         ne.stress_load = 0.0;
         let calm_threshold = ne.attention_threshold();
-        assert!(stressed_threshold > calm_threshold,
+        assert!(
+            stressed_threshold > calm_threshold,
             "stress should raise attention threshold (tunnel vision): stressed={:.2} calm={:.2}",
-            stressed_threshold, calm_threshold);
+            stressed_threshold,
+            calm_threshold
+        );
     }
 
     #[test]
@@ -358,13 +383,21 @@ mod tests {
     #[test]
     fn test_classify_input_novel() {
         let event = NorepinephrineSystem::classify_input(0.10, 0.40);
-        assert_eq!(event, NeEvent::NovelInput, "very low cosine should be novel");
+        assert_eq!(
+            event,
+            NeEvent::NovelInput,
+            "very low cosine should be novel"
+        );
     }
 
     #[test]
     fn test_classify_input_high_salience() {
         let event = NorepinephrineSystem::classify_input(0.70, 0.90);
-        assert_eq!(event, NeEvent::HighSalience, "high salience should override");
+        assert_eq!(
+            event,
+            NeEvent::HighSalience,
+            "high salience should override"
+        );
     }
 
     #[test]

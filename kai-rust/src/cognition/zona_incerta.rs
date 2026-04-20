@@ -61,16 +61,45 @@ const THREAT_GATE_THRESHOLD: f32 = 0.50;
 
 /// Threat markers (ZI heightens inhibition → hyper-focus on threat)
 const THREAT_MARKERS: &[&str] = &[
-    "danger", "threat", "wrong", "error", "attack", "urgent", "critical",
-    "alarm", "warning", "immediate", "now", "quickly", "emergency", "problem",
-    "fail", "broken", "crash", "severe",
+    "danger",
+    "threat",
+    "wrong",
+    "error",
+    "attack",
+    "urgent",
+    "critical",
+    "alarm",
+    "warning",
+    "immediate",
+    "now",
+    "quickly",
+    "emergency",
+    "problem",
+    "fail",
+    "broken",
+    "crash",
+    "severe",
 ];
 
 /// Safety / reward markers (ZI releases → open, exploratory mode)
 const SAFETY_MARKERS: &[&str] = &[
-    "safe", "good", "well", "clear", "understand", "makes sense", "right",
-    "comfortable", "relaxed", "curious", "explore", "interesting", "wonder",
-    "play", "open", "free", "easy",
+    "safe",
+    "good",
+    "well",
+    "clear",
+    "understand",
+    "makes sense",
+    "right",
+    "comfortable",
+    "relaxed",
+    "curious",
+    "explore",
+    "interesting",
+    "wonder",
+    "play",
+    "open",
+    "free",
+    "easy",
 ];
 
 // ── ZIOutput ──────────────────────────────────────────────────────────────────
@@ -109,10 +138,10 @@ impl ZonaIncerta {
     pub fn new() -> Self {
         Self {
             inhibition_level: INHIBITION_BASELINE,
-            salience_filter:  0.40,
+            salience_filter: 0.40,
             inputs_processed: 0,
-            threat_gates:     0,
-            release_events:   0,
+            threat_gates: 0,
+            release_events: 0,
         }
     }
 
@@ -134,44 +163,50 @@ impl ZonaIncerta {
         let lower = text.to_lowercase();
 
         // ── Threat detection ──────────────────────────────────────────────────
-        let threat_hits = THREAT_MARKERS.iter()
-            .filter(|&&w| lower.contains(w)).count();
-        let safety_hits = SAFETY_MARKERS.iter()
-            .filter(|&&w| lower.contains(w)).count();
+        let threat_hits = THREAT_MARKERS
+            .iter()
+            .filter(|&&w| lower.contains(w))
+            .count();
+        let safety_hits = SAFETY_MARKERS
+            .iter()
+            .filter(|&&w| lower.contains(w))
+            .count();
 
         // ── Inhibition level ──────────────────────────────────────────────────
         // High threat → high inhibition (hyper-focused, gates out irrelevant)
         // High safety → low inhibition (release mode, broad attention)
         let threat_drive = (amygdala_arousal * 0.40
             + threat_hits as f32 * 0.08
-            + superior_colliculus_salience * 0.15).min(0.90);
-        let safety_drive = (oxytocin_bond * 0.20
-            + safety_hits as f32 * 0.05).min(0.40);
-        let inhibition_target = (INHIBITION_BASELINE + threat_drive - safety_drive)
-            .clamp(0.10, 1.0);
-        self.inhibition_level = self.inhibition_level * (1.0 - INHIBITION_EMA)
-            + inhibition_target * INHIBITION_EMA;
+            + superior_colliculus_salience * 0.15)
+            .min(0.90);
+        let safety_drive = (oxytocin_bond * 0.20 + safety_hits as f32 * 0.05).min(0.40);
+        let inhibition_target =
+            (INHIBITION_BASELINE + threat_drive - safety_drive).clamp(0.10, 1.0);
+        self.inhibition_level =
+            self.inhibition_level * (1.0 - INHIBITION_EMA) + inhibition_target * INHIBITION_EMA;
 
         // ── Salience filter ───────────────────────────────────────────────────
         // Filter strength tracks inhibition — higher inhibition = stronger filtering
-        let filter_target = (self.inhibition_level * 0.80
-            + superior_colliculus_salience * 0.20).min(1.0);
-        self.salience_filter = self.salience_filter * (1.0 - FILTER_EMA)
-            + filter_target * FILTER_EMA;
+        let filter_target =
+            (self.inhibition_level * 0.80 + superior_colliculus_salience * 0.20).min(1.0);
+        self.salience_filter =
+            self.salience_filter * (1.0 - FILTER_EMA) + filter_target * FILTER_EMA;
 
         // ── Threat gate ───────────────────────────────────────────────────────
-        let threat_gate_open = amygdala_arousal >= THREAT_GATE_THRESHOLD
-            || threat_hits >= 2;
-        if threat_gate_open { self.threat_gates += 1; }
+        let threat_gate_open = amygdala_arousal >= THREAT_GATE_THRESHOLD || threat_hits >= 2;
+        if threat_gate_open {
+            self.threat_gates += 1;
+        }
 
         // ── Release mode ──────────────────────────────────────────────────────
-        let release_mode = self.inhibition_level <= RELEASE_THRESHOLD
-            && oxytocin_bond > 0.50;
-        if release_mode { self.release_events += 1; }
+        let release_mode = self.inhibition_level <= RELEASE_THRESHOLD && oxytocin_bond > 0.50;
+        if release_mode {
+            self.release_events += 1;
+        }
 
         ZIOutput {
-            inhibition_level:    self.inhibition_level,
-            salience_filter:     self.salience_filter,
+            inhibition_level: self.inhibition_level,
+            salience_filter: self.salience_filter,
             threat_gate_open,
             release_mode,
             attentional_bandwidth: 1.0 - self.inhibition_level,
@@ -193,10 +228,10 @@ impl ZonaIncerta {
     /// Current output without processing.
     pub fn current_output(&self) -> ZIOutput {
         ZIOutput {
-            inhibition_level:    self.inhibition_level,
-            salience_filter:     self.salience_filter,
-            threat_gate_open:    false,
-            release_mode:        self.inhibition_level <= RELEASE_THRESHOLD,
+            inhibition_level: self.inhibition_level,
+            salience_filter: self.salience_filter,
+            threat_gate_open: false,
+            release_mode: self.inhibition_level <= RELEASE_THRESHOLD,
             attentional_bandwidth: 1.0 - self.inhibition_level,
         }
     }
@@ -208,13 +243,19 @@ impl ZonaIncerta {
             self.inhibition_level,
             self.salience_filter,
             1.0 - self.inhibition_level,
-            if self.inhibition_level <= RELEASE_THRESHOLD { " RELEASE" } else { "" },
+            if self.inhibition_level <= RELEASE_THRESHOLD {
+                " RELEASE"
+            } else {
+                ""
+            },
         )
     }
 }
 
 impl Default for ZonaIncerta {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -234,18 +275,30 @@ mod tests {
         let mut z = ZonaIncerta::new();
         let before = z.inhibition_level;
         z.process("some neutral text", 0.90, 0.70, 0.20);
-        assert!(z.inhibition_level > before,
+        assert!(
+            z.inhibition_level > before,
             "high amygdala arousal should raise inhibition: {:.2} → {:.2}",
-            before, z.inhibition_level);
+            before,
+            z.inhibition_level
+        );
     }
 
     #[test]
     fn test_threat_words_raise_inhibition() {
         let mut z = ZonaIncerta::new();
         let before = z.inhibition_level;
-        z.process("critical emergency error urgent warning danger", 0.20, 0.30, 0.20);
-        assert!(z.inhibition_level > before,
-            "threat words should raise inhibition: {:.2} → {:.2}", before, z.inhibition_level);
+        z.process(
+            "critical emergency error urgent warning danger",
+            0.20,
+            0.30,
+            0.20,
+        );
+        assert!(
+            z.inhibition_level > before,
+            "threat words should raise inhibition: {:.2} → {:.2}",
+            before,
+            z.inhibition_level
+        );
     }
 
     #[test]
@@ -253,16 +306,21 @@ mod tests {
         let mut z = ZonaIncerta::new();
         z.inhibition_level = 0.60;
         z.process("safe comfortable relaxed easy clear", 0.05, 0.10, 0.90);
-        assert!(z.inhibition_level < 0.60,
-            "high oxytocin + safety should reduce inhibition: {:.2}", z.inhibition_level);
+        assert!(
+            z.inhibition_level < 0.60,
+            "high oxytocin + safety should reduce inhibition: {:.2}",
+            z.inhibition_level
+        );
     }
 
     #[test]
     fn test_threat_gate_opens_at_high_arousal() {
         let mut z = ZonaIncerta::new();
         let out = z.process("neutral", 0.80, 0.50, 0.30);
-        assert!(out.threat_gate_open,
-            "high amygdala arousal should open threat gate");
+        assert!(
+            out.threat_gate_open,
+            "high amygdala arousal should open threat gate"
+        );
     }
 
     #[test]
@@ -270,8 +328,10 @@ mod tests {
         let mut z = ZonaIncerta::new();
         z.inhibition_level = 0.20;
         let out = z.process("safe and comfortable", 0.05, 0.10, 0.80);
-        assert!(out.release_mode,
-            "low inhibition + high bond should trigger release mode");
+        assert!(
+            out.release_mode,
+            "low inhibition + high bond should trigger release mode"
+        );
     }
 
     #[test]
@@ -288,8 +348,11 @@ mod tests {
         for _ in 0..30 {
             z.decay();
         }
-        assert!(z.inhibition_level < 0.80,
-            "inhibition should decay toward baseline: {:.2}", z.inhibition_level);
+        assert!(
+            z.inhibition_level < 0.80,
+            "inhibition should decay toward baseline: {:.2}",
+            z.inhibition_level
+        );
         assert!(z.inhibition_level >= INHIBITION_BASELINE - 0.05);
     }
 

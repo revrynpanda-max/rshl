@@ -1,3 +1,4 @@
+use crate::core::field_state::{DreamHistoryEntry, FieldInput};
 /// Dream Lattice — Autonomous consolidation engine.
 ///
 /// Ported from rshl-lattice.js. During dream cycles, KAI:
@@ -10,9 +11,7 @@
 ///
 /// This is how KAI thinks while "asleep" — finding connections between
 /// concepts he already has, and strengthening the ones that matter.
-
-use crate::core::{SparseVec, Universe, FieldState};
-use crate::core::field_state::{FieldInput, DreamHistoryEntry};
+use crate::core::{FieldState, SparseVec, Universe};
 use rand::Rng;
 use std::sync::Mutex;
 
@@ -44,7 +43,9 @@ impl GateStats {
 
     pub fn accept_rate(&self) -> f32 {
         let total = self.accepted + self.total_rejected();
-        if total == 0 { return 1.0; }
+        if total == 0 {
+            return 1.0;
+        }
         self.accepted as f32 / total as f32
     }
 }
@@ -63,7 +64,10 @@ fn push_dream_history(entry: DreamHistoryEntry) {
 }
 
 fn get_dream_history() -> Vec<DreamHistoryEntry> {
-    DREAM_HISTORY.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    DREAM_HISTORY
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
 }
 
 /// Dream result — the output of a single consolidation cycle.
@@ -109,7 +113,11 @@ fn replay_priority(
     let weakness = (1.0 - (cell_strength / 5.0).min(1.0)) * 0.4;
 
     // Promoted dreams are interesting to re-explore
-    let source_boost = if cell_source == "promoted-dream" { 0.15 } else { 0.0 };
+    let source_boost = if cell_source == "promoted-dream" {
+        0.15
+    } else {
+        0.0
+    };
 
     // Base priority with some randomness for exploration
     let mut rng = rand::thread_rng();
@@ -123,12 +131,21 @@ fn replay_priority(
 /// replay priority, cross-region bonus, and duplicate penalty.
 fn select_dream_pair(universe: &Universe) -> Option<(usize, usize, f32)> {
     let cells = universe.cells();
-    if cells.len() < 2 { return None; }
+    if cells.len() < 2 {
+        return None;
+    }
 
     // Rank cells by replay priority, take top candidates
     let limit = 14.min(cells.len());
-    let mut scored: Vec<(usize, f32)> = cells.iter().enumerate()
-        .map(|(i, c)| (i, replay_priority(i, c.strength, &c.source, c.created, cells.len())))
+    let mut scored: Vec<(usize, f32)> = cells
+        .iter()
+        .enumerate()
+        .map(|(i, c)| {
+            (
+                i,
+                replay_priority(i, c.strength, &c.source, c.created, cells.len()),
+            )
+        })
         .collect();
     scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
     scored.truncate(limit);
@@ -145,7 +162,9 @@ fn select_dream_pair(universe: &Universe) -> Option<(usize, usize, f32)> {
             let overlap = a.vec.cosine(&b.vec).max(0.0);
 
             // Filter: overlap must be in the productive band [0.18, 0.88]
-            if overlap < 0.18 || overlap > 0.88 { continue; }
+            if overlap < 0.18 || overlap > 0.88 {
+                continue;
+            }
 
             // Target the 0.52 sweet spot — max information from partial overlap
             let target_band = 1.0 - (overlap - 0.52).abs();
@@ -157,12 +176,13 @@ fn select_dream_pair(universe: &Universe) -> Option<(usize, usize, f32)> {
             let cross_region = if a.region != b.region { 0.12 } else { 0.0 };
 
             // Penalize near-duplicates
-            let dup_penalty = if overlap > 0.72 { (overlap - 0.72) * 0.65 } else { 0.0 };
+            let dup_penalty = if overlap > 0.72 {
+                (overlap - 0.72) * 0.65
+            } else {
+                0.0
+            };
 
-            let pair_score = replay_mean * 0.40
-                + target_band * 0.28
-                + cross_region
-                - dup_penalty;
+            let pair_score = replay_mean * 0.40 + target_band * 0.28 + cross_region - dup_penalty;
 
             let is_better = match &best {
                 Some((_, _, _, bs)) => pair_score > *bs,
@@ -193,7 +213,12 @@ fn pick_best_insight(
     if let Some((cell, score)) = hits.first() {
         return (cell.text.clone(), cell.region.clone(), *score, false);
     }
-    ("no strong concept found".to_string(), String::new(), 0.0, false)
+    (
+        "no strong concept found".to_string(),
+        String::new(),
+        0.0,
+        false,
+    )
 }
 
 /// Resonance quality gate thresholds.
@@ -204,11 +229,11 @@ fn pick_best_insight(
 fn quality_gate(cell_count: usize) -> (f32, f32) {
     // Returns (min_confidence, max_chi)
     match cell_count {
-        0..=49   => (0.10, 0.70),   // bootstrapping — very lenient
-        50..=149 => (0.20, 0.60),   // growing — moderate gate
-        150..=499 => (0.28, 0.52),  // mature — normal gate
-        500..=999 => (0.32, 0.46),  // large — stricter
-        _         => (0.36, 0.42),  // very large — tight gate
+        0..=49 => (0.10, 0.70),    // bootstrapping — very lenient
+        50..=149 => (0.20, 0.60),  // growing — moderate gate
+        150..=499 => (0.28, 0.52), // mature — normal gate
+        500..=999 => (0.32, 0.46), // large — stricter
+        _ => (0.36, 0.42),         // very large — tight gate
     }
 }
 
@@ -241,13 +266,17 @@ pub fn consolidate(universe: &Universe) -> Option<DreamResult> {
     // This directly prevents χ injection from low-quality cross-region smashes.
     let (min_confidence, max_chi) = quality_gate(universe.count());
     if confidence < min_confidence {
-        if let Ok(mut s) = GATE_STATS.lock() { s.rejected_confidence += 1; }
+        if let Ok(mut s) = GATE_STATS.lock() {
+            s.rejected_confidence += 1;
+        }
         return None; // Synthetic doesn't resonate — discard, saves field computation
     }
 
     // Also discard immediately if the insight is empty or the fallback text
     if insight_text.is_empty() || insight_text == "no strong concept found" {
-        if let Ok(mut s) = GATE_STATS.lock() { s.rejected_confidence += 1; }
+        if let Ok(mut s) = GATE_STATS.lock() {
+            s.rejected_confidence += 1;
+        }
         return None;
     }
 
@@ -280,7 +309,9 @@ pub fn consolidate(universe: &Universe) -> Option<DreamResult> {
     // This catches cases where the pair scored well geometrically but the
     // resulting field is self-contradictory — exactly the χ spike source.
     if field.chi > max_chi {
-        if let Ok(mut s) = GATE_STATS.lock() { s.rejected_chi += 1; }
+        if let Ok(mut s) = GATE_STATS.lock() {
+            s.rejected_chi += 1;
+        }
         return None; // Contradictory binding — discard, prevents χ injection
     }
 
@@ -289,7 +320,9 @@ pub fn consolidate(universe: &Universe) -> Option<DreamResult> {
     // recorded value, it's doing more harm than good. Skip it.
     // Allow a small drop (0.01) for normal variance but reject sharp dips.
     if prev_phi_g > 0.04 && field.phi_g < prev_phi_g - 0.08 {
-        if let Ok(mut s) = GATE_STATS.lock() { s.rejected_phi_drop += 1; }
+        if let Ok(mut s) = GATE_STATS.lock() {
+            s.rejected_phi_drop += 1;
+        }
         return None; // Dream degrades global coherence — discard
     }
 
@@ -298,13 +331,15 @@ pub fn consolidate(universe: &Universe) -> Option<DreamResult> {
     // coherent emergence — not a real idea, just arithmetic noise.
     // Dream #632 (Φg=0.001) was the triggering case for this gate.
     if field.phi_g < 0.005 {
-        if let Ok(mut s) = GATE_STATS.lock() { s.rejected_phi_drop += 1; }
+        if let Ok(mut s) = GATE_STATS.lock() {
+            s.rejected_phi_drop += 1;
+        }
         return None; // Zero-emergence dream — discard before any side effects
     }
 
     // Duplicate echo check
-    let duplicate_echo = insight_text.trim() == a.text.trim()
-        || insight_text.trim() == b.text.trim();
+    let duplicate_echo =
+        insight_text.trim() == a.text.trim() || insight_text.trim() == b.text.trim();
 
     // Promotion readiness
     let promotion_ready = !duplicate_echo
@@ -324,7 +359,9 @@ pub fn consolidate(universe: &Universe) -> Option<DreamResult> {
     };
 
     // ── Accept: increment gate stats ──────────────────────────────────────
-    if let Ok(mut s) = GATE_STATS.lock() { s.accepted += 1; }
+    if let Ok(mut s) = GATE_STATS.lock() {
+        s.accepted += 1;
+    }
 
     // Track in dream history
     let now = std::time::SystemTime::now()
@@ -357,12 +394,13 @@ pub fn consolidate(universe: &Universe) -> Option<DreamResult> {
 }
 
 /// Observe a dream result and feed it into the candidate buffer.
-pub fn observe_dream(
-    candidates: &mut super::candidates::CandidateBuffer,
-    dream: &DreamResult,
-) {
-    if dream.duplicate_echo { return; }
-    if dream.insight.is_empty() || dream.insight == "no strong concept found" { return; }
+pub fn observe_dream(candidates: &mut super::candidates::CandidateBuffer, dream: &DreamResult) {
+    if dream.duplicate_echo {
+        return;
+    }
+    if dream.insight.is_empty() || dream.insight == "no strong concept found" {
+        return;
+    }
 
     candidates.observe(
         &dream.insight,
@@ -376,11 +414,10 @@ pub fn observe_dream(
 
 /// Apply source reinforcement to dream source cells.
 /// Call this after consolidate() with mutable universe access.
-pub fn reinforce_dream_sources(
-    universe: &mut Universe,
-    dream: &DreamResult,
-) {
-    if dream.source_reinforcement <= 0.0 { return; }
+pub fn reinforce_dream_sources(universe: &mut Universe, dream: &DreamResult) {
+    if dream.source_reinforcement <= 0.0 {
+        return;
+    }
 
     // Find and reinforce both source cells
     let cells = universe.cells_mut();

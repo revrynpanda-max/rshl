@@ -109,11 +109,11 @@ impl ParahippocampalCortex {
     pub fn new() -> Self {
         Self {
             context_familiarity: 0.20,
-            context_stability:   0.30,
-            context_tags:        Vec::new(),
-            last_topic:          String::new(),
-            contexts_processed:  0,
-            scene_shifts:        0,
+            context_stability: 0.30,
+            context_tags: Vec::new(),
+            last_topic: String::new(),
+            contexts_processed: 0,
+            scene_shifts: 0,
         }
     }
 
@@ -126,9 +126,7 @@ impl ParahippocampalCortex {
         self.contexts_processed += 1;
 
         // Detect scene shift (topic change)
-        let scene_shift = !self.last_topic.is_empty()
-            && self.last_topic != scene.topic
-            && is_novel;
+        let scene_shift = !self.last_topic.is_empty() && self.last_topic != scene.topic && is_novel;
         if scene_shift {
             self.scene_shifts += 1;
             // Scene shift destabilizes context
@@ -162,8 +160,8 @@ impl ParahippocampalCortex {
         } else {
             (0.60 + (1.0 - scene.emotional_tone) * 0.20).min(1.0)
         };
-        self.context_stability = self.context_stability * (1.0 - STABILITY_EMA)
-            + stability_target * STABILITY_EMA;
+        self.context_stability =
+            self.context_stability * (1.0 - STABILITY_EMA) + stability_target * STABILITY_EMA;
 
         // Retrieval boost: familiar stable context → hippocampus gets cued
         let retrieval_boost = if self.context_familiarity >= FAMILIAR_THRESHOLD {
@@ -174,9 +172,9 @@ impl ParahippocampalCortex {
 
         PHCOutput {
             context_familiarity: self.context_familiarity,
-            context_stability:   self.context_stability,
-            feels_familiar:      self.context_familiarity >= FAMILIAR_THRESHOLD,
-            context_tag_count:   self.context_tags.len(),
+            context_stability: self.context_stability,
+            feels_familiar: self.context_familiarity >= FAMILIAR_THRESHOLD,
+            context_tag_count: self.context_tags.len(),
             retrieval_boost,
             scene_shift,
         }
@@ -204,11 +202,11 @@ impl ParahippocampalCortex {
         };
         PHCOutput {
             context_familiarity: self.context_familiarity,
-            context_stability:   self.context_stability,
-            feels_familiar:      self.context_familiarity >= FAMILIAR_THRESHOLD,
-            context_tag_count:   self.context_tags.len(),
+            context_stability: self.context_stability,
+            feels_familiar: self.context_familiarity >= FAMILIAR_THRESHOLD,
+            context_tag_count: self.context_tags.len(),
             retrieval_boost,
-            scene_shift:         false,
+            scene_shift: false,
         }
     }
 
@@ -225,7 +223,9 @@ impl ParahippocampalCortex {
 }
 
 impl Default for ParahippocampalCortex {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -236,17 +236,20 @@ mod tests {
 
     fn scene(topic: &str) -> SceneContext {
         SceneContext {
-            topic:         topic.to_string(),
+            topic: topic.to_string(),
             emotional_tone: 0.20,
-            phase:         "establishing".to_string(),
+            phase: "establishing".to_string(),
         }
     }
 
     #[test]
     fn test_initial_state() {
         let p = ParahippocampalCortex::new();
-        assert!(p.context_familiarity < FAMILIAR_THRESHOLD,
-            "initial familiarity should be low: {:.2}", p.context_familiarity);
+        assert!(
+            p.context_familiarity < FAMILIAR_THRESHOLD,
+            "initial familiarity should be low: {:.2}",
+            p.context_familiarity
+        );
         assert!(p.context_tags.is_empty());
     }
 
@@ -254,8 +257,11 @@ mod tests {
     fn test_novel_context_low_familiarity() {
         let mut p = ParahippocampalCortex::new();
         let out = p.process(scene("quantum_physics"), true);
-        assert!(out.context_familiarity < FAMILIAR_THRESHOLD,
-            "novel context should stay low familiarity: {:.2}", out.context_familiarity);
+        assert!(
+            out.context_familiarity < FAMILIAR_THRESHOLD,
+            "novel context should stay low familiarity: {:.2}",
+            out.context_familiarity
+        );
     }
 
     #[test]
@@ -266,16 +272,21 @@ mod tests {
         for _ in 0..10 {
             p.process(scene("rust_coding"), false);
         }
-        assert!(p.context_familiarity > 0.20,
-            "repeated context should build familiarity: {:.2}", p.context_familiarity);
+        assert!(
+            p.context_familiarity > 0.20,
+            "repeated context should build familiarity: {:.2}",
+            p.context_familiarity
+        );
     }
 
     #[test]
     fn test_context_tag_stored() {
         let mut p = ParahippocampalCortex::new();
         p.process(scene("machine_learning"), false);
-        assert!(p.has_context_tag("machine_learning"),
-            "processed topic should be stored as tag");
+        assert!(
+            p.has_context_tag("machine_learning"),
+            "processed topic should be stored as tag"
+        );
     }
 
     #[test]
@@ -283,8 +294,10 @@ mod tests {
         let mut p = ParahippocampalCortex::new();
         p.process(scene("topic_a"), false);
         let out = p.process(scene("topic_b"), true);
-        assert!(out.scene_shift,
-            "switching to novel topic should detect scene shift");
+        assert!(
+            out.scene_shift,
+            "switching to novel topic should detect scene shift"
+        );
     }
 
     #[test]
@@ -293,8 +306,11 @@ mod tests {
         p.context_stability = 0.80;
         p.last_topic = "topic_a".into();
         p.process(scene("topic_b"), true);
-        assert!(p.context_stability < 0.80,
-            "scene shift should destabilize context: {:.2}", p.context_stability);
+        assert!(
+            p.context_stability < 0.80,
+            "scene shift should destabilize context: {:.2}",
+            p.context_stability
+        );
     }
 
     #[test]
@@ -302,8 +318,11 @@ mod tests {
         let mut p = ParahippocampalCortex::new();
         p.context_familiarity = 0.70;
         let out = p.current_output();
-        assert!(out.retrieval_boost > 1.0,
-            "familiar context should boost retrieval: {:.2}", out.retrieval_boost);
+        assert!(
+            out.retrieval_boost > 1.0,
+            "familiar context should boost retrieval: {:.2}",
+            out.retrieval_boost
+        );
     }
 
     #[test]
@@ -311,8 +330,11 @@ mod tests {
         let mut p = ParahippocampalCortex::new();
         p.context_familiarity = 0.10;
         let out = p.current_output();
-        assert!(out.retrieval_boost < 1.0,
-            "low familiarity should give sub-1.0 retrieval: {:.2}", out.retrieval_boost);
+        assert!(
+            out.retrieval_boost < 1.0,
+            "low familiarity should give sub-1.0 retrieval: {:.2}",
+            out.retrieval_boost
+        );
     }
 
     #[test]
@@ -321,8 +343,11 @@ mod tests {
         for i in 0..35 {
             p.process(scene(&format!("topic_{}", i)), false);
         }
-        assert!(p.context_tags.len() <= MAX_CONTEXT_TAGS,
-            "tags should not exceed max: {}", p.context_tags.len());
+        assert!(
+            p.context_tags.len() <= MAX_CONTEXT_TAGS,
+            "tags should not exceed max: {}",
+            p.context_tags.len()
+        );
     }
 
     #[test]
@@ -333,8 +358,11 @@ mod tests {
             p.decay();
         }
         // 100 ticks * 0.0008 = 0.08 reduction
-        assert!(p.context_familiarity > 0.55,
-            "familiarity decay should be slow: {:.2}", p.context_familiarity);
+        assert!(
+            p.context_familiarity > 0.55,
+            "familiarity decay should be slow: {:.2}",
+            p.context_familiarity
+        );
     }
 
     #[test]

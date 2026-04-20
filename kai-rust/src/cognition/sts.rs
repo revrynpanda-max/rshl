@@ -38,7 +38,6 @@
 /// Integration:
 ///   STS output feeds into Theory of Mind (higher-level belief modeling)
 ///   and into voice.rs (shapes whether KAI leans in, wraps up, or pivots)
-
 use std::collections::VecDeque;
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -76,13 +75,13 @@ impl SocialGoal {
     pub fn label(&self) -> &'static str {
         match self {
             Self::BuildingUnderstanding => "building-understanding",
-            Self::ValidatingIdea        => "validating-idea",
-            Self::TaskCompletion        => "task-completion",
-            Self::OpenExploration       => "open-exploration",
-            Self::SocialEngagement      => "social-engagement",
-            Self::EmotionalExpression   => "emotional-expression",
-            Self::WindingDown           => "winding-down",
-            Self::Unknown               => "unknown",
+            Self::ValidatingIdea => "validating-idea",
+            Self::TaskCompletion => "task-completion",
+            Self::OpenExploration => "open-exploration",
+            Self::SocialEngagement => "social-engagement",
+            Self::EmotionalExpression => "emotional-expression",
+            Self::WindingDown => "winding-down",
+            Self::Unknown => "unknown",
         }
     }
 }
@@ -153,12 +152,12 @@ pub struct STS {
 impl STS {
     pub fn new() -> Self {
         Self {
-            action_sequence:  VecDeque::with_capacity(ACTION_WINDOW),
-            current_goal:     SocialGoal::Unknown,
-            trajectory:       SocialTrajectory::Undetermined,
+            action_sequence: VecDeque::with_capacity(ACTION_WINDOW),
+            current_goal: SocialGoal::Unknown,
+            trajectory: SocialTrajectory::Undetermined,
             intent_confidence: 0.0,
-            total_readings:   0,
-            avg_word_count:   20.0,
+            total_readings: 0,
+            avg_word_count: 20.0,
         }
     }
 
@@ -178,8 +177,19 @@ impl STS {
             || lower.starts_with("can you")
             || lower.starts_with("do you");
 
-        let task_words = ["create", "make", "build", "write", "fix", "run",
-                         "implement", "generate", "analyze", "code", "edit"];
+        let task_words = [
+            "create",
+            "make",
+            "build",
+            "write",
+            "fix",
+            "run",
+            "implement",
+            "generate",
+            "analyze",
+            "code",
+            "edit",
+        ];
         let is_task = task_words.iter().any(|t| lower.contains(t));
 
         // Add to action sequence
@@ -187,14 +197,20 @@ impl STS {
             self.action_sequence.pop_front();
         }
         self.action_sequence.push_back(ActionRecord {
-            word_count, charge: emotional_charge, is_question, is_task,
+            word_count,
+            charge: emotional_charge,
+            is_question,
+            is_task,
         });
 
         // Update average word count (for trajectory)
         let n = self.action_sequence.len() as f32;
-        self.avg_word_count = self.action_sequence.iter()
+        self.avg_word_count = self
+            .action_sequence
+            .iter()
             .map(|a| a.word_count as f32)
-            .sum::<f32>() / n;
+            .sum::<f32>()
+            / n;
 
         // Estimate goal
         self.current_goal = self.estimate_goal(&lower);
@@ -211,10 +227,15 @@ impl STS {
 
         self.total_readings += 1;
 
-        let lean_in = matches!(self.current_goal,
-            SocialGoal::BuildingUnderstanding | SocialGoal::OpenExploration |
-            SocialGoal::ValidatingIdea)
-            && matches!(self.trajectory, SocialTrajectory::Deepening | SocialTrajectory::Stable);
+        let lean_in = matches!(
+            self.current_goal,
+            SocialGoal::BuildingUnderstanding
+                | SocialGoal::OpenExploration
+                | SocialGoal::ValidatingIdea
+        ) && matches!(
+            self.trajectory,
+            SocialTrajectory::Deepening | SocialTrajectory::Stable
+        );
 
         let winding_down = matches!(self.current_goal, SocialGoal::WindingDown)
             || matches!(self.trajectory, SocialTrajectory::Withdrawing);
@@ -231,18 +252,30 @@ impl STS {
     /// Estimate the current social goal from recent action sequence + current text.
     fn estimate_goal(&self, lower: &str) -> SocialGoal {
         let recent = self.action_sequence.iter().collect::<Vec<_>>();
-        if recent.is_empty() { return SocialGoal::Unknown; }
+        if recent.is_empty() {
+            return SocialGoal::Unknown;
+        }
 
         // Wind-down signals
-        let wind_down = ["thanks", "thank you", "that's all", "goodbye", "bye",
-                        "good night", "later", "done for now", "that's it"];
+        let wind_down = [
+            "thanks",
+            "thank you",
+            "that's all",
+            "goodbye",
+            "bye",
+            "good night",
+            "later",
+            "done for now",
+            "that's it",
+        ];
         if wind_down.iter().any(|w| lower.contains(w)) {
             return SocialGoal::WindingDown;
         }
 
         // Task completion signals
         let task_count = recent.iter().filter(|a| a.is_task).count();
-        if task_count >= 2 || (recent.last().map(|a| a.is_task).unwrap_or(false) && task_count >= 1) {
+        if task_count >= 2 || (recent.last().map(|a| a.is_task).unwrap_or(false) && task_count >= 1)
+        {
             return SocialGoal::TaskCompletion;
         }
 
@@ -253,22 +286,38 @@ impl STS {
         }
 
         // Social engagement (very short, warm)
-        let social_words = ["awesome", "great", "nice", "cool", "wow",
-                           "yes!", "exactly", "perfect", "love"];
+        let social_words = [
+            "awesome", "great", "nice", "cool", "wow", "yes!", "exactly", "perfect", "love",
+        ];
         if social_words.iter().any(|w| lower.contains(w)) && lower.split_whitespace().count() < 6 {
             return SocialGoal::SocialEngagement;
         }
 
         // Exploration signals
-        let explore = ["wonder", "thinking", "maybe", "what if", "imagine",
-                      "curious", "interesting", "explore"];
+        let explore = [
+            "wonder",
+            "thinking",
+            "maybe",
+            "what if",
+            "imagine",
+            "curious",
+            "interesting",
+            "explore",
+        ];
         if explore.iter().any(|w| lower.contains(w)) {
             return SocialGoal::OpenExploration;
         }
 
         // Validating signals
-        let validate = ["right?", "correct?", "makes sense", "is this",
-                       "am i", "would you say", "do you think"];
+        let validate = [
+            "right?",
+            "correct?",
+            "makes sense",
+            "is this",
+            "am i",
+            "would you say",
+            "do you think",
+        ];
         if validate.iter().any(|w| lower.contains(w)) {
             return SocialGoal::ValidatingIdea;
         }
@@ -296,16 +345,22 @@ impl STS {
 
         let recent: Vec<_> = self.action_sequence.iter().collect();
         let n = recent.len();
-        let first_half_avg = recent[..n/2].iter().map(|a| a.word_count as f32).sum::<f32>()
-            / (n/2) as f32;
-        let second_half_avg = recent[n/2..].iter().map(|a| a.word_count as f32).sum::<f32>()
-            / (n - n/2) as f32;
+        let first_half_avg = recent[..n / 2]
+            .iter()
+            .map(|a| a.word_count as f32)
+            .sum::<f32>()
+            / (n / 2) as f32;
+        let second_half_avg = recent[n / 2..]
+            .iter()
+            .map(|a| a.word_count as f32)
+            .sum::<f32>()
+            / (n - n / 2) as f32;
 
         let delta = second_half_avg - first_half_avg;
         match delta {
-            d if d > 5.0  => SocialTrajectory::Deepening,
+            d if d > 5.0 => SocialTrajectory::Deepening,
             d if d < -5.0 => SocialTrajectory::Withdrawing,
-            _              => SocialTrajectory::Stable,
+            _ => SocialTrajectory::Stable,
         }
     }
 
@@ -322,7 +377,9 @@ impl STS {
 }
 
 impl Default for STS {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -345,8 +402,11 @@ mod tests {
         sts.read("what is pattern completion exactly?", 0.3);
         sts.read("why does it need the dentate gyrus?", 0.3);
         let reading = sts.read("how does that relate to memory consolidation?", 0.3);
-        assert_eq!(reading.goal, SocialGoal::BuildingUnderstanding,
-            "sustained questioning should be BuildingUnderstanding");
+        assert_eq!(
+            reading.goal,
+            SocialGoal::BuildingUnderstanding,
+            "sustained questioning should be BuildingUnderstanding"
+        );
     }
 
     #[test]
@@ -354,8 +414,11 @@ mod tests {
         let mut sts = STS::new();
         sts.read("can you build a new module for KAI", 0.4);
         let reading = sts.read("write the tests for it too", 0.4);
-        assert_eq!(reading.goal, SocialGoal::TaskCompletion,
-            "consecutive task requests should be TaskCompletion");
+        assert_eq!(
+            reading.goal,
+            SocialGoal::TaskCompletion,
+            "consecutive task requests should be TaskCompletion"
+        );
     }
 
     #[test]
@@ -369,7 +432,10 @@ mod tests {
     #[test]
     fn test_exploration_detection() {
         let mut sts = STS::new();
-        let reading = sts.read("i wonder if geometry could be the basis of consciousness", 0.4);
+        let reading = sts.read(
+            "i wonder if geometry could be the basis of consciousness",
+            0.4,
+        );
         assert_eq!(reading.goal, SocialGoal::OpenExploration);
     }
 
@@ -380,8 +446,13 @@ mod tests {
         sts.read("what if RSHL is related to awareness somehow", 0.4);
         let reading = sts.read("i keep thinking about recursive self-reference", 0.4);
         // Should lean in for open exploration
-        if reading.goal == SocialGoal::OpenExploration || reading.goal == SocialGoal::BuildingUnderstanding {
-            assert!(reading.lean_in, "exploration/understanding should trigger lean-in");
+        if reading.goal == SocialGoal::OpenExploration
+            || reading.goal == SocialGoal::BuildingUnderstanding
+        {
+            assert!(
+                reading.lean_in,
+                "exploration/understanding should trigger lean-in"
+            );
         }
     }
 
@@ -400,9 +471,12 @@ mod tests {
         let r1 = sts.read("what is this", 0.2);
         let _r2 = sts.read("and how does it work", 0.2);
         let r3 = sts.read("can you explain more about the details", 0.2);
-        assert!(r3.intent_confidence > r1.intent_confidence,
+        assert!(
+            r3.intent_confidence > r1.intent_confidence,
             "confidence should rise with more history: {:.2} → {:.2}",
-            r1.intent_confidence, r3.intent_confidence);
+            r1.intent_confidence,
+            r3.intent_confidence
+        );
     }
 
     #[test]
@@ -413,12 +487,27 @@ mod tests {
         sts.read("yes", 0.2);
         sts.read("sure", 0.2);
         // Now much longer messages
-        sts.read("actually I want to understand how the VTA tonic vs phasic distinction works in detail", 0.4);
-        sts.read("and how it relates to the NAc wanting signal and flow state in KAI", 0.4);
-        sts.read("especially the mesocortical pathway and PFC working memory modulation", 0.4);
-        let reading = sts.read("can you also explain how it connects to the dopamine circuit we already have", 0.4);
-        assert_eq!(reading.trajectory, SocialTrajectory::Deepening,
-            "increasing message length should be Deepening trajectory");
+        sts.read(
+            "actually I want to understand how the VTA tonic vs phasic distinction works in detail",
+            0.4,
+        );
+        sts.read(
+            "and how it relates to the NAc wanting signal and flow state in KAI",
+            0.4,
+        );
+        sts.read(
+            "especially the mesocortical pathway and PFC working memory modulation",
+            0.4,
+        );
+        let reading = sts.read(
+            "can you also explain how it connects to the dopamine circuit we already have",
+            0.4,
+        );
+        assert_eq!(
+            reading.trajectory,
+            SocialTrajectory::Deepening,
+            "increasing message length should be Deepening trajectory"
+        );
     }
 
     #[test]

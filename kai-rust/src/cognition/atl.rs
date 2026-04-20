@@ -55,25 +55,65 @@ const COHERENCE_BASELINE: f32 = 0.50;
 
 /// Abstract concept markers
 const ABSTRACT_MARKERS: &[&str] = &[
-    "concept", "meaning", "idea", "notion", "principle", "theory", "framework",
-    "abstract", "understand", "comprehend", "represent", "model", "structure",
-    "pattern", "relation", "category", "class", "type", "kind", "form",
-    "essence", "nature", "property", "attribute", "feature", "aspect",
-    "definition", "interpretation", "significance", "implication",
+    "concept",
+    "meaning",
+    "idea",
+    "notion",
+    "principle",
+    "theory",
+    "framework",
+    "abstract",
+    "understand",
+    "comprehend",
+    "represent",
+    "model",
+    "structure",
+    "pattern",
+    "relation",
+    "category",
+    "class",
+    "type",
+    "kind",
+    "form",
+    "essence",
+    "nature",
+    "property",
+    "attribute",
+    "feature",
+    "aspect",
+    "definition",
+    "interpretation",
+    "significance",
+    "implication",
 ];
 
 /// Personal semantic markers
 const PERSONAL_MARKERS: &[&str] = &[
-    "you", "your", "we", "our", "I", "my", "me", "ryan", "kai",
-    "remember", "told", "said", "mentioned", "asked", "agreed",
-    "relationship", "together", "between us", "our work",
+    "you",
+    "your",
+    "we",
+    "our",
+    "I",
+    "my",
+    "me",
+    "ryan",
+    "kai",
+    "remember",
+    "told",
+    "said",
+    "mentioned",
+    "asked",
+    "agreed",
+    "relationship",
+    "together",
+    "between us",
+    "our work",
 ];
 
 /// Cross-modal binding richness — words grounded in multiple modalities
 const MULTIMODAL_MARKERS: &[&str] = &[
-    "see", "hear", "feel", "touch", "smell", "taste", "sound", "look",
-    "warm", "cold", "bright", "dark", "loud", "quiet", "sharp", "smooth",
-    "heavy", "light", "fast", "slow",
+    "see", "hear", "feel", "touch", "smell", "taste", "sound", "look", "warm", "cold", "bright",
+    "dark", "loud", "quiet", "sharp", "smooth", "heavy", "light", "fast", "slow",
 ];
 
 // ── ATLOutput ─────────────────────────────────────────────────────────────────
@@ -117,12 +157,12 @@ pub struct AnteriorTemporalLobe {
 impl AnteriorTemporalLobe {
     pub fn new() -> Self {
         Self {
-            semantic_richness:    RICHNESS_BASELINE,
+            semantic_richness: RICHNESS_BASELINE,
             conceptual_coherence: COHERENCE_BASELINE,
-            binding_depth:        0.30,
-            personal_semantic:    0.20,
-            inputs_processed:     0,
-            abstract_detections:  0,
+            binding_depth: 0.30,
+            personal_semantic: 0.20,
+            inputs_processed: 0,
+            abstract_detections: 0,
             personal_activations: 0,
         }
     }
@@ -145,46 +185,52 @@ impl AnteriorTemporalLobe {
         let lower = text.to_lowercase();
 
         // ── Abstract concept detection ────────────────────────────────────────
-        let abstract_hits = ABSTRACT_MARKERS.iter()
-            .filter(|&&w| lower.contains(w)).count();
+        let abstract_hits = ABSTRACT_MARKERS
+            .iter()
+            .filter(|&&w| lower.contains(w))
+            .count();
         let abstract_detected = abstract_hits >= 1;
         if abstract_detected {
             self.abstract_detections += 1;
         }
 
         // ── Personal semantic detection ───────────────────────────────────────
-        let personal_hits = PERSONAL_MARKERS.iter()
-            .filter(|&&w| lower.contains(w)).count();
+        let personal_hits = PERSONAL_MARKERS
+            .iter()
+            .filter(|&&w| lower.contains(w))
+            .count();
         let personal_detected = personal_hits >= 1;
         if personal_detected {
             self.personal_activations += 1;
-            let personal_target = (0.30 + personal_hits as f32 * 0.08
-                + temporal_pole_resonance * 0.30).min(1.0);
-            self.personal_semantic = self.personal_semantic * (1.0 - RICHNESS_EMA)
-                + personal_target * RICHNESS_EMA;
+            let personal_target =
+                (0.30 + personal_hits as f32 * 0.08 + temporal_pole_resonance * 0.30).min(1.0);
+            self.personal_semantic =
+                self.personal_semantic * (1.0 - RICHNESS_EMA) + personal_target * RICHNESS_EMA;
         } else {
             self.personal_semantic = (self.personal_semantic - 0.03).max(0.0);
         }
 
         // ── Cross-modal binding ───────────────────────────────────────────────
-        let multimodal_hits = MULTIMODAL_MARKERS.iter()
-            .filter(|&&w| lower.contains(w)).count();
+        let multimodal_hits = MULTIMODAL_MARKERS
+            .iter()
+            .filter(|&&w| lower.contains(w))
+            .count();
         let binding_target = (multimodal_hits as f32 * 0.12
             + fusiform_familiarity * 0.20
-            + language_semantic_density * 0.20).min(1.0);
-        self.binding_depth = self.binding_depth * (1.0 - RICHNESS_EMA)
-            + binding_target * RICHNESS_EMA;
+            + language_semantic_density * 0.20)
+            .min(1.0);
+        self.binding_depth =
+            self.binding_depth * (1.0 - RICHNESS_EMA) + binding_target * RICHNESS_EMA;
 
         // ── Semantic richness ─────────────────────────────────────────────────
         // Richness = language density + abstract content + personal semantics + cross-modal
-        let richness_target = (
-            language_semantic_density * 0.40
+        let richness_target = (language_semantic_density * 0.40
             + abstract_hits as f32 * 0.06
             + personal_hits as f32 * 0.04
-            + self.binding_depth * 0.20
-        ).min(1.0);
-        self.semantic_richness = self.semantic_richness * (1.0 - RICHNESS_EMA)
-            + richness_target * RICHNESS_EMA;
+            + self.binding_depth * 0.20)
+            .min(1.0);
+        self.semantic_richness =
+            self.semantic_richness * (1.0 - RICHNESS_EMA) + richness_target * RICHNESS_EMA;
 
         // ── Conceptual coherence ──────────────────────────────────────────────
         // Coherence rises when rich semantics are internally consistent
@@ -195,14 +241,14 @@ impl AnteriorTemporalLobe {
         } else {
             COHERENCE_BASELINE
         };
-        self.conceptual_coherence = self.conceptual_coherence * (1.0 - COHERENCE_EMA)
-            + coherence_target * COHERENCE_EMA;
+        self.conceptual_coherence =
+            self.conceptual_coherence * (1.0 - COHERENCE_EMA) + coherence_target * COHERENCE_EMA;
 
         ATLOutput {
-            semantic_richness:    self.semantic_richness,
+            semantic_richness: self.semantic_richness,
             conceptual_coherence: self.conceptual_coherence,
-            binding_depth:        self.binding_depth,
-            personal_semantic:    self.personal_semantic,
+            binding_depth: self.binding_depth,
+            personal_semantic: self.personal_semantic,
             abstract_detected,
             personal_detected,
         }
@@ -230,12 +276,12 @@ impl AnteriorTemporalLobe {
     /// Current output without processing.
     pub fn current_output(&self) -> ATLOutput {
         ATLOutput {
-            semantic_richness:    self.semantic_richness,
+            semantic_richness: self.semantic_richness,
             conceptual_coherence: self.conceptual_coherence,
-            binding_depth:        self.binding_depth,
-            personal_semantic:    self.personal_semantic,
-            abstract_detected:    false,
-            personal_detected:    false,
+            binding_depth: self.binding_depth,
+            personal_semantic: self.personal_semantic,
+            abstract_detected: false,
+            personal_detected: false,
         }
     }
 
@@ -252,7 +298,9 @@ impl AnteriorTemporalLobe {
 }
 
 impl Default for AnteriorTemporalLobe {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -271,9 +319,13 @@ mod tests {
     #[test]
     fn test_abstract_words_detected() {
         let mut a = AnteriorTemporalLobe::new();
-        let out = a.process("the concept and meaning of this idea forms a framework", 0.50, 0.40, 0.30);
-        assert!(out.abstract_detected,
-            "abstract words should be detected");
+        let out = a.process(
+            "the concept and meaning of this idea forms a framework",
+            0.50,
+            0.40,
+            0.30,
+        );
+        assert!(out.abstract_detected, "abstract words should be detected");
         assert!(a.abstract_detections >= 1);
     }
 
@@ -281,20 +333,36 @@ mod tests {
     fn test_personal_words_raise_personal_semantic() {
         let mut a = AnteriorTemporalLobe::new();
         let before = a.personal_semantic;
-        a.process("you mentioned this and I remember what we said", 0.40, 0.30, 0.60);
-        assert!(a.personal_semantic > before,
+        a.process(
+            "you mentioned this and I remember what we said",
+            0.40,
+            0.30,
+            0.60,
+        );
+        assert!(
+            a.personal_semantic > before,
             "personal words should raise personal semantic: {:.2} → {:.2}",
-            before, a.personal_semantic);
+            before,
+            a.personal_semantic
+        );
     }
 
     #[test]
     fn test_multimodal_words_raise_binding() {
         let mut a = AnteriorTemporalLobe::new();
         let before = a.binding_depth;
-        a.process("feel the warm smooth texture and hear the quiet sound", 0.50, 0.40, 0.20);
-        assert!(a.binding_depth > before,
+        a.process(
+            "feel the warm smooth texture and hear the quiet sound",
+            0.50,
+            0.40,
+            0.20,
+        );
+        assert!(
+            a.binding_depth > before,
             "multimodal words should raise binding depth: {:.2} → {:.2}",
-            before, a.binding_depth);
+            before,
+            a.binding_depth
+        );
     }
 
     #[test]
@@ -302,19 +370,30 @@ mod tests {
         let mut a = AnteriorTemporalLobe::new();
         let before = a.semantic_richness;
         a.process("simple text", 0.90, 0.70, 0.60);
-        assert!(a.semantic_richness > before,
+        assert!(
+            a.semantic_richness > before,
             "high language density should raise richness: {:.2} → {:.2}",
-            before, a.semantic_richness);
+            before,
+            a.semantic_richness
+        );
     }
 
     #[test]
     fn test_abstract_content_raises_coherence() {
         let mut a = AnteriorTemporalLobe::new();
         let before = a.conceptual_coherence;
-        a.process("the concept here means and represents something", 0.70, 0.50, 0.40);
-        assert!(a.conceptual_coherence >= before,
+        a.process(
+            "the concept here means and represents something",
+            0.70,
+            0.50,
+            0.40,
+        );
+        assert!(
+            a.conceptual_coherence >= before,
             "abstract + high density should raise coherence: {:.2} → {:.2}",
-            before, a.conceptual_coherence);
+            before,
+            a.conceptual_coherence
+        );
     }
 
     #[test]
@@ -322,8 +401,11 @@ mod tests {
         let mut a = AnteriorTemporalLobe::new();
         a.personal_semantic = 0.60;
         a.process("compile the rust module", 0.20, 0.30, 0.10);
-        assert!(a.personal_semantic < 0.60,
-            "absent personal words should reduce personal semantic: {:.2}", a.personal_semantic);
+        assert!(
+            a.personal_semantic < 0.60,
+            "absent personal words should reduce personal semantic: {:.2}",
+            a.personal_semantic
+        );
     }
 
     #[test]
@@ -333,8 +415,11 @@ mod tests {
         for _ in 0..30 {
             a.decay();
         }
-        assert!(a.semantic_richness < 0.80,
-            "richness should drift toward baseline: {:.2}", a.semantic_richness);
+        assert!(
+            a.semantic_richness < 0.80,
+            "richness should drift toward baseline: {:.2}",
+            a.semantic_richness
+        );
         assert!(a.semantic_richness >= RICHNESS_BASELINE - 0.05);
     }
 
@@ -342,8 +427,10 @@ mod tests {
     fn test_temporal_pole_resonance_boosts_personal_semantic() {
         let mut a = AnteriorTemporalLobe::new();
         a.process("you and I", 0.20, 0.20, 0.90);
-        assert!(a.personal_semantic > 0.20,
-            "high temporal pole resonance + personal words should activate personal semantics");
+        assert!(
+            a.personal_semantic > 0.20,
+            "high temporal pole resonance + personal words should activate personal semantics"
+        );
     }
 
     #[test]

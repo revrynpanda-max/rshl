@@ -141,14 +141,14 @@ pub struct VentromedialPFC {
 impl VentromedialPFC {
     pub fn new() -> Self {
         Self {
-            safety_level:       SAFETY_BASELINE,
+            safety_level: SAFETY_BASELINE,
             extinction_strength: 0.20,
-            value_alignment:    0.70,
-            risk_cost:          0.0,
+            value_alignment: 0.70,
+            risk_cost: 0.0,
             learned_safety_cues: Vec::new(),
-            events_processed:   0,
-            safe_exposures:     0,
-            value_conflicts:    0,
+            events_processed: 0,
+            safe_exposures: 0,
+            value_conflicts: 0,
         }
     }
 
@@ -162,11 +162,10 @@ impl VentromedialPFC {
                 self.safe_exposures += 1;
                 // Learn safety: update EMA toward high safety
                 let target = (0.60 + strength * 0.30).min(1.0);
-                self.safety_level = self.safety_level * (1.0 - SAFETY_EMA)
-                    + target * SAFETY_EMA;
+                self.safety_level = self.safety_level * (1.0 - SAFETY_EMA) + target * SAFETY_EMA;
                 // Strengthen extinction of any conditioned fear
-                self.extinction_strength = (self.extinction_strength + EXTINCTION_RATE * strength)
-                    .min(1.0);
+                self.extinction_strength =
+                    (self.extinction_strength + EXTINCTION_RATE * strength).min(1.0);
                 // Store safety cue if novel
                 let context_key = context.to_lowercase();
                 if !self.learned_safety_cues.iter().any(|c| c == &context_key) {
@@ -178,16 +177,16 @@ impl VentromedialPFC {
             }
             VmPFCEvent::ValueAligned { degree } => {
                 let target = (0.60 + degree * 0.40).min(1.0);
-                self.value_alignment = self.value_alignment * (1.0 - VALUE_EMA)
-                    + target * VALUE_EMA;
+                self.value_alignment =
+                    self.value_alignment * (1.0 - VALUE_EMA) + target * VALUE_EMA;
                 // Value alignment also boosts safety
                 self.safety_level = (self.safety_level + degree * 0.02).min(1.0);
             }
             VmPFCEvent::ValueConflict { severity } => {
                 self.value_conflicts += 1;
                 let target = (1.0 - severity) * 0.50;
-                self.value_alignment = self.value_alignment * (1.0 - VALUE_EMA)
-                    + target * VALUE_EMA;
+                self.value_alignment =
+                    self.value_alignment * (1.0 - VALUE_EMA) + target * VALUE_EMA;
                 // Value conflict increases risk cost
                 self.risk_cost = (self.risk_cost + severity * 0.20).min(1.0);
             }
@@ -219,7 +218,9 @@ impl VentromedialPFC {
     /// Check whether a context string is a learned safety cue.
     pub fn is_safe_context(&self, context: &str) -> bool {
         let lower = context.to_lowercase();
-        self.learned_safety_cues.iter().any(|c| lower.contains(c.as_str()))
+        self.learned_safety_cues
+            .iter()
+            .any(|c| lower.contains(c.as_str()))
     }
 
     /// Suppress amygdala signal based on current safety and extinction.
@@ -249,22 +250,26 @@ impl VentromedialPFC {
 
     fn build_output(&self) -> VmPFCOutput {
         VmPFCOutput {
-            safety_level:       self.safety_level,
+            safety_level: self.safety_level,
             extinction_strength: self.extinction_strength,
-            value_alignment:    self.value_alignment,
-            risk_cost:          self.risk_cost,
-            suppress_amygdala:  self.safety_level >= HIGH_SAFETY_THRESHOLD,
-            caution_mode:       self.risk_cost >= RISK_CAUTION_THRESHOLD,
-            safety_cue_count:   self.learned_safety_cues.len(),
+            value_alignment: self.value_alignment,
+            risk_cost: self.risk_cost,
+            suppress_amygdala: self.safety_level >= HIGH_SAFETY_THRESHOLD,
+            caution_mode: self.risk_cost >= RISK_CAUTION_THRESHOLD,
+            safety_cue_count: self.learned_safety_cues.len(),
         }
     }
 
     /// Current output without processing.
-    pub fn current_output(&self) -> VmPFCOutput { self.build_output() }
+    pub fn current_output(&self) -> VmPFCOutput {
+        self.build_output()
+    }
 
     /// Value conflict rate (conflicts / total events).
     pub fn conflict_rate(&self) -> f32 {
-        if self.events_processed == 0 { return 0.0; }
+        if self.events_processed == 0 {
+            return 0.0;
+        }
         self.value_conflicts as f32 / self.events_processed as f32
     }
 
@@ -282,7 +287,9 @@ impl VentromedialPFC {
 }
 
 impl Default for VentromedialPFC {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -294,37 +301,61 @@ mod tests {
     #[test]
     fn test_initial_state() {
         let v = VentromedialPFC::new();
-        assert!((v.safety_level - SAFETY_BASELINE).abs() < 0.01,
-            "initial safety should be baseline: {:.2}", v.safety_level);
-        assert!(v.value_alignment > 0.0,
-            "initial value alignment should be positive: {:.2}", v.value_alignment);
+        assert!(
+            (v.safety_level - SAFETY_BASELINE).abs() < 0.01,
+            "initial safety should be baseline: {:.2}",
+            v.safety_level
+        );
+        assert!(
+            v.value_alignment > 0.0,
+            "initial value alignment should be positive: {:.2}",
+            v.value_alignment
+        );
     }
 
     #[test]
     fn test_safe_exposure_raises_safety() {
         let mut v = VentromedialPFC::new();
         let before = v.safety_level;
-        v.process(VmPFCEvent::SafeExposure { context: "rust".into(), strength: 0.80 });
-        assert!(v.safety_level >= before,
-            "safe exposure should not lower safety: {:.2} → {:.2}", before, v.safety_level);
+        v.process(VmPFCEvent::SafeExposure {
+            context: "rust".into(),
+            strength: 0.80,
+        });
+        assert!(
+            v.safety_level >= before,
+            "safe exposure should not lower safety: {:.2} → {:.2}",
+            before,
+            v.safety_level
+        );
     }
 
     #[test]
     fn test_safe_exposure_stores_cue() {
         let mut v = VentromedialPFC::new();
-        v.process(VmPFCEvent::SafeExposure { context: "rust_coding".into(), strength: 0.70 });
-        assert!(v.is_safe_context("rust_coding"),
-            "context should be stored as safety cue");
+        v.process(VmPFCEvent::SafeExposure {
+            context: "rust_coding".into(),
+            strength: 0.70,
+        });
+        assert!(
+            v.is_safe_context("rust_coding"),
+            "context should be stored as safety cue"
+        );
     }
 
     #[test]
     fn test_extinction_increases_with_safe_exposure() {
         let mut v = VentromedialPFC::new();
         let before = v.extinction_strength;
-        v.process(VmPFCEvent::SafeExposure { context: "topic".into(), strength: 0.90 });
-        assert!(v.extinction_strength > before,
+        v.process(VmPFCEvent::SafeExposure {
+            context: "topic".into(),
+            strength: 0.90,
+        });
+        assert!(
+            v.extinction_strength > before,
             "extinction should strengthen with safe exposure: {:.2} → {:.2}",
-            before, v.extinction_strength);
+            before,
+            v.extinction_strength
+        );
     }
 
     #[test]
@@ -332,16 +363,23 @@ mod tests {
         let mut v = VentromedialPFC::new();
         let before = v.value_alignment;
         v.process(VmPFCEvent::ValueConflict { severity: 0.80 });
-        assert!(v.value_alignment < before,
-            "value conflict should lower alignment: {:.2} → {:.2}", before, v.value_alignment);
+        assert!(
+            v.value_alignment < before,
+            "value conflict should lower alignment: {:.2} → {:.2}",
+            before,
+            v.value_alignment
+        );
     }
 
     #[test]
     fn test_value_conflict_raises_risk_cost() {
         let mut v = VentromedialPFC::new();
         v.process(VmPFCEvent::ValueConflict { severity: 0.70 });
-        assert!(v.risk_cost > 0.0,
-            "value conflict should raise risk cost: {:.2}", v.risk_cost);
+        assert!(
+            v.risk_cost > 0.0,
+            "value conflict should raise risk cost: {:.2}",
+            v.risk_cost
+        );
     }
 
     #[test]
@@ -352,8 +390,11 @@ mod tests {
             v.process(VmPFCEvent::RiskCue { magnitude: 0.80 });
         }
         let out = v.current_output();
-        assert!(out.caution_mode,
-            "high risk cost should trigger caution mode: risk={:.2}", v.risk_cost);
+        assert!(
+            out.caution_mode,
+            "high risk cost should trigger caution mode: risk={:.2}",
+            v.risk_cost
+        );
     }
 
     #[test]
@@ -364,8 +405,11 @@ mod tests {
         v.process(VmPFCEvent::ThreatSignal { intensity: 0.30 });
         // Extinction is strong — threat should have minimal impact
         // safety may stay near baseline or only drop slightly
-        assert!(v.safety_level >= before - 0.05,
-            "strong extinction should hold safety under low threat: {:.2}", v.safety_level);
+        assert!(
+            v.safety_level >= before - 0.05,
+            "strong extinction should hold safety under low threat: {:.2}",
+            v.safety_level
+        );
     }
 
     #[test]
@@ -374,8 +418,11 @@ mod tests {
         v.safety_level = 0.80;
         v.extinction_strength = 0.70;
         let suppression = v.amygdala_suppression();
-        assert!(suppression > 0.0,
-            "high safety should produce amygdala suppression: {:.2}", suppression);
+        assert!(
+            suppression > 0.0,
+            "high safety should produce amygdala suppression: {:.2}",
+            suppression
+        );
     }
 
     #[test]
@@ -383,8 +430,12 @@ mod tests {
         let mut v = VentromedialPFC::new();
         let before = v.safety_level;
         v.process(VmPFCEvent::TrustedContext);
-        assert!(v.safety_level >= before,
-            "trusted context should boost safety: {:.2} → {:.2}", before, v.safety_level);
+        assert!(
+            v.safety_level >= before,
+            "trusted context should boost safety: {:.2} → {:.2}",
+            before,
+            v.safety_level
+        );
     }
 
     #[test]
@@ -395,10 +446,16 @@ mod tests {
         for _ in 0..20 {
             v.decay();
         }
-        assert!(v.safety_level < 0.90,
-            "safety should drift back toward baseline: {:.2}", v.safety_level);
-        assert!(v.risk_cost < 0.50,
-            "risk cost should decay: {:.2}", v.risk_cost);
+        assert!(
+            v.safety_level < 0.90,
+            "safety should drift back toward baseline: {:.2}",
+            v.safety_level
+        );
+        assert!(
+            v.risk_cost < 0.50,
+            "risk cost should decay: {:.2}",
+            v.risk_cost
+        );
     }
 
     #[test]
@@ -406,8 +463,12 @@ mod tests {
         let mut v = VentromedialPFC::new();
         let before = v.value_alignment;
         v.process(VmPFCEvent::ValueAligned { degree: 0.90 });
-        assert!(v.value_alignment >= before,
-            "value aligned event should not lower alignment: {:.2} → {:.2}", before, v.value_alignment);
+        assert!(
+            v.value_alignment >= before,
+            "value aligned event should not lower alignment: {:.2} → {:.2}",
+            before,
+            v.value_alignment
+        );
     }
 
     #[test]

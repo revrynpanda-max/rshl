@@ -38,7 +38,6 @@
 ///     - Communication style: verbosity, technicality, question frequency
 ///     - Turn-level engagement score
 ///     - What KAI has already explained (avoid repetition)
-
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -55,30 +54,30 @@ const MAX_EXPLAINED: usize = 100;
 /// How well Ryan appears to know a topic.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Familiarity {
-    Unknown,     // Ryan never mentioned this
-    Curious,     // Ryan asked about it (doesn't know it well)
-    Familiar,    // Ryan referenced it correctly / casually
-    Proficient,  // Ryan explained or corrected KAI on it
-    Expert,      // Ryan consistently demonstrates deep knowledge
+    Unknown,    // Ryan never mentioned this
+    Curious,    // Ryan asked about it (doesn't know it well)
+    Familiar,   // Ryan referenced it correctly / casually
+    Proficient, // Ryan explained or corrected KAI on it
+    Expert,     // Ryan consistently demonstrates deep knowledge
 }
 
 impl Familiarity {
     pub fn score(&self) -> f32 {
         match self {
-            Familiarity::Unknown    => 0.0,
-            Familiarity::Curious    => 0.2,
-            Familiarity::Familiar   => 0.5,
+            Familiarity::Unknown => 0.0,
+            Familiarity::Curious => 0.2,
+            Familiarity::Familiar => 0.5,
             Familiarity::Proficient => 0.75,
-            Familiarity::Expert     => 1.0,
+            Familiarity::Expert => 1.0,
         }
     }
     pub fn label(&self) -> &'static str {
         match self {
-            Familiarity::Unknown    => "unknown",
-            Familiarity::Curious    => "curious",
-            Familiarity::Familiar   => "familiar",
+            Familiarity::Unknown => "unknown",
+            Familiarity::Curious => "curious",
+            Familiarity::Familiar => "familiar",
             Familiarity::Proficient => "proficient",
-            Familiarity::Expert     => "expert",
+            Familiarity::Expert => "expert",
         }
     }
 }
@@ -122,16 +121,16 @@ pub struct UserModel {
 impl UserModel {
     pub fn new() -> Self {
         Self {
-            knowledge_map:     HashMap::new(),
-            emotion_history:   Vec::new(),
-            avg_msg_length:    0.0,
-            question_ratio:    0.0,
-            tech_vocab_count:  0,
-            engagement:        0.5,
+            knowledge_map: HashMap::new(),
+            emotion_history: Vec::new(),
+            avg_msg_length: 0.0,
+            question_ratio: 0.0,
+            tech_vocab_count: 0,
+            engagement: 0.5,
             already_explained: Vec::new(),
-            turns:             0,
-            questions_asked:   0,
-            statements_made:   0,
+            turns: 0,
+            questions_asked: 0,
+            statements_made: 0,
         }
     }
 }
@@ -150,18 +149,18 @@ pub struct TheoryOfMind {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum CommunicationStyle {
-    Terse,       // short messages, direct
+    Terse,          // short messages, direct
     Conversational, // moderate length, natural
-    Technical,   // uses domain vocabulary
-    Exploratory, // lots of questions, learning mode
+    Technical,      // uses domain vocabulary
+    Exploratory,    // lots of questions, learning mode
 }
 
 impl TheoryOfMind {
     pub fn new() -> Self {
         Self {
-            user:           UserModel::new(),
+            user: UserModel::new(),
             user_is_expert: false,
-            comm_style:     CommunicationStyle::Conversational,
+            comm_style: CommunicationStyle::Conversational,
         }
     }
 
@@ -175,15 +174,19 @@ impl TheoryOfMind {
 
         // ── Message length tracking ──────────────────────────────────────
         let alpha = 0.15_f32;
-        self.user.avg_msg_length = self.user.avg_msg_length * (1.0 - alpha)
-            + word_count as f32 * alpha;
+        self.user.avg_msg_length =
+            self.user.avg_msg_length * (1.0 - alpha) + word_count as f32 * alpha;
 
         // ── Question vs statement ────────────────────────────────────────
         let is_question = text.ends_with('?')
-            || lower.starts_with("what") || lower.starts_with("how")
-            || lower.starts_with("why")  || lower.starts_with("who")
-            || lower.starts_with("when") || lower.starts_with("where")
-            || lower.starts_with("can you") || lower.starts_with("could you");
+            || lower.starts_with("what")
+            || lower.starts_with("how")
+            || lower.starts_with("why")
+            || lower.starts_with("who")
+            || lower.starts_with("when")
+            || lower.starts_with("where")
+            || lower.starts_with("can you")
+            || lower.starts_with("could you");
 
         if is_question {
             self.user.questions_asked += 1;
@@ -212,7 +215,10 @@ impl TheoryOfMind {
             // Prune if too many
             if self.user.knowledge_map.len() > MAX_KNOWLEDGE_TOPICS {
                 // Remove least-known topic
-                if let Some(min_key) = self.user.knowledge_map.iter()
+                if let Some(min_key) = self
+                    .user
+                    .knowledge_map
+                    .iter()
                     .min_by(|a, b| a.1.partial_cmp(b.1).unwrap())
                     .map(|(k, _)| k.clone())
                 {
@@ -223,12 +229,39 @@ impl TheoryOfMind {
 
         // ── Technical vocabulary ─────────────────────────────────────────
         let tech_terms = [
-            "rshl", "phi_g", "chi", "rho", "tensor", "vector", "sparse",
-            "lattice", "hyperdimensional", "cosine", "embedding", "entropy",
-            "gradient", "eigenvalue", "manifold", "topology", "recursive",
-            "algorithm", "binary", "hexadecimal", "api", "sdk", "async",
-            "concurrency", "throughput", "latency", "neuron", "synapse",
-            "cortex", "amygdala", "hippocampus", "dopamine", "oscillator",
+            "rshl",
+            "phi_g",
+            "chi",
+            "rho",
+            "tensor",
+            "vector",
+            "sparse",
+            "lattice",
+            "hyperdimensional",
+            "cosine",
+            "embedding",
+            "entropy",
+            "gradient",
+            "eigenvalue",
+            "manifold",
+            "topology",
+            "recursive",
+            "algorithm",
+            "binary",
+            "hexadecimal",
+            "api",
+            "sdk",
+            "async",
+            "concurrency",
+            "throughput",
+            "latency",
+            "neuron",
+            "synapse",
+            "cortex",
+            "amygdala",
+            "hippocampus",
+            "dopamine",
+            "oscillator",
         ];
         let tech_count = tech_terms.iter().filter(|t| lower.contains(*t)).count();
         self.user.tech_vocab_count += tech_count as u32;
@@ -239,9 +272,9 @@ impl TheoryOfMind {
                 self.user.emotion_history.remove(0);
             }
             self.user.emotion_history.push(DetectedEmotion {
-                label:     emotion.0.to_string(),
+                label: emotion.0.to_string(),
                 intensity: emotion.1,
-                turn:      self.user.turns,
+                turn: self.user.turns,
             });
         }
 
@@ -254,7 +287,13 @@ impl TheoryOfMind {
 
         // ── Update expert status and comm style ──────────────────────────
         self.user_is_expert = self.user.tech_vocab_count > 10
-            || self.user.knowledge_map.values().filter(|&&v| v > 0.6).count() > 5;
+            || self
+                .user
+                .knowledge_map
+                .values()
+                .filter(|&&v| v > 0.6)
+                .count()
+                > 5;
 
         self.comm_style = if self.user.question_ratio > 0.65 {
             CommunicationStyle::Exploratory
@@ -279,15 +318,18 @@ impl TheoryOfMind {
 
     /// Has KAI already explained this topic to Ryan this session?
     pub fn already_explained(&self, topic: &str) -> bool {
-        self.user.already_explained.iter().any(|e| {
-            e.to_lowercase().contains(&topic.to_lowercase())
-        })
+        self.user
+            .already_explained
+            .iter()
+            .any(|e| e.to_lowercase().contains(&topic.to_lowercase()))
     }
 
     /// How familiar is Ryan with a given topic? (0=unknown, 1=expert)
     pub fn familiarity(&self, topic: &str) -> f32 {
         let lower = topic.to_lowercase();
-        self.user.knowledge_map.iter()
+        self.user
+            .knowledge_map
+            .iter()
             .filter(|(k, _)| k.contains(&lower) || lower.contains(k.as_str()))
             .map(|(_, v)| v)
             .cloned()
@@ -302,12 +344,16 @@ impl TheoryOfMind {
     /// Generate a brief ToM summary for KAI's response calibration.
     pub fn context_hint(&self) -> String {
         let style = match self.comm_style {
-            CommunicationStyle::Terse        => "brief",
-            CommunicationStyle::Technical    => "technical",
-            CommunicationStyle::Exploratory  => "exploratory",
+            CommunicationStyle::Terse => "brief",
+            CommunicationStyle::Technical => "technical",
+            CommunicationStyle::Exploratory => "exploratory",
             CommunicationStyle::Conversational => "conversational",
         };
-        let expert = if self.user_is_expert { "expert user" } else { "general user" };
+        let expert = if self.user_is_expert {
+            "expert user"
+        } else {
+            "general user"
+        };
         format!(
             "[ToM: {} | style={} | engagement={:.2} | questions={}]",
             expert, style, self.user.engagement, self.user.questions_asked
@@ -327,16 +373,19 @@ impl TheoryOfMind {
 }
 
 impl Default for TheoryOfMind {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /// Extract meaningful topic keywords from a text.
 fn extract_topics(text: &str) -> Vec<String> {
-    let stop = ["the", "and", "for", "that", "this", "with", "from", "have",
-                "what", "how", "why", "who", "when", "where", "can", "you",
-                "tell", "know", "does", "did", "your", "are", "was", "will"];
+    let stop = [
+        "the", "and", "for", "that", "this", "with", "from", "have", "what", "how", "why", "who",
+        "when", "where", "can", "you", "tell", "know", "does", "did", "your", "are", "was", "will",
+    ];
     text.split(|c: char| !c.is_alphabetic())
         .filter(|w| w.len() >= 5)
         .map(|w| w.to_lowercase())
@@ -377,7 +426,11 @@ mod tests {
         tom.observe_input("What is calculus?");
         let fam = tom.familiarity("calculus");
         // Curiosity score ~ 0.2 × 0.15 = 0.03 (low — asking ≠ knowing)
-        assert!(fam < 0.30, "asking about calculus shouldn't imply familiarity: {:.3}", fam);
+        assert!(
+            fam < 0.30,
+            "asking about calculus shouldn't imply familiarity: {:.3}",
+            fam
+        );
     }
 
     #[test]
@@ -387,7 +440,11 @@ mod tests {
             tom.observe_input("lattice geometry is a hyperdimensional ternary structure");
         }
         let fam = tom.familiarity("lattice");
-        assert!(fam > 0.20, "repeated statements should raise familiarity: {:.3}", fam);
+        assert!(
+            fam > 0.20,
+            "repeated statements should raise familiarity: {:.3}",
+            fam
+        );
     }
 
     #[test]
@@ -396,7 +453,10 @@ mod tests {
         for _ in 0..5 {
             tom.observe_input("the sparse vector cosine similarity across the hyperdimensional lattice tensor embedding");
         }
-        assert!(tom.user_is_expert, "heavy tech vocab should mark user as expert");
+        assert!(
+            tom.user_is_expert,
+            "heavy tech vocab should mark user as expert"
+        );
     }
 
     #[test]
@@ -404,7 +464,10 @@ mod tests {
         let mut tom = TheoryOfMind::new();
         assert!(!tom.already_explained("recursion"));
         tom.mark_explained("recursion");
-        assert!(tom.already_explained("recursion"), "should track explained topics");
+        assert!(
+            tom.already_explained("recursion"),
+            "should track explained topics"
+        );
     }
 
     #[test]
@@ -413,8 +476,11 @@ mod tests {
         for _ in 0..10 {
             tom.observe_input("What does this mean?");
         }
-        assert_eq!(tom.comm_style, CommunicationStyle::Exploratory,
-            "many questions → exploratory style");
+        assert_eq!(
+            tom.comm_style,
+            CommunicationStyle::Exploratory,
+            "many questions → exploratory style"
+        );
     }
 
     #[test]
@@ -428,7 +494,9 @@ mod tests {
     #[test]
     fn test_needs_basics_for_unknown_topic() {
         let tom = TheoryOfMind::new();
-        assert!(tom.needs_basics("quantum entanglement"),
-            "unknown topic should trigger basics explanation");
+        assert!(
+            tom.needs_basics("quantum entanglement"),
+            "unknown topic should trigger basics explanation"
+        );
     }
 }

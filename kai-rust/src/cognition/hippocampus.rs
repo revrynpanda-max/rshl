@@ -1,3 +1,4 @@
+use crate::core::{SparseVec, Universe};
 /// Hippocampus — Pattern Completion, Pattern Separation, Consolidation Indexing
 ///
 /// The hippocampus is the brain's rapid-binding memory system. It does not
@@ -35,9 +36,7 @@
 ///   recent_patterns — CA1 short-term comparison buffer (deque, capped at 12)
 ///   pending_consolidations — flagged for sleep-phase replay
 ///   separation_threshold — cosine above which two patterns risk confusion
-
 use std::collections::VecDeque;
-use crate::core::{SparseVec, Universe};
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -138,15 +137,15 @@ pub struct Hippocampus {
 impl Hippocampus {
     pub fn new() -> Self {
         Self {
-            pattern_store:           Vec::with_capacity(CA3_CAPACITY),
-            recent_patterns:         VecDeque::with_capacity(CA1_BUFFER),
-            pending_consolidations:  Vec::new(),
-            separation_threshold:    SEPARATION_THRESHOLD,
-            completions_run:         0,
-            separations_run:         0,
-            consolidations_flagged:  0,
+            pattern_store: Vec::with_capacity(CA3_CAPACITY),
+            recent_patterns: VecDeque::with_capacity(CA1_BUFFER),
+            pending_consolidations: Vec::new(),
+            separation_threshold: SEPARATION_THRESHOLD,
+            completions_run: 0,
+            separations_run: 0,
+            consolidations_flagged: 0,
             consolidations_promoted: 0,
-            tick:                    0,
+            tick: 0,
         }
     }
 
@@ -170,7 +169,9 @@ impl Hippocampus {
         let vec = SparseVec::encode(text);
 
         // Check if it already exists (high cosine = same pattern)
-        let existing = self.pattern_store.iter_mut()
+        let existing = self
+            .pattern_store
+            .iter_mut()
             .find(|p| p.vec.cosine(&vec) > 0.90);
 
         if let Some(pattern) = existing {
@@ -184,9 +185,15 @@ impl Hippocampus {
 
         // Evict weakest if at capacity
         if self.pattern_store.len() >= CA3_CAPACITY {
-            if let Some(min_idx) = self.pattern_store.iter().enumerate()
-                .min_by(|(_, a), (_, b)| a.strength.partial_cmp(&b.strength)
-                    .unwrap_or(std::cmp::Ordering::Equal))
+            if let Some(min_idx) = self
+                .pattern_store
+                .iter()
+                .enumerate()
+                .min_by(|(_, a), (_, b)| {
+                    a.strength
+                        .partial_cmp(&b.strength)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                })
                 .map(|(i, _)| i)
             {
                 self.pattern_store.remove(min_idx);
@@ -194,15 +201,15 @@ impl Hippocampus {
         }
 
         self.pattern_store.push(HippocampalPattern {
-            text:            text.to_string(),
+            text: text.to_string(),
             vec,
-            strength:        initial_strength.clamp(0.0, 1.0),
-            last_accessed:   self.tick,
-            access_count:    1,
-            flagged:         false,
-            survival_count:  0,
-            region:          region.to_string(),
-            source:          source.to_string(),
+            strength: initial_strength.clamp(0.0, 1.0),
+            last_accessed: self.tick,
+            access_count: 1,
+            flagged: false,
+            survival_count: 0,
+            region: region.to_string(),
+            source: source.to_string(),
             emotional_charge: emotional_charge.clamp(0.0, 1.0),
         });
     }
@@ -217,12 +224,16 @@ impl Hippocampus {
     /// main universe query — used to determine if this is genuinely filling
     /// a gap (low score) or just confirming what was already found.
     pub fn complete(&mut self, query: &str, top_hit_score: f32) -> Option<CompletionResult> {
-        if self.pattern_store.is_empty() { return None; }
+        if self.pattern_store.is_empty() {
+            return None;
+        }
 
         let query_vec = SparseVec::encode(query);
 
         // Find best matching pattern above minimum strength
-        let best = self.pattern_store.iter_mut()
+        let best = self
+            .pattern_store
+            .iter_mut()
             .filter(|p| p.strength >= COMPLETION_MIN_STRENGTH)
             .max_by(|a, b| {
                 let sa = a.vec.cosine(&query_vec);
@@ -234,7 +245,9 @@ impl Hippocampus {
             let sim = pattern.vec.cosine(&query_vec);
 
             // Completion fires only when match is meaningful
-            if sim < 0.25 { return None; }
+            if sim < 0.25 {
+                return None;
+            }
 
             // Check if this is genuinely filling a gap
             let filled_gap = top_hit_score < 0.40 && sim > 0.35;
@@ -256,7 +269,7 @@ impl Hippocampus {
 
             Some(CompletionResult {
                 completed_text: text,
-                confidence:     sim * pattern.strength,
+                confidence: sim * pattern.strength,
                 filled_gap,
             })
         } else {
@@ -282,10 +295,14 @@ impl Hippocampus {
             i if i > 0.95 => "near-duplicate",
             i if i > 0.88 => "high-overlap",
             i if i > 0.82 => "semantic-blur",
-            _              => "distinct",
+            _ => "distinct",
         };
 
-        SeparationResult { interference, needs_separation, risk_type }
+        SeparationResult {
+            interference,
+            needs_separation,
+            risk_type,
+        }
     }
 
     // ── Consolidation ─────────────────────────────────────────────────────────
@@ -296,7 +313,8 @@ impl Hippocampus {
     pub fn flag_for_consolidation(&mut self, text: &str, salience: f32) {
         // Only flag if not already pending
         if !self.pending_consolidations.iter().any(|(t, _)| t == text) {
-            self.pending_consolidations.push((text.to_string(), salience));
+            self.pending_consolidations
+                .push((text.to_string(), salience));
             self.consolidations_flagged += 1;
 
             // Also mark the stored pattern if it exists
@@ -353,20 +371,29 @@ impl Hippocampus {
             return (0, 0);
         }
 
-        let mut promoted   = 0usize;
+        let mut promoted = 0usize;
         let mut reinforced = 0usize;
 
         // Collect decisions first (immutable pass) then apply mutations.
         // This avoids holding any &Cell references while mutating universe.
         #[derive(Debug)]
-        enum Decision { Promote, Reinforce, Wait }
+        enum Decision {
+            Promote,
+            Reinforce,
+            Wait,
+        }
 
-        let decisions: Vec<(usize, Decision)> = self.pattern_store
+        let decisions: Vec<(usize, Decision)> = self
+            .pattern_store
             .iter_mut()
             .enumerate()
             .map(|(idx, pattern)| {
                 // Gate 1 — strength threshold
-                let threshold = if pattern.emotional_charge >= 0.60 { 0.45 } else { 0.55 };
+                let threshold = if pattern.emotional_charge >= 0.60 {
+                    0.45
+                } else {
+                    0.55
+                };
                 if pattern.strength < threshold {
                     pattern.survival_count += 1;
                     return (idx, Decision::Wait);
@@ -468,7 +495,9 @@ impl Hippocampus {
 }
 
 impl Default for Hippocampus {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -480,8 +509,20 @@ mod tests {
     #[test]
     fn test_store_and_count() {
         let mut h = Hippocampus::new();
-        h.store("consciousness arises from recursive self-reference", 0.8, "memory", "conversation", 0.0);
-        h.store("RSHL geometry uses ternary hyperdimensional vectors", 0.7, "memory", "conversation", 0.0);
+        h.store(
+            "consciousness arises from recursive self-reference",
+            0.8,
+            "memory",
+            "conversation",
+            0.0,
+        );
+        h.store(
+            "RSHL geometry uses ternary hyperdimensional vectors",
+            0.7,
+            "memory",
+            "conversation",
+            0.0,
+        );
         assert_eq!(h.pattern_count(), 2);
     }
 
@@ -494,7 +535,11 @@ mod tests {
         h.store(text, 0.5, "memory", "conversation", 0.0); // re-store same text
         let after = h.pattern_store[0].strength;
         // Should reinforce (same count) not add duplicate
-        assert_eq!(h.pattern_count(), 1, "should not duplicate near-identical patterns");
+        assert_eq!(
+            h.pattern_count(),
+            1,
+            "should not duplicate near-identical patterns"
+        );
         assert!(after > before, "re-storing should reinforce strength");
     }
 
@@ -505,9 +550,15 @@ mod tests {
         h.store(stored, 0.9, "memory", "conversation", 0.0);
         // Query with strong word overlap — RSHL is sparse so we need shared vocab
         let result = h.complete("consciousness hard problem subjective experience", 0.20);
-        assert!(result.is_some(), "should complete from query with strong vocabulary overlap");
+        assert!(
+            result.is_some(),
+            "should complete from query with strong vocabulary overlap"
+        );
         let r = result.unwrap();
-        assert!(r.confidence > 0.0, "completion confidence should be positive");
+        assert!(
+            r.confidence > 0.0,
+            "completion confidence should be positive"
+        );
     }
 
     #[test]
@@ -520,7 +571,13 @@ mod tests {
     #[test]
     fn test_filled_gap_flag() {
         let mut h = Hippocampus::new();
-        h.store("RSHL sparse ternary vectors enable geometric reasoning", 0.8, "memory", "conversation", 0.0);
+        h.store(
+            "RSHL sparse ternary vectors enable geometric reasoning",
+            0.8,
+            "memory",
+            "conversation",
+            0.0,
+        );
         // Low top_hit_score simulates a knowledge gap
         let result = h.complete("RSHL geometry vectors", 0.15);
         if let Some(r) = result {
@@ -537,8 +594,14 @@ mod tests {
             "consciousness arises from integration of information",
             "RSHL uses sparse ternary hyperdimensional vectors for geometric reasoning",
         );
-        assert!(!result.needs_separation, "very different texts should not need separation");
-        assert!(result.interference < 0.82, "interference should be low for distinct concepts");
+        assert!(
+            !result.needs_separation,
+            "very different texts should not need separation"
+        );
+        assert!(
+            result.interference < 0.82,
+            "interference should be low for distinct concepts"
+        );
     }
 
     #[test]
@@ -550,7 +613,10 @@ mod tests {
             "consciousness is the hard problem of subjective experience and qualia",
         );
         // High overlap — should flag separation need
-        assert!(result.interference > 0.70, "very similar texts should have high interference");
+        assert!(
+            result.interference > 0.70,
+            "very similar texts should have high interference"
+        );
     }
 
     #[test]
@@ -562,7 +628,10 @@ mod tests {
         let queue = h.drain_consolidations();
         assert_eq!(queue.len(), 2);
         // Should be sorted by salience descending
-        assert!(queue[0].1 >= queue[1].1, "consolidation queue should be sorted by salience");
+        assert!(
+            queue[0].1 >= queue[1].1,
+            "consolidation queue should be sorted by salience"
+        );
         // Queue should be empty after drain
         assert!(h.drain_consolidations().is_empty());
     }
@@ -572,22 +641,36 @@ mod tests {
         let mut h = Hippocampus::new();
         h.flag_for_consolidation("memory consolidation test", 0.7);
         h.flag_for_consolidation("memory consolidation test", 0.9); // duplicate
-        // Should only have 1 pending
+                                                                    // Should only have 1 pending
         let queue = h.drain_consolidations();
-        assert_eq!(queue.len(), 1, "should not add duplicate consolidation entries");
+        assert_eq!(
+            queue.len(),
+            1,
+            "should not add duplicate consolidation entries"
+        );
     }
 
     #[test]
     fn test_decay_prunes_weak_patterns() {
         let mut h = Hippocampus::new();
-        h.store("this will decay away soon", 0.015, "memory", "conversation", 0.0); // very weak
-        // Advance tick well past age threshold
+        h.store(
+            "this will decay away soon",
+            0.015,
+            "memory",
+            "conversation",
+            0.0,
+        ); // very weak
+           // Advance tick well past age threshold
         h.tick = 200;
         for _ in 0..10 {
             h.decay();
         }
         // Pattern should have been pruned
-        assert_eq!(h.pattern_count(), 0, "very weak old pattern should be pruned by decay");
+        assert_eq!(
+            h.pattern_count(),
+            0,
+            "very weak old pattern should be pruned by decay"
+        );
     }
 
     #[test]

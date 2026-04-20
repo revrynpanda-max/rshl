@@ -41,7 +41,6 @@
 ///     - Recent error events (wrong, uncertain, contradicted)
 ///     - Per-topic conflict scores (which topics cause most confusion)
 ///     - Error Rate: ratio of error events to total
-
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -94,14 +93,14 @@ pub struct AccMonitor {
 impl AccMonitor {
     pub fn new() -> Self {
         Self {
-            conflict_level:     0.0,
-            avg_conflict:       0.0,
-            recent_conflicts:   Vec::with_capacity(10),
-            topic_conflicts:    HashMap::new(),
-            total_errors:       0,
-            total_conflicts:    0,
+            conflict_level: 0.0,
+            avg_conflict: 0.0,
+            recent_conflicts: Vec::with_capacity(10),
+            topic_conflicts: HashMap::new(),
+            total_errors: 0,
+            total_conflicts: 0,
             resolved_conflicts: 0,
-            is_alerting:        false,
+            is_alerting: false,
         }
     }
 
@@ -116,14 +115,14 @@ impl AccMonitor {
 
         // Raise conflict level
         self.conflict_level = (self.conflict_level + intensity * 0.40).min(1.0);
-        self.avg_conflict    = self.avg_conflict * 0.90 + self.conflict_level * 0.10;
+        self.avg_conflict = self.avg_conflict * 0.90 + self.conflict_level * 0.10;
 
         // Record conflict
         let record = ConflictRecord {
-            item_a:    truncate_str(item_a, 60),
-            item_b:    truncate_str(item_b, 60),
+            item_a: truncate_str(item_a, 60),
+            item_b: truncate_str(item_b, 60),
             intensity,
-            resolved:  false,
+            resolved: false,
         };
 
         if self.recent_conflicts.len() >= 10 {
@@ -138,7 +137,9 @@ impl AccMonitor {
 
         // Prune if too large
         if self.topic_conflicts.len() > MAX_TOPIC_CONFLICTS {
-            if let Some(min_key) = self.topic_conflicts.iter()
+            if let Some(min_key) = self
+                .topic_conflicts
+                .iter()
                 .min_by(|a, b| a.1.partial_cmp(b.1).unwrap())
                 .map(|(k, _)| k.clone())
             {
@@ -157,9 +158,10 @@ impl AccMonitor {
     pub fn report_error(&mut self, topic: &str, severity: f32) {
         let severity = severity.clamp(0.0, 1.0);
         self.conflict_level = (self.conflict_level + severity * 0.15).min(1.0);
-        self.avg_conflict    = self.avg_conflict * 0.95 + self.conflict_level * 0.05;
+        self.avg_conflict = self.avg_conflict * 0.95 + self.conflict_level * 0.05;
 
-        let topic_key = topic.split_whitespace()
+        let topic_key = topic
+            .split_whitespace()
             .filter(|w| w.len() >= 4)
             .take(2)
             .map(|w| w.to_lowercase())
@@ -200,16 +202,25 @@ impl AccMonitor {
         let mut score: f32 = 0.0;
 
         // Negation asymmetry: one has "not/no/never", other doesn't
-        let neg_words = ["not", "no", "never", "cannot", "can't", "doesn't", "isn't", "aren't"];
+        let neg_words = [
+            "not", "no", "never", "cannot", "can't", "doesn't", "isn't", "aren't",
+        ];
         let a_has_neg = neg_words.iter().any(|n| a.contains(n));
         let b_has_neg = neg_words.iter().any(|n| b.contains(n));
-        if a_has_neg != b_has_neg { score += 0.35; }
+        if a_has_neg != b_has_neg {
+            score += 0.35;
+        }
 
         // Explicit contradiction words
         let contra_pairs = [
-            ("true",  "false"), ("always", "never"), ("is",  "is not"),
-            ("can",   "cannot"), ("yes",   "no"),    ("good", "bad"),
-            ("right", "wrong"),  ("same",  "different"),
+            ("true", "false"),
+            ("always", "never"),
+            ("is", "is not"),
+            ("can", "cannot"),
+            ("yes", "no"),
+            ("good", "bad"),
+            ("right", "wrong"),
+            ("same", "different"),
         ];
         for (pos, neg) in &contra_pairs {
             if (a.contains(pos) && b.contains(neg)) || (a.contains(neg) && b.contains(pos)) {
@@ -218,12 +229,10 @@ impl AccMonitor {
         }
 
         // Shared topic words but opposite conclusions (weak signal)
-        let a_words: std::collections::HashSet<&str> = a.split_whitespace()
-            .filter(|w| w.len() > 4)
-            .collect();
-        let b_words: std::collections::HashSet<&str> = b.split_whitespace()
-            .filter(|w| w.len() > 4)
-            .collect();
+        let a_words: std::collections::HashSet<&str> =
+            a.split_whitespace().filter(|w| w.len() > 4).collect();
+        let b_words: std::collections::HashSet<&str> =
+            b.split_whitespace().filter(|w| w.len() > 4).collect();
         let overlap = a_words.intersection(&b_words).count();
         if overlap >= 2 && score > 0.0 {
             score += 0.15; // same topic, different conclusion = stronger conflict
@@ -235,8 +244,8 @@ impl AccMonitor {
     /// Decay conflict level back toward 0 each tick.
     pub fn decay(&mut self) {
         self.conflict_level = (self.conflict_level - CONFLICT_DECAY).max(0.0);
-        self.avg_conflict   = self.avg_conflict * 0.995;  // very slow decay of baseline
-        self.is_alerting    = self.conflict_level > CONFLICT_THRESHOLD;
+        self.avg_conflict = self.avg_conflict * 0.995; // very slow decay of baseline
+        self.is_alerting = self.conflict_level > CONFLICT_THRESHOLD;
     }
 
     /// Topics that consistently cause KAI confusion.
@@ -248,7 +257,9 @@ impl AccMonitor {
 
     /// Resolution rate — how often KAI resolves conflicts he detects.
     pub fn resolution_rate(&self) -> f32 {
-        if self.total_conflicts == 0 { return 1.0; }
+        if self.total_conflicts == 0 {
+            return 1.0;
+        }
         self.resolved_conflicts as f32 / self.total_conflicts as f32
     }
 
@@ -256,27 +267,35 @@ impl AccMonitor {
     pub fn status_line(&self) -> String {
         format!(
             "ACC: conflict={:.3} avg={:.3} | alert={} | errors={} resolved={}",
-            self.conflict_level, self.avg_conflict,
+            self.conflict_level,
+            self.avg_conflict,
             self.is_alerting,
-            self.total_errors, self.resolved_conflicts,
+            self.total_errors,
+            self.resolved_conflicts,
         )
     }
 }
 
 impl Default for AccMonitor {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 fn truncate_str(s: &str, n: usize) -> String {
-    if s.len() <= n { s.to_string() }
-    else { format!("{}…", &s[..n]) }
+    if s.len() <= n {
+        s.to_string()
+    } else {
+        format!("{}…", &s[..n])
+    }
 }
 
 fn extract_conflict_topic(a: &str, b: &str) -> String {
     let combined = format!("{} {}", a, b);
-    combined.split_whitespace()
+    combined
+        .split_whitespace()
         .filter(|w| w.len() >= 5)
         .take(2)
         .map(|w| w.to_lowercase())
@@ -295,8 +314,11 @@ mod tests {
         let mut acc = AccMonitor::new();
         assert!(acc.conflict_level < 0.01);
         acc.report_conflict("water is wet", "water is not wet", 0.8);
-        assert!(acc.conflict_level > 0.0,
-            "conflict should raise level: {:.3}", acc.conflict_level);
+        assert!(
+            acc.conflict_level > 0.0,
+            "conflict should raise level: {:.3}",
+            acc.conflict_level
+        );
     }
 
     #[test]
@@ -305,19 +327,24 @@ mod tests {
         acc.report_conflict("X is true", "X is false", 1.0);
         let before = acc.conflict_level;
         acc.resolve_recent();
-        assert!(acc.conflict_level < before,
-            "resolution should lower conflict: {:.3} -> {:.3}", before, acc.conflict_level);
+        assert!(
+            acc.conflict_level < before,
+            "resolution should lower conflict: {:.3} -> {:.3}",
+            before,
+            acc.conflict_level
+        );
         assert_eq!(acc.resolved_conflicts, 1);
     }
 
     #[test]
     fn test_detect_negation_asymmetry() {
         let acc = AccMonitor::new();
-        let score = acc.detect_contradiction(
-            "the sky is blue",
-            "the sky is not blue",
+        let score = acc.detect_contradiction("the sky is blue", "the sky is not blue");
+        assert!(
+            score > 0.20,
+            "negation asymmetry should score as contradiction: {:.3}",
+            score
         );
-        assert!(score > 0.20, "negation asymmetry should score as contradiction: {:.3}", score);
     }
 
     #[test]
@@ -338,8 +365,11 @@ mod tests {
         for _ in 0..4 {
             acc.report_conflict("A is true", "A is false", 0.8);
         }
-        assert!(acc.is_alerting,
-            "sustained conflict should trigger alert: level={:.3}", acc.conflict_level);
+        assert!(
+            acc.is_alerting,
+            "sustained conflict should trigger alert: level={:.3}",
+            acc.conflict_level
+        );
     }
 
     #[test]
@@ -347,9 +377,15 @@ mod tests {
         let mut acc = AccMonitor::new();
         acc.report_conflict("hot", "cold", 1.0);
         let before = acc.conflict_level;
-        for _ in 0..20 { acc.decay(); }
-        assert!(acc.conflict_level < before,
-            "conflict should decay over time: {:.3} -> {:.3}", before, acc.conflict_level);
+        for _ in 0..20 {
+            acc.decay();
+        }
+        assert!(
+            acc.conflict_level < before,
+            "conflict should decay over time: {:.3} -> {:.3}",
+            before,
+            acc.conflict_level
+        );
     }
 
     #[test]

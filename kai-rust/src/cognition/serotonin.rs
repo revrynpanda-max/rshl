@@ -48,7 +48,6 @@
 ///     - engagement_streak: how many consecutive substantive turns
 ///     - impulse_dampening: how much it suppresses reactive responses
 ///     - patience_score: willingness to explore multi-turn complex ideas
-
 use serde::{Deserialize, Serialize};
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -116,12 +115,12 @@ pub struct SerotoninSystem {
 impl SerotoninSystem {
     pub fn new() -> Self {
         Self {
-            level:             BASELINE,
-            stability:         0.80,  // starts stable
+            level: BASELINE,
+            stability: 0.80, // starts stable
             engagement_streak: 0,
-            total_events:      0,
-            last_event:        None,
-            tonic:             BASELINE,
+            total_events: 0,
+            last_event: None,
+            tonic: BASELINE,
         }
     }
 
@@ -142,7 +141,7 @@ impl SerotoninSystem {
             }
             SerotoninEvent::PositiveSocial => {
                 self.engagement_streak += 1;
-                ENGAGEMENT_BOOST * 1.4  // social warmth boosts more
+                ENGAGEMENT_BOOST * 1.4 // social warmth boosts more
             }
             SerotoninEvent::SocialConflict => {
                 self.engagement_streak = 0;
@@ -151,15 +150,15 @@ impl SerotoninSystem {
             SerotoninEvent::Silence => {
                 // Silence is not inherently bad — just neutral drift toward baseline
                 if self.level > BASELINE {
-                    -DECAY_RATE * 3.0  // drift back down faster when high
+                    -DECAY_RATE * 3.0 // drift back down faster when high
                 } else {
-                    DECAY_RATE * 0.5   // drift up slightly when below baseline (resilience)
+                    DECAY_RATE * 0.5 // drift up slightly when below baseline (resilience)
                 }
             }
             SerotoninEvent::Decay => {
                 // Regular slow drift toward tonic baseline
                 let diff = self.tonic - self.level;
-                diff * DECAY_RATE  // gentle mean-reversion
+                diff * DECAY_RATE // gentle mean-reversion
             }
         };
 
@@ -187,10 +186,28 @@ impl SerotoninSystem {
         let word_count = text.split_whitespace().count();
         // Also check for social warmth markers
         let lower = text.to_lowercase();
-        let positive_markers = ["thanks", "thank you", "great", "amazing", "love",
-                                 "awesome", "perfect", "excellent", "good job", "nice"];
-        let conflict_markers = ["wrong", "no that", "not right", "incorrect", "stop",
-                                 "frustrated", "annoying", "awful"];
+        let positive_markers = [
+            "thanks",
+            "thank you",
+            "great",
+            "amazing",
+            "love",
+            "awesome",
+            "perfect",
+            "excellent",
+            "good job",
+            "nice",
+        ];
+        let conflict_markers = [
+            "wrong",
+            "no that",
+            "not right",
+            "incorrect",
+            "stop",
+            "frustrated",
+            "annoying",
+            "awful",
+        ];
 
         if positive_markers.iter().any(|m| lower.contains(m)) {
             SerotoninEvent::PositiveSocial
@@ -235,14 +252,23 @@ impl SerotoninSystem {
     pub fn status_line(&self) -> String {
         format!(
             "5-HT: lvl={:.3} tonic={:.3} stab={:.3} streak={} {}",
-            self.level, self.tonic, self.stability, self.engagement_streak,
-            if self.impulse_risk() { "⚠IMPULSIVE" } else { "" },
+            self.level,
+            self.tonic,
+            self.stability,
+            self.engagement_streak,
+            if self.impulse_risk() {
+                "⚠IMPULSIVE"
+            } else {
+                ""
+            },
         )
     }
 }
 
 impl Default for SerotoninSystem {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -256,8 +282,12 @@ mod tests {
         let mut s = SerotoninSystem::new();
         let before = s.level;
         s.process(SerotoninEvent::DeepEngagement);
-        assert!(s.level > before,
-            "deep engagement should raise serotonin: before={:.3} after={:.3}", before, s.level);
+        assert!(
+            s.level > before,
+            "deep engagement should raise serotonin: before={:.3} after={:.3}",
+            before,
+            s.level
+        );
     }
 
     #[test]
@@ -265,8 +295,12 @@ mod tests {
         let mut s = SerotoninSystem::new();
         let before = s.level;
         s.process(SerotoninEvent::ShortReply);
-        assert!(s.level < before,
-            "short reply should lower serotonin: before={:.3} after={:.3}", before, s.level);
+        assert!(
+            s.level < before,
+            "short reply should lower serotonin: before={:.3} after={:.3}",
+            before,
+            s.level
+        );
     }
 
     #[test]
@@ -281,7 +315,9 @@ mod tests {
     #[test]
     fn test_short_reply_resets_streak() {
         let mut s = SerotoninSystem::new();
-        for _ in 0..4 { s.process(SerotoninEvent::DeepEngagement); }
+        for _ in 0..4 {
+            s.process(SerotoninEvent::DeepEngagement);
+        }
         s.process(SerotoninEvent::ShortReply);
         assert_eq!(s.engagement_streak, 0, "short reply should reset streak");
     }
@@ -292,8 +328,12 @@ mod tests {
         let mut s2 = SerotoninSystem::new();
         s1.process(SerotoninEvent::PositiveSocial);
         s2.process(SerotoninEvent::DeepEngagement);
-        assert!(s1.level > s2.level,
-            "positive social should boost more: pos={:.3} deep={:.3}", s1.level, s2.level);
+        assert!(
+            s1.level > s2.level,
+            "positive social should boost more: pos={:.3} deep={:.3}",
+            s1.level,
+            s2.level
+        );
     }
 
     #[test]
@@ -302,49 +342,73 @@ mod tests {
         let mut s2 = SerotoninSystem::new();
         s1.process(SerotoninEvent::SocialConflict);
         s2.process(SerotoninEvent::ShortReply);
-        assert!(s1.level < s2.level,
-            "conflict should hurt more: conflict={:.3} short={:.3}", s1.level, s2.level);
+        assert!(
+            s1.level < s2.level,
+            "conflict should hurt more: conflict={:.3} short={:.3}",
+            s1.level,
+            s2.level
+        );
     }
 
     #[test]
     fn test_classify_message_detects_positive() {
         let event = SerotoninSystem::classify_message("Thanks so much that was amazing!");
-        assert_eq!(event, SerotoninEvent::PositiveSocial,
-            "gratitude message should classify as PositiveSocial");
+        assert_eq!(
+            event,
+            SerotoninEvent::PositiveSocial,
+            "gratitude message should classify as PositiveSocial"
+        );
     }
 
     #[test]
     fn test_classify_message_long_is_deep() {
         let event = SerotoninSystem::classify_message(
-            "I want to understand how the RSHL geometry works in more detail today"
+            "I want to understand how the RSHL geometry works in more detail today",
         );
-        assert_eq!(event, SerotoninEvent::DeepEngagement,
-            "long message should classify as DeepEngagement");
+        assert_eq!(
+            event,
+            SerotoninEvent::DeepEngagement,
+            "long message should classify as DeepEngagement"
+        );
     }
 
     #[test]
     fn test_classify_short_reply() {
         let event = SerotoninSystem::classify_message("ok");
-        assert_eq!(event, SerotoninEvent::ShortReply,
-            "very short message should classify as ShortReply");
+        assert_eq!(
+            event,
+            SerotoninEvent::ShortReply,
+            "very short message should classify as ShortReply"
+        );
     }
 
     #[test]
     fn test_patience_score_rises_with_streak() {
         let mut s = SerotoninSystem::new();
         let before = s.patience_score();
-        for _ in 0..10 { s.process(SerotoninEvent::DeepEngagement); }
+        for _ in 0..10 {
+            s.process(SerotoninEvent::DeepEngagement);
+        }
         let after = s.patience_score();
-        assert!(after > before,
-            "patience should rise with engagement streak: before={:.3} after={:.3}", before, after);
+        assert!(
+            after > before,
+            "patience should rise with engagement streak: before={:.3} after={:.3}",
+            before,
+            after
+        );
     }
 
     #[test]
     fn test_impulse_risk_when_low() {
         let mut s = SerotoninSystem::new();
         // Crash serotonin with conflicts
-        for _ in 0..30 { s.process(SerotoninEvent::SocialConflict); }
-        assert!(s.impulse_risk(),
-            "many conflicts should trigger impulse risk (level={:.3})", s.level);
+        for _ in 0..30 {
+            s.process(SerotoninEvent::SocialConflict);
+        }
+        assert!(
+            s.impulse_risk(),
+            "many conflicts should trigger impulse risk (level={:.3})",
+            s.level
+        );
     }
 }

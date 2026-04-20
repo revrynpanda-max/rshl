@@ -56,17 +56,45 @@ const REWARD_GATE_THRESHOLD: f32 = 0.45;
 
 /// Pleasure markers — things that activate VP
 const PLEASURE_MARKERS: &[&str] = &[
-    "wonderful", "beautiful", "perfect", "exactly", "brilliant", "love",
-    "delightful", "satisfying", "click", "makes sense", "clear now",
-    "understand", "got it", "yes", "exactly right", "that's it",
-    "fascinating", "exciting", "great", "excellent",
+    "wonderful",
+    "beautiful",
+    "perfect",
+    "exactly",
+    "brilliant",
+    "love",
+    "delightful",
+    "satisfying",
+    "click",
+    "makes sense",
+    "clear now",
+    "understand",
+    "got it",
+    "yes",
+    "exactly right",
+    "that's it",
+    "fascinating",
+    "exciting",
+    "great",
+    "excellent",
 ];
 
 /// Aversion markers — things that suppress VP
 const AVERSION_MARKERS: &[&str] = &[
-    "horrible", "terrible", "awful", "disgusting", "hate", "despise",
-    "pointless", "meaningless", "worthless", "hopeless", "useless",
-    "wrong", "bad", "not working", "broken",
+    "horrible",
+    "terrible",
+    "awful",
+    "disgusting",
+    "hate",
+    "despise",
+    "pointless",
+    "meaningless",
+    "worthless",
+    "hopeless",
+    "useless",
+    "wrong",
+    "bad",
+    "not working",
+    "broken",
 ];
 
 // ── VPOutput ──────────────────────────────────────────────────────────────────
@@ -106,9 +134,9 @@ pub struct VentralPallidum {
 impl VentralPallidum {
     pub fn new() -> Self {
         Self {
-            hedonic_tone:    HEDONIC_BASELINE,
-            liking_signal:   0.30,
-            anhedonia_risk:  0.05,
+            hedonic_tone: HEDONIC_BASELINE,
+            liking_signal: 0.30,
+            anhedonia_risk: 0.05,
             inputs_processed: 0,
             pleasure_events: 0,
             aversion_events: 0,
@@ -133,10 +161,14 @@ impl VentralPallidum {
         let lower = text.to_lowercase();
 
         // ── Pleasure / aversion detection ─────────────────────────────────────
-        let pleasure_hits = PLEASURE_MARKERS.iter()
-            .filter(|&&w| lower.contains(w)).count();
-        let aversion_hits = AVERSION_MARKERS.iter()
-            .filter(|&&w| lower.contains(w)).count();
+        let pleasure_hits = PLEASURE_MARKERS
+            .iter()
+            .filter(|&&w| lower.contains(w))
+            .count();
+        let aversion_hits = AVERSION_MARKERS
+            .iter()
+            .filter(|&&w| lower.contains(w))
+            .count();
 
         if pleasure_hits >= 1 {
             self.pleasure_events += 1;
@@ -147,27 +179,21 @@ impl VentralPallidum {
 
         // ── Liking signal ─────────────────────────────────────────────────────
         // Liking = opioid hotspot activation: content + dopamine + wanting
-        let liking_target = (
-            pleasure_hits as f32 * 0.10
-            + vta_dopamine * 0.25
-            + nacc_wanting * 0.15
-            - aversion_hits as f32 * 0.10
-            - cortisol_level * 0.15
-        ).clamp(0.0, 1.0);
-        self.liking_signal = self.liking_signal * (1.0 - LIKING_EMA)
-            + liking_target * LIKING_EMA;
+        let liking_target =
+            (pleasure_hits as f32 * 0.10 + vta_dopamine * 0.25 + nacc_wanting * 0.15
+                - aversion_hits as f32 * 0.10
+                - cortisol_level * 0.15)
+                .clamp(0.0, 1.0);
+        self.liking_signal = self.liking_signal * (1.0 - LIKING_EMA) + liking_target * LIKING_EMA;
 
         // ── Hedonic tone ──────────────────────────────────────────────────────
         // Slow-moving background pleasure state
-        let hedonic_target = (
-            HEDONIC_BASELINE
-            + pleasure_hits as f32 * 0.06
+        let hedonic_target = (HEDONIC_BASELINE + pleasure_hits as f32 * 0.06
             - aversion_hits as f32 * 0.05
             + vta_dopamine * 0.15
-            - cortisol_level * 0.20
-        ).clamp(-0.20, 1.0);
-        self.hedonic_tone = self.hedonic_tone * (1.0 - HEDONIC_EMA)
-            + hedonic_target * HEDONIC_EMA;
+            - cortisol_level * 0.20)
+            .clamp(-0.20, 1.0);
+        self.hedonic_tone = self.hedonic_tone * (1.0 - HEDONIC_EMA) + hedonic_target * HEDONIC_EMA;
 
         // ── Anhedonia risk ────────────────────────────────────────────────────
         // Risk rises with persistent aversion + high cortisol + low liking
@@ -185,9 +211,9 @@ impl VentralPallidum {
         };
 
         VPOutput {
-            hedonic_tone:    self.hedonic_tone,
-            liking_signal:   self.liking_signal,
-            anhedonia_risk:  self.anhedonia_risk,
+            hedonic_tone: self.hedonic_tone,
+            liking_signal: self.liking_signal,
+            anhedonia_risk: self.anhedonia_risk,
             reward_gate_open,
             amplified_reward: amplified_reward.min(1.0),
         }
@@ -216,9 +242,9 @@ impl VentralPallidum {
             self.liking_signal * 0.50
         };
         VPOutput {
-            hedonic_tone:    self.hedonic_tone,
-            liking_signal:   self.liking_signal,
-            anhedonia_risk:  self.anhedonia_risk,
+            hedonic_tone: self.hedonic_tone,
+            liking_signal: self.liking_signal,
+            anhedonia_risk: self.anhedonia_risk,
             reward_gate_open,
             amplified_reward: amplified_reward.min(1.0),
         }
@@ -231,13 +257,19 @@ impl VentralPallidum {
             self.hedonic_tone,
             self.liking_signal,
             self.anhedonia_risk,
-            if self.anhedonia_risk > 0.50 { " ⚠ANHEDONIA" } else { "" },
+            if self.anhedonia_risk > 0.50 {
+                " ⚠ANHEDONIA"
+            } else {
+                ""
+            },
         )
     }
 }
 
 impl Default for VentralPallidum {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -257,9 +289,18 @@ mod tests {
     fn test_pleasure_words_raise_liking() {
         let mut v = VentralPallidum::new();
         let before = v.liking_signal;
-        v.process("that's wonderful and beautiful and exactly right", 0.60, 0.70, 0.10);
-        assert!(v.liking_signal > before,
-            "pleasure words should raise liking: {:.2} → {:.2}", before, v.liking_signal);
+        v.process(
+            "that's wonderful and beautiful and exactly right",
+            0.60,
+            0.70,
+            0.10,
+        );
+        assert!(
+            v.liking_signal > before,
+            "pleasure words should raise liking: {:.2} → {:.2}",
+            before,
+            v.liking_signal
+        );
     }
 
     #[test]
@@ -267,8 +308,12 @@ mod tests {
         let mut v = VentralPallidum::new();
         let before = v.hedonic_tone;
         v.process("neutral text", 0.50, 0.90, 0.10);
-        assert!(v.hedonic_tone > before,
-            "high VTA dopamine should raise hedonic tone: {:.2} → {:.2}", before, v.hedonic_tone);
+        assert!(
+            v.hedonic_tone > before,
+            "high VTA dopamine should raise hedonic tone: {:.2} → {:.2}",
+            before,
+            v.hedonic_tone
+        );
     }
 
     #[test]
@@ -276,8 +321,11 @@ mod tests {
         let mut v = VentralPallidum::new();
         v.liking_signal = 0.70;
         v.process("neutral text", 0.20, 0.20, 0.90);
-        assert!(v.liking_signal < 0.70,
-            "high cortisol should reduce liking: {:.2}", v.liking_signal);
+        assert!(
+            v.liking_signal < 0.70,
+            "high cortisol should reduce liking: {:.2}",
+            v.liking_signal
+        );
     }
 
     #[test]
@@ -285,9 +333,12 @@ mod tests {
         let mut v = VentralPallidum::new();
         let before = v.anhedonia_risk;
         v.process("this is horrible and terrible and awful", 0.10, 0.10, 0.70);
-        assert!(v.anhedonia_risk > before,
+        assert!(
+            v.anhedonia_risk > before,
             "aversion + high stress should raise anhedonia risk: {:.2} → {:.2}",
-            before, v.anhedonia_risk);
+            before,
+            v.anhedonia_risk
+        );
     }
 
     #[test]
@@ -295,7 +346,10 @@ mod tests {
         let mut v = VentralPallidum::new();
         v.hedonic_tone = REWARD_GATE_THRESHOLD + 0.01;
         let out = v.current_output();
-        assert!(out.reward_gate_open, "hedonic tone >= threshold → reward gate open");
+        assert!(
+            out.reward_gate_open,
+            "hedonic tone >= threshold → reward gate open"
+        );
     }
 
     #[test]
@@ -306,8 +360,12 @@ mod tests {
         let open = v.current_output().amplified_reward;
         v.hedonic_tone = 0.10; // gate closed
         let closed = v.current_output().amplified_reward;
-        assert!(open > closed,
-            "open gate should amplify reward more: open={:.2} closed={:.2}", open, closed);
+        assert!(
+            open > closed,
+            "open gate should amplify reward more: open={:.2} closed={:.2}",
+            open,
+            closed
+        );
     }
 
     #[test]
@@ -316,8 +374,11 @@ mod tests {
         v.anhedonia_risk = 0.40;
         v.liking_signal = 0.70;
         v.process("neutral text", 0.70, 0.80, 0.10);
-        assert!(v.anhedonia_risk < 0.40,
-            "high liking should reduce anhedonia risk: {:.2}", v.anhedonia_risk);
+        assert!(
+            v.anhedonia_risk < 0.40,
+            "high liking should reduce anhedonia risk: {:.2}",
+            v.anhedonia_risk
+        );
     }
 
     #[test]
@@ -327,8 +388,11 @@ mod tests {
         for _ in 0..20 {
             v.decay();
         }
-        assert!(v.hedonic_tone < 0.80,
-            "hedonic tone should drift toward baseline: {:.2}", v.hedonic_tone);
+        assert!(
+            v.hedonic_tone < 0.80,
+            "hedonic tone should drift toward baseline: {:.2}",
+            v.hedonic_tone
+        );
         assert!(v.hedonic_tone >= HEDONIC_BASELINE - 0.05);
     }
 

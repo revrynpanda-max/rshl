@@ -11,7 +11,6 @@
 /// semantic embeddings catch conceptual resonance, keyword overlap catches exact term hits.
 /// "What is RSHL?" finds the RSHL cell because "rshl" appears in both — even if the
 /// full-phrase cosine similarity is diluted by surrounding words.
-
 use rayon::prelude::*;
 
 use super::SparseVec;
@@ -53,22 +52,142 @@ pub struct Universe {
 /// These are the terms we expect to literally appear in a matching cell.
 fn extract_query_keywords(text: &str) -> Vec<String> {
     const STOPWORDS: &[&str] = &[
-        "what","is","are","was","were","the","a","an","do","does","did",
-        "how","why","who","where","when","can","could","will","would","should",
-        "have","has","had","i","you","me","my","your","it","its","we","they",
-        "their","this","that","these","those","in","on","at","to","for","of",
-        "with","by","from","and","or","but","not","no","so","just","very",
-        "more","get","let","make","say","go","right","now","here","there",
-        "up","out","if","then","than","also","well","even","still","too",
-        "only","been","about","into","over","after","before","be","please",
-        "tell","much","some","any","all","each","which","its","whose",
+        "what",
+        "is",
+        "are",
+        "was",
+        "were",
+        "the",
+        "a",
+        "an",
+        "do",
+        "does",
+        "did",
+        "how",
+        "why",
+        "who",
+        "where",
+        "when",
+        "can",
+        "could",
+        "will",
+        "would",
+        "should",
+        "have",
+        "has",
+        "had",
+        "i",
+        "you",
+        "me",
+        "my",
+        "your",
+        "it",
+        "its",
+        "we",
+        "they",
+        "their",
+        "this",
+        "that",
+        "these",
+        "those",
+        "in",
+        "on",
+        "at",
+        "to",
+        "for",
+        "of",
+        "with",
+        "by",
+        "from",
+        "and",
+        "or",
+        "but",
+        "not",
+        "no",
+        "so",
+        "just",
+        "very",
+        "more",
+        "get",
+        "let",
+        "make",
+        "say",
+        "go",
+        "right",
+        "now",
+        "here",
+        "there",
+        "up",
+        "out",
+        "if",
+        "then",
+        "than",
+        "also",
+        "well",
+        "even",
+        "still",
+        "too",
+        "only",
+        "been",
+        "about",
+        "into",
+        "over",
+        "after",
+        "before",
+        "be",
+        "please",
+        "tell",
+        "much",
+        "some",
+        "any",
+        "all",
+        "each",
+        "which",
+        "its",
+        "whose",
         // Casual fillers that add noise — semantically empty in queries
-        "again","actually","basically","literally","really","kinda","sorta",
-        "tbh","ngl","lol","haha","thing","things","something","anything",
-        "nothing","everything","ever","never","always","sometimes","often",
+        "again",
+        "actually",
+        "basically",
+        "literally",
+        "really",
+        "kinda",
+        "sorta",
+        "tbh",
+        "ngl",
+        "lol",
+        "haha",
+        "thing",
+        "things",
+        "something",
+        "anything",
+        "nothing",
+        "everything",
+        "ever",
+        "never",
+        "always",
+        "sometimes",
+        "often",
         // Conversational openers / hedge words — carry no topic signal
-        "wait","like","mean","yeah","yep","nah","hmm","huh","oh","hey",
-        "okay","ok","sure","true","false","exactly","indeed","wow","cool",
+        "wait",
+        "like",
+        "mean",
+        "yeah",
+        "yep",
+        "nah",
+        "hmm",
+        "huh",
+        "oh",
+        "hey",
+        "okay",
+        "ok",
+        "sure",
+        "true",
+        "false",
+        "exactly",
+        "indeed",
+        "wow",
+        "cool",
     ];
     text.to_lowercase()
         .split(|c: char| !c.is_alphanumeric())
@@ -81,20 +200,25 @@ fn extract_query_keywords(text: &str) -> Vec<String> {
 /// Uses morphological prefix matching for words ≥4 chars so "dream" matches "dreaming",
 /// "feel" matches "feelings", "work" matches "working", etc.
 fn keyword_overlap_score(query_words: &[String], cell_text: &str) -> f32 {
-    if query_words.is_empty() { return 0.0; }
+    if query_words.is_empty() {
+        return 0.0;
+    }
     let cell_lower = cell_text.to_lowercase();
-    let matches = query_words.iter().filter(|qw| {
-        let q = qw.as_str();
-        cell_lower
-            .split(|c: char| !c.is_alphanumeric())
-            .filter(|cw| !cw.is_empty())
-            .any(|cw| {
-                cw == q
+    let matches = query_words
+        .iter()
+        .filter(|qw| {
+            let q = qw.as_str();
+            cell_lower
+                .split(|c: char| !c.is_alphanumeric())
+                .filter(|cw| !cw.is_empty())
+                .any(|cw| {
+                    cw == q
                 // Morphological: one is prefix of the other (min 4 chars both sides)
                 || (q.len() >= 4 && cw.len() >= 4
                     && (cw.starts_with(q) || q.starts_with(cw)))
-            })
-    }).count();
+                })
+        })
+        .count();
     matches as f32 / query_words.len() as f32
 }
 
@@ -209,7 +333,7 @@ impl Universe {
             .map(|c| QueryHit {
                 text: c.text.clone(),
                 region: c.region.clone(),
-                score: 1.0,        // score is irrelevant — selection is by source
+                score: 1.0, // score is irrelevant — selection is by source
                 strength: c.strength,
                 source: c.source.clone(),
             })
@@ -228,7 +352,11 @@ impl Universe {
             .filter(|c| c.source == "state" && c.region == "tone")
             .map(|c| {
                 let sim = q.cosine(&c.vec);
-                if sim > 0.55 { c.strength * sim } else { 0.0 }
+                if sim > 0.55 {
+                    c.strength * sim
+                } else {
+                    0.0
+                }
             })
             .fold(0.0_f32, f32::max)
     }

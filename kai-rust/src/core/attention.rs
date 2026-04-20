@@ -12,22 +12,18 @@
 ///   After:  query = 3.2·hash(sky) + 2.1·hash(night) + 0.1·hash(the)
 ///
 /// The weights come from the universe itself — no training needed.
-
 use crate::core::SparseVec;
 
 const DIM: usize = 4096;
 const MIN_ATTENTION: f32 = 0.1; // Floor — every token gets at least this weight
 
 /// Compute resonance attention weights for a set of tokens.
-/// 
+///
 /// For each token, quickly scan the cell vectors to see how many
 /// cells resonate with it. Tokens that match many cells get higher weight.
 ///
 /// Returns: Vec of (token_index, weight) where weights sum to 1.0
-pub fn compute_attention_weights(
-    token_vecs: &[SparseVec],
-    cell_vecs: &[&SparseVec],
-) -> Vec<f32> {
+pub fn compute_attention_weights(token_vecs: &[SparseVec], cell_vecs: &[&SparseVec]) -> Vec<f32> {
     if token_vecs.is_empty() {
         return Vec::new();
     }
@@ -81,19 +77,13 @@ pub fn compute_attention_weights(
 ///
 /// Instead of bundling all tokens equally, each token's hash vector
 /// is weighted by its resonance with the universe.
-pub fn build_attended_query(
-    tokens: &[String],
-    cell_vecs: &[&SparseVec],
-) -> SparseVec {
+pub fn build_attended_query(tokens: &[String], cell_vecs: &[&SparseVec]) -> SparseVec {
     if tokens.is_empty() {
         return SparseVec::encode("");
     }
 
     // Encode each token individually
-    let token_vecs: Vec<SparseVec> = tokens
-        .iter()
-        .map(|t| SparseVec::encode(t))
-        .collect();
+    let token_vecs: Vec<SparseVec> = tokens.iter().map(|t| SparseVec::encode(t)).collect();
 
     // Compute attention weights
     let weights = compute_attention_weights(&token_vecs, cell_vecs);
@@ -114,9 +104,13 @@ pub fn build_attended_query(
     let data: Vec<i8> = combined
         .iter()
         .map(|&v| {
-            if v > threshold { 1i8 }
-            else if v < -threshold { -1i8 }
-            else { 0i8 }
+            if v > threshold {
+                1i8
+            } else if v < -threshold {
+                -1i8
+            } else {
+                0i8
+            }
         })
         .collect();
 
@@ -129,15 +123,15 @@ mod tests {
 
     #[test]
     fn test_uniform_attention_on_empty_universe() {
-        let vecs = vec![
-            SparseVec::encode("hello"),
-            SparseVec::encode("world"),
-        ];
+        let vecs = vec![SparseVec::encode("hello"), SparseVec::encode("world")];
         let weights = compute_attention_weights(&vecs, &[]);
         assert_eq!(weights.len(), 2);
         // With no cells, should get equal weights
-        assert!((weights[0] - weights[1]).abs() < 0.3,
-            "Should be roughly equal: {:?}", weights);
+        assert!(
+            (weights[0] - weights[1]).abs() < 0.3,
+            "Should be roughly equal: {:?}",
+            weights
+        );
     }
 
     #[test]
@@ -146,7 +140,11 @@ mod tests {
         let result = build_attended_query(&tokens, &[]);
         // Should produce a non-zero vector
         let nonzero: usize = result.data.iter().filter(|&&v| v != 0).count();
-        assert!(nonzero > 50, "Attended query should produce meaningful vector, got {} nonzero", nonzero);
+        assert!(
+            nonzero > 50,
+            "Attended query should produce meaningful vector, got {} nonzero",
+            nonzero
+        );
     }
 
     #[test]
@@ -161,7 +159,10 @@ mod tests {
         ];
 
         let weights = compute_attention_weights(&token_vecs, &cell_refs);
-        assert!(weights[0] >= weights[1],
-            "Sky should get at least as much weight as nonsense: {:?}", weights);
+        assert!(
+            weights[0] >= weights[1],
+            "Sky should get at least as much weight as nonsense: {:?}",
+            weights
+        );
     }
 }

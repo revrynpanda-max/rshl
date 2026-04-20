@@ -115,11 +115,11 @@ impl SubstantiaNigra {
     pub fn new() -> Self {
         Self {
             procedural_fluency: 0.50,
-            habit_strength:     0.20,
-            da_tone:            SNC_DA_REST,
-            chunks:             Vec::new(),
-            executions:         0,
-            chunks_formed:      0,
+            habit_strength: 0.20,
+            da_tone: SNC_DA_REST,
+            chunks: Vec::new(),
+            executions: 0,
+            chunks_formed: 0,
         }
     }
 
@@ -134,8 +134,8 @@ impl SubstantiaNigra {
                 self.habit_strength = (self.habit_strength + HABIT_REINFORCE).min(1.0);
                 // Update fluency toward the experienced fluency
                 let target = (0.50 + fluency * 0.40).min(1.0);
-                self.procedural_fluency = self.procedural_fluency * (1.0 - FLUENCY_EMA)
-                    + target * FLUENCY_EMA;
+                self.procedural_fluency =
+                    self.procedural_fluency * (1.0 - FLUENCY_EMA) + target * FLUENCY_EMA;
                 // DA tone rises with successful execution
                 let da_target = (SNC_DA_REST + fluency * 0.20).min(1.0);
                 self.da_tone = self.da_tone * (1.0 - DA_EMA) + da_target * DA_EMA;
@@ -151,8 +151,8 @@ impl SubstantiaNigra {
             SNcEvent::NovelTerrain { difficulty } => {
                 // Novel territory: fluency drops (no habit to rely on)
                 let target = (0.30 - difficulty * 0.15).max(0.10);
-                self.procedural_fluency = self.procedural_fluency * (1.0 - FLUENCY_EMA)
-                    + target * FLUENCY_EMA;
+                self.procedural_fluency =
+                    self.procedural_fluency * (1.0 - FLUENCY_EMA) + target * FLUENCY_EMA;
                 // DA tone also drops slightly — uncertainty
                 let da_target = (SNC_DA_REST - difficulty * 0.10).max(0.20);
                 self.da_tone = self.da_tone * (1.0 - DA_EMA) + da_target * DA_EMA;
@@ -203,15 +203,17 @@ impl SubstantiaNigra {
     fn build_output(&self) -> SNcOutput {
         SNcOutput {
             procedural_fluency: self.procedural_fluency,
-            habit_strength:     self.habit_strength,
-            da_tone:            self.da_tone,
-            chunk_count:        self.chunks.len(),
-            in_flow:            self.procedural_fluency > 0.70 && self.da_tone > 0.60,
+            habit_strength: self.habit_strength,
+            da_tone: self.da_tone,
+            chunk_count: self.chunks.len(),
+            in_flow: self.procedural_fluency > 0.70 && self.da_tone > 0.60,
         }
     }
 
     /// Current output without processing.
-    pub fn current_output(&self) -> SNcOutput { self.build_output() }
+    pub fn current_output(&self) -> SNcOutput {
+        self.build_output()
+    }
 
     /// Status line.
     pub fn status_line(&self) -> String {
@@ -221,13 +223,19 @@ impl SubstantiaNigra {
             self.habit_strength,
             self.da_tone,
             self.chunks.len(),
-            if self.procedural_fluency > 0.70 && self.da_tone > 0.60 { "YES" } else { "no" },
+            if self.procedural_fluency > 0.70 && self.da_tone > 0.60 {
+                "YES"
+            } else {
+                "no"
+            },
         )
     }
 }
 
 impl Default for SubstantiaNigra {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -239,8 +247,11 @@ mod tests {
     #[test]
     fn test_initial_state() {
         let s = SubstantiaNigra::new();
-        assert!((s.da_tone - SNC_DA_REST).abs() < 0.01,
-            "initial DA should be at rest: {:.2}", s.da_tone);
+        assert!(
+            (s.da_tone - SNC_DA_REST).abs() < 0.01,
+            "initial DA should be at rest: {:.2}",
+            s.da_tone
+        );
         assert!(s.chunks.is_empty());
     }
 
@@ -248,17 +259,29 @@ mod tests {
     fn test_familiar_success_raises_habit() {
         let mut s = SubstantiaNigra::new();
         let before = s.habit_strength;
-        s.process(SNcEvent::FamiliarSuccess { domain: "rust".into(), fluency: 0.80 });
-        assert!(s.habit_strength > before,
-            "familiar success should raise habit strength: {:.2} → {:.2}", before, s.habit_strength);
+        s.process(SNcEvent::FamiliarSuccess {
+            domain: "rust".into(),
+            fluency: 0.80,
+        });
+        assert!(
+            s.habit_strength > before,
+            "familiar success should raise habit strength: {:.2} → {:.2}",
+            before,
+            s.habit_strength
+        );
     }
 
     #[test]
     fn test_familiar_success_registers_chunk() {
         let mut s = SubstantiaNigra::new();
-        s.process(SNcEvent::FamiliarSuccess { domain: "rust_coding".into(), fluency: 0.80 });
-        assert!(s.has_chunk("rust_coding"),
-            "familiar domain should register as chunk");
+        s.process(SNcEvent::FamiliarSuccess {
+            domain: "rust_coding".into(),
+            fluency: 0.80,
+        });
+        assert!(
+            s.has_chunk("rust_coding"),
+            "familiar domain should register as chunk"
+        );
     }
 
     #[test]
@@ -266,8 +289,12 @@ mod tests {
         let mut s = SubstantiaNigra::new();
         let before = s.procedural_fluency;
         s.process(SNcEvent::NovelTerrain { difficulty: 0.80 });
-        assert!(s.procedural_fluency < before,
-            "novel terrain should reduce fluency: {:.2} → {:.2}", before, s.procedural_fluency);
+        assert!(
+            s.procedural_fluency < before,
+            "novel terrain should reduce fluency: {:.2} → {:.2}",
+            before,
+            s.procedural_fluency
+        );
     }
 
     #[test]
@@ -275,8 +302,12 @@ mod tests {
         let mut s = SubstantiaNigra::new();
         let before = s.habit_strength;
         s.process(SNcEvent::SequenceComplete { steps: 6 });
-        assert!(s.habit_strength > before,
-            "sequence completion should boost habit: {:.2} → {:.2}", before, s.habit_strength);
+        assert!(
+            s.habit_strength > before,
+            "sequence completion should boost habit: {:.2} → {:.2}",
+            before,
+            s.habit_strength
+        );
     }
 
     #[test]
@@ -284,8 +315,12 @@ mod tests {
         let mut s = SubstantiaNigra::new();
         let before = s.procedural_fluency;
         s.process(SNcEvent::ExecutionError { severity: 0.70 });
-        assert!(s.procedural_fluency < before,
-            "error should reduce fluency: {:.2} → {:.2}", before, s.procedural_fluency);
+        assert!(
+            s.procedural_fluency < before,
+            "error should reduce fluency: {:.2} → {:.2}",
+            before,
+            s.procedural_fluency
+        );
     }
 
     #[test]
@@ -293,8 +328,12 @@ mod tests {
         let mut s = SubstantiaNigra::new();
         let before = s.da_tone;
         s.process(SNcEvent::SustainedFlow);
-        assert!(s.da_tone >= before,
-            "sustained flow should raise DA: {:.2} → {:.2}", before, s.da_tone);
+        assert!(
+            s.da_tone >= before,
+            "sustained flow should raise DA: {:.2} → {:.2}",
+            before,
+            s.da_tone
+        );
     }
 
     #[test]
@@ -303,7 +342,10 @@ mod tests {
         s.procedural_fluency = 0.80;
         s.da_tone = 0.75;
         let out = s.current_output();
-        assert!(out.in_flow, "high fluency + high DA should produce flow state");
+        assert!(
+            out.in_flow,
+            "high fluency + high DA should produce flow state"
+        );
     }
 
     #[test]
@@ -314,8 +356,11 @@ mod tests {
             s.decay();
         }
         // After 100 ticks with HABIT_DECAY=0.001, should lose 0.10
-        assert!(s.habit_strength > 0.60,
-            "habit decay should be slow: {:.2}", s.habit_strength);
+        assert!(
+            s.habit_strength > 0.60,
+            "habit decay should be slow: {:.2}",
+            s.habit_strength
+        );
     }
 
     #[test]
@@ -327,8 +372,11 @@ mod tests {
                 fluency: 0.70,
             });
         }
-        assert!(s.chunks.len() <= MAX_CHUNKS,
-            "chunks should not exceed max: {}", s.chunks.len());
+        assert!(
+            s.chunks.len() <= MAX_CHUNKS,
+            "chunks should not exceed max: {}",
+            s.chunks.len()
+        );
     }
 
     #[test]

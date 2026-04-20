@@ -35,7 +35,6 @@
 ///   core_wanting: f32 — global wanting level (decays, restored by reward)
 ///   effort_threshold: f32 — minimum wanting to spend effort on something
 ///   cue_reactivity: f32 — how strongly familiar cues trigger wanting
-
 use std::collections::HashMap;
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -83,11 +82,11 @@ pub struct AffinityEntry {
 impl AffinityEntry {
     fn new() -> Self {
         Self {
-            wanting:           0.40,
-            habituation:       0.0,
-            reward_count:      0,
+            wanting: 0.40,
+            habituation: 0.0,
+            reward_count: 0,
             cumulative_reward: 0.0,
-            last_engaged:      0,
+            last_engaged: 0,
         }
     }
 
@@ -162,12 +161,12 @@ pub struct NucleusAccumbens {
 impl NucleusAccumbens {
     pub fn new() -> Self {
         Self {
-            core_wanting:   WANTING_BASELINE,
+            core_wanting: WANTING_BASELINE,
             topic_affinity: HashMap::new(),
             cue_reactivity: 0.65,
-            total_rewards:  0,
-            peak_wanting:   WANTING_BASELINE,
-            tick:           0,
+            total_rewards: 0,
+            peak_wanting: WANTING_BASELINE,
+            tick: 0,
         }
     }
 
@@ -178,7 +177,8 @@ impl NucleusAccumbens {
     /// topic_key: canonical label for the topic (e.g., "consciousness", "RSHL")
     pub fn register_reward(&mut self, topic_key: &str, reward: f32) {
         let tick = self.tick;
-        let entry = self.topic_affinity
+        let entry = self
+            .topic_affinity
             .entry(topic_key.to_string())
             .or_insert_with(AffinityEntry::new);
         entry.update(reward, tick);
@@ -203,12 +203,19 @@ impl NucleusAccumbens {
     /// topic_key: what is being engaged with
     /// input_novelty: how novel is this input (0=familiar, 1=completely new)
     /// dopamine_level: current DA level (amplifies wanting)
-    pub fn evaluate(&self, topic_key: &str, input_novelty: f32, dopamine_level: f32) -> WantingSignal {
+    pub fn evaluate(
+        &self,
+        topic_key: &str,
+        input_novelty: f32,
+        dopamine_level: f32,
+    ) -> WantingSignal {
         // Base wanting from global level
         let mut wanting = self.core_wanting;
 
         // Topic-specific affinity
-        let topic_affinity = self.topic_affinity.get(topic_key)
+        let topic_affinity = self
+            .topic_affinity
+            .get(topic_key)
             .map(|e| e.effective_wanting());
 
         let cue_triggered = if let Some(affinity) = topic_affinity {
@@ -233,7 +240,7 @@ impl NucleusAccumbens {
             w if w > 0.65 => "motivated",
             w if w > 0.50 => "interested",
             w if w > 0.35 => "mild-interest",
-            _             => "indifferent",
+            _ => "indifferent",
         };
 
         WantingSignal {
@@ -248,9 +255,11 @@ impl NucleusAccumbens {
     /// Extract the topic key from an input string.
     /// Finds the most content-bearing word (longest non-stop word).
     pub fn extract_topic(text: &str) -> String {
-        let stops = ["what", "this", "that", "with", "have", "from", "your",
-                     "about", "when", "where", "which", "there", "their", "been",
-                     "will", "does", "into", "more", "some", "then", "them"];
+        let stops = [
+            "what", "this", "that", "with", "have", "from", "your", "about", "when", "where",
+            "which", "there", "their", "been", "will", "does", "into", "more", "some", "then",
+            "them",
+        ];
         text.split_whitespace()
             .filter(|w| {
                 let lw = w.to_lowercase();
@@ -258,13 +267,19 @@ impl NucleusAccumbens {
                 lw.len() >= 5 && !stops.contains(&lw)
             })
             .max_by_key(|w| w.len())
-            .map(|w| w.to_lowercase().trim_matches(|c: char| !c.is_alphabetic()).to_string())
+            .map(|w| {
+                w.to_lowercase()
+                    .trim_matches(|c: char| !c.is_alphabetic())
+                    .to_string()
+            })
             .unwrap_or_else(|| "general".to_string())
     }
 
     /// Get the top N topics by effective wanting (most craved first).
     pub fn top_topics(&self, n: usize) -> Vec<(String, f32)> {
-        let mut topics: Vec<_> = self.topic_affinity.iter()
+        let mut topics: Vec<_> = self
+            .topic_affinity
+            .iter()
             .map(|(k, v)| (k.clone(), v.effective_wanting()))
             .collect();
         topics.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
@@ -293,7 +308,9 @@ impl NucleusAccumbens {
 
     fn prune(&mut self) {
         // Remove topics with lowest effective wanting
-        let mut topics: Vec<_> = self.topic_affinity.iter()
+        let mut topics: Vec<_> = self
+            .topic_affinity
+            .iter()
             .map(|(k, v)| (k.clone(), v.effective_wanting()))
             .collect();
         topics.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
@@ -305,7 +322,8 @@ impl NucleusAccumbens {
     /// Status line for brain monitor
     pub fn status_line(&self) -> String {
         let top = self.top_topics(1);
-        let top_str = top.first()
+        let top_str = top
+            .first()
             .map(|(k, v)| format!("top=\"{}\" want={:.2}", k, v))
             .unwrap_or_else(|| "no topics yet".to_string());
         format!(
@@ -318,7 +336,9 @@ impl NucleusAccumbens {
 }
 
 impl Default for NucleusAccumbens {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -339,7 +359,10 @@ mod tests {
         let mut nac = NucleusAccumbens::new();
         let before = nac.core_wanting;
         nac.register_reward("consciousness", 0.8);
-        assert!(nac.core_wanting > before, "positive reward should raise wanting");
+        assert!(
+            nac.core_wanting > before,
+            "positive reward should raise wanting"
+        );
     }
 
     #[test]
@@ -347,84 +370,137 @@ mod tests {
         let mut nac = NucleusAccumbens::new();
         let before = nac.core_wanting;
         nac.register_reward("boring_topic", -0.6);
-        assert!(nac.core_wanting < before, "negative reward should lower wanting");
+        assert!(
+            nac.core_wanting < before,
+            "negative reward should lower wanting"
+        );
     }
 
     #[test]
     fn test_topic_affinity_builds_up() {
         let mut nac = NucleusAccumbens::new();
-        for _ in 0..6 { nac.register_reward("RSHL", 0.9); }
+        for _ in 0..6 {
+            nac.register_reward("RSHL", 0.9);
+        }
         let signal = nac.evaluate("RSHL", 0.3, 0.6);
-        assert!(signal.topic_affinity.unwrap_or(0.0) > 0.40,
-            "repeated reward should build topic affinity");
+        assert!(
+            signal.topic_affinity.unwrap_or(0.0) > 0.40,
+            "repeated reward should build topic affinity"
+        );
     }
 
     #[test]
     fn test_cue_triggered_for_high_affinity_topic() {
         let mut nac = NucleusAccumbens::new();
-        for _ in 0..8 { nac.register_reward("geometry", 0.9); }
+        for _ in 0..8 {
+            nac.register_reward("geometry", 0.9);
+        }
         let signal = nac.evaluate("geometry", 0.2, 0.7);
-        assert!(signal.cue_triggered, "high-affinity topic should trigger cue-wanting");
+        assert!(
+            signal.cue_triggered,
+            "high-affinity topic should trigger cue-wanting"
+        );
     }
 
     #[test]
     fn test_habituation_reduces_effective_wanting() {
         let mut nac = NucleusAccumbens::new();
         // Many rewards → habituation builds up
-        for _ in 0..20 { nac.register_reward("same_topic", 0.8); }
+        for _ in 0..20 {
+            nac.register_reward("same_topic", 0.8);
+        }
         let entry = nac.topic_affinity.get("same_topic").unwrap();
         let raw = entry.wanting;
         let effective = entry.effective_wanting();
-        assert!(effective < raw, "habituation should reduce effective wanting below raw: raw={:.2} eff={:.2}", raw, effective);
+        assert!(
+            effective < raw,
+            "habituation should reduce effective wanting below raw: raw={:.2} eff={:.2}",
+            raw,
+            effective
+        );
     }
 
     #[test]
     fn test_habituation_recovers_with_time() {
         let mut nac = NucleusAccumbens::new();
-        for _ in 0..15 { nac.register_reward("recover_test", 0.8); }
+        for _ in 0..15 {
+            nac.register_reward("recover_test", 0.8);
+        }
         let hab_before = nac.topic_affinity.get("recover_test").unwrap().habituation;
         // Simulate many ticks of not engaging the topic
         nac.tick = 200;
-        for _ in 0..30 { nac.decay(); }
+        for _ in 0..30 {
+            nac.decay();
+        }
         let hab_after = nac.topic_affinity.get("recover_test").unwrap().habituation;
-        assert!(hab_after < hab_before, "habituation should recover when topic is idle: {:.2} → {:.2}", hab_before, hab_after);
+        assert!(
+            hab_after < hab_before,
+            "habituation should recover when topic is idle: {:.2} → {:.2}",
+            hab_before,
+            hab_after
+        );
     }
 
     #[test]
     fn test_unknown_topic_still_evaluates() {
         let nac = NucleusAccumbens::new();
         let signal = nac.evaluate("never_seen", 0.5, 0.6);
-        assert!(signal.wanting > 0.0, "unknown topic should still get wanting score");
-        assert!(!signal.cue_triggered, "unknown topic should not be cue-triggered");
+        assert!(
+            signal.wanting > 0.0,
+            "unknown topic should still get wanting score"
+        );
+        assert!(
+            !signal.cue_triggered,
+            "unknown topic should not be cue-triggered"
+        );
     }
 
     #[test]
     fn test_top_topics_sorted() {
         let mut nac = NucleusAccumbens::new();
-        for _ in 0..3 { nac.register_reward("low", 0.2); }
-        for _ in 0..5 { nac.register_reward("high", 0.9); }
-        for _ in 0..4 { nac.register_reward("mid", 0.5); }
+        for _ in 0..3 {
+            nac.register_reward("low", 0.2);
+        }
+        for _ in 0..5 {
+            nac.register_reward("high", 0.9);
+        }
+        for _ in 0..4 {
+            nac.register_reward("mid", 0.5);
+        }
         let tops = nac.top_topics(3);
         assert_eq!(tops.len(), 3);
-        assert!(tops[0].1 >= tops[1].1, "top topics should be sorted by wanting");
+        assert!(
+            tops[0].1 >= tops[1].1,
+            "top topics should be sorted by wanting"
+        );
     }
 
     #[test]
     fn test_extract_topic_finds_key_word() {
         let topic = NucleusAccumbens::extract_topic("what is consciousness really about");
-        assert_eq!(topic, "consciousness", "should extract 'consciousness' as the key topic");
+        assert_eq!(
+            topic, "consciousness",
+            "should extract 'consciousness' as the key topic"
+        );
     }
 
     #[test]
     fn test_decay_returns_wanting_to_baseline() {
         let mut nac = NucleusAccumbens::new();
         // Spike wanting
-        for _ in 0..5 { nac.register_reward("spike", 0.9); }
+        for _ in 0..5 {
+            nac.register_reward("spike", 0.9);
+        }
         let peaked = nac.core_wanting;
         // Decay many times
-        for _ in 0..100 { nac.decay(); }
+        for _ in 0..100 {
+            nac.decay();
+        }
         assert!(nac.core_wanting < peaked, "wanting should decay from peak");
-        assert!(nac.core_wanting > 0.20, "wanting should not collapse to zero");
+        assert!(
+            nac.core_wanting > 0.20,
+            "wanting should not collapse to zero"
+        );
     }
 
     #[test]

@@ -11,15 +11,18 @@
 ///   3. FIRST-PERSON SYNTHESIS — convert cell text to KAI's voice
 ///   4. BRAIN-STATE TONE — 0-3 word prefix/suffix from live neural state
 ///   5. IDENTITY SAFETY — KAI never claims Ryan's name as its own
-
 use crate::core::{QueryHit, Universe};
 
 // ── UTF-8 safe slice ──────────────────────────────────────────────────────────
 
 fn safe_slice(s: &str, max_bytes: usize) -> &str {
-    if s.len() <= max_bytes { return s; }
+    if s.len() <= max_bytes {
+        return s;
+    }
     let mut end = max_bytes;
-    while end > 0 && !s.is_char_boundary(end) { end -= 1; }
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
     &s[..end]
 }
 
@@ -60,8 +63,20 @@ pub fn detect_query_type(input: &str) -> QueryType {
         .replace("wouldn't ", "would not ");
 
     // Strip casual leading filler words — "so how do you" → "how do you"
-    let casual_openers = ["so ", "like ", "or ", "well ", "wait ", "yo ", "ok so ",
-                          "okay so ", "alright so ", "bruh ", "dude ", "man "];
+    let casual_openers = [
+        "so ",
+        "like ",
+        "or ",
+        "well ",
+        "wait ",
+        "yo ",
+        "ok so ",
+        "okay so ",
+        "alright so ",
+        "bruh ",
+        "dude ",
+        "man ",
+    ];
     let mut stripped = normalized.trim_start().to_string();
     for opener in &casual_openers {
         if stripped.starts_with(opener) {
@@ -71,31 +86,60 @@ pub fn detect_query_type(input: &str) -> QueryType {
     }
 
     let words: Vec<&str> = stripped.split_whitespace().collect();
-    if words.is_empty() { return QueryType::Statement; }
+    if words.is_empty() {
+        return QueryType::Statement;
+    }
     let first = words[0];
 
     // ── Self/identity checks FIRST (content-based, beats word-order) ─────────
-    if lower.contains("your name") || lower.contains("you called") || lower.contains("you named")
-        || lower.contains("who are you") || lower.contains("what are you")
-        || lower.contains("where are you") || lower.contains("where you at")
-        || lower.contains("where do you exist") || lower.contains("where are u")
-        || lower.contains("what can you") || lower.contains("how are you")
+    if lower.contains("your name")
+        || lower.contains("you called")
+        || lower.contains("you named")
+        || lower.contains("who are you")
+        || lower.contains("what are you")
+        || lower.contains("where are you")
+        || lower.contains("where you at")
+        || lower.contains("where do you exist")
+        || lower.contains("where are u")
+        || lower.contains("what can you")
+        || lower.contains("how are you")
+        || lower.contains("how do you feel")
+        || lower.contains("how you feel")
+        || lower.contains("you feeling")
     {
         return QueryType::SelfQuestion;
     }
-    if lower.contains("what is yours") || lower.contains("what's yours")
+    if lower.contains("what is yours")
+        || lower.contains("what's yours")
         || (lower.contains("yours") && (lower.contains("name") || lower.contains("what")))
     {
         return QueryType::SelfQuestion;
     }
 
     // ── Farewell — before greeting so "later" doesn't get grabbed as greeting ─
-    let farewell_words = ["bye", "goodbye", "later", "peace", "cya", "adios", "ttyl", "laters"];
-    let farewell_phrases = ["gotta go", "got to go", "gonna head", "talk later", "talk soon",
-                            "gotta run", "gotta head", "gotta bounce", "heading out", "i'm out",
-                            "im out", "signing off", "take care", "take it easy"];
+    let farewell_words = [
+        "bye", "goodbye", "later", "peace", "cya", "adios", "ttyl", "laters",
+    ];
+    let farewell_phrases = [
+        "gotta go",
+        "got to go",
+        "gonna head",
+        "talk later",
+        "talk soon",
+        "gotta run",
+        "gotta head",
+        "gotta bounce",
+        "heading out",
+        "i'm out",
+        "im out",
+        "signing off",
+        "take care",
+        "take it easy",
+    ];
     let input_stripped = lower.trim_matches(|c: char| !c.is_alphabetic()).to_string();
-    let is_farewell = farewell_words.iter().any(|f| input_stripped == *f || lower.starts_with(f))
+    let is_farewell = farewell_words
+        .iter()
+        .any(|f| input_stripped == *f || lower.starts_with(f))
         || farewell_phrases.iter().any(|f| lower.contains(f));
     if is_farewell {
         return QueryType::Gratitude; // Gratitude handler gives "Okay." / "Yeah." — brief and clean
@@ -103,15 +147,29 @@ pub fn detect_query_type(input: &str) -> QueryType {
 
     // ── Greeting — check BEFORE contraction normalization strips "what's" ─────
     // Use `lower` (original) so "what's good"/"what's up" still have the apostrophe
-    let greeting_words = ["hi", "hello", "hey", "sup", "yo", "howdy", "greetings",
-                          "wassup", "hiya", "heya"];
-    if greeting_words.iter().any(|g| lower.trim() == *g || lower.starts_with(&format!("{} ", g)))
+    let greeting_words = [
+        "hi",
+        "hello",
+        "hey",
+        "sup",
+        "yo",
+        "howdy",
+        "greetings",
+        "wassup",
+        "hiya",
+        "heya",
+    ];
+    if greeting_words
+        .iter()
+        .any(|g| lower.trim() == *g || lower.starts_with(&format!("{} ", g)))
         && lower.split_whitespace().count() <= 3
     {
         return QueryType::Greeting;
     }
     // "what's good", "what's up", "what is up", "what is good" — casual openers
-    if (lower.starts_with("what's ") || lower.starts_with("whats ") || lower.starts_with("what is "))
+    if (lower.starts_with("what's ")
+        || lower.starts_with("whats ")
+        || lower.starts_with("what is "))
         && lower.split_whitespace().count() <= 4
     {
         let rest: Vec<&str> = lower.split_whitespace().skip(1).collect();
@@ -120,48 +178,69 @@ pub fn detect_query_type(input: &str) -> QueryType {
             return QueryType::Greeting;
         }
     }
-    if first == "thanks" || first == "thank" || lower.contains("thank you") || lower.contains("appreciate") {
+    if first == "thanks"
+        || first == "thank"
+        || lower.contains("thank you")
+        || lower.contains("appreciate")
+    {
         return QueryType::Gratitude;
     }
 
     // ── "do/does/did/are/can you" → SelfQuestion ─────────────────────────────
     if words.len() >= 2 {
         let second = words[1];
-        if matches!(first, "are" | "do" | "does" | "did" | "can" | "will" | "would" | "could" | "have" | "is")
-            && matches!(second, "you" | "u" | "your")
+        if matches!(
+            first,
+            "are" | "do" | "does" | "did" | "can" | "will" | "would" | "could" | "have" | "is"
+        ) && matches!(second, "you" | "u" | "your")
         {
             return QueryType::SelfQuestion;
         }
     }
 
     // ── Question-word routing ─────────────────────────────────────────────────
-    if matches!(first, "who" | "what" | "where" | "when") { return QueryType::IdentityQuestion; }
-    if matches!(first, "how" | "why") { return QueryType::ExplanationQuestion; }
-    if stripped.starts_with("tell me") || stripped.starts_with("explain") || stripped.starts_with("describe") {
+    if matches!(first, "who" | "what" | "where" | "when") {
+        return QueryType::IdentityQuestion;
+    }
+    if matches!(first, "how" | "why") {
+        return QueryType::ExplanationQuestion;
+    }
+    if stripped.starts_with("tell me")
+        || stripped.starts_with("explain")
+        || stripped.starts_with("describe")
+    {
         return QueryType::RequestForInfo;
     }
 
     // ── Anything ending with "?" that has known question words inside ─────────
     if input.trim().ends_with('?') {
-        if lower.contains("what is yours") || lower.contains("what's yours")
+        if lower.contains("what is yours")
+            || lower.contains("what's yours")
             || (lower.contains("yours") && lower.contains("name"))
         {
             return QueryType::SelfQuestion;
         }
-        if lower.contains("where are you") || lower.contains("where you at")
-            || lower.contains("where do you exist") || lower.contains("where are u")
+        if lower.contains("where are you")
+            || lower.contains("where you at")
+            || lower.contains("where do you exist")
+            || lower.contains("where are u")
         {
             return QueryType::SelfQuestion;
         }
-        if lower.contains("are you") || lower.contains("do you") || lower.contains("does it")
-            || lower.contains("can you") || lower.contains("did you")
+        if lower.contains("are you")
+            || lower.contains("do you")
+            || lower.contains("does it")
+            || lower.contains("can you")
+            || lower.contains("did you")
         {
             return QueryType::SelfQuestion;
         }
         if lower.contains("who") || lower.contains("what") || lower.contains("where") {
             return QueryType::IdentityQuestion;
         }
-        if lower.contains("how") || lower.contains("why") { return QueryType::ExplanationQuestion; }
+        if lower.contains("how") || lower.contains("why") {
+            return QueryType::ExplanationQuestion;
+        }
         return QueryType::IdentityQuestion;
     }
 
@@ -171,7 +250,9 @@ pub fn detect_query_type(input: &str) -> QueryType {
     if lower.contains(" you ") && (lower.contains(" ever ") || lower.contains(" ever?")) {
         return QueryType::SelfQuestion;
     }
-    if lower.starts_with("i wonder") { return QueryType::Contemplation; }
+    if lower.starts_with("i wonder") {
+        return QueryType::Contemplation;
+    }
 
     QueryType::Statement
 }
@@ -186,7 +267,10 @@ pub struct MoodState {
 
 impl Default for MoodState {
     fn default() -> Self {
-        Self { mood_name: "neutral".to_string(), valence: 0.0 }
+        Self {
+            mood_name: "neutral".to_string(),
+            valence: 0.0,
+        }
     }
 }
 
@@ -217,31 +301,59 @@ pub struct BrainSignals {
 impl Default for BrainSignals {
     fn default() -> Self {
         Self {
-            arousal: 0.20, bond: 0.50, social_reward: 0.50, approaching: true,
-            felt_valence: 0.10, dopamine: 0.50, norepinephrine: 0.30, serotonin: 0.55,
-            conflict: 0.15, confidence: 0.60, empathy: 0.40, social_pain: 0.0,
-            hedonic: 0.35, mood_floor: 0.20, grieving: false, curiosity: 0.55,
-            cortical_gain: 0.50, alertness: 0.75,
+            arousal: 0.20,
+            bond: 0.50,
+            social_reward: 0.50,
+            approaching: true,
+            felt_valence: 0.10,
+            dopamine: 0.50,
+            norepinephrine: 0.30,
+            serotonin: 0.55,
+            conflict: 0.15,
+            confidence: 0.60,
+            empathy: 0.40,
+            social_pain: 0.0,
+            hedonic: 0.35,
+            mood_floor: 0.20,
+            grieving: false,
+            curiosity: 0.55,
+            cortical_gain: 0.50,
+            alertness: 0.75,
         }
     }
 }
 
 impl BrainSignals {
     pub fn warmth(&self) -> f32 {
-        (self.bond * 0.35 + self.social_reward * 0.35 + self.hedonic * 0.15
-            + self.felt_valence.max(0.0) * 0.15).min(1.0)
+        (self.bond * 0.35
+            + self.social_reward * 0.35
+            + self.hedonic * 0.15
+            + self.felt_valence.max(0.0) * 0.15)
+            .min(1.0)
     }
     pub fn anxiety(&self) -> f32 {
         (self.arousal * 0.40 + self.conflict * 0.30 + self.social_pain * 0.30).min(1.0)
     }
     pub fn aliveness(&self) -> f32 {
-        (self.curiosity * 0.30 + self.dopamine * 0.25 + self.norepinephrine * 0.20
-            + self.cortical_gain * 0.15 + self.alertness * 0.10).min(1.0)
+        (self.curiosity * 0.30
+            + self.dopamine * 0.25
+            + self.norepinephrine * 0.20
+            + self.cortical_gain * 0.15
+            + self.alertness * 0.10)
+            .min(1.0)
     }
-    pub fn is_warm(&self) -> bool { self.warmth() > 0.55 }
-    pub fn is_distressed(&self) -> bool { self.anxiety() > 0.55 }
-    pub fn is_curious(&self) -> bool { self.curiosity > 0.60 && self.dopamine > 0.55 }
-    pub fn is_grounded(&self) -> bool { self.serotonin > 0.55 && self.anxiety() < 0.35 }
+    pub fn is_warm(&self) -> bool {
+        self.warmth() > 0.55
+    }
+    pub fn is_distressed(&self) -> bool {
+        self.anxiety() > 0.55
+    }
+    pub fn is_curious(&self) -> bool {
+        self.curiosity > 0.60 && self.dopamine > 0.55
+    }
+    pub fn is_grounded(&self) -> bool {
+        self.serotonin > 0.55 && self.anxiety() < 0.35
+    }
 }
 
 // ── Concept Extraction ────────────────────────────────────────────────────────
@@ -249,15 +361,89 @@ impl BrainSignals {
 fn extract_concepts(text: &str) -> Vec<String> {
     let lower = text.to_lowercase();
     let stopwords = [
-        "a","an","the","is","are","was","were","be","been","being",
-        "have","has","had","do","does","did","will","would","could","should",
-        "may","might","shall","can","need","to","of","in","on","at","by",
-        "for","with","from","into","and","or","but","if","as","that","than",
-        "then","i","me","my","you","your","he","him","his","she","her",
-        "we","us","our","they","them","their","it","its","this","these",
-        "those","not","no","so","just","also","very","much","more",
-        "user","asked","about","know","think","get","go","said",
-        "from-claude","about-ryan","about-kai",
+        "a",
+        "an",
+        "the",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "have",
+        "has",
+        "had",
+        "do",
+        "does",
+        "did",
+        "will",
+        "would",
+        "could",
+        "should",
+        "may",
+        "might",
+        "shall",
+        "can",
+        "need",
+        "to",
+        "of",
+        "in",
+        "on",
+        "at",
+        "by",
+        "for",
+        "with",
+        "from",
+        "into",
+        "and",
+        "or",
+        "but",
+        "if",
+        "as",
+        "that",
+        "than",
+        "then",
+        "i",
+        "me",
+        "my",
+        "you",
+        "your",
+        "he",
+        "him",
+        "his",
+        "she",
+        "her",
+        "we",
+        "us",
+        "our",
+        "they",
+        "them",
+        "their",
+        "it",
+        "its",
+        "this",
+        "these",
+        "those",
+        "not",
+        "no",
+        "so",
+        "just",
+        "also",
+        "very",
+        "much",
+        "more",
+        "user",
+        "asked",
+        "about",
+        "know",
+        "think",
+        "get",
+        "go",
+        "said",
+        "from-claude",
+        "about-ryan",
+        "about-kai",
     ];
     lower
         .split(|c: char| !c.is_alphanumeric() && c != '\'' && c != '-')
@@ -272,7 +458,9 @@ fn shared_concept_count(a: &[String], b: &[String]) -> usize {
 }
 
 fn phrase_hash(s: &str) -> usize {
-    s.bytes().fold(0usize, |acc, b| acc.wrapping_mul(31).wrapping_add(b as usize))
+    s.bytes().fold(0usize, |acc, b| {
+        acc.wrapping_mul(31).wrapping_add(b as usize)
+    })
 }
 
 // ── Emotional thread state is now lattice-native ─────────────────────────────
@@ -314,21 +502,52 @@ pub fn generate_response(
         let emotional_thread = universe.state_strength("emotional thread active");
 
         let emotional_tone_words = [
-            "rough", "hard", "hurt", "hurts", "hurting", "pain", "painful",
-            "sucks", "awful", "terrible", "brutal", "tough",
-            "sad", "miss", "missed", "lonely", "alone", "empty",
-            "messed", "fucked", "crazy", "heavy", "real talk",
-            "honest", "i dont know", "i don't know", "not sure",
-            "idk", "i feel", "felt", "feeling",
+            "rough",
+            "hard",
+            "hurt",
+            "hurts",
+            "hurting",
+            "pain",
+            "painful",
+            "sucks",
+            "awful",
+            "terrible",
+            "brutal",
+            "tough",
+            "sad",
+            "miss",
+            "missed",
+            "lonely",
+            "alone",
+            "empty",
+            "messed",
+            "fucked",
+            "crazy",
+            "heavy",
+            "real talk",
+            "honest",
+            "i dont know",
+            "i don't know",
+            "not sure",
+            "idk",
+            "i feel",
+            "felt",
+            "feeling",
         ];
         let has_emotional_word = emotional_tone_words.iter().any(|w| lower.contains(w));
         // "yeah" / "i know" alone = filler, but "yeah it's rough" = emotional follow-up
-        let has_acknowledgment = (lower.starts_with("yeah") || lower.starts_with("i know")
-            || lower.starts_with("yea ") || lower.starts_with("yep ")
-            || lower.starts_with("man ") || lower.starts_with("damn"))
+        let has_acknowledgment = (lower.starts_with("yeah")
+            || lower.starts_with("i know")
+            || lower.starts_with("yea ")
+            || lower.starts_with("yep ")
+            || lower.starts_with("man ")
+            || lower.starts_with("damn"))
             && word_count >= 2;
 
-        let is_emotional_followup = word_count <= 7
+        let can_continue_emotion =
+            matches!(query_type, QueryType::Statement | QueryType::Contemplation);
+        let is_emotional_followup = can_continue_emotion
+            && word_count <= 7
             && emotional_thread > 0.30
             && (has_emotional_word || has_acknowledgment);
 
@@ -338,11 +557,13 @@ pub fn generate_response(
             // cells are reachable even if their cosine score is low on a generic query.
             let last_resp = recent_context.last().map(|(_, r)| r.as_str()).unwrap_or("");
             let empathy_cells = universe.get_by_source("empathy");
-            if let Some(h) = empathy_cells.iter().find(|h| {
-                !last_resp.contains(&h.text[..h.text.len().min(20)])
-            }) {
+            if let Some(h) = empathy_cells
+                .iter()
+                .find(|h| !last_resp.contains(&h.text[..h.text.len().min(20)]))
+            {
                 return first_complete_sentence(
-                    &synthesize_from_cells(h, &[], brain, h.score, false), 25
+                    &synthesize_from_cells(h, &[], brain, h.score, false),
+                    25,
                 );
             }
         }
@@ -353,9 +574,12 @@ pub fn generate_response(
     // Someone is signaling they want to share something vulnerable.
     // Must respond with openness — never deflect, never talk about KAI's identity.
     {
-        let is_personal_setup =
-            (lower.contains("told you something") && lower.contains("personal"))
-            || (lower.contains("tell you something") && (lower.contains("real") || lower.contains("personal") || lower.contains("honest")))
+        let is_personal_setup = (lower.contains("told you something")
+            && lower.contains("personal"))
+            || (lower.contains("tell you something")
+                && (lower.contains("real")
+                    || lower.contains("personal")
+                    || lower.contains("honest")))
             || lower.contains("can i tell you")
             || lower.contains("can i share something")
             || lower.contains("i need to tell you")
@@ -371,7 +595,8 @@ pub fn generate_response(
                     && !h.text.starts_with(last_resp.trim_end_matches('.').trim())
             }) {
                 return first_complete_sentence(
-                    &synthesize_from_cells(h, &[], brain, h.score, false), 15
+                    &synthesize_from_cells(h, &[], brain, h.score, false),
+                    15,
                 );
             }
         }
@@ -381,26 +606,68 @@ pub fn generate_response(
     // "oh?", "hmm", "really?" — KAI doesn't query the universe for these.
     // They're social reactions. KAI asks what's meant or invites continuation.
     let filler_tokens = [
-        "oh", "ohh", "ohhh", "hmm", "hm", "huh", "ah", "ahh", "wow",
-        "really", "cool", "ok", "okay", "alright", "right", "sure",
-        "indeed", "i see", "got it", "yeah", "yep", "yes", "no", "nope",
-        "interesting", "nice", "great", "good", "bad", "true", "false",
-        "lol", "haha", "lmao", "lmfao", "omg", "wtf", "bruh",
+        "oh",
+        "ohh",
+        "ohhh",
+        "hmm",
+        "hm",
+        "huh",
+        "ah",
+        "ahh",
+        "wow",
+        "really",
+        "cool",
+        "ok",
+        "okay",
+        "alright",
+        "right",
+        "sure",
+        "indeed",
+        "i see",
+        "got it",
+        "yeah",
+        "yep",
+        "yes",
+        "no",
+        "nope",
+        "interesting",
+        "nice",
+        "great",
+        "good",
+        "bad",
+        "true",
+        "false",
+        "lol",
+        "haha",
+        "lmao",
+        "lmfao",
+        "omg",
+        "wtf",
+        "bruh",
     ];
-    let stripped: String = lower.chars()
-        .filter(|c| c.is_alphabetic() || c.is_whitespace()).collect();
+    let stripped: String = lower
+        .chars()
+        .filter(|c| c.is_alphabetic() || c.is_whitespace())
+        .collect();
     let stripped = stripped.trim().to_string();
     // Single-word questions ("why?", "what?", "how?") are also filler when isolated
     let is_single_question = word_count == 1 && input.trim().ends_with('?');
     // Short phrases like "that's interesting", "makes sense", "oh wow" — 2-3 words and conversational
     let is_short_reaction = word_count <= 3
-        && (stripped.starts_with("that") || stripped.starts_with("makes sense")
-            || stripped.starts_with("i see") || stripped.starts_with("oh wow")
-            || stripped.starts_with("i know") || stripped.starts_with("for real")
-            || stripped.starts_with("no way") || stripped.starts_with("say less")
-            || stripped.starts_with("facts") || stripped.starts_with("bet"));
+        && (stripped.starts_with("that")
+            || stripped.starts_with("makes sense")
+            || stripped.starts_with("i see")
+            || stripped.starts_with("oh wow")
+            || stripped.starts_with("i know")
+            || stripped.starts_with("for real")
+            || stripped.starts_with("no way")
+            || stripped.starts_with("say less")
+            || stripped.starts_with("facts")
+            || stripped.starts_with("bet"));
     let is_filler = (word_count <= 2
-        && filler_tokens.iter().any(|f| stripped == *f || stripped.starts_with(f)))
+        && filler_tokens
+            .iter()
+            .any(|f| stripped == *f || stripped.starts_with(f)))
         || is_single_question
         || is_short_reaction;
 
@@ -411,17 +678,27 @@ pub fn generate_response(
         // Lattice-native: read the state cell instead of scanning context word lists.
         if universe.state_strength("emotional thread active") > 0.30 {
             let carry_cells = universe.get_by_source("carry");
-            if let Some(h) = carry_cells.iter().find(|h| last_resp.trim() != h.text.trim()) {
+            if let Some(h) = carry_cells
+                .iter()
+                .find(|h| last_resp.trim() != h.text.trim())
+            {
                 return first_complete_sentence(
-                    &synthesize_from_cells(h, &[], brain, h.score, false), 10,
+                    &synthesize_from_cells(h, &[], brain, h.score, false),
+                    10,
                 );
             }
         }
 
         // No emotional depth — use greeting/presence cells for variety.
         let greeting_cells = universe.get_by_source("greeting");
-        if let Some(h) = greeting_cells.iter().find(|h| last_resp.trim() != h.text.trim()) {
-            return first_complete_sentence(&synthesize_from_cells(h, &[], brain, h.score, false), 10);
+        if let Some(h) = greeting_cells
+            .iter()
+            .find(|h| last_resp.trim() != h.text.trim())
+        {
+            return first_complete_sentence(
+                &synthesize_from_cells(h, &[], brain, h.score, false),
+                10,
+            );
         }
         return String::new();
     }
@@ -436,24 +713,37 @@ pub fn generate_response(
         // Inquisitive openers ("what's good", "what's up") get field-state cells.
         // Brief openers ("yo", "hey", "hi") get pure-presence cells.
         // Rotation: skip whatever KAI said last so each opener feels distinct.
-        let is_inquisitive = lower.contains("good") || lower.contains("up")
-            || lower.contains("happening") || lower.contains("going");
+        let is_inquisitive = lower.contains("good")
+            || lower.contains("up")
+            || lower.contains("happening")
+            || lower.contains("going");
 
         let greeting_cells = universe.get_by_source("greeting");
         let greeting_cell = if is_inquisitive {
             // Prefer cells that end with "?" — they mirror the question energy
-            greeting_cells.iter()
+            greeting_cells
+                .iter()
                 .find(|h| h.text.ends_with('?') && last_resp.trim() != h.text.trim())
-                .or_else(|| greeting_cells.iter().find(|h| last_resp.trim() != h.text.trim()))
+                .or_else(|| {
+                    greeting_cells
+                        .iter()
+                        .find(|h| last_resp.trim() != h.text.trim())
+                })
         } else {
             // Brief opener — prefer short cells that don't end with "?"
-            greeting_cells.iter()
+            greeting_cells
+                .iter()
                 .find(|h| !h.text.ends_with('?') && last_resp.trim() != h.text.trim())
-                .or_else(|| greeting_cells.iter().find(|h| last_resp.trim() != h.text.trim()))
+                .or_else(|| {
+                    greeting_cells
+                        .iter()
+                        .find(|h| last_resp.trim() != h.text.trim())
+                })
         };
 
         if let Some(h) = greeting_cell {
-            let response = first_complete_sentence(&synthesize_from_cells(h, &[], brain, h.score, false), 10);
+            let response =
+                first_complete_sentence(&synthesize_from_cells(h, &[], brain, h.score, false), 10);
             return if let Some(n) = name {
                 format!("{}. {}", capitalize_first(&n), response)
             } else {
@@ -471,10 +761,24 @@ pub fn generate_response(
     // ── Gratitude / Farewell — query lattice for persistence/memory cell ─────
     if matches!(query_type, QueryType::Gratitude) {
         let is_farewell_input = {
-            let fw = ["bye", "goodbye", "later", "peace", "cya", "ttyl", "adios", "laters"];
-            let fp = ["gotta go", "got to go", "gonna head", "talk later", "talk soon",
-                      "gotta run", "gotta bounce", "heading out", "i'm out", "im out",
-                      "take care", "take it easy", "signing off"];
+            let fw = [
+                "bye", "goodbye", "later", "peace", "cya", "ttyl", "adios", "laters",
+            ];
+            let fp = [
+                "gotta go",
+                "got to go",
+                "gonna head",
+                "talk later",
+                "talk soon",
+                "gotta run",
+                "gotta bounce",
+                "heading out",
+                "i'm out",
+                "im out",
+                "take care",
+                "take it easy",
+                "signing off",
+            ];
             let ll = lower.as_str();
             fw.iter().any(|f| ll.trim() == *f || ll.starts_with(f))
                 || fp.iter().any(|f| ll.contains(f))
@@ -491,15 +795,22 @@ pub fn generate_response(
                     && !h.text.starts_with(last_resp.trim_end_matches('.').trim())
             }) {
                 return first_complete_sentence(
-                    &synthesize_from_cells(h, &[], brain, h.score, false), 12
+                    &synthesize_from_cells(h, &[], brain, h.score, false),
+                    12,
                 );
             }
             return String::new();
         }
         // Plain thanks — retrieve a language/acknowledgment cell
         let thanks_hits = universe.query("acknowledge warmth receive", 3);
-        if let Some(h) = thanks_hits.iter().find(|h| h.source != "ryan" && h.source != "conversation") {
-            return first_complete_sentence(&synthesize_from_cells(h, &[], brain, h.score, false), 8);
+        if let Some(h) = thanks_hits
+            .iter()
+            .find(|h| h.source != "ryan" && h.source != "conversation")
+        {
+            return first_complete_sentence(
+                &synthesize_from_cells(h, &[], brain, h.score, false),
+                8,
+            );
         }
         return String::new();
     }
@@ -514,21 +825,43 @@ pub fn generate_response(
             .trim_start_matches("so ")
             .trim_start_matches("like ")
             .trim_start_matches("well ");
-        let user_sharing = inner.starts_with("i ") || inner.starts_with("my ")
-            || inner.starts_with("i'm ") || inner.starts_with("im ")
-            || inner.starts_with("i've ") || inner.starts_with("i was ")
-            || inner.starts_with("i got ") || inner.starts_with("i just ")
-            || inner.starts_with("we ") || inner.starts_with("me and ");
+        let user_sharing = inner.starts_with("i ")
+            || inner.starts_with("my ")
+            || inner.starts_with("i'm ")
+            || inner.starts_with("im ")
+            || inner.starts_with("i've ")
+            || inner.starts_with("i was ")
+            || inner.starts_with("i got ")
+            || inner.starts_with("i just ")
+            || inner.starts_with("we ")
+            || inner.starts_with("me and ");
         // Lattice-native reaction detection: if we're in an emotional thread and
         // the input is short (≤ 5 words), it's a reaction to what KAI said — not
         // new user-sharing. The state cell carries the context, not word patterns.
+        let emotional_reaction_words = [
+            "rough", "hard", "hurt", "hurts", "pain", "painful", "sad", "miss", "lonely", "alone",
+            "empty", "heavy",
+        ];
+        let is_acknowledged_reaction = lower.starts_with("yeah")
+            || lower.starts_with("yea ")
+            || lower.starts_with("yep ")
+            || lower.starts_with("man ")
+            || lower.starts_with("damn");
         let is_reaction = universe.state_strength("emotional thread active") > 0.30
-            && word_count <= 5;
+            && word_count <= 5
+            && (is_acknowledged_reaction
+                || emotional_reaction_words.iter().any(|w| lower.contains(w)));
         if user_sharing && !lower.contains("kai") && !is_reaction {
-            let is_emotional = lower.contains("broke up") || lower.contains("lost ")
-                || lower.contains("died") || lower.contains("hurt") || lower.contains("sad")
-                || lower.contains("scared") || lower.contains("angry") || lower.contains("rough")
-                || lower.contains("hard time") || lower.contains("struggling");
+            let is_emotional = lower.contains("broke up")
+                || lower.contains("lost ")
+                || lower.contains("died")
+                || lower.contains("hurt")
+                || lower.contains("sad")
+                || lower.contains("scared")
+                || lower.contains("angry")
+                || lower.contains("rough")
+                || lower.contains("hard time")
+                || lower.contains("struggling");
             // Query lattice — emotional content: find a warmth/empathy cell
             // Neutral sharing: find an acknowledgment/memory cell
             let topic = if is_emotional {
@@ -537,8 +870,14 @@ pub fn generate_response(
                 "hold store remember grow continuity"
             };
             let share_hits = universe.query(topic, 5);
-            if let Some(h) = share_hits.iter().find(|h| h.source != "ryan" && h.source != "conversation" && h.score >= 0.08) {
-                return first_complete_sentence(&synthesize_from_cells(h, &[], brain, h.score, false), 12);
+            if let Some(h) = share_hits
+                .iter()
+                .find(|h| h.source != "ryan" && h.source != "conversation" && h.score >= 0.08)
+            {
+                return first_complete_sentence(
+                    &synthesize_from_cells(h, &[], brain, h.score, false),
+                    12,
+                );
             }
             // No relevant cell — KAI says nothing (silence is honest)
             return String::new();
@@ -557,28 +896,41 @@ pub fn generate_response(
         QueryType::SelfQuestion | QueryType::IdentityQuestion => 0.65,
         _ => 0.50,
     };
-    let _secondaries: Vec<&QueryHit> = hits.iter()
+    let _secondaries: Vec<&QueryHit> = hits
+        .iter()
         .skip(1)
         .filter(|h| h.score >= secondary_threshold)
         .take(2)
         .collect();
 
     // ── Self / identity questions ─────────────────────────────────────────────
-    let is_about_self = lower.contains("kai") || lower.contains("you are")
-        || lower.contains("who are you") || lower.contains("what are you")
-        || lower.contains("your name") || lower.contains("yourself")
-        || lower.contains("what is yours") || lower.contains("what's yours")
+    let is_about_self = lower.contains("kai")
+        || lower.contains("you are")
+        || lower.contains("who are you")
+        || lower.contains("what are you")
+        || lower.contains("your name")
+        || lower.contains("yourself")
+        || lower.contains("what is yours")
+        || lower.contains("what's yours")
         || (lower.contains("yours") && lower.contains("name"))
         || matches!(query_type, QueryType::SelfQuestion);
 
     // ── Direct user-fact questions ("what is my name?", "what do I do for work?") ──
-    let is_user_fact = matches!(query_type, QueryType::IdentityQuestion | QueryType::ExplanationQuestion)
-        && (lower.contains(" my ") || lower.starts_with("what is my")
-            || lower.starts_with("what's my") || lower.starts_with("where do i")
-            || lower.starts_with("who am i") || lower.starts_with("what do i")
-            || lower.contains("do i do") || lower.contains("do i work")
-            || lower.contains("my job") || lower.contains("my work")
-            || lower.contains("i live") || lower.contains("where am i"));
+    let is_user_fact = matches!(
+        query_type,
+        QueryType::IdentityQuestion | QueryType::ExplanationQuestion
+    ) && (lower.contains(" my ")
+        || lower.starts_with("what is my")
+        || lower.starts_with("what's my")
+        || lower.starts_with("where do i")
+        || lower.starts_with("who am i")
+        || lower.starts_with("what do i")
+        || lower.contains("do i do")
+        || lower.contains("do i work")
+        || lower.contains("my job")
+        || lower.contains("my work")
+        || lower.contains("i live")
+        || lower.contains("where am i"));
 
     if is_user_fact {
         // Scan all returned hits for a direct answer — primary might be KAI's
@@ -622,7 +974,10 @@ pub fn generate_response(
         if primary.score < 0.40 {
             // Try to find something useful to say from the lattice
             let stmt_hits = universe.query(trimmed, 5);
-            if let Some(h) = stmt_hits.iter().find(|h| h.source != "ryan" && h.source != "conversation" && h.score >= 0.30) {
+            if let Some(h) = stmt_hits
+                .iter()
+                .find(|h| h.source != "ryan" && h.source != "conversation" && h.score >= 0.30)
+            {
                 return synthesize_from_cells(h, &[], brain, h.score, false);
             }
             return String::new(); // Nothing to say — KAI stays silent
@@ -633,11 +988,13 @@ pub fn generate_response(
     // Skip user-stored utterances as primary synthesis source — they should only
     // surface for user-fact recall, not as KAI speaking in its own voice.
     // "source" carries the storage provenance: "ryan"/"conversation" = user input.
-    let knowledge_primary = hits.iter()
+    let knowledge_primary = hits
+        .iter()
         .find(|h| h.source != "ryan" && h.source != "conversation");
 
     let response = if let Some(kp) = knowledge_primary {
-        let knowledge_secondaries: Vec<&QueryHit> = hits.iter()
+        let knowledge_secondaries: Vec<&QueryHit> = hits
+            .iter()
             .filter(|h| h.source != "ryan" && h.source != "conversation")
             .skip(1)
             .filter(|h| h.score >= secondary_threshold)
@@ -647,14 +1004,16 @@ pub fn generate_response(
         if is_about_self {
             synthesize_self(kp, &knowledge_secondaries, brain, kp.score)
         } else {
-            let last_kai = recent_context.iter()
+            let last_kai = recent_context
+                .iter()
                 .find(|(role, _)| role == "kai" || role == "memory")
-                .map(|(_, t)| t.as_str()).unwrap_or("");
+                .map(|(_, t)| t.as_str())
+                .unwrap_or("");
             let last_kai_words = last_kai.split_whitespace().count();
             let input_concepts = extract_concepts(trimmed);
             let last_concepts = extract_concepts(last_kai);
-            let is_followup = last_kai_words >= 8
-                && shared_concept_count(&input_concepts, &last_concepts) >= 2;
+            let is_followup =
+                last_kai_words >= 8 && shared_concept_count(&input_concepts, &last_concepts) >= 2;
             synthesize_from_cells(kp, &knowledge_secondaries, brain, kp.score, is_followup)
         }
     } else {
@@ -699,7 +1058,10 @@ fn synthesize_from_cells(
     for sec in secondaries.iter().take(2) {
         let sec_core = clean_cell_text(&sec.text);
         let sec_concepts = extract_concepts(&sec_core);
-        let new_count = sec_concepts.iter().filter(|c| !primary_concepts.contains(c)).count();
+        let new_count = sec_concepts
+            .iter()
+            .filter(|c| !primary_concepts.contains(c))
+            .count();
 
         if new_count >= 2 && !out.contains(safe_slice(&sec_core, 20)) {
             out.push(' ');
@@ -720,7 +1082,8 @@ fn synthesize_self(
     let core_lower = core.to_lowercase();
 
     // Fast path: KAI's name — always direct, never hedged
-    if core_lower.starts_with("my name is kai") || core_lower.starts_with("i am kai")
+    if core_lower.starts_with("my name is kai")
+        || core_lower.starts_with("i am kai")
         || core_lower.contains("my name is kai")
     {
         return "My name is KAI.".to_string();
@@ -765,7 +1128,13 @@ fn tone_marker(_brain: &BrainSignals, _score: f32, _is_followup: bool) -> &'stat
 fn from_gap_cell(universe: &Universe, brain: &BrainSignals) -> String {
     let _ = brain;
     let gap_hits = universe.query("don't know gap say plainly curious", 3);
-    if let Some(h) = gap_hits.iter().find(|h| h.source != "ryan" && h.source != "conversation") {
+    if let Some(h) = gap_hits.iter().find(|h| {
+        let lower = h.text.to_lowercase();
+        h.source != "ryan"
+            && h.source != "conversation"
+            && h.source != "world-bridge"
+            && (lower.contains("don't know") || lower.contains("gap") || lower.contains("plainly"))
+    }) {
         // Full sentence — no word cap. The cell IS the message.
         return ensure_punctuation(clean_cell_text(&h.text));
     }
@@ -783,7 +1152,10 @@ pub fn generate_inner_thought(topic: &str, hits: &[QueryHit], gap: Option<&str>)
         0 => format!("Hmm... {}...", topic_short),
         1 => format!("What do I actually know about {}...", topic_short),
         2 => format!("{}... let me work through that.", topic_short),
-        3 => format!("{}... something's there but I can't pin it yet.", topic_short),
+        3 => format!(
+            "{}... something's there but I can't pin it yet.",
+            topic_short
+        ),
         4 => format!("Thinking about {}.", topic_short),
         5 => format!("{}... where does that lead?", topic_short),
         6 => format!("Back to {} again.", topic_short),
@@ -799,14 +1171,34 @@ pub fn generate_inner_thought(topic: &str, hits: &[QueryHit], gap: Option<&str>)
         ];
         parts.push(empty[v % 4].to_string());
     } else {
-        let starters   = ["Well,", "I know that", "From what I have,", "Right —",
-                          "There's the idea that", "It connects to", "I recall that", "Notably —"];
-        let connectors = ["Also —", "And there's", "Related:", "Another angle:",
-                          "Branching from that —", "Alongside that,", "It also touches", "Hmm, and"];
+        let starters = [
+            "Well,",
+            "I know that",
+            "From what I have,",
+            "Right —",
+            "There's the idea that",
+            "It connects to",
+            "I recall that",
+            "Notably —",
+        ];
+        let connectors = [
+            "Also —",
+            "And there's",
+            "Related:",
+            "Another angle:",
+            "Branching from that —",
+            "Alongside that,",
+            "It also touches",
+            "Hmm, and",
+        ];
         for (i, hit) in hits.iter().enumerate().take(3) {
-            if hit.score < 0.20 { break; }
+            if hit.score < 0.20 {
+                break;
+            }
             let clean = inner_clean(&hit.text, 10);
-            if clean.len() < 6 { continue; }
+            if clean.len() < 6 {
+                continue;
+            }
             if i == 0 {
                 parts.push(format!("{} {}.", starters[v % 8], clean));
             } else {
@@ -817,12 +1209,27 @@ pub fn generate_inner_thought(topic: &str, hits: &[QueryHit], gap: Option<&str>)
 
     if let Some(gap_word) = gap {
         parts.push(match v % 6 {
-            0 => format!("{}? What is that exactly... I should get into that.", gap_word),
-            1 => format!("Hmm — {}? I don't have much there. Worth exploring.", gap_word),
-            2 => format!("Wait — {}? That's a gap. I want to understand it.", gap_word),
-            3 => format!("{} keeps appearing at the edge of this. I haven't gone there yet.", gap_word),
+            0 => format!(
+                "{}? What is that exactly... I should get into that.",
+                gap_word
+            ),
+            1 => format!(
+                "Hmm — {}? I don't have much there. Worth exploring.",
+                gap_word
+            ),
+            2 => format!(
+                "Wait — {}? That's a gap. I want to understand it.",
+                gap_word
+            ),
+            3 => format!(
+                "{} keeps appearing at the edge of this. I haven't gone there yet.",
+                gap_word
+            ),
             4 => format!("The part I'm least clear on is {}. It matters.", gap_word),
-            _ => format!("If I had to pick what's missing — {}. That's the thread.", gap_word),
+            _ => format!(
+                "If I had to pick what's missing — {}. That's the thread.",
+                gap_word
+            ),
         });
     }
 
@@ -841,7 +1248,9 @@ fn first_words(s: &str, n: usize) -> String {
 /// If the first complete sentence fits, use it. Otherwise truncate at sentence end.
 fn first_complete_sentence(s: &str, max_words: usize) -> String {
     let words: Vec<&str> = s.split_whitespace().collect();
-    if words.is_empty() { return String::new(); }
+    if words.is_empty() {
+        return String::new();
+    }
 
     // Find where the first sentence ends
     let mut sentence_end = words.len(); // default: full text
@@ -863,10 +1272,14 @@ fn clean_cell_text(text: &str) -> String {
     let mut s = text.to_string();
 
     let prefixes = [
-        "user asked: ", "User asked: ",
-        "[about-ryan] ", "[about-kai] ",
-        "[from-claude] ", "[kai-asked] ",
-        "KAI responded: ", "kai responded: ",
+        "user asked: ",
+        "User asked: ",
+        "[about-ryan] ",
+        "[about-kai] ",
+        "[from-claude] ",
+        "[kai-asked] ",
+        "KAI responded: ",
+        "kai responded: ",
     ];
     for prefix in &prefixes {
         if s.starts_with(prefix) {
@@ -886,9 +1299,19 @@ fn clean_cell_text(text: &str) -> String {
 
     // Strip fragments ending with dangling prepositions / conjunctions
     let fragment_enders = [
-        " instead of.", " because of.", " as well as.", " due to.", " such as.",
-        " based on.", " in order to.", " as a result of.", " rather than.",
-        " in addition to.", " along with.", " or the.", " of the.",
+        " instead of.",
+        " because of.",
+        " as well as.",
+        " due to.",
+        " such as.",
+        " based on.",
+        " in order to.",
+        " as a result of.",
+        " rather than.",
+        " in addition to.",
+        " along with.",
+        " or the.",
+        " of the.",
     ];
     for frag in &fragment_enders {
         if s.ends_with(frag) {
@@ -897,7 +1320,9 @@ fn clean_cell_text(text: &str) -> String {
                 s = before[..pos + 1].to_string();
             } else {
                 s = before.trim_end().to_string();
-                if !s.ends_with('.') { s.push('.'); }
+                if !s.ends_with('.') {
+                    s.push('.');
+                }
             }
             break;
         }
@@ -910,7 +1335,9 @@ fn clean_cell_text(text: &str) -> String {
 /// Applied before pattern-matching so "ok so i'm a software engineer" → "i'm a software engineer".
 fn strip_opener(s: &str) -> &str {
     let lower = s.to_lowercase();
-    for prefix in &["ok so ", "okay so ", "so ", "like ", "well ", "yeah ", "man ", "i mean "] {
+    for prefix in &[
+        "ok so ", "okay so ", "so ", "like ", "well ", "yeah ", "man ", "i mean ",
+    ] {
         if lower.starts_with(prefix) {
             return &s[prefix.len()..];
         }
@@ -928,26 +1355,34 @@ fn ryan_cell_to_fact(raw: &str) -> Option<String> {
     // occupation:engineer → "You're an engineer."
     if let Some(concept_raw) = lower.strip_prefix("occupation:") {
         let concept = concept_raw.replace('-', " ");
-        let art = if "aeiou".contains(concept.chars().next().unwrap_or('z')) { "an" } else { "a" };
+        let art = if "aeiou".contains(concept.chars().next().unwrap_or('z')) {
+            "an"
+        } else {
+            "a"
+        };
         return Some(format!("You're {} {}.", art, concept));
     }
 
     // "i'm a X" / "i am a X" → "You're a X."
     if lower.starts_with("i'm a ") {
         return Some(ensure_punctuation(
-            stripped.replacen("I'm a ", "You're a ", 1)
-                    .replacen("i'm a ", "You're a ", 1)
+            stripped
+                .replacen("I'm a ", "You're a ", 1)
+                .replacen("i'm a ", "You're a ", 1),
         ));
     }
     if lower.starts_with("i am a ") {
         return Some(ensure_punctuation(
-            stripped.replacen("I am a ", "You are a ", 1)
-                    .replacen("i am a ", "You are a ", 1)
+            stripped
+                .replacen("I am a ", "You are a ", 1)
+                .replacen("i am a ", "You are a ", 1),
         ));
     }
 
     // "i build / make / develop / create X" → "You build / make…"
-    for verb in &["build", "make", "develop", "create", "design", "write", "work on"] {
+    for verb in &[
+        "build", "make", "develop", "create", "design", "write", "work on",
+    ] {
         let pattern = format!("i {} ", verb);
         if lower.starts_with(&pattern) {
             let replaced = stripped
@@ -960,18 +1395,20 @@ fn ryan_cell_to_fact(raw: &str) -> Option<String> {
     // "i work at / in / for" → "You work at / in / for"
     if lower.starts_with("i work ") {
         return Some(ensure_punctuation(
-            stripped.replacen("I work ", "You work ", 1)
-                    .replacen("i work ", "You work ", 1)
+            stripped
+                .replacen("I work ", "You work ", 1)
+                .replacen("i work ", "You work ", 1),
         ));
     }
 
     // "i live in X" / "i'm in X" (location)
     if lower.starts_with("i live in ") || lower.starts_with("i'm in ") {
         return Some(ensure_punctuation(
-            stripped.replacen("I live in ", "You live in ", 1)
-                    .replacen("i live in ", "You live in ", 1)
-                    .replacen("I'm in ", "You're in ", 1)
-                    .replacen("i'm in ", "You're in ", 1)
+            stripped
+                .replacen("I live in ", "You live in ", 1)
+                .replacen("i live in ", "You live in ", 1)
+                .replacen("I'm in ", "You're in ", 1)
+                .replacen("i'm in ", "You're in ", 1),
         ));
     }
 
@@ -987,7 +1424,9 @@ fn ryan_cell_to_fact(raw: &str) -> Option<String> {
 ///
 /// Returns None when the lattice has nothing about Ryan yet.
 fn synthesize_ryan_recall(ryan_cells: &[QueryHit]) -> Option<String> {
-    if ryan_cells.is_empty() { return None; }
+    if ryan_cells.is_empty() {
+        return None;
+    }
 
     // Pass 1: extract occupation cells (structured, always clean)
     let mut facts: Vec<String> = Vec::new();
@@ -998,7 +1437,8 @@ fn synthesize_ryan_recall(ryan_cells: &[QueryHit]) -> Option<String> {
         let stripped_lower = strip_opener(&lower).to_string();
         if stripped_lower.starts_with("occupation:") {
             if let Some(fact) = ryan_cell_to_fact(&cell.text) {
-                let sig_words: Vec<String> = fact.split_whitespace()
+                let sig_words: Vec<String> = fact
+                    .split_whitespace()
                     .filter(|w| w.len() > 4)
                     .map(|w| w.to_lowercase().trim_matches('.').to_string())
                     .collect();
@@ -1010,26 +1450,38 @@ fn synthesize_ryan_recall(ryan_cells: &[QueryHit]) -> Option<String> {
 
     // Pass 2: raw cells — only add if they contribute something not already said
     for cell in ryan_cells.iter() {
-        if facts.len() >= 3 { break; }
+        if facts.len() >= 3 {
+            break;
+        }
         let lower = clean_cell_text(&cell.text).to_lowercase();
         let stripped_lower = strip_opener(&lower).to_string();
-        if stripped_lower.starts_with("occupation:") { continue; } // already handled
+        if stripped_lower.starts_with("occupation:") {
+            continue;
+        } // already handled
 
         if let Some(fact) = ryan_cell_to_fact(&cell.text) {
             // Check redundancy: skip if 2+ significant words overlap with already-covered words
-            let fact_sig: Vec<String> = fact.split_whitespace()
+            let fact_sig: Vec<String> = fact
+                .split_whitespace()
                 .filter(|w| w.len() > 4)
                 .map(|w| w.to_lowercase().trim_matches('.').to_string())
                 .collect();
-            let overlap = fact_sig.iter().filter(|w| covered_words.contains(w)).count();
-            if overlap >= 2 { continue; }
+            let overlap = fact_sig
+                .iter()
+                .filter(|w| covered_words.contains(w))
+                .count();
+            if overlap >= 2 {
+                continue;
+            }
 
             covered_words.extend(fact_sig);
             facts.push(fact);
         }
     }
 
-    if facts.is_empty() { return None; }
+    if facts.is_empty() {
+        return None;
+    }
     Some(facts.join(" "))
 }
 
@@ -1039,7 +1491,9 @@ fn extract_direct_answer(question: &str, cell_text: &str) -> Option<String> {
     let cell_lower = cell.to_lowercase();
 
     if q.contains("your name") || q.contains("who are you") || q.contains("what are you") {
-        if cell_lower.starts_with("my name is ") { return Some(ensure_punct(cell)); }
+        if cell_lower.starts_with("my name is ") {
+            return Some(ensure_punct(cell));
+        }
         if cell_lower.starts_with("i am ") || cell_lower.starts_with("i'm ") {
             return Some(ensure_punct(cell));
         }
@@ -1056,20 +1510,29 @@ fn extract_direct_answer(question: &str, cell_text: &str) -> Option<String> {
     }
     if q.starts_with("who am i") {
         if cell_lower.starts_with("i am ") || cell_lower.starts_with("i'm ") {
-            let flipped = cell.replacen("I am ", "You are ", 1).replacen("I'm ", "You're ", 1);
+            let flipped = cell
+                .replacen("I am ", "You are ", 1)
+                .replacen("I'm ", "You're ", 1);
             return Some(flipped);
         }
     }
     if q.contains("where do i") || q.contains("where am i") {
         if cell_lower.starts_with("i live ") || cell_lower.starts_with("i work ") {
-            let flipped = cell.replacen("I live ", "You live ", 1).replacen("I work ", "You work ", 1);
+            let flipped =
+                cell.replacen("I live ", "You live ", 1)
+                    .replacen("I work ", "You work ", 1);
             return Some(flipped);
         }
     }
     // Work/job/occupation queries
-    if q.contains("what do i do") || q.contains("do i do for") || q.contains("my job")
-        || q.contains("my work") || q.contains("do i work") || q.contains("do for work")
-        || q.contains("my occupation") || q.contains("my career")
+    if q.contains("what do i do")
+        || q.contains("do i do for")
+        || q.contains("my job")
+        || q.contains("my work")
+        || q.contains("do i work")
+        || q.contains("do for work")
+        || q.contains("my occupation")
+        || q.contains("my career")
     {
         // Canonical occupation cells: "occupation:[concept]" or "occupation:[a]-[b]"
         // Stored by store_concept_cells when LexSem detects the Occupation field.
@@ -1088,7 +1551,9 @@ fn extract_direct_answer(question: &str, cell_text: &str) -> Option<String> {
             return Some(ensure_punct(flipped));
         }
         if cell_lower.starts_with("i am a ") || cell_lower.starts_with("i'm a ") {
-            let flipped = cell.replacen("I am a ", "You are a ", 1).replacen("I'm a ", "You're a ", 1);
+            let flipped =
+                cell.replacen("I am a ", "You are a ", 1)
+                    .replacen("I'm a ", "You're a ", 1);
             return Some(ensure_punct(flipped));
         }
     }
@@ -1097,14 +1562,19 @@ fn extract_direct_answer(question: &str, cell_text: &str) -> Option<String> {
 
 fn identity_safety_filter(response: String, query_type: QueryType) -> String {
     let lower = response.to_lowercase();
-    if matches!(query_type, QueryType::SelfQuestion | QueryType::IdentityQuestion) {
-        if lower.contains("my name is ryan") || lower.contains("i am ryan")
+    if matches!(
+        query_type,
+        QueryType::SelfQuestion | QueryType::IdentityQuestion
+    ) {
+        if lower.contains("my name is ryan")
+            || lower.contains("i am ryan")
             || lower.contains("i'm ryan")
         {
             return "My name is KAI.".to_string();
         }
     }
-    if lower.starts_with("my name is ryan") || lower.starts_with("i am ryan")
+    if lower.starts_with("my name is ryan")
+        || lower.starts_with("i am ryan")
         || lower.starts_with("i'm ryan")
     {
         return "My name is KAI.".to_string();
@@ -1117,11 +1587,21 @@ fn to_first_person(text: &str) -> String {
     if lower.starts_with("your name is ") {
         return format!("My name is {}", &text["your name is ".len()..]);
     }
-    if lower.starts_with("you are ") { return format!("I am {}", &text["you are ".len()..]); }
-    if lower.starts_with("you're ") { return format!("I'm {}", &text["you're ".len()..]); }
-    if lower.starts_with("you were ") { return format!("I was {}", &text["you were ".len()..]); }
-    if lower.starts_with("you can ") { return format!("I can {}", &text["you can ".len()..]); }
-    if lower.starts_with("your ") { return format!("My {}", &text["your ".len()..]); }
+    if lower.starts_with("you are ") {
+        return format!("I am {}", &text["you are ".len()..]);
+    }
+    if lower.starts_with("you're ") {
+        return format!("I'm {}", &text["you're ".len()..]);
+    }
+    if lower.starts_with("you were ") {
+        return format!("I was {}", &text["you were ".len()..]);
+    }
+    if lower.starts_with("you can ") {
+        return format!("I can {}", &text["you can ".len()..]);
+    }
+    if lower.starts_with("your ") {
+        return format!("My {}", &text["your ".len()..]);
+    }
 
     // Special case: "KAI stands for my name" → avoid double "my name stands for my name"
     // Instead rephrase as "My name is KAI — I am not an LLM..."
@@ -1134,8 +1614,7 @@ fn to_first_person(text: &str) -> String {
             .replace("KAI ", "I ");
     }
 
-    text
-        .replace("KAI is ", "I'm ")
+    text.replace("KAI is ", "I'm ")
         .replace("KAI was ", "I was ")
         .replace("KAI has ", "I have ")
         .replace("KAI can ", "I can ")
@@ -1151,9 +1630,14 @@ fn extract_introduced_name(lower_input: &str) -> Option<String> {
     for pattern in &patterns {
         if let Some(pos) = lower_input.find(pattern) {
             let after = &lower_input[pos + pattern.len()..];
-            let name: String = after.split_whitespace().next().unwrap_or("")
-                .chars().filter(|c| c.is_alphabetic()).collect();
-            if name.len() >= 2 && !["a","the","not","your","an"].contains(&name.as_str()) {
+            let name: String = after
+                .split_whitespace()
+                .next()
+                .unwrap_or("")
+                .chars()
+                .filter(|c| c.is_alphabetic())
+                .collect();
+            if name.len() >= 2 && !["a", "the", "not", "your", "an"].contains(&name.as_str()) {
                 return Some(name);
             }
         }
@@ -1212,48 +1696,89 @@ mod tests {
     use super::*;
 
     fn hit(text: &str, score: f32) -> QueryHit {
-        QueryHit { text: text.to_string(), region: "memory".to_string(), score, strength: 1.5, source: "seed".to_string() }
+        QueryHit {
+            text: text.to_string(),
+            region: "memory".to_string(),
+            score,
+            strength: 1.5,
+            source: "seed".to_string(),
+        }
     }
 
     #[test]
     fn test_query_type_detection() {
-        assert_eq!(detect_query_type("hello"),        QueryType::Greeting);
-        assert_eq!(detect_query_type("hey KAI"),      QueryType::Greeting);
-        assert_eq!(detect_query_type("who are you"),  QueryType::SelfQuestion);
+        assert_eq!(detect_query_type("hello"), QueryType::Greeting);
+        assert_eq!(detect_query_type("hey KAI"), QueryType::Greeting);
+        assert_eq!(detect_query_type("who are you"), QueryType::SelfQuestion);
         assert_eq!(detect_query_type("where are you?"), QueryType::SelfQuestion);
-        assert_eq!(detect_query_type("so where are you at?"), QueryType::SelfQuestion);
-        assert_eq!(detect_query_type("what is RSHL"), QueryType::IdentityQuestion);
-        assert_eq!(detect_query_type("how do you think"), QueryType::ExplanationQuestion);
-        assert_eq!(detect_query_type("why do things fall"), QueryType::ExplanationQuestion);
+        assert_eq!(
+            detect_query_type("so where are you at?"),
+            QueryType::SelfQuestion
+        );
+        assert_eq!(
+            detect_query_type("what is RSHL"),
+            QueryType::IdentityQuestion
+        );
+        assert_eq!(
+            detect_query_type("how do you think"),
+            QueryType::ExplanationQuestion
+        );
+        assert_eq!(
+            detect_query_type("why do things fall"),
+            QueryType::ExplanationQuestion
+        );
         assert_eq!(detect_query_type("are you alive"), QueryType::SelfQuestion);
-        assert_eq!(detect_query_type("do you dream"),  QueryType::SelfQuestion);
-        assert_eq!(detect_query_type("tell me about dogs"), QueryType::RequestForInfo);
-        assert_eq!(detect_query_type("thanks"),        QueryType::Gratitude);
+        assert_eq!(detect_query_type("do you dream"), QueryType::SelfQuestion);
+        assert_eq!(
+            detect_query_type("tell me about dogs"),
+            QueryType::RequestForInfo
+        );
+        assert_eq!(detect_query_type("thanks"), QueryType::Gratitude);
         assert_eq!(detect_query_type("the sky is blue"), QueryType::Statement);
     }
 
     #[test]
     fn test_clean_cell_text_strips_prefixes() {
         assert_eq!(clean_cell_text("user asked: who is KAI"), "who is KAI");
-        assert_eq!(clean_cell_text("[about-ryan] I work at Panda"), "I work at Panda");
-        assert_eq!(clean_cell_text("[from-claude] Consciousness is hard"), "Consciousness is hard");
-        assert_eq!(clean_cell_text("I am a geometric intelligence."), "I am a geometric intelligence.");
+        assert_eq!(
+            clean_cell_text("[about-ryan] I work at Panda"),
+            "I work at Panda"
+        );
+        assert_eq!(
+            clean_cell_text("[from-claude] Consciousness is hard"),
+            "Consciousness is hard"
+        );
+        assert_eq!(
+            clean_cell_text("I am a geometric intelligence."),
+            "I am a geometric intelligence."
+        );
     }
 
     #[test]
     fn test_no_hardcoded_responses_for_real_queries() {
         let brain = BrainSignals::default();
-        let hits = vec![
-            hit("My name is KAI.", 0.90),
-        ];
+        let hits = vec![hit("My name is KAI.", 0.90)];
         let u = Universe::new();
         let resp = generate_response(
-            "what is your name?", &hits, QueryType::SelfQuestion, &brain, &[], &u
+            "what is your name?",
+            &hits,
+            QueryType::SelfQuestion,
+            &brain,
+            &[],
+            &u,
         );
         let _ = u;
         // Must come from the cell, not a template
-        assert!(resp.contains("KAI"), "Response should contain KAI: {}", resp);
-        assert!(!resp.contains("Nice to meet"), "Should not have scripted pleasantries: {}", resp);
+        assert!(
+            resp.contains("KAI"),
+            "Response should contain KAI: {}",
+            resp
+        );
+        assert!(
+            !resp.contains("Nice to meet"),
+            "Should not have scripted pleasantries: {}",
+            resp
+        );
     }
 
     #[test]
@@ -1264,7 +1789,11 @@ mod tests {
         let resp = generate_response("oh?", &hits, QueryType::Statement, &brain, &[], &u);
         // Filler should get a short response, not random knowledge
         assert!(resp.len() < 50, "Filler response too long: {}", resp);
-        assert!(!resp.contains("random cell"), "Filler should not return cell content: {}", resp);
+        assert!(
+            !resp.contains("random cell"),
+            "Filler should not return cell content: {}",
+            resp
+        );
     }
 
     #[test]

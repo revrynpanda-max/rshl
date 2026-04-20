@@ -42,7 +42,6 @@
 ///     - Signal routing table: maps source types to destination regions
 ///     - Signal budget: max signals allowed per tick
 ///     - Sleep/wake state: can enter low-power gating mode
-
 use serde::{Deserialize, Serialize};
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -82,26 +81,26 @@ impl SignalType {
     /// Identity and user input always get priority.
     pub fn base_gate(&self) -> f32 {
         match self {
-            SignalType::UserInput       => 0.95,  // always nearly fully open
-            SignalType::IdentityMemory  => 0.85,  // personal facts = high priority
-            SignalType::EmotionalSignal => 0.80,  // emotion gates high
-            SignalType::ConflictSignal  => 0.75,  // conflicts need attention
+            SignalType::UserInput => 0.95,       // always nearly fully open
+            SignalType::IdentityMemory => 0.85,  // personal facts = high priority
+            SignalType::EmotionalSignal => 0.80, // emotion gates high
+            SignalType::ConflictSignal => 0.75,  // conflicts need attention
             SignalType::PredictionError => 0.70,
-            SignalType::WorldKnowledge  => 0.60,  // world knowledge gated more
-            SignalType::InternalThought => 0.45,  // idle thoughts = low priority
+            SignalType::WorldKnowledge => 0.60, // world knowledge gated more
+            SignalType::InternalThought => 0.45, // idle thoughts = low priority
         }
     }
 
     /// Which brain region this signal is routed to.
     pub fn destination(&self) -> &'static str {
         match self {
-            SignalType::UserInput       => "reasoning",
-            SignalType::WorldKnowledge  => "reasoning",
-            SignalType::IdentityMemory  => "memory",
+            SignalType::UserInput => "reasoning",
+            SignalType::WorldKnowledge => "reasoning",
+            SignalType::IdentityMemory => "memory",
             SignalType::EmotionalSignal => "amygdala",
             SignalType::PredictionError => "predictor",
             SignalType::InternalThought => "dmn",
-            SignalType::ConflictSignal  => "acc",
+            SignalType::ConflictSignal => "acc",
         }
     }
 }
@@ -112,7 +111,7 @@ impl SignalType {
 #[derive(Clone, Debug)]
 pub struct ThalamicSignal {
     pub signal_type: SignalType,
-    pub content:     String,
+    pub content: String,
     pub raw_strength: f32,
 }
 
@@ -120,9 +119,9 @@ pub struct ThalamicSignal {
 #[derive(Clone, Debug)]
 pub struct RoutedSignal {
     pub destination: &'static str,
-    pub content:     String,
+    pub content: String,
     /// Effective strength after gating (raw × gate_strength)
-    pub strength:    f32,
+    pub strength: f32,
     pub signal_type: SignalType,
 }
 
@@ -149,13 +148,13 @@ pub struct ThalamicRelay {
 impl ThalamicRelay {
     pub fn new() -> Self {
         Self {
-            gate_gain:       DEFAULT_GATE,
-            arousal:         0.0,
-            gating_reduced:  false,
-            signals_passed:  0,
+            gate_gain: DEFAULT_GATE,
+            arousal: 0.0,
+            gating_reduced: false,
+            signals_passed: 0,
             signals_blocked: 0,
             total_processed: 0,
-            avg_bandwidth:   DEFAULT_GATE,
+            avg_bandwidth: DEFAULT_GATE,
         }
     }
 
@@ -175,8 +174,8 @@ impl ThalamicRelay {
             if effective_strength > 0.10 {
                 passed.push(RoutedSignal {
                     destination: sig.signal_type.destination(),
-                    content:     sig.content,
-                    strength:    effective_strength,
+                    content: sig.content,
+                    strength: effective_strength,
                     signal_type: sig.signal_type,
                 });
                 self.signals_passed += 1;
@@ -186,14 +185,19 @@ impl ThalamicRelay {
         }
 
         // Sort by effective strength, take top SIGNAL_BUDGET
-        passed.sort_by(|a, b| b.strength.partial_cmp(&a.strength)
-            .unwrap_or(std::cmp::Ordering::Equal));
+        passed.sort_by(|a, b| {
+            b.strength
+                .partial_cmp(&a.strength)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         passed.truncate(SIGNAL_BUDGET);
 
         // Update bandwidth metric
         let bandwidth = if self.total_processed > 0 {
             self.signals_passed as f32 / self.total_processed as f32
-        } else { DEFAULT_GATE };
+        } else {
+            DEFAULT_GATE
+        };
         self.avg_bandwidth = self.avg_bandwidth * 0.95 + bandwidth * 0.05;
 
         passed
@@ -236,30 +240,30 @@ impl ThalamicRelay {
     /// Produce a standard set of signals from a given user query and universe hits.
     /// This is the main entry point used by main.rs to route information.
     pub fn build_signals(
-        input:    &str,
-        hits:     &[(String, f32, String)], // (text, score, region)
-        arousal:  f32,
+        input: &str,
+        hits: &[(String, f32, String)], // (text, score, region)
+        arousal: f32,
         pred_err: f32,
     ) -> Vec<ThalamicSignal> {
         let mut signals = Vec::new();
 
         // User input always enters
         signals.push(ThalamicSignal {
-            signal_type:  SignalType::UserInput,
-            content:      input.to_string(),
+            signal_type: SignalType::UserInput,
+            content: input.to_string(),
             raw_strength: 0.95,
         });
 
         // Universe hits, typed by region
         for (text, score, region) in hits {
             let sig_type = match region.as_str() {
-                "memory"    => SignalType::IdentityMemory,
+                "memory" => SignalType::IdentityMemory,
                 "reasoning" => SignalType::WorldKnowledge,
-                _           => SignalType::WorldKnowledge,
+                _ => SignalType::WorldKnowledge,
             };
             signals.push(ThalamicSignal {
-                signal_type:  sig_type,
-                content:      text.clone(),
+                signal_type: sig_type,
+                content: text.clone(),
                 raw_strength: *score,
             });
         }
@@ -267,8 +271,8 @@ impl ThalamicRelay {
         // Prediction error signal if significant
         if pred_err > 0.30 {
             signals.push(ThalamicSignal {
-                signal_type:  SignalType::PredictionError,
-                content:      format!("prediction_error={:.3}", pred_err),
+                signal_type: SignalType::PredictionError,
+                content: format!("prediction_error={:.3}", pred_err),
                 raw_strength: pred_err,
             });
         }
@@ -276,8 +280,8 @@ impl ThalamicRelay {
         // Emotional signal if aroused
         if arousal > 0.25 {
             signals.push(ThalamicSignal {
-                signal_type:  SignalType::EmotionalSignal,
-                content:      format!("emotional_arousal={:.3}", arousal),
+                signal_type: SignalType::EmotionalSignal,
+                content: format!("emotional_arousal={:.3}", arousal),
                 raw_strength: arousal,
             });
         }
@@ -289,8 +293,10 @@ impl ThalamicRelay {
     pub fn status_line(&self) -> String {
         format!(
             "THAL: gate={:.2} arousal={:.2} | passed={} blocked={} | bw={:.2}% | reduced={}",
-            self.gate_gain, self.arousal,
-            self.signals_passed, self.signals_blocked,
+            self.gate_gain,
+            self.arousal,
+            self.signals_passed,
+            self.signals_blocked,
             self.avg_bandwidth * 100.0,
             self.gating_reduced,
         )
@@ -298,7 +304,9 @@ impl ThalamicRelay {
 }
 
 impl Default for ThalamicRelay {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -311,8 +319,8 @@ mod tests {
     fn test_user_input_always_passes() {
         let mut thal = ThalamicRelay::new();
         let signals = vec![ThalamicSignal {
-            signal_type:  SignalType::UserInput,
-            content:      "hello KAI".to_string(),
+            signal_type: SignalType::UserInput,
+            content: "hello KAI".to_string(),
             raw_strength: 0.95,
         }];
         let routed = thal.route(signals);
@@ -324,9 +332,9 @@ mod tests {
     fn test_weak_signal_blocked() {
         let mut thal = ThalamicRelay::new();
         let signals = vec![ThalamicSignal {
-            signal_type:  SignalType::InternalThought,
-            content:      "faint idle thought".to_string(),
-            raw_strength: 0.02,  // very weak
+            signal_type: SignalType::InternalThought,
+            content: "faint idle thought".to_string(),
+            raw_strength: 0.02, // very weak
         }];
         let routed = thal.route(signals);
         // With base_gate=0.45 and gate_gain=0.65: 0.02 * 0.45 * 0.65 ≈ 0.006 → blocked
@@ -335,50 +343,67 @@ mod tests {
 
     #[test]
     fn test_arousal_opens_gate() {
-        let thal_low  = ThalamicRelay::new();
+        let thal_low = ThalamicRelay::new();
         let mut thal_high = ThalamicRelay::new();
         thal_high.set_arousal(0.9);
 
-        let low_gate  = thal_low.gate_for(&SignalType::WorldKnowledge);
+        let low_gate = thal_low.gate_for(&SignalType::WorldKnowledge);
         let high_gate = thal_high.gate_for(&SignalType::WorldKnowledge);
 
-        assert!(high_gate > low_gate,
-            "high arousal should open gate further: low={:.3} high={:.3}", low_gate, high_gate);
+        assert!(
+            high_gate > low_gate,
+            "high arousal should open gate further: low={:.3} high={:.3}",
+            low_gate,
+            high_gate
+        );
     }
 
     #[test]
     fn test_signal_budget_cap() {
         let mut thal = ThalamicRelay::new();
         // Submit many signals
-        let signals: Vec<ThalamicSignal> = (0..20).map(|i| ThalamicSignal {
-            signal_type:  SignalType::WorldKnowledge,
-            content:      format!("knowledge item {}", i),
-            raw_strength: 0.5,
-        }).collect();
+        let signals: Vec<ThalamicSignal> = (0..20)
+            .map(|i| ThalamicSignal {
+                signal_type: SignalType::WorldKnowledge,
+                content: format!("knowledge item {}", i),
+                raw_strength: 0.5,
+            })
+            .collect();
         let routed = thal.route(signals);
-        assert!(routed.len() <= 5, "signal budget should cap at SIGNAL_BUDGET: {}", routed.len());
+        assert!(
+            routed.len() <= 5,
+            "signal budget should cap at SIGNAL_BUDGET: {}",
+            routed.len()
+        );
     }
 
     #[test]
     fn test_reduced_gating_narrows_gate() {
-        let thal_normal  = ThalamicRelay::new();
+        let thal_normal = ThalamicRelay::new();
         let mut thal_reduced = ThalamicRelay::new();
         thal_reduced.reduce_gating();
 
-        let normal_gate  = thal_normal.gate_for(&SignalType::WorldKnowledge);
+        let normal_gate = thal_normal.gate_for(&SignalType::WorldKnowledge);
         let reduced_gate = thal_reduced.gate_for(&SignalType::WorldKnowledge);
-        assert!(reduced_gate < normal_gate,
-            "reduced gating should narrow gate: normal={:.3} reduced={:.3}", normal_gate, reduced_gate);
+        assert!(
+            reduced_gate < normal_gate,
+            "reduced gating should narrow gate: normal={:.3} reduced={:.3}",
+            normal_gate,
+            reduced_gate
+        );
     }
 
     #[test]
     fn test_identity_memory_higher_priority_than_world_knowledge() {
         let thal = ThalamicRelay::new();
-        let id_gate    = thal.gate_for(&SignalType::IdentityMemory);
+        let id_gate = thal.gate_for(&SignalType::IdentityMemory);
         let world_gate = thal.gate_for(&SignalType::WorldKnowledge);
-        assert!(id_gate > world_gate,
+        assert!(
+            id_gate > world_gate,
             "identity memory should have higher gate than world knowledge: {:.3} vs {:.3}",
-            id_gate, world_gate);
+            id_gate,
+            world_gate
+        );
     }
 
     #[test]
@@ -387,7 +412,11 @@ mod tests {
         thal.reduce_gating();
         let reduced = thal.gate_gain;
         thal.restore_gating();
-        assert!(thal.gate_gain > reduced,
-            "restoring gating should recover gate gain: {:.3} -> {:.3}", reduced, thal.gate_gain);
+        assert!(
+            thal.gate_gain > reduced,
+            "restoring gating should recover gate gain: {:.3} -> {:.3}",
+            reduced,
+            thal.gate_gain
+        );
     }
 }

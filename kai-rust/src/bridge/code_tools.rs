@@ -10,14 +10,17 @@
 ///   analyze <file>  — extract functions, classes, imports, TODOs
 ///   review <file>   — KAI-powered code review using field resonance
 ///   scan <dir>      — scan a directory and build knowledge map
-
 use crate::core::Universe;
 
 /// UTF-8 safe byte slice — never splits a multi-byte character.
 fn safe_slice(s: &str, max_bytes: usize) -> &str {
-    if s.len() <= max_bytes { return s; }
+    if s.len() <= max_bytes {
+        return s;
+    }
     let mut end = max_bytes;
-    while end > 0 && !s.is_char_boundary(end) { end -= 1; }
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
     &s[..end]
 }
 
@@ -50,19 +53,19 @@ pub enum ElementKind {
 impl std::fmt::Display for ElementKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ElementKind::Function  => write!(f, "fn"),
-            ElementKind::Method    => write!(f, "method"),
-            ElementKind::Class     => write!(f, "class"),
-            ElementKind::Struct    => write!(f, "struct"),
-            ElementKind::Enum      => write!(f, "enum"),
-            ElementKind::Trait     => write!(f, "trait"),
+            ElementKind::Function => write!(f, "fn"),
+            ElementKind::Method => write!(f, "method"),
+            ElementKind::Class => write!(f, "class"),
+            ElementKind::Struct => write!(f, "struct"),
+            ElementKind::Enum => write!(f, "enum"),
+            ElementKind::Trait => write!(f, "trait"),
             ElementKind::Interface => write!(f, "interface"),
-            ElementKind::Import    => write!(f, "import"),
-            ElementKind::Export    => write!(f, "export"),
-            ElementKind::Constant  => write!(f, "const"),
-            ElementKind::Todo      => write!(f, "TODO"),
-            ElementKind::Fixme     => write!(f, "FIXME"),
-            ElementKind::Variable  => write!(f, "var"),
+            ElementKind::Import => write!(f, "import"),
+            ElementKind::Export => write!(f, "export"),
+            ElementKind::Constant => write!(f, "const"),
+            ElementKind::Todo => write!(f, "TODO"),
+            ElementKind::Fixme => write!(f, "FIXME"),
+            ElementKind::Variable => write!(f, "var"),
         }
     }
 }
@@ -82,17 +85,34 @@ impl FileAnalysis {
     pub fn format_display(&self) -> String {
         let mut out = Vec::new();
         out.push(format!("File: {} ({})", self.path, self.language));
-        out.push(format!("Lines: {}  |  Complexity: ~{}",
-            self.lines, self.complexity_estimate));
+        out.push(format!(
+            "Lines: {}  |  Complexity: ~{}",
+            self.lines, self.complexity_estimate
+        ));
 
         // Group by kind
-        let fns: Vec<_> = self.elements.iter()
+        let fns: Vec<_> = self
+            .elements
+            .iter()
             .filter(|e| matches!(e.kind, ElementKind::Function | ElementKind::Method))
             .collect();
-        let types: Vec<_> = self.elements.iter()
-            .filter(|e| matches!(e.kind, ElementKind::Class | ElementKind::Struct | ElementKind::Enum | ElementKind::Trait | ElementKind::Interface))
+        let types: Vec<_> = self
+            .elements
+            .iter()
+            .filter(|e| {
+                matches!(
+                    e.kind,
+                    ElementKind::Class
+                        | ElementKind::Struct
+                        | ElementKind::Enum
+                        | ElementKind::Trait
+                        | ElementKind::Interface
+                )
+            })
             .collect();
-        let imports: Vec<_> = self.elements.iter()
+        let imports: Vec<_> = self
+            .elements
+            .iter()
             .filter(|e| matches!(e.kind, ElementKind::Import))
             .collect();
 
@@ -134,26 +154,52 @@ impl FileAnalysis {
 /// Detect language from file extension.
 fn detect_language(path: &str) -> &'static str {
     let lower = path.to_lowercase();
-    if lower.ends_with(".rs")                       { return "Rust"; }
-    if lower.ends_with(".ts") || lower.ends_with(".tsx") { return "TypeScript"; }
-    if lower.ends_with(".js") || lower.ends_with(".mjs") { return "JavaScript"; }
-    if lower.ends_with(".py")                       { return "Python"; }
-    if lower.ends_with(".go")                       { return "Go"; }
-    if lower.ends_with(".c") || lower.ends_with(".h") { return "C"; }
-    if lower.ends_with(".cpp") || lower.ends_with(".cc") { return "C++"; }
-    if lower.ends_with(".java")                     { return "Java"; }
-    if lower.ends_with(".cs")                       { return "C#"; }
-    if lower.ends_with(".md")                       { return "Markdown"; }
-    if lower.ends_with(".json")                     { return "JSON"; }
-    if lower.ends_with(".toml")                     { return "TOML"; }
-    if lower.ends_with(".yaml") || lower.ends_with(".yml") { return "YAML"; }
+    if lower.ends_with(".rs") {
+        return "Rust";
+    }
+    if lower.ends_with(".ts") || lower.ends_with(".tsx") {
+        return "TypeScript";
+    }
+    if lower.ends_with(".js") || lower.ends_with(".mjs") {
+        return "JavaScript";
+    }
+    if lower.ends_with(".py") {
+        return "Python";
+    }
+    if lower.ends_with(".go") {
+        return "Go";
+    }
+    if lower.ends_with(".c") || lower.ends_with(".h") {
+        return "C";
+    }
+    if lower.ends_with(".cpp") || lower.ends_with(".cc") {
+        return "C++";
+    }
+    if lower.ends_with(".java") {
+        return "Java";
+    }
+    if lower.ends_with(".cs") {
+        return "C#";
+    }
+    if lower.ends_with(".md") {
+        return "Markdown";
+    }
+    if lower.ends_with(".json") {
+        return "JSON";
+    }
+    if lower.ends_with(".toml") {
+        return "TOML";
+    }
+    if lower.ends_with(".yaml") || lower.ends_with(".yml") {
+        return "YAML";
+    }
     "Text"
 }
 
 /// Parse a source file and extract structural elements.
 pub fn analyze_file(path: &str) -> Result<FileAnalysis, String> {
-    let content = std::fs::read_to_string(path)
-        .map_err(|e| format!("Cannot read \"{}\": {}", path, e))?;
+    let content =
+        std::fs::read_to_string(path).map_err(|e| format!("Cannot read \"{}\": {}", path, e))?;
 
     let language = detect_language(path);
     let lines = content.lines().count();
@@ -167,7 +213,11 @@ pub fn analyze_file(path: &str) -> Result<FileAnalysis, String> {
 
         // TODOs and FIXMEs — any language
         if let Some(pos) = trimmed.to_uppercase().find("TODO") {
-            let todo_text = trimmed[pos..].trim().trim_start_matches(':').trim().to_string();
+            let todo_text = trimmed[pos..]
+                .trim()
+                .trim_start_matches(':')
+                .trim()
+                .to_string();
             if todo_text.len() > 4 {
                 todos.push(format!("line {}: {}", lineno, safe_slice(&todo_text, 80)));
                 elements.push(CodeElement {
@@ -179,13 +229,22 @@ pub fn analyze_file(path: &str) -> Result<FileAnalysis, String> {
             }
         }
         if trimmed.to_uppercase().contains("FIXME") {
-            todos.push(format!("line {}: FIXME: {}", lineno, safe_slice(trimmed, 60)));
+            todos.push(format!(
+                "line {}: FIXME: {}",
+                lineno,
+                safe_slice(trimmed, 60)
+            ));
         }
 
         // Complexity drivers (branches)
-        if trimmed.starts_with("if ") || trimmed.starts_with("} else") || trimmed.starts_with("else {")
-            || trimmed.starts_with("match ") || trimmed.starts_with("for ") || trimmed.starts_with("while ")
-            || trimmed.starts_with("case ") || trimmed.contains("? ") && trimmed.contains(" : ")
+        if trimmed.starts_with("if ")
+            || trimmed.starts_with("} else")
+            || trimmed.starts_with("else {")
+            || trimmed.starts_with("match ")
+            || trimmed.starts_with("for ")
+            || trimmed.starts_with("while ")
+            || trimmed.starts_with("case ")
+            || trimmed.contains("? ") && trimmed.contains(" : ")
         {
             complexity += 1;
         }
@@ -199,16 +258,28 @@ pub fn analyze_file(path: &str) -> Result<FileAnalysis, String> {
         }
     }
 
-    let fn_count = elements.iter()
+    let fn_count = elements
+        .iter()
         .filter(|e| matches!(e.kind, ElementKind::Function | ElementKind::Method))
         .count();
-    let type_count = elements.iter()
-        .filter(|e| matches!(e.kind, ElementKind::Class | ElementKind::Struct | ElementKind::Enum | ElementKind::Trait))
+    let type_count = elements
+        .iter()
+        .filter(|e| {
+            matches!(
+                e.kind,
+                ElementKind::Class | ElementKind::Struct | ElementKind::Enum | ElementKind::Trait
+            )
+        })
         .count();
 
     let summary = format!(
         "{} file: {} lines, ~{} functions, ~{} types, {} TODOs, complexity ~{}",
-        language, lines, fn_count, type_count, todos.len(), complexity
+        language,
+        lines,
+        fn_count,
+        type_count,
+        todos.len(),
+        complexity
     );
 
     Ok(FileAnalysis {
@@ -226,12 +297,19 @@ pub fn analyze_file(path: &str) -> Result<FileAnalysis, String> {
 
 fn parse_rust_line(line: &str, lineno: usize, elements: &mut Vec<CodeElement>) {
     // Functions: pub fn, fn, async fn, pub async fn
-    if let Some(name) = extract_after_keyword(line, &["pub fn ", "pub async fn ", "async fn ", "fn "]) {
+    if let Some(name) =
+        extract_after_keyword(line, &["pub fn ", "pub async fn ", "async fn ", "fn "])
+    {
         let name = name.split('(').next().unwrap_or("").trim().to_string();
         if !name.is_empty() && is_valid_ident(&name) {
-            let is_method = line.contains("&self") || line.contains("&mut self") || line.contains("self,");
+            let is_method =
+                line.contains("&self") || line.contains("&mut self") || line.contains("self,");
             elements.push(CodeElement {
-                kind: if is_method { ElementKind::Method } else { ElementKind::Function },
+                kind: if is_method {
+                    ElementKind::Method
+                } else {
+                    ElementKind::Function
+                },
                 name,
                 line: lineno,
                 context: safe_slice(line, 80).to_string(),
@@ -241,25 +319,52 @@ fn parse_rust_line(line: &str, lineno: usize, elements: &mut Vec<CodeElement>) {
     }
     // Structs
     if let Some(name) = extract_after_keyword(line, &["pub struct ", "struct "]) {
-        let name = name.split(|c: char| !c.is_alphanumeric() && c != '_').next().unwrap_or("").to_string();
+        let name = name
+            .split(|c: char| !c.is_alphanumeric() && c != '_')
+            .next()
+            .unwrap_or("")
+            .to_string();
         if !name.is_empty() && is_valid_ident(&name) {
-            elements.push(CodeElement { kind: ElementKind::Struct, name, line: lineno, context: safe_slice(line, 80).to_string() });
+            elements.push(CodeElement {
+                kind: ElementKind::Struct,
+                name,
+                line: lineno,
+                context: safe_slice(line, 80).to_string(),
+            });
         }
         return;
     }
     // Enums
     if let Some(name) = extract_after_keyword(line, &["pub enum ", "enum "]) {
-        let name = name.split(|c: char| !c.is_alphanumeric() && c != '_').next().unwrap_or("").to_string();
+        let name = name
+            .split(|c: char| !c.is_alphanumeric() && c != '_')
+            .next()
+            .unwrap_or("")
+            .to_string();
         if !name.is_empty() && is_valid_ident(&name) {
-            elements.push(CodeElement { kind: ElementKind::Enum, name, line: lineno, context: safe_slice(line, 80).to_string() });
+            elements.push(CodeElement {
+                kind: ElementKind::Enum,
+                name,
+                line: lineno,
+                context: safe_slice(line, 80).to_string(),
+            });
         }
         return;
     }
     // Traits
     if let Some(name) = extract_after_keyword(line, &["pub trait ", "trait "]) {
-        let name = name.split(|c: char| !c.is_alphanumeric() && c != '_').next().unwrap_or("").to_string();
+        let name = name
+            .split(|c: char| !c.is_alphanumeric() && c != '_')
+            .next()
+            .unwrap_or("")
+            .to_string();
         if !name.is_empty() && is_valid_ident(&name) {
-            elements.push(CodeElement { kind: ElementKind::Trait, name, line: lineno, context: safe_slice(line, 80).to_string() });
+            elements.push(CodeElement {
+                kind: ElementKind::Trait,
+                name,
+                line: lineno,
+                context: safe_slice(line, 80).to_string(),
+            });
         }
         return;
     }
@@ -279,42 +384,97 @@ fn parse_rust_line(line: &str, lineno: usize, elements: &mut Vec<CodeElement>) {
     if let Some(name) = extract_after_keyword(line, &["pub const ", "const "]) {
         let name = name.split(':').next().unwrap_or("").trim().to_string();
         if !name.is_empty() && is_valid_ident(&name) {
-            elements.push(CodeElement { kind: ElementKind::Constant, name, line: lineno, context: safe_slice(line, 80).to_string() });
+            elements.push(CodeElement {
+                kind: ElementKind::Constant,
+                name,
+                line: lineno,
+                context: safe_slice(line, 80).to_string(),
+            });
         }
     }
 }
 
 fn parse_ts_line(line: &str, lineno: usize, elements: &mut Vec<CodeElement>) {
     // Functions: function foo, const foo = () =>, export function
-    if let Some(name) = extract_after_keyword(line, &["export function ", "export async function ", "function ", "async function "]) {
+    if let Some(name) = extract_after_keyword(
+        line,
+        &[
+            "export function ",
+            "export async function ",
+            "function ",
+            "async function ",
+        ],
+    ) {
         let name = name.split('(').next().unwrap_or("").trim().to_string();
         if !name.is_empty() && is_valid_ident(&name) {
-            elements.push(CodeElement { kind: ElementKind::Function, name, line: lineno, context: safe_slice(line, 80).to_string() });
+            elements.push(CodeElement {
+                kind: ElementKind::Function,
+                name,
+                line: lineno,
+                context: safe_slice(line, 80).to_string(),
+            });
         }
         return;
     }
     // Arrow functions: const foo = ... =>
-    if (line.contains("= (") || line.contains("= async (") || line.contains("=> {")) && line.contains("const ") {
+    if (line.contains("= (") || line.contains("= async (") || line.contains("=> {"))
+        && line.contains("const ")
+    {
         if let Some(name) = extract_after_keyword(line, &["export const ", "const "]) {
-            let name = name.split(|c: char| c == ' ' || c == '=' || c == ':').next().unwrap_or("").trim().to_string();
-            if !name.is_empty() && is_valid_ident(&name) && (line.contains("=>") || line.contains("function")) {
-                elements.push(CodeElement { kind: ElementKind::Function, name, line: lineno, context: safe_slice(line, 80).to_string() });
+            let name = name
+                .split(|c: char| c == ' ' || c == '=' || c == ':')
+                .next()
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            if !name.is_empty()
+                && is_valid_ident(&name)
+                && (line.contains("=>") || line.contains("function"))
+            {
+                elements.push(CodeElement {
+                    kind: ElementKind::Function,
+                    name,
+                    line: lineno,
+                    context: safe_slice(line, 80).to_string(),
+                });
             }
         }
         return;
     }
     // Classes and interfaces
-    if let Some(name) = extract_after_keyword(line, &["export class ", "class ", "export default class "]) {
-        let name = name.split(|c: char| c == ' ' || c == '{' || c == '<').next().unwrap_or("").trim().to_string();
+    if let Some(name) =
+        extract_after_keyword(line, &["export class ", "class ", "export default class "])
+    {
+        let name = name
+            .split(|c: char| c == ' ' || c == '{' || c == '<')
+            .next()
+            .unwrap_or("")
+            .trim()
+            .to_string();
         if !name.is_empty() && is_valid_ident(&name) {
-            elements.push(CodeElement { kind: ElementKind::Class, name, line: lineno, context: safe_slice(line, 80).to_string() });
+            elements.push(CodeElement {
+                kind: ElementKind::Class,
+                name,
+                line: lineno,
+                context: safe_slice(line, 80).to_string(),
+            });
         }
         return;
     }
     if let Some(name) = extract_after_keyword(line, &["export interface ", "interface "]) {
-        let name = name.split(|c: char| c == ' ' || c == '{' || c == '<').next().unwrap_or("").trim().to_string();
+        let name = name
+            .split(|c: char| c == ' ' || c == '{' || c == '<')
+            .next()
+            .unwrap_or("")
+            .trim()
+            .to_string();
         if !name.is_empty() && is_valid_ident(&name) {
-            elements.push(CodeElement { kind: ElementKind::Interface, name, line: lineno, context: safe_slice(line, 80).to_string() });
+            elements.push(CodeElement {
+                kind: ElementKind::Interface,
+                name,
+                line: lineno,
+                context: safe_slice(line, 80).to_string(),
+            });
         }
         return;
     }
@@ -335,17 +495,32 @@ fn parse_python_line(line: &str, lineno: usize, elements: &mut Vec<CodeElement>)
         if !name.is_empty() && is_valid_ident(&name) {
             let is_method = line.starts_with("    ") || line.starts_with("\t");
             elements.push(CodeElement {
-                kind: if is_method { ElementKind::Method } else { ElementKind::Function },
-                name, line: lineno,
+                kind: if is_method {
+                    ElementKind::Method
+                } else {
+                    ElementKind::Function
+                },
+                name,
+                line: lineno,
                 context: safe_slice(line, 80).to_string(),
             });
         }
         return;
     }
     if let Some(name) = extract_after_keyword(line, &["class "]) {
-        let name = name.split(|c: char| c == '(' || c == ':').next().unwrap_or("").trim().to_string();
+        let name = name
+            .split(|c: char| c == '(' || c == ':')
+            .next()
+            .unwrap_or("")
+            .trim()
+            .to_string();
         if !name.is_empty() && is_valid_ident(&name) {
-            elements.push(CodeElement { kind: ElementKind::Class, name, line: lineno, context: safe_slice(line, 80).to_string() });
+            elements.push(CodeElement {
+                kind: ElementKind::Class,
+                name,
+                line: lineno,
+                context: safe_slice(line, 80).to_string(),
+            });
         }
         return;
     }
@@ -363,16 +538,31 @@ fn parse_go_line(line: &str, lineno: usize, elements: &mut Vec<CodeElement>) {
     if let Some(name) = extract_after_keyword(line, &["func ("]) {
         // Method: func (r Receiver) MethodName(
         let after_paren = name.split(')').nth(1).unwrap_or("").trim();
-        let name = after_paren.split('(').next().unwrap_or("").trim().to_string();
+        let name = after_paren
+            .split('(')
+            .next()
+            .unwrap_or("")
+            .trim()
+            .to_string();
         if !name.is_empty() && is_valid_ident(&name) {
-            elements.push(CodeElement { kind: ElementKind::Method, name, line: lineno, context: safe_slice(line, 80).to_string() });
+            elements.push(CodeElement {
+                kind: ElementKind::Method,
+                name,
+                line: lineno,
+                context: safe_slice(line, 80).to_string(),
+            });
         }
         return;
     }
     if let Some(name) = extract_after_keyword(line, &["func "]) {
         let name = name.split('(').next().unwrap_or("").trim().to_string();
         if !name.is_empty() && is_valid_ident(&name) {
-            elements.push(CodeElement { kind: ElementKind::Function, name, line: lineno, context: safe_slice(line, 80).to_string() });
+            elements.push(CodeElement {
+                kind: ElementKind::Function,
+                name,
+                line: lineno,
+                context: safe_slice(line, 80).to_string(),
+            });
         }
         return;
     }
@@ -386,7 +576,12 @@ fn parse_go_line(line: &str, lineno: usize, elements: &mut Vec<CodeElement>) {
                 _ => ElementKind::Variable,
             };
             if is_valid_ident(&tname) {
-                elements.push(CodeElement { kind: tkind, name: tname, line: lineno, context: safe_slice(line, 80).to_string() });
+                elements.push(CodeElement {
+                    kind: tkind,
+                    name: tname,
+                    line: lineno,
+                    context: safe_slice(line, 80).to_string(),
+                });
             }
         }
     }
@@ -401,10 +596,17 @@ pub fn review_file(path: &str, universe: &Universe) -> Result<String, String> {
     let mut review = Vec::new();
 
     review.push(format!("◆ Code Review: {}", path));
-    review.push(format!("  {} | {} lines | {} fns | complexity ~{}",
-        analysis.language, analysis.lines,
-        analysis.elements.iter().filter(|e| matches!(e.kind, ElementKind::Function | ElementKind::Method)).count(),
-        analysis.complexity_estimate));
+    review.push(format!(
+        "  {} | {} lines | {} fns | complexity ~{}",
+        analysis.language,
+        analysis.lines,
+        analysis
+            .elements
+            .iter()
+            .filter(|e| matches!(e.kind, ElementKind::Function | ElementKind::Method))
+            .count(),
+        analysis.complexity_estimate
+    ));
     review.push(String::new());
 
     // TODOs
@@ -418,13 +620,18 @@ pub fn review_file(path: &str, universe: &Universe) -> Result<String, String> {
 
     // Complexity warning
     if analysis.complexity_estimate > 20 {
-        review.push(format!("⚠ High complexity (~{}) — consider splitting into smaller functions.",
-            analysis.complexity_estimate));
+        review.push(format!(
+            "⚠ High complexity (~{}) — consider splitting into smaller functions.",
+            analysis.complexity_estimate
+        ));
     }
 
     // Large file warning
     if analysis.lines > 500 {
-        review.push(format!("⚠ Large file ({} lines) — consider modularizing.", analysis.lines));
+        review.push(format!(
+            "⚠ Large file ({} lines) — consider modularizing.",
+            analysis.lines
+        ));
     }
 
     // Query KAI's field for relevant patterns
@@ -434,7 +641,8 @@ pub fn review_file(path: &str, universe: &Universe) -> Result<String, String> {
     if !hits.is_empty() {
         review.push("◆ KAI field knowledge on this:".to_string());
         for hit in hits.iter().take(2) {
-            let clean = hit.text
+            let clean = hit
+                .text
                 .trim_start_matches("[from-claude] ")
                 .trim_start_matches("[about-kai] ")
                 .trim();
@@ -445,7 +653,9 @@ pub fn review_file(path: &str, universe: &Universe) -> Result<String, String> {
     }
 
     // Check function count
-    let fn_count = analysis.elements.iter()
+    let fn_count = analysis
+        .elements
+        .iter()
         .filter(|e| matches!(e.kind, ElementKind::Function | ElementKind::Method))
         .count();
     if fn_count == 0 && analysis.lines > 50 {
@@ -471,9 +681,16 @@ pub fn store_analysis(analysis: &FileAnalysis, universe: &mut Universe) -> usize
 
     // Store key functions and types
     for elem in analysis.elements.iter() {
-        if matches!(elem.kind, ElementKind::Todo | ElementKind::Import) { continue; }
-        let cell = format!("[{}] {} {} in {}",
-            analysis.language.to_lowercase(), elem.kind, elem.name, analysis.path);
+        if matches!(elem.kind, ElementKind::Todo | ElementKind::Import) {
+            continue;
+        }
+        let cell = format!(
+            "[{}] {} {} in {}",
+            analysis.language.to_lowercase(),
+            elem.kind,
+            elem.name,
+            analysis.path
+        );
         if universe.store_or_reinforce(&cell, "action", "code-analysis", 1.0) {
             stored += 1;
         }
@@ -496,8 +713,12 @@ fn extract_after_keyword<'a>(line: &'a str, keywords: &[&str]) -> Option<&'a str
 }
 
 fn is_valid_ident(s: &str) -> bool {
-    !s.is_empty() && s.len() < 60
-        && s.chars().next().map(|c| c.is_alphabetic() || c == '_').unwrap_or(false)
+    !s.is_empty()
+        && s.len() < 60
+        && s.chars()
+            .next()
+            .map(|c| c.is_alphabetic() || c == '_')
+            .unwrap_or(false)
         && s.chars().all(|c| c.is_alphanumeric() || c == '_')
 }
 
@@ -513,13 +734,17 @@ pub fn scan_directory(dir: &str, universe: &mut Universe) -> (usize, usize) {
             let path_str = path.to_string_lossy().to_string();
 
             // Skip node_modules, target, .git
-            if path_str.contains("node_modules") || path_str.contains("\\target\\")
-                || path_str.contains("/target/") || path_str.contains(".git") {
+            if path_str.contains("node_modules")
+                || path_str.contains("\\target\\")
+                || path_str.contains("/target/")
+                || path_str.contains(".git")
+            {
                 continue;
             }
 
             if path.is_file() {
-                let has_src_ext = source_extensions.iter()
+                let has_src_ext = source_extensions
+                    .iter()
                     .any(|ext| path_str.to_lowercase().ends_with(ext));
                 if has_src_ext {
                     if let Ok(analysis) = analyze_file(&path_str) {

@@ -45,7 +45,6 @@
 ///     - nogo_signal: sum of NoGo activations this cycle
 ///     - action_count: total actions executed
 ///     - suppressed_count: total actions suppressed (NoGo won)
-
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -84,7 +83,7 @@ impl ActionDecision {
     pub fn utility(&self) -> f32 {
         match self {
             ActionDecision::Go { utility } => *utility,
-            ActionDecision::NoGo { .. }   => 0.0,
+            ActionDecision::NoGo { .. } => 0.0,
         }
     }
 }
@@ -110,12 +109,12 @@ pub struct BasalGanglia {
 impl BasalGanglia {
     pub fn new() -> Self {
         Self {
-            habit_bank:           HashMap::new(),
-            go_threshold:         GO_THRESHOLD,
-            action_count:         0,
-            suppressed_count:     0,
-            reinforcement_count:  0,
-            avg_utility:          0.50,
+            habit_bank: HashMap::new(),
+            go_threshold: GO_THRESHOLD,
+            action_count: 0,
+            suppressed_count: 0,
+            reinforcement_count: 0,
+            avg_utility: 0.50,
         }
     }
 
@@ -130,8 +129,8 @@ impl BasalGanglia {
     /// Returns ActionDecision::Go or ActionDecision::NoGo.
     pub fn evaluate(
         &mut self,
-        context_type:   &str,
-        response_type:  &str,
+        context_type: &str,
+        response_type: &str,
         raw_confidence: f32,
         dopamine_level: f32,
     ) -> ActionDecision {
@@ -139,7 +138,7 @@ impl BasalGanglia {
         let habit_util = self.habit_bank.get(&key).copied().unwrap_or(0.50);
 
         // Go signal = raw_confidence × habit_utility × dopamine_boost
-        let da_boost  = 0.7 + dopamine_level * 0.6;
+        let da_boost = 0.7 + dopamine_level * 0.6;
         let go_signal = (raw_confidence * habit_util * da_boost).min(2.0);
 
         // NoGo signal = inverse confidence × inverse habit (unfamiliar + low confidence)
@@ -150,7 +149,9 @@ impl BasalGanglia {
         if effective_utility >= self.go_threshold {
             self.action_count += 1;
             self.avg_utility = self.avg_utility * 0.92 + effective_utility * 0.08;
-            ActionDecision::Go { utility: effective_utility }
+            ActionDecision::Go {
+                utility: effective_utility,
+            }
         } else {
             self.suppressed_count += 1;
             let reason = if raw_confidence < 0.25 {
@@ -175,10 +176,10 @@ impl BasalGanglia {
     ///   - `dopamine`: current dopamine level (gates learning rate)
     pub fn reinforce(
         &mut self,
-        context_type:  &str,
+        context_type: &str,
         response_type: &str,
-        reward:        f32,
-        dopamine:      f32,
+        reward: f32,
+        dopamine: f32,
     ) {
         let key = habit_key(context_type, response_type);
         let current = self.habit_bank.entry(key).or_insert(0.50);
@@ -225,7 +226,9 @@ impl BasalGanglia {
     /// Go/NoGo ratio — >0.5 means KAI executes more than suppresses
     pub fn go_ratio(&self) -> f32 {
         let total = self.action_count + self.suppressed_count;
-        if total == 0 { return 0.5; }
+        if total == 0 {
+            return 0.5;
+        }
         self.action_count as f32 / total as f32
     }
 
@@ -244,7 +247,9 @@ impl BasalGanglia {
 }
 
 impl Default for BasalGanglia {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 fn habit_key(context: &str, response: &str) -> String {
@@ -261,16 +266,22 @@ mod tests {
     fn test_high_confidence_gets_go() {
         let mut bg = BasalGanglia::new();
         let decision = bg.evaluate("question", "explain", 0.90, 0.80);
-        assert!(decision.is_go(),
-            "high confidence + high dopamine should get Go: {:?}", decision);
+        assert!(
+            decision.is_go(),
+            "high confidence + high dopamine should get Go: {:?}",
+            decision
+        );
     }
 
     #[test]
     fn test_low_confidence_gets_nogo() {
         let mut bg = BasalGanglia::new();
         let decision = bg.evaluate("question", "explain", 0.05, 0.20);
-        assert!(!decision.is_go(),
-            "very low confidence should get NoGo: {:?}", decision);
+        assert!(
+            !decision.is_go(),
+            "very low confidence should get NoGo: {:?}",
+            decision
+        );
     }
 
     #[test]
@@ -282,21 +293,33 @@ mod tests {
             bg.reinforce("question", "explain", 1.0, 0.9);
         }
         let after = bg.habit_utility("question", "explain");
-        assert!(after > before,
-            "repeated reinforcement should increase utility: before={:.3} after={:.3}", before, after);
+        assert!(
+            after > before,
+            "repeated reinforcement should increase utility: before={:.3} after={:.3}",
+            before,
+            after
+        );
     }
 
     #[test]
     fn test_negative_reward_weakens_habit() {
         let mut bg = BasalGanglia::new();
         // First build up a habit
-        for _ in 0..5 { bg.reinforce("statement", "recall", 1.0, 0.8); }
+        for _ in 0..5 {
+            bg.reinforce("statement", "recall", 1.0, 0.8);
+        }
         let peak = bg.habit_utility("statement", "recall");
         // Then punish it
-        for _ in 0..8 { bg.reinforce("statement", "recall", -1.0, 0.8); }
+        for _ in 0..8 {
+            bg.reinforce("statement", "recall", -1.0, 0.8);
+        }
         let after = bg.habit_utility("statement", "recall");
-        assert!(after < peak,
-            "negative reward should weaken habit: peak={:.3} after={:.3}", peak, after);
+        assert!(
+            after < peak,
+            "negative reward should weaken habit: peak={:.3} after={:.3}",
+            peak,
+            after
+        );
     }
 
     #[test]
@@ -306,11 +329,17 @@ mod tests {
         bg.reinforce("question", "ask_back", 1.0, 0.8);
         let before = bg.habit_utility("question", "ask_back");
         // Decay many times
-        for _ in 0..500 { bg.decay(); }
+        for _ in 0..500 {
+            bg.decay();
+        }
         let after = bg.habit_utility("question", "ask_back");
         // Either weakened significantly OR pruned entirely (0.50 default)
-        assert!(after <= before,
-            "decay should weaken or prune habit: before={:.3} after={:.3}", before, after);
+        assert!(
+            after <= before,
+            "decay should weaken or prune habit: before={:.3} after={:.3}",
+            before,
+            after
+        );
     }
 
     #[test]
@@ -320,8 +349,11 @@ mod tests {
         bg.evaluate("question", "explain", 0.9, 0.9); // Go
         bg.evaluate("question", "explain", 0.02, 0.1); // NoGo
         let ratio = bg.go_ratio();
-        assert!(ratio > 0.5,
-            "2 Go + 1 NoGo → ratio should be > 0.5: {:.3}", ratio);
+        assert!(
+            ratio > 0.5,
+            "2 Go + 1 NoGo → ratio should be > 0.5: {:.3}",
+            ratio
+        );
     }
 
     #[test]
@@ -329,14 +361,22 @@ mod tests {
         // Without reinforcement: moderate confidence + dopamine → NoGo (habit is neutral/weak)
         let mut bg_fresh = BasalGanglia::new();
         let fresh = bg_fresh.evaluate("question", "explain", 0.55, 0.70);
-        assert!(!fresh.is_go(),
-            "fresh (no reinforcement) should NoGo on moderate confidence: {:?}", fresh);
+        assert!(
+            !fresh.is_go(),
+            "fresh (no reinforcement) should NoGo on moderate confidence: {:?}",
+            fresh
+        );
 
         // After heavy reinforcement: same inputs should Go (habit utility lifts the signal)
         let mut bg = BasalGanglia::new();
-        for _ in 0..15 { bg.reinforce("question", "explain", 1.0, 0.85); }
+        for _ in 0..15 {
+            bg.reinforce("question", "explain", 1.0, 0.85);
+        }
         let decision = bg.evaluate("question", "explain", 0.55, 0.70);
-        assert!(decision.is_go(),
-            "reinforced habit should push moderate confidence to Go: {:?}", decision);
+        assert!(
+            decision.is_go(),
+            "reinforced habit should push moderate confidence to Go: {:?}",
+            decision
+        );
     }
 }

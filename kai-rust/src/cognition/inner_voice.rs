@@ -17,8 +17,7 @@
 /// The inner voice also uses the lexicon to generate "thought prompts" —
 /// random word pairs from the vocabulary that KAI binds during dreams
 /// to discover connections he didn't know existed.
-
-use crate::core::{SparseVec, Universe, Lexicon};
+use crate::core::{Lexicon, SparseVec, Universe};
 
 /// Result of an inner voice validation.
 #[derive(Debug)]
@@ -195,8 +194,16 @@ mod tests {
         let (a, b) = generate_thought_prompt(&lex);
         assert!(!a.is_empty());
         assert!(!b.is_empty());
-        assert!(lex.is_known(&a), "Generated word '{}' should be in lexicon", a);
-        assert!(lex.is_known(&b), "Generated word '{}' should be in lexicon", b);
+        assert!(
+            lex.is_known(&a),
+            "Generated word '{}' should be in lexicon",
+            a
+        );
+        assert!(
+            lex.is_known(&b),
+            "Generated word '{}' should be in lexicon",
+            b
+        );
     }
 
     #[test]

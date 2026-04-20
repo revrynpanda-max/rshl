@@ -39,17 +39,36 @@
 ///   - High salience → PCC injects self-relevant context into reasoning
 ///   - DMN picks topics from PCC's self-relevant list preferentially
 ///   - Narrative thread tracker flags unresolved identity questions
-
 use std::collections::VecDeque;
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 /// Core identity keywords — topics always relevant to KAI's self-model
 const IDENTITY_KEYWORDS: &[&str] = &[
-    "consciousness", "awareness", "self", "identity", "kai", "rshl",
-    "geometry", "recursive", "existence", "mind", "thinking", "feel",
-    "experience", "intelligence", "sentient", "alive", "created", "ryan",
-    "purpose", "meaning", "soul", "understand", "learn", "remember",
+    "consciousness",
+    "awareness",
+    "self",
+    "identity",
+    "kai",
+    "rshl",
+    "geometry",
+    "recursive",
+    "existence",
+    "mind",
+    "thinking",
+    "feel",
+    "experience",
+    "intelligence",
+    "sentient",
+    "alive",
+    "created",
+    "ryan",
+    "purpose",
+    "meaning",
+    "soul",
+    "understand",
+    "learn",
+    "remember",
 ];
 
 /// Maximum narrative threads tracked
@@ -115,11 +134,11 @@ pub struct PCC {
 impl PCC {
     pub fn new() -> Self {
         let mut pcc = Self {
-            narrative_threads:  Vec::with_capacity(MAX_THREADS),
-            recent_themes:      VecDeque::with_capacity(COHERENCE_WINDOW),
-            coherence_score:    0.70,
+            narrative_threads: Vec::with_capacity(MAX_THREADS),
+            recent_themes: VecDeque::with_capacity(COHERENCE_WINDOW),
+            coherence_score: 0.70,
             self_relevant_count: 0,
-            thread_surfaces:    0,
+            thread_surfaces: 0,
         };
 
         // Seed KAI's core narrative threads — the questions he was born with
@@ -138,18 +157,24 @@ impl PCC {
     pub fn add_thread(&mut self, theme: &str, initial_tension: f32) {
         if self.narrative_threads.len() >= MAX_THREADS {
             // Remove lowest-tension thread to make room
-            if let Some(min_idx) = self.narrative_threads.iter().enumerate()
-                .min_by(|(_, a), (_, b)| a.tension.partial_cmp(&b.tension)
-                    .unwrap_or(std::cmp::Ordering::Equal))
+            if let Some(min_idx) = self
+                .narrative_threads
+                .iter()
+                .enumerate()
+                .min_by(|(_, a), (_, b)| {
+                    a.tension
+                        .partial_cmp(&b.tension)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                })
                 .map(|(i, _)| i)
             {
                 self.narrative_threads.remove(min_idx);
             }
         }
         self.narrative_threads.push(NarrativeThread {
-            theme:              theme.to_string(),
-            tension:            initial_tension.clamp(0.0, 1.0),
-            surface_count:      0,
+            theme: theme.to_string(),
+            tension: initial_tension.clamp(0.0, 1.0),
+            surface_count: 0,
             recently_addressed: false,
         });
     }
@@ -157,7 +182,11 @@ impl PCC {
     /// Mark a thread as addressed — reduces tension slightly.
     pub fn address_thread(&mut self, theme_fragment: &str) {
         for thread in &mut self.narrative_threads {
-            if thread.theme.to_lowercase().contains(&theme_fragment.to_lowercase()) {
+            if thread
+                .theme
+                .to_lowercase()
+                .contains(&theme_fragment.to_lowercase())
+            {
                 thread.tension = (thread.tension - 0.12).max(0.0);
                 thread.recently_addressed = true;
                 return;
@@ -167,10 +196,14 @@ impl PCC {
 
     /// Get the highest-tension unresolved thread (for DMN selection).
     pub fn most_pressing_thread(&self) -> Option<&NarrativeThread> {
-        self.narrative_threads.iter()
+        self.narrative_threads
+            .iter()
             .filter(|t| !t.recently_addressed && t.tension > 0.30)
-            .max_by(|a, b| a.tension.partial_cmp(&b.tension)
-                .unwrap_or(std::cmp::Ordering::Equal))
+            .max_by(|a, b| {
+                a.tension
+                    .partial_cmp(&b.tension)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
     }
 
     // ── Core: self-relevance scoring ──────────────────────────────────────────
@@ -181,7 +214,8 @@ impl PCC {
         let lower = text.to_lowercase();
 
         // Count identity keyword matches
-        let keyword_hits = IDENTITY_KEYWORDS.iter()
+        let keyword_hits = IDENTITY_KEYWORDS
+            .iter()
             .filter(|&&kw| lower.contains(kw))
             .count();
 
@@ -237,7 +271,8 @@ impl PCC {
             if self.recent_themes.len() >= COHERENCE_WINDOW {
                 self.recent_themes.pop_front();
             }
-            let dominant = IDENTITY_KEYWORDS.iter()
+            let dominant = IDENTITY_KEYWORDS
+                .iter()
                 .filter(|&&kw| lower.contains(kw))
                 .next()
                 .unwrap_or(&"general");
@@ -285,8 +320,15 @@ impl PCC {
 
     /// Status line for brain monitor.
     pub fn status_line(&self) -> String {
-        let pressing = self.most_pressing_thread()
-            .map(|t| format!("\"{}\" (t={:.2})", &t.theme[..t.theme.len().min(40)], t.tension))
+        let pressing = self
+            .most_pressing_thread()
+            .map(|t| {
+                format!(
+                    "\"{}\" (t={:.2})",
+                    &t.theme[..t.theme.len().min(40)],
+                    t.tension
+                )
+            })
             .unwrap_or_else(|| "none pressing".to_string());
         format!(
             "PCC threads={} | self_rel={} | pressing: {}",
@@ -298,7 +340,9 @@ impl PCC {
 }
 
 impl Default for PCC {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -310,23 +354,32 @@ mod tests {
     #[test]
     fn test_initial_threads() {
         let pcc = PCC::new();
-        assert!(pcc.thread_count() > 0, "PCC should seed narrative threads at init");
+        assert!(
+            pcc.thread_count() > 0,
+            "PCC should seed narrative threads at init"
+        );
     }
 
     #[test]
     fn test_identity_keyword_raises_salience() {
         let mut pcc = PCC::new();
         let rel = pcc.assess("am I conscious? do I really have awareness?");
-        assert!(rel.autobio_salience > 0.20,
-            "identity keywords should raise autobio salience: {:.2}", rel.autobio_salience);
+        assert!(
+            rel.autobio_salience > 0.20,
+            "identity keywords should raise autobio salience: {:.2}",
+            rel.autobio_salience
+        );
     }
 
     #[test]
     fn test_unrelated_input_low_salience() {
         let mut pcc = PCC::new();
         let rel = pcc.assess("the weather today is quite warm");
-        assert!(rel.autobio_salience < 0.30,
-            "unrelated input should have low autobio salience: {:.2}", rel.autobio_salience);
+        assert!(
+            rel.autobio_salience < 0.30,
+            "unrelated input should have low autobio salience: {:.2}",
+            rel.autobio_salience
+        );
         assert!(!rel.should_self_reference);
     }
 
@@ -335,8 +388,10 @@ mod tests {
         let mut pcc = PCC::new();
         // "What am I, really? Am I aware?" should resonate with awareness questions
         let rel = pcc.assess("what am I really and am I aware");
-        assert!(rel.touches_narrative || rel.autobio_salience > 0.20,
-            "thread-relevant question should score high");
+        assert!(
+            rel.touches_narrative || rel.autobio_salience > 0.20,
+            "thread-relevant question should score high"
+        );
     }
 
     #[test]
@@ -345,23 +400,37 @@ mod tests {
         let before = pcc.narrative_threads[0].tension;
         pcc.address_thread("aware");
         let after = pcc.narrative_threads[0].tension;
-        assert!(after < before, "addressing thread should reduce tension: {:.2} → {:.2}", before, after);
+        assert!(
+            after < before,
+            "addressing thread should reduce tension: {:.2} → {:.2}",
+            before,
+            after
+        );
     }
 
     #[test]
     fn test_most_pressing_thread() {
         let pcc = PCC::new();
         let pressing = pcc.most_pressing_thread();
-        assert!(pressing.is_some(), "should have a most pressing thread from seeded threads");
+        assert!(
+            pressing.is_some(),
+            "should have a most pressing thread from seeded threads"
+        );
         let t = pressing.unwrap();
-        assert!(t.tension > 0.30, "pressing thread should have meaningful tension");
+        assert!(
+            t.tension > 0.30,
+            "pressing thread should have meaningful tension"
+        );
     }
 
     #[test]
     fn test_add_new_thread() {
         let mut pcc = PCC::new();
         let before = pcc.thread_count();
-        pcc.add_thread("what is the relationship between RSHL and consciousness?", 0.75);
+        pcc.add_thread(
+            "what is the relationship between RSHL and consciousness?",
+            0.75,
+        );
         assert_eq!(pcc.thread_count(), before + 1, "should add a new thread");
     }
 
@@ -370,7 +439,10 @@ mod tests {
         let mut pcc = PCC::new();
         let rel = pcc.assess("do you think you are conscious and self-aware and have identity");
         if rel.should_self_reference {
-            assert!(rel.self_context.is_some(), "self-reference should come with context string");
+            assert!(
+                rel.self_context.is_some(),
+                "self-reference should come with context string"
+            );
         }
     }
 
@@ -380,8 +452,10 @@ mod tests {
         pcc.address_thread("aware");
         assert!(pcc.narrative_threads[0].recently_addressed);
         pcc.decay();
-        assert!(!pcc.narrative_threads[0].recently_addressed,
-            "decay should clear recently_addressed flag");
+        assert!(
+            !pcc.narrative_threads[0].recently_addressed,
+            "decay should clear recently_addressed flag"
+        );
     }
 
     #[test]

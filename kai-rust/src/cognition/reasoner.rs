@@ -16,7 +16,6 @@
 /// The key insight: binding two vectors creates a NEW vector that
 /// captures the RELATIONSHIP between them. Bundling accumulates
 /// evidence. The chain naturally gravitates toward coherent thought.
-
 use crate::core::{SparseVec, Universe};
 
 /// A context slot from working memory — injected into reasoning.
@@ -52,9 +51,9 @@ pub struct ReasonResult {
 /// Configuration for the reasoner.
 pub struct ReasonerConfig {
     pub max_depth: usize,
-    pub phi_threshold: f32,     // Stop early if Φg exceeds this
-    pub min_resonance: f32,     // Minimum cosine to consider a match
-    pub decay_factor: f32,      // How much older thoughts fade in the bundle
+    pub phi_threshold: f32, // Stop early if Φg exceeds this
+    pub min_resonance: f32, // Minimum cosine to consider a match
+    pub decay_factor: f32,  // How much older thoughts fade in the bundle
 }
 
 impl Default for ReasonerConfig {
@@ -74,7 +73,9 @@ pub struct Reasoner {
 
 impl Reasoner {
     pub fn new() -> Self {
-        Self { config: ReasonerConfig::default() }
+        Self {
+            config: ReasonerConfig::default(),
+        }
     }
 
     pub fn with_config(config: ReasonerConfig) -> Self {
@@ -216,7 +217,9 @@ impl Reasoner {
                     // More recent = more weight (we clone and add multiple times)
                     let age = context_vecs.len() - 1 - i;
                     let copies = ((self.config.decay_factor.powi(age as i32)) * 3.0) as usize;
-                    std::iter::repeat(v.clone()).take(copies.max(1)).collect::<Vec<_>>()
+                    std::iter::repeat(v.clone())
+                        .take(copies.max(1))
+                        .collect::<Vec<_>>()
                 })
                 .flatten()
                 .collect();
@@ -255,7 +258,11 @@ impl Reasoner {
         let best_idx = chain
             .iter()
             .enumerate()
-            .max_by(|(_, a), (_, b)| a.phi_g.partial_cmp(&b.phi_g).unwrap_or(std::cmp::Ordering::Equal))
+            .max_by(|(_, a), (_, b)| {
+                a.phi_g
+                    .partial_cmp(&b.phi_g)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
             .map(|(i, _)| i)
             .unwrap_or(0);
 
@@ -327,9 +334,13 @@ impl Reasoner {
                     .map(|(phi, text, region)| {
                         let short = if text.len() > 50 {
                             let mut end = 50;
-                            while end > 0 && !text.is_char_boundary(end) { end -= 1; }
+                            while end > 0 && !text.is_char_boundary(end) {
+                                end -= 1;
+                            }
                             &text[..end]
-                        } else { text };
+                        } else {
+                            text
+                        };
                         format!("[{}·{:.0}%: {}]", region, phi * 100.0, short)
                     })
                     .collect();
@@ -346,4 +357,3 @@ impl Reasoner {
         (parts[0].1.to_string(), parts[0].2.to_string())
     }
 }
-  

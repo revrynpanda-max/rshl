@@ -21,59 +21,58 @@
 /// The composite output modulates phi_g, chi, and valence every tick,
 /// giving the field continuous variation even with zero external input.
 /// This is what turns flat lines into a live brain signal.
-
 use serde::{Deserialize, Serialize};
-use std::f32::consts::TAU;   // 2π
+use std::f32::consts::TAU; // 2π
 
 /// Three-band neural oscillator with cross-band coupling.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct NeuralOscillator {
     /// Phase of each band in radians [slow, medium, fast]
-    phases:     [f32; 3],
+    phases: [f32; 3],
     /// Angular frequency in radians-per-tick [slow, medium, fast]
-    freqs:      [f32; 3],
+    freqs: [f32; 3],
     /// Amplitude envelope for each band (0–1, can be modulated)
     amplitudes: [f32; 3],
     /// Cross-band coupling — faster bands are partly driven by slower ones
-    coupling:   f32,
+    coupling: f32,
     /// Simple deterministic noise state (xorshift64)
     noise_seed: u64,
     /// Tick counter — used for phase-reset protection
-    ticks:      u64,
+    ticks: u64,
 }
 
 /// Output of one oscillator tick — the field perturbations to apply.
 #[derive(Clone, Debug)]
 pub struct OscillatorOutput {
     /// Additive perturbation to phi_g  (emergence)
-    pub delta_phi:     f32,
+    pub delta_phi: f32,
     /// Additive perturbation to chi    (contradiction pressure)
-    pub delta_chi:     f32,
+    pub delta_chi: f32,
     /// Additive perturbation to valence
     pub delta_valence: f32,
     /// Which band is currently dominant (0=slow, 1=medium, 2=fast)
     pub dominant_band: usize,
     /// Instantaneous composite amplitude (0–1)
-    pub amplitude:     f32,
+    pub amplitude: f32,
 }
 
 impl NeuralOscillator {
     /// Create a new oscillator with biologically-inspired default parameters.
     pub fn new() -> Self {
         Self {
-            phases:     [0.0, 1.0472, 2.0944],   // start 120° apart (stable triad)
-            freqs:      [
-                TAU / 72.0,    // slow   — period 72 ticks (~6 min at 5s/tick)
-                TAU / 18.0,    // medium — period 18 ticks (~1.5 min)
-                TAU / 5.0,     // fast   — period  5 ticks (~25 sec)
+            phases: [0.0, 1.0472, 2.0944], // start 120° apart (stable triad)
+            freqs: [
+                TAU / 72.0, // slow   — period 72 ticks (~6 min at 5s/tick)
+                TAU / 18.0, // medium — period 18 ticks (~1.5 min)
+                TAU / 5.0,  // fast   — period  5 ticks (~25 sec)
             ],
             // Amplitudes scaled up 4× so the oscillation is visible on the monitor.
             // At 5-second heartbeat intervals, ±0.012 was invisible on a 0–0.55 axis.
             // ±0.045 slow-band gives phi_g a clear wave without saturating at the clamp.
             amplitudes: [0.045, 0.028, 0.014],
-            coupling:   0.15,
+            coupling: 0.15,
             noise_seed: 0xdeadbeef_cafef00d,
-            ticks:      0,
+            ticks: 0,
         }
     }
 
@@ -85,16 +84,18 @@ impl NeuralOscillator {
 
         // ── 1. Advance phases ────────────────────────────────────────────────
         // Slow band drives medium (coupling), medium drives fast (weak coupling).
-        let slow_sig   = self.phases[0].sin();
+        let slow_sig = self.phases[0].sin();
         let medium_sig = self.phases[1].sin();
 
         self.phases[0] += self.freqs[0];
-        self.phases[1] += self.freqs[1] + self.coupling * 0.30 * slow_sig   * 0.05;
+        self.phases[1] += self.freqs[1] + self.coupling * 0.30 * slow_sig * 0.05;
         self.phases[2] += self.freqs[2] + self.coupling * 0.15 * medium_sig * 0.05;
 
         // Wrap phases to keep them in [0, 2π] — prevents float drift
         for p in &mut self.phases {
-            if *p > TAU { *p -= TAU; }
+            if *p > TAU {
+                *p -= TAU;
+            }
         }
 
         // ── 2. Compute per-band signals ──────────────────────────────────────
@@ -168,8 +169,8 @@ impl NeuralOscillator {
     pub fn stimulate(&mut self, band: usize, strength: f32) {
         let b = band.min(2);
         let baseline = [0.045, 0.028, 0.014][b];
-        self.amplitudes[b] = (self.amplitudes[b] + strength * 0.025)
-            .clamp(baseline, baseline * 3.0);
+        self.amplitudes[b] =
+            (self.amplitudes[b] + strength * 0.025).clamp(baseline, baseline * 3.0);
     }
 
     /// Call each tick to decay stimulated amplitudes back to baseline.
@@ -195,7 +196,9 @@ impl NeuralOscillator {
 }
 
 impl Default for NeuralOscillator {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[cfg(test)]
@@ -209,7 +212,11 @@ mod tests {
         let min = outputs.iter().cloned().fold(f32::INFINITY, f32::min);
         let max = outputs.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
         // Should produce variation, not a flat line
-        assert!(max - min > 0.005, "oscillator is flat: range = {}", max - min);
+        assert!(
+            max - min > 0.005,
+            "oscillator is flat: range = {}",
+            max - min
+        );
     }
 
     #[test]
@@ -218,10 +225,18 @@ mod tests {
         for _ in 0..1000 {
             let out = osc.tick();
             // Max expected delta_phi ~0.037
-            assert!(out.delta_phi.abs()     < 0.05, "phi overflow: {}", out.delta_phi);
-            assert!(out.delta_chi           >= 0.0,  "chi went negative");
+            assert!(
+                out.delta_phi.abs() < 0.05,
+                "phi overflow: {}",
+                out.delta_phi
+            );
+            assert!(out.delta_chi >= 0.0, "chi went negative");
             // Max expected delta_valence ~0.068 (was 0.02)
-            assert!(out.delta_valence.abs() < 0.08,  "valence overflow: {}", out.delta_valence);
+            assert!(
+                out.delta_valence.abs() < 0.08,
+                "valence overflow: {}",
+                out.delta_valence
+            );
         }
     }
 
@@ -240,7 +255,8 @@ mod tests {
         assert!(
             decayed < boosted,
             "amplitude did not decay: boosted={} decayed={}",
-            boosted, decayed
+            boosted,
+            decayed
         );
         assert!(
             decayed < 0.014 * 1.5,

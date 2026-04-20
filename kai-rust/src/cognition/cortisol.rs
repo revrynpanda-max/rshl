@@ -130,11 +130,11 @@ pub struct CortisolSystem {
 impl CortisolSystem {
     pub fn new() -> Self {
         Self {
-            level:             CORTISOL_BASELINE,
-            allostatic_load:   0.0,
-            total_stressors:   0,
+            level: CORTISOL_BASELINE,
+            allostatic_load: 0.0,
+            total_stressors: 0,
             total_resolutions: 0,
-            tick:              0,
+            tick: 0,
         }
     }
 
@@ -224,7 +224,7 @@ impl CortisolSystem {
             l if l < 0.55 => "moderate-stress",
             l if l < 0.70 => "high-stress",
             l if l < 0.85 => "acute-stress",
-            _             => "critical",
+            _ => "critical",
         };
 
         CortisolState {
@@ -253,14 +253,19 @@ impl CortisolSystem {
         let state = self.cognitive_state();
         format!(
             "CORT {:.2} ({}) | load={:.2} | mem_pen={:.2} | react={:.2}",
-            self.level, state.label, self.allostatic_load,
-            state.memory_penalty, state.emotional_reactivity,
+            self.level,
+            state.label,
+            self.allostatic_load,
+            state.memory_penalty,
+            state.emotional_reactivity,
         )
     }
 }
 
 impl Default for CortisolSystem {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -272,7 +277,10 @@ mod tests {
     #[test]
     fn test_initial_state() {
         let cort = CortisolSystem::new();
-        assert!((cort.level - CORTISOL_BASELINE).abs() < 0.01, "initial level should be baseline");
+        assert!(
+            (cort.level - CORTISOL_BASELINE).abs() < 0.01,
+            "initial level should be baseline"
+        );
         assert!(!cort.is_elevated(), "should not be elevated at baseline");
     }
 
@@ -281,7 +289,10 @@ mod tests {
         let mut cort = CortisolSystem::new();
         let before = cort.level;
         cort.process(CortisolEvent::PredictionFailure);
-        assert!(cort.level > before, "prediction failure should raise cortisol");
+        assert!(
+            cort.level > before,
+            "prediction failure should raise cortisol"
+        );
     }
 
     #[test]
@@ -290,13 +301,18 @@ mod tests {
         for _ in 0..5 {
             cort.process(CortisolEvent::PredictionFailure);
         }
-        assert!(cort.is_elevated(), "5 failures should elevate cortisol above threshold");
+        assert!(
+            cort.is_elevated(),
+            "5 failures should elevate cortisol above threshold"
+        );
     }
 
     #[test]
     fn test_resolution_reduces_cortisol() {
         let mut cort = CortisolSystem::new();
-        for _ in 0..5 { cort.process(CortisolEvent::PredictionFailure); }
+        for _ in 0..5 {
+            cort.process(CortisolEvent::PredictionFailure);
+        }
         let before = cort.level;
         cort.process(CortisolEvent::Resolution);
         assert!(cort.level < before, "resolution should reduce cortisol");
@@ -305,23 +321,37 @@ mod tests {
     #[test]
     fn test_sleep_recovery_major_drop() {
         let mut cort = CortisolSystem::new();
-        for _ in 0..10 { cort.process(CortisolEvent::UnresolvedConflict); }
+        for _ in 0..10 {
+            cort.process(CortisolEvent::UnresolvedConflict);
+        }
         let before = cort.level;
         cort.process(CortisolEvent::SleepRecovery);
-        assert!(cort.level < before * 0.6, "sleep should dramatically reduce cortisol: {:.2} → {:.2}", before, cort.level);
+        assert!(
+            cort.level < before * 0.6,
+            "sleep should dramatically reduce cortisol: {:.2} → {:.2}",
+            before,
+            cort.level
+        );
     }
 
     #[test]
     fn test_allostatic_load_builds_slowly() {
         let mut cort = CortisolSystem::new();
-        for _ in 0..20 { cort.process(CortisolEvent::SustainedArousal); }
-        assert!(cort.allostatic_load > 0.0, "sustained stress should build allostatic load");
+        for _ in 0..20 {
+            cort.process(CortisolEvent::SustainedArousal);
+        }
+        assert!(
+            cort.allostatic_load > 0.0,
+            "sustained stress should build allostatic load"
+        );
     }
 
     #[test]
     fn test_allostatic_load_persists_after_recovery() {
         let mut cort = CortisolSystem::new();
-        for _ in 0..20 { cort.process(CortisolEvent::UnresolvedConflict); }
+        for _ in 0..20 {
+            cort.process(CortisolEvent::UnresolvedConflict);
+        }
         let load_before = cort.allostatic_load;
         cort.process(CortisolEvent::Resolution);
         cort.process(CortisolEvent::Resolution);
@@ -330,17 +360,25 @@ mod tests {
         assert!(load_before > 0.0, "load should have built up");
         // After sleep it should reduce
         cort.process(CortisolEvent::SleepRecovery);
-        assert!(cort.allostatic_load < load_before, "sleep should reduce allostatic load");
+        assert!(
+            cort.allostatic_load < load_before,
+            "sleep should reduce allostatic load"
+        );
     }
 
     #[test]
     fn test_memory_penalty_above_threshold() {
         let mut cort = CortisolSystem::new();
         // Push to high stress
-        for _ in 0..8 { cort.process(CortisolEvent::PredictionFailure); }
+        for _ in 0..8 {
+            cort.process(CortisolEvent::PredictionFailure);
+        }
         let state = cort.cognitive_state();
         if cort.level > EFFECT_THRESHOLD {
-            assert!(state.memory_penalty > 0.0, "high cortisol should produce memory penalty");
+            assert!(
+                state.memory_penalty > 0.0,
+                "high cortisol should produce memory penalty"
+            );
         }
     }
 
@@ -348,18 +386,27 @@ mod tests {
     fn test_emotional_reactivity_rises_with_cortisol() {
         let cort_low = CortisolSystem::new();
         let mut cort_high = CortisolSystem::new();
-        for _ in 0..10 { cort_high.process(CortisolEvent::UnresolvedConflict); }
+        for _ in 0..10 {
+            cort_high.process(CortisolEvent::UnresolvedConflict);
+        }
         let low_react = cort_low.cognitive_state().emotional_reactivity;
         let high_react = cort_high.cognitive_state().emotional_reactivity;
-        assert!(high_react > low_react, "high cortisol should increase emotional reactivity");
+        assert!(
+            high_react > low_react,
+            "high cortisol should increase emotional reactivity"
+        );
     }
 
     #[test]
     fn test_decay_moves_toward_baseline() {
         let mut cort = CortisolSystem::new();
-        for _ in 0..5 { cort.process(CortisolEvent::PredictionFailure); }
+        for _ in 0..5 {
+            cort.process(CortisolEvent::PredictionFailure);
+        }
         let elevated = cort.level;
-        for _ in 0..100 { cort.decay(); }
+        for _ in 0..100 {
+            cort.decay();
+        }
         assert!(cort.level < elevated, "cortisol should decay over time");
     }
 

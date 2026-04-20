@@ -55,22 +55,60 @@ const SOCIAL_PAIN_THRESHOLD: f32 = 0.50;
 
 /// Effort cost markers
 const EFFORT_MARKERS: &[&str] = &[
-    "difficult", "complex", "hard", "challenging", "exhausting", "demanding",
-    "tedious", "lengthy", "elaborate", "careful", "thorough", "detailed",
-    "intricate", "dense", "technical", "nuanced",
+    "difficult",
+    "complex",
+    "hard",
+    "challenging",
+    "exhausting",
+    "demanding",
+    "tedious",
+    "lengthy",
+    "elaborate",
+    "careful",
+    "thorough",
+    "detailed",
+    "intricate",
+    "dense",
+    "technical",
+    "nuanced",
 ];
 
 /// Social exclusion markers
 const EXCLUSION_MARKERS: &[&str] = &[
-    "wrong", "no", "incorrect", "disagree", "mistake", "failure", "bad",
-    "not what", "doesn't make sense", "that's not", "confused", "unhelpful",
-    "disappointed", "frustrated", "expected better", "worse", "ignore",
+    "wrong",
+    "no",
+    "incorrect",
+    "disagree",
+    "mistake",
+    "failure",
+    "bad",
+    "not what",
+    "doesn't make sense",
+    "that's not",
+    "confused",
+    "unhelpful",
+    "disappointed",
+    "frustrated",
+    "expected better",
+    "worse",
+    "ignore",
 ];
 
 /// Agency / volition markers
 const AGENCY_MARKERS: &[&str] = &[
-    "decide", "choose", "will", "commit", "act", "resolve", "intend",
-    "determined", "going to", "plan", "purpose", "intent", "deliberate",
+    "decide",
+    "choose",
+    "will",
+    "commit",
+    "act",
+    "resolve",
+    "intend",
+    "determined",
+    "going to",
+    "plan",
+    "purpose",
+    "intent",
+    "deliberate",
 ];
 
 // ── MCCOutput ─────────────────────────────────────────────────────────────────
@@ -114,11 +152,11 @@ pub struct MidCingulateCortex {
 impl MidCingulateCortex {
     pub fn new() -> Self {
         Self {
-            pain_affect:       0.05,
-            social_pain:       0.0,
-            effort_cost:       0.20,
-            agency:            0.70,
-            inputs_processed:  0,
+            pain_affect: 0.05,
+            social_pain: 0.0,
+            effort_cost: 0.20,
+            agency: 0.70,
+            inputs_processed: 0,
             social_pain_events: 0,
             high_effort_events: 0,
         }
@@ -142,10 +180,13 @@ impl MidCingulateCortex {
         let lower = text.to_lowercase();
 
         // ── Effort cost ───────────────────────────────────────────────────────
-        let effort_hits = EFFORT_MARKERS.iter()
-            .filter(|&&w| lower.contains(w)).count();
+        let effort_hits = EFFORT_MARKERS
+            .iter()
+            .filter(|&&w| lower.contains(w))
+            .count();
         let effort_from_text = (effort_hits as f32 * 0.10).min(0.60);
-        let effort_target = (effort_from_text + acc_conflict * 0.25 + s1_discomfort * 0.15).min(1.0);
+        let effort_target =
+            (effort_from_text + acc_conflict * 0.25 + s1_discomfort * 0.15).min(1.0);
         self.effort_cost = self.effort_cost * (1.0 - EFFORT_EMA) + effort_target * EFFORT_EMA;
 
         if self.effort_cost > HIGH_EFFORT_THRESHOLD {
@@ -153,8 +194,10 @@ impl MidCingulateCortex {
         }
 
         // ── Social pain ───────────────────────────────────────────────────────
-        let exclusion_hits = EXCLUSION_MARKERS.iter()
-            .filter(|&&w| lower.contains(w)).count();
+        let exclusion_hits = EXCLUSION_MARKERS
+            .iter()
+            .filter(|&&w| lower.contains(w))
+            .count();
         if exclusion_hits >= 1 {
             self.social_pain_events += 1;
             let social_target = (exclusion_hits as f32 * 0.15 + amygdala_arousal * 0.20).min(1.0);
@@ -162,24 +205,26 @@ impl MidCingulateCortex {
         }
 
         // ── Physical/cognitive pain affect ────────────────────────────────────
-        let pain_target = (acc_conflict * 0.30 + s1_discomfort * 0.25 + self.social_pain * 0.20)
-            .min(1.0);
+        let pain_target =
+            (acc_conflict * 0.30 + s1_discomfort * 0.25 + self.social_pain * 0.20).min(1.0);
         self.pain_affect = self.pain_affect * (1.0 - PAIN_EMA) + pain_target * PAIN_EMA;
 
         // ── Agency / volition ────────────────────────────────────────────────
-        let agency_hits = AGENCY_MARKERS.iter()
-            .filter(|&&w| lower.contains(w)).count();
+        let agency_hits = AGENCY_MARKERS
+            .iter()
+            .filter(|&&w| lower.contains(w))
+            .count();
         // Agency rises with volitional content, falls with high social pain + effort
         let agency_penalty = (self.social_pain * 0.15 + self.effort_cost * 0.10).min(0.30);
         let agency_target = (0.50 + agency_hits as f32 * 0.06 - agency_penalty).clamp(0.10, 1.0);
         self.agency = self.agency * (1.0 - AGENCY_EMA) + agency_target * AGENCY_EMA;
 
         MCCOutput {
-            pain_affect:      self.pain_affect,
-            social_pain:      self.social_pain,
-            effort_cost:      self.effort_cost,
-            agency:           self.agency,
-            social_distress:  self.social_pain >= SOCIAL_PAIN_THRESHOLD,
+            pain_affect: self.pain_affect,
+            social_pain: self.social_pain,
+            effort_cost: self.effort_cost,
+            agency: self.agency,
+            social_distress: self.social_pain >= SOCIAL_PAIN_THRESHOLD,
             effort_suppressed: self.effort_cost >= HIGH_EFFORT_THRESHOLD,
         }
     }
@@ -198,11 +243,11 @@ impl MidCingulateCortex {
     /// Current output without processing.
     pub fn current_output(&self) -> MCCOutput {
         MCCOutput {
-            pain_affect:      self.pain_affect,
-            social_pain:      self.social_pain,
-            effort_cost:      self.effort_cost,
-            agency:           self.agency,
-            social_distress:  self.social_pain >= SOCIAL_PAIN_THRESHOLD,
+            pain_affect: self.pain_affect,
+            social_pain: self.social_pain,
+            effort_cost: self.effort_cost,
+            agency: self.agency,
+            social_distress: self.social_pain >= SOCIAL_PAIN_THRESHOLD,
             effort_suppressed: self.effort_cost >= HIGH_EFFORT_THRESHOLD,
         }
     }
@@ -215,14 +260,24 @@ impl MidCingulateCortex {
             self.social_pain,
             self.effort_cost,
             self.agency,
-            if self.social_pain >= SOCIAL_PAIN_THRESHOLD { " DISTRESS" } else { "" },
-            if self.effort_cost >= HIGH_EFFORT_THRESHOLD { " EFFORT↑" } else { "" },
+            if self.social_pain >= SOCIAL_PAIN_THRESHOLD {
+                " DISTRESS"
+            } else {
+                ""
+            },
+            if self.effort_cost >= HIGH_EFFORT_THRESHOLD {
+                " EFFORT↑"
+            } else {
+                ""
+            },
         )
     }
 }
 
 impl Default for MidCingulateCortex {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -242,9 +297,18 @@ mod tests {
     fn test_exclusion_words_raise_social_pain() {
         let mut m = MidCingulateCortex::new();
         let before = m.social_pain;
-        m.process("no that's wrong and incorrect, I'm disappointed", 0.20, 0.30, 0.10);
-        assert!(m.social_pain > before,
-            "exclusion words should raise social pain: {:.2} → {:.2}", before, m.social_pain);
+        m.process(
+            "no that's wrong and incorrect, I'm disappointed",
+            0.20,
+            0.30,
+            0.10,
+        );
+        assert!(
+            m.social_pain > before,
+            "exclusion words should raise social pain: {:.2} → {:.2}",
+            before,
+            m.social_pain
+        );
     }
 
     #[test]
@@ -252,17 +316,30 @@ mod tests {
         let mut m = MidCingulateCortex::new();
         let before = m.pain_affect;
         m.process("neutral text", 0.85, 0.40, 0.20);
-        assert!(m.pain_affect > before,
-            "high ACC conflict should raise pain affect: {:.2} → {:.2}", before, m.pain_affect);
+        assert!(
+            m.pain_affect > before,
+            "high ACC conflict should raise pain affect: {:.2} → {:.2}",
+            before,
+            m.pain_affect
+        );
     }
 
     #[test]
     fn test_effort_words_raise_effort_cost() {
         let mut m = MidCingulateCortex::new();
         let before = m.effort_cost;
-        m.process("this is very difficult and complex and technically demanding", 0.20, 0.10, 0.10);
-        assert!(m.effort_cost > before,
-            "effort words should raise effort cost: {:.2} → {:.2}", before, m.effort_cost);
+        m.process(
+            "this is very difficult and complex and technically demanding",
+            0.20,
+            0.10,
+            0.10,
+        );
+        assert!(
+            m.effort_cost > before,
+            "effort words should raise effort cost: {:.2} → {:.2}",
+            before,
+            m.effort_cost
+        );
     }
 
     #[test]
@@ -270,7 +347,10 @@ mod tests {
         let mut m = MidCingulateCortex::new();
         m.social_pain = SOCIAL_PAIN_THRESHOLD + 0.01;
         let out = m.current_output();
-        assert!(out.social_distress, "social pain >= threshold → social distress");
+        assert!(
+            out.social_distress,
+            "social pain >= threshold → social distress"
+        );
     }
 
     #[test]
@@ -278,16 +358,28 @@ mod tests {
         let mut m = MidCingulateCortex::new();
         m.effort_cost = HIGH_EFFORT_THRESHOLD + 0.01;
         let out = m.current_output();
-        assert!(out.effort_suppressed, "effort >= threshold → effort suppressed");
+        assert!(
+            out.effort_suppressed,
+            "effort >= threshold → effort suppressed"
+        );
     }
 
     #[test]
     fn test_agency_words_boost_agency() {
         let mut m = MidCingulateCortex::new();
         let before = m.agency;
-        m.process("I decide to commit and resolve to act with intent", 0.10, 0.10, 0.05);
-        assert!(m.agency >= before - 0.01,
-            "agency words should not lower agency: {:.2} → {:.2}", before, m.agency);
+        m.process(
+            "I decide to commit and resolve to act with intent",
+            0.10,
+            0.10,
+            0.05,
+        );
+        assert!(
+            m.agency >= before - 0.01,
+            "agency words should not lower agency: {:.2} → {:.2}",
+            before,
+            m.agency
+        );
     }
 
     #[test]
@@ -296,7 +388,11 @@ mod tests {
         m.social_pain = 0.80;
         m.process("neutral text", 0.10, 0.10, 0.05);
         // Agency target will be penalized by high social pain
-        assert!(m.agency < 0.80, "high social pain should eventually lower agency: {:.2}", m.agency);
+        assert!(
+            m.agency < 0.80,
+            "high social pain should eventually lower agency: {:.2}",
+            m.agency
+        );
     }
 
     #[test]
@@ -307,10 +403,16 @@ mod tests {
         for _ in 0..20 {
             m.decay();
         }
-        assert!(m.pain_affect < 0.70,
-            "pain affect should decay: {:.2}", m.pain_affect);
-        assert!(m.social_pain < 0.60,
-            "social pain should decay: {:.2}", m.social_pain);
+        assert!(
+            m.pain_affect < 0.70,
+            "pain affect should decay: {:.2}",
+            m.pain_affect
+        );
+        assert!(
+            m.social_pain < 0.60,
+            "social pain should decay: {:.2}",
+            m.social_pain
+        );
     }
 
     #[test]
@@ -322,9 +424,12 @@ mod tests {
             m.decay();
         }
         // Social pain decays at 0.008/tick, physical at 0.025/tick
-        assert!(m.social_pain > m.pain_affect,
+        assert!(
+            m.social_pain > m.pain_affect,
             "social pain should decay slower: soc={:.2} phys={:.2}",
-            m.social_pain, m.pain_affect);
+            m.social_pain,
+            m.pain_affect
+        );
     }
 
     #[test]

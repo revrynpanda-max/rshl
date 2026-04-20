@@ -84,9 +84,9 @@ impl PontineNuclei {
         Self {
             relay_throughput: 0.20,
             timing_coherence: COHERENCE_BASELINE,
-            pfc_load:         0.30,
-            sma_load:         0.30,
-            inputs_relayed:   0,
+            pfc_load: 0.30,
+            sma_load: 0.30,
+            inputs_relayed: 0,
         }
     }
 
@@ -111,15 +111,15 @@ impl PontineNuclei {
         // ── Relay Throughput ──────────────────────────────────────────────────
         // Throughput rises with strong cortical signals
         let throughput_target = (pfc_confidence * 0.60 + sma_readiness * 0.40).min(1.0);
-        self.relay_throughput = self.relay_throughput * (1.0 - RELAY_EMA)
-            + throughput_target * RELAY_EMA;
+        self.relay_throughput =
+            self.relay_throughput * (1.0 - RELAY_EMA) + throughput_target * RELAY_EMA;
 
         // ── Timing Coherence ──────────────────────────────────────────────────
         // Coherence is high when cortical input matches cerebellar precision
         let diff = (pfc_confidence - cbm_precision).abs();
         let coherence_target = (1.0 - diff * 0.50).clamp(0.10, 1.0);
-        self.timing_coherence = self.timing_coherence * (1.0 - COHERENCE_EMA)
-            + coherence_target * COHERENCE_EMA;
+        self.timing_coherence =
+            self.timing_coherence * (1.0 - COHERENCE_EMA) + coherence_target * COHERENCE_EMA;
 
         self.build_output()
     }
@@ -140,27 +140,28 @@ impl PontineNuclei {
         PNOutput {
             relay_throughput: self.relay_throughput,
             timing_coherence: self.timing_coherence,
-            pfc_load:         self.pfc_load,
-            sma_load:         self.sma_load,
-            saturated:        self.relay_throughput > 0.85,
+            pfc_load: self.pfc_load,
+            sma_load: self.sma_load,
+            saturated: self.relay_throughput > 0.85,
         }
     }
 
     /// Current output without processing.
-    pub fn current_output(&self) -> PNOutput { self.build_output() }
+    pub fn current_output(&self) -> PNOutput {
+        self.build_output()
+    }
 
     /// Status line.
     pub fn status_line(&self) -> String {
         format!(
             "PN relay={:.2} | coherence={:.2} | loads(PFC={:.2}, SMA={:.2})",
-            self.relay_throughput,
-            self.timing_coherence,
-            self.pfc_load,
-            self.sma_load,
+            self.relay_throughput, self.timing_coherence, self.pfc_load, self.sma_load,
         )
     }
 }
 
 impl Default for PontineNuclei {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }

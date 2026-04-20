@@ -61,9 +61,25 @@ const MAX_SCHEMAS: usize = 6;
 
 /// Action observation keywords (what Ryan is doing / has done)
 const ACTION_OBS_MARKERS: &[&str] = &[
-    "i did", "i made", "i built", "i wrote", "i ran", "i tried", "i created",
-    "i fixed", "i pushed", "i deployed", "i tested", "i found", "i noticed",
-    "i learned", "i discovered", "i realized", "we could", "let's", "let me",
+    "i did",
+    "i made",
+    "i built",
+    "i wrote",
+    "i ran",
+    "i tried",
+    "i created",
+    "i fixed",
+    "i pushed",
+    "i deployed",
+    "i tested",
+    "i found",
+    "i noticed",
+    "i learned",
+    "i discovered",
+    "i realized",
+    "we could",
+    "let's",
+    "let me",
 ];
 
 // ── PMCOutput ─────────────────────────────────────────────────────────────────
@@ -103,12 +119,12 @@ pub struct PreMotorCortex {
 impl PreMotorCortex {
     pub fn new() -> Self {
         Self {
-            action_readiness:   0.30,
-            imitation_echo:     0.10,
-            active_schemas:     Vec::new(),
-            anticipatory_load:  0.20,
+            action_readiness: 0.30,
+            imitation_echo: 0.10,
+            active_schemas: Vec::new(),
+            anticipatory_load: 0.20,
             action_observations: 0,
-            inputs_processed:   0,
+            inputs_processed: 0,
         }
     }
 
@@ -118,20 +134,27 @@ impl PreMotorCortex {
     /// - `text`: the input
     /// - `predicted_response_type`: what kind of response is anticipated (e.g. "explain", "code")
     /// - `sma_readiness`: SMA's action readiness signal (0.0–1.0)
-    pub fn process(&mut self, text: &str, predicted_response_type: &str, sma_readiness: f32) -> PMCOutput {
+    pub fn process(
+        &mut self,
+        text: &str,
+        predicted_response_type: &str,
+        sma_readiness: f32,
+    ) -> PMCOutput {
         self.inputs_processed += 1;
         let lower = text.to_lowercase();
 
         // ── Action observation detection ──────────────────────────────────────
-        let obs_hits = ACTION_OBS_MARKERS.iter()
-            .filter(|&&w| lower.contains(w)).count();
+        let obs_hits = ACTION_OBS_MARKERS
+            .iter()
+            .filter(|&&w| lower.contains(w))
+            .count();
         let action_observed = obs_hits >= 1;
         if action_observed {
             self.action_observations += 1;
             // Mirror echo from observation
             let echo_target = (obs_hits as f32 * 0.20).min(0.80);
-            self.imitation_echo = self.imitation_echo * (1.0 - IMITATION_EMA)
-                + echo_target * IMITATION_EMA;
+            self.imitation_echo =
+                self.imitation_echo * (1.0 - IMITATION_EMA) + echo_target * IMITATION_EMA;
         } else {
             self.imitation_echo = (self.imitation_echo - IMITATION_DECAY).max(0.0);
         }
@@ -150,18 +173,18 @@ impl PreMotorCortex {
         // ── Action readiness ──────────────────────────────────────────────────
         // Rises with SMA readiness and detected action pattern
         let readiness_target = (sma_readiness * 0.60 + obs_hits as f32 * 0.10).min(1.0);
-        self.action_readiness = self.action_readiness * (1.0 - READINESS_BUILD)
-            + readiness_target * READINESS_BUILD;
+        self.action_readiness =
+            self.action_readiness * (1.0 - READINESS_BUILD) + readiness_target * READINESS_BUILD;
 
         // ── Anticipatory load ─────────────────────────────────────────────────
-        self.anticipatory_load = (self.active_schemas.len() as f32 / MAX_SCHEMAS as f32)
-            * sma_readiness;
+        self.anticipatory_load =
+            (self.active_schemas.len() as f32 / MAX_SCHEMAS as f32) * sma_readiness;
 
         PMCOutput {
-            action_readiness:   self.action_readiness,
-            imitation_echo:     self.imitation_echo,
-            schema_count:       self.active_schemas.len(),
-            anticipatory_load:  self.anticipatory_load,
+            action_readiness: self.action_readiness,
+            imitation_echo: self.imitation_echo,
+            schema_count: self.active_schemas.len(),
+            anticipatory_load: self.anticipatory_load,
             action_observed,
         }
     }
@@ -176,11 +199,11 @@ impl PreMotorCortex {
     /// Current output without processing.
     pub fn current_output(&self) -> PMCOutput {
         PMCOutput {
-            action_readiness:   self.action_readiness,
-            imitation_echo:     self.imitation_echo,
-            schema_count:       self.active_schemas.len(),
-            anticipatory_load:  self.anticipatory_load,
-            action_observed:    false,
+            action_readiness: self.action_readiness,
+            imitation_echo: self.imitation_echo,
+            schema_count: self.active_schemas.len(),
+            anticipatory_load: self.anticipatory_load,
+            action_observed: false,
         }
     }
 
@@ -197,7 +220,9 @@ impl PreMotorCortex {
 }
 
 impl Default for PreMotorCortex {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -217,29 +242,47 @@ mod tests {
     fn test_action_observation_triggers_echo() {
         let mut p = PreMotorCortex::new();
         let out = p.process("i built and ran the tests and i found a bug", "debug", 0.50);
-        assert!(out.action_observed,
-            "action observation markers should be detected");
-        assert!(out.imitation_echo > 0.0,
-            "observation should create imitation echo: {:.2}", out.imitation_echo);
+        assert!(
+            out.action_observed,
+            "action observation markers should be detected"
+        );
+        assert!(
+            out.imitation_echo > 0.0,
+            "observation should create imitation echo: {:.2}",
+            out.imitation_echo
+        );
     }
 
     #[test]
     fn test_schema_registered() {
         let mut p = PreMotorCortex::new();
         p.process("explain this please", "explain", 0.60);
-        assert!(p.active_schemas.contains(&"explain".to_string()),
-            "predicted response type should register as schema");
+        assert!(
+            p.active_schemas.contains(&"explain".to_string()),
+            "predicted response type should register as schema"
+        );
     }
 
     #[test]
     fn test_max_schemas_not_exceeded() {
         let mut p = PreMotorCortex::new();
-        let types = ["explain", "code", "debug", "analyze", "summarize", "compare", "review"];
+        let types = [
+            "explain",
+            "code",
+            "debug",
+            "analyze",
+            "summarize",
+            "compare",
+            "review",
+        ];
         for t in &types {
             p.process("input", t, 0.50);
         }
-        assert!(p.active_schemas.len() <= MAX_SCHEMAS,
-            "schemas should not exceed max: {}", p.active_schemas.len());
+        assert!(
+            p.active_schemas.len() <= MAX_SCHEMAS,
+            "schemas should not exceed max: {}",
+            p.active_schemas.len()
+        );
     }
 
     #[test]
@@ -248,8 +291,10 @@ mod tests {
         let mut p2 = PreMotorCortex::new();
         p1.process("input text here", "explain", 0.10);
         p2.process("input text here", "explain", 0.90);
-        assert!(p2.action_readiness >= p1.action_readiness,
-            "higher SMA readiness should yield higher PMC readiness");
+        assert!(
+            p2.action_readiness >= p1.action_readiness,
+            "higher SMA readiness should yield higher PMC readiness"
+        );
     }
 
     #[test]
@@ -257,8 +302,11 @@ mod tests {
         let mut p = PreMotorCortex::new();
         p.imitation_echo = 0.70;
         p.process("what time is it", "inform", 0.30);
-        assert!(p.imitation_echo < 0.70,
-            "echo should decay without action observation: {:.2}", p.imitation_echo);
+        assert!(
+            p.imitation_echo < 0.70,
+            "echo should decay without action observation: {:.2}",
+            p.imitation_echo
+        );
     }
 
     #[test]
@@ -268,8 +316,11 @@ mod tests {
         for _ in 0..10 {
             p.decay();
         }
-        assert!(p.action_readiness < 0.90,
-            "readiness should decay: {:.2}", p.action_readiness);
+        assert!(
+            p.action_readiness < 0.90,
+            "readiness should decay: {:.2}",
+            p.action_readiness
+        );
     }
 
     #[test]
@@ -278,9 +329,11 @@ mod tests {
         p.process("explain", "explain", 0.80);
         p.process("code", "code", 0.80);
         p.process("debug", "debug", 0.80);
-        assert!(p.anticipatory_load > 0.0,
+        assert!(
+            p.anticipatory_load > 0.0,
             "multiple schemas with high SMA should create anticipatory load: {:.2}",
-            p.anticipatory_load);
+            p.anticipatory_load
+        );
     }
 
     #[test]

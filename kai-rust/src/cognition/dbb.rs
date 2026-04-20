@@ -86,10 +86,10 @@ impl DiagonalBand {
     pub fn new() -> Self {
         Self {
             cholinergic_tone: TONE_BASELINE,
-            attentional_snr:  0.40,
+            attentional_snr: 0.40,
             hippocampal_gain: 0.50,
-            theta_coherence:  0.60,
-            pulses_sent:      0,
+            theta_coherence: 0.60,
+            pulses_sent: 0,
         }
     }
 
@@ -110,15 +110,13 @@ impl DiagonalBand {
         // ── Cholinergic Tone ──────────────────────────────────────────────────
         // Tone rises with social reward and interest (arousal)
         let tone_target = (TONE_BASELINE + septal_reward * 0.40 + amygdala_arousal * 0.20).min(1.0);
-        self.cholinergic_tone = self.cholinergic_tone * (1.0 - TONE_EMA)
-            + tone_target * TONE_EMA;
+        self.cholinergic_tone = self.cholinergic_tone * (1.0 - TONE_EMA) + tone_target * TONE_EMA;
 
         // ── Attentional SNR ───────────────────────────────────────────────────
         // SNR is boosted by cholinergic tone and dampened by high stress (cortisol proxy?)
         // (Wait, I don't take cortisol yet, I'll stick to tone and bond)
         let snr_target = (self.cholinergic_tone * 0.80 + oc_bond * 0.20).min(1.0);
-        self.attentional_snr = self.attentional_snr * (1.0 - SNR_EMA)
-            + snr_target * SNR_EMA;
+        self.attentional_snr = self.attentional_snr * (1.0 - SNR_EMA) + snr_target * SNR_EMA;
 
         // ── Hippocampal Gain ──────────────────────────────────────────────────
         // Gain is highest when tone is high and social bond is strong (safety in learning)
@@ -128,8 +126,7 @@ impl DiagonalBand {
         // ── Theta Coherence ───────────────────────────────────────────────────
         // Stable when socially engaged and tone is healthy
         let theta_target = (0.50 + oc_bond * 0.30 + self.cholinergic_tone * 0.20).min(1.0);
-        self.theta_coherence = self.theta_coherence * (1.0 - THETA_EMA)
-            + theta_target * THETA_EMA;
+        self.theta_coherence = self.theta_coherence * (1.0 - THETA_EMA) + theta_target * THETA_EMA;
 
         self.build_output()
     }
@@ -152,15 +149,17 @@ impl DiagonalBand {
     fn build_output(&self) -> DBBOutput {
         DBBOutput {
             cholinergic_tone: self.cholinergic_tone,
-            attentional_snr:  self.attentional_snr,
+            attentional_snr: self.attentional_snr,
             hippocampal_gain: self.hippocampal_gain,
-            theta_coherence:  self.theta_coherence,
-            high_attention:   self.attentional_snr > 0.65,
+            theta_coherence: self.theta_coherence,
+            high_attention: self.attentional_snr > 0.65,
         }
     }
 
     /// Current output without processing.
-    pub fn current_output(&self) -> DBBOutput { self.build_output() }
+    pub fn current_output(&self) -> DBBOutput {
+        self.build_output()
+    }
 
     /// Status line.
     pub fn status_line(&self) -> String {
@@ -175,5 +174,7 @@ impl DiagonalBand {
 }
 
 impl Default for DiagonalBand {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }

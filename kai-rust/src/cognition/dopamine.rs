@@ -36,7 +36,6 @@
 ///     - Topic-specific reward history (which topics yield positive RPE)
 ///     - Streak tracking (consecutive good answers = dopamine momentum)
 ///     - Drive modulation output: high dopamine → KAI is engaged and curious
-
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -94,14 +93,14 @@ pub struct DopamineCircuit {
 impl DopamineCircuit {
     pub fn new() -> Self {
         Self {
-            level:           BASELINE,
-            tonic:           BASELINE,
-            topic_rewards:   HashMap::new(),
-            streak:          0,
-            total_events:    0,
+            level: BASELINE,
+            tonic: BASELINE,
+            topic_rewards: HashMap::new(),
+            streak: 0,
+            total_events: 0,
             positive_events: 0,
-            in_flow:         false,
-            ticks:           0,
+            in_flow: false,
+            ticks: 0,
         }
     }
 
@@ -114,9 +113,9 @@ impl DopamineCircuit {
     /// Returns the RPE for this event (positive = good, negative = bad).
     pub fn fire(
         &mut self,
-        topic:      &str,
+        topic: &str,
         confidence: f32,
-        expected:   f32,   // prior expected confidence (from predictor)
+        expected: f32, // prior expected confidence (from predictor)
     ) -> f32 {
         // RPE = actual outcome - expected outcome
         // Positive: did better than expected → dopamine spike
@@ -138,7 +137,9 @@ impl DopamineCircuit {
         // Prune topic history if too large
         if self.topic_rewards.len() > MAX_TOPIC_HISTORY {
             // Remove the least rewarding topic
-            if let Some(worst_key) = self.topic_rewards.iter()
+            if let Some(worst_key) = self
+                .topic_rewards
+                .iter()
                 .min_by(|a, b| a.1.partial_cmp(b.1).unwrap())
                 .map(|(k, _)| k.clone())
             {
@@ -170,7 +171,9 @@ impl DopamineCircuit {
         self.level = self.level.clamp(MIN_DOPAMINE, MAX_DOPAMINE);
 
         // Flow state decays if dopamine drops
-        if self.level < 0.60 { self.in_flow = false; }
+        if self.level < 0.60 {
+            self.in_flow = false;
+        }
     }
 
     /// How rewarding does KAI find a given topic? (−1 = aversive, +1 = rewarding)
@@ -195,10 +198,14 @@ impl DopamineCircuit {
     }
 
     /// True if KAI is in a "flow" state — sustained high-performance engagement.
-    pub fn is_in_flow(&self) -> bool { self.in_flow }
+    pub fn is_in_flow(&self) -> bool {
+        self.in_flow
+    }
 
     /// True if dopamine is below tonic — KAI is in a "dip" state.
-    pub fn is_in_dip(&self) -> bool { self.level < self.tonic - 0.10 }
+    pub fn is_in_dip(&self) -> bool {
+        self.level < self.tonic - 0.10
+    }
 
     /// Normalized dopamine deviation from tonic (−1 to +1).
     /// Positive = above baseline (excited), negative = below (flat/disappointed).
@@ -208,9 +215,13 @@ impl DopamineCircuit {
 
     /// One-line status for TUI/spectate.
     pub fn status_line(&self) -> String {
-        let state = if self.in_flow { "FLOW" }
-                    else if self.is_in_dip() { "dip" }
-                    else { "stable" };
+        let state = if self.in_flow {
+            "FLOW"
+        } else if self.is_in_dip() {
+            "dip"
+        } else {
+            "stable"
+        };
         format!(
             "DA: {:.3} | tonic={:.3} | streak={} | state={} | +events={}",
             self.level, self.tonic, self.streak, state, self.positive_events
@@ -219,13 +230,17 @@ impl DopamineCircuit {
 }
 
 impl Default for DopamineCircuit {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Extract a normalized topic key (first 2 meaningful words of a text).
 fn extract_topic_key(text: &str) -> String {
-    let stop = ["the", "a", "an", "is", "are", "was", "i", "you", "it",
-                "this", "that", "for", "of", "to", "in", "on", "and"];
+    let stop = [
+        "the", "a", "an", "is", "are", "was", "i", "you", "it", "this", "that", "for", "of", "to",
+        "in", "on", "and",
+    ];
     text.split_whitespace()
         .map(|w| w.to_lowercase())
         .map(|w| w.trim_matches(|c: char| !c.is_alphabetic()).to_string())
@@ -246,7 +261,12 @@ mod tests {
         let mut da = DopamineCircuit::new();
         let before = da.level;
         da.fire("consciousness", 0.85, 0.40); // much better than expected
-        assert!(da.level > before, "positive RPE should raise dopamine: {:.3} -> {:.3}", before, da.level);
+        assert!(
+            da.level > before,
+            "positive RPE should raise dopamine: {:.3} -> {:.3}",
+            before,
+            da.level
+        );
     }
 
     #[test]
@@ -254,7 +274,12 @@ mod tests {
         let mut da = DopamineCircuit::new();
         let before = da.level;
         da.fire("calculus", 0.10, 0.70); // much worse than expected
-        assert!(da.level < before, "negative RPE should lower dopamine: {:.3} -> {:.3}", before, da.level);
+        assert!(
+            da.level < before,
+            "negative RPE should lower dopamine: {:.3} -> {:.3}",
+            before,
+            da.level
+        );
     }
 
     #[test]
@@ -274,33 +299,59 @@ mod tests {
         let mut da = DopamineCircuit::new();
         da.fire("shock", 0.95, 0.10); // huge spike
         let after_spike = da.level;
-        for _ in 0..200 { da.decay(); }
-        assert!(da.level < after_spike,
-            "dopamine should decay back toward tonic: {:.3} -> {:.3}", after_spike, da.level);
-        assert!((da.level - da.tonic).abs() < 0.10,
-            "should be near tonic after 200 ticks: level={:.3} tonic={:.3}", da.level, da.tonic);
+        for _ in 0..200 {
+            da.decay();
+        }
+        assert!(
+            da.level < after_spike,
+            "dopamine should decay back toward tonic: {:.3} -> {:.3}",
+            after_spike,
+            da.level
+        );
+        assert!(
+            (da.level - da.tonic).abs() < 0.10,
+            "should be near tonic after 200 ticks: level={:.3} tonic={:.3}",
+            da.level,
+            da.tonic
+        );
     }
 
     #[test]
     fn test_topic_reward_tracking() {
         let mut da = DopamineCircuit::new();
         // Repeatedly succeed at geometry
-        for _ in 0..5 { da.fire("geometry is beautiful", 0.85, 0.50); }
+        for _ in 0..5 {
+            da.fire("geometry is beautiful", 0.85, 0.50);
+        }
         let geom_reward = da.topic_reward("geometry is beautiful");
-        assert!(geom_reward > 0.0, "repeated success should make topic rewarding: {:.3}", geom_reward);
+        assert!(
+            geom_reward > 0.0,
+            "repeated success should make topic rewarding: {:.3}",
+            geom_reward
+        );
 
         // Fail repeatedly at something else
-        for _ in 0..5 { da.fire("tax forms and legal docs", 0.05, 0.50); }
+        for _ in 0..5 {
+            da.fire("tax forms and legal docs", 0.05, 0.50);
+        }
         let tax_reward = da.topic_reward("tax forms and legal docs");
-        assert!(tax_reward < 0.0, "repeated failure should make topic aversive: {:.3}", tax_reward);
+        assert!(
+            tax_reward < 0.0,
+            "repeated failure should make topic aversive: {:.3}",
+            tax_reward
+        );
     }
 
     #[test]
     fn test_dopamine_bounds() {
         let mut da = DopamineCircuit::new();
-        for _ in 0..20 { da.fire("topic", 1.0, 0.0); } // max positive
+        for _ in 0..20 {
+            da.fire("topic", 1.0, 0.0);
+        } // max positive
         assert!(da.level <= MAX_DOPAMINE, "dopamine should not exceed max");
-        for _ in 0..20 { da.fire("topic", 0.0, 1.0); } // max negative
+        for _ in 0..20 {
+            da.fire("topic", 0.0, 1.0);
+        } // max negative
         assert!(da.level >= MIN_DOPAMINE, "dopamine should not go below min");
     }
 
@@ -308,7 +359,10 @@ mod tests {
     fn test_engagement_multiplier_above_one_when_high_da() {
         let mut da = DopamineCircuit::new();
         da.fire("amazing insight", 0.95, 0.30);
-        assert!(da.engagement_multiplier() > 1.0,
-            "high dopamine should boost engagement multiplier: {:.3}", da.engagement_multiplier());
+        assert!(
+            da.engagement_multiplier() > 1.0,
+            "high dopamine should boost engagement multiplier: {:.3}",
+            da.engagement_multiplier()
+        );
     }
 }

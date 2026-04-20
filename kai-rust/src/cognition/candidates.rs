@@ -3,7 +3,6 @@
 /// Biology analog: Pre-synaptic holding zone before long-term potentiation.
 /// A pattern must recur repeatedly with stable field quality before it earns
 /// promotion into durable memory.
-
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -37,7 +36,9 @@ pub struct CandidateBuffer {
 
 impl CandidateBuffer {
     pub fn new() -> Self {
-        Self { entries: HashMap::new() }
+        Self {
+            entries: HashMap::new(),
+        }
     }
 
     /// Observe a dream result. Creates or updates a candidate.
@@ -51,7 +52,9 @@ impl CandidateBuffer {
         is_non_source: bool,
     ) -> Option<&CandidateEntry> {
         let key = text.trim().to_lowercase();
-        if key.is_empty() { return None; }
+        if key.is_empty() {
+            return None;
+        }
 
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -61,31 +64,46 @@ impl CandidateBuffer {
         if let Some(entry) = self.entries.get_mut(&key) {
             entry.seen_count += 1;
             entry.last_seen = now;
-            if phi_g > entry.best_phi_g { entry.best_phi_g = phi_g; }
-            if c > entry.best_c { entry.best_c = c; }
-            if confidence > entry.best_confidence { entry.best_confidence = confidence; }
-            if is_non_source { entry.non_source_count += 1; }
+            if phi_g > entry.best_phi_g {
+                entry.best_phi_g = phi_g;
+            }
+            if c > entry.best_c {
+                entry.best_c = c;
+            }
+            if confidence > entry.best_confidence {
+                entry.best_confidence = confidence;
+            }
+            if is_non_source {
+                entry.non_source_count += 1;
+            }
 
             entry.contradiction_history.push(chi);
-            if entry.contradiction_history.len() > 20 { entry.contradiction_history.remove(0); }
+            if entry.contradiction_history.len() > 20 {
+                entry.contradiction_history.remove(0);
+            }
 
             entry.phi_history.push(phi_g);
-            if entry.phi_history.len() > 20 { entry.phi_history.remove(0); }
+            if entry.phi_history.len() > 20 {
+                entry.phi_history.remove(0);
+            }
         } else {
-            self.entries.insert(key.clone(), CandidateEntry {
-                key: key.clone(),
-                text: text.to_string(),
-                seen_count: 1,
-                best_phi_g: phi_g,
-                best_c: c,
-                best_confidence: confidence,
-                contradiction_history: vec![chi],
-                phi_history: vec![phi_g],
-                non_source_count: if is_non_source { 1 } else { 0 },
-                status: CandidateStatus::Candidate,
-                first_seen: now,
-                last_seen: now,
-            });
+            self.entries.insert(
+                key.clone(),
+                CandidateEntry {
+                    key: key.clone(),
+                    text: text.to_string(),
+                    seen_count: 1,
+                    best_phi_g: phi_g,
+                    best_c: c,
+                    best_confidence: confidence,
+                    contradiction_history: vec![chi],
+                    phi_history: vec![phi_g],
+                    non_source_count: if is_non_source { 1 } else { 0 },
+                    status: CandidateStatus::Candidate,
+                    first_seen: now,
+                    last_seen: now,
+                },
+            );
         }
 
         self.entries.get(&key)
@@ -98,7 +116,8 @@ impl CandidateBuffer {
 
     /// Get active candidates meeting thresholds.
     pub fn get_candidates(&self, min_seen: u32, min_c: f32, min_phi: f32) -> Vec<&CandidateEntry> {
-        self.entries.values()
+        self.entries
+            .values()
             .filter(|e| {
                 e.status == CandidateStatus::Candidate
                     && e.seen_count >= min_seen
@@ -122,6 +141,10 @@ impl CandidateBuffer {
         }
     }
 
-    pub fn count(&self) -> usize { self.entries.len() }
-    pub fn clear(&mut self) { self.entries.clear(); }
+    pub fn count(&self) -> usize {
+        self.entries.len()
+    }
+    pub fn clear(&mut self) {
+        self.entries.clear();
+    }
 }

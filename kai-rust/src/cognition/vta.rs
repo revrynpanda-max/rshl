@@ -74,9 +74,9 @@ pub enum VTAMode {
 impl VTAMode {
     pub fn label(&self) -> &'static str {
         match self {
-            Self::Tonic       => "tonic",
+            Self::Tonic => "tonic",
             Self::PhasicBurst => "phasic-burst",
-            Self::Pause       => "pause",
+            Self::Pause => "pause",
         }
     }
 }
@@ -127,14 +127,14 @@ pub struct VTA {
 impl VTA {
     pub fn new() -> Self {
         Self {
-            tonic_level:   TONIC_OPTIMAL,
+            tonic_level: TONIC_OPTIMAL,
             phasic_signal: 0.0,
-            pause_signal:  0.0,
-            current_mode:  VTAMode::Tonic,
-            total_bursts:  0,
-            total_pauses:  0,
-            in_flow:       false,
-            flow_streak:   0,
+            pause_signal: 0.0,
+            current_mode: VTAMode::Tonic,
+            total_bursts: 0,
+            total_pauses: 0,
+            in_flow: false,
+            flow_streak: 0,
         }
     }
 
@@ -148,23 +148,27 @@ impl VTA {
         if rpe >= PHASIC_THRESHOLD {
             // Positive surprise → phasic burst
             self.phasic_signal = (rpe * 1.4).min(1.0);
-            self.pause_signal  = 0.0;
-            self.current_mode  = VTAMode::PhasicBurst;
+            self.pause_signal = 0.0;
+            self.current_mode = VTAMode::PhasicBurst;
             self.total_bursts += 1;
-            self.flow_streak  += 1;
+            self.flow_streak += 1;
         } else if rpe <= PAUSE_THRESHOLD {
             // Expected reward absent → pause
-            self.pause_signal  = (-rpe * 1.2).min(1.0);
+            self.pause_signal = (-rpe * 1.2).min(1.0);
             self.phasic_signal = 0.0;
-            self.current_mode  = VTAMode::Pause;
+            self.current_mode = VTAMode::Pause;
             self.total_pauses += 1;
-            self.flow_streak   = 0;
+            self.flow_streak = 0;
         } else {
             // Near-zero RPE → tonic mode
             self.phasic_signal = self.phasic_signal * (1.0 - PHASIC_DECAY);
-            self.pause_signal  = self.pause_signal  * (1.0 - PHASIC_DECAY);
-            self.current_mode  = VTAMode::Tonic;
-            if rpe > 0.0 { self.flow_streak += 1; } else { self.flow_streak = 0; }
+            self.pause_signal = self.pause_signal * (1.0 - PHASIC_DECAY);
+            self.current_mode = VTAMode::Tonic;
+            if rpe > 0.0 {
+                self.flow_streak += 1;
+            } else {
+                self.flow_streak = 0;
+            }
         }
 
         // Update tonic: slow EMA toward optimal when things are going well
@@ -173,12 +177,12 @@ impl VTA {
         } else {
             TONIC_OPTIMAL + rpe * 0.05 // slower to drop
         };
-        self.tonic_level = self.tonic_level * (1.0 - TONIC_ALPHA)
-            + tonic_target.clamp(0.20, 0.90) * TONIC_ALPHA;
+        self.tonic_level =
+            self.tonic_level * (1.0 - TONIC_ALPHA) + tonic_target.clamp(0.20, 0.90) * TONIC_ALPHA;
 
         // Flow state: 5+ consecutive positive outcomes with good tonic
-        self.in_flow = self.flow_streak >= 5
-            && (self.tonic_level - TONIC_OPTIMAL).abs() < FLOW_BAND;
+        self.in_flow =
+            self.flow_streak >= 5 && (self.tonic_level - TONIC_OPTIMAL).abs() < FLOW_BAND;
 
         self.build_signal()
     }
@@ -186,7 +190,7 @@ impl VTA {
     /// Process passive tick — decay phasic, drift tonic toward optimal.
     pub fn decay(&mut self) {
         self.phasic_signal *= 1.0 - PHASIC_DECAY;
-        self.pause_signal  *= 1.0 - PHASIC_DECAY;
+        self.pause_signal *= 1.0 - PHASIC_DECAY;
         // Tonic drifts slowly toward optimal even without events
         self.tonic_level += (TONIC_OPTIMAL - self.tonic_level) * TONIC_DRIFT;
         if self.phasic_signal < 0.01 && self.pause_signal < 0.01 {
@@ -203,8 +207,8 @@ impl VTA {
         // Mesolimbic (→ NAc): amplified by phasic, suppressed by pause
         let mesolimbic = match &mode {
             VTAMode::PhasicBurst => (self.tonic_level + self.phasic_signal * 0.8).min(1.0),
-            VTAMode::Pause       => (self.tonic_level - self.pause_signal * 0.6).max(0.0),
-            VTAMode::Tonic       => self.tonic_level,
+            VTAMode::Pause => (self.tonic_level - self.pause_signal * 0.6).max(0.0),
+            VTAMode::Tonic => self.tonic_level,
         };
 
         // Mesocortical (→ PFC): inverted-U from tonic — too high impairs WM
@@ -213,12 +217,12 @@ impl VTA {
 
         VTASignal {
             mode,
-            tonic_level:        self.tonic_level,
-            phasic_amplitude:   self.phasic_signal,
-            pause_depth:        self.pause_signal,
-            mesolimbic_signal:  mesolimbic,
+            tonic_level: self.tonic_level,
+            phasic_amplitude: self.phasic_signal,
+            pause_depth: self.pause_signal,
+            mesolimbic_signal: mesolimbic,
             mesocortical_signal: mesocortical,
-            in_flow:            self.in_flow,
+            in_flow: self.in_flow,
         }
     }
 
@@ -254,7 +258,9 @@ impl VTA {
 }
 
 impl Default for VTA {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -301,8 +307,10 @@ mod tests {
         let mut vta = VTA::new();
         let tonic_sig = vta.current_signal().mesolimbic_signal;
         let burst_sig = vta.process_rpe(0.8);
-        assert!(burst_sig.mesolimbic_signal > tonic_sig,
-            "burst should produce higher mesolimbic signal than tonic");
+        assert!(
+            burst_sig.mesolimbic_signal > tonic_sig,
+            "burst should produce higher mesolimbic signal than tonic"
+        );
     }
 
     #[test]
@@ -310,8 +318,10 @@ mod tests {
         let mut vta = VTA::new();
         let tonic_sig = vta.current_signal().mesolimbic_signal;
         let pause_sig = vta.process_rpe(-0.7);
-        assert!(pause_sig.mesolimbic_signal < tonic_sig,
-            "pause should suppress mesolimbic below tonic");
+        assert!(
+            pause_sig.mesolimbic_signal < tonic_sig,
+            "pause should suppress mesolimbic below tonic"
+        );
     }
 
     #[test]
@@ -328,10 +338,18 @@ mod tests {
         vta_high.tonic_level = 0.95;
         let high_cortical = vta_high.pfc_modulation();
 
-        assert!(opt_cortical > low_cortical,
-            "optimal tonic should beat low tonic for PFC: {:.2} vs {:.2}", opt_cortical, low_cortical);
-        assert!(opt_cortical > high_cortical,
-            "optimal tonic should beat high tonic for PFC: {:.2} vs {:.2}", opt_cortical, high_cortical);
+        assert!(
+            opt_cortical > low_cortical,
+            "optimal tonic should beat low tonic for PFC: {:.2} vs {:.2}",
+            opt_cortical,
+            low_cortical
+        );
+        assert!(
+            opt_cortical > high_cortical,
+            "optimal tonic should beat high tonic for PFC: {:.2} vs {:.2}",
+            opt_cortical,
+            high_cortical
+        );
     }
 
     #[test]
@@ -341,14 +359,21 @@ mod tests {
         vta.process_rpe(0.8);
         assert!(!vta.in_flow, "single burst should not trigger flow");
         // 5+ consecutive positive RPEs should
-        for _ in 0..6 { vta.process_rpe(0.4); }
-        assert!(vta.in_flow, "5+ consistent positive RPEs should trigger flow state");
+        for _ in 0..6 {
+            vta.process_rpe(0.4);
+        }
+        assert!(
+            vta.in_flow,
+            "5+ consistent positive RPEs should trigger flow state"
+        );
     }
 
     #[test]
     fn test_flow_streak_resets_on_pause() {
         let mut vta = VTA::new();
-        for _ in 0..6 { vta.process_rpe(0.5); }
+        for _ in 0..6 {
+            vta.process_rpe(0.5);
+        }
         assert!(vta.in_flow);
         vta.process_rpe(-0.5);
         assert!(!vta.in_flow, "pause should break flow state");
@@ -359,8 +384,13 @@ mod tests {
         let mut vta = VTA::new();
         vta.process_rpe(0.9);
         let before = vta.phasic_signal;
-        for _ in 0..5 { vta.decay(); }
-        assert!(vta.phasic_signal < before, "decay should reduce phasic signal");
+        for _ in 0..5 {
+            vta.decay();
+        }
+        assert!(
+            vta.phasic_signal < before,
+            "decay should reduce phasic signal"
+        );
     }
 
     #[test]
