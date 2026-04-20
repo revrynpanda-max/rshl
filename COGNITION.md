@@ -59,13 +59,71 @@ KAI's brain is partitioned into specialized modules modeled after biological reg
 
 ---
 
-## Voice Engine — NLG Pipeline
-KAI's speech is generated directly from its knowledge cells, replacing pre-written templates with a three-stage synthesis loop:
+## LexSem — Semantic Field Engine
 
-1. **Query Hit Retrieval**: `main.rs` retrieves the top resonating cells from the Universe.
-2. **Cell Synthesis**: `synthesize_from_cells()` weaves the cell text into a response.
-3. **Brain Modulation**: `tone_marker()` injects a maximum of 3 words (e.g., "Not sure —") based on the `conflict` and `confidence` signals.
-4. **Safety Filter**: `identity_safety_filter()` ensures KAI never claims the user's name or identity as its own.
+`src/cognition/lexsem.rs` — KAI's module-level semantic field detector. Runs on every user input before storage and before query routing.
+
+### SemanticField Enum
+
+| Field | Label | Weight | Role |
+| :--- | :--- | :--- | :--- |
+| `Emotional` | `"emotional"` | 0.85 | Feelings, distress, joy, longing |
+| `Cognitive` | `"cognitive"` | 0.80 | Thinking, reasoning, understanding |
+| `Social` | `"social"` | 0.82 | Relationships, communication |
+| `Physical` | `"physical"` | 0.80 | Body, sensation, movement |
+| `Temporal` | `"temporal"` | 0.80 | Time, sequence, duration |
+| `Causal` | `"causal"` | 0.80 | Cause/effect, reasoning chains |
+| `Interrogative` | `"interrogative"` | 0.75 | Question words and inquiry patterns |
+| `Identity` | `"identity"` | 0.85 | Self, existence, being |
+| `Technical` | `"technical"` | 0.82 | Systems, code, logic |
+| `Creative` | `"creative"` | 0.80 | Ideas, imagination, possibility |
+| `Occupation` | `"occupation"` | **0.92** | Roles, jobs, careers, professions |
+
+`Occupation` carries the highest weight (0.92) so that role signals dominate when mixed with other fields.
+
+### Occupation Semantic Bridge
+
+The Occupation field solves the recall gap between stored facts and retrieval queries. `"engineer"` and `"work"` share no BM25 keywords and near-zero cosine similarity — RSHL math alone cannot bridge them without world knowledge.
+
+**Mechanism:**
+1. When Ryan says `"I'm a software engineer"`, LexSem detects `primary_field = Occupation`
+2. `store_concept_cells` filters `key_concepts` to `OCCUPATION_ROLE_WORDS` only → stores `"occupation:engineer"` as a tagged cell
+3. When Ryan asks `"what do I do for work?"`, LexSem detects `primary_field = Occupation` again
+4. The query is enriched: `"what do I do for work? occupation"` before lattice search
+5. Both the stored cell and the enriched query carry the token `"occupation"` → BM25 bridges them
+
+**Constants (in `lexsem.rs`):**
+
+```rust
+pub const OCCUPATION_ROLE_WORDS: &[&str]   // role nouns — stored as cells
+const OCCUPATION_QUERY_WORDS: &[&str]      // query terms — field detection only
+const OCCUPATION_WORDS: &[&str]            // combined — used by build_field_lexicon()
+```
+
+Only `OCCUPATION_ROLE_WORDS` generates cells. Query terms (`work`, `job`, `career`) trigger field detection but are never stored — this prevents noise cells like `"occupation:work"`.
+
+---
+
+## Voice Engine — NLG Pipeline
+
+KAI's speech is generated directly from its knowledge cells. There are **no hardcoded phrase arrays** in the voice engine — every response path queries the lattice.
+
+### generate_response() pipeline
+
+1. **Query Hit Retrieval**: `main.rs` retrieves top resonating cells; Occupation queries are enriched with `" occupation"` before retrieval.
+2. **Filler / Greeting / Farewell**: Short inputs query the lattice for presence/persistence cells — KAI speaks from `"I am present and aware."` not from a pre-written string.
+3. **Cell Synthesis**: `synthesize_from_cells()` weaves the cell text into a response.
+4. **Direct Answer extraction**: `extract_direct_answer()` handles user-fact cells — `"occupation:engineer"` → `"You're an engineer."`, `"I live in Texas"` → `"You live in Texas."`.
+5. **Brain Modulation**: `tone_marker()` injects a maximum of 3 words (e.g., `"Not sure —"`) based on `conflict` and `confidence` signals.
+6. **Safety Filter**: `identity_safety_filter()` ensures KAI never claims the user's name or identity as its own.
+
+### detect_query_type() preprocessing
+
+Input text passes through two normalization steps before pattern matching:
+- **Contraction expansion**: `"what's"` → `"what is"`, `"don't"` → `"do not"`, etc.
+- **Casual opener stripping**: `"so how do you…"` → `"how do you…"`, `"like what is…"` → `"what is…"`
+
+Greeting and farewell checks run on the **original** (un-normalized) text to correctly catch `"what's good"`, `"what's up"` as greetings before they get expanded.
 
 ---
 

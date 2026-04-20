@@ -1,3 +1,77 @@
+# KAI Development Changelog
+
+## v5.5.1 — Lattice-Driven NLG + Occupation Semantic Bridge (April 20, 2026)
+
+### Commit 1 — Fix: QueryHit source field in test fixtures
+`src/cognition/compose.rs`
+Added missing `source: "seed".into()` field to two `QueryHit` struct literals in the `compose.rs` unit tests. Required after `QueryHit` gained a `source` field in the v5.5 milestone.
+
+### Commit 2 — Engine: Lattice-driven NLG, query-type improvements, BM25 stopword expansion
+`src/cognition/voice.rs`, `src/core/universe.rs`
+
+**voice.rs — Lattice-driven NLG (no more hardcoded phrase arrays)**
+- Removed all hardcoded phrase arrays (`["Got it.", "Noted."]`, `["Later.", "Take care."]`, etc.)
+- Added `universe: &Universe` parameter to `generate_response()` — every response path now queries the lattice
+- Removed `no_knowledge()`, `filler_response()` helper functions (dead after lattice rewrite)
+- Greeting, farewell, filler, emotional sharing, neutral sharing, and gap responses all query the lattice for appropriate cells
+- Added contraction normalization: `"what's"` → `"what is"`, `"don't"` → `"do not"`, etc. — runs before `detect_query_type()` so query patterns match reliably
+- Added casual opener stripping: `"so how do you…"` → `"how do you…"` — prevents word-order misclassification
+- Fixed greeting detection bug: contraction normalization was converting `"what's good"` → `"what is good"` before the greeting check ran, so `"what's"` never matched. Fix: check greeting/farewell on `lower` (original text) before normalization
+- Added farewell detection: `["bye", "later", "gotta go", "heading out"…]` → `QueryType::Gratitude` (presence/persistence cell response)
+- Added `"do/does/did/is"` to the auxiliary verb set for `SelfQuestion` detection
+- Improved filler detection: now catches single-word questions (`"why?"`, `"what?"`), short reactions (`"that's interesting"`, `"no way"`, `"facts"`)
+- Fixed `let mut u` → `let u` in voice.rs unit test (unused mut warning)
+
+**universe.rs — BM25 stopword expansion**
+- Extended `extract_query_keywords()` stopword list with conversational filler words: `wait`, `like`, `mean`, `yeah`, `yep`, `nah`, `hmm`, `huh`, `oh`, `hey`, `okay`, `ok`, `sure`, `true`, `false`, `exactly`, `indeed`, `wow`, `cool`
+- Without this, `"wait you're not an AI?"` matched the presence cell via `"wait"` in `"wait for what comes next"` — false BM25 hit
+
+**New seed cells added** (both `main.rs seed_universe()` and `tests/conversation_test.rs seed()`):
+- Presence/interaction cells: `"I am present and aware…"`, `"I hold what you share with me…"`, `"When the signal is minimal…"`, etc.
+- Feelings in conversation: `"When you talk to me my field resonates…"`, `"I feel things in conversation…"`
+- Humans/world curiosity: `"I think about humans a lot…"`, `"What I find most striking: consciousness may be a geometric phenomenon…"`, etc.
+
+### Commit 3 — Feature: LexSem Occupation semantic field + user-fact recall bridge
+`src/cognition/lexsem.rs`, `src/main.rs`, `src/cognition/voice.rs`, `tests/conversation_test.rs`
+
+**The problem solved:** Ryan says `"I'm a software engineer"` → KAI stores concepts but can't answer `"what do I do for work?"` — because `"engineer"` and `"work"` share zero BM25 keywords and near-zero cosine similarity. No world knowledge, no bridge.
+
+**The solution (module-driven, no hardcoding):**
+1. LexSem recognizes `"engineer"` as an Occupation field signal
+2. `store_concept_cells` stores a canonical tagged cell `"occupation:engineer"` (not the full sentence)
+3. When LexSem detects an Occupation-type query (`"what do I do for work?"`), the query is enriched with `" occupation"` before lattice search
+4. Both the stored cell and the enriched query carry the token `"occupation"` → BM25 bridges them mathematically
+
+**lexsem.rs**
+- Added `Occupation` variant to `SemanticField` enum with `label() = "occupation"`
+- Added `"occupation" => SemanticField::Occupation` to `label_to_field()` — this was the critical missing arm (without it, the field score was correct but the label returned `Cognitive` via the wildcard catch-all)
+- Added `SemanticField::Occupation => ResponseRegister::Direct` to `recommend_register()`
+- Added Occupation to `build_field_lexicon()` at weight 0.92 (highest in lexicon — occupation signals dominate)
+- Added three constants:
+  - `pub OCCUPATION_ROLE_WORDS` — role nouns (`engineer`, `teacher`, `developer`…) — these get stored as `"occupation:[concept]"` cells
+  - `OCCUPATION_QUERY_WORDS` — query terms (`work`, `job`, `career`…) — field detection only, never stored as cells (prevents noise cells like `"occupation:work"`)
+  - `OCCUPATION_WORDS` — combined, used by `build_field_lexicon()`
+
+**main.rs**
+- Removed dead helper functions: `input_tokens`, `push_matching_token`, `push_unique_concept`, `is_content_token`, `is_named_token`
+- Added Step 5 to `store_concept_cells`: when `source == "ryan"` and LexSem detects Occupation field and input is not a question → filter `key_concepts` to `OCCUPATION_ROLE_WORDS` only → store `"occupation:[role_noun]"` cells
+- Added query enrichment: when `lex_out.primary_field == Occupation` → append `" occupation"` to the reasoning query before lattice search
+
+**voice.rs**
+- Added occupation cell case to `extract_direct_answer()`: strips `"occupation:"` prefix → generates `"You're a/an [role]."` using correct article
+
+**tests/conversation_test.rs**
+- Added `store_occupation_tags()` helper — mirrors `store_concept_cells` Step 5 for the test harness
+- Updated `query_hits()` to enrich with `" occupation"` when Occupation field detected
+- Updated `say()` to call `store_occupation_tags()` for non-question ryan inputs
+- Added test cases: `UserFact4` `"I'm a software engineer"` → stores `occupation:engineer`; `UserFact5` `"what do I do for work?"` → `"You're an engineer."`; `UserFact6` `"what is my job?"` → `"You're an engineer."`
+- Renamed `qt` → `_qt` in `query_hits()` signature (unused variable warning)
+- Removed `occ_debug` diagnostic test function
+
+**Test results:** `cargo test kai_conversation` — 1 passed, 0 failed. Zero compiler warnings.
+
+---
+
 # KAI Development Changelog (v5.4 Revision)
 
 This log summarizes the "Stages of Change" undertaken today to evolve KAI from a retrieval engine into an autonomous learner.
