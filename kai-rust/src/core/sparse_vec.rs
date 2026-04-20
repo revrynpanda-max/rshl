@@ -67,13 +67,49 @@ impl SparseVec {
         let normalizer = super::normalize::get_normalizer();
         let normalized_tokens = normalizer.normalize_text(text);
 
+        // ── Proper noun detection — names and entities get boosted weight (6x vs 3x) ──
+        // A sentence like "well what is your name? im Ryan Nice to meet you" should have
+        // "ryan" dominate the vector — not be drowned out by filler words.
+        // Detection rules:
+        //   1. Known core entities always boost (ryan, kai, rshl)
+        //   2. Capitalized words at non-sentence-start positions (mid-sentence proper nouns)
+        //   3. ALL-CAPS tokens (acronyms: RSHL, AI, DNA, etc.)
+        let known_entities: &[&str] = &["ryan", "kai", "rshl", "kaii"];
+        let original_words: Vec<&str> = text.split_whitespace().collect();
+        let proper_nouns: std::collections::HashSet<String> = {
+            let mut set = std::collections::HashSet::new();
+            for (i, word) in original_words.iter().enumerate() {
+                let clean: String = word.chars().filter(|c| c.is_alphabetic()).collect();
+                if clean.len() < 2 { continue; }
+                let lower_clean = clean.to_lowercase();
+                // Always boost known core entities regardless of position
+                if known_entities.contains(&lower_clean.as_str()) {
+                    set.insert(lower_clean.clone());
+                    continue;
+                }
+                // Capitalized mid-sentence = proper noun (position > 0, not just sentence-start caps)
+                let first_upper = clean.chars().next().map(|c| c.is_uppercase()).unwrap_or(false);
+                if i > 0 && first_upper {
+                    set.insert(lower_clean.clone());
+                }
+                // ALL-CAPS tokens (acronyms) — always a proper noun signal
+                if clean.chars().all(|c| c.is_uppercase()) {
+                    set.insert(lower_clean);
+                }
+            }
+            set
+        };
+
         for token in &normalized_tokens {
             let base = hash_word(token);
             let n_active = 12;
+            // Proper nouns get 6x weight — names and entities are the most semantically
+            // discriminative words. "Ryan" in a sentence matters far more than "nice" or "meet".
+            let word_weight: i32 = if proper_nouns.contains(token.as_str()) { 6 } else { 3 };
             for k in 0..n_active {
                 let idx = (base.wrapping_add(k * 2654435761)) % DIM;
-                let sign = if (base.wrapping_add(k * 1442695040)) % 2 == 0 { 3 } else { -3 };
-                v[idx] += sign; // 3x weight for normalized words
+                let sign = if (base.wrapping_add(k * 1442695040)) % 2 == 0 { word_weight } else { -word_weight };
+                v[idx] += sign;
             }
         }
 
