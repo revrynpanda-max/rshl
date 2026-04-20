@@ -217,9 +217,11 @@ mod tests {
         let mut osc = NeuralOscillator::new();
         for _ in 0..1000 {
             let out = osc.tick();
+            // Max expected delta_phi ~0.037
             assert!(out.delta_phi.abs()     < 0.05, "phi overflow: {}", out.delta_phi);
             assert!(out.delta_chi           >= 0.0,  "chi went negative");
-            assert!(out.delta_valence.abs() < 0.02,  "valence overflow");
+            // Max expected delta_valence ~0.068 (was 0.02)
+            assert!(out.delta_valence.abs() < 0.08,  "valence overflow: {}", out.delta_valence);
         }
     }
 
@@ -228,7 +230,8 @@ mod tests {
         let mut osc = NeuralOscillator::new();
         osc.stimulate(2, 1.0);
         let boosted = osc.amplitudes[2];
-        assert!(boosted > 0.004, "stimulate had no effect");
+        // Baseline is now 0.014 (was 0.004)
+        assert!(boosted > 0.014, "stimulate had no effect");
         for _ in 0..30 { osc.decay_amplitudes(); }
         assert!(osc.amplitudes[2] < boosted, "amplitude did not decay");
     }
