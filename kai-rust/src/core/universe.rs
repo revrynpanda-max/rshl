@@ -2,6 +2,15 @@
 ///
 /// Each cell is a belief: text + vector + region + strength + metadata.
 /// ALL queries use rayon parallel cosine across all 12 CPU threads.
+///
+/// Scoring uses a hybrid of:
+///   1. Cosine similarity on the 4096-dim sparse ternary vector (semantic layer)
+///   2. Keyword overlap — shared significant words between query and cell (exact match layer)
+///
+/// This is the same dual-layer approach that makes Google search fast and precise:
+/// semantic embeddings catch conceptual resonance, keyword overlap catches exact term hits.
+/// "What is RSHL?" finds the RSHL cell because "rshl" appears in both — even if the
+/// full-phrase cosine similarity is diluted by surrounding words.
 
 use rayon::prelude::*;
 
@@ -26,12 +35,67 @@ pub struct QueryHit {
     pub region: String,
     pub score: f32,
     pub strength: f32,
+    /// Source of the cell: "seed", "ryan", "conversation", "identity", etc.
+    /// Voice synthesis uses this to skip user-stored utterances as KAI's own words.
+    #[serde(default)]
+    pub source: String,
 }
 
 /// The Universe holds all of KAI's memory cells.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Universe {
     cells: Vec<Cell>,
+}
+
+// ── Keyword overlap helpers (BM25-style exact match layer) ───────────────────
+
+/// Extract significant keywords from a query — stopwords removed, ≥3 chars.
+/// These are the terms we expect to literally appear in a matching cell.
+fn extract_query_keywords(text: &str) -> Vec<String> {
+    const STOPWORDS: &[&str] = &[
+        "what","is","are","was","were","the","a","an","do","does","did",
+        "how","why","who","where","when","can","could","will","would","should",
+        "have","has","had","i","you","me","my","your","it","its","we","they",
+        "their","this","that","these","those","in","on","at","to","for","of",
+        "with","by","from","and","or","but","not","no","so","just","very",
+        "more","get","let","make","say","go","right","now","here","there",
+        "up","out","if","then","than","also","well","even","still","too",
+        "only","been","about","into","over","after","before","be","please",
+        "tell","much","some","any","all","each","which","its","whose",
+        // Casual fillers that add noise — semantically empty in queries
+        "again","actually","basically","literally","really","kinda","sorta",
+        "tbh","ngl","lol","haha","thing","things","something","anything",
+        "nothing","everything","ever","never","always","sometimes","often",
+        // Conversational openers / hedge words — carry no topic signal
+        "wait","like","mean","yeah","yep","nah","hmm","huh","oh","hey",
+        "okay","ok","sure","true","false","exactly","indeed","wow","cool",
+    ];
+    text.to_lowercase()
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty() && w.len() >= 3 && !STOPWORDS.contains(w))
+        .map(|w| w.to_string())
+        .collect()
+}
+
+/// Score how many query keywords appear in cell text (0.0–1.0).
+/// Uses morphological prefix matching for words ≥4 chars so "dream" matches "dreaming",
+/// "feel" matches "feelings", "work" matches "working", etc.
+fn keyword_overlap_score(query_words: &[String], cell_text: &str) -> f32 {
+    if query_words.is_empty() { return 0.0; }
+    let cell_lower = cell_text.to_lowercase();
+    let matches = query_words.iter().filter(|qw| {
+        let q = qw.as_str();
+        cell_lower
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|cw| !cw.is_empty())
+            .any(|cw| {
+                cw == q
+                // Morphological: one is prefix of the other (min 4 chars both sides)
+                || (q.len() >= 4 && cw.len() >= 4
+                    && (cw.starts_with(q) || q.starts_with(cw)))
+            })
+    }).count();
+    matches as f32 / query_words.len() as f32
 }
 
 impl Universe {
@@ -57,18 +121,25 @@ impl Universe {
 
     /// Query for the top-N most similar cells.
     /// Uses rayon parallel iteration — all 12 CPU threads compute cosine simultaneously.
+    /// Scoring = 60% cosine similarity (semantic) + 40% keyword overlap (exact match).
+    /// The keyword layer is the "inverted index" signal: "what is RSHL?" finds the RSHL
+    /// cell because "rshl" appears in both, even if the phrase-level cosine is diluted.
     pub fn query(&self, text: &str, n: usize) -> Vec<QueryHit> {
         let q = SparseVec::encode(text);
+        let query_keywords = extract_query_keywords(text);
         let mut scored: Vec<(usize, f32)> = self
             .cells
             .par_iter()
             .enumerate()
             .map(|(i, cell)| {
-                let raw = q.cosine(&cell.vec);
+                let cosine = q.cosine(&cell.vec);
+                let kw = keyword_overlap_score(&query_keywords, &cell.text);
+                // Hybrid: semantic resonance + exact keyword match
+                let raw = 0.55 * cosine + 0.45 * kw;
                 let boosted = raw * (0.5 + 0.5 * cell.strength.min(2.0));
                 (i, boosted)
             })
-            .filter(|(_, s)| *s > 0.1)
+            .filter(|(_, s)| *s > 0.08)
             .collect();
 
         scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
@@ -83,6 +154,7 @@ impl Universe {
                     region: cell.region.clone(),
                     score,
                     strength: cell.strength,
+                    source: cell.source.clone(),
                 }
             })
             .collect()
@@ -90,15 +162,19 @@ impl Universe {
 
     /// Query only within a specific region — used for self/identity questions
     /// to prevent world-bridge reasoning cells from bleeding into personal answers.
+    /// Also uses hybrid cosine + keyword scoring for consistent exact-term retrieval.
     pub fn query_region(&self, text: &str, region: &str, n: usize) -> Vec<QueryHit> {
         let q = SparseVec::encode(text);
+        let query_keywords = extract_query_keywords(text);
         let mut scored: Vec<(usize, f32)> = self
             .cells
             .par_iter()
             .enumerate()
             .filter(|(_, cell)| cell.region == region && cell.source != "conversation")
             .map(|(i, cell)| {
-                let raw = q.cosine(&cell.vec);
+                let cosine = q.cosine(&cell.vec);
+                let kw = keyword_overlap_score(&query_keywords, &cell.text);
+                let raw = 0.55 * cosine + 0.45 * kw;
                 let boosted = raw * (0.5 + 0.5 * cell.strength.min(4.0));
                 (i, boosted)
             })
@@ -117,6 +193,7 @@ impl Universe {
                     region: cell.region.clone(),
                     score,
                     strength: cell.strength,
+                    source: cell.source.clone(),
                 }
             })
             .collect()
@@ -234,6 +311,7 @@ impl Universe {
 
     /// Query with a pre-encoded vector (for the reasoner's iterative chain).
     /// Uses rayon parallel iteration — all 12 CPU threads compute cosine simultaneously.
+    /// Vector-only path — no keyword layer since we don't have the original text here.
     pub fn query_vec(&self, q: &SparseVec, n: usize) -> Vec<(&Cell, f32)> {
         let mut scored: Vec<(usize, f32)> = self
             .cells
