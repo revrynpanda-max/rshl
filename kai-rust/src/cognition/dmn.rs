@@ -337,7 +337,6 @@ impl Default for DefaultModeNetwork {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::thread::sleep;
 
     #[test]
     fn test_no_fire_when_fresh_input() {

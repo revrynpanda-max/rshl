@@ -398,7 +398,7 @@ mod tests {
     fn test_confidence_rises_with_history() {
         let mut sts = STS::new();
         let r1 = sts.read("what is this", 0.2);
-        let r2 = sts.read("and how does it work", 0.2);
+        let _r2 = sts.read("and how does it work", 0.2);
         let r3 = sts.read("can you explain more about the details", 0.2);
         assert!(r3.intent_confidence > r1.intent_confidence,
             "confidence should rise with more history: {:.2} → {:.2}",
