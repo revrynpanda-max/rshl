@@ -1,21 +1,30 @@
-# Force Rust to be the dominant language
+# Force Rust to be the absolute dominant language
 *.rs linguist-detectable=true
 *.rs linguist-language=Rust
+/kai-rust/**/*.rs linguist-detectable=true
+/kai-rust/**/*.rs linguist-language=Rust
 
-# Downplay Makefiles and Build Scripts
+# Hide the root-level TypeScript UI directory (which is 73%+ of the repo size)
+/src/** linguist-detectable=false
+
+# Hide all build artifacts and temporary folders
+/kai-build*/** linguist-detectable=false
+/build/** linguist-detectable=false
+/target/** linguist-detectable=false
+
+# Hide Makefiles and configuration scripts everywhere
 Makefile linguist-detectable=false
 makefile linguist-detectable=false
 *.mk linguist-detectable=false
 *.cmake linguist-detectable=false
 CMakeLists.txt linguist-detectable=false
+Cargo.lock linguist-detectable=false
+package-lock.json linguist-detectable=false
 
-# Treat certain files as vendored/data to exclude from stats
+# Treat certain static files as vendored/data
 google-10000-english-usa.txt linguist-vendored
 *.json linguist-data
 *.md linguist-documentation
 *.bat linguist-vendored
 *.cmd linguist-vendored
-
-# Downplay large config files
-Cargo.lock linguist-detectable=false
-package-lock.json linguist-detectable=false
+*.py linguist-detectable=false
