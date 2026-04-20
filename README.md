@@ -28,7 +28,7 @@ Think of KAI's memory as a vast, multi-dimensional landscape. Every concept and 
 ---
 
 ## What's inside
-KAI is powered by a complex network of 78 specialized modules that model areas of a biological brain—handling everything from dopamine-driven curiosity to emotional salience and long-term memory.
+KAI is powered by a complex network of **[78 specialized modules](COGNITION.md#78-neuro-biometric-modules)** that model areas of a biological brain—handling everything from dopamine-driven curiosity to emotional salience and long-term memory.
 
 - **Dynamic Emotional Intelligence**: 18 neural signals (like curiosity, confidence, and warmth) shape how KAI feels and speaks.
 - **Recursive Learning**: The more you talk about a topic, the more "solid" it becomes in KAI's mind.
