@@ -19,7 +19,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph},
+    widgets::{Block, Borders, Paragraph, Wrap},
     Frame, Terminal,
 };
 use std::io::Write;
@@ -96,6 +96,10 @@ struct App {
     lexicon: Lexicon,
     turns: Vec<Turn>,
     input: String,
+    /// Cursor position within the input string (char index, not byte index)
+    input_cursor: usize,
+    /// How many lines to scroll UP from the bottom (0 = pinned to newest message)
+    chat_scroll: u16,
     tick: u64,
     dream_count: u64,
     last_dream_text: String,
@@ -491,6 +495,8 @@ impl App {
             lexicon,
             turns: Vec::new(),
             input: String::new(),
+            input_cursor: 0,
+            chat_scroll: 0,
             tick,
             dream_count: loaded_dream_count,
             last_dream_text: String::new(),
@@ -1563,7 +1569,11 @@ impl App {
         let lower = input.to_lowercase();
 
         // ── Don't learn from commands or questions ─────────────────────────
-        if input.ends_with('?') { return None; }
+        // Check for ANY question mark — not just at end. Compound inputs like
+        // "well what is your name? im Ryan Nice to meet you" contain a question
+        // mid-sentence. Storing those creates echo cells that score 100% when
+        // KAI queries its own name and finds the user's own words.
+        if input.contains('?') { return None; }
         // Don't store question-word sentences — "what is your name" is a question
         // even without '?' and must not become an echo memory cell.
         if lower.starts_with("what ") || lower.starts_with("who ")
@@ -1574,6 +1584,43 @@ impl App {
             || lower.starts_with("did ") || lower.starts_with("can ")
             || lower.starts_with("could ") || lower.starts_with("would ")
         {
+            return None;
+        }
+        // Also block KAI-trigger detection for inputs that CONTAIN a question clause
+        // "well what is your name? im Ryan" — "your name" matches kai_triggers
+        // but it's still a question, not a teaching statement. Block it.
+        let contains_question_clause = lower.contains("what is your") || lower.contains("what's your")
+            || lower.contains("who are you") || lower.contains("what are you")
+            || lower.contains("what is my") || lower.contains("what's my")
+            || (lower.contains("what") && lower.contains("your"));
+        if contains_question_clause { return None; }
+
+        // Don't store greeting-style openers as identity cells.
+        // "Hey again, My name is Ryan, i say again because I'm your creator..."
+        // This stores the whole greeting as a cell, which then scores 100% on the next query.
+        // Only store the factual content, not the social wrapper.
+        if lower.starts_with("hey ") || lower.starts_with("hi ") || lower.starts_with("hello ")
+            || lower.starts_with("hey,") || lower.starts_with("hi,")
+        {
+            // It started as a greeting — try to extract just the factual claim after the greeting
+            // e.g. "Hey again, My name is Ryan" → learn "My name is Ryan" separately
+            // Find "my name is" or "i am" or "i'm" after the greeting opener
+            let fact_start = lower.find("my name is ")
+                .or_else(|| lower.find(", i am ").map(|p| p + 2))
+                .or_else(|| lower.find(", i'm ").map(|p| p + 2))
+                .or_else(|| lower.find(". i am ").map(|p| p + 2))
+                .or_else(|| lower.find(". i'm ").map(|p| p + 2));
+            if let Some(pos) = fact_start {
+                // Store only the fact portion, not the full greeting
+                let fact = input[pos..].trim();
+                if fact.len() > 5 && !fact.contains('?') {
+                    let strength = self.amygdala.gate(fact, "ryan", 2.0);
+                    let _ = self.universe.store_or_reinforce(fact, "memory", "ryan", strength);
+                    let tagged = format!("[about-ryan] {}", fact);
+                    let _ = self.universe.store_or_reinforce(&tagged, "memory", "ryan", strength * 0.9);
+                }
+            }
+            // Don't store the full greeting sentence
             return None;
         }
         // Don't store correction-style inputs — they echo back as nonsense
@@ -2843,7 +2890,9 @@ impl App {
         // Skip pure questions — they echo back as nonsense hits.
         // Very low strength (0.3) so they never win queries over real knowledge.
         let lower_input_check = input.to_lowercase();
-        let is_question_input = input.ends_with('?')
+        // Skip storing if there's ANY '?' in the input (catches embedded questions
+        // in compound sentences like "well what is your name? im Ryan Nice to meet you")
+        let is_question_input = input.contains('?')
             || lower_input_check.starts_with("what ")
             || lower_input_check.starts_with("who ")
             || lower_input_check.starts_with("where ")
@@ -2977,7 +3026,11 @@ impl App {
             || lower_reasoning.contains("your name")
             || lower_reasoning.contains("who are you")
             || lower_reasoning.contains("what are you")
-            || lower_reasoning.contains("yourself");
+            || lower_reasoning.contains("yourself")
+            || lower_reasoning.contains("what is yours")
+            || lower_reasoning.contains("what's yours")
+            // "Hi my name is Ryan, what is yours?" — compound input, name context
+            || (lower_reasoning.contains("yours") && lower_reasoning.contains("name"));
         let hits = if is_self_query {
             // Query broadly, then filter out Ryan-facts — KAI should never
             // confuse Ryan's personal information with its own identity.
@@ -2992,6 +3045,19 @@ impl App {
                     && !(t.starts_with("my name is") && t.contains("ryan"))
                     && !(t.starts_with("i live") || t.starts_with("i work")
                          || t.starts_with("i am ryan") || t.starts_with("i'm ryan"))
+                    // Exclude echo cells — user's own input stored as "user asked: ..."
+                    // These score very high for similar inputs but contain Ryan's words, not KAI's facts
+                    && !(t.starts_with("user asked:") && (t.contains("ryan") || t.contains("my name")))
+                    && !t.starts_with("user asked: hi my name")
+                    && !t.starts_with("user asked: hello my name")
+                    && !t.starts_with("user asked: my name is")
+                    // Filter out cells that contain question patterns — those are user questions
+                    // that got stored as identity cells (e.g. "well what is your name? im Ryan...")
+                    && !t.contains("what is your name")
+                    && !t.contains("what's your name")
+                    && !(t.contains('?') && t.contains("your name"))
+                    // Filter out any cell that is primarily a question (has '?' and no KAI identity marker)
+                    && !(t.contains('?') && !t.contains("kai") && t.len() > 20)
                 })
                 .collect();
             // Sort: prefer cells that explicitly name KAI
@@ -4454,15 +4520,67 @@ fn shimmer_spans(text: &str, elapsed_ms: u128) -> Vec<Span<'static>> {
 }
 
 // ── UI Rendering ──────────────────────────────────────────────────────────────
+
+/// Compute how many terminal lines the input text will occupy when word-wrapped
+/// inside a box of the given inner_width. Returns (total_lines, cursor_row, cursor_col).
+fn compute_input_layout(text: &str, cursor_char: usize, inner_width: usize) -> (u16, u16, u16) {
+    if inner_width == 0 {
+        return (1, 0, 0);
+    }
+    // Walk through the text character by character, wrapping at inner_width.
+    // Track both the absolute cursor position and the current row/col.
+    let mut row: u16 = 0;
+    let mut col: u16 = 0;
+    let mut cursor_row: u16 = 0;
+    let mut cursor_col: u16 = 0;
+    let chars: Vec<char> = text.chars().collect();
+    let total = chars.len();
+
+    for i in 0..=total {
+        if i == cursor_char {
+            cursor_row = row;
+            cursor_col = col;
+        }
+        if i == total { break; }
+        let ch = chars[i];
+        if ch == '\n' {
+            row += 1;
+            col = 0;
+        } else {
+            col += 1;
+            if col >= inner_width as u16 {
+                row += 1;
+                col = 0;
+            }
+        }
+    }
+
+    let total_lines = row + 1;
+    (total_lines, cursor_row, cursor_col)
+}
+
 fn ui(f: &mut Frame, app: &App) {
+    let full = f.area();
+
+    // ── Compute dynamic input height ──────────────────────────────────────────
+    // The prompt "  ❯  " is 5 chars wide. Inner text area = full width - borders(2) - prompt(5).
+    let prompt_width: usize = 5; // "  ❯  "
+    let inner_width = (full.width as usize).saturating_sub(2 + prompt_width);
+    let (text_lines, _, _) = compute_input_layout(&app.input, app.input_cursor, inner_width.max(1));
+
+    // Input area = top border(1) + hint(1) + text lines (min 1) + bottom padding(1)
+    // Cap at 10 lines of text so it doesn't swallow the whole screen
+    let text_lines_clamped = text_lines.min(10).max(1);
+    let input_height = 1 + 1 + text_lines_clamped + 1; // border + hint + text + padding
+
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),   // Compact status bar
-            Constraint::Min(5),      // Chat fills everything else
-            Constraint::Length(4),   // Input bar: top border + hint + input + padding
+            Constraint::Length(3),              // Status bar
+            Constraint::Min(5),                  // Chat / mindview
+            Constraint::Length(input_height),    // Dynamic input box
         ])
-        .split(f.area());
+        .split(full);
 
     render_header(f, app, chunks[0]);
     if app.spectate_mode {
@@ -4748,11 +4866,37 @@ fn render_messages(f: &mut Frame, app: &App, area: Rect) {
         }
     }
 
-    // Always scroll to bottom — newest content pinned to the bottom of the area
-    let total  = lines.len() as u16;
-    let scroll = total.saturating_sub(area.height);
+    let total_lines = lines.len() as u16;
+    let visible_height = area.height;
 
-    let messages = Paragraph::new(lines).scroll((scroll, 0));
+    // ── Scroll logic ──────────────────────────────────────────────────────────
+    // chat_scroll=0 means pinned to bottom (newest messages).
+    // chat_scroll>0 means scrolled UP by that many lines.
+    // Clamp so you can't scroll past the top.
+    let max_scroll = total_lines.saturating_sub(visible_height);
+    let actual_scroll = app.chat_scroll.min(max_scroll);
+    // Convert: bottom-pinned offset = total - height - scroll_up
+    let scroll_from_top = max_scroll.saturating_sub(actual_scroll);
+
+    // ── Scroll indicator ──────────────────────────────────────────────────────
+    // Show at the top of the message area when scrolled up, so it's clear there's newer content below.
+    let is_scrolled = actual_scroll > 0;
+    if is_scrolled {
+        // Replace the first visible line with a scroll indicator bar
+        let indicator_text = format!(
+            "  ↑ PageUp/↓ PageDn · {} lines above · press PageDn to go newer  ↑",
+            actual_scroll
+        );
+        // Insert indicator at position scroll_from_top (top of visible window)
+        if (scroll_from_top as usize) < lines.len() {
+            lines.insert(scroll_from_top as usize, Line::from(Span::styled(
+                indicator_text,
+                Style::default().fg(Color::Yellow),
+            )));
+        }
+    }
+
+    let messages = Paragraph::new(lines).scroll((scroll_from_top, 0));
     f.render_widget(messages, area);
 }
 
@@ -4853,24 +4997,78 @@ fn render_mindview(f: &mut Frame, app: &App, area: Rect) {
 }
 
 fn render_input(f: &mut Frame, app: &App, area: Rect) {
-    // Hint line — keyboard shortcuts, gray, compact
+    // ── Hint bar ──────────────────────────────────────────────────────────────
     let hint = Line::from(Span::styled(
-        "  esc quit  ·  ctrl+c save+quit  ·  spectate mindview  ·  help",
+        "  esc quit  ·  ctrl+c save+quit  ·  spectate  ·  ←→ cursor  ·  PgUp/PgDn scroll  ·  enter send",
         Style::default().fg(Color::DarkGray),
     ));
 
-    // Input line — cyan prompt, white text, blinking-block cursor
+    // ── Build the wrapped input text ──────────────────────────────────────────
+    // The content area inside the block borders is area.width - 2.
+    // The prompt "  ❯  " is 5 chars. Text wraps inside the remaining width.
+    // On continuation lines we indent by 5 spaces to align under the text.
+    let prompt = "  ❯  ";
+    let prompt_width: usize = 5;
+    // inner_width = total - left_border(1) - right_border(1) - prompt(5)
+    let inner_width = (area.width as usize).saturating_sub(2 + prompt_width).max(1);
+
+    let cursor_pos = app.input_cursor.min(app.input.chars().count());
+    let (_, cursor_row, cursor_col) = compute_input_layout(&app.input, cursor_pos, inner_width);
+
+    // Build all Lines for the paragraph.
+    // Line 0: prompt + text (word-wrapped by Ratatui)
+    // Continuation lines are indented with spaces equal to prompt width.
+    // We build a single rich Line for the first line; Ratatui wraps it.
+    // To show the cursor visually we split at cursor position.
+    let chars: Vec<char> = app.input.chars().collect();
+    let total = chars.len();
+
+    let before: String = chars[..cursor_pos].iter().collect();
+    let at_cursor: String = if cursor_pos < total {
+        chars[cursor_pos].to_string()
+    } else {
+        " ".to_string()
+    };
+    let after: String = if cursor_pos < total {
+        chars[cursor_pos + 1..].iter().collect()
+    } else {
+        String::new()
+    };
+
+    // First (and possibly only) displayed line has the prompt
     let input_line = Line::from(vec![
-        Span::styled("  ❯  ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-        Span::styled(app.input.clone(), Style::default().fg(Color::White)),
-        Span::styled("█", Style::default().fg(Color::Cyan)),
+        Span::styled(prompt, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+        Span::styled(before, Style::default().fg(Color::White)),
+        // Cursor block — cyan background, black text
+        Span::styled(
+            at_cursor,
+            Style::default().fg(Color::Black).bg(Color::Cyan).add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(after, Style::default().fg(Color::White)),
     ]);
 
     let input_widget = Paragraph::new(vec![hint, input_line])
-        .block(Block::default()
-            .borders(Borders::TOP)
-            .border_style(Style::default().fg(Color::DarkGray)));
+        .block(
+            Block::default()
+                .borders(Borders::TOP)
+                .border_style(Style::default().fg(Color::DarkGray)),
+        )
+        .wrap(Wrap { trim: false }); // ← word-wrap enabled — this is the key change
+
     f.render_widget(input_widget, area);
+
+    // ── Position the real terminal cursor ─────────────────────────────────────
+    // area.y = top of input box
+    // +1 for the TOP border
+    // +1 for the hint line
+    // +cursor_row for how many wrapped lines the cursor is on
+    // area.x + 1 (left border) + prompt_width + cursor_col
+    let cursor_screen_x = area.x + 1 + prompt_width as u16 + cursor_col;
+    let cursor_screen_y = area.y + 1 + 1 + cursor_row; // border + hint + row
+    // Clamp to area bounds so it never goes off-screen
+    if cursor_screen_y < area.y + area.height && cursor_screen_x < area.x + area.width {
+        f.set_cursor_position((cursor_screen_x, cursor_screen_y));
+    }
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
@@ -4928,17 +5126,80 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             app.should_quit = true;
                         }
                         KeyCode::Enter => {
+                            app.input_cursor = 0;
+                            app.chat_scroll = 0; // snap to bottom when sending
                             app.process_input();
+                        }
+                        // ── Chat scrolling ───────────────────────────────────
+                        KeyCode::PageUp => {
+                            app.chat_scroll = app.chat_scroll.saturating_add(10);
+                        }
+                        KeyCode::PageDown => {
+                            app.chat_scroll = app.chat_scroll.saturating_sub(10);
+                        }
+                        // Ctrl+Home → top of history, Ctrl+End → bottom
+                        KeyCode::Up if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                            app.chat_scroll = app.chat_scroll.saturating_add(3);
+                        }
+                        KeyCode::Down if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                            app.chat_scroll = app.chat_scroll.saturating_sub(3);
                         }
                         KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                             app.save_state();
                             app.should_quit = true;
                         }
-                        KeyCode::Backspace => {
-                            app.input.pop();
+                        // ── Cursor movement ──────────────────────────────────
+                        KeyCode::Left => {
+                            if app.input_cursor > 0 {
+                                app.input_cursor -= 1;
+                            }
                         }
+                        KeyCode::Right => {
+                            let char_count = app.input.chars().count();
+                            if app.input_cursor < char_count {
+                                app.input_cursor += 1;
+                            }
+                        }
+                        KeyCode::Home => {
+                            app.input_cursor = 0;
+                        }
+                        KeyCode::End => {
+                            app.input_cursor = app.input.chars().count();
+                        }
+                        // ── Delete forward (Del key) ─────────────────────────
+                        KeyCode::Delete => {
+                            let char_count = app.input.chars().count();
+                            if app.input_cursor < char_count {
+                                // Find byte position of cursor and remove that char
+                                let byte_pos: usize = app.input.char_indices()
+                                    .nth(app.input_cursor)
+                                    .map(|(b, _)| b)
+                                    .unwrap_or(app.input.len());
+                                let ch = app.input[byte_pos..].chars().next().unwrap();
+                                app.input.remove(byte_pos);
+                                let _ = ch; // char consumed
+                            }
+                        }
+                        // ── Backspace — delete char before cursor ────────────
+                        KeyCode::Backspace => {
+                            if app.input_cursor > 0 {
+                                // Find byte position of char just before cursor
+                                let byte_pos: usize = app.input.char_indices()
+                                    .nth(app.input_cursor - 1)
+                                    .map(|(b, _)| b)
+                                    .unwrap_or(0);
+                                app.input.remove(byte_pos);
+                                app.input_cursor -= 1;
+                            }
+                        }
+                        // ── Insert character at cursor position ──────────────
                         KeyCode::Char(c) => {
-                            app.input.push(c);
+                            let byte_pos: usize = app.input.char_indices()
+                                .nth(app.input_cursor)
+                                .map(|(b, _)| b)
+                                .unwrap_or(app.input.len());
+                            app.input.insert(byte_pos, c);
+                            app.input_cursor += 1;
                         }
                         _ => {}
                     }
