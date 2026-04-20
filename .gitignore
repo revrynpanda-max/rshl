@@ -46,3 +46,13 @@ Desktop.ini
 
 # ── Conversation logs (personal) ─────────────────────────────────────────────
 conversation-log-*.txt
+
+# ── Assistant Artifacts & Session Tags (Local Only) ──────────────────────────
+task.md
+implementation_plan.md
+walkthrough.md
+KAI_COMMIT_GUIDE.md
+KAI_SESSION_HANDOFF.md
+rshl-bench-*.json
+rshl-results.txt
+*.backup.md

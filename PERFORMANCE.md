@@ -2,7 +2,7 @@
 
 This document tracks the precision and throughput metrics for the Recursive Sparse Hyperdimensional Lattice (RSHL) engine across various hardware targets.
 
-## Benchmark Results (v5.5)
+## Benchmark Results (v5.5.1)
 *Hardware: RTX 4050 Laptop · Ryzen 5 8645HS · 40GB RAM*
 
 ### End-to-End Latency (IPC Server Mode)
@@ -48,7 +48,7 @@ A final guard protects the global emergence score. If a dream would drop the tot
 
 ## Technical Architecture: Binary Ternary POPCNT
 
-The primary recall path in v5.4 uses **binary ternary packing** to maximize DRAM bandwidth and CPU instruction parallelization.
+The primary recall path in v5.5.1 uses **binary ternary packing** to maximize DRAM bandwidth and CPU instruction parallelization.
 
 1. **Packing**: Ternary values `{-1, 0, +1}` are stored as two bitfields (`pos_mask`, `neg_mask`).
 2. **Density**: 1,024 bytes per row (4096 dimensions) vs 4,096 bytes for int8, resulting in **4x less DRAM bandwidth**.

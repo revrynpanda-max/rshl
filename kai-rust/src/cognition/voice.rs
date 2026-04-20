@@ -77,6 +77,8 @@ pub fn detect_query_type(input: &str) -> QueryType {
     // ── Self/identity checks FIRST (content-based, beats word-order) ─────────
     if lower.contains("your name") || lower.contains("you called") || lower.contains("you named")
         || lower.contains("who are you") || lower.contains("what are you")
+        || lower.contains("where are you") || lower.contains("where you at")
+        || lower.contains("where do you exist") || lower.contains("where are u")
         || lower.contains("what can you") || lower.contains("how are you")
     {
         return QueryType::SelfQuestion;
@@ -143,6 +145,11 @@ pub fn detect_query_type(input: &str) -> QueryType {
     if input.trim().ends_with('?') {
         if lower.contains("what is yours") || lower.contains("what's yours")
             || (lower.contains("yours") && lower.contains("name"))
+        {
+            return QueryType::SelfQuestion;
+        }
+        if lower.contains("where are you") || lower.contains("where you at")
+            || lower.contains("where do you exist") || lower.contains("where are u")
         {
             return QueryType::SelfQuestion;
         }
@@ -1213,6 +1220,8 @@ mod tests {
         assert_eq!(detect_query_type("hello"),        QueryType::Greeting);
         assert_eq!(detect_query_type("hey KAI"),      QueryType::Greeting);
         assert_eq!(detect_query_type("who are you"),  QueryType::SelfQuestion);
+        assert_eq!(detect_query_type("where are you?"), QueryType::SelfQuestion);
+        assert_eq!(detect_query_type("so where are you at?"), QueryType::SelfQuestion);
         assert_eq!(detect_query_type("what is RSHL"), QueryType::IdentityQuestion);
         assert_eq!(detect_query_type("how do you think"), QueryType::ExplanationQuestion);
         assert_eq!(detect_query_type("why do things fall"), QueryType::ExplanationQuestion);
