@@ -1,4 +1,4 @@
-# KAI — Bio-Machine Intelligence (v5.5.1) <!-- linguist-trigger -->
+# KAI — Bio-Machine Intelligence (v5.5.1) <!-- linguist-rescan-fa26dd3 -->
 
 ![Rust CI](https://github.com/revrynpanda-max/rshl/actions/workflows/rust-ci.yml/badge.svg)
 
