@@ -199,6 +199,40 @@ impl Universe {
             .collect()
     }
 
+    /// Get all cells with a specific source tag — bypasses score filtering.
+    /// Used by the empathy path in voice.rs to fetch the 5 outward-facing
+    /// empathy cells directly, regardless of how they score on a generic query.
+    pub fn get_by_source(&self, source: &str) -> Vec<QueryHit> {
+        self.cells
+            .iter()
+            .filter(|c| c.source == source)
+            .map(|c| QueryHit {
+                text: c.text.clone(),
+                region: c.region.clone(),
+                score: 1.0,        // score is irrelevant — selection is by source
+                strength: c.strength,
+                source: c.source.clone(),
+            })
+            .collect()
+    }
+
+    /// Query the live strength of a named conversation state cell.
+    /// State cells live in region="tone", source="state".
+    /// Used by voice.rs for lattice-native routing — no word-list context scanning.
+    /// Returns 0.0 if no matching state cell exists or has decayed below threshold.
+    /// The lattice IS the state machine: store when detected, decay naturally.
+    pub fn state_strength(&self, key: &str) -> f32 {
+        let q = SparseVec::encode(key);
+        self.cells
+            .iter()
+            .filter(|c| c.source == "state" && c.region == "tone")
+            .map(|c| {
+                let sim = q.cosine(&c.vec);
+                if sim > 0.55 { c.strength * sim } else { 0.0 }
+            })
+            .fold(0.0_f32, f32::max)
+    }
+
     /// Get all cells.
     pub fn cells(&self) -> &[Cell] {
         &self.cells

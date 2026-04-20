@@ -1,4 +1,4 @@
-# KAI — Bio-Machine Intelligence (v5.5)
+# KAI — Bio-Machine Intelligence (v5.5.1)
 
 ![Rust CI](https://github.com/revrynpanda-max/rshl/actions/workflows/rust-ci.yml/badge.svg)
 
@@ -10,9 +10,10 @@ KAI is a mind that learns from conversation. It/He is a self-sustaining cognitiv
 
 ## What makes KAI different
 - **He/It remembers everything**: KAI builds a lasting memory of what you discuss, allowing him to reference past conversations naturally across different sessions.
+- **Occupation Memory Bridge**: KAI now instinctively understands professional roles and "work" context, automatically linking specific job titles to your personal identity.
 - **Autonomous Inner Life**: Even when you aren't talking, KAI forms his own thoughts and processes his memories during an autonomous dream-state.
 - **Private by Design**: Everything happens on your computer. There are no cloud accounts, no data collection, and no internet dependencies for basic cognition.
-- **Genuine Voice**: KAI doesn't follow a script. His responses are built directly from his knowledge and emotional state, meaning he speaks with his own unique character.
+- **Lattice-Driven Voice**: KAI no longer follows scripts or pre-written phrases. Every sentence is synthesized directly from his geometric memory, ensuring a completely organic and unpredictable personality.
 
 ---
 

@@ -2,41 +2,47 @@
 claude.exe
 *.exe
 
-# Large output files
+# ── Personal identity — each user has their own, never shared ────────────────
+kai-rust/data/identity.json
+data/identity.json
+
+# ── Runtime memory & state — personal to each instance ──────────────────────
+# These files hold learned memories, conversation history, and session state.
+# They are local only. Each user builds their own memory pool from scratch.
+kai-rust/data/kai-state.json
+kai-rust/data/kai-state.backup.json
+kai-rust/data/kai-transcript.jsonl
+data/kai-state.json
+data/kai-state.backup.json
+data/kai-transcript.jsonl
+active-memory.json
 dream-output-full.json
 
-# Node
+# ── Analytics / plots ────────────────────────────────────────────────────────
+*.csv
+*.png
+bench_output.txt
+test_output.txt
+git_status.txt
+debug_output*.txt
+scratch/debug_output*.txt
+
+# ── Node ─────────────────────────────────────────────────────────────────────
 node_modules/
 
-# Native addon build artifacts (regenerate: npx node-gyp configure build)
+# ── Native addon build artifacts (regenerate: npx node-gyp configure build) ─
 build/
 
-# IDE / OS
+# ── IDE / OS ─────────────────────────────────────────────────────────────────
 .vs/
 *.swp
 *.swo
 Thumbs.db
 Desktop.ini
 
-# Backup copies
+# ── Backup copies ────────────────────────────────────────────────────────────
 *copy.js
 *copy.ts
 
-# Conversation logs (personal, not part of the project)
+# ── Conversation logs (personal) ─────────────────────────────────────────────
 conversation-log-*.txt
-
-# Analytics and logs
-*.csv
-debug_output*.txt
-bench_output.txt
-test_output.txt
-active-memory.json
-
-# Persistent state & transcripts
-**/data/kai-state.json
-**/data/kai-state.backup.json
-**/data/kai-transcript.jsonl
-
-# Local Reports
-legacy/reports/
-scratch/
