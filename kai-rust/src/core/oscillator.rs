@@ -63,11 +63,14 @@ impl NeuralOscillator {
         Self {
             phases:     [0.0, 1.0472, 2.0944],   // start 120° apart (stable triad)
             freqs:      [
-                TAU / 72.0,    // slow   — period 72 ticks
-                TAU / 18.0,    // medium — period 18 ticks
-                TAU / 5.0,     // fast   — period  5 ticks
+                TAU / 72.0,    // slow   — period 72 ticks (~6 min at 5s/tick)
+                TAU / 18.0,    // medium — period 18 ticks (~1.5 min)
+                TAU / 5.0,     // fast   — period  5 ticks (~25 sec)
             ],
-            amplitudes: [0.012, 0.008, 0.004],    // slow strongest (like the brain)
+            // Amplitudes scaled up 4× so the oscillation is visible on the monitor.
+            // At 5-second heartbeat intervals, ±0.012 was invisible on a 0–0.55 axis.
+            // ±0.045 slow-band gives phi_g a clear wave without saturating at the clamp.
+            amplitudes: [0.045, 0.028, 0.014],
             coupling:   0.15,
             noise_seed: 0xdeadbeef_cafef00d,
             ticks:      0,
@@ -119,10 +122,12 @@ impl NeuralOscillator {
             let v = sigs.iter().map(|s| (s - mean).powi(2)).sum::<f32>() / 3.0;
             v.sqrt() * 0.5
         };
-        let delta_chi = band_variance.clamp(0.0, 0.015);
+        // Clamp raised to match new amplitudes — visible on monitor's 0–0.55 axis
+        let delta_chi = band_variance.clamp(0.0, 0.05);
 
         // valence follows the slow band — slow positive oscillation = positive mood drift
-        let delta_valence = sigs[0] * 0.6;
+        // Factor raised to 1.5 so the ±0.045 slow band produces ±0.067 valence swing
+        let delta_valence = sigs[0] * 1.5;
 
         // ── 6. Which band is dominant right now? ─────────────────────────────
         let dominant_band = sigs
@@ -162,14 +167,14 @@ impl NeuralOscillator {
     /// Amplitude decays back to baseline over ~10 ticks.
     pub fn stimulate(&mut self, band: usize, strength: f32) {
         let b = band.min(2);
-        let baseline = [0.012, 0.008, 0.004][b];
-        self.amplitudes[b] = (self.amplitudes[b] + strength * 0.008)
-            .clamp(baseline, baseline * 4.0);
+        let baseline = [0.045, 0.028, 0.014][b];
+        self.amplitudes[b] = (self.amplitudes[b] + strength * 0.025)
+            .clamp(baseline, baseline * 3.0);
     }
 
     /// Call each tick to decay stimulated amplitudes back to baseline.
     pub fn decay_amplitudes(&mut self) {
-        let baselines = [0.012, 0.008, 0.004];
+        let baselines = [0.045, 0.028, 0.014];
         for (i, amp) in self.amplitudes.iter_mut().enumerate() {
             let baseline = baselines[i];
             if *amp > baseline {
