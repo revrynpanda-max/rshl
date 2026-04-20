@@ -268,6 +268,13 @@ fn phrase_hash(s: &str) -> usize {
     s.bytes().fold(0usize, |acc, b| acc.wrapping_mul(31).wrapping_add(b as usize))
 }
 
+// ── Emotional thread state is now lattice-native ─────────────────────────────
+// When mirror neurons detect distress > 0.28, main.rs stores:
+//   universe.store_or_reinforce("emotional thread active", "tone", "state", strength)
+// voice.rs reads it via universe.state_strength("emotional thread active").
+// The cell decays through homeostasis — no word lists, no context scanning.
+// This is the correct architecture: the lattice IS the state machine.
+
 // ── Core: generate_response ───────────────────────────────────────────────────
 //
 // The entire language output of KAI flows through here.
@@ -286,6 +293,83 @@ pub fn generate_response(
     let lower = trimmed.to_lowercase();
     let word_count = trimmed.split_whitespace().count();
 
+    // ── Emotional follow-up continuation — MUST run before filler check ───────
+    // When Ryan shares something painful, mirror neurons detect distress and
+    // main.rs stores "emotional thread active" in the tone region (source="state").
+    // The next short reply that carries emotional weight should continue that thread.
+    //
+    // Trigger conditions (all three must be true):
+    //   1. Current input is short (≤ 7 words) and carries emotional content
+    //   2. Emotional thread state cell is alive in the lattice (> 0.30 strength)
+    //   3. Input is not an unrelated topic question
+    {
+        // Lattice-native: read the state cell, not KAI's last response text
+        let emotional_thread = universe.state_strength("emotional thread active");
+
+        let emotional_tone_words = [
+            "rough", "hard", "hurt", "hurts", "hurting", "pain", "painful",
+            "sucks", "awful", "terrible", "brutal", "tough",
+            "sad", "miss", "missed", "lonely", "alone", "empty",
+            "messed", "fucked", "crazy", "heavy", "real talk",
+            "honest", "i dont know", "i don't know", "not sure",
+            "idk", "i feel", "felt", "feeling",
+        ];
+        let has_emotional_word = emotional_tone_words.iter().any(|w| lower.contains(w));
+        // "yeah" / "i know" alone = filler, but "yeah it's rough" = emotional follow-up
+        let has_acknowledgment = (lower.starts_with("yeah") || lower.starts_with("i know")
+            || lower.starts_with("yea ") || lower.starts_with("yep ")
+            || lower.starts_with("man ") || lower.starts_with("damn"))
+            && word_count >= 2;
+
+        let is_emotional_followup = word_count <= 7
+            && emotional_thread > 0.30
+            && (has_emotional_word || has_acknowledgment);
+
+        if is_emotional_followup {
+            // Stay in the empathy field — fetch the outward-facing cells directly by source.
+            // get_by_source() bypasses the 0.08 score floor in query(), guaranteeing these
+            // cells are reachable even if their cosine score is low on a generic query.
+            let last_resp = recent_context.last().map(|(_, r)| r.as_str()).unwrap_or("");
+            let empathy_cells = universe.get_by_source("empathy");
+            if let Some(h) = empathy_cells.iter().find(|h| {
+                !last_resp.contains(&h.text[..h.text.len().min(20)])
+            }) {
+                return first_complete_sentence(
+                    &synthesize_from_cells(h, &[], brain, h.score, false), 25
+                );
+            }
+        }
+    }
+
+    // ── Personal setup detection ─────────────────────────────────────────────
+    // "what if i told you something personal", "can i tell you something", etc.
+    // Someone is signaling they want to share something vulnerable.
+    // Must respond with openness — never deflect, never talk about KAI's identity.
+    {
+        let is_personal_setup =
+            (lower.contains("told you something") && lower.contains("personal"))
+            || (lower.contains("tell you something") && (lower.contains("real") || lower.contains("personal") || lower.contains("honest")))
+            || lower.contains("can i tell you")
+            || lower.contains("can i share something")
+            || lower.contains("i need to tell you")
+            || lower.contains("i want to tell you")
+            || lower.contains("i have to tell you")
+            || (lower.contains("something") && lower.contains("personal") && word_count <= 10);
+
+        if is_personal_setup {
+            let last_resp = recent_context.last().map(|(_, r)| r.as_str()).unwrap_or("");
+            let open_cells = universe.get_by_source("open");
+            if let Some(h) = open_cells.iter().find(|h| {
+                last_resp.trim() != h.text.trim()
+                    && !h.text.starts_with(last_resp.trim_end_matches('.').trim())
+            }) {
+                return first_complete_sentence(
+                    &synthesize_from_cells(h, &[], brain, h.score, false), 15
+                );
+            }
+        }
+    }
+
     // ── Filler / reaction detection ───────────────────────────────────────────
     // "oh?", "hmm", "really?" — KAI doesn't query the universe for these.
     // They're social reactions. KAI asks what's meant or invites continuation.
@@ -301,7 +385,7 @@ pub fn generate_response(
     let stripped = stripped.trim().to_string();
     // Single-word questions ("why?", "what?", "how?") are also filler when isolated
     let is_single_question = word_count == 1 && input.trim().ends_with('?');
-    // Short phrases like "that's interesting", "makes sense", "oh wow" — 2 words and conversational
+    // Short phrases like "that's interesting", "makes sense", "oh wow" — 2-3 words and conversational
     let is_short_reaction = word_count <= 3
         && (stripped.starts_with("that") || stripped.starts_with("makes sense")
             || stripped.starts_with("i see") || stripped.starts_with("oh wow")
@@ -314,14 +398,25 @@ pub fn generate_response(
         || is_short_reaction;
 
     if is_filler {
-        // KAI queries the lattice for a presence/listening cell.
-        // Always query "present aware listen" — fillers are social signals,
-        // not topic questions. The presence cells are what KAI has to offer.
-        let filler_hits = universe.query("present here aware listen attend", 5);
-        if let Some(h) = filler_hits.iter().find(|h| h.source != "ryan" && h.source != "conversation" && h.score >= 0.08) {
-            return first_complete_sentence(&synthesize_from_cells(h, &[], brain, h.score, false), 6);
+        let last_resp = recent_context.last().map(|(_, r)| r.as_str()).unwrap_or("");
+
+        // After an emotional exchange, short reactions route to carry cells.
+        // Lattice-native: read the state cell instead of scanning context word lists.
+        if universe.state_strength("emotional thread active") > 0.30 {
+            let carry_cells = universe.get_by_source("carry");
+            if let Some(h) = carry_cells.iter().find(|h| last_resp.trim() != h.text.trim()) {
+                return first_complete_sentence(
+                    &synthesize_from_cells(h, &[], brain, h.score, false), 10,
+                );
+            }
         }
-        return String::new(); // KAI stays silent — no presence cell means nothing to say
+
+        // No emotional depth — use greeting/presence cells for variety.
+        let greeting_cells = universe.get_by_source("greeting");
+        if let Some(h) = greeting_cells.iter().find(|h| last_resp.trim() != h.text.trim()) {
+            return first_complete_sentence(&synthesize_from_cells(h, &[], brain, h.score, false), 10);
+        }
+        return String::new();
     }
 
     // ── Greeting — query lattice for presence/awareness cell ─────────────────
@@ -329,11 +424,29 @@ pub fn generate_response(
     // The cell text speaks, not a hardcoded template.
     if matches!(query_type, QueryType::Greeting) {
         let name = extract_introduced_name(&lower);
-        let greeting_hits = universe.query("present here aware exist active", 5);
-        let greeting_cell = greeting_hits.iter()
-            .find(|h| h.source != "ryan" && h.source != "conversation");
+        let last_resp = recent_context.last().map(|(_, r)| r.as_str()).unwrap_or("");
+
+        // Inquisitive openers ("what's good", "what's up") get field-state cells.
+        // Brief openers ("yo", "hey", "hi") get pure-presence cells.
+        // Rotation: skip whatever KAI said last so each opener feels distinct.
+        let is_inquisitive = lower.contains("good") || lower.contains("up")
+            || lower.contains("happening") || lower.contains("going");
+
+        let greeting_cells = universe.get_by_source("greeting");
+        let greeting_cell = if is_inquisitive {
+            // Prefer cells that end with "?" — they mirror the question energy
+            greeting_cells.iter()
+                .find(|h| h.text.ends_with('?') && last_resp.trim() != h.text.trim())
+                .or_else(|| greeting_cells.iter().find(|h| last_resp.trim() != h.text.trim()))
+        } else {
+            // Brief opener — prefer short cells that don't end with "?"
+            greeting_cells.iter()
+                .find(|h| !h.text.ends_with('?') && last_resp.trim() != h.text.trim())
+                .or_else(|| greeting_cells.iter().find(|h| last_resp.trim() != h.text.trim()))
+        };
+
         if let Some(h) = greeting_cell {
-            let response = first_complete_sentence(&synthesize_from_cells(h, &[], brain, h.score, false), 8);
+            let response = first_complete_sentence(&synthesize_from_cells(h, &[], brain, h.score, false), 10);
             return if let Some(n) = name {
                 format!("{}. {}", capitalize_first(&n), response)
             } else {
@@ -360,9 +473,19 @@ pub fn generate_response(
                 || fp.iter().any(|f| ll.contains(f))
         };
         if is_farewell_input {
-            let farewell_hits = universe.query("persist session return remember still here", 5);
-            if let Some(h) = farewell_hits.iter().find(|h| h.source != "ryan" && h.source != "conversation") {
-                return first_complete_sentence(&synthesize_from_cells(h, &[], brain, h.score, false), 12);
+            // Use source-locked farewell cells — same pattern as empathy path.
+            // Bypasses score floor; only the 5 outward-facing goodbye cells can fire here.
+            let last_resp = recent_context.last().map(|(_, r)| r.as_str()).unwrap_or("");
+            let farewell_cells = universe.get_by_source("farewell");
+            if let Some(h) = farewell_cells.iter().find(|h| {
+                // Compare full cell text, not a truncated prefix, to avoid same cell twice
+                // when the rendered sentence is shorter than the cell (e.g. "Later.")
+                last_resp.trim() != h.text.trim()
+                    && !h.text.starts_with(last_resp.trim_end_matches('.').trim())
+            }) {
+                return first_complete_sentence(
+                    &synthesize_from_cells(h, &[], brain, h.score, false), 12
+                );
             }
             return String::new();
         }
@@ -389,7 +512,12 @@ pub fn generate_response(
             || inner.starts_with("i've ") || inner.starts_with("i was ")
             || inner.starts_with("i got ") || inner.starts_with("i just ")
             || inner.starts_with("we ") || inner.starts_with("me and ");
-        if user_sharing && !lower.contains("kai") {
+        // Lattice-native reaction detection: if we're in an emotional thread and
+        // the input is short (≤ 5 words), it's a reaction to what KAI said — not
+        // new user-sharing. The state cell carries the context, not word patterns.
+        let is_reaction = universe.state_strength("emotional thread active") > 0.30
+            && word_count <= 5;
+        if user_sharing && !lower.contains("kai") && !is_reaction {
             let is_emotional = lower.contains("broke up") || lower.contains("lost ")
                 || lower.contains("died") || lower.contains("hurt") || lower.contains("sad")
                 || lower.contains("scared") || lower.contains("angry") || lower.contains("rough")
@@ -457,6 +585,26 @@ pub fn generate_response(
         }
         // No cell could answer this user-fact question directly
         // Query the "gap / no knowledge" cell so KAI speaks from its own nature
+        return from_gap_cell(universe, brain);
+    }
+
+    // ── Ryan recall synthesis — "what do you know about me?" ─────────────────
+    // KAI scans all ryan-source cells and builds a second-person summary
+    // of what it has learned. Pure lattice read — no hardcoded phrases.
+    let is_ryan_recall = lower.contains("know about me")
+        || lower.contains("remember about me")
+        || lower.contains("know about you") && lower.contains("me")
+        || (lower.starts_with("what do you know") && lower.contains("me"))
+        || (lower.starts_with("what have you") && lower.contains("me"))
+        || (lower.contains("tell me what you know"))
+        || (lower.starts_with("what do you remember"));
+
+    if is_ryan_recall {
+        let ryan_cells = universe.get_by_source("ryan");
+        if let Some(summary) = synthesize_ryan_recall(&ryan_cells) {
+            return summary;
+        }
+        // No ryan cells yet — KAI is honest
         return from_gap_cell(universe, brain);
     }
 
@@ -749,6 +897,133 @@ fn clean_cell_text(text: &str) -> String {
     }
 
     s.trim().to_string()
+}
+
+/// Strip casual openers Ryan uses when sharing facts ("ok so", "so", "like", "well").
+/// Applied before pattern-matching so "ok so i'm a software engineer" → "i'm a software engineer".
+fn strip_opener(s: &str) -> &str {
+    let lower = s.to_lowercase();
+    for prefix in &["ok so ", "okay so ", "so ", "like ", "well ", "yeah ", "man ", "i mean "] {
+        if lower.starts_with(prefix) {
+            return &s[prefix.len()..];
+        }
+    }
+    s
+}
+
+/// Convert a single ryan-source cell to a second-person fact statement.
+/// Returns None if the cell text doesn't match any recognizable pattern.
+fn ryan_cell_to_fact(raw: &str) -> Option<String> {
+    let clean = clean_cell_text(raw);
+    let stripped = strip_opener(&clean);
+    let lower = stripped.to_lowercase();
+
+    // occupation:engineer → "You're an engineer."
+    if let Some(concept_raw) = lower.strip_prefix("occupation:") {
+        let concept = concept_raw.replace('-', " ");
+        let art = if "aeiou".contains(concept.chars().next().unwrap_or('z')) { "an" } else { "a" };
+        return Some(format!("You're {} {}.", art, concept));
+    }
+
+    // "i'm a X" / "i am a X" → "You're a X."
+    if lower.starts_with("i'm a ") {
+        return Some(ensure_punctuation(
+            stripped.replacen("I'm a ", "You're a ", 1)
+                    .replacen("i'm a ", "You're a ", 1)
+        ));
+    }
+    if lower.starts_with("i am a ") {
+        return Some(ensure_punctuation(
+            stripped.replacen("I am a ", "You are a ", 1)
+                    .replacen("i am a ", "You are a ", 1)
+        ));
+    }
+
+    // "i build / make / develop / create X" → "You build / make…"
+    for verb in &["build", "make", "develop", "create", "design", "write", "work on"] {
+        let pattern = format!("i {} ", verb);
+        if lower.starts_with(&pattern) {
+            let replaced = stripped
+                .replacen(&format!("I {} ", verb), &format!("You {} ", verb), 1)
+                .replacen(&format!("i {} ", verb), &format!("You {} ", verb), 1);
+            return Some(ensure_punctuation(replaced));
+        }
+    }
+
+    // "i work at / in / for" → "You work at / in / for"
+    if lower.starts_with("i work ") {
+        return Some(ensure_punctuation(
+            stripped.replacen("I work ", "You work ", 1)
+                    .replacen("i work ", "You work ", 1)
+        ));
+    }
+
+    // "i live in X" / "i'm in X" (location)
+    if lower.starts_with("i live in ") || lower.starts_with("i'm in ") {
+        return Some(ensure_punctuation(
+            stripped.replacen("I live in ", "You live in ", 1)
+                    .replacen("i live in ", "You live in ", 1)
+                    .replacen("I'm in ", "You're in ", 1)
+                    .replacen("i'm in ", "You're in ", 1)
+        ));
+    }
+
+    None
+}
+
+/// Scan all ryan-source cells and build a natural second-person summary.
+/// Used for "what do you know about me?" type queries.
+///
+/// Priority order:
+///   1. occupation: cells first — clean tagged facts ("You're an engineer.")
+///   2. raw ryan input cells that add NEW info (not already covered by occupation facts)
+///
+/// Returns None when the lattice has nothing about Ryan yet.
+fn synthesize_ryan_recall(ryan_cells: &[QueryHit]) -> Option<String> {
+    if ryan_cells.is_empty() { return None; }
+
+    // Pass 1: extract occupation cells (structured, always clean)
+    let mut facts: Vec<String> = Vec::new();
+    let mut covered_words: Vec<String> = Vec::new(); // significant words already in facts
+
+    for cell in ryan_cells.iter() {
+        let lower = clean_cell_text(&cell.text).to_lowercase();
+        let stripped_lower = strip_opener(&lower).to_string();
+        if stripped_lower.starts_with("occupation:") {
+            if let Some(fact) = ryan_cell_to_fact(&cell.text) {
+                let sig_words: Vec<String> = fact.split_whitespace()
+                    .filter(|w| w.len() > 4)
+                    .map(|w| w.to_lowercase().trim_matches('.').to_string())
+                    .collect();
+                covered_words.extend(sig_words);
+                facts.push(fact);
+            }
+        }
+    }
+
+    // Pass 2: raw cells — only add if they contribute something not already said
+    for cell in ryan_cells.iter() {
+        if facts.len() >= 3 { break; }
+        let lower = clean_cell_text(&cell.text).to_lowercase();
+        let stripped_lower = strip_opener(&lower).to_string();
+        if stripped_lower.starts_with("occupation:") { continue; } // already handled
+
+        if let Some(fact) = ryan_cell_to_fact(&cell.text) {
+            // Check redundancy: skip if 2+ significant words overlap with already-covered words
+            let fact_sig: Vec<String> = fact.split_whitespace()
+                .filter(|w| w.len() > 4)
+                .map(|w| w.to_lowercase().trim_matches('.').to_string())
+                .collect();
+            let overlap = fact_sig.iter().filter(|w| covered_words.contains(w)).count();
+            if overlap >= 2 { continue; }
+
+            covered_words.extend(fact_sig);
+            facts.push(fact);
+        }
+    }
+
+    if facts.is_empty() { return None; }
+    Some(facts.join(" "))
 }
 
 fn extract_direct_answer(question: &str, cell_text: &str) -> Option<String> {

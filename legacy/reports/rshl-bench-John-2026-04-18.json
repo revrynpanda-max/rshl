@@ -1,0 +1,357 @@
+{
+  "machine": {
+    "hostname": "John",
+    "platform": "win32 x64",
+    "os_release": "10.0.26200",
+    "cpu_model": "AMD Ryzen 5 8645HS w/ Radeon 760M Graphics",
+    "cpu_logical_cores": 12,
+    "ram_total_gb": 42.2,
+    "ram_free_gb": 22.2,
+    "node_version": "v22.14.0",
+    "native_addon": "not built",
+    "gpu": [
+      "NVIDIA GeForce RTX 4050 Laptop GPU",
+      "AMD Radeon(TM) Graphics"
+    ],
+    "npu": "NPU Compute Accelerator Device",
+    "nvidia_smi": [
+      "NVIDIA GeForce RTX 4050 Laptop GPU, 6141 MiB"
+    ],
+    "timestamp": "2026-04-18T10:36:31.147Z"
+  },
+  "score": 53,
+  "raw_throughput": {
+    "tokenVec_ops_per_sec": 32554,
+    "textVec_ops_per_sec": 4752,
+    "cosineSim_ops_per_sec": 321461,
+    "cosineSim_sample": 0.5333
+  },
+  "memory_growth": {
+    "cache_warm_ms": 649,
+    "index_entries_per_sec": 5184,
+    "growth_curve": [
+      {
+        "entries": 1000,
+        "js_ms": 9.917,
+        "js_queries_sec": 101,
+        "native_ms": null,
+        "native_qps": null
+      },
+      {
+        "entries": 5000,
+        "js_ms": 49.406,
+        "js_queries_sec": 20,
+        "native_ms": null,
+        "native_qps": null
+      },
+      {
+        "entries": 10000,
+        "js_ms": 97.981,
+        "js_queries_sec": 10,
+        "native_ms": null,
+        "native_qps": null
+      },
+      {
+        "entries": 25000,
+        "js_ms": 246.16,
+        "js_queries_sec": 4,
+        "native_ms": null,
+        "native_qps": null
+      }
+    ]
+  },
+  "throughput": {
+    "scan_throughput": [
+      {
+        "lib_size": 100,
+        "js_items_per_sec": 87859,
+        "native_items_per_sec": null
+      },
+      {
+        "lib_size": 500,
+        "js_items_per_sec": 76079,
+        "native_items_per_sec": null
+      },
+      {
+        "lib_size": 1000,
+        "js_items_per_sec": 82017,
+        "native_items_per_sec": null
+      },
+      {
+        "lib_size": 5000,
+        "js_items_per_sec": 78625,
+        "native_items_per_sec": null
+      },
+      {
+        "lib_size": 10000,
+        "js_items_per_sec": 85278,
+        "native_items_per_sec": null
+      }
+    ],
+    "index_throughput": [
+      {
+        "window_sec": 1,
+        "entries_per_sec": 2412
+      },
+      {
+        "window_sec": 3,
+        "entries_per_sec": 2391
+      }
+    ],
+    "sustained_recall": {
+      "memory_entries": 25000,
+      "duration_sec": 5.27,
+      "total_queries": 17,
+      "avg_qps": 3,
+      "min_qps": 3,
+      "max_qps": 3,
+      "total_million_ops": 0.4,
+      "path": "JS",
+      "binary_qps": null,
+      "sparse_qps": 3
+    }
+  },
+  "memory_palace": {
+    "live": false,
+    "port": null,
+    "tiers": [
+      {
+        "cells": 100,
+        "sparse_js_ms": 0.76,
+        "dense_ts_ms": 4.71,
+        "native_ms": 0.012,
+        "native_vs_sparse": 61.9,
+        "native_vs_dense": 382.8
+      },
+      {
+        "cells": 1000,
+        "sparse_js_ms": 9.34,
+        "dense_ts_ms": 43.14,
+        "native_ms": 0.044,
+        "native_vs_sparse": 212.5,
+        "native_vs_dense": 981.9
+      },
+      {
+        "cells": 5000,
+        "sparse_js_ms": 69.87,
+        "dense_ts_ms": 493.99,
+        "native_ms": 0.46,
+        "native_vs_sparse": 151.7,
+        "native_vs_dense": 1072.8
+      },
+      {
+        "cells": 10000,
+        "sparse_js_ms": 99.16,
+        "dense_ts_ms": 382.11,
+        "native_ms": 1.49,
+        "native_vs_sparse": 66.6,
+        "native_vs_dense": 256.8
+      },
+      {
+        "cells": 50000,
+        "sparse_js_ms": 384.84,
+        "dense_ts_ms": 1820.5,
+        "native_ms": 4.24,
+        "native_vs_sparse": 90.7,
+        "native_vs_dense": 429.1
+      }
+    ],
+    "memory_palace": {
+      "store_ms": 2.45,
+      "store_ops": 407,
+      "query_ms": 3.13,
+      "query_ops": 320,
+      "emerge_ms": 2.35,
+      "emerge_ops": 425,
+      "phi_us": 0.006,
+      "phi_ops": 168677
+    },
+    "rshl_ops": 1337
+  },
+  "lattice": {
+    "accuracy_pct": 73,
+    "pass": 11,
+    "fail": 4,
+    "scenarios": [
+      {
+        "scenario": "Initial location fact",
+        "expected": "ADD",
+        "got": "ADD",
+        "pass": true,
+        "replaced": null,
+        "score": 0
+      },
+      {
+        "scenario": "Location change (temporal signal)",
+        "expected": "UPDATE",
+        "got": "ADD",
+        "pass": false,
+        "replaced": null,
+        "score": 0.7678624774198745
+      },
+      {
+        "scenario": "Same fact restated",
+        "expected": "NOOP",
+        "got": "NOOP",
+        "pass": true,
+        "replaced": null,
+        "score": 1
+      },
+      {
+        "scenario": "New job fact",
+        "expected": "ADD",
+        "got": "ADD",
+        "pass": true,
+        "replaced": null,
+        "score": 0.6625971414955103
+      },
+      {
+        "scenario": "Job change (same subject)",
+        "expected": "UPDATE",
+        "got": "UPDATE",
+        "pass": true,
+        "replaced": "Ryan works at Anthropic as engineer",
+        "score": 0.8051614074704398
+      },
+      {
+        "scenario": "Hobby fact",
+        "expected": "ADD",
+        "got": "ADD",
+        "pass": true,
+        "replaced": null,
+        "score": 0.716668935138155
+      },
+      {
+        "scenario": "Preference fact",
+        "expected": "ADD",
+        "got": "NOOP",
+        "pass": false,
+        "replaced": null,
+        "score": 0.7958626525826566
+      },
+      {
+        "scenario": "Exact duplicate",
+        "expected": "NOOP",
+        "got": "NOOP",
+        "pass": true,
+        "replaced": null,
+        "score": 0.9999999999999999
+      },
+      {
+        "scenario": "Explicit delete signal",
+        "expected": "DELETE",
+        "got": "DELETE",
+        "pass": true,
+        "replaced": "Ryan loves hiking and trail running",
+        "score": 0.8200646334820574
+      },
+      {
+        "scenario": "New preference (sushi gone)",
+        "expected": "ADD",
+        "got": "ADD",
+        "pass": true,
+        "replaced": null,
+        "score": 0.7212393040623687
+      },
+      {
+        "scenario": "First-person → user token",
+        "expected": "ADD",
+        "got": "ADD",
+        "pass": true,
+        "replaced": null,
+        "score": 0.8460427660907501
+      },
+      {
+        "scenario": "First-person update",
+        "expected": "UPDATE",
+        "got": "ADD",
+        "pass": false,
+        "replaced": null,
+        "score": 0.8387313890031065
+      },
+      {
+        "scenario": "Project fact",
+        "expected": "ADD",
+        "got": "ADD",
+        "pass": true,
+        "replaced": null,
+        "score": 0.7169735117068459
+      },
+      {
+        "scenario": "Deadline change",
+        "expected": "UPDATE",
+        "got": "ADD",
+        "pass": false,
+        "replaced": null,
+        "score": 0.8267629661013487
+      },
+      {
+        "scenario": "Deadline restated",
+        "expected": "NOOP",
+        "got": "NOOP",
+        "pass": true,
+        "replaced": null,
+        "score": 0.9029327544966421
+      }
+    ],
+    "lattice_store_ms": 0.263,
+    "lattice_query_ms": 0.229,
+    "base_query_ms": 0.451,
+    "mem0_store_ms_ref": 250,
+    "mem0_query_ms_ref": 148,
+    "speedup_store_vs_mem0": 950,
+    "speedup_query_vs_mem0": 647
+  },
+  "competitive": {
+    "rshl_query_ms": 3.13,
+    "rshl_store_ms": 2.45,
+    "rshl_live_data": false,
+    "speedup_vs_mem0": 47,
+    "competitors": {
+      "mem0": {
+        "query_ms_p50": 148,
+        "query_ms_p95": 200,
+        "requires_api": true,
+        "source": "arXiv:2504.19413"
+      },
+      "zep": {
+        "query_ms_range": "10–300ms",
+        "requires_api": true,
+        "source": "arXiv:2501.13956"
+      },
+      "memgpt": {
+        "query_ms_range": "10–50ms",
+        "requires_api": true,
+        "source": "arXiv:2310.08560"
+      }
+    }
+  },
+  "footprint": [
+    {
+      "label": "100 entries (new user)",
+      "entries": 100,
+      "size_mb": 0.2
+    },
+    {
+      "label": "3,650 entries (1 year, 10/day)",
+      "entries": 3650,
+      "size_mb": 8.2
+    },
+    {
+      "label": "18,250 entries (5 years, 10/day)",
+      "entries": 18250,
+      "size_mb": 41.1
+    },
+    {
+      "label": "36,500 entries (10 years, 10/day)",
+      "entries": 36500,
+      "size_mb": 82.1
+    },
+    {
+      "label": "100,000 entries (heavy user)",
+      "entries": 100000,
+      "size_mb": 225
+    }
+  ],
+  "total_bench_ms": 60459
+}

@@ -231,8 +231,21 @@ mod tests {
         osc.stimulate(2, 1.0);
         let boosted = osc.amplitudes[2];
         // Baseline is now 0.014 (was 0.004)
-        assert!(boosted > 0.014, "stimulate had no effect");
-        for _ in 0..30 { osc.decay_amplitudes(); }
-        assert!(osc.amplitudes[2] < boosted, "amplitude did not decay");
+        assert!(boosted > 0.014, "stimulate had no effect: {}", boosted);
+        // After 30 ticks of decay, amplitude should return near baseline
+        for _ in 0..30 {
+            osc.decay_amplitudes();
+        }
+        let decayed = osc.amplitudes[2];
+        assert!(
+            decayed < boosted,
+            "amplitude did not decay: boosted={} decayed={}",
+            boosted, decayed
+        );
+        assert!(
+            decayed < 0.014 * 1.5,
+            "amplitude did not return near baseline: {}",
+            decayed
+        );
     }
 }
