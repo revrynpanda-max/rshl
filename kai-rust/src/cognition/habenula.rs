@@ -37,7 +37,6 @@
 ///   aversion_map: per-topic learned aversion scores
 ///   raphe_suppression: how much 5-HT the habenula is currently suppressing
 ///   behavioral_switch: whether the habenula is signaling "try differently"
-
 use std::collections::HashMap;
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -116,11 +115,11 @@ pub struct Habenula {
 impl Habenula {
     pub fn new() -> Self {
         Self {
-            activity:              0.0,
-            disappointment_accum:  0.0,
-            aversion_map:          HashMap::new(),
-            signals_processed:     0,
-            switches_signaled:     0,
+            activity: 0.0,
+            disappointment_accum: 0.0,
+            aversion_map: HashMap::new(),
+            signals_processed: 0,
+            switches_signaled: 0,
         }
     }
 
@@ -161,7 +160,11 @@ impl Habenula {
 
     fn build_output(&mut self, signal: &HabenulaSignal) -> HabenulaOutput {
         let suppress_vta = self.activity > 0.40;
-        let vta_suppression = if suppress_vta { self.activity * 0.70 } else { 0.0 };
+        let vta_suppression = if suppress_vta {
+            self.activity * 0.70
+        } else {
+            0.0
+        };
 
         let behavioral_switch = self.activity >= SWITCH_THRESHOLD;
         if behavioral_switch {
@@ -197,10 +200,14 @@ impl Habenula {
     }
 
     /// Get current activity without processing.
-    pub fn current_activity(&self) -> f32 { self.activity }
+    pub fn current_activity(&self) -> f32 {
+        self.activity
+    }
 
     /// Whether habenula is actively suppressing motivation.
-    pub fn is_active(&self) -> bool { self.activity > 0.30 }
+    pub fn is_active(&self) -> bool {
+        self.activity > 0.30
+    }
 
     /// Aversion score for a topic (0.0 if unknown).
     pub fn aversion_for(&self, topic: &str) -> f32 {
@@ -220,7 +227,9 @@ impl Habenula {
 }
 
 impl Default for Habenula {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -240,16 +249,22 @@ mod tests {
     fn test_reward_omission_raises_activity() {
         let mut h = Habenula::new();
         let out = h.process(HabenulaSignal::RewardOmission { expected: 0.80 });
-        assert!(out.activity > 0.0,
-            "reward omission should raise habenula activity: {:.2}", out.activity);
+        assert!(
+            out.activity > 0.0,
+            "reward omission should raise habenula activity: {:.2}",
+            out.activity
+        );
     }
 
     #[test]
     fn test_punishment_prediction_raises_activity() {
         let mut h = Habenula::new();
         let out = h.process(HabenulaSignal::PunishmentPredicted { severity: 0.70 });
-        assert!(out.activity > 0.0,
-            "punishment prediction should raise activity: {:.2}", out.activity);
+        assert!(
+            out.activity > 0.0,
+            "punishment prediction should raise activity: {:.2}",
+            out.activity
+        );
     }
 
     #[test]
@@ -257,8 +272,11 @@ mod tests {
         let mut h = Habenula::new();
         h.activity = 0.60;
         let out = h.process(HabenulaSignal::ConflictDetected { intensity: 0.0 });
-        assert!(out.suppress_vta,
-            "high habenula activity should suppress VTA: activity={:.2}", out.activity);
+        assert!(
+            out.suppress_vta,
+            "high habenula activity should suppress VTA: activity={:.2}",
+            out.activity
+        );
         assert!(out.vta_suppression > 0.0);
     }
 
@@ -267,8 +285,10 @@ mod tests {
         let mut h = Habenula::new();
         h.activity = SWITCH_THRESHOLD + 0.05;
         let out = h.process(HabenulaSignal::ConflictDetected { intensity: 0.0 });
-        assert!(out.behavioral_switch,
-            "activity above threshold should signal behavioral switch");
+        assert!(
+            out.behavioral_switch,
+            "activity above threshold should signal behavioral switch"
+        );
     }
 
     #[test]
@@ -276,19 +296,29 @@ mod tests {
         let mut h = Habenula::new();
         h.activity = 0.60;
         h.process(HabenulaSignal::SerotoninSuppression { strength: 0.90 });
-        assert!(h.activity < 0.60,
-            "high serotonin should quiet habenula: {:.2}", h.activity);
+        assert!(
+            h.activity < 0.60,
+            "high serotonin should quiet habenula: {:.2}",
+            h.activity
+        );
     }
 
     #[test]
     fn test_aversive_topic_builds_aversion() {
         let mut h = Habenula::new();
         let topic = "criticism".to_string();
-        h.process(HabenulaSignal::AversiveTopic { topic: topic.clone() });
-        h.process(HabenulaSignal::AversiveTopic { topic: topic.clone() });
+        h.process(HabenulaSignal::AversiveTopic {
+            topic: topic.clone(),
+        });
+        h.process(HabenulaSignal::AversiveTopic {
+            topic: topic.clone(),
+        });
         let aversion = h.aversion_for(&topic);
-        assert!(aversion > 0.0,
-            "repeated aversive topic should build aversion: {:.2}", aversion);
+        assert!(
+            aversion > 0.0,
+            "repeated aversive topic should build aversion: {:.2}",
+            aversion
+        );
     }
 
     #[test]
@@ -298,8 +328,11 @@ mod tests {
         for _ in 0..10 {
             h.decay();
         }
-        assert!(h.activity < 0.70,
-            "habenula activity should decay: {:.2}", h.activity);
+        assert!(
+            h.activity < 0.70,
+            "habenula activity should decay: {:.2}",
+            h.activity
+        );
     }
 
     #[test]

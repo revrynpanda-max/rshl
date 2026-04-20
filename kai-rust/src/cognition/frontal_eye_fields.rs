@@ -101,11 +101,11 @@ pub struct FrontalEyeFields {
 impl FrontalEyeFields {
     pub fn new() -> Self {
         Self {
-            voluntary_focus:  0.40,
-            search_template:  None,
-            ior_list:         Vec::new(),
-            top_down_gain:    1.0,
-            focus_events:     0,
+            voluntary_focus: 0.40,
+            search_template: None,
+            ior_list: Vec::new(),
+            top_down_gain: 1.0,
+            focus_events: 0,
             inputs_processed: 0,
         }
     }
@@ -116,11 +116,18 @@ impl FrontalEyeFields {
     /// - `focus_target`: what KAI is deliberately focusing on (e.g. "question", "code", "emotion")
     /// - `pfc_goal_active`: whether PFC has an active goal (biases FEF)
     /// - `sc_salience`: bottom-up salience from SC (FEF modulates this)
-    pub fn process(&mut self, focus_target: &str, pfc_goal_active: bool, sc_salience: f32) -> FEFOutput {
+    pub fn process(
+        &mut self,
+        focus_target: &str,
+        pfc_goal_active: bool,
+        sc_salience: f32,
+    ) -> FEFOutput {
         self.inputs_processed += 1;
 
         // ── IOR check ─────────────────────────────────────────────────────────
-        let ior_suppressed = self.ior_list.iter()
+        let ior_suppressed = self
+            .ior_list
+            .iter()
             .any(|e| e.target == focus_target && e.ticks_remaining > 0);
 
         // ── Voluntary focus ───────────────────────────────────────────────────
@@ -128,8 +135,8 @@ impl FrontalEyeFields {
         if pfc_goal_active && !ior_suppressed {
             self.focus_events += 1;
             let focus_boost = if pfc_goal_active { 0.70 } else { 0.40 };
-            self.voluntary_focus = self.voluntary_focus * (1.0 - FOCUS_EMA)
-                + focus_boost * FOCUS_EMA;
+            self.voluntary_focus =
+                self.voluntary_focus * (1.0 - FOCUS_EMA) + focus_boost * FOCUS_EMA;
             // Register IOR for this target
             if !self.ior_list.iter().any(|e| e.target == focus_target_str) {
                 if self.ior_list.len() >= MAX_IOR {
@@ -164,8 +171,8 @@ impl FrontalEyeFields {
         FEFOutput {
             voluntary_focus: self.voluntary_focus,
             search_active,
-            top_down_gain:   self.top_down_gain,
-            ior_count:       self.ior_list.len(),
+            top_down_gain: self.top_down_gain,
+            ior_count: self.ior_list.len(),
             ior_suppressed,
         }
     }
@@ -176,7 +183,9 @@ impl FrontalEyeFields {
         self.top_down_gain = (self.top_down_gain - 0.02).max(1.0);
         // Age IOR entries
         for entry in &mut self.ior_list {
-            if entry.ticks_remaining > 0 { entry.ticks_remaining -= 1; }
+            if entry.ticks_remaining > 0 {
+                entry.ticks_remaining -= 1;
+            }
         }
         self.ior_list.retain(|e| e.ticks_remaining > 0);
     }
@@ -185,10 +194,10 @@ impl FrontalEyeFields {
     pub fn current_output(&self) -> FEFOutput {
         FEFOutput {
             voluntary_focus: self.voluntary_focus,
-            search_active:   self.search_template.is_some(),
-            top_down_gain:   self.top_down_gain,
-            ior_count:       self.ior_list.len(),
-            ior_suppressed:  false,
+            search_active: self.search_template.is_some(),
+            top_down_gain: self.top_down_gain,
+            ior_count: self.ior_list.len(),
+            ior_suppressed: false,
         }
     }
 
@@ -205,7 +214,9 @@ impl FrontalEyeFields {
 }
 
 impl Default for FrontalEyeFields {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -226,17 +237,22 @@ mod tests {
         let mut f = FrontalEyeFields::new();
         let before = f.voluntary_focus;
         f.process("question", true, 0.50);
-        assert!(f.voluntary_focus >= before,
+        assert!(
+            f.voluntary_focus >= before,
             "PFC goal active should raise voluntary focus: {:.2} → {:.2}",
-            before, f.voluntary_focus);
+            before,
+            f.voluntary_focus
+        );
     }
 
     #[test]
     fn test_ior_registered_after_focus() {
         let mut f = FrontalEyeFields::new();
         f.process("code_block", true, 0.50);
-        assert!(f.ior_list.iter().any(|e| e.target == "code_block"),
-            "attended target should be registered in IOR");
+        assert!(
+            f.ior_list.iter().any(|e| e.target == "code_block"),
+            "attended target should be registered in IOR"
+        );
     }
 
     #[test]
@@ -244,16 +260,21 @@ mod tests {
         let mut f = FrontalEyeFields::new();
         f.voluntary_focus = 0.70;
         let out = f.process("question", true, 0.50);
-        assert!(out.search_active,
-            "PFC goal + high focus should activate search");
+        assert!(
+            out.search_active,
+            "PFC goal + high focus should activate search"
+        );
     }
 
     #[test]
     fn test_top_down_gain_above_one_with_goal() {
         let mut f = FrontalEyeFields::new();
         let out = f.process("target", true, 0.50);
-        assert!(out.top_down_gain > 1.0,
-            "PFC goal should produce top-down gain > 1.0: {:.2}", out.top_down_gain);
+        assert!(
+            out.top_down_gain > 1.0,
+            "PFC goal should produce top-down gain > 1.0: {:.2}",
+            out.top_down_gain
+        );
     }
 
     #[test]
@@ -263,8 +284,10 @@ mod tests {
         f.process("already_attended", true, 0.50);
         // Second focus on same target — should be suppressed
         let out = f.process("already_attended", true, 0.50);
-        assert!(out.ior_suppressed,
-            "second focus on same target should be IOR suppressed");
+        assert!(
+            out.ior_suppressed,
+            "second focus on same target should be IOR suppressed"
+        );
     }
 
     #[test]
@@ -276,8 +299,10 @@ mod tests {
         for _ in 0..=IOR_DURATION {
             f.decay();
         }
-        assert!(f.ior_list.is_empty(),
-            "IOR entries should age out after duration");
+        assert!(
+            f.ior_list.is_empty(),
+            "IOR entries should age out after duration"
+        );
     }
 
     #[test]
@@ -287,16 +312,18 @@ mod tests {
         for _ in 0..10 {
             f.decay();
         }
-        assert!(f.voluntary_focus < 0.90,
-            "focus should decay: {:.2}", f.voluntary_focus);
+        assert!(
+            f.voluntary_focus < 0.90,
+            "focus should decay: {:.2}",
+            f.voluntary_focus
+        );
     }
 
     #[test]
     fn test_no_goal_no_search() {
         let mut f = FrontalEyeFields::new();
         let out = f.process("target", false, 0.30);
-        assert!(!out.search_active,
-            "no PFC goal should not activate search");
+        assert!(!out.search_active, "no PFC goal should not activate search");
     }
 
     #[test]

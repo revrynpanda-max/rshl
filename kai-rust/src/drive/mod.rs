@@ -93,7 +93,9 @@ impl Default for Drive {
 }
 
 fn mean(v: &[f32]) -> f32 {
-    if v.is_empty() { return 0.0; }
+    if v.is_empty() {
+        return 0.0;
+    }
     v.iter().sum::<f32>() / v.len() as f32
 }
 
@@ -103,17 +105,21 @@ impl Drive {
     pub fn update(&mut self, field: &FieldState) {
         let phi_g = field.phi_g;
         let chi = field.chi;
-        let q = field.q;         // novelty = 1 - R
-        let m = field.m_val;     // momentum
+        let q = field.q; // novelty = 1 - R
+        let m = field.m_val; // momentum
 
         // Track chi over time for sustained-contradiction detection
         self.chi_history.push(chi);
-        if self.chi_history.len() > 20 { self.chi_history.remove(0); }
+        if self.chi_history.len() > 20 {
+            self.chi_history.remove(0);
+        }
         let sustained_chi = mean(&self.chi_history);
 
         // Track phi_g for boredom detection
         self.phi_g_history.push(phi_g);
-        if self.phi_g_history.len() > 30 { self.phi_g_history.remove(0); }
+        if self.phi_g_history.len() > 30 {
+            self.phi_g_history.remove(0);
+        }
 
         // EMA smoothing for averages
         let alpha = 0.3;
@@ -123,7 +129,11 @@ impl Drive {
         // ── Valence computation (JS formula) ───────────────────────────
         // Curiosity vs familiarity reward
         let is_novel = q > 0.45;
-        let reward_multiplier = if is_novel { CURIOSITY_BONUS } else { FAMILIARITY_BONUS };
+        let reward_multiplier = if is_novel {
+            CURIOSITY_BONUS
+        } else {
+            FAMILIARITY_BONUS
+        };
 
         // Positive component: how good does this thought feel
         let positive = phi_g * reward_multiplier;
@@ -142,8 +152,7 @@ impl Drive {
         let raw_valence = (positive + momentum_bonus + negative).clamp(-1.0, 1.0);
 
         // Smooth with EMA so valence changes gradually (mood, not reflex)
-        self.valence = self.valence * VALENCE_SMOOTHING
-                     + raw_valence * (1.0 - VALENCE_SMOOTHING);
+        self.valence = self.valence * VALENCE_SMOOTHING + raw_valence * (1.0 - VALENCE_SMOOTHING);
 
         // Slow decay toward neutral
         self.valence *= VALENCE_DECAY;
@@ -217,7 +226,11 @@ impl Drive {
         let excitement = engagement; // simplified — momentum is already in valence
 
         // Confusion: sustained contradiction slows things down
-        let confusion = if mean(&self.chi_history) > 0.3 { 0.2 } else { 0.0 };
+        let confusion = if mean(&self.chi_history) > 0.3 {
+            0.2
+        } else {
+            0.0
+        };
 
         let mut modifier = -excitement * ENGAGEMENT_SCALE + confusion;
 

@@ -36,7 +36,6 @@
 ///   current_familiarity: how familiar the current input feels (0.0–1.0)
 ///   category_match: best-matching category from the library
 ///   holistic_score: how much the input "clicks" as a unified gestalt
-
 use std::collections::HashMap;
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -55,13 +54,80 @@ const FAMILIARITY_DECAY: f32 = 0.0005;
 
 /// Pre-seeded KAI communication pattern categories
 const SEED_CATEGORIES: &[(&str, &[&str])] = &[
-    ("exploration", &["wonder", "imagine", "what if", "curious", "explore", "think about"]),
-    ("validation",  &["right?", "makes sense", "correct?", "would you say", "am i"]),
-    ("task",        &["create", "build", "write", "generate", "make", "implement", "fix"]),
-    ("identity",    &["consciousness", "aware", "feel", "experience", "kai", "am i", "are you"]),
-    ("technical",   &["rust", "algorithm", "function", "module", "compile", "vector", "rshl"]),
-    ("social",      &["thanks", "awesome", "great job", "nice", "love it", "good", "wow"]),
-    ("deep",        &["philosophy", "meaning", "existence", "recursive", "geometry", "why"]),
+    (
+        "exploration",
+        &[
+            "wonder",
+            "imagine",
+            "what if",
+            "curious",
+            "explore",
+            "think about",
+        ],
+    ),
+    (
+        "validation",
+        &["right?", "makes sense", "correct?", "would you say", "am i"],
+    ),
+    (
+        "task",
+        &[
+            "create",
+            "build",
+            "write",
+            "generate",
+            "make",
+            "implement",
+            "fix",
+        ],
+    ),
+    (
+        "identity",
+        &[
+            "consciousness",
+            "aware",
+            "feel",
+            "experience",
+            "kai",
+            "am i",
+            "are you",
+        ],
+    ),
+    (
+        "technical",
+        &[
+            "rust",
+            "algorithm",
+            "function",
+            "module",
+            "compile",
+            "vector",
+            "rshl",
+        ],
+    ),
+    (
+        "social",
+        &[
+            "thanks",
+            "awesome",
+            "great job",
+            "nice",
+            "love it",
+            "good",
+            "wow",
+        ],
+    ),
+    (
+        "deep",
+        &[
+            "philosophy",
+            "meaning",
+            "existence",
+            "recursive",
+            "geometry",
+            "why",
+        ],
+    ),
 ];
 
 // ── PatternEntry ──────────────────────────────────────────────────────────────
@@ -109,10 +175,10 @@ pub struct FusiformGyrus {
 impl FusiformGyrus {
     pub fn new() -> Self {
         let mut fg = Self {
-            pattern_library:    HashMap::new(),
+            pattern_library: HashMap::new(),
             current_familiarity: 0.0,
-            total_matches:      0,
-            novel_inputs:       0,
+            total_matches: 0,
+            novel_inputs: 0,
         };
         fg.seed_patterns();
         fg
@@ -120,11 +186,14 @@ impl FusiformGyrus {
 
     fn seed_patterns(&mut self) {
         for (category, patterns) in SEED_CATEGORIES {
-            let entries: Vec<PatternEntry> = patterns.iter().map(|&p| PatternEntry {
-                pattern:    p.to_string(),
-                hit_count:  0,
-                familiarity: 0.20,  // Start with a small base for seeded patterns
-            }).collect();
+            let entries: Vec<PatternEntry> = patterns
+                .iter()
+                .map(|&p| PatternEntry {
+                    pattern: p.to_string(),
+                    hit_count: 0,
+                    familiarity: 0.20, // Start with a small base for seeded patterns
+                })
+                .collect();
             self.pattern_library.insert(category.to_string(), entries);
         }
     }
@@ -178,8 +247,12 @@ impl FusiformGyrus {
         let holistic_match = best_score > 0.50 && best_familiarity > 0.30;
 
         FusiformOutput {
-            familiarity:      self.current_familiarity,
-            category_match:   if is_novel { "novel".to_string() } else { best_category },
+            familiarity: self.current_familiarity,
+            category_match: if is_novel {
+                "novel".to_string()
+            } else {
+                best_category
+            },
             match_confidence: best_score,
             holistic_match,
             is_novel,
@@ -188,23 +261,39 @@ impl FusiformGyrus {
 
     /// Add a new pattern to a category (or create the category).
     pub fn learn_pattern(&mut self, category: &str, pattern: &str) {
-        let entries = self.pattern_library.entry(category.to_string()).or_default();
+        let entries = self
+            .pattern_library
+            .entry(category.to_string())
+            .or_default();
         // Don't add duplicates
-        if entries.iter().any(|e| e.pattern == pattern) { return; }
+        if entries.iter().any(|e| e.pattern == pattern) {
+            return;
+        }
         if entries.len() >= MAX_PATTERNS_PER_CATEGORY {
             // Replace the lowest-familiarity entry
-            if let Some(min_idx) = entries.iter().enumerate()
-                .min_by(|(_, a), (_, b)| a.familiarity.partial_cmp(&b.familiarity)
-                    .unwrap_or(std::cmp::Ordering::Equal))
+            if let Some(min_idx) = entries
+                .iter()
+                .enumerate()
+                .min_by(|(_, a), (_, b)| {
+                    a.familiarity
+                        .partial_cmp(&b.familiarity)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                })
                 .map(|(i, _)| i)
             {
                 entries[min_idx] = PatternEntry {
-                    pattern: pattern.to_string(), hit_count: 0, familiarity: 0.10,
+                    pattern: pattern.to_string(),
+                    hit_count: 0,
+                    familiarity: 0.10,
                 };
                 return;
             }
         }
-        entries.push(PatternEntry { pattern: pattern.to_string(), hit_count: 0, familiarity: 0.10 });
+        entries.push(PatternEntry {
+            pattern: pattern.to_string(),
+            hit_count: 0,
+            familiarity: 0.10,
+        });
     }
 
     /// Decay familiarity over time (expertise slowly fades without use).
@@ -218,7 +307,9 @@ impl FusiformGyrus {
     }
 
     /// Number of known categories.
-    pub fn category_count(&self) -> usize { self.pattern_library.len() }
+    pub fn category_count(&self) -> usize {
+        self.pattern_library.len()
+    }
 
     /// Status line for brain monitor.
     pub fn status_line(&self) -> String {
@@ -233,7 +324,9 @@ impl FusiformGyrus {
 }
 
 impl Default for FusiformGyrus {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -252,32 +345,43 @@ mod tests {
     fn test_task_category_recognized() {
         let mut fg = FusiformGyrus::new();
         let out = fg.recognize("can you create a new module and write the tests");
-        assert_eq!(out.category_match, "task",
-            "task keywords should match task category, got: {}", out.category_match);
+        assert_eq!(
+            out.category_match, "task",
+            "task keywords should match task category, got: {}",
+            out.category_match
+        );
     }
 
     #[test]
     fn test_exploration_category() {
         let mut fg = FusiformGyrus::new();
         let out = fg.recognize("I wonder what if we explore this idea further");
-        assert_eq!(out.category_match, "exploration",
-            "exploration keywords should match, got: {}", out.category_match);
+        assert_eq!(
+            out.category_match, "exploration",
+            "exploration keywords should match, got: {}",
+            out.category_match
+        );
     }
 
     #[test]
     fn test_identity_category() {
         let mut fg = FusiformGyrus::new();
         let out = fg.recognize("are you conscious kai do you feel anything");
-        assert_eq!(out.category_match, "identity",
-            "identity keywords should match, got: {}", out.category_match);
+        assert_eq!(
+            out.category_match, "identity",
+            "identity keywords should match, got: {}",
+            out.category_match
+        );
     }
 
     #[test]
     fn test_novel_input_detected() {
         let mut fg = FusiformGyrus::new();
         let out = fg.recognize("the temperature outside today is quite pleasant");
-        assert!(out.is_novel || out.match_confidence < MATCH_THRESHOLD,
-            "unrelated input should be flagged as novel or low confidence");
+        assert!(
+            out.is_novel || out.match_confidence < MATCH_THRESHOLD,
+            "unrelated input should be flagged as novel or low confidence"
+        );
     }
 
     #[test]
@@ -286,8 +390,11 @@ mod tests {
         fg.recognize("create a module and write the tests for it");
         fg.recognize("build the component and generate the output");
         let third = fg.recognize("implement the feature and make it work");
-        assert!(third.familiarity > 0.0,
-            "familiarity should rise with repeated pattern matches: {:.2}", third.familiarity);
+        assert!(
+            third.familiarity > 0.0,
+            "familiarity should rise with repeated pattern matches: {:.2}",
+            third.familiarity
+        );
     }
 
     #[test]
@@ -311,7 +418,7 @@ mod tests {
         }
         let out = fg.recognize("create something and write about it");
         // After repeated exposure, holistic match should be more likely
-        assert!(out.familiarity >= 0.0);  // At minimum, familiarity tracked
+        assert!(out.familiarity >= 0.0); // At minimum, familiarity tracked
     }
 
     #[test]
@@ -322,8 +429,12 @@ mod tests {
         for _ in 0..100 {
             fg.decay();
         }
-        assert!(fg.current_familiarity <= before,
-            "familiarity should decay: {:.3} → {:.3}", before, fg.current_familiarity);
+        assert!(
+            fg.current_familiarity <= before,
+            "familiarity should decay: {:.3} → {:.3}",
+            before,
+            fg.current_familiarity
+        );
     }
 
     #[test]

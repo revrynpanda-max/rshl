@@ -1,3 +1,4 @@
+use crate::core::SparseVec;
 /// Predictive Processing Engine — KAI's expectation machine
 ///
 /// One of the most powerful theories of brain function (Karl Friston, Andy Clark):
@@ -28,9 +29,7 @@
 ///
 /// The key metric: Prediction Error (PE) — 0.0 (perfect prediction) to 1.0 (complete surprise)
 /// This becomes part of KAI's displayed field state alongside phi_g and chi.
-
 use serde::{Deserialize, Serialize};
-use crate::core::SparseVec;
 use std::collections::VecDeque;
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -78,10 +77,10 @@ pub struct PredictiveEngine {
 impl PredictiveEngine {
     pub fn new() -> Self {
         Self {
-            history:            VecDeque::with_capacity(HISTORY_CAP),
-            avg_error:          0.5,  // start neutral — neither bored nor surprised
-            total_predictions:  0,
-            surprise_count:     0,
+            history: VecDeque::with_capacity(HISTORY_CAP),
+            avg_error: 0.5, // start neutral — neither bored nor surprised
+            total_predictions: 0,
+            surprise_count: 0,
             curiosity_pressure: 0.5,
         }
     }
@@ -100,7 +99,8 @@ impl PredictiveEngine {
         }
 
         // Use the top hit above minimum score as prediction basis
-        let valid: Vec<&(String, f32)> = hits.iter()
+        let valid: Vec<&(String, f32)> = hits
+            .iter()
             .filter(|(_, s)| *s >= PREDICTION_MIN_SCORE)
             .collect();
 
@@ -119,10 +119,10 @@ impl PredictiveEngine {
     /// Returns the prediction error (0–1) — use it to boost salience.
     pub fn update(
         &mut self,
-        input:          &str,
+        input: &str,
         predicted_text: &str,
-        predicted_vec:  &SparseVec,
-        actual_text:    &str,
+        predicted_vec: &SparseVec,
+        actual_text: &str,
     ) -> f32 {
         // Compute error as 1 − cosine(predicted, actual)
         let actual_vec = SparseVec::encode(actual_text);
@@ -130,7 +130,9 @@ impl PredictiveEngine {
         let error = (1.0_f32 - sim).clamp(0.0, 1.0);
 
         let was_surprising = error > 0.45;
-        if was_surprising { self.surprise_count += 1; }
+        if was_surprising {
+            self.surprise_count += 1;
+        }
 
         // RAPE: exponential moving average (α = 0.15 — smooth but responsive)
         self.avg_error = self.avg_error * 0.85 + error * 0.15;
@@ -144,9 +146,9 @@ impl PredictiveEngine {
         }
 
         let record = PredictionRecord {
-            input_summary:  truncate_str(input, 60),
+            input_summary: truncate_str(input, 60),
             predicted_text: truncate_str(predicted_text, 80),
-            actual_text:    truncate_str(actual_text, 80),
+            actual_text: truncate_str(actual_text, 80),
             error,
             was_surprising,
         };
@@ -167,15 +169,21 @@ impl PredictiveEngine {
     ///   PE   0.30 → boost 0.15
     ///   PE ≥ 0.60 → boost 0.40 (very surprising — burn it in)
     pub fn salience_boost(error: f32) -> f32 {
-        if error < 0.10 { return 0.0; }
+        if error < 0.10 {
+            return 0.0;
+        }
         (error * 0.65).clamp(0.0, 0.40)
     }
 
     /// True if KAI is in a high-surprise state (recent avg PE is elevated).
-    pub fn is_surprised(&self) -> bool { self.avg_error > 0.50 }
+    pub fn is_surprised(&self) -> bool {
+        self.avg_error > 0.50
+    }
 
     /// True if KAI is in a low-surprise (predictable / potentially bored) state.
-    pub fn is_bored(&self) -> bool { self.avg_error < 0.15 }
+    pub fn is_bored(&self) -> bool {
+        self.avg_error < 0.15
+    }
 
     /// The most recent N prediction records.
     pub fn recent(&self, n: usize) -> Vec<&PredictionRecord> {
@@ -184,32 +192,47 @@ impl PredictiveEngine {
 
     /// Most surprising moment KAI has experienced.
     pub fn most_surprising(&self) -> Option<&PredictionRecord> {
-        self.history.iter().max_by(|a, b|
-            a.error.partial_cmp(&b.error).unwrap_or(std::cmp::Ordering::Equal))
+        self.history.iter().max_by(|a, b| {
+            a.error
+                .partial_cmp(&b.error)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
     }
 
     /// Human-readable summary of KAI's current predictive state.
     pub fn status_line(&self) -> String {
-        let state = if self.is_bored()      { "bored (low surprise)" }
-                    else if self.is_surprised() { "curious (high surprise)" }
-                    else                        { "calibrated" };
+        let state = if self.is_bored() {
+            "bored (low surprise)"
+        } else if self.is_surprised() {
+            "curious (high surprise)"
+        } else {
+            "calibrated"
+        };
         format!(
             "PE_avg={:.3} | curiosity={:.2} | {} | {} predictions ({} surprising)",
-            self.avg_error, self.curiosity_pressure, state,
-            self.total_predictions, self.surprise_count,
+            self.avg_error,
+            self.curiosity_pressure,
+            state,
+            self.total_predictions,
+            self.surprise_count,
         )
     }
 }
 
 impl Default for PredictiveEngine {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 fn truncate_str(s: &str, n: usize) -> String {
-    if s.len() <= n { s.to_string() }
-    else { format!("{}…", &s[..n]) }
+    if s.len() <= n {
+        s.to_string()
+    } else {
+        format!("{}…", &s[..n])
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -222,9 +245,13 @@ mod tests {
     fn test_perfect_prediction_zero_error() {
         let mut engine = PredictiveEngine::new();
         let text = "consciousness arises from recursive self-reference";
-        let vec  = SparseVec::encode(text);
-        let err  = engine.update("what is consciousness?", text, &vec, text);
-        assert!(err < 0.05, "identical prediction should have near-zero error: {:.4}", err);
+        let vec = SparseVec::encode(text);
+        let err = engine.update("what is consciousness?", text, &vec, text);
+        assert!(
+            err < 0.05,
+            "identical prediction should have near-zero error: {:.4}",
+            err
+        );
     }
 
     #[test]
@@ -237,7 +264,11 @@ mod tests {
             &pred_vec,
             "calculus is the mathematics of change, integrals and derivatives",
         );
-        assert!(err > 0.30, "completely wrong prediction should have high error: {:.4}", err);
+        assert!(
+            err > 0.30,
+            "completely wrong prediction should have high error: {:.4}",
+            err
+        );
     }
 
     #[test]
@@ -251,7 +282,11 @@ mod tests {
         for _ in 0..60 {
             engine.update("apples", text, &pred_vec, text);
         }
-        assert!(engine.avg_error < 0.20, "avg error should be low after many correct predictions: {:.3}", engine.avg_error);
+        assert!(
+            engine.avg_error < 0.20,
+            "avg error should be low after many correct predictions: {:.3}",
+            engine.avg_error
+        );
     }
 
     #[test]
@@ -260,29 +295,52 @@ mod tests {
         engine.curiosity_pressure = 0.0;
         let wrong_vec = SparseVec::encode("banana");
         for _ in 0..30 {
-            engine.update("deep question", "banana", &wrong_vec,
-                "this is a completely different answer about consciousness and mathematics");
+            engine.update(
+                "deep question",
+                "banana",
+                &wrong_vec,
+                "this is a completely different answer about consciousness and mathematics",
+            );
         }
-        assert!(engine.curiosity_pressure > 0.20,
-            "curiosity should rise with sustained surprise: {:.3}", engine.curiosity_pressure);
+        assert!(
+            engine.curiosity_pressure > 0.20,
+            "curiosity should rise with sustained surprise: {:.3}",
+            engine.curiosity_pressure
+        );
     }
 
     #[test]
     fn test_salience_boost_scaling() {
-        assert!(PredictiveEngine::salience_boost(0.05) < 0.01, "low PE → no boost");
-        assert!(PredictiveEngine::salience_boost(0.30) > 0.10, "mid PE → some boost");
-        assert!(PredictiveEngine::salience_boost(0.80) <= 0.40, "high PE → capped boost");
+        assert!(
+            PredictiveEngine::salience_boost(0.05) < 0.01,
+            "low PE → no boost"
+        );
+        assert!(
+            PredictiveEngine::salience_boost(0.30) > 0.10,
+            "mid PE → some boost"
+        );
+        assert!(
+            PredictiveEngine::salience_boost(0.80) <= 0.40,
+            "high PE → capped boost"
+        );
     }
 
     #[test]
     fn test_predict_returns_top_hit() {
         let engine = PredictiveEngine::new();
         let hits = vec![
-            ("consciousness is recursive self-reference".to_string(), 0.85),
+            (
+                "consciousness is recursive self-reference".to_string(),
+                0.85,
+            ),
             ("blue sky over the mountains".to_string(), 0.40),
         ];
         let (text, vec) = engine.predict(&hits);
-        assert!(text.contains("consciousness"), "should predict top hit: {}", text);
+        assert!(
+            text.contains("consciousness"),
+            "should predict top hit: {}",
+            text
+        );
         assert!(vec.nnz() > 0, "prediction vector should not be zero");
     }
 }

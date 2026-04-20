@@ -54,22 +54,67 @@ const DISCOMFORT_DECAY: f32 = 0.02;
 
 /// Tactile/somatic word markers
 const TACTILE_MARKERS: &[&str] = &[
-    "smooth", "rough", "sharp", "soft", "hard", "warm", "cold", "heavy", "light",
-    "pressure", "tension", "tense", "flow", "stuck", "numb", "tingling",
-    "touch", "feel", "texture", "weight", "resistance", "friction", "force",
-    "grip", "release", "stretch", "compress", "vibrate",
+    "smooth",
+    "rough",
+    "sharp",
+    "soft",
+    "hard",
+    "warm",
+    "cold",
+    "heavy",
+    "light",
+    "pressure",
+    "tension",
+    "tense",
+    "flow",
+    "stuck",
+    "numb",
+    "tingling",
+    "touch",
+    "feel",
+    "texture",
+    "weight",
+    "resistance",
+    "friction",
+    "force",
+    "grip",
+    "release",
+    "stretch",
+    "compress",
+    "vibrate",
 ];
 
 /// Discomfort markers
 const DISCOMFORT_MARKERS: &[&str] = &[
-    "error", "fail", "broken", "wrong", "stuck", "difficult", "hard",
-    "confusing", "painful", "frustrating", "blocked", "conflict",
+    "error",
+    "fail",
+    "broken",
+    "wrong",
+    "stuck",
+    "difficult",
+    "hard",
+    "confusing",
+    "painful",
+    "frustrating",
+    "blocked",
+    "conflict",
 ];
 
 /// Comfort / flow markers
 const COMFORT_MARKERS: &[&str] = &[
-    "flow", "smooth", "easy", "clear", "natural", "comfortable", "right",
-    "correct", "good", "works", "solved", "understand", "click",
+    "flow",
+    "smooth",
+    "easy",
+    "clear",
+    "natural",
+    "comfortable",
+    "right",
+    "correct",
+    "good",
+    "works",
+    "solved",
+    "understand",
+    "click",
 ];
 
 // ── S1Output ──────────────────────────────────────────────────────────────────
@@ -107,11 +152,11 @@ pub struct SomatosensoryCortex {
 impl SomatosensoryCortex {
     pub fn new() -> Self {
         Self {
-            body_state:           0.10,  // Slight positive by default
-            tactile_activation:   0.10,
+            body_state: 0.10, // Slight positive by default
+            tactile_activation: 0.10,
             cognitive_discomfort: 0.0,
-            somatic_detections:   0,
-            inputs_processed:     0,
+            somatic_detections: 0,
+            inputs_processed: 0,
         }
     }
 
@@ -126,44 +171,49 @@ impl SomatosensoryCortex {
         let lower = text.to_lowercase();
 
         // ── Somatic / tactile detection ───────────────────────────────────────
-        let tactile_hits = TACTILE_MARKERS.iter()
-            .filter(|&&w| lower.contains(w)).count();
+        let tactile_hits = TACTILE_MARKERS
+            .iter()
+            .filter(|&&w| lower.contains(w))
+            .count();
         let somatic_detected = tactile_hits >= 1;
         if somatic_detected {
             self.somatic_detections += 1;
             let tactile_target = (tactile_hits as f32 * 0.15).min(0.90);
-            self.tactile_activation = self.tactile_activation * (1.0 - TACTILE_EMA)
-                + tactile_target * TACTILE_EMA;
+            self.tactile_activation =
+                self.tactile_activation * (1.0 - TACTILE_EMA) + tactile_target * TACTILE_EMA;
         } else {
             self.tactile_activation = (self.tactile_activation - 0.03).max(0.0);
         }
 
         // ── Discomfort / comfort detection ────────────────────────────────────
-        let discomfort_hits = DISCOMFORT_MARKERS.iter()
-            .filter(|&&w| lower.contains(w)).count();
-        let comfort_hits = COMFORT_MARKERS.iter()
-            .filter(|&&w| lower.contains(w)).count();
+        let discomfort_hits = DISCOMFORT_MARKERS
+            .iter()
+            .filter(|&&w| lower.contains(w))
+            .count();
+        let comfort_hits = COMFORT_MARKERS
+            .iter()
+            .filter(|&&w| lower.contains(w))
+            .count();
 
         // Cognitive discomfort from text + ACC conflict
         let discomfort_text = (discomfort_hits as f32 * 0.12).min(0.60);
         let discomfort_total = (discomfort_text + acc_conflict * 0.30).min(1.0);
         self.cognitive_discomfort = (self.cognitive_discomfort + discomfort_total * 0.20
-            - comfort_hits as f32 * 0.05).clamp(0.0, 1.0);
+            - comfort_hits as f32 * 0.05)
+            .clamp(0.0, 1.0);
 
         // ── Body state (felt valence) ─────────────────────────────────────────
-        let body_target = insula_valence * 0.60
-            + comfort_hits as f32 * 0.08
+        let body_target = insula_valence * 0.60 + comfort_hits as f32 * 0.08
             - discomfort_hits as f32 * 0.10
             - acc_conflict * 0.20;
         let body_target = body_target.clamp(-1.0, 1.0);
-        self.body_state = self.body_state * (1.0 - BODY_STATE_EMA)
-            + body_target * BODY_STATE_EMA;
+        self.body_state = self.body_state * (1.0 - BODY_STATE_EMA) + body_target * BODY_STATE_EMA;
 
         S1Output {
-            body_state:           self.body_state,
-            tactile_activation:   self.tactile_activation,
+            body_state: self.body_state,
+            tactile_activation: self.tactile_activation,
             cognitive_discomfort: self.cognitive_discomfort,
-            felt_flow:            self.body_state > 0.20 && self.cognitive_discomfort < 0.35,
+            felt_flow: self.body_state > 0.20 && self.cognitive_discomfort < 0.35,
             somatic_detected,
         }
     }
@@ -179,11 +229,11 @@ impl SomatosensoryCortex {
     /// Current output without processing.
     pub fn current_output(&self) -> S1Output {
         S1Output {
-            body_state:           self.body_state,
-            tactile_activation:   self.tactile_activation,
+            body_state: self.body_state,
+            tactile_activation: self.tactile_activation,
             cognitive_discomfort: self.cognitive_discomfort,
-            felt_flow:            self.body_state > 0.20 && self.cognitive_discomfort < 0.35,
-            somatic_detected:     false,
+            felt_flow: self.body_state > 0.20 && self.cognitive_discomfort < 0.35,
+            somatic_detected: false,
         }
     }
 
@@ -194,13 +244,19 @@ impl SomatosensoryCortex {
             self.body_state,
             self.tactile_activation,
             self.cognitive_discomfort,
-            if self.body_state > 0.20 && self.cognitive_discomfort < 0.35 { "YES" } else { "no" },
+            if self.body_state > 0.20 && self.cognitive_discomfort < 0.35 {
+                "YES"
+            } else {
+                "no"
+            },
         )
     }
 }
 
 impl Default for SomatosensoryCortex {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -221,16 +277,22 @@ mod tests {
         let mut s = SomatosensoryCortex::new();
         let out = s.process("the texture feels smooth and warm and soft", 0.10, 0.20);
         assert!(out.somatic_detected, "tactile words should be detected");
-        assert!(out.tactile_activation > 0.0,
-            "tactile activation should rise: {:.2}", out.tactile_activation);
+        assert!(
+            out.tactile_activation > 0.0,
+            "tactile activation should rise: {:.2}",
+            out.tactile_activation
+        );
     }
 
     #[test]
     fn test_acc_conflict_raises_discomfort() {
         let mut s = SomatosensoryCortex::new();
         let out = s.process("something complex", 0.80, 0.0);
-        assert!(out.cognitive_discomfort > 0.0,
-            "high ACC conflict should raise cognitive discomfort: {:.2}", out.cognitive_discomfort);
+        assert!(
+            out.cognitive_discomfort > 0.0,
+            "high ACC conflict should raise cognitive discomfort: {:.2}",
+            out.cognitive_discomfort
+        );
     }
 
     #[test]
@@ -238,8 +300,11 @@ mod tests {
         let mut s = SomatosensoryCortex::new();
         s.cognitive_discomfort = 0.50;
         s.process("everything flows smoothly and works correctly", 0.0, 0.30);
-        assert!(s.cognitive_discomfort < 0.50,
-            "comfort words should reduce discomfort: {:.2}", s.cognitive_discomfort);
+        assert!(
+            s.cognitive_discomfort < 0.50,
+            "comfort words should reduce discomfort: {:.2}",
+            s.cognitive_discomfort
+        );
     }
 
     #[test]
@@ -247,8 +312,11 @@ mod tests {
         let mut s = SomatosensoryCortex::new();
         let before = s.body_state;
         s.process("neutral text", 0.10, 0.80);
-        assert!(s.body_state >= before - 0.01,
-            "positive insula valence should not lower body state: {:.2}", s.body_state);
+        assert!(
+            s.body_state >= before - 0.01,
+            "positive insula valence should not lower body state: {:.2}",
+            s.body_state
+        );
     }
 
     #[test]
@@ -276,8 +344,11 @@ mod tests {
         for _ in 0..10 {
             s.decay();
         }
-        assert!(s.cognitive_discomfort < 0.60,
-            "discomfort should decay: {:.2}", s.cognitive_discomfort);
+        assert!(
+            s.cognitive_discomfort < 0.60,
+            "discomfort should decay: {:.2}",
+            s.cognitive_discomfort
+        );
     }
 
     #[test]

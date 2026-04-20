@@ -59,20 +59,43 @@ const MAX_SALIENCY_ITEMS: usize = 8;
 
 /// High-urgency markers that spike bottom-up saliency
 const URGENCY_MARKERS: &[&str] = &[
-    "urgent", "immediately", "critical", "error", "warning", "fail", "crash",
-    "broken", "emergency", "asap", "now", "stop", "wait", "important",
+    "urgent",
+    "immediately",
+    "critical",
+    "error",
+    "warning",
+    "fail",
+    "crash",
+    "broken",
+    "emergency",
+    "asap",
+    "now",
+    "stop",
+    "wait",
+    "important",
 ];
 
 /// Novelty/contrast markers
 const NOVELTY_MARKERS: &[&str] = &[
-    "suddenly", "unexpected", "strange", "weird", "odd", "surprising",
-    "different", "change", "shift", "new", "never", "first time", "wait",
+    "suddenly",
+    "unexpected",
+    "strange",
+    "weird",
+    "odd",
+    "surprising",
+    "different",
+    "change",
+    "shift",
+    "new",
+    "never",
+    "first time",
+    "wait",
 ];
 
 /// Question markers (attention-demanding by nature)
 const QUESTION_MARKERS: &[&str] = &[
-    "why", "how", "what", "where", "when", "which", "who", "?",
-    "explain", "tell me", "describe", "show",
+    "why", "how", "what", "where", "when", "which", "who", "?", "explain", "tell me", "describe",
+    "show",
 ];
 
 // ── SaliencyItem ──────────────────────────────────────────────────────────────
@@ -118,8 +141,8 @@ pub struct SuperiorColliculus {
 impl SuperiorColliculus {
     pub fn new() -> Self {
         Self {
-            top_salience:     0.20,
-            saliency_map:     Vec::new(),
+            top_salience: 0.20,
+            saliency_map: Vec::new(),
             attention_priority: 0.30,
             orienting_events: 0,
             inputs_processed: 0,
@@ -137,12 +160,18 @@ impl SuperiorColliculus {
         let lower = text.to_lowercase();
 
         // ── Bottom-up saliency computation ────────────────────────────────────
-        let urgency_hits = URGENCY_MARKERS.iter()
-            .filter(|&&w| lower.contains(w)).count();
-        let novelty_hits = NOVELTY_MARKERS.iter()
-            .filter(|&&w| lower.contains(w)).count();
-        let question_hits = QUESTION_MARKERS.iter()
-            .filter(|&&w| lower.contains(w)).count();
+        let urgency_hits = URGENCY_MARKERS
+            .iter()
+            .filter(|&&w| lower.contains(w))
+            .count();
+        let novelty_hits = NOVELTY_MARKERS
+            .iter()
+            .filter(|&&w| lower.contains(w))
+            .count();
+        let question_hits = QUESTION_MARKERS
+            .iter()
+            .filter(|&&w| lower.contains(w))
+            .count();
 
         let urgency_detected = urgency_hits >= 1;
 
@@ -169,7 +198,8 @@ impl SuperiorColliculus {
         self.saliency_map.clear();
         // Add urgency items
         if urgency_detected {
-            let urgency_word = URGENCY_MARKERS.iter()
+            let urgency_word = URGENCY_MARKERS
+                .iter()
                 .find(|&&w| lower.contains(w))
                 .map(|&w| w)
                 .unwrap_or("urgent");
@@ -200,19 +230,24 @@ impl SuperiorColliculus {
             });
         }
         // Sort descending by salience
-        self.saliency_map.sort_by(|a, b|
-            b.salience.partial_cmp(&a.salience).unwrap_or(std::cmp::Ordering::Equal));
+        self.saliency_map.sort_by(|a, b| {
+            b.salience
+                .partial_cmp(&a.salience)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         self.saliency_map.truncate(MAX_SALIENCY_ITEMS);
 
         // ── Orienting ─────────────────────────────────────────────────────────
         let orienting_triggered = integrated >= ORIENTING_THRESHOLD;
-        if orienting_triggered { self.orienting_events += 1; }
+        if orienting_triggered {
+            self.orienting_events += 1;
+        }
 
         SCOutput {
-            top_salience:        self.top_salience,
+            top_salience: self.top_salience,
             orienting_triggered,
-            saliency_map_size:   self.saliency_map.len(),
-            attention_priority:  self.attention_priority,
+            saliency_map_size: self.saliency_map.len(),
+            attention_priority: self.attention_priority,
             urgency_detected,
         }
     }
@@ -231,11 +266,11 @@ impl SuperiorColliculus {
     /// Current output without processing.
     pub fn current_output(&self) -> SCOutput {
         SCOutput {
-            top_salience:        self.top_salience,
+            top_salience: self.top_salience,
             orienting_triggered: self.top_salience >= ORIENTING_THRESHOLD,
-            saliency_map_size:   self.saliency_map.len(),
-            attention_priority:  self.attention_priority,
-            urgency_detected:    false,
+            saliency_map_size: self.saliency_map.len(),
+            attention_priority: self.attention_priority,
+            urgency_detected: false,
         }
     }
 
@@ -252,7 +287,9 @@ impl SuperiorColliculus {
 }
 
 impl Default for SuperiorColliculus {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -273,16 +310,22 @@ mod tests {
         let mut s = SuperiorColliculus::new();
         let out = s.process("this is critical and urgent please stop", 0.50, 0.20);
         assert!(out.urgency_detected, "urgency markers should be detected");
-        assert!(out.top_salience > 0.50,
-            "urgency should produce high salience: {:.2}", out.top_salience);
+        assert!(
+            out.top_salience > 0.50,
+            "urgency should produce high salience: {:.2}",
+            out.top_salience
+        );
     }
 
     #[test]
     fn test_urgency_triggers_orienting() {
         let mut s = SuperiorColliculus::new();
         let out = s.process("emergency error crash stop now", 0.60, 0.20);
-        assert!(out.orienting_triggered || out.top_salience > 0.40,
-            "high urgency should trigger orienting: salience={:.2}", out.top_salience);
+        assert!(
+            out.orienting_triggered || out.top_salience > 0.40,
+            "high urgency should trigger orienting: salience={:.2}",
+            out.top_salience
+        );
     }
 
     #[test]
@@ -290,16 +333,23 @@ mod tests {
         let mut s = SuperiorColliculus::new();
         let before = s.top_salience;
         let out = s.process("why does this happen and how can I fix it?", 0.40, 0.20);
-        assert!(out.top_salience >= before,
-            "questions should raise salience: {:.2} → {:.2}", before, out.top_salience);
+        assert!(
+            out.top_salience >= before,
+            "questions should raise salience: {:.2} → {:.2}",
+            before,
+            out.top_salience
+        );
     }
 
     #[test]
     fn test_novelty_raises_salience() {
         let mut s = SuperiorColliculus::new();
         let out = s.process("this is surprising and completely unexpected", 0.40, 0.80);
-        assert!(out.top_salience > 0.30,
-            "novelty should raise salience: {:.2}", out.top_salience);
+        assert!(
+            out.top_salience > 0.30,
+            "novelty should raise salience: {:.2}",
+            out.top_salience
+        );
     }
 
     #[test]
@@ -308,17 +358,26 @@ mod tests {
         let mut s2 = SuperiorColliculus::new();
         let low_goal = s1.process("hello there", 0.10, 0.10);
         let high_goal = s2.process("hello there", 0.90, 0.10);
-        assert!(high_goal.attention_priority > low_goal.attention_priority,
+        assert!(
+            high_goal.attention_priority > low_goal.attention_priority,
             "high goal relevance should boost priority: {:.2} vs {:.2}",
-            high_goal.attention_priority, low_goal.attention_priority);
+            high_goal.attention_priority,
+            low_goal.attention_priority
+        );
     }
 
     #[test]
     fn test_saliency_map_populated() {
         let mut s = SuperiorColliculus::new();
-        let out = s.process("urgent error: why is this critical system crashing now?", 0.70, 0.60);
-        assert!(out.saliency_map_size > 0,
-            "saliency map should have items after high-salience input");
+        let out = s.process(
+            "urgent error: why is this critical system crashing now?",
+            0.70,
+            0.60,
+        );
+        assert!(
+            out.saliency_map_size > 0,
+            "saliency map should have items after high-salience input"
+        );
     }
 
     #[test]
@@ -327,8 +386,10 @@ mod tests {
         s.process("critical error stop", 0.80, 0.50);
         s.process("urgent warning now", 0.80, 0.50);
         // Both should trigger orienting
-        assert!(s.orienting_events >= 1,
-            "high-salience inputs should trigger orienting events");
+        assert!(
+            s.orienting_events >= 1,
+            "high-salience inputs should trigger orienting events"
+        );
     }
 
     #[test]
@@ -338,16 +399,22 @@ mod tests {
         for _ in 0..5 {
             s.decay();
         }
-        assert!(s.top_salience < 0.90,
-            "salience should decay: {:.2}", s.top_salience);
+        assert!(
+            s.top_salience < 0.90,
+            "salience should decay: {:.2}",
+            s.top_salience
+        );
     }
 
     #[test]
     fn test_low_salience_input() {
         let mut s = SuperiorColliculus::new();
         let out = s.process("okay", 0.20, 0.10);
-        assert!(out.top_salience < 0.60,
-            "low-intensity input should have modest salience: {:.2}", out.top_salience);
+        assert!(
+            out.top_salience < 0.60,
+            "low-intensity input should have modest salience: {:.2}",
+            out.top_salience
+        );
     }
 
     #[test]
@@ -358,4 +425,3 @@ mod tests {
         assert!(sl.contains("salience"), "status should show salience");
     }
 }
-

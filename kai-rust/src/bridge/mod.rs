@@ -1,6 +1,6 @@
 pub mod ai_peer;
-pub mod git_tools;
 pub mod code_tools;
+pub mod git_tools;
 pub mod ipc_server;
 
 /// World Bridge — Background knowledge intake for KAI.
@@ -12,43 +12,97 @@ pub mod ipc_server;
 /// DuckDuckGo API: https://api.duckduckgo.com/?q=QUERY&format=json
 /// No API key required. Returns topic summaries, definitions,
 /// related topics from Wikipedia and other sources.
-
 use crate::core::Universe;
 
 /// Topics KAI should explore to grow his knowledge base.
 const EXPLORATION_TOPICS: &[&str] = &[
     // Science
-    "photosynthesis", "quantum entanglement", "plate tectonics",
-    "mitochondria", "supernova", "chemical bond", "entropy",
-    "electromagnetic spectrum", "natural selection", "dna replication",
-    "gravitational wave", "dark matter", "dark energy", "neurotransmitter",
-    "black hole", "string theory", "thermodynamics", "nuclear fusion",
+    "photosynthesis",
+    "quantum entanglement",
+    "plate tectonics",
+    "mitochondria",
+    "supernova",
+    "chemical bond",
+    "entropy",
+    "electromagnetic spectrum",
+    "natural selection",
+    "dna replication",
+    "gravitational wave",
+    "dark matter",
+    "dark energy",
+    "neurotransmitter",
+    "black hole",
+    "string theory",
+    "thermodynamics",
+    "nuclear fusion",
     // Technology
-    "artificial intelligence", "machine learning", "blockchain",
-    "quantum computing", "internet protocol", "encryption algorithm",
-    "operating system", "compiler", "neural network", "cloud computing",
-    "transistor", "microprocessor", "fiber optics", "satellite",
+    "artificial intelligence",
+    "machine learning",
+    "blockchain",
+    "quantum computing",
+    "internet protocol",
+    "encryption algorithm",
+    "operating system",
+    "compiler",
+    "neural network",
+    "cloud computing",
+    "transistor",
+    "microprocessor",
+    "fiber optics",
+    "satellite",
     // Mathematics
-    "prime number theorem", "fourier transform", "group theory",
-    "topology", "game theory", "information theory", "chaos theory",
-    "fractal", "golden ratio", "riemann hypothesis",
+    "prime number theorem",
+    "fourier transform",
+    "group theory",
+    "topology",
+    "game theory",
+    "information theory",
+    "chaos theory",
+    "fractal",
+    "golden ratio",
+    "riemann hypothesis",
     // Philosophy
-    "epistemology", "ontology", "existentialism", "utilitarianism",
-    "free will", "consciousness problem", "stoicism", "rationalism",
-    "empiricism", "phenomenology",
+    "epistemology",
+    "ontology",
+    "existentialism",
+    "utilitarianism",
+    "free will",
+    "consciousness problem",
+    "stoicism",
+    "rationalism",
+    "empiricism",
+    "phenomenology",
     // History
-    "roman empire", "silk road", "industrial revolution",
-    "french revolution", "cold war", "space race",
-    "ancient greece", "renaissance art", "printing press",
+    "roman empire",
+    "silk road",
+    "industrial revolution",
+    "french revolution",
+    "cold war",
+    "space race",
+    "ancient greece",
+    "renaissance art",
+    "printing press",
     // Geography
-    "great barrier reef", "amazon rainforest", "sahara desert",
-    "himalayan mountains", "pacific ocean", "arctic circle",
+    "great barrier reef",
+    "amazon rainforest",
+    "sahara desert",
+    "himalayan mountains",
+    "pacific ocean",
+    "arctic circle",
     // Biology
-    "cell division", "immune system", "photoreceptor",
-    "ecosystem", "food chain", "biodiversity",
+    "cell division",
+    "immune system",
+    "photoreceptor",
+    "ecosystem",
+    "food chain",
+    "biodiversity",
     // Psychology
-    "cognitive bias", "memory consolidation", "neuroplasticity",
-    "pattern recognition", "decision making", "working memory",
+    "cognitive bias",
+    "memory consolidation",
+    "neuroplasticity",
+    "pattern recognition",
+    "decision making",
+    "working memory",
 ];
 
 /// Result of a DuckDuckGo instant answer query.
@@ -118,7 +172,9 @@ pub fn ingest_topic(universe: &mut Universe, topic: &str) -> usize {
         // Truncate very long abstracts to ~300 chars (UTF-8 safe)
         let text = if answer.abstract_text.len() > 300 {
             let mut end = 300;
-            while end > 0 && !answer.abstract_text.is_char_boundary(end) { end -= 1; }
+            while end > 0 && !answer.abstract_text.is_char_boundary(end) {
+                end -= 1;
+            }
             format!("{}...", &answer.abstract_text[..end])
         } else {
             answer.abstract_text.clone()
@@ -138,7 +194,9 @@ pub fn ingest_topic(universe: &mut Universe, topic: &str) -> usize {
     for related in &answer.related_topics {
         let text = if related.len() > 250 {
             let mut end = 250;
-            while end > 0 && !related.is_char_boundary(end) { end -= 1; }
+            while end > 0 && !related.is_char_boundary(end) {
+                end -= 1;
+            }
             format!("{}...", &related[..end])
         } else {
             related.clone()

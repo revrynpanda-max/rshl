@@ -22,28 +22,32 @@
 ///   C    — commit readiness (Φg × (1-χ) × τ)
 ///   Wm   — memory reinforcement weight (Φg × r)
 ///   Pr   — replay priority ((1-Φg + χ + q) / 3)
-
 use super::{SparseVec, Universe};
-use serde::{Deserialize, Serialize};
 use crate::core::regions::{
-    Region, RegionalState, RegionMetrics,
-    phi_left, phi_right, psi_bridge, omega,
-    select_top_k, r_cross, compute_region_core,
+    compute_region_core, omega, phi_left, phi_right, psi_bridge, r_cross, select_top_k, Region,
+    RegionMetrics, RegionalState,
 };
+use serde::{Deserialize, Serialize};
 
 /// Clamp a value to [0, 1].
 fn clamp01(n: f32) -> f32 {
-    if !n.is_finite() { return 0.0; }
+    if !n.is_finite() {
+        return 0.0;
+    }
     n.clamp(0.0, 1.0)
 }
 
 fn mean(v: &[f32]) -> f32 {
-    if v.is_empty() { return 0.0; }
+    if v.is_empty() {
+        return 0.0;
+    }
     v.iter().sum::<f32>() / v.len() as f32
 }
 
 fn stddev(v: &[f32]) -> f32 {
-    if v.len() < 2 { return 0.0; }
+    if v.len() < 2 {
+        return 0.0;
+    }
     let m = mean(v);
     let variance = v.iter().map(|x| (x - m).powi(2)).sum::<f32>() / v.len() as f32;
     variance.sqrt()
@@ -71,23 +75,23 @@ pub struct DreamHistoryEntry {
 /// Full field state with all 17 metrics.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct FieldState {
-    pub rho: f32,       // Field density
-    pub r_val: f32,     // Mean coherence (R)
-    pub s: f32,         // Stability
-    pub g: f32,         // Goal alignment
-    pub chi: f32,       // Contradiction pressure
-    pub tau: f32,       // Temporal recurrence
-    pub r: f32,         // Recency weight
-    pub u: f32,         // Average strength
-    pub q: f32,         // Novelty
-    pub phi: f32,       // Raw emergence
-    pub phi_c: f32,     // Contradiction-adjusted emergence
-    pub phi_g: f32,     // Goal-aligned emergence — THE KEY METRIC
-    pub m_val: f32,     // Momentum
-    pub x: f32,         // Contradiction × novelty pressure
-    pub c: f32,         // Commit readiness
-    pub wm: f32,        // Memory reinforcement weight
-    pub pr: f32,        // Replay priority
+    pub rho: f32,   // Field density
+    pub r_val: f32, // Mean coherence (R)
+    pub s: f32,     // Stability
+    pub g: f32,     // Goal alignment
+    pub chi: f32,   // Contradiction pressure
+    pub tau: f32,   // Temporal recurrence
+    pub r: f32,     // Recency weight
+    pub u: f32,     // Average strength
+    pub q: f32,     // Novelty
+    pub phi: f32,   // Raw emergence
+    pub phi_c: f32, // Contradiction-adjusted emergence
+    pub phi_g: f32, // Goal-aligned emergence — THE KEY METRIC
+    pub m_val: f32, // Momentum
+    pub x: f32,     // Contradiction × novelty pressure
+    pub c: f32,     // Commit readiness
+    pub wm: f32,    // Memory reinforcement weight
+    pub pr: f32,    // Replay priority
 
     // Legacy aliases for backward compatibility with drive/lattice
     pub coherence: f32,
@@ -121,7 +125,9 @@ impl FieldState {
     /// Compute full field state from inputs — matches JS field-state.js exactly.
     pub fn compute_full(input: &FieldInput) -> Self {
         let n = input.total_count.max(1) as f32;
-        let active_count = (input.source_vecs.len() + if input.synthetic_vec.is_some() { 1 } else { 0 }).max(1) as f32;
+        let active_count = (input.source_vecs.len()
+            + if input.synthetic_vec.is_some() { 1 } else { 0 })
+        .max(1) as f32;
         let rho = clamp01(active_count / n);
 
         // ── Coherence samples ──────────────────────────────────────────
@@ -142,12 +148,25 @@ impl FieldState {
         // Pairwise source coherence
         for i in 0..input.source_vecs.len() {
             for j in (i + 1)..input.source_vecs.len() {
-                coherence_samples.push(clamp01(input.source_vecs[i].0.cosine(input.source_vecs[j].0)));
+                coherence_samples.push(clamp01(
+                    input.source_vecs[i].0.cosine(input.source_vecs[j].0),
+                ));
             }
         }
 
-        let r_val = clamp01(mean(if coherence_samples.is_empty() { &[0.0] } else { &coherence_samples }));
-        let s = clamp01(1.0 / (1.0 + stddev(if coherence_samples.is_empty() { &[0.0] } else { &coherence_samples })));
+        let r_val = clamp01(mean(if coherence_samples.is_empty() {
+            &[0.0]
+        } else {
+            &coherence_samples
+        }));
+        let s = clamp01(
+            1.0 / (1.0
+                + stddev(if coherence_samples.is_empty() {
+                    &[0.0]
+                } else {
+                    &coherence_samples
+                })),
+        );
 
         // ── Goal alignment ─────────────────────────────────────────────
         let g = if let (Some(goal), Some(syn)) = (input.goal_vec, input.synthetic_vec) {
@@ -160,16 +179,27 @@ impl FieldState {
         let mut pair_disagreement: Vec<f32> = Vec::new();
         for i in 0..input.source_vecs.len() {
             for j in (i + 1)..input.source_vecs.len() {
-                pair_disagreement.push(1.0 - clamp01(input.source_vecs[i].0.cosine(input.source_vecs[j].0)));
+                pair_disagreement
+                    .push(1.0 - clamp01(input.source_vecs[i].0.cosine(input.source_vecs[j].0)));
             }
         }
         let score_disagreement = if !input.candidate_scores.is_empty() {
-            mean(&input.candidate_scores.iter().map(|&s| 1.0 - clamp01(s)).collect::<Vec<_>>())
+            mean(
+                &input
+                    .candidate_scores
+                    .iter()
+                    .map(|&s| 1.0 - clamp01(s))
+                    .collect::<Vec<_>>(),
+            )
         } else {
             0.0
         };
         let chi = clamp01(mean(&[
-            if pair_disagreement.is_empty() { 0.0 } else { mean(&pair_disagreement) },
+            if pair_disagreement.is_empty() {
+                0.0
+            } else {
+                mean(&pair_disagreement)
+            },
             score_disagreement,
         ]));
 
@@ -178,12 +208,19 @@ impl FieldState {
             0.0
         } else {
             let window = 8;
-            let tail_start = if input.history.len() > window { input.history.len() - window } else { 0 };
+            let tail_start = if input.history.len() > window {
+                input.history.len() - window
+            } else {
+                0
+            };
             let tail = &input.history[tail_start..];
             if tail.is_empty() {
                 1.0
             } else {
-                let matches = tail.iter().filter(|h| h.winner_key == input.winner_key).count();
+                let matches = tail
+                    .iter()
+                    .filter(|h| h.winner_key == input.winner_key)
+                    .count();
                 clamp01(matches as f32 / tail.len() as f32)
             }
         };
@@ -198,7 +235,13 @@ impl FieldState {
         let u = if input.source_vecs.is_empty() {
             0.0
         } else {
-            clamp01(mean(&input.source_vecs.iter().map(|(_, str, _)| str / 5.0).collect::<Vec<_>>()))
+            clamp01(mean(
+                &input
+                    .source_vecs
+                    .iter()
+                    .map(|(_, str, _)| str / 5.0)
+                    .collect::<Vec<_>>(),
+            ))
         };
 
         // ── Emergence cascade ──────────────────────────────────────────
@@ -217,9 +260,23 @@ impl FieldState {
         let pr = clamp01(((1.0 - phi_g) + chi + q) / 3.0);
 
         Self {
-            rho, r_val, s, g, chi, tau, r, u, q,
-            phi, phi_c, phi_g,
-            m_val, x, c, wm, pr,
+            rho,
+            r_val,
+            s,
+            g,
+            chi,
+            tau,
+            r,
+            u,
+            q,
+            phi,
+            phi_c,
+            phi_g,
+            m_val,
+            x,
+            c,
+            wm,
+            pr,
             // Legacy aliases
             coherence: r_val,
             mass: u * n,
@@ -255,7 +312,11 @@ impl FieldState {
                 phi_count += 1;
             }
         }
-        let phi_g = if phi_count > 0 { phi_sum / phi_count as f32 } else { 0.0 };
+        let phi_g = if phi_count > 0 {
+            phi_sum / phi_count as f32
+        } else {
+            0.0
+        };
 
         // ── Coherence within regions (strided per region) ─────────────────
         let regions = universe.region_counts();
@@ -274,7 +335,11 @@ impl FieldState {
                 }
             }
         }
-        let coherence = if coh_count > 0 { coh_sum / coh_count as f32 } else { 0.0 };
+        let coherence = if coh_count > 0 {
+            coh_sum / coh_count as f32
+        } else {
+            0.0
+        };
         let mass = cells.iter().map(|c| c.strength).sum::<f32>() / n;
 
         // ── Cross-region pressure ─────────────────────────────────────────
@@ -284,8 +349,14 @@ impl FieldState {
         let mut pr_count = 0u32;
         for i in 0..region_keys.len() {
             for j in (i + 1)..region_keys.len() {
-                let a_cells: Vec<_> = cells.iter().filter(|c| c.region == *region_keys[i]).collect();
-                let b_cells: Vec<_> = cells.iter().filter(|c| c.region == *region_keys[j]).collect();
+                let a_cells: Vec<_> = cells
+                    .iter()
+                    .filter(|c| c.region == *region_keys[i])
+                    .collect();
+                let b_cells: Vec<_> = cells
+                    .iter()
+                    .filter(|c| c.region == *region_keys[j])
+                    .collect();
                 let a = a_cells.get(a_cells.len() / 2);
                 let b = b_cells.get(b_cells.len() / 2);
                 if let (Some(a), Some(b)) = (a, b) {
@@ -297,7 +368,11 @@ impl FieldState {
                 }
             }
         }
-        let pressure = if pr_count > 0 { pr_sum / pr_count as f32 } else { 0.0 };
+        let pressure = if pr_count > 0 {
+            pr_sum / pr_count as f32
+        } else {
+            0.0
+        };
 
         // ── Novelty (q = 1 - R) ─────────────────────────────────────────
         // Populated here so the heartbeat fast path doesn't leave q=0.
@@ -306,9 +381,7 @@ impl FieldState {
         // ── Density (ρ): avg fraction of non-zero dims across strided sample ─
         // Strided so rho reflects the full field, not just the first 50 cells.
         let rho = if sample_limit > 0 {
-            let total_active: usize = (0..sample_limit)
-                .map(|i| cells[i * stride].vec.nnz())
-                .sum();
+            let total_active: usize = (0..sample_limit).map(|i| cells[i * stride].vec.nnz()).sum();
             let dim = cells[0].vec.data.len(); // 4096
             let total_dims = sample_limit * dim;
             clamp01(total_active as f32 / total_dims as f32)
@@ -339,15 +412,19 @@ impl FieldState {
         &mut self,
         state: &SparseVec,
         current_pattern: &SparseVec,
-        drive_gain: f32,       // g_L — from drive system
-        drive_salience: f32,   // s_R — from drive system / novelty
-        drive_tau: f32,        // τ_R — temporal factor
+        drive_gain: f32,     // g_L — from drive system
+        drive_salience: f32, // s_R — from drive system / novelty
+        drive_tau: f32,      // τ_R — temporal factor
     ) {
         // Left
         let (rho_l, r_l, chi_l) = compute_region_core(state, current_pattern, Region::Left);
         let left = RegionMetrics {
-            rho: rho_l, r: r_l, chi: chi_l,
-            g: drive_gain, s: 0.0, tau: 0.0,
+            rho: rho_l,
+            r: r_l,
+            chi: chi_l,
+            g: drive_gain,
+            s: 0.0,
+            tau: 0.0,
             phi: 0.0,
         };
         let phi_l = phi_left(&left);
@@ -355,14 +432,18 @@ impl FieldState {
         // Right
         let (rho_r, r_r, chi_r) = compute_region_core(state, current_pattern, Region::Right);
         let right = RegionMetrics {
-            rho: rho_r, r: r_r, chi: chi_r,
-            g: 0.0, s: drive_salience, tau: drive_tau,
+            rho: rho_r,
+            r: r_r,
+            chi: chi_r,
+            g: 0.0,
+            s: drive_salience,
+            tau: drive_tau,
             phi: 0.0,
         };
         let phi_r = phi_right(&right);
 
         // Bridge: vector form for R_cross, then scalar Ψ_B
-        let top_l = select_top_k(state, Region::Left, 8);   // k=8 per our earlier decision
+        let top_l = select_top_k(state, Region::Left, 8); // k=8 per our earlier decision
         let top_r = select_top_k(state, Region::Right, 8);
         let rc = r_cross(&top_l, &top_r);
 
@@ -372,14 +453,16 @@ impl FieldState {
         let om = omega(phi_l, phi_r, psi_b, chi_l, chi_r);
 
         self.regional = RegionalState {
-            left:  RegionMetrics { phi: phi_l, ..left },
-            right: RegionMetrics { phi: phi_r, ..right },
+            left: RegionMetrics { phi: phi_l, ..left },
+            right: RegionMetrics {
+                phi: phi_r,
+                ..right
+            },
             bridge_phi: psi_b,
             r_cross: rc,
             chi_disagreement: (chi_l - chi_r).abs(),
             momentum: self.m_val,
             omega: om,
         };
-
     }
 }

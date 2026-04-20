@@ -10,10 +10,10 @@ pub const REGION_DIM: usize = 1024;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[repr(u8)]
 pub enum Region {
-    Left   = 0,  // logic, structure, gain-driven
-    Right  = 1,  // associative, salience + temporal
-    Bridge = 2,  // cross-hemisphere binding
-    Global = 3,  // unified awareness
+    Left = 0,   // logic, structure, gain-driven
+    Right = 1,  // associative, salience + temporal
+    Bridge = 2, // cross-hemisphere binding
+    Global = 3, // unified awareness
 }
 
 impl Region {
@@ -41,13 +41,13 @@ impl Region {
 /// Per-region core metrics. Mirrors the four Φg variables but scoped to 1024 dims.
 #[derive(Clone, Copy, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct RegionMetrics {
-    pub rho: f32,        // density within this region's 1024 dims
-    pub r: f32,          // resonance computed over active positions in region
-    pub chi: f32,        // contradiction within region's active state
-    pub g: f32,          // gain (Left) — driven by input/drive
-    pub s: f32,          // salience (Right) — novelty-driven
-    pub tau: f32,        // temporal factor (Right)
-    pub phi: f32,        // computed Φ value for this region
+    pub rho: f32, // density within this region's 1024 dims
+    pub r: f32,   // resonance computed over active positions in region
+    pub chi: f32, // contradiction within region's active state
+    pub g: f32,   // gain (Left) — driven by input/drive
+    pub s: f32,   // salience (Right) — novelty-driven
+    pub tau: f32, // temporal factor (Right)
+    pub phi: f32, // computed Φ value for this region
 }
 
 /// Full four-region state, computed each tick alongside global Φg.
@@ -55,11 +55,11 @@ pub struct RegionMetrics {
 pub struct RegionalState {
     pub left: RegionMetrics,
     pub right: RegionMetrics,
-    pub bridge_phi: f32,      // Ψ_B
-    pub r_cross: f32,         // cross-hemisphere resonance
-    pub chi_disagreement: f32,// |χ_L − χ_R|
-    pub momentum: f32,        // M term in Ψ_B (pulled from global field)
-    pub omega: f32,           // Ω unified awareness signal
+    pub bridge_phi: f32,       // Ψ_B
+    pub r_cross: f32,          // cross-hemisphere resonance
+    pub chi_disagreement: f32, // |χ_L − χ_R|
+    pub momentum: f32,         // M term in Ψ_B (pulled from global field)
+    pub omega: f32,            // Ω unified awareness signal
 }
 
 // ============================================================================
@@ -120,7 +120,11 @@ pub fn select_top_k(state: &SparseVec, region: Region, k: usize) -> Vec<(usize, 
         .clone()
         .filter_map(|i| {
             let v = state.data[i];
-            if v != 0 { Some((i - range.start, v)) } else { None }
+            if v != 0 {
+                Some((i - range.start, v))
+            } else {
+                None
+            }
         })
         .collect();
     // Sort by absolute value descending; ties broken by index
@@ -131,10 +135,7 @@ pub fn select_top_k(state: &SparseVec, region: Region, k: usize) -> Vec<(usize, 
 
 /// Bundle two top-k selections into a single 1024-dim ternary pattern.
 /// Sign-preserving: +1 + +1 → +1, +1 + −1 → 0, −1 + −1 → −1.
-pub fn bundle_top_k(
-    left_top: &[(usize, i8)],
-    right_top: &[(usize, i8)],
-) -> [i8; REGION_DIM] {
+pub fn bundle_top_k(left_top: &[(usize, i8)], right_top: &[(usize, i8)]) -> [i8; REGION_DIM] {
     let mut out = [0i8; REGION_DIM];
     for &(i, v) in left_top.iter().chain(right_top.iter()) {
         let sum = out[i] as i32 + v as i32;
@@ -147,13 +148,17 @@ pub fn bundle_top_k(
 pub fn r_cross(left_top: &[(usize, i8)], right_top: &[(usize, i8)]) -> f32 {
     use std::collections::HashMap;
     let mut l_map: HashMap<usize, i8> = HashMap::new();
-    for &(i, v) in left_top { l_map.insert(i, v); }
+    for &(i, v) in left_top {
+        l_map.insert(i, v);
+    }
 
     let mut dot: i32 = 0;
     let mut l_norm: i32 = 0;
     let mut r_norm: i32 = 0;
 
-    for &(_, v) in left_top  { l_norm += (v as i32) * (v as i32); }
+    for &(_, v) in left_top {
+        l_norm += (v as i32) * (v as i32);
+    }
     for &(i, v) in right_top {
         r_norm += (v as i32) * (v as i32);
         if let Some(&lv) = l_map.get(&i) {
@@ -161,7 +166,11 @@ pub fn r_cross(left_top: &[(usize, i8)], right_top: &[(usize, i8)]) -> f32 {
         }
     }
     let denom = ((l_norm as f32) * (r_norm as f32)).sqrt();
-    if denom < 1e-6 { 0.0 } else { (dot as f32) / denom }
+    if denom < 1e-6 {
+        0.0
+    } else {
+        (dot as f32) / denom
+    }
 }
 
 // ============================================================================

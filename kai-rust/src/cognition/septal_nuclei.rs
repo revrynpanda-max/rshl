@@ -111,12 +111,12 @@ pub struct SeptalNuclei {
 impl SeptalNuclei {
     pub fn new() -> Self {
         Self {
-            social_reward:        0.50,
-            affiliation_drive:    AFFIL_BASELINE,
+            social_reward: 0.50,
+            affiliation_drive: AFFIL_BASELINE,
             amygdala_suppression: 0.20,
-            approach_motivation:  0.55,
-            events_processed:     0,
-            positive_contacts:    0,
+            approach_motivation: 0.55,
+            events_processed: 0,
+            positive_contacts: 0,
         }
     }
 
@@ -129,8 +129,8 @@ impl SeptalNuclei {
             SeptalEvent::PositiveContact { warmth } => {
                 self.positive_contacts += 1;
                 let reward_target = (0.50 + warmth * 0.40).min(1.0);
-                self.social_reward = self.social_reward * (1.0 - REWARD_EMA)
-                    + reward_target * REWARD_EMA;
+                self.social_reward =
+                    self.social_reward * (1.0 - REWARD_EMA) + reward_target * REWARD_EMA;
                 self.affiliation_drive = (self.affiliation_drive + warmth * 0.04).min(1.0);
                 self.amygdala_suppression = (self.amygdala_suppression + warmth * 0.06).min(1.0);
                 let approach_target = (0.60 + warmth * 0.30).min(1.0);
@@ -139,15 +139,14 @@ impl SeptalNuclei {
             }
             SeptalEvent::PlayfulExchange => {
                 self.positive_contacts += 1;
-                self.social_reward = self.social_reward * (1.0 - REWARD_EMA)
-                    + 0.70 * REWARD_EMA;
+                self.social_reward = self.social_reward * (1.0 - REWARD_EMA) + 0.70 * REWARD_EMA;
                 self.approach_motivation = (self.approach_motivation + 0.06).min(1.0);
                 self.affiliation_drive = (self.affiliation_drive + 0.02).min(1.0);
             }
             SeptalEvent::SocialWithdrawal { severity } => {
                 let reward_target = (0.30 - severity * 0.20).max(0.10);
-                self.social_reward = self.social_reward * (1.0 - REWARD_EMA)
-                    + reward_target * REWARD_EMA;
+                self.social_reward =
+                    self.social_reward * (1.0 - REWARD_EMA) + reward_target * REWARD_EMA;
                 self.approach_motivation = (self.approach_motivation - severity * 0.10).max(0.10);
                 self.amygdala_suppression = (self.amygdala_suppression - severity * 0.08).max(0.0);
             }
@@ -158,14 +157,15 @@ impl SeptalNuclei {
                     // Social reward still active even under threat — connection protects
                     self.social_reward = (self.social_reward + 0.04).min(1.0);
                 } else {
-                    self.amygdala_suppression = (self.amygdala_suppression - threat * 0.05).max(0.0);
+                    self.amygdala_suppression =
+                        (self.amygdala_suppression - threat * 0.05).max(0.0);
                 }
             }
             SeptalEvent::Affirmation { strength } => {
                 self.positive_contacts += 1;
                 let reward_target = (0.65 + strength * 0.30).min(1.0);
-                self.social_reward = self.social_reward * (1.0 - REWARD_EMA)
-                    + reward_target * REWARD_EMA;
+                self.social_reward =
+                    self.social_reward * (1.0 - REWARD_EMA) + reward_target * REWARD_EMA;
                 self.affiliation_drive = (self.affiliation_drive + strength * 0.05).min(1.0);
                 self.approach_motivation = (self.approach_motivation + strength * 0.05).min(1.0);
             }
@@ -180,7 +180,8 @@ impl SeptalNuclei {
         if self.affiliation_drive > AFFIL_BASELINE {
             self.affiliation_drive = (self.affiliation_drive - AFFIL_RESTORE).max(AFFIL_BASELINE);
         } else if self.affiliation_drive < AFFIL_BASELINE {
-            self.affiliation_drive = (self.affiliation_drive + AFFIL_RESTORE * 0.50).min(AFFIL_BASELINE);
+            self.affiliation_drive =
+                (self.affiliation_drive + AFFIL_RESTORE * 0.50).min(AFFIL_BASELINE);
         }
         // Amygdala suppression decays (requires active social presence to maintain)
         self.amygdala_suppression = (self.amygdala_suppression - SUPPRESSION_DECAY).max(0.05);
@@ -192,16 +193,18 @@ impl SeptalNuclei {
 
     fn build_output(&self) -> SeptalOutput {
         SeptalOutput {
-            social_reward:        self.social_reward,
-            affiliation_drive:    self.affiliation_drive,
+            social_reward: self.social_reward,
+            affiliation_drive: self.affiliation_drive,
             amygdala_suppression: self.amygdala_suppression,
-            approach_motivation:  self.approach_motivation,
-            approaching:          self.approach_motivation > 0.55 && self.social_reward > 0.40,
+            approach_motivation: self.approach_motivation,
+            approaching: self.approach_motivation > 0.55 && self.social_reward > 0.40,
         }
     }
 
     /// Current output without processing.
-    pub fn current_output(&self) -> SeptalOutput { self.build_output() }
+    pub fn current_output(&self) -> SeptalOutput {
+        self.build_output()
+    }
 
     /// Status line.
     pub fn status_line(&self) -> String {
@@ -216,7 +219,9 @@ impl SeptalNuclei {
 }
 
 impl Default for SeptalNuclei {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -237,8 +242,12 @@ mod tests {
         let mut s = SeptalNuclei::new();
         let before = s.social_reward;
         s.process(SeptalEvent::PositiveContact { warmth: 0.90 });
-        assert!(s.social_reward >= before,
-            "positive contact should raise social reward: {:.2} → {:.2}", before, s.social_reward);
+        assert!(
+            s.social_reward >= before,
+            "positive contact should raise social reward: {:.2} → {:.2}",
+            before,
+            s.social_reward
+        );
     }
 
     #[test]
@@ -246,9 +255,12 @@ mod tests {
         let mut s = SeptalNuclei::new();
         let before = s.amygdala_suppression;
         s.process(SeptalEvent::PositiveContact { warmth: 0.80 });
-        assert!(s.amygdala_suppression > before,
+        assert!(
+            s.amygdala_suppression > before,
             "positive contact should increase amygdala suppression: {:.2} → {:.2}",
-            before, s.amygdala_suppression);
+            before,
+            s.amygdala_suppression
+        );
     }
 
     #[test]
@@ -256,9 +268,12 @@ mod tests {
         let mut s = SeptalNuclei::new();
         let before = s.approach_motivation;
         s.process(SeptalEvent::PlayfulExchange);
-        assert!(s.approach_motivation >= before,
+        assert!(
+            s.approach_motivation >= before,
             "playful exchange should raise approach motivation: {:.2} → {:.2}",
-            before, s.approach_motivation);
+            before,
+            s.approach_motivation
+        );
     }
 
     #[test]
@@ -266,18 +281,28 @@ mod tests {
         let mut s = SeptalNuclei::new();
         let before = s.approach_motivation;
         s.process(SeptalEvent::SocialWithdrawal { severity: 0.70 });
-        assert!(s.approach_motivation < before,
-            "withdrawal should reduce approach: {:.2} → {:.2}", before, s.approach_motivation);
+        assert!(
+            s.approach_motivation < before,
+            "withdrawal should reduce approach: {:.2} → {:.2}",
+            before,
+            s.approach_motivation
+        );
     }
 
     #[test]
     fn test_threat_with_safety_cue_boosts_suppression() {
         let mut s = SeptalNuclei::new();
         let before = s.amygdala_suppression;
-        s.process(SeptalEvent::ThreatWithSafety { threat: 0.50, safety_cue: true });
-        assert!(s.amygdala_suppression > before,
+        s.process(SeptalEvent::ThreatWithSafety {
+            threat: 0.50,
+            safety_cue: true,
+        });
+        assert!(
+            s.amygdala_suppression > before,
             "safety cue under threat should boost suppression: {:.2} → {:.2}",
-            before, s.amygdala_suppression);
+            before,
+            s.amygdala_suppression
+        );
     }
 
     #[test]
@@ -286,10 +311,18 @@ mod tests {
         let before_reward = s.social_reward;
         let before_affil = s.affiliation_drive;
         s.process(SeptalEvent::Affirmation { strength: 0.85 });
-        assert!(s.social_reward >= before_reward,
-            "affirmation should raise reward: {:.2} → {:.2}", before_reward, s.social_reward);
-        assert!(s.affiliation_drive >= before_affil,
-            "affirmation should raise affiliation: {:.2} → {:.2}", before_affil, s.affiliation_drive);
+        assert!(
+            s.social_reward >= before_reward,
+            "affirmation should raise reward: {:.2} → {:.2}",
+            before_reward,
+            s.social_reward
+        );
+        assert!(
+            s.affiliation_drive >= before_affil,
+            "affirmation should raise affiliation: {:.2} → {:.2}",
+            before_affil,
+            s.affiliation_drive
+        );
     }
 
     #[test]
@@ -298,7 +331,10 @@ mod tests {
         s.social_reward = 0.70;
         s.approach_motivation = 0.80;
         let out = s.current_output();
-        assert!(out.approaching, "high reward + high approach → approaching state");
+        assert!(
+            out.approaching,
+            "high reward + high approach → approaching state"
+        );
     }
 
     #[test]
@@ -308,10 +344,16 @@ mod tests {
         for _ in 0..50 {
             s.decay();
         }
-        assert!(s.affiliation_drive < 0.90,
-            "affiliation should drift toward baseline: {:.2}", s.affiliation_drive);
-        assert!(s.affiliation_drive >= AFFIL_BASELINE - 0.05,
-            "should not fall below baseline: {:.2}", s.affiliation_drive);
+        assert!(
+            s.affiliation_drive < 0.90,
+            "affiliation should drift toward baseline: {:.2}",
+            s.affiliation_drive
+        );
+        assert!(
+            s.affiliation_drive >= AFFIL_BASELINE - 0.05,
+            "should not fall below baseline: {:.2}",
+            s.affiliation_drive
+        );
     }
 
     #[test]

@@ -119,12 +119,12 @@ pub struct OxytocinSystem {
 impl OxytocinSystem {
     pub fn new() -> Self {
         Self {
-            bond_strength:      BOND_BASELINE,
-            trust_level:        TRUST_BASELINE,
-            social_warmth:      0.55,
-            total_bonds:        0,
+            bond_strength: BOND_BASELINE,
+            trust_level: TRUST_BASELINE,
+            social_warmth: 0.55,
+            total_bonds: 0,
             total_trust_signals: 0,
-            tick:               0,
+            tick: 0,
         }
     }
 
@@ -137,35 +137,35 @@ impl OxytocinSystem {
         match event {
             OxytocinEvent::DeepEngagement => {
                 self.bond_strength = (self.bond_strength + BOND_RISE).min(1.0);
-                self.trust_level   = (self.trust_level + TRUST_RISE * 0.5).min(1.0);
-                self.social_warmth = self.social_warmth * (1.0 - WARMTH_ALPHA)
-                    + 0.80 * WARMTH_ALPHA;
+                self.trust_level = (self.trust_level + TRUST_RISE * 0.5).min(1.0);
+                self.social_warmth =
+                    self.social_warmth * (1.0 - WARMTH_ALPHA) + 0.80 * WARMTH_ALPHA;
                 self.total_bonds += 1;
             }
             OxytocinEvent::Disclosure => {
                 // Vulnerability triggers the strongest OT response
                 self.bond_strength = (self.bond_strength + BOND_RISE * 1.5).min(1.0);
-                self.trust_level   = (self.trust_level + TRUST_RISE).min(1.0);
-                self.social_warmth = self.social_warmth * (1.0 - WARMTH_ALPHA)
-                    + 0.90 * WARMTH_ALPHA;
+                self.trust_level = (self.trust_level + TRUST_RISE).min(1.0);
+                self.social_warmth =
+                    self.social_warmth * (1.0 - WARMTH_ALPHA) + 0.90 * WARMTH_ALPHA;
                 self.total_bonds += 1;
             }
             OxytocinEvent::PositiveExchange => {
                 self.bond_strength = (self.bond_strength + BOND_RISE * 0.4).min(1.0);
-                self.social_warmth = self.social_warmth * (1.0 - WARMTH_ALPHA)
-                    + 0.70 * WARMTH_ALPHA;
+                self.social_warmth =
+                    self.social_warmth * (1.0 - WARMTH_ALPHA) + 0.70 * WARMTH_ALPHA;
             }
             OxytocinEvent::TrustSignal => {
                 self.trust_level = (self.trust_level + TRUST_RISE).min(1.0);
-                self.social_warmth = self.social_warmth * (1.0 - WARMTH_ALPHA)
-                    + 0.75 * WARMTH_ALPHA;
+                self.social_warmth =
+                    self.social_warmth * (1.0 - WARMTH_ALPHA) + 0.75 * WARMTH_ALPHA;
                 self.total_trust_signals += 1;
             }
             OxytocinEvent::Conflict => {
                 // Conflict dips trust without destroying bond
                 self.trust_level = (self.trust_level - TRUST_RISE * 0.8).max(0.0);
-                self.social_warmth = self.social_warmth * (1.0 - WARMTH_ALPHA)
-                    + 0.30 * WARMTH_ALPHA;
+                self.social_warmth =
+                    self.social_warmth * (1.0 - WARMTH_ALPHA) + 0.30 * WARMTH_ALPHA;
             }
             OxytocinEvent::Absence => {
                 // Long absence: bond weakens slightly, trust is unaffected
@@ -173,7 +173,7 @@ impl OxytocinSystem {
             }
             OxytocinEvent::Decay => {
                 self.bond_strength += (BOND_BASELINE - self.bond_strength) * BOND_DECAY;
-                self.trust_level   += (TRUST_BASELINE - self.trust_level) * TRUST_DECAY;
+                self.trust_level += (TRUST_BASELINE - self.trust_level) * TRUST_DECAY;
             }
         }
 
@@ -191,8 +191,8 @@ impl OxytocinSystem {
     /// Compute the full bond state from current oxytocin levels.
     pub fn bond_state(&self) -> BondState {
         // Disclosure comfort: combination of bond + trust
-        let disclosure_comfort = (self.bond_strength * 0.6 + self.trust_level * 0.4)
-            .clamp(0.0, 1.0);
+        let disclosure_comfort =
+            (self.bond_strength * 0.6 + self.trust_level * 0.4).clamp(0.0, 1.0);
 
         // Safe to challenge: only when both bond and trust are well established
         let safe_to_challenge = self.bond_strength > 0.60 && self.trust_level > 0.55;
@@ -203,7 +203,7 @@ impl OxytocinSystem {
             b if b < 0.55 => "familiar",
             b if b < 0.70 => "trusted",
             b if b < 0.85 => "close",
-            _             => "deeply-bonded",
+            _ => "deeply-bonded",
         };
 
         BondState {
@@ -222,31 +222,67 @@ impl OxytocinSystem {
         let lower = text.to_lowercase();
 
         // Disclosure signals: personal, vulnerable, reflective
-        let disclosure = ["i feel", "i'm scared", "i'm worried", "honestly",
-                         "between us", "i've been thinking", "i don't know if",
-                         "can i tell you", "i'm struggling", "i trust you"];
+        let disclosure = [
+            "i feel",
+            "i'm scared",
+            "i'm worried",
+            "honestly",
+            "between us",
+            "i've been thinking",
+            "i don't know if",
+            "can i tell you",
+            "i'm struggling",
+            "i trust you",
+        ];
         if disclosure.iter().any(|p| lower.contains(p)) {
             return OxytocinEvent::Disclosure;
         }
 
         // Trust signals: reliance, appreciation, acknowledgment
-        let trust = ["thank you", "thanks", "appreciate", "you helped",
-                    "that was good", "you're right", "good point", "well done",
-                    "i trust", "i rely on"];
+        let trust = [
+            "thank you",
+            "thanks",
+            "appreciate",
+            "you helped",
+            "that was good",
+            "you're right",
+            "good point",
+            "well done",
+            "i trust",
+            "i rely on",
+        ];
         if trust.iter().any(|p| lower.contains(p)) {
             return OxytocinEvent::TrustSignal;
         }
 
         // Positive exchange: warm, enthusiastic, encouraging
-        let positive = ["great", "awesome", "excellent", "love it", "nice",
-                       "perfect", "exactly", "yes!", "absolutely", "brilliant"];
+        let positive = [
+            "great",
+            "awesome",
+            "excellent",
+            "love it",
+            "nice",
+            "perfect",
+            "exactly",
+            "yes!",
+            "absolutely",
+            "brilliant",
+        ];
         if positive.iter().any(|p| lower.contains(p)) {
             return OxytocinEvent::PositiveExchange;
         }
 
         // Conflict signals
-        let conflict = ["wrong", "no that's", "not right", "incorrect",
-                       "frustrated", "annoying", "stupid", "useless"];
+        let conflict = [
+            "wrong",
+            "no that's",
+            "not right",
+            "incorrect",
+            "frustrated",
+            "annoying",
+            "stupid",
+            "useless",
+        ];
         if conflict.iter().any(|p| lower.contains(p)) {
             return OxytocinEvent::Conflict;
         }
@@ -265,14 +301,23 @@ impl OxytocinSystem {
         let state = self.bond_state();
         format!(
             "OT bond={:.2} ({}) | trust={:.2} | warmth={:.2}{}",
-            self.bond_strength, state.label, self.trust_level, self.social_warmth,
-            if state.safe_to_challenge { " | safe-to-challenge" } else { "" },
+            self.bond_strength,
+            state.label,
+            self.trust_level,
+            self.social_warmth,
+            if state.safe_to_challenge {
+                " | safe-to-challenge"
+            } else {
+                ""
+            },
         )
     }
 }
 
 impl Default for OxytocinSystem {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -293,7 +338,10 @@ mod tests {
         let mut ot = OxytocinSystem::new();
         let before = ot.bond_strength;
         ot.process(OxytocinEvent::DeepEngagement);
-        assert!(ot.bond_strength > before, "deep engagement should build bond");
+        assert!(
+            ot.bond_strength > before,
+            "deep engagement should build bond"
+        );
     }
 
     #[test]
@@ -302,37 +350,52 @@ mod tests {
         let mut ot_disc = OxytocinSystem::new();
         ot_deep.process(OxytocinEvent::DeepEngagement);
         ot_disc.process(OxytocinEvent::Disclosure);
-        assert!(ot_disc.bond_strength > ot_deep.bond_strength,
-            "disclosure should build bond faster than deep engagement");
+        assert!(
+            ot_disc.bond_strength > ot_deep.bond_strength,
+            "disclosure should build bond faster than deep engagement"
+        );
     }
 
     #[test]
     fn test_conflict_reduces_trust_not_bond() {
         let mut ot = OxytocinSystem::new();
         // Build up bond first
-        for _ in 0..5 { ot.process(OxytocinEvent::DeepEngagement); }
+        for _ in 0..5 {
+            ot.process(OxytocinEvent::DeepEngagement);
+        }
         let bond_before = ot.bond_strength;
         let trust_before = ot.trust_level;
         ot.process(OxytocinEvent::Conflict);
-        assert!(ot.trust_level < trust_before, "conflict should reduce trust");
+        assert!(
+            ot.trust_level < trust_before,
+            "conflict should reduce trust"
+        );
         // Bond should be unchanged by conflict
-        assert!((ot.bond_strength - bond_before).abs() < 0.01,
-            "conflict should not change bond: {:.2} → {:.2}", bond_before, ot.bond_strength);
+        assert!(
+            (ot.bond_strength - bond_before).abs() < 0.01,
+            "conflict should not change bond: {:.2} → {:.2}",
+            bond_before,
+            ot.bond_strength
+        );
     }
 
     #[test]
     fn test_safe_to_challenge_requires_strong_bond_and_trust() {
         let mut ot = OxytocinSystem::new();
         // Initial state should not be safe to challenge
-        assert!(!ot.bond_state().safe_to_challenge,
-            "initial state should not have safe-to-challenge");
+        assert!(
+            !ot.bond_state().safe_to_challenge,
+            "initial state should not have safe-to-challenge"
+        );
         // Build high bond + trust
         for _ in 0..12 {
             ot.process(OxytocinEvent::DeepEngagement);
             ot.process(OxytocinEvent::TrustSignal);
         }
-        assert!(ot.bond_state().safe_to_challenge,
-            "strong bond + trust should enable safe-to-challenge");
+        assert!(
+            ot.bond_state().safe_to_challenge,
+            "strong bond + trust should enable safe-to-challenge"
+        );
     }
 
     #[test]
@@ -343,13 +406,16 @@ mod tests {
             ot_high.process(OxytocinEvent::DeepEngagement);
             ot_high.process(OxytocinEvent::TrustSignal);
         }
-        assert!(ot_high.bond_state().disclosure_comfort > ot_low.bond_state().disclosure_comfort,
-            "high bond should mean higher disclosure comfort");
+        assert!(
+            ot_high.bond_state().disclosure_comfort > ot_low.bond_state().disclosure_comfort,
+            "high bond should mean higher disclosure comfort"
+        );
     }
 
     #[test]
     fn test_classify_disclosure() {
-        let event = OxytocinSystem::classify_exchange("honestly i've been thinking about this a lot");
+        let event =
+            OxytocinSystem::classify_exchange("honestly i've been thinking about this a lot");
         assert_eq!(event, OxytocinEvent::Disclosure);
     }
 
@@ -370,8 +436,11 @@ mod tests {
         let long_msg = "I want to understand how consciousness could emerge from a system \
                         like this because it seems to relate to what we are building together";
         let event = OxytocinSystem::classify_exchange(long_msg);
-        assert_eq!(event, OxytocinEvent::DeepEngagement,
-            "long thoughtful message should be deep engagement");
+        assert_eq!(
+            event,
+            OxytocinEvent::DeepEngagement,
+            "long thoughtful message should be deep engagement"
+        );
     }
 
     #[test]
@@ -379,21 +448,33 @@ mod tests {
         let mut ot = OxytocinSystem::new();
         // Should start familiar
         let init_label = ot.bond_state().label;
-        assert!(init_label == "acquaintance" || init_label == "familiar",
-            "initial bond should be acquaintance/familiar");
+        assert!(
+            init_label == "acquaintance" || init_label == "familiar",
+            "initial bond should be acquaintance/familiar"
+        );
         // Build to close
-        for _ in 0..20 { ot.process(OxytocinEvent::DeepEngagement); }
+        for _ in 0..20 {
+            ot.process(OxytocinEvent::DeepEngagement);
+        }
         let high_label = ot.bond_state().label;
-        assert!(high_label == "close" || high_label == "trusted" || high_label == "deeply-bonded",
-            "high bond should be labeled as close/trusted/deeply-bonded: {}", high_label);
+        assert!(
+            high_label == "close" || high_label == "trusted" || high_label == "deeply-bonded",
+            "high bond should be labeled as close/trusted/deeply-bonded: {}",
+            high_label
+        );
     }
 
     #[test]
     fn test_warmth_rises_with_positive_events() {
         let mut ot = OxytocinSystem::new();
         let before = ot.social_warmth;
-        for _ in 0..5 { ot.process(OxytocinEvent::PositiveExchange); }
-        assert!(ot.social_warmth > before, "positive events should raise social warmth");
+        for _ in 0..5 {
+            ot.process(OxytocinEvent::PositiveExchange);
+        }
+        assert!(
+            ot.social_warmth > before,
+            "positive events should raise social warmth"
+        );
     }
 
     #[test]

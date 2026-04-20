@@ -1,3 +1,4 @@
+use crate::core::SparseVec;
 /// Global Workspace Theory — KAI's unified conscious broadcast
 ///
 /// Bernard Baars' Global Workspace Theory (GWT) is one of the leading
@@ -35,10 +36,8 @@
 ///   The workspace also computes "coherence" — the average cosine similarity
 ///   between all current entries. High coherence = unified thought.
 ///   Low coherence = fragmented, scattered processing.
-
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
-use crate::core::SparseVec;
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -91,13 +90,13 @@ pub struct GlobalWorkspace {
 impl GlobalWorkspace {
     pub fn new() -> Self {
         Self {
-            entries:          VecDeque::with_capacity(MAX_ENTRIES),
-            broadcast:        None,
-            coherence:        0.5,
-            avg_coherence:    0.5,
+            entries: VecDeque::with_capacity(MAX_ENTRIES),
+            broadcast: None,
+            coherence: 0.5,
+            avg_coherence: 0.5,
             total_broadcasts: 0,
-            tick:             0,
-            salience_floor:   0.30,
+            tick: 0,
+            salience_floor: 0.30,
         }
     }
 
@@ -120,25 +119,33 @@ impl GlobalWorkspace {
         }
 
         let entry = WorkspaceEntry {
-            source:       source.to_string(),
-            content:      content.to_string(),
-            salience:     salience.clamp(0.0, 1.0),
-            vec:          SparseVec::encode(content),
+            source: source.to_string(),
+            content: content.to_string(),
+            salience: salience.clamp(0.0, 1.0),
+            vec: SparseVec::encode(content),
             created_tick: self.tick,
         };
 
         // Evict lowest-salience entry if full
         if self.entries.len() >= MAX_ENTRIES {
-            if let Some(min_idx) = self.entries.iter().enumerate()
-                .min_by(|(_, a), (_, b)| a.salience.partial_cmp(&b.salience)
-                    .unwrap_or(std::cmp::Ordering::Equal))
+            if let Some(min_idx) = self
+                .entries
+                .iter()
+                .enumerate()
+                .min_by(|(_, a), (_, b)| {
+                    a.salience
+                        .partial_cmp(&b.salience)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                })
                 .map(|(i, _)| i)
             {
                 self.entries.remove(min_idx);
             }
         }
 
-        let is_winner = self.broadcast.as_ref()
+        let is_winner = self
+            .broadcast
+            .as_ref()
             .map(|b| salience > b.salience)
             .unwrap_or(true);
 
@@ -160,9 +167,15 @@ impl GlobalWorkspace {
         self.entries.retain(|e| e.salience >= EVICTION_THRESHOLD);
 
         // ── 3. Elect broadcast winner (highest salience) ──────────────────
-        if let Some(winner_idx) = self.entries.iter().enumerate()
-            .max_by(|(_, a), (_, b)| a.salience.partial_cmp(&b.salience)
-                .unwrap_or(std::cmp::Ordering::Equal))
+        if let Some(winner_idx) = self
+            .entries
+            .iter()
+            .enumerate()
+            .max_by(|(_, a), (_, b)| {
+                a.salience
+                    .partial_cmp(&b.salience)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
             .map(|(i, _)| i)
         {
             let winner = self.entries[winner_idx].clone();
@@ -191,31 +204,53 @@ impl GlobalWorkspace {
     }
 
     /// Number of active entries in the workspace.
-    pub fn len(&self) -> usize { self.entries.len() }
-    pub fn is_empty(&self) -> bool { self.entries.is_empty() }
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
 
     /// True if the workspace is highly coherent (unified processing state).
-    pub fn is_coherent(&self) -> bool { self.avg_coherence > 0.55 }
+    pub fn is_coherent(&self) -> bool {
+        self.avg_coherence > 0.55
+    }
 
     /// True if the workspace is fragmented (dissociated processing).
-    pub fn is_fragmented(&self) -> bool { self.avg_coherence < 0.25 }
+    pub fn is_fragmented(&self) -> bool {
+        self.avg_coherence < 0.25
+    }
 
     /// All current entries, sorted by salience (highest first).
     pub fn entries_by_salience(&self) -> Vec<&WorkspaceEntry> {
         let mut v: Vec<&WorkspaceEntry> = self.entries.iter().collect();
-        v.sort_by(|a, b| b.salience.partial_cmp(&a.salience).unwrap_or(std::cmp::Ordering::Equal));
+        v.sort_by(|a, b| {
+            b.salience
+                .partial_cmp(&a.salience)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         v
     }
 
     /// One-line status for the TUI.
     pub fn status_line(&self) -> String {
         let module = self.dominant_module().unwrap_or("none");
-        let content_preview = self.current_content()
-            .map(|c| if c.len() > 40 { format!("{}…", &c[..40]) } else { c.to_string() })
+        let content_preview = self
+            .current_content()
+            .map(|c| {
+                if c.len() > 40 {
+                    format!("{}…", &c[..40])
+                } else {
+                    c.to_string()
+                }
+            })
             .unwrap_or_else(|| "empty".to_string());
         format!(
             "GW: {} entries | coherence={:.2} | [{}: \"{}\"]",
-            self.entries.len(), self.avg_coherence, module, content_preview
+            self.entries.len(),
+            self.avg_coherence,
+            module,
+            content_preview
         )
     }
 
@@ -223,7 +258,9 @@ impl GlobalWorkspace {
 
     fn compute_coherence(&self) -> f32 {
         let n = self.entries.len();
-        if n < 2 { return 0.5; }
+        if n < 2 {
+            return 0.5;
+        }
 
         let mut total_sim = 0.0f32;
         let mut pairs = 0;
@@ -236,13 +273,17 @@ impl GlobalWorkspace {
             }
         }
 
-        if pairs == 0 { return 0.5; }
+        if pairs == 0 {
+            return 0.5;
+        }
         (total_sim / pairs as f32).clamp(0.0, 1.0)
     }
 }
 
 impl Default for GlobalWorkspace {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -260,7 +301,10 @@ mod tests {
 
         assert!(gw.broadcast.is_some(), "should have a broadcast winner");
         let broadcast = gw.broadcast.as_ref().unwrap();
-        assert!(broadcast.content.contains("remember"), "highest salience should win");
+        assert!(
+            broadcast.content.contains("remember"),
+            "highest salience should win"
+        );
     }
 
     #[test]
@@ -268,9 +312,15 @@ mod tests {
         let mut gw = GlobalWorkspace::new();
         gw.post("predictor", "weak thought", 0.06);
         // Decay many ticks until it falls below threshold
-        for _ in 0..100 { gw.tick(); }
-        assert!(gw.entries.iter().all(|e| !e.content.contains("weak thought")),
-            "low-salience entry should be evicted");
+        for _ in 0..100 {
+            gw.tick();
+        }
+        assert!(
+            gw.entries
+                .iter()
+                .all(|e| !e.content.contains("weak thought")),
+            "low-salience entry should be evicted"
+        );
     }
 
     #[test]
@@ -283,7 +333,11 @@ mod tests {
         assert_eq!(gw.len(), MAX_ENTRIES, "should be at max capacity");
         // Adding one more should evict the lowest
         gw.post("test", "high salience new entry", 0.9);
-        assert_eq!(gw.len(), MAX_ENTRIES, "should still be at max capacity after eviction");
+        assert_eq!(
+            gw.len(),
+            MAX_ENTRIES,
+            "should still be at max capacity after eviction"
+        );
     }
 
     #[test]
@@ -291,29 +345,47 @@ mod tests {
         let mut gw = GlobalWorkspace::new();
         // All about the same topic — should have higher coherence
         gw.post("memory", "consciousness is the awareness of awareness", 0.8);
-        gw.post("dmn", "consciousness emerges from recursive self-reference", 0.7);
+        gw.post(
+            "dmn",
+            "consciousness emerges from recursive self-reference",
+            0.7,
+        );
         gw.post("predictor", "the nature of conscious experience", 0.6);
         gw.tick();
         // Related content should yield non-trivial coherence
-        assert!(gw.coherence > 0.0, "coherence should be non-zero for related content");
+        assert!(
+            gw.coherence > 0.0,
+            "coherence should be non-zero for related content"
+        );
     }
 
     #[test]
     fn test_empty_workspace_after_full_decay() {
         let mut gw = GlobalWorkspace::new();
         gw.post("dmn", "a fleeting idle thought", 0.07);
-        for _ in 0..60 { gw.tick(); }
-        assert!(gw.broadcast.is_none() || gw.is_empty(),
-            "workspace should be empty after extended decay");
+        for _ in 0..60 {
+            gw.tick();
+        }
+        assert!(
+            gw.broadcast.is_none() || gw.is_empty(),
+            "workspace should be empty after extended decay"
+        );
     }
 
     #[test]
     fn test_dominant_module_tracks_winner() {
         let mut gw = GlobalWorkspace::new();
         gw.post("amygdala", "fear signal", 0.3);
-        gw.post("episodic", "vivid memory: Ryan said this was important", 0.9);
+        gw.post(
+            "episodic",
+            "vivid memory: Ryan said this was important",
+            0.9,
+        );
         gw.tick();
-        assert_eq!(gw.dominant_module(), Some("episodic"),
-            "episodic (highest salience) should dominate");
+        assert_eq!(
+            gw.dominant_module(),
+            Some("episodic"),
+            "episodic (highest salience) should dominate"
+        );
     }
 }

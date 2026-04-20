@@ -92,9 +92,9 @@ pub struct PerirhinalCortex {
 impl PerirhinalCortex {
     pub fn new() -> Self {
         Self {
-            concept_map:      std::collections::HashMap::new(),
+            concept_map: std::collections::HashMap::new(),
             global_familiarity: 0.20,
-            novelty_signal:   0.30,
+            novelty_signal: 0.30,
             inputs_processed: 0,
             novel_detections: 0,
         }
@@ -128,31 +128,41 @@ impl PerirhinalCortex {
 
         // Trim map if too large (evict least familiar)
         if self.concept_map.len() > MAX_CONCEPT_MAP {
-            let min_key = self.concept_map.iter()
+            let min_key = self
+                .concept_map
+                .iter()
                 .min_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
                 .map(|(k, _)| k.clone());
-            if let Some(k) = min_key { self.concept_map.remove(&k); }
+            if let Some(k) = min_key {
+                self.concept_map.remove(&k);
+            }
         }
 
         // Global familiarity: average of processed concepts vs novelty
-        let avg_familiarity = if concepts.is_empty() { 0.20 }
-            else { (concept_familiarity_sum / concepts.len() as f32).min(1.0) };
+        let avg_familiarity = if concepts.is_empty() {
+            0.20
+        } else {
+            (concept_familiarity_sum / concepts.len() as f32).min(1.0)
+        };
         let familiarity_target = if is_novel { 0.10 } else { avg_familiarity };
-        self.global_familiarity = self.global_familiarity * (1.0 - GLOBAL_EMA)
-            + familiarity_target * GLOBAL_EMA;
+        self.global_familiarity =
+            self.global_familiarity * (1.0 - GLOBAL_EMA) + familiarity_target * GLOBAL_EMA;
 
         PRCOutput {
             global_familiarity: self.global_familiarity,
-            novelty_signal:     self.novelty_signal,
-            recognized:         self.global_familiarity >= RECOGNIZED_THRESHOLD,
-            concept_count:      self.concept_map.len(),
-            skip_recollection:  self.global_familiarity > 0.65 && !is_novel,
+            novelty_signal: self.novelty_signal,
+            recognized: self.global_familiarity >= RECOGNIZED_THRESHOLD,
+            concept_count: self.concept_map.len(),
+            skip_recollection: self.global_familiarity > 0.65 && !is_novel,
         }
     }
 
     /// Get familiarity for a specific concept (0.0 if unknown).
     pub fn concept_familiarity(&self, concept: &str) -> f32 {
-        *self.concept_map.get(&concept.to_lowercase()).unwrap_or(&0.0)
+        *self
+            .concept_map
+            .get(&concept.to_lowercase())
+            .unwrap_or(&0.0)
     }
 
     /// Decay per tick.
@@ -171,10 +181,10 @@ impl PerirhinalCortex {
     pub fn current_output(&self) -> PRCOutput {
         PRCOutput {
             global_familiarity: self.global_familiarity,
-            novelty_signal:     self.novelty_signal,
-            recognized:         self.global_familiarity >= RECOGNIZED_THRESHOLD,
-            concept_count:      self.concept_map.len(),
-            skip_recollection:  self.global_familiarity > 0.65,
+            novelty_signal: self.novelty_signal,
+            recognized: self.global_familiarity >= RECOGNIZED_THRESHOLD,
+            concept_count: self.concept_map.len(),
+            skip_recollection: self.global_familiarity > 0.65,
         }
     }
 
@@ -191,7 +201,9 @@ impl PerirhinalCortex {
 }
 
 impl Default for PerirhinalCortex {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -212,8 +224,12 @@ mod tests {
         let mut p = PerirhinalCortex::new();
         let before = p.novelty_signal;
         let out = p.process(&["quantum_foam"], true);
-        assert!(out.novelty_signal > before,
-            "novel input should raise novelty signal: {:.2} → {:.2}", before, out.novelty_signal);
+        assert!(
+            out.novelty_signal > before,
+            "novel input should raise novelty signal: {:.2} → {:.2}",
+            before,
+            out.novelty_signal
+        );
     }
 
     #[test]
@@ -222,8 +238,11 @@ mod tests {
         for _ in 0..10 {
             p.process(&["rust", "coding"], false);
         }
-        assert!(p.concept_familiarity("rust") > 0.40,
-            "repeated concept should build familiarity: {:.2}", p.concept_familiarity("rust"));
+        assert!(
+            p.concept_familiarity("rust") > 0.40,
+            "repeated concept should build familiarity: {:.2}",
+            p.concept_familiarity("rust")
+        );
     }
 
     #[test]
@@ -231,8 +250,11 @@ mod tests {
         let mut p = PerirhinalCortex::new();
         p.global_familiarity = 0.70;
         p.process(&["alien_concept"], true);
-        assert!(p.global_familiarity < 0.70,
-            "novel input should lower global familiarity: {:.2}", p.global_familiarity);
+        assert!(
+            p.global_familiarity < 0.70,
+            "novel input should lower global familiarity: {:.2}",
+            p.global_familiarity
+        );
     }
 
     #[test]
@@ -240,16 +262,21 @@ mod tests {
         let mut p = PerirhinalCortex::new();
         p.global_familiarity = 0.80;
         let out = p.current_output();
-        assert!(out.skip_recollection,
-            "high familiarity should allow skipping recollection");
+        assert!(
+            out.skip_recollection,
+            "high familiarity should allow skipping recollection"
+        );
     }
 
     #[test]
     fn test_concept_count_grows() {
         let mut p = PerirhinalCortex::new();
         p.process(&["alpha", "beta", "gamma"], false);
-        assert_eq!(p.concept_map.len(), 3,
-            "three unique concepts should be tracked");
+        assert_eq!(
+            p.concept_map.len(),
+            3,
+            "three unique concepts should be tracked"
+        );
     }
 
     #[test]
@@ -259,8 +286,11 @@ mod tests {
             let concept = format!("concept_{}", i);
             p.process(&[concept.as_str()], false);
         }
-        assert!(p.concept_map.len() <= MAX_CONCEPT_MAP,
-            "concept map should not exceed max: {}", p.concept_map.len());
+        assert!(
+            p.concept_map.len() <= MAX_CONCEPT_MAP,
+            "concept map should not exceed max: {}",
+            p.concept_map.len()
+        );
     }
 
     #[test]
@@ -268,8 +298,11 @@ mod tests {
         let mut p = PerirhinalCortex::new();
         p.novelty_signal = 0.80;
         p.decay();
-        assert!(p.novelty_signal < 0.80,
-            "novelty should decay: {:.2}", p.novelty_signal);
+        assert!(
+            p.novelty_signal < 0.80,
+            "novelty should decay: {:.2}",
+            p.novelty_signal
+        );
     }
 
     #[test]
@@ -277,8 +310,10 @@ mod tests {
         let mut p = PerirhinalCortex::new();
         p.global_familiarity = 0.60;
         let out = p.current_output();
-        assert!(out.recognized,
-            "familiarity above threshold should give recognized signal");
+        assert!(
+            out.recognized,
+            "familiarity above threshold should give recognized signal"
+        );
     }
 
     #[test]

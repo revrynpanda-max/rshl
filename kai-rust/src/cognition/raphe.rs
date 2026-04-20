@@ -83,10 +83,10 @@ pub enum RapheMode {
 impl RapheMode {
     pub fn label(&self) -> &'static str {
         match self {
-            Self::Patient   => "patient",
-            Self::Engaged   => "engaged",
-            Self::Reactive  => "reactive",
-            Self::Depleted  => "depleted",
+            Self::Patient => "patient",
+            Self::Engaged => "engaged",
+            Self::Reactive => "reactive",
+            Self::Depleted => "depleted",
         }
     }
 }
@@ -138,9 +138,9 @@ pub struct RapheNuclei {
 impl RapheNuclei {
     pub fn new() -> Self {
         Self {
-            tonic_5ht:          TONIC_5HT_REST,
-            mode:               RapheMode::Engaged,
-            events_processed:   0,
+            tonic_5ht: TONIC_5HT_REST,
+            mode: RapheMode::Engaged,
+            events_processed: 0,
             social_warmth_total: 0,
         }
     }
@@ -201,7 +201,8 @@ impl RapheNuclei {
         let patience_factor = self.tonic_5ht;
         // Habenula suppression: max at high 5-HT, near zero when depleted
         let habenula_suppression = if self.tonic_5ht > PATIENCE_THRESHOLD {
-            (self.tonic_5ht - PATIENCE_THRESHOLD) * HABENULA_SUPPRESSION_SCALE / (1.0 - PATIENCE_THRESHOLD)
+            (self.tonic_5ht - PATIENCE_THRESHOLD) * HABENULA_SUPPRESSION_SCALE
+                / (1.0 - PATIENCE_THRESHOLD)
         } else {
             0.0
         };
@@ -241,7 +242,9 @@ impl RapheNuclei {
 }
 
 impl Default for RapheNuclei {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -262,8 +265,12 @@ mod tests {
         let mut r = RapheNuclei::new();
         let before = r.tonic_5ht;
         r.process_event(RapheEvent::SocialWarmth);
-        assert!(r.tonic_5ht > before,
-            "social warmth should raise 5-HT: {:.2} → {:.2}", before, r.tonic_5ht);
+        assert!(
+            r.tonic_5ht > before,
+            "social warmth should raise 5-HT: {:.2} → {:.2}",
+            before,
+            r.tonic_5ht
+        );
     }
 
     #[test]
@@ -278,8 +285,10 @@ mod tests {
         r2.process_event(RapheEvent::SocialWarmth);
         let warm_gain = r2.tonic_5ht - before2;
 
-        assert!(deep_gain > warm_gain,
-            "deep engagement should give bigger boost than social warmth");
+        assert!(
+            deep_gain > warm_gain,
+            "deep engagement should give bigger boost than social warmth"
+        );
     }
 
     #[test]
@@ -287,8 +296,12 @@ mod tests {
         let mut r = RapheNuclei::new();
         let before = r.tonic_5ht;
         r.process_event(RapheEvent::SocialConflict);
-        assert!(r.tonic_5ht < before,
-            "conflict should lower 5-HT: {:.2} → {:.2}", before, r.tonic_5ht);
+        assert!(
+            r.tonic_5ht < before,
+            "conflict should lower 5-HT: {:.2} → {:.2}",
+            before,
+            r.tonic_5ht
+        );
     }
 
     #[test]
@@ -297,9 +310,13 @@ mod tests {
         for _ in 0..6 {
             r.process_event(RapheEvent::SocialWarmth);
         }
-        assert_eq!(r.mode, RapheMode::Patient,
+        assert_eq!(
+            r.mode,
+            RapheMode::Patient,
             "repeated warmth should reach Patient mode, got {:?}, 5ht={:.2}",
-            r.mode, r.tonic_5ht);
+            r.mode,
+            r.tonic_5ht
+        );
     }
 
     #[test]
@@ -309,8 +326,11 @@ mod tests {
         r.tonic_5ht = 0.40;
         r.process_event(RapheEvent::SocialConflict);
         r.process_event(RapheEvent::SocialConflict);
-        assert!(matches!(r.mode, RapheMode::Reactive | RapheMode::Depleted),
-            "multiple conflicts should push into Reactive/Depleted: {:?}", r.mode);
+        assert!(
+            matches!(r.mode, RapheMode::Reactive | RapheMode::Depleted),
+            "multiple conflicts should push into Reactive/Depleted: {:?}",
+            r.mode
+        );
     }
 
     #[test]
@@ -320,10 +340,16 @@ mod tests {
         for _ in 0..50 {
             r.decay();
         }
-        assert!(r.tonic_5ht < 0.80,
-            "5-HT should decay toward rest: {:.2}", r.tonic_5ht);
-        assert!(r.tonic_5ht >= TONIC_5HT_REST - 0.01,
-            "should not fall below rest: {:.2}", r.tonic_5ht);
+        assert!(
+            r.tonic_5ht < 0.80,
+            "5-HT should decay toward rest: {:.2}",
+            r.tonic_5ht
+        );
+        assert!(
+            r.tonic_5ht >= TONIC_5HT_REST - 0.01,
+            "should not fall below rest: {:.2}",
+            r.tonic_5ht
+        );
     }
 
     #[test]
@@ -332,8 +358,11 @@ mod tests {
         r.tonic_5ht = 0.80;
         r.update_mode();
         let out = r.current_output();
-        assert!(out.habenula_suppression > 0.0,
-            "high 5-HT should suppress habenula: {:.2}", out.habenula_suppression);
+        assert!(
+            out.habenula_suppression > 0.0,
+            "high 5-HT should suppress habenula: {:.2}",
+            out.habenula_suppression
+        );
     }
 
     #[test]
@@ -342,9 +371,11 @@ mod tests {
         // At rest (0.50), which is exactly at PATIENCE_THRESHOLD border
         let out = r.current_output();
         // Should be near 0 or a small value
-        assert!(out.habenula_suppression <= 0.40,
+        assert!(
+            out.habenula_suppression <= 0.40,
             "near-rest 5-HT should have low habenula suppression: {:.2}",
-            out.habenula_suppression);
+            out.habenula_suppression
+        );
     }
 
     #[test]

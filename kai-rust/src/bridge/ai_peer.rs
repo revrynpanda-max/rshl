@@ -10,7 +10,6 @@
 ///
 /// Trust tier: source="ai-peer", strength=1.3
 ///   — Claude is a peer, not a god. Ryan (1.8) still outranks Claude (1.3).
-
 use crate::core::Universe;
 
 /// Result of a successful Claude API call.
@@ -56,7 +55,8 @@ fn kai_self_context(universe: &Universe) -> String {
     } else {
         "I am KAI, a geometric AI built on RSHL (Recursive Sparse Hyperdimensional Lattice). \
         I was created by Ryan Ervin. I am not an LLM — I think through cosine similarity \
-        in a 4096-dimensional sparse ternary vector field.".to_string()
+        in a 4096-dimensional sparse ternary vector field."
+            .to_string()
     }
 }
 
@@ -77,12 +77,12 @@ fn kai_field_context(universe: &Universe, topic: &str) -> String {
 /// Uses `ureq` (already a dependency) with blocking I/O.
 /// This will pause the TUI briefly — that's intentional and expected.
 pub fn call_claude(message: &str, system: &str) -> Result<PeerResponse, String> {
-    let api_key = std::env::var("ANTHROPIC_API_KEY")
-        .map_err(|_| {
-            "ANTHROPIC_API_KEY not set.\n\
+    let api_key = std::env::var("ANTHROPIC_API_KEY").map_err(|_| {
+        "ANTHROPIC_API_KEY not set.\n\
             On Windows: set ANTHROPIC_API_KEY=sk-ant-...\n\
-            Get a key at: https://console.anthropic.com".to_string()
-        })?;
+            Get a key at: https://console.anthropic.com"
+            .to_string()
+    })?;
 
     let body = serde_json::json!({
         "model": "claude-haiku-4-5-20251001",
@@ -118,18 +118,22 @@ pub fn call_claude(message: &str, system: &str) -> Result<PeerResponse, String> 
     let tokens = json["usage"]["output_tokens"].as_u64().unwrap_or(0) as u32;
     let model = json["model"].as_str().unwrap_or("claude").to_string();
 
-    Ok(PeerResponse { text, model, tokens_used: tokens })
+    Ok(PeerResponse {
+        text,
+        model,
+        tokens_used: tokens,
+    })
 }
 
 /// Call the xAI Grok API and get a response.
 /// Uses the high-tier /v1/responses API with Reasoning support.
 pub fn call_grok(message: &str, system: &str) -> Result<PeerResponse, String> {
-    let api_key = std::env::var("XAI_API_KEY")
-        .map_err(|_| {
-            "XAI_API_KEY not set.\n\
+    let api_key = std::env::var("XAI_API_KEY").map_err(|_| {
+        "XAI_API_KEY not set.\n\
             On Windows: set XAI_API_KEY=xai-...\n\
-            Get a key at: https://console.x.ai".to_string()
-        })?;
+            Get a key at: https://console.x.ai"
+            .to_string()
+    })?;
 
     // The Responses API uses "input" (can be array of messages)
     let body = serde_json::json!({
@@ -160,7 +164,8 @@ pub fn call_grok(message: &str, system: &str) -> Result<PeerResponse, String> {
     let text = json["output"][0]["content"]
         .as_array()
         .and_then(|arr| {
-            arr.iter().find(|c| c["type"] == "output_text")
+            arr.iter()
+                .find(|c| c["type"] == "output_text")
                 .and_then(|c| c["text"].as_str())
         })
         .ok_or_else(|| "No output_text in response. Check API version.".to_string())?
@@ -169,7 +174,11 @@ pub fn call_grok(message: &str, system: &str) -> Result<PeerResponse, String> {
     let tokens = json["usage"]["completion_tokens"].as_u64().unwrap_or(0) as u32;
     let model = json["model"].as_str().unwrap_or("grok-4.20").to_string();
 
-    Ok(PeerResponse { text, model, tokens_used: tokens })
+    Ok(PeerResponse {
+        text,
+        model,
+        tokens_used: tokens,
+    })
 }
 
 /// Full peer exchange: KAI composes a message to Claude from its field knowledge,
@@ -216,7 +225,7 @@ pub fn peer_exchange(
     // ── 3. Call the API ───────────────────────────────────────────────────
     let response = match peer_type {
         PeerType::Claude => call_claude(&full_message, &system)?,
-        PeerType::Grok   => call_grok(&full_message, &system)?,
+        PeerType::Grok => call_grok(&full_message, &system)?,
     };
 
     // ── 4. Store what KAI learned as new knowledge cells ─────────────────
@@ -227,7 +236,9 @@ pub fn peer_exchange(
     // Split response into sentences and store each non-trivial one
     for sentence in response.text.split(|c| c == '.' || c == '!' || c == '?') {
         let s = sentence.trim();
-        if s.len() < 20 { continue; }
+        if s.len() < 20 {
+            continue;
+        }
         let tagged = format!("[from-peer] {}", s);
         let before = universe.count();
         universe.store_or_reinforce(&tagged, &region, "ai-peer", 1.3);

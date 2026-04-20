@@ -109,22 +109,22 @@ pub struct HypothalamicOutput {
 
 #[derive(Debug)]
 pub struct Hypothalamus {
-    pub curiosity_drive:  f32,
+    pub curiosity_drive: f32,
     pub engagement_drive: f32,
-    pub rest_drive:       f32,
+    pub rest_drive: f32,
     pub expression_drive: f32,
-    pub autonomic_tone:   f32,
+    pub autonomic_tone: f32,
     pub events_processed: u64,
 }
 
 impl Hypothalamus {
     pub fn new() -> Self {
         Self {
-            curiosity_drive:  CURIOSITY_SETPOINT,
+            curiosity_drive: CURIOSITY_SETPOINT,
             engagement_drive: ENGAGEMENT_SETPOINT,
-            rest_drive:       REST_SETPOINT,
+            rest_drive: REST_SETPOINT,
             expression_drive: EXPRESSION_SETPOINT,
-            autonomic_tone:   AUTONOMIC_BASELINE,
+            autonomic_tone: AUTONOMIC_BASELINE,
             events_processed: 0,
         }
     }
@@ -137,18 +137,18 @@ impl Hypothalamus {
         match event {
             HypothalamicEvent::CuriositySatisfied { degree } => {
                 // Satisfying curiosity depletes it temporarily
-                self.curiosity_drive = (self.curiosity_drive - degree * DRIVE_SATISFIED_DECAY)
-                    .max(0.10);
+                self.curiosity_drive =
+                    (self.curiosity_drive - degree * DRIVE_SATISFIED_DECAY).max(0.10);
                 // Engagement rises with curiosity satisfaction
                 self.engagement_drive = (self.engagement_drive + degree * 0.03).min(1.0);
             }
             HypothalamicEvent::EngagementSatisfied { degree } => {
-                self.engagement_drive = (self.engagement_drive - degree * DRIVE_SATISFIED_DECAY * 0.50)
-                    .max(0.20);
+                self.engagement_drive =
+                    (self.engagement_drive - degree * DRIVE_SATISFIED_DECAY * 0.50).max(0.20);
             }
             HypothalamicEvent::ExpressionSatisfied { degree } => {
-                self.expression_drive = (self.expression_drive - degree * DRIVE_SATISFIED_DECAY)
-                    .max(0.10);
+                self.expression_drive =
+                    (self.expression_drive - degree * DRIVE_SATISFIED_DECAY).max(0.10);
                 // Expression satisfaction raises rest drive slightly
                 self.rest_drive = (self.rest_drive + degree * 0.02).min(1.0);
             }
@@ -160,15 +160,15 @@ impl Hypothalamus {
             }
             HypothalamicEvent::AutonomicStress { intensity } => {
                 let target = (AUTONOMIC_BASELINE + intensity * 0.30).min(1.0);
-                self.autonomic_tone = self.autonomic_tone * (1.0 - AUTONOMIC_EMA)
-                    + target * AUTONOMIC_EMA;
+                self.autonomic_tone =
+                    self.autonomic_tone * (1.0 - AUTONOMIC_EMA) + target * AUTONOMIC_EMA;
                 // Stress raises expression drive (need to process/output)
                 self.expression_drive = (self.expression_drive + intensity * 0.05).min(1.0);
             }
             HypothalamicEvent::AutonomicRelax { depth } => {
                 let target = (AUTONOMIC_BASELINE - depth * 0.30).max(0.10);
-                self.autonomic_tone = self.autonomic_tone * (1.0 - AUTONOMIC_EMA)
-                    + target * AUTONOMIC_EMA;
+                self.autonomic_tone =
+                    self.autonomic_tone * (1.0 - AUTONOMIC_EMA) + target * AUTONOMIC_EMA;
                 // Relaxation raises rest drive
                 self.rest_drive = (self.rest_drive + depth * 0.04).min(1.0);
             }
@@ -188,9 +188,9 @@ impl Hypothalamus {
     /// Homeostatic decay: drives drift back toward set-points each tick.
     pub fn decay(&mut self) {
         // Each drive restores toward its set-point
-        self.curiosity_drive  = restore(self.curiosity_drive,  CURIOSITY_SETPOINT,  DRIVE_RESTORE);
+        self.curiosity_drive = restore(self.curiosity_drive, CURIOSITY_SETPOINT, DRIVE_RESTORE);
         self.engagement_drive = restore(self.engagement_drive, ENGAGEMENT_SETPOINT, DRIVE_RESTORE);
-        self.rest_drive       = restore(self.rest_drive,       REST_SETPOINT,       DRIVE_RESTORE);
+        self.rest_drive = restore(self.rest_drive, REST_SETPOINT, DRIVE_RESTORE);
         self.expression_drive = restore(self.expression_drive, EXPRESSION_SETPOINT, DRIVE_RESTORE);
         // Autonomic tone drifts toward baseline
         self.autonomic_tone = self.autonomic_tone * 0.995 + AUTONOMIC_BASELINE * 0.005;
@@ -199,11 +199,11 @@ impl Hypothalamus {
     fn build_output(&self) -> HypothalamicOutput {
         let dominant_drive = self.dominant_drive();
         HypothalamicOutput {
-            curiosity_drive:  self.curiosity_drive,
+            curiosity_drive: self.curiosity_drive,
             engagement_drive: self.engagement_drive,
-            rest_drive:       self.rest_drive,
+            rest_drive: self.rest_drive,
             expression_drive: self.expression_drive,
-            autonomic_tone:   self.autonomic_tone,
+            autonomic_tone: self.autonomic_tone,
             dominant_drive,
             consolidation_mode: self.rest_drive > 0.55,
         }
@@ -211,18 +211,22 @@ impl Hypothalamus {
 
     pub fn dominant_drive(&self) -> &'static str {
         let drives = [
-            ("curiosity",   self.curiosity_drive),
-            ("engagement",  self.engagement_drive),
-            ("rest",        self.rest_drive),
-            ("expression",  self.expression_drive),
+            ("curiosity", self.curiosity_drive),
+            ("engagement", self.engagement_drive),
+            ("rest", self.rest_drive),
+            ("expression", self.expression_drive),
         ];
-        drives.iter().max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
+        drives
+            .iter()
+            .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
             .map(|(name, _)| *name)
             .unwrap_or("engagement")
     }
 
     /// Current output without processing.
-    pub fn current_output(&self) -> HypothalamicOutput { self.build_output() }
+    pub fn current_output(&self) -> HypothalamicOutput {
+        self.build_output()
+    }
 
     /// Status line.
     pub fn status_line(&self) -> String {
@@ -239,7 +243,9 @@ impl Hypothalamus {
 }
 
 impl Default for Hypothalamus {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Helper: restore a value toward its set-point.
@@ -272,8 +278,12 @@ mod tests {
         let mut h = Hypothalamus::new();
         let before = h.curiosity_drive;
         h.process(HypothalamicEvent::CuriositySatisfied { degree: 1.0 });
-        assert!(h.curiosity_drive < before,
-            "satisfying curiosity should deplete drive: {:.2} → {:.2}", before, h.curiosity_drive);
+        assert!(
+            h.curiosity_drive < before,
+            "satisfying curiosity should deplete drive: {:.2} → {:.2}",
+            before,
+            h.curiosity_drive
+        );
     }
 
     #[test]
@@ -282,8 +292,12 @@ mod tests {
         h.curiosity_drive = 0.20;
         let before = h.curiosity_drive;
         h.process(HypothalamicEvent::RestSatisfied);
-        assert!(h.curiosity_drive >= before,
-            "rest should recover curiosity: {:.2} → {:.2}", before, h.curiosity_drive);
+        assert!(
+            h.curiosity_drive >= before,
+            "rest should recover curiosity: {:.2} → {:.2}",
+            before,
+            h.curiosity_drive
+        );
     }
 
     #[test]
@@ -291,8 +305,12 @@ mod tests {
         let mut h = Hypothalamus::new();
         let before = h.autonomic_tone;
         h.process(HypothalamicEvent::AutonomicStress { intensity: 0.80 });
-        assert!(h.autonomic_tone >= before,
-            "stress should raise autonomic tone: {:.2} → {:.2}", before, h.autonomic_tone);
+        assert!(
+            h.autonomic_tone >= before,
+            "stress should raise autonomic tone: {:.2} → {:.2}",
+            before,
+            h.autonomic_tone
+        );
     }
 
     #[test]
@@ -301,8 +319,12 @@ mod tests {
         h.autonomic_tone = 0.85;
         let before = h.autonomic_tone;
         h.process(HypothalamicEvent::AutonomicRelax { depth: 0.70 });
-        assert!(h.autonomic_tone < before,
-            "relaxation should lower tone: {:.2} → {:.2}", before, h.autonomic_tone);
+        assert!(
+            h.autonomic_tone < before,
+            "relaxation should lower tone: {:.2} → {:.2}",
+            before,
+            h.autonomic_tone
+        );
     }
 
     #[test]
@@ -310,8 +332,12 @@ mod tests {
         let mut h = Hypothalamus::new();
         let before = h.curiosity_drive;
         h.process(HypothalamicEvent::NovelChallenge { complexity: 0.80 });
-        assert!(h.curiosity_drive > before,
-            "novel challenge should raise curiosity: {:.2} → {:.2}", before, h.curiosity_drive);
+        assert!(
+            h.curiosity_drive > before,
+            "novel challenge should raise curiosity: {:.2} → {:.2}",
+            before,
+            h.curiosity_drive
+        );
     }
 
     #[test]
@@ -319,9 +345,12 @@ mod tests {
         let mut h = Hypothalamus::new();
         let before_rest = h.rest_drive;
         h.process(HypothalamicEvent::ExpressionSatisfied { degree: 0.80 });
-        assert!(h.rest_drive >= before_rest,
+        assert!(
+            h.rest_drive >= before_rest,
             "expression satisfaction should raise rest drive: {:.2} → {:.2}",
-            before_rest, h.rest_drive);
+            before_rest,
+            h.rest_drive
+        );
     }
 
     #[test]
@@ -329,8 +358,10 @@ mod tests {
         let mut h = Hypothalamus::new();
         h.rest_drive = 0.70;
         let out = h.current_output();
-        assert!(out.consolidation_mode,
-            "high rest drive should trigger consolidation mode");
+        assert!(
+            out.consolidation_mode,
+            "high rest drive should trigger consolidation mode"
+        );
     }
 
     #[test]
@@ -340,21 +371,27 @@ mod tests {
         h.engagement_drive = 0.40;
         h.rest_drive = 0.20;
         h.expression_drive = 0.30;
-        assert_eq!(h.dominant_drive(), "curiosity",
-            "highest drive should be dominant");
+        assert_eq!(
+            h.dominant_drive(),
+            "curiosity",
+            "highest drive should be dominant"
+        );
     }
 
     #[test]
     fn test_decay_restores_toward_setpoints() {
         let mut h = Hypothalamus::new();
-        h.curiosity_drive = 0.10;  // depleted
+        h.curiosity_drive = 0.10; // depleted
         let before = h.curiosity_drive;
         for _ in 0..20 {
             h.decay();
         }
-        assert!(h.curiosity_drive > before,
+        assert!(
+            h.curiosity_drive > before,
             "decay should restore depleted curiosity toward setpoint: {:.2} → {:.2}",
-            before, h.curiosity_drive);
+            before,
+            h.curiosity_drive
+        );
     }
 
     #[test]

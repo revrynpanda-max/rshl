@@ -1,3 +1,4 @@
+use crate::core::SparseVec;
 /// Co-occurrence Embeddings — KAI learns word relationships from his own universe.
 ///
 /// This is the RSHL equivalent of Word2Vec / learned embeddings.
@@ -11,9 +12,7 @@
 /// The learned vectors are blended with hash vectors:
 ///   final_vec = (1-α) * hash_vec + α * learned_vec
 ///   where α = 0.35 (tunable)
-
 use std::collections::HashMap;
-use crate::core::SparseVec;
 
 const DIM: usize = 4096;
 const LEARN_BLEND: f32 = 0.35; // How much learned embeddings influence the final vector
@@ -40,7 +39,7 @@ impl Embeddings {
     }
 
     /// Learn word embeddings from universe cell co-occurrence.
-    /// 
+    ///
     /// Algorithm:
     /// 1. For each cell, extract normalized words
     /// 2. Build co-occurrence counts: word_a appears with word_b
@@ -107,7 +106,7 @@ impl Embeddings {
                 for (neighbor, count) in &sig_neighbors {
                     let weight = (**count as f32).sqrt(); // sqrt to prevent dominant neighbors
                     let neighbor_hash = SparseVec::encode(neighbor);
-                    
+
                     for d in 0..DIM {
                         context[d] += (neighbor_hash.data[d] as f32 * weight) as i32;
                     }
@@ -123,9 +122,13 @@ impl Embeddings {
                 let learned: Vec<i8> = context
                     .iter()
                     .map(|&v| {
-                        if v > threshold { 1i8 }
-                        else if v < -threshold { -1i8 }
-                        else { 0i8 }
+                        if v > threshold {
+                            1i8
+                        } else if v < -threshold {
+                            -1i8
+                        } else {
+                            0i8
+                        }
                     })
                     .collect();
 
@@ -150,10 +153,8 @@ impl Embeddings {
         }
 
         // Check if any tokens have learned vectors
-        let learned_tokens: Vec<&Vec<i8>> = tokens
-            .iter()
-            .filter_map(|t| self.vectors.get(t))
-            .collect();
+        let learned_tokens: Vec<&Vec<i8>> =
+            tokens.iter().filter_map(|t| self.vectors.get(t)).collect();
 
         if learned_tokens.is_empty() {
             return hash_vec.clone();
@@ -178,9 +179,13 @@ impl Embeddings {
             let l = learned_sum[d] as f32 * learn_weight;
             let combined = h + l;
 
-            blended[d] = if combined > 0.3 { 1i8 }
-                else if combined < -0.3 { -1i8 }
-                else { 0i8 };
+            blended[d] = if combined > 0.3 {
+                1i8
+            } else if combined < -0.3 {
+                -1i8
+            } else {
+                0i8
+            };
         }
 
         SparseVec::from_raw(blended)
@@ -209,14 +214,29 @@ mod tests {
     #[test]
     fn test_cooccurrence_learning() {
         let mut emb = Embeddings::new();
-        
+
         // Simulate cells where "dog" and "puppy" co-occur
         let cells = vec![
-            ("dogs are loyal pets".into(), vec!["dog".into(), "loyal".into(), "pet".into()]),
-            ("puppies are young dogs".into(), vec!["puppy".into(), "young".into(), "dog".into()]),
-            ("my puppy is cute".into(), vec!["puppy".into(), "cute".into()]),
-            ("dogs and puppies play".into(), vec!["dog".into(), "puppy".into(), "play".into()]),
-            ("loyal dogs guard homes".into(), vec!["loyal".into(), "dog".into(), "guard".into()]),
+            (
+                "dogs are loyal pets".into(),
+                vec!["dog".into(), "loyal".into(), "pet".into()],
+            ),
+            (
+                "puppies are young dogs".into(),
+                vec!["puppy".into(), "young".into(), "dog".into()],
+            ),
+            (
+                "my puppy is cute".into(),
+                vec!["puppy".into(), "cute".into()],
+            ),
+            (
+                "dogs and puppies play".into(),
+                vec!["dog".into(), "puppy".into(), "play".into()],
+            ),
+            (
+                "loyal dogs guard homes".into(),
+                vec!["loyal".into(), "dog".into(), "guard".into()],
+            ),
         ];
 
         emb.learn_from_cells(&cells);
@@ -227,7 +247,7 @@ mod tests {
     fn test_needs_rebuild() {
         let emb = Embeddings::new();
         assert!(!emb.needs_rebuild(10)); // too few cells
-        assert!(emb.needs_rebuild(30));  // first build threshold
+        assert!(emb.needs_rebuild(30)); // first build threshold
     }
 
     #[test]
@@ -236,6 +256,10 @@ mod tests {
         let hash = SparseVec::encode("hello world");
         let blended = emb.blend(&hash, &["hello".into(), "world".into()]);
         // With no learned vectors, blend should return hash unchanged
-        assert!((hash.cosine(&blended) - 1.0).abs() < 0.001, "Should be ~1.0, got {}", hash.cosine(&blended));
+        assert!(
+            (hash.cosine(&blended) - 1.0).abs() < 0.001,
+            "Should be ~1.0, got {}",
+            hash.cosine(&blended)
+        );
     }
 }

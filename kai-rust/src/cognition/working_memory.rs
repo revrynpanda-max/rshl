@@ -7,7 +7,6 @@
 /// Working memory decays over time — recent turns have high weight,
 /// older turns fade. This gives KAI conversational context without
 /// polluting the long-term universe.
-
 use crate::core::SparseVec;
 
 const MAX_TURNS: usize = 12;
@@ -18,7 +17,7 @@ const DECAY_TICKS: u64 = 80; // turns fully decay after ~80 ticks
 pub struct MemorySlot {
     pub text: String,
     pub vec: SparseVec,
-    pub role: String,  // "user" or "kai"
+    pub role: String, // "user" or "kai"
     pub created_tick: u64,
     pub strength: f32,
 }
@@ -74,10 +73,7 @@ impl WorkingMemory {
     /// Get all active memory slots for query injection.
     /// Returns references to slot vectors with their current strength.
     pub fn active_slots(&self) -> Vec<(&SparseVec, f32)> {
-        self.slots
-            .iter()
-            .map(|s| (&s.vec, s.strength))
-            .collect()
+        self.slots.iter().map(|s| (&s.vec, s.strength)).collect()
     }
 
     /// Get recent context as text (for compose output).

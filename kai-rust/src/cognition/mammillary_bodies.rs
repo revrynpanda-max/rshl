@@ -93,13 +93,13 @@ pub struct MammillaryBodies {
 impl MammillaryBodies {
     pub fn new() -> Self {
         Self {
-            relay_strength:     RELAY_BASELINE,
-            recency_signal:     0.80, // starts high — fresh session
+            relay_strength: RELAY_BASELINE,
+            recency_signal: 0.80, // starts high — fresh session
             consolidation_rate: 0.50,
-            papez_gain:         0.55,
-            inputs_relayed:     0,
-            consolidations:     0,
-            turn_counter:       0,
+            papez_gain: 0.55,
+            inputs_relayed: 0,
+            consolidations: 0,
+            turn_counter: 0,
         }
     }
 
@@ -122,10 +122,9 @@ impl MammillaryBodies {
 
         // ── Relay strength ────────────────────────────────────────────────────
         // Stronger relay when hippocampal salience is high
-        let relay_target = (RELAY_BASELINE + hippocampus_salience * 0.30
-            + episodic_novelty * 0.15).min(1.0);
-        self.relay_strength = self.relay_strength * (1.0 - RELAY_EMA)
-            + relay_target * RELAY_EMA;
+        let relay_target =
+            (RELAY_BASELINE + hippocampus_salience * 0.30 + episodic_novelty * 0.15).min(1.0);
+        self.relay_strength = self.relay_strength * (1.0 - RELAY_EMA) + relay_target * RELAY_EMA;
 
         // ── Recency signal ────────────────────────────────────────────────────
         // New input always spikes recency; it then decays
@@ -133,28 +132,30 @@ impl MammillaryBodies {
 
         // ── Consolidation rate ────────────────────────────────────────────────
         // Rises with salient, novel input and sleep pressure
-        let consol_target = (hippocampus_salience * 0.40
-            + episodic_novelty * 0.30
-            + sleep_consolidation * 0.25).min(1.0);
-        self.consolidation_rate = self.consolidation_rate * (1.0 - CONSOLIDATION_EMA)
-            + consol_target * CONSOLIDATION_EMA;
+        let consol_target =
+            (hippocampus_salience * 0.40 + episodic_novelty * 0.30 + sleep_consolidation * 0.25)
+                .min(1.0);
+        self.consolidation_rate =
+            self.consolidation_rate * (1.0 - CONSOLIDATION_EMA) + consol_target * CONSOLIDATION_EMA;
 
         let consolidating = self.consolidation_rate > 0.50;
-        if consolidating { self.consolidations += 1; }
+        if consolidating {
+            self.consolidations += 1;
+        }
 
         // ── Papez circuit gain ────────────────────────────────────────────────
         // Loop gain rises when hippocampus + MB + thalamus are all active
         let papez_target = (self.relay_strength * 0.50
             + self.consolidation_rate * 0.30
-            + (1.0 - rsc_temporal_distance) * 0.20).min(1.0);
-        self.papez_gain = self.papez_gain * (1.0 - PAPEZ_EMA)
-            + papez_target * PAPEZ_EMA;
+            + (1.0 - rsc_temporal_distance) * 0.20)
+            .min(1.0);
+        self.papez_gain = self.papez_gain * (1.0 - PAPEZ_EMA) + papez_target * PAPEZ_EMA;
 
         MBOutput {
-            relay_strength:    self.relay_strength,
-            recency_signal:    self.recency_signal,
+            relay_strength: self.relay_strength,
+            recency_signal: self.recency_signal,
             consolidation_rate: self.consolidation_rate,
-            papez_gain:        self.papez_gain,
+            papez_gain: self.papez_gain,
             consolidating,
         }
     }
@@ -176,11 +177,11 @@ impl MammillaryBodies {
     /// Current output without processing.
     pub fn current_output(&self) -> MBOutput {
         MBOutput {
-            relay_strength:    self.relay_strength,
-            recency_signal:    self.recency_signal,
+            relay_strength: self.relay_strength,
+            recency_signal: self.recency_signal,
             consolidation_rate: self.consolidation_rate,
-            papez_gain:        self.papez_gain,
-            consolidating:     self.consolidation_rate > 0.50,
+            papez_gain: self.papez_gain,
+            consolidating: self.consolidation_rate > 0.50,
         }
     }
 
@@ -188,16 +189,15 @@ impl MammillaryBodies {
     pub fn status_line(&self) -> String {
         format!(
             "MB relay={:.2} | recency={:.2} | consol={:.2} | papez={:.2}",
-            self.relay_strength,
-            self.recency_signal,
-            self.consolidation_rate,
-            self.papez_gain,
+            self.relay_strength, self.recency_signal, self.consolidation_rate, self.papez_gain,
         )
     }
 }
 
 impl Default for MammillaryBodies {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -210,7 +210,11 @@ mod tests {
     fn test_initial_state() {
         let m = MammillaryBodies::new();
         assert!((m.relay_strength - RELAY_BASELINE).abs() < 0.01);
-        assert!(m.recency_signal > 0.70, "should start with fresh recency: {:.2}", m.recency_signal);
+        assert!(
+            m.recency_signal > 0.70,
+            "should start with fresh recency: {:.2}",
+            m.recency_signal
+        );
     }
 
     #[test]
@@ -218,9 +222,12 @@ mod tests {
         let mut m = MammillaryBodies::new();
         let before = m.relay_strength;
         m.process(0.90, 0.80, 0.20, 0.30);
-        assert!(m.relay_strength > before,
+        assert!(
+            m.relay_strength > before,
             "high hippocampal salience should raise relay: {:.2} → {:.2}",
-            before, m.relay_strength);
+            before,
+            m.relay_strength
+        );
     }
 
     #[test]
@@ -228,8 +235,11 @@ mod tests {
         let mut m = MammillaryBodies::new();
         m.recency_signal = 0.20; // artificially low
         m.process(0.50, 0.50, 0.40, 0.30);
-        assert!(m.recency_signal > 0.20,
-            "new input should spike recency: {:.2}", m.recency_signal);
+        assert!(
+            m.recency_signal > 0.20,
+            "new input should spike recency: {:.2}",
+            m.recency_signal
+        );
     }
 
     #[test]
@@ -237,9 +247,12 @@ mod tests {
         let mut m = MammillaryBodies::new();
         let before = m.consolidation_rate;
         m.process(0.50, 0.50, 0.40, 0.90);
-        assert!(m.consolidation_rate >= before,
+        assert!(
+            m.consolidation_rate >= before,
             "high sleep pressure should raise consolidation rate: {:.2} → {:.2}",
-            before, m.consolidation_rate);
+            before,
+            m.consolidation_rate
+        );
     }
 
     #[test]
@@ -247,7 +260,10 @@ mod tests {
         let mut m = MammillaryBodies::new();
         m.consolidation_rate = 0.60;
         let out = m.current_output();
-        assert!(out.consolidating, "consolidation_rate > 0.50 → consolidating");
+        assert!(
+            out.consolidating,
+            "consolidation_rate > 0.50 → consolidating"
+        );
     }
 
     #[test]
@@ -257,8 +273,12 @@ mod tests {
         for _ in 0..20 {
             m.decay();
         }
-        assert!(m.recency_signal < before,
-            "recency should decay over time: {:.2} → {:.2}", before, m.recency_signal);
+        assert!(
+            m.recency_signal < before,
+            "recency should decay over time: {:.2} → {:.2}",
+            before,
+            m.recency_signal
+        );
         assert!(m.recency_signal >= 0.05, "should not decay below minimum");
     }
 
@@ -270,8 +290,11 @@ mod tests {
         for _ in 0..5 {
             m.process(0.90, 0.80, 0.10, 0.50);
         }
-        assert!(m.papez_gain >= before - 0.01,
-            "papez gain should not collapse with high activity: {:.2}", m.papez_gain);
+        assert!(
+            m.papez_gain >= before - 0.01,
+            "papez gain should not collapse with high activity: {:.2}",
+            m.papez_gain
+        );
     }
 
     #[test]
@@ -289,8 +312,11 @@ mod tests {
         for _ in 0..10 {
             m.decay();
         }
-        assert!(m.consolidation_rate < 0.80,
-            "consolidation rate should decay: {:.2}", m.consolidation_rate);
+        assert!(
+            m.consolidation_rate < 0.80,
+            "consolidation rate should decay: {:.2}",
+            m.consolidation_rate
+        );
     }
 
     #[test]

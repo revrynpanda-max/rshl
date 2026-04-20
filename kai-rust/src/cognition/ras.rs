@@ -110,9 +110,9 @@ pub struct ReticuloActivatingSystem {
 impl ReticuloActivatingSystem {
     pub fn new() -> Self {
         Self {
-            arousal_level:     AROUSAL_REST,
-            habituation:       0.0,
-            events_processed:  0,
+            arousal_level: AROUSAL_REST,
+            habituation: 0.0,
+            events_processed: 0,
             wake_signals_fired: 0,
         }
     }
@@ -190,7 +190,9 @@ impl ReticuloActivatingSystem {
     }
 
     /// Current state as output
-    pub fn current_output(&self) -> RASOutput { self.build_output() }
+    pub fn current_output(&self) -> RASOutput {
+        self.build_output()
+    }
 
     /// Status line
     pub fn status_line(&self) -> String {
@@ -199,14 +201,20 @@ impl ReticuloActivatingSystem {
             self.arousal_level,
             self.habituation,
             self.effective_arousal(),
-            if self.arousal_level >= WAKE_THRESHOLD { "ON" } else { "off" },
+            if self.arousal_level >= WAKE_THRESHOLD {
+                "ON"
+            } else {
+                "off"
+            },
             self.events_processed,
         )
     }
 }
 
 impl Default for ReticuloActivatingSystem {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -227,8 +235,12 @@ mod tests {
         let mut r = ReticuloActivatingSystem::new();
         let before = r.arousal_level;
         r.process(RASEvent::Novel { strength: 0.90 });
-        assert!(r.arousal_level > before,
-            "novel event should raise arousal: {:.2} → {:.2}", before, r.arousal_level);
+        assert!(
+            r.arousal_level > before,
+            "novel event should raise arousal: {:.2} → {:.2}",
+            before,
+            r.arousal_level
+        );
     }
 
     #[test]
@@ -237,8 +249,11 @@ mod tests {
         r.process(RASEvent::Repetitive);
         r.process(RASEvent::Repetitive);
         r.process(RASEvent::Repetitive);
-        assert!(r.habituation > 0.0,
-            "repeated inputs should build habituation: {:.2}", r.habituation);
+        assert!(
+            r.habituation > 0.0,
+            "repeated inputs should build habituation: {:.2}",
+            r.habituation
+        );
     }
 
     #[test]
@@ -246,16 +261,23 @@ mod tests {
         let mut r = ReticuloActivatingSystem::new();
         let before = r.arousal_level;
         r.process(RASEvent::WakeTrigger);
-        assert!(r.arousal_level > before,
-            "wake trigger should boost arousal: {:.2} → {:.2}", before, r.arousal_level);
+        assert!(
+            r.arousal_level > before,
+            "wake trigger should boost arousal: {:.2} → {:.2}",
+            before,
+            r.arousal_level
+        );
     }
 
     #[test]
     fn test_sleep_onset_reduces_arousal() {
         let mut r = ReticuloActivatingSystem::new();
         r.process(RASEvent::SleepOnset);
-        assert!(r.arousal_level < AROUSAL_REST,
-            "sleep onset should reduce arousal: {:.2}", r.arousal_level);
+        assert!(
+            r.arousal_level < AROUSAL_REST,
+            "sleep onset should reduce arousal: {:.2}",
+            r.arousal_level
+        );
     }
 
     #[test]
@@ -263,8 +285,11 @@ mod tests {
         let mut r = ReticuloActivatingSystem::new();
         r.habituation = 0.50;
         r.process(RASEvent::Novel { strength: 1.0 });
-        assert!(r.habituation < 0.50,
-            "novel event should reduce habituation: {:.2}", r.habituation);
+        assert!(
+            r.habituation < 0.50,
+            "novel event should reduce habituation: {:.2}",
+            r.habituation
+        );
     }
 
     #[test]
@@ -273,8 +298,12 @@ mod tests {
         r.arousal_level = 0.80;
         r.habituation = 0.60;
         let effective = r.effective_arousal();
-        assert!(effective < r.arousal_level,
-            "habituation should reduce effective arousal: {:.2} < {:.2}", effective, r.arousal_level);
+        assert!(
+            effective < r.arousal_level,
+            "habituation should reduce effective arousal: {:.2} < {:.2}",
+            effective,
+            r.arousal_level
+        );
     }
 
     #[test]
@@ -282,8 +311,7 @@ mod tests {
         let mut r = ReticuloActivatingSystem::new();
         r.arousal_level = 0.70;
         let out = r.current_output();
-        assert!(out.passes_gate,
-            "high arousal should pass priority gate");
+        assert!(out.passes_gate, "high arousal should pass priority gate");
     }
 
     #[test]
@@ -293,8 +321,11 @@ mod tests {
         for _ in 0..20 {
             r.decay();
         }
-        assert!(r.arousal_level < 0.80,
-            "arousal should decay toward rest: {:.2}", r.arousal_level);
+        assert!(
+            r.arousal_level < 0.80,
+            "arousal should decay toward rest: {:.2}",
+            r.arousal_level
+        );
     }
 
     #[test]

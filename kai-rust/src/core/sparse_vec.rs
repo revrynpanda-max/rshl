@@ -20,7 +20,9 @@ pub struct SparseVec {
 impl SparseVec {
     /// Create a zero vector.
     pub fn zero() -> Self {
-        Self { data: vec![0i8; DIM] }
+        Self {
+            data: vec![0i8; DIM],
+        }
     }
 
     /// Create from raw data (for inter-stream communication).
@@ -48,7 +50,11 @@ impl SparseVec {
                 let n_active = 12; // Fixed bits per feature to avoid saturation
                 for k in 0..n_active {
                     let idx = (base.wrapping_add(k * 2654435761)) % DIM;
-                    let sign = if (base.wrapping_add(k * 1442695040)) % 2 == 0 { 1 } else { -1 };
+                    let sign = if (base.wrapping_add(k * 1442695040)) % 2 == 0 {
+                        1
+                    } else {
+                        -1
+                    };
                     let rotated = (idx + i * 97) % DIM;
                     v[rotated] += sign;
                 }
@@ -80,7 +86,9 @@ impl SparseVec {
             let mut set = std::collections::HashSet::new();
             for (i, word) in original_words.iter().enumerate() {
                 let clean: String = word.chars().filter(|c| c.is_alphabetic()).collect();
-                if clean.len() < 2 { continue; }
+                if clean.len() < 2 {
+                    continue;
+                }
                 let lower_clean = clean.to_lowercase();
                 // Always boost known core entities regardless of position
                 if known_entities.contains(&lower_clean.as_str()) {
@@ -88,7 +96,11 @@ impl SparseVec {
                     continue;
                 }
                 // Capitalized mid-sentence = proper noun (position > 0, not just sentence-start caps)
-                let first_upper = clean.chars().next().map(|c| c.is_uppercase()).unwrap_or(false);
+                let first_upper = clean
+                    .chars()
+                    .next()
+                    .map(|c| c.is_uppercase())
+                    .unwrap_or(false);
                 if i > 0 && first_upper {
                     set.insert(lower_clean.clone());
                 }
@@ -105,10 +117,18 @@ impl SparseVec {
             let n_active = 12;
             // Proper nouns get 6x weight — names and entities are the most semantically
             // discriminative words. "Ryan" in a sentence matters far more than "nice" or "meet".
-            let word_weight: i32 = if proper_nouns.contains(token.as_str()) { 6 } else { 3 };
+            let word_weight: i32 = if proper_nouns.contains(token.as_str()) {
+                6
+            } else {
+                3
+            };
             for k in 0..n_active {
                 let idx = (base.wrapping_add(k * 2654435761)) % DIM;
-                let sign = if (base.wrapping_add(k * 1442695040)) % 2 == 0 { word_weight } else { -word_weight };
+                let sign = if (base.wrapping_add(k * 1442695040)) % 2 == 0 {
+                    word_weight
+                } else {
+                    -word_weight
+                };
                 v[idx] += sign;
             }
         }
@@ -118,13 +138,19 @@ impl SparseVec {
                 let w1 = &normalized_tokens[i];
                 let w2 = &normalized_tokens[i + 1];
                 // Skip category anchors in bigrams (they're cluster signals, not word pairs)
-                if w1.starts_with('#') || w2.starts_with('#') { continue; }
+                if w1.starts_with('#') || w2.starts_with('#') {
+                    continue;
+                }
 
                 let base = hash_word_pair(w1, w2);
                 let n_active = 8; // Slightly fewer bits for bigrams (supporting signal)
                 for k in 0..n_active {
                     let idx = (base.wrapping_add(k * 2654435761)) % DIM;
-                    let sign = if (base.wrapping_add(k * 1442695040)) % 2 == 0 { 2 } else { -2 };
+                    let sign = if (base.wrapping_add(k * 1442695040)) % 2 == 0 {
+                        2
+                    } else {
+                        -2
+                    };
                     v[idx] += sign; // 2x weight for word bigrams
                 }
             }
@@ -134,7 +160,11 @@ impl SparseVec {
         let target_count = ((DIM as f32) * SPARSITY) as usize;
         let mut magnitudes: Vec<i32> = v.iter().map(|s| s.abs()).collect();
         magnitudes.sort_unstable_by(|a, b| b.cmp(a));
-        let threshold = if target_count < DIM { magnitudes[target_count] } else { 0 };
+        let threshold = if target_count < DIM {
+            magnitudes[target_count]
+        } else {
+            0
+        };
 
         let mut data = vec![0i8; DIM];
         for i in 0..DIM {
@@ -157,7 +187,10 @@ impl SparseVec {
     /// misspelling is pulled to the nearest known attractor in word-space.
     ///
     /// Returns (vector, corrections) where corrections lists what was fixed.
-    pub fn encode_corrected(text: &str, lexicon: &super::lexicon::Lexicon) -> (Self, Vec<(String, String)>) {
+    pub fn encode_corrected(
+        text: &str,
+        lexicon: &super::lexicon::Lexicon,
+    ) -> (Self, Vec<(String, String)>) {
         let (corrected_text, corrections) = lexicon.correct_sentence(text);
         let vec = Self::encode(&corrected_text);
         (vec, corrections)
@@ -238,12 +271,16 @@ impl SparseVec {
                 sums[i] += v.data[i] as i32;
             }
         }
-        
+
         let target_count = ((DIM as f32) * target_density) as usize;
         let mut magnitudes: Vec<i32> = sums.iter().map(|s| s.abs()).collect();
         magnitudes.sort_unstable_by(|a, b| b.cmp(a));
-        let threshold = if target_count < DIM { magnitudes[target_count] } else { 0 };
-        
+        let threshold = if target_count < DIM {
+            magnitudes[target_count]
+        } else {
+            0
+        };
+
         let mut out = SparseVec::zero();
         for i in 0..DIM {
             if sums[i].abs() > threshold {
@@ -355,9 +392,12 @@ mod tests {
         let unrelated = SparseVec::encode("quantum physics equations");
         let sim_match = query.cosine(&answer);
         let sim_unrelated = query.cosine(&unrelated);
-        assert!(sim_match > sim_unrelated,
+        assert!(
+            sim_match > sim_unrelated,
             "location query should match location answer ({:.4}) more than unrelated ({:.4})",
-            sim_match, sim_unrelated);
+            sim_match,
+            sim_unrelated
+        );
     }
 
     #[test]
@@ -366,8 +406,11 @@ mod tests {
         let a = SparseVec::encode("Ryan's occupation");
         let b = SparseVec::encode("Ryan's job");
         let sim = a.cosine(&b);
-        assert!(sim > 0.5,
-            "synonym-equivalent phrases should have high similarity: {:.4}", sim);
+        assert!(
+            sim > 0.5,
+            "synonym-equivalent phrases should have high similarity: {:.4}",
+            sim
+        );
     }
 
     #[test]
@@ -377,12 +420,14 @@ mod tests {
         let b = SparseVec::encode("mathematics calculus topology");
         let c = SparseVec::encode("mathematics number theory");
         let bundle = SparseVec::bundle(&[&a, &b, &c]);
-        let query  = SparseVec::encode("mathematics");
+        let query = SparseVec::encode("mathematics");
         let random = SparseVec::encode("purple elephant jazz");
-        assert!(bundle.cosine(&query) > bundle.cosine(&random),
-            "bundle should be closer to shared concept than random noise");
+        assert!(
+            bundle.cosine(&query) > bundle.cosine(&random),
+            "bundle should be closer to shared concept than random noise"
+        );
     }
 }
 
 // ── (end of sparse_vec.rs) ──
-        // Use highly overlapping strings t
+// Use highly overlapping strings t

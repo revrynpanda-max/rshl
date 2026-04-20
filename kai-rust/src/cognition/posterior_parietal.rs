@@ -54,17 +54,58 @@ const MAX_PRIORITY_TARGETS: usize = 5;
 
 /// Quantitative/numerical markers
 const NUMERIC_MARKERS: &[&str] = &[
-    "how many", "how much", "count", "number", "total", "sum", "more than",
-    "less than", "compare", "larger", "smaller", "bigger", "proportion",
-    "percentage", "ratio", "magnitude", "scale", "size", "amount", "measure",
-    "step", "steps", "times", "twice", "half", "double", "triple",
+    "how many",
+    "how much",
+    "count",
+    "number",
+    "total",
+    "sum",
+    "more than",
+    "less than",
+    "compare",
+    "larger",
+    "smaller",
+    "bigger",
+    "proportion",
+    "percentage",
+    "ratio",
+    "magnitude",
+    "scale",
+    "size",
+    "amount",
+    "measure",
+    "step",
+    "steps",
+    "times",
+    "twice",
+    "half",
+    "double",
+    "triple",
 ];
 
 /// Structural/spatial markers
 const STRUCTURAL_MARKERS: &[&str] = &[
-    "structure", "layout", "hierarchy", "relationship", "between", "within",
-    "above", "below", "before", "after", "inside", "outside", "left", "right",
-    "order", "sequence", "map", "tree", "graph", "path", "flow",
+    "structure",
+    "layout",
+    "hierarchy",
+    "relationship",
+    "between",
+    "within",
+    "above",
+    "below",
+    "before",
+    "after",
+    "inside",
+    "outside",
+    "left",
+    "right",
+    "order",
+    "sequence",
+    "map",
+    "tree",
+    "graph",
+    "path",
+    "flow",
 ];
 
 // ── PPCOutput ─────────────────────────────────────────────────────────────────
@@ -106,12 +147,12 @@ pub struct PosteriorParietalCortex {
 impl PosteriorParietalCortex {
     pub fn new() -> Self {
         Self {
-            attention_priority:       0.40,
-            magnitude_sense:          0.30,
-            spatial_load:             0.20,
-            priority_targets:         Vec::new(),
+            attention_priority: 0.40,
+            magnitude_sense: 0.30,
+            spatial_load: 0.20,
+            priority_targets: Vec::new(),
             quantitative_activations: 0,
-            inputs_processed:         0,
+            inputs_processed: 0,
         }
     }
 
@@ -126,29 +167,33 @@ impl PosteriorParietalCortex {
         let lower = text.to_lowercase();
 
         // ── Quantitative / magnitude detection ────────────────────────────────
-        let numeric_hits = NUMERIC_MARKERS.iter()
-            .filter(|&&w| lower.contains(w)).count();
+        let numeric_hits = NUMERIC_MARKERS
+            .iter()
+            .filter(|&&w| lower.contains(w))
+            .count();
         let quantitative_mode = numeric_hits >= 1;
         if quantitative_mode {
             self.quantitative_activations += 1;
             let mag_target = (0.40 + numeric_hits as f32 * 0.10).min(1.0);
-            self.magnitude_sense = self.magnitude_sense * (1.0 - MAGNITUDE_EMA)
-                + mag_target * MAGNITUDE_EMA;
+            self.magnitude_sense =
+                self.magnitude_sense * (1.0 - MAGNITUDE_EMA) + mag_target * MAGNITUDE_EMA;
         } else {
             self.magnitude_sense = (self.magnitude_sense - 0.02).max(0.10);
         }
 
         // ── Structural / spatial detection ────────────────────────────────────
-        let structural_hits = STRUCTURAL_MARKERS.iter()
-            .filter(|&&w| lower.contains(w)).count();
+        let structural_hits = STRUCTURAL_MARKERS
+            .iter()
+            .filter(|&&w| lower.contains(w))
+            .count();
         let structural_mode = structural_hits >= 1;
         let spatial_target = (structural_hits as f32 * 0.12).min(0.80);
         self.spatial_load = self.spatial_load * 0.60 + spatial_target * 0.40;
 
         // ── Attention priority (top-down + bottom-up) ─────────────────────────
         let priority_target = sc_salience * 0.50 + pfc_goal_relevance * 0.50;
-        self.attention_priority = self.attention_priority * (1.0 - PRIORITY_EMA)
-            + priority_target * PRIORITY_EMA;
+        self.attention_priority =
+            self.attention_priority * (1.0 - PRIORITY_EMA) + priority_target * PRIORITY_EMA;
 
         // ── Priority targets ──────────────────────────────────────────────────
         if quantitative_mode {
@@ -172,9 +217,9 @@ impl PosteriorParietalCortex {
 
         PPCOutput {
             attention_priority: self.attention_priority,
-            magnitude_sense:    self.magnitude_sense,
-            spatial_load:       self.spatial_load,
-            priority_map_size:  self.priority_targets.len(),
+            magnitude_sense: self.magnitude_sense,
+            spatial_load: self.spatial_load,
+            priority_map_size: self.priority_targets.len(),
             quantitative_mode,
             structural_mode,
         }
@@ -191,11 +236,11 @@ impl PosteriorParietalCortex {
     pub fn current_output(&self) -> PPCOutput {
         PPCOutput {
             attention_priority: self.attention_priority,
-            magnitude_sense:    self.magnitude_sense,
-            spatial_load:       self.spatial_load,
-            priority_map_size:  self.priority_targets.len(),
-            quantitative_mode:  false,
-            structural_mode:    false,
+            magnitude_sense: self.magnitude_sense,
+            spatial_load: self.spatial_load,
+            priority_map_size: self.priority_targets.len(),
+            quantitative_mode: false,
+            structural_mode: false,
         }
     }
 
@@ -212,7 +257,9 @@ impl PosteriorParietalCortex {
 }
 
 impl Default for PosteriorParietalCortex {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -232,19 +279,40 @@ mod tests {
     fn test_numeric_raises_magnitude_sense() {
         let mut p = PosteriorParietalCortex::new();
         let before = p.magnitude_sense;
-        let out = p.process("how many steps and how much time does this take", 0.50, 0.60);
-        assert!(out.quantitative_mode, "numeric markers should trigger quantitative mode");
-        assert!(p.magnitude_sense >= before,
-            "numeric input should raise magnitude sense: {:.2} → {:.2}", before, p.magnitude_sense);
+        let out = p.process(
+            "how many steps and how much time does this take",
+            0.50,
+            0.60,
+        );
+        assert!(
+            out.quantitative_mode,
+            "numeric markers should trigger quantitative mode"
+        );
+        assert!(
+            p.magnitude_sense >= before,
+            "numeric input should raise magnitude sense: {:.2} → {:.2}",
+            before,
+            p.magnitude_sense
+        );
     }
 
     #[test]
     fn test_structural_raises_spatial_load() {
         let mut p = PosteriorParietalCortex::new();
-        let out = p.process("describe the structure and hierarchy of the system", 0.50, 0.60);
-        assert!(out.structural_mode, "structural markers should trigger structural mode");
-        assert!(out.spatial_load > 0.0,
-            "structural input should raise spatial load: {:.2}", out.spatial_load);
+        let out = p.process(
+            "describe the structure and hierarchy of the system",
+            0.50,
+            0.60,
+        );
+        assert!(
+            out.structural_mode,
+            "structural markers should trigger structural mode"
+        );
+        assert!(
+            out.spatial_load > 0.0,
+            "structural input should raise spatial load: {:.2}",
+            out.spatial_load
+        );
     }
 
     #[test]
@@ -253,24 +321,30 @@ mod tests {
         let out_low = p.process("hello", 0.10, 0.10);
         let mut p2 = PosteriorParietalCortex::new();
         let out_high = p2.process("hello", 0.90, 0.90);
-        assert!(out_high.attention_priority > out_low.attention_priority,
-            "high salience should give higher attention priority");
+        assert!(
+            out_high.attention_priority > out_low.attention_priority,
+            "high salience should give higher attention priority"
+        );
     }
 
     #[test]
     fn test_quantitative_mode_not_triggered_by_plain_text() {
         let mut p = PosteriorParietalCortex::new();
         let out = p.process("hello how are you today", 0.30, 0.30);
-        assert!(!out.quantitative_mode,
-            "plain conversation should not trigger quantitative mode");
+        assert!(
+            !out.quantitative_mode,
+            "plain conversation should not trigger quantitative mode"
+        );
     }
 
     #[test]
     fn test_priority_targets_registered() {
         let mut p = PosteriorParietalCortex::new();
         p.process("how many items in the structure", 0.50, 0.60);
-        assert!(p.priority_targets.len() > 0,
-            "quantitative or structural should register priority targets");
+        assert!(
+            p.priority_targets.len() > 0,
+            "quantitative or structural should register priority targets"
+        );
     }
 
     #[test]
@@ -280,8 +354,11 @@ mod tests {
         for _ in 0..10 {
             p.decay();
         }
-        assert!(p.attention_priority < 0.90,
-            "priority should decay: {:.2}", p.attention_priority);
+        assert!(
+            p.attention_priority < 0.90,
+            "priority should decay: {:.2}",
+            p.attention_priority
+        );
     }
 
     #[test]
@@ -289,8 +366,11 @@ mod tests {
         let mut p = PosteriorParietalCortex::new();
         p.process("how many steps", 0.50, 0.50);
         p.process("what is the total count", 0.50, 0.50);
-        assert_eq!(p.quantitative_activations, 2,
-            "quantitative activation count should track: {}", p.quantitative_activations);
+        assert_eq!(
+            p.quantitative_activations, 2,
+            "quantitative activation count should track: {}",
+            p.quantitative_activations
+        );
     }
 
     #[test]

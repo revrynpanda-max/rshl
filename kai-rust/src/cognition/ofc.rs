@@ -30,7 +30,6 @@
 ///   expected_value(context) → f32 (what is this context worth?)
 ///   detect_reversal(context) → bool (value has flipped sign recently?)
 ///   prune() → remove stale low-confidence entries
-
 use std::collections::HashMap;
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -113,11 +112,15 @@ impl OFCEntry {
     }
 
     fn check_reversal(&mut self) {
-        if self.update_count < REVERSAL_MIN_UPDATES { return; }
-        if self.recent_outcomes.len() < 3 { return; }
+        if self.update_count < REVERSAL_MIN_UPDATES {
+            return;
+        }
+        if self.recent_outcomes.len() < 3 {
+            return;
+        }
 
-        let recent_avg = self.recent_outcomes.iter().sum::<f32>()
-            / self.recent_outcomes.len() as f32;
+        let recent_avg =
+            self.recent_outcomes.iter().sum::<f32>() / self.recent_outcomes.len() as f32;
 
         // Reversal: recent outcomes have flipped significantly vs. expected
         let divergence = (recent_avg - self.expected_value).abs();
@@ -168,10 +171,10 @@ pub struct OrbitofrontalCortex {
 impl OrbitofrontalCortex {
     pub fn new() -> Self {
         Self {
-            value_map:         HashMap::new(),
-            total_updates:     0,
+            value_map: HashMap::new(),
+            total_updates: 0,
             reversals_detected: 0,
-            tick:              0,
+            tick: 0,
         }
     }
 
@@ -185,7 +188,8 @@ impl OrbitofrontalCortex {
     /// Returns the delta applied to the expected value.
     pub fn update(&mut self, context_key: &str, outcome: f32) -> f32 {
         let tick = self.tick;
-        let entry = self.value_map
+        let entry = self
+            .value_map
             .entry(context_key.to_string())
             .or_insert_with(|| OFCEntry::new(0.0));
 
@@ -220,15 +224,14 @@ impl OrbitofrontalCortex {
                 }
             }
             Some(entry) => {
-                let recommended = !entry.reversal_active
-                    && entry.expected_value > -0.20;
+                let recommended = !entry.reversal_active && entry.expected_value > -0.20;
 
                 let label = match entry.expected_value {
-                    v if v > 0.60  => "high-value",
-                    v if v > 0.20  => "moderate-value",
+                    v if v > 0.60 => "high-value",
+                    v if v > 0.20 => "moderate-value",
                     v if v > -0.20 => "neutral",
                     v if v > -0.60 => "low-value",
-                    _              => "aversive",
+                    _ => "aversive",
                 };
 
                 if entry.reversal_active {
@@ -259,7 +262,9 @@ impl OrbitofrontalCortex {
 
     /// Get a summary of all known context values (sorted by value descending)
     pub fn top_contexts(&self, n: usize) -> Vec<(String, f32, f32)> {
-        let mut entries: Vec<_> = self.value_map.iter()
+        let mut entries: Vec<_> = self
+            .value_map
+            .iter()
             .map(|(k, v)| (k.clone(), v.expected_value, v.confidence))
             .collect();
         entries.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
@@ -284,24 +289,30 @@ impl OrbitofrontalCortex {
 
     /// Remove entries that have decayed below the confidence floor
     fn prune(&mut self) {
-        self.value_map.retain(|_, v| v.confidence > CONFIDENCE_FLOOR);
+        self.value_map
+            .retain(|_, v| v.confidence > CONFIDENCE_FLOOR);
     }
 
     /// Status line for brain monitor display
     pub fn status_line(&self) -> String {
         let top = self.top_contexts(1);
-        let top_str = top.first()
+        let top_str = top
+            .first()
             .map(|(k, v, c)| format!("best=\"{}\" val={:+.2} conf={:.2}", k, v, c))
             .unwrap_or_else(|| "no data yet".to_string());
         format!(
             "OFC {} entries | {} | reversals={}",
-            self.value_map.len(), top_str, self.reversals_detected,
+            self.value_map.len(),
+            top_str,
+            self.reversals_detected,
         )
     }
 }
 
 impl Default for OrbitofrontalCortex {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -327,8 +338,15 @@ mod tests {
             ofc.update("question/explain", 0.8);
         }
         let j = ofc.judge("question/explain");
-        assert!(j.expected_value > 0.30, "repeated positive outcomes should raise value: {:.2}", j.expected_value);
-        assert!(j.recommended, "positive-value context should be recommended");
+        assert!(
+            j.expected_value > 0.30,
+            "repeated positive outcomes should raise value: {:.2}",
+            j.expected_value
+        );
+        assert!(
+            j.recommended,
+            "positive-value context should be recommended"
+        );
     }
 
     #[test]
@@ -338,7 +356,11 @@ mod tests {
             ofc.update("statement/ask_back", -0.5);
         }
         let j = ofc.judge("statement/ask_back");
-        assert!(j.expected_value < -0.10, "repeated negative outcomes should lower value: {:.2}", j.expected_value);
+        assert!(
+            j.expected_value < -0.10,
+            "repeated negative outcomes should lower value: {:.2}",
+            j.expected_value
+        );
     }
 
     #[test]
@@ -356,9 +378,12 @@ mod tests {
         }
         let after = ofc.judge("social/greet");
         // Should detect a reversal
-        assert!(after.reversal_warning || after.expected_value < before.expected_value,
+        assert!(
+            after.reversal_warning || after.expected_value < before.expected_value,
             "reversal or value drop expected: val={:.2} reversal={}",
-            after.expected_value, after.reversal_warning);
+            after.expected_value,
+            after.reversal_warning
+        );
     }
 
     #[test]
@@ -369,7 +394,10 @@ mod tests {
         ofc.update("test_context", 0.5);
         ofc.update("test_context", 0.5);
         let j3 = ofc.judge("test_context");
-        assert!(j3.confidence > j1.confidence, "more updates should mean higher confidence");
+        assert!(
+            j3.confidence > j1.confidence,
+            "more updates should mean higher confidence"
+        );
     }
 
     #[test]
@@ -383,7 +411,10 @@ mod tests {
             ofc.decay();
         }
         let after = ofc.judge("decay_test").expected_value;
-        assert!(after < before, "decay should reduce expected value over time");
+        assert!(
+            after < before,
+            "decay should reduce expected value over time"
+        );
     }
 
     #[test]
@@ -391,29 +422,50 @@ mod tests {
         let ofc = OrbitofrontalCortex::new();
         let j = ofc.judge("never_seen_context");
         assert_eq!(j.label, "unknown");
-        assert!(j.recommended, "unknown context should default to recommended (try it)");
+        assert!(
+            j.recommended,
+            "unknown context should default to recommended (try it)"
+        );
     }
 
     #[test]
     fn test_top_contexts_sorted() {
         let mut ofc = OrbitofrontalCortex::new();
-        for _ in 0..3 { ofc.update("low", -0.3); }
-        for _ in 0..3 { ofc.update("high", 0.8); }
-        for _ in 0..3 { ofc.update("mid", 0.3); }
+        for _ in 0..3 {
+            ofc.update("low", -0.3);
+        }
+        for _ in 0..3 {
+            ofc.update("high", 0.8);
+        }
+        for _ in 0..3 {
+            ofc.update("mid", 0.3);
+        }
         let tops = ofc.top_contexts(3);
         assert_eq!(tops.len(), 3);
-        assert!(tops[0].1 >= tops[1].1, "top contexts should be sorted descending");
-        assert!(tops[1].1 >= tops[2].1, "top contexts should be sorted descending");
+        assert!(
+            tops[0].1 >= tops[1].1,
+            "top contexts should be sorted descending"
+        );
+        assert!(
+            tops[1].1 >= tops[2].1,
+            "top contexts should be sorted descending"
+        );
     }
 
     #[test]
     fn test_value_label_high() {
         let mut ofc = OrbitofrontalCortex::new();
         // TD-learning with alpha=0.12 needs ~10 updates to converge past 0.60
-        for _ in 0..12 { ofc.update("great_context", 0.9); }
+        for _ in 0..12 {
+            ofc.update("great_context", 0.9);
+        }
         let j = ofc.judge("great_context");
-        assert!(j.expected_value > 0.60 || j.label == "high-value",
-            "high reward context should be high-value after 12 updates: val={:.2} label={}", j.expected_value, j.label);
+        assert!(
+            j.expected_value > 0.60 || j.label == "high-value",
+            "high reward context should be high-value after 12 updates: val={:.2} label={}",
+            j.expected_value,
+            j.label
+        );
     }
 
     #[test]

@@ -92,12 +92,12 @@ pub struct SuprachiasmaticNucleus {
 impl SuprachiasmaticNucleus {
     pub fn new() -> Self {
         Self {
-            phase:                  0.0,
-            alertness_modulation:   ALERTNESS_BASELINE,
+            phase: 0.0,
+            alertness_modulation: ALERTNESS_BASELINE,
             consolidation_pressure: 0.10,
-            ultradian_phase:        0.0,
-            ticks:                  0,
-            peak_events:            0,
+            ultradian_phase: 0.0,
+            ticks: 0,
+            peak_events: 0,
         }
     }
 
@@ -127,8 +127,8 @@ impl SuprachiasmaticNucleus {
             // Post-peak decline
             ALERTNESS_BASELINE + 0.15 - (self.phase - PEAK_PHASE) * 0.40
         };
-        let alertness_target = (phase_alertness + ultradian_boost
-            - cortisol_level * 0.10).clamp(0.20, 1.0);
+        let alertness_target =
+            (phase_alertness + ultradian_boost - cortisol_level * 0.10).clamp(0.20, 1.0);
         self.alertness_modulation = self.alertness_modulation * 0.95 + alertness_target * 0.05;
 
         // ── Consolidation pressure ────────────────────────────────────────────
@@ -136,17 +136,18 @@ impl SuprachiasmaticNucleus {
         let depth_factor = (session_depth as f32 * 0.005).min(0.60);
         self.consolidation_pressure = (depth_factor + self.phase * 0.20).min(1.0);
 
-        let at_peak = self.phase >= 0.10 && self.phase <= 0.30
-            && self.alertness_modulation > 0.75;
-        if at_peak { self.peak_events += 1; }
+        let at_peak = self.phase >= 0.10 && self.phase <= 0.30 && self.alertness_modulation > 0.75;
+        if at_peak {
+            self.peak_events += 1;
+        }
 
         SCNOutput {
-            phase:                  self.phase,
-            alertness_modulation:   self.alertness_modulation,
+            phase: self.phase,
+            alertness_modulation: self.alertness_modulation,
             consolidation_pressure: self.consolidation_pressure,
-            ultradian_phase:        self.ultradian_phase,
+            ultradian_phase: self.ultradian_phase,
             at_peak,
-            consolidation_mode:     self.consolidation_pressure > 0.50,
+            consolidation_mode: self.consolidation_pressure > 0.50,
         }
     }
 
@@ -160,13 +161,12 @@ impl SuprachiasmaticNucleus {
     /// Current output without advancing.
     pub fn current_output(&self) -> SCNOutput {
         SCNOutput {
-            phase:                  self.phase,
-            alertness_modulation:   self.alertness_modulation,
+            phase: self.phase,
+            alertness_modulation: self.alertness_modulation,
             consolidation_pressure: self.consolidation_pressure,
-            ultradian_phase:        self.ultradian_phase,
-            at_peak:                self.phase >= 0.10 && self.phase <= 0.30
-                                    && self.alertness_modulation > 0.75,
-            consolidation_mode:     self.consolidation_pressure > 0.50,
+            ultradian_phase: self.ultradian_phase,
+            at_peak: self.phase >= 0.10 && self.phase <= 0.30 && self.alertness_modulation > 0.75,
+            consolidation_mode: self.consolidation_pressure > 0.50,
         }
     }
 
@@ -185,13 +185,19 @@ impl SuprachiasmaticNucleus {
             self.alertness_modulation,
             self.consolidation_pressure,
             self.ultradian_phase,
-            if self.consolidation_pressure > 0.50 { " CONSOLIDATE" } else { "" },
+            if self.consolidation_pressure > 0.50 {
+                " CONSOLIDATE"
+            } else {
+                ""
+            },
         )
     }
 }
 
 impl Default for SuprachiasmaticNucleus {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -212,7 +218,12 @@ mod tests {
         let mut s = SuprachiasmaticNucleus::new();
         let before = s.phase;
         s.process(5, 0.20);
-        assert!(s.phase > before, "phase should advance: {:.2} → {:.2}", before, s.phase);
+        assert!(
+            s.phase > before,
+            "phase should advance: {:.2} → {:.2}",
+            before,
+            s.phase
+        );
     }
 
     #[test]
@@ -225,7 +236,12 @@ mod tests {
         }
         let min = phases.iter().cloned().fold(f32::INFINITY, f32::min);
         let max = phases.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
-        assert!(max > min, "ultradian phase should vary: min={:.2} max={:.2}", min, max);
+        assert!(
+            max > min,
+            "ultradian phase should vary: min={:.2} max={:.2}",
+            min,
+            max
+        );
     }
 
     #[test]
@@ -233,8 +249,10 @@ mod tests {
         let mut s = SuprachiasmaticNucleus::new();
         let out_early = s.process(5, 0.20);
         let out_late = s.process(200, 0.20);
-        assert!(out_late.consolidation_pressure > out_early.consolidation_pressure,
-            "late session should have more consolidation pressure");
+        assert!(
+            out_late.consolidation_pressure > out_early.consolidation_pressure,
+            "late session should have more consolidation pressure"
+        );
     }
 
     #[test]
@@ -242,7 +260,10 @@ mod tests {
         let mut s = SuprachiasmaticNucleus::new();
         s.consolidation_pressure = 0.60;
         let out = s.current_output();
-        assert!(out.consolidation_mode, "pressure > 0.50 → consolidation mode");
+        assert!(
+            out.consolidation_mode,
+            "pressure > 0.50 → consolidation mode"
+        );
     }
 
     #[test]
@@ -252,8 +273,10 @@ mod tests {
         let mut s_low = SuprachiasmaticNucleus::new();
         s.process(10, 0.90);
         s_low.process(10, 0.05);
-        assert!(s.alertness_modulation <= s_low.alertness_modulation + 0.01,
-            "high cortisol should not boost alertness vs. low cortisol");
+        assert!(
+            s.alertness_modulation <= s_low.alertness_modulation + 0.01,
+            "high cortisol should not boost alertness vs. low cortisol"
+        );
     }
 
     #[test]
@@ -274,7 +297,11 @@ mod tests {
         for i in 0..500 {
             s.process(i, 0.20);
         }
-        assert!(s.phase <= 1.0, "phase should not exceed 1.0: {:.2}", s.phase);
+        assert!(
+            s.phase <= 1.0,
+            "phase should not exceed 1.0: {:.2}",
+            s.phase
+        );
     }
 
     #[test]

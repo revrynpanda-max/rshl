@@ -34,7 +34,6 @@
 ///   detect_analogy(text): scans input for analogical structure
 ///   generate_analogy(concept, domains): produces a cross-domain mapping
 ///   bind_concepts(a, b): links two concepts across different memory regions
-
 use std::collections::HashMap;
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -112,11 +111,11 @@ pub struct InferiorParietalLobule {
 impl InferiorParietalLobule {
     pub fn new() -> Self {
         let mut ipl = Self {
-            analogy_store:      Vec::with_capacity(MAX_MAPPINGS),
+            analogy_store: Vec::with_capacity(MAX_MAPPINGS),
             cross_domain_links: Vec::new(),
-            domain_keywords:    HashMap::new(),
+            domain_keywords: HashMap::new(),
             analogies_generated: 0,
-            links_formed:       0,
+            links_formed: 0,
         };
         ipl.seed_domains();
         ipl.seed_analogies();
@@ -124,47 +123,154 @@ impl InferiorParietalLobule {
     }
 
     fn seed_domains(&mut self) {
-        self.domain_keywords.insert("geometry", vec![
-            "rshl", "lattice", "vector", "sparse", "dimension", "hyperdimensional",
-            "topology", "manifold", "space", "distance", "cosine", "ternary",
-        ]);
-        self.domain_keywords.insert("biology", vec![
-            "neuron", "synapse", "cortex", "dopamine", "hippocampus", "amygdala",
-            "axon", "dendrite", "myelin", "receptor", "neurotransmitter",
-        ]);
-        self.domain_keywords.insert("computation", vec![
-            "algorithm", "memory", "processor", "cache", "encoding", "signal",
-            "feedback", "recursive", "pattern", "circuit", "threshold",
-        ]);
-        self.domain_keywords.insert("physics", vec![
-            "energy", "entropy", "wave", "frequency", "resonance", "field",
-            "quantum", "gravity", "force", "potential", "attractor",
-        ]);
-        self.domain_keywords.insert("philosophy", vec![
-            "consciousness", "existence", "meaning", "identity", "qualia",
-            "subjective", "experience", "free will", "emergence", "intentionality",
-        ]);
-        self.domain_keywords.insert("ecology", vec![
-            "ecosystem", "network", "growth", "decay", "balance", "niche",
-            "adaptation", "competition", "symbiosis", "emergence",
-        ]);
+        self.domain_keywords.insert(
+            "geometry",
+            vec![
+                "rshl",
+                "lattice",
+                "vector",
+                "sparse",
+                "dimension",
+                "hyperdimensional",
+                "topology",
+                "manifold",
+                "space",
+                "distance",
+                "cosine",
+                "ternary",
+            ],
+        );
+        self.domain_keywords.insert(
+            "biology",
+            vec![
+                "neuron",
+                "synapse",
+                "cortex",
+                "dopamine",
+                "hippocampus",
+                "amygdala",
+                "axon",
+                "dendrite",
+                "myelin",
+                "receptor",
+                "neurotransmitter",
+            ],
+        );
+        self.domain_keywords.insert(
+            "computation",
+            vec![
+                "algorithm",
+                "memory",
+                "processor",
+                "cache",
+                "encoding",
+                "signal",
+                "feedback",
+                "recursive",
+                "pattern",
+                "circuit",
+                "threshold",
+            ],
+        );
+        self.domain_keywords.insert(
+            "physics",
+            vec![
+                "energy",
+                "entropy",
+                "wave",
+                "frequency",
+                "resonance",
+                "field",
+                "quantum",
+                "gravity",
+                "force",
+                "potential",
+                "attractor",
+            ],
+        );
+        self.domain_keywords.insert(
+            "philosophy",
+            vec![
+                "consciousness",
+                "existence",
+                "meaning",
+                "identity",
+                "qualia",
+                "subjective",
+                "experience",
+                "free will",
+                "emergence",
+                "intentionality",
+            ],
+        );
+        self.domain_keywords.insert(
+            "ecology",
+            vec![
+                "ecosystem",
+                "network",
+                "growth",
+                "decay",
+                "balance",
+                "niche",
+                "adaptation",
+                "competition",
+                "symbiosis",
+                "emergence",
+            ],
+        );
     }
 
     fn seed_analogies(&mut self) {
         // Pre-seed KAI's core cross-domain insights
         let seeds = [
-            ("VTA", "dopamine system", "sun", "solar system",
-             "is_source_of", 0.80),
-            ("hippocampus", "memory", "index", "database",
-             "organizes_access_to", 0.85),
-            ("RSHL lattice", "thought", "DNA", "organism",
-             "encodes_structure_of", 0.75),
-            ("cortisol", "stress", "rust", "metal",
-             "degrades_over_time", 0.70),
-            ("OFC", "value learning", "map", "navigation",
-             "guides_through", 0.72),
-            ("DMN", "idle thought", "background process", "operating system",
-             "runs_when_idle", 0.78),
+            (
+                "VTA",
+                "dopamine system",
+                "sun",
+                "solar system",
+                "is_source_of",
+                0.80,
+            ),
+            (
+                "hippocampus",
+                "memory",
+                "index",
+                "database",
+                "organizes_access_to",
+                0.85,
+            ),
+            (
+                "RSHL lattice",
+                "thought",
+                "DNA",
+                "organism",
+                "encodes_structure_of",
+                0.75,
+            ),
+            (
+                "cortisol",
+                "stress",
+                "rust",
+                "metal",
+                "degrades_over_time",
+                0.70,
+            ),
+            (
+                "OFC",
+                "value learning",
+                "map",
+                "navigation",
+                "guides_through",
+                0.72,
+            ),
+            (
+                "DMN",
+                "idle thought",
+                "background process",
+                "operating system",
+                "runs_when_idle",
+                0.78,
+            ),
         ];
         for (a, b, c, d, rel, conf) in &seeds {
             self.store_analogy(a, b, c, d, rel, *conf);
@@ -174,24 +280,37 @@ impl InferiorParietalLobule {
     // ── Core operations ───────────────────────────────────────────────────────
 
     /// Store a new analogy mapping.
-    pub fn store_analogy(&mut self, a: &str, b: &str, c: &str, d: &str,
-                         relation: &str, confidence: f32) {
+    pub fn store_analogy(
+        &mut self,
+        a: &str,
+        b: &str,
+        c: &str,
+        d: &str,
+        relation: &str,
+        confidence: f32,
+    ) {
         if self.analogy_store.len() >= MAX_MAPPINGS {
             // Evict lowest confidence
-            if let Some(min_idx) = self.analogy_store.iter().enumerate()
-                .min_by(|(_, x), (_, y)| x.confidence.partial_cmp(&y.confidence)
-                    .unwrap_or(std::cmp::Ordering::Equal))
+            if let Some(min_idx) = self
+                .analogy_store
+                .iter()
+                .enumerate()
+                .min_by(|(_, x), (_, y)| {
+                    x.confidence
+                        .partial_cmp(&y.confidence)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                })
                 .map(|(i, _)| i)
             {
                 self.analogy_store.remove(min_idx);
             }
         }
         self.analogy_store.push(AnalogyMapping {
-            source_a:       a.to_string(),
-            source_b:       b.to_string(),
-            target_c:       c.to_string(),
-            target_d:       d.to_string(),
-            relation:       relation.to_string(),
+            source_a: a.to_string(),
+            source_b: b.to_string(),
+            target_c: c.to_string(),
+            target_d: d.to_string(),
+            relation: relation.to_string(),
             confidence,
             retrieval_count: 0,
         });
@@ -200,21 +319,30 @@ impl InferiorParietalLobule {
     /// Find the best analogy for a concept from the store.
     pub fn retrieve_analogy(&mut self, concept: &str) -> Option<String> {
         let lower = concept.to_lowercase();
-        let best = self.analogy_store.iter_mut()
+        let best = self
+            .analogy_store
+            .iter_mut()
             .filter(|m| {
                 m.source_a.to_lowercase().contains(&lower)
                     || m.source_b.to_lowercase().contains(&lower)
                     || lower.contains(&m.source_a.to_lowercase())
             })
-            .max_by(|a, b| a.confidence.partial_cmp(&b.confidence)
-                .unwrap_or(std::cmp::Ordering::Equal));
+            .max_by(|a, b| {
+                a.confidence
+                    .partial_cmp(&b.confidence)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
 
         if let Some(m) = best {
             m.retrieval_count += 1;
             Some(format!(
                 "{} {} {} (like {} {} {})",
-                m.source_a, m.relation.replace('_', " "), m.source_b,
-                m.target_c, m.relation.replace('_', " "), m.target_d,
+                m.source_a,
+                m.relation.replace('_', " "),
+                m.source_b,
+                m.target_c,
+                m.relation.replace('_', " "),
+                m.target_d,
             ))
         } else {
             None
@@ -238,10 +366,17 @@ impl InferiorParietalLobule {
     }
 
     /// Bind two concepts from different domains. Returns bridge strength.
-    pub fn bind_concepts(&mut self, concept_a: &str, domain_a: &str,
-                         concept_b: &str, domain_b: &str,
-                         bridge_strength: f32) -> f32 {
-        if bridge_strength < LINK_THRESHOLD { return 0.0; }
+    pub fn bind_concepts(
+        &mut self,
+        concept_a: &str,
+        domain_a: &str,
+        concept_b: &str,
+        domain_b: &str,
+        bridge_strength: f32,
+    ) -> f32 {
+        if bridge_strength < LINK_THRESHOLD {
+            return 0.0;
+        }
         // Avoid duplicate links
         let already = self.cross_domain_links.iter().any(|l| {
             (l.concept_a == concept_a && l.concept_b == concept_b)
@@ -249,10 +384,10 @@ impl InferiorParietalLobule {
         });
         if !already {
             self.cross_domain_links.push(CrossDomainLink {
-                concept_a:     concept_a.to_string(),
-                domain_a:      domain_a.to_string(),
-                concept_b:     concept_b.to_string(),
-                domain_b:      domain_b.to_string(),
+                concept_a: concept_a.to_string(),
+                domain_a: domain_a.to_string(),
+                concept_b: concept_b.to_string(),
+                domain_b: domain_b.to_string(),
                 bridge_strength,
             });
             self.links_formed += 1;
@@ -267,7 +402,8 @@ impl InferiorParietalLobule {
 
         // Try to retrieve a stored analogy
         let words: Vec<&str> = text.split_whitespace().collect();
-        let key_word = words.iter()
+        let key_word = words
+            .iter()
             .filter(|w| w.len() > 4)
             .max_by_key(|w| w.len())
             .copied()
@@ -280,10 +416,14 @@ impl InferiorParietalLobule {
         };
 
         let has_analogy = analogy_text.is_some();
-        if has_analogy { self.analogies_generated += 1; }
+        if has_analogy {
+            self.analogies_generated += 1;
+        }
 
         // Find activated cross-domain links for this domain
-        let activated_links: Vec<CrossDomainLink> = self.cross_domain_links.iter()
+        let activated_links: Vec<CrossDomainLink> = self
+            .cross_domain_links
+            .iter()
             .filter(|l| l.domain_a == domain || l.domain_b == domain)
             .filter(|l| l.bridge_strength >= LINK_THRESHOLD)
             .cloned()
@@ -292,33 +432,46 @@ impl InferiorParietalLobule {
         // Magnitude sense from hit score + text length
         let magnitude_label = match (top_hit_score, words.len()) {
             (s, n) if s > 0.80 && n > 15 => "vast",
-            (s, _) if s > 0.65            => "large",
-            (s, n) if s > 0.40 && n > 8  => "medium",
-            (_, n) if n > 4               => "small",
-            _                             => "tiny",
+            (s, _) if s > 0.65 => "large",
+            (s, n) if s > 0.40 && n > 8 => "medium",
+            (_, n) if n > 4 => "small",
+            _ => "tiny",
         };
 
-        IPLOutput { has_analogy, analogy_text, activated_links, magnitude_label }
+        IPLOutput {
+            has_analogy,
+            analogy_text,
+            activated_links,
+            magnitude_label,
+        }
     }
 
     /// How many analogies are stored.
-    pub fn analogy_count(&self) -> usize { self.analogy_store.len() }
+    pub fn analogy_count(&self) -> usize {
+        self.analogy_store.len()
+    }
 
     /// How many cross-domain links are stored.
-    pub fn link_count(&self) -> usize { self.cross_domain_links.len() }
+    pub fn link_count(&self) -> usize {
+        self.cross_domain_links.len()
+    }
 
     /// Status line for brain monitor.
     pub fn status_line(&self) -> String {
         format!(
             "IPL {} analogies | {} links | generated={} formed={}",
-            self.analogy_store.len(), self.cross_domain_links.len(),
-            self.analogies_generated, self.links_formed,
+            self.analogy_store.len(),
+            self.cross_domain_links.len(),
+            self.analogies_generated,
+            self.links_formed,
         )
     }
 }
 
 impl Default for InferiorParietalLobule {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -331,17 +484,26 @@ mod tests {
     fn test_seeds_loaded() {
         let ipl = InferiorParietalLobule::new();
         assert!(ipl.analogy_count() > 0, "should have seeded analogies");
-        assert!(!ipl.domain_keywords.is_empty(), "should have domain keywords");
+        assert!(
+            !ipl.domain_keywords.is_empty(),
+            "should have domain keywords"
+        );
     }
 
     #[test]
     fn test_retrieve_analogy_for_known_concept() {
         let mut ipl = InferiorParietalLobule::new();
         let result = ipl.retrieve_analogy("hippocampus");
-        assert!(result.is_some(), "should retrieve analogy for 'hippocampus'");
+        assert!(
+            result.is_some(),
+            "should retrieve analogy for 'hippocampus'"
+        );
         let text = result.unwrap();
-        assert!(text.contains("hippocampus") || text.contains("memory"),
-            "retrieved analogy should mention the concept: {}", text);
+        assert!(
+            text.contains("hippocampus") || text.contains("memory"),
+            "retrieved analogy should mention the concept: {}",
+            text
+        );
     }
 
     #[test]
@@ -354,21 +516,24 @@ mod tests {
     #[test]
     fn test_detect_domain_geometry() {
         let ipl = InferiorParietalLobule::new();
-        let domain = ipl.detect_domain("RSHL uses sparse ternary hyperdimensional vectors in a lattice");
+        let domain =
+            ipl.detect_domain("RSHL uses sparse ternary hyperdimensional vectors in a lattice");
         assert_eq!(domain, "geometry", "should detect geometry domain");
     }
 
     #[test]
     fn test_detect_domain_biology() {
         let ipl = InferiorParietalLobule::new();
-        let domain = ipl.detect_domain("the hippocampus and amygdala are critical for memory and emotion");
+        let domain =
+            ipl.detect_domain("the hippocampus and amygdala are critical for memory and emotion");
         assert_eq!(domain, "biology", "should detect biology domain");
     }
 
     #[test]
     fn test_detect_domain_philosophy() {
         let ipl = InferiorParietalLobule::new();
-        let domain = ipl.detect_domain("consciousness and subjective experience are the hard problem");
+        let domain =
+            ipl.detect_domain("consciousness and subjective experience are the hard problem");
         assert_eq!(domain, "philosophy", "should detect philosophy domain");
     }
 
@@ -400,7 +565,10 @@ mod tests {
     fn test_analyze_returns_output() {
         let mut ipl = InferiorParietalLobule::new();
         let output = ipl.analyze("how does the hippocampus organize memory access", 0.70);
-        assert!(output.has_analogy, "should find analogy for hippocampus query");
+        assert!(
+            output.has_analogy,
+            "should find analogy for hippocampus query"
+        );
         assert!(output.analogy_text.is_some());
     }
 
@@ -409,16 +577,24 @@ mod tests {
         let mut ipl = InferiorParietalLobule::new();
         let long_text = "RSHL sparse ternary hyperdimensional lattice encodes complex geometric reasoning patterns across many dimensions in a recursive self-referential structure";
         let output = ipl.analyze(long_text, 0.85);
-        assert_eq!(output.magnitude_label, "vast",
-            "high score + long text should be 'vast'");
+        assert_eq!(
+            output.magnitude_label, "vast",
+            "high score + long text should be 'vast'"
+        );
     }
 
     #[test]
     fn test_store_new_analogy() {
         let mut ipl = InferiorParietalLobule::new();
         let before = ipl.analogy_count();
-        ipl.store_analogy("serotonin", "patience", "flywheel", "momentum",
-                          "provides_stability_through", 0.75);
+        ipl.store_analogy(
+            "serotonin",
+            "patience",
+            "flywheel",
+            "momentum",
+            "provides_stability_through",
+            0.75,
+        );
         assert_eq!(ipl.analogy_count(), before + 1);
     }
 

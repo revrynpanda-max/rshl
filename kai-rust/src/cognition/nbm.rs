@@ -59,16 +59,42 @@ const ENCODING_DECAY: f32 = 0.012;
 
 /// Arousal markers that trigger NBM burst
 const AROUSAL_MARKERS: &[&str] = &[
-    "important", "critical", "urgent", "focus", "attention", "notice",
-    "careful", "pay attention", "listen", "key", "essential", "crucial",
-    "precise", "exact", "specifically", "carefully",
+    "important",
+    "critical",
+    "urgent",
+    "focus",
+    "attention",
+    "notice",
+    "careful",
+    "pay attention",
+    "listen",
+    "key",
+    "essential",
+    "crucial",
+    "precise",
+    "exact",
+    "specifically",
+    "carefully",
 ];
 
 /// Cognitive demand markers (high demand → more ACh needed)
 const DEMAND_MARKERS: &[&str] = &[
-    "complex", "detailed", "technical", "analyze", "reason", "explain",
-    "understand", "think", "consider", "evaluate", "compare", "why",
-    "how", "what if", "deep", "thorough",
+    "complex",
+    "detailed",
+    "technical",
+    "analyze",
+    "reason",
+    "explain",
+    "understand",
+    "think",
+    "consider",
+    "evaluate",
+    "compare",
+    "why",
+    "how",
+    "what if",
+    "deep",
+    "thorough",
 ];
 
 // ── NBMOutput ─────────────────────────────────────────────────────────────────
@@ -108,11 +134,11 @@ pub struct NucleusBasalis {
 impl NucleusBasalis {
     pub fn new() -> Self {
         Self {
-            ach_tone:          ACH_BASELINE,
-            cortical_gain:     0.50,
-            encoding_boost:    0.30,
-            arousal_level:     0.45,
-            inputs_processed:  0,
+            ach_tone: ACH_BASELINE,
+            cortical_gain: 0.50,
+            encoding_boost: 0.30,
+            arousal_level: 0.45,
+            inputs_processed: 0,
             sharpening_events: 0,
         }
     }
@@ -135,27 +161,29 @@ impl NucleusBasalis {
         let lower = text.to_lowercase();
 
         // ── Demand detection ──────────────────────────────────────────────────
-        let arousal_hits = AROUSAL_MARKERS.iter()
-            .filter(|&&w| lower.contains(w)).count();
-        let demand_hits = DEMAND_MARKERS.iter()
-            .filter(|&&w| lower.contains(w)).count();
+        let arousal_hits = AROUSAL_MARKERS
+            .iter()
+            .filter(|&&w| lower.contains(w))
+            .count();
+        let demand_hits = DEMAND_MARKERS
+            .iter()
+            .filter(|&&w| lower.contains(w))
+            .count();
 
         // ── ACh tone ──────────────────────────────────────────────────────────
         // NBM fires with task demand, arousal cues, and LC co-activation
-        let ach_target = (
-            ACH_BASELINE
+        let ach_target = (ACH_BASELINE
             + arousal_hits as f32 * 0.06
             + demand_hits as f32 * 0.04
             + lc_arousal * 0.15
-            + task_engagement * 0.15
-        ).min(1.0);
+            + task_engagement * 0.15)
+            .min(1.0);
         self.ach_tone = self.ach_tone * (1.0 - ACH_EMA) + ach_target * ACH_EMA;
 
         // ── Cortical gain ─────────────────────────────────────────────────────
         // ACh amplifies cortical signal-to-noise
         let gain_target = (self.ach_tone * 0.70 + dbb_ach * 0.15).min(1.0);
-        self.cortical_gain = self.cortical_gain * (1.0 - GAIN_EMA)
-            + gain_target * GAIN_EMA;
+        self.cortical_gain = self.cortical_gain * (1.0 - GAIN_EMA) + gain_target * GAIN_EMA;
 
         // ── Encoding boost ────────────────────────────────────────────────────
         // High ACh tone during input → stronger cortical LTP
@@ -165,13 +193,15 @@ impl NucleusBasalis {
         self.arousal_level = self.arousal_level * 0.90 + self.ach_tone * 0.10;
 
         let cortex_sharpened = self.ach_tone > 0.60 && self.cortical_gain > 0.55;
-        if cortex_sharpened { self.sharpening_events += 1; }
+        if cortex_sharpened {
+            self.sharpening_events += 1;
+        }
 
         NBMOutput {
-            ach_tone:       self.ach_tone,
-            cortical_gain:  self.cortical_gain,
+            ach_tone: self.ach_tone,
+            cortical_gain: self.cortical_gain,
             encoding_boost: self.encoding_boost,
-            arousal_level:  self.arousal_level,
+            arousal_level: self.arousal_level,
             cortex_sharpened,
         }
     }
@@ -192,10 +222,10 @@ impl NucleusBasalis {
     /// Current output without processing.
     pub fn current_output(&self) -> NBMOutput {
         NBMOutput {
-            ach_tone:       self.ach_tone,
-            cortical_gain:  self.cortical_gain,
+            ach_tone: self.ach_tone,
+            cortical_gain: self.cortical_gain,
             encoding_boost: self.encoding_boost,
-            arousal_level:  self.arousal_level,
+            arousal_level: self.arousal_level,
             cortex_sharpened: self.ach_tone > 0.60 && self.cortical_gain > 0.55,
         }
     }
@@ -208,13 +238,19 @@ impl NucleusBasalis {
             self.cortical_gain,
             self.encoding_boost,
             self.arousal_level,
-            if self.ach_tone > 0.60 && self.cortical_gain > 0.55 { " SHARP" } else { "" },
+            if self.ach_tone > 0.60 && self.cortical_gain > 0.55 {
+                " SHARP"
+            } else {
+                ""
+            },
         )
     }
 }
 
 impl Default for NucleusBasalis {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -234,9 +270,18 @@ mod tests {
     fn test_demand_words_raise_ach() {
         let mut n = NucleusBasalis::new();
         let before = n.ach_tone;
-        n.process("carefully analyze and explain this complex technical detail", 0.40, 0.40, 0.60);
-        assert!(n.ach_tone > before,
-            "demand words should raise ACh tone: {:.2} → {:.2}", before, n.ach_tone);
+        n.process(
+            "carefully analyze and explain this complex technical detail",
+            0.40,
+            0.40,
+            0.60,
+        );
+        assert!(
+            n.ach_tone > before,
+            "demand words should raise ACh tone: {:.2} → {:.2}",
+            before,
+            n.ach_tone
+        );
     }
 
     #[test]
@@ -244,8 +289,12 @@ mod tests {
         let mut n = NucleusBasalis::new();
         let before = n.ach_tone;
         n.process("neutral text", 0.90, 0.40, 0.50);
-        assert!(n.ach_tone > before,
-            "high LC arousal should raise ACh: {:.2} → {:.2}", before, n.ach_tone);
+        assert!(
+            n.ach_tone > before,
+            "high LC arousal should raise ACh: {:.2} → {:.2}",
+            before,
+            n.ach_tone
+        );
     }
 
     #[test]
@@ -253,8 +302,11 @@ mod tests {
         let mut n = NucleusBasalis::new();
         n.ach_tone = 0.80;
         n.process("focus on this important detail", 0.60, 0.50, 0.70);
-        assert!(n.cortical_gain > 0.50,
-            "high ACh should drive cortical gain: {:.2}", n.cortical_gain);
+        assert!(
+            n.cortical_gain > 0.50,
+            "high ACh should drive cortical gain: {:.2}",
+            n.cortical_gain
+        );
     }
 
     #[test]
@@ -262,8 +314,11 @@ mod tests {
         let mut n = NucleusBasalis::new();
         n.ach_tone = 0.80;
         n.process("analyze this carefully", 0.50, 0.40, 0.80);
-        assert!(n.encoding_boost > 0.40,
-            "high ACh + engagement should boost encoding: {:.2}", n.encoding_boost);
+        assert!(
+            n.encoding_boost > 0.40,
+            "high ACh + engagement should boost encoding: {:.2}",
+            n.encoding_boost
+        );
     }
 
     #[test]
@@ -282,8 +337,11 @@ mod tests {
         for _ in 0..30 {
             n.decay();
         }
-        assert!(n.ach_tone < 0.85,
-            "ACh should drift toward baseline: {:.2}", n.ach_tone);
+        assert!(
+            n.ach_tone < 0.85,
+            "ACh should drift toward baseline: {:.2}",
+            n.ach_tone
+        );
         assert!(n.ach_tone >= ACH_BASELINE - 0.05);
     }
 

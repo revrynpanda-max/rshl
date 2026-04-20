@@ -40,7 +40,6 @@
 ///   semantic_coherence: how well the current input holds together semantically
 ///   quantifier_density: presence of linguistic quantifiers (more/less/most/few)
 ///   semantic_richness: overall depth of meaning in the current exchange
-
 use std::collections::VecDeque;
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -53,30 +52,80 @@ const COHERENCE_EMA: f32 = 0.20;
 
 /// Quantifier words that signal linguistic number sense
 const QUANTIFIERS: &[&str] = &[
-    "more than", "less than", "most", "few", "many", "some", "all", "none",
-    "half", "quarter", "fraction", "majority", "minority", "several", "dozens",
-    "exponentially", "dramatically", "significantly", "roughly", "approximately",
-    "virtually", "barely", "nearly", "almost", "entirely",
+    "more than",
+    "less than",
+    "most",
+    "few",
+    "many",
+    "some",
+    "all",
+    "none",
+    "half",
+    "quarter",
+    "fraction",
+    "majority",
+    "minority",
+    "several",
+    "dozens",
+    "exponentially",
+    "dramatically",
+    "significantly",
+    "roughly",
+    "approximately",
+    "virtually",
+    "barely",
+    "nearly",
+    "almost",
+    "entirely",
 ];
 
 /// Metaphor markers — words/phrases that signal figurative language
 const METAPHOR_MARKERS: &[&str] = &[
-    "like a", "like an", "as if", "is a kind of", "is like", "metaphor",
-    "analogy", "think of it as", "imagine", "just as", "in the same way",
-    "reminds me of", "functions like", "acts like", "works like",
+    "like a",
+    "like an",
+    "as if",
+    "is a kind of",
+    "is like",
+    "metaphor",
+    "analogy",
+    "think of it as",
+    "imagine",
+    "just as",
+    "in the same way",
+    "reminds me of",
+    "functions like",
+    "acts like",
+    "works like",
 ];
 
 /// Abstract concept markers — signals semantic depth
 const ABSTRACT_MARKERS: &[&str] = &[
-    "concept", "idea", "notion", "principle", "theory", "framework",
-    "pattern", "structure", "relationship", "dynamic", "system",
-    "emergence", "property", "dimension", "aspect", "perspective",
+    "concept",
+    "idea",
+    "notion",
+    "principle",
+    "theory",
+    "framework",
+    "pattern",
+    "structure",
+    "relationship",
+    "dynamic",
+    "system",
+    "emergence",
+    "property",
+    "dimension",
+    "aspect",
+    "perspective",
 ];
 
 /// Semantic incongruity — words that shouldn't go together (raises mismatch signal)
 const INCONGRUITY_PAIRS: &[(&str, &str)] = &[
-    ("cold", "warmth"), ("dark", "bright"), ("simple", "complex"),
-    ("random", "structure"), ("empty", "full"), ("silent", "loud"),
+    ("cold", "warmth"),
+    ("dark", "bright"),
+    ("simple", "complex"),
+    ("random", "structure"),
+    ("empty", "full"),
+    ("silent", "loud"),
 ];
 
 // ── AGOutput ──────────────────────────────────────────────────────────────────
@@ -118,10 +167,10 @@ pub struct AngularGyrus {
 impl AngularGyrus {
     pub fn new() -> Self {
         Self {
-            metaphor_rate:     0.10,  // small baseline
+            metaphor_rate: 0.10, // small baseline
             semantic_coherence: 0.60,
-            richness_window:   VecDeque::with_capacity(8),
-            inputs_processed:  0,
+            richness_window: VecDeque::with_capacity(8),
+            inputs_processed: 0,
             metaphors_detected: 0,
         }
     }
@@ -137,7 +186,9 @@ impl AngularGyrus {
 
         // ── Metaphor detection ────────────────────────────────────────────────
         let has_metaphor = METAPHOR_MARKERS.iter().any(|&m| lower.contains(m));
-        if has_metaphor { self.metaphors_detected += 1; }
+        if has_metaphor {
+            self.metaphors_detected += 1;
+        }
         self.metaphor_rate = self.metaphor_rate * (1.0 - METAPHOR_EMA)
             + if has_metaphor { 1.0 } else { 0.0 } * METAPHOR_EMA;
 
@@ -146,7 +197,10 @@ impl AngularGyrus {
         let quantifier_density = (quantifier_hits as f32 / (word_count as f32 * 0.15)).min(1.0);
 
         // ── Abstract marker density ───────────────────────────────────────────
-        let abstract_hits = ABSTRACT_MARKERS.iter().filter(|&&a| lower.contains(a)).count();
+        let abstract_hits = ABSTRACT_MARKERS
+            .iter()
+            .filter(|&&a| lower.contains(a))
+            .count();
         let abstract_density = (abstract_hits as f32 / 3.0).min(1.0);
 
         // ── Semantic coherence ────────────────────────────────────────────────
@@ -156,28 +210,31 @@ impl AngularGyrus {
         } else {
             0.30 + abstract_density * 0.20
         };
-        self.semantic_coherence = self.semantic_coherence * (1.0 - COHERENCE_EMA)
-            + coherence_signal * COHERENCE_EMA;
+        self.semantic_coherence =
+            self.semantic_coherence * (1.0 - COHERENCE_EMA) + coherence_signal * COHERENCE_EMA;
 
         // ── Semantic richness ─────────────────────────────────────────────────
-        let richness = (
-            (has_metaphor as u8 as f32) * 0.30
+        let richness = ((has_metaphor as u8 as f32) * 0.30
             + abstract_density * 0.40
             + quantifier_density * 0.20
-            + if word_count > 15 { 0.10 } else { 0.0 }
-        ).min(1.0);
+            + if word_count > 15 { 0.10 } else { 0.0 })
+        .min(1.0);
 
-        if self.richness_window.len() >= 8 { self.richness_window.pop_front(); }
+        if self.richness_window.len() >= 8 {
+            self.richness_window.pop_front();
+        }
         self.richness_window.push_back(richness);
 
-        let semantic_richness = if self.richness_window.is_empty() { richness } else {
+        let semantic_richness = if self.richness_window.is_empty() {
+            richness
+        } else {
             self.richness_window.iter().sum::<f32>() / self.richness_window.len() as f32
         };
 
         // ── Incongruity detection ─────────────────────────────────────────────
-        let has_incongruity = INCONGRUITY_PAIRS.iter().any(|(a, b)| {
-            lower.contains(a) && lower.contains(b)
-        });
+        let has_incongruity = INCONGRUITY_PAIRS
+            .iter()
+            .any(|(a, b)| lower.contains(a) && lower.contains(b));
 
         // ── Analogy trigger ───────────────────────────────────────────────────
         // Trigger IPL when metaphor detected or abstract density is high
@@ -212,7 +269,9 @@ impl AngularGyrus {
 }
 
 impl Default for AngularGyrus {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -224,7 +283,10 @@ mod tests {
     #[test]
     fn test_initial_state() {
         let ag = AngularGyrus::new();
-        assert!(ag.metaphor_rate < 0.20, "should start with low metaphor rate");
+        assert!(
+            ag.metaphor_rate < 0.20,
+            "should start with low metaphor rate"
+        );
         assert!(ag.semantic_coherence > 0.0);
     }
 
@@ -232,34 +294,46 @@ mod tests {
     fn test_metaphor_detected() {
         let mut ag = AngularGyrus::new();
         let out = ag.analyze("this is like a river that flows through your mind");
-        assert!(out.has_metaphor,
-            "explicit 'like a' should be detected as metaphor");
-        assert!(out.trigger_analogy,
-            "metaphor should trigger analogy engine");
+        assert!(
+            out.has_metaphor,
+            "explicit 'like a' should be detected as metaphor"
+        );
+        assert!(
+            out.trigger_analogy,
+            "metaphor should trigger analogy engine"
+        );
     }
 
     #[test]
     fn test_no_metaphor_in_literal() {
         let mut ag = AngularGyrus::new();
         let out = ag.analyze("the cat sat on the mat at noon");
-        assert!(!out.has_metaphor,
-            "literal sentence should not trigger metaphor detection");
+        assert!(
+            !out.has_metaphor,
+            "literal sentence should not trigger metaphor detection"
+        );
     }
 
     #[test]
     fn test_quantifiers_detected() {
         let mut ag = AngularGyrus::new();
         let out = ag.analyze("most of the time nearly all signals are roughly equal in magnitude");
-        assert!(out.quantifier_density > 0.0,
-            "quantifier-dense text should have high quantifier density: {:.2}", out.quantifier_density);
+        assert!(
+            out.quantifier_density > 0.0,
+            "quantifier-dense text should have high quantifier density: {:.2}",
+            out.quantifier_density
+        );
     }
 
     #[test]
     fn test_abstract_language_raises_coherence() {
         let mut ag = AngularGyrus::new();
         let out = ag.analyze("the concept of emergence as a pattern in complex systems creates a dynamic relationship between structure and behavior");
-        assert!(out.semantic_richness > 0.20,
-            "abstract language should raise semantic richness: {:.2}", out.semantic_richness);
+        assert!(
+            out.semantic_richness > 0.20,
+            "abstract language should raise semantic richness: {:.2}",
+            out.semantic_richness
+        );
     }
 
     #[test]
@@ -268,24 +342,31 @@ mod tests {
         ag.analyze("it works like a filter");
         ag.analyze("just as water flows so does information");
         ag.analyze("think of it as a conductor leading the orchestra");
-        assert!(ag.metaphor_rate > 0.10,
-            "repeated metaphors should raise metaphor rate: {:.2}", ag.metaphor_rate);
+        assert!(
+            ag.metaphor_rate > 0.10,
+            "repeated metaphors should raise metaphor rate: {:.2}",
+            ag.metaphor_rate
+        );
     }
 
     #[test]
     fn test_semantic_incongruity() {
         let mut ag = AngularGyrus::new();
         let out = ag.analyze("the cold warmth of the system creates complexity");
-        assert!(out.has_incongruity,
-            "incongruent word pair 'cold'+'warmth' should be flagged");
+        assert!(
+            out.has_incongruity,
+            "incongruent word pair 'cold'+'warmth' should be flagged"
+        );
     }
 
     #[test]
     fn test_no_incongruity_in_normal_text() {
         let mut ag = AngularGyrus::new();
         let out = ag.analyze("the hippocampus stores memories efficiently");
-        assert!(!out.has_incongruity,
-            "normal text should not flag incongruity");
+        assert!(
+            !out.has_incongruity,
+            "normal text should not flag incongruity"
+        );
     }
 
     #[test]

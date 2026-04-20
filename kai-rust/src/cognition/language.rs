@@ -76,11 +76,11 @@ pub enum SentenceType {
 impl SentenceType {
     pub fn label(&self) -> &'static str {
         match self {
-            Self::Question    => "question",
-            Self::Statement   => "statement",
-            Self::Command     => "command",
+            Self::Question => "question",
+            Self::Statement => "statement",
+            Self::Command => "command",
             Self::Exploration => "exploration",
-            Self::Social      => "social",
+            Self::Social => "social",
         }
     }
 }
@@ -104,10 +104,10 @@ pub enum ProductionStyle {
 impl ProductionStyle {
     pub fn label(&self) -> &'static str {
         match self {
-            Self::ShortAnswer   => "short-answer",
-            Self::Explanation   => "explanation",
-            Self::Elaboration   => "elaboration",
-            Self::QuestionBack  => "question-back",
+            Self::ShortAnswer => "short-answer",
+            Self::Explanation => "explanation",
+            Self::Elaboration => "elaboration",
+            Self::QuestionBack => "question-back",
             Self::Philosophical => "philosophical",
         }
     }
@@ -170,11 +170,11 @@ pub struct LanguageSystem {
 impl LanguageSystem {
     pub fn new() -> Self {
         Self {
-            production_history:   std::collections::VecDeque::with_capacity(PRODUCTION_HISTORY),
-            avg_output_len:       40.0,
-            total_inputs_parsed:  0,
+            production_history: std::collections::VecDeque::with_capacity(PRODUCTION_HISTORY),
+            avg_output_len: 40.0,
+            total_inputs_parsed: 0,
             total_outputs_checked: 0,
-            avg_comprehension:    0.70,
+            avg_comprehension: 0.70,
         }
     }
 
@@ -192,18 +192,21 @@ impl LanguageSystem {
         let sentence_type = Self::detect_sentence_type(&lower, &words);
 
         // Detect negation
-        let negation_markers = ["not", "no", "never", "isn't", "can't", "won't",
-                                "doesn't", "don't", "didn't", "cannot", "neither",
-                                "without", "lack", "lacking", "absent"];
+        let negation_markers = [
+            "not", "no", "never", "isn't", "can't", "won't", "doesn't", "don't", "didn't",
+            "cannot", "neither", "without", "lack", "lacking", "absent",
+        ];
         let has_negation = negation_markers.iter().any(|m| lower.contains(m));
 
         // Content words (non-stop, length ≥ 4)
-        let stops = ["what", "this", "that", "with", "have", "from", "your",
-                     "about", "when", "where", "which", "there", "their", "been",
-                     "will", "does", "into", "more", "some", "then", "them",
-                     "also", "just", "like", "know", "think", "going", "would",
-                     "could", "should", "than", "even", "still", "here", "very"];
-        let content_words: std::collections::HashSet<&str> = words.iter()
+        let stops = [
+            "what", "this", "that", "with", "have", "from", "your", "about", "when", "where",
+            "which", "there", "their", "been", "will", "does", "into", "more", "some", "then",
+            "them", "also", "just", "like", "know", "think", "going", "would", "could", "should",
+            "than", "even", "still", "here", "very",
+        ];
+        let content_words: std::collections::HashSet<&str> = words
+            .iter()
             .filter(|w| {
                 let lw = w.to_lowercase();
                 let lw = lw.trim_matches(|c: char| !c.is_alphabetic());
@@ -219,11 +222,12 @@ impl LanguageSystem {
             0.0
         };
 
-        let is_complex = semantic_density >= DENSITY_THRESHOLD
-            && content_word_count >= COMPLEXITY_FLOOR;
+        let is_complex =
+            semantic_density >= DENSITY_THRESHOLD && content_word_count >= COMPLEXITY_FLOOR;
 
         // Core topic: longest content word
-        let core_topic = content_words.iter()
+        let core_topic = content_words
+            .iter()
             .max_by_key(|w| w.len())
             .map(|w| w.to_lowercase())
             .unwrap_or_else(|| "unknown".to_string());
@@ -257,36 +261,80 @@ impl LanguageSystem {
 
         // Social: very short, greeting/acknowledgment
         if total <= 4 {
-            let social = ["hi", "hey", "hello", "ok", "okay", "yes", "no",
-                         "yep", "nope", "sure", "thanks", "great", "cool",
-                         "awesome", "nice", "wow", "ah", "oh"];
+            let social = [
+                "hi", "hey", "hello", "ok", "okay", "yes", "no", "yep", "nope", "sure", "thanks",
+                "great", "cool", "awesome", "nice", "wow", "ah", "oh",
+            ];
             if social.iter().any(|s| lower.contains(s)) || total <= 2 {
                 return SentenceType::Social;
             }
         }
 
         // Question markers
-        let question_starts = ["what", "how", "why", "who", "where", "when",
-                               "which", "can you", "could you", "would you",
-                               "do you", "does", "is there", "are there",
-                               "should i", "will you"];
+        let question_starts = [
+            "what",
+            "how",
+            "why",
+            "who",
+            "where",
+            "when",
+            "which",
+            "can you",
+            "could you",
+            "would you",
+            "do you",
+            "does",
+            "is there",
+            "are there",
+            "should i",
+            "will you",
+        ];
         if lower.ends_with('?') || question_starts.iter().any(|q| lower.starts_with(q)) {
             return SentenceType::Question;
         }
 
         // Command markers
-        let command_starts = ["explain", "tell me", "show", "create", "make",
-                              "write", "build", "find", "give me", "list",
-                              "describe", "summarize", "help", "fix", "check",
-                              "run", "analyze", "calculate"];
+        let command_starts = [
+            "explain",
+            "tell me",
+            "show",
+            "create",
+            "make",
+            "write",
+            "build",
+            "find",
+            "give me",
+            "list",
+            "describe",
+            "summarize",
+            "help",
+            "fix",
+            "check",
+            "run",
+            "analyze",
+            "calculate",
+        ];
         if command_starts.iter().any(|c| lower.starts_with(c)) {
             return SentenceType::Command;
         }
 
         // Exploration markers
-        let explore = ["i wonder", "i'm thinking", "what if", "maybe", "perhaps",
-                      "i've been", "interesting", "curious", "explore", "speculate",
-                      "i was thinking", "it seems", "it feels like", "i feel like"];
+        let explore = [
+            "i wonder",
+            "i'm thinking",
+            "what if",
+            "maybe",
+            "perhaps",
+            "i've been",
+            "interesting",
+            "curious",
+            "explore",
+            "speculate",
+            "i was thinking",
+            "it seems",
+            "it feels like",
+            "i feel like",
+        ];
         if explore.iter().any(|e| lower.contains(e)) {
             return SentenceType::Exploration;
         }
@@ -298,11 +346,7 @@ impl LanguageSystem {
 
     /// Analyze a generated response and the input it responds to.
     /// Returns production style feedback and verbosity flag.
-    pub fn analyze_output(
-        &mut self,
-        input: &WernickeAnalysis,
-        output_text: &str,
-    ) -> BrocaAnalysis {
+    pub fn analyze_output(&mut self, input: &WernickeAnalysis, output_text: &str) -> BrocaAnalysis {
         let output_words: Vec<&str> = output_text.split_whitespace().collect();
         let output_word_count = output_words.len();
 
@@ -330,9 +374,12 @@ impl LanguageSystem {
         let fluency_score = if self.production_history.len() < 2 {
             1.0
         } else {
-            let variance = self.production_history.iter()
+            let variance = self
+                .production_history
+                .iter()
                 .map(|&n| (n as f32 - self.avg_output_len).powi(2))
-                .sum::<f32>() / self.production_history.len() as f32;
+                .sum::<f32>()
+                / self.production_history.len() as f32;
             // Low variance = high fluency. Normalize by avg_output_len.
             let cv = (variance.sqrt() / self.avg_output_len.max(1.0)).min(1.0);
             1.0 - cv * 0.5
@@ -354,12 +401,12 @@ impl LanguageSystem {
         match &input.sentence_type {
             SentenceType::Social => ProductionStyle::ShortAnswer,
             SentenceType::Question if !input.is_complex => ProductionStyle::ShortAnswer,
-            SentenceType::Question if input.is_complex  => ProductionStyle::Explanation,
-            SentenceType::Command                       => ProductionStyle::Explanation,
-            SentenceType::Exploration                   => ProductionStyle::Philosophical,
+            SentenceType::Question if input.is_complex => ProductionStyle::Explanation,
+            SentenceType::Command => ProductionStyle::Explanation,
+            SentenceType::Exploration => ProductionStyle::Philosophical,
             SentenceType::Statement if input.is_complex => ProductionStyle::Elaboration,
-            SentenceType::Statement                     => ProductionStyle::Explanation,
-            _                                           => ProductionStyle::Explanation,
+            SentenceType::Statement => ProductionStyle::Explanation,
+            _ => ProductionStyle::Explanation,
         }
     }
 
@@ -376,7 +423,9 @@ impl LanguageSystem {
 }
 
 impl Default for LanguageSystem {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -438,23 +487,39 @@ mod tests {
     fn test_semantic_density_rich() {
         let mut lang = LanguageSystem::new();
         let a = lang.analyze_input("RSHL recursive sparse hyperdimensional lattice geometry enables consciousness reasoning");
-        assert!(a.semantic_density > 0.50, "dense technical text should have high semantic density: {:.2}", a.semantic_density);
+        assert!(
+            a.semantic_density > 0.50,
+            "dense technical text should have high semantic density: {:.2}",
+            a.semantic_density
+        );
     }
 
     #[test]
     fn test_semantic_density_low() {
         let mut lang = LanguageSystem::new();
         let a = lang.analyze_input("ok yes that is fine");
-        assert!(a.semantic_density < 0.50, "filler text should have low semantic density: {:.2}", a.semantic_density);
+        assert!(
+            a.semantic_density < 0.50,
+            "filler text should have low semantic density: {:.2}",
+            a.semantic_density
+        );
     }
 
     #[test]
     fn test_complexity_flag() {
         let mut lang = LanguageSystem::new();
-        let complex = lang.analyze_input("how does the hippocampus enable pattern completion from partial memory cues");
-        let simple  = lang.analyze_input("what is this");
-        assert!(complex.is_complex, "dense question should be flagged complex");
-        assert!(!simple.is_complex, "short simple question should not be complex");
+        let complex = lang.analyze_input(
+            "how does the hippocampus enable pattern completion from partial memory cues",
+        );
+        let simple = lang.analyze_input("what is this");
+        assert!(
+            complex.is_complex,
+            "dense question should be flagged complex"
+        );
+        assert!(
+            !simple.is_complex,
+            "short simple question should not be complex"
+        );
     }
 
     #[test]
@@ -467,19 +532,27 @@ mod tests {
                            of the previous content, which is very much appreciated and noted \
                            in my working memory for context tracking purposes going forward.";
         let broca = lang.analyze_output(&input_analysis, long_output);
-        assert!(broca.is_verbose, "long output to short social input should be verbose");
+        assert!(
+            broca.is_verbose,
+            "long output to short social input should be verbose"
+        );
     }
 
     #[test]
     fn test_broca_not_verbose_for_complex_input() {
         let mut lang = LanguageSystem::new();
-        let input_analysis = lang.analyze_input("explain in detail how the nucleus accumbens mediates reward-seeking behavior");
+        let input_analysis = lang.analyze_input(
+            "explain in detail how the nucleus accumbens mediates reward-seeking behavior",
+        );
         let long_output = "The nucleus accumbens sits at the intersection of the limbic system \
                            and motor output pathways. It converts reward history into active \
                            motivational drive — the 'wanting' signal. Dopamine release here \
                            amplifies incentive salience for specific topics or actions.";
         let broca = lang.analyze_output(&input_analysis, long_output);
-        assert!(!broca.is_verbose, "detailed output to complex command should not be verbose");
+        assert!(
+            !broca.is_verbose,
+            "detailed output to complex command should not be verbose"
+        );
     }
 
     #[test]

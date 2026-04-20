@@ -14,7 +14,6 @@
 ///
 /// This is pure math: edit distance is the resonance between character
 /// sequences, and frequency rank is the gravitational pull of common usage.
-
 use std::collections::HashMap;
 
 /// The raw word list, embedded at compile time.
@@ -41,7 +40,9 @@ impl Lexicon {
 
         for (rank, line) in WORD_LIST.lines().enumerate() {
             let word = line.trim().to_lowercase();
-            if word.is_empty() { continue; }
+            if word.is_empty() {
+                continue;
+            }
             if !words.contains_key(&word) {
                 words.insert(word.clone(), rank);
                 ordered.push(word);
@@ -131,7 +132,11 @@ impl Lexicon {
         // Use stricter distance for short words — prevents "curse" → "course",
         // "bitch" → "batch", etc. Informal/slang words are often short and close
         // to real words by edit distance but are intentional.
-        let max_dist = if lower.len() <= 5 { 1 } else { MAX_EDIT_DISTANCE };
+        let max_dist = if lower.len() <= 5 {
+            1
+        } else {
+            MAX_EDIT_DISTANCE
+        };
 
         let result = self.find_closest(&lower, max_dist)?;
 
@@ -157,7 +162,9 @@ impl Lexicon {
             } else {
                 lower.len() - known.len()
             };
-            if len_diff > MAX_EDIT_DISTANCE { continue; }
+            if len_diff > MAX_EDIT_DISTANCE {
+                continue;
+            }
 
             let dist = damerau_levenshtein(&lower, known);
             if dist <= MAX_EDIT_DISTANCE && dist > 0 {
@@ -166,9 +173,7 @@ impl Lexicon {
         }
 
         // Sort: closest edit distance first, then most common word first
-        candidates.sort_by(|a, b| {
-            a.1.cmp(&b.1).then(a.2.cmp(&b.2))
-        });
+        candidates.sort_by(|a, b| a.1.cmp(&b.1).then(a.2.cmp(&b.2)));
 
         candidates.truncate(max_suggestions);
         candidates
@@ -221,10 +226,10 @@ impl Lexicon {
             if let Some(corrected) = self.correct(word) {
                 // Context validation: reject correction if it creates a nonsense bigram
                 // with neighbors, while the original made sense.
-                let orig_fwd_ok  = is_plausible_bigram(&lower, &next_word);
-                let orig_bwd_ok  = is_plausible_bigram(&prev_word, &lower);
-                let corr_fwd_ok  = is_plausible_bigram(&corrected, &next_word);
-                let corr_bwd_ok  = is_plausible_bigram(&prev_word, &corrected);
+                let orig_fwd_ok = is_plausible_bigram(&lower, &next_word);
+                let orig_bwd_ok = is_plausible_bigram(&prev_word, &lower);
+                let corr_fwd_ok = is_plausible_bigram(&corrected, &next_word);
+                let corr_bwd_ok = is_plausible_bigram(&prev_word, &corrected);
 
                 // If original fits context and correction doesn't → skip
                 let orig_fits = orig_fwd_ok || orig_bwd_ok;
@@ -257,11 +262,17 @@ impl Lexicon {
             } else {
                 word.len() - known.len()
             };
-            if len_diff > max_distance { continue; }
+            if len_diff > max_distance {
+                continue;
+            }
 
             let dist = damerau_levenshtein(word, known);
-            if dist > max_distance { continue; }
-            if dist == 0 { continue; } // exact match (shouldn't happen, but safety)
+            if dist > max_distance {
+                continue;
+            }
+            if dist == 0 {
+                continue;
+            } // exact match (shouldn't happen, but safety)
 
             let dominated = match &best {
                 Some((_, bd, br)) => {
@@ -289,28 +300,47 @@ fn damerau_levenshtein(a: &str, b: &str) -> usize {
     let a_len = a_chars.len();
     let b_len = b_chars.len();
 
-    if a_len == 0 { return b_len; }
-    if b_len == 0 { return a_len; }
+    if a_len == 0 {
+        return b_len;
+    }
+    if b_len == 0 {
+        return a_len;
+    }
 
     // Quick check: if length difference exceeds max distance, skip full computation
-    let len_diff = if a_len > b_len { a_len - b_len } else { b_len - a_len };
-    if len_diff > MAX_EDIT_DISTANCE { return len_diff; }
+    let len_diff = if a_len > b_len {
+        a_len - b_len
+    } else {
+        b_len - a_len
+    };
+    if len_diff > MAX_EDIT_DISTANCE {
+        return len_diff;
+    }
 
     let mut matrix = vec![vec![0usize; b_len + 1]; a_len + 1];
 
-    for i in 0..=a_len { matrix[i][0] = i; }
-    for j in 0..=b_len { matrix[0][j] = j; }
+    for i in 0..=a_len {
+        matrix[i][0] = i;
+    }
+    for j in 0..=b_len {
+        matrix[0][j] = j;
+    }
 
     for i in 1..=a_len {
         for j in 1..=b_len {
-            let cost = if a_chars[i - 1] == b_chars[j - 1] { 0 } else { 1 };
+            let cost = if a_chars[i - 1] == b_chars[j - 1] {
+                0
+            } else {
+                1
+            };
 
-            matrix[i][j] = (matrix[i - 1][j] + 1)          // deletion
-                .min(matrix[i][j - 1] + 1)                  // insertion
-                .min(matrix[i - 1][j - 1] + cost);          // substitution
+            matrix[i][j] = (matrix[i - 1][j] + 1) // deletion
+                .min(matrix[i][j - 1] + 1) // insertion
+                .min(matrix[i - 1][j - 1] + cost); // substitution
 
             // Transposition
-            if i > 1 && j > 1
+            if i > 1
+                && j > 1
                 && a_chars[i - 1] == b_chars[j - 2]
                 && a_chars[i - 2] == b_chars[j - 1]
             {
@@ -326,8 +356,11 @@ fn damerau_levenshtein(a: &str, b: &str) -> usize {
 /// "curse word" is a phrase → "curse" is protected when followed by "word/words".
 /// Covers slang, profanity collocations, and common informal phrases.
 fn is_known_phrase(w1: &str, w2: &str) -> bool {
-    if w1.is_empty() || w2.is_empty() { return false; }
-    matches!((w1, w2),
+    if w1.is_empty() || w2.is_empty() {
+        return false;
+    }
+    matches!(
+        (w1, w2),
         // profanity / slang collocations
         ("curse",  "word")  | ("curse",  "words") |
         ("swear",  "word")  | ("swear",  "words") |
@@ -355,17 +388,24 @@ fn is_known_phrase(w1: &str, w2: &str) -> bool {
 /// This is intentionally permissive — we only want to catch clearly wrong pairs
 /// like "course word" (never used) vs "curse word" (common phrase).
 fn is_plausible_bigram(w1: &str, w2: &str) -> bool {
-    if w1.is_empty() || w2.is_empty() { return true; } // can't judge with no context
+    if w1.is_empty() || w2.is_empty() {
+        return true;
+    } // can't judge with no context
 
     // Explicitly implausible bigrams — correction target + neighbor that makes no sense
     let implausible = [
-        ("course", "word"), ("course", "words"),
-        ("coarse", "word"), ("coarse", "words"),
-        ("batch",  "ass"),  ("batch",  "word"),
+        ("course", "word"),
+        ("course", "words"),
+        ("coarse", "word"),
+        ("coarse", "words"),
+        ("batch", "ass"),
+        ("batch", "word"),
         ("butter", "ass"),
     ];
     for (a, b) in &implausible {
-        if w1 == *a && w2 == *b { return false; }
+        if w1 == *a && w2 == *b {
+            return false;
+        }
     }
     true
 }
@@ -375,17 +415,28 @@ fn is_plausible_bigram(w1: &str, w2: &str) -> bool {
 ///      `hello,` → (``, `hello`, `,`)
 fn split_all_punct(token: &str) -> (&str, &str, &str) {
     // Leading
-    let lead_end = token.len() - token.trim_start_matches(|c: char| c.is_ascii_punctuation()).len();
+    let lead_end = token.len()
+        - token
+            .trim_start_matches(|c: char| c.is_ascii_punctuation())
+            .len();
     let after_lead = &token[lead_end..];
     // Trailing (on the trimmed part)
-    let trail_start = after_lead.trim_end_matches(|c: char| c.is_ascii_punctuation()).len();
-    (&token[..lead_end], &after_lead[..trail_start], &after_lead[trail_start..])
+    let trail_start = after_lead
+        .trim_end_matches(|c: char| c.is_ascii_punctuation())
+        .len();
+    (
+        &token[..lead_end],
+        &after_lead[..trail_start],
+        &after_lead[trail_start..],
+    )
 }
 
 /// Preserve the capitalization pattern of the original word on the corrected word.
 fn match_case(original: &str, corrected: &str) -> String {
     let orig_chars: Vec<char> = original.chars().collect();
-    if orig_chars.is_empty() { return corrected.to_string(); }
+    if orig_chars.is_empty() {
+        return corrected.to_string();
+    }
 
     // All uppercase?
     if orig_chars.iter().all(|c| c.is_uppercase()) {
@@ -416,7 +467,11 @@ mod tests {
     #[test]
     fn test_lexicon_loads() {
         let lex = Lexicon::load();
-        assert!(lex.len() > 9000, "Should load ~10000 words, got {}", lex.len());
+        assert!(
+            lex.len() > 9000,
+            "Should load ~10000 words, got {}",
+            lex.len()
+        );
     }
 
     #[test]
@@ -466,7 +521,11 @@ mod tests {
         let lex = Lexicon::load();
         let (corrected, fixes) = lex.correct_sentence("teh wrold is beutiful");
         assert!(!fixes.is_empty(), "Should have corrections");
-        assert!(corrected.contains("the"), "Should correct 'teh' to 'the': {}", corrected);
+        assert!(
+            corrected.contains("the"),
+            "Should correct 'teh' to 'the': {}",
+            corrected
+        );
     }
 
     #[test]
@@ -484,4 +543,3 @@ mod tests {
         assert_eq!(match_case("hello", "World"), "world");
     }
 }
-   

@@ -68,11 +68,11 @@ pub enum SequenceStage {
 impl SequenceStage {
     pub fn label(&self) -> &'static str {
         match self {
-            Self::Idle      => "idle",
+            Self::Idle => "idle",
             Self::Preparing => "preparing",
-            Self::Ready     => "ready",
+            Self::Ready => "ready",
             Self::Executing => "executing",
-            Self::Complete  => "complete",
+            Self::Complete => "complete",
         }
     }
 }
@@ -112,12 +112,12 @@ pub struct SMA {
 impl SMA {
     pub fn new() -> Self {
         Self {
-            readiness_potential:  0.0,
-            stage:                SequenceStage::Idle,
-            is_self_initiated:    false,
-            actions_committed:    0,
+            readiness_potential: 0.0,
+            stage: SequenceStage::Idle,
+            is_self_initiated: false,
+            actions_committed: 0,
             self_initiated_count: 0,
-            total_updates:        0,
+            total_updates: 0,
         }
     }
 
@@ -183,7 +183,9 @@ impl SMA {
 
     /// Ratio of self-initiated to total actions (0.0–1.0).
     pub fn autonomy_ratio(&self) -> f32 {
-        if self.actions_committed == 0 { return 0.0; }
+        if self.actions_committed == 0 {
+            return 0.0;
+        }
         self.self_initiated_count as f32 / self.actions_committed as f32
     }
 
@@ -200,7 +202,9 @@ impl SMA {
 }
 
 impl Default for SMA {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -221,8 +225,11 @@ mod tests {
     fn test_readiness_builds_with_prepare() {
         let mut s = SMA::new();
         let out = s.prepare(0.80, false);
-        assert!(out.readiness_potential > 0.0,
-            "readiness should increase after prepare: {:.2}", out.readiness_potential);
+        assert!(
+            out.readiness_potential > 0.0,
+            "readiness should increase after prepare: {:.2}",
+            out.readiness_potential
+        );
     }
 
     #[test]
@@ -231,8 +238,11 @@ mod tests {
         // Pump readiness above threshold
         s.readiness_potential = COMMIT_THRESHOLD - 0.01;
         let out = s.prepare(1.0, false);
-        assert!(out.commit_action || s.readiness_potential >= COMMIT_THRESHOLD,
-            "should commit when readiness reaches threshold: {:.2}", out.readiness_potential);
+        assert!(
+            out.commit_action || s.readiness_potential >= COMMIT_THRESHOLD,
+            "should commit when readiness reaches threshold: {:.2}",
+            out.readiness_potential
+        );
     }
 
     #[test]
@@ -243,9 +253,12 @@ mod tests {
         let mut s2 = SMA::new();
         let out2 = s2.prepare(0.90, false);
 
-        assert!(out2.readiness_potential > out1.readiness_potential,
+        assert!(
+            out2.readiness_potential > out1.readiness_potential,
             "higher motivation should build readiness faster: {:.2} vs {:.2}",
-            out2.readiness_potential, out1.readiness_potential);
+            out2.readiness_potential,
+            out1.readiness_potential
+        );
     }
 
     #[test]
@@ -253,8 +266,10 @@ mod tests {
         let mut s = SMA::new();
         s.readiness_potential = COMMIT_THRESHOLD;
         s.prepare(1.0, true);
-        assert!(s.self_initiated_count > 0 || s.is_self_initiated,
-            "self-initiated flag should be tracked");
+        assert!(
+            s.self_initiated_count > 0 || s.is_self_initiated,
+            "self-initiated flag should be tracked"
+        );
     }
 
     #[test]
@@ -272,8 +287,11 @@ mod tests {
         let mut s = SMA::new();
         s.readiness_potential = 0.70;
         s.decay();
-        assert!(s.readiness_potential < 0.70,
-            "decay should reduce readiness: {:.2}", s.readiness_potential);
+        assert!(
+            s.readiness_potential < 0.70,
+            "decay should reduce readiness: {:.2}",
+            s.readiness_potential
+        );
     }
 
     #[test]
@@ -284,8 +302,11 @@ mod tests {
         for _ in 0..5 {
             s.decay();
         }
-        assert_eq!(s.stage, SequenceStage::Idle,
-            "should return to idle when readiness reaches 0");
+        assert_eq!(
+            s.stage,
+            SequenceStage::Idle,
+            "should return to idle when readiness reaches 0"
+        );
     }
 
     #[test]
@@ -302,8 +323,11 @@ mod tests {
         s.prepare(1.0, false);
         s.complete_action();
         let ratio = s.autonomy_ratio();
-        assert!(ratio > 0.0 && ratio <= 1.0,
-            "autonomy ratio should be in range: {:.2}", ratio);
+        assert!(
+            ratio > 0.0 && ratio <= 1.0,
+            "autonomy ratio should be in range: {:.2}",
+            ratio
+        );
     }
 
     #[test]

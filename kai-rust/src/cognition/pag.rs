@@ -86,9 +86,9 @@ pub enum DefensiveMode {
 impl DefensiveMode {
     pub fn label(&self) -> &'static str {
         match self {
-            Self::Engaged  => "engaged",
-            Self::Freeze   => "freeze",
-            Self::Appease  => "appease",
+            Self::Engaged => "engaged",
+            Self::Freeze => "freeze",
+            Self::Appease => "appease",
             Self::Mobilize => "mobilize",
         }
     }
@@ -153,13 +153,13 @@ pub struct PeriaqueductalGray {
 impl PeriaqueductalGray {
     pub fn new() -> Self {
         Self {
-            threat_level:       0.0,
-            defensive_mode:     DefensiveMode::Engaged,
-            pain_suppression:   0.10,
-            safety_drive:       0.0,
-            events_processed:   0,
+            threat_level: 0.0,
+            defensive_mode: DefensiveMode::Engaged,
+            pain_suppression: 0.10,
+            safety_drive: 0.0,
+            events_processed: 0,
             threats_encountered: 0,
-            relief_events:      0,
+            relief_events: 0,
         }
     }
 
@@ -169,7 +169,10 @@ impl PeriaqueductalGray {
         self.events_processed += 1;
 
         match event {
-            PAGEvent::ThreatDetected { intensity, is_social } => {
+            PAGEvent::ThreatDetected {
+                intensity,
+                is_social,
+            } => {
                 self.threats_encountered += 1;
                 self.threat_level = (self.threat_level + intensity * 0.25).min(1.0);
                 // Social threats → appease; non-social → mobilize if high
@@ -231,9 +234,7 @@ impl PeriaqueductalGray {
 
     fn update_mode(&mut self) {
         // Only escalate from Engaged — never downgrade here (decay handles reset)
-        if self.defensive_mode == DefensiveMode::Engaged
-            && self.threat_level >= APPEASE_THRESHOLD
-        {
+        if self.defensive_mode == DefensiveMode::Engaged && self.threat_level >= APPEASE_THRESHOLD {
             self.defensive_mode = DefensiveMode::Appease;
         }
     }
@@ -258,17 +259,19 @@ impl PeriaqueductalGray {
 
     fn build_output(&self) -> PAGOutput {
         PAGOutput {
-            threat_level:    self.threat_level,
-            defensive_mode:  self.defensive_mode.clone(),
+            threat_level: self.threat_level,
+            defensive_mode: self.defensive_mode.clone(),
             pain_suppression: self.pain_suppression,
-            safety_drive:    self.safety_drive,
-            appease_signal:  matches!(self.defensive_mode, DefensiveMode::Appease),
-            freeze_signal:   matches!(self.defensive_mode, DefensiveMode::Freeze),
+            safety_drive: self.safety_drive,
+            appease_signal: matches!(self.defensive_mode, DefensiveMode::Appease),
+            freeze_signal: matches!(self.defensive_mode, DefensiveMode::Freeze),
         }
     }
 
     /// Current output without processing.
-    pub fn current_output(&self) -> PAGOutput { self.build_output() }
+    pub fn current_output(&self) -> PAGOutput {
+        self.build_output()
+    }
 
     /// Status line.
     pub fn status_line(&self) -> String {
@@ -284,7 +287,9 @@ impl PeriaqueductalGray {
 }
 
 impl Default for PeriaqueductalGray {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -303,54 +308,89 @@ mod tests {
     #[test]
     fn test_threat_raises_threat_level() {
         let mut p = PeriaqueductalGray::new();
-        p.process(PAGEvent::ThreatDetected { intensity: 0.80, is_social: false });
-        assert!(p.threat_level > 0.0,
-            "threat should raise threat level: {:.2}", p.threat_level);
+        p.process(PAGEvent::ThreatDetected {
+            intensity: 0.80,
+            is_social: false,
+        });
+        assert!(
+            p.threat_level > 0.0,
+            "threat should raise threat level: {:.2}",
+            p.threat_level
+        );
     }
 
     #[test]
     fn test_social_threat_triggers_appease() {
         let mut p = PeriaqueductalGray::new();
-        p.process(PAGEvent::ThreatDetected { intensity: 0.60, is_social: true });
-        assert_eq!(p.defensive_mode, DefensiveMode::Appease,
-            "social threat should trigger appease mode");
+        p.process(PAGEvent::ThreatDetected {
+            intensity: 0.60,
+            is_social: true,
+        });
+        assert_eq!(
+            p.defensive_mode,
+            DefensiveMode::Appease,
+            "social threat should trigger appease mode"
+        );
     }
 
     #[test]
     fn test_high_threat_triggers_mobilize() {
         let mut p = PeriaqueductalGray::new();
-        p.process(PAGEvent::ThreatDetected { intensity: 0.90, is_social: false });
-        assert_eq!(p.defensive_mode, DefensiveMode::Mobilize,
-            "high non-social threat should trigger mobilize");
+        p.process(PAGEvent::ThreatDetected {
+            intensity: 0.90,
+            is_social: false,
+        });
+        assert_eq!(
+            p.defensive_mode,
+            DefensiveMode::Mobilize,
+            "high non-social threat should trigger mobilize"
+        );
     }
 
     #[test]
     fn test_threat_resolved_produces_relief() {
         let mut p = PeriaqueductalGray::new();
-        p.process(PAGEvent::ThreatDetected { intensity: 0.70, is_social: false });
+        p.process(PAGEvent::ThreatDetected {
+            intensity: 0.70,
+            is_social: false,
+        });
         let before_relief = p.pain_suppression;
         p.process(PAGEvent::ThreatResolved);
-        assert!(p.pain_suppression > before_relief,
-            "resolution should boost relief: {:.2} → {:.2}", before_relief, p.pain_suppression);
+        assert!(
+            p.pain_suppression > before_relief,
+            "resolution should boost relief: {:.2} → {:.2}",
+            before_relief,
+            p.pain_suppression
+        );
         assert_eq!(p.defensive_mode, DefensiveMode::Engaged);
     }
 
     #[test]
     fn test_threat_resolved_drops_threat() {
         let mut p = PeriaqueductalGray::new();
-        p.process(PAGEvent::ThreatDetected { intensity: 0.80, is_social: false });
+        p.process(PAGEvent::ThreatDetected {
+            intensity: 0.80,
+            is_social: false,
+        });
         let before = p.threat_level;
         p.process(PAGEvent::ThreatResolved);
-        assert!(p.threat_level < before,
-            "resolution should lower threat: {:.2} → {:.2}", before, p.threat_level);
+        assert!(
+            p.threat_level < before,
+            "resolution should lower threat: {:.2} → {:.2}",
+            before,
+            p.threat_level
+        );
     }
 
     #[test]
     fn test_social_pain_triggers_appease() {
         let mut p = PeriaqueductalGray::new();
         p.process(PAGEvent::SocialPain { severity: 0.70 });
-        assert_eq!(p.defensive_mode, DefensiveMode::Appease,
-            "social pain should trigger appease");
+        assert_eq!(
+            p.defensive_mode,
+            DefensiveMode::Appease,
+            "social pain should trigger appease"
+        );
         assert!(p.threat_level > 0.0);
     }
 
@@ -360,28 +400,42 @@ mod tests {
         p.process(PAGEvent::SocialPain { severity: 0.60 });
         let before = p.threat_level;
         p.process(PAGEvent::AffiliationRestored);
-        assert!(p.threat_level < before,
-            "affiliation restored should reduce threat: {:.2} → {:.2}", before, p.threat_level);
+        assert!(
+            p.threat_level < before,
+            "affiliation restored should reduce threat: {:.2} → {:.2}",
+            before,
+            p.threat_level
+        );
     }
 
     #[test]
     fn test_aversive_signal_builds_safety_drive() {
         let mut p = PeriaqueductalGray::new();
         p.process(PAGEvent::AversiveSignal { magnitude: 0.70 });
-        assert!(p.safety_drive > 0.0,
-            "aversive signal should build safety drive: {:.2}", p.safety_drive);
+        assert!(
+            p.safety_drive > 0.0,
+            "aversive signal should build safety drive: {:.2}",
+            p.safety_drive
+        );
     }
 
     #[test]
     fn test_decay_reduces_threat() {
         let mut p = PeriaqueductalGray::new();
-        p.process(PAGEvent::ThreatDetected { intensity: 0.80, is_social: false });
+        p.process(PAGEvent::ThreatDetected {
+            intensity: 0.80,
+            is_social: false,
+        });
         let before = p.threat_level;
         for _ in 0..20 {
             p.decay();
         }
-        assert!(p.threat_level < before,
-            "threat should decay over time: {:.2} → {:.2}", before, p.threat_level);
+        assert!(
+            p.threat_level < before,
+            "threat should decay over time: {:.2} → {:.2}",
+            before,
+            p.threat_level
+        );
     }
 
     #[test]
@@ -389,7 +443,10 @@ mod tests {
         let mut p = PeriaqueductalGray::new();
         p.process(PAGEvent::SocialPain { severity: 0.70 });
         let out = p.current_output();
-        assert!(out.appease_signal, "appease mode should set appease_signal in output");
+        assert!(
+            out.appease_signal,
+            "appease mode should set appease_signal in output"
+        );
     }
 
     #[test]

@@ -40,7 +40,6 @@
 ///     - Cognitive flexibility index: how often KAI updates vs. persists
 ///     - Metacognitive confidence estimate: "how sure am I?"
 ///     - Context binding: key facts KAI is holding from recent turns
-
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
@@ -74,9 +73,9 @@ impl Goal {
     pub fn new(description: &str, priority: f32) -> Self {
         Self {
             description: description.to_string(),
-            priority:    priority.clamp(0.0, 1.0),
-            age_turns:   0,
-            satisfied:   false,
+            priority: priority.clamp(0.0, 1.0),
+            age_turns: 0,
+            satisfied: false,
         }
     }
 }
@@ -135,14 +134,14 @@ pub struct PrefrontalCortex {
 impl PrefrontalCortex {
     pub fn new() -> Self {
         Self {
-            goals:             VecDeque::with_capacity(MAX_GOALS),
-            context_bindings:  VecDeque::with_capacity(MAX_CONTEXT_BINDINGS),
-            turn:              0,
-            inhibition:        0.0,
-            flexibility:       0.5,
-            meta_confidence:   0.5,
+            goals: VecDeque::with_capacity(MAX_GOALS),
+            context_bindings: VecDeque::with_capacity(MAX_CONTEXT_BINDINGS),
+            turn: 0,
+            inhibition: 0.0,
+            flexibility: 0.5,
+            meta_confidence: 0.5,
             inhibitions_total: 0,
-            goals_satisfied:   0,
+            goals_satisfied: 0,
         }
     }
 
@@ -151,12 +150,19 @@ impl PrefrontalCortex {
     /// Set or update KAI's current primary goal.
     pub fn push_goal(&mut self, description: &str, priority: f32) {
         // Don't duplicate the same goal
-        if self.goals.iter().any(|g| g.description == description && !g.satisfied) {
+        if self
+            .goals
+            .iter()
+            .any(|g| g.description == description && !g.satisfied)
+        {
             return;
         }
         if self.goals.len() >= MAX_GOALS {
             // Evict lowest-priority goal
-            if let Some(min_idx) = self.goals.iter().enumerate()
+            if let Some(min_idx) = self
+                .goals
+                .iter()
+                .enumerate()
                 .min_by(|(_, a), (_, b)| a.priority.partial_cmp(&b.priority).unwrap())
                 .map(|(i, _)| i)
             {
@@ -169,7 +175,11 @@ impl PrefrontalCortex {
     /// Mark a goal as satisfied.
     pub fn satisfy_goal(&mut self, keyword: &str) {
         for g in &mut self.goals {
-            if g.description.to_lowercase().contains(&keyword.to_lowercase()) && !g.satisfied {
+            if g.description
+                .to_lowercase()
+                .contains(&keyword.to_lowercase())
+                && !g.satisfied
+            {
                 g.satisfied = true;
                 self.goals_satisfied += 1;
             }
@@ -180,7 +190,8 @@ impl PrefrontalCortex {
 
     /// The highest-priority active goal, if any.
     pub fn primary_goal(&self) -> Option<&Goal> {
-        self.goals.iter()
+        self.goals
+            .iter()
             .filter(|g| !g.satisfied)
             .max_by(|a, b| a.priority.partial_cmp(&b.priority).unwrap())
     }
@@ -188,7 +199,9 @@ impl PrefrontalCortex {
     /// True if KAI has an active goal to explain something about the given topic.
     pub fn has_goal_for(&self, topic: &str) -> bool {
         let lower = topic.to_lowercase();
-        self.goals.iter().any(|g| !g.satisfied && g.description.to_lowercase().contains(&lower))
+        self.goals
+            .iter()
+            .any(|g| !g.satisfied && g.description.to_lowercase().contains(&lower))
     }
 
     // ── Context binding ───────────────────────────────────────────────────────
@@ -209,7 +222,10 @@ impl PrefrontalCortex {
         }
         if self.context_bindings.len() >= MAX_CONTEXT_BINDINGS {
             // Evict least relevant
-            if let Some(min_idx) = self.context_bindings.iter().enumerate()
+            if let Some(min_idx) = self
+                .context_bindings
+                .iter()
+                .enumerate()
                 .min_by(|(_, a), (_, b)| a.relevance.partial_cmp(&b.relevance).unwrap())
                 .map(|(i, _)| i)
             {
@@ -217,15 +233,16 @@ impl PrefrontalCortex {
             }
         }
         self.context_bindings.push_back(ContextBinding {
-            content:       content.to_string(),
-            relevance:     1.0,
+            content: content.to_string(),
+            relevance: 1.0,
             bound_at_turn: self.turn,
         });
     }
 
     /// Get all currently relevant context bindings.
     pub fn active_context(&self) -> Vec<&ContextBinding> {
-        self.context_bindings.iter()
+        self.context_bindings
+            .iter()
             .filter(|b| b.relevance > 0.20)
             .collect()
     }
@@ -234,12 +251,7 @@ impl PrefrontalCortex {
 
     /// Evaluate a proposed response before KAI sends it.
     /// Returns a verdict — the voice engine can use this to modify/flag output.
-    pub fn evaluate(
-        &mut self,
-        response:   &str,
-        confidence: f32,
-        input:      &str,
-    ) -> PfcVerdict {
+    pub fn evaluate(&mut self, response: &str, confidence: f32, input: &str) -> PfcVerdict {
         self.turn += 1;
         self.decay_bindings();
         self.age_goals();
@@ -256,12 +268,12 @@ impl PrefrontalCortex {
         if let Some(goal) = self.primary_goal() {
             let goal_words: Vec<&str> = goal.description.split_whitespace().collect();
             let response_lower = response.to_lowercase();
-            let input_lower    = input.to_lowercase();
+            let input_lower = input.to_lowercase();
 
             // If active goal is about topic X, but response doesn't mention X at all
-            let on_topic = goal_words.iter().any(|w|
-                w.len() > 4 && (response_lower.contains(*w) || input_lower.contains(*w))
-            );
+            let on_topic = goal_words
+                .iter()
+                .any(|w| w.len() > 4 && (response_lower.contains(*w) || input_lower.contains(*w)));
             if !on_topic && goal.priority > 0.7 {
                 return PfcVerdict::GoalConflict(goal.description.clone());
             }
@@ -281,7 +293,8 @@ impl PrefrontalCortex {
 
         // "explain X", "tell me about X", "what is X" → goal to explain X
         if lower.starts_with("explain") || lower.contains("tell me about") {
-            let topic = input.split_whitespace()
+            let topic = input
+                .split_whitespace()
                 .skip(1)
                 .take(4)
                 .collect::<Vec<_>>()
@@ -298,7 +311,8 @@ impl PrefrontalCortex {
 
         // "teach me", "learn" → goal to teach
         if lower.contains("teach me") || lower.starts_with("how do i") {
-            let topic = input.split_whitespace()
+            let topic = input
+                .split_whitespace()
                 .skip(2)
                 .take(4)
                 .collect::<Vec<_>>()
@@ -308,20 +322,30 @@ impl PrefrontalCortex {
 
         // Statements of fact → bind as context
         if input.len() > 10 && !input.ends_with('?') {
-            let key = if input.len() > 60 { format!("{}…", &input[..60]) } else { input.to_string() };
+            let key = if input.len() > 60 {
+                format!("{}…", &input[..60])
+            } else {
+                input.to_string()
+            };
             self.bind_context(&key);
         }
     }
 
     /// One-line status for TUI/spectate display.
     pub fn status_line(&self) -> String {
-        let goal_str = self.primary_goal()
+        let goal_str = self
+            .primary_goal()
             .map(|g| g.description.as_str())
             .unwrap_or("none");
         format!(
             "PFC: goal=\"{}\" | conf={:.2} | inhibit={:.2} | ctx={} | satisfied={}",
-            if goal_str.len() > 30 { &goal_str[..30] } else { goal_str },
-            self.meta_confidence, self.inhibition,
+            if goal_str.len() > 30 {
+                &goal_str[..30]
+            } else {
+                goal_str
+            },
+            self.meta_confidence,
+            self.inhibition,
             self.context_bindings.len(),
             self.goals_satisfied,
         )
@@ -350,7 +374,9 @@ impl PrefrontalCortex {
 }
 
 impl Default for PrefrontalCortex {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -367,8 +393,10 @@ mod tests {
 
         let primary = pfc.primary_goal();
         assert!(primary.is_some(), "should have a primary goal");
-        assert!(primary.unwrap().description.contains("consciousness"),
-            "highest priority goal should be primary");
+        assert!(
+            primary.unwrap().description.contains("consciousness"),
+            "highest priority goal should be primary"
+        );
     }
 
     #[test]
@@ -378,7 +406,10 @@ mod tests {
         assert!(pfc.primary_goal().is_some());
 
         pfc.satisfy_goal("recursion");
-        assert!(pfc.primary_goal().is_none(), "goal should be gone after satisfaction");
+        assert!(
+            pfc.primary_goal().is_none(),
+            "goal should be gone after satisfaction"
+        );
         assert_eq!(pfc.goals_satisfied, 1);
     }
 
@@ -386,8 +417,11 @@ mod tests {
     fn test_low_confidence_triggers_inhibition() {
         let mut pfc = PrefrontalCortex::new();
         let verdict = pfc.evaluate("I think maybe something", 0.10, "what is consciousness?");
-        assert_eq!(verdict, PfcVerdict::FlagLowConfidence,
-            "low confidence response should be flagged");
+        assert_eq!(
+            verdict,
+            PfcVerdict::FlagLowConfidence,
+            "low confidence response should be flagged"
+        );
         assert!(pfc.inhibitions_total > 0);
     }
 
@@ -399,7 +433,11 @@ mod tests {
             0.85,
             "what is consciousness?",
         );
-        assert_eq!(verdict, PfcVerdict::Approve, "high confidence should be approved");
+        assert_eq!(
+            verdict,
+            PfcVerdict::Approve,
+            "high confidence should be approved"
+        );
     }
 
     #[test]
@@ -409,18 +447,26 @@ mod tests {
         assert_eq!(pfc.context_bindings.len(), 1);
 
         // Age it many turns
-        for _ in 0..15 { pfc.decay_bindings(); pfc.turn += 1; }
+        for _ in 0..15 {
+            pfc.decay_bindings();
+            pfc.turn += 1;
+        }
 
         // Should have decayed out
-        assert!(pfc.active_context().is_empty(),
-            "old context should decay out of working memory");
+        assert!(
+            pfc.active_context().is_empty(),
+            "old context should decay out of working memory"
+        );
     }
 
     #[test]
     fn test_infer_goal_from_explain_input() {
         let mut pfc = PrefrontalCortex::new();
         pfc.infer_goal_from_input("explain how the brain works");
-        assert!(pfc.primary_goal().is_some(), "should infer goal from 'explain' input");
+        assert!(
+            pfc.primary_goal().is_some(),
+            "should infer goal from 'explain' input"
+        );
         assert!(pfc.primary_goal().unwrap().description.contains("explain"));
     }
 

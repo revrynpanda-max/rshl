@@ -7,7 +7,6 @@
 ///
 /// This is NOT hallucination — every piece of output comes from
 /// a real cell in the universe. It's geometric synthesis.
-
 use crate::core::QueryHit;
 
 /// Compose a response from the top resonating cells.
@@ -54,9 +53,9 @@ pub fn compose_response(
 
     for hit in &effective {
         // Skip if this cell's content is too similar to something we already have
-        let is_redundant = seen_phrases.iter().any(|existing| {
-            phrase_overlap(existing, &hit.text) > 0.7
-        });
+        let is_redundant = seen_phrases
+            .iter()
+            .any(|existing| phrase_overlap(existing, &hit.text) > 0.7);
 
         if !is_redundant {
             fragments.push((hit.text.clone(), hit.score, hit.region.clone()));
@@ -102,7 +101,9 @@ pub fn compose_response(
             // Only add if it provides new information
             let check_len = {
                 let mut end = frag_text.len().min(30);
-                while end > 0 && !frag_text.is_char_boundary(end) { end -= 1; }
+                while end > 0 && !frag_text.is_char_boundary(end) {
+                    end -= 1;
+                }
                 end
             };
             if !composed.contains(&frag_text[..check_len]) {

@@ -78,10 +78,10 @@ pub enum TemporalEpoch {
 impl TemporalEpoch {
     pub fn label(&self) -> &'static str {
         match self {
-            Self::Opening      => "opening",
+            Self::Opening => "opening",
             Self::Establishing => "establishing",
-            Self::Deep         => "deep",
-            Self::Extended     => "extended",
+            Self::Deep => "deep",
+            Self::Extended => "extended",
         }
     }
 
@@ -90,7 +90,7 @@ impl TemporalEpoch {
             d if d < 0.20 => Self::Opening,
             d if d < 0.45 => Self::Establishing,
             d if d < 0.75 => Self::Deep,
-            _              => Self::Extended,
+            _ => Self::Extended,
         }
     }
 }
@@ -136,11 +136,11 @@ pub struct RetrosplenialCortex {
 impl RetrosplenialCortex {
     pub fn new() -> Self {
         Self {
-            temporal_distance:   0.0,
-            context_stability:   0.30,
-            allocentric_shift:   0.20,
-            landmarks:           Vec::new(),
-            turns_processed:     0,
+            temporal_distance: 0.0,
+            context_stability: 0.30,
+            allocentric_shift: 0.20,
+            landmarks: Vec::new(),
+            turns_processed: 0,
             landmarks_registered: 0,
         }
     }
@@ -163,8 +163,8 @@ impl RetrosplenialCortex {
         } else {
             (0.40 + semantic_similarity * 0.50).min(1.0)
         };
-        self.context_stability = self.context_stability * (1.0 - STABILITY_EMA)
-            + stability_target * STABILITY_EMA;
+        self.context_stability =
+            self.context_stability * (1.0 - STABILITY_EMA) + stability_target * STABILITY_EMA;
 
         // Landmark registration: stable context + topic not already anchored
         let topic_lower = topic.to_lowercase();
@@ -191,11 +191,11 @@ impl RetrosplenialCortex {
         let epoch = TemporalEpoch::from_distance(self.temporal_distance);
 
         RSCOutput {
-            temporal_epoch:       epoch,
-            temporal_distance:    self.temporal_distance,
-            context_stability:    self.context_stability,
-            allocentric_shift:    self.allocentric_shift,
-            landmark_count:       self.landmarks.len(),
+            temporal_epoch: epoch,
+            temporal_distance: self.temporal_distance,
+            context_stability: self.context_stability,
+            allocentric_shift: self.allocentric_shift,
+            landmark_count: self.landmarks.len(),
             landmark_registered,
             stable_for_consolidation: self.context_stability >= 0.55,
         }
@@ -221,12 +221,12 @@ impl RetrosplenialCortex {
     pub fn current_output(&self) -> RSCOutput {
         let epoch = TemporalEpoch::from_distance(self.temporal_distance);
         RSCOutput {
-            temporal_epoch:       epoch,
-            temporal_distance:    self.temporal_distance,
-            context_stability:    self.context_stability,
-            allocentric_shift:    self.allocentric_shift,
-            landmark_count:       self.landmarks.len(),
-            landmark_registered:  false,
+            temporal_epoch: epoch,
+            temporal_distance: self.temporal_distance,
+            context_stability: self.context_stability,
+            allocentric_shift: self.allocentric_shift,
+            landmark_count: self.landmarks.len(),
+            landmark_registered: false,
             stable_for_consolidation: self.context_stability >= 0.55,
         }
     }
@@ -246,7 +246,9 @@ impl RetrosplenialCortex {
 }
 
 impl Default for RetrosplenialCortex {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -258,7 +260,10 @@ mod tests {
     #[test]
     fn test_initial_state() {
         let r = RetrosplenialCortex::new();
-        assert_eq!(TemporalEpoch::from_distance(r.temporal_distance), TemporalEpoch::Opening);
+        assert_eq!(
+            TemporalEpoch::from_distance(r.temporal_distance),
+            TemporalEpoch::Opening
+        );
         assert!(r.landmarks.is_empty());
     }
 
@@ -267,14 +272,20 @@ mod tests {
         let mut r = RetrosplenialCortex::new();
         r.process("rust", 0.70, false);
         r.process("rust", 0.80, false);
-        assert!(r.temporal_distance > 0.0,
-            "temporal distance should advance: {:.2}", r.temporal_distance);
+        assert!(
+            r.temporal_distance > 0.0,
+            "temporal distance should advance: {:.2}",
+            r.temporal_distance
+        );
     }
 
     #[test]
     fn test_epoch_transitions() {
         assert_eq!(TemporalEpoch::from_distance(0.10), TemporalEpoch::Opening);
-        assert_eq!(TemporalEpoch::from_distance(0.30), TemporalEpoch::Establishing);
+        assert_eq!(
+            TemporalEpoch::from_distance(0.30),
+            TemporalEpoch::Establishing
+        );
         assert_eq!(TemporalEpoch::from_distance(0.60), TemporalEpoch::Deep);
         assert_eq!(TemporalEpoch::from_distance(0.90), TemporalEpoch::Extended);
     }
@@ -288,12 +299,17 @@ mod tests {
         }
         let out = r.process("rust_topic", 0.90, false);
         // After repeated stable inputs, context stability should be high enough
-        assert!(r.context_stability >= 0.35,
-            "context stability should build: {:.2}", r.context_stability);
+        assert!(
+            r.context_stability >= 0.35,
+            "context stability should build: {:.2}",
+            r.context_stability
+        );
         // Landmark registered if stability crossed threshold
         if r.context_stability >= 0.45 {
-            assert!(out.landmark_registered || r.landmarks.len() > 0,
-                "stable context should register landmark");
+            assert!(
+                out.landmark_registered || r.landmarks.len() > 0,
+                "stable context should register landmark"
+            );
         }
     }
 
@@ -307,8 +323,11 @@ mod tests {
         let stable = r.context_stability;
         // Then hit with novel input
         r.process("quantum_mechanics", 0.10, true);
-        assert!(r.context_stability < stable + 0.01,
-            "novel input should not further stabilize context: {:.2}", r.context_stability);
+        assert!(
+            r.context_stability < stable + 0.01,
+            "novel input should not further stabilize context: {:.2}",
+            r.context_stability
+        );
     }
 
     #[test]
@@ -318,9 +337,12 @@ mod tests {
         for _ in 0..5 {
             r.process("rust", 0.80, false);
         }
-        assert!(r.allocentric_shift >= before,
+        assert!(
+            r.allocentric_shift >= before,
             "familiar context should build allocentric shift: {:.2} → {:.2}",
-            before, r.allocentric_shift);
+            before,
+            r.allocentric_shift
+        );
     }
 
     #[test]
@@ -328,8 +350,11 @@ mod tests {
         let mut r = RetrosplenialCortex::new();
         r.allocentric_shift = 0.70;
         r.process("something_new", 0.10, true);
-        assert!(r.allocentric_shift < 0.70,
-            "novel input should reduce allocentric shift: {:.2}", r.allocentric_shift);
+        assert!(
+            r.allocentric_shift < 0.70,
+            "novel input should reduce allocentric shift: {:.2}",
+            r.allocentric_shift
+        );
     }
 
     #[test]
@@ -338,8 +363,10 @@ mod tests {
         r.context_stability = 0.60; // Manually set stable
         r.process("neural_networks", 0.85, false);
         // Should have registered a landmark
-        assert!(r.is_landmark("neural_networks") || r.landmarks_registered > 0 || true,
-            "known topic in stable context should register as landmark");
+        assert!(
+            r.is_landmark("neural_networks") || r.landmarks_registered > 0 || true,
+            "known topic in stable context should register as landmark"
+        );
     }
 
     #[test]
@@ -349,8 +376,11 @@ mod tests {
         for i in 0..20 {
             r.process(&format!("topic_{}", i), 0.80, false);
         }
-        assert!(r.landmarks.len() <= MAX_LANDMARKS,
-            "landmarks should not exceed max: {}", r.landmarks.len());
+        assert!(
+            r.landmarks.len() <= MAX_LANDMARKS,
+            "landmarks should not exceed max: {}",
+            r.landmarks.len()
+        );
     }
 
     #[test]
@@ -358,8 +388,10 @@ mod tests {
         let mut r = RetrosplenialCortex::new();
         r.context_stability = 0.60;
         let out = r.current_output();
-        assert!(out.stable_for_consolidation,
-            "stability >= 0.55 should qualify for consolidation");
+        assert!(
+            out.stable_for_consolidation,
+            "stability >= 0.55 should qualify for consolidation"
+        );
     }
 
     #[test]
@@ -370,8 +402,11 @@ mod tests {
             r.decay();
         }
         // Should drift toward neutral, not collapse
-        assert!(r.context_stability > 0.20,
-            "stability should not collapse on decay: {:.2}", r.context_stability);
+        assert!(
+            r.context_stability > 0.20,
+            "stability should not collapse on decay: {:.2}",
+            r.context_stability
+        );
     }
 
     #[test]

@@ -3,7 +3,6 @@
 /// Connections that are never re-activated, reinforced, or replayed
 /// gradually weaken. Below a floor threshold they are removed,
 /// keeping the field sparse and preventing saturation.
-
 use crate::core::Universe;
 
 pub struct HomeostasisConfig {
@@ -17,8 +16,8 @@ pub struct HomeostasisConfig {
 impl Default for HomeostasisConfig {
     fn default() -> Self {
         Self {
-            min_age_secs: 86400,           // 1 day
-            stale_access_secs: 5 * 86400,  // 5 days
+            min_age_secs: 86400,          // 1 day
+            stale_access_secs: 5 * 86400, // 5 days
             decay_strength_ceiling: 2.0,
             decay_rate: 0.06,
             prune_threshold: 0.09,
@@ -50,10 +49,14 @@ pub fn run_homeostasis(universe: &mut Universe, config: &HomeostasisConfig) -> H
 
         // Must be old enough
         let age = now.saturating_sub(cell.created);
-        if age < config.min_age_secs { continue; }
+        if age < config.min_age_secs {
+            continue;
+        }
 
         // Only decay weak cells
-        if cell.strength >= config.decay_strength_ceiling { continue; }
+        if cell.strength >= config.decay_strength_ceiling {
+            continue;
+        }
 
         // Compute decay amount
         let stale_factor = (age as f32 / (30.0 * 86400.0)).min(1.0);
@@ -71,12 +74,20 @@ pub fn run_homeostasis(universe: &mut Universe, config: &HomeostasisConfig) -> H
     // Apply decay to cells not being removed
     let cells = universe.cells_mut();
     for (i, cell) in cells.iter_mut().enumerate() {
-        if to_remove.contains(&i) { continue; }
-        if cell.source == "promoted-dream" || cell.source == "seed" { continue; }
+        if to_remove.contains(&i) {
+            continue;
+        }
+        if cell.source == "promoted-dream" || cell.source == "seed" {
+            continue;
+        }
 
         let age = now.saturating_sub(cell.created);
-        if age < config.min_age_secs { continue; }
-        if cell.strength >= config.decay_strength_ceiling { continue; }
+        if age < config.min_age_secs {
+            continue;
+        }
+        if cell.strength >= config.decay_strength_ceiling {
+            continue;
+        }
 
         let stale_factor = (age as f32 / (30.0 * 86400.0)).min(1.0);
         let weak_factor = (1.0 - cell.strength / config.decay_strength_ceiling).max(0.0);

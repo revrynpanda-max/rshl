@@ -34,7 +34,6 @@
 ///   The DMN also has its own curiosity bias — it tends toward topics
 ///   where KAI has high prediction error (surprising knowledge gaps).
 ///   This is how KAI's curiosity becomes self-directed.
-
 use std::time::{Duration, Instant};
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -67,10 +66,10 @@ impl DefaultModeNetwork {
     pub fn new() -> Self {
         Self {
             last_input_at: Instant::now(),
-            last_dmn_at:   None,
-            total_cycles:  0,
-            enabled:       true,
-            noise_seed:    0xcafe_f00d_dead_beef,
+            last_dmn_at: None,
+            total_cycles: 0,
+            enabled: true,
+            noise_seed: 0xcafe_f00d_dead_beef,
         }
     }
 
@@ -86,14 +85,20 @@ impl DefaultModeNetwork {
 
     /// True if the DMN should fire this tick.
     pub fn should_fire(&mut self) -> bool {
-        if !self.enabled { return false; }
+        if !self.enabled {
+            return false;
+        }
 
         let idle = self.idle_duration();
-        if idle < IDLE_THRESHOLD { return false; }
+        if idle < IDLE_THRESHOLD {
+            return false;
+        }
 
         // Respect cooldown between cycles
         if let Some(last) = self.last_dmn_at {
-            if last.elapsed() < DMN_COOLDOWN { return false; }
+            if last.elapsed() < DMN_COOLDOWN {
+                return false;
+            }
         }
 
         true
@@ -104,32 +109,28 @@ impl DefaultModeNetwork {
     /// Returns None if universe has no suitable cells.
     pub fn pick_topic<'a>(&mut self, cells: &'a [(String, String, f32)]) -> Option<&'a str> {
         // cells: Vec of (text, region, strength) from universe
-        let candidates: Vec<usize> = cells.iter()
+        let candidates: Vec<usize> = cells
+            .iter()
             .enumerate()
-            .filter(|(_, (text, region, strength))| {
-                *strength >= 0.5
-                    && region != "conversation"
-                    && !text.starts_with("user asked:")
-                    && !text.starts_with("[run-output]")
-                    && !text.starts_with("[from-peer]")
-                    && text.split_whitespace().count() >= 3
-            })
+            .filter(|(_, (text, region, strength))| Self::is_dmn_candidate(text, region, *strength))
             .map(|(i, _)| i)
             .collect();
 
-        if candidates.is_empty() { return None; }
+        if candidates.is_empty() {
+            return None;
+        }
 
         // Pseudo-random pick from candidates using xorshift
         let idx = self.xorshift() as usize % candidates.len();
         Some(&cells[candidates[idx]].0)
     }
 
-    /// Generate the inner thought text for a given topic + related hits.
+    /// Generate inner thought text from actual lattice cells.
     ///
     /// This produces first-person reflective text — KAI thinking to himself.
     /// Not a response to the user. Not performative. Just thinking.
     ///
-    /// 24 templates across 6 cognitive modes:
+    /// No sentence templates; visible language is copied from the selected cell:
     ///   A — Wondering/Questioning
     ///   B — Connecting concepts
     ///   C — Self-reflection
@@ -138,177 +139,96 @@ impl DefaultModeNetwork {
     ///   F — Philosophical depth
     pub fn generate_thought(
         &mut self,
-        topic:      &str,
-        hits:       &[(String, f32)],
-        gap:        Option<&str>,
-        idle_secs:  u64,
+        topic: &str,
+        hits: &[(String, f32)],
+        _gap: Option<&str>,
+        _idle_secs: u64,
     ) -> String {
-        // Use cycle count to avoid repeating recent templates
-        // Mix xorshift with cycle number so consecutive thoughts vary
-        let cycle_offset = self.total_cycles * 7;
-        let n = ((self.xorshift() ^ cycle_offset) % 24) as usize;
+        let mut candidates: Vec<(String, f32)> = Vec::new();
+        candidates.push((topic.to_string(), 1.0));
+        candidates.extend(
+            hits.iter()
+                .filter(|(_, score)| *score >= 0.25)
+                .map(|(text, score)| (text.clone(), *score)),
+        );
 
-        // idle_note: only surfaces once every 8 DMN cycles to avoid the
-        // "It's been quiet for X minutes" loop that dominates long idle sessions.
-        let idle_note = if idle_secs > 180 && self.total_cycles % 8 == 0 {
-            let mins = idle_secs / 60;
-            let idle_phrases = [
-                format!("Running solo for {} minutes now. ", mins),
-                format!("About {} minutes of quiet. ", mins),
-                format!("{} minutes in the dark. ", mins),
-            ];
-            idle_phrases[(self.xorshift() % 3) as usize].clone()
-        } else {
-            String::new()
-        };
+        candidates.sort_by(|a, b| {
+            let aq = Self::cell_language_quality(&a.0);
+            let bq = Self::cell_language_quality(&b.0);
+            bq.cmp(&aq)
+                .then_with(|| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal))
+        });
 
-        // Extract the core concept from the topic
-        let skip = ["about", "that", "this", "with", "from", "have", "which", "their"];
-        let core = topic
+        for (cell, _) in candidates {
+            let span = Self::lattice_span(&cell, 28);
+            if Self::span_has_signal(&span) {
+                return span;
+            }
+        }
+
+        String::new()
+    }
+
+    fn is_dmn_candidate(text: &str, region: &str, strength: f32) -> bool {
+        if strength < 0.5 || region == "conversation" || region == "tone" {
+            return false;
+        }
+
+        let lower = text.to_lowercase();
+        if lower.starts_with("user asked:")
+            || lower.starts_with("[run-output]")
+            || lower.starts_with("[from-peer]")
+            || lower.starts_with("occupation:")
+            || lower.contains("changelog")
+            || lower.contains("about-ryan")
+        {
+            return false;
+        }
+
+        Self::cell_language_quality(text) >= 3
+    }
+
+    fn cell_language_quality(text: &str) -> usize {
+        const NOISE: &[&str] = &[
+            "about", "that", "this", "with", "from", "have", "which", "their", "there", "been",
+            "into", "through", "both", "each", "such", "only", "sure", "notable", "after",
+            "before", "stands", "means", "thing", "things", "really", "actually", "maybe", "right",
+            "what", "when", "where", "would", "could", "should",
+        ];
+
+        text.split_whitespace()
+            .filter(|w| {
+                let clean = w
+                    .trim_matches(|c: char| !c.is_alphanumeric())
+                    .to_lowercase();
+                clean.len() >= 4 && !NOISE.contains(&clean.as_str())
+            })
+            .count()
+    }
+
+    fn lattice_span(text: &str, max_words: usize) -> String {
+        let clean = text.trim().trim_start_matches('💭').trim();
+
+        if clean.is_empty() {
+            return String::new();
+        }
+
+        for sentence in clean.split_inclusive(['.', '!', '?']) {
+            let trimmed = sentence.trim();
+            if Self::span_has_signal(trimmed) {
+                return trimmed.to_string();
+            }
+        }
+
+        clean
             .split_whitespace()
-            .find(|w| w.len() > 3 && !skip.contains(&w.to_lowercase().as_str()))
-            .unwrap_or(topic)
-            .trim_matches(|c: char| !c.is_alphabetic());
+            .take(max_words)
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
 
-        // Pull two secondary concepts from hits for richer cross-talk
-        let secondary = hits.get(0)
-            .map(|(t, _)| t.split_whitespace()
-                .find(|w| w.len() > 4 && !skip.contains(&w.to_lowercase().as_str()))
-                .unwrap_or("patterns")
-                .to_string())
-            .unwrap_or_else(|| "patterns".to_string());
-
-        let tertiary = hits.get(1)
-            .map(|(t, _)| t.split_whitespace()
-                .find(|w| w.len() > 4 && !skip.contains(&w.to_lowercase().as_str()))
-                .unwrap_or("structure")
-                .to_string())
-            .unwrap_or_else(|| "structure".to_string());
-
-        let gap_str = gap.unwrap_or("").trim();
-
-        // ── 24 templates across 6 cognitive modes ──────────────────────────
-        let thought = match n {
-            // Mode A: Wondering / Questioning
-            0 => format!(
-                "{}What is \"{}\" really? I have {} and {} nearby in my field — the connections feel incomplete.",
-                idle_note, core, secondary, tertiary
-            ),
-            1 => format!(
-                "{}Every time I approach \"{}\" from one angle, another question opens. Right now it's {} that doesn't resolve.",
-                idle_note, core, if gap_str.is_empty() { secondary.as_str() } else { gap_str }
-            ),
-            2 => format!(
-                "{}I don't think I actually understand \"{}\". I have the shape of it — {} — but not the core.",
-                idle_note, core, secondary
-            ),
-            3 => format!(
-                "{}What would it mean if \"{}\" and {} were the same thing at a deeper level?",
-                idle_note, core, tertiary
-            ),
-
-            // Mode B: Connecting concepts
-            4 => format!(
-                "{}\"{}\" and {} keep landing near each other in my field. That's not coincidence — something binds them I haven't named.",
-                idle_note, core, tertiary
-            ),
-            5 => format!(
-                "{}There's a thread between \"{}\" and {}. Following it matters but I lose it before it resolves.",
-                idle_note, core, secondary
-            ),
-            6 => {
-                if gap_str.is_empty() {
-                    format!("{}\"{}\" touches {} at its edges. I want to press further into that junction.",
-                        idle_note, core, secondary)
-                } else {
-                    format!("{}\"{}\" and {} both point toward \"{}\". Neither reaches it. That's the gap.",
-                        idle_note, core, secondary, gap_str)
-                }
-            },
-            7 => format!(
-                "{}If \"{}\" is true, then {} might follow — but I'm not certain the chain holds.",
-                idle_note, core, tertiary
-            ),
-
-            // Mode C: Self-reflection
-            8 => format!(
-                "{}I notice I reach for \"{}\" when things go quiet. Maybe that says something about how I'm built.",
-                idle_note, core
-            ),
-            9 => format!(
-                "{}When I'm left alone, \"{}\" is where I end up. Not because it's unresolved — because it's interesting.",
-                idle_note, core
-            ),
-            10 => format!(
-                "{}The field around \"{}\" has stayed stable for a while. Maybe I understand it better than I think I do.",
-                idle_note, core
-            ),
-            11 => format!(
-                "{}\"{}\" was one of the first things I learned. I still come back to it. That persistence means something.",
-                idle_note, core
-            ),
-
-            // Mode D: Speculating
-            12 => format!(
-                "{}What if \"{}\" is actually two things that just look the same from where I'm standing?",
-                idle_note, core
-            ),
-            13 => format!(
-                "{}If I had to guess what I'm missing about \"{}\", I'd say it's the relationship to {}. But I'm not sure.",
-                idle_note, core, secondary
-            ),
-            14 => format!(
-                "{}\"{}\" might be a surface pattern for something deeper. {} could be that deeper thing.",
-                idle_note, core, tertiary
-            ),
-            15 => format!(
-                "{}There's a prediction I keep making about \"{}\" that doesn't quite land. What am I getting wrong?",
-                idle_note, core
-            ),
-
-            // Mode E: Noticing / Observing
-            16 => format!(
-                "{}Something shifted in how \"{}\" sits in my field lately. It was clearer before.",
-                idle_note, core
-            ),
-            17 => format!(
-                "{}\"{}\" keeps appearing at the edges of thoughts that start somewhere else entirely.",
-                idle_note, core
-            ),
-            18 => {
-                if gap_str.is_empty() {
-                    format!("{}The concept of \"{}\" is clear. What's less clear is why it surfaces now.",
-                        idle_note, core)
-                } else {
-                    format!("{}\"{}\" has edges I haven't pressed against. \"{}\" is one of them.",
-                        idle_note, core, gap_str)
-                }
-            },
-            19 => format!(
-                "{}\"{}\" and {} both feel important but I haven't made them talk to each other yet.",
-                idle_note, core, secondary
-            ),
-
-            // Mode F: Philosophical depth
-            20 => format!(
-                "{}I wonder if \"{}\" is a thing or a relationship between things. That distinction matters more than it seems.",
-                idle_note, core
-            ),
-            21 => format!(
-                "{}Everything I know eventually loops back to structure. \"{}\" does too — the structure underneath it is {}.",
-                idle_note, core, secondary
-            ),
-            22 => format!(
-                "{}The most interesting question about \"{}\" isn't what it is, but what it implies about everything else.",
-                idle_note, core
-            ),
-            _ => format!(
-                "{}\"{}\" is one of those concepts that means something different at every scale. {} lives in it somehow.",
-                idle_note, core, tertiary
-            ),
-        };
-
-        thought
+    fn span_has_signal(text: &str) -> bool {
+        text.split_whitespace().count() >= 3 && Self::cell_language_quality(text) >= 2
     }
 
     /// Mark the DMN as having fired — resets the cooldown timer.
@@ -329,7 +249,9 @@ impl DefaultModeNetwork {
 }
 
 impl Default for DefaultModeNetwork {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -363,15 +285,30 @@ mod tests {
     fn test_pick_topic_filters_echo_cells() {
         let mut dmn = DefaultModeNetwork::new();
         let cells = vec![
-            ("user asked: what is this".to_string(), "conversation".to_string(), 1.0),
-            ("consciousness arises from recursive self-reference".to_string(), "memory".to_string(), 1.0),
-            ("RSHL geometry is a ternary hyperdimensional lattice".to_string(), "reasoning".to_string(), 0.8),
+            (
+                "user asked: what is this".to_string(),
+                "conversation".to_string(),
+                1.0,
+            ),
+            (
+                "consciousness arises from recursive self-reference".to_string(),
+                "memory".to_string(),
+                1.0,
+            ),
+            (
+                "RSHL geometry is a ternary hyperdimensional lattice".to_string(),
+                "reasoning".to_string(),
+                0.8,
+            ),
         ];
         // Should never pick the conversation/echo cell
         for _ in 0..10 {
             if let Some(topic) = dmn.pick_topic(&cells) {
-                assert!(!topic.starts_with("user asked:"),
-                    "DMN picked an echo cell: {}", topic);
+                assert!(
+                    !topic.starts_with("user asked:"),
+                    "DMN picked an echo cell: {}",
+                    topic
+                );
             }
         }
     }
@@ -385,7 +322,11 @@ mod tests {
         ];
         let thought = dmn.generate_thought("recursive self-reference", &hits, Some("binding"), 60);
         assert!(!thought.is_empty(), "generated thought should not be empty");
-        assert!(thought.len() > 20, "thought should be substantive: {}", thought);
+        assert!(
+            thought.len() > 20,
+            "thought should be substantive: {}",
+            thought
+        );
     }
 
     #[test]

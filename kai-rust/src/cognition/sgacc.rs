@@ -63,23 +63,69 @@ const STRESS_RECOVER: f32 = 0.004;
 
 /// Grief / loss markers
 const GRIEF_MARKERS: &[&str] = &[
-    "miss", "lost", "gone", "absence", "end", "over", "finished", "goodbye",
-    "regret", "wish", "if only", "too late", "never", "no more", "leave",
-    "empty", "hollow", "grief", "mourning", "loss", "remember when",
+    "miss",
+    "lost",
+    "gone",
+    "absence",
+    "end",
+    "over",
+    "finished",
+    "goodbye",
+    "regret",
+    "wish",
+    "if only",
+    "too late",
+    "never",
+    "no more",
+    "leave",
+    "empty",
+    "hollow",
+    "grief",
+    "mourning",
+    "loss",
+    "remember when",
 ];
 
 /// Mood-lifting markers
 const UPLIFT_MARKERS: &[&str] = &[
-    "happy", "joy", "delight", "wonderful", "amazing", "excited", "thrilled",
-    "love", "grateful", "thankful", "hopeful", "optimistic", "pleased",
-    "cheerful", "glad", "looking forward", "wonderful", "great",
+    "happy",
+    "joy",
+    "delight",
+    "wonderful",
+    "amazing",
+    "excited",
+    "thrilled",
+    "love",
+    "grateful",
+    "thankful",
+    "hopeful",
+    "optimistic",
+    "pleased",
+    "cheerful",
+    "glad",
+    "looking forward",
+    "wonderful",
+    "great",
 ];
 
 /// Chronic stress markers
 const STRESS_MARKERS: &[&str] = &[
-    "exhausted", "burned out", "overwhelmed", "hopeless", "helpless",
-    "persistent", "ongoing", "chronic", "keeps happening", "never ends",
-    "always", "every time", "still", "still not", "can't", "nothing works",
+    "exhausted",
+    "burned out",
+    "overwhelmed",
+    "hopeless",
+    "helpless",
+    "persistent",
+    "ongoing",
+    "chronic",
+    "keeps happening",
+    "never ends",
+    "always",
+    "every time",
+    "still",
+    "still not",
+    "can't",
+    "nothing works",
 ];
 
 // ── sgACCOutput ───────────────────────────────────────────────────────────────
@@ -123,13 +169,13 @@ pub struct SubgenualACC {
 impl SubgenualACC {
     pub fn new() -> Self {
         Self {
-            mood_floor:       MOOD_BASELINE,
-            grief_signal:     0.0,
-            chronic_stress:   0.10,
-            autonomic_tone:   0.55,
+            mood_floor: MOOD_BASELINE,
+            grief_signal: 0.0,
+            chronic_stress: 0.10,
+            autonomic_tone: 0.55,
             inputs_processed: 0,
-            grief_events:     0,
-            uplift_events:    0,
+            grief_events: 0,
+            uplift_events: 0,
         }
     }
 
@@ -151,8 +197,7 @@ impl SubgenualACC {
         let lower = text.to_lowercase();
 
         // ── Grief detection ───────────────────────────────────────────────────
-        let grief_hits = GRIEF_MARKERS.iter()
-            .filter(|&&w| lower.contains(w)).count();
+        let grief_hits = GRIEF_MARKERS.iter().filter(|&&w| lower.contains(w)).count();
         if grief_hits >= 1 {
             self.grief_events += 1;
             let grief_target = (grief_hits as f32 * 0.10).min(0.70);
@@ -160,15 +205,19 @@ impl SubgenualACC {
         }
 
         // ── Mood uplift / dampening ───────────────────────────────────────────
-        let uplift_hits = UPLIFT_MARKERS.iter()
-            .filter(|&&w| lower.contains(w)).count();
+        let uplift_hits = UPLIFT_MARKERS
+            .iter()
+            .filter(|&&w| lower.contains(w))
+            .count();
         if uplift_hits >= 1 {
             self.uplift_events += 1;
         }
 
         // ── Chronic stress ────────────────────────────────────────────────────
-        let stress_hits = STRESS_MARKERS.iter()
-            .filter(|&&w| lower.contains(w)).count();
+        let stress_hits = STRESS_MARKERS
+            .iter()
+            .filter(|&&w| lower.contains(w))
+            .count();
         if stress_hits >= 1 || cortisol_level > 0.60 {
             self.chronic_stress = (self.chronic_stress + STRESS_ACCUM).min(1.0);
         } else if cortisol_level < 0.30 && oxytocin_bond > 0.55 {
@@ -176,29 +225,27 @@ impl SubgenualACC {
         }
 
         // ── Mood floor ────────────────────────────────────────────────────────
-        let mood_target = (
-            MOOD_BASELINE
-            + uplift_hits as f32 * 0.08
+        let mood_target = (MOOD_BASELINE + uplift_hits as f32 * 0.08
             - grief_hits as f32 * 0.06
             - self.chronic_stress * 0.30
             - amygdala_arousal * 0.10
-            + oxytocin_bond * 0.10
-        ).clamp(-1.0, 1.0);
+            + oxytocin_bond * 0.10)
+            .clamp(-1.0, 1.0);
         self.mood_floor = self.mood_floor * (1.0 - MOOD_EMA) + mood_target * MOOD_EMA;
 
         // ── Autonomic tone ────────────────────────────────────────────────────
         // High mood floor + low stress → high autonomic tone (well-regulated)
-        let auto_target = (0.30 + self.mood_floor * 0.30 + (1.0 - self.chronic_stress) * 0.30)
-            .clamp(0.10, 1.0);
+        let auto_target =
+            (0.30 + self.mood_floor * 0.30 + (1.0 - self.chronic_stress) * 0.30).clamp(0.10, 1.0);
         self.autonomic_tone = self.autonomic_tone * 0.95 + auto_target * 0.05;
 
         SgACCOutput {
-            mood_floor:    self.mood_floor,
-            grief_signal:  self.grief_signal,
+            mood_floor: self.mood_floor,
+            grief_signal: self.grief_signal,
             chronic_stress: self.chronic_stress,
             autonomic_tone: self.autonomic_tone,
-            dysphoric:     self.mood_floor < -0.20,
-            grieving:      self.grief_signal > 0.30,
+            dysphoric: self.mood_floor < -0.20,
+            grieving: self.grief_signal > 0.30,
         }
     }
 
@@ -221,12 +268,12 @@ impl SubgenualACC {
     /// Current output without processing.
     pub fn current_output(&self) -> SgACCOutput {
         SgACCOutput {
-            mood_floor:    self.mood_floor,
-            grief_signal:  self.grief_signal,
+            mood_floor: self.mood_floor,
+            grief_signal: self.grief_signal,
             chronic_stress: self.chronic_stress,
             autonomic_tone: self.autonomic_tone,
-            dysphoric:     self.mood_floor < -0.20,
-            grieving:      self.grief_signal > 0.30,
+            dysphoric: self.mood_floor < -0.20,
+            grieving: self.grief_signal > 0.30,
         }
     }
 
@@ -238,13 +285,19 @@ impl SubgenualACC {
             self.grief_signal,
             self.chronic_stress,
             self.autonomic_tone,
-            if self.mood_floor < -0.20 { " DYSPHORIC" } else { "" },
+            if self.mood_floor < -0.20 {
+                " DYSPHORIC"
+            } else {
+                ""
+            },
         )
     }
 }
 
 impl Default for SubgenualACC {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -264,9 +317,18 @@ mod tests {
     fn test_grief_words_raise_grief_signal() {
         let mut s = SubgenualACC::new();
         let before = s.grief_signal;
-        s.process("I miss what's gone and regret that it's over and lost", 0.20, 0.30, 0.40);
-        assert!(s.grief_signal > before,
-            "grief words should raise grief signal: {:.2} → {:.2}", before, s.grief_signal);
+        s.process(
+            "I miss what's gone and regret that it's over and lost",
+            0.20,
+            0.30,
+            0.40,
+        );
+        assert!(
+            s.grief_signal > before,
+            "grief words should raise grief signal: {:.2} → {:.2}",
+            before,
+            s.grief_signal
+        );
     }
 
     #[test]
@@ -274,17 +336,30 @@ mod tests {
         let mut s = SubgenualACC::new();
         let before = s.mood_floor;
         s.process("miss the loss and gone and empty absence", 0.20, 0.20, 0.20);
-        assert!(s.mood_floor <= before + 0.01,
-            "grief should not raise mood floor: {:.2} → {:.2}", before, s.mood_floor);
+        assert!(
+            s.mood_floor <= before + 0.01,
+            "grief should not raise mood floor: {:.2} → {:.2}",
+            before,
+            s.mood_floor
+        );
     }
 
     #[test]
     fn test_uplift_words_raise_mood_floor() {
         let mut s = SubgenualACC::new();
         let before = s.mood_floor;
-        s.process("I'm so happy and excited and grateful and looking forward to this", 0.10, 0.10, 0.70);
-        assert!(s.mood_floor >= before,
-            "uplift words should not lower mood floor: {:.2} → {:.2}", before, s.mood_floor);
+        s.process(
+            "I'm so happy and excited and grateful and looking forward to this",
+            0.10,
+            0.10,
+            0.70,
+        );
+        assert!(
+            s.mood_floor >= before,
+            "uplift words should not lower mood floor: {:.2} → {:.2}",
+            before,
+            s.mood_floor
+        );
     }
 
     #[test]
@@ -292,8 +367,12 @@ mod tests {
         let mut s = SubgenualACC::new();
         let before = s.chronic_stress;
         s.process("neutral text", 0.90, 0.50, 0.20);
-        assert!(s.chronic_stress > before,
-            "high cortisol should raise chronic stress: {:.2} → {:.2}", before, s.chronic_stress);
+        assert!(
+            s.chronic_stress > before,
+            "high cortisol should raise chronic stress: {:.2} → {:.2}",
+            before,
+            s.chronic_stress
+        );
     }
 
     #[test]
@@ -301,8 +380,11 @@ mod tests {
         let mut s = SubgenualACC::new();
         s.chronic_stress = 0.50;
         s.process("neutral text", 0.10, 0.10, 0.80);
-        assert!(s.chronic_stress < 0.50,
-            "good bond + low cortisol should reduce stress: {:.2}", s.chronic_stress);
+        assert!(
+            s.chronic_stress < 0.50,
+            "good bond + low cortisol should reduce stress: {:.2}",
+            s.chronic_stress
+        );
     }
 
     #[test]
@@ -328,10 +410,16 @@ mod tests {
         for _ in 0..20 {
             s.decay();
         }
-        assert!(s.grief_signal < 0.50,
-            "grief should decay over time: {:.2}", s.grief_signal);
-        assert!(s.grief_signal > 0.0,
-            "grief should not vanish instantly: {:.2}", s.grief_signal);
+        assert!(
+            s.grief_signal < 0.50,
+            "grief should decay over time: {:.2}",
+            s.grief_signal
+        );
+        assert!(
+            s.grief_signal > 0.0,
+            "grief should not vanish instantly: {:.2}",
+            s.grief_signal
+        );
     }
 
     #[test]
@@ -341,8 +429,11 @@ mod tests {
         for _ in 0..100 {
             s.decay();
         }
-        assert!(s.mood_floor < 0.80,
-            "mood should drift toward baseline: {:.2}", s.mood_floor);
+        assert!(
+            s.mood_floor < 0.80,
+            "mood should drift toward baseline: {:.2}",
+            s.mood_floor
+        );
         assert!(s.mood_floor >= MOOD_BASELINE - 0.05);
     }
 

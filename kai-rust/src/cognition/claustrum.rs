@@ -45,7 +45,6 @@
 ///   PFC meta-confidence → scales conductor_signal
 ///   Receives from: thalamus, GW, PFC, amygdala
 ///   Sends to: all cortical systems (via conductor_signal)
-
 use std::collections::VecDeque;
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -110,10 +109,10 @@ pub struct Claustrum {
 impl Claustrum {
     pub fn new() -> Self {
         Self {
-            active_bindings:    VecDeque::with_capacity(MAX_BINDINGS),
-            binding_coherence:  0.0,
-            integration_score:  0.50,
-            binding_cycles:     0,
+            active_bindings: VecDeque::with_capacity(MAX_BINDINGS),
+            binding_coherence: 0.0,
+            integration_score: 0.50,
+            binding_cycles: 0,
             integrated_moments: 0,
         }
     }
@@ -125,8 +124,13 @@ impl Claustrum {
     /// content: what is being bound (short text)
     /// salience: how salient this content is (0.0–1.0)
     /// meta_confidence: PFC's confidence level (scales conductor)
-    pub fn bind(&mut self, source: &str, content: &str, salience: f32,
-                meta_confidence: f32) -> ClaustrumOutput {
+    pub fn bind(
+        &mut self,
+        source: &str,
+        content: &str,
+        salience: f32,
+        meta_confidence: f32,
+    ) -> ClaustrumOutput {
         self.binding_cycles += 1;
 
         if salience >= BINDING_THRESHOLD {
@@ -135,10 +139,10 @@ impl Claustrum {
                 self.active_bindings.pop_front();
             }
             self.active_bindings.push_back(BoundStream {
-                source:  source.to_string(),
+                source: source.to_string(),
                 content: content.chars().take(60).collect(),
                 salience,
-                age:     0,
+                age: 0,
             });
         }
 
@@ -152,8 +156,11 @@ impl Claustrum {
             0.0
         } else {
             let n = self.active_bindings.len() as f32;
-            let sum: f32 = self.active_bindings.iter().enumerate()
-                .map(|(i, b)| b.salience * ((i + 1) as f32 / n))  // newer = more weight
+            let sum: f32 = self
+                .active_bindings
+                .iter()
+                .enumerate()
+                .map(|(i, b)| b.salience * ((i + 1) as f32 / n)) // newer = more weight
                 .sum();
             (sum / n).min(1.0)
         };
@@ -161,8 +168,8 @@ impl Claustrum {
 
         // Integration score EMA
         let sample = coherence * meta_confidence;
-        self.integration_score = self.integration_score * (1.0 - INTEGRATION_EMA)
-            + sample * INTEGRATION_EMA;
+        self.integration_score =
+            self.integration_score * (1.0 - INTEGRATION_EMA) + sample * INTEGRATION_EMA;
 
         let fully_integrated = coherence > 0.60 && self.active_bindings.len() >= 2;
         if fully_integrated {
@@ -214,7 +221,9 @@ impl Claustrum {
 }
 
 impl Default for Claustrum {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -234,7 +243,12 @@ mod tests {
     #[test]
     fn test_bind_above_threshold() {
         let mut c = Claustrum::new();
-        let out = c.bind("reasoning", "consciousness and awareness are central", 0.70, 0.80);
+        let out = c.bind(
+            "reasoning",
+            "consciousness and awareness are central",
+            0.70,
+            0.80,
+        );
         assert!(out.stream_count >= 1, "stream should be bound");
         assert!(out.binding_coherence > 0.0);
     }
@@ -243,7 +257,10 @@ mod tests {
     fn test_bind_below_threshold_ignored() {
         let mut c = Claustrum::new();
         let out = c.bind("noise", "irrelevant low-salience signal", 0.10, 0.50);
-        assert_eq!(out.stream_count, 0, "sub-threshold signal should not be bound");
+        assert_eq!(
+            out.stream_count, 0,
+            "sub-threshold signal should not be bound"
+        );
     }
 
     #[test]
@@ -263,8 +280,11 @@ mod tests {
         for i in 0..MAX_BINDINGS + 2 {
             c.bind("source", &format!("content {}", i), 0.70, 0.80);
         }
-        assert!(c.active_bindings.len() <= MAX_BINDINGS,
-            "should not exceed max bindings: {}", c.active_bindings.len());
+        assert!(
+            c.active_bindings.len() <= MAX_BINDINGS,
+            "should not exceed max bindings: {}",
+            c.active_bindings.len()
+        );
     }
 
     #[test]
@@ -275,7 +295,12 @@ mod tests {
         let mut c2 = Claustrum::new();
         c2.bind("reasoning", "test content here", 0.30, 0.30);
         let low = c2.conductor_signal();
-        assert!(high >= low, "higher coherence → higher conductor: {:.2} vs {:.2}", high, low);
+        assert!(
+            high >= low,
+            "higher coherence → higher conductor: {:.2} vs {:.2}",
+            high,
+            low
+        );
     }
 
     #[test]
@@ -286,8 +311,12 @@ mod tests {
         for _ in 0..5 {
             c.decay();
         }
-        assert!(c.binding_coherence < before,
-            "coherence should decay: {:.2} → {:.2}", before, c.binding_coherence);
+        assert!(
+            c.binding_coherence < before,
+            "coherence should decay: {:.2} → {:.2}",
+            before,
+            c.binding_coherence
+        );
     }
 
     #[test]
@@ -298,8 +327,11 @@ mod tests {
         for _ in 0..16 {
             c.decay();
         }
-        assert_eq!(c.active_bindings.len(), 0,
-            "stale bindings should be removed after 15+ ticks");
+        assert_eq!(
+            c.active_bindings.len(),
+            0,
+            "stale bindings should be removed after 15+ ticks"
+        );
     }
 
     #[test]

@@ -1,3 +1,4 @@
+use crate::cognition::candidates::CandidateBuffer;
 /// Persistence — Save and restore KAI's full cognitive state.
 ///
 /// Biology analog: Long-term memory consolidation to permanent substrate.
@@ -5,9 +6,7 @@
 ///
 /// Saves: universe cells, candidate buffer, drive state, tick count.
 /// Format: JSON snapshot with atomic write (write .tmp, rename).
-
 use crate::core::Universe;
-use crate::cognition::candidates::CandidateBuffer;
 use crate::drive::Drive;
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -102,9 +101,19 @@ pub fn save(
                 }
                 Err(_) => {}
             }
-            SaveResult { ok: false, cells: 0, candidates: 0, bytes: 0 }
+            SaveResult {
+                ok: false,
+                cells: 0,
+                candidates: 0,
+                bytes: 0,
+            }
         }
-        Err(_) => SaveResult { ok: false, cells: 0, candidates: 0, bytes: 0 },
+        Err(_) => SaveResult {
+            ok: false,
+            cells: 0,
+            candidates: 0,
+            bytes: 0,
+        },
     }
 }
 
