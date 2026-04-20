@@ -325,7 +325,7 @@ mod tests {
         let load_before = cort.allostatic_load;
         cort.process(CortisolEvent::Resolution);
         cort.process(CortisolEvent::Resolution);
-        let load_after = cort.allostatic_load;
+        let _load_after = cort.allostatic_load;
         // Load may persist after quick recovery
         assert!(load_before > 0.0, "load should have built up");
         // After sleep it should reduce
@@ -346,7 +346,7 @@ mod tests {
 
     #[test]
     fn test_emotional_reactivity_rises_with_cortisol() {
-        let mut cort_low = CortisolSystem::new();
+        let cort_low = CortisolSystem::new();
         let mut cort_high = CortisolSystem::new();
         for _ in 0..10 { cort_high.process(CortisolEvent::UnresolvedConflict); }
         let low_react = cort_low.cognitive_state().emotional_reactivity;

@@ -375,7 +375,7 @@ mod tests {
             ("strong important concept".to_string(), 2.0),
             ("very weak noise cell x".to_string(), 0.06),  // 0.06 * 0.92 = 0.055 < 0.08
         ];
-        let (report, _, prune, _) = sleep.run_cycle(&events, &cells, 2000);
+        let (_report, _, prune, _) = sleep.run_cycle(&events, &cells, 2000);
         assert!(!prune.is_empty(), "should flag weak cells for pruning");
         assert!(prune.iter().any(|p| p.contains("weak noise")),
             "weak cell should be pruned: {:?}", prune);
@@ -391,7 +391,7 @@ mod tests {
             ("recursive algorithms create emergent complexity patterns".to_string(), 0.8, 0.9),
         ];
         let cells: Vec<(String, f32)> = vec![];
-        let (report, _, _, insights) = sleep.run_cycle(&events, &cells, 2000);
+        let (report, _, _, _insights) = sleep.run_cycle(&events, &cells, 2000);
         // These share words like "recursive", "patterns", "emerges/emergent"
         // REM should potentially find a connection
         assert!(report.novel_associations <= MAX_REM_ASSOCIATIONS,

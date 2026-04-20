@@ -335,7 +335,7 @@ mod tests {
 
     #[test]
     fn test_arousal_opens_gate() {
-        let mut thal_low  = ThalamicRelay::new();
+        let thal_low  = ThalamicRelay::new();
         let mut thal_high = ThalamicRelay::new();
         thal_high.set_arousal(0.9);
 
@@ -361,7 +361,7 @@ mod tests {
 
     #[test]
     fn test_reduced_gating_narrows_gate() {
-        let mut thal_normal  = ThalamicRelay::new();
+        let thal_normal  = ThalamicRelay::new();
         let mut thal_reduced = ThalamicRelay::new();
         thal_reduced.reduce_gating();
 

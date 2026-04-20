@@ -337,7 +337,7 @@ mod tests {
 
     #[test]
     fn test_disclosure_comfort_rises_with_bond() {
-        let mut ot_low = OxytocinSystem::new();
+        let ot_low = OxytocinSystem::new();
         let mut ot_high = OxytocinSystem::new();
         for _ in 0..10 {
             ot_high.process(OxytocinEvent::DeepEngagement);
