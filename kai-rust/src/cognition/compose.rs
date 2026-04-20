@@ -170,6 +170,7 @@ mod tests {
             region: "memory".into(),
             score: 0.85,
             strength: 2.0,
+            source: "seed".into(),
         }];
         let response = compose_response(&hits, "what is KAI", 5);
         assert_eq!(response.depth, 1);
@@ -184,12 +185,14 @@ mod tests {
                 region: "memory".into(),
                 score: 0.85,
                 strength: 2.0,
+                source: "seed".into(),
             },
             QueryHit {
                 text: "KAI was created by Ryan".into(),
                 region: "memory".into(),
                 score: 0.72,
                 strength: 2.0,
+                source: "seed".into(),
             },
         ];
         let response = compose_response(&hits, "tell me about KAI", 5);
