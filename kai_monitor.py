@@ -323,7 +323,7 @@ for sp in ax_st.spines.values(): sp.set_edgecolor("#0c1e1e")
 fig.text(0.01, 0.97, "KAI  BRAIN  HEALTH  MONITOR",
          color="#00cfff", fontsize=13, fontweight="bold",
          va="top", ha="left", fontfamily="monospace")
-live_dot      = fig.text(0.38, 0.97, "⬤  LIVE", color="#00ff88", fontsize=10,
+live_dot      = fig.text(0.38, 0.97, "●  LIVE", color="#00ff88", fontsize=10,
                           fontweight="bold", va="top", ha="left", fontfamily="monospace")
 reload_banner = fig.text(0.52, 0.97, "", color="#ffdd44", fontsize=9,
                           fontweight="bold", va="top", ha="left", fontfamily="monospace")
@@ -439,17 +439,17 @@ def update(frame):
         reload_banner.set_text("")
 
     if _state["frozen"]:
-        live_dot.set_text("⬤  FROZEN")
+        live_dot.set_text("●  FROZEN")
         live_dot.set_color("#ffdd44" if blink else "#886600")
         return
 
     with _lock:
         if not shared["ready"]:
-            live_dot.set_text("⬤  LOADING…" if blink else "   LOADING…")
+            live_dot.set_text("●  LOADING…" if blink else "   LOADING…")
             live_dot.set_color("#ffdd44")
             return
         if shared["error"]:
-            live_dot.set_text("⬤  NO DATA")
+            live_dot.set_text("●  NO DATA")
             live_dot.set_color("#ff4466" if blink else "#882222")
             subtitle.set_text(shared["error"][:90])
             return
@@ -471,7 +471,7 @@ def update(frame):
         n_rows   = shared["n_rows"]
         updated  = shared["updated"]
 
-    live_dot.set_text("⬤  LIVE" if blink else "   LIVE")
+    live_dot.set_text("●  LIVE" if blink else "   LIVE")
     live_dot.set_color("#00ff88" if blink else "#004422")
 
     subtitle.set_text(
