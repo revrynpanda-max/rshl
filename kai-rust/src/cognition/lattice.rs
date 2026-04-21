@@ -88,6 +88,25 @@ pub struct DreamResult {
     pub is_non_source: bool,
     pub source_reinforcement: f32,
     pub promotion_ready: bool,
+    /// Discovery synthesis — a newly-phrased cell the dream cycle
+    /// *invented* by noticing that two source cells share concepts but
+    /// no existing cell captures that connection well. When `Some`, the
+    /// caller should store this text as a new cell via
+    /// `store_synthesis()`. This is how KAI grows new understanding
+    /// from what he already has.
+    pub synthesis: Option<DreamSynthesis>,
+}
+
+/// A newly-phrased discovery cell produced by dream consolidation.
+/// Stored via `store_synthesis()`, which uses `store_or_reinforce` so
+/// repeated same-synthesis discoveries just strengthen the existing
+/// synthesis cell instead of duplicating.
+#[derive(Debug, Clone)]
+pub struct DreamSynthesis {
+    pub text: String,
+    pub region: String,
+    pub shared_concepts: Vec<String>,
+    pub strength: f32,
 }
 
 /// Compute replay priority for a cell.
@@ -349,6 +368,48 @@ pub fn consolidate(universe: &Universe) -> Option<DreamResult> {
         && field.chi <= 0.45
         && field.phi_g >= 0.03;
 
+    // ── DISCOVERY SYNTHESIS ─────────────────────────────────────────────
+    //
+    // Beyond picking an existing insight cell, check whether this
+    // dream pairing reveals a *new* connection that isn't captured by
+    // any existing cell. The gate is narrow on purpose:
+    //
+    //   - The existing best-match confidence is only moderate
+    //     (0.25..0.60) — good enough to prove the bundle is
+    //     meaningful, but not good enough to mean an existing cell
+    //     already states this insight.
+    //   - The two source cells share at least two significant concept
+    //     words at the surface level — i.e. they're really about
+    //     related things, not a random collision.
+    //   - Field chi is low enough that the pairing isn't just noise.
+    //
+    // When those all hold, we synthesize a short statement naming
+    // the connection and return it so the caller can store it as a
+    // brand-new cell in the lattice. That cell then participates in
+    // future retrievals and future dreams — classic associative
+    // branching.
+    let synthesis = if !duplicate_echo
+        && confidence >= 0.25
+        && confidence < 0.60
+        && field.chi <= 0.35
+        && field.phi_g >= 0.02
+    {
+        let shared = shared_concept_words(&a.text, &b.text);
+        if shared.len() >= 2 {
+            let text = build_synthesis_text(&a.text, &b.text, &shared);
+            Some(DreamSynthesis {
+                text,
+                region: "synthesis".to_string(),
+                shared_concepts: shared,
+                strength: 1.0,
+            })
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
     // Source reinforcement based on Wm
     let reinforce_by = if promotion_ready {
         field.wm.max(0.05).min(0.30) * 0.60
@@ -390,7 +451,103 @@ pub fn consolidate(universe: &Universe) -> Option<DreamResult> {
         is_non_source,
         source_reinforcement: reinforce_by,
         promotion_ready,
+        synthesis,
     })
+}
+
+/// Return the set of significant words that appear in BOTH texts.
+/// Stopwords and short words are dropped; remaining words are
+/// lowercased and deduplicated. This is the surface-level overlap
+/// check used by discovery synthesis — it proves the two source
+/// cells really are about related things, not a coincidental
+/// vector collision.
+fn shared_concept_words(a: &str, b: &str) -> Vec<String> {
+    const STOPWORDS: &[&str] = &[
+        "the", "and", "but", "for", "nor", "yet", "all", "any", "are",
+        "can", "did", "does", "doesn", "don", "each", "from", "had",
+        "has", "have", "here", "how", "its", "just", "like", "more",
+        "most", "much", "may", "might", "must", "not", "now", "off",
+        "often", "only", "other", "our", "out", "over", "own", "same",
+        "she", "should", "some", "such", "than", "that", "their",
+        "them", "then", "there", "these", "they", "this", "those",
+        "through", "too", "under", "very", "was", "were", "what", "when",
+        "where", "which", "while", "who", "why", "will", "with", "would",
+        "you", "your", "being", "because", "however", "therefore",
+        "about", "also", "usually", "typically", "often", "many",
+        "several", "various", "some", "example", "examples", "called",
+        "known", "into", "using", "used", "based", "between", "within",
+        "means", "refers",
+    ];
+    let normalize = |s: &str| -> std::collections::HashSet<String> {
+        s.split(|c: char| !c.is_alphanumeric())
+            .map(|w| w.trim().to_lowercase())
+            .filter(|w| {
+                w.len() >= 4
+                    && w.chars().all(|c| c.is_alphabetic())
+                    && !STOPWORDS.contains(&w.as_str())
+            })
+            .collect()
+    };
+    let sa = normalize(a);
+    let sb = normalize(b);
+    let mut shared: Vec<String> = sa.intersection(&sb).cloned().collect();
+    shared.sort(); // Stable ordering for reproducibility
+    shared
+}
+
+/// Build the synthesis statement for a newly-discovered connection.
+///
+/// The text is deliberately short and factual. It names the shared
+/// concepts and gestures at both sources without quoting them fully
+/// (long cells make retrieval noisier). The resulting cell reads as
+/// a compressed claim about what connects two prior pieces of
+/// knowledge — the kind of insight you'd expect after a night's
+/// thought.
+fn build_synthesis_text(a: &str, b: &str, shared: &[String]) -> String {
+    let concept_phrase = match shared.len() {
+        0 => return String::new(), // caller already filters this
+        1 => shared[0].clone(),
+        2 => format!("{} and {}", shared[0], shared[1]),
+        _ => format!(
+            "{}, {}, and {}",
+            shared[0],
+            shared[1],
+            shared[2..].join(", ")
+        ),
+    };
+
+    // Produce a short gloss of each source: first ~8 words, no trailing period.
+    let gloss = |s: &str| -> String {
+        let trimmed = s.trim_end_matches(|c: char| matches!(c, '.' | '!' | '?'));
+        let words: Vec<&str> = trimmed.split_whitespace().take(8).collect();
+        let mut g = words.join(" ");
+        // If we truncated, add an ellipsis so the gloss is honest
+        if trimmed.split_whitespace().count() > 8 {
+            g.push('…');
+        }
+        g
+    };
+
+    format!(
+        "The concept of {} connects '{}' with '{}'.",
+        concept_phrase,
+        gloss(a),
+        gloss(b)
+    )
+}
+
+/// Apply a dream's discovery synthesis to the universe. Creates the
+/// synthesis cell via `store_or_reinforce`, so re-discovery of the
+/// same connection strengthens the existing cell instead of spawning
+/// duplicates. Returns true if a new cell was created.
+pub fn store_synthesis(universe: &mut Universe, dream: &DreamResult) -> bool {
+    let Some(syn) = dream.synthesis.as_ref() else {
+        return false;
+    };
+    if syn.text.is_empty() {
+        return false;
+    }
+    universe.store_or_reinforce(&syn.text, &syn.region, "dream-discovery", syn.strength)
 }
 
 /// Observe a dream result and feed it into the candidate buffer.

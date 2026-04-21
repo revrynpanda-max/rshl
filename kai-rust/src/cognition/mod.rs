@@ -22,6 +22,7 @@ pub mod habenula;
 pub mod hippocampus;
 pub mod homeostasis;
 pub mod hypothalamus;
+pub mod idle_ingest;
 pub mod inner_voice;
 pub mod insula;
 pub mod ipl;
@@ -56,6 +57,7 @@ pub mod reasoner;
 pub mod rsc;
 pub mod scn;
 pub mod self_state_hub;
+pub mod self_state_seed;
 pub mod septal_nuclei;
 pub mod serotonin;
 pub mod sgacc;
@@ -101,13 +103,17 @@ pub use habenula::{Habenula, HabenulaOutput, HabenulaSignal};
 pub use hippocampus::{CompletionResult, Hippocampus, SeparationResult};
 pub use homeostasis::{run_homeostasis, HomeostasisConfig};
 pub use hypothalamus::{HypothalamicEvent, HypothalamicOutput, Hypothalamus};
+pub use idle_ingest::{IdleIngest, IngestReport};
 pub use inner_voice::{explore_lexicon_binding, validate_insight, InsightVerdict};
 pub use insula::{FeltCondition, InsulaMonitor};
 pub use ipl::{AnalogyMapping, CrossDomainLink, IPLOutput, InferiorParietalLobule};
 pub use language::{
     BrocaAnalysis, LanguageSystem, ProductionStyle, SentenceType, WernickeAnalysis,
 };
-pub use lattice::{consolidate, gate_stats, observe_dream, reinforce_dream_sources, GateStats};
+pub use lattice::{
+    consolidate, gate_stats, observe_dream, reinforce_dream_sources, store_synthesis,
+    DreamSynthesis, GateStats,
+};
 pub use lexsem::{LexSemEngine, LexSemOutput, ResponseRegister, SemanticField};
 pub use locus_coeruleus::{LCMode, LCOutput, LocusCoeruleus};
 pub use mammillary_bodies::{MBOutput, MammillaryBodies};
@@ -137,6 +143,7 @@ pub use reasoner::{ContextSlot, Reasoner};
 pub use rsc::{RSCOutput, RetrosplenialCortex, TemporalEpoch};
 pub use scn::{SCNOutput, SuprachiasmaticNucleus};
 pub use self_state_hub::{classify_question, HubFrame, QuestionKind, SelfStateHub, TrajectoryShape};
+pub use self_state_seed::seed_self_state_phrases;
 pub use septal_nuclei::{SeptalEvent, SeptalNuclei, SeptalOutput};
 pub use serotonin::{SerotoninEvent, SerotoninSystem};
 pub use sgacc::{SgACCOutput, SubgenualACC};

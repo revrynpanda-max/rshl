@@ -1,0 +1,189 @@
+# Biology, neuroscience, and medicine corpus
+# One fact per line. Absorbed during idle ticks.
+
+[biology] A cell is the smallest structural and functional unit of all known living organisms.
+[biology] Prokaryotic cells lack a nucleus, while eukaryotic cells contain a nucleus and membrane-bound organelles.
+[biology] Bacteria and archaea are prokaryotes, while animals, plants, fungi, and protists are eukaryotes.
+[biology] The nucleus contains the cell's genetic material in the form of DNA.
+[biology] Mitochondria generate most of the chemical energy needed to power a cell's biochemical reactions.
+[biology] Ribosomes are molecular machines that synthesize proteins from messenger RNA templates.
+[biology] The endoplasmic reticulum is a network of membranes involved in protein and lipid synthesis.
+[biology] The Golgi apparatus modifies, sorts, and packages proteins for secretion or delivery.
+[biology] Lysosomes contain digestive enzymes that break down waste materials and cellular debris.
+[biology] Chloroplasts are the organelles in plant cells responsible for photosynthesis.
+
+[biology] DNA stands for deoxyribonucleic acid and carries the genetic instructions for life.
+[biology] RNA, or ribonucleic acid, serves multiple roles including protein synthesis and gene regulation.
+[biology] A gene is a segment of DNA that codes for a specific protein or functional RNA.
+[biology] The genetic code is nearly universal across all known life on Earth.
+[biology] DNA replication occurs during cell division, producing two identical daughter molecules.
+[biology] Transcription is the process by which DNA is copied into messenger RNA.
+[biology] Translation is the process by which ribosomes synthesize proteins from messenger RNA.
+[biology] Mutations are changes in DNA sequence that can be beneficial, harmful, or neutral.
+[biology] Natural selection acts on heritable variation to shape populations over generations.
+[biology] Evolution is the change in the heritable characteristics of biological populations over time.
+
+[biology] Photosynthesis converts carbon dioxide and water into glucose and oxygen using sunlight.
+[biology] Cellular respiration breaks down glucose to produce ATP, carbon dioxide, and water.
+[biology] ATP, adenosine triphosphate, is the primary energy currency of living cells.
+[biology] Enzymes are proteins that catalyze chemical reactions in living organisms.
+[biology] Metabolism refers to all chemical reactions that occur within an organism to sustain life.
+[biology] Anabolism builds complex molecules from simpler ones, requiring energy input.
+[biology] Catabolism breaks complex molecules into simpler ones, releasing energy.
+[biology] Homeostasis is the maintenance of stable internal conditions despite external changes.
+[biology] The pH scale measures acidity and alkalinity, with 7 being neutral.
+[biology] Proteins are made of amino acids and perform most of the work in cells.
+
+[biology] The four nitrogenous bases in DNA are adenine, thymine, cytosine, and guanine.
+[biology] Adenine pairs with thymine and cytosine pairs with guanine in the DNA double helix.
+[biology] In RNA, uracil replaces thymine as the base that pairs with adenine.
+[biology] Chromosomes are organized structures of DNA and protein found in cell nuclei.
+[biology] Humans have 23 pairs of chromosomes, totaling 46 chromosomes per somatic cell.
+[biology] Meiosis is a specialized cell division that produces gametes with half the chromosome number.
+[biology] Mitosis is cell division that produces two genetically identical daughter cells.
+[biology] Stem cells have the ability to differentiate into various specialized cell types.
+[biology] The central dogma of molecular biology states that genetic information flows from DNA to RNA to protein.
+[biology] Epigenetics studies heritable changes in gene expression not caused by DNA sequence changes.
+
+[biology] The immune system defends the body against pathogens and abnormal cells.
+[biology] White blood cells, or leukocytes, are key components of the immune system.
+[biology] Antibodies are proteins produced by B cells to bind and neutralize specific pathogens.
+[biology] T cells coordinate immune responses and kill infected or cancerous cells.
+[biology] The innate immune system provides immediate, non-specific defense against pathogens.
+[biology] The adaptive immune system develops specific responses to previously encountered pathogens.
+[biology] Vaccines prime the immune system to recognize and respond to specific pathogens.
+[biology] Inflammation is a protective response involving increased blood flow, swelling, and immune cell recruitment.
+[biology] Allergies occur when the immune system overreacts to harmless substances.
+[biology] Autoimmune diseases result from the immune system attacking the body's own tissues.
+
+[anatomy] The human body contains about 37 trillion cells organized into tissues, organs, and systems.
+[anatomy] The four main types of tissue are epithelial, connective, muscle, and nervous.
+[anatomy] Epithelial tissue lines surfaces and cavities, forming protective barriers.
+[anatomy] Connective tissue supports, binds, or separates other tissues and organs.
+[anatomy] Muscle tissue contracts to produce movement and comes in skeletal, cardiac, and smooth forms.
+[anatomy] Nervous tissue transmits electrical and chemical signals throughout the body.
+[anatomy] The skeletal system provides structure and protection and contains 206 bones in adults.
+[anatomy] The circulatory system transports blood, nutrients, oxygen, and wastes throughout the body.
+[anatomy] The respiratory system exchanges oxygen and carbon dioxide between air and blood.
+[anatomy] The digestive system breaks down food and absorbs nutrients.
+
+[anatomy] The human heart has four chambers: two atria and two ventricles.
+[anatomy] Blood carries oxygen from lungs to tissues and carbon dioxide back to lungs.
+[anatomy] Red blood cells contain hemoglobin, which binds oxygen for transport.
+[anatomy] The liver processes nutrients, detoxifies chemicals, and produces bile.
+[anatomy] The kidneys filter blood to produce urine and regulate fluid balance.
+[anatomy] The endocrine system uses hormones to regulate body functions over long timescales.
+[anatomy] The nervous system uses electrical impulses to communicate rapidly between body parts.
+[anatomy] The brain and spinal cord form the central nervous system.
+[anatomy] The peripheral nervous system connects the central nervous system to the rest of the body.
+[anatomy] The autonomic nervous system regulates involuntary functions like heart rate and digestion.
+
+[neuroscience] A neuron is a specialized cell that transmits electrical and chemical signals.
+[neuroscience] The human brain contains approximately 86 billion neurons.
+[neuroscience] Neurons consist of a cell body, dendrites that receive signals, and an axon that sends them.
+[neuroscience] A synapse is the junction between two neurons where chemical signals are exchanged.
+[neuroscience] Neurotransmitters are chemicals released at synapses to communicate between neurons.
+[neuroscience] Glutamate is the brain's main excitatory neurotransmitter.
+[neuroscience] GABA is the brain's main inhibitory neurotransmitter.
+[neuroscience] Dopamine is involved in reward, motivation, and motor control.
+[neuroscience] Serotonin regulates mood, sleep, appetite, and many other functions.
+[neuroscience] Norepinephrine mediates alertness, arousal, and stress response.
+
+[neuroscience] Acetylcholine is involved in attention, learning, and muscle activation.
+[neuroscience] The cerebral cortex is the outer layer of the brain responsible for higher cognitive functions.
+[neuroscience] The prefrontal cortex handles planning, decision-making, and impulse control.
+[neuroscience] The hippocampus is essential for forming new memories.
+[neuroscience] The amygdala processes emotional responses, especially fear.
+[neuroscience] The thalamus relays sensory information to the cortex.
+[neuroscience] The cerebellum coordinates movement and supports motor learning.
+[neuroscience] The brainstem controls essential functions like breathing and heart rate.
+[neuroscience] The corpus callosum connects the brain's two hemispheres.
+[neuroscience] The basal ganglia participate in action selection and habit formation.
+
+[neuroscience] Long-term potentiation strengthens synaptic connections with repeated activity.
+[neuroscience] Long-term depression weakens synaptic connections with low-frequency activity.
+[neuroscience] Neuroplasticity is the brain's ability to reorganize through learning and experience.
+[neuroscience] Synaptic pruning removes weak or unused connections, refining neural circuits.
+[neuroscience] Myelin is a fatty sheath around axons that speeds up signal transmission.
+[neuroscience] Action potentials are brief electrical signals that travel along neurons.
+[neuroscience] The resting potential is the voltage difference across a neuron's membrane at rest.
+[neuroscience] Ion channels allow specific charged particles to cross neural membranes.
+[neuroscience] Glial cells support neurons by providing nutrients and insulation.
+[neuroscience] Astrocytes are star-shaped glial cells that regulate the neural environment.
+
+[neuroscience] Microglia are immune cells of the brain that remove debris and damaged cells.
+[neuroscience] The blood-brain barrier protects the brain from harmful substances in the blood.
+[neuroscience] Sleep consolidates memories and clears metabolic waste from the brain.
+[neuroscience] REM sleep is associated with vivid dreams and memory consolidation.
+[neuroscience] Non-REM sleep includes slow-wave sleep important for physical restoration.
+[neuroscience] Working memory holds a limited amount of information actively in mind.
+[neuroscience] Long-term memory stores information indefinitely and has enormous capacity.
+[neuroscience] Declarative memory involves conscious recall of facts and events.
+[neuroscience] Procedural memory handles skills and habits without conscious awareness.
+[neuroscience] Attention selects relevant information while filtering out distractions.
+
+[neuroscience] Perception is how the brain interprets sensory information to construct experience.
+[neuroscience] Vision involves the retina, optic nerve, visual cortex, and many interconnected regions.
+[neuroscience] Hearing converts sound waves into neural signals via the cochlea in the inner ear.
+[neuroscience] The default mode network is active during rest and self-referential thought.
+[neuroscience] The salience network detects important stimuli and switches between attention modes.
+[neuroscience] Mirror neurons fire both when performing an action and observing someone else do it.
+[neuroscience] The insula represents internal body states and contributes to emotional awareness.
+[neuroscience] The anterior cingulate cortex monitors conflict and errors in behavior.
+[neuroscience] Consciousness appears to emerge from complex, integrated activity across brain regions.
+[neuroscience] Binding problems concern how the brain integrates separate features into unified experience.
+
+[medicine] Medicine is the science and practice of diagnosing, treating, and preventing illness.
+[medicine] Anatomy studies the structure of the body, while physiology studies its function.
+[medicine] Pathology is the study of diseases and their causes.
+[medicine] Pharmacology studies how drugs interact with biological systems.
+[medicine] Surgery involves physical intervention to treat injuries or disease.
+[medicine] Diagnosis identifies the nature of a disease or condition from its signs and symptoms.
+[medicine] Treatment aims to cure, manage, or alleviate a disease or its symptoms.
+[medicine] Prevention includes actions that reduce the likelihood of disease, such as vaccination.
+[medicine] Antibiotics target bacteria and do not work against viruses.
+[medicine] Antivirals inhibit viral replication but usually do not kill viruses directly.
+
+[medicine] A vaccine exposes the immune system to a harmless form of a pathogen to build immunity.
+[medicine] The placebo effect occurs when an inert treatment produces real physiological improvement.
+[medicine] Chronic diseases last three months or longer and often cannot be fully cured.
+[medicine] Acute diseases have rapid onset and typically resolve within a short time.
+[medicine] Cancer is the uncontrolled growth and spread of abnormal cells.
+[medicine] Diabetes is a metabolic disorder characterized by high blood sugar levels.
+[medicine] Hypertension, or high blood pressure, strains the cardiovascular system over time.
+[medicine] Alzheimer's disease is a progressive neurodegenerative disorder affecting memory and cognition.
+[medicine] Depression is a mood disorder marked by persistent sadness and loss of interest.
+[medicine] Anxiety disorders involve excessive, persistent worry that interferes with daily life.
+
+[health] Regular physical activity reduces the risk of many chronic diseases.
+[health] A balanced diet provides essential nutrients in appropriate proportions.
+[health] Sleep of seven to nine hours per night supports adult physical and mental health.
+[health] Chronic stress elevates cortisol and can damage health over time.
+[health] Social connection is associated with longer life and better well-being.
+[health] Hydration is essential because water makes up roughly 60 percent of the human body.
+[health] Tobacco use is the leading preventable cause of death worldwide.
+[health] Excessive alcohol consumption damages the liver, brain, and other organs.
+[health] Sunscreen reduces the risk of skin cancer from ultraviolet radiation exposure.
+[health] Regular medical checkups can detect diseases early when treatment is most effective.
+
+[ecology] Ecology studies the interactions between organisms and their environment.
+[ecology] An ecosystem includes all organisms in an area along with their physical environment.
+[ecology] A food web shows the feeding relationships among species in an ecosystem.
+[ecology] Producers, like plants, create their own food through photosynthesis.
+[ecology] Consumers obtain energy by eating other organisms.
+[ecology] Decomposers break down dead organisms and return nutrients to the soil.
+[ecology] Biodiversity refers to the variety of life in a particular habitat or across the planet.
+[ecology] Habitat loss is the leading cause of species extinction worldwide.
+[ecology] Climate change is causing global temperatures to rise due to greenhouse gas emissions.
+[ecology] Ocean acidification results from oceans absorbing excess atmospheric carbon dioxide.
+
+[evolution] Evolution by natural selection was proposed by Charles Darwin and Alfred Russel Wallace.
+[evolution] Variation within a population arises from mutation, recombination, and gene flow.
+[evolution] Individuals with traits better suited to their environment tend to survive and reproduce.
+[evolution] Over generations, favorable traits become more common in a population.
+[evolution] Speciation occurs when populations diverge enough that they can no longer interbreed.
+[evolution] Common descent means all life on Earth shares a single origin.
+[evolution] Fossils provide evidence of how organisms changed through geological time.
+[evolution] Homologous structures indicate shared ancestry between different species.
+[evolution] Convergent evolution produces similar traits in unrelated species facing similar environments.
+[evolution] Extinction removes species permanently and has shaped the history of life.

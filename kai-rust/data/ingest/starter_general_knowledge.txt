@@ -1,0 +1,67 @@
+# KAI starter corpus — general knowledge
+# One fact per line. Optional [region] prefix.
+# This file is ingested automatically during idle heartbeats.
+# When fully absorbed, it will be moved to ../ingested/.
+
+[science] Water is composed of two hydrogen atoms bonded to one oxygen atom, with the chemical formula H2O.
+[science] The speed of light in a vacuum is approximately 299,792,458 meters per second.
+[science] DNA stands for deoxyribonucleic acid and carries the genetic instructions of all known living organisms.
+[science] Photosynthesis is the process by which plants convert carbon dioxide and water into glucose and oxygen using sunlight.
+[science] A neuron is a specialized cell that transmits information through electrical and chemical signals.
+[science] The human brain contains approximately 86 billion neurons connected by trillions of synapses.
+[science] Mitochondria are the organelles inside cells that produce most of the cell's supply of ATP used as chemical energy.
+[science] The four fundamental forces in physics are gravity, electromagnetism, the strong nuclear force, and the weak nuclear force.
+[science] Evolution by natural selection is the process by which organisms better adapted to their environment tend to survive and reproduce.
+[science] An atom consists of a dense nucleus of protons and neutrons surrounded by a cloud of electrons.
+[science] The three classical states of matter are solid, liquid, and gas, though plasma is often considered a fourth.
+[science] Entropy, in thermodynamics, is a measure of the disorder or randomness in a closed system and tends to increase over time.
+[science] Quantum mechanics describes the behavior of matter and energy at the scale of atoms and subatomic particles.
+[science] The Big Bang theory describes the origin of the universe as an expansion from an extremely hot, dense initial state about 13.8 billion years ago.
+[science] A black hole is a region of spacetime where gravity is so strong that nothing, not even light, can escape it.
+
+[history] The Roman Empire fell in 476 CE when the last emperor was deposed by the Germanic chieftain Odoacer.
+[history] The Renaissance was a period of cultural and intellectual rebirth in Europe that began in the 14th century and continued into the 17th.
+[history] The printing press was invented by Johannes Gutenberg around 1440 and revolutionized the spread of information.
+[history] World War I began in 1914 and ended in 1918, resulting in the deaths of millions and reshaping global borders.
+[history] World War II lasted from 1939 to 1945 and was the deadliest conflict in human history.
+[history] The Industrial Revolution began in Britain in the late 18th century and transformed economies from agricultural to manufacturing based.
+[history] The American Declaration of Independence was signed on July 4, 1776.
+[history] The Berlin Wall, which divided East and West Berlin, fell on November 9, 1989, symbolizing the end of the Cold War.
+[history] Ancient Egypt's civilization flourished along the Nile River for roughly 3,000 years.
+[history] The Silk Road was a network of trade routes connecting the East and West from the 2nd century BCE to the 18th century.
+
+[programming] A variable is a named container that holds a value which can be changed during program execution.
+[programming] A function is a reusable block of code that performs a specific task and can take inputs and return outputs.
+[programming] An algorithm is a step-by-step procedure for solving a problem or accomplishing a task.
+[programming] Object-oriented programming organizes code around objects that contain both data and behavior.
+[programming] Recursion is a technique where a function calls itself to solve smaller instances of the same problem.
+[programming] A compiler translates source code written in a high-level language into machine code that a computer can execute.
+[programming] Rust is a systems programming language focused on safety, concurrency, and performance without a garbage collector.
+[programming] A hash map is a data structure that stores key-value pairs and offers near-constant-time lookup.
+[programming] The time complexity of an algorithm describes how its runtime grows with input size, often expressed in Big O notation.
+[programming] A pointer is a variable that stores the memory address of another variable.
+[programming] Concurrency is the ability of a system to handle multiple tasks making progress at the same time.
+[programming] Git is a distributed version control system that tracks changes to files over time.
+
+[philosophy] Consciousness is the state of being aware of and able to think about one's own existence and surroundings.
+[philosophy] Descartes' famous statement "I think, therefore I am" asserts that the act of thinking is evidence of one's existence.
+[philosophy] Ethics is the branch of philosophy concerned with what constitutes right and wrong behavior.
+[philosophy] The Ship of Theseus is a thought experiment that questions whether an object remains the same after all its parts have been replaced.
+[philosophy] Free will is the capacity of agents to choose between different possible courses of action.
+
+[math] Pi is the ratio of a circle's circumference to its diameter, approximately 3.14159.
+[math] The Pythagorean theorem states that in a right triangle, the square of the hypotenuse equals the sum of squares of the other two sides.
+[math] A prime number is a natural number greater than 1 that has no positive divisors other than 1 and itself.
+[math] The Fibonacci sequence is a series where each number is the sum of the two preceding ones, starting with 0 and 1.
+[math] Calculus is the mathematical study of continuous change, with two main branches: differential and integral calculus.
+
+[language] A noun is a word that names a person, place, thing, or idea.
+[language] A verb is a word that expresses an action, occurrence, or state of being.
+[language] Syntax refers to the rules governing the arrangement of words to form grammatical sentences.
+[language] A metaphor is a figure of speech that describes one thing by stating it is another, creating an implicit comparison.
+
+[cognition] Short-term memory typically holds information for about 15 to 30 seconds unless actively rehearsed.
+[cognition] Long-term memory can be divided into declarative memory (facts and events) and procedural memory (skills and procedures).
+[cognition] Attention is the cognitive process of selectively concentrating on specific information while ignoring other stimuli.
+[cognition] Pattern recognition is the ability to identify and categorize stimuli based on recurring features.
+[cognition] Metacognition is the awareness and understanding of one's own thought processes.

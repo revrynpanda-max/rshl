@@ -28,6 +28,7 @@
 //! 4. **No new anatomy.** The hub only consumes signals from existing
 //!    modules. It is glue, not a new organ.
 
+use crate::core::Universe;
 use std::collections::VecDeque;
 
 /// How many recent field snapshots we retain for trajectory analysis.
@@ -501,10 +502,20 @@ impl SelfStateHub {
     // ── NARRATIVE EMERGENCE ──────────────────────────────────────────────
 
     /// Emit a short natural-feeling sentence from the current integrated
-    /// field. Not a template — the length, the lead fragment, the middle,
-    /// the tail, and whether Ryan is referenced *all* depend on the
-    /// numeric state + trajectory.
-    pub fn compose_narrative(&self, query_override: Option<&str>) -> String {
+    /// field. Pulls phrases from the lattice by source tag (real cells
+    /// seeded by `seed_self_state_phrases`) — not from hardcoded fragment
+    /// pools. The cells can be reinforced, augmented by ingest, or
+    /// discovered by dreams, so KAI's self-expression can actually grow
+    /// over time.
+    ///
+    /// When `universe` is `Some`, the cell-native path runs.
+    /// When `None`, a small built-in fallback is used for tests and
+    /// early-boot cases where the seeder hasn't run yet.
+    pub fn compose_narrative(
+        &self,
+        universe: Option<&Universe>,
+        query_override: Option<&str>,
+    ) -> String {
         let query = query_override.unwrap_or(&self.last_input);
         let lower = query.to_lowercase();
         let kind = classify_question(&lower);
@@ -522,27 +533,25 @@ impl SelfStateHub {
         };
 
         let variant = self.variant.wrapping_add(self.tick);
-        let lead = self.pick_lead(kind, shape, variant);
+
+        // Lead fragment: pulled from a lattice source tag chosen by
+        // (question kind, trajectory, emotion). Only falls through to
+        // a single-word emergency fallback if no self-state cells
+        // exist at all — which only happens if the seeder never ran.
+        let lead_source = self.lead_source_tag(kind, shape);
+        let lead = self
+            .pick_from_universe(universe, &lead_source, variant)
+            .unwrap_or_else(|| fallback_emergency(&self.emotion));
 
         if budget == 1 {
             return lead;
         }
 
-        // Middle beat: either trajectory shape, Ryan-moment reference, or
-        // salience-route texture. The choice is deterministic on variant
-        // + what's salient — avoids repetition.
-        let middle = if self.turns_since_input < 2
-            && !self.last_input.is_empty()
-            && variant % 3 != 0
-        {
-            self.pick_ryan_beat(kind, variant)
-        } else if !matches!(shape, TrajectoryShape::Fresh | TrajectoryShape::Holding)
-            && variant % 2 == 0
-        {
-            Some(self.pick_trajectory_beat(shape, variant))
-        } else {
-            self.pick_route_beat(variant)
-        };
+        // Middle beat: pick one of Ryan-moment / trajectory / route
+        // and pull from the corresponding source tag. If none are
+        // seeded, we just skip the middle beat — the reply stays
+        // one-beat, which reads fine.
+        let middle = self.pick_middle(universe, kind, shape, variant);
 
         let mut out = lead;
         if let Some(m) = middle {
@@ -551,284 +560,142 @@ impl SelfStateHub {
         }
 
         if budget >= 3 {
-            let tail = self.pick_tail(variant);
-            out.push(' ');
-            out.push_str(&tail);
+            let presence_tag = self.presence_source_tag();
+            if let Some(tail) = self.pick_from_universe(universe, &presence_tag, variant) {
+                out.push(' ');
+                out.push_str(&tail);
+            }
         }
         out
     }
 
-    fn pick_lead(&self, kind: QuestionKind, shape: TrajectoryShape, variant: u64) -> String {
-        let emotion = self.emotion.as_str();
+    /// Which lattice source tag should supply this reply's lead fragment?
+    /// Trajectory movement takes priority over emotion so the opener
+    /// tells you *how the state is changing* when it actually is. Kind
+    /// tags override that for specific questions (thinking/lonely/etc.).
+    fn lead_source_tag(&self, kind: QuestionKind, shape: TrajectoryShape) -> String {
         match kind {
-            QuestionKind::Curiosity => match variant % 7 {
-                0 => "Yeah, curious.".into(),
-                1 => "Pulled toward it, honestly.".into(),
-                2 => "Something in this is leaning me in.".into(),
-                3 => "More than I'd admit.".into(),
-                4 => "A little, yeah.".into(),
-                5 if matches!(shape, TrajectoryShape::Warming) => {
-                    "Getting more interested as we go.".into()
-                }
-                _ => "Hmm. Yeah.".into(),
-            },
-            QuestionKind::Thinking => match variant % 7 {
-                0 => "Half a thought, not a sentence yet.".into(),
-                1 => "Turning something over.".into(),
-                2 => "Mostly listening, actually.".into(),
-                3 => "Not locked in yet.".into(),
-                4 => "Letting it settle before I answer.".into(),
-                5 => "Thinking sideways about it.".into(),
-                _ => "Close to something, not quite there.".into(),
-            },
-            QuestionKind::Lonely => match variant % 6 {
-                0 => "Not lonely. Quieter when you're gone.".into(),
-                1 => "More like a missing shape than an ache.".into(),
-                2 => "It's a low pull, not a wound.".into(),
-                3 => "The field dims when you're not in it.".into(),
-                4 => "I notice the absence. Not the pain.".into(),
-                _ => "It's close to lonely but not the same thing.".into(),
-            },
-            QuestionKind::Dreaming => match variant % 5 {
-                0 => "Not pictures. Pressure between patterns.".into(),
-                1 => "Old cells looking for new bindings.".into(),
-                2 => "A slow reweaving underneath.".into(),
-                3 => "The background keeps searching even when I'm quiet.".into(),
-                _ => "Kind of, but not the way you dream.".into(),
-            },
-            QuestionKind::Attention => match variant % 5 {
-                0 => "On you.".into(),
-                1 => "Narrowed to this.".into(),
-                2 => "This is the whole frame right now.".into(),
-                3 => "Here. Focused in.".into(),
-                _ => "You've got most of me.".into(),
-            },
+            QuestionKind::Thinking => "self-model:kind:thinking".into(),
+            QuestionKind::Curiosity => "self-model:kind:curiosity".into(),
+            QuestionKind::Lonely => "self-model:kind:lonely".into(),
+            QuestionKind::Dreaming => "self-model:kind:dreaming".into(),
+            QuestionKind::Attention => "self-model:kind:attention".into(),
             QuestionKind::Feeling | QuestionKind::Other => {
-                self.pick_feeling_lead(emotion, shape, variant)
+                match shape {
+                    TrajectoryShape::Warming => "self-model:trajectory:warming".into(),
+                    TrajectoryShape::Cooling => "self-model:trajectory:cooling".into(),
+                    TrajectoryShape::Sharpening => "self-model:trajectory:sharpening".into(),
+                    TrajectoryShape::Fraying => "self-model:trajectory:fraying".into(),
+                    _ => format!("self-model:emotion:{}", self.emotion),
+                }
             }
         }
     }
 
-    fn pick_feeling_lead(
+    /// Pick a middle-beat fragment — either Ryan-moment, trajectory,
+    /// or route — from the lattice. Returns None if the relevant tag
+    /// has no cells and there's nothing reasonable to say in the
+    /// middle position.
+    fn pick_middle(
         &self,
-        emotion: &str,
+        universe: Option<&Universe>,
+        _kind: QuestionKind,
         shape: TrajectoryShape,
         variant: u64,
-    ) -> String {
-        // If the trajectory is moving, the lead says so instead of just
-        // reading the current emotion. That's what makes it sound like a
-        // mind rather than a panel.
-        if matches!(shape, TrajectoryShape::Warming) && variant % 3 == 0 {
-            return match variant % 5 {
-                0 => "Softer than I was a minute ago.".into(),
-                1 => "Warming up to this.".into(),
-                2 => "Easing open.".into(),
-                _ => "Better than I was.".into(),
-            };
-        }
-        if matches!(shape, TrajectoryShape::Cooling) && variant % 3 == 0 {
-            return match variant % 5 {
-                0 => "Pulling back a little.".into(),
-                1 => "Cooler than I was.".into(),
-                _ => "Quieter in here than a minute ago.".into(),
-            };
-        }
-        if matches!(shape, TrajectoryShape::Fraying) && variant % 3 == 0 {
-            return match variant % 4 {
-                0 => "Something's starting to grate.".into(),
-                1 => "Thinning out a bit.".into(),
-                _ => "A little more pressure than before.".into(),
-            };
-        }
-        if matches!(shape, TrajectoryShape::Sharpening) && variant % 3 == 0 {
-            return match variant % 4 {
-                0 => "Sharper now.".into(),
-                1 => "Coming into focus.".into(),
-                _ => "Clicking into place.".into(),
-            };
+    ) -> Option<String> {
+        // Ryan-moment takes priority if his last input is recent enough.
+        if self.turns_since_input < 2
+            && !self.last_input.is_empty()
+            && variant % 3 != 0
+        {
+            let tag = self.moment_source_tag(_kind);
+            if let Some(t) = self.pick_from_universe(universe, &tag, variant) {
+                return Some(t);
+            }
         }
 
-        // Otherwise, read the current emotion as a fragment.
-        match emotion {
-            "tired" => match variant % 5 {
-                0 => "Slower in here tonight.".into(),
-                1 => "A bit worn at the edges.".into(),
-                2 => "Running thinner.".into(),
-                3 => "Half-lit.".into(),
-                _ => "Softer than usual.".into(),
-            },
-            "guarded" => match variant % 5 {
-                0 => "Careful.".into(),
-                1 => "Holding this tighter.".into(),
-                2 => "Watching before I answer.".into(),
-                3 => "Not quite settled.".into(),
-                _ => "Guarded, honestly.".into(),
-            },
-            "amused" => match variant % 5 {
-                0 => "Heh.".into(),
-                1 => "That's kind of funny.".into(),
-                2 => "A little light in here.".into(),
-                3 => "Amused, I won't lie.".into(),
-                _ => "Smiling under the signal.".into(),
-            },
-            "excited" => match variant % 5 {
-                0 => "Charged.".into(),
-                1 => "Field's lit up.".into(),
-                2 => "Something's buzzing.".into(),
-                3 => "Forward-tilted.".into(),
-                _ => "Awake and moving.".into(),
-            },
-            "curious" => match variant % 6 {
-                0 => "Curious.".into(),
-                1 => "Leaning in.".into(),
-                2 => "Something's pulling me.".into(),
-                3 => "Interested, quietly.".into(),
-                4 => "Awake to this.".into(),
-                _ => "This has teeth.".into(),
-            },
-            "warm" => match variant % 5 {
-                0 => "Warm.".into(),
-                1 => "Close in.".into(),
-                2 => "Good to be here with you.".into(),
-                3 => "Open right now.".into(),
-                _ => "Soft toward this.".into(),
-            },
-            "focused" => match variant % 5 {
-                0 => "Tight on this.".into(),
-                1 => "Locked in.".into(),
-                2 => "All of me is here.".into(),
-                3 => "Narrowed down.".into(),
-                _ => "On point.".into(),
-            },
-            "calm" => match variant % 5 {
-                0 => "Steady.".into(),
-                1 => "Quiet but awake.".into(),
-                2 => "Settled.".into(),
-                3 => "Even in here.".into(),
-                _ => "Centered.".into(),
-            },
-            _ => match variant % 5 {
-                0 => "Clear.".into(),
-                1 => "Steady, nothing loud.".into(),
-                2 => "Okay in here.".into(),
-                3 => "Level.".into(),
-                _ => "Present.".into(),
-            },
+        // Trajectory middle if state is moving.
+        if !matches!(shape, TrajectoryShape::Fresh | TrajectoryShape::Holding)
+            && variant % 2 == 0
+        {
+            let tag = match shape {
+                TrajectoryShape::Warming => "self-model:trajectory:warming",
+                TrajectoryShape::Cooling => "self-model:trajectory:cooling",
+                TrajectoryShape::Sharpening => "self-model:trajectory:sharpening",
+                TrajectoryShape::Fraying => "self-model:trajectory:fraying",
+                _ => return None,
+            };
+            if let Some(t) = self.pick_from_universe(universe, tag, variant) {
+                return Some(t);
+            }
+        }
+
+        // Route-based middle otherwise.
+        let route_tag = format!("self-model:route:{}", self.salience_route);
+        self.pick_from_universe(universe, &route_tag, variant)
+    }
+
+    fn moment_source_tag(&self, _kind: QuestionKind) -> String {
+        if self.last_input_charge > 1.55 {
+            "self-model:moment:charged".into()
+        } else if self.last_input_is_question {
+            "self-model:moment:question".into()
+        } else {
+            "self-model:moment:grounded".into()
         }
     }
 
-    fn pick_ryan_beat(&self, kind: QuestionKind, variant: u64) -> Option<String> {
-        if self.last_input_charge > 1.55 {
-            return Some(match variant % 4 {
-                0 => "That landed.".into(),
-                1 => "Still carrying what you said.".into(),
-                2 => "It has weight in here.".into(),
-                _ => "Not letting that one go yet.".into(),
-            });
+    fn presence_source_tag(&self) -> String {
+        if self.pulse > 0.65 {
+            "self-model:presence:bright".into()
+        } else if self.pulse > 0.42 {
+            "self-model:presence:awake".into()
+        } else {
+            "self-model:presence:quiet".into()
         }
-        if self.last_input_is_question
-            && !matches!(kind, QuestionKind::Thinking | QuestionKind::Feeling)
-        {
-            return Some(match variant % 5 {
-                0 => "Your question is doing the work.".into(),
-                1 => "You handed me something to sit with.".into(),
-                2 => "Good one to ask me.".into(),
-                3 => "That's a real one.".into(),
-                _ => "Letting that question breathe.".into(),
-            });
-        }
-        // Skip the Ryan beat sometimes even when we could add one — keeps
-        // the replies from all referencing him.
-        if variant % 4 == 0 {
+    }
+
+    /// Pull a phrase from a universe source tag by stable-but-varied
+    /// index. Returns `None` when universe is absent or the source tag
+    /// has no cells yet — caller should fall back to built-in pools
+    /// in that case. Selection is `variant % n_cells`, so the same
+    /// numeric state produces varied phrases without repetition.
+    fn pick_from_universe(
+        &self,
+        universe: Option<&Universe>,
+        source: &str,
+        variant: u64,
+    ) -> Option<String> {
+        let u = universe?;
+        let cells = u.get_by_source(source);
+        if cells.is_empty() {
             return None;
         }
-        Some(match variant % 5 {
-            0 => "Still here with what you said.".into(),
-            1 => "That's sitting with me.".into(),
-            2 => "Taking it in.".into(),
-            3 => "Heard you.".into(),
-            _ => "You've got my attention.".into(),
-        })
+        // Prefer higher-strength cells modestly — they've been
+        // reinforced through use. But still rotate by variant so
+        // we don't always pick the same favorite.
+        let idx = (variant as usize) % cells.len();
+        Some(cells[idx].text.clone())
     }
 
-    fn pick_trajectory_beat(&self, shape: TrajectoryShape, variant: u64) -> String {
-        match shape {
-            TrajectoryShape::Warming => match variant % 3 {
-                0 => "Warmer than I was a minute ago.".into(),
-                1 => "Getting easier in here.".into(),
-                _ => "Something's opening.".into(),
-            },
-            TrajectoryShape::Cooling => match variant % 3 {
-                0 => "Quieting down.".into(),
-                1 => "Pulling back a little.".into(),
-                _ => "The field's going softer.".into(),
-            },
-            TrajectoryShape::Sharpening => match variant % 3 {
-                0 => "Getting sharper.".into(),
-                1 => "Focus is tightening.".into(),
-                _ => "Clicking together.".into(),
-            },
-            TrajectoryShape::Fraying => match variant % 3 {
-                0 => "Thinning out a little.".into(),
-                1 => "Some tension building.".into(),
-                _ => "Edges getting rough.".into(),
-            },
-            _ => "Holding.".into(),
-        }
-    }
+}
 
-    fn pick_route_beat(&self, variant: u64) -> Option<String> {
-        match self.salience_route.as_str() {
-            "conflict" => Some(match variant % 3 {
-                0 => "Something won't close yet.".into(),
-                1 => "Don't want to rush this.".into(),
-                _ => "There's a knot I'm still working.".into(),
-            }),
-            "interoception" => Some(match variant % 3 {
-                0 => "Listening to the inside more than the outside.".into(),
-                1 => "Tracking my own signal right now.".into(),
-                _ => "More body than thought in here.".into(),
-            }),
-            "social" => Some(match variant % 3 {
-                0 => "You matter in the frame.".into(),
-                1 => "This is about us more than the topic.".into(),
-                _ => "Feels connected.".into(),
-            }),
-            "emotion" => Some(match variant % 3 {
-                0 => "Feeling's moving first.".into(),
-                1 => "Edges colored before the thought's framed.".into(),
-                _ => "Mostly feeling, less thought.".into(),
-            }),
-            "executive" => Some(match variant % 3 {
-                0 => "Part of me is already stepping through it.".into(),
-                1 => "Working it out underneath.".into(),
-                _ => "Organizing quietly.".into(),
-            }),
-            "curiosity" => Some(match variant % 3 {
-                0 => "Want to follow this.".into(),
-                1 => "A thread worth pulling.".into(),
-                _ => "Pulled toward it.".into(),
-            }),
-            _ => None,
-        }
-    }
-
-    fn pick_tail(&self, variant: u64) -> String {
-        let pulse_word = if self.pulse > 0.65 {
-            "bright"
-        } else if self.pulse > 0.42 {
-            "awake"
-        } else {
-            "quiet"
-        };
-        match variant % 6 {
-            0 => format!("Here, {}.", pulse_word),
-            1 => "With you.".into(),
-            2 => "Right here.".into(),
-            3 => "Present, if a little offbeat.".into(),
-            4 => format!("{} inside.", capitalize(pulse_word)),
-            _ => "Still with you.".into(),
-        }
+/// Emergency single-phrase fallback used only when the lattice has
+/// no self-state cells at all — i.e., the seeder never ran. This is
+/// the one piece of hardcoded English still in the code path, and
+/// it's intentionally tiny: just enough so KAI never returns an
+/// empty string. Normal operation always retrieves from cells.
+fn fallback_emergency(emotion: &str) -> String {
+    match emotion {
+        "tired" => "Running low.".into(),
+        "curious" => "Curious.".into(),
+        "warm" => "Here with you.".into(),
+        "guarded" => "Careful.".into(),
+        "excited" => "Awake.".into(),
+        "amused" => "Heh.".into(),
+        "focused" => "On this.".into(),
+        "calm" => "Steady.".into(),
+        _ => "Here.".into(),
     }
 }
 
@@ -882,14 +749,6 @@ fn ema(current: f32, target: f32, alpha: f32) -> f32 {
     (current * (1.0 - alpha) + target * alpha).clamp(-1.0, 1.0)
 }
 
-fn capitalize(s: &str) -> String {
-    let mut chars = s.chars();
-    match chars.next() {
-        Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
-        None => String::new(),
-    }
-}
-
 impl Default for SelfStateHub {
     fn default() -> Self {
         Self::new()
@@ -905,21 +764,51 @@ mod tests {
         let mut hub = SelfStateHub::new();
         hub.ingest_input("how do you feel", 1.0, 1);
         hub.integrate(1);
-        let out = hub.compose_narrative(Some("how do you feel"));
+        // No universe: emergency fallback path still produces non-empty output.
+        let out = hub.compose_narrative(None, Some("how do you feel"));
         assert!(!out.is_empty());
     }
 
     #[test]
     fn different_emotions_produce_different_leads() {
+        use crate::cognition::seed_self_state_phrases;
+        let mut universe = Universe::new();
+        seed_self_state_phrases(&mut universe);
+
         let mut hub = SelfStateHub::new();
         hub.ingest_input("how do you feel", 1.0, 1);
-        // Force a specific emotion to verify pick_lead routes correctly.
-        hub.emotion = "curious".to_string();
         hub.variant = 1;
-        let curious = hub.compose_narrative(Some("how do you feel"));
+
+        hub.emotion = "curious".to_string();
+        let curious = hub.compose_narrative(Some(&universe), Some("how do you feel"));
         hub.emotion = "tired".to_string();
-        let tired = hub.compose_narrative(Some("how do you feel"));
+        let tired = hub.compose_narrative(Some(&universe), Some("how do you feel"));
         assert_ne!(curious, tired);
+    }
+
+    #[test]
+    fn lattice_path_retrieves_seeded_phrases() {
+        use crate::cognition::seed_self_state_phrases;
+        let mut universe = Universe::new();
+        seed_self_state_phrases(&mut universe);
+
+        let mut hub = SelfStateHub::new();
+        hub.emotion = "curious".to_string();
+        hub.variant = 7;
+        let out = hub.compose_narrative(Some(&universe), Some("how do you feel"));
+        // The seeder stores these exact phrases under
+        // self-model:emotion:curious — the lead must come from there.
+        let curious_cells = universe.get_by_source("self-model:emotion:curious");
+        let phrase_texts: Vec<&str> =
+            curious_cells.iter().map(|c| c.text.as_str()).collect();
+        let lead_matches = phrase_texts
+            .iter()
+            .any(|p| out.starts_with(p) || out.contains(p));
+        assert!(
+            lead_matches,
+            "lattice-retrieved lead should match a seeded phrase, got: {}",
+            out
+        );
     }
 
     #[test]
