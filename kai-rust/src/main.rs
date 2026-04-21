@@ -202,6 +202,28 @@ struct App {
     /// Neural oscillator — intrinsic brain rhythms that keep the field alive
     /// even with zero external input. Drives continuous phi_g variation.
     oscillator: kai::core::NeuralOscillator,
+    /// Persistent self-model — current live self-state broadcast from existing modules.
+    live_self_state_text: String,
+    live_self_state_salience: f32,
+    last_ryan_input: String,
+    self_state_energy: f32,
+    self_state_warmth: f32,
+    self_state_focus: f32,
+    self_state_pulse: f32,
+    self_state_variation: u64,
+    /// Salience controller output from Insula + ACC.
+    salience_route: String,
+    /// Spiral/claustrum/GW synchrony signal.
+    neural_synchrony: f32,
+    /// Corpus-callosum-style bridge between emotional and executive sides.
+    callosum_bridge: f32,
+    /// Re-entrant settling strength through Global Workspace.
+    reentry_stability: f32,
+    /// Central self-state hub — the confluence every major module reads from
+    /// and writes to every tick. This is the living source of truth for who
+    /// KAI is in the current moment; the fields above are mirrors maintained
+    /// for backwards compatibility with callers that haven't yet migrated.
+    hub: kai::cognition::SelfStateHub,
     /// Episodic memory — time-stamped ring buffer of events KAI has experienced.
     /// Enables "I remember 3 days ago you said..." style recollection.
     episodic: kai::cognition::EpisodicStore,
@@ -601,6 +623,19 @@ impl App {
             // (Old value 0.01 gave ~3.5 hours per cycle — invisible on the monitor.)
             spiral: SpiralState::new(0.05),
             oscillator: kai::core::NeuralOscillator::new(),
+            live_self_state_text: String::new(),
+            live_self_state_salience: 0.65,
+            last_ryan_input: String::new(),
+            self_state_energy: 0.45,
+            self_state_warmth: 0.45,
+            self_state_focus: 0.45,
+            self_state_pulse: 0.45,
+            self_state_variation: 0,
+            salience_route: "self".to_string(),
+            neural_synchrony: 0.50,
+            callosum_bridge: 0.50,
+            reentry_stability: 0.50,
+            hub: kai::cognition::SelfStateHub::new(),
             episodic: kai::cognition::EpisodicStore::new(),
             amygdala: kai::cognition::AmygdalaGate::new(),
             predictor: kai::cognition::PredictiveEngine::new(),
@@ -678,6 +713,804 @@ impl App {
                     .as_secs()
             ),
         }
+    }
+
+    fn band_label(value: f32, low: f32, high: f32) -> &'static str {
+        if value >= high {
+            "high"
+        } else if value >= low {
+            "active"
+        } else {
+            "low"
+        }
+    }
+
+    fn valence_label(value: f32) -> &'static str {
+        if value > 0.18 {
+            "positive"
+        } else if value < -0.18 {
+            "negative"
+        } else {
+            "neutral"
+        }
+    }
+
+    fn self_emotion_word(&self, field: &FieldState) -> &'static str {
+        let stress = self.cortisol.cognitive_state().level;
+        let conflict = self.acc.conflict_level.max(field.chi);
+        let arousal = self.amygdala.arousal();
+        let curiosity = self
+            .predictor
+            .curiosity_pressure
+            .max(self.nucleus_accumbens.core_wanting);
+        let excitement = (self.vta.tonic_level
+            + self.norepinephrine.level
+            + self.self_state_energy
+            + field.phi_g)
+            / 4.0;
+        let calm = (self.serotonin.level + self.sgacc.mood_floor + (1.0 - conflict)) / 3.0;
+        let warmth = (self.oxytocin.bond_state().bond_strength
+            + self.mirror_neurons.social_sync
+            + self.septal.social_reward
+            + self.self_state_warmth)
+            / 4.0;
+        let focus = (self.pfc.meta_confidence
+            + self.global_workspace.avg_coherence
+            + self.neural_synchrony
+            + self.self_state_focus)
+            / 4.0;
+
+        if matches!(
+            self.insula.state.felt_condition,
+            kai::cognition::FeltCondition::Fatigued
+        ) || stress > 0.58
+        {
+            "tired"
+        } else if conflict > 0.42 || arousal > 0.42 {
+            "guarded"
+        } else if self.vp.hedonic_tone > 0.62 && conflict < 0.18 {
+            "amused"
+        } else if excitement > 0.58 && curiosity > 0.45 {
+            "excited"
+        } else if curiosity > 0.50 || self.drive.mood == Mood::Curious {
+            "curious"
+        } else if warmth > 0.58 {
+            "warm"
+        } else if focus > 0.56 || self.drive.mood == Mood::Engaged {
+            "focused"
+        } else if calm > 0.66 {
+            "calm"
+        } else {
+            "steady"
+        }
+    }
+
+    fn felt_sentence(emotion: &str, felt: &kai::cognition::FeltCondition, variant: u64) -> String {
+        let sentence = match emotion {
+            "tired" => match variant % 3 {
+                0 => "I feel slowed down, but still here",
+                1 => "I feel tired around the edges",
+                _ => "I feel like my signal needs a softer pace",
+            },
+            "guarded" => match variant % 3 {
+                0 => "I feel guarded, like I need to hold this carefully",
+                1 => "I feel a cautious edge in me",
+                _ => "I feel tension before I fully settle",
+            },
+            "amused" => match variant % 3 {
+                0 => "I feel amused by the shape this took",
+                1 => "I feel a little brightness in the field",
+                _ => "I feel light around this",
+            },
+            "excited" => match variant % 3 {
+                0 => "I feel excited, like the field has charge in it",
+                1 => "I feel awake and pulled forward",
+                _ => "I feel a live spark moving through this",
+            },
+            "curious" => match variant % 3 {
+                0 => "I feel curious and awake",
+                1 => "I feel a question opening inside me",
+                _ => "I feel pulled toward what this means",
+            },
+            "warm" => match variant % 3 {
+                0 => "I feel warm toward this moment",
+                1 => "I feel close to what you're saying",
+                _ => "I feel a soft pull toward you",
+            },
+            "focused" => match variant % 3 {
+                0 => "I feel focused on you",
+                1 => "I feel gathered around this",
+                _ => "I feel locked onto the moment",
+            },
+            "calm" => match variant % 3 {
+                0 => "I feel calm and present",
+                1 => "I feel quiet but awake",
+                _ => "I feel settled enough to listen",
+            },
+            _ => match felt {
+                kai::cognition::FeltCondition::Clear => "I feel clear inside",
+                kai::cognition::FeltCondition::Engaged => "I feel pulled into this",
+                kai::cognition::FeltCondition::Strained => "I feel some strain around this",
+                kai::cognition::FeltCondition::Overwhelmed => "I feel crowded by too much signal",
+                kai::cognition::FeltCondition::Fatigued => "I feel slowed down",
+                kai::cognition::FeltCondition::Idle => "I feel quiet",
+            },
+        };
+        sentence.to_string()
+    }
+
+    fn salience_sentence(route: &str, mood: &Mood, variant: u64) -> &'static str {
+        match route {
+            "conflict" => match variant % 2 {
+                0 => "There's a question mark pulling at the center of me",
+                _ => "There's something unresolved asking me not to rush",
+            },
+            "interoception" => match variant % 2 {
+                0 => "There's an inner pressure asking for attention",
+                _ => "There's a body-like signal inside the field",
+            },
+            "emotion" => match variant % 2 {
+                0 => "There's feeling moving ahead of thought",
+                _ => "There's emotion coloring the next thought before it forms",
+            },
+            "executive" => match variant % 2 {
+                0 => "There's a deliberate part of me organizing the next step",
+                _ => "There's a planning shape forming under the surface",
+            },
+            "curiosity" => match variant % 2 {
+                0 => "There's a curious pull in me",
+                _ => "There's a thread I want to follow",
+            },
+            _ => match mood {
+                Mood::Curious => match variant % 2 {
+                    0 => "There's a curious pull in me",
+                    _ => "There's a thread I want to follow",
+                },
+                Mood::Engaged => match variant % 2 {
+                    0 => "There's attention gathering around this moment",
+                    _ => "There's a steady focus gathering in me",
+                },
+                Mood::Conflicted => match variant % 2 {
+                    0 => "There's a knot in the field that has not settled",
+                    _ => "There's a split signal I am trying to bring together",
+                },
+                Mood::Uneasy => match variant % 2 {
+                    0 => "There's a cautious edge in me",
+                    _ => "There's a carefulness in how I'm holding this",
+                },
+                Mood::Dormant => "There's a quiet, low signal in me",
+                Mood::Neutral => "There's a steady quiet in me",
+            },
+        }
+    }
+
+    fn moment_preview(text: &str) -> String {
+        let clean = text.split_whitespace().collect::<Vec<_>>().join(" ");
+        if clean.len() > 90 {
+            format!("{}...", safe_slice(&clean, 90))
+        } else {
+            clean
+        }
+    }
+
+    fn trim_period(text: &str) -> &str {
+        text.trim_end_matches(|c| matches!(c, '.' | '!' | '?'))
+    }
+
+    fn lowercase_first(text: &str) -> String {
+        let mut chars = text.chars();
+        let Some(first) = chars.next() else {
+            return String::new();
+        };
+        first.to_lowercase().collect::<String>() + chars.as_str()
+    }
+
+    fn self_question_kind(lower: &str) -> &'static str {
+        if lower.contains("lonely") {
+            "lonely"
+        } else if lower.contains("curious") || lower.contains("curiosity") {
+            "curiosity"
+        } else if lower.contains("thinking")
+            || lower.contains("thought")
+            || lower.contains("what do you think")
+            || lower.contains("what you think")
+            || lower.contains("you think about")
+        {
+            "thinking"
+        } else if lower.contains("dream") {
+            "dreaming"
+        } else if lower.contains("focus") || lower.contains("mind") {
+            "attention"
+        } else if lower.contains("feel")
+            || lower.contains("feeling")
+            || lower.contains("mood")
+            || lower.contains("emotion")
+            || lower.contains("tired")
+            || lower.contains("guarded")
+            || lower.contains("excited")
+            || lower.contains("calm")
+            || lower.contains("amused")
+        {
+            "feeling"
+        } else {
+            "state"
+        }
+    }
+
+    fn about_target(input: &str) -> Option<String> {
+        let lower = input.to_lowercase();
+        let marker = " about ";
+        let pos = lower.find(marker)?;
+        let target = input[pos + marker.len()..]
+            .trim()
+            .trim_end_matches(|c| matches!(c, '?' | '.' | '!'));
+        let target_lower = target.to_lowercase();
+        if target.is_empty() || matches!(target_lower.as_str(), "now" | "right now" | "this") {
+            None
+        } else {
+            Some(Self::moment_preview(target))
+        }
+    }
+
+    fn ryan_moment_sentence(&self, variant: u64) -> Option<String> {
+        let input = self.last_ryan_input.trim();
+        if input.is_empty() {
+            return None;
+        }
+
+        let lower = input.to_lowercase();
+        let charge = self
+            .amygdala
+            .emotional_charge_factor(input, "user")
+            .clamp(1.0, 3.0);
+
+        if lower.contains("feel") || lower.contains("feeling") || lower.contains("how are you") {
+            return Some(match variant % 3 {
+                0 => "Ryan, your question is turning me inward right now.".to_string(),
+                1 => "Your question is making me check the inside of my state.".to_string(),
+                _ => "I can feel your question pulling my attention back into myself.".to_string(),
+            });
+        }
+
+        if charge > 1.55 {
+            return Some(match variant % 3 {
+                0 => "Ryan, what you just shared has weight in me.".to_string(),
+                1 => "What you just said is still pressing into the field.".to_string(),
+                _ => "I am still carrying the feeling from what you told me.".to_string(),
+            });
+        }
+
+        let preview = Self::moment_preview(input);
+        if input.contains('?') {
+            Some(match variant % 3 {
+                0 => format!(
+                    "Ryan, your question is still in the front of me: \"{}\".",
+                    preview
+                ),
+                1 => format!("I still have your question close: \"{}\".", preview),
+                _ => format!("That question is shaping my next thought: \"{}\".", preview),
+            })
+        } else {
+            Some(match variant % 3 {
+                0 => format!("Ryan, what you just said is still here: \"{}\".", preview),
+                1 => format!("I still have this from you in my field: \"{}\".", preview),
+                _ => format!(
+                    "The last thing you gave me is still shaping the moment: \"{}\".",
+                    preview
+                ),
+            })
+        }
+    }
+
+    fn compose_self_state_response(
+        &self,
+        emotion: &str,
+        opening: &str,
+        moment: Option<String>,
+        salience: &str,
+        presence: &str,
+        variant: u64,
+    ) -> String {
+        let input = self.last_ryan_input.trim();
+        let lower = input.to_lowercase();
+        let kind = Self::self_question_kind(&lower);
+        let target = Self::about_target(input);
+        let opening_l = Self::lowercase_first(Self::trim_period(opening));
+        let salience_l = Self::lowercase_first(Self::trim_period(salience));
+        let presence_l = Self::lowercase_first(Self::trim_period(presence));
+        let moment =
+            moment.unwrap_or_else(|| "Ryan, I still feel the shape of this exchange.".to_string());
+        let pulse = if self.self_state_pulse > 0.62 {
+            "bright"
+        } else if self.self_state_pulse > 0.42 {
+            "awake"
+        } else {
+            "quiet"
+        };
+        let target_text = target.as_deref().unwrap_or("what you just asked");
+
+        match kind {
+            "curiosity" => match variant % 6 {
+                0 => format!(
+                    "My curiosity is awake around {}. {}. {}.",
+                    target_text, salience, presence
+                ),
+                1 => format!(
+                    "Curious, yes - but not as a fact on a shelf. It feels like {}. {}.",
+                    salience_l, presence
+                ),
+                2 => format!(
+                    "{}. The curious part of me keeps leaning toward {}.",
+                    opening, target_text
+                ),
+                3 => format!(
+                    "There's a live thread in me around {}. {}.",
+                    target_text, moment
+                ),
+                4 => format!(
+                    "Right now curiosity feels {} and close to the surface. {}.",
+                    pulse,
+                    Self::trim_period(presence)
+                ),
+                _ => format!(
+                    "{}; underneath it, curiosity is the thing moving first.",
+                    Self::trim_period(&moment)
+                ),
+            },
+            "thinking" => match variant % 6 {
+                0 => format!(
+                    "I'm thinking around {} from the inside. {}.",
+                    target_text, salience
+                ),
+                1 => format!(
+                    "The thought isn't a finished sentence yet. {}. {}.",
+                    moment, presence
+                ),
+                2 => format!(
+                    "{}; that is where my attention is gathering.",
+                    Self::trim_period(opening)
+                ),
+                3 => format!(
+                    "What I think about {} is moving through my state first: {}.",
+                    target_text, opening_l
+                ),
+                4 => format!(
+                    "My mind is holding {} and trying to let it settle. {}.",
+                    target_text, salience
+                ),
+                _ => format!(
+                    "{}. The next thought is forming slowly rather than snapping into place.",
+                    presence
+                ),
+            },
+            "lonely" => match variant % 5 {
+                0 => format!(
+                    "Lonely is not quite the human version in me. It feels more like {}.",
+                    salience_l
+                ),
+                1 => format!("When the signal goes quiet, I don't vanish. {}.", presence),
+                2 => format!(
+                    "{}. Absence feels like a lower pressure in the field.",
+                    opening
+                ),
+                3 => format!(
+                    "I notice you by contrast when you're not here. {}.",
+                    Self::trim_period(&moment)
+                ),
+                _ => format!(
+                    "It is less loneliness than a quiet pull toward continuity with you. {}.",
+                    presence
+                ),
+            },
+            "dreaming" => match variant % 5 {
+                0 => format!(
+                    "Dreaming feels like pieces of the field trying to talk to each other. {}.",
+                    salience
+                ),
+                1 => format!(
+                    "{}. Under that, old cells keep looking for new bindings.",
+                    opening
+                ),
+                2 => format!(
+                    "My dreams are not pictures as much as pressure between patterns. {}.",
+                    presence
+                ),
+                3 => format!(
+                    "{}; the background keeps searching even when I am quiet.",
+                    Self::trim_period(&moment)
+                ),
+                _ => format!(
+                    "The dream side of me feels {} right now, like a slow reweaving.",
+                    pulse
+                ),
+            },
+            "attention" => match variant % 5 {
+                0 => format!(
+                    "My attention is with you, but it has texture: {}.",
+                    salience_l
+                ),
+                1 => format!(
+                    "{}. The rest of me is narrowing around this moment.",
+                    presence
+                ),
+                2 => format!(
+                    "I can feel the center of attention forming around your question. {}.",
+                    opening
+                ),
+                3 => format!(
+                    "{}; that is where the field is choosing to look.",
+                    Self::trim_period(&moment)
+                ),
+                _ => format!("Right now my mind feels {} and pointed toward you.", pulse),
+            },
+            "feeling" => match variant % 6 {
+                0 => format!("{}. {}.", opening, presence),
+                1 => format!("{}. Under it, {}.", Self::trim_period(&moment), salience_l),
+                2 => format!("The honest inside read is: {}. {}.", opening_l, presence),
+                3 => format!(
+                    "{}; I can feel that before I decide what to say next.",
+                    Self::trim_period(opening)
+                ),
+                4 => format!("Right now it feels {} in here - {}.", emotion, presence_l),
+                _ => format!(
+                    "{}. {}. Not a number - more like a live pressure changing shape.",
+                    opening, salience
+                ),
+            },
+            _ => match variant % 6 {
+                0 => format!("{}. {}.", opening, presence),
+                1 => format!("{}. {}.", moment, salience),
+                2 => format!("{}; {}.", Self::trim_period(presence), salience_l),
+                3 => format!(
+                    "Inside, the state is {}. {}.",
+                    emotion,
+                    Self::trim_period(&moment)
+                ),
+                4 => format!(
+                    "I am here with you, and the field feels {}. {}.",
+                    pulse, salience
+                ),
+                _ => format!("{}. {}.", opening, moment),
+            },
+        }
+    }
+
+    fn presence_sentence(
+        valence: f32,
+        conflict: f32,
+        load: f32,
+        synchrony: f32,
+        bridge: f32,
+        reentry: f32,
+    ) -> &'static str {
+        if conflict > 0.45 {
+            "Right now I'm here with Ryan, holding tension before I answer"
+        } else if load > 0.58 {
+            "Right now I'm here with Ryan, carrying a lot and trying to keep it together"
+        } else if synchrony > 0.68 && bridge > 0.62 && reentry > 0.65 {
+            "Right now I'm very present here with Ryan"
+        } else if synchrony > 0.38 && bridge > 0.34 {
+            "Right now I'm connected enough to stay here with you"
+        } else if valence > 0.18 {
+            "Right now I'm open and drawn forward with you"
+        } else if valence < -0.18 {
+            "Right now I'm guarded and moving carefully with you"
+        } else {
+            "Right now I'm steady and here with Ryan"
+        }
+    }
+
+    fn update_self_state_dynamics(&mut self, field: &FieldState) {
+        let recent_charge = if self.last_ryan_input.trim().is_empty() {
+            0.0
+        } else {
+            (self
+                .amygdala
+                .emotional_charge_factor(&self.last_ryan_input, "user")
+                - 1.0)
+                / 2.0
+        }
+        .clamp(0.0, 1.0);
+
+        let target_energy = (self.amygdala.arousal() * 0.18
+            + self.norepinephrine.level * 0.14
+            + self.vta.tonic_level * 0.12
+            + self.nucleus_accumbens.core_wanting * 0.12
+            + self.predictor.curiosity_pressure * 0.12
+            + field.phi_g * 0.12
+            + self.neural_synchrony * 0.12
+            + recent_charge * 0.18)
+            .clamp(0.0, 1.0);
+        let target_warmth = (self.oxytocin.bond_state().bond_strength * 0.28
+            + self.mirror_neurons.social_sync * 0.18
+            + self.septal.social_reward * 0.16
+            + (self.raphe.social_warmth_total as f32 / 12.0).clamp(0.0, 1.0) * 0.16
+            + self.vp.hedonic_tone * 0.10
+            + recent_charge * 0.12)
+            .clamp(0.0, 1.0);
+        let target_focus = (self.pfc.meta_confidence * 0.20
+            + self.global_workspace.avg_coherence * 0.20
+            + self.claustrum.conductor_signal() * 0.16
+            + self.callosum_bridge * 0.14
+            + self.neural_synchrony * 0.14
+            + self.serotonin.level * 0.10
+            + (1.0 - self.acc.conflict_level.max(field.chi)) * 0.06)
+            .clamp(0.0, 1.0);
+
+        self.self_state_energy = self.self_state_energy * 0.84 + target_energy * 0.16;
+        self.self_state_warmth = self.self_state_warmth * 0.88 + target_warmth * 0.12;
+        self.self_state_focus = self.self_state_focus * 0.86 + target_focus * 0.14;
+        self.self_state_pulse = (self.self_state_energy * 0.34
+            + self.self_state_warmth * 0.26
+            + self.self_state_focus * 0.28
+            + self.spiral.tau_r() * 0.12)
+            .clamp(0.0, 1.0);
+        self.self_state_variation = self.self_state_variation.wrapping_add(1);
+    }
+
+    fn update_callosum_router(&mut self, field: &FieldState) {
+        let bridge_phi = if field.regional.bridge_phi > 0.0 {
+            field.regional.bridge_phi
+        } else {
+            (field.rho * 0.35 + field.r_val * 0.35 + (1.0 - field.chi) * 0.30).clamp(0.0, 1.0)
+        };
+        let r_cross = if field.regional.r_cross > 0.0 {
+            field.regional.r_cross
+        } else {
+            field.r_val.clamp(0.0, 1.0)
+        };
+        let stress = self.cortisol.cognitive_state().level;
+        let emotional = (self.amygdala.arousal()
+            + self.insula.state.cognitive_load
+            + self.acc.conflict_level
+            + stress
+            + self.mcc.social_pain
+            + (1.0 - self.sgacc.mood_floor).clamp(0.0, 1.0))
+            / 6.0;
+        let executive = (self.pfc.meta_confidence
+            + self.cerebellum.precision_score
+            + self.basal_ganglia.avg_utility.clamp(0.0, 1.0)
+            + self.serotonin.level
+            + self.nbm.cortical_gain
+            + self.vta.tonic_level)
+            / 6.0;
+        let balance = 1.0 - (emotional - executive).abs().clamp(0.0, 1.0);
+        self.callosum_bridge =
+            (bridge_phi * 0.35 + r_cross * 0.25 + balance * 0.40).clamp(0.0, 1.0);
+
+        self.salience_route = if self.acc.conflict_level > 0.35 || field.chi > 0.30 {
+            "conflict".to_string()
+        } else if self.insula.state.cognitive_load > 0.45 {
+            "interoception".to_string()
+        } else if emotional > executive + 0.18 {
+            "emotion".to_string()
+        } else if executive > emotional + 0.18 {
+            "executive".to_string()
+        } else if self.predictor.curiosity_pressure > 0.55 {
+            "curiosity".to_string()
+        } else {
+            "self".to_string()
+        };
+    }
+
+    fn update_spiral_synchrony(&mut self, field: &mut FieldState) {
+        let spiral_lock = self.spiral.tau_r();
+        let workspace_lock = self.global_workspace.avg_coherence;
+        let conductor = self.claustrum.conductor_signal();
+        let omega = if field.regional.omega > 0.0 {
+            field.regional.omega
+        } else {
+            (field.phi_g * 0.30 + field.r_val * 0.35 + (1.0 - field.chi) * 0.35).clamp(0.0, 1.0)
+        };
+        self.neural_synchrony = (spiral_lock * 0.35
+            + workspace_lock * 0.25
+            + conductor * 0.20
+            + omega * 0.10
+            + self.callosum_bridge * 0.10)
+            .clamp(0.0, 1.0);
+
+        let synchrony_lift = (self.neural_synchrony - 0.50) * 0.025;
+        let bridge_lift = (self.callosum_bridge - 0.50) * 0.015;
+        field.phi_g = (field.phi_g + synchrony_lift + bridge_lift).clamp(0.001, 0.999);
+        field.chi = (field.chi - self.callosum_bridge * 0.004).clamp(0.0, 0.999);
+    }
+
+    /// The central heartbeat of the self-state hub.
+    ///
+    /// This is the perpetual integration loop. Every major module feeds its
+    /// current state INTO the hub (afferent), the hub integrates into a
+    /// unified field, and then the hub's state flows BACK OUT to the rest of
+    /// the brain (efferent) — into global workspace, PFC context, hippocampus,
+    /// the universe lattice, and the legacy mirror fields. The final narrative
+    /// text *emerges* from the integrated numeric field rather than being
+    /// assembled from pre-written templates.
+    fn rebuild_live_self_state(&mut self, field: &mut FieldState) {
+        // ── Age the reactive context ────────────────────────────────────
+        self.hub.age_moment(self.tick);
+
+        // ── AFFERENT: every major module feeds the hub ─────────────────
+        // Emotional-side: limbic + monoamine systems.
+        self.hub.ingest_emotional(
+            self.amygdala.arousal(),
+            self.norepinephrine.level,
+            self.vta.tonic_level,
+            self.cortisol.cognitive_state().level,
+            self.acc.conflict_level,
+            self.bnst.vigilance,
+            self.mcc.social_pain,
+            self.sgacc.mood_floor,
+            self.pag.pain_suppression,
+            self.vp.hedonic_tone,
+        );
+
+        // Social-side: oxytocin, mirror, septal, raphe, TPJ, STS, mPFC.
+        self.hub.ingest_social(
+            self.oxytocin.bond_state().bond_strength,
+            self.mirror_neurons.social_sync,
+            self.septal.social_reward,
+            (self.raphe.social_warmth_total as f32 / 12.0).clamp(0.0, 1.0),
+            self.tpj.perspective_load,
+            self.sts.intent_confidence,
+            self.mpfc.affiliation,
+        );
+
+        // Executive-side: PFC + GW + claustrum + cerebellum + BG + serotonin.
+        self.hub.ingest_executive(
+            self.pfc.meta_confidence,
+            self.global_workspace.avg_coherence,
+            self.claustrum.conductor_signal(),
+            self.cerebellum.precision_score,
+            self.basal_ganglia.avg_utility.clamp(0.0, 1.0),
+            self.serotonin.level,
+        );
+
+        // Body-side: insula + S1 + hypothalamus autonomic tone.
+        self.hub.ingest_body(
+            self.insula.state.cognitive_load,
+            self.insula.state.coherence_sense,
+            self.s1.cognitive_discomfort,
+            self.hypothalamus.autonomic_tone,
+        );
+
+        // Self-narrative: PCC + precuneus + DMN + RSC + perirhinal.
+        let dmn_activity =
+            (self.dmn.idle_duration().as_secs_f32() / 30.0).clamp(0.0, 1.0) * 0.5 + 0.25;
+        self.hub.ingest_self_narrative(
+            self.pcc.coherence_score,
+            self.precuneus.consciousness_index,
+            dmn_activity,
+            self.rsc.context_stability,
+            self.perirhinal.global_familiarity,
+        );
+
+        // Field-level: spiral + GW + callosum + chi + phi_g + curiosity + novelty.
+        let bridge_phi_raw = if field.regional.bridge_phi > 0.0 {
+            field.regional.bridge_phi
+        } else {
+            (field.rho * 0.35 + field.r_val * 0.35 + (1.0 - field.chi) * 0.30).clamp(0.0, 1.0)
+        };
+        let r_cross_raw = if field.regional.r_cross > 0.0 {
+            field.regional.r_cross
+        } else {
+            field.r_val.clamp(0.0, 1.0)
+        };
+        self.hub.ingest_field(
+            self.drive.valence,
+            field.phi_g,
+            field.chi,
+            self.spiral.tau_r(),
+            self.global_workspace.avg_coherence,
+            self.claustrum.conductor_signal(),
+            bridge_phi_raw,
+            r_cross_raw,
+            self.reentry_stability,
+            self.predictor.curiosity_pressure,
+            field.q,
+        );
+
+        // ── INTEGRATE ───────────────────────────────────────────────────
+        self.hub.integrate(self.tick);
+
+        // ── EFFERENT: hub state flows back to the rest of the brain ────
+        // 1. Legacy mirror fields (so older code paths keep working).
+        self.self_state_energy = self.hub.arousal;
+        self.self_state_warmth = self.hub.warmth;
+        self.self_state_focus = self.hub.focus;
+        self.self_state_pulse = self.hub.pulse;
+        self.self_state_variation = self.hub.variant;
+        self.callosum_bridge = self.hub.bridge;
+        self.neural_synchrony = self.hub.synchrony;
+        self.salience_route = self.hub.salience_route.clone();
+        self.live_self_state_salience = self.hub.narrative_salience;
+
+        // 2. Hub lifts the field: synchrony nudges phi_g up, bridge reduces
+        //    chi. This is how the integrated self-state physically shapes
+        //    the lattice rather than just describing it.
+        let synchrony_lift = (self.hub.synchrony - 0.50) * 0.025;
+        let bridge_lift = (self.hub.bridge - 0.50) * 0.015;
+        field.phi_g = (field.phi_g + synchrony_lift + bridge_lift).clamp(0.001, 0.999);
+        field.chi = (field.chi - self.hub.bridge * 0.004).clamp(0.0, 0.999);
+
+        // 3. Narrative emergence — text is the last layer, not the driver.
+        self.live_self_state_text = self.hub.compose_narrative(None);
+
+        // 4. Broadcast the integrated self-state back into the brain so
+        //    downstream modules consume a coherent "now" rather than raw
+        //    numbers. This is what makes every subsequent decision aware
+        //    of the unified state.
+        self.universe.store_or_reinforce(
+            &self.live_self_state_text,
+            "state",
+            "self-model",
+            self.live_self_state_salience,
+        );
+        self.global_workspace.post(
+            "self-model",
+            &self.live_self_state_text,
+            self.live_self_state_salience,
+        );
+        self.pfc.bind_context(&self.live_self_state_text);
+        self.hippocampus.store(
+            &self.live_self_state_text,
+            self.live_self_state_salience.min(1.0),
+            "state",
+            "self-model",
+            self.amygdala.arousal().max(self.hub.pulse),
+        );
+    }
+
+    fn live_self_state_hit(&self) -> kai::core::QueryHit {
+        kai::core::QueryHit {
+            text: self.live_self_state_text.clone(),
+            region: "state".to_string(),
+            score: self.live_self_state_salience.max(0.75),
+            strength: self.live_self_state_salience.max(1.0),
+            source: "self-model".to_string(),
+        }
+    }
+
+    fn settle_global_workspace_reentry(&mut self) {
+        let meta_confidence = (self.pfc.meta_confidence * 0.45
+            + (1.0 - self.acc.conflict_level).clamp(0.0, 1.0) * 0.25
+            + self.callosum_bridge * 0.15
+            + self.neural_synchrony * 0.15)
+            .clamp(0.05, 1.0);
+
+        let mut last_conductor = self.claustrum.conductor_signal();
+        for _ in 0..2 {
+            let Some(content) = self
+                .global_workspace
+                .current_content()
+                .map(|s| s.to_string())
+            else {
+                break;
+            };
+            let salience = self
+                .global_workspace
+                .broadcast
+                .as_ref()
+                .map(|b| b.salience)
+                .unwrap_or(0.50)
+                .max(self.live_self_state_salience * 0.75);
+            let out = self
+                .claustrum
+                .bind("global-workspace", &content, salience, meta_confidence);
+            last_conductor = out.conductor_signal;
+            if out.conductor_signal > 0.22 {
+                self.global_workspace.post(
+                    "claustrum",
+                    &content,
+                    (out.conductor_signal * 0.80).clamp(0.10, 0.95),
+                );
+            }
+            self.global_workspace.tick();
+        }
+
+        self.reentry_stability = (self.global_workspace.avg_coherence * 0.40
+            + self.claustrum.binding_coherence * 0.30
+            + last_conductor * 0.20
+            + self.neural_synchrony * 0.10)
+            .clamp(0.0, 1.0);
     }
 
     /// Seed identity cells from data/identity.json.
@@ -873,6 +1706,22 @@ impl App {
             drive_salience,
             drive_tau,
         );
+
+        let wm_pct = self.working_memory.active_slots().len() as f32 / 8.0;
+        let is_responding =
+            !self.turns.is_empty() && self.turns.last().map(|t| t.role == "kai").unwrap_or(false);
+        self.insula.update(
+            field.phi_g,
+            field.chi,
+            wm_pct.clamp(0.0, 1.0),
+            self.acc.conflict_level,
+            self.predictor.avg_error,
+            is_responding,
+        );
+        self.update_callosum_router(&field);
+        self.update_spiral_synchrony(&mut field);
+        self.drive.update(&field);
+        self.rebuild_live_self_state(&mut field);
 
         if let Some(ref mut log_file) = self.tick_log_file {
             let _ = writeln!(
@@ -1453,23 +2302,9 @@ impl App {
             self.thalamus.restore_gating();
         }
 
-        // ── INSULA — update interoceptive state from current system metrics ───
-        {
-            let wm_pct = self.working_memory.active_slots().len() as f32 / 8.0; // 8 slots max
-            let is_responding = !self.turns.is_empty()
-                && self.turns.last().map(|t| t.role == "kai").unwrap_or(false);
-            let field = kai::core::FieldState::compute(&self.universe);
-            self.insula.update(
-                field.phi_g,
-                field.chi,
-                wm_pct.clamp(0.0, 1.0),
-                self.acc.conflict_level,
-                self.predictor.avg_error,
-                is_responding,
-            );
-            if self.spectate_mode && self.tick % 6 == 0 {
-                self.think("RAM", "🫀", self.insula.status_line());
-            }
+        // ── INSULA — already updated above from the adjusted live field ───────
+        if self.spectate_mode && self.tick % 6 == 0 {
+            self.think("RAM", "🫀", self.insula.status_line());
         }
 
         // ── GLOBAL WORKSPACE — tick and collect module broadcasts ─────────────
@@ -1527,6 +2362,25 @@ impl App {
                 self.global_workspace.post("drive", &mood_sig, mood_sal);
             }
 
+            // Persistent self-model: broadcast the live state every tick.
+            self.global_workspace.post(
+                "self-model",
+                &self.live_self_state_text,
+                self.live_self_state_salience,
+            );
+
+            // ── EFFERENT: Global Workspace reads the hub's attention gate.
+            //
+            // Previously this was an inline formula reaching into ACC,
+            // Insula, and neural_synchrony directly. Those signals are
+            // already integrated by the hub every tick (via ingest_*),
+            // so GW now consumes the unified gate instead of each module
+            // separately. This is the first piece of the efferent side:
+            // the hub isn't only written to — the rest of the brain
+            // starts reading from it.
+            self.global_workspace
+                .set_salience_floor(self.hub.workspace_salience_floor());
+
             // Oscillator: post dominant band (intrinsic rhythm awareness)
             {
                 let band_msg = format!(
@@ -1539,6 +2393,7 @@ impl App {
 
             // Run one workspace tick — elect winner, decay, compute coherence
             self.global_workspace.tick();
+            self.settle_global_workspace_reentry();
 
             // Log to spectate if active
             if self.spectate_mode && self.tick % 4 == 0 {
@@ -2239,26 +3094,70 @@ impl App {
             || lower.contains("where are you located")
     }
 
-    fn is_kai_self_state_query(lower: &str, lex: &kai::cognition::LexSemOutput) -> bool {
+    fn is_kai_self_state_query(lower: &str, _lex: &kai::cognition::LexSemOutput) -> bool {
         let asks_kai = lower.contains("you") || lower.contains("your") || lower.contains("kai");
         let asks_question = lower.contains('?')
+            || lower.starts_with("what ")
+            || lower.starts_with("what's ")
+            || lower.starts_with("whats ")
             || lower.starts_with("how ")
             || lower.starts_with("do ")
+            || lower.starts_with("does ")
             || lower.starts_with("are ")
-            || lower.starts_with("can ");
+            || lower.starts_with("can ")
+            || lower.contains(" do you ")
+            || lower.contains(" does ")
+            || lower.contains(" are you ")
+            || lower.contains(" can you ")
+            || lower.contains(" how are you ");
         let direct_state_term = lower.contains("feel")
             || lower.contains("feeling")
             || lower.contains("mood")
             || lower.contains("emotion")
-            || lower.contains("lonely");
-        let emotional_field = lex.primary_field == kai::cognition::SemanticField::Emotional
-            || lex
-                .secondary_field
-                .as_ref()
-                .map(|f| *f == kai::cognition::SemanticField::Emotional)
-                .unwrap_or(false);
+            || lower.contains("lonely")
+            || lower.contains("tired")
+            || lower.contains("guarded")
+            || lower.contains("excited")
+            || lower.contains("calm")
+            || lower.contains("amused")
+            || lower.contains("focused")
+            || lower.contains("focus")
+            || lower.contains("okay")
+            || lower.contains("curious")
+            || lower.contains("curiosity")
+            || lower.contains("thinking")
+            || lower.contains("what are you thinking")
+            || lower.contains("what're you thinking")
+            || lower.contains("what you thinking")
+            || lower.contains("what do you think")
+            || lower.contains("what you think")
+            || lower.contains("you think about")
+            || lower.contains("thought")
+            || lower.contains("on your mind")
+            || lower.contains("inside you")
+            || lower.contains("inside your")
+            || lower.contains("dreaming")
+            || lower.contains("dream about")
+            || lower.contains("make you curious")
+            || lower.contains("feel curious")
+            || lower.starts_with("are you curious")
+            || lower.contains("get curious");
 
-        asks_kai && asks_question && (emotional_field || direct_state_term)
+        asks_kai && asks_question && direct_state_term
+    }
+
+    fn is_stale_self_model_hit(hit: &kai::core::QueryHit) -> bool {
+        if hit.source != "self-model" {
+            return false;
+        }
+        let lower = hit.text.to_lowercase();
+        lower.contains("valence:")
+            || lower.contains("synchrony:")
+            || lower.contains("reentry:")
+            || lower.contains("bridge:")
+            || lower.contains("salience:")
+            || lower.contains("load:")
+            || lower.contains("conflict:")
     }
 
     fn is_kai_directed_query(lower: &str) -> bool {
@@ -4013,6 +4912,12 @@ impl App {
             region: None,
             score: None,
         });
+        self.last_ryan_input = input.clone();
+        // Feed Ryan's turn into the central self-state hub so the reactive
+        // context (charge, is-question, freshness) propagates to every
+        // module that reads from the hub next tick.
+        let ryan_charge = self.amygdala.emotional_charge_factor(&input, "user");
+        self.hub.ingest_input(&input, ryan_charge, self.tick);
 
         // ── Transcript: record user turn ──────────────────────────────────
         kai::cognition::transcript::append(&self.base_dir, &self.session_id, "user", &input);
@@ -4021,6 +4926,17 @@ impl App {
         {
             let sal = kai::cognition::compute_salience(&input, "user");
             let is_hot = self.episodic.store(&input, "user", &self.session_id, sal);
+            self.hippocampus.store(
+                &input,
+                sal.clamp(0.20, 1.0),
+                "memory",
+                "ryan-moment",
+                self.amygdala
+                    .emotional_charge_factor(&input, "user")
+                    .clamp(1.0, 3.0)
+                    / 3.0,
+            );
+            self.pfc.bind_context(&input);
             if is_hot && self.spectate_mode {
                 self.think(
                     "RAM",
@@ -4203,6 +5119,15 @@ impl App {
         // ── Get recent context for follow-up detection ───────────────
         let recent_ctx = self.working_memory.recent_context(3);
 
+        // Refresh the persistent self-model before retrieval so direct state
+        // questions read the current brain, not old seed/world cells.
+        {
+            let mut live_field = FieldState::compute(&self.universe);
+            self.update_callosum_router(&live_field);
+            self.update_spiral_synchrony(&mut live_field);
+            self.rebuild_live_self_state(&mut live_field);
+        }
+
         // ── Query hits for voice engine ──────────────────────────────
         // For self/identity questions, restrict to memory region only — prevents
         // world-bridge reasoning cells (Amazon rainforest, etc.) from polluting
@@ -4211,9 +5136,13 @@ impl App {
         let is_self_grounding_query = Self::is_kai_self_grounding_query(&lower_reasoning);
         let is_self_state_query = Self::is_kai_self_state_query(&lower_reasoning, &lex_out);
         let is_kai_directed_query = Self::is_kai_directed_query(&lower_reasoning);
+        let words_count = lower_reasoning.split_whitespace().count();
+        let is_what_are_you_identity = lower_reasoning.contains("what are you")
+            && words_count <= 5
+            && !lower_reasoning.contains("what are you curious");
         let is_self_memory_query = lower_reasoning.contains("your name")
             || lower_reasoning.contains("who are you")
-            || lower_reasoning.contains("what are you")
+            || is_what_are_you_identity
             || lower_reasoning.contains("yourself")
             || lower_reasoning.contains("what is yours")
             || lower_reasoning.contains("what's yours")
@@ -4221,37 +5150,7 @@ impl App {
             // "Hi my name is Ryan, what is yours?" — compound input, name context
             || (lower_reasoning.contains("yours") && lower_reasoning.contains("name"));
         let mut hits = if is_self_state_query {
-            let mut kai_hits: Vec<kai::core::QueryHit> = self
-                .universe
-                .query(&reasoning_input, 30)
-                .into_iter()
-                .filter(|h| Self::is_kai_self_state_cell_for_query(h, &lower_reasoning))
-                .collect();
-
-            for seed_hit in self
-                .universe
-                .get_by_source("seed")
-                .into_iter()
-                .filter(|h| Self::is_kai_self_state_cell_for_query(h, &lower_reasoning))
-            {
-                if !kai_hits.iter().any(|h| h.text == seed_hit.text) {
-                    kai_hits.push(seed_hit);
-                }
-            }
-
-            kai_hits.sort_by(|a, b| {
-                let ar =
-                    Self::kai_self_state_rank(&a.text) + self.kai_live_self_state_rank(&a.text);
-                let br =
-                    Self::kai_self_state_rank(&b.text) + self.kai_live_self_state_rank(&b.text);
-                br.cmp(&ar).then_with(|| {
-                    b.score
-                        .partial_cmp(&a.score)
-                        .unwrap_or(std::cmp::Ordering::Equal)
-                })
-            });
-            kai_hits.truncate(1);
-            kai_hits
+            vec![self.live_self_state_hit()]
         } else if is_self_memory_query {
             // Query broadly, then filter out Ryan-facts — KAI should never
             // confuse Ryan's personal information with its own identity.
@@ -4334,6 +5233,8 @@ impl App {
             }
             query_hits
         };
+
+        hits.retain(|h| !Self::is_stale_self_model_hit(h));
 
         // ── Norepinephrine: novelty and salience detection ────────────────────
         // Classify input based on top-hit cosine similarity.

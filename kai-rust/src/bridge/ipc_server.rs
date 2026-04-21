@@ -95,7 +95,15 @@ fn handle_command(
             let lex = lex_engine.analyze(text);
             let field = FieldState::compute(universe);
             drive.update(&field);
-            let hits = chat_hits(universe, text, query_type, &lex, drive, &field);
+            let hits = chat_hits(
+                universe,
+                text,
+                query_type,
+                &lex,
+                drive,
+                &field,
+                recent_context,
+            );
             let mut brain = BrainSignals::default();
             brain.felt_valence = drive.valence;
             brain.confidence = hits
@@ -315,37 +323,17 @@ fn chat_hits(
     lex: &LexSemOutput,
     drive: &Drive,
     field: &FieldState,
+    recent_context: &[(String, String)],
 ) -> Vec<QueryHit> {
     let lower = text.to_lowercase();
 
     if is_kai_self_state_query(&lower, lex) {
-        let mut hits: Vec<QueryHit> = universe
-            .query(text, 30)
-            .into_iter()
-            .filter(|h| is_kai_self_state_cell_for_query(h, &lower))
-            .collect();
-
-        for seed_hit in universe
-            .get_by_source("seed")
-            .into_iter()
-            .filter(|h| is_kai_self_state_cell_for_query(h, &lower))
-        {
-            if !hits.iter().any(|h| h.text == seed_hit.text) {
-                hits.push(seed_hit);
-            }
-        }
-
-        hits.sort_by(|a, b| {
-            let ar = kai_self_state_rank(&a.text) + kai_live_self_state_rank(&a.text, drive, field);
-            let br = kai_self_state_rank(&b.text) + kai_live_self_state_rank(&b.text, drive, field);
-            br.cmp(&ar).then_with(|| {
-                b.score
-                    .partial_cmp(&a.score)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            })
-        });
-        hits.truncate(1);
-        return hits;
+        return vec![live_self_state_hit(
+            drive,
+            field,
+            text,
+            recent_context.len() as u64 + text.len() as u64,
+        )];
     }
 
     let is_self_grounding_query = is_kai_self_grounding_query(&lower);
@@ -409,30 +397,74 @@ fn chat_hits(
     if matches!(query_type, QueryType::SelfQuestion) || is_kai_directed_query(&lower) {
         hits.retain(|h| !matches!(h.source.as_str(), "ryan" | "conversation" | "world-bridge"));
     }
+    hits.retain(|h| !is_stale_self_model_hit(h));
     hits.truncate(5);
     hits
 }
 
-fn is_kai_self_state_query(lower: &str, lex: &LexSemOutput) -> bool {
+fn is_kai_self_state_query(lower: &str, _lex: &LexSemOutput) -> bool {
     let asks_kai = lower.contains("you") || lower.contains("your") || lower.contains("kai");
     let asks_question = lower.contains('?')
+        || lower.starts_with("what ")
+        || lower.starts_with("what's ")
+        || lower.starts_with("whats ")
         || lower.starts_with("how ")
         || lower.starts_with("do ")
+        || lower.starts_with("does ")
         || lower.starts_with("are ")
-        || lower.starts_with("can ");
+        || lower.starts_with("can ")
+        || lower.contains(" do you ")
+        || lower.contains(" does ")
+        || lower.contains(" are you ")
+        || lower.contains(" can you ")
+        || lower.contains(" how are you ");
     let direct_state_term = lower.contains("feel")
         || lower.contains("feeling")
         || lower.contains("mood")
         || lower.contains("emotion")
-        || lower.contains("lonely");
-    let emotional_field = lex.primary_field == SemanticField::Emotional
-        || lex
-            .secondary_field
-            .as_ref()
-            .map(|f| *f == SemanticField::Emotional)
-            .unwrap_or(false);
+        || lower.contains("lonely")
+        || lower.contains("tired")
+        || lower.contains("guarded")
+        || lower.contains("excited")
+        || lower.contains("calm")
+        || lower.contains("amused")
+        || lower.contains("focused")
+        || lower.contains("focus")
+        || lower.contains("okay")
+        || lower.contains("curious")
+        || lower.contains("curiosity")
+        || lower.contains("thinking")
+        || lower.contains("what are you thinking")
+        || lower.contains("what're you thinking")
+        || lower.contains("what you thinking")
+        || lower.contains("what do you think")
+        || lower.contains("what you think")
+        || lower.contains("you think about")
+        || lower.contains("thought")
+        || lower.contains("on your mind")
+        || lower.contains("inside you")
+        || lower.contains("inside your")
+        || lower.contains("dreaming")
+        || lower.contains("dream about")
+        || lower.contains("make you curious")
+        || lower.contains("feel curious")
+        || lower.starts_with("are you curious")
+        || lower.contains("get curious");
+    asks_kai && asks_question && direct_state_term
+}
 
-    asks_kai && asks_question && (emotional_field || direct_state_term)
+fn is_stale_self_model_hit(hit: &QueryHit) -> bool {
+    if hit.source != "self-model" {
+        return false;
+    }
+    let lower = hit.text.to_lowercase();
+    lower.contains("valence:")
+        || lower.contains("synchrony:")
+        || lower.contains("reentry:")
+        || lower.contains("bridge:")
+        || lower.contains("salience:")
+        || lower.contains("load:")
+        || lower.contains("conflict:")
 }
 
 fn is_kai_directed_query(lower: &str) -> bool {
@@ -449,9 +481,14 @@ fn is_kai_self_grounding_query(lower: &str) -> bool {
 }
 
 fn is_kai_identity_query(lower: &str) -> bool {
+    let words_count = lower.split_whitespace().count();
+    let is_what_are_you_identity = lower.contains("what are you")
+        && words_count <= 5
+        && !lower.contains("what are you curious");
+
     lower.contains("your name")
         || lower.contains("who are you")
-        || lower.contains("what are you")
+        || is_what_are_you_identity
         || lower.contains("where are you")
         || lower.contains("where you at")
         || lower.contains("where do you exist")
@@ -461,100 +498,98 @@ fn is_kai_identity_query(lower: &str) -> bool {
         || (lower.contains("yours") && lower.contains("name"))
 }
 
-fn is_kai_self_state_cell(hit: &QueryHit) -> bool {
-    if matches!(
-        hit.source.as_str(),
-        "ryan" | "conversation" | "world-bridge"
-    ) {
-        return false;
-    }
-    if !matches!(hit.region.as_str(), "action" | "language" | "memory") {
-        return false;
-    }
+fn live_self_state_hit(
+    drive: &Drive,
+    field: &FieldState,
+    current_text: &str,
+    variant: u64,
+) -> QueryHit {
+    // Tunnel path doesn't carry the full App state, so we build a fresh
+    // SelfStateHub, feed it the minimum viable signals from drive + field +
+    // Ryan's current turn, integrate, and read the emergent narrative.
+    // Same narrative emergence logic as the main TUI — the only difference
+    // is which module inputs are available here.
+    let mut hub = crate::cognition::SelfStateHub::new();
 
-    let lower = hit.text.to_lowercase();
-    (lower.contains("feel")
-        || lower.contains("feeling")
-        || lower.contains("mood")
-        || lower.contains("emotion")
-        || lower.contains("lonely")
-        || lower.contains("absence"))
-        && !lower.contains("dictionary")
-        && !lower.contains("definition")
-}
+    let bridge_phi = if field.regional.bridge_phi > 0.0 {
+        field.regional.bridge_phi
+    } else {
+        (field.rho * 0.35 + field.r_val * 0.35 + (1.0 - field.chi) * 0.30).clamp(0.0, 1.0)
+    };
+    let r_cross = if field.regional.r_cross > 0.0 {
+        field.regional.r_cross
+    } else {
+        field.r_val.clamp(0.0, 1.0)
+    };
+    let curiosity_proxy = if drive.mood == Mood::Curious {
+        0.65
+    } else if drive.mood == Mood::Engaged {
+        0.45
+    } else {
+        0.25
+    };
+    let workspace_coherence_proxy = field.r_val.clamp(0.0, 1.0);
+    let claustrum_proxy = ((field.phi_g + workspace_coherence_proxy) * 0.5).clamp(0.0, 1.0);
+    let acc_conflict_proxy = field.chi.clamp(0.0, 1.0);
 
-fn is_kai_self_state_cell_for_query(hit: &QueryHit, query_lower: &str) -> bool {
-    if !is_kai_self_state_cell(hit) {
-        return false;
-    }
+    hub.ingest_field(
+        drive.valence,
+        field.phi_g,
+        field.chi,
+        0.55,
+        workspace_coherence_proxy,
+        claustrum_proxy,
+        bridge_phi,
+        r_cross,
+        workspace_coherence_proxy,
+        curiosity_proxy,
+        field.q,
+    );
+    hub.ingest_emotional(
+        drive.valence.abs().clamp(0.0, 1.0),
+        0.40,
+        0.40,
+        0.20,
+        acc_conflict_proxy,
+        0.20,
+        0.15,
+        (drive.valence * 0.5 + 0.5).clamp(0.0, 1.0),
+        0.40,
+        (drive.valence * 0.5 + 0.5).clamp(0.0, 1.0),
+    );
+    hub.ingest_executive(
+        (field.phi_g * 0.8 + 0.10).clamp(0.0, 1.0),
+        workspace_coherence_proxy,
+        claustrum_proxy,
+        0.50,
+        0.50,
+        0.55,
+    );
+    hub.ingest_body(
+        acc_conflict_proxy,
+        (1.0 - field.chi).clamp(0.0, 1.0),
+        acc_conflict_proxy,
+        0.50,
+    );
+    hub.ingest_social(0.45, 0.40, 0.40, 0.40, 0.35, 0.35, 0.50);
+    hub.ingest_self_narrative(0.40, 0.40, 0.40, 0.45, 0.35);
 
-    let lower = hit.text.to_lowercase();
-    if query_lower.contains("lonely") {
-        return lower.contains("lonely") || lower.contains("absence");
-    }
-    if query_lower.contains("feel") || query_lower.contains("feeling") {
-        return lower.contains("feel")
-            || lower.contains("feeling")
-            || lower.contains("mood")
-            || lower.contains("emotion");
-    }
+    let charge_proxy = if current_text.contains('?') { 1.1 } else { 1.0 };
+    hub.ingest_input(current_text, charge_proxy, variant);
+    hub.variant = variant;
+    hub.integrate(variant);
 
-    true
-}
+    let text = hub.compose_narrative(Some(current_text));
+    let score = hub.narrative_salience.max(0.75);
+    let strength = hub.narrative_salience.max(1.0);
 
-fn kai_self_state_rank(text: &str) -> i32 {
-    let lower = text.to_lowercase();
-    let mut score = 0;
-
-    if lower.contains("feel") {
-        score += 5;
+    QueryHit {
+        text,
+        region: "state".to_string(),
+        score,
+        strength,
+        source: "self-model".to_string(),
     }
-    if lower.contains("mood") {
-        score += 4;
-    }
-    if lower.contains("lonely") {
-        score += 4;
-    }
-    if lower.contains("absence") {
-        score += 3;
-    }
-    if lower.contains("state") {
-        score += 3;
-    }
-    if lower.contains("field") {
-        score += 2;
-    }
-    if lower.contains("dictionary") {
-        score -= 6;
-    }
-    if lower.contains("definition") {
-        score -= 6;
-    }
-    if lower.contains('?') {
-        score -= 3;
-    }
-
-    score
-}
-
-fn kai_live_self_state_rank(text: &str, drive: &Drive, field: &FieldState) -> i32 {
-    let lower = text.to_lowercase();
-    let mut score = 0;
-
-    if drive.mood == Mood::Curious && lower.contains("curious") {
-        score += 8;
-    }
-    if drive.mood == Mood::Engaged && lower.contains("field") {
-        score += 4;
-    }
-
-    let conflict_active =
-        drive.mood == Mood::Conflicted || field.chi > 0.20 || drive.avg_chi > 0.20;
-    if lower.contains("conflicted") {
-        score += if conflict_active { 8 } else { -5 };
-    }
-
-    score
 }
 
 fn kai_grounding_rank(text: &str) -> i32 {
