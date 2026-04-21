@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>KAI | Bio-Machine 3D Visualizer</title>
+    <style>
+      body { margin: 0; background: #050505; color: #fff; font-family: 'Inter', sans-serif; overflow: hidden; }
+      #app { width: 100vw; height: 100vh; position: relative; }
+      #ui-overlay { position: absolute; top: 20px; left: 20px; pointer-events: none; }
+      .label { color: #00cfff; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; font-weight: bold; text-shadow: 0 0 10px rgba(0,207,255,0.8); }
+      #status { position: absolute; bottom: 20px; left: 20px; font-family: monospace; font-size: 10px; color: #444; }
+      #metrics { position: absolute; top: 20px; right: 20px; width: 200px; padding: 15px; background: rgba(10,10,10,0.8); border: 1px solid #333; border-radius: 4px; }
+      .metric-row { margin-bottom: 8px; font-family: monospace; font-size: 12px; }
+      .metric-label { color: #888; }
+      .metric-value { float: right; color: #00ff99; }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <div id="ui-overlay">
+        <div class="header">
+            <div class="scan-line"></div>
+            <h1>KAI COGNITIVE MONITOR</h1>
+            <p>BIO-MACHINE v5.5.2 // 78-SLOT ARCHITECTURE</p>
+        </div>
+
+        <div class="metrics-panel">
+            <div class="metric"><span>Φg Emergence:</span> <span id="m-phi" class="value">0.000</span></div>
+            <div class="metric"><span>ρ Density:</span> <span id="m-rho" class="value">0.000</span></div>
+            <div class="metric"><span>χ Conflict:</span> <span id="m-chi" class="value">0.000</span></div>
+            <div class="metric"><span>V Valence:</span> <span id="m-val" class="value">0.000</span></div>
+            <div class="metric"><span>τR Factor:</span> <span id="m-tau" class="value">0.000</span></div>
+            <div class="metric-divider"></div>
+            <div class="metric"><span>Current Mood:</span> <span id="m-mood" class="value">STABLE</span></div>
+            <div class="metric"><span>Heartbeat (TPM):</span> <span id="m-tpm" class="value">0.0</span></div>
+            <div class="metric"><span>Tick:</span> <span id="m-tick" class="value">0</span></div>
+        </div>
+
+        <div class="scan-status">
+            <div class="pulse"></div>
+            <span>LIVE SCAN ACTIVE</span>
+        </div>
+    </div>
+    <div id="status">LOCAL_POLL_ACTIVE // LINK_READY</div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
