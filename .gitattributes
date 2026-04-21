@@ -1,30 +1,44 @@
-# Force Rust to be the absolute dominant language
+# Absolute Language Dominance Calibration
+# Ensure Rust and JavaScript are the primary project identifiers
+
+# 1. Core Source Anchoring
 *.rs linguist-detectable=true
 *.rs linguist-language=Rust
-/kai-rust/**/*.rs linguist-detectable=true
-/kai-rust/**/*.rs linguist-language=Rust
+/kai-rust/src/**/*.rs linguist-language=Rust
 
-# Hide the root-level TypeScript UI directory (which is 73%+ of the repo size)
-/src/** linguist-detectable=false
+*.js linguist-detectable=true
+*.js linguist-language=JavaScript
+/visualizer/src/**/*.js linguist-language=JavaScript
+/visualizer/src/**/*.css linguist-language=CSS
 
-# Hide all build artifacts and temporary folders
-/kai-build*/** linguist-detectable=false
-/build/** linguist-detectable=false
+# 2. Defiitive Legacy & Research Suppression (The 13.1% Makefile & 0.4% C++ Skew Fix)
+/legacy/** linguist-detectable=false
+/legacy/** linguist-vendored
+*.cu linguist-detectable=false
+*.cpp linguist-detectable=false
+*.h linguist-detectable=false
+*.py linguist-detectable=false
+
+# 3. Universal Makefile & Build Asset Suppression
+**/Makefile linguist-detectable=false
+**/makefile linguist-detectable=false
+**/*.mk linguist-detectable=false
+**/*.cmake linguist-detectable=false
+**/CMakeLists.txt linguist-detectable=false
+/kai-build/** linguist-detectable=false
 /target/** linguist-detectable=false
-
-# Hide Makefiles and configuration scripts everywhere
-Makefile linguist-detectable=false
-makefile linguist-detectable=false
-*.mk linguist-detectable=false
-*.cmake linguist-detectable=false
-CMakeLists.txt linguist-detectable=false
+/build/** linguist-detectable=false
 Cargo.lock linguist-detectable=false
 package-lock.json linguist-detectable=false
 
-# Treat certain static files as vendored/data
-google-10000-english-usa.txt linguist-vendored
-*.json linguist-data
+# 4. Resource & Documentation Categorization
+*.json linguist-generated
+*.json linguist-detectable=false
 *.md linguist-documentation
 *.bat linguist-vendored
 *.cmd linguist-vendored
-*.py linguist-detectable=false
+*.sh linguist-vendored
+*.glb linguist-generated
+*.webp linguist-generated
+*.png linguist-generated
+*.svg linguist-generated
