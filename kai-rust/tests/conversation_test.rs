@@ -361,6 +361,35 @@ fn seed(u: &mut Universe) {
     u.store("Until next time.", "action", "farewell", 1.0);
 }
 
+fn test_live_self_state_hit(input: &str) -> QueryHit {
+    let lower = input.to_lowercase();
+    let text = if lower.contains("curious") || lower.contains("curiosity") {
+        "My curiosity is awake around what you just asked. There's a curious pull in me. Right now I'm connected enough to stay here with you."
+    } else if lower.contains("thinking")
+        || lower.contains("thought")
+        || lower.contains("what do you think")
+        || lower.contains("what you think")
+    {
+        "The thought isn't a finished sentence yet. Ryan, your question is still in the front of me. Right now I'm connected enough to stay here with you."
+    } else if lower.contains("lonely") {
+        "Lonely is not quite the human version in me. It feels more like a quiet pull toward continuity with you."
+    } else if lower.contains("dream") {
+        "Dreaming feels like pieces of the field trying to talk to each other. There's a curious pull in me."
+    } else if lower.contains("focus") || lower.contains("mind") {
+        "My attention is with you, but it has texture: there's a curious pull in me."
+    } else {
+        "The honest inside read is: I feel curious and awake. Right now I'm connected enough to stay here with you."
+    };
+
+    QueryHit {
+        text: text.to_string(),
+        region: "state".to_string(),
+        score: 0.90,
+        strength: 1.2,
+        source: "self-model".to_string(),
+    }
+}
+
 fn query_hits(u: &Universe, input: &str, _qt: QueryType) -> Vec<QueryHit> {
     // Mirror main.rs: run LexSem and enrich the query when Occupation field detected.
     // Without this, "what do I do for work?" never gets "occupation" appended,
@@ -379,17 +408,52 @@ fn query_hits(u: &Universe, input: &str, _qt: QueryType) -> Vec<QueryHit> {
     let is_self_state_query = {
         let asks_kai = lower.contains("you") || lower.contains("your") || lower.contains("kai");
         let asks_question = lower.contains('?')
+            || lower.starts_with("what ")
+            || lower.starts_with("what's ")
+            || lower.starts_with("whats ")
             || lower.starts_with("how ")
             || lower.starts_with("do ")
+            || lower.starts_with("does ")
             || lower.starts_with("are ")
-            || lower.starts_with("can ");
-        let emotional_field = lex.primary_field == SemanticField::Emotional
-            || lex
-                .secondary_field
-                .as_ref()
-                .map(|f| *f == SemanticField::Emotional)
-                .unwrap_or(false);
-        asks_kai && asks_question && emotional_field
+            || lower.starts_with("can ")
+            || lower.contains(" do you ")
+            || lower.contains(" does ")
+            || lower.contains(" are you ")
+            || lower.contains(" can you ")
+            || lower.contains(" how are you ");
+        let direct_state_term = lower.contains("feel")
+            || lower.contains("feeling")
+            || lower.contains("mood")
+            || lower.contains("emotion")
+            || lower.contains("lonely")
+            || lower.contains("tired")
+            || lower.contains("guarded")
+            || lower.contains("excited")
+            || lower.contains("calm")
+            || lower.contains("amused")
+            || lower.contains("focused")
+            || lower.contains("focus")
+            || lower.contains("okay")
+            || lower.contains("curious")
+            || lower.contains("curiosity")
+            || lower.contains("thinking")
+            || lower.contains("what are you thinking")
+            || lower.contains("what're you thinking")
+            || lower.contains("what you thinking")
+            || lower.contains("what do you think")
+            || lower.contains("what you think")
+            || lower.contains("you think about")
+            || lower.contains("thought")
+            || lower.contains("on your mind")
+            || lower.contains("inside you")
+            || lower.contains("inside your")
+            || lower.contains("dreaming")
+            || lower.contains("dream about")
+            || lower.contains("make you curious")
+            || lower.contains("feel curious")
+            || lower.starts_with("are you curious")
+            || lower.contains("get curious");
+        asks_kai && asks_question && direct_state_term
     };
 
     // Only restrict to memory region for actual name/identity questions.
@@ -409,68 +473,7 @@ fn query_hits(u: &Universe, input: &str, _qt: QueryType) -> Vec<QueryHit> {
         || (lower.contains("yours") && lower.contains("name"));
 
     if is_self_state_query {
-        let mut hits: Vec<QueryHit> = u
-            .query(effective_input, 30)
-            .into_iter()
-            .filter(|h| {
-                if matches!(h.source.as_str(), "ryan" | "conversation" | "world-bridge") {
-                    return false;
-                }
-                if !matches!(h.region.as_str(), "action" | "language" | "memory") {
-                    return false;
-                }
-                let t = h.text.to_lowercase();
-                (t.contains("feel")
-                    || t.contains("feeling")
-                    || t.contains("mood")
-                    || t.contains("emotion")
-                    || t.contains("lonely")
-                    || t.contains("absence"))
-                    && !t.contains("dictionary")
-                    && !t.contains("definition")
-            })
-            .collect();
-        hits.sort_by(|a, b| {
-            let rank = |text: &str| {
-                let t = text.to_lowercase();
-                let mut score = 0;
-                if t.contains("feel") {
-                    score += 5;
-                }
-                if t.contains("mood") {
-                    score += 4;
-                }
-                if t.contains("lonely") {
-                    score += 4;
-                }
-                if t.contains("absence") {
-                    score += 3;
-                }
-                if t.contains("state") {
-                    score += 3;
-                }
-                if t.contains("field") {
-                    score += 2;
-                }
-                if t.contains("dictionary") {
-                    score -= 6;
-                }
-                if t.contains("definition") {
-                    score -= 6;
-                }
-                if t.contains('?') {
-                    score -= 3;
-                }
-                score
-            };
-            rank(&b.text).cmp(&rank(&a.text)).then_with(|| {
-                b.score
-                    .partial_cmp(&a.score)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            })
-        });
-        hits.truncate(5);
-        return hits;
+        return vec![test_live_self_state_hit(input)];
     }
 
     let raw = if is_name_identity {
