@@ -1,4 +1,4 @@
-# KAI — Cognition Reference (v5.6)
+# KAI — Cognition Reference (v5.7.0)
 
 KAI is a self-sustaining, autonomous cognitive engine built on **Recursive Sparse Hyperdimensional Lattice (RSHL)** architecture. This document provides the technical specifications for the finalized 78+ module "Bio-Machine" baseline.
 
@@ -28,7 +28,7 @@ The central confluence for KAI's cognitive architecture. The **SelfStateHub** (`
 
 ---
 
-## 79-Module "Bio-Machine" Manifest
+## 81-Module "Bio-Machine" Manifest
 Every module listed below is verified and natively implemented in the `src/cognition/` directory.
 
 ### I. Monoamine Systems & Modulators (7)
@@ -150,6 +150,8 @@ These systems manage the bridge between biological signals and the lattice-nativ
 - **Neuroplasticity** (`neuroplasticity.rs`): Dynamic link weight updates.
 - **Sleep System** (`sleep.rs`): Pruning and rehearsal reporting.
 - **Theory of Mind** (`theory_of_mind.rs`): Adaptive user modeling.
+- **Idle Ingest** (`idle_ingest.rs`): Passive learning from text corpora during idle heartbeats.
+- **Self-State Seed** (`self_state_seed.rs`): Lattice-native self-reflection phrases that replace hardcoded NLG.
 
 ---
 

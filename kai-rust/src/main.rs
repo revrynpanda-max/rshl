@@ -224,6 +224,10 @@ struct App {
     /// KAI is in the current moment; the fields above are mirrors maintained
     /// for backwards compatibility with callers that haven't yet migrated.
     hub: kai::cognition::SelfStateHub,
+    /// Passive learning worker — absorbs `data/ingest/*.txt` while KAI
+    /// is idle. This is how he grows his knowledge while you sleep
+    /// instead of sitting frozen waiting for input.
+    idle_ingest: kai::cognition::IdleIngest,
     /// Episodic memory — time-stamped ring buffer of events KAI has experienced.
     /// Enables "I remember 3 days ago you said..." style recollection.
     episodic: kai::cognition::EpisodicStore,
@@ -585,6 +589,11 @@ impl App {
             }
         }
 
+        // Construct the idle-ingest worker before moving base_dir into
+        // the struct literal. The worker needs base_dir to locate and
+        // create data/ingest and data/ingested.
+        let idle_ingest = kai::cognition::IdleIngest::new(&base_dir);
+
         Self {
             universe,
             drive,
@@ -636,6 +645,7 @@ impl App {
             callosum_bridge: 0.50,
             reentry_stability: 0.50,
             hub: kai::cognition::SelfStateHub::new(),
+            idle_ingest,
             episodic: kai::cognition::EpisodicStore::new(),
             amygdala: kai::cognition::AmygdalaGate::new(),
             predictor: kai::cognition::PredictiveEngine::new(),
@@ -1432,7 +1442,9 @@ impl App {
         field.chi = (field.chi - self.hub.bridge * 0.004).clamp(0.0, 0.999);
 
         // 3. Narrative emergence — text is the last layer, not the driver.
-        self.live_self_state_text = self.hub.compose_narrative(None);
+        self.live_self_state_text = self
+            .hub
+            .compose_narrative(Some(&self.universe), None);
 
         // 4. Broadcast the integrated self-state back into the brain so
         //    downstream modules consume a coherent "now" rather than raw
@@ -1775,6 +1787,29 @@ impl App {
             cpu.chi = self.drive.avg_chi;
             cpu.dream_count = self.dream_count;
             cpu.last_tick = Some(Instant::now());
+        }
+
+        // ── IDLE LEARNING — passive ingest of data/ingest/*.txt ──
+        //
+        // Runs only when KAI has been idle (no conversation turn) for
+        // 30+ seconds. Absorbs a few lines per tick from any .txt
+        // file in data/ingest/, encoding each into the lattice. When
+        // a file is fully absorbed it moves to data/ingested/.
+        //
+        // This is how KAI keeps growing while you're asleep or away —
+        // no more "came back and he's still stupid."
+        {
+            let idle_secs = self.dmn.idle_duration().as_secs();
+            let report = self.idle_ingest.tick(&mut self.universe, idle_secs);
+            if !report.is_noop() {
+                self.think("RAM", "📚", report.summary());
+                // Also surface in the inner voice stream so spectate
+                // mode sees it even when not in full raw mode.
+                if report.file_completed {
+                    self.last_inner_voice_text =
+                        format!("[ingest] {}", report.summary());
+                }
+            }
         }
 
         // ── STREAM 1: GPU Math (dream consolidation with parallel cosine) ──
@@ -2593,6 +2628,30 @@ impl App {
 
             // ── Source Reinforcement: strengthen dream sources by Wm ──────
             kai::cognition::reinforce_dream_sources(&mut self.universe, &dream);
+
+            // ── Discovery Synthesis: create NEW cells from connections ────
+            //
+            // When the dream cycle notices that two strong source cells
+            // share concepts but no existing cell captures the insight,
+            // it suggests a fresh synthesis in `dream.synthesis`. Store
+            // that as a brand-new cell. This is how KAI grows new
+            // understanding from what he already knows — instead of
+            // only reinforcing, he *invents* connection cells.
+            if let Some(syn) = dream.synthesis.as_ref() {
+                let created =
+                    kai::cognition::store_synthesis(&mut self.universe, &dream);
+                if created {
+                    self.think(
+                        "GPU",
+                        "💡",
+                        format!(
+                            "Discovery: {} (shared: {})",
+                            truncate(&syn.text, 70),
+                            syn.shared_concepts.join(", ")
+                        ),
+                    );
+                }
+            }
 
             // ── Inner Voice: validate the dream insight ──────────────
             if !dream.duplicate_echo && !dream.insight.is_empty() {
@@ -8274,6 +8333,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // This runs every startup to ensure identity cells always exist at high weight,
     // even after saves/loads where other cells may have drifted higher.
     app.seed_identity();
+
+    // Seed the self-state phrase corpus into the lattice. These are
+    // the short inner-experience phrases KAI retrieves when asked
+    // "how do you feel" / "what are you thinking" / etc. — stored as
+    // real cells tagged by emotion/kind/route so the SelfStateHub's
+    // compose_narrative path picks them up instead of falling back to
+    // hardcoded fragment pools. Safe to call every startup: repeat
+    // seeds just reinforce existing cells via store_or_reinforce.
+    let self_state_seeded = kai::cognition::seed_self_state_phrases(&mut app.universe);
+    if self_state_seeded > 0 {
+        app.think(
+            "RAM",
+            "🫀",
+            format!("Seeded {} self-state phrase cells", self_state_seeded),
+        );
+    }
 
     loop {
         terminal.draw(|f| ui(f, &app))?;

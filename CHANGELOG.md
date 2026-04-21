@@ -1,5 +1,23 @@
 # KAI Development Changelog
 
+## v5.7.0 — Passive Learning & Lattice-Native Self-State (April 21, 2026)
+
+### Commit 1 — Feature: Idle Ingest Passive Learning Engine
+`src/cognition/idle_ingest.rs`, `src/cognition/mod.rs`, `src/main.rs`, `data/ingest/`
+- Implemented `IdleIngest` worker for autonomous knowledge absorption from `.txt` files.
+- Rate-limited ingest (20 lines/tick idle, 2 lines/tick active) ensures learning doesn't starve CPU.
+- Automated concept extraction: picks 3 significant words per line to create supporting anchor cells.
+- Automated archiving: moves completed files to `data/ingested/`.
+- Integrated into main heartbeat loop via `DMN` idle duration gating.
+
+### Commit 2 — Feature: Lattice-Native Self-State Phrases
+`src/cognition/self_state_seed.rs`, `src/cognition/self_state_hub.rs`, `src/bridge/ipc_server.rs`
+- Eliminated hardcoded phrase arrays for internal state reporting.
+- Implemented `SelfStateSeed` to populate the lattice with 150+ "self-model" cells on startup.
+- Updated `SelfStateHub` to retrieve narrative fragments from the lattice via source tags (`self-model:emotion:*`, `self-model:trajectory:*`, etc.).
+- Selection logic now multi-beat (Lead + Middle + Presence Tail) based on pulse and trajectory shape.
+- Synchronized IPC server to use the new lattice-native narrative pipeline for self-state queries.
+
 ## v5.5.2 — Neuro-Biometric Overhaul & Parameter Tuning (April 20, 2026)
 
 ### Commit 4 — Docs: 78-Slot Neuro-Biometric Architecture Map

@@ -329,6 +329,7 @@ fn chat_hits(
 
     if is_kai_self_state_query(&lower, lex) {
         return vec![live_self_state_hit(
+            universe,
             drive,
             field,
             text,
@@ -499,6 +500,7 @@ fn is_kai_identity_query(lower: &str) -> bool {
 }
 
 fn live_self_state_hit(
+    universe: &Universe,
     drive: &Drive,
     field: &FieldState,
     current_text: &str,
@@ -579,7 +581,10 @@ fn live_self_state_hit(
     hub.variant = variant;
     hub.integrate(variant);
 
-    let text = hub.compose_narrative(Some(current_text));
+    // Tunnel path passes the live universe so the hub can retrieve
+    // real self-state phrase cells instead of falling back to the
+    // built-in pools. Same pipeline as the main TUI.
+    let text = hub.compose_narrative(Some(universe), Some(current_text));
     let score = hub.narrative_salience.max(0.75);
     let strength = hub.narrative_salience.max(1.0);
 

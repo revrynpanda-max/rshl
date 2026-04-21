@@ -1,4 +1,4 @@
-# KAI — Bio-Machine Intelligence (v5.5.1) <!-- linguist-rescan-fa26dd3 -->
+# KAI — Bio-Machine Intelligence (v5.7.0) <!-- linguist-rescan-fa26dd3 -->
 
 ![Rust CI](https://github.com/revrynpanda-max/rshl/actions/workflows/rust-ci.yml/badge.svg)
 
@@ -33,6 +33,7 @@ KAI is powered by a complex network of **[78 specialized modules](COGNITION.md#7
 - **Dynamic Emotional Intelligence**: 18 neural signals (like curiosity, confidence, and warmth) shape how KAI feels and speaks.
 - **Recursive Learning**: The more you talk about a topic, the more "solid" it becomes in KAI's mind.
 - **Dream-State Consolidation**: KAI consolidates new information while idle, just like human sleep.
+- **Passive Learning Engine**: KAI now absorbs large text corpora (books, logs, data) autonomously during idle heartbeats.
 
 For a deep-dive into the RSHL math and neural architecture, see **[COGNITION.md](COGNITION.md)**.
 
