@@ -33,6 +33,19 @@ node_modules/
 # ── Native addon build artifacts (regenerate: npx node-gyp configure build) ─
 build/
 
+# ── Rust build cache ────────────────────────────────────────────────────────
+# Active build target and any scratch target dirs Codex/cargo may drop
+# while the primary kai.exe is file-locked. All regenerate on demand.
+kai-rust/target/
+target/
+kai-build/
+kai-build-*/
+build_temp/
+
+# ── Visualizer build output ─────────────────────────────────────────────────
+visualizer/dist/
+visualizer/node_modules/
+
 # ── IDE / OS ─────────────────────────────────────────────────────────────────
 .vs/
 *.swp
