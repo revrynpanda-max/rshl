@@ -12,7 +12,7 @@ use kai::core::QueryHit;
 ///   kai_conversation  — structured regression checks (identity, facts, fillers)
 ///   kai_natural_chat  — freeform realistic conversation, no hard assertions,
 ///                       just prints so you can read KAI's voice quality live
-use kai::core::Universe;
+use kai::core::{Universe, SparseVec};
 
 /// Simulate store_concept_cells' occupation tagging for the test harness.
 /// In production, this runs inside App::store_concept_cells via the module pipeline.
@@ -382,7 +382,9 @@ fn test_live_self_state_hit(input: &str) -> QueryHit {
     };
 
     QueryHit {
+        label: text.to_string(),
         text: text.to_string(),
+        vec: SparseVec::zero(),
         region: "state".to_string(),
         score: 0.90,
         strength: 1.2,
