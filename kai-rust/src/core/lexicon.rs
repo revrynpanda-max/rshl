@@ -252,7 +252,7 @@ impl Lexicon {
     }
 
     /// Find the closest known word within max_distance.
-    fn find_closest(&self, word: &str, max_distance: usize) -> Option<String> {
+    pub fn find_closest(&self, word: &str, max_distance: usize) -> Option<String> {
         let mut best: Option<(String, usize, usize)> = None; // (word, distance, rank)
 
         for (known, &rank) in &self.words {
@@ -288,6 +288,48 @@ impl Lexicon {
         }
 
         best.map(|(w, _, _)| w)
+    }
+
+    /// Get the basis vector for a specific word.
+    /// This is the deterministic "Code Language" representation of a token.
+    pub fn vector_for_word(&self, word: &str) -> super::SparseVec {
+        super::SparseVec::encode(word)
+    }
+
+    /// Decode a trajectory vector into a sequence of words.
+    /// This is the "Generative Head" that replaces string selection.
+    ///
+    /// It works by "peeling" words out of the superposition one by one:
+    /// 1. Project the state back to position i using `permute_inv(i)`.
+    /// 2. Find the word whose basis vector resonances most with that position.
+    /// 3. Contrast (inhibit) that word's bits from the state.
+    /// 4. Repeat for the next position.
+    pub fn decode_to_sequence(&self, state: &super::SparseVec, max_len: usize) -> Vec<String> {
+        let mut results = Vec::new();
+        let mut current = state.clone();
+
+        // High-speed parallel targets (cached word vectors)
+        let targets: Vec<(&str, super::SparseVec)> = self
+            .ordered
+            .iter()
+            .map(|s| (s.as_str(), super::SparseVec::encode(s)))
+            .collect();
+
+        for i in 0..max_len {
+            // Shift the state back to the current position (Word i)
+            let look_at_pos = current.permute_inv(i as u32);
+
+            // Find best word match in the lexicon via parallel resonance search
+            if let Some(word) = look_at_pos.batch_cosine(&targets) {
+                results.push(word.clone());
+                // Inhibit the used word's bits to allow the next one to surface
+                let word_vec = super::SparseVec::encode(&word);
+                current = current.contrast(&word_vec);
+            } else {
+                break;
+            }
+        }
+        results
     }
 }
 

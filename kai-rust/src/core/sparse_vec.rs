@@ -1,16 +1,16 @@
 /// RSHL Sparse Ternary Vector Engine
 ///
-/// 4096-dimensional sparse ternary vectors: each dimension is -1, 0, or +1.
+/// 16384-dimensional sparse ternary vectors: each dimension is -1, 0, or +1.
 /// Encoding uses BOTH character trigrams AND word-level hashing.
 /// This dual encoding lets "what is your name" match "my name is KAI"
 /// because the word "name" creates identical hash patterns in both.
 ///
 /// This is the mathematical core of KAI's memory.
 
-const DIM: usize = 4096;
+pub const DIM: usize = 16384;
 const SPARSITY: f32 = 0.04; // 4% non-zero per feature
 
-/// A sparse ternary vector in 4096 dimensions.
+/// A sparse ternary vector in 16384 dimensions.
 /// Values are -1, 0, or +1 stored as i8 for cache efficiency.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct SparseVec {
@@ -179,7 +179,7 @@ impl SparseVec {
 
     /// Encode text with spelling correction via the Lexicon.
     ///
-    /// Before encoding into the 4096-dimensional space, each word token
+    /// Before encoding into the 16384-dimensional space, each word token
     /// is checked against KAI's vocabulary. Unknown words within edit
     /// distance ≤ 2 of a known word are corrected to the known form.
     ///
@@ -299,6 +299,32 @@ impl SparseVec {
         Self { data }
     }
 
+    /// Unbind — the inverse of `bind`. In ternary VSA with values in
+    /// {-1, 0, +1}, element-wise multiplication is self-inverse on
+    /// every dimension where the key is nonzero:
+    ///
+    ///   (a[i] * b[i]) * b[i] = a[i] * b[i]^2
+    ///                        = a[i]   when b[i] != 0 (since (+-1)^2 = 1)
+    ///                        = 0      when b[i] == 0 (information lost in that slot)
+    ///
+    /// So `unbind(bind(a, b), b) == a` on the support of `b`, and zero
+    /// elsewhere. This is the "approximately a within noise tolerance"
+    /// the spec asks for — the only information lost is the subset of
+    /// dimensions where `b` is already zero, which is fundamental to
+    /// sparse ternary binding.
+    ///
+    /// References:
+    ///   - Kanerva, "Hyperdimensional Computing" (2009) — MAP model.
+    ///   - ACM Computing Surveys on HDC/VSA (2022+).
+    ///   - Bronzini et al., "Hyperdimensional Probe" (arXiv:2509.25045).
+    pub fn unbind(&self, other: &SparseVec) -> Self {
+        let mut data = vec![0i8; DIM];
+        for i in 0..DIM {
+            data[i] = self.data[i] * other.data[i];
+        }
+        Self { data }
+    }
+
     /// Count non-zero elements.
     pub fn nnz(&self) -> usize {
         self.data.iter().filter(|&&x| x != 0).count()
@@ -308,6 +334,89 @@ impl SparseVec {
     pub fn magnitude(&self) -> f32 {
         (self.nnz() as f32).sqrt()
     }
+
+    /// Seeded Fisher-Yates permutation. VSA "role" projection.
+    pub fn permute(&self, seed: u32) -> Self {
+        let mut v = self.clone();
+        let mut s = mix_permute_seed(seed);
+        for i in (1..v.data.len()).rev() {
+            s ^= s << 13;
+            s ^= s >> 17;
+            s ^= s << 5;
+            let j = (s as usize) % (i + 1);
+            v.data.swap(i, j);
+        }
+        v
+    }
+
+    /// Inverse of `permute(seed)`. Same shuffle, reversed.
+    pub fn permute_inv(&self, seed: u32) -> Self {
+        let n = self.data.len();
+        let mut swaps: Vec<(usize, usize)> = Vec::with_capacity(n - 1);
+        let mut s = mix_permute_seed(seed);
+        for i in (1..n).rev() {
+            s ^= s << 13;
+            s ^= s >> 17;
+            s ^= s << 5;
+            let j = (s as usize) % (i + 1);
+            swaps.push((i, j));
+        }
+        let mut v = self.clone();
+        for (i, j) in swaps.into_iter().rev() {
+            v.data.swap(i, j);
+        }
+        v
+    }
+
+    pub fn contrast(&self, other: &SparseVec) -> Self {
+        let mut data = self.data.clone();
+        for i in 0..DIM {
+            if other.data[i] != 0 {
+                data[i] = 0;
+            }
+        }
+        Self::from_raw(data)
+    }
+
+    /// High-speed parallel cosine search for decoding.
+    pub fn batch_cosine(&self, targets: &[(&str, SparseVec)]) -> Option<String> {
+        targets
+            .par_iter()
+            .map(|(word, vec)| (word, self.cosine(vec)))
+            .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+            .filter(|&(_, score)| score > 0.15)
+            .map(|(word, _)| word.to_string())
+    }
+}
+
+impl Default for SparseVec {
+    fn default() -> Self {
+        Self::zero()
+    }
+}
+
+/// Mix a `u32` seed into a nonzero XorShift32 starting state so that
+/// *every* distinct seed produces a distinct permutation.
+///
+/// The previous implementation (`seed | 1`) collapsed adjacent pairs —
+/// e.g. `permute(0) == permute(1)`, `permute(2) == permute(3)` — which
+/// silently broke positional role-binding (every other slot in a
+/// sequence-encoded sentence landed on the same key) and also made
+/// head 0 == head 1 in `multi_head_consensus`.
+///
+/// The mixer is a SplitMix64-style avalanche so consecutive inputs
+/// (0, 1, 2, …) produce completely unrelated starting states, and the
+/// output is forced nonzero to keep XorShift32 out of its zero fixed
+/// point.
+#[inline]
+fn mix_permute_seed(seed: u32) -> u32 {
+    let mut s = seed as u64;
+    s = s.wrapping_add(0x9E3779B97F4A7C15);
+    s = (s ^ (s >> 30)).wrapping_mul(0xBF58476D1CE4E5B9);
+    s = (s ^ (s >> 27)).wrapping_mul(0x94D049BB133111EB);
+    s ^= s >> 31;
+    let out = (s ^ (s >> 32)) as u32;
+    if out == 0 { 0x9E3779B9 } else { out }
 }
 
 /// Hash a single character with position.
@@ -425,6 +534,115 @@ mod tests {
         assert!(
             bundle.cosine(&query) > bundle.cosine(&random),
             "bundle should be closer to shared concept than random noise"
+        );
+    }
+
+    /// Deterministic sparse ternary vector generator for tests. Uses the
+    /// same XorShift PRNG as `permute` so results are reproducible across
+    /// runs and platforms. Sparsity matches the ~4% design target.
+    fn random_sparse(seed: u32) -> SparseVec {
+        let mut s = seed | 1;
+        let mut data = vec![0i8; DIM];
+        let target_nnz = (DIM as f32 * SPARSITY) as usize; // ~163 nonzeros
+        let mut set = 0usize;
+        let mut attempts = 0usize;
+        while set < target_nnz && attempts < DIM * 4 {
+            s ^= s << 13;
+            s ^= s >> 17;
+            s ^= s << 5;
+            let i = (s as usize) % DIM;
+            if data[i] == 0 {
+                // Low bit of the next rng step picks sign.
+                s ^= s << 13;
+                s ^= s >> 17;
+                s ^= s << 5;
+                data[i] = if s & 1 == 0 { 1 } else { -1 };
+                set += 1;
+            }
+            attempts += 1;
+        }
+        SparseVec::from_raw(data)
+    }
+
+    /// Step 1 of the autoregressive engine: prove `unbind(bind(a, b), b)`
+    /// recovers `a` on every dimension where `b` is nonzero (ternary VSA
+    /// binding is self-inverse on the key's support). Noise only appears
+    /// in dimensions where `b` is zero — that information is fundamentally
+    /// lost by sparse ternary binding, which is the expected behavior.
+    ///
+    /// This is the math foundation the whole generative decoder rests on:
+    /// to pull the i-th word out of a sentence hypervector `S`, we compute
+    /// `S.unbind(&position_i)` and find the nearest lexicon entry.
+    #[test]
+    fn test_unbind_inverts_bind_on_key_support() {
+        let a = random_sparse(0x9E37_79B9);
+        let b = random_sparse(0x5F1A_C041);
+
+        let bound = a.bind(&b);
+        let recovered = bound.unbind(&b);
+
+        // Every dim where b is nonzero must recover a exactly.
+        let mut mismatches_on_support = 0usize;
+        let mut b_support = 0usize;
+        for i in 0..DIM {
+            if b.data[i] != 0 {
+                b_support += 1;
+                if recovered.data[i] != a.data[i] {
+                    mismatches_on_support += 1;
+                }
+            } else {
+                // Outside b's support the result must be zero (info is lost).
+                assert_eq!(
+                    recovered.data[i], 0,
+                    "unbind must zero dims where key is zero (idx {})", i
+                );
+            }
+        }
+        assert!(
+            b_support > 100,
+            "key should have meaningful support, got nnz={}",
+            b_support
+        );
+        assert_eq!(
+            mismatches_on_support, 0,
+            "unbind(bind(a,b), b) must equal a on every dim where b != 0 \
+             (mismatches={} / b_support={})",
+            mismatches_on_support, b_support
+        );
+
+        // Cosine similarity to the original should be high — the
+        // recovered vector is `a` masked by b's support pattern.
+        let sim = recovered.cosine(&a);
+        assert!(
+            sim > 0.15,
+            "recovered vector should resemble original (cosine={:.4})",
+            sim
+        );
+    }
+
+    /// Unbinding with the wrong key must not recover the original.
+    /// This is the discriminative property decoding relies on: picking
+    /// the correct position key lights up the right word, and a wrong
+    /// key produces noise.
+    #[test]
+    fn test_unbind_with_wrong_key_is_noise() {
+        let a = random_sparse(0xA5A5_A5A5);
+        let b = random_sparse(0x1234_5678);
+        let wrong = random_sparse(0xDEAD_BEEF);
+
+        let bound = a.bind(&b);
+        let recovered_right = bound.unbind(&b);
+        let recovered_wrong = bound.unbind(&wrong);
+
+        let sim_right = recovered_right.cosine(&a);
+        let sim_wrong = recovered_wrong.cosine(&a);
+
+        assert!(
+            sim_right > sim_wrong + 0.05,
+            "correct key must recover `a` better than a random key \
+             (right={:.4}, wrong={:.4})",
+            sim_right,
+            sim_wrong
         );
     }
 }

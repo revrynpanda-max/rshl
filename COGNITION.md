@@ -1,4 +1,4 @@
-# KAI — Cognition Reference (v5.7.0)
+# KAI — Cognition Reference (v5.8.0)
 
 KAI is a self-sustaining, autonomous cognitive engine built on **Recursive Sparse Hyperdimensional Lattice (RSHL)** architecture. This document provides the technical specifications for the finalized 78+ module "Bio-Machine" baseline.
 
