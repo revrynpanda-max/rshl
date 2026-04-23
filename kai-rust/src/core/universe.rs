@@ -1,4 +1,4 @@
-﻿/// Universe â€” The cell store for KAI's memory.
+/// Universe â€” The cell store for KAI's memory.
 ///
 /// Each cell is a belief: text + vector + region + strength + metadata.
 /// ALL queries use rayon parallel cosine across all 12 CPU threads.
@@ -286,6 +286,7 @@ impl Universe {
     /// the "you sound scripted" humiliation; closing the hole here.
     pub fn query(&self, text: &str, n: usize) -> Vec<QueryHit> {
         let q = SparseVec::encode(text);
+        let query_words = extract_query_keywords(text);
         
         let mut scored: Vec<(usize, f32)> = self
             .cells
@@ -294,9 +295,9 @@ impl Universe {
             .filter(|(_, cell)| cell.source != "user-echo" && cell.source != "conversation")
             .map(|(i, cell)| {
                 let cosine = q.cosine(&cell.vec);
-                let kw = 0.0;
-                // Hybrid: semantic resonance + exact keyword match
-                let raw = cosine;
+                let kw = keyword_overlap_score(&query_words, &cell.text);
+                // Hybrid: 60% cosine similarity (semantic) + 40% keyword overlap (exact match)
+                let raw = 0.6 * cosine + 0.4 * kw;
                 let boosted = raw * (0.5 + 0.5 * cell.strength.min(2.0));
                 (i, boosted)
             })
@@ -328,6 +329,7 @@ impl Universe {
     /// Also uses hybrid cosine + keyword scoring for consistent exact-term retrieval.
     pub fn query_region(&self, text: &str, region: &str, n: usize) -> Vec<QueryHit> {
         let q = SparseVec::encode(text);
+        let query_words = extract_query_keywords(text);
         
         let mut scored: Vec<(usize, f32)> = self
             .cells
@@ -340,8 +342,9 @@ impl Universe {
             })
             .map(|(i, cell)| {
                 let cosine = q.cosine(&cell.vec);
-                let kw = 0.0;
-                let raw = cosine;
+                let kw = keyword_overlap_score(&query_words, &cell.text);
+                // Hybrid: 60% cosine similarity (semantic) + 40% keyword overlap (exact match)
+                let raw = 0.6 * cosine + 0.4 * kw;
                 let boosted = raw * (0.5 + 0.5 * cell.strength.min(4.0));
                 (i, boosted)
             })
