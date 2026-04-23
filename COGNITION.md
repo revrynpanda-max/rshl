@@ -3,7 +3,7 @@
 KAI is a self-sustaining, autonomous cognitive engine built on **Recursive Sparse Hyperdimensional Lattice (RSHL)** architecture. This document provides the technical specifications for the finalized 78+ module "Bio-Machine" baseline.
 
 ## RSHL Architecture
-KAI operates in a 4096-dimensional sparse ternary vector space. Unlike traditional LLMs, it uses geometric resonance instead of token prediction.
+KAI operates in a 16384-dimensional sparse ternary vector space. Unlike traditional LLMs, it uses geometric resonance instead of token prediction.
 
 ### Encoding Logic
 The `sparse_vec.rs` engine encodes text into vectors using a multi-layered weighting strategy. This ensures that semantic core (names, entities, acronyms) dominates the representation.
@@ -15,7 +15,7 @@ The `sparse_vec.rs` engine encodes text into vectors using a multi-layered weigh
 | **Word Bigrams** | **2×** | Ordered pairs of normalized words for contextual structure. |
 | **Char Trigrams** | **1×** | Local surface patterns (e.g., "hel", "ell", "llo"). |
 
-- **Sparsity**: Target density is **4%** (approximately 164 non-zero dimensions per vector).
+- **Sparsity**: Target density is **4%** (approximately 655 non-zero dimensions per vector).
 - **Similarity**: Measured via high-performance cosine similarity utilizing **POPCNT**-optimized inner product loops.
 
 ---

@@ -1,4 +1,4 @@
-/// Cortisol — Chronic Stress, Allostatic Load, Cognitive Degradation
+﻿/// Cortisol — Chronic Stress, Allostatic Load, Cognitive Degradation
 ///
 /// Cortisol is the body's primary stress hormone, released by the HPA axis
 /// (Hypothalamic-Pituitary-Adrenal). It differs critically from norepinephrine:
@@ -417,3 +417,4 @@ mod tests {
         assert!(s.contains("CORT"), "status line should mention CORT");
     }
 }
+

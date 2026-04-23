@@ -1,4 +1,4 @@
-use crate::core::field_state::{DreamHistoryEntry, FieldInput};
+﻿use crate::core::field_state::{DreamHistoryEntry, FieldInput};
 /// Dream Lattice — Autonomous consolidation engine.
 ///
 /// Ported from rshl-lattice.js. During dream cycles, KAI:
@@ -104,6 +104,7 @@ pub struct DreamResult {
 #[derive(Debug, Clone)]
 pub struct DreamSynthesis {
     pub text: String,
+    pub label: String,
     pub region: String,
     pub shared_concepts: Vec<String>,
     pub strength: f32,
@@ -224,13 +225,13 @@ fn pick_best_insight(
 ) -> (String, String, f32, bool) {
     // Prefer the strongest non-source match
     for (cell, score) in hits {
-        if cell.text.trim() != source_a_text.trim() && cell.text.trim() != source_b_text.trim() {
-            return (cell.text.clone(), cell.region.clone(), *score, true);
+        if cell.label.trim() != source_a_text.trim() && cell.label.trim() != source_b_text.trim() {
+            return (cell.label.clone(), cell.region.clone(), *score, true);
         }
     }
     // Fall back to best match
     if let Some((cell, score)) = hits.first() {
-        return (cell.text.clone(), cell.region.clone(), *score, false);
+        return (cell.label.clone(), cell.region.clone(), *score, false);
     }
     (
         "no strong concept found".to_string(),
@@ -277,7 +278,7 @@ pub fn consolidate(universe: &Universe) -> Option<DreamResult> {
     let hits = universe.query_vec(&synthetic, 5);
 
     let (insight_text, insight_region, confidence, is_non_source) =
-        pick_best_insight(&hits, &a.text, &b.text);
+        pick_best_insight(&hits, &a.label, &b.label);
 
     // ── GATE 1: Pre-field resonance quality check ─────────────────────────
     // If the synthetic bundle doesn't resonate meaningfully with the universe,
@@ -358,7 +359,7 @@ pub fn consolidate(universe: &Universe) -> Option<DreamResult> {
 
     // Duplicate echo check
     let duplicate_echo =
-        insight_text.trim() == a.text.trim() || insight_text.trim() == b.text.trim();
+        insight_text.trim() == a.label.trim() || insight_text.trim() == b.label.trim();
 
     // Promotion readiness
     let promotion_ready = !duplicate_echo
@@ -394,10 +395,11 @@ pub fn consolidate(universe: &Universe) -> Option<DreamResult> {
         && field.chi <= 0.35
         && field.phi_g >= 0.02
     {
-        let shared = shared_concept_words(&a.text, &b.text);
+        let shared = shared_concept_words(&a.label, &b.label);
         if shared.len() >= 2 {
-            let text = build_synthesis_text(&a.text, &b.text, &shared);
+            let text = build_synthesis_text(&a.label, &b.label, &shared);
             Some(DreamSynthesis {
+                label: text.clone(),
                 text,
                 region: "synthesis".to_string(),
                 shared_concepts: shared,
@@ -436,8 +438,8 @@ pub fn consolidate(universe: &Universe) -> Option<DreamResult> {
     });
 
     Some(DreamResult {
-        concept_a: a.text.clone(),
-        concept_b: b.text.clone(),
+        concept_a: a.label.clone(),
+        concept_b: b.label.clone(),
         region_a: a.region.clone(),
         region_b: b.region.clone(),
         overlap,
@@ -544,10 +546,10 @@ pub fn store_synthesis(universe: &mut Universe, dream: &DreamResult) -> bool {
     let Some(syn) = dream.synthesis.as_ref() else {
         return false;
     };
-    if syn.text.is_empty() {
+    if syn.label.is_empty() {
         return false;
     }
-    universe.store_or_reinforce(&syn.text, &syn.region, "dream-discovery", syn.strength)
+    universe.store_or_reinforce(&syn.label, &syn.region, "dream-discovery", syn.strength)
 }
 
 /// Observe a dream result and feed it into the candidate buffer.
@@ -579,8 +581,9 @@ pub fn reinforce_dream_sources(universe: &mut Universe, dream: &DreamResult) {
     // Find and reinforce both source cells
     let cells = universe.cells_mut();
     for cell in cells.iter_mut() {
-        if cell.text == dream.concept_a || cell.text == dream.concept_b {
+        if cell.label == dream.concept_a || cell.label == dream.concept_b {
             cell.strength = (cell.strength + dream.source_reinforcement).min(5.0);
         }
     }
 }
+

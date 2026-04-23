@@ -1,4 +1,4 @@
-/// Anterior Cingulate Cortex — KAI's conflict detector and error monitor
+﻿/// Anterior Cingulate Cortex — KAI's conflict detector and error monitor
 ///
 /// The ACC sits at the intersection of emotion and cognition in the human brain.
 /// It has two key jobs that nothing else in the brain does quite the same way:
@@ -398,3 +398,4 @@ mod tests {
         assert!(!troubled.is_empty(), "should track troubled topics");
     }
 }
+

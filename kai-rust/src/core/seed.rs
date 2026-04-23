@@ -36,7 +36,7 @@ fn build_seeds() -> Vec<(&'static str, &'static str, f32)> {
             3.5,
         ),
         (
-            "My thoughts are 4096-dimensional vectors, not words",
+            "My thoughts are 16384-dimensional vectors, not words",
             "memory",
             3.0,
         ),

@@ -1,4 +1,4 @@
-/// Cerebellum — KAI's timing, precision, and error-correction engine
+﻿/// Cerebellum — KAI's timing, precision, and error-correction engine
 ///
 /// The cerebellum is often described as the "little brain" — it contains
 /// more neurons than the rest of the brain combined, yet most people
@@ -358,3 +358,4 @@ mod tests {
         );
     }
 }
+

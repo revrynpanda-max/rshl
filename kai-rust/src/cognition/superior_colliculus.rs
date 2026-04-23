@@ -1,4 +1,4 @@
-/// Superior Colliculus (SC) — Attentional Orienting, Saliency Map,
+﻿/// Superior Colliculus (SC) — Attentional Orienting, Saliency Map,
 /// Rapid Priority Shifts, Covert Attention Allocation
 ///
 /// The superior colliculus is a midbrain structure that acts as the brain's
@@ -425,3 +425,4 @@ mod tests {
         assert!(sl.contains("salience"), "status should show salience");
     }
 }
+

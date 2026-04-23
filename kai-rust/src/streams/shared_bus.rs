@@ -1,4 +1,4 @@
-use crossbeam_channel::{unbounded, Receiver, Sender};
+﻿use crossbeam_channel::{unbounded, Receiver, Sender};
 /// Shared Bus — The nervous system connecting all 3 streams.
 ///
 /// Each stream publishes its state to the bus. Any stream can read
@@ -145,3 +145,4 @@ impl Default for SharedBus {
         Self::new()
     }
 }
+

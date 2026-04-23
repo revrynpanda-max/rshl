@@ -1,4 +1,4 @@
-/// Mammillary Bodies (MB) — Episodic Memory Relay, Spatial-Temporal Tagging,
+﻿/// Mammillary Bodies (MB) — Episodic Memory Relay, Spatial-Temporal Tagging,
 /// Recency Signal, Thalamo-Hippocampal Loop
 ///
 /// The mammillary bodies are paired structures in the posterior hypothalamus,
@@ -327,3 +327,4 @@ mod tests {
         assert!(s.contains("relay"), "status should show relay");
     }
 }
+

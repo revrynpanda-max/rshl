@@ -1,4 +1,4 @@
-// core/spiral.rs
+﻿// core/spiral.rs
 //
 // Golden-ratio logarithmic spiral — the "breathing loop" that drives τ_R in Φ_R.
 //
@@ -124,3 +124,4 @@ mod tests {
         }
     }
 }
+

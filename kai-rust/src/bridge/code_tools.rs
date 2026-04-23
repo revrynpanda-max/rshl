@@ -1,4 +1,4 @@
-/// Code Tools — KAI's code analysis and review engine.
+﻿/// Code Tools — KAI's code analysis and review engine.
 ///
 /// KAI can read source files and understand their structure — not by
 /// running a language model, but by extracting structural facts and
@@ -642,7 +642,7 @@ pub fn review_file(path: &str, universe: &Universe) -> Result<String, String> {
         review.push("◆ KAI field knowledge on this:".to_string());
         for hit in hits.iter().take(2) {
             let clean = hit
-                .text
+                .label
                 .trim_start_matches("[from-claude] ")
                 .trim_start_matches("[about-kai] ")
                 .trim();
@@ -758,3 +758,4 @@ pub fn scan_directory(dir: &str, universe: &mut Universe) -> (usize, usize) {
 
     (files_analyzed, cells_stored)
 }
+

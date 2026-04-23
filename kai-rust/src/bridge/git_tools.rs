@@ -1,4 +1,4 @@
-/// Git Tools — KAI's native git awareness.
+﻿/// Git Tools — KAI's native git awareness.
 ///
 /// KAI understands git at the field level — not just running commands,
 /// but learning from commit history, diffs, and status to build
@@ -242,7 +242,7 @@ pub fn suggest_commit_message(universe: &Universe) -> String {
     let mut changed_files: Vec<String> = Vec::new();
     for hit in recent_diff_hits.iter().chain(recent_status_hits.iter()) {
         let text = hit
-            .text
+            .label
             .trim_start_matches("[git-diff] modified: ")
             .trim_start_matches("[git-status] ")
             .trim()
@@ -388,3 +388,4 @@ impl StatusSummary {
         lines.join("\n")
     }
 }
+

@@ -1,4 +1,4 @@
-/// Claustrum — The Binding Conductor, Conscious Integration Hub
+﻿/// Claustrum — The Binding Conductor, Conscious Integration Hub
 ///
 /// The claustrum is a thin sheet of neurons beneath the cortex whose
 /// function was mysterious until Francis Crick (co-discoverer of DNA)
@@ -353,3 +353,4 @@ mod tests {
         assert!(s.contains("coherence"), "status should show coherence");
     }
 }
+

@@ -1,4 +1,4 @@
-/// Field State — Full RSHL Emergence Metrics
+﻿/// Field State — Full RSHL Emergence Metrics
 ///
 /// Ported from field-state.js. Pure computation, no side effects.
 /// Given a set of source cells and a synthetic vector, computes
@@ -466,3 +466,4 @@ impl FieldState {
         };
     }
 }
+

@@ -1,4 +1,4 @@
-/// Supplementary Motor Area (SMA) — Action Preparation, Intention-to-Act Timing
+﻿/// Supplementary Motor Area (SMA) — Action Preparation, Intention-to-Act Timing
 ///
 /// The SMA is the brain's "ready to act" region — it fires BEFORE voluntary
 /// action, building up intention potential before execution. It's the neural
@@ -338,3 +338,4 @@ mod tests {
         assert!(st.contains("readiness"), "status should show readiness");
     }
 }
+

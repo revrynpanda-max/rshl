@@ -1,4 +1,4 @@
-/// Sleep Consolidation Cycle — KAI's memory organization and repair system
+﻿/// Sleep Consolidation Cycle — KAI's memory organization and repair system
 ///
 /// Sleep is one of the most misunderstood things the brain does.
 /// It's not just rest. It's when the brain does its most important work:
@@ -465,3 +465,4 @@ mod tests {
         );
     }
 }
+

@@ -1,4 +1,4 @@
-/// Habenula — Anti-Reward, Disappointment Signal, Punishment Prediction
+﻿/// Habenula — Anti-Reward, Disappointment Signal, Punishment Prediction
 ///
 /// The habenula is the brain's anti-reward center — the yang to the VTA's yin.
 /// While the VTA fires when reward is expected or received, the habenula fires
@@ -360,3 +360,4 @@ mod tests {
         assert!(s.contains("activity"), "status should show activity");
     }
 }
+

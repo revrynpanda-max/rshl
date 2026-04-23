@@ -1,4 +1,4 @@
-/// Superior Temporal Sulcus (STS) — Biological Motion, Social Intent Reading
+﻿/// Superior Temporal Sulcus (STS) — Biological Motion, Social Intent Reading
 ///
 /// The STS is the brain's specialized social signal processor. It reads
 /// non-verbal cues, detects the difference between intentional and random
@@ -517,3 +517,4 @@ mod tests {
         assert!(s.contains("STS"), "status should mention STS");
     }
 }
+

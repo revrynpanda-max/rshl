@@ -1,4 +1,4 @@
-/// Promotion — Belief formation / Long-term potentiation.
+﻿/// Promotion — Belief formation / Long-term potentiation.
 ///
 /// A dream candidate that meets ALL thresholds gets written into
 /// the universe as durable memory — it becomes a belief.
@@ -138,10 +138,10 @@ pub fn run_promotion(
                 (entry.best_c * 2.5 + entry.best_phi_g * 1.5 + stability * 0.5).clamp(0.0, 1.0);
             let strength = 1.5 + raw_strength * 2.5; // maps [0,1] → [1.5, 4.0]
 
-            universe.store(&entry.text, "memory", "promoted-dream", strength);
+            universe.store(&entry.label, "memory", "promoted-dream", strength);
 
             promoted.push(PromotedBelief {
-                text: entry.text.clone(),
+                text: entry.label.clone(),
                 seen_count: entry.seen_count,
                 best_c: entry.best_c,
                 best_phi_g: entry.best_phi_g,
@@ -159,3 +159,4 @@ pub fn run_promotion(
         eligible: eligible_count,
     }
 }
+

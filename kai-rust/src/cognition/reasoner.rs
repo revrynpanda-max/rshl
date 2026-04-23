@@ -1,4 +1,4 @@
-/// RSHL Reasoner — Iterative Resonance Chain-of-Thought
+﻿/// RSHL Reasoner — Iterative Resonance Chain-of-Thought
 ///
 /// This is how KAI does LLM-level reasoning without being an LLM.
 ///
@@ -184,7 +184,7 @@ impl Reasoner {
                 vector: current.clone(),
                 phi_g,
                 resonance_score: *best_score,
-                matched_text: best_cell.text.clone(),
+                matched_text: best_cell.label.clone(),
                 matched_region: best_cell.region.clone(),
             });
 
@@ -330,7 +330,7 @@ impl Reasoner {
                 let sources: Vec<String> = parts
                     .iter()
                     .take(3)
-                    .filter(|(_, t, _)| *t != cell.text.as_str())
+                    .filter(|(_, t, _)| *t != cell.label.as_str())
                     .map(|(phi, text, region)| {
                         let short = if text.len() > 50 {
                             let mut end = 50;
@@ -345,7 +345,7 @@ impl Reasoner {
                     })
                     .collect();
 
-                let mut output = cell.text.clone();
+                let mut output = cell.label.clone();
                 if !sources.is_empty() {
                     output = format!("{} — via {}", output, sources.join(", "));
                 }
@@ -357,3 +357,4 @@ impl Reasoner {
         (parts[0].1.to_string(), parts[0].2.to_string())
     }
 }
+

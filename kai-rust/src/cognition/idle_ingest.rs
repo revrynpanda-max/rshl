@@ -1,4 +1,4 @@
-//! Idle Ingest Worker — passive learning during idle ticks.
+﻿//! Idle Ingest Worker — passive learning during idle ticks.
 //!
 //! **What it does.** Watches `data/ingest/*.txt` for plain-text knowledge
 //! files. While KAI is idle (no active conversation for 30+ seconds), the
@@ -714,3 +714,4 @@ mod tests {
         assert!(concepts.contains(&"independence".to_string()));
     }
 }
+

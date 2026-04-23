@@ -1,4 +1,4 @@
-/// Amygdala — KAI's emotional salience gate
+﻿/// Amygdala — KAI's emotional salience gate
 ///
 /// In biological brains the amygdala does one critical thing:
 ///   It amplifies the memory trace of anything emotionally significant.
@@ -388,3 +388,4 @@ mod tests {
         assert!(strength <= 3.0, "ECF exceeded cap: {:.3}", strength);
     }
 }
+

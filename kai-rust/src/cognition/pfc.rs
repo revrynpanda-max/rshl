@@ -1,4 +1,4 @@
-/// Prefrontal Cortex — KAI's executive control system
+﻿/// Prefrontal Cortex — KAI's executive control system
 ///
 /// The PFC is the most evolutionarily recent part of the human brain.
 /// It's what separates humans from other animals in cognitive sophistication.
@@ -478,3 +478,4 @@ mod tests {
         assert_eq!(pfc.goals.len(), 1, "duplicate goals should not be added");
     }
 }
+

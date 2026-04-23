@@ -1,4 +1,4 @@
-use crate::cognition::candidates::CandidateBuffer;
+﻿use crate::cognition::candidates::CandidateBuffer;
 /// Persistence — Save and restore KAI's full cognitive state.
 ///
 /// Biology analog: Long-term memory consolidation to permanent substrate.
@@ -153,3 +153,4 @@ fn chrono_now() -> String {
         .unwrap_or_default();
     format!("epoch-{}", d.as_secs())
 }
+

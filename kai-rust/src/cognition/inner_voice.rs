@@ -1,4 +1,4 @@
-/// Inner Voice — KAI's Self-Dialogue System
+﻿/// Inner Voice — KAI's Self-Dialogue System
 ///
 /// Biology analog: Internal monologue / working memory rehearsal.
 ///
@@ -115,7 +115,7 @@ pub fn validate_insight(
 
     ValidationResult {
         insight: insight.to_string(),
-        echo_text: best_cell.text.clone(),
+        echo_text: best_cell.label.clone(),
         echo_score: *best_score,
         verdict,
         echoed_to_source,
@@ -168,7 +168,7 @@ pub fn explore_lexicon_binding(
     Some(LexiconExploration {
         word_a,
         word_b,
-        resonated_text: best_cell.text.clone(),
+        resonated_text: best_cell.label.clone(),
         resonated_region: best_cell.region.clone(),
         score: *best_score,
     })
@@ -213,3 +213,4 @@ mod tests {
         assert_eq!(result.verdict, InsightVerdict::Noise);
     }
 }
+

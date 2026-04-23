@@ -1,4 +1,4 @@
-/// Session Transcript — Full conversation history that survives restarts.
+﻿/// Session Transcript — Full conversation history that survives restarts.
 ///
 /// Every turn is appended as a JSON line to data/kai-transcript.jsonl
 /// KAI can recall any part of its full history using `recall <query>`.
@@ -30,6 +30,8 @@ pub struct TranscriptEntry {
     pub session: String,
     pub role: String,
     pub text: String,
+    #[serde(default)]
+    pub label: String,
 }
 
 /// Append a single turn to the transcript file.
@@ -48,7 +50,8 @@ pub fn append(base_dir: &str, session_id: &str, role: &str, text: &str) {
             .as_secs(),
         session: session_id.to_string(),
         role: role.to_string(),
-        text: safe_str_slice(text, 2000).to_string(), // cap at 2k chars, UTF-8 safe
+        text: safe_str_slice(text, 2000).to_string(),
+        label: safe_str_slice(text, 2000).to_string(),
     };
 
     if let Ok(json) = serde_json::to_string(&entry) {
@@ -89,7 +92,7 @@ pub fn recall(base_dir: &str, query: &str, max_results: usize) -> Vec<Transcript
     let reader = BufReader::new(file);
     for line in reader.lines().flatten() {
         if let Ok(entry) = serde_json::from_str::<TranscriptEntry>(&line) {
-            let text_lower = entry.text.to_lowercase();
+            let text_lower = entry.label.to_lowercase();
             let matches = query_words
                 .iter()
                 .filter(|w| text_lower.contains(*w))
@@ -145,7 +148,7 @@ pub fn brief(base_dir: &str, session_id: &str) -> String {
     // Show user's messages as the "agenda" of the conversation
     lines.push("What you covered:".to_string());
     for entry in user_turns.iter().take(12) {
-        let preview = entry.text.lines().next().unwrap_or("").trim();
+        let preview = entry.label.lines().next().unwrap_or("").trim();
         if preview.len() > 5 {
             lines.push(format!("  ❯ {}", safe_str_slice(preview, 90)));
         }
@@ -166,3 +169,4 @@ pub fn entry_count(base_dir: &str) -> usize {
     };
     BufReader::new(file).lines().flatten().count()
 }
+
