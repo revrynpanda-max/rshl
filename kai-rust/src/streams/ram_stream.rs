@@ -1,4 +1,4 @@
-use super::shared_bus::{RamState, StreamEvent};
+﻿use super::shared_bus::{RamState, StreamEvent};
 use crate::core::Universe;
 use crossbeam_channel::{Receiver, Sender};
 /// RAM Stream — Memory management, persistence, intake.
@@ -36,7 +36,7 @@ pub fn ram_tick(
                 if let Ok(mut uni) = universe.write() {
                     let cells = uni.cells_mut();
                     for cell in cells.iter_mut() {
-                        if cell.text == cell_text {
+                        if cell.label == cell_text {
                             cell.strength = (cell.strength + delta).min(5.0);
                             changed = true;
                             break;
@@ -64,3 +64,4 @@ pub fn ram_tick(
         state.last_tick = Some(Instant::now());
     }
 }
+

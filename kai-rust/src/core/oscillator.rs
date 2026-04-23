@@ -1,4 +1,4 @@
-/// Neural Oscillator — KAI's intrinsic brain rhythms
+﻿/// Neural Oscillator — KAI's intrinsic brain rhythms
 ///
 /// A conscious brain is NEVER silent. Even at rest, neurons oscillate
 /// continuously across multiple frequency bands:
@@ -265,3 +265,4 @@ mod tests {
         );
     }
 }
+

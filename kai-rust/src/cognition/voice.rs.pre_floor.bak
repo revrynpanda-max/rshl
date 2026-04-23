@@ -759,37 +759,21 @@ pub fn generate_response_predictive(
     if matches!(query_type, QueryType::Greeting) {
         let name = extract_introduced_name(&lower);
 
-        // Stop hard-filtering to `source=greeting` on every input. Let
-        // the full universe compete first â€” only fall back to the
-        // greeting-only pool when no cell scores above the floor. This
-        // kills the 4-cell rotation by letting seed / identity / world
-        // cells win when they predict the next turn better.
+        // Predictive retrieval across greeting cells. The inquisitive vs
+        // brief split is now a cheap post-filter: we fetch the top-5 hits
+        // (already ranked by static + predictive + novelty - recency) and
+        // prefer the register that matches the incoming opener's energy.
         let is_inquisitive = lower.contains("good")
             || lower.contains("up")
             || lower.contains("happening")
             || lower.contains("going");
 
-        const GREETING_FALLBACK_FLOOR: f32 = 0.25;
-
-        let hits_all = universe.predictive_query(
+        let hits_gr = universe.predictive_query_by_source(
             crate::core::SparseVec::encode(input),
+            "greeting",
             trace,
             predictive::DEFAULT_ITER_STEPS,
         );
-        let hits_gr = if hits_all
-            .first()
-            .map(|h| h.score >= GREETING_FALLBACK_FLOOR)
-            .unwrap_or(false)
-        {
-            hits_all
-        } else {
-            universe.predictive_query_by_source(
-                crate::core::SparseVec::encode(input),
-                "greeting",
-                trace,
-                predictive::DEFAULT_ITER_STEPS,
-            )
-        };
 
         let greeting_cell = if is_inquisitive {
             hits_gr
@@ -1756,9 +1740,7 @@ mod tests {
 
     fn hit(text: &str, score: f32) -> QueryHit {
         QueryHit {
-            label: text.to_string(),
             text: text.to_string(),
-            vec: crate::core::SparseVec::zero(),
             region: "memory".to_string(),
             score,
             strength: 1.5,

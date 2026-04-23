@@ -1,4 +1,4 @@
-use crate::core::SparseVec;
+﻿use crate::core::SparseVec;
 /// Predictive Processing Engine — KAI's expectation machine
 ///
 /// One of the most powerful theories of brain function (Karl Friston, Andy Clark):
@@ -344,3 +344,4 @@ mod tests {
         assert!(vec.nnz() > 0, "prediction vector should not be zero");
     }
 }
+

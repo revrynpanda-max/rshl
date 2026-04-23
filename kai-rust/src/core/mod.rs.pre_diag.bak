@@ -9,7 +9,6 @@ pub mod regions;
 pub mod seed;
 pub mod sparse_vec;
 pub mod spiral;
-pub mod stat_lexicon;
 pub mod universe;
 
 pub use embeddings::Embeddings;
@@ -19,5 +18,4 @@ pub use normalize::get_normalizer;
 pub use oscillator::{NeuralOscillator, OscillatorOutput};
 pub use predictive::ConversationTrace;
 pub use sparse_vec::SparseVec;
-pub use stat_lexicon::StatLexicon;
-pub use universe::{Cell, PredictiveScoreBreakdown, QueryHit, Universe};
+pub use universe::{Cell, QueryHit, Universe};

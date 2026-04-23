@@ -1,4 +1,4 @@
-/// RSHL Sparse Ternary Vector Engine
+﻿/// RSHL Sparse Ternary Vector Engine
 ///
 /// 16384-dimensional sparse ternary vectors: each dimension is -1, 0, or +1.
 /// Encoding uses BOTH character trigrams AND word-level hashing.
@@ -378,13 +378,13 @@ impl SparseVec {
         Self::from_raw(data)
     }
 
-    /// High-speed parallel cosine search for decoding.
+    /// High-speed cosine search for decoding.
     pub fn batch_cosine(&self, targets: &[(&str, SparseVec)]) -> Option<String> {
         targets
-            .par_iter()
-            .map(|(word, vec)| (word, self.cosine(vec)))
+            .iter()
+            .map(|(word, vec)| (*word, self.cosine(vec)))
             .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
-            .filter(|&(_, score)| score > 0.15)
+            .filter(|(_, score)| *score > 0.15)
             .map(|(word, _)| word.to_string())
     }
 }
@@ -649,3 +649,4 @@ mod tests {
 
 // ── (end of sparse_vec.rs) ──
 // Use highly overlapping strings t
+

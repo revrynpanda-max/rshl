@@ -1,4 +1,4 @@
-pub mod ai_peer;
+﻿pub mod ai_peer;
 pub mod code_tools;
 pub mod git_tools;
 pub mod ipc_server;
@@ -181,7 +181,7 @@ pub fn ingest_topic(universe: &mut Universe, topic: &str) -> usize {
         };
 
         // Check for duplicates via simple text match
-        let exists = universe.cells().iter().any(|c| c.text == text);
+        let exists = universe.cells().iter().any(|c| c.label == text);
         if !exists {
             universe.store(&text, "reasoning", "world-bridge", 1.5);
             stored += 1;
@@ -202,7 +202,7 @@ pub fn ingest_topic(universe: &mut Universe, topic: &str) -> usize {
             related.clone()
         };
 
-        let exists = universe.cells().iter().any(|c| c.text == text);
+        let exists = universe.cells().iter().any(|c| c.label == text);
         if !exists {
             universe.store(&text, "reasoning", "world-bridge", 1.0);
             stored += 1;
@@ -240,3 +240,4 @@ pub fn suggest_topic(universe: &Universe) -> &'static str {
     let mut rng = rand::thread_rng();
     EXPLORATION_TOPICS[rng.gen_range(0..EXPLORATION_TOPICS.len())]
 }
+

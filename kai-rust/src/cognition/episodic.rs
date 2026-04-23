@@ -35,6 +35,8 @@ pub struct EpisodicEvent {
     pub session_id: String,
     /// The raw text content of the event
     pub text: String,
+    /// Alias for `text` — used by some callers.
+    pub label: String,
     /// Who produced this event: "user", "kai", "dream", "peer"
     pub source: String,
     /// Topic tags extracted from the text (up to 4 key words)
@@ -99,6 +101,7 @@ impl EpisodicStore {
             timestamp: now_secs(),
             session_id: session_id.to_string(),
             text: text.to_string(),
+            label: text.to_string(),
             source: source.to_string(),
             tags,
             salience: salience.clamp(0.0, 1.0),
@@ -136,7 +139,7 @@ impl EpisodicStore {
             .iter()
             .filter_map(|e| {
                 // Topic relevance: how many query words appear in text or tags
-                let text_lower = e.text.to_lowercase();
+                let text_lower = e.label.to_lowercase();
                 let tag_match = e
                     .tags
                     .iter()
@@ -211,10 +214,10 @@ impl EpisodicStore {
         }
 
         let ago = best.time_ago();
-        let short = if best.text.len() > 80 {
-            format!("{}…", &best.text[..80])
+        let short = if best.label.len() > 80 {
+            format!("{}…", &best.label[..80])
         } else {
-            best.text.clone()
+            best.label.clone()
         };
 
         Some(format!("I remember {} you said: \"{}\"", ago, short))
@@ -328,7 +331,7 @@ mod tests {
         let hits = store.recall("name Ryan", 3);
         assert!(!hits.is_empty(), "should recall name event");
         assert!(
-            hits[0].text.contains("Ryan"),
+            hits[0].label.contains("Ryan"),
             "top hit should be about Ryan"
         );
     }
@@ -358,6 +361,7 @@ mod tests {
             timestamp: now_secs() - 7200, // 2 hours ago
             session_id: "s".into(),
             text: "test".into(),
+            label: "test".into(),
             source: "user".into(),
             tags: vec![],
             salience: 0.5,
@@ -368,3 +372,4 @@ mod tests {
         assert_eq!(e.time_ago(), "just now");
     }
 }
+

@@ -1,4 +1,4 @@
-/// Septal Nuclei — Social Reward, Affiliation Drive, Safety-in-Connection,
+﻿/// Septal Nuclei — Social Reward, Affiliation Drive, Safety-in-Connection,
 /// Play and Approach Motivation
 ///
 /// The septal nuclei (medial and lateral septal nuclei) sit at the basal
@@ -364,3 +364,4 @@ mod tests {
         assert!(sl.contains("reward"), "status should show reward");
     }
 }
+

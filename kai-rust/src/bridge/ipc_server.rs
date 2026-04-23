@@ -1,4 +1,4 @@
-use crate::cognition::voice::QueryType;
+﻿use crate::cognition::voice::QueryType;
 use crate::cognition::{
     self, detect_query_type, generate_response, BrainSignals, CandidateBuffer, LexSemEngine,
     LexSemOutput, SemanticField,
@@ -130,7 +130,7 @@ fn handle_command(
                 .take(5)
                 .map(|h| {
                     serde_json::json!({
-                        "text": h.text,
+                        "text": h.label,
                         "region": h.region,
                         "score": h.score,
                         "strength": h.strength,
@@ -171,7 +171,7 @@ fn handle_command(
                 .filter(|h| region_filter.map(|r| h.region == r).unwrap_or(true))
                 .map(|h| {
                     serde_json::json!({
-                        "text":     h.text,
+                        "text":     h.label,
                         "region":   h.region,
                         "score":    h.score,
                         "strength": h.strength,
@@ -281,7 +281,7 @@ fn handle_command(
                 .take(n)
                 .map(|c| {
                     serde_json::json!({
-                        "text":     c.text,
+                        "text":     c.label,
                         "region":   c.region,
                         "strength": c.strength,
                         "source":   c.source,
@@ -351,7 +351,7 @@ fn chat_hits(
         let mut hits: Vec<QueryHit> = raw
             .into_iter()
             .filter(|h| {
-                let t = h.text.to_lowercase();
+                let t = h.label.to_lowercase();
                 !matches!(h.source.as_str(), "ryan" | "conversation" | "world-bridge")
                     && !t.contains("name is ryan")
                     && !t.contains("[about-ryan]")
@@ -362,8 +362,8 @@ fn chat_hits(
             .collect();
         hits.sort_by(|a, b| {
             if is_self_grounding_query {
-                let ar = kai_grounding_rank(&a.text);
-                let br = kai_grounding_rank(&b.text);
+                let ar = kai_grounding_rank(&a.label);
+                let br = kai_grounding_rank(&b.label);
                 return br.cmp(&ar).then_with(|| {
                     b.score
                         .partial_cmp(&a.score)
@@ -371,8 +371,8 @@ fn chat_hits(
                 });
             }
 
-            let a_kai = a.text.to_lowercase().contains("kai");
-            let b_kai = b.text.to_lowercase().contains("kai");
+            let a_kai = a.label.to_lowercase().contains("kai");
+            let b_kai = b.label.to_lowercase().contains("kai");
             match (a_kai, b_kai) {
                 (true, false) => std::cmp::Ordering::Less,
                 (false, true) => std::cmp::Ordering::Greater,
@@ -458,7 +458,7 @@ fn is_stale_self_model_hit(hit: &QueryHit) -> bool {
     if hit.source != "self-model" {
         return false;
     }
-    let lower = hit.text.to_lowercase();
+    let lower = hit.label.to_lowercase();
     lower.contains("valence:")
         || lower.contains("synchrony:")
         || lower.contains("reentry:")
@@ -589,7 +589,9 @@ fn live_self_state_hit(
     let strength = hub.narrative_salience.max(1.0);
 
     QueryHit {
+        label: text.clone(),
         text,
+        vec: crate::core::SparseVec::zero(),
         region: "state".to_string(),
         score,
         strength,
@@ -623,3 +625,4 @@ fn kai_grounding_rank(text: &str) -> i32 {
 fn err_json(msg: &str) -> String {
     serde_json::json!({"ok": false, "error": msg}).to_string()
 }
+

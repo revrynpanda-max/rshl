@@ -1,4 +1,4 @@
-/// Theory of Mind — KAI's model of what Ryan knows, believes, and wants
+﻿/// Theory of Mind — KAI's model of what Ryan knows, believes, and wants
 ///
 /// Theory of Mind (ToM) is the ability to understand that OTHER people have
 /// their own mental states — beliefs, desires, knowledge, intentions —
@@ -500,3 +500,4 @@ mod tests {
         );
     }
 }
+

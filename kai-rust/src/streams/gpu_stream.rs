@@ -30,8 +30,8 @@ pub fn gpu_tick(
                 let start = Instant::now();
 
                 // Reconstruct the query vector
-                let mut data = vec![0i8; 4096];
-                for (i, &v) in query_vec.iter().enumerate().take(4096) {
+                let mut data = vec![0i8; crate::core::sparse_vec::DIM];
+                for (i, &v) in query_vec.iter().enumerate().take(crate::core::sparse_vec::DIM) {
                     data[i] = v;
                 }
                 let q = SparseVec::from_raw(data);

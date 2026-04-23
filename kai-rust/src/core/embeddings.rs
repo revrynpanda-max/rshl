@@ -14,7 +14,7 @@ use crate::core::SparseVec;
 ///   where α = 0.35 (tunable)
 use std::collections::HashMap;
 
-const DIM: usize = 4096;
+const DIM: usize = 16384;
 const LEARN_BLEND: f32 = 0.35; // How much learned embeddings influence the final vector
 const MIN_COOCCURRENCE: usize = 2; // Minimum co-occurrences to create a learned vector
 const MAX_VOCAB: usize = 5000; // Max words to track

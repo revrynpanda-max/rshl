@@ -1,4 +1,4 @@
-/// Homeostasis — Slow weakening / pruning (LTD analog).
+﻿/// Homeostasis — Slow weakening / pruning (LTD analog).
 ///
 /// Connections that are never re-activated, reinforced, or replayed
 /// gradually weaken. Below a floor threshold they are removed,
@@ -103,3 +103,4 @@ pub fn run_homeostasis(universe: &mut Universe, config: &HomeostasisConfig) -> H
 
     HomeostasisResult { decayed, pruned }
 }
+

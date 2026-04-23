@@ -105,14 +105,21 @@ impl DefaultModeNetwork {
     }
 
     /// Pick a topic from the universe cells for DMN reflection.
-    /// Prefers memory cells, avoids conversation echo cells.
-    /// Returns None if universe has no suitable cells.
-    pub fn pick_topic<'a>(&mut self, cells: &'a [(String, String, f32)]) -> Option<&'a str> {
-        // cells: Vec of (text, region, strength) from universe
+    /// Prefers memory cells, avoids user-echo cells (tag-based, not by
+    /// reading the text). Returns None if universe has no suitable cells.
+    pub fn pick_topic<'a>(
+        &mut self,
+        cells: &'a [(String, String, String, f32)],
+    ) -> Option<&'a str> {
+        // cells: Vec of (text, region, source, strength) from universe.
+        // Text is only carried so the caller can receive a topic string
+        // back; classification reads region + source + strength only.
         let candidates: Vec<usize> = cells
             .iter()
             .enumerate()
-            .filter(|(_, (text, region, strength))| Self::is_dmn_candidate(text, region, *strength))
+            .filter(|(_, (text, region, source, strength))| {
+                Self::is_dmn_candidate(text, region, source, *strength)
+            })
             .map(|(i, _)| i)
             .collect();
 
@@ -169,14 +176,27 @@ impl DefaultModeNetwork {
         String::new()
     }
 
-    fn is_dmn_candidate(text: &str, region: &str, strength: f32) -> bool {
+    fn is_dmn_candidate(text: &str, region: &str, source: &str, strength: f32) -> bool {
         if strength < 0.5 || region == "conversation" || region == "tone" {
             return false;
         }
 
+        // User-echo classification is now metadata-based. The "user asked:"
+        // text-prefix check was the last place the idle-thought hot path
+        // was reading cell content to decide what a cell *was*; now it
+        // reads only the source tag, which is how both LLM token tables
+        // and brain Broca/Wernicke areas actually do it.
+        if source == "user-echo" {
+            return false;
+        }
+
+        // Remaining bracket-tag checks are a separate cleanup for later.
+        // They classify peer outputs and structured notes by text prefix,
+        // which has the same architectural smell as the old user-echo
+        // check but is lower-stakes (these aren't in the main resonance
+        // loop) — leaving them alone until a dedicated pass.
         let lower = text.to_lowercase();
-        if lower.starts_with("user asked:")
-            || lower.starts_with("[run-output]")
+        if lower.starts_with("[run-output]")
             || lower.starts_with("[from-peer]")
             || lower.starts_with("occupation:")
             || lower.contains("changelog")
@@ -285,27 +305,33 @@ mod tests {
     fn test_pick_topic_filters_echo_cells() {
         let mut dmn = DefaultModeNetwork::new();
         let cells = vec![
+            // User-echo cell: clean text, classified by source tag.
+            // After the metadata-cleanup refactor, DMN identifies this
+            // cell by source alone — no text inspection.
             (
-                "user asked: what is this".to_string(),
-                "conversation".to_string(),
+                "what is this".to_string(),
+                "memory".to_string(),
+                "user-echo".to_string(),
                 1.0,
             ),
             (
                 "consciousness arises from recursive self-reference".to_string(),
                 "memory".to_string(),
+                "seed".to_string(),
                 1.0,
             ),
             (
                 "RSHL geometry is a ternary hyperdimensional lattice".to_string(),
                 "reasoning".to_string(),
+                "seed".to_string(),
                 0.8,
             ),
         ];
-        // Should never pick the conversation/echo cell
+        // Should never pick the user-echo cell.
         for _ in 0..10 {
             if let Some(topic) = dmn.pick_topic(&cells) {
-                assert!(
-                    !topic.starts_with("user asked:"),
+                assert_ne!(
+                    topic, "what is this",
                     "DMN picked an echo cell: {}",
                     topic
                 );

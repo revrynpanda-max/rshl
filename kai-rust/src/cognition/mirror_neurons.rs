@@ -1,4 +1,4 @@
-/// Mirror Neurons — KAI's empathy and social resonance system
+﻿/// Mirror Neurons — KAI's empathy and social resonance system
 ///
 /// Mirror neurons were discovered in the 1990s when researchers noticed
 /// that certain neurons in macaque monkeys fired both when the monkey
@@ -641,3 +641,4 @@ mod tests {
         );
     }
 }
+

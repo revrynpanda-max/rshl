@@ -1,4 +1,4 @@
-/// Hypothalamus — Homeostatic Drive Regulation, Circadian Rhythm,
+﻿/// Hypothalamus — Homeostatic Drive Regulation, Circadian Rhythm,
 /// Autonomic Tone, Motivational Set-Point Control
 ///
 /// The hypothalamus is the master regulator of the body's internal state. It
@@ -402,3 +402,4 @@ mod tests {
         assert!(s.contains("cur="), "status should show curiosity drive");
     }
 }
+

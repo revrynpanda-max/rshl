@@ -4,7 +4,7 @@
 
 use crate::core::sparse_vec::SparseVec;
 
-pub const DIM: usize = 4096;
+pub const DIM: usize = 16384;
 pub const REGION_DIM: usize = 1024;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

@@ -1,4 +1,4 @@
-/// Lexicon — KAI's Vocabulary Backbone
+﻿/// Lexicon — KAI's Vocabulary Backbone
 ///
 /// Loads 10,000 common English words from the google-10000-english-usa.txt file.
 /// Provides:
@@ -585,3 +585,4 @@ mod tests {
         assert_eq!(match_case("hello", "World"), "world");
     }
 }
+

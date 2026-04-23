@@ -1,4 +1,4 @@
-use crate::core::{SparseVec, Universe};
+﻿use crate::core::{SparseVec, Universe};
 /// Hippocampus — Pattern Completion, Pattern Separation, Consolidation Indexing
 ///
 /// The hippocampus is the brain's rapid-binding memory system. It does not
@@ -65,6 +65,8 @@ const PASSIVE_DECAY: f32 = 0.002;
 pub struct HippocampalPattern {
     /// The canonical text of this pattern
     pub text: String,
+    /// Alias for `text`.
+    pub label: String,
     /// Encoded sparse vector
     pub vec: SparseVec,
     /// Consolidation strength (0.0–1.0), decays with time, rises with replay
@@ -202,6 +204,7 @@ impl Hippocampus {
 
         self.pattern_store.push(HippocampalPattern {
             text: text.to_string(),
+            label: text.to_string(),
             vec,
             strength: initial_strength.clamp(0.0, 1.0),
             last_accessed: self.tick,
@@ -258,7 +261,7 @@ impl Hippocampus {
             pattern.last_accessed = self.tick;
 
             // Update CA1 buffer with this access
-            let text = pattern.text.clone();
+            let text = pattern.label.clone();
             let vec = pattern.vec.clone();
             if self.recent_patterns.len() >= CA1_BUFFER {
                 self.recent_patterns.pop_front();
@@ -318,7 +321,7 @@ impl Hippocampus {
             self.consolidations_flagged += 1;
 
             // Also mark the stored pattern if it exists
-            if let Some(p) = self.pattern_store.iter_mut().find(|p| p.text == text) {
+            if let Some(p) = self.pattern_store.iter_mut().find(|p| p.label == text) {
                 p.flagged = true;
             }
         }
@@ -338,7 +341,7 @@ impl Hippocampus {
 
     /// Reinforce a pattern post-consolidation (called after sleep completes it).
     pub fn reinforce(&mut self, text: &str, delta: f32) {
-        if let Some(p) = self.pattern_store.iter_mut().find(|p| p.text == text) {
+        if let Some(p) = self.pattern_store.iter_mut().find(|p| p.label == text) {
             p.strength = (p.strength + delta).min(1.0);
         }
     }
@@ -427,7 +430,7 @@ impl Hippocampus {
             let pattern = &self.pattern_store[*idx];
             match decision {
                 Decision::Reinforce => {
-                    universe.reinforce_by_text(&pattern.text, 0.10);
+                    universe.reinforce_by_text(&pattern.label, 0.10);
                     reinforced += 1;
                     to_remove.push(*idx);
                 }
@@ -438,7 +441,7 @@ impl Hippocampus {
                         pattern.strength * 0.85
                     };
                     universe.store(
-                        &pattern.text,
+                        &pattern.label,
                         &pattern.region,
                         &pattern.source,
                         entry_strength,
@@ -691,3 +694,4 @@ mod tests {
         assert!(s.contains("HIPP"), "status line should mention HIPP");
     }
 }
+

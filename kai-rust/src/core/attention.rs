@@ -14,7 +14,7 @@
 /// The weights come from the universe itself — no training needed.
 use crate::core::SparseVec;
 
-const DIM: usize = 4096;
+const DIM: usize = 16384;
 const MIN_ATTENTION: f32 = 0.1; // Floor — every token gets at least this weight
 
 /// Compute resonance attention weights for a set of tokens.

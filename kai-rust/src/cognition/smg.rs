@@ -1,4 +1,4 @@
-/// Supramarginal Gyrus (SMG) — Immediate Empathy, Phonological Buffer,
+﻿/// Supramarginal Gyrus (SMG) — Immediate Empathy, Phonological Buffer,
 /// Embodied Action-Word Processing, Empathy Calibration
 ///
 /// The SMG sits at the junction of the parietal and temporal lobes, near the
@@ -367,3 +367,4 @@ mod tests {
         assert!(sl.contains("empathy"), "status should show empathy");
     }
 }
+

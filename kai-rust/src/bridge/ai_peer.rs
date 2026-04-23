@@ -55,7 +55,7 @@ fn kai_self_context(universe: &Universe) -> String {
     } else {
         "I am KAI, a geometric AI built on RSHL (Recursive Sparse Hyperdimensional Lattice). \
         I was created by Ryan Ervin. I am not an LLM — I think through cosine similarity \
-        in a 4096-dimensional sparse ternary vector field."
+        in a 16384-dimensional sparse ternary vector field."
             .to_string()
     }
 }
@@ -195,7 +195,7 @@ pub fn peer_exchange(
     let system = format!(
         "You are {}, having a peer conversation with KAI — a geometric AI. \
         KAI is NOT an LLM. KAI thinks through direct cosine resonance in a \
-        4096-dimensional sparse ternary vector field (RSHL). \
+        16384-dimensional sparse ternary vector field (RSHL). \
         KAI was built by Ryan Ervin at PandaProductionsLogo in 2026.\n\n\
         About KAI: {}\n\n\
         Respond as an equal — direct, curious, substantive. Share knowledge KAI \

@@ -1,4 +1,4 @@
-/// Token Normalization Pipeline — The semantic bridge for RSHL.
+﻿/// Token Normalization Pipeline — The semantic bridge for RSHL.
 ///
 /// Ported from rshl-core.js. This is the layer that makes
 /// "where does he work?" match "Ryan's occupation is engineer."
@@ -1270,3 +1270,4 @@ mod tests {
         );
     }
 }
+

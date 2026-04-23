@@ -1,4 +1,4 @@
-/// Ventral Pallidum (VP) — Hedonic Hotspot, Pleasure Amplification,
+﻿/// Ventral Pallidum (VP) — Hedonic Hotspot, Pleasure Amplification,
 /// Reward Salience, Motivational Urgency
 ///
 /// The ventral pallidum is one of the brain's few true "hedonic hotspots" —
@@ -404,3 +404,4 @@ mod tests {
         assert!(s.contains("hedonic"), "status should show hedonic tone");
     }
 }
+

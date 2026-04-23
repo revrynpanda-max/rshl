@@ -1,4 +1,4 @@
-/// Bed Nucleus of the Stria Terminalis (BNST) — Sustained Anxiety, Threat Context
+﻿/// Bed Nucleus of the Stria Terminalis (BNST) — Sustained Anxiety, Threat Context
 ///
 /// The BNST is the "slow burn" complement to the amygdala's "fast flash" fear.
 /// While the amygdala fires for immediate, specific threats ("that snake!"),
@@ -365,3 +365,4 @@ mod tests {
         assert!(s.contains("threat"), "status should show threat level");
     }
 }
+

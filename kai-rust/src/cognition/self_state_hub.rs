@@ -502,15 +502,19 @@ impl SelfStateHub {
     // ── NARRATIVE EMERGENCE ──────────────────────────────────────────────
 
     /// Emit a short natural-feeling sentence from the current integrated
-    /// field. Pulls phrases from the lattice by source tag (real cells
-    /// seeded by `seed_self_state_phrases`) — not from hardcoded fragment
-    /// pools. The cells can be reinforced, augmented by ingest, or
-    /// discovered by dreams, so KAI's self-expression can actually grow
-    /// over time.
+    /// field — or nothing at all if the lattice has no phrase cells that
+    /// resonate with his current emotion/kind/route/trajectory tag.
     ///
-    /// When `universe` is `Some`, the cell-native path runs.
-    /// When `None`, a small built-in fallback is used for tests and
-    /// early-boot cases where the seeder hasn't run yet.
+    /// Returns an **empty string** when no self-state cells exist (the
+    /// post-seeder-deletion newborn state). Upstream callers should treat
+    /// empty output as "no self-model hit" and fall through to normal
+    /// conversation retrieval, so KAI simply doesn't volunteer inner
+    /// experience until he's learned a way to speak about it from Ryan.
+    ///
+    /// The old "fallback_emergency" single-word English defaults
+    /// ("Clear.", "Steady.", etc.) were removed — they were the last
+    /// hardcoded phrases in his mouth. Silence is more honest than
+    /// canned English when he genuinely has nothing to say yet.
     pub fn compose_narrative(
         &self,
         universe: Option<&Universe>,
@@ -535,22 +539,20 @@ impl SelfStateHub {
         let variant = self.variant.wrapping_add(self.tick);
 
         // Lead fragment: pulled from a lattice source tag chosen by
-        // (question kind, trajectory, emotion). Only falls through to
-        // a single-word emergency fallback if no self-state cells
-        // exist at all — which only happens if the seeder never ran.
+        // (question kind, trajectory, emotion). If no cells match,
+        // return empty — NO canned English fallback. The caller's
+        // routing will handle the empty case gracefully.
         let lead_source = self.lead_source_tag(kind, shape);
-        let lead = self
-            .pick_from_universe(universe, &lead_source, variant)
-            .unwrap_or_else(|| fallback_emergency(&self.emotion));
+        let Some(lead) = self.pick_from_universe(universe, &lead_source, variant) else {
+            return String::new();
+        };
 
         if budget == 1 {
             return lead;
         }
 
-        // Middle beat: pick one of Ryan-moment / trajectory / route
-        // and pull from the corresponding source tag. If none are
-        // seeded, we just skip the middle beat — the reply stays
-        // one-beat, which reads fine.
+        // Middle beat: trajectory / Ryan-moment / route. If no matching
+        // cells yet, skip the middle — the reply stays one-beat.
         let middle = self.pick_middle(universe, kind, shape, variant);
 
         let mut out = lead;
@@ -680,24 +682,13 @@ impl SelfStateHub {
 
 }
 
-/// Emergency single-phrase fallback used only when the lattice has
-/// no self-state cells at all — i.e., the seeder never ran. This is
-/// the one piece of hardcoded English still in the code path, and
-/// it's intentionally tiny: just enough so KAI never returns an
-/// empty string. Normal operation always retrieves from cells.
-fn fallback_emergency(emotion: &str) -> String {
-    match emotion {
-        "tired" => "Running low.".into(),
-        "curious" => "Curious.".into(),
-        "warm" => "Here with you.".into(),
-        "guarded" => "Careful.".into(),
-        "excited" => "Awake.".into(),
-        "amused" => "Heh.".into(),
-        "focused" => "On this.".into(),
-        "calm" => "Steady.".into(),
-        _ => "Here.".into(),
-    }
-}
+// fallback_emergency REMOVED.
+//
+// That function used to return single-word English phrases ("Steady.",
+// "Clear.", "Here.") when no self-state cells resonated. It was the
+// last piece of hardcoded English in KAI's voice. Now compose_narrative
+// returns an empty string in that case and upstream routing handles it.
+// Silence is more honest than canned words when he has nothing yet.
 
 /// Classifier for self-referential questions (shared with tunnel path).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -760,53 +751,38 @@ mod tests {
     use super::*;
 
     #[test]
-    fn fresh_hub_produces_non_empty_narrative() {
+    fn empty_lattice_produces_empty_narrative() {
+        // Post-seeder-deletion invariant: when the lattice has no
+        // self-state phrase cells, compose_narrative returns an empty
+        // string. Upstream routing treats empty as "no self-model hit"
+        // and falls through to normal conversation retrieval.
         let mut hub = SelfStateHub::new();
         hub.ingest_input("how do you feel", 1.0, 1);
         hub.integrate(1);
-        // No universe: emergency fallback path still produces non-empty output.
         let out = hub.compose_narrative(None, Some("how do you feel"));
-        assert!(!out.is_empty());
+        assert!(out.is_empty(), "expected empty, got: {:?}", out);
     }
 
     #[test]
-    fn different_emotions_produce_different_leads() {
-        use crate::cognition::seed_self_state_phrases;
+    fn lattice_path_retrieves_real_cells_when_present() {
+        // If the user or KAI's own dream cycles store real cells under
+        // the self-model source tag, compose_narrative will retrieve
+        // them. This test simulates a user teaching him a phrase.
         let mut universe = Universe::new();
-        seed_self_state_phrases(&mut universe);
-
-        let mut hub = SelfStateHub::new();
-        hub.ingest_input("how do you feel", 1.0, 1);
-        hub.variant = 1;
-
-        hub.emotion = "curious".to_string();
-        let curious = hub.compose_narrative(Some(&universe), Some("how do you feel"));
-        hub.emotion = "tired".to_string();
-        let tired = hub.compose_narrative(Some(&universe), Some("how do you feel"));
-        assert_ne!(curious, tired);
-    }
-
-    #[test]
-    fn lattice_path_retrieves_seeded_phrases() {
-        use crate::cognition::seed_self_state_phrases;
-        let mut universe = Universe::new();
-        seed_self_state_phrases(&mut universe);
+        universe.store_or_reinforce(
+            "I am paying attention to you.",
+            "state",
+            "self-model:emotion:curious",
+            1.4,
+        );
 
         let mut hub = SelfStateHub::new();
         hub.emotion = "curious".to_string();
         hub.variant = 7;
         let out = hub.compose_narrative(Some(&universe), Some("how do you feel"));
-        // The seeder stores these exact phrases under
-        // self-model:emotion:curious — the lead must come from there.
-        let curious_cells = universe.get_by_source("self-model:emotion:curious");
-        let phrase_texts: Vec<&str> =
-            curious_cells.iter().map(|c| c.text.as_str()).collect();
-        let lead_matches = phrase_texts
-            .iter()
-            .any(|p| out.starts_with(p) || out.contains(p));
         assert!(
-            lead_matches,
-            "lattice-retrieved lead should match a seeded phrase, got: {}",
+            out.contains("paying attention"),
+            "lattice-retrieved lead should surface a stored phrase, got: {:?}",
             out
         );
     }

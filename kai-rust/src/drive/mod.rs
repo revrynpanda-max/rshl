@@ -1,4 +1,4 @@
-pub mod heartbeat;
+﻿pub mod heartbeat;
 
 use super::core::{FieldState, SparseVec};
 use serde::{Deserialize, Serialize};
@@ -243,3 +243,4 @@ impl Drive {
         interval.clamp(MIN_INTERVAL_MS, MAX_INTERVAL_MS) as u64
     }
 }
+

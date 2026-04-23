@@ -1,4 +1,4 @@
-/// Working Memory — KAI's short-term context buffer.
+﻿/// Working Memory — KAI's short-term context buffer.
 ///
 /// This is the RSHL equivalent of an LLM's context window.
 /// Stores the last N conversation turns as temporary high-strength
@@ -16,6 +16,7 @@ const DECAY_TICKS: u64 = 80; // turns fully decay after ~80 ticks
 #[derive(Clone)]
 pub struct MemorySlot {
     pub text: String,
+    pub label: String,
     pub vec: SparseVec,
     pub role: String, // "user" or "kai"
     pub created_tick: u64,
@@ -39,6 +40,7 @@ impl WorkingMemory {
         let vec = SparseVec::encode(text);
         self.slots.push(MemorySlot {
             text: text.to_string(),
+            label: text.to_string(),
             vec,
             role: role.to_string(),
             created_tick: tick,
@@ -82,7 +84,7 @@ impl WorkingMemory {
             .iter()
             .rev()
             .take(n)
-            .map(|s| (s.role.clone(), s.text.clone()))
+            .map(|s| (s.role.clone(), s.label.clone()))
             .collect()
     }
 
@@ -132,3 +134,4 @@ mod tests {
         assert_eq!(wm.len(), 1); // new turn remains
     }
 }
+

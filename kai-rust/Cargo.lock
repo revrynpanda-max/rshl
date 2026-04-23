@@ -493,7 +493,7 @@ dependencies = [
 
 [[package]]
 name = "kai"
-version = "5.5.1"
+version = "5.8.0"
 dependencies = [
  "chrono",
  "crossbeam-channel",
