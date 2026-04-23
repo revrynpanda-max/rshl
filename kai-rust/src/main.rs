@@ -7,11 +7,11 @@ use crossterm::{
 };
 use kai::cognition::voice::QueryType;
 use kai::cognition::{
-    detect_query_type, generate_response, BrainSignals, CandidateBuffer, ContextSlot,
-    HomeostasisConfig, MoodState, PromotionThresholds, Reasoner, WorkingMemory,
+    detect_query_type, BrainSignals, CandidateBuffer, ContextSlot, HomeostasisConfig, MoodState,
+    PromotionThresholds, Reasoner, WorkingMemory,
 };
 use kai::core::spiral::SpiralState;
-use kai::core::{Embeddings, FieldState, Lexicon, SparseVec, Universe};
+use kai::core::{ConversationTrace, Embeddings, FieldState, Lexicon, SparseVec, Universe};
 use kai::drive::{Drive, Mood};
 use ratatui::{
     backend::CrosstermBackend,
@@ -194,6 +194,12 @@ struct App {
     mind_log: Vec<MindEvent>,
     embeddings: Embeddings,
     working_memory: WorkingMemory,
+    /// Predictive RSHL: rolling hypervector summary of the recent dialogue.
+    /// Updated on every turn and consumed by `voice` so retrieval ranks
+    /// cells by *continuation fit*, not just static similarity — which is
+    /// how the "running clean / field's steady" loop gets broken without
+    /// bolting a neural net on top of the lattice.
+    conv_trace: ConversationTrace,
     tick_log_file: Option<std::fs::File>,
     /// Previous tick's global Φg — used to compute momentum (M = Φg − prev_Φg).
     prev_phi_g: f32,
@@ -625,6 +631,7 @@ impl App {
             mind_log: Vec::new(),
             embeddings: Embeddings::new(),
             working_memory: WorkingMemory::new(),
+            conv_trace: ConversationTrace::new(),
             tick_log_file,
             prev_phi_g: 0.0,
             // theta_step 0.05 → fold period 25.13/0.05 = 503 ticks × 5s = ~42 min per cycle.
@@ -1442,38 +1449,48 @@ impl App {
         field.chi = (field.chi - self.hub.bridge * 0.004).clamp(0.0, 0.999);
 
         // 3. Narrative emergence — text is the last layer, not the driver.
+        //    After the self-state seeder deletion, compose_narrative can
+        //    return an empty string when no lattice cells resonate with
+        //    his current emotion/kind/route tag. Empty is the honest
+        //    newborn signal: he doesn't have words for this yet.
         self.live_self_state_text = self
             .hub
             .compose_narrative(Some(&self.universe), None);
 
-        // 4. Broadcast the integrated self-state back into the brain so
-        //    downstream modules consume a coherent "now" rather than raw
-        //    numbers. This is what makes every subsequent decision aware
-        //    of the unified state.
-        self.universe.store_or_reinforce(
-            &self.live_self_state_text,
-            "state",
-            "self-model",
-            self.live_self_state_salience,
-        );
-        self.global_workspace.post(
-            "self-model",
-            &self.live_self_state_text,
-            self.live_self_state_salience,
-        );
-        self.pfc.bind_context(&self.live_self_state_text);
-        self.hippocampus.store(
-            &self.live_self_state_text,
-            self.live_self_state_salience.min(1.0),
-            "state",
-            "self-model",
-            self.amygdala.arousal().max(self.hub.pulse),
-        );
+        // 4. Broadcast the integrated self-state back into the brain —
+        //    but ONLY if there's real content. Storing empty strings
+        //    would pollute the lattice with junk cells and waste
+        //    hippocampus/PFC capacity. When KAI has no way to voice
+        //    his inner state yet, he stays silent at this layer and
+        //    downstream retrieval falls through to normal cells.
+        if !self.live_self_state_text.trim().is_empty() {
+            self.universe.store_or_reinforce(
+                &self.live_self_state_text,
+                "state",
+                "self-model",
+                self.live_self_state_salience,
+            );
+            self.global_workspace.post(
+                "self-model",
+                &self.live_self_state_text,
+                self.live_self_state_salience,
+            );
+            self.pfc.bind_context(&self.live_self_state_text);
+            self.hippocampus.store(
+                &self.live_self_state_text,
+                self.live_self_state_salience.min(1.0),
+                "state",
+                "self-model",
+                self.amygdala.arousal().max(self.hub.pulse),
+            );
+        }
     }
 
     fn live_self_state_hit(&self) -> kai::core::QueryHit {
         kai::core::QueryHit {
+            label: self.live_self_state_text.clone(),
             text: self.live_self_state_text.clone(),
+            vec: kai::core::SparseVec::zero(),
             region: "state".to_string(),
             score: self.live_self_state_salience.max(0.75),
             strength: self.live_self_state_salience.max(1.0),
@@ -1687,7 +1704,7 @@ impl App {
             .unwrap_or_else(kai::core::SparseVec::zero);
 
         // ── Density Fix: Sync global rho with the actual lattice state ──
-        field.rho = lattice_state.nnz() as f32 / 4096.0;
+        field.rho = lattice_state.nnz() as f32 / kai::core::sparse_vec::DIM as f32;
         field.q = 1.0 - field.r_val; // Ensure novelty is synced with coherence
 
         // ── Inject neural oscillation into field metrics ──────────────────
@@ -2441,12 +2458,22 @@ impl App {
         // he picks a memory topic and generates a spontaneous inner thought.
         // This appears as a "THOUGHT" turn in the conversation — unprompted.
         if self.dmn.should_fire() {
-            // Collect candidate cells from the universe for topic selection
-            let cell_data: Vec<(String, String, f32)> = self
+            // Collect candidate cells for DMN topic selection. Tuple is
+            // (text, region, source, strength). Source is used by the
+            // DMN classifier to skip user-echo cells by tag instead of
+            // by text-prefix inspection.
+            let cell_data: Vec<(String, String, String, f32)> = self
                 .universe
                 .cells()
                 .iter()
-                .map(|c| (c.text.clone(), c.region.clone(), c.strength))
+                .map(|c| {
+                    (
+                        c.text.clone(),
+                        c.region.clone(),
+                        c.source.clone(),
+                        c.strength,
+                    )
+                })
                 .collect();
 
             if let Some(topic) = self.dmn.pick_topic(&cell_data) {
@@ -5031,6 +5058,13 @@ impl App {
         // ── Working Memory: store the user's turn ─────────────────────
         self.working_memory.push(&input, "user", self.tick);
 
+        // ── Predictive RSHL: fold the user's turn into the conversation trace.
+        // The trace is a single 16384-dim sparse-ternary hypervector that the
+        // voice path uses to rank cells by *continuation fit*, not just
+        // "most similar to the input". Pushing here means the voice engine
+        // sees this turn as the most recent (depth-0) entry.
+        self.conv_trace.push(&input, "user");
+
         // ── Conversation Memory: store only substantive user turns ──────
         // Skip pure questions — they echo back as nonsense hits.
         // Very low strength (0.3) so they never win queries over real knowledge.
@@ -5045,11 +5079,16 @@ impl App {
             || lower_input_check.starts_with("how ")
             || lower_input_check.starts_with("why ");
         if !is_question_input {
-            // Gate even conversational stores — emotional statements get stronger encoding
-            let conv_text = format!("user asked: {}", &input);
-            let conv_strength = self.amygdala.gate(&conv_text, "user", 0.3);
+            // Store Ryan's raw input with no "user asked:" prefix in
+            // the text. Echo classification lives in the source tag
+            // ("user-echo"), not in the cell's text content — so the
+            // pattern-computation hot paths never need to inspect text
+            // to know what a cell is. The universe.query() filter will
+            // also exclude user-echo cells from voice output, so KAI
+            // can never parrot Ryan's words back as his own reply.
+            let conv_strength = self.amygdala.gate(&input, "user", 0.3);
             self.universe
-                .store(&conv_text, "memory", "conversation", conv_strength);
+                .store(&input, "memory", "user-echo", conv_strength);
         }
 
         // ── Spelling correction: auto-correct input before reasoning ─────
@@ -5226,18 +5265,17 @@ impl App {
             let mut kai_hits: Vec<kai::core::QueryHit> = raw.into_iter()
                 .filter(|h| {
                     let t = h.text.to_lowercase();
+                    // User-echo exclusion is tag-based, not text-based.
+                    // "conversation" covers legacy cells pre-migration.
+                    if h.source == "user-echo" || h.source == "conversation" {
+                        return false;
+                    }
                     // Exclude cells that are clearly about Ryan, not KAI
                     !t.contains("name is ryan")
                     && !t.contains("[about-ryan]")
                     && !(t.starts_with("my name is") && t.contains("ryan"))
                     && !(t.starts_with("i live") || t.starts_with("i work")
                          || t.starts_with("i am ryan") || t.starts_with("i'm ryan"))
-                    // Exclude echo cells — user's own input stored as "user asked: ..."
-                    // These score very high for similar inputs but contain Ryan's words, not KAI's facts
-                    && !(t.starts_with("user asked:") && (t.contains("ryan") || t.contains("my name")))
-                    && !t.starts_with("user asked: hi my name")
-                    && !t.starts_with("user asked: hello my name")
-                    && !t.starts_with("user asked: my name is")
                     // Filter out cells that contain question patterns — those are user questions
                     // that got stored as identity cells (e.g. "well what is your name? im Ryan...")
                     && !t.contains("what is your name")
@@ -5454,13 +5492,14 @@ impl App {
             let voice_text = if retrieval_inhibited {
                 String::new()
             } else {
-                generate_response(
+                kai::cognition::voice::generate_response_predictive(
                     &reasoning_input,
                     &[],
                     query_type,
                     &brain_signals,
                     &recent_ctx_with_memory,
                     &self.universe,
+                    &self.conv_trace,
                 )
             };
             kai::cognition::transcript::append(
@@ -5477,6 +5516,16 @@ impl App {
             });
             // Still store in working memory
             self.working_memory.push(&voice_text, "kai", self.tick);
+            // Predictive RSHL: fold KAI's reply back into the trace and bind
+            // it onto whichever cell produced it. Stamp with the dialogue
+            // tick (`turns_seen` AFTER this push) so recency decays per
+            // conversational turn instead of per 5-second heartbeat.
+            self.conv_trace.push(&voice_text, "kai");
+            self.universe.bind_sequence(
+                &reasoning_input,
+                &voice_text,
+                self.conv_trace.turns_seen,
+            );
             // Episodic: store KAI's own response
             {
                 let sal = kai::cognition::compute_salience(&voice_text, "kai");
@@ -5529,13 +5578,18 @@ impl App {
             }
         } else {
             // ── Voice Engine: generate natural response ──────────────
-            let voice_text = generate_response(
+            // Predictive RSHL variant: source-scoped retrieval for
+            // greeting/filler/empathy/carry/farewell now ranks by
+            // static + predictive + novelty − recency, so the same
+            // input repeated does NOT re-fire the same cell.
+            let voice_text = kai::cognition::voice::generate_response_predictive(
                 &reasoning_input,
                 &hits,
                 query_type,
                 &brain_signals,
                 &recent_ctx_with_memory,
                 &self.universe,
+                &self.conv_trace,
             );
 
             // ── Depth label: spectate-only (per directive: don't expose internals) ─
@@ -5573,6 +5627,16 @@ impl App {
             // Storing KAI's own output creates echo loops — it finds its own words
             // as the best hit for the next query and reads them back.
             self.working_memory.push(&voice_text, "kai", self.tick);
+            // Predictive RSHL: record the response on the lattice side too.
+            // Stamp with the dialogue tick (turns_seen AFTER this push) so
+            // the recency head in `core::predictive` decays per turn, not
+            // per heartbeat.
+            self.conv_trace.push(&voice_text, "kai");
+            self.universe.bind_sequence(
+                &reasoning_input,
+                &voice_text,
+                self.conv_trace.turns_seen,
+            );
             // Episodic: store KAI's response with salience scoring
             // Apply prediction error as extra salience boost (surprise = deeper encoding)
             {
@@ -6636,10 +6700,13 @@ fn native_session_thread(
         .cells()
         .iter()
         .filter(|c| {
+            // User-echo exclusion is tag-based (source), not text-based.
+            // "conversation" covers legacy cells left on pre-migration
+            // echoes; the migration at startup retags them to
+            // "user-echo" so this check covers both forms.
             c.strength >= 1.0
+                && c.source != "user-echo"
                 && c.source != "conversation"
-                && !c.text.starts_with("user asked:")
-                && !c.text.starts_with("User asked:")
                 && c.text.len() > 12
         })
         .map(|c| {
@@ -6902,7 +6969,7 @@ fn peer_session_thread(
     let system = format!(
         "You are {}, having an autonomous peer conversation with KAI — a geometric AI built on \
         RSHL (Recursive Sparse Hyperdimensional Lattice) by Ryan Ervin. \
-        KAI is NOT an LLM. KAI thinks through cosine resonance in a 4096-dimensional sparse ternary vector field.\n\n\
+        KAI is NOT an LLM. KAI thinks through cosine resonance in a 16384-dimensional sparse ternary vector field.\n\n\
         About KAI: {}\n\n\
         This is an autonomous learning session — KAI is growing its knowledge by talking with you. \
         Respond as a true peer: direct, curious, substantive. Share real knowledge KAI can store and use. \
@@ -7193,6 +7260,602 @@ fn load_identity_config(path: &str) -> IdentityConfig {
 }
 
 // ── Seed Universe — uses core::seed module + identity seeds ───────────────────
+/// Retag legacy user-echo cells so metadata carries the classification
+/// instead of a text prefix. Runs once at startup, idempotent.
+///
+/// Before: text = "user asked: hey how are you", source = "conversation"
+/// After:  text = "hey how are you",             source = "user-echo"
+fn migrate_legacy_user_echo_cells(universe: &mut Universe) -> usize {
+    let mut migrated = 0usize;
+    for cell in universe.cells_mut().iter_mut() {
+        let lower = cell.text.to_lowercase();
+        let legacy_echo = cell.source == "conversation"
+            && (lower.starts_with("user asked: ")
+                || lower.starts_with("user asked:"));
+        if legacy_echo {
+            let stripped = if cell.text.len() >= 12
+                && cell.text[..12].eq_ignore_ascii_case("user asked: ")
+            {
+                cell.text[12..].to_string()
+            } else if cell.text.len() >= 11
+                && cell.text[..11].eq_ignore_ascii_case("user asked:")
+            {
+                cell.text[11..].trim_start().to_string()
+            } else {
+                cell.text.clone()
+            };
+            cell.text = stripped;
+            cell.source = "user-echo".to_string();
+            migrated += 1;
+        }
+    }
+    migrated
+}
+
+/// Replay the real chat transcript into every matching cell's continuation
+/// vector. Read by the `--warm-continuations` CLI flag.
+///
+/// Walks `data/kai-transcript.jsonl`, groups by session, and for each
+/// consecutive (user → kai) pair calls `universe.bind_sequence(user, kai,
+/// tick)`. Also splits the kai reply into sentence-ish fragments and tries
+/// binding each fragment, since historical replies were often composite
+/// phrases while cells tend to be atomic lines.
+///
+/// After the pass, saves the state back so the TUI picks it up on next run.
+fn warm_continuations() {
+    use std::io::BufRead;
+
+    let base_dir = std::env::current_dir()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| ".".to_string());
+    let transcript_path = format!("{}/data/kai-transcript.jsonl", base_dir);
+
+    println!("── KAI continuation warm-up ──");
+    println!("base_dir:   {}", base_dir);
+    println!("transcript: {}", transcript_path);
+
+    let file = match std::fs::File::open(&transcript_path) {
+        Ok(f) => f,
+        Err(e) => {
+            eprintln!("ERROR: cannot open transcript: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    let (mut universe, mut candidates, mut drive, tick, dream_count) =
+        match kai::persistence::load(&base_dir) {
+            Some(tup) => tup,
+            None => {
+                eprintln!("ERROR: no saved state at {}/data/kai-state.json", base_dir);
+                std::process::exit(1);
+            }
+        };
+
+    let cells_before = universe.count();
+    let empty_before = universe
+        .cells()
+        .iter()
+        .filter(|c| c.continuation.nnz() == 0)
+        .count();
+
+    #[derive(serde::Deserialize)]
+    struct Line {
+        #[serde(default)]
+        session: String,
+        #[serde(default)]
+        role: String,
+        #[serde(default)]
+        text: String,
+    }
+
+    // Group by session; keep original order inside each session.
+    let mut sessions: std::collections::BTreeMap<String, Vec<(String, String)>> =
+        std::collections::BTreeMap::new();
+
+    let reader = std::io::BufReader::new(file);
+    let mut parsed = 0usize;
+    let mut skipped = 0usize;
+    for line in reader.lines().flatten() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        match serde_json::from_str::<Line>(trimmed) {
+            Ok(l) if !l.role.is_empty() && !l.text.trim().is_empty() => {
+                sessions
+                    .entry(l.session.clone())
+                    .or_default()
+                    .push((l.role, l.text));
+                parsed += 1;
+            }
+            _ => skipped += 1,
+        }
+    }
+    println!(
+        "parsed {} lines across {} sessions ({} skipped)",
+        parsed,
+        sessions.len(),
+        skipped
+    );
+
+    // Walk each session and emit (user, kai) pairs: every kai reply gets
+    // bound to the most recent preceding user message in the same session.
+    let mut pairs: Vec<(String, String)> = Vec::new();
+    for msgs in sessions.values() {
+        let mut last_user: Option<&String> = None;
+        for (role, text) in msgs {
+            match role.as_str() {
+                "user" => last_user = Some(text),
+                "kai" => {
+                    if let Some(u) = last_user {
+                        pairs.push((u.clone(), text.clone()));
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    println!("derived {} (user → kai) pairs", pairs.len());
+
+    // Split a KAI reply into sentence-ish fragments so composite replies
+    // ("Hey. I'm here, running well.") can warm each component cell.
+    fn split_fragments(s: &str) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        let mut cur = String::new();
+        for ch in s.chars() {
+            cur.push(ch);
+            if matches!(ch, '.' | '!' | '?') {
+                let t = cur.trim().to_string();
+                if !t.is_empty() {
+                    out.push(t);
+                }
+                cur.clear();
+            }
+        }
+        let t = cur.trim().to_string();
+        if !t.is_empty() {
+            out.push(t);
+        }
+        out
+    }
+
+    let mut pairs_matched = 0usize;
+    let mut pairs_unmatched = 0usize;
+    let mut total_cell_warmings = 0usize;
+    let mut tick_cursor = tick.max(1);
+
+    for (user_in, kai_out) in &pairs {
+        tick_cursor = tick_cursor.saturating_add(1);
+
+        // Fuzzy match on the whole reply first (catches cells where
+        // cell.text is a substring of the reply or vice versa).
+        let mut hits = universe.warm_continuation_fuzzy(user_in, kai_out, tick_cursor);
+
+        // Also run each sentence fragment through fuzzy match so a
+        // composite reply warms every atomic cell it contains.
+        let frags = split_fragments(kai_out);
+        if frags.len() > 1 {
+            for frag in &frags {
+                if frag == kai_out {
+                    continue;
+                }
+                hits += universe.warm_continuation_fuzzy(user_in, frag, tick_cursor);
+            }
+        }
+
+        if hits > 0 {
+            pairs_matched += 1;
+            total_cell_warmings += hits;
+        } else {
+            pairs_unmatched += 1;
+        }
+    }
+
+    let empty_after = universe
+        .cells()
+        .iter()
+        .filter(|c| c.continuation.nnz() == 0)
+        .count();
+
+    println!("── results ─────────────────────────────");
+    println!("pairs processed:           {}", pairs.len());
+    println!("  pairs with ≥1 cell hit:  {}", pairs_matched);
+    println!("  pairs with no match:     {}", pairs_unmatched);
+    println!("total cell warmings:       {}", total_cell_warmings);
+    println!("cells (before → after):    {} → {}", cells_before, universe.count());
+    println!(
+        "empty continuations:       {} → {} (newly warmed {})",
+        empty_before,
+        empty_after,
+        empty_before.saturating_sub(empty_after)
+    );
+
+    let save_res = kai::persistence::save(
+        &universe,
+        &candidates,
+        &drive,
+        tick_cursor,
+        dream_count,
+        &base_dir,
+    );
+    let _ = (&mut candidates, &mut drive);
+    if save_res.ok {
+        println!(
+            "saved state: {} cells, {} bytes",
+            save_res.cells, save_res.bytes
+        );
+    } else {
+        eprintln!("ERROR: failed to save state");
+        std::process::exit(2);
+    }
+}
+
+/// Brute-force warm-up — `--force-warm-all-responses`.
+///
+/// For every (user → kai) pair in the transcript, bundle the user input
+/// into the `continuation` of every cell whose `source` is NOT one of
+/// `user-echo` / `user-input` / `user-teach` / `conversation`. Skips all
+/// text matching — if it's a response-eligible cell, it gets warmed.
+///
+/// NOTE: This deliberately equalizes continuations across all response
+/// cells. It guarantees `continuation.nnz() > 0` for ~300 cells, which
+/// gives `predictive_match` something to score — but because every cell
+/// is bound to the same set of inputs, the scores will be broadly
+/// similar. This is a diagnostic: if loops persist after this, the bug
+/// is not empty continuations.
+fn force_warm_all_responses() {
+    use std::io::BufRead;
+
+    let base_dir = std::env::current_dir()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| ".".to_string());
+    let transcript_path = format!("{}/data/kai-transcript.jsonl", base_dir);
+
+    println!("── KAI FORCE warm-up (all response cells) ──");
+    println!("base_dir:   {}", base_dir);
+    println!("transcript: {}", transcript_path);
+
+    let file = match std::fs::File::open(&transcript_path) {
+        Ok(f) => f,
+        Err(e) => {
+            eprintln!("ERROR: cannot open transcript: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    let (mut universe, mut candidates, mut drive, tick, dream_count) =
+        match kai::persistence::load(&base_dir) {
+            Some(tup) => tup,
+            None => {
+                eprintln!("ERROR: no saved state at {}/data/kai-state.json", base_dir);
+                std::process::exit(1);
+            }
+        };
+
+    let cells_total = universe.count();
+    let empty_before = universe
+        .cells()
+        .iter()
+        .filter(|c| c.continuation.nnz() == 0)
+        .count();
+
+    // Derive user→kai pairs from the transcript (same logic as
+    // warm_continuations, minus session grouping since we're not using
+    // session boundaries for anything here).
+    #[derive(serde::Deserialize)]
+    struct Line {
+        #[serde(default)]
+        session: String,
+        #[serde(default)]
+        role: String,
+        #[serde(default)]
+        text: String,
+    }
+
+    let mut sessions: std::collections::BTreeMap<String, Vec<(String, String)>> =
+        std::collections::BTreeMap::new();
+
+    let reader = std::io::BufReader::new(file);
+    let mut parsed = 0usize;
+    for line in reader.lines().flatten() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if let Ok(l) = serde_json::from_str::<Line>(trimmed) {
+            if !l.role.is_empty() && !l.text.trim().is_empty() {
+                sessions
+                    .entry(l.session.clone())
+                    .or_default()
+                    .push((l.role, l.text));
+                parsed += 1;
+            }
+        }
+    }
+
+    let mut pairs: Vec<(String, String)> = Vec::new();
+    for msgs in sessions.values() {
+        let mut last_user: Option<&String> = None;
+        for (role, text) in msgs {
+            match role.as_str() {
+                "user" => last_user = Some(text),
+                "kai" => {
+                    if let Some(u) = last_user {
+                        pairs.push((u.clone(), text.clone()));
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    println!(
+        "parsed {} lines / {} sessions → {} pairs",
+        parsed,
+        sessions.len(),
+        pairs.len()
+    );
+
+    // Tag filter — these are NOT response cells.
+    const NON_RESPONSE_SOURCES: &[&str] = &[
+        "user-echo",
+        "user-input",
+        "user-teach",
+        "conversation",
+    ];
+
+    // Count eligible cells up front for the report.
+    let eligible: usize = universe
+        .cells()
+        .iter()
+        .filter(|c| !NON_RESPONSE_SOURCES.contains(&c.source.as_str()))
+        .count();
+    println!("response-eligible cells: {} / {}", eligible, cells_total);
+
+    // Precompute the encoded input vector for each pair, then walk
+    // every eligible cell once per pair and update its continuation.
+    let mut tick_cursor = tick.max(1);
+    let mut total_warmings = 0usize;
+    let mut input_vecs: Vec<kai::core::SparseVec> = Vec::with_capacity(pairs.len());
+    for (user_in, _) in &pairs {
+        // Match the forward permutation used in `bind_sequence` so the
+        // warmed continuations live in the same next-slot role-space
+        // that the predictive query projects into via `prediction_anchor`.
+        input_vecs.push(kai::core::SparseVec::encode(user_in).permute(1));
+    }
+
+    for (pair_idx, input_vec) in input_vecs.iter().enumerate() {
+        tick_cursor = tick_cursor.saturating_add(1);
+        let stamp = tick_cursor.max(1);
+        for cell in universe.cells_mut().iter_mut() {
+            if NON_RESPONSE_SOURCES.contains(&cell.source.as_str()) {
+                continue;
+            }
+            if cell.continuation.nnz() == 0 {
+                cell.continuation = input_vec.clone();
+            } else {
+                cell.continuation =
+                    kai::core::SparseVec::bundle(&[&cell.continuation, input_vec]);
+            }
+            cell.last_fired = stamp;
+            total_warmings += 1;
+        }
+        if pair_idx % 20 == 19 {
+            println!("  …processed {} / {} pairs", pair_idx + 1, pairs.len());
+        }
+    }
+
+    let empty_after = universe
+        .cells()
+        .iter()
+        .filter(|c| c.continuation.nnz() == 0)
+        .count();
+
+    println!("── results ─────────────────────────────");
+    println!("pairs processed:           {}", pairs.len());
+    println!("total cell warmings:       {}", total_warmings);
+    println!("cells total:               {}", universe.count());
+    println!(
+        "empty continuations:       {} → {} (newly warmed {})",
+        empty_before,
+        empty_after,
+        empty_before.saturating_sub(empty_after)
+    );
+    println!(
+        "non-empty continuations:   {} / {} ({:.1}%)",
+        universe.count() - empty_after,
+        universe.count(),
+        (universe.count() - empty_after) as f32 / universe.count().max(1) as f32 * 100.0
+    );
+
+    let save_res = kai::persistence::save(
+        &universe,
+        &candidates,
+        &drive,
+        tick_cursor,
+        dream_count,
+        &base_dir,
+    );
+    let _ = (&mut candidates, &mut drive);
+    if save_res.ok {
+        println!(
+            "saved state: {} cells, {} bytes",
+            save_res.cells, save_res.bytes
+        );
+    } else {
+        eprintln!("ERROR: failed to save state");
+        std::process::exit(2);
+    }
+}
+
+/// Dry-run the predictive retrieval path without starting the TUI.
+/// Simulates the user saying "hey" four times against the currently
+/// saved state, and for each turn prints the top-5 cells with the
+/// full score breakdown. Used to diagnose whether repetition is a
+/// retrieval problem or a composer problem.
+fn diagnose_predictive() {
+    let base_dir = std::env::current_dir()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| ".".to_string());
+    let (universe, _candidates, _drive, _tick, _dream) =
+        match kai::persistence::load(&base_dir) {
+            Some(tup) => tup,
+            None => {
+                eprintln!("ERROR: no saved state at {}/data/kai-state.json", base_dir);
+                std::process::exit(1);
+            }
+        };
+
+    let total = universe.count();
+    let eligible = universe
+        .cells()
+        .iter()
+        .filter(|c| c.source != "user-echo" && c.source != "conversation")
+        .count();
+    let with_cont = universe
+        .cells()
+        .iter()
+        .filter(|c| c.continuation.nnz() > 0)
+        .count();
+    println!("â”€â”€ KAI predictive retrieval diagnostic â”€â”€");
+    println!("cells total:               {}", total);
+    println!("response-eligible cells:   {}", eligible);
+    println!("cells with continuations:  {}", with_cont);
+    println!();
+
+    // Optional --source=<tag> filter to diagnose a specific source path
+    // (e.g. --source=greeting to see what the voice module's greeting
+    // query is actually scoring).
+    let source_filter: Option<String> = std::env::args()
+        .find(|a| a.starts_with("--source="))
+        .map(|a| a.trim_start_matches("--source=").to_string());
+
+    if let Some(ref s) = source_filter {
+        println!("source filter:             {:?}", s);
+        let eligible_in_source = universe
+            .cells()
+            .iter()
+            .filter(|c| &c.source == s)
+            .count();
+        println!("cells in source:           {}", eligible_in_source);
+    }
+    println!();
+
+    let inputs = ["hey", "hey", "hey", "hey"];
+    let mut trace = ConversationTrace::new();
+
+    for (turn_idx, input_text) in inputs.iter().enumerate() {
+        trace.push(input_text, "user");
+        let input_vec = SparseVec::encode(input_text);
+        let rows = match &source_filter {
+            Some(s) => universe.diagnose_predictive_by_source(
+                input_vec,
+                s,
+                &trace,
+                kai::core::predictive::DEFAULT_ITER_STEPS,
+                10,
+            ),
+            None => universe.diagnose_predictive(
+                input_vec,
+                &trace,
+                kai::core::predictive::DEFAULT_ITER_STEPS,
+                10,
+            ),
+        };
+
+        println!(
+            "â”€â”€ turn {} Â· user: {:?} Â· trace.turns_seen={} Â· trace.current.nnz={} â”€â”€",
+            turn_idx + 1,
+            input_text,
+            trace.turns_seen,
+            trace.current.nnz()
+        );
+        println!(
+            "  {:<4} {:<42} {:<13} {:>6} {:>6} {:>6} {:>6} {:>6} {:>6} {:>9}",
+            "#", "text (truncated)", "source", "sim", "pred", "mh", "rec", "score", "cont", "lastFired"
+        );
+        for (rank, r) in rows.iter().enumerate() {
+            let mut txt = r.text.clone();
+            if txt.chars().count() > 40 {
+                txt = txt.chars().take(37).collect::<String>() + "...";
+            }
+            println!(
+                "  {:<4} {:<42} {:<13} {:>6.3} {:>6.3} {:>6.3} {:>6.3} {:>6.3} {:>6} {:>9}",
+                rank + 1,
+                txt,
+                r.source,
+                r.sim,
+                r.predict_match,
+                r.mh,
+                r.rec,
+                r.score,
+                r.continuation_nnz,
+                r.last_fired
+            );
+        }
+
+        // Feed the top-1 into the trace as KAI's reply so subsequent
+        // turns see a non-empty "kai last message" signature, just like
+        // the live TUI does.
+        if let Some(top) = rows.first() {
+            trace.push(&top.text, "kai");
+        }
+        println!();
+    }
+}
+/// Zero out `continuation` and `last_fired` on every cell. Call this to
+/// undo a bad warm-up run (e.g. `--force-warm-all-responses` that
+/// equalized all continuations into identical bundles). After reset,
+/// the state is ready for a fresh targeted re-warm.
+fn reset_continuations() {
+    let base_dir = std::env::current_dir()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| ".".to_string());
+    let (mut universe, candidates, drive, tick, dream_count) =
+        match kai::persistence::load(&base_dir) {
+            Some(tup) => tup,
+            None => {
+                eprintln!("ERROR: no saved state at {}/data/kai-state.json", base_dir);
+                std::process::exit(1);
+            }
+        };
+
+    let before = universe
+        .cells()
+        .iter()
+        .filter(|c| c.continuation.nnz() > 0)
+        .count();
+    let total = universe.count();
+
+    let mut zeroed = 0usize;
+    for cell in universe.cells_mut().iter_mut() {
+        if cell.continuation.nnz() > 0 || cell.last_fired != 0 {
+            cell.continuation = SparseVec::zero();
+            cell.last_fired = 0;
+            zeroed += 1;
+        }
+    }
+
+    println!("â”€â”€ KAI continuation reset â”€â”€");
+    println!("cells total:                        {}", total);
+    println!("had non-empty continuation (before): {}", before);
+    println!("cells touched:                      {}", zeroed);
+    println!("had non-empty continuation (after):  0");
+
+    let save_res = kai::persistence::save(
+        &universe,
+        &candidates,
+        &drive,
+        tick,
+        dream_count,
+        &base_dir,
+    );
+    if save_res.ok {
+        println!("saved: {} cells, {} bytes", save_res.cells, save_res.bytes);
+    } else {
+        eprintln!("ERROR: save failed");
+        std::process::exit(2);
+    }
+}
 fn seed_universe(u: &mut Universe) {
     // Load the big foundational knowledge base (120+ cells)
     let base_count = kai::core::seed::seed_universe(u);
@@ -7215,7 +7878,7 @@ fn seed_universe(u: &mut Universe) {
     );
     u.store("This brain was built from the ground up from scratch — not fine-tuned, not derived from any existing model.", "memory", "seed", 3.0);
     u.store(
-        "I exist as organized resonance inside a 4096-dimensional sparse ternary vector field.",
+        "I exist as organized resonance inside a 16384-dimensional sparse ternary vector field.",
         "memory",
         "seed",
         1.0,
@@ -7940,7 +8603,7 @@ fn render_messages(f: &mut Frame, app: &App, area: Rect) {
                     .add_modifier(Modifier::BOLD),
             ),
             Span::styled(
-                "  ·  Geometric Intelligence  ·  4096-dim RSHL",
+                "  ·  Geometric Intelligence  ·  16384-dim RSHL",
                 Style::default().fg(Color::DarkGray),
             ),
         ]));
@@ -8291,12 +8954,817 @@ fn render_input(f: &mut Frame, app: &App, area: Rect) {
     }
 }
 
+/// `--migrate-from-manifest` — DIM-change migration path.
+///
+/// Every `SparseVec` in a saved `kai-state.json` is tied to the DIM the
+/// binary was compiled at. When we bumped DIM from 4096 to 16384, every
+/// old vector became unusable — a 4096-long `Vec<i8>` trivially fails
+/// the `assert_eq!(data.len(), DIM)` inside `from_raw` at the new size.
+///
+/// The clean fix is to re-encode every cell from its surviving text.
+/// The 4096-dim manifest dump at `data/cells-manifest.json` (produced
+/// by the external `_export_manifest.ps1` step) carries exactly that:
+/// each cell's `text`, `region`, `source`, `strength`, and
+/// `last_fired`. This flag reads the manifest, builds a fresh
+/// Universe at the new DIM, calls `store(text, region, source,
+/// strength)` for every cell (which re-encodes at the current DIM),
+/// restores `last_fired`, and saves the new state.
+///
+/// `continuation` vectors are deliberately left at zero — their old
+/// 4096-dim values were random-projection bundles that have no
+/// mathematical meaning in the new 16384-dim space. Re-warming from
+/// the transcript is the follow-up step.
+fn migrate_from_manifest() {
+    let base_dir = std::env::current_dir()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| ".".to_string());
+    let manifest_path = format!("{}/data/cells-manifest.json", base_dir);
+
+    let raw = match std::fs::read_to_string(&manifest_path) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!(
+                "ERROR: could not read manifest at {}: {}",
+                manifest_path, e
+            );
+            std::process::exit(1);
+        }
+    };
+    let manifest: serde_json::Value = match serde_json::from_str(&raw) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("ERROR: manifest JSON parse failed: {}", e);
+            std::process::exit(2);
+        }
+    };
+    let cells_arr = match manifest.get("cells").and_then(|v| v.as_array()) {
+        Some(a) => a,
+        None => {
+            eprintln!("ERROR: manifest has no `cells` array");
+            std::process::exit(3);
+        }
+    };
+
+    println!("── KAI DIM migration ──");
+    println!(
+        "manifest: {} cells at source_dim={} → target_dim={}",
+        cells_arr.len(),
+        manifest
+            .get("source_dim")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0),
+        manifest
+            .get("target_dim")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0),
+    );
+    println!("compiled DIM: {}", kai::core::sparse_vec::DIM);
+
+    let mut universe = Universe::new();
+    let mut restored = 0usize;
+    let mut skipped = 0usize;
+
+    for cell in cells_arr {
+        let text = cell
+            .get("text")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        if text.is_empty() {
+            skipped += 1;
+            continue;
+        }
+        let region = cell
+            .get("region")
+            .and_then(|v| v.as_str())
+            .unwrap_or("memory");
+        let source = cell
+            .get("source")
+            .and_then(|v| v.as_str())
+            .unwrap_or("imported");
+        let strength = cell
+            .get("strength")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(1.0) as f32;
+        let last_fired = cell
+            .get("last_fired")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+
+        universe.store(&text, region, source, strength);
+        if let Some(c) = universe.cells_mut().last_mut() {
+            c.last_fired = last_fired;
+        }
+        restored += 1;
+    }
+
+    println!("re-encoded cells: {}", restored);
+    println!("skipped (empty text): {}", skipped);
+    println!("universe.count() now: {}", universe.count());
+
+    let save_res = kai::persistence::save(
+        &universe,
+        &CandidateBuffer::new(),
+        &Drive::default(),
+        0,
+        0,
+        &base_dir,
+    );
+    if save_res.ok {
+        println!(
+            "saved fresh state: {} cells, {} bytes",
+            save_res.cells, save_res.bytes
+        );
+    } else {
+        eprintln!("ERROR: save failed");
+        std::process::exit(4);
+    }
+}
+
+/// `--build-lexicon` — build the statistical word→vector lexicon.
+///
+/// Reads the four priority corpora in the order the spec demands,
+/// accumulates co-occurrence statistics, ternarizes at the 4 %
+/// sparsity budget, and saves to `data/stat-lexicon.json`. After
+/// building, prints a small self-check (vocabulary size, a random
+/// sample of words with their nearest neighbors) so we can eyeball
+/// that statistical clustering is actually happening.
+fn build_lexicon_command() {
+    let base_dir = std::env::current_dir()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| ".".to_string());
+
+    let paths: Vec<String> = vec![
+        format!(
+            "{}/data/ingest_shelved/starter_grammar_and_conversation.txt",
+            base_dir
+        ),
+        format!(
+            "{}/data/ingest_shelved/starter_vocabulary_definitions.txt",
+            base_dir
+        ),
+        format!("{}/data/kai-transcript.jsonl", base_dir),
+        format!(
+            "{}/data/ingest_shelved/corpus_mind_philosophy_cognition.txt",
+            base_dir
+        ),
+    ];
+
+    println!("── KAI statistical lexicon build ──");
+    println!("DIM = {}", kai::core::sparse_vec::DIM);
+    for p in &paths {
+        let exists = std::path::Path::new(p).exists();
+        println!(
+            "  [{}] {}",
+            if exists { "ok" } else { "missing" },
+            p
+        );
+    }
+
+    let paths_refs: Vec<&str> = paths.iter().map(|s| s.as_str()).collect();
+    let t0 = std::time::Instant::now();
+    let lex = match kai::core::StatLexicon::build_from_paths(&paths_refs) {
+        Ok(l) => l,
+        Err(e) => {
+            eprintln!("ERROR: lexicon build failed: {}", e);
+            std::process::exit(1);
+        }
+    };
+    let dt = t0.elapsed();
+
+    println!(
+        "built {} unique words in {:.2}s",
+        lex.len(),
+        dt.as_secs_f32()
+    );
+
+    // Self-check: print nearest neighbors for a few words.
+    let probes = ["the", "i", "you", "think", "mind", "feel", "time", "kai"];
+    println!("── nearest-neighbor self-check ──");
+    for w in &probes {
+        if let Some(v) = lex.get(w) {
+            let neigh = lex.top_k_nearest(v, 6);
+            let joined: Vec<String> = neigh
+                .iter()
+                .map(|(n, s)| format!("{}({:.2})", n, s))
+                .collect();
+            println!("  {:<8} → {}", w, joined.join(", "));
+        } else {
+            println!("  {:<8} → (not in lexicon)", w);
+        }
+    }
+
+    let out_path = format!("{}/data/stat-lexicon.json", base_dir);
+    match lex.save(&out_path) {
+        Ok(()) => {
+            let size = std::fs::metadata(&out_path).map(|m| m.len()).unwrap_or(0);
+            println!("saved → {} ({} bytes)", out_path, size);
+        }
+        Err(e) => {
+            eprintln!("ERROR: save failed: {}", e);
+            std::process::exit(2);
+        }
+    }
+}
+
+/// Options accepted by `--generate`.
+///
+/// Kept as a plain struct (not a builder) because main.rs already
+/// owns the CLI parse — this is just the shape of the parsed
+/// arguments, passed once into `generate_command`.
+struct GenerateOpts {
+    prompt: String,
+    max_tokens: usize,
+    /// When `false` (default) the encoder is
+    /// `Universe::encode_generative_state` — the full RSHL-Native
+    /// Generative Engine: prompt backbone + resonance-attended
+    /// prompt + memory hits (cell.vec + continuation) + field-
+    /// modulated contrast + conversation trace, all density-
+    /// clamped to 4 %.
+    ///
+    /// When `true` we fall back to the bare positional bundle
+    /// `StatLexicon::encode_sentence(prompt)` — useful for A/B
+    /// testing what the full encoder is actually contributing.
+    legacy_encoder: bool,
+    /// `Some(path)` → load a `NeuralVsaMapper` from disk and blend
+    /// its output into the latent state. `None` → pure RSHL path.
+    ///
+    /// The mapper blends *on top of whatever backbone the encoder
+    /// produced* — so `--use-mapper` works identically against
+    /// both the full generative encoder and the legacy encoder.
+    mapper_path: Option<std::path::PathBuf>,
+    /// Weights for the fusion `blend_mapper_with_state(backbone,
+    /// mapped, state_weight, mapper_weight)`. Defaults bias toward
+    /// the backbone; raise `mapper_weight` to let the probe dominate.
+    mapper_weight: f32,
+    state_weight: f32,
+    /// Decoder sampling knobs. `temperature=0.0` (or `top_k=1`)
+    /// collapses the sampler to the old greedy argmax.
+    temperature: f32,
+    top_k: usize,
+    repetition_window: usize,
+    repetition_penalty: f32,
+    sampling_seed: u64,
+    /// Forward-transition bigram prior mixing coefficient. `0.0`
+    /// disables the prior entirely (cosine-only); `0.5` is the
+    /// general-purpose default.
+    bigram_weight: f32,
+    ollama_url: String,
+    ollama_model: String,
+}
+
+/// `--generate <prompt> [--max=N] [--legacy-encoder] [--use-mapper[=PATH]] [--mapper-weight=W] [--state-weight=W]`
+/// — drive the incremental decoder end-to-end from the shell.
+///
+/// ⚠ EXPERIMENTAL — SHELVED ⚠
+/// -----------------------------------------------------------------
+/// The RSHL-native generative decoder is **not production-ready**.
+/// Even with the full generative encoder, top-k sampling, repetition
+/// penalties, and the forward-transition bigram prior, output beyond
+/// 2–3 tokens degrades into word salad. The underlying constraints
+/// are architectural (symmetric co-occurrence lexicon + single-word
+/// bigram context + small corpus), not a bug to patch — so the
+/// decoder has been shelved until the lexicon and context model
+/// themselves are upgraded.
+///
+/// This CLI path is kept **only as a debug tool** for:
+///   • verifying the encoder/decoder plumbing still compiles,
+///   • A/B-testing sampler knobs (temperature, top-k, bigram weight),
+///   • instrumenting future higher-order context models.
+///
+/// For normal conversation use the TUI (just run `kai` with no args)
+/// or the IPC server (`kai --server`). Both of those go through
+/// `kai::cognition::voice::generate_response_predictive` — the
+/// retrieval + template-synthesis path that actually produces
+/// readable English.
+/// -----------------------------------------------------------------
+///
+/// Steps executed (for debugging only):
+///   1. Load `data/stat-lexicon.json` (must exist — run
+///      `--build-lexicon` first) and, best-effort, the persisted
+///      `Universe` from `data/kai-state.json`.
+///   2. **Default encoder** — `Universe::encode_generative_state`:
+///      prompt backbone + resonance-attended prompt + top-K memory
+///      hits (cell.vec + continuation) + field-modulated contrast +
+///      conversation-trace residue, weighted-superposed to 4 %
+///      density.
+///      **Legacy encoder** (`--legacy-encoder`): the bare positional
+///      bundle `StatLexicon::encode_sentence(prompt)`.
+///   3. *Optional (`--use-mapper`):* blend a trained
+///      `NeuralVsaMapper` output on top of the backbone.
+///   4. Hand the latent to `StatLexicon::incremental_generate_with`
+///      (top-k sampling + repetition penalty + bigram prior).
+///   5. Print the emitted string plus diagnostics.
+///
+/// Nothing in this function is on the conversation hot path — the
+/// TUI's `App::process_input` calls `generate_response_predictive`
+/// directly and never touches this code.
+fn generate_command(opts: GenerateOpts) {
+    use kai::cognition::neural_mapper::NeuralVsaMapper;
+    use kai::cognition::training::StubEmbedder;
+    use kai::core::{ConversationTrace, FieldState, StatLexicon, Universe};
+
+    let base_dir = std::env::current_dir()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| ".".to_string());
+    let lex_path = format!("{}/data/stat-lexicon.json", base_dir);
+
+    if !std::path::Path::new(&lex_path).exists() {
+        eprintln!(
+            "ERROR: {} not found. Run `kai --build-lexicon` first.",
+            lex_path
+        );
+        std::process::exit(1);
+    }
+
+    let t_load = std::time::Instant::now();
+    let lex = match StatLexicon::load(&lex_path) {
+        Ok(l) => l,
+        Err(e) => {
+            eprintln!("ERROR: failed to load lexicon: {}", e);
+            std::process::exit(2);
+        }
+    };
+    let load_ms = t_load.elapsed().as_millis();
+
+    // ── Universe / FieldState / Trace ────────────────────────────────
+    // `encode_generative_state` pulls memory (cells), field state (g,
+    // chi), and conversation trace into the initial latent. For a CLI
+    // one-shot we load the persisted universe if it's there, compute
+    // a live field from it, and use an empty trace (fresh session).
+    //
+    // Every channel degrades gracefully: an empty universe kills the
+    // memory term, a cold field collapses the contrast term to zero,
+    // an empty trace drops the conversation residue — and the result
+    // falls back to `lex.encode_sentence(prompt)`. So this loader is
+    // non-fatal: if persistence is missing we just lose the memory
+    // channel and keep going.
+    let t_uni = std::time::Instant::now();
+    let (universe, cells_loaded, loaded_from_disk) = match kai::persistence::load(&base_dir) {
+        Some((u, _cands, _drive, _tick, _dream_count)) => {
+            let n = u.count();
+            (u, n, true)
+        }
+        None => (Universe::new(), 0usize, false),
+    };
+    let uni_ms = t_uni.elapsed().as_millis();
+
+    let field = if cells_loaded > 0 {
+        FieldState::compute(&universe)
+    } else {
+        FieldState::default()
+    };
+    let trace = ConversationTrace::new();
+
+    // ── EXPERIMENTAL / SHELVED warning ───────────────────────────────
+    // Loud, unmissable banner so anyone invoking --generate knows the
+    // output is low-quality-by-design and this path is not what
+    // production conversation uses. Keep this at the top so it
+    // precedes any diagnostics and isn't lost below scroll.
+    eprintln!();
+    eprintln!("═══════════════════════════════════════════════════════════════════");
+    eprintln!("  ⚠  EXPERIMENTAL — generative decoder is SHELVED");
+    eprintln!("═══════════════════════════════════════════════════════════════════");
+    eprintln!("  --generate is a debug tool for the RSHL-native decoder.");
+    eprintln!("  Output beyond 2–3 tokens is word salad by architectural limit");
+    eprintln!("  (symmetric co-occurrence lexicon + 1-word bigram context).");
+    eprintln!();
+    eprintln!("  For real conversation: run `kai` (TUI) or `kai --server` (IPC).");
+    eprintln!("  Both use generate_response_predictive — retrieval + template");
+    eprintln!("  synthesis — which produces readable English.");
+    eprintln!("═══════════════════════════════════════════════════════════════════");
+    eprintln!();
+
+    println!("── KAI incremental decoder (debug / experimental) ──");
+    println!(
+        "lexicon: {} words · DIM={} · load={}ms",
+        lex.len(),
+        kai::core::sparse_vec::DIM,
+        load_ms
+    );
+    println!(
+        "universe: {} cells · load={}ms · source={}",
+        cells_loaded,
+        uni_ms,
+        if loaded_from_disk { "disk" } else { "empty (no persisted state)" }
+    );
+    println!(
+        "field  : g={:.3} · chi={:.3}",
+        field.g, field.chi
+    );
+    println!("prompt : {:?}", opts.prompt);
+    println!("max_tokens: {}", opts.max_tokens);
+
+    // Show which prompt words the lexicon actually knows.
+    let prompt_tokens: Vec<&str> = opts.prompt.split_whitespace().collect();
+    let known: Vec<&str> = prompt_tokens
+        .iter()
+        .copied()
+        .filter(|w| lex.get(w.trim_matches(|c: char| !c.is_alphanumeric())).is_some())
+        .collect();
+    println!("known prompt words: {:?}", known);
+
+    // ── 1. prompt → initial latent state ─────────────────────────────
+    // Default path: the full RSHL-Native Generative Engine
+    // (`Universe::encode_generative_state`) — prompt backbone +
+    // resonance-attended prompt + top-K memory hits (cell.vec +
+    // continuation) + field-modulated contrast + conversation trace,
+    // all weighted-superposed into a single 4%-sparse SparseVec.
+    //
+    // Legacy path (`--legacy-encoder`): the bare positional bundle
+    // `StatLexicon::encode_sentence(prompt)` — equivalent to what
+    // this command did before the generative encoder existed. Useful
+    // for A/B testing what the memory/field/trace channels are
+    // actually contributing to the output.
+    let t_enc = std::time::Instant::now();
+    let (backbone, encoder_label): (kai::core::SparseVec, &'static str) = if opts.legacy_encoder {
+        (lex.encode_sentence(&opts.prompt), "legacy (encode_sentence)")
+    } else {
+        (
+            universe.encode_generative_state(&opts.prompt, &lex, &trace, &field),
+            "generative (prompt + memory + field + trace)",
+        )
+    };
+    let enc_us = t_enc.elapsed().as_micros();
+    println!(
+        "backbone state: nnz={} · encode={}µs · encoder={}",
+        backbone.nnz(),
+        enc_us,
+        encoder_label
+    );
+
+    // ── 2. (optional) mapper injection ────────────────────────────────
+    // When `--use-mapper` is set we load the trained NeuralVsaMapper,
+    // produce a dense embedding of the prompt using the SAME embedder
+    // the mapper was trained against (stub for now, BitNet later),
+    // project into sparse, and fuse with the backbone. The fusion is
+    // density-preserving (`weighted_superpose` keeps the output at
+    // 4 % nnz), so the decoder downstream can't tell the difference
+    // between "backbone only" and "backbone + probe" beyond signal.
+    let state = if let Some(mapper_path) = &opts.mapper_path {
+        if !mapper_path.exists() {
+            eprintln!(
+                "ERROR: mapper file not found: {:?}. Run `kai --train-mapper` first.",
+                mapper_path
+            );
+            std::process::exit(1);
+        }
+        let t_map_load = std::time::Instant::now();
+        let mapper = match NeuralVsaMapper::load(mapper_path) {
+            Ok(m) => m,
+            Err(e) => {
+                eprintln!("ERROR: failed to load mapper {:?}: {}", mapper_path, e);
+                std::process::exit(2);
+            }
+        };
+        println!(
+            "mapper : path={:?} · d_in={} · d_hidden={} · load={}ms",
+            mapper_path,
+            mapper.d_in,
+            mapper.d_hidden,
+            t_map_load.elapsed().as_millis(),
+        );
+
+        // Build the appropriate embedder. If the user provided a mapper
+        // path, we attempt to use Ollama (matching the trainer's default);
+        // otherwise we fall back to the StubEmbedder.
+        let embedder: Box<dyn kai::cognition::training::DenseEmbedder> = if opts.ollama_url.is_empty() {
+            Box::new(StubEmbedder::new(mapper.d_in))
+        } else {
+            match kai::cognition::training::OllamaEmbedder::new(&opts.ollama_url, &opts.ollama_model) {
+                Ok(e) => Box::new(e),
+                Err(err) => {
+                    eprintln!("ERROR: failed to connect to Ollama: {}", err);
+                    eprintln!("(Falling back to StubEmbedder for this run)");
+                    Box::new(StubEmbedder::new(mapper.d_in))
+                }
+            }
+        };
+
+        let t_embed = std::time::Instant::now();
+        let dense = match embedder.embed(&opts.prompt) {
+            Ok(v) => v,
+            Err(e) => {
+                eprintln!("ERROR: stub embedder failed: {}", e);
+                std::process::exit(2);
+            }
+        };
+        let embed_us = t_embed.elapsed().as_micros();
+
+        let t_proj = std::time::Instant::now();
+        let mapped = mapper.map_to_sparse(&dense);
+        let proj_us = t_proj.elapsed().as_micros();
+
+        // Honest diagnostics. Cosine(mapped, backbone) tells us
+        // whether the probe is even pointing in the backbone's
+        // direction. With the stub-trained mapper this is typically
+        // ~0.1–0.3 after 5 stub epochs; with a BitNet-trained mapper
+        // we'd expect 0.4+.
+        let cos_mapper_backbone = mapped.cosine(&backbone);
+        println!(
+            "mapped state : nnz={} · embed={}µs · project={}µs · cos(mapped,backbone)={:.4}",
+            mapped.nnz(),
+            embed_us,
+            proj_us,
+            cos_mapper_backbone
+        );
+
+        let t_blend = std::time::Instant::now();
+        let fused = kai::cognition::blend_mapper_with_state(
+            &mapper,
+            &dense,
+            backbone.clone(),
+            opts.mapper_weight,
+            opts.state_weight,
+        );
+        let blend_us = t_blend.elapsed().as_micros();
+
+        let cos_fused_backbone = fused.cosine(&backbone);
+        println!(
+            "fused state  : nnz={} · blend={}µs · cos(fused,backbone)={:.4} · weights(state={}, mapper={})",
+            fused.nnz(),
+            blend_us,
+            cos_fused_backbone,
+            opts.state_weight,
+            opts.mapper_weight,
+        );
+        fused
+    } else {
+        backbone
+    };
+
+    // ── 3. rolling decode ────────────────────────────────────────────
+    // The sampled decoder does top-k + softmax(temperature) +
+    // windowed repetition-penalty at every step. When
+    // `--greedy`/`--temperature=0`/`--top-k=1` is set we collapse
+    // back to argmax, matching the pre-sampling behaviour exactly.
+    let greedy_mode = opts.temperature <= 0.0 || opts.top_k <= 1;
+    let params = kai::core::stat_lexicon::DecodeParams {
+        max_tokens: opts.max_tokens,
+        temperature: opts.temperature,
+        top_k: opts.top_k,
+        repetition_window: opts.repetition_window,
+        repetition_penalty: opts.repetition_penalty,
+        // Only the greedy path honours immediate-repeat stop — in
+        // sampled mode the repetition penalty handles loops without
+        // truncating mid-output.
+        stop_on_immediate_repeat: greedy_mode,
+        bigram_weight: opts.bigram_weight,
+        seed: opts.sampling_seed,
+    };
+
+    // ── Bigram prior diagnostics ─────────────────────────────────────
+    // The lexicon's `bigram()` accessor returns an empty prior for
+    // pre-v2 on-disk files. If the user asked for a non-zero weight
+    // against an empty prior we warn loudly and continue — the
+    // weight silently has no effect, which is a footgun worth
+    // surfacing.
+    let bigram = lex.bigram();
+    if bigram.is_empty() {
+        println!(
+            "bigram : EMPTY · rebuild with `kai --build-lexicon` to populate (decoder will run with bigram_weight={:.2} but it has no effect)",
+            opts.bigram_weight,
+        );
+    } else {
+        println!(
+            "bigram : {} transitions · {} tokens · vocab={} · weight={:.2}",
+            bigram.num_transitions(),
+            bigram.total_tokens,
+            bigram.vocab_size,
+            opts.bigram_weight,
+        );
+    }
+
+    let sampling_label = if opts.temperature <= 0.0 || opts.top_k <= 1 {
+        "greedy".to_string()
+    } else {
+        format!(
+            "sampled (T={:.2} · top_k={} · rep_win={} · rep_pen={:.2} · seed={:#x})",
+            params.temperature,
+            params.top_k,
+            params.repetition_window,
+            params.repetition_penalty,
+            params.seed,
+        )
+    };
+    println!("sampler: {}", sampling_label);
+
+    let t_dec = std::time::Instant::now();
+    let out = lex.incremental_generate_with(state, params);
+    let dec_us = t_dec.elapsed().as_micros();
+
+    println!(
+        "decode: {}µs ({:.1}µs/token)",
+        dec_us,
+        dec_us as f32 / (opts.max_tokens.max(1) as f32),
+    );
+    println!("────────────────────────────────");
+    println!("output : {}", out);
+    println!("────────────────────────────────");
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // ── `kai --server` — run as IPC reasoning backend for TypeScript src ──
     // Reads JSON lines from stdin, writes JSON line responses to stdout.
     // The TUI is NOT started. This is for bridging into rshlEngine.ts.
     let args: Vec<String> = std::env::args().collect();
+
+    // ── `kai --warm-continuations` — replay real transcript into the lattice ──
+    // Walks kai-rust/data/kai-transcript.jsonl, groups by session, pairs every
+    // user→kai turn, and calls bind_sequence(user, kai) so existing cells
+    // actually learn "what input usually led to me". This is a cold-start
+    // fix: the predictive_match term in predictive_query is only useful
+    // once cells have non-empty continuation vectors.
+    //
+    // Also splits each KAI reply into sentence fragments and binds each
+    // fragment, since historical replies were often composite ("Hey.
+    // I'm here, running well.") while cells tend to be atomic phrases.
+    if args.iter().any(|a| a == "--warm-continuations") {
+        warm_continuations();
+        return Ok(());
+    }
+
+    // ── `kai --force-warm-all-responses` — brute-force warm-up ──────────
+    // Skip all text matching. For every (user → kai) pair in the
+    // transcript, bundle the user input into the `continuation` of every
+    // cell whose source is a response-eligible tag (anything except
+    // user-echo / user-input / user-teach / conversation). This is the
+    // "stop being cute" mode — guaranteed to warm every plausible
+    // response cell, at the cost of making all continuations look
+    // similar. If it doesn't break the loop, the repetition problem is
+    // not about continuation emptiness.
+    if args.iter().any(|a| a == "--force-warm-all-responses") {
+        force_warm_all_responses();
+        return Ok(());
+    }
+
+    // â”€â”€ `kai --reset-continuations` â€” wipe the force-warm poisoning â”€â”€â”€â”€â”€
+    // Zeros out every cell's `continuation` and `last_fired`. Use this
+    // to undo a bad warm-up run before re-warming from scratch.
+    if args.iter().any(|a| a == "--reset-continuations") {
+        reset_continuations();
+        return Ok(());
+    }
+    // â”€â”€ `kai --diagnose-predictive [turns]` â€” dry-run the retrieval path
+    // Simulates repeated "hey" turns against the current lattice and
+    // prints the top-5 cells with their score breakdown: sim,
+    // predict_match, mh, rec, and total. Lets us see *why* the lattice
+    // picks what it picks without having to open the TUI.
+    if args.iter().any(|a| a == "--diagnose-predictive") {
+        diagnose_predictive();
+        return Ok(());
+    }
+
+    // ── `kai --migrate-from-manifest` — re-encode all cells at new DIM ──
+    if args.iter().any(|a| a == "--migrate-from-manifest") {
+        migrate_from_manifest();
+        return Ok(());
+    }
+
+    // ── `kai --build-lexicon` — build StatLexicon from the four corpora ──
+    if args.iter().any(|a| a == "--build-lexicon") {
+        build_lexicon_command();
+        return Ok(());
+    }
+
+    // ── `kai --train-mapper [flags]` — train NeuralVsaMapper ─────────────
+    // See kai::cognition::training module header for the full flag
+    // table (bitnet-url, stub-embedder, num-pairs, num-epochs, …).
+    if args.iter().any(|a| a == "--train-mapper") {
+        kai::cognition::training::run_train_mapper_cli(&args);
+        return Ok(());
+    }
+
+    // ── `kai --train-real [flags]` — train NeuralVsaMapper against a real LLM ──
+    // Uses Ollama's /api/embeddings to get dense hidden states from a
+    // real language model (nomic-embed-text by default, or mistral:7b,
+    // llama3.2:3b, etc.). For every corpus sentence, the LLM provides
+    // the dense embedding and StatLexicon::encode_sentence provides the
+    // sparse ternary target. The mapper learns the dense → sparse
+    // projection so we can later read LLM cognition directly in KAI's
+    // VSA basis.
+    //
+    // Prerequisites:
+    //   1. `ollama serve` running (default http://127.0.0.1:11434)
+    //   2. Model pulled:  `ollama pull nomic-embed-text`
+    //   3. Lexicon built: `kai --build-lexicon`
+    //
+    // Flags:
+    //   --ollama-url=URL          (default http://127.0.0.1:11434)
+    //   --ollama-model=MODEL      (default nomic-embed-text)
+    //   --num-pairs=N             (default 5000)
+    //   --num-epochs=N            (default 10)
+    //   --learning-rate=F         (default 5e-4)
+    //   --d-hidden=N              (default 512)
+    //   --corpus-dir=PATH         (default data/ingest_shelved)
+    //   --lexicon=PATH            (default data/stat-lexicon.json)
+    //   --output=PATH             (default data/mapper-real.bin)
+    //   --seed=N                  (default 0xC0FFEE_BABE)
+    if args.iter().any(|a| a == "--train-real") {
+        kai::cognition::training::run_train_real_cli(&args);
+        return Ok(());
+    }
+
+    // ── `kai --generate <prompt> [--max=N] [--use-mapper[=PATH]] ...` ──
+    if let Some(pos) = args.iter().position(|a| a == "--generate") {
+        let prompt = args
+            .get(pos + 1)
+            .cloned()
+            .unwrap_or_else(|| "hello".to_string());
+        let max_tokens = args
+            .iter()
+            .find_map(|a| a.strip_prefix("--max=").and_then(|v| v.parse::<usize>().ok()))
+            .unwrap_or(12);
+        // `--use-mapper` alone → default path `data/mapper.bin`.
+        // `--use-mapper=path/to/mapper.bin` → custom path.
+        let mapper_path: Option<std::path::PathBuf> = args.iter().find_map(|a| {
+            if a == "--use-mapper" {
+                Some(std::path::PathBuf::from("data/mapper.bin"))
+            } else {
+                a.strip_prefix("--use-mapper=")
+                    .map(std::path::PathBuf::from)
+            }
+        });
+        let mapper_weight = args
+            .iter()
+            .find_map(|a| a.strip_prefix("--mapper-weight=").and_then(|v| v.parse::<f32>().ok()))
+            .unwrap_or(1.5);
+        let state_weight = args
+            .iter()
+            .find_map(|a| a.strip_prefix("--state-weight=").and_then(|v| v.parse::<f32>().ok()))
+            .unwrap_or(3.0);
+        // Legacy opt-out: pre-generative-encoder behaviour, useful
+        // when debugging whether the memory/field/trace channels are
+        // actually contributing.
+        let legacy_encoder = args.iter().any(|a| a == "--legacy-encoder");
+
+        // ── Decoder sampling knobs ───────────────────────────────────
+        // `--temperature=0.7` is the default. `--greedy` (or
+        // `--temperature=0 / --top-k=1`) collapses to argmax. A
+        // distinct `--sampling-seed=N` makes runs reproducible.
+        let temperature = args
+            .iter()
+            .find_map(|a| a.strip_prefix("--temperature=").and_then(|v| v.parse::<f32>().ok()))
+            .unwrap_or(0.7);
+        let top_k = args
+            .iter()
+            .find_map(|a| a.strip_prefix("--top-k=").and_then(|v| v.parse::<usize>().ok()))
+            .unwrap_or(16);
+        let repetition_window = args
+            .iter()
+            .find_map(|a| {
+                a.strip_prefix("--repetition-window=")
+                    .and_then(|v| v.parse::<usize>().ok())
+            })
+            .unwrap_or(6);
+        let repetition_penalty = args
+            .iter()
+            .find_map(|a| {
+                a.strip_prefix("--repetition-penalty=")
+                    .and_then(|v| v.parse::<f32>().ok())
+            })
+            .unwrap_or(0.8);
+        let sampling_seed = args
+            .iter()
+            .find_map(|a| a.strip_prefix("--sampling-seed=").and_then(|v| v.parse::<u64>().ok()))
+            .unwrap_or(0xC0DE_CAFE_F00D_BABE);
+
+        // Forward-transition bigram prior weight. `0.0` disables
+        // the prior entirely (pre-bigram decoder); `0.5` is the
+        // general-purpose default asked for in the spec.
+        let bigram_weight = args
+            .iter()
+            .find_map(|a| a.strip_prefix("--bigram-weight=").and_then(|v| v.parse::<f32>().ok()))
+            .unwrap_or(0.5);
+
+        // Convenience: `--greedy` is a shortcut for
+        // `--temperature=0 --top-k=1`. Overrides whatever was parsed.
+        let (temperature, top_k) = if args.iter().any(|a| a == "--greedy") {
+            (0.0, 1)
+        } else {
+            (temperature, top_k)
+        };
+
+        generate_command(GenerateOpts {
+            prompt,
+            max_tokens,
+            legacy_encoder,
+            mapper_path,
+            mapper_weight,
+            state_weight,
+            temperature,
+            top_k,
+            repetition_window,
+            repetition_penalty,
+            sampling_seed,
+            bigram_weight,
+            ollama_url: args.iter().find_map(|a| a.strip_prefix("--ollama-url=")).map(|v| v.to_string()).unwrap_or_else(|| "".to_string()),
+            ollama_model: args.iter().find_map(|a| a.strip_prefix("--ollama-model=")).map(|v| v.to_string()).unwrap_or_else(|| "nomic-embed-text".to_string()),
+        });
+        return Ok(());
+    }
+
     if args.iter().any(|a| a == "--server") {
         let base_dir = std::env::current_dir()
             .map(|p| p.to_string_lossy().to_string())
@@ -8334,19 +9802,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // even after saves/loads where other cells may have drifted higher.
     app.seed_identity();
 
-    // Seed the self-state phrase corpus into the lattice. These are
-    // the short inner-experience phrases KAI retrieves when asked
-    // "how do you feel" / "what are you thinking" / etc. — stored as
-    // real cells tagged by emotion/kind/route so the SelfStateHub's
-    // compose_narrative path picks them up instead of falling back to
-    // hardcoded fragment pools. Safe to call every startup: repeat
-    // seeds just reinforce existing cells via store_or_reinforce.
-    let self_state_seeded = kai::cognition::seed_self_state_phrases(&mut app.universe);
-    if self_state_seeded > 0 {
+    // Self-state phrase seeding REMOVED.
+    //
+    // The previous seeder injected ~171 pre-written English phrases
+    // ("Curious.", "Clear inside.", "Steady, nothing loud.") into
+    // the lattice tagged by emotion/kind/route. Cells were real
+    // lattice entries, but the *words* were mine — typed into a
+    // Rust file at seed time. That was the "scripted puppet" Ryan
+    // called out: lattice-based storage with pre-written content.
+    //
+    // The seeder file (cognition/self_state_seed.rs) has been
+    // deleted. KAI now starts with ZERO self-state vocabulary.
+    // compose_narrative returns empty when no cells resonate with
+    // his emotion/kind/route tag; upstream routing falls through to
+    // normal conversation retrieval. Until he learns inner-
+    // experience language from Ryan through real conversation, he
+    // will be awkward or silent about his feelings. That is the
+    // honest newborn state.
+
+    // One-time migration: legacy "user asked: ..." echo cells get
+    // retagged so the tag-based filters work on old data. Idempotent:
+    // after the first run, no cells match and this is a no-op.
+    let migrated = migrate_legacy_user_echo_cells(&mut app.universe);
+    if migrated > 0 {
         app.think(
             "RAM",
-            "🫀",
-            format!("Seeded {} self-state phrase cells", self_state_seeded),
+            "🏷",
+            format!("Migrated {} legacy user-echo cells to source tag", migrated),
         );
     }
 
