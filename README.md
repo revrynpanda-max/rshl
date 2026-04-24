@@ -28,7 +28,22 @@ For a deeper technical understanding of the RSHL engine and neural logic, please
 Think of KAI's memory as a vast, 16,384-dimensional landscape encoded in sparse ternary vectors. Every concept and memory is a specific location in that space. When you speak, KAI resonates with the locations that most closely match your words, weaving an answer from the memories he finds there. He doesn't "predict" the next word; he "sees" the meaning.
 
 ### Helical Phase Coherence (HLV-aligned)
-KAI measures the coherence of his active field using a **phasor-sum model** derived from Helix-Light-Vortex (HLV) theory. Each lattice cell has a phase angle determined by its ternary geometry (the ratio of convergent +1 to divergent −1 dimensions). When cells are phase-aligned, the field is coherent and KAI speaks clearly. When cells scatter, the field is still "feeling around" and KAI stays quiet or speaks raw lattice.
+KAI measures the coherence of his active field using a **phasor-sum model** derived from Helix-Light-Vortex (HLV) theory. Each lattice cell has a phase angle determined by its ternary geometry (the ratio of convergent +1 to divergent −1 dimensions). 
+
+This is the heart of the engine:
+$$\Phi_g = \rho \cdot R^2 \cdot s \cdot (1 - \chi) \cdot g$$
+
+- **ρ** = field density (active thoughts)
+- **R²** = resonance squared (engine power)
+- **s** = pattern stability
+- **(1 - χ)** = negentropy (contradiction reduction)
+- **g** = goal alignment
+
+### ⚡ Performance Breakthrough: The Asynchronous Field
+As of v5.9.0, KAI's cognitive architecture has been fully decoupled from the TUI.
+- **Instant TUI Response**: All heavy vector encoding, web intake, and state persistence are offloaded to background worker threads.
+- **Zero-Latency Heartbeat**: The main 5s heartbeat is now a pure orchestration signal; the work happens in the parallel background streams.
+- **High-Performance Scaling**: The lattice now scales efficiently past 11,000+ cells without affecting UI frame rates.
 
 ---
 
@@ -39,8 +54,8 @@ KAI is powered by a complex network of **[81 specialized modules](COGNITION.md#8
 - **Dynamic Emotional Intelligence**: 18+ neural signals (curiosity, confidence, warmth, grief, conflict) shape how KAI feels and speaks.
 - **Recursive Learning**: The more you talk about a topic, the more "solid" it becomes in KAI's mind.
 - **Dream-State Consolidation**: KAI consolidates new information while idle, just like human sleep.
-- **Predictive Processing**: Every retrieval uses recency-penalized scoring so the same cell can't fire twice in a row.
-- **Coherence-Gated Hybrid Voice**: When Ollama is available, the lattice's helical phase coherence (Φ_C) determines whether Ollama gets to speak — the lattice decides, not the model.
+- **Information Entropy Control**: Based on Vopson's Second Law of Infodynamics, KAI actively works to decrease internal contradiction (χ) during dream cycles.
+- **Coherence-Gated Hybrid Voice**: When Ollama is available, the lattice's global emergence (Φ_g) determines whether Ollama gets to speak — the lattice stays in control.
 
 For a deep-dive into the RSHL math and neural architecture, see **[COGNITION.md](COGNITION.md)**.
 

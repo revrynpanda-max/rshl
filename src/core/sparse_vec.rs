@@ -12,9 +12,59 @@ const SPARSITY: f32 = 0.04; // 4% non-zero per feature
 
 /// A sparse ternary vector in 16384 dimensions.
 /// Values are -1, 0, or +1 stored as i8 for cache efficiency.
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug)]
 pub struct SparseVec {
     pub data: Vec<i8>,
+}
+
+impl serde::Serialize for SparseVec {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeStruct;
+        let nz: Vec<(u16, i8)> = self.data.iter().enumerate()
+            .filter(|(_, &v)| v != 0)
+            .map(|(i, &v)| (i as u16, v))
+            .collect();
+        let mut s = serializer.serialize_struct("SparseVec", 2)?;
+        s.serialize_field("len", &self.data.len())?;
+        s.serialize_field("nz", &nz)?;
+        s.end()
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for SparseVec {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        use serde::de::{self, MapAccess, Visitor};
+        struct V;
+        impl<'de> Visitor<'de> for V {
+            type Value = SparseVec;
+            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                write!(f, "SparseVec")
+            }
+            fn visit_map<M: MapAccess<'de>>(self, mut map: M) -> Result<SparseVec, M::Error> {
+                let mut dense: Option<Vec<i8>> = None;
+                let mut len: Option<usize> = None;
+                let mut nz: Option<Vec<(u16, i8)>> = None;
+                while let Some(key) = map.next_key::<String>()? {
+                    match key.as_str() {
+                        "data" => { dense = Some(map.next_value()?); }
+                        "len"  => { len   = Some(map.next_value()?); }
+                        "nz"   => { nz    = Some(map.next_value()?); }
+                        _      => { let _: serde::de::IgnoredAny = map.next_value()?; }
+                    }
+                }
+                if let Some(data) = dense {
+                    return Ok(SparseVec { data });
+                }
+                if let (Some(l), Some(pairs)) = (len, nz) {
+                    let mut data = vec![0i8; l];
+                    for (idx, val) in pairs { data[idx as usize] = val; }
+                    return Ok(SparseVec { data });
+                }
+                Err(de::Error::custom("SparseVec: missing data or len/nz fields"))
+            }
+        }
+        deserializer.deserialize_map(V)
+    }
 }
 
 impl SparseVec {
@@ -81,6 +131,11 @@ impl SparseVec {
         //   2. Capitalized words at non-sentence-start positions (mid-sentence proper nouns)
         //   3. ALL-CAPS tokens (acronyms: RSHL, AI, DNA, etc.)
         let known_entities: &[&str] = &["ryan", "kai", "rshl", "kaii"];
+        let physics_core: &[&str] = &[
+            "lattice", "vortex", "helical", "torsion", "phasor", "resonance", 
+            "coherence", "quanta", "superposition", "topology", "manifold", 
+            "fibonacci", "phi", "chi", "psi", "omega", "sigma", "theta"
+        ];
         let original_words: Vec<&str> = text.split_whitespace().collect();
         let proper_nouns: std::collections::HashSet<String> = {
             let mut set = std::collections::HashSet::new();
@@ -95,6 +150,11 @@ impl SparseVec {
                     set.insert(lower_clean.clone());
                     continue;
                 }
+                // Physics/Symbolic Core boost (5x)
+                if physics_core.contains(&lower_clean.as_str()) {
+                    set.insert(format!("!{}", lower_clean)); // Marker for 5x boost
+                    continue;
+                }
                 // Capitalized mid-sentence = proper noun (position > 0, not just sentence-start caps)
                 let first_upper = clean
                     .chars()
@@ -105,7 +165,7 @@ impl SparseVec {
                     set.insert(lower_clean.clone());
                 }
                 // ALL-CAPS tokens (acronyms) — always a proper noun signal
-                if clean.chars().all(|c| c.is_uppercase()) {
+                if clean.chars().all(|c| c.is_uppercase()) && clean.len() >= 2 {
                     set.insert(lower_clean);
                 }
             }
@@ -115,10 +175,14 @@ impl SparseVec {
         for token in &normalized_tokens {
             let base = hash_word(token);
             let n_active = 12;
-            // Proper nouns get 6x weight — names and entities are the most semantically
-            // discriminative words. "Ryan" in a sentence matters far more than "nice" or "meet".
+            // Weighted layers:
+            // - Proper Nouns: 6x
+            // - Physics/Symbolic Core: 5x
+            // - Standard Words: 3x
             let word_weight: i32 = if proper_nouns.contains(token.as_str()) {
                 6
+            } else if proper_nouns.contains(&format!("!{}", token)) {
+                5
             } else {
                 3
             };
@@ -234,6 +298,20 @@ impl SparseVec {
         }
 
         dot as f32 / ((mag_a as f32).sqrt() * (mag_b as f32).sqrt())
+    }
+
+    /// Phasor-aware coherence: Cosine similarity modulated by phase alignment.
+    ///
+    /// This is the "helical coherence" from HLV theory. It allows negative
+    /// torsion (opposing vectors) to constructively interfere if they are
+    /// also π out of phase.
+    ///
+    /// Formula: cos(v1, v2) * cos(θ1 - θ2)
+    pub fn phasor_coherence(&self, other: &SparseVec) -> f32 {
+        let theta1 = self.phase_angle();
+        let theta2 = other.phase_angle();
+        let cos_sim = self.cosine(other);
+        cos_sim * (theta1 - theta2).cos()
     }
 
     /// Bundle (superpose) multiple vectors.

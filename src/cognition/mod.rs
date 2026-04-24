@@ -107,7 +107,7 @@ pub use habenula::{Habenula, HabenulaOutput, HabenulaSignal};
 pub use hippocampus::{CompletionResult, Hippocampus, SeparationResult};
 pub use homeostasis::{run_homeostasis, HomeostasisConfig};
 pub use hypothalamus::{HypothalamicEvent, HypothalamicOutput, Hypothalamus};
-pub use idle_ingest::{IdleIngest, IngestReport};
+pub use idle_ingest::{IdleIngest, IngestBatch, IngestReport, IngestedCell};
 pub use inner_voice::{explore_lexicon_binding, validate_insight, InsightVerdict};
 pub use insula::{FeltCondition, InsulaMonitor};
 pub use ipl::{AnalogyMapping, CrossDomainLink, IPLOutput, InferiorParietalLobule};
@@ -115,7 +115,7 @@ pub use language::{
     BrocaAnalysis, LanguageSystem, ProductionStyle, SentenceType, WernickeAnalysis,
 };
 pub use lattice::{
-    consolidate, gate_stats, observe_dream, reinforce_dream_sources, store_synthesis,
+    consolidate, consolidate_pair, gate_stats, observe_dream, reinforce_dream_sources, store_synthesis,
     DreamSynthesis, GateStats,
 };
 pub use lexsem::{LexSemEngine, LexSemOutput, ResponseRegister, SemanticField};

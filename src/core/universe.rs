@@ -253,9 +253,8 @@ impl Universe {
         Self { cells: Vec::new() }
     }
 
-    /// Store a new belief.
-    pub fn store(&mut self, text: &str, region: &str, source: &str, strength: f32) {
-        let vec = SparseVec::encode(text);
+    /// Store a new belief with a pre-computed vector.
+    pub fn store_with_vec(&mut self, text: &str, region: &str, source: &str, strength: f32, vec: SparseVec) {
         self.cells.push(Cell {
             label: text.to_string(),
             text: text.to_string(),
@@ -270,6 +269,12 @@ impl Universe {
             continuation: SparseVec::zero(),
             last_fired: 0,
         });
+    }
+
+    /// Store a new belief.
+    pub fn store(&mut self, text: &str, region: &str, source: &str, strength: f32) {
+        let vec = SparseVec::encode(text);
+        self.store_with_vec(text, region, source, strength, vec);
     }
 
     /// Query for the top-N most similar cells.

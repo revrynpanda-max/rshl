@@ -1,4 +1,4 @@
-﻿//! Idle Ingest Worker — passive learning during idle ticks.
+//! Idle Ingest Worker — passive learning during idle ticks.
 //!
 //! **What it does.** Watches `data/ingest/*.txt` for plain-text knowledge
 //! files. While KAI is idle (no active conversation for 30+ seconds), the
@@ -30,7 +30,7 @@
 //! 5. *Observable*: returns a short status string per file completion so
 //!    the main loop can surface it in the TUI — you *see* KAI learning.
 
-use crate::core::Universe;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -112,14 +112,31 @@ const CONCEPT_STOPWORDS: &[&str] = &[
 /// One file's progress cursor. Persists in memory for the current
 /// session; on restart, a file that was half-read just restarts from
 /// line 0 — `store_or_reinforce` deduplicates so there's no harm.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileCursor {
     pub path: PathBuf,
     pub total_lines: usize,
     pub next_line: usize,
     pub added: usize,
     pub reinforced: usize,
-    pub skipped: usize,
+    pub duration_ms: u128,
+}
+
+/// A single cell prepared by the background worker.
+#[derive(Debug, Clone)]
+pub struct IngestedCell {
+    pub text: String,
+    pub region: String,
+    pub source: String,
+    pub strength: f32,
+    pub vec: crate::core::SparseVec,
+}
+
+/// A batch of ingested results to be integrated into the Universe.
+#[derive(Debug)]
+pub struct IngestBatch {
+    pub cells: Vec<IngestedCell>,
+    pub report: IngestReport,
 }
 
 impl FileCursor {
@@ -189,7 +206,7 @@ impl IngestReport {
 
 /// The ingest worker state. Lives inside `App` and is pumped once per
 /// heartbeat via `tick()`.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct IdleIngest {
     pub enabled: bool,
     pub idle_lines_per_tick: usize,
@@ -300,34 +317,24 @@ impl IdleIngest {
             .unwrap_or(false)
     }
 
-    /// One ingest step. Returns a report describing what was absorbed
-    /// this tick. Learning is continuous: even during active
-    /// conversation KAI absorbs a small trickle (ACTIVE_LINES_PER_TICK),
-    /// and when he's been idle for more than IDLE_THRESHOLD_SECS the
-    /// rate jumps to IDLE_LINES_PER_TICK. The only total-stop
-    /// conditions are: worker disabled, or no files in data/ingest.
-    ///
-    /// `idle_secs` is the DMN's idle duration in seconds.
-    pub fn tick(&mut self, universe: &mut Universe, idle_secs: u64) -> IngestReport {
+
+    /// Asynchronous version of tick: returns a batch of cells to be added
+    /// by the main thread. This offloads the expensive SparseVec::encode
+    /// calls to the background.
+    pub fn tick_async(&mut self, idle_secs: u64) -> IngestBatch {
         if !self.enabled {
-            return IngestReport::default();
+            return IngestBatch { cells: Vec::new(), report: IngestReport::default() };
         }
         if !self.has_work() {
-            return IngestReport::default();
+            return IngestBatch { cells: Vec::new(), report: IngestReport::default() };
         }
 
-        // Choose budget based on idle state. A real, continuous rate
-        // even during conversation — so learning never flatlines just
-        // because you're typing. Idle bursts absorb the bulk of any
-        // corpus across minutes rather than hours.
         let budget = if idle_secs >= IDLE_THRESHOLD_SECS {
             IDLE_LINES_PER_TICK
         } else {
             ACTIVE_LINES_PER_TICK
         };
 
-        // Pick the next file. Prefer one already in progress to finish
-        // it cleanly before starting a new one.
         let target_path = self
             .cursors
             .keys()
@@ -336,15 +343,13 @@ impl IdleIngest {
             .or_else(|| self.find_next_file());
 
         let Some(path) = target_path else {
-            return IngestReport::default();
+            return IngestBatch { cells: Vec::new(), report: IngestReport::default() };
         };
 
-        // Load the file into the buffer if it's the first time we see it.
         if !self.buffers.contains_key(&path) {
             let Ok(content) = fs::read_to_string(&path) else {
-                // File vanished or is unreadable — remove cursor if any.
                 self.cursors.remove(&path);
-                return IngestReport::default();
+                return IngestBatch { cells: Vec::new(), report: IngestReport::default() };
             };
             let lines: Vec<String> = content.lines().map(|l| l.to_string()).collect();
             let total = lines.len();
@@ -357,12 +362,11 @@ impl IdleIngest {
                     next_line: 0,
                     added: 0,
                     reinforced: 0,
-                    skipped: 0,
+                    duration_ms: 0,
                 },
             );
         }
 
-        let cells_before = universe.count();
         let mut report = IngestReport {
             file_name: Some(
                 path.file_name()
@@ -370,86 +374,58 @@ impl IdleIngest {
                     .unwrap_or("unknown")
                     .to_string(),
             ),
-            cells_before,
             ..Default::default()
         };
 
-        let lines_budget = budget;
+        let mut ingested_cells = Vec::new();
         let mut processed = 0usize;
         let mut added = 0usize;
-        let mut reinforced = 0usize;
-        let mut concepts_added = 0usize;
-        let mut concepts_reinforced = 0usize;
 
-        // Borrow split: grab mutable cursor + immutable buffer at once.
         let buffer = self.buffers.get(&path).expect("buffer just inserted");
         let cursor = self.cursors.get_mut(&path).expect("cursor just inserted");
 
-        while processed < lines_budget && !cursor.done() {
+        while processed < budget && !cursor.done() {
             let raw = &buffer[cursor.next_line];
             cursor.next_line += 1;
             processed += 1;
 
             let (line, region) = classify_line(raw);
             if line.is_empty() || line.len() < MIN_LINE_LEN {
-                cursor.skipped += 1;
+                // cursor.skipped += 1;
                 continue;
             }
 
-            // 1. Store the full line as a main knowledge cell.
             let source = format!("ingest:{}", cursor.short_name());
-            let is_new = universe.store_or_reinforce(&line, &region, &source, 1.2);
-            if is_new {
-                cursor.added += 1;
-                added += 1;
-            } else {
-                cursor.reinforced += 1;
-                reinforced += 1;
-            }
+            
+            // Encode the main line
+            ingested_cells.push(IngestedCell {
+                text: line.clone(),
+                region: region.clone(),
+                source: source.clone(),
+                strength: 1.2,
+                vec: crate::core::SparseVec::encode(&line),
+            });
+            cursor.added += 1;
+            added += 1;
 
-            // 2. Word-level decomposition: extract up to
-            //    MAX_CONCEPTS_PER_LINE significant concepts and store
-            //    each as a small anchor cell. This is what lets KAI
-            //    "learn from what he learned" — when the same word
-            //    shows up in a later line, its concept cell gets
-            //    reinforced, which is the associative link.
-            //
-            //    Concept cells use the WORD itself as their text, so
-            //    `store_or_reinforce` naturally dedupes: the first time
-            //    "photosynthesis" appears anywhere, it creates a cell.
-            //    Every subsequent mention reinforces that same cell,
-            //    growing its strength — and the lattice's dream cycle
-            //    will naturally bundle high-strength concept cells
-            //    together to find connections.
+            // Encode concepts
             for concept in extract_significant_concepts(&line, MAX_CONCEPTS_PER_LINE) {
                 let concept_source = format!("ingest-concept:{}", cursor.short_name());
-                let is_new_concept = universe.store_or_reinforce(
-                    &concept,
-                    "concept",
-                    &concept_source,
-                    CONCEPT_ANCHOR_STRENGTH,
-                );
-                if is_new_concept {
-                    concepts_added += 1;
-                } else {
-                    concepts_reinforced += 1;
-                }
+                ingested_cells.push(IngestedCell {
+                    text: concept.clone(),
+                    region: "concept".to_string(),
+                    source: concept_source,
+                    strength: CONCEPT_ANCHOR_STRENGTH,
+                    vec: crate::core::SparseVec::encode(&concept),
+                });
             }
         }
 
         report.lines_processed = processed;
         report.lines_added = added;
-        report.lines_reinforced = reinforced;
-        report.concepts_added = concepts_added;
-        report.concepts_reinforced = concepts_reinforced;
-        report.cells_after = universe.count();
-
+        
         self.total_added += added;
-        self.total_reinforced += reinforced;
-        self.total_concepts_added += concepts_added;
-        self.total_concepts_reinforced += concepts_reinforced;
 
-        // File finished? Move it to `ingested/` and drop caches.
         if cursor.done() {
             report.file_completed = true;
             self.total_files_done += 1;
@@ -458,7 +434,10 @@ impl IdleIngest {
             self.cursors.remove(&path);
         }
 
-        report
+        IngestBatch {
+            cells: ingested_cells,
+            report,
+        }
     }
 
     /// Look for the next .txt file in the ingest folder that isn't the
