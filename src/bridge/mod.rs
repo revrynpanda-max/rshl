@@ -1,4 +1,4 @@
-﻿pub mod ai_peer;
+pub mod ai_peer;
 pub mod code_tools;
 pub mod git_tools;
 pub mod ipc_server;
@@ -210,6 +210,59 @@ pub fn ingest_topic(universe: &mut Universe, topic: &str) -> usize {
     }
 
     stored
+}
+
+#[derive(Debug)]
+pub struct IntakeResult {
+    pub topic: String,
+    pub cells: Vec<(String, String, String, f32)>, // (text, region, source, strength)
+}
+
+/// Run a background intake cycle — pick a random unexplored topic and ingest it.
+/// Returns (topic explored, cells added).
+pub fn intake_cycle_async() -> Option<IntakeResult> {
+    use rand::Rng;
+    let mut rng = rand::thread_rng();
+
+    // Pick a random topic from the exploration list
+    let idx = rng.gen_range(0..EXPLORATION_TOPICS.len());
+    let topic = EXPLORATION_TOPICS[idx];
+
+    let answer = query_duckduckgo(topic)?;
+    let mut cells = Vec::new();
+
+    // Process abstract
+    if !answer.abstract_text.is_empty() && answer.abstract_text.len() > 20 {
+        let text = if answer.abstract_text.len() > 300 {
+            let mut end = 300;
+            while end > 0 && !answer.abstract_text.is_char_boundary(end) {
+                end -= 1;
+            }
+            format!("{}...", &answer.abstract_text[..end])
+        } else {
+            answer.abstract_text.clone()
+        };
+        cells.push((text, "reasoning".to_string(), "world-bridge".to_string(), 1.5));
+    }
+
+    // Process related topics
+    for related in &answer.related_topics {
+        let text = if related.len() > 250 {
+            let mut end = 250;
+            while end > 0 && !related.is_char_boundary(end) {
+                end -= 1;
+            }
+            format!("{}...", &related[..end])
+        } else {
+            related.clone()
+        };
+        cells.push((text, "reasoning".to_string(), "world-bridge".to_string(), 1.0));
+    }
+
+    Some(IntakeResult {
+        topic: topic.to_string(),
+        cells,
+    })
 }
 
 /// Run a background intake cycle — pick a random unexplored topic and ingest it.

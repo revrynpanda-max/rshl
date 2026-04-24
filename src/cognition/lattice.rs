@@ -1,4 +1,4 @@
-﻿use crate::core::field_state::{DreamHistoryEntry, FieldInput};
+use crate::core::field_state::{DreamHistoryEntry, FieldInput};
 /// Dream Lattice — Autonomous consolidation engine.
 ///
 /// Ported from rshl-lattice.js. During dream cycles, KAI:
@@ -179,9 +179,9 @@ fn select_dream_pair(universe: &Universe) -> Option<(usize, usize, f32)> {
             let a = &cells[i];
             let b = &cells[j];
 
-            let overlap = a.vec.cosine(&b.vec).max(0.0);
+            let overlap = a.vec.phasor_coherence(&b.vec);
 
-            // Filter: overlap must be in the productive band [0.18, 0.88]
+            // Filter: allow resonance above 0.18 (including phase-aligned negative torsion)
             if overlap < 0.18 || overlap > 0.88 {
                 continue;
             }
@@ -249,24 +249,38 @@ fn pick_best_insight(
 fn quality_gate(cell_count: usize) -> (f32, f32) {
     // Returns (min_confidence, max_chi)
     match cell_count {
-        0..=49 => (0.10, 0.70),    // bootstrapping — very lenient
-        50..=149 => (0.20, 0.60),  // growing — moderate gate
-        150..=499 => (0.28, 0.52), // mature — normal gate
-        500..=999 => (0.32, 0.46), // large — stricter
-        _ => (0.36, 0.42),         // very large — tight gate
+        0..=49 => (0.10, 0.95),    // bootstrapping — very lenient
+        50..=149 => (0.15, 0.95),  // growing — moderate gate
+        150..=499 => (0.18, 0.92), // mature — normal gate
+        500..=999 => (0.15, 0.92), // large — relaxed for theory digestion
+        _ => (0.10, 0.95),         // very large — lenient to allow HLV resonance
     }
 }
 
 /// Run a single dream consolidation cycle.
 ///
-/// This is the full JS rshl-lattice.js consolidate() port — with scored pair
-/// selection, full field state, source reinforcement, and history tracking.
-///
-/// Resonance-gated: bindings that produce low confidence or high contradiction
-/// are discarded before they can inject χ noise into the field.
+/// Targeted variant of consolidate that forces a dream between two specific cells.
+/// Useful for digestion phases where we want to "weave" a specific region.
+pub fn consolidate_pair(universe: &Universe, idx_a: usize, idx_b: usize) -> Option<DreamResult> {
+    let cells = universe.cells();
+    if idx_a >= cells.len() || idx_b >= cells.len() { return None; }
+    
+    let a = &cells[idx_a];
+    let b = &cells[idx_b];
+    let overlap = a.vec.phasor_coherence(&b.vec);
+    
+    // Stress Test Gate: allow even the faintest resonance (0.01)
+    if overlap < 0.01 || overlap > 0.92 { return None; }
+
+    internal_consolidate(universe, idx_a, idx_b, overlap)
+}
+
 pub fn consolidate(universe: &Universe) -> Option<DreamResult> {
     let (idx_a, idx_b, overlap) = select_dream_pair(universe)?;
+    internal_consolidate(universe, idx_a, idx_b, overlap)
+}
 
+fn internal_consolidate(universe: &Universe, idx_a: usize, idx_b: usize, overlap: f32) -> Option<DreamResult> {
     let cells = universe.cells();
     let a = &cells[idx_a];
     let b = &cells[idx_b];
@@ -279,6 +293,8 @@ pub fn consolidate(universe: &Universe) -> Option<DreamResult> {
 
     let (insight_text, insight_region, confidence, is_non_source) =
         pick_best_insight(&hits, &a.label, &b.label);
+
+    // [DIAG] Print first 5 confidence values to understand what query_vec returns
 
     // ── GATE 1: Pre-field resonance quality check ─────────────────────────
     // If the synthetic bundle doesn't resonate meaningfully with the universe,
@@ -318,7 +334,11 @@ pub fn consolidate(universe: &Universe) -> Option<DreamResult> {
         goal_vec: None, // Will be set by caller if drive has a goal
         winner_key: winner_key.clone(),
         history: &history_snapshot,
-        total_count: universe.count(),
+        // Use LOCAL neighborhood size for density calculation, not the
+        // entire universe. Consolidation operates on a local pair + their
+        // query neighborhood. Using universe.count() (8000+) makes rho
+        // microscopic and kills phi_g regardless of actual resonance quality.
+        total_count: (hits.len() + 2).max(10),
         prev_phi_g,
     };
 
@@ -350,7 +370,7 @@ pub fn consolidate(universe: &Universe) -> Option<DreamResult> {
     // Near-null Φg (< 0.005) means the binding produced essentially zero
     // coherent emergence — not a real idea, just arithmetic noise.
     // Dream #632 (Φg=0.001) was the triggering case for this gate.
-    if field.phi_g < 0.005 {
+    if field.phi_g < 0.0001 {
         if let Ok(mut s) = GATE_STATS.lock() {
             s.rejected_phi_drop += 1;
         }
@@ -364,10 +384,10 @@ pub fn consolidate(universe: &Universe) -> Option<DreamResult> {
     // Promotion readiness
     let promotion_ready = !duplicate_echo
         && insight_text != "no strong concept found"
-        && confidence >= 0.64
-        && field.c >= 0.16
-        && field.chi <= 0.45
-        && field.phi_g >= 0.03;
+        && confidence >= 0.35
+        && field.c >= 0.10
+        && field.chi <= 0.55
+        && field.phi_g >= 0.01;
 
     // ── DISCOVERY SYNTHESIS ─────────────────────────────────────────────
     //
@@ -390,13 +410,13 @@ pub fn consolidate(universe: &Universe) -> Option<DreamResult> {
     // future retrievals and future dreams — classic associative
     // branching.
     let synthesis = if !duplicate_echo
-        && confidence >= 0.25
-        && confidence < 0.60
-        && field.chi <= 0.35
-        && field.phi_g >= 0.02
+        && confidence >= 0.15
+        && confidence < 0.65
+        && field.chi <= 0.90
+        && field.phi_g >= 0.005
     {
         let shared = shared_concept_words(&a.label, &b.label);
-        if shared.len() >= 2 {
+        if shared.len() >= 1 {
             let text = build_synthesis_text(&a.label, &b.label, &shared);
             Some(DreamSynthesis {
                 label: text.clone(),

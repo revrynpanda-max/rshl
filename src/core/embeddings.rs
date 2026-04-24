@@ -20,6 +20,7 @@ const MIN_COOCCURRENCE: usize = 2; // Minimum co-occurrences to create a learned
 const MAX_VOCAB: usize = 5000; // Max words to track
 
 /// Learned word embeddings from universe co-occurrence patterns.
+#[derive(Clone)]
 pub struct Embeddings {
     /// word → learned sparse ternary vector
     pub vectors: HashMap<String, Vec<i8>>,

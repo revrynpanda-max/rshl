@@ -273,6 +273,20 @@ impl OllamaVoice {
             out.push('\n');
         }
 
+        let hlv_hits: Vec<&str> = hits.iter()
+            .filter(|h| h.source.starts_with("hlv:"))
+            .map(|h| h.label.as_str())
+            .take(3)
+            .collect();
+
+        if !hlv_hits.is_empty() {
+            out.push_str("══════════════ ACTIVE HLV THEORETICAL FRAMEWORK ══════════════\n");
+            for label in hlv_hits {
+                out.push_str(&format!("  • {}\n", label));
+            }
+            out.push('\n');
+        }
+
         // ── Identity anchor ───────────────────────────────────────────────────
         let anchor: Vec<&QueryHit> = identity_cells
             .iter()

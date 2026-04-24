@@ -1,4 +1,4 @@
-﻿/// Field State — Full RSHL Emergence Metrics
+/// Field State — Full RSHL Emergence Metrics
 ///
 /// Ported from field-state.js. Pure computation, no side effects.
 /// Given a set of source cells and a synthetic vector, computes
@@ -288,6 +288,7 @@ impl FieldState {
     /// Simple compute from universe only (backward compatible).
     /// Used when you don't have a full FieldInput (e.g., heartbeat status).
     pub fn compute(universe: &Universe) -> Self {
+        use std::collections::HashMap;
         let cells = universe.cells();
         if cells.is_empty() {
             return Self::default();
@@ -295,35 +296,40 @@ impl FieldState {
 
         let n = cells.len() as f32;
 
-        // Strided sample — spreads evenly across the full universe so every
-        // metric reflects the whole field, not just the first N seed cells.
+        // Strided sample — spreads evenly across the full universe
         let sample_limit = 50.min(cells.len());
         let stride = (cells.len() / sample_limit).max(1);
 
-        // ── phi_g: mean pairwise cosine across strided sample ─────────────
-        let mut phi_sum = 0.0f32;
-        let mut phi_count = 0u32;
-        for i in 0..sample_limit {
+        // ── phi_g: mean pairwise cosine across strided sample (Parallel) ──
+        use rayon::prelude::*;
+        let (phi_sum, phi_count) = (0..sample_limit).into_par_iter().map(|i| {
             let ci = i * stride;
+            let mut local_sum = 0.0f32;
+            let mut local_count = 0u32;
             for j in (i + 1)..sample_limit.min(i + 10) {
                 let cj = j * stride;
-                let sim = cells[ci].vec.cosine(&cells[cj].vec).abs();
-                phi_sum += sim;
-                phi_count += 1;
+                local_sum += cells[ci].vec.cosine(&cells[cj].vec).abs();
+                local_count += 1;
             }
-        }
+            (local_sum, local_count)
+        }).reduce(|| (0.0, 0), |a, b| (a.0 + b.0, a.1 + b.1));
+
         let phi_g = if phi_count > 0 {
             phi_sum / phi_count as f32
         } else {
             0.0
         };
 
+        // ── Group by region in ONE pass to avoid N_regions * N_cells scans ──
+        let mut region_map: HashMap<&str, Vec<&crate::core::Cell>> = HashMap::new();
+        for cell in cells {
+            region_map.entry(&cell.region).or_default().push(cell);
+        }
+
         // ── Coherence within regions (strided per region) ─────────────────
-        let regions = universe.region_counts();
         let mut coh_sum = 0.0f32;
         let mut coh_count = 0u32;
-        for region in regions.keys() {
-            let rcells: Vec<_> = cells.iter().filter(|c| c.region == *region).collect();
+        for rcells in region_map.values() {
             let rsample = 10.min(rcells.len());
             let rstride = (rcells.len() / rsample).max(1);
             for i in 0..rsample {
@@ -344,27 +350,22 @@ impl FieldState {
 
         // ── Cross-region pressure ─────────────────────────────────────────
         // Uses the middle cell of each region for a more representative sample.
-        let region_keys: Vec<_> = regions.keys().collect();
+        let region_keys: Vec<&&str> = region_map.keys().collect();
         let mut pr_sum = 0.0f32;
         let mut pr_count = 0u32;
         for i in 0..region_keys.len() {
             for j in (i + 1)..region_keys.len() {
-                let a_cells: Vec<_> = cells
-                    .iter()
-                    .filter(|c| c.region == *region_keys[i])
-                    .collect();
-                let b_cells: Vec<_> = cells
-                    .iter()
-                    .filter(|c| c.region == *region_keys[j])
-                    .collect();
+                let a_cells = &region_map[region_keys[i]];
+                let b_cells = &region_map[region_keys[j]];
+                
                 let a = a_cells.get(a_cells.len() / 2);
                 let b = b_cells.get(b_cells.len() / 2);
                 if let (Some(a), Some(b)) = (a, b) {
                     let sim = a.vec.cosine(&b.vec);
                     if sim < 0.0 {
                         pr_sum += sim.abs();
-                        pr_count += 1;
                     }
+                    pr_count += 1;
                 }
             }
         }

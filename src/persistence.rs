@@ -1,4 +1,4 @@
-﻿use crate::cognition::candidates::CandidateBuffer;
+use crate::cognition::candidates::CandidateBuffer;
 /// Persistence — Save and restore KAI's full cognitive state.
 ///
 /// Biology analog: Long-term memory consolidation to permanent substrate.
@@ -72,7 +72,7 @@ pub fn save(
         drive: drive.clone(),
     };
 
-    match serde_json::to_string_pretty(&snapshot) {
+    match serde_json::to_string(&snapshot) {
         Ok(json) => {
             let tmp_path = format!("{}.tmp", state_path);
             match fs::write(&tmp_path, &json) {

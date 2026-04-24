@@ -547,6 +547,18 @@ struct App {
     /// `None` when Ollama is not reachable at startup (system runs pure-lattice).
     /// Set KAI_OLLAMA_MODEL env var to override the default model (mistral:7b).
     ollama_voice: Option<kai::cognition::OllamaVoice>,
+    /// Background embedding learning receiver
+    embedding_rx: Option<std::sync::mpsc::Receiver<Embeddings>>,
+    /// Flag to prevent concurrent learning
+    is_learning_embeddings: bool,
+    /// Background knowledge intake receiver
+    intake_rx: Option<std::sync::mpsc::Receiver<kai::bridge::IntakeResult>>,
+    /// Flag to prevent concurrent intake
+    is_intaking: bool,
+    /// Background file ingest receiver
+    ingest_batch_rx: Option<std::sync::mpsc::Receiver<kai::cognition::IngestBatch>>,
+    /// Flag to prevent concurrent file ingest
+    is_ingesting_files: bool,
 }
 
 impl App {
@@ -741,6 +753,12 @@ impl App {
                     .unwrap_or_else(|_| "mistral:7b".to_string());
                 kai::cognition::OllamaVoice::new(url, &model)
             },
+            embedding_rx: None,
+            is_learning_embeddings: false,
+            intake_rx: None,
+            is_intaking: false,
+            ingest_batch_rx: None,
+            is_ingesting_files: false,
         }
     }
 
@@ -1819,25 +1837,40 @@ impl App {
         }
 
         // ── IDLE LEARNING — passive ingest of data/ingest/*.txt ──
-        //
-        // Runs only when KAI has been idle (no conversation turn) for
-        // 30+ seconds. Absorbs a few lines per tick from any .txt
-        // file in data/ingest/, encoding each into the lattice. When
-        // a file is fully absorbed it moves to data/ingested/.
-        //
-        // This is how KAI keeps growing while you're asleep or away —
-        // no more "came back and he's still stupid."
-        {
-            let idle_secs = self.dmn.idle_duration().as_secs();
-            let report = self.idle_ingest.tick(&mut self.universe, idle_secs);
-            if !report.is_noop() {
-                self.think("RAM", "📚", report.summary());
-                // Also surface in the inner voice stream so spectate
-                // mode sees it even when not in full raw mode.
-                if report.file_completed {
-                    self.last_inner_voice_text =
-                        format!("[ingest] {}", report.summary());
+        if let Some(ref rx) = self.ingest_batch_rx {
+            if let Ok(batch) = rx.try_recv() {
+                self.is_ingesting_files = false;
+                
+                for ic in batch.cells {
+                    // Check for exact match first
+                    let exists = self.universe.cells().iter().any(|c| c.label == ic.text);
+                    if exists {
+                        self.universe.reinforce_by_text(&ic.text, 0.1);
+                    } else {
+                        self.universe.store_with_vec(&ic.text, &ic.region, &ic.source, ic.strength, ic.vec);
+                    }
                 }
+
+                if !batch.report.is_noop() {
+                    self.think("RAM", "📚", batch.report.summary());
+                    if batch.report.file_completed {
+                        self.last_inner_voice_text = format!("[ingest] {}", batch.report.summary());
+                    }
+                }
+            }
+        }
+
+        if !self.is_ingesting_files {
+            let idle_secs = self.dmn.idle_duration().as_secs();
+            if self.idle_ingest.has_work() {
+                let (tx, rx) = std::sync::mpsc::channel();
+                self.ingest_batch_rx = Some(rx);
+                self.is_ingesting_files = true;
+                let mut worker = self.idle_ingest.clone();
+                std::thread::spawn(move || {
+                    let batch = worker.tick_async(idle_secs);
+                    let _ = tx.send(batch);
+                });
             }
         }
 
@@ -1958,8 +1991,52 @@ impl App {
             ram.last_tick = Some(Instant::now());
         }
 
+        // ── KNOWLEDGE INTAKE — background web crawling ─────────────────────
+        if let Some(ref rx) = self.intake_rx {
+            if let Ok(result) = rx.try_recv() {
+                self.is_intaking = false;
+                let mut added = 0;
+                for (text, region, source, strength) in result.cells {
+                    // Check for duplicates before storing
+                    let exists = self.universe.cells().iter().any(|c| c.label == text);
+                    if !exists {
+                        self.universe.store(&text, &region, &source, strength);
+                        added += 1;
+                    }
+                }
+                if added > 0 {
+                    self.last_intake_text = format!(
+                        "🌐 Learned \"{}\": +{} cells ({}→{})",
+                        result.topic,
+                        added,
+                        self.universe.count() - added,
+                        self.universe.count(),
+                    );
+                }
+            }
+        }
+
         // ── EMBEDDING LEARNING — continuous word2vec equivalent ─────
-        if self.embeddings.needs_rebuild(self.universe.count()) {
+        // Check for finished learning results
+        if let Some(ref rx) = self.embedding_rx {
+            if let Ok(new_embeddings) = rx.try_recv() {
+                self.embeddings = new_embeddings;
+                self.is_learning_embeddings = false;
+                if self.spectate_mode {
+                    self.think(
+                        "GPU",
+                        "🧠",
+                        format!(
+                            "Learned embeddings: {} word vectors from {} cells",
+                            self.embeddings.vocab_size, self.embeddings.cells_scanned
+                        ),
+                    );
+                }
+            }
+        }
+
+        // Trigger new learning if needed and not already running
+        if !self.is_learning_embeddings && self.embeddings.needs_rebuild(self.universe.count()) {
             let normalizer = kai::core::get_normalizer();
             let cell_data: Vec<(String, Vec<String>)> = self
                 .universe
@@ -1967,17 +2044,16 @@ impl App {
                 .iter()
                 .map(|c| (c.text.clone(), normalizer.normalize_text(&c.text)))
                 .collect();
-            self.embeddings.learn_from_cells(&cell_data);
-            if self.spectate_mode {
-                self.think(
-                    "GPU",
-                    "🧠",
-                    format!(
-                        "Learned embeddings: {} word vectors from {} cells",
-                        self.embeddings.vocab_size, self.embeddings.cells_scanned
-                    ),
-                );
-            }
+
+            let (tx, rx) = std::sync::mpsc::channel();
+            self.embedding_rx = Some(rx);
+            self.is_learning_embeddings = true;
+            let mut embeddings_clone = self.embeddings.clone();
+
+            std::thread::spawn(move || {
+                embeddings_clone.learn_from_cells(&cell_data);
+                let _ = tx.send(embeddings_clone);
+            });
         }
 
         // ── WORKING MEMORY DECAY ──────────────────────────────────────
@@ -2788,14 +2864,23 @@ impl App {
     }
 
     fn save_state(&self) {
-        let _result = kai::persistence::save(
-            &self.universe,
-            &self.candidates,
-            &self.drive,
-            self.tick,
-            self.dream_count,
-            &self.base_dir,
-        );
+        let universe = self.universe.clone();
+        let candidates = self.candidates.clone();
+        let drive = self.drive.clone();
+        let tick = self.tick;
+        let dream_count = self.dream_count;
+        let base_dir = self.base_dir.clone();
+
+        std::thread::spawn(move || {
+            let _result = kai::persistence::save(
+                &universe,
+                &candidates,
+                &drive,
+                tick,
+                dream_count,
+                &base_dir,
+            );
+        });
     }
 
     /// Conversational learning — Ryan teaches KAI directly.
@@ -3425,16 +3510,19 @@ impl App {
     }
 
     fn run_intake_cycle(&mut self) {
-        let (topic, added) = kai::bridge::intake_cycle(&mut self.universe);
-        if added > 0 {
-            self.last_intake_text = format!(
-                "🌐 Learned \"{}\": +{} cells ({}→{})",
-                topic,
-                added,
-                self.universe.count() - added,
-                self.universe.count(),
-            );
+        if self.is_intaking {
+            return;
         }
+
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.intake_rx = Some(rx);
+        self.is_intaking = true;
+
+        std::thread::spawn(move || {
+            if let Some(result) = kai::bridge::intake_cycle_async() {
+                let _ = tx.send(result);
+            }
+        });
     }
 
     // ── INPUT PROCESSING ─────────────────────────────────────────────────────
@@ -9629,6 +9717,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
+    // ── `kai --train-hlv [path]` — absorb the HLV theory into the lattice ──
+    if let Some(pos) = args.iter().position(|a| a == "--train-hlv") {
+        let path = args.get(pos + 1).cloned().unwrap_or_else(|| "data/ingest/hlv_raw.txt".to_string());
+        train_hlv_command(&path);
+        return Ok(());
+    }
+
     // ── `kai --train-real [flags]` — train NeuralVsaMapper against a real LLM ──
     // Uses Ollama's /api/embeddings to get dense hidden states from a
     // real language model (nomic-embed-text by default, or mistral:7b,
@@ -9938,4 +10033,143 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
     terminal.show_cursor()?;
     Ok(())
+}
+
+fn train_hlv_command(path: &str) {
+    println!("── HLV Lattice Training Epoch (Surgical) ──");
+    
+    // If the user points to a PDF, redirect to the extracted text version
+    let target_path = if path.to_lowercase().ends_with(".pdf") {
+        let fallback = "data/ingest/hlv_raw.txt";
+        if std::path::Path::new(fallback).exists() {
+            println!("(Redirecting from PDF to extracted text: {})", fallback);
+            fallback
+        } else {
+            path
+        }
+    } else {
+        path
+    };
+
+    let text = match std::fs::read_to_string(target_path) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("ERROR: Could not read text file at {}: {}", target_path, e);
+            println!("(Please ensure you are pointing to a .txt file containing the PDF text)");
+            return;
+        }
+    };
+
+    let base_dir = std::env::current_dir()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| ".".to_string());
+
+    let (mut universe, candidates, drive, tick, dream_count) = 
+        if kai::persistence::state_exists(&base_dir) {
+            kai::persistence::load(&base_dir).unwrap_or((Universe::new(), CandidateBuffer::new(), Drive::default(), 0, 0))
+        } else {
+            (Universe::new(), CandidateBuffer::new(), Drive::default(), 0, 0)
+        };
+
+    println!("Absorbing HLV Atoms from {}...", target_path);
+    
+    let mut current_title = "Preamble".to_string();
+    let mut sections_count = 0;
+    let mut atom_count = 0;
+
+    for line in text.lines() {
+        let trimmed = line.trim();
+        // Section Header Detection
+        if !trimmed.is_empty() && trimmed.chars().next().unwrap().is_numeric() && trimmed.contains('.') {
+            current_title = trimmed.to_string();
+            sections_count += 1;
+        } else if !trimmed.is_empty() && trimmed.len() > 40 {
+            // Treat each significant paragraph as a "Theoretic Atom"
+            universe.store_or_reinforce(trimmed, "hlv-theory", &format!("hlv:{}", current_title), 0.85);
+            atom_count += 1;
+        }
+    }
+    
+    println!("Ingestion Complete: {} sections split into {} theoretic atoms.", sections_count, atom_count);
+    
+    // ── Phase 2: Lattice-First Digestion (Forced Focus) ────────────────────
+    println!("Digesting HLV Framework (Forced Resonance Weaving)...");
+    
+    let mut hlv_candidates = CandidateBuffer::new();
+    let mut thresholds = PromotionThresholds::default();
+    thresholds.seen_count = 2; 
+    thresholds.best_confidence = 0.40; // Looser gate for initial synthesis
+    
+    let mut bridges_built = 0;
+    let mut insights_promoted = 0;
+
+    // Identify HLV atoms for forced selection
+    let hlv_indices: Vec<usize> = universe.cells().iter().enumerate()
+        .filter(|(_, c)| c.region == "hlv-theory")
+        .map(|(i, _)| i)
+        .collect();
+
+    if hlv_indices.len() < 2 {
+        println!("Warning: Not enough HLV atoms found to resonate.");
+    } else {
+        // DIAGNOSTIC — sample 10 pairs, print real similarity values
+        {
+            use rand::Rng;
+            let mut rng2 = rand::thread_rng();
+            println!("  [diag] Sampling 10 random HLV pair similarities:");
+            for _ in 0..10 {
+                let a_idx = hlv_indices[rng2.gen_range(0..hlv_indices.len())];
+                let b_idx = hlv_indices[rng2.gen_range(0..hlv_indices.len())];
+                if a_idx == b_idx { continue; }
+                let cells = universe.cells();
+                let sim = cells[a_idx].vec.cosine(&cells[b_idx].vec);
+                println!("    pair ({},{}) => {:.6}", a_idx, b_idx, sim);
+            }
+        }
+
+        use rand::Rng;
+        let mut rng = rand::thread_rng();
+        let mut pairs_above_threshold = 0u32;
+        let mut consolidate_returned_some = 0u32;
+
+        for i in 0..25000 {
+            // FORCED SELECTION: Pick two HLV atoms specifically
+            let idx_a = hlv_indices[rng.gen_range(0..hlv_indices.len())];
+            let idx_b = hlv_indices[rng.gen_range(0..hlv_indices.len())];
+            if idx_a == idx_b { continue; }
+
+            // Count how far pairs get
+            let sim = universe.cells()[idx_a].vec.phasor_coherence(&universe.cells()[idx_b].vec);
+            if sim >= 0.01 { pairs_above_threshold += 1; }
+
+            // Targeted resonance between these two atoms
+            if let Some(dream) = kai::cognition::consolidate_pair(&universe, idx_a, idx_b) {
+                consolidate_returned_some += 1;
+                kai::cognition::observe_dream(&mut hlv_candidates, &dream);
+                kai::cognition::reinforce_dream_sources(&mut universe, &dream);
+                
+                if kai::cognition::store_synthesis(&mut universe, &dream) {
+                    bridges_built += 1;
+                }
+
+                if i % 100 == 0 {
+                    let res = kai::cognition::run_promotion(&mut hlv_candidates, &mut universe, &thresholds);
+                    insights_promoted += res.promoted.len();
+                }
+            }
+        }
+        println!("  [diag] pairs above 0.01 threshold: {}", pairs_above_threshold);
+        println!("  [diag] consolidate_pair returned Some: {}", consolidate_returned_some);
+        let gs = kai::cognition::gate_stats();
+        println!("  [diag] GATE STATS: accepted={}, rejected_confidence={}, rejected_chi={}, rejected_phi_drop={}",
+            gs.accepted, gs.rejected_confidence, gs.rejected_chi, gs.rejected_phi_drop);
+    }
+
+    println!("Digestion Complete:");
+    println!("  Lattice Resonance Bridges Built: {}", bridges_built);
+    println!("  Theoretic Insights Promoted:    {}", insights_promoted);
+
+    println!("Saving final lattice state...");
+    kai::persistence::save(&universe, &candidates, &drive, tick, dream_count, &base_dir);
+    println!("Done.");
 }

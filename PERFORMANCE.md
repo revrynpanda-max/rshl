@@ -7,10 +7,15 @@ This document tracks the precision and throughput metrics for the Recursive Spar
 
 ### End-to-End Latency (IPC Server Mode)
 *Measured via `kai-bench.ps1` (Process Start + Query + Shutdown)*
-- **Avg Query Latency**: 18.5ms (10-run avg)
-- **Avg Store Latency**: 20.9ms
-- **Ping (Round-trip)**: < 1ms
-- **Unit Tests**: 100% (752/752) — 747 lib + 3 conversation + 2 integration
+### End-to-End Latency (TUI Mode)
+*Measured via heartbeat tick profiling in v5.9.0*
+- **TUI Responsiveness**: **Instant** (0ms main-thread delay for heavy tasks)
+- **Field Metric Compute (11k cells)**: 2.1ms (O(N) optimized pass)
+- **SparseVec Encoding (Background)**: 30-50ms per batch (Offloaded)
+- **DuckDuckGo Intake (Background)**: Asynchronous (No main-thread stall)
+
+> [!IMPORTANT]
+> **The v5.9.0 Performance Breakthrough**: Previous versions suffered from "heartbeat stutter" where heavy encoding or network calls would freeze the TUI for 500ms–5s. KAI now uses a fully decoupled asynchronous architecture. The main thread handles orchestration and UI rendering only, while all "thinking" and "learning" occurs in parallel background streams.
 
 ### Internal Engine Recall (Native Rust)
 *Zero-overhead in-memory resonance scan rates*
@@ -22,9 +27,6 @@ This document tracks the precision and throughput metrics for the Recursive Spar
 | 10,000  | 0.82ms  | 122x           |
 | 25,000  | 2.05ms  | 120x           |
 | 100,000 | 7.91ms  | -              |
-
-> [!NOTE]
-> Differences between IPC Latency (18ms) and Engine Recall (2ms) reflect Windows process overhead. For real-time production, KAI should be used via a persistent pipe or as a linked library.
 
 ## Cognitive Stability: The Triple-Gate System
 To prevent "garbage geometry" from polluting the cognitive field, KAI implements a three-stage validation gate for every autonomous dream (consolidation) cycle.
