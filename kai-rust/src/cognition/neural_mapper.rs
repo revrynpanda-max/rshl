@@ -112,11 +112,24 @@ use crate::core::sparse_vec::{SparseVec, DIM};
 // ─────────────────────────────────────────────────────────────────────
 
 /// Hidden width of the probe. Smaller = cheaper to train, less
-/// capacity. 512 is the default because `W2` ends up at
-/// `16384 × 512 ≈ 8.4 M` params (~32 MB as f32) — big enough to fit
-/// meaningful structure, small enough for single-sample SGD in pure
-/// Rust to feel instant.
-pub const DEFAULT_D_HIDDEN: usize = 512;
+/// Minimum useful hidden width for real LLM embeddings.
+///
+/// **Why 2048?**
+/// Real embedding models (Mistral 7B, Llama 3, nomic-embed-text) produce
+/// dense vectors of 4096 or 768 dimensions. At 512 the mapper imposes an
+/// 8:1 compression before the output layer — the bottleneck collapses the
+/// manifold and cosine similarity stays near 0.21 with every input mapping
+/// to the same 2-3 tokens. 2048 gives a comfortable 2:1 ratio for 4096-dim
+/// inputs and is still well within single-sample SGD budget (~134 M f32 for
+/// W1 + W2 at d_in=4096 → ~512 MB, acceptable for a one-shot training run).
+///
+/// For stub/test training (`--stub-embedder`, d_in=384) this constant is
+/// still used as the default but the mapper is mildly over-parameterised —
+/// that's fine; stub runs are only for pipeline validation.
+///
+/// The `train_real` path overrides this with `max(2048, d_in / 2)` after
+/// d_in is auto-discovered, so very large models (d_in=8192) get 4096.
+pub const DEFAULT_D_HIDDEN: usize = 2048;
 
 /// Default learning rate for the output-layer SGD. Matches common
 /// linear-probe recipes (Alain & Bengio, 2016; Bronzini et al., 2025).

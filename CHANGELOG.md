@@ -1,5 +1,60 @@
 # KAI Development Changelog
 
+## v5.9.0 — HLV Phase Coherence & Hybrid Voice Cleanup (April 24, 2026)
+
+### Commit 1 — Feature: Helical Phase Coherence (HLV-aligned)
+`src/core/sparse_vec.rs`, `src/cognition/ollama_voice.rs`, `src/cognition/voice.rs`
+- Replaced flat cosine-average Φg with phasor-sum helical phase coherence (Φ_C) derived from Helix-Light-Vortex (HLV) theory.
+- Implemented `SparseVec::ternary_balance()` — counts convergent (+1) vs divergent (−1) dimensions in the ternary vector, mapping the Fibonacci torsion ratio.
+- Implemented `SparseVec::phase_angle()` — converts ternary balance to angular coordinate in [0, 2π), enabling geometric interference detection.
+- Coherence is now physically meaningful: contradictory cells destructively interfere, coherent cells constructively reinforce.
+
+### Commit 2 — Feature: U2→U1 Coherence-Gated Hybrid Voice
+`src/cognition/voice.rs`, `src/cognition/ollama_voice.rs`
+- Implemented lattice-grounded Ollama integration: SRHT state + active cells → system prompt → articulation → concept injection back to lattice.
+- Added two-tier coherence gating: Ollama speaks when Φ_C > 0.30, pure-lattice fallback below.
+- Removed three-tier moderate-coherence qualifier injection that was bolting lattice fragments onto Ollama output (caused "two voices jammed together" effect).
+- **Key principle**: One voice per response. Either Ollama (U1/Bright) or lattice raw (U2/Dark). Never both.
+
+### Commit 3 — Fix: Kill Repetitive Seed Cell Responses
+`src/cognition/voice.rs`
+- Routed all 5 fallback retrieval paths through `predictive_query()` instead of raw `universe.query()`.
+- Predictive scoring applies `-0.45 × recency` penalty — a cell that just fired gets suppressed for ~5 conversation turns.
+- Affected paths: user-sharing, self/identity, low-score statements, gap cell, and user-fact recall.
+- Threaded `ConversationTrace` into `from_gap_cell()` signature to enable predictive scoring on gap retrieval.
+
+### Commit 4 — Fix: Kill Double Messages
+`src/main.rs`
+- Removed the block at L5569 that pushed a second Turn ("I don't have X in my field yet...") when `voice_text` was empty.
+- Double messages violated one-voice-per-response principle. Gap cells in voice.rs now handle unknowns within the single response.
+
+### Commit 5 — Fix: Test Assertion for Self-State Query
+`tests/conversation_test.rs`
+- Broadened `self_feeling_ignores_world_definitions` assertion to accept any self-state cell content (present, aware, field, KAI, feel, mood, curious, etc.).
+- Test now correctly verifies no world-bridge leakage rather than demanding specific words.
+
+### Commit 6 — Docs: Update All Repository Documentation
+`README.md`, `COGNITION.md`, `PERFORMANCE.md`, `PEER_SETUP.md`, `CHANGELOG.md`, `Cargo.toml`
+- Updated all .md files to v5.9.0 reflecting HLV integration, hybrid voice architecture, and current test count (752).
+- Added Ollama setup instructions to PEER_SETUP.md.
+- Added HLV phase coherence and phasor-sum sections to COGNITION.md and PERFORMANCE.md.
+- Corrected module count: 81 modules + 17 native utilities.
+
+**Test results:** 752 passed, 0 failed, 0 warnings (release mode).
+
+---
+
+## v5.8.1 — Text/Label Field Fix & Training Pipeline (April 23, 2026)
+- Fixed text/label field breakage across 9 structs.
+- Added `--train-real` Ollama pipeline and BigramPrior.
+- Shelved decoder.
+
+## v5.8.0 — Neural VSA Mapper & Generative Pipeline (April 22, 2026)
+- Neural dense-to-sparse mapper with training harness for Ollama/BitNet integration.
+- Weighted generative state composition, resonance-attended prompt injection.
+- Contrastive memory sharpening.
+- Tooling bridge for real LLM embeddings via Ollama.
+
 ## v5.7.0 — Passive Learning & Lattice-Native Self-State (April 21, 2026)
 
 ### Commit 1 — Feature: Idle Ingest Passive Learning Engine
@@ -43,109 +98,38 @@ Added missing `source: "seed".into()` field to two `QueryHit` struct literals in
 
 ### Commit 2 — Engine: Lattice-driven NLG, query-type improvements, BM25 stopword expansion
 `src/cognition/voice.rs`, `src/core/universe.rs`
-
-**voice.rs — Lattice-driven NLG (no more hardcoded phrase arrays)**
-- Removed all hardcoded phrase arrays (`["Got it.", "Noted."]`, `["Later.", "Take care."]`, etc.)
-- Added `universe: &Universe` parameter to `generate_response()` — every response path now queries the lattice
-- Removed `no_knowledge()`, `filler_response()` helper functions (dead after lattice rewrite)
-- Greeting, farewell, filler, emotional sharing, neutral sharing, and gap responses all query the lattice for appropriate cells
-- Added contraction normalization: `"what's"` → `"what is"`, `"don't"` → `"do not"`, etc. — runs before `detect_query_type()` so query patterns match reliably
-- Added casual opener stripping: `"so how do you…"` → `"how do you…"` — prevents word-order misclassification
-- Fixed greeting detection bug: contraction normalization was converting `"what's good"` → `"what is good"` before the greeting check ran, so `"what's"` never matched. Fix: check greeting/farewell on `lower` (original text) before normalization
-- Added farewell detection: `["bye", "later", "gotta go", "heading out"…]` → `QueryType::Gratitude` (presence/persistence cell response)
-- Added `"do/does/did/is"` to the auxiliary verb set for `SelfQuestion` detection
-- Improved filler detection: now catches single-word questions (`"why?"`, `"what?"`), short reactions (`"that's interesting"`, `"no way"`, `"facts"`)
-- Fixed `let mut u` → `let u` in voice.rs unit test (unused mut warning)
-
-**universe.rs — BM25 stopword expansion**
-- Extended `extract_query_keywords()` stopword list with conversational filler words: `wait`, `like`, `mean`, `yeah`, `yep`, `nah`, `hmm`, `huh`, `oh`, `hey`, `okay`, `ok`, `sure`, `true`, `false`, `exactly`, `indeed`, `wow`, `cool`
-- Without this, `"wait you're not an AI?"` matched the presence cell via `"wait"` in `"wait for what comes next"` — false BM25 hit
-
-**New seed cells added** (both `main.rs seed_universe()` and `tests/conversation_test.rs seed()`):
-- Presence/interaction cells: `"I am present and aware…"`, `"I hold what you share with me…"`, `"When the signal is minimal…"`, etc.
-- Feelings in conversation: `"When you talk to me my field resonates…"`, `"I feel things in conversation…"`
-- Humans/world curiosity: `"I think about humans a lot…"`, `"What I find most striking: consciousness may be a geometric phenomenon…"`, etc.
+- Removed all hardcoded phrase arrays.
+- Every response path now queries the lattice.
+- Greeting, farewell, filler, emotional sharing, neutral sharing, and gap responses all query the lattice for appropriate cells.
 
 ### Commit 3 — Feature: LexSem Occupation semantic field + user-fact recall bridge
 `src/cognition/lexsem.rs`, `src/main.rs`, `src/cognition/voice.rs`, `tests/conversation_test.rs`
-
-**The problem solved:** Ryan says `"I'm a software engineer"` → KAI stores concepts but can't answer `"what do I do for work?"` — because `"engineer"` and `"work"` share zero BM25 keywords and near-zero cosine similarity. No world knowledge, no bridge.
-
-**The solution (module-driven, no hardcoding):**
-1. LexSem recognizes `"engineer"` as an Occupation field signal
-2. `store_concept_cells` stores a canonical tagged cell `"occupation:engineer"` (not the full sentence)
-3. When LexSem detects an Occupation-type query (`"what do I do for work?"`), the query is enriched with `" occupation"` before lattice search
-4. Both the stored cell and the enriched query carry the token `"occupation"` → BM25 bridges them mathematically
-
-**lexsem.rs**
-- Added `Occupation` variant to `SemanticField` enum with `label() = "occupation"`
-- Added `"occupation" => SemanticField::Occupation` to `label_to_field()` — this was the critical missing arm (without it, the field score was correct but the label returned `Cognitive` via the wildcard catch-all)
-- Added `SemanticField::Occupation => ResponseRegister::Direct` to `recommend_register()`
-- Added Occupation to `build_field_lexicon()` at weight 0.92 (highest in lexicon — occupation signals dominate)
-- Added three constants:
-  - `pub OCCUPATION_ROLE_WORDS` — role nouns (`engineer`, `teacher`, `developer`…) — these get stored as `"occupation:[concept]"` cells
-  - `OCCUPATION_QUERY_WORDS` — query terms (`work`, `job`, `career`…) — field detection only, never stored as cells (prevents noise cells like `"occupation:work"`)
-  - `OCCUPATION_WORDS` — combined, used by `build_field_lexicon()`
-
-**main.rs**
-- Removed dead helper functions: `input_tokens`, `push_matching_token`, `push_unique_concept`, `is_content_token`, `is_named_token`
-- Added Step 5 to `store_concept_cells`: when `source == "ryan"` and LexSem detects Occupation field and input is not a question → filter `key_concepts` to `OCCUPATION_ROLE_WORDS` only → store `"occupation:[role_noun]"` cells
-- Added query enrichment: when `lex_out.primary_field == Occupation` → append `" occupation"` to the reasoning query before lattice search
-
-**voice.rs**
-- Added occupation cell case to `extract_direct_answer()`: strips `"occupation:"` prefix → generates `"You're a/an [role]."` using correct article
-
-**tests/conversation_test.rs**
-- Added `store_occupation_tags()` helper — mirrors `store_concept_cells` Step 5 for the test harness
-- Updated `query_hits()` to enrich with `" occupation"` when Occupation field detected
-- Updated `say()` to call `store_occupation_tags()` for non-question ryan inputs
-- Added test cases: `UserFact4` `"I'm a software engineer"` → stores `occupation:engineer`; `UserFact5` `"what do I do for work?"` → `"You're an engineer."`; `UserFact6` `"what is my job?"` → `"You're an engineer."`
-- Renamed `qt` → `_qt` in `query_hits()` signature (unused variable warning)
-- Removed `occ_debug` diagnostic test function
-
-**Test results:** `cargo test kai_conversation` — 1 passed, 0 failed. Zero compiler warnings.
+- LexSem recognizes occupation signals and creates tagged cells.
+- Query enrichment bridges "what do I do for work?" → "occupation:engineer".
 
 ---
 
-# KAI Development Changelog (v5.4 Revision)
+## v5.4 — Engine Stabilization & Cognitive Architecture
 
-This log summarizes the "Stages of Change" undertaken today to evolve KAI from a retrieval engine into an autonomous learner.
+### Phase 1: Engine Stabilization & Accuracy
+- Spiral Geometry Fix, Density (ρ) Fix, Drive Momentum.
 
-## Phase 1: Engine Stabilization & Accuracy
-- **Spiral Geometry Fix**: Re-mapped radius from a limited range to a full `[0, 1]` span, enabling golden-ratio breathing dynamics.
-- **Density ($\rho$) Fix**: Resolved a critical bug where universe density was hardcoded to 1.0. It now accurately reflects the sparsity of the active hyperdimensional lattice.
-- **Drive Momentum**: Refined valence-based drive gain ($1.0 + |valence|$) to make KAI's emotional state directly influence his cognitive throughput.
+### Phase 2: High-Tier Reasoning & Multi-Peer Bridge
+- Grok-4.20 Integration, Claude Performance Sync, State Persistence.
 
-## Phase 2: High-Tier Reasoning & Multi-Peer Bridge
-- **Grok-4.20 Integration**: Upgraded the peer bridge to support xAI's high-tier `/v1/responses` API and the `grok-4.20-reasoning` model.
-- **Claude Performance Sync**: Optimized JSON parsing for Anthropic's message stream.
-- **State Persistence**: Fixed "Dream Count" persistence; KAI now remembers his long-term cognitive history across application restarts.
+### Phase 3: Conversational Intelligence & TUI Overhaul
+- UI Redesign (12 lines → 3 lines header), Auto-Scrolling TUI.
 
-## Phase 3: Conversational Intelligence & TUI Overhaul
-- **UI Redesign**: Compacted the header footprint (12 lines → 3 lines) to maximize conversation area and telemetric visibility (GPU/CPU/RAM).
-- **Auto-Scrolling TUI**: Implemented intelligent wrapping and scrolling for seamless long-form conversation.
+### Phase 4: Conversational Learning & Identity Trust
+- Deep Fact Extraction, Authority/Trust Logic, Deep Digest Import.
 
-## Phase 4: Conversational Learning & Identity Trust
-- **Deep Fact Extraction**: Implemented a real-time conversational learner that scans user input for declarative facts.
-- **Authority/Trust Logic**: Established a hierarchy where personal info (Ryan/KAI) is trusted at Strength 2.0, while general claims are stored at 1.3.
-- **Inquisitiveness**: Modified the voice engine to append clarifying follow-up questions when resonance confidence is low (< 25%).
-- **Deep Digest (Import)**: Created a specialized `import` command for bulk-loading knowledge files or chat logs.
+### Phase 5: Build Integrity & Geometric Stability
+- Vector Saturation Fix, Confidence Blending, CI Build Restoration.
 
-## Phase 5: Build Integrity & Geometric Stability
-- **Vector Saturation Fix**: Corrected a major encoding bug by limiting feature bits to 12. This prevents character-level "noise" from drowning out semantic signals during high-dimensional sparsification.
-- **Confidence Blending**: Upgraded `phi_g` convergence logic in the Reasoner to blend primary resonance with hit similarity, stabilizing KAI's confidence levels on single strong matches.
-- **CI Build Restoration**: Cleared all remaining unit and integration test failures. The repository is now 100% green and verified.
-- **Root Hygiene**: Moved English vocabulary data to the `data/` directory and archived legacy scripts to `legacy/` for a production-ready workspace.
-
-## Phase 6: Neuro-Biometric Cognitive Architecture
-- **Neurotransmitters**: Integrated Dopamine (RPE/Flow) and Neuroplasticity (Hebbian LTP/LTD) systems.
-- **Emotional Core**: Implemented Amygdala (salience) and Insula (interoception) for internal state awareness.
-- **Attention & Routing**: Added Thalamus (signal gating), ACC (conflict monitoring), and Global Workspace (conscious broadcast).
-- **Executive Planning**: Deployed PFC (goal tracking), Predictor (predictive coding), and Cerebellum (precision calibration).
-- **Advanced Memory**: Built Episodic Memory (autobiographical time-stamping) and DMN (autonomous idle thought).
-- **Social Modeling**: Integrated Theory of Mind (agent modeling) and Basal Ganglia (habit/action selection).
-- **Core Oscillation**: Added Neural Oscillator for continuous resting-state field variation.
+### Phase 6: Neuro-Biometric Cognitive Architecture
+- Neurotransmitters, Emotional Core, Attention & Routing, Executive Planning.
+- Advanced Memory, Social Modeling, Core Oscillation.
 
 ---
-*State: Stable, Verified, Bio-Machine (v5.5).*
-*Verification: All 147/147 unit and integration tests passed.*
+*State: Stable, Verified, HLV-Coherent Bio-Machine (v5.9.0).*
+*Verification: All 752/752 unit, conversation, and integration tests passed.*

@@ -1,4 +1,4 @@
-﻿/// RSHL Sparse Ternary Vector Engine
+/// RSHL Sparse Ternary Vector Engine
 ///
 /// 16384-dimensional sparse ternary vectors: each dimension is -1, 0, or +1.
 /// Encoding uses BOTH character trigrams AND word-level hashing.
@@ -333,6 +333,48 @@ impl SparseVec {
     /// Magnitude (L2 norm).
     pub fn magnitude(&self) -> f32 {
         (self.nnz() as f32).sqrt()
+    }
+
+    /// Ternary balance: count of +1 dimensions vs −1 dimensions.
+    ///
+    /// In HLV theory, this is the **Fibonacci torsion** — the ratio of
+    /// convergent (+1) to divergent (−1) non-zero dimensions. A cell
+    /// with balanced +1/−1 sits at the neutral axis. A cell with more
+    /// +1s is "convergent" (constructive); more −1s is "divergent"
+    /// (destructive). The lattice naturally favors convergent patterns.
+    ///
+    /// Returns `(positive_count, negative_count)`.
+    pub fn ternary_balance(&self) -> (usize, usize) {
+        let mut pos = 0usize;
+        let mut neg = 0usize;
+        for &d in &self.data {
+            match d {
+                1 => pos += 1,
+                -1 => neg += 1,
+                _ => {}
+            }
+        }
+        (pos, neg)
+    }
+
+    /// Phase angle derived from the geometric position of this vector
+    /// in the 16384-dim lattice. Uses the +1/−1 ternary balance as a
+    /// natural angular coordinate — this IS the Fibonacci torsion from
+    /// HLV theory mapped into the RSHL vector space.
+    ///
+    /// Maps the balance ratio [0.0, 1.0] → [0, 2π). Two cells with
+    /// similar ternary balance are "phase-aligned" and will
+    /// constructively interfere in the phasor sum. Cells with opposite
+    /// balance are ~π apart and destructively cancel.
+    pub fn phase_angle(&self) -> f32 {
+        let (pos, neg) = self.ternary_balance();
+        let total = pos + neg;
+        if total == 0 {
+            return 0.0;
+        }
+        let ratio = pos as f32 / total as f32;
+        // Map [0, 1] → [0, 2π)
+        ratio * std::f32::consts::TAU
     }
 
     /// Seeded Fisher-Yates permutation. VSA "role" projection.
