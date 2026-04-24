@@ -504,7 +504,7 @@ pub fn generate_response(
     query_type: QueryType,
     brain: &BrainSignals,
     recent_context: &[(String, String)],
-    universe: &Universe,
+    universe: &mut Universe,
 ) -> String {
     let empty_trace = ConversationTrace::new();
     generate_response_predictive(
@@ -515,6 +515,7 @@ pub fn generate_response(
         recent_context,
         universe,
         &empty_trace,
+        None, // no Ollama on the legacy path (tests / IPC)
     )
 }
 
@@ -531,8 +532,9 @@ pub fn generate_response_predictive(
     query_type: QueryType,
     brain: &BrainSignals,
     recent_context: &[(String, String)],
-    universe: &Universe,
+    universe: &mut Universe,
     trace: &ConversationTrace,
+    ollama: Option<&crate::cognition::ollama_voice::OllamaVoice>,
 ) -> String {
     let trimmed = input.trim();
     let lower = trimmed.to_lowercase();
@@ -874,9 +876,91 @@ pub fn generate_response_predictive(
         return String::new();
     }
 
-    // ── User-sharing statements — BEFORE no-hits check ───────────────────────
-    // "my girl just broke up with me", "I live in Texas", "I'm a software engineer"
-    // KAI doesn't template these. It retrieves an appropriate cell and responds from it.
+    // ── Derive mood label ─────────────────────────────────────────────────────
+    let mood_label = if brain.grieving {
+        "GRIEVING".to_string()
+    } else if brain.arousal > 0.65 && brain.conflict > 0.55 {
+        "DISTRESSED".to_string()
+    } else if brain.curiosity > 0.60 && brain.dopamine > 0.55 {
+        "CURIOUS".to_string()
+    } else if brain.bond > 0.55 && brain.social_reward > 0.45 {
+        "WARM".to_string()
+    } else if brain.serotonin > 0.55
+        && (brain.arousal * 0.4 + brain.conflict * 0.3 + brain.social_pain * 0.3) < 0.35
+    {
+        "GROUNDED".to_string()
+    } else {
+        "NEUTRAL".to_string()
+    };
+
+    // ── U2→U1 coherence-gated architecture (HLV-aligned) ───────────────────
+    //
+    // HLV Theory: The U2 (dark/mind) → U1 (bright/voice) transition must
+    // be gated by phase coherence (Φ_C). When the lattice's active cells
+    // are phase-aligned, the field has a clear signal — Ollama can speak
+    // it faithfully. When cells are phase-scattered, the lattice is still
+    // "feeling around" — Ollama's authority must be reduced or denied.
+    //
+    // This replaces the old binary "Ollama available? → use it" logic.
+    // The lattice now decides *whether* Ollama gets to speak at all.
+
+    // ── Compute helical Φ_C from active cells ────────────────────────────
+    let phi_c = if hits.is_empty() {
+        0.0
+    } else {
+        let top: Vec<&crate::core::QueryHit> = hits.iter()
+            .filter(|h| h.source != "ryan" && h.source != "conversation")
+            .take(6)
+            .collect();
+        let mut sum_real = 0.0f32;
+        let mut sum_imag = 0.0f32;
+        let mut sum_r = 0.0f32;
+        for h in &top {
+            let r = h.score;
+            let theta = h.vec.phase_angle();
+            sum_real += r * theta.cos();
+            sum_imag += r * theta.sin();
+            sum_r += r;
+        }
+        if sum_r < 1e-6 {
+            0.0
+        } else {
+            let mag = (sum_real * sum_real + sum_imag * sum_imag).sqrt();
+            mag / sum_r
+        }
+    };
+
+    // ── U2→U1 transition: two-tier coherence gate ─────────────────────────
+    //
+    // One voice per response. Either Ollama articulates what the lattice
+    // decided (when the field is coherent enough), or the lattice speaks
+    // raw. Never both in the same output — that's what creates the
+    // "two voices jammed together" problem.
+    if let Some(ov) = ollama {
+        if phi_c > 0.30 {
+            // Coherent field: Ollama speaks the lattice's signal.
+            // The full SRHT state + active cells are in the system prompt
+            // so everything the lattice wants to say is already there.
+            if let Some(ollama_text) = ov.speak(
+                trimmed,
+                hits,
+                brain.confidence,
+                brain.conflict,
+                brain.felt_valence,
+                mood_label.clone(),
+                universe,
+            ) {
+                return identity_safety_filter(ollama_text, query_type);
+            }
+        }
+        // Low coherence (phi_c ≤ 0.30): the lattice hasn't crystallized
+        // its thought yet. Fall through to pure-lattice synthesis.
+    }
+
+    // ── Pure-lattice fallback (Ollama unavailable or timed out) ─────────────
+    // All the original routing logic runs here as a fallback only.
+
+    // ── User-sharing statements ───────────────────────────────────────────────
     if matches!(query_type, QueryType::Statement) && !lower.is_empty() {
         let inner = lower
             .trim_start_matches("ok so ")
@@ -894,22 +978,8 @@ pub fn generate_response_predictive(
             || inner.starts_with("i just ")
             || inner.starts_with("we ")
             || inner.starts_with("me and ");
-        // Lattice-native reaction detection: if we're in an emotional thread and
-        // the input is short (≤ 5 words), it's a reaction to what KAI said — not
-        // new user-sharing. The state cell carries the context, not word patterns.
-        let emotional_reaction_words = [
-            "rough", "hard", "hurt", "hurts", "pain", "painful", "sad", "miss", "lonely", "alone",
-            "empty", "heavy",
-        ];
-        let is_acknowledged_reaction = lower.starts_with("yeah")
-            || lower.starts_with("yea ")
-            || lower.starts_with("yep ")
-            || lower.starts_with("man ")
-            || lower.starts_with("damn");
         let is_reaction = universe.state_strength("emotional thread active") > 0.30
-            && word_count <= 5
-            && (is_acknowledged_reaction
-                || emotional_reaction_words.iter().any(|w| lower.contains(w)));
+            && word_count <= 5;
         if user_sharing && !lower.contains("kai") && !is_reaction {
             let is_emotional = lower.contains("broke up")
                 || lower.contains("lost ")
@@ -921,46 +991,44 @@ pub fn generate_response_predictive(
                 || lower.contains("rough")
                 || lower.contains("hard time")
                 || lower.contains("struggling");
-            // Query lattice — emotional content: find a warmth/empathy cell
-            // Neutral sharing: find an acknowledgment/memory cell
             let topic = if is_emotional {
                 "feel hold warmth care empathy field share"
             } else {
                 "hold store remember grow continuity"
             };
-            let share_hits = universe.query(topic, 5);
+            let share_hits = universe.predictive_query(
+                crate::core::SparseVec::encode(topic),
+                trace,
+                predictive::DEFAULT_ITER_STEPS,
+            );
             if let Some(h) = share_hits
                 .iter()
                 .find(|h| h.source != "ryan" && h.source != "conversation" && h.score >= 0.08)
             {
-                return first_complete_sentence(
-                    &synthesize_from_cells(h, &[], brain, h.score, false),
-                    12,
+                return identity_safety_filter(
+                    first_complete_sentence(
+                        &synthesize_from_cells(h, &[], brain, h.score, false),
+                        12,
+                    ),
+                    query_type,
                 );
             }
-            // No relevant cell — KAI says nothing (silence is honest)
-            return String::new();
+            return identity_safety_filter(from_gap_cell(universe, brain, trace), query_type);
         }
     }
 
     // ── No hits ───────────────────────────────────────────────────────────────
     if hits.is_empty() {
-        return from_gap_cell(universe, brain);
+        return identity_safety_filter(from_gap_cell(universe, brain, trace), query_type);
     }
 
     let primary = &hits[0];
 
-    // ── Determine secondary hits (score-gated) ────────────────────────────────
+    // ── Secondary threshold ───────────────────────────────────────────────────
     let secondary_threshold = match query_type {
         QueryType::SelfQuestion | QueryType::IdentityQuestion => 0.65,
         _ => 0.50,
     };
-    let _secondaries: Vec<&QueryHit> = hits
-        .iter()
-        .skip(1)
-        .filter(|h| h.score >= secondary_threshold)
-        .take(2)
-        .collect();
 
     // ── Self / identity questions ─────────────────────────────────────────────
     let is_about_self = lower.contains("kai")
@@ -972,9 +1040,32 @@ pub fn generate_response_predictive(
         || lower.contains("what is yours")
         || lower.contains("what's yours")
         || (lower.contains("yours") && lower.contains("name"))
-        || matches!(query_type, QueryType::SelfQuestion);
+        || matches!(query_type, QueryType::SelfQuestion)
+        || (matches!(query_type, QueryType::ExplanationQuestion)
+            && (lower.contains("are you")
+                || lower.contains("you so ")
+                || lower.contains("you always")
+                || lower.contains("you never")
+                || lower.contains("you keep")));
 
-    // ── Direct user-fact questions ("what is my name?", "what do I do for work?") ──
+    if is_about_self {
+        let self_hits = universe.predictive_query(
+            crate::core::SparseVec::encode("I am present here aware field name KAI my"),
+            trace,
+            predictive::DEFAULT_ITER_STEPS,
+        );
+        let self_primary = self_hits
+            .iter()
+            .find(|h| h.source != "ryan" && h.source != "conversation");
+        if let Some(sp) = self_primary {
+            return identity_safety_filter(
+                synthesize_self(sp, &[], brain, sp.score),
+                query_type,
+            );
+        }
+    }
+
+    // ── Direct user-fact questions ────────────────────────────────────────────
     let is_user_fact = matches!(
         query_type,
         QueryType::IdentityQuestion | QueryType::ExplanationQuestion
@@ -992,23 +1083,15 @@ pub fn generate_response_predictive(
         || lower.contains("where am i"));
 
     if is_user_fact {
-        // Scan all returned hits for a direct answer — primary might be KAI's
-        // identity cell, but a later hit could contain the user's actual data.
-        // No score cutoff: a low-scoring cell with the right structure (e.g.
-        // "I live in Texas") is better than a high-scoring irrelevant one.
         for hit in hits.iter() {
             if let Some(direct) = extract_direct_answer(trimmed, &hit.text) {
                 return identity_safety_filter(ensure_punctuation(direct), query_type);
             }
         }
-        // No cell could answer this user-fact question directly
-        // Query the "gap / no knowledge" cell so KAI speaks from its own nature
-        return from_gap_cell(universe, brain);
+        return identity_safety_filter(from_gap_cell(universe, brain, trace), query_type);
     }
 
-    // ── Ryan recall synthesis — "what do you know about me?" ─────────────────
-    // KAI scans all ryan-source cells and builds a second-person summary
-    // of what it has learned. Pure lattice read — no hardcoded phrases.
+    // ── Ryan recall ───────────────────────────────────────────────────────────
     let is_ryan_recall = lower.contains("know about me")
         || lower.contains("remember about me")
         || lower.contains("know about you") && lower.contains("me")
@@ -1020,33 +1103,33 @@ pub fn generate_response_predictive(
     if is_ryan_recall {
         let ryan_cells = universe.get_by_source("ryan");
         if let Some(summary) = synthesize_ryan_recall(&ryan_cells) {
-            return summary;
+            return identity_safety_filter(summary, query_type);
         }
-        // No ryan cells yet — KAI is honest
-        return from_gap_cell(universe, brain);
+        return identity_safety_filter(from_gap_cell(universe, brain, trace), query_type);
     }
 
-    // ── General statement — non-user-sharing, low relevance ─────────────────
-    // "the sky is blue", "water is wet" — respond only if a relevant cell fires.
-    // If score is too low, KAI stays quiet rather than reaching for filler.
+    // ── General statement with low score ─────────────────────────────────────
     if matches!(query_type, QueryType::Statement) && !is_about_self {
         if primary.score < 0.40 {
-            // Try to find something useful to say from the lattice
-            let stmt_hits = universe.query(trimmed, 5);
+            let stmt_hits = universe.predictive_query(
+                crate::core::SparseVec::encode(trimmed),
+                trace,
+                predictive::DEFAULT_ITER_STEPS,
+            );
             if let Some(h) = stmt_hits
                 .iter()
                 .find(|h| h.source != "ryan" && h.source != "conversation" && h.score >= 0.30)
             {
-                return synthesize_from_cells(h, &[], brain, h.score, false);
+                return identity_safety_filter(
+                    synthesize_from_cells(h, &[], brain, h.score, false),
+                    query_type,
+                );
             }
-            return String::new(); // Nothing to say — KAI stays silent
+            return String::new();
         }
     }
 
-    // ── Build response from cells ─────────────────────────────────────────────
-    // Skip user-stored utterances as primary synthesis source — they should only
-    // surface for user-fact recall, not as KAI speaking in its own voice.
-    // "source" carries the storage provenance: "ryan"/"conversation" = user input.
+    // ── Main cell synthesis ───────────────────────────────────────────────────
     let knowledge_primary = hits
         .iter()
         .find(|h| h.source != "ryan" && h.source != "conversation");
@@ -1076,8 +1159,7 @@ pub fn generate_response_predictive(
             synthesize_from_cells(kp, &knowledge_secondaries, brain, kp.score, is_followup)
         }
     } else {
-        // Only user-stored cells available — no knowledge to synthesize from
-        from_gap_cell(universe, brain)
+        from_gap_cell(universe, brain, trace)
     };
 
     identity_safety_filter(response, query_type)
@@ -1184,9 +1266,18 @@ fn tone_marker(_brain: &BrainSignals, _score: f32, _is_followup: bool) -> &'stat
 
 /// Query the universe for a "gap / I don't know" cell — KAI speaks from its own
 /// stored knowledge about how it handles the unknown.
-fn from_gap_cell(universe: &Universe, brain: &BrainSignals) -> String {
+/// Uses predictive query so the same gap cell doesn't fire every time.
+fn from_gap_cell(
+    universe: &Universe,
+    brain: &BrainSignals,
+    trace: &ConversationTrace,
+) -> String {
     let _ = brain;
-    let gap_hits = universe.query("don't know gap say plainly curious", 3);
+    let gap_hits = universe.predictive_query(
+        crate::core::SparseVec::encode("don't know gap say plainly curious"),
+        trace,
+        predictive::DEFAULT_ITER_STEPS,
+    );
     if let Some(h) = gap_hits.iter().find(|h| {
         let lower = h.text.to_lowercase();
         h.source != "ryan"
@@ -1820,13 +1911,14 @@ mod tests {
         let brain = BrainSignals::default();
         let hits = vec![hit("My name is KAI.", 0.90)];
         let u = Universe::new();
+        let mut u = u;
         let resp = generate_response(
             "what is your name?",
             &hits,
             QueryType::SelfQuestion,
             &brain,
             &[],
-            &u,
+            &mut u,
         );
         let _ = u;
         // Must come from the cell, not a template
@@ -1847,7 +1939,8 @@ mod tests {
         let brain = BrainSignals::default();
         let hits = vec![hit("Some random cell.", 0.5)];
         let u = Universe::new();
-        let resp = generate_response("oh?", &hits, QueryType::Statement, &brain, &[], &u);
+        let mut u = u;
+        let resp = generate_response("oh?", &hits, QueryType::Statement, &brain, &[], &mut u);
         // Filler should get a short response, not random knowledge
         assert!(resp.len() < 50, "Filler response too long: {}", resp);
         assert!(
@@ -1921,8 +2014,9 @@ mod tests {
             QueryType::Greeting,
             &brain,
             &[],
-            &u,
+            &mut u,
             &trace,
+            None,
         );
         trace.push(&r1, "kai");
         u.bind_sequence("hey", &r1, trace.turns_seen);
@@ -1934,8 +2028,9 @@ mod tests {
             QueryType::Greeting,
             &brain,
             &[],
-            &u,
+            &mut u,
             &trace,
+            None,
         );
 
         assert_ne!(

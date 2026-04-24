@@ -543,6 +543,10 @@ struct App {
     peer_session_rx: Option<crossbeam_channel::Receiver<PeerMsg>>,
     /// Unique session ID — timestamp-based, used for transcript grouping.
     session_id: String,
+    /// Ollama voice bridge — articulates the lattice's decisions via a local LLM.
+    /// `None` when Ollama is not reachable at startup (system runs pure-lattice).
+    /// Set KAI_OLLAMA_MODEL env var to override the default model (mistral:7b).
+    ollama_voice: Option<kai::cognition::OllamaVoice>,
 }
 
 impl App {
@@ -729,6 +733,14 @@ impl App {
                     .unwrap_or_default()
                     .as_secs()
             ),
+            // Probe Ollama at startup. If not reachable the system stays pure-lattice.
+            // Override model with KAI_OLLAMA_MODEL env var (default: mistral:7b).
+            ollama_voice: {
+                let url = "http://127.0.0.1:11434";
+                let model = std::env::var("KAI_OLLAMA_MODEL")
+                    .unwrap_or_else(|_| "mistral:7b".to_string());
+                kai::cognition::OllamaVoice::new(url, &model)
+            },
         }
     }
 
@@ -5498,8 +5510,9 @@ impl App {
                     query_type,
                     &brain_signals,
                     &recent_ctx_with_memory,
-                    &self.universe,
+                    &mut self.universe,
                     &self.conv_trace,
+                    self.ollama_voice.as_ref(),
                 )
             };
             kai::cognition::transcript::append(
@@ -5550,32 +5563,11 @@ impl App {
                 }
             }
 
-            // ── Ask a question when KAI genuinely has no field resonance ──
-            // Extract the most substantive word from the input and ask about it.
-            // This is how KAI grows — by admitting ignorance and asking you.
-            if reasoning_input.split_whitespace().count() >= 3 {
-                let skip = [
-                    "what", "when", "where", "how", "does", "about", "think", "that", "this",
-                    "have", "from", "your", "with", "tell", "know", "kai", "you", "can", "the",
-                    "and", "for",
-                ];
-                let concept = reasoning_input
-                    .split_whitespace()
-                    .find(|w| w.len() > 4 && !skip.contains(&w.to_lowercase().as_str()))
-                    .map(|w| w.trim_matches(|c: char| !c.is_alphabetic()));
-                if let Some(word) = concept {
-                    let question = format!(
-                        "I don't have \"{}\" in my field yet. Can you tell me more about it so I can learn?",
-                        word
-                    );
-                    self.turns.push(Turn {
-                        role: "kai".into(),
-                        text: question,
-                        region: Some("memory".into()),
-                        score: None,
-                    });
-                }
-            }
+            // NOTE: Previously pushed a second Turn ("I don't have X in my
+            // field yet...") when voice_text was empty. Removed — double
+            // messages violate one-voice-per-response. If KAI doesn't know,
+            // the gap-cell path in voice.rs handles it within the single
+            // response.
         } else {
             // ── Voice Engine: generate natural response ──────────────
             // Predictive RSHL variant: source-scoped retrieval for
@@ -5588,8 +5580,9 @@ impl App {
                 query_type,
                 &brain_signals,
                 &recent_ctx_with_memory,
-                &self.universe,
+                &mut self.universe,
                 &self.conv_trace,
+                self.ollama_voice.as_ref(),
             );
 
             // ── Depth label: spectate-only (per directive: don't expose internals) ─

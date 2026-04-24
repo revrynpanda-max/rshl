@@ -1,6 +1,6 @@
-# KAI — Cognition Reference (v5.8.0)
+# KAI — Cognition Reference (v5.9.0)
 
-KAI is a self-sustaining, autonomous cognitive engine built on **Recursive Sparse Hyperdimensional Lattice (RSHL)** architecture. This document provides the technical specifications for the finalized 78+ module "Bio-Machine" baseline.
+KAI is a self-sustaining, autonomous cognitive engine built on **Recursive Sparse Hyperdimensional Lattice (RSHL)** architecture with **Helix-Light-Vortex (HLV)** phase coherence. This document provides the technical specifications for the finalized 81+ module "Bio-Machine" baseline.
 
 ## RSHL Architecture
 KAI operates in a 16384-dimensional sparse ternary vector space. Unlike traditional LLMs, it uses geometric resonance instead of token prediction.
@@ -18,10 +18,37 @@ The `sparse_vec.rs` engine encodes text into vectors using a multi-layered weigh
 - **Sparsity**: Target density is **4%** (approximately 655 non-zero dimensions per vector).
 - **Similarity**: Measured via high-performance cosine similarity utilizing **POPCNT**-optimized inner product loops.
 
+### Ternary Phase Geometry (HLV-aligned)
+Each sparse vector carries a **phase angle** derived from its ternary balance — the ratio of convergent (+1) to divergent (−1) dimensions. This maps to the Fibonacci torsion angle from HLV theory.
+
+- `ternary_balance()` — counts +1 vs −1 non-zero dimensions
+- `phase_angle()` — maps balance ratio to angular coordinate in [0, 2π)
+
+Global field coherence is computed as a **phasor sum**:
+```
+Φ_C = |Σ R_i · e^(jθ_i)| / Σ R_i
+```
+Where R_i = cell score (bridge strength) and θ_i = cell phase angle. Contradictory cells destructively interfere; coherent cells constructively reinforce.
+
+---
+
+## Hybrid Voice Architecture (U2→U1 Coherence Gate)
+
+KAI's voice system implements a **two-tier coherence gate** inspired by HLV's U2→U1 transition:
+
+| Φ_C Level | Behavior |
+|:---|:---|
+| **> 0.30** | Ollama speaks — lattice has sufficient phase alignment for articulation |
+| **≤ 0.30** | Pure-lattice — field hasn't crystallized, lattice speaks raw |
+
+**Key principle**: One voice per response. Either Ollama articulates what the lattice decided, or the lattice speaks raw. Never both in the same output.
+
+All lattice retrieval paths use **predictive scoring** with recency penalty (`-0.45 × recency`) to prevent the same cell from firing repeatedly.
+
 ---
 
 ## The Self-State Hub (#60)
-The central confluence for KAI's cognitive architecture. The **SelfStateHub** (`self_state_hub.rs`) aggregates high-dimensional signals from the 78 individual modules into a unified, stable "what I am right now" vector.
+The central confluence for KAI's cognitive architecture. The **SelfStateHub** (`self_state_hub.rs`) aggregates high-dimensional signals from the 81 individual modules into a unified, stable "what I am right now" vector.
 
 - **Confluence Logic**: Normalizes afferent signals (mood, conflict, arousal, valence) into a shared field.
 - **Dynamic Gating**: High conflict levels trigger inhibitory gating in the hub, causing KAI to hedge or clarify rather than confabulate.
@@ -62,7 +89,7 @@ Every module listed below is verified and natively implemented in the `src/cogni
 | **Insula** | Interoception and felt valence | `insula.rs` |
 | **NAc** | "Wanting", motivation, incentive | `nucleus_accumbens.rs` |
 | **Ventral Pallidum** | "Liking", hedonic reward amplification | `ventral_pallidum.rs` |
-| **Septal Nuclei** | Social rewarding, affliation | `septal_nuclei.rs` |
+| **Septal Nuclei** | Social rewarding, affiliation | `septal_nuclei.rs` |
 | **BNST** | Sustained anxiety, vigilance | `bnst.rs` |
 | **Habenula** | Aversion, negative prediction error | `habenula.rs` |
 | **Mammillary Bodies** | Episodic relay, spatial context | `mammillary_bodies.rs` |
@@ -133,11 +160,12 @@ Every module listed below is verified and natively implemented in the `src/cogni
 
 ---
 
-## Native Utilities & Systems (14)
+## Native Utilities & Systems (17)
 These systems manage the bridge between biological signals and the lattice-native memory.
 
 - **LexSem Engine** (`lexsem.rs`): Deep semantic field detection (Occupation, Emotional, etc.)
-- **Voice Engine** (`voice.rs`): Lattice-driven speech synthesis with brain modulation.
+- **Voice Engine** (`voice.rs`): Lattice-driven speech synthesis with brain modulation and U2→U1 coherence gating.
+- **Ollama Voice** (`ollama_voice.rs`): Lattice-grounded Ollama LLM integration — SRHT state → system prompt → articulation → concept injection back to lattice.
 - **Reasoner** (`reasoner.rs`): Multi-hop geometric reasoning.
 - **Inner Voice** (`inner_voice.rs`): Insights and lexicon binding.
 - **Episodic Store** (`episodic.rs`): Salience-driven long-term storage.
@@ -160,3 +188,4 @@ These systems manage the bridge between biological signals and the lattice-nativ
 - LTP and LTD: [NCBI Bookshelf, *Long-Term Synaptic Potentiation*](https://www.ncbi.nlm.nih.gov/books/NBK10878/) and [*Long-Term Synaptic Depression*](https://www.ncbi.nlm.nih.gov/books/NBK10899/).
 - Arousal and wakefulness: [NCBI Bookshelf, *Neuroanatomy, Reticular Activating System*](https://www.ncbi.nlm.nih.gov/books/NBK549835/).
 - Conscious broadcast/re-entry: [PMC, *Conscious Processing and the Global Neuronal Workspace Hypothesis*](https://pmc.ncbi.nlm.nih.gov/articles/PMC8770991/).
+- Helix-Light-Vortex (HLV) Theory: Phase coherence as consciousness substrate — Krüger (2024).

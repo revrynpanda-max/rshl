@@ -91,7 +91,7 @@
 //! | `--bitnet-url=URL`       | `http://127.0.0.1:8080`     | base URL of a running `llama-server --embedding`          |
 //! | `--stub-embedder`        | off                         | force-use `StubEmbedder`; skip BitNet entirely            |
 //! | `--d-in=N`               | probe the server (or 384)   | dense embedding width                                     |
-//! | `--d-hidden=N`           | 512                         | mapper hidden width                                       |
+//! | `--d-hidden=N`           | max(2048, d_in/2) auto      | mapper hidden width; auto-scaled for real LLM embeddings  |
 //! | `--num-pairs=N`          | 2000                        | unique training pairs generated this run                  |
 //! | `--num-epochs=N`         | 5                           | epochs over the pair set                                  |
 //! | `--learning-rate=F`      | 5e-4                        | SGD step size on the output layer                         |
@@ -1044,7 +1044,17 @@ pub struct TrainRealConfig {
     pub ollama_model: String,
 
     /// Mapper hidden width.
+    ///
+    /// When `d_hidden_explicit` is false (the default), `train_real` will
+    /// override this to `max(2048, d_in / 2)` once d_in is auto-discovered
+    /// from the live Ollama model. Pass `--d-hidden=N` on the CLI to pin an
+    /// exact value and bypass the auto-scaling.
     pub d_hidden: usize,
+
+    /// Set to `true` when the caller explicitly passed `--d-hidden=N`.
+    /// When false, `train_real` replaces `d_hidden` with `max(2048, d_in/2)`
+    /// after discovering d_in from the Ollama embedding model.
+    pub d_hidden_explicit: bool,
 
     /// Number of unique training pairs generated this run.
     pub num_pairs: usize,
@@ -1074,6 +1084,7 @@ impl Default for TrainRealConfig {
             ollama_url: "http://127.0.0.1:11434".to_string(),
             ollama_model: "nomic-embed-text".to_string(),
             d_hidden: DEFAULT_D_HIDDEN,
+            d_hidden_explicit: false,
             num_pairs: 5_000,
             num_epochs: 10,
             learning_rate: DEFAULT_LEARNING_RATE,
@@ -1091,7 +1102,7 @@ impl Default for TrainRealConfig {
 /// `OllamaEmbedder` and with defaults tuned for a real run
 /// (more pairs, more epochs, dedicated output file so it doesn't
 /// stomp the stub-trained mapper).
-pub fn train_real(cfg: TrainRealConfig) -> Result<(), String> {
+pub fn train_real(mut cfg: TrainRealConfig) -> Result<(), String> {
     eprintln!("═══════════════════════════════════════════════════════════════════");
     eprintln!("  KAI — train NeuralVsaMapper against a REAL LLM via Ollama");
     eprintln!("═══════════════════════════════════════════════════════════════════");
@@ -1138,6 +1149,21 @@ pub fn train_real(cfg: TrainRealConfig) -> Result<(), String> {
         "[train-real] connected to Ollama: model='{}' d_in={}",
         cfg.ollama_model, d_in
     );
+
+    // ── Auto-scale d_hidden for real LLM embeddings ──────────────────
+    // At 512 hidden units a 4096-dim input (Mistral 7B) faces an 8:1
+    // compression before the output layer — the bottleneck collapses
+    // the manifold and the mapper learns nothing useful.
+    // Formula: d_hidden = max(2048, d_in / 2).  This gives a ≤2:1 ratio
+    // for all current LLM sizes.  Skipped when the user pinned --d-hidden
+    // explicitly so power users can still experiment with other widths.
+    if !cfg.d_hidden_explicit {
+        cfg.d_hidden = (d_in / 2).max(2048);
+        eprintln!(
+            "[train-real] auto d_hidden={} (d_in={}, formula=max(2048, d_in/2))",
+            cfg.d_hidden, d_in
+        );
+    }
 
     // ── 4. Generate training pairs ───────────────────────────────────
     // Each pair: (LLM dense hidden state, RSHL encode_sentence target)
@@ -1279,7 +1305,9 @@ pub fn run_train_real_cli(args: &[String]) {
         } else if let Some(v) = a.strip_prefix("--ollama-model=") {
             cfg.ollama_model = v.to_string();
         } else if let Some(v) = a.strip_prefix("--d-hidden=") {
+            // Explicit --d-hidden overrides the auto-scaling logic in train_real.
             cfg.d_hidden = v.parse().unwrap_or(cfg.d_hidden);
+            cfg.d_hidden_explicit = true;
         } else if let Some(v) = a.strip_prefix("--num-pairs=") {
             cfg.num_pairs = v.parse().unwrap_or(cfg.num_pairs);
         } else if let Some(v) = a.strip_prefix("--num-epochs=") {
