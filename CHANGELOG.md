@@ -40,7 +40,15 @@
 - Added HLV phase coherence and phasor-sum sections to COGNITION.md and PERFORMANCE.md.
 - Corrected module count: 81 modules + 17 native utilities.
 
-**Test results:** 752 passed, 0 failed, 0 warnings (release mode).
+### Commit 7 — Repo: Reorganization & "Rust-First" Promotion
+- Promoted the Rust engine from `kai-rust/` to the repository root.
+- Archived legacy TypeScript source in `legacy/typescript_engine/`.
+- Moved auxiliary scripts and repair tools to `tools/`.
+- Cleaned up root-level log clutter and redirected temporary artifacts to `scratch/`.
+- Updated `.gitignore` to reflect the new structure and improved local data isolation.
+- Fixed `include_str!` relative path in `src/core/lexicon.rs`.
+
+**Test results:** 752 passed, 0 failed, 0 warnings (root dev build).
 
 ---
 

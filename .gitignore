@@ -1,64 +1,51 @@
-# Binaries
-claude.exe
+# Binaries (Local Only)
+bin/
+target/
 *.exe
+*.dll
+*.so
+*.dylib
 
 # ── Personal identity — each user has their own, never shared ────────────────
-kai-rust/data/identity.json
 data/identity.json
 
 # ── Runtime memory & state — personal to each instance ──────────────────────
 # These files hold learned memories, conversation history, and session state.
 # They are local only. Each user builds their own memory pool from scratch.
-kai-rust/data/kai-state.json
-kai-rust/data/kai-state.backup.json
-kai-rust/data/kai-transcript.jsonl
-data/kai-state.json
-data/kai-state.backup.json
-data/kai-transcript.jsonl
-active-memory.json
-dream-output-full.json
+data/*.json
+data/*.jsonl
+data/*.bin
+!data/identity.template.json
 
-# ── Analytics / plots ────────────────────────────────────────────────────────
+# ── Analytics / plots / logs ──────────────────────────────────────────────────
 *.csv
 *.png
-bench_output.txt
-test_output.txt
-git_status.txt
-debug_output*.txt
-scratch/debug_output*.txt
+*.txt
+*.log
+reports/
+scratch/
+!scratch/.gitkeep
 
-# ── Node ─────────────────────────────────────────────────────────────────────
+# ── Node (Legacy & Visualizer) ────────────────────────────────────────────────
 node_modules/
+visualizer/dist/
+visualizer/node_modules/
+legacy/typescript_engine/node_modules/
 
-# ── Native addon build artifacts (regenerate: npx node-gyp configure build) ─
+# ── Build Artifacts ──────────────────────────────────────────────────────────
 build/
-
-# ── Rust build cache ────────────────────────────────────────────────────────
-# Active build target and any scratch target dirs Codex/cargo may drop
-# while the primary kai.exe is file-locked. All regenerate on demand.
-kai-rust/target/
-target/
 kai-build/
 kai-build-*/
 build_temp/
 
-# ── Visualizer build output ─────────────────────────────────────────────────
-visualizer/dist/
-visualizer/node_modules/
-
 # ── IDE / OS ─────────────────────────────────────────────────────────────────
 .vs/
+.idea/
+.vscode/
 *.swp
 *.swo
 Thumbs.db
 Desktop.ini
-
-# ── Backup copies ────────────────────────────────────────────────────────────
-*copy.js
-*copy.ts
-
-# ── Conversation logs (personal) ─────────────────────────────────────────────
-conversation-log-*.txt
 
 # ── Assistant Artifacts & Session Tags (Local Only) ──────────────────────────
 task.md
