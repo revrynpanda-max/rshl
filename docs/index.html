@@ -257,21 +257,63 @@ Permute (seeded Fisher-Yates):
   </table>
 </div>
 
-<!-- SECTION 6: CURRENT PROBLEM -->
-<h2>§6 — Current Status (KAI's Creator Monitoring)</h2>
-<div class="section">
-  <div class="phase active">
-    <div class="phase-title">⚡ ACTIVE — Synthesis & Resolution</div>
-    <p style="color:#aaa;font-size:11px;margin:6px 0">With the Critique layer active, KAI is now holding 15,704 resonant bridges. The next step is to load the <strong>Physics Ground Truth</strong> layer to provide the ultimate reference for resolving the tension between the HLV claims and the Sepia Lizard's critiques.</p>
-    <div class="math">KAI's Creator is currently monitoring:
-  Lattice coherence (Φ_C) vs Contradiction (χ)
-  Promotion readiness for cross-layer bridges</div>
+<!-- SECTION 6: LIVE TELEMETRY -->
+<h2>§6 — Live Lattice Telemetry (RSHL Pulse)</h2>
+<div class="section" id="live-telemetry">
+  <div class="grid3">
+    <div class="metric-card" style="border-color:#7eb8f7">
+      <div class="metric-big" id="live-cpu">--%</div>
+      <div class="metric-label">LIVE CPU LOAD</div>
+      <div id="cpu-bar" style="height:4px; background:#1a1a2e; margin-top:8px; border-radius:2px"><div id="cpu-fill" style="height:100%; width:0%; background:#7eb8f7; transition:width 0.5s"></div></div>
+    </div>
+    <div class="metric-card" style="border-color:#34d399">
+      <div class="metric-big" id="live-ram">-- MB</div>
+      <div class="metric-label">FREE PHYSICAL RAM</div>
+    </div>
+    <div class="metric-card" style="border-color:#fbbf24">
+      <div class="metric-big" id="live-status">PENDING</div>
+      <div class="metric-label">GOVERNOR STATUS</div>
+    </div>
   </div>
-  <div style="margin-top:10px;padding:10px;background:#0a0a14;border:1px solid #2a2a3a;border-radius:4px">
-    <div style="color:#fbbf24;font-size:11px;margin-bottom:4px">KAI's Current Synthesis Goal</div>
-    <p style="color:#aaa;font-size:11px">Transition from simple pattern matching to <strong>Resonance Testing</strong>. Holding a claim from HLV, running it against established physics, and checking where the lattice agrees or where χ (contradiction) spikes.</p>
+  <div style="margin-top:12px; padding:10px; background:#050508; border:1px solid #1e1e3a; border-radius:4px">
+    <div style="display:flex; justify-content:space-between; margin-bottom:4px">
+      <span style="color:#666; font-size:10px">CURRENT TASK: <span id="live-task" style="color:#e0e0e0">Initializing...</span></span>
+      <span style="color:#666; font-size:10px">HEARTBEAT: <span id="live-time" style="color:#34d399">--:--:--</span></span>
+    </div>
+    <div id="live-log" style="font-family:'Courier New', monospace; font-size:10px; color:#86efac; height:40px; overflow-y:hidden">
+      [SYSTEM] Establishing connection to RSHL governor...
+    </div>
   </div>
 </div>
+
+<script>
+  async function updateTelemetry() {
+    try {
+      const response = await fetch('data/heartbeat.json?t=' + Date.now());
+      if (!response.ok) return;
+      const data = await response.json();
+      
+      document.getElementById('live-cpu').innerText = data.cpu_load + '%';
+      document.getElementById('cpu-fill').style.width = data.cpu_load + '%';
+      document.getElementById('live-ram').innerText = data.free_ram_mb + ' MB';
+      document.getElementById('live-status').innerText = data.phase;
+      document.getElementById('live-task').innerText = data.current_file;
+      document.getElementById('live-time').innerText = data.timestamp.split(' ')[1];
+      
+      const log = document.getElementById('live-log');
+      const msg = `[${data.timestamp.split(' ')[1]}] RESONANCE: ${data.phase} | CPU: ${data.cpu_load}% | RAM: ${data.free_ram_mb}MB`;
+      if (!log.innerText.includes(msg)) {
+        log.innerHTML = msg + '<br>' + log.innerHTML.split('<br>').slice(0, 2).join('<br>');
+      }
+    } catch (e) {
+      console.error("Heartbeat error:", e);
+    }
+  }
+  setInterval(updateTelemetry, 5000);
+  updateTelemetry();
+</script>
+
+<!-- SECTION 7: CURRENT PROBLEM -->
 
 <!-- SECTION 7: ROADMAP -->
 <h2>§7 — Full Roadmap to End Goal</h2>
