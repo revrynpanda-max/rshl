@@ -261,26 +261,37 @@ fn quality_gate(cell_count: usize) -> (f32, f32) {
 ///
 /// Targeted variant of consolidate that forces a dream between two specific cells.
 /// Useful for digestion phases where we want to "weave" a specific region.
-pub fn consolidate_pair(universe: &Universe, idx_a: usize, idx_b: usize) -> Option<DreamResult> {
+pub fn consolidate_pair(
+    universe: &Universe,
+    idx_a: usize,
+    idx_b: usize,
+    goal_vec: Option<&crate::core::SparseVec>,
+) -> Option<DreamResult> {
     let cells = universe.cells();
     if idx_a >= cells.len() || idx_b >= cells.len() { return None; }
-    
+
     let a = &cells[idx_a];
     let b = &cells[idx_b];
     let overlap = a.vec.phasor_coherence(&b.vec);
-    
-    // Stress Test Gate: allow even the faintest resonance (0.01)
-    if overlap < 0.01 || overlap > 0.92 { return None; }
 
-    internal_consolidate(universe, idx_a, idx_b, overlap)
+    // Stress Test Gate: allow even the faintest resonance (0.005)
+    if overlap < 0.005 || overlap > 0.92 { return None; }
+
+    internal_consolidate(universe, idx_a, idx_b, overlap, goal_vec)
 }
 
 pub fn consolidate(universe: &Universe) -> Option<DreamResult> {
     let (idx_a, idx_b, overlap) = select_dream_pair(universe)?;
-    internal_consolidate(universe, idx_a, idx_b, overlap)
+    internal_consolidate(universe, idx_a, idx_b, overlap, None)
 }
 
-fn internal_consolidate(universe: &Universe, idx_a: usize, idx_b: usize, overlap: f32) -> Option<DreamResult> {
+fn internal_consolidate(
+    universe: &Universe,
+    idx_a: usize,
+    idx_b: usize,
+    overlap: f32,
+    goal_vec: Option<&crate::core::SparseVec>,
+) -> Option<DreamResult> {
     let cells = universe.cells();
     let a = &cells[idx_a];
     let b = &cells[idx_b];
@@ -331,7 +342,7 @@ fn internal_consolidate(universe: &Universe, idx_a: usize, idx_b: usize, overlap
         synthetic_vec: Some(&synthetic),
         source_vecs,
         candidate_scores: vec![overlap, confidence.max(0.0)],
-        goal_vec: None, // Will be set by caller if drive has a goal
+        goal_vec,
         winner_key: winner_key.clone(),
         history: &history_snapshot,
         // Use LOCAL neighborhood size for density calculation, not the
@@ -359,7 +370,7 @@ fn internal_consolidate(universe: &Universe, idx_a: usize, idx_b: usize, overlap
     // If this dream would pull coherence DOWN significantly from the last
     // recorded value, it's doing more harm than good. Skip it.
     // Allow a small drop (0.01) for normal variance but reject sharp dips.
-    if prev_phi_g > 0.04 && field.phi_g < prev_phi_g - 0.08 {
+    if prev_phi_g > 0.001 && field.phi_g < prev_phi_g - 0.08 {
         if let Ok(mut s) = GATE_STATS.lock() {
             s.rejected_phi_drop += 1;
         }
@@ -370,7 +381,7 @@ fn internal_consolidate(universe: &Universe, idx_a: usize, idx_b: usize, overlap
     // Near-null Φg (< 0.005) means the binding produced essentially zero
     // coherent emergence — not a real idea, just arithmetic noise.
     // Dream #632 (Φg=0.001) was the triggering case for this gate.
-    if field.phi_g < 0.0001 {
+    if field.phi_g < 0.00001 {
         if let Ok(mut s) = GATE_STATS.lock() {
             s.rejected_phi_drop += 1;
         }
@@ -384,10 +395,10 @@ fn internal_consolidate(universe: &Universe, idx_a: usize, idx_b: usize, overlap
     // Promotion readiness
     let promotion_ready = !duplicate_echo
         && insight_text != "no strong concept found"
-        && confidence >= 0.35
-        && field.c >= 0.10
+        && confidence >= 0.20
+        && field.c >= 0.05
         && field.chi <= 0.55
-        && field.phi_g >= 0.01;
+        && field.phi_g >= 0.001;
 
     // ── DISCOVERY SYNTHESIS ─────────────────────────────────────────────
     //
@@ -413,7 +424,7 @@ fn internal_consolidate(universe: &Universe, idx_a: usize, idx_b: usize, overlap
         && confidence >= 0.15
         && confidence < 0.65
         && field.chi <= 0.90
-        && field.phi_g >= 0.005
+        && field.phi_g >= 0.0001
     {
         let shared = shared_concept_words(&a.label, &b.label);
         if shared.len() >= 1 {
@@ -426,7 +437,15 @@ fn internal_consolidate(universe: &Universe, idx_a: usize, idx_b: usize, overlap
                 strength: 1.0,
             })
         } else {
-            None
+            // Zero shared words — build a bridge label from the two cell labels directly
+            let bridge = format!("[Bridge] {} ↔ {}", a.label, b.label);
+            Some(DreamSynthesis {
+                label: bridge.clone(),
+                text: bridge,
+                region: "synthesis".to_string(),
+                shared_concepts: vec![],
+                strength: 1.0,
+            })
         }
     } else {
         None

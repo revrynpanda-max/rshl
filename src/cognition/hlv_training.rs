@@ -5,7 +5,6 @@
 //! resonance absorption.
 
 use crate::core::Universe;
-use std::collections::HashSet;
 use lopdf::Document;
 
 /// Minimum character length for a theoretical claim to be ingested.
@@ -51,17 +50,16 @@ pub fn ingest_hlv_pdf(universe: &mut Universe, pdf_path: &str) -> Result<IngestS
                 summary.claims_reinforced += 1;
             }
 
-            // B: Resonance Check (Surgical Cross-Sectional Binding)
-            // We only build a bridge if the hit is from a DIFFERENT section
-            // and has a significant conceptual difference (low word overlap).
-            let hits = universe.query(&sentence, 5);
+            // B: Resonance Check (Targeted Cross-Sectional Binding)
+            // We increase search depth and lower threshold to force connections.
+            let hits = universe.query(&sentence, 15);
             for hit in hits {
-                let is_near_duplicate = word_overlap_ratio(&sentence, &hit.text) > 0.7;
+                let is_near_duplicate = word_overlap_ratio(&sentence, &hit.text) > 0.8;
                 let is_different_region = hit.region != region;
                 
-                if hit.score > 0.55 && !is_near_duplicate && is_different_region {
+                if hit.score > 0.35 && !is_near_duplicate && is_different_region {
                     let bridge = format!("Synthesizing: {} <-> {}", sentence, hit.text);
-                    universe.store_or_reinforce(&bridge, "hlv-bridge", "hlv-resonance", 1.1);
+                    universe.store_or_reinforce(&bridge, "hlv-bridge", "hlv-resonance", 1.2);
                     summary.bridges_created += 1;
                 }
             }
@@ -95,7 +93,8 @@ fn extract_text_from_pdf(path: &str) -> Result<String, Box<dyn std::error::Error
     // Pages are 1-indexed in lopdf
     let pages = doc.get_pages();
     for (page_num, _) in pages.iter() {
-        if let Ok(text) = doc.extract_text(&[*page_num]) {
+        let text_res = doc.extract_text(&[*page_num]);
+        if let Ok(text) = text_res {
             full_text.push_str(&text);
             full_text.push('\n');
         }

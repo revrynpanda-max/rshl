@@ -445,14 +445,17 @@ impl SparseVec {
     /// constructively interfere in the phasor sum. Cells with opposite
     /// balance are ~π apart and destructively cancel.
     pub fn phase_angle(&self) -> f32 {
-        let (pos, neg) = self.ternary_balance();
-        let total = pos + neg;
-        if total == 0 {
+        let (pos, _neg) = self.ternary_balance();
+        if pos == 0 {
             return 0.0;
         }
-        let ratio = pos as f32 / total as f32;
-        // Map [0, 1] → [0, 2π)
-        ratio * std::f32::consts::TAU
+        // Fibonacci torsion: Weyl equidistribution via golden angle.
+        // Each +1 dimension contributes one golden-angle step (≈137.508°).
+        // This is the mathematical basis of Fibonacci phyllotaxis and
+        // quasicrystal geometry — maximally uniform phase distribution.
+        // 2π × (1 - 1/φ) = 2π/φ² ≈ 2.39996 radians
+        const GOLDEN_ANGLE: f32 = 2.399_963_23_f32;
+        (pos as f32 * GOLDEN_ANGLE) % std::f32::consts::TAU
     }
 
     /// Seeded Fisher-Yates permutation. VSA "role" projection.
@@ -764,6 +767,23 @@ mod tests {
             sim_right,
             sim_wrong
         );
+    }
+
+    #[test]
+    fn phase_angle_uses_golden_ratio() {
+        let mut v = SparseVec::zero();
+        // Set exactly 1 positive dimension
+        v.data[0] = 1;
+        let angle = v.phase_angle();
+        // Should be GOLDEN_ANGLE ≈ 2.3999
+        assert!((angle - 2.399_963_23).abs() < 0.001,
+            "Expected golden angle 2.3999, got {}", angle);
+        // Set exactly 2 positive dimensions
+        v.data[1] = 1;
+        let angle2 = v.phase_angle();
+        // Should be (2 × GOLDEN_ANGLE) % TAU ≈ 4.7999
+        assert!((angle2 - 4.799_926_46).abs() < 0.001,
+            "Expected 4.7999, got {}", angle2);
     }
 }
 

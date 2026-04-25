@@ -82,6 +82,7 @@ pub mod voice;
 pub mod vta;
 pub mod working_memory;
 pub mod zona_incerta;
+pub mod hlv_training;
 
 pub use acc::AccMonitor;
 pub use amygdala::{score_emotional_charge, AmygdalaGate};

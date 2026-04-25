@@ -9872,7 +9872,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 seed_universe(&mut u);
                 (u, CandidateBuffer::new(), Drive::default(), 0, 0)
             };
-        kai::bridge::ipc_server::run_server(&mut universe, &mut candidates, &mut drive);
+        let ollama_voice = {
+            let url = "http://127.0.0.1:11434";
+            let model = std::env::var("KAI_OLLAMA_MODEL")
+                .unwrap_or_else(|_| "mistral:7b".to_string());
+            kai::cognition::OllamaVoice::new(url, &model)
+        };
+        kai::bridge::ipc_server::run_server(&mut universe, &mut candidates, &mut drive, ollama_voice.as_ref());
         return Ok(());
     }
 
@@ -10095,11 +10101,6 @@ fn train_hlv_command(path: &str) {
     // ── Phase 2: Lattice-First Digestion (Forced Focus) ────────────────────
     println!("Digesting HLV Framework (Forced Resonance Weaving)...");
     
-    let mut hlv_candidates = CandidateBuffer::new();
-    let mut thresholds = PromotionThresholds::default();
-    thresholds.seen_count = 2; 
-    thresholds.best_confidence = 0.40; // Looser gate for initial synthesis
-    
     let mut bridges_built = 0;
     let mut insights_promoted = 0;
 
@@ -10132,33 +10133,95 @@ fn train_hlv_command(path: &str) {
         let mut pairs_above_threshold = 0u32;
         let mut consolidate_returned_some = 0u32;
 
-        for i in 0..25000 {
-            // FORCED SELECTION: Pick two HLV atoms specifically
+        // Compute HLV goal vector: majority-vote bundle of all HLV atoms.
+        // This gives consolidate_pair a direction — bridges that advance
+        // toward the HLV theoretical core score higher Φg.
+        let hlv_goal: SparseVec = {
+            let cells = universe.cells();
+            let vecs: Vec<&SparseVec> = hlv_indices.iter()
+                .take(50)
+                .map(|&i| &cells[i].vec)
+                .collect();
+            SparseVec::bundle(&vecs)
+        };
+
+        // ── Phase 2: Targeted Resonance Weaving (The Improved Strategy) ───────
+        // We use a lookup map for peer indices to avoid O(N^2) string scans.
+        println!("Performing Targeted Resonance Weaving ({} atoms)...", hlv_indices.len());
+        
+        let mut hlv_candidates = CandidateBuffer::new();
+        let mut thresholds = PromotionThresholds::default();
+        thresholds.seen_count = 2; 
+        thresholds.best_confidence = 0.40; 
+
+        let label_to_idx: std::collections::HashMap<String, usize> = hlv_indices.iter()
+            .map(|&i| (universe.cells()[i].label.clone(), i))
+            .collect();
+
+        for &idx_a in &hlv_indices {
+            let atom_a = &universe.cells()[idx_a];
+            // Query for top 10 matches in the HLV region
+            let hits = universe.query_region(&atom_a.label, "hlv-theory", 10);
+            
+            for hit in hits {
+                if let Some(&idx_b) = label_to_idx.get(&hit.label) {
+                    if idx_a == idx_b { continue; }
+                    
+                    let sim = universe.cells()[idx_a].vec.phasor_coherence(&universe.cells()[idx_b].vec);
+                    if sim >= 0.005 { pairs_above_threshold += 1; }
+
+                    if let Some(mut dream) = kai::cognition::consolidate_pair(&universe, idx_a, idx_b, Some(&hlv_goal)) {
+                        consolidate_returned_some += 1;
+
+                        // Tag specifically as HLV bridge for diagnostic visibility
+                        if let Some(ref mut syn) = dream.synthesis {
+                            syn.region = "hlv-bridge".to_string();
+                        }
+
+                        kai::cognition::observe_dream(&mut hlv_candidates, &dream);
+                        kai::cognition::reinforce_dream_sources(&mut universe, &dream);
+                        
+                        if kai::cognition::store_synthesis(&mut universe, &dream) {
+                            bridges_built += 1;
+                        }
+                    }
+                }
+            }
+            
+            if atom_count % 100 == 0 {
+                let res = kai::cognition::run_promotion(&mut hlv_candidates, &mut universe, &thresholds);
+                insights_promoted += res.promoted.len();
+            }
+        }
+
+        // ── Phase 3: High-Breadth Random Search (Increased Cycles) ──────────
+        println!("Performing High-Breadth Random Search (50,000 cycles)...");
+        for _ in 0..50000 {
             let idx_a = hlv_indices[rng.gen_range(0..hlv_indices.len())];
             let idx_b = hlv_indices[rng.gen_range(0..hlv_indices.len())];
             if idx_a == idx_b { continue; }
 
-            // Count how far pairs get
-            let sim = universe.cells()[idx_a].vec.phasor_coherence(&universe.cells()[idx_b].vec);
-            if sim >= 0.01 { pairs_above_threshold += 1; }
+                    if let Some(mut dream) = kai::cognition::consolidate_pair(&universe, idx_a, idx_b, Some(&hlv_goal)) {
+                        consolidate_returned_some += 1;
+                        
+                        // Tag specifically as HLV bridge for diagnostic visibility
+                        if let Some(ref mut syn) = dream.synthesis {
+                            syn.region = "hlv-bridge".to_string();
+                        }
 
-            // Targeted resonance between these two atoms
-            if let Some(dream) = kai::cognition::consolidate_pair(&universe, idx_a, idx_b) {
-                consolidate_returned_some += 1;
-                kai::cognition::observe_dream(&mut hlv_candidates, &dream);
-                kai::cognition::reinforce_dream_sources(&mut universe, &dream);
-                
-                if kai::cognition::store_synthesis(&mut universe, &dream) {
-                    bridges_built += 1;
-                }
-
-                if i % 100 == 0 {
-                    let res = kai::cognition::run_promotion(&mut hlv_candidates, &mut universe, &thresholds);
-                    insights_promoted += res.promoted.len();
-                }
-            }
+                        kai::cognition::observe_dream(&mut hlv_candidates, &dream);
+                        kai::cognition::reinforce_dream_sources(&mut universe, &dream);
+                        
+                        if kai::cognition::store_synthesis(&mut universe, &dream) {
+                            bridges_built += 1;
+                        }
+                    }
         }
-        println!("  [diag] pairs above 0.01 threshold: {}", pairs_above_threshold);
+        
+        let res = kai::cognition::run_promotion(&mut hlv_candidates, &mut universe, &thresholds);
+        insights_promoted += res.promoted.len();
+
+        println!("  [diag] pairs above 0.005 threshold: {}", pairs_above_threshold);
         println!("  [diag] consolidate_pair returned Some: {}", consolidate_returned_some);
         let gs = kai::cognition::gate_stats();
         println!("  [diag] GATE STATS: accepted={}, rejected_confidence={}, rejected_chi={}, rejected_phi_drop={}",

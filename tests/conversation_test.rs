@@ -505,7 +505,7 @@ fn say(u: &mut Universe, input: &str, recent: &mut Vec<(String, String)>) -> Str
     let qt = detect_query_type(input);
     let hits = query_hits(u, input, qt);
     let brain = BrainSignals::default();
-    let resp = generate_response(input, &hits, qt, &brain, recent, u);
+    let resp = generate_response(input, &hits, qt, &brain, recent, u, None);
 
     // Store in recent context (same as main.rs)
     recent.push(("user".to_string(), input.to_string()));
@@ -745,7 +745,7 @@ fn say_live(u: &mut Universe, input: &str, recent: &mut Vec<(String, String)>) -
         let strength = (0.8 + distress * 0.8).clamp(0.8, 1.6);
         u.store_or_reinforce("emotional thread active", "tone", "state", strength);
     }
-    let resp = generate_response(input, &hits, qt, &brain, recent, u);
+    let resp = generate_response(input, &hits, qt, &brain, recent, u, None);
 
     recent.push(("user".to_string(), input.to_string()));
     recent.push(("kai".to_string(), resp.clone()));
