@@ -213,9 +213,11 @@ function updateFromPulse(d){
   if(d.phase === 'COMPLETE') {
     document.getElementById('run-bar').style.width = Math.round((d.run / 6) * 100) + '%';
     document.getElementById('run-bar-text').textContent = d.run + ' / 6';
+    document.getElementById('t-run').textContent = d.run + ' / 6';
   } else {
     document.getElementById('run-bar').style.width = runPct + '%';
     document.getElementById('run-bar-text').textContent = (d.run-1) + ' / 6';
+    document.getElementById('t-run').textContent = d.run + ' / 6';
   }
 
   // Chi bar for current run
@@ -241,21 +243,31 @@ function updateFromPulse(d){
 
 async function poll(){
   try {
-    const r = await fetch('data/kai_pulse.json?t=' + Date.now());
-    if(!r.ok) throw new Error('no file');
-    const d = await r.json();
-    const sig = d.ts + d.phase + d.cycles_done;
-    if(sig !== lastPulse){
-      lastPulse = sig;
-      updateFromPulse(d);
-      addLog('Run ' + d.run + ' · ' + d.phase + ' · cycles=' + fmt(d.cycles_done) + ' · bridges=' + fmt(d.bridges) + ' · χ=' + d.chi, true);
-      
-      // Trigger a visual ripple for the lattice "ping"
-      if(d.phase.includes('WEAVING')) triggerRipple(chiColors[d.run]);
-      if(d.phase === 'COMPLETE') for(let i=0; i<10; i++) setTimeout(() => triggerRipple('#34d399'), i*100);
-    }
+    // Local File Bypass: Polling via script injection
+    const oldScript = document.getElementById('pulse-script');
+    if(oldScript) oldScript.remove();
+    
+    const script = document.createElement('script');
+    script.id = 'pulse-script';
+    script.src = 'data/kai_pulse.js?t=' + Date.now();
+    document.body.appendChild(script);
+    
+    script.onload = () => {
+      const d = window.KAI_PULSE;
+      if(!d) return;
+      const sig = d.ts + d.phase + d.cycles_done;
+      if(sig !== lastPulse){
+        lastPulse = sig;
+        updateFromPulse(d);
+        addLog('Run ' + d.run + ' · ' + d.phase + ' · cycles=' + fmt(d.cycles_done) + ' · bridges=' + fmt(d.bridges) + ' · χ=' + d.chi, true);
+        
+        // Trigger a visual ripple for the lattice "ping"
+        if(d.phase.includes('WEAVING')) triggerRipple(chiColors[d.run]);
+        if(d.phase === 'COMPLETE') for(let i=0; i<10; i++) setTimeout(() => triggerRipple('#34d399'), i*100);
+      }
+    };
   } catch(e){
-    // file not yet written — stay quiet
+    // stay quiet
   }
 }
 
