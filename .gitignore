@@ -15,6 +15,7 @@ data/identity.json
 data/*.json
 data/*.jsonl
 data/*.bin
+data/*.js
 !data/identity.template.json
 
 # ── Analytics / plots / logs ──────────────────────────────────────────────────
@@ -56,3 +57,5 @@ KAI_SESSION_HANDOFF.md
 rshl-bench-*.json
 rshl-results.txt
 *.backup.md
+meta_test_result.json
+test_fetch.glb

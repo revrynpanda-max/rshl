@@ -10041,6 +10041,43 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+fn write_pulse(
+    run: u32,
+    domain: &str,
+    phase: &str,
+    cycles_done: u32,
+    cycles_total: u32,
+    bridges: u32,
+    chi_rejections: u32,
+    phi_drop_rejections: u32,
+    pairs_above_threshold: u32,
+) {
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let json = format!(
+        r#"{{"run":{run},"domain":"{domain}","phase":"{phase}","cycles_done":{cycles_done},"cycles_total":{cycles_total},"bridges":{bridges},"chi":{chi_rejections},"phi_drop":{phi_drop_rejections},"pairs":{pairs_above_threshold},"ts":{ts}}}"#
+    );
+    let _ = fs::write("data/kai_pulse.json", &json);
+    
+    // JS Injection fallback for local browsers
+    let js = format!("window.KAI_PULSE = {};", json);
+    let _ = fs::write("data/kai_pulse.js", js);
+}
+
+fn get_run_info(path: &str) -> (u32, String) {
+    if path.contains("physics_quasicrystal") { (1, "Quasicrystal".to_string()) }
+    else if path.contains("physics_susy") { (2, "SUSY / Standard Model".to_string()) }
+    else if path.contains("physics_quantum_vacuum") { (3, "Quantum Vacuum".to_string()) }
+    else if path.contains("physics_string_theory") { (4, "String Theory".to_string()) }
+    else if path.contains("physics_spacetime_gr") { (5, "Spacetime / GR".to_string()) }
+    else if path.contains("physics_fibonacci_nature") { (6, "Fibonacci / Nature".to_string()) }
+    else { (0, "Unknown".to_string()) }
+}
+
 fn train_hlv_command(path: &str) {
     println!("── HLV Lattice Training Epoch (Surgical) ──");
     
@@ -10076,6 +10113,11 @@ fn train_hlv_command(path: &str) {
         } else {
             (Universe::new(), CandidateBuffer::new(), Drive::default(), 0, 0)
         };
+    
+    let mut pairs_above_threshold = 0u32;
+
+    let (run_number, domain_name) = get_run_info(target_path);
+    write_pulse(run_number, &domain_name, "ATOMIZING", 0, 50000, 0, 0, 0, 0);
 
     println!("Absorbing HLV Atoms from {}...", target_path);
     
@@ -10099,6 +10141,7 @@ fn train_hlv_command(path: &str) {
     println!("Ingestion Complete: {} sections split into {} theoretic atoms.", sections_count, atom_count);
     
     // ── Phase 2: Lattice-First Digestion (Forced Focus) ────────────────────
+    write_pulse(run_number, &domain_name, "WEAVING_START", 0, 50000, 0, 0, 0, 0);
     println!("Digesting HLV Framework (Forced Resonance Weaving)...");
     
     let mut bridges_built = 0;
@@ -10130,7 +10173,6 @@ fn train_hlv_command(path: &str) {
 
         use rand::Rng;
         let mut rng = rand::thread_rng();
-        let mut pairs_above_threshold = 0u32;
         let mut consolidate_returned_some = 0u32;
 
         // Compute HLV goal vector: majority-vote bundle of all HLV atoms.
@@ -10158,7 +10200,10 @@ fn train_hlv_command(path: &str) {
             .map(|&i| (universe.cells()[i].label.clone(), i))
             .collect();
 
-        for &idx_a in &hlv_indices {
+        for (i, &idx_a) in hlv_indices.iter().enumerate() {
+            if i % 1 == 0 {
+                write_pulse(run_number, &domain_name, "WEAVING_TARGETED", i as u32, hlv_indices.len() as u32, bridges_built, 0, 0, pairs_above_threshold);
+            }
             let atom_a = &universe.cells()[idx_a];
             // Query for top 10 matches in the HLV region
             let hits = universe.query_region(&atom_a.label, "hlv-theory", 10);
@@ -10196,7 +10241,13 @@ fn train_hlv_command(path: &str) {
 
         // ── Phase 3: High-Breadth Random Search (Increased Cycles) ──────────
         println!("Performing High-Breadth Random Search (50,000 cycles)...");
-        for _ in 0..50000 {
+        write_pulse(run_number, &domain_name, "WEAVING", 0, 50000, bridges_built, 0, 0, pairs_above_threshold);
+
+        for cycle in 0..50000 {
+            if cycle % 500 == 0 {
+                let gs = kai::cognition::gate_stats();
+                write_pulse(run_number, &domain_name, "WEAVING", cycle, 50000, bridges_built, gs.rejected_chi as u32, gs.rejected_phi_drop as u32, pairs_above_threshold);
+            }
             let idx_a = hlv_indices[rng.gen_range(0..hlv_indices.len())];
             let idx_b = hlv_indices[rng.gen_range(0..hlv_indices.len())];
             if idx_a == idx_b { continue; }
@@ -10223,16 +10274,18 @@ fn train_hlv_command(path: &str) {
 
         println!("  [diag] pairs above 0.005 threshold: {}", pairs_above_threshold);
         println!("  [diag] consolidate_pair returned Some: {}", consolidate_returned_some);
-        let gs = kai::cognition::gate_stats();
-        println!("  [diag] GATE STATS: accepted={}, rejected_confidence={}, rejected_chi={}, rejected_phi_drop={}",
-            gs.accepted, gs.rejected_confidence, gs.rejected_chi, gs.rejected_phi_drop);
-    }
+    println!("  [diag] HLV Insights Promoted: {}", insights_promoted);
+    let gs = kai::cognition::gate_stats();
+    println!("  [diag] GATE STATS: accepted={}, rejected_confidence={}, rejected_chi={}, rejected_phi_drop={}",
+        gs.accepted, gs.rejected_confidence, gs.rejected_chi, gs.rejected_phi_drop);
+}
 
-    println!("Digestion Complete:");
-    println!("  Lattice Resonance Bridges Built: {}", bridges_built);
-    println!("  Theoretic Insights Promoted:    {}", insights_promoted);
+let gs = kai::cognition::gate_stats();
+write_pulse(run_number, &domain_name, "SAVING", 50000, 50000, bridges_built, gs.rejected_chi as u32, gs.rejected_phi_drop as u32, pairs_above_threshold);
 
-    println!("Saving final lattice state...");
-    kai::persistence::save(&universe, &candidates, &drive, tick, dream_count, &base_dir);
-    println!("Done.");
+println!("Saving final lattice state...");
+kai::persistence::save(&universe, &candidates, &drive, tick, dream_count, &base_dir);
+
+write_pulse(run_number, &domain_name, "COMPLETE", 50000, 50000, bridges_built, gs.rejected_chi as u32, gs.rejected_phi_drop as u32, pairs_above_threshold);
+println!("Done.");
 }

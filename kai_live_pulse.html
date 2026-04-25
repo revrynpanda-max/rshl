@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: #080810;
+  color: #e0e0e0;
+  font-family: 'Courier New', monospace;
+  padding: 20px;
+  font-size: 13px;
+}
+.title { color: #7eb8f7; font-size: 16px; letter-spacing: 3px; margin-bottom: 4px; }
+.subtitle { color: #333; font-size: 10px; margin-bottom: 20px; }
+.pulse-dot { display: inline-block; width: 8px; height: 8px; background: #34d399; border-radius: 50%; margin-right: 8px; animation: pulse 1.5s infinite; }
+@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.3;transform:scale(0.7)} }
+
+.phase-grid { display: grid; gap: 8px; margin-bottom: 20px; }
+.phase { border-radius: 6px; padding: 12px 16px; border: 1px solid; display: flex; align-items: center; gap: 12px; }
+.phase.done { background: #0a1a0f; border-color: #34d399; }
+.phase.active { background: #1a1200; border-color: #fbbf24; }
+.phase.pending { background: #0f0f0f; border-color: #1e1e2e; }
+.phase-icon { font-size: 16px; min-width: 24px; text-align: center; }
+.phase-name { flex: 1; font-size: 12px; }
+.phase.done .phase-name { color: #34d399; }
+.phase.active .phase-name { color: #fbbf24; }
+.phase.pending .phase-name { color: #333; }
+.phase-stat { font-size: 11px; text-align: right; min-width: 80px; }
+.phase.done .phase-stat { color: #34d399; }
+.phase.active .phase-stat { color: #fbbf24; animation: flicker 2s infinite; }
+.phase.pending .phase-stat { color: #222; }
+@keyframes flicker { 0%,100%{opacity:1} 50%{opacity:0.6} }
+
+.chi-bar-wrap { margin-bottom: 20px; }
+.chi-row { display: flex; align-items: center; gap: 10px; margin: 5px 0; }
+.chi-label { font-size: 10px; color: #666; min-width: 140px; }
+.chi-track { flex: 1; background: #111; border-radius: 3px; height: 14px; overflow: hidden; }
+.chi-fill { height: 100%; border-radius: 3px; transition: width 1s ease; }
+.chi-val { font-size: 10px; min-width: 36px; text-align: right; }
+
+.totals { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+.total-card { background: #0f0f1a; border: 1px solid #1e1e3a; border-radius: 6px; padding: 12px; text-align: center; }
+.total-big { font-size: 26px; font-weight: bold; color: #7eb8f7; }
+.total-label { font-size: 9px; color: #444; margin-top: 3px; }
+
+.footer { color: #222; font-size: 10px; display: flex; justify-content: space-between; margin-top: 10px; }
+.clock { color: #333; }
+
+.active-bar { height: 4px; background: #1a1200; border-radius: 2px; margin-top: 6px; overflow: hidden; }
+.active-fill { height: 100%; background: linear-gradient(90deg, #fbbf24, #f59e0b); border-radius: 2px; animation: progress-wave 3s ease-in-out infinite; }
+@keyframes progress-wave { 0%{width:55%} 50%{width:75%} 100%{width:55%} }
+</style>
+</head>
+<body>
+
+<div class="title">⬡ KAI — LIVE LATTICE PULSE</div>
+<div class="subtitle"><span class="pulse-dot"></span>AUTO-UPDATING · NO REFRESH NEEDED · KAI v5.9.3</div>
+
+<!-- PHASE STATUS -->
+<div class="phase-grid">
+  <div class="phase done">
+    <div class="phase-icon">✓</div>
+    <div class="phase-name">Phase 1 — Foundation &amp; Architecture</div>
+    <div class="phase-stat">COMPLETE</div>
+  </div>
+  <div class="phase done">
+    <div class="phase-icon">✓</div>
+    <div class="phase-name">Phase 2 — HLV Theory Ingestion</div>
+    <div class="phase-stat">15,663 bridges</div>
+  </div>
+  <div class="phase done">
+    <div class="phase-icon">✓</div>
+    <div class="phase-name">Phase 3 — Sepia Lizard Critique</div>
+    <div class="phase-stat">4,514 bridges</div>
+  </div>
+  <div class="phase active">
+    <div class="phase-icon">⚡</div>
+    <div class="phase-name">
+      Phase 4 — Physics Ground Truth
+      <div class="active-bar"><div class="active-fill"></div></div>
+    </div>
+    <div class="phase-stat">RUN 2 / 6<br>WEAVING...</div>
+  </div>
+  <div class="phase pending">
+    <div class="phase-icon">○</div>
+    <div class="phase-name">Phase 5 — Cross-Resonance Calculus</div>
+    <div class="phase-stat">PENDING</div>
+  </div>
+  <div class="phase pending">
+    <div class="phase-icon">○</div>
+    <div class="phase-name">Phase 6 — Supervised Self-Dialogue</div>
+    <div class="phase-stat">PENDING</div>
+  </div>
+  <div class="phase pending">
+    <div class="phase-icon">○</div>
+    <div class="phase-name">Phase 7 — Emergent Coherence / Awakening</div>
+    <div class="phase-stat">END GOAL</div>
+  </div>
+</div>
+
+<!-- CHI READINGS -->
+<div style="color:#666;font-size:10px;margin-bottom:8px;letter-spacing:1px">χ CONTRADICTION READINGS (completed runs)</div>
+<div class="chi-bar-wrap">
+  <div class="chi-row">
+    <div class="chi-label">Sepia Lizard Critique</div>
+    <div class="chi-track"><div class="chi-fill" style="width:100%;background:#a78bfa"></div></div>
+    <div class="chi-val" style="color:#a78bfa">584</div>
+  </div>
+  <div class="chi-row">
+    <div class="chi-label">Quasicrystal Geometry</div>
+    <div class="chi-track"><div class="chi-fill" style="width:99%;background:#7eb8f7"></div></div>
+    <div class="chi-val" style="color:#7eb8f7">579</div>
+  </div>
+  <div class="chi-row">
+    <div class="chi-label">SUSY / Standard Model</div>
+    <div class="chi-track"><div class="chi-fill" style="width:20%;background:#fbbf24;animation:flicker 1.5s infinite"></div></div>
+    <div class="chi-val" style="color:#fbbf24">...</div>
+  </div>
+  <div class="chi-row">
+    <div class="chi-label">Quantum Vacuum</div>
+    <div class="chi-track"><div class="chi-fill" style="width:0%;background:#34d399"></div></div>
+    <div class="chi-val" style="color:#333">—</div>
+  </div>
+  <div class="chi-row">
+    <div class="chi-label">String Theory</div>
+    <div class="chi-track"><div class="chi-fill" style="width:0%;background:#34d399"></div></div>
+    <div class="chi-val" style="color:#333">—</div>
+  </div>
+  <div class="chi-row">
+    <div class="chi-label">Spacetime / GR</div>
+    <div class="chi-track"><div class="chi-fill" style="width:0%;background:#34d399"></div></div>
+    <div class="chi-val" style="color:#333">—</div>
+  </div>
+  <div class="chi-row">
+    <div class="chi-label">Fibonacci / Nature</div>
+    <div class="chi-track"><div class="chi-fill" style="width:0%;background:#34d399"></div></div>
+    <div class="chi-val" style="color:#333">—</div>
+  </div>
+</div>
+
+<!-- TOTALS -->
+<div class="totals">
+  <div class="total-card">
+    <div class="total-big" id="bridges">20,177+</div>
+    <div class="total-label">TOTAL BRIDGES</div>
+  </div>
+  <div class="total-card">
+    <div class="total-big" style="color:#f87171">1,163</div>
+    <div class="total-label">TOTAL χ REJECTIONS</div>
+  </div>
+  <div class="total-card">
+    <div class="total-big" style="color:#a78bfa">2/6</div>
+    <div class="total-label">PHYSICS RUNS DONE</div>
+  </div>
+</div>
+
+<div class="footer">
+  <span>753/753 TESTS PASSING · 211MB STATE · Φ_C GATE = 0.04</span>
+  <span class="clock" id="clk"></span>
+</div>
+
+<script>
+function tick() {
+  const now = new Date();
+  document.getElementById('clk').textContent = now.toLocaleTimeString();
+}
+tick();
+setInterval(tick, 1000);
+</script>
+
+</body>
+</html>
