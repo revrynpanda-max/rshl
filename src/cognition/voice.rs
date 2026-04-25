@@ -505,6 +505,7 @@ pub fn generate_response(
     brain: &BrainSignals,
     recent_context: &[(String, String)],
     universe: &mut Universe,
+    ollama: Option<&crate::cognition::ollama_voice::OllamaVoice>,
 ) -> String {
     let empty_trace = ConversationTrace::new();
     generate_response_predictive(
@@ -515,7 +516,7 @@ pub fn generate_response(
         recent_context,
         universe,
         &empty_trace,
-        None, // no Ollama on the legacy path (tests / IPC)
+        ollama,
     )
 }
 
@@ -930,6 +931,22 @@ pub fn generate_response_predictive(
         }
     };
 
+    // Φ_C telemetry — append to CSV for threshold calibration
+    {
+        use std::io::Write;
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .append(true).create(true)
+            .open("data/phi_c_log.csv")
+        {
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            let preview: String = trimmed.chars().take(30).collect();
+            let _ = writeln!(f, "{},{:.4},\"{}\"", ts, phi_c, preview);
+        }
+    }
+
     // ── U2→U1 transition: two-tier coherence gate ─────────────────────────
     //
     // One voice per response. Either Ollama articulates what the lattice
@@ -937,7 +954,7 @@ pub fn generate_response_predictive(
     // raw. Never both in the same output — that's what creates the
     // "two voices jammed together" problem.
     if let Some(ov) = ollama {
-        if phi_c > 0.30 {
+        if phi_c > 0.04 {
             // Coherent field: Ollama speaks the lattice's signal.
             // The full SRHT state + active cells are in the system prompt
             // so everything the lattice wants to say is already there.
@@ -1919,6 +1936,7 @@ mod tests {
             &brain,
             &[],
             &mut u,
+            None,
         );
         let _ = u;
         // Must come from the cell, not a template
@@ -1940,7 +1958,7 @@ mod tests {
         let hits = vec![hit("Some random cell.", 0.5)];
         let u = Universe::new();
         let mut u = u;
-        let resp = generate_response("oh?", &hits, QueryType::Statement, &brain, &[], &mut u);
+        let resp = generate_response("oh?", &hits, QueryType::Statement, &brain, &[], &mut u, None);
         // Filler should get a short response, not random knowledge
         assert!(resp.len() < 50, "Filler response too long: {}", resp);
         assert!(

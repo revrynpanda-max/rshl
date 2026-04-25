@@ -510,18 +510,38 @@ impl Universe {
         source: &str,
         strength: f32,
     ) -> bool {
-        // Check for exact match first
+        // Phase 1: exact string match (fast path — O(n) string compare)
         for cell in &mut self.cells {
             if cell.label == text {
                 cell.strength = (cell.strength + 0.15).min(2.5);
-                // Update region/source if the caller has higher authority
                 if source == "ryan" {
                     cell.source = "ryan".to_string();
                 }
-                return false; // reinforced, not new
+                return false; // exact match reinforced
             }
         }
-        // New cell
+        // Phase 2: semantic near-duplicate check (cosine > 0.85).
+        // Only runs during ingestion (strength >= 0.8) to avoid slowing
+        // live conversation where store_or_reinforce is called on replies.
+        if strength >= 0.8 {
+            let candidate_vec = SparseVec::encode(text);
+            let mut best_score = 0.0f32;
+            let mut best_idx = usize::MAX;
+            for (i, cell) in self.cells.iter().enumerate() {
+                let sim = candidate_vec.cosine(&cell.vec);
+                if sim > best_score {
+                    best_score = sim;
+                    best_idx = i;
+                }
+            }
+            if best_score > 0.85 && best_idx < self.cells.len() {
+                // Semantic duplicate — reinforce existing cell, discard new
+                self.cells[best_idx].strength =
+                    (self.cells[best_idx].strength + 0.10).min(2.5);
+                return false;
+            }
+        }
+        // Genuinely new cell
         self.store(text, region, source, strength);
         true
     }

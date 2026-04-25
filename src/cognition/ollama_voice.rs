@@ -323,7 +323,7 @@ impl OllamaVoice {
             "stream": false,
             "options": {
                 "temperature": 0.72,
-                "num_predict": 160,
+                "num_predict": 256,
                 "stop": ["\n\n", "USER:", "KAI:"]
             }
         });

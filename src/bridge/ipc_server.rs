@@ -1,4 +1,4 @@
-﻿use crate::cognition::voice::QueryType;
+use crate::cognition::voice::QueryType;
 use crate::cognition::{
     self, detect_query_type, generate_response, BrainSignals, CandidateBuffer, LexSemEngine,
     LexSemOutput, SemanticField,
@@ -37,7 +37,12 @@ use std::io::{BufRead, Write};
 
 /// Run the IPC server loop. Blocks until stdin is closed.
 /// Call this from main() when `--server` flag is present.
-pub fn run_server(universe: &mut Universe, candidates: &mut CandidateBuffer, drive: &mut Drive) {
+pub fn run_server(
+    universe: &mut Universe,
+    candidates: &mut CandidateBuffer,
+    drive: &mut Drive,
+    ollama: Option<&crate::cognition::ollama_voice::OllamaVoice>,
+) {
     let stdin = std::io::stdin();
     let stdout = std::io::stdout();
     let mut out = std::io::BufWriter::new(stdout.lock());
@@ -62,7 +67,7 @@ pub fn run_server(universe: &mut Universe, candidates: &mut CandidateBuffer, dri
             continue;
         }
 
-        let response = handle_command(trimmed, universe, candidates, drive, &mut recent_context);
+        let response = handle_command(trimmed, universe, candidates, drive, &mut recent_context, ollama);
         let _ = writeln!(out, "{}", response);
         let _ = out.flush();
     }
@@ -74,6 +79,7 @@ fn handle_command(
     candidates: &mut CandidateBuffer,
     drive: &mut Drive,
     recent_context: &mut Vec<(String, String)>,
+    ollama: Option<&crate::cognition::ollama_voice::OllamaVoice>,
 ) -> String {
     let val: serde_json::Value = match serde_json::from_str(json_line) {
         Ok(v) => v,
@@ -116,7 +122,7 @@ fn handle_command(
             }
 
             let reply =
-                generate_response(text, &hits, query_type, &brain, recent_context, universe);
+                generate_response(text, &hits, query_type, &brain, recent_context, universe, ollama);
 
             recent_context.push(("user".to_string(), text.to_string()));
             recent_context.push(("kai".to_string(), reply.clone()));
