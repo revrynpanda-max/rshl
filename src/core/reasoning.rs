@@ -1,4 +1,4 @@
-﻿/// RSHL Reasoner — Iterative Resonance Chain-of-Thought
+/// RSHL Reasoner — Iterative Resonance Chain-of-Thought
 ///
 /// This is how KAI does LLM-level reasoning without being an LLM.
 ///
@@ -167,7 +167,7 @@ impl Reasoner {
                 let mut count = 0u32;
                 for i in 0..hits.len().min(4) {
                     for j in (i + 1)..hits.len().min(4) {
-                        sum += hits[i].0.vec.cosine(&hits[j].0.vec).abs();
+                        sum += hits[i].0.claim.vec.cosine(&hits[j].0.claim.vec).abs();
                         count += 1;
                     }
                 }
@@ -204,7 +204,7 @@ impl Reasoner {
 
             // ── Step 5: Derive the next thought ──────────────────────
             // Bind: query ⊗ match = relationship vector
-            let bound = current.bind(&best_cell.vec);
+            let bound = current.bind(&best_cell.claim.vec);
 
             // Accumulate context: bundle all previous thoughts with decay
             context_vecs.push(bound.clone());
@@ -233,7 +233,13 @@ impl Reasoner {
             current = if let Some((cell, score)) = cleanup_hits.first() {
                 if *score > 0.2 {
                     // Blend: 60% derived thought + 40% nearest known
-                    SparseVec::bundle(&[&bundled, &bundled, &bundled, &cell.vec, &cell.vec])
+                    SparseVec::bundle(&[
+                        &bundled,
+                        &bundled,
+                        &bundled,
+                        &cell.claim.vec,
+                        &cell.claim.vec,
+                    ])
                 } else {
                     bundled
                 }
@@ -357,4 +363,3 @@ impl Reasoner {
         (parts[0].1.to_string(), parts[0].2.to_string())
     }
 }
-
