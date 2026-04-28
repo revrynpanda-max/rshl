@@ -1,5 +1,52 @@
 # KAI Development Changelog
 
+## v5.9.5 — Truth Alignment & State Recovery (April 27, 2026)
+
+### Critical Fixes Applied This Session
+
+**Fix 1: main.rs truncation repair**
+- `src/main.rs` was truncated at line 10203, mid-function inside `run_fid_audit`.
+- `fn synthesize_to_speech()` and `fn run_train_truths()` were missing entirely.
+- Repaired via `repair_main.py`: appended missing tail from `src/main_fixed.rs`.
+- `main.rs` now complete at 10,485 lines with all three functions restored.
+
+**Fix 2: Source-aware FID gate**
+- FID was flagging ALL queries (including E=mc²) because φ_C < 0.15 globally.
+- Added `is_physics_core` check: cells with `source == "physics-core"` are exempt
+  from the speculative territory warning.
+- Location: `src/main.rs` line 6498–6508.
+
+**Fix 3: State file recovery & duplicate pruning**
+- `data/kai-state.json` was truncated (interrupted write, 38MB vs 71MB backup).
+- Promoted `data/kai-state.backup.json` (Apr 27 00:14, 2,406 cells) as new main state.
+- Removed 247 duplicate identity cells (e.g. 27× "My name is KAI.").
+- State now has 2,159 unique cells.
+
+**Fix 4: Truth Alignment (phasor noise reduction)**
+- Root cause of χ=0.91 for E=mc²: 1,652 dream-discovery cells at strength=2.5
+  and 223 world-bridge cells drowning out 21 physics-core cells in phasor sum.
+- Applied `truth_align.py`:
+  - `physics-core`: boosted 3.0 → 4.0 (truth anchors)
+  - `dream-discovery`: attenuated 2.5 → 0.5 (reduce phasor noise)
+  - `world-bridge`: attenuated → 0.4
+  - `hlv:` section cells: attenuated → 0.2
+- Effective per-cell phasor ratio: physics-core 8× stronger than dream-discovery.
+
+### Pending Actions (Run On Your Machine)
+1. `cargo run --release --bin kai -- --train-truths`
+   — Seeds 21 natural-language physics-core cells and saves to state.
+2. `cargo run --release --bin kai`
+   — Test queries: "What is E equals mc squared?", "Are quasicrystals real?",
+     "What is the luminiferous ether?" — FID should NOT fire on the first two.
+
+---
+
+## v5.9.4 — Restoration Sync & Knowledge Recovery (April 26, 2026)
+- Restored "Adult" lattice base (1,251 cells) after knowledge regression.
+- Re-synchronized Phase 4 Physics Ground Truth (Quasicrystals, SUSY, Quantum Vacuum, String Theory, Spacetime, Fibonacci).
+- Updated REPORT.html and dashboard.html to reflect true progress and optimized metrics.
+- Fixed race conditions in training scripts by enforcing non-overlapping runs.
+
 ## v5.9.0 — HLV Phase Coherence & Hybrid Voice Cleanup (April 24, 2026)
 
 ### Commit 1 — Feature: Helical Phase Coherence (HLV-aligned)
