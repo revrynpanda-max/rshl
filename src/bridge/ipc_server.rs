@@ -67,7 +67,14 @@ pub fn run_server(
             continue;
         }
 
-        let response = handle_command(trimmed, universe, candidates, drive, &mut recent_context, ollama);
+        let response = handle_command(
+            trimmed,
+            universe,
+            candidates,
+            drive,
+            &mut recent_context,
+            ollama,
+        );
         let _ = writeln!(out, "{}", response);
         let _ = out.flush();
     }
@@ -121,8 +128,15 @@ fn handle_command(
                 brain.curiosity = (brain.curiosity + 0.15).min(1.0);
             }
 
-            let reply =
-                generate_response(text, &hits, query_type, &brain, recent_context, universe, ollama);
+            let reply = generate_response(
+                text,
+                &hits,
+                query_type,
+                &brain,
+                recent_context,
+                universe,
+                ollama,
+            );
 
             recent_context.push(("user".to_string(), text.to_string()));
             recent_context.push(("kai".to_string(), reply.clone()));
@@ -203,7 +217,7 @@ fn handle_command(
             let source = val["source"].as_str().unwrap_or("ts-src");
             let strength = val["strength"].as_f64().unwrap_or(1.0) as f32;
 
-            let is_new = universe.store_or_reinforce(text, region, source, strength);
+            let is_new = universe.ingest_and_verify(text, region, source, strength);
             serde_json::json!({
                 "ok":      true,
                 "stored":  is_new,
@@ -277,8 +291,9 @@ fn handle_command(
                 .filter(|c| region_filter.map(|r| c.region == r).unwrap_or(true))
                 .collect();
             cells.sort_by(|a, b| {
-                b.strength
-                    .partial_cmp(&a.strength)
+                b.claim
+                    .confidence
+                    .partial_cmp(&a.claim.confidence)
                     .unwrap_or(std::cmp::Ordering::Equal)
             });
 
@@ -287,10 +302,10 @@ fn handle_command(
                 .take(n)
                 .map(|c| {
                     serde_json::json!({
-                        "text":     c.label,
+                        "text":     c.claim.text,
                         "region":   c.region,
-                        "strength": c.strength,
-                        "source":   c.source,
+                        "strength": c.claim.confidence,
+                        "source":   c.claim.source,
                     })
                 })
                 .collect();
@@ -631,4 +646,3 @@ fn kai_grounding_rank(text: &str) -> i32 {
 fn err_json(msg: &str) -> String {
     serde_json::json!({"ok": false, "error": msg}).to_string()
 }
-

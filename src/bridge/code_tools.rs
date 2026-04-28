@@ -1,4 +1,4 @@
-﻿/// Code Tools — KAI's code analysis and review engine.
+/// Code Tools — KAI's code analysis and review engine.
 ///
 /// KAI can read source files and understand their structure — not by
 /// running a language model, but by extracting structural facts and
@@ -758,4 +758,3 @@ pub fn scan_directory(dir: &str, universe: &mut Universe) -> (usize, usize) {
 
     (files_analyzed, cells_stored)
 }
-
