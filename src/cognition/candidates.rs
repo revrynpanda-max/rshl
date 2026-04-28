@@ -1,4 +1,4 @@
-﻿/// Candidate Buffer — Dream candidate accumulation layer.
+/// Candidate Buffer — Dream candidate accumulation layer.
 ///
 /// Biology analog: Pre-synaptic holding zone before long-term potentiation.
 /// A pattern must recur repeatedly with stable field quality before it earns
@@ -15,8 +15,11 @@ pub enum CandidateStatus {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CandidateEntry {
+    #[serde(default)]
     pub key: String,
+    #[serde(default)]
     pub text: String,
+    #[serde(default)]
     pub label: String,
     pub seen_count: u32,
     pub best_phi_g: f32,
@@ -150,4 +153,3 @@ impl CandidateBuffer {
         self.entries.clear();
     }
 }
-

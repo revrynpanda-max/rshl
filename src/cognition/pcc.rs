@@ -1,4 +1,4 @@
-﻿/// Posterior Cingulate Cortex (PCC) — Self-Narrative, Autobiographical Hub
+/// Posterior Cingulate Cortex (PCC) — Self-Narrative, Autobiographical Hub
 ///
 /// The PCC is the central hub of the Default Mode Network. It is one of the
 /// most metabolically active brain regions, and one of the first to go quiet
@@ -466,4 +466,3 @@ mod tests {
         assert!(s.contains("threads"), "status should mention threads");
     }
 }
-

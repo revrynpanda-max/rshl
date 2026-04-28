@@ -1,4 +1,4 @@
-﻿/// Inferior Parietal Lobule (IPL) — Analogy, Cross-Domain Mapping, Number Sense
+/// Inferior Parietal Lobule (IPL) — Analogy, Cross-Domain Mapping, Number Sense
 ///
 /// The IPL (supramarginal and angular gyri) is the brain's integrative
 /// connector — it links information from different sensory and cognitive
@@ -606,4 +606,3 @@ mod tests {
         assert!(s.contains("analogies"), "status should mention analogies");
     }
 }
-

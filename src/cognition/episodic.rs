@@ -372,4 +372,3 @@ mod tests {
         assert_eq!(e.time_ago(), "just now");
     }
 }
-

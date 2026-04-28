@@ -1,4 +1,4 @@
-﻿/// Homeostasis — Slow weakening / pruning (LTD analog).
+/// Homeostasis — Slow weakening / pruning (LTD analog).
 ///
 /// Connections that are never re-activated, reinforced, or replayed
 /// gradually weaken. Below a floor threshold they are removed,
@@ -43,27 +43,29 @@ pub fn run_homeostasis(universe: &mut Universe, config: &HomeostasisConfig) -> H
 
     for (i, cell) in universe.cells().iter().enumerate() {
         // Never decay promoted beliefs or seeds
-        if cell.source == "promoted-dream" || cell.source == "seed" {
+        if cell.claim.source == "promoted-dream" || cell.claim.source == "seed" {
+            // Keep seeds and dreams longer
+            // cell.claim.confidence *= 0.99;
             continue;
         }
 
         // Must be old enough
-        let age = now.saturating_sub(cell.created);
+        let age = now.saturating_sub(cell.claim.created_at);
         if age < config.min_age_secs {
             continue;
         }
 
         // Only decay weak cells
-        if cell.strength >= config.decay_strength_ceiling {
+        if cell.claim.confidence >= config.decay_strength_ceiling {
             continue;
         }
 
         // Compute decay amount
         let stale_factor = (age as f32 / (30.0 * 86400.0)).min(1.0);
-        let weak_factor = (1.0 - cell.strength / config.decay_strength_ceiling).max(0.0);
+        let weak_factor = (1.0 - cell.claim.confidence / config.decay_strength_ceiling).max(0.0);
         let amount = config.decay_rate * (0.5 + stale_factor * 0.3 + weak_factor * 0.2);
 
-        let new_strength = cell.strength - amount;
+        let new_strength = cell.claim.confidence - amount;
         if new_strength < config.prune_threshold {
             to_remove.push(i);
         } else {
@@ -77,22 +79,22 @@ pub fn run_homeostasis(universe: &mut Universe, config: &HomeostasisConfig) -> H
         if to_remove.contains(&i) {
             continue;
         }
-        if cell.source == "promoted-dream" || cell.source == "seed" {
+        if cell.claim.source == "promoted-dream" || cell.claim.source == "seed" {
             continue;
         }
 
-        let age = now.saturating_sub(cell.created);
+        let age = now.saturating_sub(cell.claim.created_at);
         if age < config.min_age_secs {
             continue;
         }
-        if cell.strength >= config.decay_strength_ceiling {
+        if cell.claim.confidence >= config.decay_strength_ceiling {
             continue;
         }
 
         let stale_factor = (age as f32 / (30.0 * 86400.0)).min(1.0);
-        let weak_factor = (1.0 - cell.strength / config.decay_strength_ceiling).max(0.0);
+        let weak_factor = (1.0 - cell.claim.confidence / config.decay_strength_ceiling).max(0.0);
         let amount = config.decay_rate * (0.5 + stale_factor * 0.3 + weak_factor * 0.2);
-        cell.strength = (cell.strength - amount).max(0.0);
+        cell.claim.confidence = (cell.claim.confidence - amount).max(0.0);
     }
 
     // Remove pruned cells (reverse order to maintain indices)
@@ -103,4 +105,3 @@ pub fn run_homeostasis(universe: &mut Universe, config: &HomeostasisConfig) -> H
 
     HomeostasisResult { decayed, pruned }
 }
-

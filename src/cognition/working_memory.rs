@@ -1,4 +1,4 @@
-﻿/// Working Memory — KAI's short-term context buffer.
+/// Working Memory — KAI's short-term context buffer.
 ///
 /// This is the RSHL equivalent of an LLM's context window.
 /// Stores the last N conversation turns as temporary high-strength
@@ -8,12 +8,13 @@
 /// older turns fade. This gives KAI conversational context without
 /// polluting the long-term universe.
 use crate::core::SparseVec;
+use serde::{Deserialize, Serialize};
 
 const MAX_TURNS: usize = 12;
 const DECAY_TICKS: u64 = 80; // turns fully decay after ~80 ticks
 
 /// A single working memory entry.
-#[derive(Clone)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MemorySlot {
     pub text: String,
     pub label: String,
@@ -24,6 +25,7 @@ pub struct MemorySlot {
 }
 
 /// The working memory buffer — short-term conversational context.
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct WorkingMemory {
     slots: Vec<MemorySlot>,
 }
@@ -134,4 +136,3 @@ mod tests {
         assert_eq!(wm.len(), 1); // new turn remains
     }
 }
-

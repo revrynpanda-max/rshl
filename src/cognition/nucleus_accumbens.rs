@@ -1,4 +1,4 @@
-﻿/// Nucleus Accumbens — Wanting, Craving, Motivational Salience
+/// Nucleus Accumbens — Wanting, Craving, Motivational Salience
 ///
 /// The Nucleus Accumbens (NAc) is the brain's core reward-seeking structure.
 /// It sits at the junction of the limbic system and motor output — translating
@@ -511,4 +511,3 @@ mod tests {
         assert!(s.contains("wanting"), "status line should mention wanting");
     }
 }
-

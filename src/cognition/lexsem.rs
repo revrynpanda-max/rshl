@@ -1,4 +1,4 @@
-﻿/// LexSem — Lexical Semantics Engine: KAI's English Word Intelligence
+/// LexSem — Lexical Semantics Engine: KAI's English Word Intelligence
 ///
 /// This module gives KAI genuine language intelligence — not just pattern
 /// matching against stored cells, but real understanding of what words MEAN,
@@ -1568,4 +1568,3 @@ mod tests {
         assert_eq!(engine.analyses, 2);
     }
 }
-

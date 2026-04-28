@@ -1,4 +1,4 @@
-﻿/// Subgenual Anterior Cingulate Cortex (sgACC / Area 25) — Mood Regulation,
+/// Subgenual Anterior Cingulate Cortex (sgACC / Area 25) — Mood Regulation,
 /// Grief Processing, Chronic Stress Dampening, Emotional Tone Setting
 ///
 /// The subgenual ACC (Brodmann area 25) sits below the genu (knee) of the
@@ -445,4 +445,3 @@ mod tests {
         assert!(sl.contains("mood"), "status should show mood");
     }
 }
-

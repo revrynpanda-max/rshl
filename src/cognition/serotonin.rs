@@ -1,4 +1,4 @@
-﻿/// Serotonin — KAI's patience, stability, and long-horizon mood system
+/// Serotonin — KAI's patience, stability, and long-horizon mood system
 ///
 /// Serotonin is one of the most misunderstood neurotransmitters.
 /// Most people associate it with "happiness" because SSRIs (antidepressants)
@@ -412,4 +412,3 @@ mod tests {
         );
     }
 }
-

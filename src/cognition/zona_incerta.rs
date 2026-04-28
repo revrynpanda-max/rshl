@@ -1,4 +1,4 @@
-﻿/// Zona Incerta (ZI) — Attention Gate, Threat Salience Filter,
+/// Zona Incerta (ZI) — Attention Gate, Threat Salience Filter,
 /// Action-Suppression and Behavioral Release
 ///
 /// The zona incerta (literally "uncertain zone") is a subthalamic gray matter
@@ -364,4 +364,3 @@ mod tests {
         assert!(s.contains("inhibition"), "status should show inhibition");
     }
 }
-

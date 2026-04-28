@@ -1,4 +1,4 @@
-﻿/// Ventral Tegmental Area (VTA) — Dopamine Source Nucleus
+/// Ventral Tegmental Area (VTA) — Dopamine Source Nucleus
 ///
 /// The VTA is where dopamine neurons originate. It controls the firing MODE
 /// of dopamine release — a critical distinction that the dopamine circuit
@@ -401,4 +401,3 @@ mod tests {
         assert!(s.contains("tonic"), "status should mention tonic");
     }
 }
-

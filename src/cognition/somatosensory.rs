@@ -1,4 +1,4 @@
-﻿/// Primary Somatosensory Cortex (S1) — Body Map, Interoceptive Grounding,
+/// Primary Somatosensory Cortex (S1) — Body Map, Interoceptive Grounding,
 /// Tactile Simulation, Felt Sense of State
 ///
 /// S1 receives and represents all tactile and proprioceptive information from
@@ -359,4 +359,3 @@ mod tests {
         assert!(sl.contains("body"), "status should show body state");
     }
 }
-

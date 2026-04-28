@@ -1,4 +1,4 @@
-﻿/// Precuneus — Mental Imagery, Self-Reflection Depth, Episodic Richness
+/// Precuneus — Mental Imagery, Self-Reflection Depth, Episodic Richness
 ///
 /// The precuneus is one of the brain's most metabolically active regions,
 /// sitting at the top of the parietal lobe. It is the core of the DMN's
@@ -445,4 +445,3 @@ mod tests {
         assert!(s.contains("sim"), "status should show simulation depth");
     }
 }
-

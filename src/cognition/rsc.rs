@@ -1,4 +1,4 @@
-﻿/// Retrosplenial Cortex (RSC) — Temporal Context, Landmark Recognition,
+/// Retrosplenial Cortex (RSC) — Temporal Context, Landmark Recognition,
 /// Spatial-Conceptual Grounding, Scene-to-Memory Translation
 ///
 /// The RSC sits at the posterior cingulate / parietal junction and is one of
@@ -417,4 +417,3 @@ mod tests {
         assert!(s.contains("stability"), "status should show stability");
     }
 }
-

@@ -1,4 +1,4 @@
-﻿use crate::core::{SparseVec, Universe};
+use crate::core::{SparseVec, Universe};
 /// Hippocampus — Pattern Completion, Pattern Separation, Consolidation Indexing
 ///
 /// The hippocampus is the brain's rapid-binding memory system. It does not
@@ -694,4 +694,3 @@ mod tests {
         assert!(s.contains("HIPP"), "status line should mention HIPP");
     }
 }
-

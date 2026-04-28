@@ -330,11 +330,7 @@ mod tests {
         // Should never pick the user-echo cell.
         for _ in 0..10 {
             if let Some(topic) = dmn.pick_topic(&cells) {
-                assert_ne!(
-                    topic, "what is this",
-                    "DMN picked an echo cell: {}",
-                    topic
-                );
+                assert_ne!(topic, "what is this", "DMN picked an echo cell: {}", topic);
             }
         }
     }

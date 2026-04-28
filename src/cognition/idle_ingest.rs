@@ -82,31 +82,177 @@ const CONCEPT_ANCHOR_STRENGTH: f32 = 0.55;
 /// concepts worth anchoring.
 const CONCEPT_STOPWORDS: &[&str] = &[
     // Articles / pronouns / auxiliary
-    "the", "and", "but", "for", "nor", "yet", "all", "any", "are",
-    "can", "did", "does", "doesn", "don", "each", "from", "had",
-    "has", "have", "here", "how", "its", "itself", "just", "like",
-    "more", "most", "much", "may", "might", "must", "not", "now",
-    "off", "often", "only", "other", "our", "ours", "out", "over",
-    "own", "same", "she", "should", "some", "such", "than", "that",
-    "their", "them", "then", "there", "these", "they", "this", "those",
-    "through", "too", "under", "very", "was", "were", "what", "when",
-    "where", "which", "while", "who", "why", "will", "with", "would",
-    "you", "your", "yours", "yourself", "about", "after", "again",
-    "against", "before", "being", "below", "between", "both", "during",
-    "further", "into", "itself", "once", "during", "himself", "herself",
-    "because", "however", "therefore", "otherwise", "meanwhile",
+    "the",
+    "and",
+    "but",
+    "for",
+    "nor",
+    "yet",
+    "all",
+    "any",
+    "are",
+    "can",
+    "did",
+    "does",
+    "doesn",
+    "don",
+    "each",
+    "from",
+    "had",
+    "has",
+    "have",
+    "here",
+    "how",
+    "its",
+    "itself",
+    "just",
+    "like",
+    "more",
+    "most",
+    "much",
+    "may",
+    "might",
+    "must",
+    "not",
+    "now",
+    "off",
+    "often",
+    "only",
+    "other",
+    "our",
+    "ours",
+    "out",
+    "over",
+    "own",
+    "same",
+    "she",
+    "should",
+    "some",
+    "such",
+    "than",
+    "that",
+    "their",
+    "them",
+    "then",
+    "there",
+    "these",
+    "they",
+    "this",
+    "those",
+    "through",
+    "too",
+    "under",
+    "very",
+    "was",
+    "were",
+    "what",
+    "when",
+    "where",
+    "which",
+    "while",
+    "who",
+    "why",
+    "will",
+    "with",
+    "would",
+    "you",
+    "your",
+    "yours",
+    "yourself",
+    "about",
+    "after",
+    "again",
+    "against",
+    "before",
+    "being",
+    "below",
+    "between",
+    "both",
+    "during",
+    "further",
+    "into",
+    "itself",
+    "once",
+    "during",
+    "himself",
+    "herself",
+    "because",
+    "however",
+    "therefore",
+    "otherwise",
+    "meanwhile",
     // Meta words common in definitions/corpora
-    "example", "examples", "called", "known", "also", "usually",
-    "typically", "often", "many", "several", "various", "general",
-    "specific", "particular", "certain", "another", "something",
-    "someone", "anything", "everyone", "everybody", "anyone", "each",
-    "every", "either", "neither", "both", "whole", "part", "parts",
-    "kind", "kinds", "type", "types", "sort", "sorts", "thing", "things",
-    "word", "words", "name", "names", "case", "cases", "time", "times",
-    "way", "ways", "form", "forms", "idea", "ideas", "fact", "facts",
-    "number", "numbers", "value", "values", "term", "terms",
-    "means", "refers", "including", "include", "includes", "included",
-    "using", "used", "based", "between", "within",
+    "example",
+    "examples",
+    "called",
+    "known",
+    "also",
+    "usually",
+    "typically",
+    "often",
+    "many",
+    "several",
+    "various",
+    "general",
+    "specific",
+    "particular",
+    "certain",
+    "another",
+    "something",
+    "someone",
+    "anything",
+    "everyone",
+    "everybody",
+    "anyone",
+    "each",
+    "every",
+    "either",
+    "neither",
+    "both",
+    "whole",
+    "part",
+    "parts",
+    "kind",
+    "kinds",
+    "type",
+    "types",
+    "sort",
+    "sorts",
+    "thing",
+    "things",
+    "word",
+    "words",
+    "name",
+    "names",
+    "case",
+    "cases",
+    "time",
+    "times",
+    "way",
+    "ways",
+    "form",
+    "forms",
+    "idea",
+    "ideas",
+    "fact",
+    "facts",
+    "number",
+    "numbers",
+    "value",
+    "values",
+    "term",
+    "terms",
+    "means",
+    "refers",
+    "including",
+    "include",
+    "includes",
+    "included",
+    "using",
+    "used",
+    "based",
+    "between",
+    "within",
 ];
 
 /// One file's progress cursor. Persists in memory for the current
@@ -194,11 +340,7 @@ impl IngestReport {
         } else {
             format!(
                 "📚 {} lines from {} (+{} main, +{} concepts, {} total)",
-                self.lines_processed,
-                file,
-                self.lines_added,
-                self.concepts_added,
-                self.cells_after
+                self.lines_processed, file, self.lines_added, self.concepts_added, self.cells_after
             )
         }
     }
@@ -252,10 +394,7 @@ impl IdleIngest {
         // Drop a README the first time so the user knows what goes here.
         let readme = ingest_dir.join("README.txt");
         if !readme.exists() {
-            let _ = fs::write(
-                &readme,
-                DEFAULT_README,
-            );
+            let _ = fs::write(&readme, DEFAULT_README);
         }
 
         Self {
@@ -306,27 +445,30 @@ impl IdleIngest {
         fs::read_dir(&self.ingest_dir)
             .ok()
             .map(|iter| {
-                iter.filter_map(|e| e.ok())
-                    .any(|e| {
-                        let p = e.path();
-                        p.extension().and_then(|s| s.to_str()) == Some("txt")
-                            && p.file_name().and_then(|s| s.to_str())
-                                != Some("README.txt")
-                    })
+                iter.filter_map(|e| e.ok()).any(|e| {
+                    let p = e.path();
+                    p.extension().and_then(|s| s.to_str()) == Some("txt")
+                        && p.file_name().and_then(|s| s.to_str()) != Some("README.txt")
+                })
             })
             .unwrap_or(false)
     }
-
 
     /// Asynchronous version of tick: returns a batch of cells to be added
     /// by the main thread. This offloads the expensive SparseVec::encode
     /// calls to the background.
     pub fn tick_async(&mut self, idle_secs: u64) -> IngestBatch {
         if !self.enabled {
-            return IngestBatch { cells: Vec::new(), report: IngestReport::default() };
+            return IngestBatch {
+                cells: Vec::new(),
+                report: IngestReport::default(),
+            };
         }
         if !self.has_work() {
-            return IngestBatch { cells: Vec::new(), report: IngestReport::default() };
+            return IngestBatch {
+                cells: Vec::new(),
+                report: IngestReport::default(),
+            };
         }
 
         let budget = if idle_secs >= IDLE_THRESHOLD_SECS {
@@ -343,13 +485,19 @@ impl IdleIngest {
             .or_else(|| self.find_next_file());
 
         let Some(path) = target_path else {
-            return IngestBatch { cells: Vec::new(), report: IngestReport::default() };
+            return IngestBatch {
+                cells: Vec::new(),
+                report: IngestReport::default(),
+            };
         };
 
         if !self.buffers.contains_key(&path) {
             let Ok(content) = fs::read_to_string(&path) else {
                 self.cursors.remove(&path);
-                return IngestBatch { cells: Vec::new(), report: IngestReport::default() };
+                return IngestBatch {
+                    cells: Vec::new(),
+                    report: IngestReport::default(),
+                };
             };
             let lines: Vec<String> = content.lines().map(|l| l.to_string()).collect();
             let total = lines.len();
@@ -396,7 +544,7 @@ impl IdleIngest {
             }
 
             let source = format!("ingest:{}", cursor.short_name());
-            
+
             // Encode the main line
             ingested_cells.push(IngestedCell {
                 text: line.clone(),
@@ -423,7 +571,7 @@ impl IdleIngest {
 
         report.lines_processed = processed;
         report.lines_added = added;
-        
+
         self.total_added += added;
 
         if cursor.done() {
@@ -660,7 +808,9 @@ mod tests {
         );
         assert!(concepts.contains(&"photosynthesis".to_string()));
         // "and", "the", "into", "using" must all be filtered.
-        assert!(!concepts.iter().any(|c| c == "and" || c == "the" || c == "into"));
+        assert!(!concepts
+            .iter()
+            .any(|c| c == "and" || c == "the" || c == "into"));
         assert!(concepts.len() <= 3);
     }
 
@@ -693,4 +843,3 @@ mod tests {
         assert!(concepts.contains(&"independence".to_string()));
     }
 }
-

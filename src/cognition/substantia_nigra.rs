@@ -1,4 +1,4 @@
-﻿/// Substantia Nigra pars compacta (SNc) — Procedural Habit Reinforcement,
+/// Substantia Nigra pars compacta (SNc) — Procedural Habit Reinforcement,
 /// Nigrostriatal Dopamine, Action Fluency, Routine Optimization
 ///
 /// The SNc is the second major dopamine nucleus (alongside VTA). While VTA's
@@ -387,4 +387,3 @@ mod tests {
         assert!(s_line.contains("fluency"), "status should show fluency");
     }
 }
-

@@ -1,4 +1,4 @@
-﻿/// Oxytocin — Trust, Bonding, Social Attachment, Disclosure Depth
+/// Oxytocin — Trust, Bonding, Social Attachment, Disclosure Depth
 ///
 /// Oxytocin is the neuropeptide of social bonding and trust. It is released
 /// during positive social interactions, physical closeness, shared vulnerability,
@@ -485,4 +485,3 @@ mod tests {
         assert!(s.contains("bond"), "status should mention bond");
     }
 }
-

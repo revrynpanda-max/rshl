@@ -1,4 +1,4 @@
-﻿/// Anterior Temporal Lobe (ATL) — Amodal Semantic Hub, Concept Convergence,
+/// Anterior Temporal Lobe (ATL) — Amodal Semantic Hub, Concept Convergence,
 /// Word-Meaning Binding, Conceptual Abstraction
 ///
 /// The ATL is the brain's "concept amodal hub" — the region where information
@@ -441,4 +441,3 @@ mod tests {
         assert!(s.contains("richness"), "status should show richness");
     }
 }
-

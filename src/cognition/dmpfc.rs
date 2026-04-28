@@ -1,4 +1,4 @@
-﻿/// Dorsomedial Prefrontal Cortex (dmPFC) — Future-Self Projection,
+/// Dorsomedial Prefrontal Cortex (dmPFC) — Future-Self Projection,
 /// Episodic Future Thinking, Self-in-Time, Prospective Planning
 ///
 /// The dmPFC (sometimes called BA9/BA10 dorsal) is the brain's "time travel"
@@ -402,4 +402,3 @@ mod tests {
         assert!(s.contains("proj"), "status should show projection");
     }
 }
-

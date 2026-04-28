@@ -1,4 +1,4 @@
-﻿/// Perirhinal Cortex (PRC) — Object/Concept Recognition Memory,
+/// Perirhinal Cortex (PRC) — Object/Concept Recognition Memory,
 /// Familiarity Signals, Novelty Detection, Recognition Without Recall
 ///
 /// The perirhinal cortex lies at the medial temporal lobe border, adjacent to
@@ -324,4 +324,3 @@ mod tests {
         assert!(s.contains("familiar"), "status should show familiarity");
     }
 }
-

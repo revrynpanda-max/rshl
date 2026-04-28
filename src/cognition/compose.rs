@@ -1,4 +1,4 @@
-﻿use crate::core::{QueryHit, SparseVec, Lexicon};
+use crate::core::{Lexicon, QueryHit, SparseVec};
 
 pub fn compose_response(
     hits: &[QueryHit],
@@ -16,16 +16,20 @@ pub fn compose_response(
 
     let vecs: Vec<&SparseVec> = hits.iter().take(max_cells).map(|h| &h.vec).collect();
     let superposed = SparseVec::superpose_sparse(&vecs, 0.04);
-    
+
     // THE GENERATIVE HEAD: Decode the superposed geometric state into a sequence
     let tokens = lexicon.decode_to_sequence(&superposed, 24);
     let text = tokens.join(" ");
 
-    let sources: Vec<Source> = hits.iter().take(max_cells).map(|h| Source {
-        label: "Geometric Cluster".into(),
-        region: h.region.clone(),
-        score: h.score,
-    }).collect();
+    let sources: Vec<Source> = hits
+        .iter()
+        .take(max_cells)
+        .map(|h| Source {
+            label: "Geometric Cluster".into(),
+            region: h.region.clone(),
+            score: h.score,
+        })
+        .collect();
 
     ComposedResponse {
         text,
