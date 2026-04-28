@@ -31,7 +31,11 @@ pub fn gpu_tick(
 
                 // Reconstruct the query vector
                 let mut data = vec![0i8; crate::core::sparse_vec::DIM];
-                for (i, &v) in query_vec.iter().enumerate().take(crate::core::sparse_vec::DIM) {
+                for (i, &v) in query_vec
+                    .iter()
+                    .enumerate()
+                    .take(crate::core::sparse_vec::DIM)
+                {
                     data[i] = v;
                 }
                 let q = SparseVec::from_raw(data);
@@ -43,8 +47,8 @@ pub fn gpu_tick(
                     .par_iter()
                     .enumerate()
                     .map(|(i, cell)| {
-                        let raw = q.cosine(&cell.vec);
-                        let boosted = raw * (0.5 + 0.5 * cell.strength.min(2.0));
+                        let raw = q.cosine(&cell.claim.vec);
+                        let boosted = raw * (0.5 + 0.5 * cell.claim.confidence.min(2.0));
                         (i, boosted)
                     })
                     .filter(|(_, s)| *s > 0.05)
