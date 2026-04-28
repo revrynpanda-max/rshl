@@ -1,4 +1,4 @@
-﻿/// Pontine Nuclei (PN) — Cortico-Ponto-Cerebellar Relay,
+/// Pontine Nuclei (PN) — Cortico-Ponto-Cerebellar Relay,
 /// Cognitive Timing, Forward-Model Stabilization
 ///
 /// The pontine nuclei are the largest nuclei in the pons and serve as the
@@ -165,4 +165,3 @@ impl Default for PontineNuclei {
         Self::new()
     }
 }
-

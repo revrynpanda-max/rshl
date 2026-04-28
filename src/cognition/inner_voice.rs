@@ -1,4 +1,4 @@
-﻿/// Inner Voice — KAI's Self-Dialogue System
+/// Inner Voice — KAI's Self-Dialogue System
 ///
 /// Biology analog: Internal monologue / working memory rehearsal.
 ///
@@ -89,7 +89,7 @@ pub fn validate_insight(
     // Check if the echo returns to either source concept
     let source_a_vec = SparseVec::encode(source_a);
     let source_b_vec = SparseVec::encode(source_b);
-    let echo_vec = &best_cell.vec;
+    let echo_vec = &best_cell.claim.vec;
 
     let sim_to_a = echo_vec.cosine(&source_a_vec);
     let sim_to_b = echo_vec.cosine(&source_b_vec);
@@ -213,4 +213,3 @@ mod tests {
         assert_eq!(result.verdict, InsightVerdict::Noise);
     }
 }
-

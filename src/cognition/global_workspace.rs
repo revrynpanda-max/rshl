@@ -1,4 +1,4 @@
-﻿use crate::core::SparseVec;
+use crate::core::SparseVec;
 /// Global Workspace Theory — KAI's unified conscious broadcast
 ///
 /// Bernard Baars' Global Workspace Theory (GWT) is one of the leading
@@ -389,4 +389,3 @@ mod tests {
         );
     }
 }
-

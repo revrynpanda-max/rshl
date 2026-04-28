@@ -15,7 +15,7 @@ pub fn seed_universe(universe: &mut Universe) -> usize {
     let mut count = 0;
 
     for (text, region, strength) in &seeds {
-        let existing = universe.cells().iter().any(|c| c.text == *text);
+        let existing = universe.cells().iter().any(|c| c.claim.text == *text);
         if existing {
             continue;
         }

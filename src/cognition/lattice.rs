@@ -1,4 +1,4 @@
-use crate::core::field_state::{DreamHistoryEntry, FieldInput};
+use crate::core::field_state::DreamHistoryEntry;
 /// Dream Lattice — Autonomous consolidation engine.
 ///
 /// Ported from rshl-lattice.js. During dream cycles, KAI:
@@ -16,7 +16,9 @@ use rand::Rng;
 use std::sync::Mutex;
 
 /// Rolling dream history for temporal recurrence.
+#[allow(dead_code)]
 static DREAM_HISTORY: Mutex<Vec<DreamHistoryEntry>> = Mutex::new(Vec::new());
+#[allow(dead_code)]
 const MAX_DREAM_HISTORY: usize = 12;
 
 /// Gate statistics — how many dreams were rejected vs accepted.
@@ -55,6 +57,7 @@ pub fn gate_stats() -> GateStats {
     GATE_STATS.lock().unwrap_or_else(|e| e.into_inner()).clone()
 }
 
+#[allow(dead_code)]
 fn push_dream_history(entry: DreamHistoryEntry) {
     let mut history = DREAM_HISTORY.lock().unwrap_or_else(|e| e.into_inner());
     history.push(entry);
@@ -63,6 +66,7 @@ fn push_dream_history(entry: DreamHistoryEntry) {
     }
 }
 
+#[allow(dead_code)]
 fn get_dream_history() -> Vec<DreamHistoryEntry> {
     DREAM_HISTORY
         .lock()
@@ -88,6 +92,7 @@ pub struct DreamResult {
     pub is_non_source: bool,
     pub source_reinforcement: f32,
     pub promotion_ready: bool,
+    pub strength: f32,
     /// Discovery synthesis — a newly-phrased cell the dream cycle
     /// *invented* by noticing that two source cells share concepts but
     /// no existing cell captures that connection well. When `Some`, the
@@ -108,6 +113,7 @@ pub struct DreamSynthesis {
     pub region: String,
     pub shared_concepts: Vec<String>,
     pub strength: f32,
+    pub vec: crate::core::SparseVec,
 }
 
 /// Compute replay priority for a cell.
@@ -163,7 +169,13 @@ fn select_dream_pair(universe: &Universe) -> Option<(usize, usize, f32)> {
         .map(|(i, c)| {
             (
                 i,
-                replay_priority(i, c.strength, &c.source, c.created, cells.len()),
+                replay_priority(
+                    i,
+                    c.claim.confidence,
+                    &c.claim.source,
+                    c.claim.created_at,
+                    cells.len(),
+                ),
             )
         })
         .collect();
@@ -179,7 +191,7 @@ fn select_dream_pair(universe: &Universe) -> Option<(usize, usize, f32)> {
             let a = &cells[i];
             let b = &cells[j];
 
-            let overlap = a.vec.phasor_coherence(&b.vec);
+            let overlap = a.claim.vec.phasor_coherence(&b.claim.vec);
 
             // Filter: allow resonance above 0.18 (including phase-aligned negative torsion)
             if overlap < 0.18 || overlap > 0.88 {
@@ -218,6 +230,7 @@ fn select_dream_pair(universe: &Universe) -> Option<(usize, usize, f32)> {
 }
 
 /// Pick the best insight from query results, preferring non-source matches.
+#[allow(dead_code)]
 fn pick_best_insight(
     hits: &[(&crate::core::universe::Cell, f32)],
     source_a_text: &str,
@@ -246,254 +259,107 @@ fn pick_best_insight(
 /// Scales with universe size — a larger, denser field needs stricter gates
 /// because noisy bindings have more contradictory material to hook into.
 /// A tiny universe (< 50 cells) runs nearly ungated so dreams can bootstrap.
+#[allow(dead_code)]
 fn quality_gate(cell_count: usize) -> (f32, f32) {
     // Returns (min_confidence, max_chi)
     match cell_count {
-        0..=49 => (0.10, 0.95),    // bootstrapping — very lenient
-        50..=149 => (0.15, 0.95),  // growing — moderate gate
-        150..=499 => (0.18, 0.92), // mature — normal gate
-        500..=999 => (0.15, 0.92), // large — relaxed for theory digestion
-        _ => (0.10, 0.95),         // very large — lenient to allow HLV resonance
+        0..=49 => (0.05, 0.98),    // bootstrapping — very lenient
+        50..=149 => (0.08, 0.98),  // growing — moderate gate
+        150..=499 => (0.08, 0.95), // mature — normal gate
+        500..=999 => (0.08, 0.95), // large — relaxed for theory digestion
+        _ => (0.05, 0.98),         // very large — lenient to allow HLV resonance
     }
 }
 
 /// Run a single dream consolidation cycle.
 ///
 /// Targeted variant of consolidate that forces a dream between two specific cells.
-/// Useful for digestion phases where we want to "weave" a specific region.
+/// /// Useful for digestion phases where we want to "weave" a specific region.
 pub fn consolidate_pair(
     universe: &Universe,
     idx_a: usize,
     idx_b: usize,
-    goal_vec: Option<&crate::core::SparseVec>,
+    _goal: Option<&crate::core::SparseVec>,
 ) -> Option<DreamResult> {
     let cells = universe.cells();
-    if idx_a >= cells.len() || idx_b >= cells.len() { return None; }
-
-    let a = &cells[idx_a];
-    let b = &cells[idx_b];
-    let overlap = a.vec.phasor_coherence(&b.vec);
-
-    // Stress Test Gate: allow even the faintest resonance (0.005)
-    if overlap < 0.005 || overlap > 0.92 { return None; }
-
-    internal_consolidate(universe, idx_a, idx_b, overlap, goal_vec)
-}
-
-pub fn consolidate(universe: &Universe) -> Option<DreamResult> {
-    let (idx_a, idx_b, overlap) = select_dream_pair(universe)?;
-    internal_consolidate(universe, idx_a, idx_b, overlap, None)
-}
-
-fn internal_consolidate(
-    universe: &Universe,
-    idx_a: usize,
-    idx_b: usize,
-    overlap: f32,
-    goal_vec: Option<&crate::core::SparseVec>,
-) -> Option<DreamResult> {
-    let cells = universe.cells();
-    let a = &cells[idx_a];
-    let b = &cells[idx_b];
-
-    // Bundle the two source vectors
-    let synthetic = SparseVec::bundle(&[&a.vec, &b.vec]);
-
-    // Query the universe with the synthetic vec to find the cleanup match
-    let hits = universe.query_vec(&synthetic, 5);
-
-    let (insight_text, insight_region, confidence, is_non_source) =
-        pick_best_insight(&hits, &a.label, &b.label);
-
-    // [DIAG] Print first 5 confidence values to understand what query_vec returns
-
-    // ── GATE 1: Pre-field resonance quality check ─────────────────────────
-    // If the synthetic bundle doesn't resonate meaningfully with the universe,
-    // this is a noise binding. Abort before computing field state — cheap exit.
-    // This directly prevents χ injection from low-quality cross-region smashes.
-    let (min_confidence, max_chi) = quality_gate(universe.count());
-    if confidence < min_confidence {
-        if let Ok(mut s) = GATE_STATS.lock() {
-            s.rejected_confidence += 1;
-        }
-        return None; // Synthetic doesn't resonate — discard, saves field computation
+    if idx_a >= cells.len() || idx_b >= cells.len() {
+        return None;
     }
+    let a = &cells[idx_a];
+    let b = &cells[idx_b];
 
-    // Also discard immediately if the insight is empty or the fallback text
-    if insight_text.is_empty() || insight_text == "no strong concept found" {
-        if let Ok(mut s) = GATE_STATS.lock() {
-            s.rejected_confidence += 1;
-        }
+    // Only connect meaningful, high-quality cells
+    if a.claim.confidence < 1.8 || b.claim.confidence < 1.8 {
         return None;
     }
 
-    // Winner key for tau tracking
-    let winner_key = insight_text.trim().to_lowercase();
+    let bundle = SparseVec::bundle(&[&a.claim.vec, &b.claim.vec]);
 
-    // Compute full field state
-    let source_vecs: Vec<(&SparseVec, f32, u64)> = vec![
-        (&a.vec, a.strength, a.created),
-        (&b.vec, b.strength, b.created),
-    ];
+    // Find resonance
+    let hits = universe.query_vec(&bundle, 1);
+    if hits.is_empty() {
+        return None;
+    }
+    let (best_cell, resonance) = &hits[0];
 
-    let history_snapshot = get_dream_history();
-    let prev_phi_g = history_snapshot.last().map(|h| h.phi_g).unwrap_or(0.0);
-    let field_input = FieldInput {
-        synthetic_vec: Some(&synthetic),
-        source_vecs,
-        candidate_scores: vec![overlap, confidence.max(0.0)],
-        goal_vec,
-        winner_key: winner_key.clone(),
-        history: &history_snapshot,
-        // Use LOCAL neighborhood size for density calculation, not the
-        // entire universe. Consolidation operates on a local pair + their
-        // query neighborhood. Using universe.count() (8000+) makes rho
-        // microscopic and kills phi_g regardless of actual resonance quality.
-        total_count: (hits.len() + 2).max(10),
-        prev_phi_g,
-    };
-
-    let field = FieldState::compute_full(&field_input);
-
-    // ── GATE 2: Post-field contradiction check ────────────────────────────
-    // If this specific binding has high inherent contradiction, discard it.
-    // This catches cases where the pair scored well geometrically but the
-    // resulting field is self-contradictory — exactly the χ spike source.
-    if field.chi > max_chi {
-        if let Ok(mut s) = GATE_STATS.lock() {
-            s.rejected_chi += 1;
-        }
-        return None; // Contradictory binding — discard, prevents χ injection
+    // Much stricter gate — only strong resonances get bridges
+    if *resonance < 0.22 {
+        return None;
     }
 
-    // ── GATE 3: Φg delta check ────────────────────────────────────────────
-    // If this dream would pull coherence DOWN significantly from the last
-    // recorded value, it's doing more harm than good. Skip it.
-    // Allow a small drop (0.01) for normal variance but reject sharp dips.
-    if prev_phi_g > 0.001 && field.phi_g < prev_phi_g - 0.08 {
-        if let Ok(mut s) = GATE_STATS.lock() {
-            s.rejected_phi_drop += 1;
-        }
-        return None; // Dream degrades global coherence — discard
+    let field = FieldState::measure(universe, &bundle);
+
+    // Only create bridge if the resulting field is high quality
+    if field.phi_g < 1.2 || field.chi > 0.45 {
+        return None;
     }
 
-    // ── GATE 4: Absolute minimum Φg ──────────────────────────────────────
-    // Near-null Φg (< 0.005) means the binding produced essentially zero
-    // coherent emergence — not a real idea, just arithmetic noise.
-    // Dream #632 (Φg=0.001) was the triggering case for this gate.
-    if field.phi_g < 0.00001 {
-        if let Ok(mut s) = GATE_STATS.lock() {
-            s.rejected_phi_drop += 1;
-        }
-        return None; // Zero-emergence dream — discard before any side effects
-    }
+    // Bridges are born strong: average of parents * 0.85
+    let birth_strength = (a.claim.confidence + b.claim.confidence) / 2.0 * 0.85;
 
-    // Duplicate echo check
-    let duplicate_echo =
-        insight_text.trim() == a.label.trim() || insight_text.trim() == b.label.trim();
+    // Synthesis
+    let shared = shared_concept_words(&a.claim.text, &b.claim.text);
+    let synthesis_vec = bundle.clone();
 
-    // Promotion readiness
-    let promotion_ready = !duplicate_echo
-        && insight_text != "no strong concept found"
-        && confidence >= 0.20
-        && field.c >= 0.05
-        && field.chi <= 0.55
-        && field.phi_g >= 0.001;
-
-    // ── DISCOVERY SYNTHESIS ─────────────────────────────────────────────
-    //
-    // Beyond picking an existing insight cell, check whether this
-    // dream pairing reveals a *new* connection that isn't captured by
-    // any existing cell. The gate is narrow on purpose:
-    //
-    //   - The existing best-match confidence is only moderate
-    //     (0.25..0.60) — good enough to prove the bundle is
-    //     meaningful, but not good enough to mean an existing cell
-    //     already states this insight.
-    //   - The two source cells share at least two significant concept
-    //     words at the surface level — i.e. they're really about
-    //     related things, not a random collision.
-    //   - Field chi is low enough that the pairing isn't just noise.
-    //
-    // When those all hold, we synthesize a short statement naming
-    // the connection and return it so the caller can store it as a
-    // brand-new cell in the lattice. That cell then participates in
-    // future retrievals and future dreams — classic associative
-    // branching.
-    let synthesis = if !duplicate_echo
-        && confidence >= 0.15
-        && confidence < 0.65
-        && field.chi <= 0.90
-        && field.phi_g >= 0.0001
-    {
-        let shared = shared_concept_words(&a.label, &b.label);
-        if shared.len() >= 1 {
-            let text = build_synthesis_text(&a.label, &b.label, &shared);
-            Some(DreamSynthesis {
-                label: text.clone(),
-                text,
-                region: "synthesis".to_string(),
-                shared_concepts: shared,
-                strength: 1.0,
-            })
-        } else {
-            // Zero shared words — build a bridge label from the two cell labels directly
-            let bridge = format!("[Bridge] {} ↔ {}", a.label, b.label);
-            Some(DreamSynthesis {
-                label: bridge.clone(),
-                text: bridge,
-                region: "synthesis".to_string(),
-                shared_concepts: vec![],
-                strength: 1.0,
-            })
-        }
+    let (label, text) = if shared.len() >= 1 {
+        let t = build_synthesis_text(&a.claim.text, &b.claim.text, &shared);
+        (t.clone(), t)
     } else {
-        None
+        let t = format!("[Bridge] {} ↔ {}", a.claim.text, b.claim.text);
+        (t.clone(), t)
     };
-
-    // Source reinforcement based on Wm
-    let reinforce_by = if promotion_ready {
-        field.wm.max(0.05).min(0.30) * 0.60
-    } else if field.wm >= 0.10 {
-        field.wm.max(0.02).min(0.08) * 0.20
-    } else {
-        0.0
-    };
-
-    // ── Accept: increment gate stats ──────────────────────────────────────
-    if let Ok(mut s) = GATE_STATS.lock() {
-        s.accepted += 1;
-    }
-
-    // Track in dream history
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    push_dream_history(DreamHistoryEntry {
-        winner_key,
-        phi_g: field.phi_g,
-        ts: now,
-    });
 
     Some(DreamResult {
         concept_a: a.label.clone(),
         concept_b: b.label.clone(),
         region_a: a.region.clone(),
         region_b: b.region.clone(),
-        overlap,
-        insight: insight_text,
-        insight_region,
+        overlap: *resonance,
+        insight: best_cell.label.clone(),
+        insight_region: best_cell.region.clone(),
         phi_g: field.phi_g,
-        c: field.c,
+        c: *resonance,
         wm: field.wm,
         chi: field.chi,
-        duplicate_echo,
-        is_non_source,
-        source_reinforcement: reinforce_by,
-        promotion_ready,
-        synthesis,
+        duplicate_echo: false,
+        is_non_source: true,
+        source_reinforcement: 0.15,
+        promotion_ready: true,
+        strength: birth_strength,
+        synthesis: Some(DreamSynthesis {
+            label,
+            text,
+            region: "synthesis".to_string(),
+            shared_concepts: shared,
+            strength: birth_strength,
+            vec: synthesis_vec,
+        }),
     })
+}
+
+pub fn consolidate(universe: &Universe) -> Option<DreamResult> {
+    let (idx_a, idx_b, _overlap) = select_dream_pair(universe)?;
+    consolidate_pair(universe, idx_a, idx_b, None)
 }
 
 /// Return the set of significant words that appear in BOTH texts.
@@ -504,20 +370,104 @@ fn internal_consolidate(
 /// vector collision.
 fn shared_concept_words(a: &str, b: &str) -> Vec<String> {
     const STOPWORDS: &[&str] = &[
-        "the", "and", "but", "for", "nor", "yet", "all", "any", "are",
-        "can", "did", "does", "doesn", "don", "each", "from", "had",
-        "has", "have", "here", "how", "its", "just", "like", "more",
-        "most", "much", "may", "might", "must", "not", "now", "off",
-        "often", "only", "other", "our", "out", "over", "own", "same",
-        "she", "should", "some", "such", "than", "that", "their",
-        "them", "then", "there", "these", "they", "this", "those",
-        "through", "too", "under", "very", "was", "were", "what", "when",
-        "where", "which", "while", "who", "why", "will", "with", "would",
-        "you", "your", "being", "because", "however", "therefore",
-        "about", "also", "usually", "typically", "often", "many",
-        "several", "various", "some", "example", "examples", "called",
-        "known", "into", "using", "used", "based", "between", "within",
-        "means", "refers",
+        "the",
+        "and",
+        "but",
+        "for",
+        "nor",
+        "yet",
+        "all",
+        "any",
+        "are",
+        "can",
+        "did",
+        "does",
+        "doesn",
+        "don",
+        "each",
+        "from",
+        "had",
+        "has",
+        "have",
+        "here",
+        "how",
+        "its",
+        "just",
+        "like",
+        "more",
+        "most",
+        "much",
+        "may",
+        "might",
+        "must",
+        "not",
+        "now",
+        "off",
+        "often",
+        "only",
+        "other",
+        "our",
+        "out",
+        "over",
+        "own",
+        "same",
+        "she",
+        "should",
+        "some",
+        "such",
+        "than",
+        "that",
+        "their",
+        "them",
+        "then",
+        "there",
+        "these",
+        "they",
+        "this",
+        "those",
+        "through",
+        "too",
+        "under",
+        "very",
+        "was",
+        "were",
+        "what",
+        "when",
+        "where",
+        "which",
+        "while",
+        "who",
+        "why",
+        "will",
+        "with",
+        "would",
+        "you",
+        "your",
+        "being",
+        "because",
+        "however",
+        "therefore",
+        "about",
+        "also",
+        "usually",
+        "typically",
+        "often",
+        "many",
+        "several",
+        "various",
+        "some",
+        "example",
+        "examples",
+        "called",
+        "known",
+        "into",
+        "using",
+        "used",
+        "based",
+        "between",
+        "within",
+        "means",
+        "refers",
     ];
     let normalize = |s: &str| -> std::collections::HashSet<String> {
         s.split(|c: char| !c.is_alphanumeric())
@@ -588,7 +538,18 @@ pub fn store_synthesis(universe: &mut Universe, dream: &DreamResult) -> bool {
     if syn.label.is_empty() {
         return false;
     }
-    universe.store_or_reinforce(&syn.label, &syn.region, "dream-discovery", syn.strength)
+    // Convergence score is inverse of contradiction (chi).
+    // High chi (contradiction) -> low convergence score -> flags FID.
+    let conv_score = (1.0 / (0.1 + dream.chi)).min(9.99);
+
+    universe.store_or_reinforce_with_vec(
+        &syn.label,
+        &syn.region,
+        "dream-discovery",
+        syn.strength,
+        Some(syn.vec.clone()),
+        Some(conv_score),
+    )
 }
 
 /// Observe a dream result and feed it into the candidate buffer.
@@ -621,8 +582,7 @@ pub fn reinforce_dream_sources(universe: &mut Universe, dream: &DreamResult) {
     let cells = universe.cells_mut();
     for cell in cells.iter_mut() {
         if cell.label == dream.concept_a || cell.label == dream.concept_b {
-            cell.strength = (cell.strength + dream.source_reinforcement).min(5.0);
+            cell.claim.confidence = (cell.claim.confidence + dream.source_reinforcement).min(5.0);
         }
     }
 }
-

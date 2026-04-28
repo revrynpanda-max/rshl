@@ -1,4 +1,4 @@
-﻿/// Git Tools — KAI's native git awareness.
+/// Git Tools — KAI's native git awareness.
 ///
 /// KAI understands git at the field level — not just running commands,
 /// but learning from commit history, diffs, and status to build
@@ -388,4 +388,3 @@ impl StatusSummary {
         lines.join("\n")
     }
 }
-

@@ -1,4 +1,4 @@
-﻿/// Norepinephrine (Locus Coeruleus) — Alertness, Gain Control, Stress Response
+/// Norepinephrine (Locus Coeruleus) — Alertness, Gain Control, Stress Response
 ///
 /// The Locus Coeruleus is a tiny nucleus in the brainstem that sends
 /// norepinephrine (NE) throughout the entire brain. It is the arousal
@@ -416,4 +416,3 @@ mod tests {
         assert!(s.contains("gain"), "status line should mention gain");
     }
 }
-

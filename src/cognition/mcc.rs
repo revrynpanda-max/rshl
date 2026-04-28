@@ -1,4 +1,4 @@
-﻿/// Mid-Cingulate Cortex (MCC) — Pain Affect, Social Exclusion Pain,
+/// Mid-Cingulate Cortex (MCC) — Pain Affect, Social Exclusion Pain,
 /// Effort Cost Computation, Agency and Volition
 ///
 /// The mid-cingulate cortex (area 24/24'), located between the anterior
@@ -440,4 +440,3 @@ mod tests {
         assert!(s.contains("pain"), "status should show pain");
     }
 }
-

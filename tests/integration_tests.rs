@@ -1,5 +1,4 @@
-use kai::cognition::reasoner::Reasoner;
-use kai::core::Universe;
+use kai::core::{Reasoner, Universe};
 
 #[test]
 fn test_cognitive_resonance_loop() {
@@ -78,11 +77,11 @@ fn test_hebbian_persistence() {
 
     // Store it once
     universe.store(fact, "memory", "world-bridge", 1.0);
-    let strength_initial = universe.cells()[0].strength;
+    let strength_initial = universe.cells()[0].claim.confidence;
 
     // Store it again (should reinforce)
     universe.store_or_reinforce(fact, "memory", "world-bridge", 1.0);
-    let strength_after = universe.cells()[0].strength;
+    let strength_after = universe.cells()[0].claim.confidence;
 
     assert!(
         strength_after > strength_initial,
@@ -90,4 +89,35 @@ fn test_hebbian_persistence() {
         strength_initial,
         strength_after
     );
+}
+
+#[test]
+fn test_legacy_cells_deserialize_into_claims() {
+    let raw = r#"{
+        "cells": [{
+            "label": "",
+            "text": "Legacy truth survives schema migration",
+            "vec": {"len": 16384, "nz": [[7, 1]]},
+            "region": "memory",
+            "strength": 2.5,
+            "source": "seed",
+            "created": 123,
+            "continuation": {"len": 16384, "nz": []},
+            "last_fired": 9,
+            "convergence_score": 0.4
+        }]
+    }"#;
+
+    let universe: Universe = serde_json::from_str(raw).expect("legacy universe should load");
+    let cell = &universe.cells()[0];
+
+    assert_eq!(cell.label, "Legacy truth survives schema migration");
+    assert_eq!(cell.claim.text, "Legacy truth survives schema migration");
+    assert_eq!(cell.claim.source, "seed");
+    assert_eq!(cell.claim.confidence, 2.5);
+    assert_eq!(cell.claim.created_at, 123);
+    assert_eq!(cell.claim.last_verified, 123);
+    assert_eq!(cell.last_fired, 9);
+    assert_eq!(cell.nnz, 1);
+    assert_eq!(cell.claim.evidence, vec!["seed".to_string()]);
 }

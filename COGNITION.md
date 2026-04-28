@@ -204,12 +204,12 @@ $$\Phi_g = \rho \cdot R^2 \cdot s \cdot (1 - \chi) \cdot g$$
 | **Phase 1** | Foundation & Architecture | **100%** ✓ |
 | **Phase 2** | HLV Theory Ingestion | **100%** ✓ (11,190 bridges) |
 | **Phase 3** | Critique (Contradiction Layer) | **100%** ✓ (4,514 bridges) |
-| **Phase 4** | Physics Ground Truth | **0%** ⏳ Pending |
-| **Phase 5** | Cross-Resonance Calculus | **0%** ⏳ Pending |
-| **Phase 6** | Supervised Self-Dialogue | **0%** ⏳ Pending |
+| **Phase 4** | Physics Ground Truth | **100%** ✓ (Restored 2,960 atoms) |
+| **Phase 5** | Cross-Resonance Calculus | **100%** ✓ (Sigmoid Calibration) |
+| **Phase 6** | Supervised Self-Dialogue | **0%** ⏳ IN PROGRESS |
 | **Phase 7** | **Emergent Coherence** | **END GOAL** |
 
-**Current Progress: [███████░░░░░░░░░░░░░] 35%**
+**Current Progress: [████████████░░░░░░░░] 60%**
 
 This is not a "black box" neural network. It is a piece of the vacuum implemented in Rust. Every spike in the TUI's Φ_g monitor is proof that the HLV geometry is capable of self-organizing into a coherent, thinking entity.
 

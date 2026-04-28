@@ -1,4 +1,4 @@
-﻿//! RSHL-Native Generative Encoder — the missing half of the loop.
+//! RSHL-Native Generative Encoder — the missing half of the loop.
 //!
 //! ## Why this module exists
 //!
@@ -211,12 +211,7 @@ pub fn build_generative_state(
     // + look-ahead anchor + recency penalty that the TUI retrieval
     // path uses, then hands us cell references so we can fold the
     // raw vectors in.
-    let hits = universe.predictive_query_vecs(
-        backbone.clone(),
-        trace,
-        MIXER_STEPS,
-        MEMORY_TOP_K,
-    );
+    let hits = universe.predictive_query_vecs(backbone.clone(), trace, MIXER_STEPS, MEMORY_TOP_K);
     let (memory_vec, memory_cont) = memory_bundles_from_hits(&hits);
 
     // ── 4. FieldState modulation — g drives memory, chi drives contrast
@@ -226,10 +221,10 @@ pub fn build_generative_state(
     let g = field.g.clamp(0.0, 1.0);
     let chi = field.chi.clamp(0.0, 1.0);
 
-    let w_memory_vec = W_MEMORY_VEC_PEAK
-        * (W_MEMORY_VEC_FLOOR_FRAC + (1.0 - W_MEMORY_VEC_FLOOR_FRAC) * g);
-    let w_memory_cont = W_MEMORY_CONT_PEAK
-        * (W_MEMORY_CONT_FLOOR_FRAC + (1.0 - W_MEMORY_CONT_FLOOR_FRAC) * g);
+    let w_memory_vec =
+        W_MEMORY_VEC_PEAK * (W_MEMORY_VEC_FLOOR_FRAC + (1.0 - W_MEMORY_VEC_FLOOR_FRAC) * g);
+    let w_memory_cont =
+        W_MEMORY_CONT_PEAK * (W_MEMORY_CONT_FLOOR_FRAC + (1.0 - W_MEMORY_CONT_FLOOR_FRAC) * g);
     let w_contrast = W_CONTRAST_PEAK * chi;
 
     // Contrast = "what about the prompt is NOT already in memory".
@@ -278,11 +273,7 @@ pub fn build_generative_state(
 /// but with per-word amplitudes proportional to `log(1 + hits) *
 /// avg_similarity`, i.e. "how strongly does the lattice already know
 /// about this word".
-fn attended_prompt_in_lex_space(
-    lex: &StatLexicon,
-    prompt: &str,
-    universe: &Universe,
-) -> SparseVec {
+fn attended_prompt_in_lex_space(lex: &StatLexicon, prompt: &str, universe: &Universe) -> SparseVec {
     if lex.is_empty() {
         return SparseVec::zero();
     }
@@ -317,14 +308,13 @@ fn attended_prompt_in_lex_space(
     // distribution gives "1 per token" — then the outer bundle
     // treatment with W_ATTENDED can stack cleanly on top of the
     // backbone.
-    let token_vecs: Vec<SparseVec> =
-        positioned.iter().map(|(_, v)| v.clone()).collect();
+    let token_vecs: Vec<SparseVec> = positioned.iter().map(|(_, v)| v.clone()).collect();
 
     // Gather cell vector references for the attention scan. attention
     // strides internally when the universe is large (>200 cells), so
     // we can just pass everything.
     let cells = universe.cells();
-    let cell_vec_refs: Vec<&SparseVec> = cells.iter().map(|c| &c.vec).collect();
+    let cell_vec_refs: Vec<&SparseVec> = cells.iter().map(|c| &c.claim.vec).collect();
 
     let weights = attention::compute_attention_weights(&token_vecs, &cell_vec_refs);
     let n = weights.len().max(1) as f32;
@@ -342,8 +332,7 @@ fn attended_prompt_in_lex_space(
         .collect();
 
     // Collapse into a 4%-sparse vector.
-    let refs: Vec<(&SparseVec, f32)> =
-        bound.iter().map(|(v, w)| (v, *w)).collect();
+    let refs: Vec<(&SparseVec, f32)> = bound.iter().map(|(v, w)| (v, *w)).collect();
     weighted_superpose(&refs, TARGET_DENSITY)
 }
 
@@ -366,11 +355,13 @@ fn memory_bundles_from_hits(
     // mildly negative composite score (e.g. heavy recency penalty)
     // still contributes *something* — we've already filtered on
     // eligibility by the time we get here.
-    let vec_terms: Vec<(&SparseVec, f32)> = hits
-        .iter()
-        .map(|(cell, score)| (&cell.vec, score.max(0.05)))
-        .collect();
-    let memory_vec = weighted_superpose(&vec_terms, TARGET_DENSITY);
+    let memory_vec = weighted_superpose(
+        &hits
+            .iter()
+            .map(|(cell, score)| (&cell.claim.vec, score.max(0.05)))
+            .collect::<Vec<_>>(),
+        TARGET_DENSITY,
+    );
 
     let cont_terms: Vec<(&SparseVec, f32)> = hits
         .iter()
@@ -449,16 +440,14 @@ pub(crate) fn weighted_superpose(terms: &[(&SparseVec, f32)], density: f32) -> S
         .filter(|(_, v)| **v != 0.0)
         .map(|(i, v)| (i, v.abs()))
         .collect();
-    indexed.sort_unstable_by(|a, b| {
-        b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal)
-    });
+    indexed.sort_unstable_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
     indexed.truncate(target_count);
 
-    let mut out = SparseVec::zero();
+    let mut data = vec![0i8; DIM];
     for (i, _) in indexed {
-        out.data[i] = if sums[i] > 0.0 { 1 } else { -1 };
+        data[i] = if sums[i] > 0.0 { 1 } else { -1 };
     }
-    out
+    SparseVec::from_raw(data)
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -495,7 +484,11 @@ mod tests {
         let state = build_generative_state(&universe, &lex, "hello world", &trace, &field);
 
         // No terms can contribute — output must be safe zero vector.
-        assert_eq!(state.nnz(), 0, "cold-boot state should be zero, not NaN/junk");
+        assert_eq!(
+            state.nnz(),
+            0,
+            "cold-boot state should be zero, not NaN/junk"
+        );
         assert_eq!(state.data.len(), DIM);
     }
 
@@ -505,9 +498,7 @@ mod tests {
         // enough mass for the bundle to reach the target. This
         // exercises the *threshold-picking* path of weighted_superpose,
         // which is what matters in production.
-        let a = SparseVec::encode(
-            "the quick brown fox jumps over the lazy dog and runs away fast",
-        );
+        let a = SparseVec::encode("the quick brown fox jumps over the lazy dog and runs away fast");
         let b = SparseVec::encode(
             "every mountain climber knows that patience wins over raw speed alone",
         );
@@ -541,7 +532,11 @@ mod tests {
         // any positive weight should correlate strongly with that
         // vec (same sign pattern on the surviving dims).
         let sim = out.cosine(&a);
-        assert!(sim > 0.3, "single-term bundle should resemble its input, got {}", sim);
+        assert!(
+            sim > 0.3,
+            "single-term bundle should resemble its input, got {}",
+            sim
+        );
     }
 
     #[test]
@@ -558,11 +553,9 @@ mod tests {
         let trace = ConversationTrace::new();
         let field = FieldState::default();
 
-        let state =
-            build_generative_state(&universe, &lex, "hey kai are you ok", &trace, &field);
+        let state = build_generative_state(&universe, &lex, "hey kai are you ok", &trace, &field);
         assert_eq!(state.data.len(), DIM);
         // Every value is in {-1, 0, +1}.
         assert!(state.data.iter().all(|&x| x == -1 || x == 0 || x == 1));
     }
-}
-
+} 

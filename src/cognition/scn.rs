@@ -1,4 +1,4 @@
-﻿/// Suprachiasmatic Nucleus (SCN) — Circadian Clock, Temporal Patterning,
+/// Suprachiasmatic Nucleus (SCN) — Circadian Clock, Temporal Patterning,
 /// Rhythmic Modulation of Cognition, Time-of-Day Gating
 ///
 /// The SCN is the brain's master circadian pacemaker, located in the
@@ -312,4 +312,3 @@ mod tests {
         assert!(sl.contains("phase"), "status should show phase");
     }
 }
-

@@ -1,4 +1,4 @@
-﻿/// Nucleus Basalis of Meynert (NBM) — Cortical Cholinergic Supply,
+/// Nucleus Basalis of Meynert (NBM) — Cortical Cholinergic Supply,
 /// Neocortical Arousal Gate, Attention Modulation, Memory Encoding
 ///
 /// The NBM (also called Ch4) is the brain's primary source of acetylcholine
@@ -353,4 +353,3 @@ mod tests {
         assert!(s.contains("ach"), "status should show ACh");
     }
 }
-

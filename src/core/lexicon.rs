@@ -585,4 +585,3 @@ mod tests {
         assert_eq!(match_case("hello", "World"), "world");
     }
 }
-

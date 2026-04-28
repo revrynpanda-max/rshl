@@ -1,4 +1,4 @@
-﻿use super::shared_bus::{CpuState, StreamEvent};
+use super::shared_bus::{CpuState, StreamEvent};
 use crossbeam_channel::{Receiver, Sender};
 /// CPU Stream — Logic, reasoning, dreaming, drive.
 ///
@@ -37,4 +37,3 @@ pub fn cpu_tick(
         state.last_tick = Some(Instant::now());
     }
 }
-

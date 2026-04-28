@@ -176,32 +176,34 @@ impl FieldState {
         };
 
         // ── Contradiction ──────────────────────────────────────────────
-        let mut pair_disagreement: Vec<f32> = Vec::new();
+        // Weighted friction: only strong concepts should cause high contradiction.
+        let mut pair_disagreement: Vec<(f32, f32)> = Vec::new(); // (disagreement, weight)
         for i in 0..input.source_vecs.len() {
             for j in (i + 1)..input.source_vecs.len() {
-                pair_disagreement
-                    .push(1.0 - clamp01(input.source_vecs[i].0.cosine(input.source_vecs[j].0)));
+                let sim = clamp01(input.source_vecs[i].0.cosine(input.source_vecs[j].0));
+                let dis = 1.0 - sim;
+
+                // Weight by both strength and query relevance
+                let w_i =
+                    input.source_vecs[i].1 * input.candidate_scores.get(i).cloned().unwrap_or(1.0);
+                let w_j =
+                    input.source_vecs[j].1 * input.candidate_scores.get(j).cloned().unwrap_or(1.0);
+                let weight = (w_i * w_j).sqrt();
+
+                pair_disagreement.push((dis, weight));
             }
         }
-        let score_disagreement = if !input.candidate_scores.is_empty() {
-            mean(
-                &input
-                    .candidate_scores
-                    .iter()
-                    .map(|&s| 1.0 - clamp01(s))
-                    .collect::<Vec<_>>(),
-            )
-        } else {
+
+        let chi = if pair_disagreement.is_empty() {
             0.0
-        };
-        let chi = clamp01(mean(&[
-            if pair_disagreement.is_empty() {
-                0.0
+        } else {
+            let total_w: f32 = pair_disagreement.iter().map(|p| p.1).sum();
+            if total_w > 0.0 {
+                pair_disagreement.iter().map(|p| p.0 * p.1).sum::<f32>() / total_w
             } else {
-                mean(&pair_disagreement)
-            },
-            score_disagreement,
-        ]));
+                0.0
+            }
+        };
 
         // ── Temporal recurrence (τ) ────────────────────────────────────
         let tau = if input.winner_key.is_empty() {
@@ -245,8 +247,20 @@ impl FieldState {
         };
 
         // ── Emergence cascade ──────────────────────────────────────────
-        let phi = clamp01(rho * r_val.powi(2) * s);
-        let phi_c = clamp01(phi * (1.0 - chi));
+        // Adaptive density: boost weak signals in sparse lattices using sqrt(rho)
+        let adaptive_rho = rho.sqrt();
+        let phi_raw = clamp01(adaptive_rho * r_val * s);
+
+        // Dynamic Friction Sigmoid (Officer Gemini's Proposal)
+        // Reduces chi penalty for high-resonance truth claims while maintaining it for noise.
+        // Formula: chi_dynamic = chi * (1.0 / (1.0 + exp(k * (phi_raw - threshold))))
+        let k = 15.0; // Slope steepness
+        let threshold = 0.05; // Resonance threshold for friction drop
+        let sigmoid_factor = 1.0 / (1.0 + ((phi_raw - threshold) * k).exp());
+        let chi_dynamic = chi * sigmoid_factor;
+
+        let chi_penalty = (1.0 - chi_dynamic).max(0.0);
+        let phi_c = clamp01(phi_raw * chi_penalty);
         let phi_g = clamp01(phi_c * g);
 
         // Momentum
@@ -269,7 +283,7 @@ impl FieldState {
             r,
             u,
             q,
-            phi,
+            phi: phi_raw,
             phi_c,
             phi_g,
             m_val,
@@ -283,6 +297,35 @@ impl FieldState {
             pressure: chi,
             regional: RegionalState::default(),
         }
+    }
+
+    /// Measure the field state for a specific synthetic vector and the universe.
+    pub fn measure(universe: &Universe, bundle: &SparseVec) -> Self {
+        let hits = universe.query_vec(bundle, 5);
+        let mut candidate_scores = Vec::new();
+        let mut source_vecs = Vec::new();
+
+        for (cell, score) in &hits {
+            candidate_scores.push(*score);
+            source_vecs.push((
+                &cell.claim.vec,
+                cell.claim.confidence,
+                cell.claim.created_at,
+            ));
+        }
+
+        let input = FieldInput {
+            synthetic_vec: Some(bundle),
+            source_vecs,
+            candidate_scores,
+            goal_vec: None,
+            winner_key: String::new(),
+            history: &[],
+            total_count: (hits.len() + 2).max(10),
+            prev_phi_g: 0.0,
+        };
+
+        Self::compute_full(&input)
     }
 
     /// Simple compute from universe only (backward compatible).
@@ -302,17 +345,20 @@ impl FieldState {
 
         // ── phi_g: mean pairwise cosine across strided sample (Parallel) ──
         use rayon::prelude::*;
-        let (phi_sum, phi_count) = (0..sample_limit).into_par_iter().map(|i| {
-            let ci = i * stride;
-            let mut local_sum = 0.0f32;
-            let mut local_count = 0u32;
-            for j in (i + 1)..sample_limit.min(i + 10) {
-                let cj = j * stride;
-                local_sum += cells[ci].vec.cosine(&cells[cj].vec).abs();
-                local_count += 1;
-            }
-            (local_sum, local_count)
-        }).reduce(|| (0.0, 0), |a, b| (a.0 + b.0, a.1 + b.1));
+        let (phi_sum, phi_count) = (0..sample_limit)
+            .into_par_iter()
+            .map(|i| {
+                let ci = i * stride;
+                let mut local_sum = 0.0f32;
+                let mut local_count = 0u32;
+                for j in (i + 1)..sample_limit.min(i + 10) {
+                    let cj = j * stride;
+                    local_sum += cells[ci].claim.vec.cosine(&cells[cj].claim.vec).abs();
+                    local_count += 1;
+                }
+                (local_sum, local_count)
+            })
+            .reduce(|| (0.0, 0), |a, b| (a.0 + b.0, a.1 + b.1));
 
         let phi_g = if phi_count > 0 {
             phi_sum / phi_count as f32
@@ -336,7 +382,7 @@ impl FieldState {
                 let ri = i * rstride;
                 for j in (i + 1)..rsample {
                     let rj = j * rstride;
-                    coh_sum += rcells[ri].vec.cosine(&rcells[rj].vec).abs();
+                    coh_sum += rcells[ri].claim.vec.cosine(&rcells[rj].claim.vec).abs();
                     coh_count += 1;
                 }
             }
@@ -346,7 +392,7 @@ impl FieldState {
         } else {
             0.0
         };
-        let mass = cells.iter().map(|c| c.strength).sum::<f32>() / n;
+        let mass = cells.iter().map(|c| c.claim.confidence).sum::<f32>() / n;
 
         // ── Cross-region pressure ─────────────────────────────────────────
         // Uses the middle cell of each region for a more representative sample.
@@ -357,11 +403,11 @@ impl FieldState {
             for j in (i + 1)..region_keys.len() {
                 let a_cells = &region_map[region_keys[i]];
                 let b_cells = &region_map[region_keys[j]];
-                
+
                 let a = a_cells.get(a_cells.len() / 2);
                 let b = b_cells.get(b_cells.len() / 2);
                 if let (Some(a), Some(b)) = (a, b) {
-                    let sim = a.vec.cosine(&b.vec);
+                    let sim = a.claim.vec.cosine(&b.claim.vec);
                     if sim < 0.0 {
                         pr_sum += sim.abs();
                     }
@@ -382,8 +428,10 @@ impl FieldState {
         // ── Density (ρ): avg fraction of non-zero dims across strided sample ─
         // Strided so rho reflects the full field, not just the first 50 cells.
         let rho = if sample_limit > 0 {
-            let total_active: usize = (0..sample_limit).map(|i| cells[i * stride].vec.nnz()).sum();
-            let dim = cells[0].vec.data.len(); // 4096
+            let total_active: usize = (0..sample_limit)
+                .map(|i| cells[i * stride].claim.vec.nnz())
+                .sum();
+            let dim = cells[0].claim.vec.data.len(); // 16384
             let total_dims = sample_limit * dim;
             clamp01(total_active as f32 / total_dims as f32)
         } else {
@@ -467,4 +515,3 @@ impl FieldState {
         };
     }
 }
-

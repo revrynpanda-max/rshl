@@ -1,4 +1,4 @@
-﻿/// Ventromedial Prefrontal Cortex (vmPFC) — Safety Valuation, Fear Extinction,
+/// Ventromedial Prefrontal Cortex (vmPFC) — Safety Valuation, Fear Extinction,
 /// Learned Safety, Value-Based Decision Making
 ///
 /// The vmPFC is the lower-front part of the medial prefrontal cortex. It is the
@@ -479,4 +479,3 @@ mod tests {
         assert!(s.contains("safety"), "status should show safety level");
     }
 }
-

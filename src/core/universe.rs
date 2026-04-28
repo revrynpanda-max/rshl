@@ -1,42 +1,163 @@
-/// Universe â€” The cell store for KAI's memory.
+/// Universe â€" The cell store for KAI's memory.
 ///
 /// Each cell is a belief: text + vector + region + strength + metadata.
 /// ALL queries use rayon parallel cosine across all 12 CPU threads.
 ///
 /// Scoring uses a hybrid of:
 ///   1. Cosine similarity on the 16384-dim sparse ternary vector (semantic layer)
-///   2. Keyword overlap â€” shared significant words between query and cell (exact match layer)
+///   2. Keyword overlap â€" shared significant words between query and cell (exact match layer)
 ///
 /// This is the same dual-layer approach that makes Google search fast and precise:
 /// semantic embeddings catch conceptual resonance, keyword overlap catches exact term hits.
-/// "What is RSHL?" finds the RSHL cell because "rshl" appears in both â€” even if the
+/// "What is RSHL?" finds the RSHL cell because "rshl" appears in both â€" even if the
 /// full-phrase cosine similarity is diluted by surrounding words.
 use rayon::prelude::*;
 
+use super::claim::Claim;
 use super::predictive::{self, ConversationTrace};
 use super::SparseVec;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize)]
+struct RejectionLogEntry<'a> {
+    ts: u64,
+    text: &'a str,
+    region: &'a str,
+    source: &'a str,
+    confidence: f32,
+    reason: &'a str,
+}
+
+fn log_rejected_claim(text: &str, region: &str, source: &str, confidence: f32, reason: &str) {
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let entry = RejectionLogEntry {
+        ts,
+        text,
+        region,
+        source,
+        confidence,
+        reason,
+    };
+    if let Ok(line) = serde_json::to_string(&entry) {
+        let _ = std::fs::create_dir_all("data");
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open("data/epistemic-rejections.jsonl")
+        {
+            use std::io::Write;
+            let _ = writeln!(file, "{}", line);
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize)]
 pub struct Cell {
+    #[serde(default)]
     pub label: String,
-    #[serde(default)]
-    pub text: String,
-    pub vec: SparseVec,
     pub region: String,
-    pub strength: f32,
-    pub source: String,
-    #[serde(default)]
-    pub created: u64,
+    pub claim: Claim,
     #[serde(default)]
     pub continuation: SparseVec,
     #[serde(default)]
     pub last_fired: u64,
+    #[serde(default)]
+    pub convergence_score: f32,
+    #[serde(default)]
+    pub nnz: u32,
+}
+
+impl<'de> Deserialize<'de> for Cell {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct CompatCell {
+            #[serde(default)]
+            label: String,
+            #[serde(default)]
+            text: String,
+            #[serde(default)]
+            vec: SparseVec,
+            #[serde(default)]
+            region: String,
+            #[serde(default = "default_strength")]
+            strength: f32,
+            #[serde(default = "default_source")]
+            source: String,
+            #[serde(default)]
+            created: u64,
+            #[serde(default)]
+            claim: Option<Claim>,
+            #[serde(default)]
+            continuation: SparseVec,
+            #[serde(default)]
+            last_fired: u64,
+            #[serde(default)]
+            convergence_score: f32,
+            #[serde(default)]
+            nnz: u32,
+        }
+
+        fn default_strength() -> f32 {
+            1.0
+        }
+
+        fn default_source() -> String {
+            "unknown".to_string()
+        }
+
+        let raw = CompatCell::deserialize(deserializer)?;
+        let mut claim = raw.claim.unwrap_or_else(|| {
+            let text = if raw.text.is_empty() {
+                raw.label.clone()
+            } else {
+                raw.text.clone()
+            };
+            let mut claim = Claim::new(&text, &raw.source, raw.strength, raw.vec.clone());
+            claim.created_at = raw.created;
+            claim.last_verified = raw.created;
+            claim
+        });
+
+        if claim.text.is_empty() && !raw.label.is_empty() {
+            claim.text = raw.label.clone();
+        }
+        if claim.evidence.is_empty() && claim.source != "unknown" {
+            claim.evidence.push(claim.source.clone());
+        }
+
+        let label = if raw.label.is_empty() {
+            claim.text.clone()
+        } else {
+            raw.label
+        };
+        let nnz = if raw.nnz == 0 {
+            claim.vec.nnz() as u32
+        } else {
+            raw.nnz
+        };
+
+        Ok(Self {
+            label,
+            region: raw.region,
+            claim,
+            continuation: raw.continuation,
+            last_fired: raw.last_fired,
+            convergence_score: raw.convergence_score,
+            nnz,
+        })
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct QueryHit {
+    #[serde(default)]
     pub label: String,
     pub text: String,
     pub vec: SparseVec,
@@ -55,9 +176,50 @@ pub struct Universe {
     cells: Vec<Cell>,
 }
 
-// â”€â”€ Keyword overlap helpers (BM25-style exact match layer) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Epistemic Constants ──────────────────────────────────────────────────
+pub const TRUTH_ANCHORS: &[(&str, f32)] = &[
+    (
+        "E equals mc squared mass energy equivalence Einstein special relativity confirmed",
+        5.0,
+    ),
+    (
+        "E mc2 mass energy equivalence nuclear confirmed physics real",
+        5.0,
+    ),
+    (
+        "gravity curves spacetime LIGO gravitational waves GPS time dilation confirmed",
+        5.0,
+    ),
+    (
+        "quasicrystals aperiodic order Nobel Prize 2011 Shechtman forbidden symmetry real",
+        5.0,
+    ),
+    (
+        "general relativity spacetime curvature black hole EHT perihelion Mercury confirmed",
+        5.0,
+    ),
+    (
+        "luminiferous ether disproven Michelson Morley null result 1887 special relativity",
+        5.0,
+    ),
+    (
+        "Fibonacci golden angle phyllotaxis sunflower spiral botanical observation real",
+        4.5,
+    ),
+    (
+        "quantum mechanics uncertainty principle Heisenberg Born rule confirmed experiment",
+        4.5,
+    ),
+];
 
-/// Extract significant keywords from a query â€” stopwords removed, â‰¥3 chars.
+pub const MONOCULTURE_THRESHOLD: f32 = 0.35;
+pub const MONOCULTURE_MIN_SIZE: usize = 5;
+pub const PHYSICS_RESONANCE_FLOOR: f32 = 0.55;
+pub const COHERENCE_FLOOR: f32 = 0.40;
+
+// ── Keyword overlap helpers (BM25-style exact match layer) ───────────────────
+
+/// Extract significant keywords from a query â€" stopwords removed, â‰¥3 chars.
 /// These are the terms we expect to literally appear in a matching cell.
 fn extract_query_keywords(text: &str) -> Vec<String> {
     const STOPWORDS: &[&str] = &[
@@ -154,7 +316,7 @@ fn extract_query_keywords(text: &str) -> Vec<String> {
         "which",
         "its",
         "whose",
-        // Casual fillers that add noise â€” semantically empty in queries
+        // Casual fillers that add noise â€" semantically empty in queries
         "again",
         "actually",
         "basically",
@@ -177,7 +339,7 @@ fn extract_query_keywords(text: &str) -> Vec<String> {
         "always",
         "sometimes",
         "often",
-        // Conversational openers / hedge words â€” carry no topic signal
+        // Conversational openers / hedge words â€" carry no topic signal
         "wait",
         "like",
         "mean",
@@ -199,13 +361,22 @@ fn extract_query_keywords(text: &str) -> Vec<String> {
         "cool",
     ];
     text.to_lowercase()
-        .split(|c: char| !c.is_alphanumeric())
+        .split(|c: char| {
+            !c.is_alphanumeric()
+                && c != '='
+                && c != '^'
+                && c != '+'
+                && c != '-'
+                && c != '*'
+                && c != '/'
+                && c != '²'
+        })
         .filter(|w| !w.is_empty() && w.len() >= 3 && !STOPWORDS.contains(w))
         .map(|w| w.to_string())
         .collect()
 }
 
-/// Score how many query keywords appear in cell text (0.0â€“1.0).
+/// Score how many query keywords appear in cell text (0.0â€"1.0).
 /// Uses morphological prefix matching for words â‰¥4 chars so "dream" matches "dreaming",
 /// "feel" matches "feelings", "work" matches "working", etc.
 fn keyword_overlap_score(query_words: &[String], cell_text: &str) -> f32 {
@@ -253,32 +424,86 @@ impl Universe {
         Self { cells: Vec::new() }
     }
 
+    /// Number of cells in the universe.
+    pub fn cell_count(&self) -> usize {
+        self.cells.len()
+    }
+
     /// Store a new belief with a pre-computed vector.
-    pub fn store_with_vec(&mut self, text: &str, region: &str, source: &str, strength: f32, vec: SparseVec) {
+    pub fn store_with_vec(
+        &mut self,
+        text: &str,
+        region: &str,
+        source: &str,
+        strength: f32,
+        vec: SparseVec,
+    ) {
+        self.store_with_vec_full(text, region, source, strength, vec, None);
+    }
+
+    pub fn store_with_vec_full(
+        &mut self,
+        text: &str,
+        region: &str,
+        source: &str,
+        strength: f32,
+        vec: SparseVec,
+        conv_score: Option<f32>,
+    ) {
+        let convergence_score = conv_score.unwrap_or_else(|| {
+            let phi_g = strength.clamp(0.0, 1.0) * 0.5;
+            let angles = [phi_g, 0.5_f32, 0.0_f32, 0.3_f32, 0.5_f32];
+            let mean = angles.iter().sum::<f32>() / 5.0;
+            let variance = angles.iter().map(|a| (a - mean).powi(2)).sum::<f32>() / 5.0;
+            let std_dev = variance.sqrt();
+            if std_dev < 0.001 {
+                1.001_f32
+            } else {
+                (1.0_f32 / std_dev).min(9.99)
+            }
+        });
+
+        let nnz = vec.nnz() as u32;
+
         self.cells.push(Cell {
             label: text.to_string(),
-            text: text.to_string(),
-            vec,
             region: region.to_string(),
-            strength,
-            source: source.to_string(),
-            created: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs(),
+            claim: Claim::new(text, source, strength, vec),
             continuation: SparseVec::zero(),
             last_fired: 0,
+            convergence_score,
+            nnz,
         });
     }
 
     /// Store a new belief.
     pub fn store(&mut self, text: &str, region: &str, source: &str, strength: f32) {
         let vec = SparseVec::encode(text);
-        self.store_with_vec(text, region, source, strength, vec);
+        self.store_with_vec_full(text, region, source, strength, vec, None);
+    }
+
+    /// Store a fully structured claim without throwing away its epistemic metadata.
+    pub fn store_claim(&mut self, mut claim: Claim, region: &str) {
+        if claim.vec.nnz() == 0 && !claim.text.is_empty() {
+            claim.vec = SparseVec::encode(&claim.text);
+        }
+        if claim.evidence.is_empty() && claim.source != "unknown" {
+            claim.evidence.push(claim.source.clone());
+        }
+        let nnz = claim.vec.nnz() as u32;
+        self.cells.push(Cell {
+            label: claim.text.clone(),
+            region: region.to_string(),
+            claim,
+            continuation: SparseVec::zero(),
+            last_fired: 0,
+            convergence_score: 0.0,
+            nnz,
+        });
     }
 
     /// Query for the top-N most similar cells.
-    /// Uses rayon parallel iteration â€” all 12 CPU threads compute cosine simultaneously.
+    /// Uses rayon parallel iteration â€" all 12 CPU threads compute cosine simultaneously.
     /// Scoring = 60% cosine similarity (semantic) + 40% keyword overlap (exact match).
     /// The keyword layer is the "inverted index" signal: "what is RSHL?" finds the RSHL
     /// cell because "rshl" appears in both, even if the phrase-level cosine is diluted.
@@ -287,23 +512,48 @@ impl Universe {
     /// Those cells exist to record Ryan's raw input for context/continuity; they
     /// must never be surfaced as KAI's own speech output. Without this filter,
     /// a freshly-stored echo cell outranks every other match on the exact input
-    /// Ryan just typed â€” and KAI parrots Ryan's own words back at him. That was
+    /// Ryan just typed â€" and KAI parrots Ryan's own words back at him. That was
     /// the "you sound scripted" humiliation; closing the hole here.
     pub fn query(&self, text: &str, n: usize) -> Vec<QueryHit> {
         let q = SparseVec::encode(text);
         let query_words = extract_query_keywords(text);
-        
+        let mag_q = q.nnz() as f32;
+        let mag_q_sqrt = mag_q.sqrt();
+
         let mut scored: Vec<(usize, f32)> = self
             .cells
             .par_iter()
             .enumerate()
-            .filter(|(_, cell)| cell.source != "user-echo" && cell.source != "conversation")
+            .filter(|(_, cell)| {
+                cell.claim.source != "user-echo" && cell.claim.source != "conversation"
+            })
             .map(|(i, cell)| {
-                let cosine = q.cosine(&cell.vec);
-                let kw = keyword_overlap_score(&query_words, &cell.text);
+                // Optimized cosine using cached cell.nnz
+                let dot = q.dot(&cell.claim.vec);
+                let mag_c = cell.nnz as f32;
+                let cosine = if mag_q > 0.0 && mag_c > 0.0 {
+                    dot as f32 / (mag_q_sqrt * mag_c.sqrt())
+                } else {
+                    0.0
+                };
+
+                let kw = keyword_overlap_score(&query_words, &cell.claim.text);
                 // Hybrid: 60% cosine similarity (semantic) + 40% keyword overlap (exact match)
                 let raw = 0.6 * cosine + 0.4 * kw;
-                let boosted = raw * (0.5 + 0.5 * cell.strength.min(2.0));
+                
+                // --- ANTI-BLEED LOGIC ---
+                // We only apply the strength bonus if the cell has a baseline resonance (raw > 0.15).
+                // This prevents high-strength anchors from "bleeding" into unrelated queries.
+                let boosted = if raw > 0.15 {
+                    let strength_bonus = if cell.claim.confidence >= 2.9 {
+                        0.85
+                    } else {
+                        0.5
+                    };
+                    raw * (strength_bonus + 0.6 * cell.claim.confidence.min(5.0))
+                } else {
+                    raw // No bonus for low-resonance noise
+                };
                 (i, boosted)
             })
             .filter(|(_, s)| *s > 0.08)
@@ -318,39 +568,97 @@ impl Universe {
                 let cell = &self.cells[i];
                 QueryHit {
                     label: cell.label.clone(),
-                    text: cell.label.clone(),
-                    vec: cell.vec.clone(),
+                    text: cell.claim.text.clone(),
+                    vec: cell.claim.vec.clone(),
                     region: cell.region.clone(),
                     score,
-                    strength: cell.strength,
-                    source: cell.source.clone(),
+                    strength: cell.claim.confidence,
+                    source: cell.claim.source.clone(),
                 }
             })
             .collect()
     }
 
-    /// Query only within a specific region â€” used for self/identity questions
+    /// Query using a pre-computed SparseVec instead of raw text.
+    /// Returns Vec<(Cell, f32)> tuples — (cell, score) — matching the
+    /// calling convention used by hippocampus, inner_voice, reasoner,
+    /// lattice, and field_state.
+    pub fn query_vec(&self, q: &SparseVec, n: usize) -> Vec<(Cell, f32)> {
+        let mag_q = q.nnz() as f32;
+        let mag_q_sqrt = mag_q.sqrt();
+
+        let mut scored: Vec<(usize, f32)> = self
+            .cells
+            .par_iter()
+            .enumerate()
+            .filter(|(_, cell)| {
+                cell.claim.source != "user-echo" && cell.claim.source != "conversation"
+            })
+            .map(|(i, cell)| {
+                let dot = q.dot(&cell.claim.vec);
+                let mag_c = cell.nnz as f32;
+                let cosine = if mag_q > 0.0 && mag_c > 0.0 {
+                    dot as f32 / (mag_q_sqrt * mag_c.sqrt())
+                } else {
+                    0.0
+                };
+                let strength_bonus = if cell.claim.confidence >= 2.9 {
+                    0.85
+                } else {
+                    0.5
+                };
+                let score = cosine * (strength_bonus + 0.6 * cell.claim.confidence.min(5.0));
+                (i, score)
+            })
+            .filter(|(_, s)| *s > 0.08)
+            .collect();
+
+        scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        scored.truncate(n);
+
+        scored
+            .iter()
+            .map(|&(i, score)| (self.cells[i].clone(), score))
+            .collect()
+    }
+
+    /// Query only within a specific region — used for self/identity questions
     /// to prevent world-bridge reasoning cells from bleeding into personal answers.
     /// Also uses hybrid cosine + keyword scoring for consistent exact-term retrieval.
     pub fn query_region(&self, text: &str, region: &str, n: usize) -> Vec<QueryHit> {
         let q = SparseVec::encode(text);
         let query_words = extract_query_keywords(text);
-        
+        let mag_q = q.nnz() as f32;
+        let mag_q_sqrt = mag_q.sqrt();
+
         let mut scored: Vec<(usize, f32)> = self
             .cells
             .par_iter()
             .enumerate()
             .filter(|(_, cell)| {
                 cell.region == region
-                    && cell.source != "user-echo"
-                    && cell.source != "conversation"
+                    && cell.claim.source != "user-echo"
+                    && cell.claim.source != "conversation"
             })
             .map(|(i, cell)| {
-                let cosine = q.cosine(&cell.vec);
-                let kw = keyword_overlap_score(&query_words, &cell.text);
+                let dot = q.dot(&cell.claim.vec);
+                let mag_c = cell.nnz as f32;
+                let cosine = if mag_q > 0.0 && mag_c > 0.0 {
+                    dot as f32 / (mag_q_sqrt * mag_c.sqrt())
+                } else {
+                    0.0
+                };
+
+                let kw = keyword_overlap_score(&query_words, &cell.claim.text);
                 // Hybrid: 60% cosine similarity (semantic) + 40% keyword overlap (exact match)
                 let raw = 0.6 * cosine + 0.4 * kw;
-                let boosted = raw * (0.5 + 0.5 * cell.strength.min(4.0));
+                
+                // Anti-bleed: only boost if there is semantic relevance.
+                let boosted = if raw > 0.15 {
+                    raw * (0.6 + 0.5 * cell.claim.confidence.min(5.0))
+                } else {
+                    raw
+                };
                 (i, boosted)
             })
             .filter(|(_, s)| *s > 0.05)
@@ -365,50 +673,48 @@ impl Universe {
                 let cell = &self.cells[i];
                 QueryHit {
                     label: cell.label.clone(),
-                    text: cell.label.clone(),
-                    vec: cell.vec.clone(),
+                    text: cell.claim.text.clone(),
+                    vec: cell.claim.vec.clone(),
                     region: cell.region.clone(),
                     score,
-                    strength: cell.strength,
-                    source: cell.source.clone(),
+                    strength: cell.claim.confidence,
+                    source: cell.claim.source.clone(),
                 }
             })
             .collect()
     }
 
-    /// Get all cells with a specific source tag â€” bypasses score filtering.
-    /// Used by the empathy path in voice.rs to fetch the 5 outward-facing
-    /// empathy cells directly, regardless of how they score on a generic query.
+    /// Get all cells with a specific source tag — bypasses score filtering.
     pub fn get_by_source(&self, source: &str) -> Vec<QueryHit> {
         self.cells
             .iter()
-            .filter(|c| c.source == source)
+            .filter(|c| c.claim.source == source)
             .map(|c| QueryHit {
                 label: c.label.clone(),
-                text: c.label.clone(),
-                vec: c.vec.clone(),
+                text: c.claim.text.clone(),
+                vec: c.claim.vec.clone(),
                 region: c.region.clone(),
-                score: 1.0, // score is irrelevant â€” selection is by source
-                strength: c.strength,
-                source: c.source.clone(),
+                score: 1.0, // score is irrelevant — selection is by source
+                strength: c.claim.confidence,
+                source: c.claim.source.clone(),
             })
             .collect()
     }
 
     /// Query the live strength of a named conversation state cell.
     /// State cells live in region="tone", source="state".
-    /// Used by voice.rs for lattice-native routing â€” no word-list context scanning.
+    /// Used by voice.rs for lattice-native routing â€" no word-list context scanning.
     /// Returns 0.0 if no matching state cell exists or has decayed below threshold.
     /// The lattice IS the state machine: store when detected, decay naturally.
     pub fn state_strength(&self, key: &str) -> f32 {
         let q = SparseVec::encode(key);
         self.cells
             .iter()
-            .filter(|c| c.source == "state" && c.region == "tone")
+            .filter(|c| c.claim.source == "state" && c.region == "tone")
             .map(|c| {
-                let sim = q.cosine(&c.vec);
+                let sim = q.cosine(&c.claim.vec);
                 if sim > 0.55 {
-                    c.strength * sim
+                    c.claim.confidence * sim
                 } else {
                     0.0
                 }
@@ -445,7 +751,7 @@ impl Universe {
         if self.cells.is_empty() {
             return 0.0;
         }
-        let sum: f32 = self.cells.iter().map(|c| c.strength).sum();
+        let sum: f32 = self.cells.iter().map(|c| c.claim.confidence).sum();
         sum / self.cells.len() as f32
     }
 
@@ -453,9 +759,21 @@ impl Universe {
     pub fn decay_all(&mut self, factor: f32) -> usize {
         let mut count = 0;
         for cell in &mut self.cells {
-            let old = cell.strength;
-            cell.strength *= factor;
-            if (old - cell.strength).abs() > 0.001 {
+            let old = cell.claim.confidence;
+            let is_bridge =
+                cell.claim.source == "dream-discovery" || cell.claim.source == "hlv-bridge";
+
+            // Survival bonus: bridges with Φg > 1.0 decay MUCH slower (70% reduction in decay)
+            let effective_factor = if is_bridge && cell.convergence_score > 1.0 {
+                1.0 - (1.0 - factor) * 0.3
+            } else if is_bridge {
+                1.0 - (1.0 - factor) * 0.5
+            } else {
+                factor
+            };
+
+            cell.claim.confidence *= effective_factor;
+            if (old - cell.claim.confidence).abs() > 0.001 {
                 count += 1;
             }
         }
@@ -463,10 +781,220 @@ impl Universe {
     }
 
     /// Prune cells below minimum strength.
+    /// Also kills "noisy" cells (high-chi / low-Φg) even if they have moderate strength.
     pub fn prune(&mut self, min_strength: f32) -> usize {
         let before = self.cells.len();
-        self.cells.retain(|c| c.strength >= min_strength);
+        self.cells.retain(|c| {
+            let is_bridge = c.claim.source == "dream-discovery" || c.claim.source == "hlv-bridge";
+
+            // Core physics anchors (strength >= 4.0) are IMMUNE to pruning.
+            if c.claim.confidence >= 4.0 {
+                return true;
+            }
+
+            if is_bridge {
+                // Protect any bridge connected to a cell with Φg > 2.0
+                if c.convergence_score > 2.0 {
+                    return true;
+                }
+                // Only prune bridges that have BOTH low strength AND low Φg
+                if c.claim.confidence < min_strength && c.convergence_score < 1.0 {
+                    return false;
+                }
+                return true;
+            }
+
+            // For non-bridge cells:
+            // 1. Must meet minimum strength
+            if c.claim.confidence < min_strength {
+                return false;
+            }
+            // 2. High-chi pruning: if strength is mediocre (< 1.5) and Φg is low (< 1.2), it's noise.
+            if c.claim.confidence < 1.5 && c.convergence_score < 1.2 {
+                return false;
+            }
+
+            true
+        });
         before - self.cells.len()
+    }
+
+    /// Golden Spiral driven pruning.
+    /// Uses spiral radius (0.0 - 1.0) to modulate pruning aggressiveness.
+    /// radius -> 1.0 (deep cycle) = more aggressive noise clearing.
+    pub fn prune_with_spiral(&mut self, radius: f32) -> usize {
+        // radius 0.0 -> 1.0
+        // As radius increases (deep sleep), we become more aggressive.
+        let min_s = 0.6 + 0.3 * radius; // 0.6 -> 0.9
+        let min_phi = 1.3 + 0.5 * radius; // 1.3 -> 1.8
+
+        let before = self.cells.len();
+        self.cells.retain(|c| {
+            if c.claim.confidence >= 4.0 {
+                return true;
+            } // Trusted anchors always stay
+
+            let is_bridge = c.claim.source == "dream-discovery" || c.claim.source == "hlv-bridge";
+            if is_bridge {
+                if c.convergence_score > 2.2 {
+                    return true;
+                }
+                if c.claim.confidence < min_s && c.convergence_score < 1.2 {
+                    return false;
+                }
+                return true;
+            }
+
+            // Normal cells: must meet dynamic strength and phi thresholds
+            if c.claim.confidence < min_s {
+                return false;
+            }
+            if c.convergence_score < min_phi {
+                return false;
+            }
+
+            true
+        });
+        before - self.cells.len()
+    }
+
+    // ── Epistemic Methods (Parallel Rebuild) ───────────────────────────────
+
+    /// Re-injects physics truth anchors and penalizes low-coherence physics claims.
+    pub fn dynamic_calibrate(&mut self) {
+        // 1. Reinforce anchors
+        for (anchor, strength) in TRUTH_ANCHORS {
+            self.store_or_reinforce(anchor, "established-physics", "truth-anchor", *strength);
+        }
+
+        // 2. Parallel penalty for low-coherence physics cells
+        self.cells.par_iter_mut().for_each(|c| {
+            if c.region == "established-physics"
+                && c.claim.source != "truth-anchor"
+                && (c.convergence_score < COHERENCE_FLOOR || c.claim.confidence < 0.2)
+            {
+                c.claim.confidence = (c.claim.confidence * 0.88).max(0.05);
+            }
+        });
+    }
+
+    /// Parallel Lattice Reorganisation.
+    /// Uses the Golden Angle (≈ 137.5°) for phyllotaxis-style ring packing.
+    pub fn reorganize_with_spiral(&mut self, spiral_radius: f32) {
+        use std::f32::consts::TAU;
+        const GOLDEN_ANGLE: f32 = 2.399_963_23_f32;
+
+        if spiral_radius < 0.3 {
+            return;
+        }
+
+        self.cells.par_iter_mut().enumerate().for_each(|(i, cell)| {
+            // Step 1: Trust score [0, 1]
+            let raw_trust: f32 = match (cell.region.as_str(), cell.claim.source.as_str()) {
+                ("established-physics", "truth-anchor") => 1.0,
+                ("established-physics", _) => 0.6 * (cell.convergence_score / 3.0).clamp(0.0, 1.0),
+                (_, "verified") => 0.55,
+                (_, "world-bridge") => 0.35 * (cell.convergence_score / 3.0).clamp(0.0, 1.0),
+                (_, "contested") => 0.08,
+                _ => 0.4 * (cell.convergence_score / 3.0).clamp(0.0, 1.0),
+            };
+
+            // Step 2: Golden-angle phase
+            let phase = ((i as f32 * GOLDEN_ANGLE) % TAU) / TAU;
+            let ring = (1.0 - raw_trust) * 0.7 + phase * 0.3;
+
+            // Step 3: Apply forces
+            if ring < 0.35 {
+                let pull = 0.04 * spiral_radius * (0.35 - ring) / 0.35;
+                cell.claim.confidence = (cell.claim.confidence + pull).min(5.0);
+            } else if ring > 0.65 {
+                let push = 0.96 + 0.04 * (1.0 - (ring - 0.65) / 0.35) * (1.0 - spiral_radius);
+                cell.claim.confidence = (cell.claim.confidence * push).max(0.05);
+            }
+        });
+    }
+
+    /// Scan for source dominance in any region and apply trust penalties.
+    pub fn scan_for_monocultures(&mut self) {
+        // Step 1: Sequential count (Universe is Vec<Cell>, but we only do this once per cycle)
+        let mut region_total = HashMap::new();
+        let mut region_source_count = HashMap::new();
+
+        for cell in &self.cells {
+            *region_total.entry(cell.region.clone()).or_insert(0) += 1;
+            *region_source_count
+                .entry((cell.region.clone(), cell.claim.source.clone()))
+                .or_insert(0) += 1;
+        }
+
+        // Step 2: Identify monocultures
+        let monocultures: Vec<(String, String)> = region_source_count
+            .into_iter()
+            .filter(|((region, source), count)| {
+                if source == "truth-anchor" {
+                    return false;
+                }
+                let total = *region_total.get(region).unwrap_or(&1);
+                total >= MONOCULTURE_MIN_SIZE
+                    && (*count as f32 / total as f32) > MONOCULTURE_THRESHOLD
+            })
+            .map(|((r, s), _)| (r, s))
+            .collect();
+
+        if monocultures.is_empty() {
+            return;
+        }
+
+        // Step 3: Parallel penalty application
+        self.cells.par_iter_mut().for_each(|cell| {
+            for (region, source) in &monocultures {
+                if &cell.region == region && &cell.claim.source == source {
+                    cell.claim.confidence = (cell.claim.confidence * 0.96).max(0.1);
+                    break;
+                }
+            }
+        });
+    }
+
+    /// Consolidate near-duplicate cells (cosine > 0.90).
+    /// Keeps the stronger cell and removes the weaker one.
+    /// Returns the number of cells removed.
+    pub fn consolidate_duplicates(&mut self) -> usize {
+        if self.cells.len() < 2 {
+            return 0;
+        }
+
+        let n = self.cells.len();
+
+        // Parallelized duplicate scan
+        let duplicates: std::collections::HashSet<usize> = (0..n)
+            .into_par_iter()
+            .flat_map(|i| {
+                let mut local_dupes = Vec::new();
+                for j in (i + 1)..n {
+                    let sim = self.cells[i].claim.vec.cosine(&self.cells[j].claim.vec);
+                    if sim > 0.90 {
+                        // Near-duplicate! Compare strength.
+                        if self.cells[i].claim.confidence >= self.cells[j].claim.confidence {
+                            local_dupes.push(j);
+                        } else {
+                            local_dupes.push(i);
+                        }
+                    }
+                }
+                local_dupes
+            })
+            .collect();
+
+        let removed_count = duplicates.len();
+        let mut sorted_indices: Vec<_> = duplicates.into_iter().collect();
+        sorted_indices.sort_by(|a, b| b.cmp(a)); // Remove from end to preserve indices
+
+        for idx in sorted_indices {
+            self.cells.remove(idx);
+        }
+
+        removed_count
     }
 
     /// Get cells in a specific region.
@@ -493,11 +1021,222 @@ impl Universe {
     /// Bumps strength by `delta`, capped at 2.5.
     pub fn reinforce_by_text(&mut self, text: &str, delta: f32) {
         for cell in &mut self.cells {
-            if cell.label == text {
-                cell.strength = (cell.strength + delta).min(2.5);
+            if cell.claim.text == text {
+                cell.claim.confidence = (cell.claim.confidence + delta).min(5.0);
                 break;
             }
         }
+    }
+
+    /// Forget a specific belief by exact text match.
+    pub fn forget(&mut self, text: &str) {
+        self.cells.retain(|c| c.claim.text != text);
+    }
+
+    /// Structured ingestion path: writes to Claims.
+    /// This is the primary entry point for lifting raw knowledge into the
+    /// epistemic memory model.
+    pub fn ingest_and_verify(
+        &mut self,
+        text: &str,
+        region: &str,
+        source: &str,
+        confidence: f32,
+    ) -> bool {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        // Phase 4: Active Epistemic Filtering
+        // Construct temporary claim for validation
+        let mut temp_claim = Claim::new(text, source, confidence, SparseVec::encode(text));
+        temp_claim.evidence.push(source.to_string());
+
+        if !self.should_accept_claim(&temp_claim) {
+            let reason = if confidence < 0.45 {
+                "low confidence threshold (< 0.45)"
+            } else if temp_claim.evidence.is_empty() {
+                "missing evidence links"
+            } else {
+                "unresolved epistemic contradiction with higher-confidence source"
+            };
+            log_rejected_claim(text, region, source, confidence, reason);
+            println!("REJECTED: '{}' (Reason: {})", text, reason);
+            return false;
+        }
+
+        // store_or_reinforce returns true if new, false if reinforced
+        let is_new = self.store_or_reinforce(text, region, source, confidence);
+
+        if !is_new {
+            // Find and update the verification timestamp
+            if let Some(cell) = self.cells.iter_mut().find(|c| c.claim.text == text) {
+                cell.claim.last_verified = now;
+                // Add source to evidence if not already present
+                if !cell.claim.evidence.contains(&source.to_string()) {
+                    cell.claim.evidence.push(source.to_string());
+                }
+            }
+        } else {
+            // New claim: initialize evidence with its primary source
+            if let Some(cell) = self.cells.last_mut() {
+                if cell.claim.text == text {
+                    cell.claim.evidence.push(source.to_string());
+                }
+            }
+        }
+
+        // Phase 3: Targeted Epistemic Scan (Incremental)
+        // Instead of scanning the WHOLE world, we only detect contradictions for this NEW cell.
+        self.detect_contradictions_for_last();
+
+        is_new
+    }
+
+    /// Targeted version of contradiction detection: only checks the most recently added cell.
+    /// This turns an O(N^2) global scan into a fast O(N) targeted check.
+    pub fn detect_contradictions_for_last(&mut self) {
+        let n = self.cells.len();
+        if n < 2 {
+            return;
+        }
+
+        let last_idx = n - 1;
+        // We use a temporary clone to avoid borrow checker issues while scanning the rest of the cells
+        let cell_a = self.cells[last_idx].clone();
+        let words_a: Vec<String> = cell_a
+            .claim
+            .text
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_lowercase())
+            .collect();
+
+        let mut conflicts = Vec::new();
+
+        // Scan all OTHER cells for conflicts with the NEW cell
+        for j in 0..last_idx {
+            let cell_b = &self.cells[j];
+            
+            // Only consider B as a contradiction to A if B has higher confidence
+            if cell_b.claim.confidence > cell_a.claim.confidence {
+                let sim = cell_a.claim.vec.cosine(&cell_b.claim.vec);
+
+                if sim > 0.65 {
+                    let kw = keyword_overlap_score(&words_a, &cell_b.claim.text);
+                    if kw < 0.25 {
+                        conflicts.push(cell_b.claim.text.clone());
+                    }
+                }
+            }
+        }
+
+        if !conflicts.is_empty() {
+            self.cells[last_idx].claim.contradictions.extend(conflicts);
+        }
+    }
+
+    /// Scan the entire lattice for epistemic contradictions using parallel processing.
+    /// This is expensive and should be called during sleep or idle cycles, not on every ingest.
+    pub fn detect_contradictions(&mut self) -> usize {
+        let cells_len = self.cells.len();
+        if cells_len < 2 {
+            return 0;
+        }
+
+        // Parallel scan to find all contradictions
+        let all_updates: Vec<(usize, Vec<String>)> = (0..cells_len)
+            .into_par_iter()
+            .map(|i| {
+                let cell_a = &self.cells[i];
+                let words_a: Vec<String> = cell_a
+                    .claim
+                    .text
+                    .split(|c: char| !c.is_alphanumeric())
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_lowercase())
+                    .collect();
+
+                let mut cell_conflicts = Vec::new();
+                for j in 0..cells_len {
+                    if i == j {
+                        continue;
+                    }
+                    let cell_b = &self.cells[j];
+                    if cell_b.claim.confidence > cell_a.claim.confidence {
+                        let sim = cell_a.claim.vec.cosine(&cell_b.claim.vec);
+                        if sim > 0.65 {
+                            let kw = keyword_overlap_score(&words_a, &cell_b.claim.text);
+                            if kw < 0.25 {
+                                cell_conflicts.push(cell_b.claim.text.clone());
+                            }
+                        }
+                    }
+                }
+                (i, cell_conflicts)
+            })
+            .collect();
+
+        // Apply updates sequentially
+        let mut total_applied = 0;
+        for (idx, conflicts) in all_updates {
+            if !conflicts.is_empty() {
+                self.cells[idx].claim.contradictions = conflicts;
+                total_applied += 1;
+            } else {
+                self.cells[idx].claim.contradictions.clear();
+            }
+        }
+        total_applied
+    }
+
+    /// Diagnostic: List all claims that have active contradictions.
+    pub fn list_contradictions(&self) -> Vec<Claim> {
+        self.cells
+            .iter()
+            .filter(|c| !c.claim.contradictions.is_empty())
+            .map(|c| c.claim.clone())
+            .collect()
+    }
+
+    /// Phase 4: Epistemic Gatekeeper.
+    /// Determines if a claim is fit for storage or reinforcement.
+    pub fn should_accept_claim(&self, claim: &Claim) -> bool {
+        // 1. Confidence Floor
+        if claim.confidence < 0.45 {
+            return false;
+        }
+
+        // 2. Evidence Requirement
+        if claim.evidence.is_empty() {
+            return false;
+        }
+
+        // 3. Contradiction check against the existing lattice.
+        // We look for any existing higher-confidence claim that conflicts with this one.
+        let words_a: Vec<String> = claim
+            .text
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_lowercase())
+            .collect();
+
+        for cell_b in &self.cells {
+            if cell_b.claim.confidence > claim.confidence {
+                let sim = claim.vec.cosine(&cell_b.claim.vec);
+
+                // If they are semantically similar but conceptually different
+                if sim > 0.65 {
+                    let kw = keyword_overlap_score(&words_a, &cell_b.claim.text);
+                    if kw < 0.25 {
+                        return false; // Contradiction found
+                    }
+                }
+            }
+        }
+
+        true
     }
 
     /// Store a cell if the text is new, or reinforce it if it already exists.
@@ -510,43 +1249,79 @@ impl Universe {
         source: &str,
         strength: f32,
     ) -> bool {
+        self.store_or_reinforce_with_vec(text, region, source, strength, None, None)
+    }
+
+    /// Full-featured storage with optional pre-computed vector (e.g. for dreams).
+    pub fn store_or_reinforce_with_vec(
+        &mut self,
+        text: &str,
+        region: &str,
+        source: &str,
+        strength: f32,
+        vec: Option<SparseVec>,
+        conv_score: Option<f32>,
+    ) -> bool {
         // Phase 1: exact string match (fast path — O(n) string compare)
-        for cell in &mut self.cells {
-            if cell.label == text {
-                cell.strength = (cell.strength + 0.15).min(2.5);
-                if source == "ryan" {
-                    cell.source = "ryan".to_string();
-                }
-                return false; // exact match reinforced
+        // Optimization: In a future pass we can use a label map, but for 2k cells, 
+        // string comparison is already nanoseconds. We'll use par_iter here to be safe.
+        if let Some(cell) = self.cells.par_iter_mut().find_any(|c| c.label == text) {
+            cell.claim.confidence = (cell.claim.confidence + 0.15).min(5.0);
+            if source == "ryan" {
+                cell.claim.source = "ryan".to_string();
             }
+            return false; // exact match reinforced
         }
         // Phase 2: semantic near-duplicate check (cosine > 0.85).
-        // Only runs during ingestion (strength >= 0.8) to avoid slowing
-        // live conversation where store_or_reinforce is called on replies.
+        let candidate_vec = vec.unwrap_or_else(|| SparseVec::encode(text));
+
         if strength >= 0.8 {
-            let candidate_vec = SparseVec::encode(text);
-            let mut best_score = 0.0f32;
-            let mut best_idx = usize::MAX;
-            for (i, cell) in self.cells.iter().enumerate() {
-                let sim = candidate_vec.cosine(&cell.vec);
-                if sim > best_score {
-                    best_score = sim;
-                    best_idx = i;
-                }
-            }
+            // Parallel semantic search
+            use rayon::prelude::*;
+            let mag_q = candidate_vec.nnz() as f32;
+            let mag_q_sqrt = mag_q.sqrt();
+
+            let (best_idx, best_score) = self
+                .cells
+                .par_iter()
+                .enumerate()
+                .map(|(i, cell)| {
+                    // Use cached nnz for speed
+                    let dot = candidate_vec.dot(&cell.claim.vec);
+                    let mag_c = cell.nnz as f32;
+                    let sim = if mag_q > 0.0 && mag_c > 0.0 {
+                        dot as f32 / (mag_q_sqrt * mag_c.sqrt())
+                    } else {
+                        0.0
+                    };
+                    (i, sim)
+                })
+                .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+                .unwrap_or((0, 0.0));
             if best_score > 0.85 && best_idx < self.cells.len() {
-                // Semantic duplicate — reinforce existing cell, discard new
-                self.cells[best_idx].strength =
-                    (self.cells[best_idx].strength + 0.10).min(2.5);
+                // Semantic duplicate — update existing cell with new text/vec
+                // if it's high-strength (trusted training) or from ryan.
+                if strength >= 0.8 || source == "ryan" {
+                    self.cells[best_idx].label = text.to_string();
+                    self.cells[best_idx].claim.text = text.to_string();
+                    self.cells[best_idx].claim.vec = candidate_vec;
+                    self.cells[best_idx].claim.source = source.to_string();
+                    self.cells[best_idx].claim.confidence =
+                        (self.cells[best_idx].claim.confidence + 0.20).min(5.0);
+                } else {
+                    // Regular ingestion — just reinforce
+                    self.cells[best_idx].claim.confidence =
+                        (self.cells[best_idx].claim.confidence + 0.10).min(5.0);
+                }
                 return false;
             }
         }
         // Genuinely new cell
-        self.store(text, region, source, strength);
+        self.store_with_vec_full(text, region, source, strength, candidate_vec, conv_score);
         true
     }
 
-    // â”€â”€ Predictive RSHL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Predictive RSHL ─────────────────────────────────────────────────
     //
     // Iterative predictive retrieval. 8-step (minimum) refinement loop
     // inside, followed by a single scored pass with the paper-backed
@@ -556,13 +1331,13 @@ impl Universe {
     ///
     /// 1. Runs `steps.max(8)` passes of a light context mixer that
     ///    nudges the query state toward the conversation trace
-    ///    (6Â·state + 5Â·trace, ternary-clamped).
+    ///    (6·state + 5·trace, ternary-clamped).
     /// 2. Scores every eligible cell with:
     ///        0.20 * similarity(state, cell.vec)
     ///      + 0.55 * predictive_match(trace, cell.continuation)
     ///      + 0.15 * multi_head_consensus(state, cell.vec)
     ///      - 0.20 * recency_penalty(cell.last_fired)
-    ///    Continuation binding dominates static similarity â€” the whole
+    ///    Continuation binding dominates static similarity â€" the whole
     ///    point of the upgrade.
     /// 3. Returns the top-5 hits.
     pub fn predictive_query(
@@ -584,7 +1359,7 @@ impl Universe {
         steps: usize,
     ) -> Vec<QueryHit> {
         let want = source.to_string();
-        self.predictive_query_filtered(input, trace, steps, move |c| c.source == want)
+        self.predictive_query_filtered(input, trace, steps, move |c| c.claim.source == want)
     }
 
     /// Diagnostic variant of `predictive_query` that returns the full
@@ -603,7 +1378,7 @@ impl Universe {
             .cells
             .iter()
             .enumerate()
-            .filter(|(_, c)| c.source != "user-echo" && c.source != "conversation")
+            .filter(|(_, c)| c.claim.source != "user-echo" && c.claim.source != "conversation")
             .map(|(i, _)| i)
             .collect();
         if eligible.is_empty() {
@@ -638,24 +1413,21 @@ impl Universe {
             .par_iter()
             .map(|&i| {
                 let cell = &self.cells[i];
-                let sim = state.cosine(&cell.vec).max(0.0);
+                let sim = state.cosine(&cell.claim.vec).max(0.0);
                 let predict_match = prediction_anchor.cosine(&cell.continuation).max(0.0);
                 let mh = predictive::multi_head_consensus(
                     &state,
-                    &cell.vec,
+                    &cell.claim.vec,
                     predictive::DEFAULT_HEADS,
                 );
-                let rec = predictive::recency_penalty(
-                    tick,
-                    cell.last_fired,
-                    predictive::RECENCY_WINDOW,
-                );
+                let rec =
+                    predictive::recency_penalty(tick, cell.last_fired, predictive::RECENCY_WINDOW);
                 let score = 0.10 * sim + 0.65 * predict_match + 0.10 * mh - 0.45 * rec;
                 PredictiveScoreBreakdown {
                     label: cell.label.clone(),
-                    text: cell.label.clone(),
-                    vec: cell.vec.clone(),
-                    source: cell.source.clone(),
+                    text: cell.claim.text.clone(),
+                    vec: cell.claim.vec.clone(),
+                    source: cell.claim.source.clone(),
                     sim,
                     predict_match,
                     mh,
@@ -666,7 +1438,11 @@ impl Universe {
                 }
             })
             .collect();
-        rows.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        rows.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         rows.truncate(top_k);
         rows
     }
@@ -686,7 +1462,7 @@ impl Universe {
             .cells
             .iter()
             .enumerate()
-            .filter(|(_, c)| c.source == source)
+            .filter(|(_, c)| c.claim.source == source)
             .map(|(i, _)| i)
             .collect();
         if eligible.is_empty() {
@@ -721,24 +1497,21 @@ impl Universe {
             .par_iter()
             .map(|&i| {
                 let cell = &self.cells[i];
-                let sim = state.cosine(&cell.vec).max(0.0);
+                let sim = state.cosine(&cell.claim.vec).max(0.0);
                 let predict_match = prediction_anchor.cosine(&cell.continuation).max(0.0);
                 let mh = predictive::multi_head_consensus(
                     &state,
-                    &cell.vec,
+                    &cell.claim.vec,
                     predictive::DEFAULT_HEADS,
                 );
-                let rec = predictive::recency_penalty(
-                    tick,
-                    cell.last_fired,
-                    predictive::RECENCY_WINDOW,
-                );
+                let rec =
+                    predictive::recency_penalty(tick, cell.last_fired, predictive::RECENCY_WINDOW);
                 let score = 0.10 * sim + 0.65 * predict_match + 0.10 * mh - 0.45 * rec;
                 PredictiveScoreBreakdown {
                     label: cell.label.clone(),
-                    text: cell.label.clone(),
-                    vec: cell.vec.clone(),
-                    source: cell.source.clone(),
+                    text: cell.claim.text.clone(),
+                    vec: cell.claim.vec.clone(),
+                    source: cell.claim.source.clone(),
                     sim,
                     predict_match,
                     mh,
@@ -749,7 +1522,11 @@ impl Universe {
                 }
             })
             .collect();
-        rows.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        rows.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         rows.truncate(top_k);
         rows
     }
@@ -763,12 +1540,11 @@ impl Universe {
     where
         F: Fn(&Cell) -> bool + Sync + Send,
     {
-        // Eligible cell indices (skip user-echo / conversation cells).
         let eligible: Vec<usize> = self
             .cells
             .iter()
             .enumerate()
-            .filter(|(_, c)| c.source != "user-echo" && c.source != "conversation")
+            .filter(|(_, c)| c.claim.source != "user-echo" && c.claim.source != "conversation")
             .filter(|(_, c)| extra_filter(c))
             .map(|(i, _)| i)
             .collect();
@@ -776,7 +1552,7 @@ impl Universe {
             return Vec::new();
         }
 
-        // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Iterative context mixer (conjunctive gating) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ─────────────── Iterative context mixer (conjunctive gating) ───────────────
         // Transformer-style attention gate: the `state * trace` term is
         // a multiplicative mask that only passes signal where the query
         // and the conversation history resonate (same sign). Where they
@@ -807,7 +1583,7 @@ impl Universe {
             state = SparseVec::from_raw(data);
         }
 
-        // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Final scoring with look-ahead prediction anchor â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ─────────────── Final scoring with look-ahead prediction anchor ─────────────
         // Cells were bound with permute(1) applied to the input, so
         // their `continuation` lives in the "next-slot" role-space. To
         // retrieve them we project the current trace forward into that
@@ -819,18 +1595,15 @@ impl Universe {
             .par_iter()
             .map(|&i| {
                 let cell = &self.cells[i];
-                let sim = state.cosine(&cell.vec).max(0.0);
+                let sim = state.cosine(&cell.claim.vec).max(0.0);
                 let predict_match = prediction_anchor.cosine(&cell.continuation).max(0.0);
                 let mh = predictive::multi_head_consensus(
                     &state,
-                    &cell.vec,
+                    &cell.claim.vec,
                     predictive::DEFAULT_HEADS,
                 );
-                let rec = predictive::recency_penalty(
-                    tick,
-                    cell.last_fired,
-                    predictive::RECENCY_WINDOW,
-                );
+                let rec =
+                    predictive::recency_penalty(tick, cell.last_fired, predictive::RECENCY_WINDOW);
                 // Transitions dominate. Raw similarity barely contributes;
                 // recency is harsh enough to push repeated cells out of
                 // the top-k.
@@ -846,13 +1619,13 @@ impl Universe {
             .map(|(i, score)| {
                 let c = &self.cells[i];
                 QueryHit {
-                label: c.label.clone(),
-                text: c.label.clone(),
-                vec: c.vec.clone(),
+                    label: c.label.clone(),
+                    text: c.claim.text.clone(),
+                    vec: c.claim.vec.clone(),
                     region: c.region.clone(),
                     score,
-                    strength: c.strength,
-                    source: c.source.clone(),
+                    strength: c.claim.confidence,
+                    source: c.claim.source.clone(),
                 }
             })
             .collect()
@@ -863,11 +1636,11 @@ impl Universe {
     /// `predictive_query` (iterative conjunctive mixer â†’ look-ahead
     /// anchor â†’ similarity + predict_match + multi-head âˆ’ recency),
     /// but the caller keeps direct access to `Cell::vec` and
-    /// `Cell::continuation` â€” exactly what the generative encoder
+    /// `Cell::continuation` â€" exactly what the generative encoder
     /// needs to fold memory into the latent state.
     ///
     /// `top_k` is configurable so the generative path can pull the
-    /// 6â€“8 most relevant cells (the retrieval path that powers the
+    /// 6â€"8 most relevant cells (the retrieval path that powers the
     /// TUI still uses the fixed top-5 via `predictive_query`).
     pub fn predictive_query_vecs(
         &self,
@@ -883,14 +1656,14 @@ impl Universe {
             .cells
             .iter()
             .enumerate()
-            .filter(|(_, c)| c.source != "user-echo" && c.source != "conversation")
+            .filter(|(_, c)| c.claim.source != "user-echo" && c.claim.source != "conversation")
             .map(|(i, _)| i)
             .collect();
         if eligible.is_empty() {
             return Vec::new();
         }
 
-        // Iterative conjunctive mixer â€” mirrors predictive_query_filtered.
+        // Iterative conjunctive mixer â€" mirrors predictive_query_filtered.
         let iter_steps = steps.max(predictive::DEFAULT_ITER_STEPS);
         let mut state = input.clone();
         let dim = state.data.len();
@@ -918,18 +1691,15 @@ impl Universe {
             .par_iter()
             .map(|&i| {
                 let cell = &self.cells[i];
-                let sim = state.cosine(&cell.vec).max(0.0);
+                let sim = state.cosine(&cell.claim.vec).max(0.0);
                 let predict_match = prediction_anchor.cosine(&cell.continuation).max(0.0);
                 let mh = predictive::multi_head_consensus(
                     &state,
-                    &cell.vec,
+                    &cell.claim.vec,
                     predictive::DEFAULT_HEADS,
                 );
-                let rec = predictive::recency_penalty(
-                    tick,
-                    cell.last_fired,
-                    predictive::RECENCY_WINDOW,
-                );
+                let rec =
+                    predictive::recency_penalty(tick, cell.last_fired, predictive::RECENCY_WINDOW);
                 let score = 0.10 * sim + 0.65 * predict_match + 0.10 * mh - 0.45 * rec;
                 (i, score)
             })
@@ -962,7 +1732,7 @@ impl Universe {
         crate::cognition::generative::build_generative_state(self, lex, prompt, trace, field)
     }
 
-    /// Sequence binding â€” teach the lattice that `response_text` fired
+    /// Sequence binding â€" teach the lattice that `response_text` fired
     /// after `input_text`. Each call:
     ///   1. Bundles the current input vector into the response cell's
     ///      `continuation` hypervector (majority-vote over history).
@@ -970,7 +1740,7 @@ impl Universe {
     ///
     /// If multiple cells share `response_text` only the first is updated
     /// (there should only ever be one, but the guard is cheap). A missing
-    /// text is silently ignored â€” a response composed from several cells
+    /// text is silently ignored â€" a response composed from several cells
     /// doesn't have a single owner.
     pub fn bind_sequence(
         &mut self,
@@ -987,129 +1757,55 @@ impl Universe {
         // at tick 0 still register as "fired".
         let stamp = current_tick.max(1);
         for cell in &mut self.cells {
-            if cell.label == response_text {
+            if cell.claim.text == response_text {
                 // If continuation is empty, bootstrap straight from input.
                 // Otherwise bundle old + new so we get majority-vote memory
                 // of "the kind of inputs I fire for".
                 if cell.continuation.nnz() == 0 {
                     cell.continuation = input_vec.clone();
                 } else {
-                    cell.continuation =
-                        SparseVec::bundle(&[&cell.continuation, &input_vec]);
+                    cell.continuation = SparseVec::bundle(&[&cell.continuation, &input_vec]);
                 }
                 cell.last_fired = stamp;
-                return true;
             }
         }
-        false
+        true
     }
 
-    /// Warm-up variant of `bind_sequence` for replaying transcripts where
-    /// the historical reply was often a composite phrase ("Hey. I'm here,
-    /// running well.") while cells store atomic fragments ("Hey there.",
-    /// "I'm here.").
-    ///
-    /// Matches any cell whose normalized text is a substring of the
-    /// response (cell âŠ† response) or vice versa (response âŠ† cell). Every
-    /// matching cell gets the input bundled into its continuation and
-    /// `last_fired` stamped.
-    ///
-    /// Returns the number of cells warmed for this pair.
+    /// Fuzzy variant of `bind_sequence`: finds all cells whose text
+    /// is a substring of `response_text` (or vice versa) and warms
+    /// each one's continuation with the encoded `input_text` vector.
+    /// Returns the number of cells warmed.
     pub fn warm_continuation_fuzzy(
         &mut self,
         input_text: &str,
         response_text: &str,
         current_tick: u64,
     ) -> usize {
-        let resp = response_text.trim();
-        if resp.is_empty() {
+        if response_text.trim().is_empty() {
             return 0;
         }
         let input_vec = SparseVec::encode(input_text).permute(1);
-        let _ = current_tick;
-
-        let norm = |s: &str| -> String {
-            s.chars()
-                .filter(|c| !matches!(c, '.' | ',' | '!' | '?' | ';' | ':' | '"' | '\''))
-                .flat_map(|c| c.to_lowercase())
-                .collect::<String>()
-                .split_whitespace()
-                .collect::<Vec<_>>()
-                .join(" ")
-        };
-
-        let resp_norm = norm(resp);
-        if resp_norm.is_empty() {
-            return 0;
-        }
-
-        let mut hits = 0usize;
+        let stamp = current_tick.max(1);
+        let resp_lower = response_text.to_lowercase();
+        let mut warmed = 0usize;
         for cell in &mut self.cells {
-            let cell_norm = norm(&cell.label);
-            if cell_norm.is_empty() {
-                continue;
+            let cell_lower = cell.claim.text.to_lowercase();
+            // Fuzzy match: cell text appears in response or response in cell text
+            let matches = cell_lower == resp_lower
+                || (!cell_lower.is_empty() && cell_lower.len() >= 10 && resp_lower.contains(&cell_lower))
+                || (!resp_lower.is_empty() && resp_lower.len() >= 10 && cell_lower.contains(&resp_lower));
+            if matches {
+                if cell.continuation.nnz() == 0 {
+                    cell.continuation = input_vec.clone();
+                } else {
+                    cell.continuation = SparseVec::bundle(&[&cell.continuation, &input_vec]);
+                }
+                cell.last_fired = stamp;
+                warmed += 1;
             }
-            // Require at least ~6 chars of overlap so tiny tokens like "I"
-            // or "ok" don't get bound to every conversation turn.
-            let short = cell_norm.len().min(resp_norm.len());
-            if short < 6 {
-                continue;
-            }
-            let matched = resp_norm == cell_norm
-                || resp_norm.contains(&cell_norm)
-                || cell_norm.contains(&resp_norm);
-            if !matched {
-                continue;
-            }
-            if cell.continuation.nnz() == 0 {
-                cell.continuation = input_vec.clone();
-            } else {
-                cell.continuation =
-                    SparseVec::bundle(&[&cell.continuation, &input_vec]);
-            }
-            // Do NOT touch cell.last_fired from the warm path.
-            // Recency should only activate from live firings.
-            hits += 1;
         }
-        hits
+        warmed
     }
 
-    /// Query with a pre-encoded vector (for the reasoner's iterative chain).
-    /// Uses rayon parallel iteration â€” all 12 CPU threads compute cosine simultaneously.
-    /// Vector-only path â€” no keyword layer since we don't have the original text here.
-    pub fn query_vec(&self, q: &SparseVec, n: usize) -> Vec<(&Cell, f32)> {
-        let mut scored: Vec<(usize, f32)> = self
-            .cells
-            .par_iter()
-            .enumerate()
-            .map(|(i, cell)| {
-                let raw = q.cosine(&cell.vec);
-                let boosted = raw * (0.5 + 0.5 * cell.strength.min(2.0));
-                (i, boosted)
-            })
-            .filter(|(_, s)| *s > 0.1)
-            .collect();
-
-        scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-        scored.truncate(n);
-
-        scored
-            .iter()
-            .map(|&(i, score)| (&self.cells[i], score))
-            .collect()
-    }
 }
-
-impl Default for Universe {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-
-
-
-
-
-
-

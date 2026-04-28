@@ -1,4 +1,4 @@
-﻿//! Neural VSA Mapper — a small learned bridge from dense embeddings
+//! Neural VSA Mapper — a small learned bridge from dense embeddings
 //! (BitNet, BERT, sentence-transformers, …) into KAI's 16384-dim
 //! sparse ternary lattice.
 //!
@@ -539,16 +539,14 @@ pub(crate) fn ternarize_top_k(logits: &[f32], density: f32) -> SparseVec {
         .filter(|(_, v)| v.abs() > 0.0)
         .map(|(i, v)| (i, v.abs()))
         .collect();
-    indexed.sort_unstable_by(|a, b| {
-        b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal)
-    });
+    indexed.sort_unstable_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
     indexed.truncate(target_count);
 
-    let mut out = SparseVec::zero();
+    let mut data = vec![0i8; DIM];
     for (i, _) in indexed {
-        out.data[i] = if logits[i] > 0.0 { 1 } else { -1 };
+        data[i] = if logits[i] > 0.0 { 1 } else { -1 };
     }
-    out
+    SparseVec::from_raw(data)
 }
 
 /// Tiny deterministic PRNG. Same XorShift32 pattern as the rest of
@@ -788,4 +786,3 @@ mod tests {
         assert!(gelu(-5.0) > -0.01 && gelu(-5.0) < 0.0);
     }
 }
-

@@ -1,4 +1,4 @@
-﻿/// Language System — Broca/Wernicke Analog for KAI
+/// Language System — Broca/Wernicke Analog for KAI
 ///
 /// In the biological brain, language is handled by two major regions:
 ///
@@ -578,4 +578,3 @@ mod tests {
         assert!(s.contains("LANG"), "status should mention LANG");
     }
 }
-

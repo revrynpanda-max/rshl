@@ -1,4 +1,4 @@
-﻿/// Token Normalization Pipeline — The semantic bridge for RSHL.
+/// Token Normalization Pipeline — The semantic bridge for RSHL.
 ///
 /// Ported from rshl-core.js. This is the layer that makes
 /// "where does he work?" match "Ryan's occupation is engineer."
@@ -13,6 +13,15 @@
 /// Both stored text and queries go through the same pipeline,
 /// so normalization is consistent and resonance is maximized.
 use std::collections::{HashMap, HashSet};
+
+/// Shorten a string to a maximum length, appending an ellipsis if truncated.
+pub fn truncate(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        s.to_string()
+    } else {
+        s.chars().take(max).collect::<String>() + "..."
+    }
+}
 
 /// Build the stopword set — function words present in queries but not meaningful.
 fn build_stopwords() -> HashSet<&'static str> {
@@ -1270,4 +1279,3 @@ mod tests {
         );
     }
 }
-

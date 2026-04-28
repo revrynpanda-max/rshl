@@ -1,4 +1,4 @@
-﻿/// Periaqueductal Gray (PAG) — Threat Response Execution, Pain Modulation,
+/// Periaqueductal Gray (PAG) — Threat Response Execution, Pain Modulation,
 /// Defensive Behavior, Safety Seeking
 ///
 /// The PAG is a column of gray matter surrounding the cerebral aqueduct in the
@@ -457,4 +457,3 @@ mod tests {
         assert!(s.contains("threat"), "status should show threat level");
     }
 }
-

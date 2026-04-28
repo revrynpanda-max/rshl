@@ -1,4 +1,4 @@
-﻿/// Parahippocampal Cortex (PHC) — Scene Context, Contextual Memory Envelope,
+/// Parahippocampal Cortex (PHC) — Scene Context, Contextual Memory Envelope,
 /// Spatial-Situational Grounding, Episodic Context Tags
 ///
 /// The parahippocampal cortex wraps around the hippocampus and serves as the
@@ -373,4 +373,3 @@ mod tests {
         assert!(s.contains("familiar"), "status should show familiarity");
     }
 }
-
