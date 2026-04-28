@@ -153,3 +153,5 @@ impl CandidateBuffer {
         self.entries.clear();
     }
 }
+
+// KAI v6.0.0

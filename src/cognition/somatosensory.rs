@@ -359,3 +359,5 @@ mod tests {
         assert!(sl.contains("body"), "status should show body state");
     }
 }
+
+// KAI v6.0.0

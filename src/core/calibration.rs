@@ -14,3 +14,5 @@ impl CalibrationEngine {
         0.5
     }
 }
+
+// KAI v6.0.0

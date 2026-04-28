@@ -59,3 +59,5 @@ rshl-results.txt
 *.backup.md
 meta_test_result.json
 test_fetch.glb
+
+# KAI v6.0.0

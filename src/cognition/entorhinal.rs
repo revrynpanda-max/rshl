@@ -386,3 +386,5 @@ mod tests {
         assert!(s.contains("pos"), "status should show position");
     }
 }
+
+// KAI v6.0.0

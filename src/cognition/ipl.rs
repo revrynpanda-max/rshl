@@ -606,3 +606,5 @@ mod tests {
         assert!(s.contains("analogies"), "status should mention analogies");
     }
 }
+
+// KAI v6.0.0

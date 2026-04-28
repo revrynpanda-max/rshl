@@ -402,3 +402,5 @@ mod tests {
         assert!(s.contains("cur="), "status should show curiosity drive");
     }
 }
+
+// KAI v6.0.0

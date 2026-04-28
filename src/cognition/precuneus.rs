@@ -445,3 +445,5 @@ mod tests {
         assert!(s.contains("sim"), "status should show simulation depth");
     }
 }
+
+// KAI v6.0.0

@@ -159,3 +159,5 @@ pub fn run_promotion(
         eligible: eligible_count,
     }
 }
+
+// KAI v6.0.0

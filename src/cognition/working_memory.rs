@@ -136,3 +136,5 @@ mod tests {
         assert_eq!(wm.len(), 1); // new turn remains
     }
 }
+
+// KAI v6.0.0

@@ -979,3 +979,5 @@ mod tests {
         let _ = std::fs::remove_file(path);
     }
 }
+
+// KAI v6.0.0

@@ -360,3 +360,5 @@ mod tests {
         assert!(s.contains("activity"), "status should show activity");
     }
 }
+
+// KAI v6.0.0

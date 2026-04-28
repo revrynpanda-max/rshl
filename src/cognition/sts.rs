@@ -517,3 +517,5 @@ mod tests {
         assert!(s.contains("STS"), "status should mention STS");
     }
 }
+
+// KAI v6.0.0

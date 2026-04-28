@@ -344,3 +344,5 @@ mod tests {
         assert!(vec.nnz() > 0, "prediction vector should not be zero");
     }
 }
+
+// KAI v6.0.0

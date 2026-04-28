@@ -646,3 +646,5 @@ fn kai_grounding_rank(text: &str) -> i32 {
 fn err_json(msg: &str) -> String {
     serde_json::json!({"ok": false, "error": msg}).to_string()
 }
+
+// KAI v6.0.0

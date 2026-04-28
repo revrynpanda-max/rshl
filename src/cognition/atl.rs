@@ -441,3 +441,5 @@ mod tests {
         assert!(s.contains("richness"), "status should show richness");
     }
 }
+
+// KAI v6.0.0

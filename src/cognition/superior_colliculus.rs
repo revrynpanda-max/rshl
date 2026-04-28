@@ -425,3 +425,5 @@ mod tests {
         assert!(sl.contains("salience"), "status should show salience");
     }
 }
+
+// KAI v6.0.0

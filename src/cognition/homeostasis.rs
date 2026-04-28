@@ -105,3 +105,5 @@ pub fn run_homeostasis(universe: &mut Universe, config: &HomeostasisConfig) -> H
 
     HomeostasisResult { decayed, pruned }
 }
+
+// KAI v6.0.0

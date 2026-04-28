@@ -457,3 +457,5 @@ mod tests {
         assert!(s.contains("threat"), "status should show threat level");
     }
 }
+
+// KAI v6.0.0

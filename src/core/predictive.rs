@@ -139,3 +139,5 @@ mod tests {
         assert!(before.cosine(&t.current) < 0.99);
     }
 }
+
+// KAI v6.0.0

@@ -364,3 +364,5 @@ mod tests {
         assert!(sl.contains("reward"), "status should show reward");
     }
 }
+
+// KAI v6.0.0

@@ -440,3 +440,5 @@ mod tests {
         assert!(s.contains("pain"), "status should show pain");
     }
 }
+
+// KAI v6.0.0

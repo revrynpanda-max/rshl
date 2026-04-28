@@ -416,3 +416,5 @@ mod tests {
         assert!(s.contains("gain"), "status line should mention gain");
     }
 }
+
+// KAI v6.0.0

@@ -953,3 +953,5 @@ fn self_feeling_ignores_world_definitions() {
         resp,
     );
 }
+
+// KAI v6.0.0

@@ -511,3 +511,5 @@ mod tests {
         assert!(s.contains("wanting"), "status line should mention wanting");
     }
 }
+
+// KAI v6.0.0

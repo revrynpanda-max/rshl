@@ -381,3 +381,5 @@ mod tests {
         assert!(s.contains("priority"), "status should show priority");
     }
 }
+
+// KAI v6.0.0

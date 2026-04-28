@@ -387,3 +387,5 @@ mod tests {
         assert!(s_line.contains("fluency"), "status should show fluency");
     }
 }
+
+// KAI v6.0.0

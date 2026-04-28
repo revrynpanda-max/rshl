@@ -229,3 +229,5 @@ pub fn compute_region_core(
 
     (rho, r, chi)
 }
+
+// KAI v6.0.0

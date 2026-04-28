@@ -12,3 +12,5 @@ pub mod ram_stream;
 pub mod shared_bus;
 
 pub use shared_bus::SharedBus;
+
+// KAI v6.0.0

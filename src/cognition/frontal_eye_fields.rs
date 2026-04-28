@@ -334,3 +334,5 @@ mod tests {
         assert!(s.contains("focus"), "status should show focus");
     }
 }
+
+// KAI v6.0.0

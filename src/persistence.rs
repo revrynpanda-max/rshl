@@ -330,3 +330,5 @@ mod tests {
         let _ = fs::remove_dir_all(base_dir);
     }
 }
+
+// KAI v6.0.0

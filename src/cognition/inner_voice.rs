@@ -213,3 +213,5 @@ mod tests {
         assert_eq!(result.verdict, InsightVerdict::Noise);
     }
 }
+
+// KAI v6.0.0

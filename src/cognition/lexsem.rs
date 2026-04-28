@@ -1568,3 +1568,5 @@ mod tests {
         assert_eq!(engine.analyses, 2);
     }
 }
+
+// KAI v6.0.0

@@ -32,3 +32,5 @@ pub struct Evidence {
     pub support: SupportType,
     pub description: String,
 }
+
+// KAI v6.0.0

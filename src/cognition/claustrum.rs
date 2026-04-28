@@ -353,3 +353,5 @@ mod tests {
         assert!(s.contains("coherence"), "status should show coherence");
     }
 }
+
+// KAI v6.0.0

@@ -35,3 +35,5 @@ pub use reasoning::{ContextSlot, Reasoner};
 pub use sparse_vec::SparseVec;
 pub use stat_lexicon::StatLexicon;
 pub use universe::{Cell, PredictiveScoreBreakdown, QueryHit, Universe};
+
+// KAI v6.0.0

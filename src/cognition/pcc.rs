@@ -466,3 +466,5 @@ mod tests {
         assert!(s.contains("threads"), "status should mention threads");
     }
 }
+
+// KAI v6.0.0

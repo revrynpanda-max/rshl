@@ -364,3 +364,5 @@ mod tests {
         assert!(s.contains("inhibition"), "status should show inhibition");
     }
 }
+
+// KAI v6.0.0

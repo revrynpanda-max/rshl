@@ -417,3 +417,5 @@ mod tests {
         assert!(s.contains("stability"), "status should show stability");
     }
 }
+
+// KAI v6.0.0

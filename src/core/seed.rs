@@ -131,3 +131,5 @@ mod tests {
         assert_eq!(universe.count(), first);
     }
 }
+
+// KAI v6.0.0

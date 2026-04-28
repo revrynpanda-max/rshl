@@ -121,3 +121,5 @@ fn test_legacy_cells_deserialize_into_claims() {
     assert_eq!(cell.nnz, 1);
     assert_eq!(cell.claim.evidence, vec!["seed".to_string()]);
 }
+
+// KAI v6.0.0

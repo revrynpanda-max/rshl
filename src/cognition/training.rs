@@ -1490,3 +1490,5 @@ mod tests {
         dot / (na.sqrt() * nb.sqrt()).max(1e-8)
     }
 }
+
+// KAI v6.0.0

@@ -404,3 +404,5 @@ mod tests {
         assert!(s.contains("hedonic"), "status should show hedonic tone");
     }
 }
+
+// KAI v6.0.0

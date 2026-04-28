@@ -578,3 +578,5 @@ mod tests {
         assert!(s.contains("LANG"), "status should mention LANG");
     }
 }
+
+// KAI v6.0.0

@@ -385,3 +385,5 @@ mod tests {
         assert!(s.contains("affil"), "status should show affiliation");
     }
 }
+
+// KAI v6.0.0

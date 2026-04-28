@@ -485,3 +485,5 @@ mod tests {
         assert!(s.contains("bond"), "status should mention bond");
     }
 }
+
+// KAI v6.0.0

@@ -801,3 +801,5 @@ mod tests {
         assert!(mismatch_rate < 0.15, "unbind mismatch rate too high: {:.2}%", mismatch_rate * 100.0);
     }
 }
+
+// KAI v6.0.0

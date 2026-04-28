@@ -402,3 +402,5 @@ mod tests {
         assert!(s.contains("5-HT"), "status should show 5-HT level");
     }
 }
+
+// KAI v6.0.0

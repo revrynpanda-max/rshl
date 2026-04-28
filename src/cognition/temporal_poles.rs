@@ -402,3 +402,5 @@ mod tests {
         assert!(s.contains("binding"), "status should show binding");
     }
 }
+
+// KAI v6.0.0

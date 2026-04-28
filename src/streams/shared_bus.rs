@@ -145,3 +145,5 @@ impl Default for SharedBus {
         Self::new()
     }
 }
+
+// KAI v6.0.0

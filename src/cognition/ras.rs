@@ -336,3 +336,5 @@ mod tests {
         assert!(s.contains("arousal"), "status should show arousal");
     }
 }
+
+// KAI v6.0.0

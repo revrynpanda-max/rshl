@@ -478,3 +478,5 @@ mod tests {
         assert_eq!(pfc.goals.len(), 1, "duplicate goals should not be added");
     }
 }
+
+// KAI v6.0.0

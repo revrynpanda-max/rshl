@@ -445,3 +445,5 @@ mod tests {
         assert!(s.contains("familiarity"), "status should show familiarity");
     }
 }
+
+// KAI v6.0.0

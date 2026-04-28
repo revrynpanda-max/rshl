@@ -87,3 +87,5 @@ pub fn gpu_tick(
         state.last_tick = Some(Instant::now());
     }
 }
+
+// KAI v6.0.0

@@ -401,3 +401,5 @@ mod tests {
         assert!(s.contains("tonic"), "status should mention tonic");
     }
 }
+
+// KAI v6.0.0

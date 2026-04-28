@@ -402,3 +402,5 @@ mod tests {
         assert!(s.contains("proj"), "status should show projection");
     }
 }
+
+// KAI v6.0.0

@@ -344,3 +344,5 @@ mod tests {
         assert!(s.contains("ready"), "status should show readiness");
     }
 }
+
+// KAI v6.0.0

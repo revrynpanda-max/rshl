@@ -372,3 +372,5 @@ mod tests {
         assert_eq!(e.time_ago(), "just now");
     }
 }
+
+// KAI v6.0.0

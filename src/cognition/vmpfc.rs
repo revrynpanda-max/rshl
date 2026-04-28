@@ -479,3 +479,5 @@ mod tests {
         assert!(s.contains("safety"), "status should show safety level");
     }
 }
+
+// KAI v6.0.0

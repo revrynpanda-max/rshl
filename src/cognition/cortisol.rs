@@ -417,3 +417,5 @@ mod tests {
         assert!(s.contains("CORT"), "status line should mention CORT");
     }
 }
+
+// KAI v6.0.0

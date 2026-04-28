@@ -327,3 +327,5 @@ mod tests {
         assert!(s.contains("relay"), "status should show relay");
     }
 }
+
+// KAI v6.0.0

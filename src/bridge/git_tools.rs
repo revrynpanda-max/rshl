@@ -388,3 +388,5 @@ impl StatusSummary {
         lines.join("\n")
     }
 }
+
+// KAI v6.0.0

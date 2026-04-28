@@ -312,3 +312,5 @@ mod tests {
         assert!(sl.contains("phase"), "status should show phase");
     }
 }
+
+// KAI v6.0.0

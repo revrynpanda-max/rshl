@@ -371,3 +371,5 @@ mod tests {
         assert!(!dmn.should_fire(), "disabled DMN should never fire");
     }
 }
+
+// KAI v6.0.0

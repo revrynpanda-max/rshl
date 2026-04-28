@@ -445,3 +445,5 @@ impl OllamaVoice {
         &self.base_url
     }
 }
+
+// KAI v6.0.0

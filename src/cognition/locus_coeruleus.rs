@@ -374,3 +374,5 @@ mod tests {
         assert!(s.contains("tonic"), "status should show tonic");
     }
 }
+
+// KAI v6.0.0

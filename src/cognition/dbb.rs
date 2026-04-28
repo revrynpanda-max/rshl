@@ -178,3 +178,5 @@ impl Default for DiagonalBand {
         Self::new()
     }
 }
+
+// KAI v6.0.0

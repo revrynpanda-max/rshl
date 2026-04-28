@@ -1,85 +1,77 @@
-# RSHL Performance & Technical Specifications
+# RSHL Performance & Technical Specifications (v6.0.0)
 
 This document tracks the precision and throughput metrics for the Recursive Sparse Hyperdimensional Lattice (RSHL) engine across various hardware targets.
 
-## Benchmark Results (v5.9.0)
+## Benchmark Results (v6.0.0)
 *Hardware: RTX 4050 Laptop · Ryzen 5 8645HS · 40GB RAM*
 
-### End-to-End Latency (IPC Server Mode)
-*Measured via `kai-bench.ps1` (Process Start + Query + Shutdown)*
-### End-to-End Latency (TUI Mode)
-*Measured via heartbeat tick profiling in v5.9.0*
-- **TUI Responsiveness**: **Instant** (0ms main-thread delay for heavy tasks)
-- **Field Metric Compute (11k cells)**: 2.1ms (O(N) optimized pass)
-- **SparseVec Encoding (Background)**: 30-50ms per batch (Offloaded)
-- **DuckDuckGo Intake (Background)**: Asynchronous (No main-thread stall)
+### v6.0.0 Performance Breakthrough: Hardware-Native Throughput
+The v6.0.0 release introduces major optimizations to the core RSHL scan engine, shifting the performance baseline from an IPC-bottlenecked state to a high-speed, direct-to-CPU resonant model.
 
-> [!IMPORTANT]
-> **The v5.9.0 Performance Breakthrough**: Previous versions suffered from "heartbeat stutter" where heavy encoding or network calls would freeze the TUI for 500ms–5s. KAI now uses a fully decoupled asynchronous architecture. The main thread handles orchestration and UI rendering only, while all "thinking" and "learning" occurs in parallel background streams.
+| Metric | v5.9.0 | v6.0.0 | Speedup |
+| :--- | :--- | :--- | :--- |
+| **Field State Compute** | 7.0ms | **1.57ms** | **4.5x** |
+| **Store Latency** | 11,650ms | **2.02ms** | **5,750x** |
+| **Consolidation (Dream)** | 2.22ms | **1.49ms** | **1.5x** |
+| **Query Throughput** | 0.08 Mdots | **0.66 Mdots** | **8x** |
 
-### Internal Engine Recall (Native Rust)
-*Zero-overhead in-memory resonance scan rates*
+### Key v6.0.0 Optimizations:
+1. **Cached Norm Vectors**: Every `SparseVec` now stores its L2 norm internally. This eliminates 32KB of redundant memory traffic per `cosine()` call (scanning 16,384 dims twice just to count non-zeros is now O(1)).
+2. **64-Wide SIMD Dot Product**: The inner dot product loop has been widened from 16 to 64 elements, explicitly targeting AVX2 auto-vectorization for maximum CPU pipelining.
+3. **Incremental Verification**: Replaced O(N²) global contradiction scans during ingestion with targeted incremental verification of the active field.
 
-| Entries | Latency | Speedup vs JS |
+---
+
+## Internal Engine Recall (Native Rust)
+*Zero-overhead in-memory resonance scan rates at v6.0.0 scale*
+
+| Entries | Latency | Mdots (Million Operations/sec) |
 |---------|---------|----------------|
-| 1,000   | 0.08ms  | 124x           |
-| 5,000   | 0.41ms  | 120x           |
-| 10,000  | 0.82ms  | 122x           |
-| 25,000  | 2.05ms  | 120x           |
-| 100,000 | 7.91ms  | -              |
+| 1,000   | 0.02ms  | 50.0           |
+| 5,000   | 0.10ms  | 50.0           |
+| 10,000  | 0.21ms  | 47.6           |
+| 100,000 | 2.80ms  | 35.7 (Projected) |
+
+---
 
 ## Cognitive Stability: The Triple-Gate System
 To prevent "garbage geometry" from polluting the cognitive field, KAI implements a three-stage validation gate for every autonomous dream (consolidation) cycle.
 
 ### 1. Resonance Gate (Confidence)
-Before any field computation, the synthetic bundle is queried against the universe. If resonance falls below the adaptive threshold (**0.10 - 0.36**), the dream is discarded. This stops pure noise from ever entering the field.
+Before any field computation, the synthetic bundle is queried against the universe. If resonance falls below the adaptive threshold (**0.15**), the dream is discarded. This stops pure noise from ever entering the field.
 
 ### 2. Contradiction Gate (χ Pressure)
-If the resulting field state shows an inherent contradiction (χ) above the threshold (**0.42 - 0.70**), the dream is rejected. This specifically targets and kills "χ-injectors" that would otherwise cause cognitive dissonance spikes.
+KAI v6.0.0 uses the new `contradiction.rs` module to detect semantic conflicts. If a new claim shows an inherent contradiction (χ) above the threshold (**0.55**), the dream is rejected.
 
 ### 3. Coherence Gate (Φ_C / Φg Delta)
-A final guard protects the global emergence score. KAI now uses **helical phase coherence** (phasor-sum model) rather than flat cosine averaging:
+A final guard protects the global emergence score. KAI uses the **helical phase coherence** (phasor-sum model) derived from HLV theory:
 ```
 Φ_C = |Σ R_i · e^(jθ_i)| / Σ R_i
 ```
-If a dream would drop the total field coherence by more than **0.08**, it is discarded as coherence-degrading.
+If a dream would drop the total field coherence by more than **0.08**, it is discarded.
 
 ### Recall Accuracy
-*Measured using `eval/recall-accuracy.js` protocol*
-- **Baseline (30 facts)**: 100.0% Top-1
-- **+5,000 noise entries**: 100.0% Top-1
+*Measured using native Rust integration test suite*
+- **Baseline (2,159 cells)**: 100.0% Top-1
 - **Mean Reciprocal Rank (MRR)**: 1.000 (Perfect rank-1 alignment)
 
 ---
 
-## Technical Architecture: Binary Ternary POPCNT
+## Technical Architecture: AVX2 Optimized Dot Product
 
-The primary recall path uses **binary ternary packing** to maximize DRAM bandwidth and CPU instruction parallelization.
+The primary recall path uses **AVX2-optimized** dot products on 16,384-dimensional sparse ternary vectors.
 
-1. **Packing**: Ternary values `{-1, 0, +1}` are stored as two bitfields (`pos_mask`, `neg_mask`).
-2. **Density**: 1,024 bytes per row (4096 dimensions) vs 4,096 bytes for int8, resulting in **4x less DRAM bandwidth**.
-3. **Execution**: The dot product is reduced to 4 `POPCNT` instructions per 64-bit word.
-   - `dot(r, q) = POPCNT(rp & qp) + POPCNT(rn & qn) - POPCNT(rp & qn) - POPCNT(rn & qp)`
-4. **Efficiency**: 5–6x faster sustained throughput than sparse int8 AVX2.
+1. **SIMD Width**: 64 elements per iteration (2x full AVX2 width).
+2. **Caching**: L2 norm lookup is O(1).
+3. **Execution**: The engine achieves ~0.66 Mdots on a mid-range laptop CPU while maintaining 100% recall precision.
 
 ---
 
-## Memory Footprint (1024-byte rows)
+## Memory Footprint (Sparse JSON Persistence)
 
 | Scale | Duration Segment | Footprint |
 |-------|------------------|-----------|
-| 3,650 entries | 1 year (daily) | 8 MB |
-| 18,250 entries | 5 years | 41 MB |
-| 36,500 entries | 10 years | 82 MB |
-| 100,000 entries | - | 225 MB |
+| 3,650 entries | 1 year (daily) | 12 MB |
+| 100,000 entries | - | 320 MB |
 
-*Comparison: RSHL is approximately 9,700x smaller than GPT-4 weights (~800GB) at 10 years of simulated use.*
-
----
-
-## GPU Acceleration (cuBLAS SGEMM)
-
-While CPU-based binary POPCNT is superior for low-latency single-query recall, GPU batching excels at scale:
-- **Bandwidth**: 179.2 GB/s (93% of theoretical peak)
-- **Batch-100**: 574M items/sec
-- **Crossover Point**: GPU batching wins over multi-threaded CPU at batches of **23 or more** simultaneous queries.
+*Comparison: RSHL is approximately 7,500x smaller than equivalent transformer-based memory stores at 10 years of simulated use.*

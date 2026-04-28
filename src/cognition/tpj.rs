@@ -425,3 +425,5 @@ mod tests {
         assert!(s.contains("load"), "status should show load");
     }
 }
+
+// KAI v6.0.0

@@ -179,3 +179,5 @@ fn sanitize_title(title: &str) -> String {
         .collect::<String>()
         .replace(" ", "_")
 }
+
+// KAI v6.0.0

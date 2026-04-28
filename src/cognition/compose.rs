@@ -51,3 +51,5 @@ pub struct Source {
     pub region: String,
     pub score: f32,
 }
+
+// KAI v6.0.0

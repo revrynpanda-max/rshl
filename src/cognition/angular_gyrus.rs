@@ -386,3 +386,5 @@ mod tests {
         assert!(s.contains("metaphor"), "status should show metaphor info");
     }
 }
+
+// KAI v6.0.0

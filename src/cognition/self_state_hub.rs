@@ -827,3 +827,5 @@ mod tests {
         assert_eq!(hub.salience_route, "interoception");
     }
 }
+
+// KAI v6.0.0

@@ -140,3 +140,5 @@ pub use vmpfc::{VentromedialPFC, VmPFCEvent, VmPFCOutput};
 pub use voice::{detect_query_type, generate_response, BrainSignals, MoodState};
 pub use vta::{VTAMode, VTASignal, VTA};
 pub use working_memory::WorkingMemory;
+
+// KAI v6.0.0

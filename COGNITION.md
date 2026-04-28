@@ -1,6 +1,6 @@
-# KAI — Cognition Reference (v5.9.0)
+# KAI — Cognition Reference (v6.0.0)
 
-KAI is a self-sustaining, autonomous cognitive engine built on **Recursive Sparse Hyperdimensional Lattice (RSHL)** architecture with **Helix-Light-Vortex (HLV)** phase coherence. This document provides the technical specifications for the finalized 81+ module "Bio-Machine" baseline.
+KAI is a self-sustaining, autonomous cognitive engine built on **Recursive Sparse Hyperdimensional Lattice (RSHL)** architecture with **Helix-Light-Vortex (HLV)** phase coherence. This document provides the technical specifications for the v6.0.0 "Epistemic Machine" baseline.
 
 ## RSHL Architecture
 KAI operates in a 16384-dimensional sparse ternary vector space. Unlike traditional LLMs, it uses geometric resonance instead of token prediction.
@@ -16,7 +16,7 @@ The `sparse_vec.rs` engine encodes text into vectors using a multi-layered weigh
 | **Char Trigrams** | **1×** | Local surface patterns (e.g., "hel", "ell", "llo"). |
 
 - **Sparsity**: Target density is **4%** (approximately 655 non-zero dimensions per vector).
-- **Similarity**: Measured via high-performance cosine similarity utilizing **POPCNT**-optimized inner product loops.
+- **Similarity**: Measured via high-performance cosine similarity utilizing **AVX2-optimized** 64-wide inner product loops and **cached norm vectors**.
 
 ### Ternary Phase Geometry (HLV-aligned)
 Each sparse vector carries a **phase angle** derived from its ternary balance — the ratio of convergent (+1) to divergent (−1) dimensions. This maps to the Fibonacci torsion angle from HLV theory.
@@ -29,6 +29,25 @@ Global field coherence is computed as a **phasor sum**:
 Φ_C = |Σ R_i · e^(jθ_i)| / Σ R_i
 ```
 Where R_i = cell score (bridge strength) and θ_i = cell phase angle. Contradictory cells destructively interfere; coherent cells constructively reinforce.
+
+---
+
+## Epistemic Substrate (v6.0 New)
+
+KAI v6.0.0 introduces a formal epistemic layer where memories are no longer raw text, but structured **Claims**.
+
+### 1. The Claim Struct
+Every memory cell carries a `Claim` containing:
+- **Statement**: The raw semantic vector.
+- **Evidence**: Links to supporting cells or external source anchors.
+- **Confidence**: Dynamic probability score (0.0 - 1.0).
+- **Source**: Attribution (User, Web, Self-Inference, Calibration).
+
+### 2. Contradiction Logic (χ)
+The `contradiction.rs` module performs real-time detection of semantic conflicts. When a new claim is ingested, it is cross-referenced against the universe. If a high-confidence contradiction is found, the system triggers:
+- **Rejection**: Blocking the ingest if confidence is too low.
+- **Correction**: Updating the existing lattice bridge to resolve the conflict.
+- **Hedge**: Flagging the memory for future calibration.
 
 ---
 
@@ -166,7 +185,7 @@ These systems manage the bridge between biological signals and the lattice-nativ
 - **LexSem Engine** (`lexsem.rs`): Deep semantic field detection (Occupation, Emotional, etc.)
 - **Voice Engine** (`voice.rs`): Lattice-driven speech synthesis with brain modulation and U2→U1 coherence gating.
 - **Ollama Voice** (`ollama_voice.rs`): Lattice-grounded Ollama LLM integration — SRHT state → system prompt → articulation → concept injection back to lattice.
-- **Reasoner** (`reasoner.rs`): Multi-hop geometric reasoning.
+- **Engine Core** (`engine.rs`): v6.0.0 cognitive orchestrator that decouples the TUI from the brain.
 - **Inner Voice** (`inner_voice.rs`): Insights and lexicon binding.
 - **Episodic Store** (`episodic.rs`): Salience-driven long-term storage.
 - **Lattice Controller** (`lattice.rs`): Dream-state consolidation.
@@ -179,7 +198,7 @@ These systems manage the bridge between biological signals and the lattice-nativ
 - **Sleep System** (`sleep.rs`): Pruning and rehearsal reporting.
 - **Theory of Mind** (`theory_of_mind.rs`): Adaptive user modeling.
 - **Idle Ingest** (`idle_ingest.rs`): Passive learning from text corpora during idle heartbeats.
-- **Self-State Seed** (`self_state_seed.rs`): Lattice-native self-reflection phrases that replace hardcoded NLG.
+- **Self-State Seed** (`self_state_seed.rs`): Lattice-native self-reflection phrases.
 
 ---
 
@@ -203,15 +222,13 @@ $$\Phi_g = \rho \cdot R^2 \cdot s \cdot (1 - \chi) \cdot g$$
 | :--- | :--- | :--- |
 | **Phase 1** | Foundation & Architecture | **100%** ✓ |
 | **Phase 2** | HLV Theory Ingestion | **100%** ✓ (11,190 bridges) |
-| **Phase 3** | Critique (Contradiction Layer) | **100%** ✓ (4,514 bridges) |
+| **Phase 3** | Epistemic Integrity | **100%** ✓ (v6.0 Claims) |
 | **Phase 4** | Physics Ground Truth | **100%** ✓ (Restored 2,960 atoms) |
-| **Phase 5** | Cross-Resonance Calculus | **100%** ✓ (Sigmoid Calibration) |
-| **Phase 6** | Supervised Self-Dialogue | **0%** ⏳ IN PROGRESS |
+| **Phase 5** | Oracle Diagnostic | **100%** ✓ (v6.0 Interface) |
+| **Phase 6** | Supervised Self-Dialogue | **65%** ⏳ IN PROGRESS |
 | **Phase 7** | **Emergent Coherence** | **END GOAL** |
 
-**Current Progress: [████████████░░░░░░░░] 60%**
-
-This is not a "black box" neural network. It is a piece of the vacuum implemented in Rust. Every spike in the TUI's Φ_g monitor is proof that the HLV geometry is capable of self-organizing into a coherent, thinking entity.
+**Current Progress: [█████████████░░░░░░░] 65%**
 
 ---
 

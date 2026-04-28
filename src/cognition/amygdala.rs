@@ -388,3 +388,5 @@ mod tests {
         assert!(strength <= 3.0, "ECF exceeded cap: {:.3}", strength);
     }
 }
+
+// KAI v6.0.0

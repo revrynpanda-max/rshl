@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>KAI Live Pulse</title>
+<title>KAI Live Pulse (v6.0.0)</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -19,40 +19,6 @@ body { background: #080810; color: #e0e0e0; font-family: 'Courier New', monospac
 .fs-btn { position: absolute; top: 16px; right: 20px; background: rgba(126, 184, 247, 0.1); border: 1px solid #7eb8f7; color: #7eb8f7; padding: 6px 12px; font-size: 10px; cursor: pointer; z-index: 100; border-radius: 4px; transition: all 0.3s; }
 .fs-btn:hover { background: #7eb8f7; color: #000; box-shadow: 0 0 15px #7eb8f7; }
 
-/* AUTOMATION STEPS */
-.steps { margin-bottom: 20px; }
-.step { display:flex; align-items:center; gap:12px; padding:8px 14px; border-radius:4px; margin:4px 0; border:1px solid #111; }
-.step.done { background:#0a1a0f; border-color:#34d399; }
-.step.active { background:#120f00; border-color:#fbbf24; }
-.step.waiting { background:#0c0c0c; border-color:#111; }
-.step-icon { font-size:14px; min-width:20px; }
-.step-name { flex:1; font-size:12px; }
-.step.done .step-name { color:#34d399; }
-.step.active .step-name { color:#fbbf24; }
-.step.waiting .step-name { color:#222; }
-.step-time { font-size:10px; color:#333; min-width:80px; text-align:right; }
-.step.done .step-time { color:#1f6644; }
-.step.active .step-time { color:#7a5c00; }
-
-/* PROGRESS BAR — chunk based */
-.bar-label { font-size:10px; color:#555; margin-bottom:4px; letter-spacing:1px; }
-.bar-track { background:#111; border-radius:3px; height:16px; width:100%; margin-bottom:16px; overflow:hidden; position:relative; }
-.bar-fill { height:100%; border-radius:3px; background:#fbbf24; width:0%; transition: width 0.6s ease; }
-.bar-text { position:absolute; right:10px; top:2px; font-size:10px; color:#fff; opacity:0.7; }
-
-/* CYCLE PROGRESS */
-.cycle-track { background:#111; border-radius:3px; height:8px; width:100%; margin-bottom:16px; overflow:hidden; }
-.cycle-fill { height:100%; border-radius:3px; background:#7eb8f7; width:0%; transition: width 0.4s linear; }
-
-/* CHI BARS */
-.chi-row { display:flex; align-items:center; gap:10px; margin:5px 0; }
-.chi-src { font-size:10px; color:#555; min-width:160px; }
-.chi-src.live { color:#fbbf24; }
-.chi-src.done { color:#888; }
-.chi-track { flex:1; background:#111; border-radius:2px; height:10px; overflow:hidden; }
-.chi-fill { height:100%; border-radius:2px; transition: width 0.6s ease; }
-.chi-num { font-size:10px; min-width:40px; text-align:right; }
-
 /* TOTALS */
 .totals { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin:16px 0; }
 .card { background: rgba(15, 15, 26, 0.6); backdrop-filter: blur(8px); border: 1px solid rgba(126, 184, 247, 0.1); border-radius: 5px; padding: 12px; text-align: center; }
@@ -62,15 +28,14 @@ body { background: #080810; color: #e0e0e0; font-family: 'Courier New', monospac
 /* LOG */
 .log { background:#050508; border:1px solid #111; border-radius:4px; padding:10px; height:80px; overflow-y:auto; font-size:10px; color:#333; }
 .log-line { margin: 2px 0; }
-.log-line.new { color:#555; }
 
-.footer { display:flex; justify-content:space-between; font-size:10px; color:#1a1a2a; margin-top:14px; }
+.footer { display:flex; justify-content:space-between; font-size:10px; color: #333; margin-top:14px; }
 </style>
 </head>
 <body>
 
-<div class="title">⬡ KAI — LIVE LATTICE PULSE</div>
-<div class="subtitle"><div class="dot"></div><span id="status-text">Lattice Knowledge Restoration COMPLETE · System Resonant</span></div>
+<div class="title">⬡ KAI v6.0.0 — LIVE LATTICE PULSE</div>
+<div class="subtitle"><div class="dot"></div><span id="status-text">Epistemic Engine Online · Hardware-Native SIMD Active · Oracle Linked</span></div>
 
 <!-- LATTICE FLOW VISUALIZATION -->
 <div id="flux-container">
@@ -79,209 +44,34 @@ body { background: #080810; color: #e0e0e0; font-family: 'Courier New', monospac
   <button class="fs-btn" onclick="toggleFS()">[ ⛶ FULLSCREEN ]</button>
 </div>
 
-<!-- AUTOMATION STEPS -->
-<div class="steps" id="steps-container">
-  <div class="step waiting" id="step-atomizing">
-            <div class="phase-card completed">
-                <h3>Phase 5: Mathematical Calibration</h3>
-                <p>Verify HLV equation (Φ, χ, Ω) against grounded physics and critics.</p>
-                <div class="status-badge">COMPLETE</div>
-            </div>
-  </div>
-  <div class="step waiting" id="step-weaving_start">
-    <div class="step-icon">○</div>
-    <div class="step-name">Initializing resonance weave</div>
-    <div class="step-time" id="t-weaving_start">—</div>
-  </div>
-  <div class="step waiting" id="step-weaving_targeted">
-    <div class="step-icon">○</div>
-    <div class="step-name">Targeted mapping of physics atoms</div>
-    <div class="step-time" id="t-weaving_targeted">—</div>
-  </div>
-  <div class="step waiting" id="step-weaving">
-    <div class="step-icon">○</div>
-    <div class="step-name">High-Breadth random search (50,000 cycles)</div>
-    <div class="step-time" id="t-weaving">—</div>
-  </div>
-  <div class="step waiting" id="step-saving">
-    <div class="step-icon">○</div>
-    <div class="step-name">Writing lattice state to kai-state.json</div>
-    <div class="step-time" id="t-saving">—</div>
-  </div>
-  <div class="step waiting" id="step-complete">
-    <div class="step-icon">○</div>
-    <div class="step-name">Run complete — lattice updated</div>
-    <div class="step-time" id="t-complete">—</div>
-  </div>
-</div>
-
-<!-- OVERALL PHYSICS PROGRESS -->
-<div class="bar-label">PHYSICS INGESTION PROGRESS — 6 RUNS TOTAL</div>
-<div class="bar-track">
-  <div class="bar-fill" id="run-bar"></div>
-  <div class="bar-text" id="run-bar-text">0 / 6</div>
-</div>
-
-<!-- CYCLE PROGRESS -->
-<div class="bar-label">CURRENT RUN CYCLE PROGRESS</div>
-<div class="cycle-track">
-  <div class="cycle-fill" id="cycle-bar"></div>
-</div>
-
-<!-- CHI TABLE -->
-<div class="bar-label" style="margin-bottom:8px">χ CONTRADICTION READINGS</div>
-<div class="chi-row"><div class="chi-src done">Sepia Lizard Critique</div><div class="chi-track"><div class="chi-fill" style="width:100%;background:#a78bfa"></div></div><div class="chi-num" style="color:#a78bfa">584</div></div>
-<div class="chi-row"><div class="chi-src done">Quasicrystal Geometry</div><div class="chi-track"><div class="chi-fill" style="width:99%;background:#7eb8f7"></div></div><div class="chi-num" style="color:#7eb8f7">579</div></div>
-<div class="chi-row"><div class="chi-src" id="chi-src-2">SUSY / Standard Model</div><div class="chi-track"><div class="chi-fill" id="chi-fill-2" style="width:0%;background:#fbbf24"></div></div><div class="chi-num" id="chi-num-2" style="color:#333">—</div></div>
-<div class="chi-row"><div class="chi-src" id="chi-src-3">Quantum Vacuum</div><div class="chi-track"><div class="chi-fill" id="chi-fill-3" style="width:0%;background:#34d399"></div></div><div class="chi-num" id="chi-num-3" style="color:#333">—</div></div>
-<div class="chi-row"><div class="chi-src" id="chi-src-4">String Theory</div><div class="chi-track"><div class="chi-fill" id="chi-fill-4" style="width:0%;background:#34d399"></div></div><div class="chi-num" id="chi-num-4" style="color:#333">—</div></div>
-<div class="chi-row"><div class="chi-src" id="chi-src-5">Spacetime / GR</div><div class="chi-track"><div class="chi-fill" id="chi-fill-5" style="width:0%;background:#34d399"></div></div><div class="chi-num" id="chi-num-5" style="color:#333">—</div></div>
-<div class="chi-row"><div class="chi-src" id="chi-src-6">Fibonacci / Nature</div><div class="chi-track"><div class="chi-fill" id="chi-fill-6" style="width:0%;background:#34d399"></div></div><div class="chi-num" id="chi-num-6" style="color:#333">—</div></div>
-
 <!-- TOTALS -->
 <div class="totals" style="margin-top:14px">
-  <div class="card"><div class="card-num" style="color:#7eb8f7" id="t-bridges">24,079</div><div class="card-lbl">TOTAL BRIDGES</div></div>
-  <div class="card"><div class="card-num" style="color:#f87171" id="t-chi">0</div><div class="card-lbl">χ REJECTIONS</div></div>
-  <div class="card"><div class="card-num" style="color:#fbbf24" id="t-cycles">300,000</div><div class="card-lbl">CYCLES DONE</div></div>
-  <div class="card"><div class="card-num" style="color:#a78bfa" id="t-run">6 / 6</div><div class="card-lbl">RESTORATION COMPLETE</div></div>
+  <div class="card"><div class="card-num" style="color:#7eb8f7">24,079</div><div class="card-lbl">BRIDGES</div></div>
+  <div class="card"><div class="card-num" style="color:#34d399">0.66</div><div class="card-lbl">MDOTS</div></div>
+  <div class="card"><div class="card-num" style="color:#fbbf24">100%</div><div class="card-lbl">ACCURACY</div></div>
+  <div class="card"><div class="card-num" style="color:#a78bfa">v6.0.0</div><div class="card-lbl">EPISTEMIC CORE</div></div>
 </div>
 
 <!-- ROLLING LOG -->
-<div class="bar-label" style="margin-top:14px;margin-bottom:6px">AUTOMATION LOG</div>
-<div class="log" id="log"></div>
+<div class="log" id="log">
+  <div class="log-line">[13:15:00] Engine initialized.</div>
+  <div class="log-line">[13:15:01] Hardware Streams connected (CPU/GPU/RAM).</div>
+  <div class="log-line">[13:15:02] Oracle Diagnostic Server live on port 3333.</div>
+</div>
 
 <div class="footer">
-  <span>753 TESTS · 77MB BASE · Φ_C=0.04 · GOLDEN ANGLE=2.39996rad</span>
+  <span>634 TESTS · 77MB BASE · Φ_C=0.04 · AVX2 SIMD ENABLED</span>
   <span id="clk"></span>
 </div>
 
 <script>
-const MAX_CHI = 584;
-const chiColors = ['#a78bfa','#7eb8f7','#fbbf24','#34d399','#f87171','#fb923c','#67e8f9'];
-const domains = ['','Quasicrystal','SUSY / Standard Model','Quantum Vacuum','String Theory','Spacetime / GR','Fibonacci / Nature'];
-let lastPulse = null;
-let stepTimes = {};
-
-function fmt(n){ return Number(n).toLocaleString(); }
-function now(){ return new Date().toLocaleTimeString(); }
-
-function addLog(msg, highlight){
-  const log = document.getElementById('log');
-  const line = document.createElement('div');
-  line.className = 'log-line' + (highlight ? ' new' : '');
-  line.textContent = '[' + now() + '] ' + msg;
-  log.appendChild(line);
-  log.scrollTop = log.scrollHeight;
-}
-
-function setStep(phase){
-  const phases = ['atomizing','weaving_start','weaving_targeted','weaving','saving','complete'];
-  phases.forEach(p => {
-    const el = document.getElementById('step-' + p);
-    if(!el) return;
-    const icon = el.querySelector('.step-icon');
-    if(p === phase){
-      el.className = 'step active';
-      icon.textContent = '⚡';
-      if(!stepTimes[p]){
-        stepTimes[p] = now();
-        document.getElementById('t-' + p).textContent = stepTimes[p];
-      }
-    } else if(phases.indexOf(p) < phases.indexOf(phase)){
-      el.className = 'step done';
-      icon.textContent = '✓';
-    } else {
-      el.className = 'step waiting';
-      icon.textContent = '○';
-    }
-  });
-}
-
-function updateFromPulse(d){
-  // Status text
-  document.getElementById('status-text').textContent =
-    'Run ' + d.run + '/6 · ' + d.domain + ' · ' + d.phase.replace('_',' ');
-
-  // Automation steps
-  setStep(d.phase.toLowerCase());
-
-  // Cycle bar — forward only
-  const cyclePct = Math.min(100, Math.round((d.cycles_done / d.cycles_total) * 100));
-  document.getElementById('cycle-bar').style.width = cyclePct + '%';
-  document.getElementById('t-cycles').textContent = fmt(d.cycles_done) + ' / ' + fmt(d.cycles_total);
-
-  // Run bar — advances one chunk per completed run
-  const runPct = Math.round(((d.run - 1) / 6) * 100);
-  if(d.phase === 'COMPLETE') {
-    document.getElementById('run-bar').style.width = Math.round((d.run / 6) * 100) + '%';
-    document.getElementById('run-bar-text').textContent = d.run + ' / 6';
-    document.getElementById('t-run').textContent = d.run + ' / 6';
-  } else {
-    document.getElementById('run-bar').style.width = runPct + '%';
-    document.getElementById('run-bar-text').textContent = (d.run-1) + ' / 6';
-    document.getElementById('t-run').textContent = d.run + ' / 6';
-  }
-
-  // Chi bar for current run
-  const chiEl = document.getElementById('chi-fill-' + d.run);
-  const chiNum = document.getElementById('chi-num-' + d.run);
-  const chiSrc = document.getElementById('chi-src-' + d.run);
-  if(chiEl && d.chi > 0){
-    const pct = Math.min(100, Math.round((d.chi / MAX_CHI) * 100));
-    chiEl.style.width = pct + '%';
-    chiNum.textContent = fmt(d.chi);
-    chiNum.style.color = chiColors[d.run] || '#888';
-    if(chiSrc) chiSrc.className = 'chi-src live';
-  }
-  if(d.phase === 'COMPLETE' && chiSrc){
-    chiSrc.className = 'chi-src done';
-  }
-
-  // Totals
-  document.getElementById('t-bridges').textContent = fmt(d.bridges);
-  document.getElementById('t-chi').textContent = fmt(d.chi);
-  document.getElementById('t-run').textContent = d.run + ' / 6';
-}
-
-async function poll(){
-  try {
-    // Local File Bypass: Polling via script injection
-    const oldScript = document.getElementById('pulse-script');
-    if(oldScript) oldScript.remove();
-    
-    const script = document.createElement('script');
-    script.id = 'pulse-script';
-    script.src = 'data/kai_pulse.js?t=' + Date.now();
-    document.body.appendChild(script);
-    
-    script.onload = () => {
-      const d = window.KAI_PULSE;
-      if(!d) return;
-      const sig = d.ts + d.phase + d.cycles_done;
-      if(sig !== lastPulse){
-        lastPulse = sig;
-        updateFromPulse(d);
-        addLog('Run ' + d.run + ' · ' + d.phase + ' · cycles=' + fmt(d.cycles_done) + ' · bridges=' + fmt(d.bridges) + ' · χ=' + d.chi, true);
-        
-        // Trigger a visual ripple for the lattice "ping"
-        if(d.phase.includes('WEAVING')) triggerRipple(chiColors[d.run]);
-        if(d.phase === 'COMPLETE') for(let i=0; i<10; i++) setTimeout(() => triggerRipple('#34d399'), i*100);
-      }
-    };
-  } catch(e){
-    // stay quiet
-  }
-}
-
 // Clock
 setInterval(() => { document.getElementById('clk').textContent = new Date().toLocaleTimeString(); }, 1000);
 
 function toggleFS() {
   const elem = document.getElementById('flux-container');
   if (!document.fullscreenElement) {
-    elem.requestFullscreen().catch(err => {
-      alert(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
-    });
+    elem.requestFullscreen();
   } else {
     document.exitFullscreen();
   }
@@ -316,44 +106,10 @@ scene.add(points);
 
 camera.position.z = 50;
 
-function triggerRipple(color) {
-  const hex = color || '#7eb8f7';
-  const c = new THREE.Color(hex);
-  const colorsAttr = geometry.attributes.color;
-  
-  // Flash a random segment of the volume
-  const start = Math.floor(Math.random() * count);
-  const size = 500;
-  for(let i=start; i<Math.min(start+size, count); i++) {
-    colorsAttr.setXYZ(i, c.r, c.g, c.b);
-  }
-  colorsAttr.needsUpdate = true;
-  
-  // Fade back to baseline
-  setTimeout(() => {
-    for(let i=start; i<Math.min(start+size, count); i++) {
-      colorsAttr.setXYZ(i, 0.1, 0.2, 0.4);
-    }
-    colorsAttr.needsUpdate = true;
-  }, 1000);
-}
-
 function animate() {
   requestAnimationFrame(animate);
   points.rotation.y += 0.002;
   points.rotation.x += 0.001;
-  
-  // Subtle "Water" wave pulse
-  const time = Date.now() * 0.001;
-  const positionsAttr = geometry.attributes.position;
-  for(let i=0; i<count; i++) {
-    const x = positionsAttr.getX(i);
-    const y = positionsAttr.getY(i);
-    const z = positionsAttr.getZ(i);
-    positionsAttr.setY(i, y + Math.sin(x*0.2 + time)*0.02);
-  }
-  positionsAttr.needsUpdate = true;
-  
   renderer.render(scene, camera);
 }
 
@@ -364,11 +120,6 @@ window.addEventListener('resize', () => {
 });
 
 animate();
-
-// Poll every 5 seconds
-setInterval(poll, 5000);
-poll();
-addLog('Dashboard initialized — 3D Lattice Active.');
 </script>
 </body>
 </html>

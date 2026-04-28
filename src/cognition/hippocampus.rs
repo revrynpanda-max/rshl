@@ -694,3 +694,5 @@ mod tests {
         assert!(s.contains("HIPP"), "status line should mention HIPP");
     }
 }
+
+// KAI v6.0.0

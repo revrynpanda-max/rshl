@@ -475,3 +475,5 @@ mod tests {
         assert!(s.contains("OFC"), "status line should mention OFC");
     }
 }
+
+// KAI v6.0.0

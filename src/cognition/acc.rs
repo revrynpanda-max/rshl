@@ -403,3 +403,5 @@ mod tests {
         assert!(!troubled.is_empty(), "should track troubled topics");
     }
 }
+
+// KAI v6.0.0

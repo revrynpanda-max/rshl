@@ -353,3 +353,5 @@ mod tests {
         assert!(s.contains("ach"), "status should show ACh");
     }
 }
+
+// KAI v6.0.0
