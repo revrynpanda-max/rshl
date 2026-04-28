@@ -84,11 +84,10 @@ Ensure you have the Rust toolchain installed.
 
 ```powershell
 # Build the native binary
-cd kai-rust
 cargo build --release
 
 # Launch KAI
-.\target\release\kai.exe
+cargo run --release --bin kai
 ```
 
 ### Optional: Enable Hybrid Voice (Ollama)

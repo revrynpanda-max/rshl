@@ -1,27 +1,22 @@
 # KAI Master Launcher
-# Starts the Oracle Roundtable server and the KAI TUI interface simultaneously.
+# Starts the KAI engine (with built-in Oracle server) and opens the diagnostic UI.
 
 Write-Host "--- KAI Strategic Command ---" -ForegroundColor Cyan
-Write-Host "Initializing lattice and starting roundtable server..."
+Write-Host "Initializing KAI engine and Oracle Roundtable..."
 
-# 1. Start the Oracle Server in the background
-$oracle_process = Start-Process cargo -ArgumentList "run", "--release", "--", "--oracle" -NoNewWindow -PassThru
-Write-Host "Oracle Server active on http://127.0.0.1:8765" -ForegroundColor Green
+# 1. Launch KAI in a new window (this starts the TUI and the background Oracle server)
+Write-Host "Launching KAI Engine..." -ForegroundColor Green
+$kai_process = Start-Process powershell -ArgumentList "-NoExit", "-Command", "cargo run --release --bin kai" -PassThru
 
-# 2. Open the Command Center UI
+# 2. Wait a moment for the server to bind port 3333
+Start-Sleep -Seconds 3
+
+# 3. Open the Command Center UI (oracle.html)
+Write-Host "Opening Oracle Diagnostic UI..." -ForegroundColor Green
 Start-Process "oracle.html"
 
-# 3. Start the KAI TUI in a NEW window
-Write-Host "Launching KAI TUI in separate terminal..." -ForegroundColor Green
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cargo run --release"
-
-Write-Host "Both systems active." -ForegroundColor Yellow
-Write-Host "Press Ctrl+C to stop the Oracle server." -ForegroundColor Yellow
-
-try {
-    while ($true) { Start-Sleep -Seconds 1 }
-}
-finally {
-    Write-Host "Shutting down Oracle server..." -ForegroundColor Red
-    Stop-Process -Id $oracle_process.Id -Force
-}
+Write-Host "--- Systems Active ---" -ForegroundColor Yellow
+Write-Host "Oracle Server is running on http://127.0.0.1:3333"
+Write-Host "You can monitor KAI and talk to the AI Council in the browser window."
+Write-Host "Press any key to close this launcher (KAI will keep running)."
+$null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
