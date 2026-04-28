@@ -1,4 +1,4 @@
-﻿use super::shared_bus::{RamState, StreamEvent};
+use super::shared_bus::{RamState, StreamEvent};
 use crate::core::Universe;
 use crossbeam_channel::{Receiver, Sender};
 /// RAM Stream — Memory management, persistence, intake.
@@ -28,19 +28,19 @@ pub fn ram_tick(
                 strength,
             } => {
                 if let Ok(mut uni) = universe.write() {
-                    uni.store(&text, &region, &source, strength);
+                    uni.ingest_and_verify(&text, &region, &source, strength);
                     changed = true;
                 }
             }
             StreamEvent::ReinforceCell { cell_text, delta } => {
                 if let Ok(mut uni) = universe.write() {
-                    let cells = uni.cells_mut();
-                    for cell in cells.iter_mut() {
-                        if cell.label == cell_text {
-                            cell.strength = (cell.strength + delta).min(5.0);
-                            changed = true;
-                            break;
-                        }
+                    if let Some(cell) = uni
+                        .cells_mut()
+                        .iter_mut()
+                        .find(|c| c.claim.text == cell_text)
+                    {
+                        cell.claim.confidence = (cell.claim.confidence + delta).min(5.0);
+                        changed = true;
                     }
                 }
             }
@@ -64,4 +64,3 @@ pub fn ram_tick(
         state.last_tick = Some(Instant::now());
     }
 }
-
