@@ -1,4 +1,4 @@
-﻿//! Statistical Lexicon — word → stable co-occurrence-shaped `SparseVec`.
+//! Statistical Lexicon — word → stable co-occurrence-shaped `SparseVec`.
 //!
 //! Scientific references:
 //!
@@ -301,11 +301,7 @@ impl BigramPrior {
             }
             None => {
                 let total = self.total_tokens as f32;
-                let count = self
-                    .unigram
-                    .get(next)
-                    .copied()
-                    .unwrap_or(0) as f32;
+                let count = self.unigram.get(next).copied().unwrap_or(0) as f32;
                 ((count + ALPHA) / (total + ALPHA * v)).ln()
             }
         }
@@ -572,11 +568,7 @@ impl StatLexicon {
     ///
     /// Determinism: identical `(state, params)` always yields the
     /// identical string thanks to the seeded SplitMix64 RNG below.
-    pub fn incremental_generate_with(
-        &self,
-        state: SparseVec,
-        params: DecodeParams,
-    ) -> String {
+    pub fn incremental_generate_with(&self, state: SparseVec, params: DecodeParams) -> String {
         if self.is_empty() || params.max_tokens == 0 {
             return String::new();
         }
@@ -939,7 +931,10 @@ impl StatLexicon {
         if lf.dim != DIM {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
-                format!("lexicon DIM mismatch: file has {}, binary has {}", lf.dim, DIM),
+                format!(
+                    "lexicon DIM mismatch: file has {}, binary has {}",
+                    lf.dim, DIM
+                ),
             ));
         }
         let mut index = HashMap::new();
@@ -1104,14 +1099,17 @@ fn ternarize(hist: &[i32], nnz: usize) -> SparseVec {
     let threshold = mags[nnz];
     for i in 0..DIM {
         let v = hist[i];
-        if v.abs() > threshold || (v.abs() == threshold && v != 0 && data.iter().filter(|&&x| x != 0).count() < nnz) {
+        if v.abs() > threshold
+            || (v.abs() == threshold && v != 0 && data.iter().filter(|&&x| x != 0).count() < nnz)
+        {
             data[i] = if v > 0 { 1 } else { -1 };
         }
     }
     // Fill to target if the strict > threshold pass underfilled (ties).
     let mut current = data.iter().filter(|&&x| x != 0).count();
     if current < nnz {
-        let mut ordered: Vec<(usize, i32)> = hist.iter().enumerate().map(|(i, v)| (i, v.abs())).collect();
+        let mut ordered: Vec<(usize, i32)> =
+            hist.iter().enumerate().map(|(i, v)| (i, v.abs())).collect();
         ordered.sort_unstable_by(|a, b| b.1.cmp(&a.1));
         for (idx, _) in ordered {
             if current >= nnz {
@@ -1226,9 +1224,7 @@ mod tests {
         let toks = tokenize("The quick, brown FOX jumps... over the lazy dog.");
         assert_eq!(
             toks,
-            vec![
-                "the", "quick", "brown", "fox", "jumps", "over", "the", "lazy", "dog"
-            ]
+            vec!["the", "quick", "brown", "fox", "jumps", "over", "the", "lazy", "dog"]
         );
     }
 
@@ -1334,10 +1330,7 @@ mod tests {
     fn bigram_prior_is_populated_by_build_from_paths() {
         // Three copies of the same bigram gives a clean high-weight
         // transition alongside several low-weight ones.
-        let lex = build_lex_from_text(
-            "populated",
-            "the cat sat\nthe cat ran\nthe cat slept\n",
-        );
+        let lex = build_lex_from_text("populated", "the cat sat\nthe cat ran\nthe cat slept\n");
         let bp = lex.bigram();
 
         assert!(!bp.is_empty(), "prior must be non-empty after build");
@@ -1354,10 +1347,7 @@ mod tests {
 
     #[test]
     fn bigram_log_prob_prefers_seen_transitions() {
-        let lex = build_lex_from_text(
-            "prefers",
-            "the cat sat\nthe cat ran\nthe cat slept\n",
-        );
+        let lex = build_lex_from_text("prefers", "the cat sat\nthe cat ran\nthe cat slept\n");
         let bp = lex.bigram();
 
         let the_id = *lex.index.get("the").unwrap();
@@ -1410,10 +1400,7 @@ mod tests {
         // "cat", and check that sampling with a heavy bigram weight
         // produces "cat" as the second token far more often than
         // chance would permit from cosine alone.
-        let lex = build_lex_from_text(
-            "biases",
-            &"the cat\n".repeat(50),
-        );
+        let lex = build_lex_from_text("biases", &"the cat\n".repeat(50));
 
         // Seed the decoder with just "the" so pos 1 is the step
         // where the prior actually fires (pos 0 has no `prev`).
@@ -1457,4 +1444,3 @@ mod tests {
         );
     }
 }
-
