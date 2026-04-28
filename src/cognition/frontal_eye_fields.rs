@@ -1,4 +1,4 @@
-﻿/// Frontal Eye Fields (FEF) — Voluntary Attention Control, Top-Down Gaze,
+/// Frontal Eye Fields (FEF) — Voluntary Attention Control, Top-Down Gaze,
 /// Volitional Search, Inhibition of Return
 ///
 /// The FEF sits in the posterior frontal cortex (precentral gyrus) and is the
@@ -334,4 +334,3 @@ mod tests {
         assert!(s.contains("focus"), "status should show focus");
     }
 }
-

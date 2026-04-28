@@ -1,4 +1,4 @@
-﻿/// Diagonal Band of Broca (DBB) — Cholinergic Basal Forebrain,
+/// Diagonal Band of Broca (DBB) — Cholinergic Basal Forebrain,
 /// Attentional Modulation, Memory Enhancement, Social-Emotional Relay
 ///
 /// The diagonal band of Broca (specifically its vertical limb) is a key part
@@ -178,4 +178,3 @@ impl Default for DiagonalBand {
         Self::new()
     }
 }
-

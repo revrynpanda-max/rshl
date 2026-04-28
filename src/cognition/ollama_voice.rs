@@ -32,8 +32,8 @@
 //! If Ollama is not reachable the constructor returns `None` and the rest of
 //! the system runs pure-lattice with zero latency cost.
 
-use std::time::Duration;
 use crate::core::{QueryHit, Universe};
+use std::time::Duration;
 
 // ── SRHT State Snapshot ───────────────────────────────────────────────────────
 
@@ -76,12 +76,24 @@ impl SrhtState {
 
     /// Short English description of ρ.
     pub fn rho_label(&self) -> &'static str {
-        if self.rho > 0.65 { "strong" } else if self.rho > 0.35 { "moderate" } else { "faint" }
+        if self.rho > 0.65 {
+            "strong"
+        } else if self.rho > 0.35 {
+            "moderate"
+        } else {
+            "faint"
+        }
     }
 
     /// Short English description of χ.
     pub fn chi_label(&self) -> &'static str {
-        if self.chi > 0.60 { "high contradiction" } else if self.chi > 0.30 { "some tension" } else { "low contradiction" }
+        if self.chi > 0.60 {
+            "high contradiction"
+        } else if self.chi > 0.30 {
+            "some tension"
+        } else {
+            "low contradiction"
+        }
     }
 }
 
@@ -160,7 +172,7 @@ impl OllamaVoice {
             let mut sum_r = 0.0f32;
 
             for h in &top {
-                let r = h.score;                // bridge strength (R_i)
+                let r = h.score; // bridge strength (R_i)
                 let theta = h.vec.phase_angle(); // Fibonacci torsion → angle (θ_i)
                 sum_real += r * theta.cos();
                 sum_imag += r * theta.sin();
@@ -171,7 +183,7 @@ impl OllamaVoice {
                 0.0
             } else {
                 let magnitude = (sum_real * sum_real + sum_imag * sum_imag).sqrt();
-                magnitude / sum_r  // normalized: 1.0 = perfect phase alignment
+                magnitude / sum_r // normalized: 1.0 = perfect phase alignment
             }
         };
 
@@ -183,8 +195,8 @@ impl OllamaVoice {
             let scores: Vec<f32> = hits.iter().take(5).map(|h| h.score).collect();
             if scores.len() >= 2 {
                 let mean = scores.iter().sum::<f32>() / scores.len() as f32;
-                let var = scores.iter().map(|s| (s - mean).powi(2)).sum::<f32>()
-                    / scores.len() as f32;
+                let var =
+                    scores.iter().map(|s| (s - mean).powi(2)).sum::<f32>() / scores.len() as f32;
                 var.sqrt()
             } else {
                 0.0
@@ -233,19 +245,9 @@ impl OllamaVoice {
             state.rho,
             state.rho_label()
         ));
-        out.push_str(&format!(
-            "R  = {:.3}  (coherence / confidence)\n",
-            state.r
-        ));
-        out.push_str(&format!(
-            "χ  = {:.3}  ({})\n",
-            state.chi,
-            state.chi_label()
-        ));
-        out.push_str(&format!(
-            "Ω  = {:.3}  (field complexity)\n",
-            state.omega
-        ));
+        out.push_str(&format!("R  = {:.3}  (coherence / confidence)\n", state.r));
+        out.push_str(&format!("χ  = {:.3}  ({})\n", state.chi, state.chi_label()));
+        out.push_str(&format!("Ω  = {:.3}  (field complexity)\n", state.omega));
         out.push_str(&format!(
             "Mood: {}  |  valence = {:+.2}\n\n",
             state.mood, state.valence
@@ -273,7 +275,8 @@ impl OllamaVoice {
             out.push('\n');
         }
 
-        let hlv_hits: Vec<&str> = hits.iter()
+        let hlv_hits: Vec<&str> = hits
+            .iter()
             .filter(|h| h.source.starts_with("hlv:"))
             .map(|h| h.label.as_str())
             .take(3)
@@ -329,15 +332,15 @@ impl OllamaVoice {
         });
 
         let url = format!("{}/api/generate", self.base_url);
-        let resp = self
-            .gen_agent
-            .post(&url)
-            .send_json(body)
-            .ok()?;
+        let resp = self.gen_agent.post(&url).send_json(body).ok()?;
 
         let json: serde_json::Value = resp.into_json().ok()?;
         let text = json["response"].as_str()?.trim().to_string();
-        if text.is_empty() { None } else { Some(text) }
+        if text.is_empty() {
+            None
+        } else {
+            Some(text)
+        }
     }
 
     // ── Concept Injection ─────────────────────────────────────────────────────
@@ -351,12 +354,11 @@ impl OllamaVoice {
     /// decay naturally if not reinforced by future conversation.
     pub fn inject_response_concepts(response: &str, universe: &mut Universe) {
         const STOPWORDS: &[&str] = &[
-            "a", "an", "the", "is", "are", "was", "were", "be", "been",
-            "have", "has", "had", "do", "does", "did", "will", "would",
-            "could", "should", "may", "might", "can", "to", "of", "in",
-            "on", "at", "by", "for", "with", "from", "and", "or", "but",
-            "if", "as", "that", "than", "then", "i", "you", "it", "its",
-            "this", "just", "not", "so", "very", "more", "also",
+            "a", "an", "the", "is", "are", "was", "were", "be", "been", "have", "has", "had", "do",
+            "does", "did", "will", "would", "could", "should", "may", "might", "can", "to", "of",
+            "in", "on", "at", "by", "for", "with", "from", "and", "or", "but", "if", "as", "that",
+            "than", "then", "i", "you", "it", "its", "this", "just", "not", "so", "very", "more",
+            "also",
         ];
 
         let words: Vec<String> = response

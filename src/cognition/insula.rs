@@ -1,4 +1,4 @@
-﻿/// Insula — KAI's interoception and internal state awareness
+/// Insula — KAI's interoception and internal state awareness
 ///
 /// The insula is a deep fold in the human brain that processes
 /// INTEROCEPTION — your brain's awareness of what's happening
@@ -357,4 +357,3 @@ mod tests {
         }
     }
 }
-

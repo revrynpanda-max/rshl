@@ -1,4 +1,4 @@
-﻿/// Session Transcript — Full conversation history that survives restarts.
+/// Session Transcript — Full conversation history that survives restarts.
 ///
 /// Every turn is appended as a JSON line to data/kai-transcript.jsonl
 /// KAI can recall any part of its full history using `recall <query>`.
@@ -169,4 +169,3 @@ pub fn entry_count(base_dir: &str) -> usize {
     };
     BufReader::new(file).lines().flatten().count()
 }
-

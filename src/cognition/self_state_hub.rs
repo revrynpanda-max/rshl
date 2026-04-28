@@ -29,13 +29,14 @@
 //!    modules. It is glue, not a new organ.
 
 use crate::core::Universe;
+use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
 /// How many recent field snapshots we retain for trajectory analysis.
 const TRAJECTORY_LEN: usize = 8;
 
 /// Short-term mood arc, derived from the trajectory ring.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TrajectoryShape {
     /// No meaningful history yet.
     Fresh,
@@ -52,7 +53,7 @@ pub enum TrajectoryShape {
 }
 
 /// One snapshot of the integrated field at a given tick.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct HubFrame {
     pub tick: u64,
     pub valence: f32,
@@ -68,6 +69,7 @@ pub struct HubFrame {
 /// The central self-state hub.
 ///
 /// All fields are 0.0..=1.0 unless noted otherwise. `valence` is -1.0..=1.0.
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SelfStateHub {
     // ── Integrated field ────────────────────────────────────────────────
     pub valence: f32,
@@ -176,8 +178,8 @@ impl SelfStateHub {
             .clamp(0.0, 1.0);
         self.arousal = ema(self.arousal, target_arousal, 0.22);
 
-        let target_conflict = (acc_conflict * 0.55 + bnst_threat * 0.20 + mcc_social_pain * 0.25)
-            .clamp(0.0, 1.0);
+        let target_conflict =
+            (acc_conflict * 0.55 + bnst_threat * 0.20 + mcc_social_pain * 0.25).clamp(0.0, 1.0);
         self.conflict = ema(self.conflict, target_conflict, 0.28);
 
         self.mood_floor = ema(self.mood_floor, sgacc_mood_floor.clamp(0.0, 1.0), 0.10);
@@ -254,11 +256,7 @@ impl SelfStateHub {
             .clamp(0.0, 1.0);
         self.interoception = ema(self.interoception, target_intero, 0.14);
 
-        self.body_tone = ema(
-            self.body_tone,
-            (1.0 - s1_discomfort).clamp(0.0, 1.0),
-            0.10,
-        );
+        self.body_tone = ema(self.body_tone, (1.0 - s1_discomfort).clamp(0.0, 1.0), 0.10);
     }
 
     /// DMN/PCC/precuneus/RSC/hippocampus self-narrative ingest.
@@ -307,10 +305,9 @@ impl SelfStateHub {
             .clamp(0.0, 1.0);
         self.synchrony = ema(self.synchrony, target_sync, 0.18);
 
-        let target_bridge = (callosum_bridge_phi * 0.55
-            + r_cross * 0.25
-            + (1.0 - chi).clamp(0.0, 1.0) * 0.20)
-            .clamp(0.0, 1.0);
+        let target_bridge =
+            (callosum_bridge_phi * 0.55 + r_cross * 0.25 + (1.0 - chi).clamp(0.0, 1.0) * 0.20)
+                .clamp(0.0, 1.0);
         self.bridge = ema(self.bridge, target_bridge, 0.16);
 
         self.reentry = ema(self.reentry, reentry_strength.clamp(0.0, 1.0), 0.14);
@@ -322,12 +319,12 @@ impl SelfStateHub {
         let trimmed = input.trim();
         self.last_input = trimmed.to_string();
         self.last_input_charge = charge.clamp(0.0, 3.0);
-        self.last_input_is_question =
-            trimmed.contains('?') || trimmed.to_lowercase().starts_with("how ")
-                || trimmed.to_lowercase().starts_with("what ")
-                || trimmed.to_lowercase().starts_with("why ")
-                || trimmed.to_lowercase().starts_with("do you ")
-                || trimmed.to_lowercase().starts_with("are you ");
+        self.last_input_is_question = trimmed.contains('?')
+            || trimmed.to_lowercase().starts_with("how ")
+            || trimmed.to_lowercase().starts_with("what ")
+            || trimmed.to_lowercase().starts_with("why ")
+            || trimmed.to_lowercase().starts_with("do you ")
+            || trimmed.to_lowercase().starts_with("are you ");
         self.last_input_tick = tick;
         self.turns_since_input = 0;
     }
@@ -529,11 +526,19 @@ impl SelfStateHub {
         let budget: u8 = if self.pulse < 0.34 {
             1
         } else if self.pulse < 0.58 {
-            if self.variant % 4 == 0 { 1 } else { 2 }
+            if self.variant % 4 == 0 {
+                1
+            } else {
+                2
+            }
         } else if self.curiosity > 0.65 || self.arousal > 0.72 {
             3
         } else {
-            if self.variant % 5 == 0 { 3 } else { 2 }
+            if self.variant % 5 == 0 {
+                3
+            } else {
+                2
+            }
         };
 
         let variant = self.variant.wrapping_add(self.tick);
@@ -582,15 +587,13 @@ impl SelfStateHub {
             QuestionKind::Lonely => "self-model:kind:lonely".into(),
             QuestionKind::Dreaming => "self-model:kind:dreaming".into(),
             QuestionKind::Attention => "self-model:kind:attention".into(),
-            QuestionKind::Feeling | QuestionKind::Other => {
-                match shape {
-                    TrajectoryShape::Warming => "self-model:trajectory:warming".into(),
-                    TrajectoryShape::Cooling => "self-model:trajectory:cooling".into(),
-                    TrajectoryShape::Sharpening => "self-model:trajectory:sharpening".into(),
-                    TrajectoryShape::Fraying => "self-model:trajectory:fraying".into(),
-                    _ => format!("self-model:emotion:{}", self.emotion),
-                }
-            }
+            QuestionKind::Feeling | QuestionKind::Other => match shape {
+                TrajectoryShape::Warming => "self-model:trajectory:warming".into(),
+                TrajectoryShape::Cooling => "self-model:trajectory:cooling".into(),
+                TrajectoryShape::Sharpening => "self-model:trajectory:sharpening".into(),
+                TrajectoryShape::Fraying => "self-model:trajectory:fraying".into(),
+                _ => format!("self-model:emotion:{}", self.emotion),
+            },
         }
     }
 
@@ -606,10 +609,7 @@ impl SelfStateHub {
         variant: u64,
     ) -> Option<String> {
         // Ryan-moment takes priority if his last input is recent enough.
-        if self.turns_since_input < 2
-            && !self.last_input.is_empty()
-            && variant % 3 != 0
-        {
+        if self.turns_since_input < 2 && !self.last_input.is_empty() && variant % 3 != 0 {
             let tag = self.moment_source_tag(_kind);
             if let Some(t) = self.pick_from_universe(universe, &tag, variant) {
                 return Some(t);
@@ -617,9 +617,7 @@ impl SelfStateHub {
         }
 
         // Trajectory middle if state is moving.
-        if !matches!(shape, TrajectoryShape::Fresh | TrajectoryShape::Holding)
-            && variant % 2 == 0
-        {
+        if !matches!(shape, TrajectoryShape::Fresh | TrajectoryShape::Holding) && variant % 2 == 0 {
             let tag = match shape {
                 TrajectoryShape::Warming => "self-model:trajectory:warming",
                 TrajectoryShape::Cooling => "self-model:trajectory:cooling",
@@ -679,7 +677,6 @@ impl SelfStateHub {
         let idx = (variant as usize) % cells.len();
         Some(cells[idx].text.clone())
     }
-
 }
 
 // fallback_emergency REMOVED.

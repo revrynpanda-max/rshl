@@ -1,4 +1,4 @@
-﻿/// Promotion — Belief formation / Long-term potentiation.
+/// Promotion — Belief formation / Long-term potentiation.
 ///
 /// A dream candidate that meets ALL thresholds gets written into
 /// the universe as durable memory — it becomes a belief.
@@ -159,4 +159,3 @@ pub fn run_promotion(
         eligible: eligible_count,
     }
 }
-

@@ -1,4 +1,4 @@
-﻿/// Temporoparietal Junction (TPJ) — Perspective-Taking, Self/Other Boundary
+/// Temporoparietal Junction (TPJ) — Perspective-Taking, Self/Other Boundary
 ///
 /// The TPJ sits at the boundary of the temporal and parietal lobes and is
 /// activated during one specific cognitive operation: taking someone else's
@@ -425,4 +425,3 @@ mod tests {
         assert!(s.contains("load"), "status should show load");
     }
 }
-

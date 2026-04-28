@@ -1,4 +1,4 @@
-﻿/// Angular Gyrus (AG) — Semantic Integration, Metaphor, Number-Language Bridge
+/// Angular Gyrus (AG) — Semantic Integration, Metaphor, Number-Language Bridge
 ///
 /// The angular gyrus is where language, mathematics, spatial reasoning, and
 /// memory all intersect. It is the brain's great semantic integrator — the
@@ -386,4 +386,3 @@ mod tests {
         assert!(s.contains("metaphor"), "status should show metaphor info");
     }
 }
-

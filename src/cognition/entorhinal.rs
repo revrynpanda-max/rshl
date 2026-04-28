@@ -1,4 +1,4 @@
-﻿/// Entorhinal Cortex (EC) — Memory Gateway, Grid Cells, Cognitive Map
+/// Entorhinal Cortex (EC) — Memory Gateway, Grid Cells, Cognitive Map
 ///
 /// The entorhinal cortex is the primary gateway between the hippocampus
 /// and the rest of the cortex. All information flowing into hippocampal
@@ -386,4 +386,3 @@ mod tests {
         assert!(s.contains("pos"), "status should show position");
     }
 }
-

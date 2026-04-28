@@ -1,4 +1,4 @@
-﻿/// Fusiform Gyrus — Categorical Perception, Pattern Identity Recognition
+/// Fusiform Gyrus — Categorical Perception, Pattern Identity Recognition
 ///
 /// The fusiform gyrus is best known for face recognition (the "FFA" —
 /// fusiform face area), but its real function is broader: expert categorical
@@ -445,4 +445,3 @@ mod tests {
         assert!(s.contains("familiarity"), "status should show familiarity");
     }
 }
-

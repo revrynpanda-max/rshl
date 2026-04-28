@@ -1,4 +1,4 @@
-﻿//! Training pipeline for `NeuralVsaMapper`.
+//! Training pipeline for `NeuralVsaMapper`.
 //!
 //! This module is the other half of `cognition::neural_mapper`. The
 //! mapper knows how to *apply* a learned dense→sparse projection and
@@ -114,9 +114,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
+use rand::rngs::StdRng;
 use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng};
-use rand::rngs::StdRng;
 use serde_json::Value;
 
 use crate::cognition::neural_mapper::{NeuralVsaMapper, DEFAULT_D_HIDDEN, DEFAULT_LEARNING_RATE};
@@ -191,19 +191,22 @@ impl BitNetEmbedder {
             .post(&format!("{}/embedding", base_url))
             .set("Content-Type", "application/json")
             .send_json(ureq::json!({ "content": probe_text }))
-            .map_err(|e| format!(
-                "BitNet probe failed ({}): is llama-server up with --embedding at {}? \
+            .map_err(|e| {
+                format!(
+                    "BitNet probe failed ({}): is llama-server up with --embedding at {}? \
                  Check README in cognition/training.rs for launch instructions.",
-                e, base_url
-            ))?
+                    e, base_url
+                )
+            })?
             .into_json::<Value>()
             .map_err(|e| format!("BitNet probe: invalid JSON response: {}", e))?;
 
-        let probed = parse_embedding_response(&response)
-            .ok_or_else(|| format!(
+        let probed = parse_embedding_response(&response).ok_or_else(|| {
+            format!(
                 "BitNet probe: could not find an embedding array in response: {}",
                 response
-            ))?;
+            )
+        })?;
 
         let d_in = probed.len();
         if d_in == 0 {
@@ -215,12 +218,18 @@ impl BitNetEmbedder {
             base_url, d_in
         );
 
-        Ok(Self { base_url, d_in, agent })
+        Ok(Self {
+            base_url,
+            d_in,
+            agent,
+        })
     }
 }
 
 impl DenseEmbedder for BitNetEmbedder {
-    fn d_in(&self) -> usize { self.d_in }
+    fn d_in(&self) -> usize {
+        self.d_in
+    }
 
     fn embed(&self, text: &str) -> Result<Vec<f32>, String> {
         let response: Value = self
@@ -232,9 +241,8 @@ impl DenseEmbedder for BitNetEmbedder {
             .into_json::<Value>()
             .map_err(|e| format!("BitNet embed JSON error: {}", e))?;
 
-        let v = parse_embedding_response(&response).ok_or_else(|| {
-            format!("BitNet embed: no embedding in response: {}", response)
-        })?;
+        let v = parse_embedding_response(&response)
+            .ok_or_else(|| format!("BitNet embed: no embedding in response: {}", response))?;
         if v.len() != self.d_in {
             return Err(format!(
                 "BitNet embed: width mismatch (expected {}, got {})",
@@ -245,7 +253,9 @@ impl DenseEmbedder for BitNetEmbedder {
         Ok(v)
     }
 
-    fn name(&self) -> &'static str { "bitnet" }
+    fn name(&self) -> &'static str {
+        "bitnet"
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -326,7 +336,9 @@ impl OllamaEmbedder {
                 if !probed.is_empty() {
                     eprintln!(
                         "[training] connected to Ollama at {} · model='{}' · d_in={} (api/embed)",
-                        base_url, model, probed.len()
+                        base_url,
+                        model,
+                        probed.len()
                     );
                     return Ok(Self {
                         base_url,
@@ -377,7 +389,9 @@ impl OllamaEmbedder {
                 ))
             }
             Err(old_err) => {
-                let new_err = new_result.err().unwrap_or_else(|| "(no embedding in response)".to_string());
+                let new_err = new_result
+                    .err()
+                    .unwrap_or_else(|| "(no embedding in response)".to_string());
                 Err(format!(
                     "Ollama probe failed on both endpoints:\n\
                      /api/embed      → {}\n\
@@ -425,7 +439,9 @@ fn ollama_post(agent: &ureq::Agent, url: &str, body: &Value) -> Result<Value, St
 }
 
 impl DenseEmbedder for OllamaEmbedder {
-    fn d_in(&self) -> usize { self.d_in }
+    fn d_in(&self) -> usize {
+        self.d_in
+    }
 
     fn embed(&self, text: &str) -> Result<Vec<f32>, String> {
         let (url, body) = if self.use_new_api {
@@ -443,9 +459,8 @@ impl DenseEmbedder for OllamaEmbedder {
         let response = ollama_post(&self.agent, &url, &body)
             .map_err(|e| format!("Ollama embed error: {}", e))?;
 
-        let v = parse_embedding_response(&response).ok_or_else(|| {
-            format!("Ollama embed: no embedding in response: {}", response)
-        })?;
+        let v = parse_embedding_response(&response)
+            .ok_or_else(|| format!("Ollama embed: no embedding in response: {}", response))?;
         if v.len() != self.d_in {
             return Err(format!(
                 "Ollama embed: width mismatch (expected {}, got {})",
@@ -456,7 +471,9 @@ impl DenseEmbedder for OllamaEmbedder {
         Ok(v)
     }
 
-    fn name(&self) -> &'static str { "ollama" }
+    fn name(&self) -> &'static str {
+        "ollama"
+    }
 }
 
 /// Pull a `Vec<f32>` out of Ollama/llama-server's various embedding
@@ -474,11 +491,22 @@ fn parse_embedding_response(v: &Value) -> Option<Vec<f32>> {
     // Shape A: {"embedding": [f32, ...]}
     if let Some(arr) = v.get("embedding").and_then(|x| x.as_array()) {
         if arr.first().is_some_and(|x| x.is_number()) {
-            return Some(arr.iter().filter_map(|x| x.as_f64()).map(|x| x as f32).collect());
+            return Some(
+                arr.iter()
+                    .filter_map(|x| x.as_f64())
+                    .map(|x| x as f32)
+                    .collect(),
+            );
         }
         // Shape B: {"embedding": [[f32, ...]]}
         if let Some(inner) = arr.first().and_then(|x| x.as_array()) {
-            return Some(inner.iter().filter_map(|x| x.as_f64()).map(|x| x as f32).collect());
+            return Some(
+                inner
+                    .iter()
+                    .filter_map(|x| x.as_f64())
+                    .map(|x| x as f32)
+                    .collect(),
+            );
         }
     }
     // Shape E: {"embeddings": [[f32, ...]]}  — new /api/embed
@@ -486,11 +514,22 @@ fn parse_embedding_response(v: &Value) -> Option<Vec<f32>> {
         if let Some(first) = arr.first() {
             if let Some(inner) = first.as_array() {
                 if inner.first().is_some_and(|x| x.is_number()) {
-                    return Some(inner.iter().filter_map(|x| x.as_f64()).map(|x| x as f32).collect());
+                    return Some(
+                        inner
+                            .iter()
+                            .filter_map(|x| x.as_f64())
+                            .map(|x| x as f32)
+                            .collect(),
+                    );
                 }
             }
             if first.is_number() {
-                return Some(arr.iter().filter_map(|x| x.as_f64()).map(|x| x as f32).collect());
+                return Some(
+                    arr.iter()
+                        .filter_map(|x| x.as_f64())
+                        .map(|x| x as f32)
+                        .collect(),
+                );
             }
         }
     }
@@ -534,7 +573,9 @@ impl StubEmbedder {
 }
 
 impl DenseEmbedder for StubEmbedder {
-    fn d_in(&self) -> usize { self.d_in }
+    fn d_in(&self) -> usize {
+        self.d_in
+    }
 
     fn embed(&self, text: &str) -> Result<Vec<f32>, String> {
         // Word-level bag with per-word sin/cos banks keyed by
@@ -573,18 +614,24 @@ impl DenseEmbedder for StubEmbedder {
         }
         if n_words > 0 {
             let inv = 1.0 / (n_words as f32);
-            for v in &mut out { *v *= inv; }
+            for v in &mut out {
+                *v *= inv;
+            }
         }
         // Unit-normalize. Real sentence encoders usually L2-norm the
         // output; downstream probes often assume it. Match the
         // convention so the stub doesn't teach the probe the wrong
         // scale.
         let norm: f32 = out.iter().map(|v| v * v).sum::<f32>().sqrt().max(1e-8);
-        for v in &mut out { *v /= norm; }
+        for v in &mut out {
+            *v /= norm;
+        }
         Ok(out)
     }
 
-    fn name(&self) -> &'static str { "stub" }
+    fn name(&self) -> &'static str {
+        "stub"
+    }
 }
 
 /// Standard 64-bit FNV-1a. No dep just for this.
@@ -654,7 +701,10 @@ fn split_sentences(text: &str) -> Vec<String> {
         let next = chars.get(i + 1).copied();
         let boundary = is_term && matches!(next, None | Some(' ' | '\t' | '\n' | '\r'));
         if boundary {
-            let s = buf.trim().trim_matches(|x: char| x == '.' || x == '!' || x == '?').trim();
+            let s = buf
+                .trim()
+                .trim_matches(|x: char| x == '.' || x == '!' || x == '?')
+                .trim();
             if !s.is_empty() {
                 out.push(s.to_string());
             }
@@ -728,7 +778,11 @@ pub fn generate_training_pairs(
                     let rate = pairs.len() as f32 / elapsed.max(0.001);
                     eprintln!(
                         "[training] generated {}/{} pairs ({:.1}/s, errs={}, zero_targets={})",
-                        pairs.len(), how_many, rate, errors, zero_targets,
+                        pairs.len(),
+                        how_many,
+                        rate,
+                        errors,
+                        zero_targets,
                     );
                 }
             }
@@ -883,13 +937,8 @@ pub fn train_mapper(cfg: TrainConfig) -> Result<(), String> {
     let d_in = embedder.d_in();
 
     // ── 4. Pairs ─────────────────────────────────────────────────────
-    let pairs = generate_training_pairs(
-        embedder.as_ref(),
-        &lex,
-        &sentences,
-        cfg.num_pairs,
-        cfg.seed,
-    );
+    let pairs =
+        generate_training_pairs(embedder.as_ref(), &lex, &sentences, cfg.num_pairs, cfg.seed);
     if pairs.is_empty() {
         return Err(
             "no training pairs generated. Check embedder connectivity and corpus coverage."
@@ -959,7 +1008,11 @@ pub fn train_mapper(cfg: TrainConfig) -> Result<(), String> {
         let (dense, target) = &pairs[i];
         let predicted = mapper.map_to_sparse(dense);
         let sim = predicted.cosine(target);
-        eprintln!("  sample {}: cosine(map_to_sparse, target) = {:.4}", k + 1, sim);
+        eprintln!(
+            "  sample {}: cosine(map_to_sparse, target) = {:.4}",
+            k + 1,
+            sim
+        );
     }
 
     Ok(())
@@ -1135,15 +1188,16 @@ pub fn train_real(mut cfg: TrainRealConfig) -> Result<(), String> {
     eprintln!("[train-real] corpus: {} sentences", sentences.len());
 
     // ── 3. Connect to Ollama ─────────────────────────────────────────
-    let embedder = OllamaEmbedder::new(&cfg.ollama_url, &cfg.ollama_model)
-        .map_err(|e| format!(
+    let embedder = OllamaEmbedder::new(&cfg.ollama_url, &cfg.ollama_model).map_err(|e| {
+        format!(
             "Ollama connection failed:\n  {}\n\n\
              Make sure:\n\
              1. `ollama serve` is running\n\
              2. The model is pulled: `ollama pull {}`\n\
              3. Ollama is reachable at {}",
             e, cfg.ollama_model, cfg.ollama_url
-        ))?;
+        )
+    })?;
     let d_in = embedder.d_in();
     eprintln!(
         "[train-real] connected to Ollama: model='{}' d_in={}",
@@ -1172,13 +1226,7 @@ pub fn train_real(mut cfg: TrainRealConfig) -> Result<(), String> {
         cfg.num_pairs
     );
     let t_pairs = Instant::now();
-    let pairs = generate_training_pairs(
-        &embedder,
-        &lex,
-        &sentences,
-        cfg.num_pairs,
-        cfg.seed,
-    );
+    let pairs = generate_training_pairs(&embedder, &lex, &sentences, cfg.num_pairs, cfg.seed);
     let pair_secs = t_pairs.elapsed().as_secs_f32();
     if pairs.is_empty() {
         return Err(
@@ -1257,9 +1305,7 @@ pub fn train_real(mut cfg: TrainRealConfig) -> Result<(), String> {
     let report_n = 10.min(pairs.len());
     let report_ids: Vec<usize> = {
         let mut r = StdRng::seed_from_u64(cfg.seed.wrapping_add(0x5A1AD));
-        (0..report_n)
-            .map(|_| r.gen_range(0..pairs.len()))
-            .collect()
+        (0..report_n).map(|_| r.gen_range(0..pairs.len())).collect()
     };
     eprintln!("═══════════════════════════════════════════════════════════════════");
     eprintln!("  Quality report ({} samples)", report_n);
@@ -1277,11 +1323,19 @@ pub fn train_real(mut cfg: TrainRealConfig) -> Result<(), String> {
         eprintln!("  #{:<2} cosine={:.4}", k + 1, sim);
         eprintln!(
             "       mapper → [{}]",
-            pred_nn.iter().map(|(w, s)| format!("{}({:.2})", w, s)).collect::<Vec<_>>().join(", ")
+            pred_nn
+                .iter()
+                .map(|(w, s)| format!("{}({:.2})", w, s))
+                .collect::<Vec<_>>()
+                .join(", ")
         );
         eprintln!(
             "       target → [{}]",
-            tgt_nn.iter().map(|(w, s)| format!("{}({:.2})", w, s)).collect::<Vec<_>>().join(", ")
+            tgt_nn
+                .iter()
+                .map(|(w, s)| format!("{}({:.2})", w, s))
+                .collect::<Vec<_>>()
+                .join(", ")
         );
     }
     let mean_cos = total_cos / report_n as f32;
@@ -1384,7 +1438,10 @@ mod tests {
 
         // Shape E: new Ollama /api/embed (plural key, nested array)
         let e = serde_json::json!({"embeddings": [[11.0, 12.0, 13.0]]});
-        assert_eq!(parse_embedding_response(&e).unwrap(), vec![11.0, 12.0, 13.0]);
+        assert_eq!(
+            parse_embedding_response(&e).unwrap(),
+            vec![11.0, 12.0, 13.0]
+        );
 
         // Broken
         let f = serde_json::json!({"nope": 1});
@@ -1433,4 +1490,3 @@ mod tests {
         dot / (na.sqrt() * nb.sqrt()).max(1e-8)
     }
 }
-

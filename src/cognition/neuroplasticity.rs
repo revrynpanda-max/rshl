@@ -1,4 +1,4 @@
-﻿/// Neuroplasticity — KAI's synaptic learning system (LTP/LTD)
+/// Neuroplasticity — KAI's synaptic learning system (LTP/LTD)
 ///
 /// "Neurons that fire together, wire together." — Donald Hebb, 1949.
 ///
@@ -362,4 +362,3 @@ mod tests {
         );
     }
 }
-

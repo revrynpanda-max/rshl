@@ -1,4 +1,4 @@
-﻿/// Reticular Activating System (RAS) — Global Arousal Gate, Consciousness Switch
+/// Reticular Activating System (RAS) — Global Arousal Gate, Consciousness Switch
 ///
 /// The RAS is a network of nuclei in the brainstem that acts as the brain's
 /// master on/off switch for consciousness and arousal. It gates whether
@@ -336,4 +336,3 @@ mod tests {
         assert!(s.contains("arousal"), "status should show arousal");
     }
 }
-

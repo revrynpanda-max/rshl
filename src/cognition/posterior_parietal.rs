@@ -1,4 +1,4 @@
-﻿/// Posterior Parietal Cortex (PPC) — Spatial Attention, Magnitude Sense,
+/// Posterior Parietal Cortex (PPC) — Spatial Attention, Magnitude Sense,
 /// Number Cognition, Multisensory Integration, Attentional Priority Maps
 ///
 /// The PPC sits at the junction of the parietal, temporal, and occipital lobes.
@@ -381,4 +381,3 @@ mod tests {
         assert!(s.contains("priority"), "status should show priority");
     }
 }
-

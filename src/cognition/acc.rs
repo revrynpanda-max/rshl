@@ -1,4 +1,4 @@
-﻿/// Anterior Cingulate Cortex — KAI's conflict detector and error monitor
+/// Anterior Cingulate Cortex — KAI's conflict detector and error monitor
 ///
 /// The ACC sits at the intersection of emotion and cognition in the human brain.
 /// It has two key jobs that nothing else in the brain does quite the same way:
@@ -47,7 +47,7 @@ use std::collections::HashMap;
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 /// Conflict threshold — above this, ACC fires a full alert
-const CONFLICT_THRESHOLD: f32 = 0.45;
+const CONFLICT_THRESHOLD: f32 = 0.55;
 
 /// Decay rate for conflict level per tick
 const CONFLICT_DECAY: f32 = 0.08;
@@ -208,7 +208,12 @@ impl AccMonitor {
         let a_has_neg = neg_words.iter().any(|n| a.contains(n));
         let b_has_neg = neg_words.iter().any(|n| b.contains(n));
         if a_has_neg != b_has_neg {
-            score += 0.35;
+            // Only penalize if there is also word overlap (shared topic)
+            let a_words: std::collections::HashSet<&str> = a.split_whitespace().collect();
+            let b_words: std::collections::HashSet<&str> = b.split_whitespace().collect();
+            if a_words.intersection(&b_words).count() >= 2 {
+                score += 0.35;
+            }
         }
 
         // Explicit contradiction words
@@ -398,4 +403,3 @@ mod tests {
         assert!(!troubled.is_empty(), "should track troubled topics");
     }
 }
-

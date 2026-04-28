@@ -1,4 +1,4 @@
-﻿/// Orbitofrontal Cortex (OFC) — Value-Based Decision Making
+/// Orbitofrontal Cortex (OFC) — Value-Based Decision Making
 ///
 /// The OFC integrates reward history, current context, and expected outcomes
 /// to evaluate the subjective value of actions. It is not about habit (basal
@@ -475,4 +475,3 @@ mod tests {
         assert!(s.contains("OFC"), "status line should mention OFC");
     }
 }
-

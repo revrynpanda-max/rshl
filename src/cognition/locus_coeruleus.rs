@@ -1,4 +1,4 @@
-﻿/// Locus Coeruleus (LC) — Norepinephrine Source Nucleus
+/// Locus Coeruleus (LC) — Norepinephrine Source Nucleus
 ///
 /// The LC is to NE what the VTA is to dopamine and the raphe is to serotonin.
 /// It is the brain's primary norepinephrine factory — a compact nucleus in the
@@ -374,4 +374,3 @@ mod tests {
         assert!(s.contains("tonic"), "status should show tonic");
     }
 }
-

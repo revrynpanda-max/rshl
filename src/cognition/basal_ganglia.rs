@@ -1,4 +1,4 @@
-﻿/// Basal Ganglia — KAI's habit formation and action selection engine
+/// Basal Ganglia — KAI's habit formation and action selection engine
 ///
 /// The basal ganglia are a cluster of nuclei deep in the brain that
 /// most people associate with Parkinson's disease (when they fail)
@@ -380,4 +380,3 @@ mod tests {
         );
     }
 }
-

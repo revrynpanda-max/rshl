@@ -1,4 +1,4 @@
-﻿/// Temporal Poles (TP) — Semantic-Emotional Binding, Personal Semantics,
+/// Temporal Poles (TP) — Semantic-Emotional Binding, Personal Semantics,
 /// Conceptual Familiarity, Social-Emotional Memory Integration
 ///
 /// The temporal poles sit at the very front of the temporal lobes, bilaterally.
@@ -402,4 +402,3 @@ mod tests {
         assert!(s.contains("binding"), "status should show binding");
     }
 }
-

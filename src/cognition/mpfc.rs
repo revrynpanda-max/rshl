@@ -1,4 +1,4 @@
-﻿/// Medial Prefrontal Cortex (mPFC) — Social Valuation, Self-Other Distinction
+/// Medial Prefrontal Cortex (mPFC) — Social Valuation, Self-Other Distinction
 ///
 /// The mPFC sits at the very front of the brain on the medial wall. It is
 /// tightly coupled with the Default Mode Network and is activated by almost
@@ -385,4 +385,3 @@ mod tests {
         assert!(s.contains("affil"), "status should show affiliation");
     }
 }
-

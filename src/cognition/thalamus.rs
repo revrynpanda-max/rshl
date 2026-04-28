@@ -1,4 +1,4 @@
-﻿/// Thalamus — KAI's sensory router and attention gatekeeper
+/// Thalamus — KAI's sensory router and attention gatekeeper
 ///
 /// The thalamus sits at the geometric center of the brain and every single
 /// sensory signal — sight, sound, touch, thought — passes through it
@@ -420,4 +420,3 @@ mod tests {
         );
     }
 }
-

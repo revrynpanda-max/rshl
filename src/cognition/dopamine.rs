@@ -1,4 +1,4 @@
-﻿/// Dopamine Reward Circuit — KAI's reinforcement learning engine
+/// Dopamine Reward Circuit — KAI's reinforcement learning engine
 ///
 /// Dopamine is the brain's "learning signal" — not just pleasure, but
 /// specifically the signal that says "that was better/worse than expected."
@@ -366,4 +366,3 @@ mod tests {
         );
     }
 }
-
