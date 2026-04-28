@@ -1,4 +1,4 @@
-﻿/// Predictive RSHL — sequence-aware retrieval built on pure sparse ternary VSA.
+/// Predictive RSHL — sequence-aware retrieval built on pure sparse ternary VSA.
 ///
 /// Maps to the 2025 research on VSA-transformer equivalence
 /// (Dhayalkar 2025, arXiv:2512.14709 — "Attention as Binding"):
@@ -139,4 +139,3 @@ mod tests {
         assert!(before.cosine(&t.current) < 0.99);
     }
 }
-
