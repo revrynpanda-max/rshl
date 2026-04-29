@@ -232,16 +232,8 @@ impl Drive {
             0.0
         };
 
-        let mut modifier = -excitement * ENGAGEMENT_SCALE + confusion;
-
-        // Boredom: very low Φg → stretch interval
-        if avg_phi_g < 0.015 {
-            modifier += BOREDOM_SCALE;
-        }
-
-        let interval = BASE_INTERVAL_MS * (1.0 + modifier);
-        interval.clamp(MIN_INTERVAL_MS, MAX_INTERVAL_MS) as u64
+        let modifier = -excitement * ENGAGEMENT_SCALE + confusion;
+        let interval = (BASE_INTERVAL_MS * (1.0 + modifier)).clamp(MIN_INTERVAL_MS, MAX_INTERVAL_MS);
+        interval as u64
     }
 }
-
-// KAI v6.0.0

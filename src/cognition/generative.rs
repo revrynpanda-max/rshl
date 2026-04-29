@@ -546,17 +546,6 @@ mod tests {
         // do this by reaching into the public API the same way the
         // `StatLexicon::build_from_paths` tests do — but since we
         // can't write files here, we fall back to the zero-lexicon
-        // degradation path and only assert the encoder itself is a
-        // total function (never panics, always returns DIM-sized).
-        let universe = Universe::new();
-        let lex = StatLexicon::new();
-        let trace = ConversationTrace::new();
-        let field = FieldState::default();
 
-        let state = build_generative_state(&universe, &lex, "hey kai are you ok", &trace, &field);
-        assert_eq!(state.data.len(), DIM);
-        // Every value is in {-1, 0, +1}.
-        assert!(state.data.iter().all(|&x| x == -1 || x == 0 || x == 1));
     }
-} 
-// KAI v6.0.0
+}

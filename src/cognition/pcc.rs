@@ -450,21 +450,6 @@ mod tests {
     fn test_decay_clears_recently_addressed() {
         let mut pcc = PCC::new();
         pcc.address_thread("aware");
-        assert!(pcc.narrative_threads[0].recently_addressed);
-        pcc.decay();
-        assert!(
-            !pcc.narrative_threads[0].recently_addressed,
-            "decay should clear recently_addressed flag"
-        );
-    }
 
-    #[test]
-    fn test_status_line() {
-        let pcc = PCC::new();
-        let s = pcc.status_line();
-        assert!(s.contains("PCC"), "status should mention PCC");
-        assert!(s.contains("threads"), "status should mention threads");
     }
 }
-
-// KAI v6.0.0

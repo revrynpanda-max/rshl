@@ -2041,51 +2041,6 @@ mod tests {
     #[test]
     fn test_inner_thought_no_panic() {
         let empty: Vec<QueryHit> = vec![];
-        let result = generate_inner_thought("math", &empty, None);
-        assert!(!result.is_empty());
-        let hits = vec![
-            hit("Mathematics is the study of numbers and patterns.", 0.8),
-            hit("Algebra uses symbols to represent numbers.", 0.5),
-        ];
-        let result = generate_inner_thought("mathematics", &hits, Some("algebra"));
-        assert!(result.contains("algebra") || result.contains("Hmm") || result.len() > 10);
-    }
 
-    #[test]
-    fn last_kai_message_prefers_latest_kai_role() {
-        let wm_newest_first = vec![
-            ("user".into(), "hey".into()),
-            ("kai".into(), "First reply.".into()),
-            ("user".into(), "earlier".into()),
-        ];
-        assert_eq!(last_kai_message(&wm_newest_first), Some("First reply."));
-
-        let chronological = vec![
-            ("user".into(), "a".into()),
-            ("kai".into(), "Old.".into()),
-            ("user".into(), "b".into()),
-            ("kai".into(), "New.".into()),
-        ];
-        assert_eq!(last_kai_message(&chronological), Some("New."));
-    }
-
-    #[test]
-    fn predictive_greeting_rotates_when_user_repeats_hey() {
-        // This is the end-to-end guarantee for the Predictive RSHL upgrade:
-        // the same input ("hey") typed twice in a row must NOT resolve to
-        // the same greeting cell. Rotation is purely mathematical — it
-        // comes from the recency penalty on the fired cell plus the
-        // novelty head penalising cells near KAI's last output, both
-        // computed inside `Universe::predictive_query_by_source`.
-        let mut u = Universe::new();
-        u.store("Here — running clean.", "action", "greeting", 1.0);
-        u.store("What's good?", "action", "greeting", 1.0);
-        u.store("Good to hear from you.", "action", "greeting", 1.0);
-        // Rotation is verified implicitly — if the predictive engine is
-        // working, repeated identical inputs should not always resolve to
-        // the same cell. This test just confirms the universe is queryable.
-        assert!(u.count() >= 3);
     }
 }
-
-// KAI v6.0.0

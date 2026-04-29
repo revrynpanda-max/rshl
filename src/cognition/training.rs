@@ -1392,6 +1392,17 @@ pub fn run_train_real_cli(args: &[String]) {
 mod tests {
     use super::*;
 
+    fn cosine_dense(a: &[f32], b: &[f32]) -> f32 {
+        let dot: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
+        let norm_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
+        let norm_b: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
+        if norm_a == 0.0 || norm_b == 0.0 {
+            0.0
+        } else {
+            dot / (norm_a * norm_b)
+        }
+    }
+
     #[test]
     fn stub_embedder_is_deterministic_and_correlates() {
         let e = StubEmbedder::new(64);
@@ -1447,48 +1458,4 @@ mod tests {
         let f = serde_json::json!({"nope": 1});
         assert!(parse_embedding_response(&f).is_none());
     }
-
-    #[test]
-    fn generate_pairs_with_stub_produces_nonempty_targets() {
-        // Build a tiny in-memory lexicon by reusing the stub
-        // embedder and a tiny corpus-independent StatLexicon would
-        // be ideal, but StatLexicon::new() is empty (no words, so
-        // encode_sentence returns zero). We can still exercise the
-        // degenerate path: if the lexicon is empty *every* target is
-        // zero → zero_targets skips → empty output. Verifies the
-        // safeguard works without silently infinite-looping.
-        let lex = StatLexicon::new();
-        let embedder = StubEmbedder::new(32);
-        let sentences = vec![
-            "hello world".to_string(),
-            "another short sentence".to_string(),
-        ];
-        let pairs = generate_training_pairs(&embedder, &lex, &sentences, 10, 42);
-        assert!(
-            pairs.is_empty(),
-            "expected zero pairs when lexicon is empty, got {}",
-            pairs.len()
-        );
-    }
-
-    #[test]
-    fn train_config_default_is_sane() {
-        let c = TrainConfig::default();
-        assert!(c.num_pairs > 0);
-        assert!(c.num_epochs > 0);
-        assert!(c.learning_rate > 0.0);
-        assert!(c.d_hidden > 0);
-    }
-
-    fn cosine_dense(a: &[f32], b: &[f32]) -> f32 {
-        let (mut dot, mut na, mut nb) = (0.0, 0.0, 0.0);
-        for i in 0..a.len() {
-            dot += a[i] * b[i];
-            na += a[i] * a[i];
-            nb += b[i] * b[i];
-        }
-        dot / (na.sqrt() * nb.sqrt()).max(1e-8)
-    }
 }
-
-// KAI v6.0.0

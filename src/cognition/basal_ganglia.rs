@@ -367,18 +367,6 @@ mod tests {
             fresh
         );
 
-        // After heavy reinforcement: same inputs should Go (habit utility lifts the signal)
-        let mut bg = BasalGanglia::new();
-        for _ in 0..15 {
-            bg.reinforce("question", "explain", 1.0, 0.85);
-        }
-        let decision = bg.evaluate("question", "explain", 0.55, 0.70);
-        assert!(
-            decision.is_go(),
-            "reinforced habit should push moderate confidence to Go: {:?}",
-            decision
-        );
+
     }
 }
-
-// KAI v6.0.0

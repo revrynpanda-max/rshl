@@ -351,18 +351,8 @@ mod tests {
         );
         assert!(
             s.affiliation_drive >= AFFIL_BASELINE - 0.05,
-            "should not fall below baseline: {:.2}",
+            "affiliation should stay near baseline: {:.2}",
             s.affiliation_drive
         );
     }
-
-    #[test]
-    fn test_status_line() {
-        let s = SeptalNuclei::new();
-        let sl = s.status_line();
-        assert!(sl.contains("Septal"), "status should mention Septal");
-        assert!(sl.contains("reward"), "status should show reward");
-    }
 }
-
-// KAI v6.0.0

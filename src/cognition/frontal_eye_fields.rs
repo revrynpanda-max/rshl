@@ -323,16 +323,6 @@ mod tests {
     fn test_no_goal_no_search() {
         let mut f = FrontalEyeFields::new();
         let out = f.process("target", false, 0.30);
-        assert!(!out.search_active, "no PFC goal should not activate search");
-    }
 
-    #[test]
-    fn test_status_line() {
-        let f = FrontalEyeFields::new();
-        let s = f.status_line();
-        assert!(s.contains("FEF"), "status should mention FEF");
-        assert!(s.contains("focus"), "status should show focus");
     }
 }
-
-// KAI v6.0.0

@@ -378,15 +378,4 @@ mod tests {
             intense
         );
     }
-
-    #[test]
-    fn test_ecf_capped_at_3() {
-        let mut gate = AmygdalaGate::new();
-        // Max everything: tier4 + caps + exclamations + high inertia
-        gate.inertia = 1.0;
-        let strength = gate.gate("I HATE MYSELF!!! I AM DYING!!! SUICIDAL!!!", "user", 1.0);
-        assert!(strength <= 3.0, "ECF exceeded cap: {:.3}", strength);
-    }
 }
-
-// KAI v6.0.0

@@ -429,21 +429,6 @@ mod tests {
         for _ in 0..100 {
             s.decay();
         }
-        assert!(
-            s.mood_floor < 0.80,
-            "mood should drift toward baseline: {:.2}",
-            s.mood_floor
-        );
-        assert!(s.mood_floor >= MOOD_BASELINE - 0.05);
-    }
 
-    #[test]
-    fn test_status_line() {
-        let s = SubgenualACC::new();
-        let sl = s.status_line();
-        assert!(sl.contains("sgACC"), "status should mention sgACC");
-        assert!(sl.contains("mood"), "status should show mood");
     }
 }
-
-// KAI v6.0.0

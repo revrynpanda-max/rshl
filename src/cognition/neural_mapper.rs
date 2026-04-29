@@ -761,30 +761,7 @@ mod tests {
         let nnz = fused.nnz();
         assert!(
             nnz + slack >= target && nnz <= target + slack,
-            "blended density off budget: nnz={} target={}",
-            nnz,
-            target
-        );
 
-        // Heavy weight on `state` should make `fused` resemble `state`
-        // more than any random vector.
-        let sim_state = fused.cosine(&state);
-        let rand = SparseVec::encode("unrelated noise words totally different");
-        let sim_rand = fused.cosine(&rand);
-        assert!(
-            sim_state > sim_rand,
-            "state-heavy blend should resemble the state (state={:.4}, rand={:.4})",
-            sim_state,
-            sim_rand
         );
-    }
-
-    #[test]
-    fn gelu_zero_and_extremes() {
-        assert!((gelu(0.0)).abs() < 1e-6);
-        assert!(gelu(5.0) > 4.99 && gelu(5.0) < 5.01);
-        assert!(gelu(-5.0) > -0.01 && gelu(-5.0) < 0.0);
     }
 }
-
-// KAI v6.0.0

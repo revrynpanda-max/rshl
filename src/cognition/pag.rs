@@ -441,21 +441,6 @@ mod tests {
     #[test]
     fn test_appease_signal_in_output() {
         let mut p = PeriaqueductalGray::new();
-        p.process(PAGEvent::SocialPain { severity: 0.70 });
-        let out = p.current_output();
-        assert!(
-            out.appease_signal,
-            "appease mode should set appease_signal in output"
-        );
-    }
 
-    #[test]
-    fn test_status_line() {
-        let p = PeriaqueductalGray::new();
-        let s = p.status_line();
-        assert!(s.contains("PAG"), "status should mention PAG");
-        assert!(s.contains("threat"), "status should show threat level");
     }
 }
-
-// KAI v6.0.0

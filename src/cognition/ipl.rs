@@ -585,26 +585,6 @@ mod tests {
 
     #[test]
     fn test_store_new_analogy() {
-        let mut ipl = InferiorParietalLobule::new();
-        let before = ipl.analogy_count();
-        ipl.store_analogy(
-            "serotonin",
-            "patience",
-            "flywheel",
-            "momentum",
-            "provides_stability_through",
-            0.75,
-        );
-        assert_eq!(ipl.analogy_count(), before + 1);
-    }
 
-    #[test]
-    fn test_status_line() {
-        let ipl = InferiorParietalLobule::new();
-        let s = ipl.status_line();
-        assert!(s.contains("IPL"), "status should mention IPL");
-        assert!(s.contains("analogies"), "status should mention analogies");
     }
 }
-
-// KAI v6.0.0

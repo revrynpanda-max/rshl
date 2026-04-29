@@ -83,9 +83,5 @@ pub fn gpu_tick(
     }
 
     // Update tick timestamp even if no work was done
-    if let Ok(mut state) = gpu_state.write() {
-        state.last_tick = Some(Instant::now());
-    }
-}
 
-// KAI v6.0.0
+}

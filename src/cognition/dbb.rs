@@ -166,17 +166,7 @@ impl DiagonalBand {
         format!(
             "DBB ACh={:.2} | SNR={:.2} | hippo_gain={:.2} | theta={:.2}",
             self.cholinergic_tone,
-            self.attentional_snr,
-            self.hippocampal_gain,
-            self.theta_coherence,
-        )
+
+        );
     }
 }
-
-impl Default for DiagonalBand {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-// KAI v6.0.0

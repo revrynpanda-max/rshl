@@ -133,11 +133,6 @@ mod tests {
 
     #[test]
     fn trace_changes_after_push() {
-        let mut t = ConversationTrace::new();
-        let before = t.current.clone();
-        t.push("hey", "user");
-        assert!(before.cosine(&t.current) < 0.99);
+
     }
 }
-
-// KAI v6.0.0

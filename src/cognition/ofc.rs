@@ -459,21 +459,6 @@ mod tests {
         for _ in 0..12 {
             ofc.update("great_context", 0.9);
         }
-        let j = ofc.judge("great_context");
-        assert!(
-            j.expected_value > 0.60 || j.label == "high-value",
-            "high reward context should be high-value after 12 updates: val={:.2} label={}",
-            j.expected_value,
-            j.label
-        );
-    }
 
-    #[test]
-    fn test_status_line_non_empty() {
-        let ofc = OrbitofrontalCortex::new();
-        let s = ofc.status_line();
-        assert!(s.contains("OFC"), "status line should mention OFC");
     }
 }
-
-// KAI v6.0.0

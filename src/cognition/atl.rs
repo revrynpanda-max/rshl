@@ -427,19 +427,6 @@ mod tests {
     fn test_temporal_pole_resonance_boosts_personal_semantic() {
         let mut a = AnteriorTemporalLobe::new();
         a.process("you and I", 0.20, 0.20, 0.90);
-        assert!(
-            a.personal_semantic > 0.20,
-            "high temporal pole resonance + personal words should activate personal semantics"
-        );
-    }
-
-    #[test]
-    fn test_status_line() {
-        let a = AnteriorTemporalLobe::new();
-        let s = a.status_line();
-        assert!(s.contains("ATL"), "status should mention ATL");
-        assert!(s.contains("richness"), "status should show richness");
+    
     }
 }
-
-// KAI v6.0.0

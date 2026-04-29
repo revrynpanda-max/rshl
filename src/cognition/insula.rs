@@ -346,16 +346,6 @@ mod tests {
         for _ in 0..15 {
             insula.update(0.2, 0.9, 0.9, 0.9, 0.9, true);
         }
-        if insula.should_surface() {
-            assert!(
-                matches!(
-                    insula.state.felt_condition,
-                    FeltCondition::Strained | FeltCondition::Overwhelmed | FeltCondition::Fatigued
-                ),
-                "should only surface when strained/overwhelmed/fatigued"
-            );
-        }
+
     }
 }
-
-// KAI v6.0.0

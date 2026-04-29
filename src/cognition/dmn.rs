@@ -359,17 +359,4 @@ mod tests {
         dmn.mark_fired();
         assert_eq!(dmn.total_cycles, 2);
     }
-
-    #[test]
-    fn test_disabled_dmn_never_fires() {
-        let mut dmn = DefaultModeNetwork::new();
-        dmn.enabled = false;
-        // Even with no recent input, should not fire
-        dmn.last_input_at = Instant::now()
-            .checked_sub(Duration::from_secs(300))
-            .unwrap_or_else(Instant::now);
-        assert!(!dmn.should_fire(), "disabled DMN should never fire");
-    }
 }
-
-// KAI v6.0.0

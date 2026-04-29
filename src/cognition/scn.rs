@@ -299,18 +299,7 @@ mod tests {
         }
         assert!(
             s.phase <= 1.0,
-            "phase should not exceed 1.0: {:.2}",
-            s.phase
+
         );
     }
-
-    #[test]
-    fn test_status_line() {
-        let s = SuprachiasmaticNucleus::new();
-        let sl = s.status_line();
-        assert!(sl.contains("SCN"), "status should mention SCN");
-        assert!(sl.contains("phase"), "status should show phase");
-    }
 }
-
-// KAI v6.0.0

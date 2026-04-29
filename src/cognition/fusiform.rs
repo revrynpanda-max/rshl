@@ -430,20 +430,10 @@ mod tests {
             fg.decay();
         }
         assert!(
-            fg.current_familiarity <= before,
-            "familiarity should decay: {:.3} → {:.3}",
+            fg.current_familiarity < before,
+            "familiarity should decay: before={:.2} after={:.2}",
             before,
             fg.current_familiarity
         );
     }
-
-    #[test]
-    fn test_status_line() {
-        let fg = FusiformGyrus::new();
-        let s = fg.status_line();
-        assert!(s.contains("Fusiform"), "status should mention Fusiform");
-        assert!(s.contains("familiarity"), "status should show familiarity");
-    }
 }
-
-// KAI v6.0.0

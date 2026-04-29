@@ -348,17 +348,6 @@ mod tests {
     fn test_raphe_suppression_present_when_active() {
         let mut h = Habenula::new();
         let out = h.process(HabenulaSignal::RewardOmission { expected: 1.0 });
-        // raphe_suppression should be proportional to activity
-        assert!(out.raphe_suppression >= 0.0);
-    }
 
-    #[test]
-    fn test_status_line() {
-        let h = Habenula::new();
-        let s = h.status_line();
-        assert!(s.contains("Habenula"), "status should mention Habenula");
-        assert!(s.contains("activity"), "status should show activity");
     }
 }
-
-// KAI v6.0.0

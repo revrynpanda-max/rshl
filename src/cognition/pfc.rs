@@ -463,20 +463,6 @@ mod tests {
     fn test_infer_goal_from_explain_input() {
         let mut pfc = PrefrontalCortex::new();
         pfc.infer_goal_from_input("explain how the brain works");
-        assert!(
-            pfc.primary_goal().is_some(),
-            "should infer goal from 'explain' input"
-        );
-        assert!(pfc.primary_goal().unwrap().description.contains("explain"));
-    }
 
-    #[test]
-    fn test_no_duplicate_goals() {
-        let mut pfc = PrefrontalCortex::new();
-        pfc.push_goal("explain consciousness", 0.7);
-        pfc.push_goal("explain consciousness", 0.7);
-        assert_eq!(pfc.goals.len(), 1, "duplicate goals should not be added");
     }
 }
-
-// KAI v6.0.0

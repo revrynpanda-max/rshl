@@ -169,7 +169,11 @@ header h1{font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;letter-
   cursor:pointer;display:flex;align-items:center;gap:6px;transition:all 0.15s;word-break:break-all;
 }
 .file-item:hover{background:rgba(255,255,255,0.05);color:var(--accent)}
-.file-item .fi-icon{color:var(--accent);flex-shrink:0}
+.file-item .fi-icon{color:var(--accent);flex-shrink:0;margin-right:6px}
+.file-tree-node{margin-left:12px;border-left:1px solid var(--border);padding-left:4px}
+.file-folder{font-weight:700;color:var(--text);font-size:11px;margin:4px 0;cursor:pointer;display:flex;align-items:center;gap:6px}
+.file-folder .fi-icon{color:var(--warn)}
+#file-search{width:100%;background:rgba(0,0,0,0.2);border:1px solid var(--border);padding:6px;font-size:10px;color:#fff;border-radius:4px;margin-bottom:8px}
 
 /* Pending tests */
 .test-list{flex:1;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:8px}
@@ -313,11 +317,12 @@ button:disabled{opacity:0.3;cursor:not-allowed}
   <!-- Files + Pending Tests -->
   <div class="col-tools">
     <!-- File Browser -->
-    <div class="tool-section" style="flex:1.5">
+    <div class="tool-section" style="flex:1.8">
       <div class="panel-hdr">
-        <span>Source Files</span>
+        <span>Project Files</span>
         <button id="btn-refresh-files" class="secondary" style="padding:2px 7px;font-size:9px">Refresh</button>
       </div>
+      <div style="padding:8px;padding-bottom:0"><input type="text" id="file-search" placeholder="Search files..."></div>
       <div class="file-list" id="file-list">
         <div style="color:var(--muted);font-size:10px;padding:8px">Loading files...</div>
       </div>
@@ -374,6 +379,7 @@ let session = null;
 let activeModels = new Set(["GPT-4","Gemini","Claude","Groq"]);
 let polling = null;
 let autoRunning = false;
+let lastTurnCount = 0;
 
 // ── Helpers ──────────────────────────────────────────────────────
 const esc = s => String(s||"").replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}[c]));
@@ -391,9 +397,15 @@ async function api(path, body=null) {
       ? {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}
       : {method:'GET'};
     const r = await fetch(API + path, opts);
-    if(!r.ok) return null;
+    if(!r.ok) {
+        console.error(`API Error [${path}]: ${r.status} ${r.statusText}`);
+        return null;
+    }
     return await r.json();
-  } catch { return null; }
+  } catch (e) { 
+    console.error(`API Fetch Failure [${path}]:`, e);
+    return null; 
+  }
 }
 
 // ── Modal: Start Meeting ─────────────────────────────────────────
@@ -407,6 +419,15 @@ $("btn-start-meeting").onclick = async () => {
     updateUI(res);
     loadFiles();
     startPolling();
+    
+    // Add diagnostic message if AIs might be quiet
+    setTimeout(async () => {
+        const check = await api("/api/session");
+        if (check && check.turns.length <= 1) {
+             const diag = "=== ORACLE DIAGNOSTICS ===\nNote: If AIs are quiet, ensure you have API keys in `data/oracle_keys.json` or have Ollama running locally. Click 'Let Them Talk' to force an auto-round review.";
+             api("/api/turn", { from: "system", text: diag });
+        }
+    }, 2000);
   }
 };
 
@@ -440,9 +461,21 @@ function updateUI(sess_data) {
   const turns = session.turns || [];
   if (turns.length === 0) {
     $("transcript").innerHTML = '<div style="color:var(--muted);font-size:11px;text-align:center;margin-top:40px">No messages yet. Post something to start the discussion.</div>';
-  } else {
+    lastTurnCount = 0;
+  } else if (turns.length > lastTurnCount) {
     const wasAtBottom = $("transcript").scrollTop + $("transcript").clientHeight >= $("transcript").scrollHeight - 40;
-    $("transcript").innerHTML = turns.map(renderTurn).join("");
+    
+    // If it's a small update (less than 5 new turns), just append them.
+    // Otherwise (like on first load or reset), do a full render.
+    if (lastTurnCount > 0 && turns.length - lastTurnCount < 5) {
+        for (let i = lastTurnCount; i < turns.length; i++) {
+            $("transcript").insertAdjacentHTML('beforeend', renderTurn(turns[i]));
+        }
+    } else {
+        $("transcript").innerHTML = turns.map(renderTurn).join("");
+    }
+    
+    lastTurnCount = turns.length;
     if (wasAtBottom) $("transcript").scrollTop = $("transcript").scrollHeight;
   }
 
@@ -540,17 +573,66 @@ function toggleModel(m) {
   renderChips();
 }
 
-// ── File Browser ─────────────────────────────────────────────────
+// ── File Browser & Tree ───────────────────────────────────────────
+let allFiles = [];
 async function loadFiles() {
   const res = await api("/api/file-list");
   if (!res || !res.files) return;
-  const files = res.files;
-  if (files.length === 0) { $("file-list").innerHTML = '<div style="color:var(--muted);font-size:10px;padding:8px">No source files found.</div>'; return; }
-  $("file-list").innerHTML = files.map(f => `
-    <div class="file-item" onclick="shareFile('${f.replace(/'/g,"\\'")}')">
-      <span class="fi-icon">📄</span>${esc(f)}
-    </div>
-  `).join("");
+  allFiles = res.files;
+  renderFileTree();
+}
+
+$("file-search").oninput = renderFileTree;
+
+function renderFileTree() {
+  const filter = $("file-search").value.toLowerCase();
+  const files = allFiles.filter(f => f.toLowerCase().includes(filter));
+  
+  if (files.length === 0) {
+    $("file-list").innerHTML = '<div style="color:var(--muted);font-size:10px;padding:8px">No files matching filter.</div>';
+    return;
+  }
+
+  // Build tree object
+  const root = {};
+  files.forEach(f => {
+    const parts = f.split('/');
+    let curr = root;
+    parts.forEach((p, i) => {
+      if (i === parts.length - 1) {
+        curr[p] = null;
+      } else {
+        if (!curr[p]) curr[p] = {};
+        curr = curr[p];
+      }
+    });
+  });
+
+  const buildHtml = (node, path = "") => {
+    let html = "";
+    const entries = Object.entries(node).sort((a,b) => {
+        if (a[1] && !b[1]) return -1;
+        if (!a[1] && b[1]) return 1;
+        return a[0].localeCompare(b[0]);
+    });
+
+    for (const [name, child] of entries) {
+      const fullPath = path ? `${path}/${name}` : name;
+      if (child === null) {
+        // File
+        html += `<div class="file-item" onclick="shareFile('${fullPath.replace(/'/g,"\\'")}')">
+          <span class="fi-icon">📄</span>${esc(name)}
+        </div>`;
+      } else {
+        // Folder
+        html += `<div class="file-folder"><span class="fi-icon">📁</span>${esc(name)}</div>
+        <div class="file-tree-node">${buildHtml(child, fullPath)}</div>`;
+      }
+    }
+    return html;
+  };
+
+  $("file-list").innerHTML = buildHtml(root);
 }
 
 async function shareFile(path) {

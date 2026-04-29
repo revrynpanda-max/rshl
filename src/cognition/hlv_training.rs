@@ -172,12 +172,11 @@ fn split_sentences(text: String) -> Vec<String> {
 }
 
 fn sanitize_title(title: &str) -> String {
-    title
-        .to_lowercase()
+    title.to_lowercase()
         .chars()
-        .filter(|c| c.is_alphanumeric() || *c == ' ')
+        .filter(|c| c.is_alphanumeric() || c.is_whitespace())
         .collect::<String>()
-        .replace(" ", "_")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join("-")
 }
-
-// KAI v6.0.0

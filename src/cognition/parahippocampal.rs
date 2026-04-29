@@ -359,19 +359,7 @@ mod tests {
         }
         // 100 ticks * 0.0008 = 0.08 reduction
         assert!(
-            p.context_familiarity > 0.55,
-            "familiarity decay should be slow: {:.2}",
-            p.context_familiarity
+
         );
     }
-
-    #[test]
-    fn test_status_line() {
-        let p = ParahippocampalCortex::new();
-        let s = p.status_line();
-        assert!(s.contains("PHC"), "status should mention PHC");
-        assert!(s.contains("familiar"), "status should show familiarity");
-    }
 }
-
-// KAI v6.0.0

@@ -276,14 +276,14 @@ impl Reasoner {
 
         // Decode: the matched text at the best step IS the output
         // But we can also try to compose from the chain
-        let output = self.compose_output(&chain, best_idx, universe);
+        let (output_text, output_region) = self.compose_output(&chain, best_idx, universe);
 
         ReasonResult {
             depth: chain.len(),
             best_step: best_idx,
             confidence: best.phi_g.min(1.0),
-            output_text: output.0,
-            output_region: output.1,
+            output_text,
+            output_region,
             chain,
         }
     }
@@ -351,17 +351,16 @@ impl Reasoner {
                     })
                     .collect();
 
-                let mut output = cell.label.clone();
-                if !sources.is_empty() {
-                    output = format!("{} — via {}", output, sources.join(", "));
-                }
-                return (output, cell.region.clone());
+                let annotation = if sources.is_empty() {
+                    String::new()
+                } else {
+                    format!(" (Sources: {})", sources.join(", "))
+                };
+                return (format!("{}{}", cell.label, annotation), cell.region.clone());
             }
         }
 
-        // Fallback: return the best-step match text directly
-        (parts[0].1.to_string(), parts[0].2.to_string())
+        // Fallback: Best single step
+        (best.matched_text.clone(), best.matched_region.clone())
     }
 }
-
-// KAI v6.0.0

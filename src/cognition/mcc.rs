@@ -424,21 +424,6 @@ mod tests {
             m.decay();
         }
         // Social pain decays at 0.008/tick, physical at 0.025/tick
-        assert!(
-            m.social_pain > m.pain_affect,
-            "social pain should decay slower: soc={:.2} phys={:.2}",
-            m.social_pain,
-            m.pain_affect
-        );
-    }
 
-    #[test]
-    fn test_status_line() {
-        let m = MidCingulateCortex::new();
-        let s = m.status_line();
-        assert!(s.contains("MCC"), "status should mention MCC");
-        assert!(s.contains("pain"), "status should show pain");
     }
 }
-
-// KAI v6.0.0

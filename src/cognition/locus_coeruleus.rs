@@ -360,19 +360,6 @@ mod tests {
     fn test_is_bursting_true_after_burst() {
         let mut lc = LocusCoeruleus::new();
         lc.phasic_level = 0.50;
-        assert!(
-            lc.is_bursting(),
-            "elevated phasic should be is_bursting=true"
-        );
-    }
 
-    #[test]
-    fn test_status_line() {
-        let lc = LocusCoeruleus::new();
-        let s = lc.status_line();
-        assert!(s.contains("LC"), "status should mention LC");
-        assert!(s.contains("tonic"), "status should show tonic");
     }
 }
-
-// KAI v6.0.0

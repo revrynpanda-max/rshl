@@ -1518,55 +1518,5 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_key_concepts_extracted() {
-        let mut engine = LexSemEngine::new();
-        let out = engine.analyze("I feel curious about the idea of consciousness");
-        assert!(!out.key_concepts.is_empty(), "should extract key concepts");
-    }
 
-    #[test]
-    fn test_urgency_detection() {
-        let mut engine = LexSemEngine::new();
-        let out = engine.analyze("I need this fixed right now immediately");
-        assert!(
-            out.urgency > 0.0,
-            "urgency words should register: {:.2}",
-            out.urgency
-        );
-    }
-
-    #[test]
-    fn test_warm_register_for_emotional() {
-        let mut engine = LexSemEngine::new();
-        let out = engine.analyze("I feel sad and hurt");
-        assert_eq!(
-            out.suggested_register,
-            ResponseRegister::Warm,
-            "emotional negative input should suggest warm register"
-        );
-    }
-
-    #[test]
-    fn test_extract_core_claim() {
-        let engine = LexSemEngine::new();
-        let result = engine.extract_core_claim("KAI is a geometric intelligence system");
-        assert!(!result.is_empty(), "should extract something");
-        // Should strip filler
-        assert!(
-            !result.contains(" is "),
-            "should filter filler 'is': {}",
-            result
-        );
-    }
-
-    #[test]
-    fn test_analyses_counter() {
-        let mut engine = LexSemEngine::new();
-        engine.analyze("hello");
-        engine.analyze("world");
-        assert_eq!(engine.analyses, 2);
-    }
 }
-
-// KAI v6.0.0

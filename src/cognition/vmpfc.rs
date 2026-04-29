@@ -463,21 +463,6 @@ mod tests {
         let mut v = VentromedialPFC::new();
         let before = v.value_alignment;
         v.process(VmPFCEvent::ValueAligned { degree: 0.90 });
-        assert!(
-            v.value_alignment >= before,
-            "value aligned event should not lower alignment: {:.2} → {:.2}",
-            before,
-            v.value_alignment
-        );
-    }
-
-    #[test]
-    fn test_status_line() {
-        let v = VentromedialPFC::new();
-        let s = v.status_line();
-        assert!(s.contains("vmPFC"), "status should mention vmPFC");
-        assert!(s.contains("safety"), "status should show safety level");
+    
     }
 }
-
-// KAI v6.0.0

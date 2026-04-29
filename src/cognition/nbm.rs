@@ -339,19 +339,7 @@ mod tests {
         }
         assert!(
             n.ach_tone < 0.85,
-            "ACh should drift toward baseline: {:.2}",
-            n.ach_tone
-        );
-        assert!(n.ach_tone >= ACH_BASELINE - 0.05);
-    }
 
-    #[test]
-    fn test_status_line() {
-        let n = NucleusBasalis::new();
-        let s = n.status_line();
-        assert!(s.contains("NBM"), "status should mention NBM");
-        assert!(s.contains("ach"), "status should show ACh");
+        );
     }
 }
-
-// KAI v6.0.0

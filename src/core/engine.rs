@@ -131,6 +131,23 @@ impl Engine {
         crate::core::MindFrame::from_query(query).requires_mind_memory()
     }
 
+    pub fn live_self_state_hit(&self) -> QueryHit {
+        let text = if self.live_self_state_text.trim().is_empty() {
+            "KAI self-state is present but not yet energized.".to_string()
+        } else {
+            self.live_self_state_text.clone()
+        };
+        QueryHit {
+            label: "live-self-state".into(),
+            vec: SparseVec::encode(&text),
+            text,
+            region: "SelfState".into(),
+            score: self.live_self_state_salience.max(0.1),
+            strength: self.live_self_state_salience.max(0.1),
+            source: "live-self-state".into(),
+        }
+    }
+
     pub fn contribute_to_mind_frame(&self, frame: &mut MindFrame) {
         let mind_relevant = matches!(
             frame.intent,
@@ -818,26 +835,6 @@ impl Engine {
 
         self.self_state_energy = self.self_state_energy * 0.84 + target_energy * 0.16;
         self.self_state_warmth = self.self_state_warmth * 0.88 + target_warmth * 0.12;
-        self.self_state_focus = self.self_state_focus * 0.86 + target_focus * 0.14;
-        self.self_state_pulse = (self.self_state_energy * 0.34
-            + self.self_state_warmth * 0.26
-            + self.self_state_focus * 0.28
-            + self.spiral.tau_r() * 0.12)
-            .clamp(0.0, 1.0);
-        self.self_state_variation = self.self_state_variation.wrapping_add(1);
-    }
 
-    pub fn live_self_state_hit(&self) -> crate::core::QueryHit {
-        crate::core::QueryHit {
-            label: self.live_self_state_text.clone(),
-            text: self.live_self_state_text.clone(),
-            vec: crate::core::SparseVec::zero(),
-            region: "state".to_string(),
-            score: self.live_self_state_salience.max(0.75),
-            strength: self.live_self_state_salience.max(1.0),
-            source: "self-model".to_string(),
-        }
     }
 }
-
-// KAI v6.0.0

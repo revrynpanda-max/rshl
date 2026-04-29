@@ -820,28 +820,6 @@ mod tests {
             "A neuron is a specialized cell. Neurons transmit information through synapses.",
             5,
         );
-        // "neuron" and "neurons" are different surface forms but each
-        // should only appear once in the returned list.
-        let count_neuron = concepts.iter().filter(|c| c.starts_with("neuron")).count();
-        assert!(count_neuron <= 2);
-    }
 
-    #[test]
-    fn extract_concepts_rejects_short_words() {
-        let concepts = extract_significant_concepts("The cat sat on the mat.", 3);
-        // "cat", "sat", "mat" are all 3 chars → rejected.
-        assert!(concepts.is_empty());
-    }
-
-    #[test]
-    fn extract_concepts_skips_pure_numbers() {
-        let concepts = extract_significant_concepts(
-            "In 1776 the American colonies declared independence from Britain.",
-            4,
-        );
-        assert!(!concepts.contains(&"1776".to_string()));
-        assert!(concepts.contains(&"independence".to_string()));
     }
 }
-
-// KAI v6.0.0

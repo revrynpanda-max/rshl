@@ -34,6 +34,5 @@ pub use predictive::ConversationTrace;
 pub use reasoning::{ContextSlot, Reasoner};
 pub use sparse_vec::SparseVec;
 pub use stat_lexicon::StatLexicon;
-pub use universe::{Cell, PredictiveScoreBreakdown, QueryHit, Universe};
+pub use universe::{Cell, QueryHit, Universe, PredictiveScoreBreakdown};
 
-// KAI v6.0.0

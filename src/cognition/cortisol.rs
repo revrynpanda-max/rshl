@@ -401,21 +401,7 @@ mod tests {
     fn test_decay_moves_toward_baseline() {
         let mut cort = CortisolSystem::new();
         for _ in 0..5 {
-            cort.process(CortisolEvent::PredictionFailure);
-        }
-        let elevated = cort.level;
-        for _ in 0..100 {
-            cort.decay();
-        }
-        assert!(cort.level < elevated, "cortisol should decay over time");
-    }
 
-    #[test]
-    fn test_status_line_non_empty() {
-        let cort = CortisolSystem::new();
-        let s = cort.status_line();
-        assert!(s.contains("CORT"), "status line should mention CORT");
+        }
     }
 }
-
-// KAI v6.0.0

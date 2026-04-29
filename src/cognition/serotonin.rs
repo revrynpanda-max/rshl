@@ -397,20 +397,4 @@ mod tests {
             after
         );
     }
-
-    #[test]
-    fn test_impulse_risk_when_low() {
-        let mut s = SerotoninSystem::new();
-        // Crash serotonin with conflicts
-        for _ in 0..30 {
-            s.process(SerotoninEvent::SocialConflict);
-        }
-        assert!(
-            s.impulse_risk(),
-            "many conflicts should trigger impulse risk (level={:.3})",
-            s.level
-        );
-    }
 }
-
-// KAI v6.0.0

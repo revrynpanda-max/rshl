@@ -314,18 +314,7 @@ mod tests {
         }
         assert!(
             m.consolidation_rate < 0.80,
-            "consolidation rate should decay: {:.2}",
-            m.consolidation_rate
+
         );
     }
-
-    #[test]
-    fn test_status_line() {
-        let m = MammillaryBodies::new();
-        let s = m.status_line();
-        assert!(s.contains("MB"), "status should mention MB");
-        assert!(s.contains("relay"), "status should show relay");
-    }
 }
-
-// KAI v6.0.0

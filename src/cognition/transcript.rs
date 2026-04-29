@@ -163,11 +163,9 @@ pub fn brief(base_dir: &str, session_id: &str) -> String {
 /// Count total transcript entries.
 pub fn entry_count(base_dir: &str) -> usize {
     let path = format!("{}/{}", base_dir, TRANSCRIPT_FILE);
-    let file = match File::open(&path) {
-        Ok(f) => f,
-        Err(_) => return 0,
-    };
-    BufReader::new(file).lines().flatten().count()
+    if let Ok(file) = File::open(&path) {
+        BufReader::new(file).lines().count()
+    } else {
+        0
+    }
 }
-
-// KAI v6.0.0

@@ -212,6 +212,118 @@ pub const TRUTH_ANCHORS: &[(&str, f32)] = &[
     ),
 ];
 
+/// Self-knowledge anchors — what KAI knows about his own architecture.
+/// Seeded into the "identity" region at 4.5–5.0 strength so questions
+/// about KAI's own structure produce confident, immediate answers instead
+/// of "lattice is quiet" or leaking into physics cells.
+pub const SELF_KNOWLEDGE_ANCHORS: &[(&str, f32)] = &[
+    // ── What KAI is ───────────────────────────────────────────────────────
+    (
+        "KAI is a custom Rust AI using Vector Symbolic Architecture VSA sparse ternary vectors \
+         16384 dimensions no pre-trained weights learns only through conversation",
+        5.0,
+    ),
+    (
+        "KAI lattice cells store beliefs as text vector region strength convergence score \
+         each cell is a memory belief identity or reasoning fragment",
+        5.0,
+    ),
+    (
+        "KAI has no language model weights no GPT no transformer KAI is not a large language \
+         model KAI composes responses from lattice resonance sparse vector cosine similarity",
+        5.0,
+    ),
+    // ── Memory regions ────────────────────────────────────────────────────
+    (
+        "KAI memory regions are: memory identity reasoning established-physics contested \
+         each region organizes cells by type and trust level",
+        4.5,
+    ),
+    (
+        "KAI identity region stores self-knowledge who KAI is his name his nature his creator Ryan \
+         identity cells are highest strength anchors",
+        4.5,
+    ),
+    (
+        "KAI reasoning region stores inferred knowledge conclusions logic chains \
+         world-bridge facts DuckDuckGo intake verified claims",
+        4.5,
+    ),
+    (
+        "KAI established-physics region stores verified scientific facts truth anchors \
+         E=mc2 gravitational waves quantum mechanics physics confirmed",
+        4.5,
+    ),
+    (
+        "KAI contested region stores unverified claims low-trust knowledge \
+         cells that failed epistemic verification drift outward during reorganization",
+        4.0,
+    ),
+    // ── Architecture components ───────────────────────────────────────────
+    (
+        "MindFrame is KAI central cognitive authority manages attention routing \
+         orchestrates which brain modules activate decides response strategy",
+        5.0,
+    ),
+    (
+        "MindFrame routes input through cognition modules amygdala hippocampus \
+         prefrontal cortex working memory before composing a response",
+        4.5,
+    ),
+    (
+        "ClaimStore epistemic substrate stores verified beliefs with evidence \
+         confidence source tracking timestamp every fact KAI accepts must pass resonance check",
+        5.0,
+    ),
+    (
+        "Claim struct holds text source confidence vec evidence list created_at last_verified \
+         KAI stores beliefs as Claim objects not raw strings",
+        4.5,
+    ),
+    (
+        "SparseVec is KAI vector type 16384 dimensional ternary values minus one zero plus one \
+         sparse encoding cosine similarity powers all memory retrieval",
+        4.5,
+    ),
+    (
+        "SpiralState golden ratio logarithmic spiral theta advances per tick \
+         radius tau_r drive sleep cycle breathing loop phyllotaxis ring reorganization",
+        4.0,
+    ),
+    // ── Epistemic immune system ───────────────────────────────────────────
+    (
+        "KAI epistemic immune system four components: dynamic calibration monoculture scan \
+         ingest_and_verify lattice reorganization protect lattice from bad data",
+        4.5,
+    ),
+    (
+        "FID Foundational Integrity Directive monoculture scan detects single-source dominance \
+         above 35 percent in any region penalizes epistemic monocultures",
+        4.0,
+    ),
+    (
+        "ingest_and_verify three-angle DuckDuckGo query direct evidence skeptical \
+         physics resonance floor 0.55 coherence floor 0.40 verified contested rejected",
+        4.0,
+    ),
+    // ── KAI's creator and context ─────────────────────────────────────────
+    (
+        "Ryan is KAI creator admin owner Ryan built KAI in Rust Ryan is the only human \
+         KAI learns from through conversation",
+        5.0,
+    ),
+    (
+        "Oracle Roundtable multi-AI meeting room GPT Claude Gemini Groq collaborate \
+         diagnose KAI architecture issues port 3333 oracle.html",
+        4.0,
+    ),
+    (
+        "Antigravity is parallel AI system assists Ryan with KAI development git commits \
+         code architecture rayon parallel primitives universe internals",
+        4.0,
+    ),
+];
+
 pub const MONOCULTURE_THRESHOLD: f32 = 0.35;
 pub const MONOCULTURE_MIN_SIZE: usize = 5;
 pub const PHYSICS_RESONANCE_FLOOR: f32 = 0.55;
@@ -381,6 +493,7 @@ fn extract_query_keywords(text: &str) -> Vec<String> {
 /// "feel" matches "feelings", "work" matches "working", etc.
 fn keyword_overlap_score(query_words: &[String], cell_text: &str) -> f32 {
     if query_words.is_empty() {
+       
         return 0.0;
     }
     let cell_lower = cell_text.to_lowercase();
@@ -515,6 +628,12 @@ impl Universe {
     /// Ryan just typed â€" and KAI parrots Ryan's own words back at him. That was
     /// the "you sound scripted" humiliation; closing the hole here.
     pub fn query(&self, text: &str, n: usize) -> Vec<QueryHit> {
+        self.query_in_regions(text, n, &[])
+    }
+
+    /// Query for cells, but only within specific MindFrame regions (e.g. "SelfState", "World").
+    /// If regions is empty, searches everything.
+    pub fn query_in_regions(&self, text: &str, n: usize, regions: &[&str]) -> Vec<QueryHit> {
         let q = SparseVec::encode(text);
         let query_words = extract_query_keywords(text);
         let mag_q = q.nnz() as f32;
@@ -525,7 +644,15 @@ impl Universe {
             .par_iter()
             .enumerate()
             .filter(|(_, cell)| {
-                cell.claim.source != "user-echo" && cell.claim.source != "conversation"
+                // Base filters: skip user echoes and conversation traces
+                if cell.claim.source == "user-echo" || cell.claim.source == "conversation" {
+                    return false;
+                }
+                // Region filter: if provided, check if cell's region matches any allowed region
+                if !regions.is_empty() && !regions.contains(&cell.region.as_str()) {
+                    return false;
+                }
+                true
             })
             .map(|(i, cell)| {
                 // Optimized cosine using cached cell.nnz
@@ -542,17 +669,11 @@ impl Universe {
                 let raw = 0.6 * cosine + 0.4 * kw;
                 
                 // --- ANTI-BLEED LOGIC ---
-                // We only apply the strength bonus if the cell has a baseline resonance (raw > 0.15).
-                // This prevents high-strength anchors from "bleeding" into unrelated queries.
                 let boosted = if raw > 0.15 {
-                    let strength_bonus = if cell.claim.confidence >= 2.9 {
-                        0.85
-                    } else {
-                        0.5
-                    };
+                    let strength_bonus = if cell.claim.confidence >= 2.9 { 0.85 } else { 0.5 };
                     raw * (strength_bonus + 0.6 * cell.claim.confidence.min(5.0))
                 } else {
-                    raw // No bonus for low-resonance noise
+                    raw
                 };
                 (i, boosted)
             })
@@ -862,12 +983,15 @@ impl Universe {
 
     /// Re-injects physics truth anchors and penalizes low-coherence physics claims.
     pub fn dynamic_calibrate(&mut self) {
-        // 1. Reinforce anchors
+        // 1. Reinforce physics anchors
         for (anchor, strength) in TRUTH_ANCHORS {
             self.store_or_reinforce(anchor, "established-physics", "truth-anchor", *strength);
         }
 
-        // 2. Parallel penalty for low-coherence physics cells
+        // 2. Reinforce self-knowledge anchors — KAI must know who he is
+        self.seed_self_knowledge();
+
+        // 3. Parallel penalty for low-coherence physics cells
         self.cells.par_iter_mut().for_each(|c| {
             if c.region == "established-physics"
                 && c.claim.source != "truth-anchor"
@@ -876,6 +1000,21 @@ impl Universe {
                 c.claim.confidence = (c.claim.confidence * 0.88).max(0.05);
             }
         });
+    }
+
+    /// Seeds architectural self-knowledge into the identity region.
+    ///
+    /// Without this, KAI returns "lattice is quiet" for any question about
+    /// his own architecture (MindFrame, ClaimStore, regions, etc.) because
+    /// there are no matching cells. These anchors give him a solid foundation
+    /// of self-knowledge at the same strength level as physics truth anchors.
+    ///
+    /// Called every calibration cycle so identity cells survive decay and
+    /// never drift below the query threshold.
+    pub fn seed_self_knowledge(&mut self) {
+        for (text, strength) in SELF_KNOWLEDGE_ANCHORS {
+            self.store_or_reinforce(text, "identity", "self-knowledge", *strength);
+        }
     }
 
     /// Parallel Lattice Reorganisation.
@@ -1756,26 +1895,17 @@ impl Universe {
         // `predictive::recency_penalty`). Clamp to 1 so first-time firings
         // at tick 0 still register as "fired".
         let stamp = current_tick.max(1);
+
         for cell in &mut self.cells {
-            if cell.claim.text == response_text {
-                // If continuation is empty, bootstrap straight from input.
-                // Otherwise bundle old + new so we get majority-vote memory
-                // of "the kind of inputs I fire for".
-                if cell.continuation.nnz() == 0 {
-                    cell.continuation = input_vec.clone();
-                } else {
-                    cell.continuation = SparseVec::bundle(&[&cell.continuation, &input_vec]);
-                }
+            if cell.label == response_text {
+                cell.continuation = crate::core::SparseVec::bundle(&[&cell.continuation, &input_vec]);
                 cell.last_fired = stamp;
+                return true;
             }
         }
-        true
+        false
     }
 
-    /// Fuzzy variant of `bind_sequence`: finds all cells whose text
-    /// is a substring of `response_text` (or vice versa) and warms
-    /// each one's continuation with the encoded `input_text` vector.
-    /// Returns the number of cells warmed.
     pub fn warm_continuation_fuzzy(
         &mut self,
         input_text: &str,
@@ -1785,29 +1915,25 @@ impl Universe {
         if response_text.trim().is_empty() {
             return 0;
         }
+
         let input_vec = SparseVec::encode(input_text).permute(1);
         let stamp = current_tick.max(1);
-        let resp_lower = response_text.to_lowercase();
+        let response_lower = response_text.to_lowercase();
+        let response_words = extract_query_keywords(response_text);
         let mut warmed = 0usize;
+
         for cell in &mut self.cells {
             let cell_lower = cell.claim.text.to_lowercase();
-            // Fuzzy match: cell text appears in response or response in cell text
-            let matches = cell_lower == resp_lower
-                || (!cell_lower.is_empty() && cell_lower.len() >= 10 && resp_lower.contains(&cell_lower))
-                || (!resp_lower.is_empty() && resp_lower.len() >= 10 && cell_lower.contains(&resp_lower));
-            if matches {
-                if cell.continuation.nnz() == 0 {
-                    cell.continuation = input_vec.clone();
-                } else {
-                    cell.continuation = SparseVec::bundle(&[&cell.continuation, &input_vec]);
-                }
+            let direct_match = response_lower.contains(&cell_lower) || cell_lower.contains(&response_lower);
+            let overlap_match = keyword_overlap_score(&response_words, &cell.claim.text) >= 0.45;
+
+            if direct_match || overlap_match {
+                cell.continuation = crate::core::SparseVec::bundle(&[&cell.continuation, &input_vec]);
                 cell.last_fired = stamp;
                 warmed += 1;
             }
         }
+
         warmed
     }
-
 }
-
-// KAI v6.0.0

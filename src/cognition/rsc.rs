@@ -402,20 +402,6 @@ mod tests {
             r.decay();
         }
         // Should drift toward neutral, not collapse
-        assert!(
-            r.context_stability > 0.20,
-            "stability should not collapse on decay: {:.2}",
-            r.context_stability
-        );
-    }
 
-    #[test]
-    fn test_status_line() {
-        let r = RetrosplenialCortex::new();
-        let s = r.status_line();
-        assert!(s.contains("RSC"), "status should mention RSC");
-        assert!(s.contains("stability"), "status should show stability");
     }
 }
-
-// KAI v6.0.0

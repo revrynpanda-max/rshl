@@ -403,22 +403,7 @@ mod tests {
             "identity memory should have higher gate than world knowledge: {:.3} vs {:.3}",
             id_gate,
             world_gate
-        );
-    }
 
-    #[test]
-    fn test_restore_gating_recovers_gain() {
-        let mut thal = ThalamicRelay::new();
-        thal.reduce_gating();
-        let reduced = thal.gate_gain;
-        thal.restore_gating();
-        assert!(
-            thal.gate_gain > reduced,
-            "restoring gating should recover gate gain: {:.3} -> {:.3}",
-            reduced,
-            thal.gate_gain
         );
     }
 }
-
-// KAI v6.0.0

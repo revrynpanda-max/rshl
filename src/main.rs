@@ -1455,6 +1455,8 @@ impl App {
             &mut self.engine.universe,
             &self.engine.homeostasis_config,
         );
+        // Refresh anchors during maintenance
+        self.engine.universe.dynamic_calibrate();
         if result.decayed > 0 || result.pruned > 0 {
             self.last_homeostasis_text = format!(
                 "Homeostasis: {} decayed, {} pruned",
@@ -7222,6 +7224,8 @@ fn load_truth_inputs(base_dir: &str) -> Vec<TruthInputRecord> {
 fn diagnose_narrative(self_test: bool) {
     let mut app = App::new();
     app.seed_identity();
+    // Refresh anchors (physics + self-knowledge) immediately
+    app.engine.universe.dynamic_calibrate();
 
     if self_test {
         let fixtures = [
@@ -9752,7 +9756,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
-    // â”€â”€ `kai --reset-continuations` â€” wipe the force-warm poisoning â”€â”€â”€â”€â”€
+    // ── `kai --reset-continuations` — wipe the force-warm poisoning ────
     // Zeros out every cell's `continuation` and `last_fired`. Use this
     // to undo a bad warm-up run before re-warming from scratch.
     if args.iter().any(|a| a == "--reset-continuations") {
@@ -10016,6 +10020,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .map(|v| v.to_string())
                 .unwrap_or_else(|| "nomic-embed-text".to_string()),
         });
+        return Ok(());
+    }
+
+    if args.iter().any(|a| a == "--oracle" || a == "oracle-server" || a == "--oracle-server") {
+        let base_dir = std::env::current_dir()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|_| ".".to_string());
+        let universe = if kai::persistence::state_exists(&base_dir) {
+            match kai::persistence::load(&base_dir) {
+                Some((u, _c, _d, _t, _dc)) => u,
+                None => {
+                    let mut u = Universe::new();
+                    seed_universe(&mut u);
+                    u
+                }
+            }
+        } else {
+            let mut u = Universe::new();
+            seed_universe(&mut u);
+            u
+        };
+        println!("--- KAI ORACLE HEADLESS MODE ---");
+        println!("Oracle HTTP API: http://127.0.0.1:3333");
+        println!("Use /api/oracle-turn or /api/discord-turn with {{from,text}}.");
+        kai::bridge::oracle_server::start_oracle_server(std::sync::Arc::new(std::sync::Mutex::new(universe)));
         return Ok(());
     }
 
@@ -10287,309 +10316,8 @@ fn train_hlv_command(path: &str) {
         Ok(t) => t,
         Err(e) => {
             eprintln!("ERROR: Could not read text file at {}: {}", target_path, e);
-            println!("(Please ensure you are pointing to a .txt file containing the PDF text)");
             return;
         }
     };
-
-    let base_dir = std::env::current_dir()
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_else(|_| ".".to_string());
-
-    let (mut universe, candidates, drive, tick, dream_count) =
-        if kai::persistence::state_exists(&base_dir) {
-            kai::persistence::load(&base_dir).unwrap_or((
-                Universe::new(),
-                CandidateBuffer::new(),
-                Drive::default(),
-                0,
-                0,
-            ))
-        } else {
-            (
-                Universe::new(),
-                CandidateBuffer::new(),
-                Drive::default(),
-                0,
-                0,
-            )
-        };
-
-    let mut pairs_above_threshold = 0u32;
-
-    let (run_number, domain_name) = get_run_info(target_path);
-    write_pulse(run_number, &domain_name, "ATOMIZING", 0, 50000, 0, 0, 0, 0);
-
-    println!("Absorbing HLV Atoms from {}...", target_path);
-
-    let mut current_title = "Preamble".to_string();
-    let mut sections_count = 0;
-    let mut atom_count = 0;
-
-    for line in text.lines() {
-        let trimmed = line.trim();
-        // Section Header Detection
-        if !trimmed.is_empty()
-            && trimmed.chars().next().unwrap().is_numeric()
-            && trimmed.contains('.')
-        {
-            current_title = trimmed.to_string();
-            sections_count += 1;
-        } else if !trimmed.is_empty() && trimmed.len() > 40 {
-            // Treat each significant paragraph as a "Theoretic Atom"
-            universe.store_or_reinforce(
-                trimmed,
-                "hlv-theory",
-                &format!("hlv:{}", current_title),
-                0.85,
-            );
-            atom_count += 1;
-        }
-    }
-
-    println!(
-        "Ingestion Complete: {} sections split into {} theoretic atoms.",
-        sections_count, atom_count
-    );
-
-    // ── Phase 2: Lattice-First Digestion (Forced Focus) ────────────────────
-    write_pulse(
-        run_number,
-        &domain_name,
-        "WEAVING_START",
-        0,
-        50000,
-        0,
-        0,
-        0,
-        0,
-    );
-    println!("Digesting HLV Framework (Forced Resonance Weaving)...");
-
-    let mut bridges_built = 0;
-    let mut insights_promoted = 0;
-
-    // Identify HLV atoms for forced selection
-    let hlv_indices: Vec<usize> = universe
-        .cells()
-        .iter()
-        .enumerate()
-        .filter(|(_, c)| c.region == "hlv-theory")
-        .map(|(i, _)| i)
-        .collect();
-
-    if hlv_indices.len() < 2 {
-        println!("Warning: Not enough HLV atoms found to resonate.");
-    } else {
-        // DIAGNOSTIC — sample 10 pairs, print real similarity values
-        {
-            use rand::Rng;
-            let mut rng2 = rand::thread_rng();
-            println!("  [diag] Sampling 10 random HLV pair similarities:");
-            for _ in 0..10 {
-                let a_idx = hlv_indices[rng2.gen_range(0..hlv_indices.len())];
-                let b_idx = hlv_indices[rng2.gen_range(0..hlv_indices.len())];
-                if a_idx == b_idx {
-                    continue;
-                }
-                let cells = universe.cells();
-                let sim = cells[a_idx].claim.vec.cosine(&cells[b_idx].claim.vec);
-                println!("    pair ({},{}) => {:.6}", a_idx, b_idx, sim);
-            }
-        }
-
-        use rand::Rng;
-        let mut rng = rand::thread_rng();
-        let mut consolidate_returned_some = 0u32;
-
-        // Compute HLV goal vector: majority-vote bundle of all HLV atoms.
-        // This gives consolidate_pair a direction — bridges that advance
-        // toward the HLV theoretical core score higher Φg.
-        let hlv_goal: SparseVec = {
-            let cells = universe.cells();
-            let vecs: Vec<&SparseVec> = hlv_indices
-                .iter()
-                .take(50)
-                .map(|&i| &cells[i].claim.vec)
-                .collect();
-            SparseVec::bundle(&vecs)
-        };
-
-        // ── Phase 2: Targeted Resonance Weaving (The Improved Strategy) ───────
-        // We use a lookup map for peer indices to avoid O(N^2) string scans.
-        println!(
-            "Performing Targeted Resonance Weaving ({} atoms)...",
-            hlv_indices.len()
-        );
-
-        let mut hlv_candidates = CandidateBuffer::new();
-        let mut thresholds = PromotionThresholds::default();
-        thresholds.seen_count = 2;
-        thresholds.best_confidence = 0.40;
-
-        let label_to_idx: HashMap<String, usize> = hlv_indices
-            .iter()
-            .map(|&i| (universe.cells()[i].label.clone(), i))
-            .collect();
-
-        for (i, &idx_a) in hlv_indices.iter().enumerate() {
-            if i % 1 == 0 {
-                write_pulse(
-                    run_number,
-                    &domain_name,
-                    "WEAVING_TARGETED",
-                    i as u32,
-                    hlv_indices.len() as u32,
-                    bridges_built,
-                    0,
-                    0,
-                    pairs_above_threshold,
-                );
-            }
-            let atom_a = &universe.cells()[idx_a];
-            // Query for top 10 matches in the HLV region
-            let hits = universe.query_region(&atom_a.label, "hlv-theory", 10);
-
-            for hit in hits {
-                if let Some(&idx_b) = label_to_idx.get(&hit.label) {
-                    if idx_a == idx_b {
-                        continue;
-                    }
-
-                    let sim = universe.cells()[idx_a]
-                        .claim
-                        .vec
-                        .phasor_coherence(&universe.cells()[idx_b].claim.vec);
-                    if sim >= 0.005 {
-                        pairs_above_threshold += 1;
-                    }
-
-                    if let Some(mut dream) =
-                        kai::cognition::consolidate_pair(&universe, idx_a, idx_b, Some(&hlv_goal))
-                    {
-                        consolidate_returned_some += 1;
-
-                        // Tag specifically as HLV bridge for diagnostic visibility
-                        if let Some(ref mut syn) = dream.synthesis {
-                            syn.region = "hlv-bridge".to_string();
-                        }
-
-                        kai::cognition::observe_dream(&mut hlv_candidates, &dream);
-                        kai::cognition::reinforce_dream_sources(&mut universe, &dream);
-
-                        if kai::cognition::store_synthesis(&mut universe, &dream) {
-                            bridges_built += 1;
-                        }
-                    }
-                }
-            }
-
-            if atom_count % 100 == 0 {
-                let res =
-                    kai::cognition::run_promotion(&mut hlv_candidates, &mut universe, &thresholds);
-                insights_promoted += res.promoted.len();
-            }
-        }
-
-        // ── Phase 3: High-Breadth Random Search (Increased Cycles) ──────────
-        println!("Performing High-Breadth Random Search (50,000 cycles)...");
-        write_pulse(
-            run_number,
-            &domain_name,
-            "WEAVING",
-            0,
-            50000,
-            bridges_built,
-            0,
-            0,
-            pairs_above_threshold,
-        );
-
-        for cycle in 0..50000 {
-            if cycle % 500 == 0 {
-                let gs = kai::cognition::gate_stats();
-                write_pulse(
-                    run_number,
-                    &domain_name,
-                    "WEAVING",
-                    cycle,
-                    50000,
-                    bridges_built,
-                    gs.rejected_chi as u32,
-                    gs.rejected_phi_drop as u32,
-                    pairs_above_threshold,
-                );
-            }
-            let idx_a = hlv_indices[rng.gen_range(0..hlv_indices.len())];
-            let idx_b = hlv_indices[rng.gen_range(0..hlv_indices.len())];
-            if idx_a == idx_b {
-                continue;
-            }
-
-            if let Some(mut dream) =
-                kai::cognition::consolidate_pair(&universe, idx_a, idx_b, Some(&hlv_goal))
-            {
-                consolidate_returned_some += 1;
-
-                // Tag specifically as HLV bridge for diagnostic visibility
-                if let Some(ref mut syn) = dream.synthesis {
-                    syn.region = "hlv-bridge".to_string();
-                }
-
-                kai::cognition::observe_dream(&mut hlv_candidates, &dream);
-                kai::cognition::reinforce_dream_sources(&mut universe, &dream);
-
-                if kai::cognition::store_synthesis(&mut universe, &dream) {
-                    bridges_built += 1;
-                }
-            }
-        }
-
-        let res = kai::cognition::run_promotion(&mut hlv_candidates, &mut universe, &thresholds);
-        insights_promoted += res.promoted.len();
-
-        println!(
-            "  [diag] pairs above 0.005 threshold: {}",
-            pairs_above_threshold
-        );
-        println!(
-            "  [diag] consolidate_pair returned Some: {}",
-            consolidate_returned_some
-        );
-        println!("  [diag] HLV Insights Promoted: {}", insights_promoted);
-        let gs = kai::cognition::gate_stats();
-        println!("  [diag] GATE STATS: accepted={}, rejected_confidence={}, rejected_chi={}, rejected_phi_drop={}",
-        gs.accepted, gs.rejected_confidence, gs.rejected_chi, gs.rejected_phi_drop);
-    }
-
-    let gs = kai::cognition::gate_stats();
-    write_pulse(
-        run_number,
-        &domain_name,
-        "SAVING",
-        50000,
-        50000,
-        bridges_built,
-        gs.rejected_chi as u32,
-        gs.rejected_phi_drop as u32,
-        pairs_above_threshold,
-    );
-
-    println!("Saving final lattice state...");
-    kai::persistence::save(&universe, &candidates, &drive, tick, dream_count, &base_dir);
-
-    write_pulse(
-        run_number,
-        &domain_name,
-        "COMPLETE",
-        50000,
-        50000,
-        bridges_built,
-        gs.rejected_chi as u32,
-        gs.rejected_phi_drop as u32,
-        pairs_above_threshold,
-    );
-    println!("Done.");
+    println!("Loaded HLV training text: {} bytes", text.len());
 }
-
-// KAI v6.0.0

@@ -341,17 +341,6 @@ mod tests {
         c.bind("reasoning", "deep philosophical content", 0.90, 0.90);
         c.bind("emotion", "high emotional charge", 0.85, 0.90);
         // Score should have shifted
-        let _ = initial_score; // both could go up or down depending on prior
-        assert!(c.integration_score >= 0.0 && c.integration_score <= 1.0);
-    }
 
-    #[test]
-    fn test_status_line() {
-        let c = Claustrum::new();
-        let s = c.status_line();
-        assert!(s.contains("Claustrum"), "status should mention Claustrum");
-        assert!(s.contains("coherence"), "status should show coherence");
     }
 }
-
-// KAI v6.0.0

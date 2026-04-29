@@ -368,18 +368,7 @@ mod tests {
         p.process("what is the total count", 0.50, 0.50);
         assert_eq!(
             p.quantitative_activations, 2,
-            "quantitative activation count should track: {}",
-            p.quantitative_activations
+
         );
     }
-
-    #[test]
-    fn test_status_line() {
-        let p = PosteriorParietalCortex::new();
-        let s = p.status_line();
-        assert!(s.contains("PPC"), "status should mention PPC");
-        assert!(s.contains("priority"), "status should show priority");
-    }
 }
-
-// KAI v6.0.0

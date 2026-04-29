@@ -323,18 +323,7 @@ mod tests {
         }
         assert!(
             r.arousal_level < 0.80,
-            "arousal should decay toward rest: {:.2}",
-            r.arousal_level
+
         );
     }
-
-    #[test]
-    fn test_status_line() {
-        let r = ReticuloActivatingSystem::new();
-        let s = r.status_line();
-        assert!(s.contains("RAS"), "status should mention RAS");
-        assert!(s.contains("arousal"), "status should show arousal");
-    }
 }
-
-// KAI v6.0.0

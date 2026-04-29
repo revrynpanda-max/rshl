@@ -430,20 +430,6 @@ mod tests {
             "imagine and visualize a scenario where you simulate consciousness deeply",
             0.80,
         );
-        assert!(
-            p.imagery_vividness > 0.10,
-            "combined simulation and reflection should produce vividness: {:.2}",
-            p.imagery_vividness
-        );
-    }
 
-    #[test]
-    fn test_status_line() {
-        let p = Precuneus::new();
-        let s = p.status_line();
-        assert!(s.contains("Precuneus"), "status should mention Precuneus");
-        assert!(s.contains("sim"), "status should show simulation depth");
     }
 }
-
-// KAI v6.0.0

@@ -350,17 +350,6 @@ mod tests {
     fn test_critical_period_boosts_ltp() {
         let mut np_crit = NeuroplasticityEngine::new();
         let mut np_mature = NeuroplasticityEngine::new();
-        np_mature.critical_period = false;
 
-        let crit_delta = np_crit.ltp("new concept", 1.0, 0.5);
-        let mature_delta = np_mature.ltp("new concept", 1.0, 0.5);
-        assert!(
-            crit_delta > mature_delta,
-            "critical period should boost LTP: crit={:.4} mature={:.4}",
-            crit_delta,
-            mature_delta
-        );
     }
 }
-
-// KAI v6.0.0

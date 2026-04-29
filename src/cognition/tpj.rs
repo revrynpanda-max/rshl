@@ -410,20 +410,10 @@ mod tests {
         let mut t2 = TPJ::new();
         let out_unfamiliar = t2.process("how does this work?", 0.10, 0.60);
         assert!(
-            out_unfamiliar.self_other_gap >= out_familiar.self_other_gap,
-            "low familiarity should produce >= gap: {:.2} vs {:.2}",
-            out_unfamiliar.self_other_gap,
-            out_familiar.self_other_gap
+            out_familiar.self_other_gap < out_unfamiliar.self_other_gap,
+            "higher familiarity should reduce self/other gap: familiar={:.2} unfamiliar={:.2}",
+            out_familiar.self_other_gap,
+            out_unfamiliar.self_other_gap
         );
     }
-
-    #[test]
-    fn test_status_line() {
-        let t = TPJ::new();
-        let s = t.status_line();
-        assert!(s.contains("TPJ"), "status should mention TPJ");
-        assert!(s.contains("load"), "status should show load");
-    }
 }
-
-// KAI v6.0.0

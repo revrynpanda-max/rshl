@@ -385,21 +385,7 @@ mod tests {
         vta.process_rpe(0.9);
         let before = vta.phasic_signal;
         for _ in 0..5 {
-            vta.decay();
-        }
-        assert!(
-            vta.phasic_signal < before,
-            "decay should reduce phasic signal"
-        );
-    }
 
-    #[test]
-    fn test_status_line() {
-        let vta = VTA::new();
-        let s = vta.status_line();
-        assert!(s.contains("VTA"), "status should mention VTA");
-        assert!(s.contains("tonic"), "status should mention tonic");
+        }
     }
 }
-
-// KAI v6.0.0

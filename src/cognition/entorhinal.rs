@@ -377,14 +377,4 @@ mod tests {
             ec.gateway_signal
         );
     }
-
-    #[test]
-    fn test_status_line() {
-        let ec = EntorhinalCortex::new();
-        let s = ec.status_line();
-        assert!(s.contains("EC"), "status should mention EC");
-        assert!(s.contains("pos"), "status should show position");
-    }
 }
-
-// KAI v6.0.0

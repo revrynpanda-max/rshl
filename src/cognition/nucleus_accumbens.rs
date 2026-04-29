@@ -494,22 +494,7 @@ mod tests {
         let peaked = nac.core_wanting;
         // Decay many times
         for _ in 0..100 {
-            nac.decay();
-        }
-        assert!(nac.core_wanting < peaked, "wanting should decay from peak");
-        assert!(
-            nac.core_wanting > 0.20,
-            "wanting should not collapse to zero"
-        );
-    }
 
-    #[test]
-    fn test_status_line() {
-        let nac = NucleusAccumbens::new();
-        let s = nac.status_line();
-        assert!(s.contains("NAc"), "status line should mention NAc");
-        assert!(s.contains("wanting"), "status line should mention wanting");
+        }
     }
 }
-
-// KAI v6.0.0

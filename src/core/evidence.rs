@@ -29,8 +29,5 @@ pub enum SupportType {
 pub struct Evidence {
     pub source_type: EvidenceSource,
     pub trust: TrustLevel,
-    pub support: SupportType,
-    pub description: String,
-}
 
-// KAI v6.0.0
+}

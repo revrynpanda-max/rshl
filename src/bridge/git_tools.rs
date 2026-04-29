@@ -378,15 +378,11 @@ impl StatusSummary {
         }
         if !self.untracked.is_empty() {
             lines.push(format!("Untracked ({}):", self.untracked.len()));
-            for f in self.untracked.iter().take(8) {
+            for f in &self.untracked {
                 lines.push(format!("  ? {}", f));
             }
-            if self.untracked.len() > 8 {
-                lines.push(format!("  ... and {} more", self.untracked.len() - 8));
-            }
         }
-        lines.join("\n")
+        lines.join("
+")
     }
 }
-
-// KAI v6.0.0

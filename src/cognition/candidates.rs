@@ -35,7 +35,7 @@ pub struct CandidateEntry {
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct CandidateBuffer {
-    entries: HashMap<String, CandidateEntry>,
+    pub entries: HashMap<String, CandidateEntry>,
 }
 
 impl CandidateBuffer {
@@ -43,6 +43,10 @@ impl CandidateBuffer {
         Self {
             entries: HashMap::new(),
         }
+    }
+
+    pub fn count(&self) -> usize {
+        self.entries.len()
     }
 
     /// Observe a dream result. Creates or updates a candidate.
@@ -143,15 +147,7 @@ impl CandidateBuffer {
     pub fn mark_rejected(&mut self, key: &str) {
         if let Some(e) = self.entries.get_mut(key) {
             e.status = CandidateStatus::Rejected;
+        
         }
     }
-
-    pub fn count(&self) -> usize {
-        self.entries.len()
-    }
-    pub fn clear(&mut self) {
-        self.entries.clear();
-    }
 }
-
-// KAI v6.0.0

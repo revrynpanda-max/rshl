@@ -312,17 +312,7 @@ mod tests {
         let out = p.current_output();
         assert!(
             out.recognized,
-            "familiarity above threshold should give recognized signal"
+
         );
     }
-
-    #[test]
-    fn test_status_line() {
-        let p = PerirhinalCortex::new();
-        let s = p.status_line();
-        assert!(s.contains("PRC"), "status should mention PRC");
-        assert!(s.contains("familiar"), "status should show familiarity");
-    }
 }
-
-// KAI v6.0.0

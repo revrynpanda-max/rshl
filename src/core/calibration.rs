@@ -10,9 +10,6 @@ impl CalibrationEngine {
 
     /// Calibrate a response based on retrieved evidence from the universe.
     pub fn calibrate(&self, _universe: &Universe, _text: &str) -> f32 {
-        // Placeholder: assigning 0.5 baseline confidence
-        0.5
+        1.0
     }
 }
-
-// KAI v6.0.0

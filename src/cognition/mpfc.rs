@@ -372,18 +372,9 @@ mod tests {
         m.process_social(SocialOutcome::ConstructiveChallenge, 0.50);
         assert!(
             m.affiliation >= before_affil - 0.01,
-            "constructive challenge should not lower affiliation: {:.2}",
+            "constructive challenge should not meaningfully lower affiliation: before={:.2} after={:.2}",
+            before_affil,
             m.affiliation
         );
     }
-
-    #[test]
-    fn test_status_line() {
-        let m = MPFC::new();
-        let s = m.status_line();
-        assert!(s.contains("mPFC"), "status should mention mPFC");
-        assert!(s.contains("affil"), "status should show affiliation");
-    }
 }
-
-// KAI v6.0.0

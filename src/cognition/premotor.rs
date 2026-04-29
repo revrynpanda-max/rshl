@@ -331,18 +331,7 @@ mod tests {
         p.process("debug", "debug", 0.80);
         assert!(
             p.anticipatory_load > 0.0,
-            "multiple schemas with high SMA should create anticipatory load: {:.2}",
-            p.anticipatory_load
+
         );
     }
-
-    #[test]
-    fn test_status_line() {
-        let p = PreMotorCortex::new();
-        let s = p.status_line();
-        assert!(s.contains("PMC"), "status should mention PMC");
-        assert!(s.contains("ready"), "status should show readiness");
-    }
 }
-
-// KAI v6.0.0

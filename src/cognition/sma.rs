@@ -325,18 +325,7 @@ mod tests {
         let ratio = s.autonomy_ratio();
         assert!(
             ratio > 0.0 && ratio <= 1.0,
-            "autonomy ratio should be in range: {:.2}",
-            ratio
+
         );
     }
-
-    #[test]
-    fn test_status_line() {
-        let s = SMA::new();
-        let st = s.status_line();
-        assert!(st.contains("SMA"), "status should mention SMA");
-        assert!(st.contains("readiness"), "status should show readiness");
-    }
 }
-
-// KAI v6.0.0

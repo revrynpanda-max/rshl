@@ -155,15 +155,7 @@ impl PontineNuclei {
     pub fn status_line(&self) -> String {
         format!(
             "PN relay={:.2} | coherence={:.2} | loads(PFC={:.2}, SMA={:.2})",
-            self.relay_throughput, self.timing_coherence, self.pfc_load, self.sma_load,
-        )
+
+        );
     }
 }
-
-impl Default for PontineNuclei {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-// KAI v6.0.0

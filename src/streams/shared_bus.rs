@@ -139,11 +139,3 @@ impl SharedBus {
         (gpu, cpu, ram)
     }
 }
-
-impl Default for SharedBus {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-// KAI v6.0.0

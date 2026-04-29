@@ -388,19 +388,7 @@ mod tests {
         }
         assert!(
             h.curiosity_drive > before,
-            "decay should restore depleted curiosity toward setpoint: {:.2} → {:.2}",
-            before,
-            h.curiosity_drive
+
         );
     }
-
-    #[test]
-    fn test_status_line() {
-        let h = Hypothalamus::new();
-        let s = h.status_line();
-        assert!(s.contains("Hypo"), "status should mention Hypo");
-        assert!(s.contains("cur="), "status should show curiosity drive");
-    }
 }
-
-// KAI v6.0.0

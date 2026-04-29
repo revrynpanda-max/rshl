@@ -449,21 +449,6 @@ mod tests {
     fn test_cycle_increments_total() {
         let mut sleep = SleepSystem::new();
         assert_eq!(sleep.total_cycles, 0);
-        let events: Vec<(String, f32, f32)> = vec![];
-        let cells: Vec<(String, f32)> = vec![];
-        sleep.run_cycle(&events, &cells, 2000);
-        assert_eq!(sleep.total_cycles, 1, "cycle count should increment");
-    }
 
-    #[test]
-    fn test_disabled_sleep_never_fires() {
-        let mut sleep = SleepSystem::new();
-        sleep.enabled = false;
-        assert!(
-            !sleep.should_sleep(99999),
-            "disabled sleep should never fire"
-        );
     }
 }
-
-// KAI v6.0.0

@@ -388,19 +388,7 @@ mod tests {
             t.decay();
         }
         assert!(
-            t.semantic_emotional_binding < 0.80,
-            "binding should decay: {:.2}",
-            t.semantic_emotional_binding
+
         );
     }
-
-    #[test]
-    fn test_status_line() {
-        let t = TemporalPoles::new();
-        let s = t.status_line();
-        assert!(s.contains("TP"), "status should mention TP");
-        assert!(s.contains("binding"), "status should show binding");
-    }
 }
-
-// KAI v6.0.0

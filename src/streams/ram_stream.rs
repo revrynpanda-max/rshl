@@ -60,9 +60,7 @@ pub fn ram_tick(
     if let Ok(mut state) = ram_state.write() {
         if let Ok(uni) = universe.read() {
             state.cell_count = uni.count();
+    
         }
-        state.last_tick = Some(Instant::now());
     }
 }
-
-// KAI v6.0.0

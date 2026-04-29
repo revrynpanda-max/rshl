@@ -306,5 +306,3 @@ pub fn suggest_topic(universe: &Universe) -> &'static str {
     let mut rng = rand::thread_rng();
     EXPLORATION_TOPICS[rng.gen_range(0..EXPLORATION_TOPICS.len())]
 }
-
-// KAI v6.0.0

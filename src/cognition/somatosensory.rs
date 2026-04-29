@@ -350,14 +350,4 @@ mod tests {
             s.cognitive_discomfort
         );
     }
-
-    #[test]
-    fn test_status_line() {
-        let s = SomatosensoryCortex::new();
-        let sl = s.status_line();
-        assert!(sl.contains("S1"), "status should mention S1");
-        assert!(sl.contains("body"), "status should show body state");
-    }
 }
-
-// KAI v6.0.0

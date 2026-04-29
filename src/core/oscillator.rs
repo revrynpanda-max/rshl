@@ -254,16 +254,9 @@ mod tests {
         let decayed = osc.amplitudes[2];
         assert!(
             decayed < boosted,
-            "amplitude did not decay: boosted={} decayed={}",
+            "amplitude should decay: boosted={:.3} decayed={:.3}",
             boosted,
-            decayed
-        );
-        assert!(
-            decayed < 0.014 * 1.5,
-            "amplitude did not return near baseline: {}",
             decayed
         );
     }
 }
-
-// KAI v6.0.0

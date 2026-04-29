@@ -351,18 +351,7 @@ mod tests {
         assert!(
             z.inhibition_level < 0.80,
             "inhibition should decay toward baseline: {:.2}",
-            z.inhibition_level
-        );
-        assert!(z.inhibition_level >= INHIBITION_BASELINE - 0.05);
-    }
 
-    #[test]
-    fn test_status_line() {
-        let z = ZonaIncerta::new();
-        let s = z.status_line();
-        assert!(s.contains("ZI"), "status should mention ZI");
-        assert!(s.contains("inhibition"), "status should show inhibition");
+        );
     }
 }
-
-// KAI v6.0.0

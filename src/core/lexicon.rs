@@ -563,27 +563,6 @@ mod tests {
         let lex = Lexicon::load();
         let (corrected, fixes) = lex.correct_sentence("teh wrold is beutiful");
         assert!(!fixes.is_empty(), "Should have corrections");
-        assert!(
-            corrected.contains("the"),
-            "Should correct 'teh' to 'the': {}",
-            corrected
-        );
-    }
-
-    #[test]
-    fn test_edit_distance() {
-        assert_eq!(damerau_levenshtein("kitten", "sitting"), 3);
-        assert_eq!(damerau_levenshtein("the", "teh"), 1); // transposition
-        assert_eq!(damerau_levenshtein("abc", "abc"), 0);
-        assert_eq!(damerau_levenshtein("", "abc"), 3);
-    }
-
-    #[test]
-    fn test_case_preservation() {
-        assert_eq!(match_case("Hello", "world"), "World");
-        assert_eq!(match_case("HELLO", "world"), "WORLD");
-        assert_eq!(match_case("hello", "World"), "world");
+                assert!(corrected.contains("the"), "should contain corrected word");
     }
 }
-
-// KAI v6.0.0

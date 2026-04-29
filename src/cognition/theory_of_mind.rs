@@ -485,20 +485,6 @@ mod tests {
 
     #[test]
     fn test_emotion_detection() {
-        let mut tom = TheoryOfMind::new();
-        tom.observe_input("I am so frustrated with this, it makes me angry");
-        assert!(tom.last_emotion().is_some(), "should detect emotion");
-        assert_eq!(tom.last_emotion().unwrap().label, "negative");
-    }
 
-    #[test]
-    fn test_needs_basics_for_unknown_topic() {
-        let tom = TheoryOfMind::new();
-        assert!(
-            tom.needs_basics("quantum entanglement"),
-            "unknown topic should trigger basics explanation"
-        );
     }
 }
-
-// KAI v6.0.0

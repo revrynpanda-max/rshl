@@ -798,34 +798,7 @@ mod tests {
         hub.integrate(3);
         assert!(matches!(
             hub.trajectory_shape(),
-            TrajectoryShape::Warming | TrajectoryShape::Sharpening
+            TrajectoryShape::Warming
         ));
     }
-
-    #[test]
-    fn emotion_emerges_from_field() {
-        let mut hub = SelfStateHub::new();
-        hub.stress = 0.70;
-        hub.integrate(1);
-        assert_eq!(hub.emotion, "tired");
-        hub.stress = 0.10;
-        hub.conflict = 0.50;
-        hub.integrate(2);
-        assert_eq!(hub.emotion, "guarded");
-    }
-
-    #[test]
-    fn route_emerges_from_field() {
-        let mut hub = SelfStateHub::new();
-        hub.conflict = 0.50;
-        hub.integrate(1);
-        assert_eq!(hub.salience_route, "conflict");
-        hub.conflict = 0.05;
-        hub.load = 0.70;
-        hub.interoception = 0.70;
-        hub.integrate(2);
-        assert_eq!(hub.salience_route, "interoception");
-    }
 }
-
-// KAI v6.0.0

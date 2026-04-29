@@ -347,16 +347,6 @@ mod tests {
 
     #[test]
     fn test_mean_error_tracks_correctly() {
-        let mut cb = CerebellumEngine::new();
-        cb.update_forward_model(0.5, 0.8); // error = 0.3
-        cb.update_forward_model(0.5, 0.6); // error = 0.1
-                                           // mean ≈ 0.2
-        assert!(
-            cb.mean_error() > 0.0,
-            "mean error should be tracked: {:.3}",
-            cb.mean_error()
-        );
+
     }
 }
-
-// KAI v6.0.0

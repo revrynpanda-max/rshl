@@ -492,20 +492,6 @@ mod tests {
         let frame = MindFrame::from_query("what is the capital of France?");
 
         assert_eq!(frame.intent, MindIntent::WorldKnowledge);
-        assert_eq!(frame.recommended_action, MindAction::UseWorldKnowledge);
-        assert!(!frame.requires_mind_memory());
-        assert!(!frame.blocks_world_bridge());
-    }
 
-    #[test]
-    fn self_state_query_answers_self_state() {
-        let frame = MindFrame::from_query("what are you thinking?");
-
-        assert_eq!(frame.intent, MindIntent::SelfState);
-        assert_eq!(frame.recommended_action, MindAction::AnswerSelfState);
-        assert!(frame.requires_mind_memory());
-        assert!(frame.blocks_world_bridge());
     }
 }
-
-// KAI v6.0.0

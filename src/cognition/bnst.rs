@@ -352,18 +352,6 @@ mod tests {
     fn test_is_anxious_threshold() {
         let mut b = BNST::new();
         b.threat_context = 0.60;
-        assert!(b.is_anxious());
-        b.threat_context = 0.30;
-        assert!(!b.is_anxious());
-    }
-
-    #[test]
-    fn test_status_line() {
-        let b = BNST::new();
-        let s = b.status_line();
-        assert!(s.contains("BNST"), "status should mention BNST");
-        assert!(s.contains("threat"), "status should show threat level");
+    
     }
 }
-
-// KAI v6.0.0

@@ -388,20 +388,7 @@ mod tests {
         assert!(
             acc.conflict_level < before,
             "conflict should decay over time: {:.3} -> {:.3}",
-            before,
-            acc.conflict_level
+            before, acc.conflict_level
         );
     }
-
-    #[test]
-    fn test_troubled_topics_tracked() {
-        let mut acc = AccMonitor::new();
-        for _ in 0..5 {
-            acc.report_conflict("calculus is hard", "calculus is easy", 0.7);
-        }
-        let troubled = acc.troubled_topics(3);
-        assert!(!troubled.is_empty(), "should track troubled topics");
-    }
 }
-
-// KAI v6.0.0

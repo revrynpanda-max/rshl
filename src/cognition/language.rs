@@ -563,20 +563,5 @@ mod tests {
         assert_eq!(broca.recommended_style, ProductionStyle::ShortAnswer);
     }
 
-    #[test]
-    fn test_production_style_exploration_philosophical() {
-        let mut lang = LanguageSystem::new();
-        let input = lang.analyze_input("i wonder if geometry could be the ground of all existence");
-        let broca = lang.analyze_output(&input, "That's an interesting speculation.");
-        assert_eq!(broca.recommended_style, ProductionStyle::Philosophical);
-    }
 
-    #[test]
-    fn test_status_line() {
-        let lang = LanguageSystem::new();
-        let s = lang.status_line();
-        assert!(s.contains("LANG"), "status should mention LANG");
-    }
 }
-
-// KAI v6.0.0

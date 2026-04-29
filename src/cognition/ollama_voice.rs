@@ -425,25 +425,11 @@ impl OllamaVoice {
         // 4. The user turn is the raw input — Ollama speaks FROM the SRHT state,
         //    not from a pre-built lattice synthesis.
         let prompt = input.to_string();
+        let response = self.call_generate(&system, &prompt)?;
 
-        // 5. Call Ollama.
-        let response = self.call_generate(&system, &prompt)?;
-
-        // 6. Inject concepts back into the lattice.
+        // 5. Inject concepts back into the lattice.
         Self::inject_response_concepts(&response, universe);
 
         Some(response)
     }
-
-    /// Model name this voice bridge is configured to use.
-    pub fn model(&self) -> &str {
-        &self.model
-    }
-
-    /// Base URL of the Ollama server.
-    pub fn base_url(&self) -> &str {
-        &self.base_url
-    }
 }
-
-// KAI v6.0.0

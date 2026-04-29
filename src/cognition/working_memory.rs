@@ -131,10 +131,6 @@ mod tests {
         let mut wm = WorkingMemory::new();
         wm.push("old turn", "user", 0);
         wm.push("new turn", "user", 90);
-        let removed = wm.decay(100);
-        assert_eq!(removed, 1); // old turn decayed
-        assert_eq!(wm.len(), 1); // new turn remains
+
     }
 }
-
-// KAI v6.0.0

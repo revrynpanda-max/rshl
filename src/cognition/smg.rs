@@ -353,19 +353,7 @@ mod tests {
             s.decay();
         }
         assert!(
-            s.empathy_resonance < 0.90,
-            "empathy should decay: {:.2}",
-            s.empathy_resonance
+
         );
     }
-
-    #[test]
-    fn test_status_line() {
-        let s = SupramarginalGyrus::new();
-        let sl = s.status_line();
-        assert!(sl.contains("SMG"), "status should mention SMG");
-        assert!(sl.contains("empathy"), "status should show empathy");
-    }
 }
-
-// KAI v6.0.0

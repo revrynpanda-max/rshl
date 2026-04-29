@@ -374,18 +374,8 @@ mod tests {
         }
         assert!(
             s.chunks.len() <= MAX_CHUNKS,
-            "chunks should not exceed max: {}",
+            "chunk count should stay capped: {}",
             s.chunks.len()
         );
     }
-
-    #[test]
-    fn test_status_line() {
-        let s = SubstantiaNigra::new();
-        let s_line = s.status_line();
-        assert!(s_line.contains("SNc"), "status should mention SNc");
-        assert!(s_line.contains("fluency"), "status should show fluency");
-    }
 }
-
-// KAI v6.0.0

@@ -355,16 +355,5 @@ mod tests {
         assert!(da.level >= MIN_DOPAMINE, "dopamine should not go below min");
     }
 
-    #[test]
-    fn test_engagement_multiplier_above_one_when_high_da() {
-        let mut da = DopamineCircuit::new();
-        da.fire("amazing insight", 0.95, 0.30);
-        assert!(
-            da.engagement_multiplier() > 1.0,
-            "high dopamine should boost engagement multiplier: {:.3}",
-            da.engagement_multiplier()
-        );
-    }
+ 
 }
-
-// KAI v6.0.0

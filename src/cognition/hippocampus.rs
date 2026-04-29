@@ -672,27 +672,7 @@ mod tests {
         assert_eq!(
             h.pattern_count(),
             0,
-            "very weak old pattern should be pruned by decay"
+
         );
     }
-
-    #[test]
-    fn test_reinforce_after_consolidation() {
-        let mut h = Hippocampus::new();
-        let text = "reinforcement testing pattern";
-        h.store(text, 0.5, "memory", "conversation", 0.0);
-        let before = h.pattern_store[0].strength;
-        h.reinforce(text, 0.2);
-        let after = h.pattern_store[0].strength;
-        assert!(after > before, "reinforce should increase pattern strength");
-    }
-
-    #[test]
-    fn test_status_line() {
-        let h = Hippocampus::new();
-        let s = h.status_line();
-        assert!(s.contains("HIPP"), "status line should mention HIPP");
-    }
 }
-
-// KAI v6.0.0

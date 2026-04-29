@@ -496,24 +496,6 @@ impl FieldState {
         let top_r = select_top_k(state, Region::Right, 8);
         let rc = r_cross(&top_l, &top_r);
 
-        let psi_b = psi_bridge(phi_l, phi_r, rc, chi_l, chi_r, self.m_val.max(0.0));
 
-        // Ω
-        let om = omega(phi_l, phi_r, psi_b, chi_l, chi_r);
-
-        self.regional = RegionalState {
-            left: RegionMetrics { phi: phi_l, ..left },
-            right: RegionMetrics {
-                phi: phi_r,
-                ..right
-            },
-            bridge_phi: psi_b,
-            r_cross: rc,
-            chi_disagreement: (chi_l - chi_r).abs(),
-            momentum: self.m_val,
-            omega: om,
-        };
     }
 }
-
-// KAI v6.0.0

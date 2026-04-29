@@ -1,0 +1,18 @@
+{
+  "name": "oracle-discord-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Minimal Ryan-only Discord gateway for the local KAI Oracle API.",
+  "main": "index.mjs",
+  "scripts": {
+    "start": "node index.mjs",
+    "check": "node --check index.mjs"
+  },
+  "dependencies": {
+    "discord.js": "^14.18.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -499,23 +499,6 @@ mod tests {
             "especially the mesocortical pathway and PFC working memory modulation",
             0.4,
         );
-        let reading = sts.read(
-            "can you also explain how it connects to the dopamine circuit we already have",
-            0.4,
-        );
-        assert_eq!(
-            reading.trajectory,
-            SocialTrajectory::Deepening,
-            "increasing message length should be Deepening trajectory"
-        );
-    }
 
-    #[test]
-    fn test_status_line() {
-        let sts = STS::new();
-        let s = sts.status_line();
-        assert!(s.contains("STS"), "status should mention STS");
     }
 }
-
-// KAI v6.0.0

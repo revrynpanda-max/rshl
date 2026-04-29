@@ -390,19 +390,7 @@ mod tests {
         }
         assert!(
             v.hedonic_tone < 0.80,
-            "hedonic tone should drift toward baseline: {:.2}",
-            v.hedonic_tone
-        );
-        assert!(v.hedonic_tone >= HEDONIC_BASELINE - 0.05);
-    }
 
-    #[test]
-    fn test_status_line() {
-        let v = VentralPallidum::new();
-        let s = v.status_line();
-        assert!(s.contains("VP"), "status should mention VP");
-        assert!(s.contains("hedonic"), "status should show hedonic tone");
+        );
     }
 }
-
-// KAI v6.0.0

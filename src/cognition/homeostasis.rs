@@ -99,11 +99,9 @@ pub fn run_homeostasis(universe: &mut Universe, config: &HomeostasisConfig) -> H
 
     // Remove pruned cells (reverse order to maintain indices)
     let pruned = to_remove.len();
-    for &i in to_remove.iter().rev() {
-        cells.remove(i);
+    for &idx in to_remove.iter().rev() {
+        universe.cells_mut().remove(idx);
     }
 
     HomeostasisResult { decayed, pruned }
 }
-
-// KAI v6.0.0

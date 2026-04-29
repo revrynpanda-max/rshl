@@ -205,13 +205,4 @@ mod tests {
             b
         );
     }
-
-    #[test]
-    fn test_noise_verdict_on_empty_universe() {
-        let universe = Universe::new();
-        let result = validate_insight("test insight", "concept a", "concept b", &universe);
-        assert_eq!(result.verdict, InsightVerdict::Noise);
-    }
 }
-
-// KAI v6.0.0

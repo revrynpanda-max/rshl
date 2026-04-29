@@ -10,7 +10,5 @@ pub mod ram_stream;
 /// Stream 2 (CPU/Logic): Reasoning, dreaming, drive, inner voice
 /// Stream 3 (RAM/Memory): Cell storage, pruning, persistence, intake
 pub mod shared_bus;
-
 pub use shared_bus::SharedBus;
 
-// KAI v6.0.0

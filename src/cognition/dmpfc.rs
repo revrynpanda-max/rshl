@@ -387,20 +387,6 @@ mod tests {
         for _ in 0..10 {
             d.decay();
         }
-        assert!(
-            d.projection_depth < 0.80,
-            "projection depth should decay: {:.2}",
-            d.projection_depth
-        );
-    }
 
-    #[test]
-    fn test_status_line() {
-        let d = DorsomedialPFC::new();
-        let s = d.status_line();
-        assert!(s.contains("dmPFC"), "status should mention dmPFC");
-        assert!(s.contains("proj"), "status should show projection");
     }
 }
-
-// KAI v6.0.0

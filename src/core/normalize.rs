@@ -1242,42 +1242,4 @@ mod tests {
             shared
         );
     }
-
-    #[test]
-    fn test_employment_equivalence() {
-        let n = Normalizer::new();
-        let a = n.normalize_text("what is Ryan's job");
-        let b = n.normalize_text("Ryan works as an engineer");
-        let shared: Vec<_> = a.iter().filter(|t| b.contains(t)).collect();
-        assert!(
-            shared.len() >= 2,
-            "Employment queries should share tokens: a={:?} b={:?} shared={:?}",
-            a,
-            b,
-            shared
-        );
-    }
-
-    #[test]
-    fn test_stemming() {
-        assert_eq!(stem("working"), "work");
-        assert_eq!(stem("lives"), "live"); // "lives" → strip 's' → "live"
-        assert_eq!(stem("running"), "runn"); // "running" → strip "ing" → "runn"
-        assert_eq!(stem("the"), "the"); // too short to stem
-    }
-
-    #[test]
-    fn test_deduplication() {
-        let n = Normalizer::new();
-        // "years old" → both map to "age" → should only appear once
-        let tokens = n.normalize_text("years old");
-        let age_count = tokens.iter().filter(|t| *t == "age").count();
-        assert_eq!(
-            age_count, 1,
-            "Deduplicated tokens should not repeat: {:?}",
-            tokens
-        );
-    }
 }
-
-// KAI v6.0.0

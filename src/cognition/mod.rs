@@ -137,8 +137,6 @@ pub use theory_of_mind::{CommunicationStyle, Familiarity, TheoryOfMind};
 pub use tpj::{IntentAssessment, TPJOutput, TPJ};
 pub use ventral_pallidum::{VPOutput, VentralPallidum};
 pub use vmpfc::{VentromedialPFC, VmPFCEvent, VmPFCOutput};
-pub use voice::{detect_query_type, generate_response, BrainSignals, MoodState};
-pub use vta::{VTAMode, VTASignal, VTA};
+pub use vta::VTA;
 pub use working_memory::WorkingMemory;
-
-// KAI v6.0.0
+pub use voice::{detect_query_type, generate_response, generate_response_predictive, generate_inner_thought, MoodState, BrainSignals, QueryType};

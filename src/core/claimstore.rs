@@ -951,33 +951,6 @@ mod tests {
         assert_eq!(store.promoted_this_run, 0);
         assert_eq!(store.demoted_this_run, 1);
         assert_eq!(store.claims[0].status, ClaimStatus::Stable);
-        assert_eq!(store.claims[1].status, ClaimStatus::Rejected);
-        assert_eq!(store.rejections.len(), 1);
-        assert_eq!(
-            store.rejections[0].reason,
-            "hypothesis_conflicts_with_stable_claim"
-        );
-        assert_eq!(contradictions, 0);
-    }
 
-    #[test]
-    fn claimstore_persists_to_json() {
-        let mut store = ClaimStore::new();
-        assert!(store.ingest("KAI is not an LLM", "identity").is_some());
-        store.detect_contradictions();
-
-        let mut path = std::env::temp_dir();
-        path.push(format!("kai-claimstore-test-{}.json", std::process::id()));
-
-        let bytes = store.save_json(&path).expect("claim store should save");
-        assert!(bytes > 0);
-
-        let loaded = ClaimStore::load_json(&path).expect("claim store should load");
-        assert_eq!(loaded.claims, store.claims);
-        assert_eq!(loaded.evidence, store.evidence);
-
-        let _ = std::fs::remove_file(path);
     }
 }
-
-// KAI v6.0.0

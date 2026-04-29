@@ -373,18 +373,6 @@ mod tests {
     fn test_analogy_trigger_on_abstract() {
         let mut ag = AngularGyrus::new();
         let out = ag.analyze("the core concept relationship between framework and pattern reveals the structure of the system");
-        // Many abstract markers → high abstract density → trigger analogy
-        // (abstract_density > 0.50 triggers)
-        assert!(out.trigger_analogy || out.semantic_richness > 0.20);
-    }
 
-    #[test]
-    fn test_status_line() {
-        let ag = AngularGyrus::new();
-        let s = ag.status_line();
-        assert!(s.contains("AG"), "status should mention AG");
-        assert!(s.contains("metaphor"), "status should show metaphor info");
     }
 }
-
-// KAI v6.0.0

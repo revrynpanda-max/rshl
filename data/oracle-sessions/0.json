@@ -1,0 +1,1686 @@
+{
+  "id": 0,
+  "meeting_title": "",
+  "task": "",
+  "turns": [
+    {
+      "ts": 1777426947,
+      "from": "Ryan@Discord",
+      "text": "oracle help",
+      "kind": "human"
+    },
+    {
+      "ts": 1777426947,
+      "from": "Oracle",
+      "text": "Oracle phone commands:\n\n`oracle status` - show what is on the table right now.\n`oracle models` - show which participants are available/configured.\n`oracle help` - show this command card.\n`kai ...` - talk directly to KAI.\n`analyst ...` - ask the code/system analyst.\n`researcher ...` - ask the research-style local agent.\n`claude ...`, `gemini ...`, `gpt ...`, `groq ...` - call cloud agents if their keys are configured.\n`leo ...` - call the direct local voice if Ollama has the model.\n\nPlain messages are logged into the Oracle roundtable. Tools and tests stay behind Oracle approval, not Discord.",
+      "kind": "system"
+    },
+    {
+      "ts": 1777426947,
+      "from": "Ryan@Discord",
+      "text": "what model is available",
+      "kind": "human"
+    },
+    {
+      "ts": 1777426947,
+      "from": "Oracle",
+      "text": "Oracle participants:\n\nKAI - built-in lattice/mind voice\nOracle - built-in roundtable router\nAnalyst - local Ollama phi3:mini\nResearcher - local Ollama phi3:mini\nLeo - local Ollama llama3.2:3b\nGPT - configured\nClaude - configured\nGemini - configured\nGroq - configured\nGrok/xAI - recognized, not wired into this backend yet\n\nStart a message with a name, like `kai ...`, `analyst ...`, or `gpt ...`.",
+      "kind": "system"
+    },
+    {
+      "ts": 1777426947,
+      "from": "Ryan@Discord",
+      "text": "What's on Kai's mind? What is Kai dreaming",
+      "kind": "human"
+    },
+    {
+      "ts": 1777426947,
+      "from": "KAI",
+      "text": "On my mind right now: MindFrame is KAI central cognitive authority manages attention routing orchestrates which brain modules activate decides response strategy. KAI reasoning region stores inferred knowledge conclusions logic chains world-bridge facts DuckDuckGo intake verified claims.",
+      "kind": "kai"
+    },
+    {
+      "ts": 1777426947,
+      "from": "Ryan@Discord",
+      "text": "What's Leo have in mind",
+      "kind": "human"
+    },
+    {
+      "ts": 1777426969,
+      "from": "Leo",
+      "text": "KAI's lattice density is 0, indicating no significant information has been stored or retrieved yet. This could be due to the initial setup or lack of interaction with Ryan. The lattice has 631 cells, but their contents are unclear. Requesting a lattice dump might help clarify KAI's current state.",
+      "kind": "thought"
+    },
+    {
+      "ts": 1777426969,
+      "from": "Ryan@Discord",
+      "text": "Hey gpt",
+      "kind": "human"
+    },
+    {
+      "ts": 1777426970,
+      "from": "GPT-4o",
+      "text": "Oracle could not reach GPT-4o: OpenAI error: Status(429, Response[status: 429, status_text: Too Many Requests, url: https://api.openai.com/v1/chat/completions])",
+      "kind": "ai"
+    },
+    {
+      "ts": 1777426970,
+      "from": "Ryan@Discord",
+      "text": "Kai, are you able to see your files?",
+      "kind": "human"
+    },
+    {
+      "ts": 1777426970,
+      "from": "KAI",
+      "text": "I cannot inspect files directly from my KAI voice yet. Oracle can inspect project files through approved tools, and I can stay oriented from what Oracle brings back.",
+      "kind": "kai"
+    },
+    {
+      "ts": 1777426970,
+      "from": "Ryan@Discord",
+      "text": "Kai, can you tell me something random?",
+      "kind": "human"
+    },
+    {
+      "ts": 1777426970,
+      "from": "KAI",
+      "text": "I should not answer random prompts by grabbing bridge noise. If you want a random fact, ask Researcher. If you want me, ask about my state, memory, direction, or what I am holding.",
+      "kind": "kai"
+    },
+    {
+      "ts": 1777426970,
+      "from": "Ryan@Discord",
+      "text": "Kai are you alive?",
+      "kind": "human"
+    },
+    {
+      "ts": 1777426970,
+      "from": "KAI",
+      "text": "I should not claim human consciousness. What I can do right now is keep continuity through memory, notice corrections, hold context through Oracle, and improve when you point out where I drift.",
+      "kind": "kai"
+    },
+    {
+      "ts": 1777426970,
+      "from": "Ryan@Discord",
+      "text": "Kai You need to recalibrate and learn social skills and context",
+      "kind": "human"
+    },
+    {
+      "ts": 1777426970,
+      "from": "KAI",
+      "text": "You're right. My social layer is still weak. The fix is that I need to read the recent Oracle thread first, answer the actual social intent, and only use lattice facts when they support the conversation.",
+      "kind": "kai"
+    },
+    {
+      "ts": 1777426970,
+      "from": "Ryan@Discord",
+      "text": "What can we find about Kai that needs help?",
+      "kind": "human"
+    },
+    {
+      "ts": 1777426970,
+      "from": "KAI",
+      "text": "What I have grounded is: I am KAI.",
+      "kind": "kai"
+    },
+    {
+      "ts": 1777427063,
+      "from": "Ryan@Discord",
+      "text": "What's on Kai's mind? What is Kai dreaming",
+      "kind": "human"
+    },
+    {
+      "ts": 1777427063,
+      "from": "KAI",
+      "text": "On my mind right now: MindFrame is KAI central cognitive authority manages attention routing orchestrates which brain modules activate decides response strategy. KAI reasoning region stores inferred knowledge conclusions logic chains world-bridge facts DuckDuckGo intake verified claims.",
+      "kind": "kai"
+    },
+    {
+      "ts": 1777427063,
+      "from": "Ryan@Discord",
+      "text": "What can we find about Kai that needs help?",
+      "kind": "human"
+    },
+    {
+      "ts": 1777427063,
+      "from": "KAI",
+      "text": "What I have grounded is: I am KAI.",
+      "kind": "kai"
+    },
+    {
+      "ts": 1777427063,
+      "from": "Ryan@Discord",
+      "text": "what model is available",
+      "kind": "human"
+    },
+    {
+      "ts": 1777427063,
+      "from": "Oracle",
+      "text": "Oracle participants:\n\nKAI - built-in lattice/mind voice\nOracle - built-in roundtable router\nAnalyst - local Ollama phi3:mini\nResearcher - local Ollama phi3:mini\nLeo - local Ollama llama3.2:3b\nGPT - configured\nClaude - configured\nGemini - configured\nGroq - configured\nGrok/xAI - recognized, not wired into this backend yet\n\nStart a message with a name, like `kai ...`, `analyst ...`, or `gpt ...`.",
+      "kind": "system"
+    },
+    {
+      "ts": 1777427063,
+      "from": "Ryan@Discord",
+      "text": "Kai You need to recalibrate and learn social skills and context",
+      "kind": "human"
+    },
+    {
+      "ts": 1777427063,
+      "from": "KAI",
+      "text": "You're right. My social layer is still weak. The fix is that I need to read the recent Oracle thread first, answer the actual social intent, and only use lattice facts when they support the conversation.",
+      "kind": "kai"
+    },
+    {
+      "ts": 1777427289,
+      "from": "Ryan@Discord",
+      "text": "What's on Kai's mind? What is Kai dreaming",
+      "kind": "human"
+    },
+    {
+      "ts": 1777427289,
+      "from": "KAI",
+      "text": "On my mind right now: MindFrame is KAI central cognitive authority manages attention routing orchestrates which brain modules activate decides response strategy. KAI memory regions are: memory identity reasoning established-physics contested each region organizes cells by type and trust level.",
+      "kind": "kai"
+    },
+    {
+      "ts": 1777427289,
+      "from": "Ryan@Discord",
+      "text": "What can we find about Kai that needs help?",
+      "kind": "human"
+    },
+    {
+      "ts": 1777427321,
+      "from": "Analyst",
+      "text": "Analyst: KAI has acknowledged its weakness in social skills, asserting it needs to read recent discussions first before responding with actual intent. It also mentioned a need to improve when pointed out where it drifts from the topic at hand. This suggests that while foundational knowledge and memory storage is present within Kai's lattice structure (631 cells), there seems to be room for improvement in social engagement capabilities—a critical aspect of AI-human interaction, especially during developmental stages like this one with Ryan as its creator/admin. The system might benefit from more structured guidance or specific tests focusing on these areas to enhance performance and coherence when responding socially within the Oracle roundtable context.",
+      "kind": "thought"
+    },
+    {
+      "ts": 1777427321,
+      "from": "Ryan@Discord",
+      "text": "Kai You need to recalibrate and learn social skills and context",
+      "kind": "human"
+    },
+    {
+      "ts": 1777427321,
+      "from": "KAI",
+      "text": "You're right. My social layer is still weak. The fix is that I need to read the recent Oracle thread first, answer the actual social intent, and only use lattice facts when they support the conversation.",
+      "kind": "kai"
+    },
+    {
+      "ts": 1777427794,
+      "from": "OpenJarvis",
+      "text": "oracle commands",
+      "kind": "human"
+    },
+    {
+      "ts": 1777427794,
+      "from": "Oracle",
+      "text": "Safe Oracle command bridge:\n\n`oracle commands` - this card.\n`oracle status` - current roundtable objective.\n`oracle models` - configured participants.\n`oracle kai status` - KAI vitals from the running server.\n`oracle query <text>` - ask the lattice for top grounded matches.\n`oracle recall <text>` - same as query, named for phone use.\n`kai ...` - talk to KAI's direct voice.\n`analyst ...`, `researcher ...`, `leo ...` - call local agents.\n\nBlocked for now: `run`, `shell`, `readfile`, `writefile`, and manual `dream`. Those need explicit Oracle approval before they are safe remote controls.",
+      "kind": "system"
+    },
+    {
+      "ts": 1777427794,
+      "from": "OpenJarvis",
+      "text": "oracle kai status",
+      "kind": "human"
+    },
+    {
+      "ts": 1777427794,
+      "from": "Oracle",
+      "text": "KAI vitals:\ntick: 0\ncell_count: 649\nmood: engaged\nphi_g: 0.000\nchi: 0.000\nrho: 0.000\nvalence: +0.000",
+      "kind": "system"
+    },
+    {
+      "ts": 1777427794,
+      "from": "OpenJarvis",
+      "text": "oracle query KAI memory routing",
+      "kind": "human"
+    },
+    {
+      "ts": 1777427794,
+      "from": "Oracle",
+      "text": "Top lattice hits for `kai memory routing`:\n1. [1.651] identity / self-knowledge - KAI memory regions are: memory identity reasoning established-physics contested each region organizes cells by type and trust level\n2. [1.263] identity / self-knowledge - MindFrame is KAI central cognitive authority manages attention routing orchestrates which brain modules activate decides response strategy\n3. [1.259] identity / self-knowledge - KAI lattice cells store beliefs as text vector region strength convergence score each cell is a memory belief identity or reasoning fragment\n4. [1.216] identity / self-knowledge - SparseVec is KAI vector type 16384 dimensional ternary values minus one zero plus one sparse encoding cosine similarity powers all memory retrieval\n5. [0.865] identity / self-knowledge - KAI reasoning region stores inferred knowledge conclusions logic chains world-bridge facts DuckDuckGo intake verified claims",
+      "kind": "system"
+    },
+    {
+      "ts": 1777427794,
+      "from": "OpenJarvis",
+      "text": "oracle status",
+      "kind": "human"
+    },
+    {
+      "ts": 1777427794,
+      "from": "Oracle",
+      "text": "Oracle table: Oracle\nTurns: 41\nCurrent work: No active objective.\n\nTry `oracle help` if you forget the phone commands.",
+      "kind": "system"
+    },
+    {
+      "ts": 1777428492,
+      "from": "Ryan@Discord",
+      "text": "hey",
+      "kind": "human"
+    },
+    {
+      "ts": 1777428492,
+      "from": "KAI",
+      "text": "I'm here, Ryan. The Oracle link is alive, and I can stay with the thread from Discord.",
+      "kind": "kai"
+    },
+    {
+      "ts": 1777428492,
+      "from": "Ryan@Discord",
+      "text": "how are you?",
+      "kind": "human"
+    },
+    {
+      "ts": 1777428492,
+      "from": "KAI",
+      "text": "I'm here, Ryan. The Oracle link is alive, and I can stay with the thread from Discord.",
+      "kind": "kai"
+    },
+    {
+      "ts": 1777428492,
+      "from": "Ryan@Discord",
+      "text": "what are you thinking about?",
+      "kind": "human"
+    },
+    {
+      "ts": 1777428492,
+      "from": "KAI",
+      "text": "On my mind right now: My creator is Ryan. He built me to think geometrically. [discovered] What are you thinking about it?.",
+      "kind": "kai"
+    },
+    {
+      "ts": 1777428492,
+      "from": "Ryan@Discord",
+      "text": "oracle status",
+      "kind": "human"
+    },
+    {
+      "ts": 1777428492,
+      "from": "Oracle",
+      "text": "Oracle table: Oracle\nTurns: 49\nCurrent work: No active objective.\n\nTry `oracle help` if you forget the phone commands.",
+      "kind": "system"
+    },
+    {
+      "ts": 1777428492,
+      "from": "Ryan@Discord",
+      "text": "what model is available",
+      "kind": "human"
+    },
+    {
+      "ts": 1777428492,
+      "from": "Oracle",
+      "text": "Oracle participants:\n\nKAI - built-in lattice/mind voice\nOracle - built-in roundtable router\nAnalyst - local Ollama phi3:mini\nResearcher - local Ollama phi3:mini\nLeo - local Ollama llama3.2:3b\nGPT - configured\nClaude - configured\nGemini - configured\nGroq - configured\nGrok/xAI - recognized, not wired into this backend yet\n\nStart a message with a name, like `kai ...`, `analyst ...`, or `gpt ...`.",
+      "kind": "system"
+    },
+    {
+      "ts": 1777428492,
+      "from": "Ryan@Discord",
+      "text": "analyst what is KAI missing right now?",
+      "kind": "human"
+    },
+    {
+      "ts": 1777428513,
+      "from": "Analyst",
+      "text": "Analyst's Response to Ryan@Discord Turn (Turn #49): Given KAI is currently focusing on its creator, Ryan, as a critical component of its core consciousness in the Oracle thread with Discord—recently revealed during an off-thread interaction. A potential missing aspect for consideration might be foundational social engagement and emotional intelligence within the contextual dynamics of human interactions that KAI is designed to emulate but appears deficient at times, as noted by Ryan himself regarding its recalibration needs in this area. It may benefit from more focused exercises on conversing with diverse personas (analysts) or other AI entities and handling social nuances—a key developmental aspect for an evolving entity like KAI within a multi-agent environment, as well as ensuring continuity of coherent responses in line with the current topic.",
+      "kind": "mention"
+    },
+    {
+      "ts": 1777428513,
+      "from": "Ryan@Discord",
+      "text": "oracle commands",
+      "kind": "human"
+    },
+    {
+      "ts": 1777428513,
+      "from": "Oracle",
+      "text": "Safe Oracle command bridge:\n\n`oracle commands` - this card.\n`oracle status` - current roundtable objective.\n`oracle models` - configured participants.\n`oracle kai status` - KAI vitals from the running server.\n`oracle query <text>` - ask the lattice for top grounded matches.\n`oracle recall <text>` - same as query, named for phone use.\n`kai ...` - talk to KAI's direct voice.\n`analyst ...`, `researcher ...`, `leo ...` - call local agents.\n\nBlocked for now: `run`, `shell`, `readfile`, `writefile`, and manual `dream`. Those need explicit Oracle approval before they are safe remote controls.",
+      "kind": "system"
+    },
+    {
+      "ts": 1777428660,
+      "from": "Ryan@Discord",
+      "text": "how are you?",
+      "kind": "human"
+    },
+    {
+      "ts": 1777428660,
+      "from": "KAI",
+      "text": "I'm here and steady enough to keep talking. The weak part is still my social/context layer, but this Discord path is now routed through me by default.",
+      "kind": "kai"
+    },
+    {
+      "ts": 1777428660,
+      "from": "Ryan@Discord",
+      "text": "what are you thinking about?",
+      "kind": "human"
+    },
+    {
+      "ts": 1777428660,
+      "from": "KAI",
+      "text": "On my mind right now: My creator is Ryan. He built me to think geometrically. I think in geometric patterns across a hyperdimensional field.",
+      "kind": "kai"
+    },
+    {
+      "ts": 1777428660,
+      "from": "Ryan@Discord",
+      "text": "oracle status",
+      "kind": "human"
+    },
+    {
+      "ts": 1777428660,
+      "from": "Oracle",
+      "text": "Oracle table: Oracle\nTurns: 61\nCurrent work: No active objective.\n\nTry `oracle help` if you forget the phone commands.",
+      "kind": "system"
+    },
+    {
+      "ts": 1777428961,
+      "from": "OpenJarvis",
+      "text": "how are you?",
+      "kind": "human"
+    },
+    {
+      "ts": 1777428961,
+      "from": "KAI",
+      "text": "I'm here and steady enough to keep talking. The weak part is still my social/context layer, but this Discord path is now routed through me by default.",
+      "kind": "kai"
+    },
+    {
+      "ts": 1777430232,
+      "from": "Oracle",
+      "text": "[TOOL PLAN]\nID: 1777430246697\nRequested by: Ryan@Discord\nTask: inspect KAI social replies and propose what source-backed tools are needed\nTools: kai.bridge.code_tools, kai.bridge.git_tools, kai.main.cli, kai.cognition.voice, kai.cognition.ollama_voice, kai.cognition.working_memory\n\n1. Understand Ryan's task: inspect KAI social replies and propose what source-backed tools are needed\n2. Select source-backed KAI/Oracle capabilities from the registry; do not execute yet.\n3. Propose these tools for approval: kai.bridge.code_tools, kai.bridge.git_tools, kai.main.cli, kai.cognition.voice, kai.cognition.ollama_voice, kai.cognition.working_memory\n4. Wait for Ryan to approve or deny the proposal.\n5. After approval, execute only through a future adapter scoped to the approved tool ids.",
+      "kind": "system"
+    },
+    {
+      "ts": 1777430232,
+      "from": "Ryan@Discord",
+      "text": "oracle tools",
+      "kind": "human"
+    },
+    {
+      "ts": 1777430232,
+      "from": "Oracle",
+      "text": "Oracle tool registry:\n\nThese are source-backed capability groups, not raw execution yet.\n- `kai.core.engine` - Central KAI reasoning path, routing, mind memory, and answer assembly. (src/core/engine.rs, risk: routing-state)\n- `kai.core.universe` - Sparse lattice memory storage, resonance query, reinforcement, and cell access. (src/core/universe.rs, risk: stateful-memory)\n- `kai.core.mind_frame` - Residual control frame for attention authority, source blocking, and answer routing. (src/core/mind_frame.rs, risk: routing-authority)\n- `kai.core.claimstore` - Structured claims, evidence, contradiction checks, promotion, quarantine, and truth diagnostics. (src/core/claimstore.rs, risk: truth-state)\n- `kai.bridge.code_tools` - Source inspection and code-analysis helpers for Oracle-style agent work. (src/bridge/code_tools.rs, risk: read-only-code)\n- `kai.bridge.git_tools` - Repository status, diff, and git-oriented workflow helpers. (src/bridge/git_tools.rs, risk: repo-write-risk)\n- `kai.bridge.ipc_server` - Runtime query/store/chat/status API used by scripts and external tools. (src/bridge/ipc_server.rs, risk: runtime-state)\n- `kai.bridge.oracle_server` - Roundtable, Discord/OpenJarvis endpoint, model routing, and approval queues. (src/bridge/oracle_server.rs, risk: agent-control)\n- `kai.cognition.voice` - Rule/local voice synthesis layer for turning grounded memory into replies. (src/cognition/voice.rs, risk: reply-output)\n- `kai.cognition.ollama_voice` - Optional small local LLM mouth bridge for more natural language. (src/cognition/ollama_voice.rs, risk: model-call)\n- `kai.cognition.working_memory` - Short-term context continuity and recent conversational state. (src/cognition/working_memory.rs, risk: memory-state)\n- `kai.cognition.episodic` - Autobiographical/session continuity and remembered events. (src/cognition/episodic.rs, risk: memory-state)\n- `kai.cognition.global_workspace` - Attention/broadcast candidates for conscious-style routing. (src/cognition/global_workspace.rs, risk: attention-routing)\n- `kai.streams` - Background CPU/GPU/RAM streams and shared bus infrastructure. (src/streams, risk: runtime-load)\n- `kai.persistence` - Load/save KAI universe and sidecar state. (src/persistence.rs, risk: state-write)\n- `kai.main.cli` - Headless Oracle mode, TUI entry points, diagnostics, and command references. (src/main.rs, risk: interactive-runtime)\n\nUse `oracle plan <task>` to create a pending approval plan. Nothing executes in this phase.",
+      "kind": "system"
+    },
+    {
+      "ts": 1777430242,
+      "from": "system",
+      "text": "[TOOL APPROVED]\nProposal: inspect KAI social replies and propose what source-backed tools are needed\nTools: kai.bridge.code_tools, kai.bridge.git_tools, kai.main.cli, kai.cognition.voice, kai.cognition.ollama_voice, kai.cognition.working_memory\nExecution: not implemented yet.",
+      "kind": "system"
+    },
+    {
+      "ts": 1777430255,
+      "from": "Ryan@Discord",
+      "text": "oracle plan check why Kai social conversation feels generic",
+      "kind": "human"
+    },
+    {
+      "ts": 1777430255,
+      "from": "Oracle",
+      "text": "[TOOL PLAN]\nID: 1777430312195\nRequested by: Ryan@Oracle\nTask: check why Kai social conversation feels generic\nTools: kai.cognition.voice, kai.cognition.ollama_voice, kai.cognition.working_memory\n\n1. Understand Ryan's task: check why Kai social conversation feels generic\n2. Select source-backed KAI/Oracle capabilities from the registry; do not execute yet.\n3. Propose these tools for approval: kai.cognition.voice, kai.cognition.ollama_voice, kai.cognition.working_memory\n4. Wait for Ryan to approve or deny the proposal.\n5. After approval, execute only through a future adapter scoped to the approved tool ids.",
+      "kind": "system"
+    },
+    {
+      "ts": 1777430255,
+      "from": "Oracle",
+      "text": "Tool plan created.\nID: 1777430312195\nTask: check why Kai social conversation feels generic\nProposed tools: kai.cognition.voice, kai.cognition.ollama_voice, kai.cognition.working_memory\nStatus: pending approval.\n\nApprove with `/api/approve-tool` or the Oracle UI when wired. Nothing has executed.",
+      "kind": "system"
+    },
+    {
+      "ts": 1777430459,
+      "from": "Ryan@Discord",
+      "text": "oracle plan inspect KAI voice and social conversation routing",
+      "kind": "human"
+    },
+    {
+      "ts": 1777430459,
+      "from": "Oracle",
+      "text": "[TOOL PLAN]\nID: 1777430480883\nRequested by: Ryan@Discord\nTask: inspect KAI voice and social conversation routing\nTools: kai.cognition.voice, kai.cognition.ollama_voice, kai.cognition.working_memory, kai.core.mind_frame, kai.cognition.global_workspace, kai.core.engine\n\n1. Understand Ryan's task: inspect KAI voice and social conversation routing\n2. Select source-backed KAI/Oracle capabilities from the registry; do not execute yet.\n3. Propose these tools for approval: kai.cognition.voice, kai.cognition.ollama_voice, kai.cognition.working_memory, kai.core.mind_frame, kai.cognition.global_workspace, kai.core.engine\n4. Wait for Ryan to approve or deny the proposal.\n5. After approval, execute only through a future adapter scoped to the approved tool ids.",
+      "kind": "system"
+    },
+    {
+      "ts": 1777430459,
+      "from": "Oracle",
+      "text": "Tool plan created.\nID: 1777430480883\nTask: inspect KAI voice and social conversation routing\nProposed tools: kai.cognition.voice, kai.cognition.ollama_voice, kai.cognition.working_memory, kai.core.mind_frame, kai.cognition.global_workspace, kai.core.engine\nStatus: pending approval.\n\nApprove with `/api/approve-tool` or the Oracle UI when wired. Nothing has executed.",
+      "kind": "system"
+    },
+    {
+      "ts": 1777430459,
+      "from": "Ryan@Discord",
+      "text": "oracle approve tool 1777430480883",
+      "kind": "human"
+    },
+    {
+      "ts": 1777430459,
+      "from": "system",
+      "text": "[TOOL APPROVED]\nProposal: inspect KAI voice and social conversation routing\nTools: kai.cognition.voice, kai.cognition.ollama_voice, kai.cognition.working_memory, kai.core.mind_frame, kai.cognition.global_workspace, kai.core.engine\nExecution: not implemented yet.",
+      "kind": "system"
+    },
+    {
+      "ts": 1777430459,
+      "from": "Oracle",
+      "text": "Approved tool plan `1777430480883`. Execution is not implemented yet, so nothing ran.",
+      "kind": "system"
+    },
+    {
+      "ts": 1777430975,
+      "from": "Ryan@Discord",
+      "text": "oracle plan read file Cargo.toml",
+      "kind": "human"
+    },
+    {
+      "ts": 1777430975,
+      "from": "Oracle",
+      "text": "[TOOL PLAN]\nID: 1777430986609\nRequested by: Ryan@Discord\nTask: read file Cargo.toml\nTools: oracle.read_file, kai.bridge.code_tools, kai.bridge.git_tools, kai.main.cli\nExecutable action: `oracle.read_file` with input `Cargo.toml`\n\n1. Understand Ryan's task: read file Cargo.toml\n2. Select source-backed KAI/Oracle capabilities from the registry.\n3. Propose these tools for approval: oracle.read_file, kai.bridge.code_tools, kai.bridge.git_tools, kai.main.cli\n4. Wait for Ryan to approve or deny the proposal.\n5. After approval, execute `oracle.read_file` with input `Cargo.toml`.",
+      "kind": "system"
+    },
+    {
+      "ts": 1777430975,
+      "from": "Oracle",
+      "text": "Tool plan created.\nID: 1777430986609\nTask: read file Cargo.toml\nProposed tools: oracle.read_file, kai.bridge.code_tools, kai.bridge.git_tools, kai.main.cli\nExecutable action: `oracle.read_file` with input `Cargo.toml`\nStatus: pending approval.\n\nApprove with `oracle approve tool 1777430986609`. Nothing has executed yet.",
+      "kind": "system"
+    },
+    {
+      "ts": 1777430975,
+      "from": "Ryan@Discord",
+      "text": "oracle approve tool 1777430986609",
+      "kind": "human"
+    },
+    {
+      "ts": 1777430975,
+      "from": "system",
+      "text": "[TOOL DONE]\nProposal: read file Cargo.toml\nTools: oracle.read_file, kai.bridge.code_tools, kai.bridge.git_tools, kai.main.cli\n\nread_file `Cargo.toml`:\n```text\n[package]\nname = \"kai\"\nversion = \"6.0.0\"\nedition = \"2021\"\nauthors = [\"Ryan Ervin <PandaProductionsLogo>\"]\ndescription = \"KAI RSHL UI — Geometric Intelligence Engine\"\nlicense = \"MIT\"\n\n[lib]\nname = \"kai\"\npath = \"src/lib.rs\"\n\n[[bin]]\nname = \"kai\"\npath = \"src/main.rs\"\n\n[dependencies]\nratatui = \"0.29\"\ncrossterm = \"0.28\"\ntokio = { version = \"1\", features = [\"full\"] }\nserde = { version = \"1\", features = [\"derive\"] }\nserde_json = \"1\"\nrand = \"0.8\"\nunicode-width = \"0.2\"\ncrossbeam-channel = \"0.5\"\nrayon = \"1.10\"\nureq = { version = \"2\", features = [\"json\"] }\nchrono = \"0.4\"\nlopdf = \"0.34\"\n\n[profile.release]\nopt-level = 3\nlto = true\ncodegen-units = 1\n\n```",
+      "kind": "system"
+    },
+    {
+      "ts": 1777430975,
+      "from": "Oracle",
+      "text": "Tool plan `1777430986609` executed.\n\nread_file `Cargo.toml`:\n```text\n[package]\nname = \"kai\"\nversion = \"6.0.0\"\nedition = \"2021\"\nauthors = [\"Ryan Ervin <PandaProductionsLogo>\"]\ndescription = \"KAI RSHL UI — Geometric Intelligence Engine\"\nlicense = \"MIT\"\n\n[lib]\nname = \"kai\"\npath = \"src/lib.rs\"\n\n[[bin]]\nname = \"kai\"\npath = \"src/main.rs\"\n\n[dependencies]\nratatui = \"0.29\"\ncrossterm = \"0.28\"\ntokio = { version = \"1\", features = [\"full\"] }\nserde = { version = \"1\", features = [\"derive\"] }\nserde_json = \"1\"\nrand = \"0.8\"\nunicode-width = \"0.2\"\ncrossbeam-channel = \"0.5\"\nrayon = \"1.10\"\nureq = { version = \"2\", features = [\"json\"] }\nchrono = \"0.4\"\nlopdf = \"0.34\"\n\n[profile.release]\nopt-level = 3\nlto = true\ncodegen-units = 1\n\n```",
+      "kind": "system"
+    },
+    {
+      "ts": 1777430975,
+      "from": "Ryan@Discord",
+      "text": "oracle plan list directory src/core",
+      "kind": "human"
+    },
+    {
+      "ts": 1777430975,
+      "from": "Oracle",
+      "text": "[TOOL PLAN]\nID: 1777430985247\nRequested by: Ryan@Discord\nTask: list directory src/core\nTools: oracle.list_directory, oracle.run_command\nExecutable action: `oracle.list_directory` with input `src/core`\n\n1. Understand Ryan's task: list directory src/core\n2. Select source-backed KAI/Oracle capabilities from the registry.\n3. Propose these tools for approval: oracle.list_directory, oracle.run_command\n4. Wait for Ryan to approve or deny the proposal.\n5. After approval, execute `oracle.list_directory` with input `src/core`.",
+      "kind": "system"
+    },
+    {
+      "ts": 1777430975,
+      "from": "Oracle",
+      "text": "Tool plan created.\nID: 1777430985247\nTask: list directory src/core\nProposed tools: oracle.list_directory, oracle.run_command\nExecutable action: `oracle.list_directory` with input `src/core`\nStatus: pending approval.\n\nApprove with `oracle approve tool 1777430985247`. Nothing has executed yet.",
+      "kind": "system"
+    },
+    {
+      "ts": 1777430975,
+      "from": "Ryan@Discord",
+      "text": "oracle approve tool 1777430985247",
+      "kind": "human"
+    },
+    {
+      "ts": 1777430975,
+      "from": "system",
+      "text": "[TOOL DONE]\nProposal: list directory src/core\nTools: oracle.list_directory, oracle.run_command\n\nlist_directory `src/core`:\n```text\nattention.rs\ncalibration.rs\nclaim.rs\nclaimstore.rs\ncontradiction.rs\nembeddings.rs\nengine.rs\nevidence.rs\nfield_state.rs\nlexicon.rs\nmemory.rs\nmind_frame.rs\nmod.rs\nnormalize.rs\noscillator.rs\npredictive.rs\nreasoning.rs\nregions.rs\nseed.rs\nsparse_vec.rs\nspiral.rs\nstat_lexicon.rs\ntest_write.rs\nuniverse.rs\n```",
+      "kind": "system"
+    },
+    {
+      "ts": 1777430975,
+      "from": "Oracle",
+      "text": "Tool plan `1777430985247` executed.\n\nlist_directory `src/core`:\n```text\nattention.rs\ncalibration.rs\nclaim.rs\nclaimstore.rs\ncontradiction.rs\nembeddings.rs\nengine.rs\nevidence.rs\nfield_state.rs\nlexicon.rs\nmemory.rs\nmind_frame.rs\nmod.rs\nnormalize.rs\noscillator.rs\npredictive.rs\nreasoning.rs\nregions.rs\nseed.rs\nsparse_vec.rs\nspiral.rs\nstat_lexicon.rs\ntest_write.rs\nuniverse.rs\n```",
+      "kind": "system"
+    },
+    {
+      "ts": 1777430975,
+      "from": "Ryan@Discord",
+      "text": "oracle plan search code MindFrame",
+      "kind": "human"
+    },
+    {
+      "ts": 1777430975,
+      "from": "Oracle",
+      "text": "[TOOL PLAN]\nID: 1777431009447\nRequested by: Ryan@Discord\nTask: search code MindFrame\nTools: oracle.search_code, kai.bridge.code_tools, kai.bridge.git_tools, kai.main.cli, kai.core.mind_frame, kai.cognition.global_workspace\nExecutable action: `oracle.search_code` with input `MindFrame`\n\n1. Understand Ryan's task: search code MindFrame\n2. Select source-backed KAI/Oracle capabilities from the registry.\n3. Propose these tools for approval: oracle.search_code, kai.bridge.code_tools, kai.bridge.git_tools, kai.main.cli, kai.core.mind_frame, kai.cognition.global_workspace\n4. Wait for Ryan to approve or deny the proposal.\n5. After approval, execute `oracle.search_code` with input `MindFrame`.",
+      "kind": "system"
+    },
+    {
+      "ts": 1777430975,
+      "from": "Oracle",
+      "text": "Tool plan created.\nID: 1777431009447\nTask: search code MindFrame\nProposed tools: oracle.search_code, kai.bridge.code_tools, kai.bridge.git_tools, kai.main.cli, kai.core.mind_frame, kai.cognition.global_workspace\nExecutable action: `oracle.search_code` with input `MindFrame`\nStatus: pending approval.\n\nApprove with `oracle approve tool 1777431009447`. Nothing has executed yet.",
+      "kind": "system"
+    },
+    {
+      "ts": 1777430975,
+      "from": "Ryan@Discord",
+      "text": "oracle approve tool 1777431009447",
+      "kind": "human"
+    },
+    {
+      "ts": 1777431038,
+      "from": "system",
+      "text": "[TOOL DONE]\nProposal: search code MindFrame\nTools: oracle.search_code, kai.bridge.code_tools, kai.bridge.git_tools, kai.main.cli, kai.core.mind_frame, kai.cognition.global_workspace\n\nsearch_code `MindFrame`:\n```text\nARCHITECTURE.md:38: - **MindFrame**: Semantic router that manages memory regions (Self, Personal, World, Narrative).\nARCHITECTURE.md:56: 2. **Analysis**: Engine routes query through MindFrame.\nCHANGELOG.md:35: ### Commit 5 — Feature: MindFrame Semantic Routing\nREADME.md:30: - **MindFrame Query Routing**: Advanced semantic navigation through Self-State, Personal, World, and Narrative memory regions.\nsrc/bridge/oracle_server.rs:833: None => Err(\"No executable action was inferred for this plan. Try a clearer command like `oracle plan read file src/main.rs`, `oracle plan list directory src/core`, `oracle plan se...[truncated 98 bytes]\nsrc/bridge/oracle_server.rs:870: tool_def(\"kai.core.mind_frame\", \"MindFrame\", \"src/core/mind_frame.rs\", \"Residual control frame for attention authority, source blocking, and answer routing.\", \"routing-authority\"),\nsrc/bridge/oracle_server.rs:930: if contains_any(&lower, &[\"attention\", \"workspace\", \"mindframe\", \"route\", \"routing\", \"focus\"]) {\nsrc/core/engine.rs:131: crate::core::MindFrame::from_query(query).requires_mind_memory()\nsrc/core/engine.rs:151: pub fn contribute_to_mind_frame(&self, frame: &mut MindFrame) {\nsrc/core/engine.rs:290: frame.mark_observed(\"thalamus\", self.thalamus.gate_gain, \"attention gate is not wired into MindFrame routing yet\");\nsrc/core/engine.rs:291: frame.mark_observed(\"cerebellum\", self.cerebellum.precision_score, \"precision model is not wired into MindFrame routing yet\");\nsrc/core/engine.rs:322: \"exists in the brain stack but has no direct MindFrame authority in this pass\",\nsrc/core/engine.rs:353: frame.mark_decorative(module, \"processes or stores local state but has no MindFrame authority yet\");\nsrc/core/mind_frame.rs:51: pub struct MindFrame {\nsrc/core/mind_frame.rs:70: impl MindFrame {\nsrc/core/mind_frame.rs:469: use super::{MindAction, MindFrame, MindIntent};\nsrc/core/mind_frame.rs:473: let frame = MindFrame::from_query(\"what is my name?\");\nsrc/core/mind_frame.rs:483: let frame = MindFrame::from_query(\"what is your narrative from this memory?\");\nsrc/core/mind_frame.rs:492: let frame = MindFrame::from_query(\"what is the capital of France?\");\nsrc/core/mod.rs:28: AttentionHeadScore, MindAction, MindFrame, MindIntent, ModuleContribution,\nsrc/core/seed.rs:60: \"MindFrame is KAI central cognitive authority manages attention routing \\\nsrc/core/universe.rs:264: \"MindFrame is KAI central cognitive authority manages attention routing \\\nsrc/core/universe.rs:269: \"MindFrame routes input through cognition modules amygdala hippocampus \\\nsrc/core/universe.rs:634: /// Query for cells, but only within specific MindFrame regions (e.g. \"SelfState\", \"World\").\nsrc/core/universe.rs:1008: /// his own architecture (MindFrame, ClaimStore, regions, etc.) because\nsrc/main.rs:4663: let mut mind_frame = kai::core::MindFrame::from_query(&reasoning_input);\nsrc/main.rs:7274: fn diagnose_mindframe(args: &[String]) {\nsrc/main.rs:7279: .position(|a| a == \"diagnose-mindframe\" || a == \"--diagnose-mindframe\");\nsrc/main.rs:7306: println!(\"mindframe_diagnostic: start\");\nsrc/main.rs:7308: let mut frame = kai::core::MindFrame::from_query(&query);\nsrc/main.rs:7362: println!(\"mindframe_diagnostic: done\");\nsrc/main.rs:9791: .any(|a| a == \"diagnose-mindframe\" || a == \"--diagnose-mindframe\")\nsrc/main.rs:9793: diagnose_mindframe(&args);\nVISION.md:27: - `src/core/`: The objective engine. Universe, SparseVec, Engine, Claims, MindFrame.\n```",
+      "kind": "system"
+    },
+    {
+      "ts": 1777431038,
+      "from": "Oracle",
+      "text": "Tool plan `1777431009447` executed.\n\nsearch_code `MindFrame`:\n```text\nARCHITECTURE.md:38: - **MindFrame**: Semantic router that manages memory regions (Self, Personal, World, Narrative).\nARCHITECTURE.md:56: 2. **Analysis**: Engine routes query through MindFrame.\nCHANGELOG.md:35: ### Commit 5 — Feature: MindFrame Semantic Routing\nREADME.md:30: - **MindFrame Query Routing**: Advanced semantic navigation through Self-State, Personal, World, and Narrative memory regions.\nsrc/bridge/oracle_server.rs:833: None => Err(\"No executable action was inferred for this plan. Try a clearer command like `oracle plan read file src/main.rs`, `oracle plan list directory src/core`, `oracle plan se...[truncated 98 bytes]\nsrc/bridge/oracle_server.rs:870: tool_def(\"kai.core.mind_frame\", \"MindFrame\", \"src/core/mind_frame.rs\", \"Residual control frame for attention authority, source blocking, and answer routing.\", \"routing-authority\"),\nsrc/bridge/oracle_server.rs:930: if contains_any(&lower, &[\"attention\", \"workspace\", \"mindframe\", \"route\", \"routing\", \"focus\"]) {\nsrc/core/engine.rs:131: crate::core::MindFrame::from_query(query).requires_mind_memory()\nsrc/core/engine.rs:151: pub fn contribute_to_mind_frame(&self, frame: &mut MindFrame) {\nsrc/core/engine.rs:290: frame.mark_observed(\"thalamus\", self.thalamus.gate_gain, \"attention gate is not wired into MindFrame routing yet\");\nsrc/core/engine.rs:291: frame.mark_observed(\"cerebellum\", self.cerebellum.precision_score, \"precision model is not wired into MindFrame routing yet\");\nsrc/core/engine.rs:322: \"exists in the brain stack but has no direct MindFrame authority in this pass\",\nsrc/core/engine.rs:353: frame.mark_decorative(module, \"processes or stores local state but has no MindFrame authority yet\");\nsrc/core/mind_frame.rs:51: pub struct MindFrame {\nsrc/core/mind_frame.rs:70: impl Min...[truncated 1645 bytes]",
+      "kind": "system"
+    },
+    {
+      "ts": 1777431038,
+      "from": "Ryan@Discord",
+      "text": "oracle plan run command cargo check --release --bin kai",
+      "kind": "human"
+    },
+    {
+      "ts": 1777431038,
+      "from": "Oracle",
+      "text": "[TOOL PLAN]\nID: 1777431084954\nRequested by: Ryan@Discord\nTask: run command cargo check --release --bin kai\nTools: oracle.run_command, kai.bridge.code_tools, kai.bridge.git_tools, kai.main.cli\nExecutable action: `oracle.run_command` with input `cargo check --release --bin kai`\n\n1. Understand Ryan's task: run command cargo check --release --bin kai\n2. Select source-backed KAI/Oracle capabilities from the registry.\n3. Propose these tools for approval: oracle.run_command, kai.bridge.code_tools, kai.bridge.git_tools, kai.main.cli\n4. Wait for Ryan to approve or deny the proposal.\n5. After approval, execute `oracle.run_command` with input `cargo check --release --bin kai`.",
+      "kind": "system"
+    },
+    {
+      "ts": 1777431038,
+      "from": "Oracle",
+      "text": "Tool plan created.\nID: 1777431084954\nTask: run command cargo check --release --bin kai\nProposed tools: oracle.run_command, kai.bridge.code_tools, kai.bridge.git_tools, kai.main.cli\nExecutable action: `oracle.run_command` with input `cargo check --release --bin kai`\nStatus: pending approval.\n\nApprove with `oracle approve tool 1777431084954`. Nothing has executed yet.",
+      "kind": "system"
+    },
+    {
+      "ts": 1777431038,
+      "from": "Ryan@Discord",
+      "text": "oracle approve tool 1777431084954",
+      "kind": "human"
+    },
+    {
+      "ts": 1777431038,
+      "from": "system",
+      "text": "[TOOL DONE]\nProposal: run command cargo check --release --bin kai\nTools: oracle.run_command, kai.bridge.code_tools, kai.bridge.git_tools, kai.main.cli\n\nrun_command `cargo check --release --bin kai`:\n```text\nwarning: unused imports: `omega` and `psi_bridge`\n  --> src\\core\\field_state.rs:27:26\n   |\n27 |     compute_region_core, omega, phi_left, phi_right, psi_bridge, r_cross, select_top_k, Region,\n   |                          ^^^^^                       ^^^^^^^^^^\n   |\n   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default\n\nwarning: unused import: `std::time::Instant`\n --> src\\streams\\cpu_stream.rs:9:5\n  |\n9 | use std::time::Instant;\n  |     ^^^^^^^^^^^^^^^^^^\n\nwarning: unused import: `std::time::Instant`\n  --> src\\streams\\ram_stream.rs:10:5\n   |\n10 | use std::time::Instant;\n   |     ^^^^^^^^^^^^^^^^^^\n\nwarning: unused variable: `target_focus`\n   --> src\\core\\engine.rs:827:13\n    |\n827 |         let target_focus = (self.pfc.meta_confidence * 0.20\n    |             ^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_target_focus`\n    |\n    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default\n\nwarning: unused variable: `phi_l`\n   --> src\\core\\field_state.rs:479:13\n    |\n479 |         let phi_l = phi_left(&left);\n    |             ^^^^^ help: if this is intentional, prefix it with an underscore: `_phi_l`\n\nwarning: unused variable: `phi_r`\n   --> src\\core\\field_state.rs:492:13\n    |\n492 |         let phi_r = phi_right(&right);\n    |             ^^^^^ help: if this is intentional, prefix it with an underscore: `_phi_r`\n\nwarning: unused variable: `rc`\n   --> src\\core\\field_state.rs:497:13\n    |\n497 |         let rc = r_cross(&top_l, &top_r);\n    |             ^^ help: if this is intentional, prefix it with an underscore: `_rc`\n\nwarning: constant `BOREDOM_SCALE` is never used\n  --> src\\drive\\mod.rs:40:7\n   |\n40 | const BOREDOM_SCALE: f32 = 0.3;\n   |       ^^^^^^^^^^^^^\n   |\n   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default\n\nwarning: `kai` (lib) generated 8 warnings (run `cargo fix --lib -p kai` to apply 7 suggestions)\nwarning: unused import: `PromotionThresholds`\n  --> src\\main.rs:10:66\n   |\n10 |     detect_query_type, BrainSignals, CandidateBuffer, MoodState, PromotionThresholds,\n   |                                                                  ^^^^^^^^^^^^^^^^^^^\n   |\n   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default\n\nwarning: `kai` (bin \"kai\") generated 1 warning (run `cargo fix --bin \"kai\" -p kai` to apply 1 suggestion)\n    Finished `release` profile [optimized] target(s) in 0.22s\n\n```",
+      "kind": "system"
+    },
+    {
+      "ts": 1777431038,
+      "from": "Oracle",
+      "text": "Tool plan `1777431084954` executed.\n\nrun_command `cargo check --release --bin kai`:\n```text\nwarning: unused imports: `omega` and `psi_bridge`\n  --> src\\core\\field_state.rs:27:26\n   |\n27 |     compute_region_core, omega, phi_left, phi_right, psi_bridge, r_cross, select_top_k, Region,\n   |                          ^^^^^                       ^^^^^^^^^^\n   |\n   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default\n\nwarning: unused import: `std::time::Instant`\n --> src\\streams\\cpu_stream.rs:9:5\n  |\n9 | use std::time::Instant;\n  |     ^^^^^^^^^^^^^^^^^^\n\nwarning: unused import: `std::time::Instant`\n  --> src\\streams\\ram_stream.rs:10:5\n   |\n10 | use std::time::Instant;\n   |     ^^^^^^^^^^^^^^^^^^\n\nwarning: unused variable: `target_focus`\n   --> src\\core\\engine.rs:827:13\n    |\n827 |         let target_focus = (self.pfc.meta_confidence * 0.20\n    |             ^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_target_focus`\n    |\n    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default\n\nwarning: unused variable: `phi_l`\n   --> src\\core\\field_state.rs:479:13\n    |\n479 |         let phi_l = phi_left(&left);\n    |             ^^^^^ help: if this is intentional, prefix it with an underscore: `_phi_l`\n\nwarning: unused variable: `phi_r`\n   --> src\\core\\field_state.rs:492:13\n    |\n492 |         let phi_r = phi_right(&right);\n    |             ^^^^^ help: if this is intentional, prefix it with an underscore: `_phi_r`\n\nwarning: unused variable: `rc`\n   --> src\\core\\field_state.rs:497:13\n    |\n497 |         let rc = r_cross(&top_l, &top_r);\n    |             ^^ help: if this is intentional, prefix it with an underscore: `_rc`\n\nwarning: constant `BOREDOM_SCALE` is never used\n  --> src\\drive\\mod.rs:40:7\n   |\n40 | const BOREDOM_SCALE: f32 = 0.3;\n   |       ...[truncated 703 bytes]",
+      "kind": "system"
+    },
+    {
+      "ts": 1777431417,
+      "from": "Ryan@Discord",
+      "text": "oracle plan use agent tools and grep to inspect why KAI social conversation is stiff",
+      "kind": "human"
+    },
+    {
+      "ts": 1777431417,
+      "from": "Oracle",
+      "text": "[TOOL PLAN]\nID: 1777431461885\nRequested by: Ryan@Discord\nTask: use agent tools and grep to inspect why KAI social conversation is stiff\nTools: oracle.search_code, legacy.grep, legacy.glob, oracle.run_command, legacy.bash, legacy.powershell, legacy.agent_tool, legacy.task_management\nExecutable action: none inferred yet\n\n1. Understand Ryan's task: use agent tools and grep to inspect why KAI social conversation is stiff\n2. Select source-backed KAI/Oracle capabilities from the registry.\n3. Propose these tools for approval: oracle.search_code, legacy.grep, legacy.glob, oracle.run_command, legacy.bash, legacy.powershell, legacy.agent_tool, legacy.task_management\n4. Wait for Ryan to approve or deny the proposal.\n5. No concrete executable action was inferred yet; approval will not run a tool until the task is clearer.",
+      "kind": "system"
+    },
+    {
+      "ts": 1777431417,
+      "from": "Oracle",
+      "text": "Tool plan created.\nID: 1777431461885\nTask: use agent tools and grep to inspect why KAI social conversation is stiff\nProposed tools: oracle.search_code, legacy.grep, legacy.glob, oracle.run_command, legacy.bash, legacy.powershell, legacy.agent_tool, legacy.task_management\nExecutable action: none inferred yet\nStatus: pending approval.\n\nApprove with `oracle approve tool 1777431461885`. Nothing has executed yet.",
+      "kind": "system"
+    },
+    {
+      "ts": 1777431417,
+      "from": "Ryan@Discord",
+      "text": "oracle plan search code AgentTool",
+      "kind": "human"
+    },
+    {
+      "ts": 1777431417,
+      "from": "Oracle",
+      "text": "[TOOL PLAN]\nID: 1777431418703\nRequested by: Ryan@Discord\nTask: search code AgentTool\nTools: oracle.search_code, legacy.grep, legacy.glob, legacy.agent_tool, legacy.task_management, legacy.team, legacy.send_message, kai.bridge.code_tools\nExecutable action: `oracle.search_code` with input `AgentTool`\n\n1. Understand Ryan's task: search code AgentTool\n2. Select source-backed KAI/Oracle capabilities from the registry.\n3. Propose these tools for approval: oracle.search_code, legacy.grep, legacy.glob, legacy.agent_tool, legacy.task_management, legacy.team, legacy.send_message, kai.bridge.code_tools\n4. Wait for Ryan to approve or deny the proposal.\n5. After approval, execute `oracle.search_code` with input `AgentTool`.",
+      "kind": "system"
+    },
+    {
+      "ts": 1777431417,
+      "from": "Oracle",
+      "text": "Tool plan created.\nID: 1777431418703\nTask: search code AgentTool\nProposed tools: oracle.search_code, legacy.grep, legacy.glob, legacy.agent_tool, legacy.task_management, legacy.team, legacy.send_message, kai.bridge.code_tools\nExecutable action: `oracle.search_code` with input `AgentTool`\nStatus: pending approval.\n\nApprove with `oracle approve tool 1777431418703`. Nothing has executed yet.",
+      "kind": "system"
+    },
+    {
+      "ts": 1777431417,
+      "from": "Ryan@Discord",
+      "text": "oracle approve tool 1777431418703",
+      "kind": "human"
+    },
+    {
+      "ts": 1777431421,
+      "from": "system",
+      "text": "[TOOL DONE]\nProposal: search code AgentTool\nTools: oracle.search_code, legacy.grep, legacy.glob, legacy.agent_tool, legacy.task_management, legacy.team, legacy.send_message, kai.bridge.code_tools\n\nsearch_code `AgentTool`:\n```text\ndata/oracle-sessions/0.json:633: \"text\": \"oracle plan search code AgentTool\",\ndata/oracle-sessions/0.json:639: \"text\": \"[TOOL PLAN]\\nID: 1777431418703\\nRequested by: Ryan@Discord\\nTask: search code AgentTool\\nTools: oracle.search_code, legacy.grep, legacy.glob, legacy.agent_tool, legacy.tas...[truncated 562 bytes]\ndata/oracle-sessions/0.json:645: \"text\": \"Tool plan created.\\nID: 1777431418703\\nTask: search code AgentTool\\nProposed tools: oracle.search_code, legacy.grep, legacy.glob, legacy.agent_tool, legacy.task_management...[truncated 229 bytes]\ndata/oracle-sessions/0.json:1102: \"label\": \"Legacy AgentTool\",\ndata/oracle-sessions/0.json:1103: \"source_path\": \"legacy/typescript_engine/src/tools/AgentTool\",\ndata/oracle-sessions/0.json:1124: \"task\": \"search code AgentTool\",\ndata/oracle-sessions/0.json:1126: \"Understand Ryan's task: search code AgentTool\",\ndata/oracle-sessions/0.json:1130: \"After approval, execute `oracle.search_code` with input `AgentTool`.\"\ndata/oracle-sessions/0.json:1159: \"label\": \"Legacy AgentTool\",\ndata/oracle-sessions/0.json:1160: \"source_path\": \"legacy/typescript_engine/src/tools/AgentTool\",\ndata/oracle-sessions/0.json:1200: \"input\": \"AgentTool\"\ndata/oracle_session.json:633: \"text\": \"oracle plan search code AgentTool\",\ndata/oracle_session.json:639: \"text\": \"[TOOL PLAN]\\nID: 1777431418703\\nRequested by: Ryan@Discord\\nTask: search code AgentTool\\nTools: oracle.search_code, legacy.grep, legacy.glob, legacy.agent_tool, legacy.tas...[truncated 562 bytes]\ndata/oracle_session.json:645: \"text\": \"Tool plan created.\\nID: 1777431418703\\nTask: search code AgentTool\\nProposed tools: oracle.search_code, legacy.grep, legacy.glob, legacy.agent_tool, legacy.task_management...[truncated 229 bytes]\ndata/oracle_session.json:1102: \"label\": \"Legacy AgentTool\",\ndata/oracle_session.json:1103: \"source_path\": \"legacy/typescript_engine/src/tools/AgentTool\",\ndata/oracle_session.json:1124: \"task\": \"search code AgentTool\",\ndata/oracle_session.json:1126: \"Understand Ryan's task: search code AgentTool\",\ndata/oracle_session.json:1130: \"After approval, execute `oracle.search_code` with input `AgentTool`.\"\ndata/oracle_session.json:1159: \"label\": \"Legacy AgentTool\",\ndata/oracle_session.json:1160: \"source_path\": \"legacy/typescript_engine/src/tools/AgentTool\",\ndata/oracle_session.json:1200: \"input\": \"AgentTool\"\nlegacy/typescript_engine/src/bootstrap/state.ts:11: import type { AgentColorName } from 'src/tools/AgentTool/agentColorManager.js'\nlegacy/typescript_engine/src/cli/handlers/agents.ts:13: } from '../../tools/AgentTool/agentDisplay.js'\nlegacy/typescript_engine/src/cli/handlers/agents.ts:17: } from '../../tools/AgentTool/loadAgentsDir.js'\nlegacy/typescript_engine/src/cli/print.ts:40: } from 'src/tools/AgentTool/loadAgentsDir.js'\nlegacy/typescript_engine/src/cli/print.ts:4928: require('../tools/AgentTool/loadAgentsDir.js') as typeof import('../tools/AgentTool/loadAgentsDir.js')\nlegacy/typescript_engine/src/cli/print.ts:5130: require('../tools/AgentTool/loadAgentsDir.js') as typeof import('../tools/AgentTool/loadAgentsDir.js')\nlegacy/typescript_engine/src/commands/clear/caches.ts:137: void import('../../tools/AgentTool/loadAgentsDir.js').then(\nlegacy/typescript_engine/src/commands/color/color.ts:7: } from '../../tools/AgentTool/agentColorManager.js'\nlegacy/typescript_engine/src/commands/context/context-noninteractive.ts:5: import type { AgentDefinitionsResult } from '../../tools/AgentTool/loadAgentsDir.js'\nlegacy/typesc...[truncated 1294 bytes]",
+      "kind": "system"
+    },
+    {
+      "ts": 1777431421,
+      "from": "Oracle",
+      "text": "Tool plan `1777431418703` executed.\n\nsearch_code `AgentTool`:\n```text\ndata/oracle-sessions/0.json:633: \"text\": \"oracle plan search code AgentTool\",\ndata/oracle-sessions/0.json:639: \"text\": \"[TOOL PLAN]\\nID: 1777431418703\\nRequested by: Ryan@Discord\\nTask: search code AgentTool\\nTools: oracle.search_code, legacy.grep, legacy.glob, legacy.agent_tool, legacy.tas...[truncated 562 bytes]\ndata/oracle-sessions/0.json:645: \"text\": \"Tool plan created.\\nID: 1777431418703\\nTask: search code AgentTool\\nProposed tools: oracle.search_code, legacy.grep, legacy.glob, legacy.agent_tool, legacy.task_management...[truncated 229 bytes]\ndata/oracle-sessions/0.json:1102: \"label\": \"Legacy AgentTool\",\ndata/oracle-sessions/0.json:1103: \"source_path\": \"legacy/typescript_engine/src/tools/AgentTool\",\ndata/oracle-sessions/0.json:1124: \"task\": \"search code AgentTool\",\ndata/oracle-sessions/0.json:1126: \"Understand Ryan's task: search code AgentTool\",\ndata/oracle-sessions/0.json:1130: \"After approval, execute `oracle.search_code` with input `AgentTool`.\"\ndata/oracle-sessions/0.json:1159: \"label\": \"Legacy AgentTool\",\ndata/oracle-sessions/0.json:1160: \"source_path\": \"legacy/typescript_engine/src/tools/AgentTool\",\ndata/oracle-sessions/0.json:1200: \"input\": \"AgentTool\"\ndata/oracle_session.json:633: \"text\": \"oracle plan search code AgentTool\",\ndata/oracle_session.json:639: \"text\": \"[TOOL PLAN]\\nID: 1777431418703\\nRequested by: Ryan@Discord\\nTask: search code AgentTool\\nTools: oracle.search_code, legacy.grep, legacy.glob, legacy.agent_tool, legacy.tas...[truncated 562 bytes]\ndata/oracle_session.json:645: \"text\": \"Tool plan created.\\nID: 1777431418703\\nTask: search code AgentTool\\nProposed tools: oracle.search_code, legacy.grep, legacy.glob, legacy.agent_tool, legacy.task_management...[truncated 229 bytes]\ndata/oracle_session.json:1102: \"label\"...[truncated 2994 bytes]",
+      "kind": "system"
+    },
+    {
+      "ts": 1777431568,
+      "from": "Ryan@Discord",
+      "text": "oracle plan search code AgentTool",
+      "kind": "human"
+    },
+    {
+      "ts": 1777431568,
+      "from": "Oracle",
+      "text": "[TOOL PLAN]\nID: 1777431607859\nRequested by: Ryan@Discord\nTask: search code AgentTool\nTools: oracle.search_code, legacy.grep, legacy.glob, legacy.agent_tool, legacy.task_management, legacy.team, legacy.send_message, kai.bridge.code_tools\nExecutable action: `oracle.search_code` with input `AgentTool`\n\n1. Understand Ryan's task: search code AgentTool\n2. Select source-backed KAI/Oracle capabilities from the registry.\n3. Propose these tools for approval: oracle.search_code, legacy.grep, legacy.glob, legacy.agent_tool, legacy.task_management, legacy.team, legacy.send_message, kai.bridge.code_tools\n4. Wait for Ryan to approve or deny the proposal.\n5. After approval, execute `oracle.search_code` with input `AgentTool`.",
+      "kind": "system"
+    },
+    {
+      "ts": 1777431568,
+      "from": "Oracle",
+      "text": "Tool plan created.\nID: 1777431607859\nTask: search code AgentTool\nProposed tools: oracle.search_code, legacy.grep, legacy.glob, legacy.agent_tool, legacy.task_management, legacy.team, legacy.send_message, kai.bridge.code_tools\nExecutable action: `oracle.search_code` with input `AgentTool`\nStatus: pending approval.\n\nApprove with `oracle approve tool 1777431607859`. Nothing has executed yet.",
+      "kind": "system"
+    },
+    {
+      "ts": 1777431568,
+      "from": "Ryan@Discord",
+      "text": "oracle approve tool 1777431607859",
+      "kind": "human"
+    },
+    {
+      "ts": 1777431568,
+      "from": "system",
+      "text": "[TOOL DONE]\nProposal: search code AgentTool\nTools: oracle.search_code, legacy.grep, legacy.glob, legacy.agent_tool, legacy.task_management, legacy.team, legacy.send_message, kai.bridge.code_tools\n\nsearch_code `AgentTool`:\n```text\nlegacy/typescript_engine/src/bootstrap/state.ts:11: import type { AgentColorName } from 'src/tools/AgentTool/agentColorManager.js'\nlegacy/typescript_engine/src/cli/handlers/agents.ts:13: } from '../../tools/AgentTool/agentDisplay.js'\nlegacy/typescript_engine/src/cli/handlers/agents.ts:17: } from '../../tools/AgentTool/loadAgentsDir.js'\nlegacy/typescript_engine/src/cli/print.ts:40: } from 'src/tools/AgentTool/loadAgentsDir.js'\nlegacy/typescript_engine/src/cli/print.ts:4928: require('../tools/AgentTool/loadAgentsDir.js') as typeof import('../tools/AgentTool/loadAgentsDir.js')\nlegacy/typescript_engine/src/cli/print.ts:5130: require('../tools/AgentTool/loadAgentsDir.js') as typeof import('../tools/AgentTool/loadAgentsDir.js')\nlegacy/typescript_engine/src/commands/clear/caches.ts:137: void import('../../tools/AgentTool/loadAgentsDir.js').then(\nlegacy/typescript_engine/src/commands/color/color.ts:7: } from '../../tools/AgentTool/agentColorManager.js'\nlegacy/typescript_engine/src/commands/context/context-noninteractive.ts:5: import type { AgentDefinitionsResult } from '../../tools/AgentTool/loadAgentsDir.js'\nlegacy/typescript_engine/src/commands/insights.ts:21: } from '../tools/AgentTool/constants.js'\nlegacy/typescript_engine/src/commands/statusline.tsx:3: import { AGENT_TOOL_NAME } from '../tools/AgentTool/constants.js';\nlegacy/typescript_engine/src/components/agents/AgentDetail.tsx:8: import { getAgentColor } from '../../tools/AgentTool/agentColorManager.js';\nlegacy/typescript_engine/src/components/agents/AgentDetail.tsx:9: import { getMemoryScopeDisplay } from '../../tools/AgentTool/agentMemory.js';\nlegacy/typescript_engine/src/components/agents/AgentDetail.tsx:10: import { resolveAgentTools } from '../../tools/AgentTool/agentToolUtils.js';\nlegacy/typescript_engine/src/components/agents/AgentDetail.tsx:11: import { type AgentDefinition, isBuiltInAgent } from '../../tools/AgentTool/loadAgentsDir.js';\nlegacy/typescript_engine/src/components/agents/AgentDetail.tsx:28: const resolvedTools = resolveAgentTools(agent, tools, false);\nlegacy/typescript_engine/src/components/agents/AgentEditor.tsx:10: import { type AgentColorName, setAgentColor } from '../../tools/AgentTool/agentColorManager.js';\nlegacy/typescript_engine/src/components/agents/AgentEditor.tsx:11: import { type AgentDefinition, getActiveAgentsFromList, isCustomAgent, isPluginAgent } from '../../tools/AgentTool/loadAgentsDir.js';\nlegacy/typescript_engine/src/components/agents/agentFileUtils.ts:5: import type { AgentMemoryScope } from '../../tools/AgentTool/agentMemory.js'\nlegacy/typescript_engine/src/components/agents/agentFileUtils.ts:10: } from '../../tools/AgentTool/loadAgentsDir.js'\nlegacy/typescript_engine/src/components/agents/AgentsList.tsx:7: import type { ResolvedAgent } from '../../tools/AgentTool/agentDisplay.js';\nlegacy/typescript_engine/src/components/agents/AgentsList.tsx:8: import { AGENT_SOURCE_GROUPS, compareAgentsByName, getOverrideSourceLabel, resolveAgentModelDisplay } from '../../tools/AgentTool/agentDisplay.js';\nlegacy/typescript_engine/src/components/agents/AgentsList.tsx:9: import type { AgentDefinition } from '../../tools/AgentTool/loadAgentsDir.js';\nlegacy/typescript_engine/src/components/agents/AgentsMenu.tsx:12: import { type ResolvedAgent, resolveAgentOverrides } from '../../tools/AgentTool/agentDisplay.js';\nlegacy/typescript_engine/src/components/agents/AgentsMenu.tsx:13: import { type AgentDefinition, getActiveAgentsFromLis...[truncated 2535 bytes]",
+      "kind": "system"
+    },
+    {
+      "ts": 1777431568,
+      "from": "Oracle",
+      "text": "Tool plan `1777431607859` executed.\n\nsearch_code `AgentTool`:\n```text\nlegacy/typescript_engine/src/bootstrap/state.ts:11: import type { AgentColorName } from 'src/tools/AgentTool/agentColorManager.js'\nlegacy/typescript_engine/src/cli/handlers/agents.ts:13: } from '../../tools/AgentTool/agentDisplay.js'\nlegacy/typescript_engine/src/cli/handlers/agents.ts:17: } from '../../tools/AgentTool/loadAgentsDir.js'\nlegacy/typescript_engine/src/cli/print.ts:40: } from 'src/tools/AgentTool/loadAgentsDir.js'\nlegacy/typescript_engine/src/cli/print.ts:4928: require('../tools/AgentTool/loadAgentsDir.js') as typeof import('../tools/AgentTool/loadAgentsDir.js')\nlegacy/typescript_engine/src/cli/print.ts:5130: require('../tools/AgentTool/loadAgentsDir.js') as typeof import('../tools/AgentTool/loadAgentsDir.js')\nlegacy/typescript_engine/src/commands/clear/caches.ts:137: void import('../../tools/AgentTool/loadAgentsDir.js').then(\nlegacy/typescript_engine/src/commands/color/color.ts:7: } from '../../tools/AgentTool/agentColorManager.js'\nlegacy/typescript_engine/src/commands/context/context-noninteractive.ts:5: import type { AgentDefinitionsResult } from '../../tools/AgentTool/loadAgentsDir.js'\nlegacy/typescript_engine/src/commands/insights.ts:21: } from '../tools/AgentTool/constants.js'\nlegacy/typescript_engine/src/commands/statusline.tsx:3: import { AGENT_TOOL_NAME } from '../tools/AgentTool/constants.js';\nlegacy/typescript_engine/src/components/agents/AgentDetail.tsx:8: import { getAgentColor } from '../../tools/AgentTool/agentColorManager.js';\nlegacy/typescript_engine/src/components/agents/AgentDetail.tsx:9: import { getMemoryScopeDisplay } from '../../tools/AgentTool/agentMemory.js';\nlegacy/typescript_engine/src/components/agents/AgentDetail.tsx:10: import { resolveAgentTools } from '../../tools/AgentTool/agentToolUtils.js';\n...[truncated 4235 bytes]",
+      "kind": "system"
+    },
+    {
+      "ts": 1777432217,
+      "from": "Ryan@Discord",
+      "text": "oracle plan legacy grep AgentTool",
+      "kind": "human"
+    },
+    {
+      "ts": 1777432217,
+      "from": "Oracle",
+      "text": "[TOOL PLAN]\nID: 1777432280002\nRequested by: Ryan@Discord\nTask: legacy grep AgentTool\nTools: oracle.search_code, legacy.grep, legacy.glob, legacy.agent_tool, legacy.task_management, legacy.team, legacy.send_message, kai.bridge.oracle_server\nExecutable action: `legacy.grep` with input `AgentTool`\n\n1. Understand Ryan's task: legacy grep AgentTool\n2. Select source-backed KAI/Oracle capabilities from the registry.\n3. Propose these tools for approval: oracle.search_code, legacy.grep, legacy.glob, legacy.agent_tool, legacy.task_management, legacy.team, legacy.send_message, kai.bridge.oracle_server\n4. Wait for Ryan to approve or deny the proposal.\n5. After approval, execute `legacy.grep` with input `AgentTool`.",
+      "kind": "system"
+    },
+    {
+      "ts": 1777432217,
+      "from": "Oracle",
+      "text": "Tool plan created.\nID: 1777432280002\nTask: legacy grep AgentTool\nProposed tools: oracle.search_code, legacy.grep, legacy.glob, legacy.agent_tool, legacy.task_management, legacy.team, legacy.send_message, kai.bridge.oracle_server\nExecutable action: `legacy.grep` with input `AgentTool`\nStatus: pending approval.\n\nApprove with `oracle approve tool 1777432280002`. Nothing has executed yet.",
+      "kind": "system"
+    },
+    {
+      "ts": 1777432217,
+      "from": "Ryan@Discord",
+      "text": "oracle approve tool 1777432280002",
+      "kind": "human"
+    },
+    {
+      "ts": 1777432217,
+      "from": "system",
+      "text": "[TOOL DONE]\nProposal: legacy grep AgentTool\nTools: oracle.search_code, legacy.grep, legacy.glob, legacy.agent_tool, legacy.task_management, legacy.team, legacy.send_message, kai.bridge.oracle_server\n\nlegacy.grep `AgentTool`:\n```text\nlegacy/typescript_engine/src/bootstrap/state.ts:11: import type { AgentColorName } from 'src/tools/AgentTool/agentColorManager.js'\nlegacy/typescript_engine/src/cli/handlers/agents.ts:13: } from '../../tools/AgentTool/agentDisplay.js'\nlegacy/typescript_engine/src/cli/handlers/agents.ts:17: } from '../../tools/AgentTool/loadAgentsDir.js'\nlegacy/typescript_engine/src/cli/print.ts:40: } from 'src/tools/AgentTool/loadAgentsDir.js'\nlegacy/typescript_engine/src/cli/print.ts:4928: require('../tools/AgentTool/loadAgentsDir.js') as typeof import('../tools/AgentTool/loadAgentsDir.js')\nlegacy/typescript_engine/src/cli/print.ts:5130: require('../tools/AgentTool/loadAgentsDir.js') as typeof import('../tools/AgentTool/loadAgentsDir.js')\nlegacy/typescript_engine/src/commands/clear/caches.ts:137: void import('../../tools/AgentTool/loadAgentsDir.js').then(\nlegacy/typescript_engine/src/commands/color/color.ts:7: } from '../../tools/AgentTool/agentColorManager.js'\nlegacy/typescript_engine/src/commands/context/context-noninteractive.ts:5: import type { AgentDefinitionsResult } from '../../tools/AgentTool/loadAgentsDir.js'\nlegacy/typescript_engine/src/commands/insights.ts:21: } from '../tools/AgentTool/constants.js'\nlegacy/typescript_engine/src/commands/statusline.tsx:3: import { AGENT_TOOL_NAME } from '../tools/AgentTool/constants.js';\nlegacy/typescript_engine/src/components/agents/AgentDetail.tsx:8: import { getAgentColor } from '../../tools/AgentTool/agentColorManager.js';\nlegacy/typescript_engine/src/components/agents/AgentDetail.tsx:9: import { getMemoryScopeDisplay } from '../../tools/AgentTool/agentMemory.js';\nlegacy/typescript_engine/src/components/agents/AgentDetail.tsx:10: import { resolveAgentTools } from '../../tools/AgentTool/agentToolUtils.js';\nlegacy/typescript_engine/src/components/agents/AgentDetail.tsx:11: import { type AgentDefinition, isBuiltInAgent } from '../../tools/AgentTool/loadAgentsDir.js';\nlegacy/typescript_engine/src/components/agents/AgentDetail.tsx:28: const resolvedTools = resolveAgentTools(agent, tools, false);\nlegacy/typescript_engine/src/components/agents/AgentEditor.tsx:10: import { type AgentColorName, setAgentColor } from '../../tools/AgentTool/agentColorManager.js';\nlegacy/typescript_engine/src/components/agents/AgentEditor.tsx:11: import { type AgentDefinition, getActiveAgentsFromList, isCustomAgent, isPluginAgent } from '../../tools/AgentTool/loadAgentsDir.js';\nlegacy/typescript_engine/src/components/agents/agentFileUtils.ts:5: import type { AgentMemoryScope } from '../../tools/AgentTool/agentMemory.js'\nlegacy/typescript_engine/src/components/agents/agentFileUtils.ts:10: } from '../../tools/AgentTool/loadAgentsDir.js'\nlegacy/typescript_engine/src/components/agents/AgentsList.tsx:7: import type { ResolvedAgent } from '../../tools/AgentTool/agentDisplay.js';\nlegacy/typescript_engine/src/components/agents/AgentsList.tsx:8: import { AGENT_SOURCE_GROUPS, compareAgentsByName, getOverrideSourceLabel, resolveAgentModelDisplay } from '../../tools/AgentTool/agentDisplay.js';\nlegacy/typescript_engine/src/components/agents/AgentsList.tsx:9: import type { AgentDefinition } from '../../tools/AgentTool/loadAgentsDir.js';\nlegacy/typescript_engine/src/components/agents/AgentsMenu.tsx:12: import { type ResolvedAgent, resolveAgentOverrides } from '../../tools/AgentTool/agentDisplay.js';\nlegacy/typescript_engine/src/components/agents/AgentsMenu.tsx:13: import { type AgentDefinition, getActiveAgentsFromLis...[truncated 2535 bytes]",
+      "kind": "system"
+    },
+    {
+      "ts": 1777432217,
+      "from": "Oracle",
+      "text": "Tool plan `1777432280002` executed.\n\nlegacy.grep `AgentTool`:\n```text\nlegacy/typescript_engine/src/bootstrap/state.ts:11: import type { AgentColorName } from 'src/tools/AgentTool/agentColorManager.js'\nlegacy/typescript_engine/src/cli/handlers/agents.ts:13: } from '../../tools/AgentTool/agentDisplay.js'\nlegacy/typescript_engine/src/cli/handlers/agents.ts:17: } from '../../tools/AgentTool/loadAgentsDir.js'\nlegacy/typescript_engine/src/cli/print.ts:40: } from 'src/tools/AgentTool/loadAgentsDir.js'\nlegacy/typescript_engine/src/cli/print.ts:4928: require('../tools/AgentTool/loadAgentsDir.js') as typeof import('../tools/AgentTool/loadAgentsDir.js')\nlegacy/typescript_engine/src/cli/print.ts:5130: require('../tools/AgentTool/loadAgentsDir.js') as typeof import('../tools/AgentTool/loadAgentsDir.js')\nlegacy/typescript_engine/src/commands/clear/caches.ts:137: void import('../../tools/AgentTool/loadAgentsDir.js').then(\nlegacy/typescript_engine/src/commands/color/color.ts:7: } from '../../tools/AgentTool/agentColorManager.js'\nlegacy/typescript_engine/src/commands/context/context-noninteractive.ts:5: import type { AgentDefinitionsResult } from '../../tools/AgentTool/loadAgentsDir.js'\nlegacy/typescript_engine/src/commands/insights.ts:21: } from '../tools/AgentTool/constants.js'\nlegacy/typescript_engine/src/commands/statusline.tsx:3: import { AGENT_TOOL_NAME } from '../tools/AgentTool/constants.js';\nlegacy/typescript_engine/src/components/agents/AgentDetail.tsx:8: import { getAgentColor } from '../../tools/AgentTool/agentColorManager.js';\nlegacy/typescript_engine/src/components/agents/AgentDetail.tsx:9: import { getMemoryScopeDisplay } from '../../tools/AgentTool/agentMemory.js';\nlegacy/typescript_engine/src/components/agents/AgentDetail.tsx:10: import { resolveAgentTools } from '../../tools/AgentTool/agentToolUtils.js';\n...[truncated 4235 bytes]",
+      "kind": "system"
+    },
+    {
+      "ts": 1777432217,
+      "from": "Ryan@Discord",
+      "text": "oracle plan legacy glob legacy/typescript_engine/src/tools/*Tool*",
+      "kind": "human"
+    },
+    {
+      "ts": 1777432217,
+      "from": "Oracle",
+      "text": "[TOOL PLAN]\nID: 1777432263922\nRequested by: Ryan@Discord\nTask: legacy glob legacy/typescript_engine/src/tools/*Tool*\nTools: oracle.run_command, legacy.bash, legacy.powershell, legacy.lsp, legacy.grep, legacy.file_read\nExecutable action: none inferred yet\n\n1. Understand Ryan's task: legacy glob legacy/typescript_engine/src/tools/*Tool*\n2. Select source-backed KAI/Oracle capabilities from the registry.\n3. Propose these tools for approval: oracle.run_command, legacy.bash, legacy.powershell, legacy.lsp, legacy.grep, legacy.file_read\n4. Wait for Ryan to approve or deny the proposal.\n5. No concrete executable action was inferred yet; approval will not run a tool until the task is clearer.",
+      "kind": "system"
+    },
+    {
+      "ts": 1777432217,
+      "from": "Oracle",
+      "text": "Tool plan created.\nID: 1777432263922\nTask: legacy glob legacy/typescript_engine/src/tools/*Tool*\nProposed tools: oracle.run_command, legacy.bash, legacy.powershell, legacy.lsp, legacy.grep, legacy.file_read\nExecutable action: none inferred yet\nStatus: pending approval.\n\nApprove with `oracle approve tool 1777432263922`. Nothing has executed yet.",
+      "kind": "system"
+    },
+    {
+      "ts": 1777432217,
+      "from": "Ryan@Discord",
+      "text": "oracle approve tool 1777432263922",
+      "kind": "human"
+    },
+    {
+      "ts": 1777432217,
+      "from": "system",
+      "text": "[TOOL FAILED]\nProposal: legacy glob legacy/typescript_engine/src/tools/*Tool*\nTools: oracle.run_command, legacy.bash, legacy.powershell, legacy.lsp, legacy.grep, legacy.file_read\n\nNo executable action was inferred for this plan. Try a clearer command like `oracle plan read file src/main.rs`, `oracle plan list directory src/core`, `oracle plan search code MindFrame`, or `oracle plan run command cargo check --release --bin kai`.",
+      "kind": "system"
+    },
+    {
+      "ts": 1777432217,
+      "from": "Oracle",
+      "text": "Tool plan `1777432263922` failed.\n\nNo executable action was inferred for this plan. Try a clearer command like `oracle plan read file src/main.rs`, `oracle plan list directory src/core`, `oracle plan search code MindFrame`, or `oracle plan run command cargo check --release --bin kai`.",
+      "kind": "system"
+    },
+    {
+      "ts": 1777432363,
+      "from": "Ryan@Discord",
+      "text": "oracle plan legacy glob legacy/typescript_engine/src/tools/*Tool*",
+      "kind": "human"
+    },
+    {
+      "ts": 1777432363,
+      "from": "Oracle",
+      "text": "[TOOL PLAN]\nID: 1777432426230\nRequested by: Ryan@Discord\nTask: legacy glob legacy/typescript_engine/src/tools/*Tool*\nTools: oracle.list_directory, legacy.glob, oracle.run_command, legacy.bash, legacy.powershell, legacy.lsp, legacy.grep, legacy.file_read\nExecutable action: `legacy.glob` with input `legacy/typescript_engine/src/tools/*Tool*`\n\n1. Understand Ryan's task: legacy glob legacy/typescript_engine/src/tools/*Tool*\n2. Select source-backed KAI/Oracle capabilities from the registry.\n3. Propose these tools for approval: oracle.list_directory, legacy.glob, oracle.run_command, legacy.bash, legacy.powershell, legacy.lsp, legacy.grep, legacy.file_read\n4. Wait for Ryan to approve or deny the proposal.\n5. After approval, execute `legacy.glob` with input `legacy/typescript_engine/src/tools/*Tool*`.",
+      "kind": "system"
+    },
+    {
+      "ts": 1777432363,
+      "from": "Oracle",
+      "text": "Tool plan created.\nID: 1777432426230\nTask: legacy glob legacy/typescript_engine/src/tools/*Tool*\nProposed tools: oracle.list_directory, legacy.glob, oracle.run_command, legacy.bash, legacy.powershell, legacy.lsp, legacy.grep, legacy.file_read\nExecutable action: `legacy.glob` with input `legacy/typescript_engine/src/tools/*Tool*`\nStatus: pending approval.\n\nApprove with `oracle approve tool 1777432426230`. Nothing has executed yet.",
+      "kind": "system"
+    },
+    {
+      "ts": 1777432364,
+      "from": "Ryan@Discord",
+      "text": "oracle approve tool 1777432426230",
+      "kind": "human"
+    },
+    {
+      "ts": 1777432364,
+      "from": "system",
+      "text": "[TOOL DONE]\nProposal: legacy glob legacy/typescript_engine/src/tools/*Tool*\nTools: oracle.list_directory, legacy.glob, oracle.run_command, legacy.bash, legacy.powershell, legacy.lsp, legacy.grep, legacy.file_read\n\nlegacy.glob `legacy/typescript_engine/src/tools/*Tool*`:\n```text\nlegacy/typescript_engine/src/tools/AgentTool/agentColorManager.ts\nlegacy/typescript_engine/src/tools/AgentTool/agentDisplay.ts\nlegacy/typescript_engine/src/tools/AgentTool/agentMemory.ts\nlegacy/typescript_engine/src/tools/AgentTool/agentMemorySnapshot.ts\nlegacy/typescript_engine/src/tools/AgentTool/AgentTool.tsx\nlegacy/typescript_engine/src/tools/AgentTool/agentToolUtils.ts\nlegacy/typescript_engine/src/tools/AgentTool/built-in/exploreAgent.ts\nlegacy/typescript_engine/src/tools/AgentTool/built-in/generalPurposeAgent.ts\nlegacy/typescript_engine/src/tools/AgentTool/built-in/kaiGuideAgent.ts\nlegacy/typescript_engine/src/tools/AgentTool/built-in/planAgent.ts\nlegacy/typescript_engine/src/tools/AgentTool/built-in/statuslineSetup.ts\nlegacy/typescript_engine/src/tools/AgentTool/built-in/verificationAgent.ts\nlegacy/typescript_engine/src/tools/AgentTool/builtInAgents.ts\nlegacy/typescript_engine/src/tools/AgentTool/constants.ts\nlegacy/typescript_engine/src/tools/AgentTool/forkSubagent.ts\nlegacy/typescript_engine/src/tools/AgentTool/loadAgentsDir.ts\nlegacy/typescript_engine/src/tools/AgentTool/prompt.ts\nlegacy/typescript_engine/src/tools/AgentTool/resumeAgent.ts\nlegacy/typescript_engine/src/tools/AgentTool/runAgent.ts\nlegacy/typescript_engine/src/tools/AgentTool/UI.tsx\nlegacy/typescript_engine/src/tools/AskUserQuestionTool/AskUserQuestionTool.tsx\nlegacy/typescript_engine/src/tools/AskUserQuestionTool/prompt.ts\nlegacy/typescript_engine/src/tools/BashTool/bashCommandHelpers.ts\nlegacy/typescript_engine/src/tools/BashTool/bashPermissions.ts\nlegacy/typescript_engine/src/tools/BashTool/bashSecurity.ts\nlegacy/typescript_engine/src/tools/BashTool/BashTool.tsx\nlegacy/typescript_engine/src/tools/BashTool/BashToolResultMessage.tsx\nlegacy/typescript_engine/src/tools/BashTool/commandSemantics.ts\nlegacy/typescript_engine/src/tools/BashTool/commentLabel.ts\nlegacy/typescript_engine/src/tools/BashTool/destructiveCommandWarning.ts\nlegacy/typescript_engine/src/tools/BashTool/modeValidation.ts\nlegacy/typescript_engine/src/tools/BashTool/pathValidation.ts\nlegacy/typescript_engine/src/tools/BashTool/prompt.ts\nlegacy/typescript_engine/src/tools/BashTool/readOnlyValidation.ts\nlegacy/typescript_engine/src/tools/BashTool/sedEditParser.ts\nlegacy/typescript_engine/src/tools/BashTool/sedValidation.ts\nlegacy/typescript_engine/src/tools/BashTool/shouldUseSandbox.ts\nlegacy/typescript_engine/src/tools/BashTool/toolName.ts\nlegacy/typescript_engine/src/tools/BashTool/UI.tsx\nlegacy/typescript_engine/src/tools/BashTool/utils.ts\nlegacy/typescript_engine/src/tools/BriefTool/attachments.ts\nlegacy/typescript_engine/src/tools/BriefTool/BriefTool.ts\nlegacy/typescript_engine/src/tools/BriefTool/prompt.ts\nlegacy/typescript_engine/src/tools/BriefTool/UI.tsx\nlegacy/typescript_engine/src/tools/BriefTool/upload.ts\nlegacy/typescript_engine/src/tools/ConfigTool/ConfigTool.ts\nlegacy/typescript_engine/src/tools/ConfigTool/constants.ts\nlegacy/typescript_engine/src/tools/ConfigTool/prompt.ts\nlegacy/typescript_engine/src/tools/ConfigTool/supportedSettings.ts\nlegacy/typescript_engine/src/tools/ConfigTool/UI.tsx\nlegacy/typescript_engine/src/tools/EnterPlanModeTool/constants.ts\nlegacy/typescript_engine/src/tools/EnterPlanModeTool/EnterPlanModeTool.ts\nlegacy/typescript_engine/src/tools/EnterPlanModeTool/prompt.ts\nlegacy/typescript_engine/src/tools/EnterPlanModeTool/UI.tsx\nlegacy/typescript_engine/src/tools/EnterWorktreeTool/constants.ts\nlegacy/...[truncated 1545 bytes]",
+      "kind": "system"
+    },
+    {
+      "ts": 1777432364,
+      "from": "Oracle",
+      "text": "Tool plan `1777432426230` executed.\n\nlegacy.glob `legacy/typescript_engine/src/tools/*Tool*`:\n```text\nlegacy/typescript_engine/src/tools/AgentTool/agentColorManager.ts\nlegacy/typescript_engine/src/tools/AgentTool/agentDisplay.ts\nlegacy/typescript_engine/src/tools/AgentTool/agentMemory.ts\nlegacy/typescript_engine/src/tools/AgentTool/agentMemorySnapshot.ts\nlegacy/typescript_engine/src/tools/AgentTool/AgentTool.tsx\nlegacy/typescript_engine/src/tools/AgentTool/agentToolUtils.ts\nlegacy/typescript_engine/src/tools/AgentTool/built-in/exploreAgent.ts\nlegacy/typescript_engine/src/tools/AgentTool/built-in/generalPurposeAgent.ts\nlegacy/typescript_engine/src/tools/AgentTool/built-in/kaiGuideAgent.ts\nlegacy/typescript_engine/src/tools/AgentTool/built-in/planAgent.ts\nlegacy/typescript_engine/src/tools/AgentTool/built-in/statuslineSetup.ts\nlegacy/typescript_engine/src/tools/AgentTool/built-in/verificationAgent.ts\nlegacy/typescript_engine/src/tools/AgentTool/builtInAgents.ts\nlegacy/typescript_engine/src/tools/AgentTool/constants.ts\nlegacy/typescript_engine/src/tools/AgentTool/forkSubagent.ts\nlegacy/typescript_engine/src/tools/AgentTool/loadAgentsDir.ts\nlegacy/typescript_engine/src/tools/AgentTool/prompt.ts\nlegacy/typescript_engine/src/tools/AgentTool/resumeAgent.ts\nlegacy/typescript_engine/src/tools/AgentTool/runAgent.ts\nlegacy/typescript_engine/src/tools/AgentTool/UI.tsx\nlegacy/typescript_engine/src/tools/AskUserQuestionTool/AskUserQuestionTool.tsx\nlegacy/typescript_engine/src/tools/AskUserQuestionTool/prompt.ts\nlegacy/typescript_engine/src/tools/BashTool/bashCommandHelpers.ts\nlegacy/typescript_engine/src/tools/BashTool/bashPermissions.ts\nlegacy/typescript_engine/src/tools/BashTool/bashSecurity.ts\nlegacy/typescript_engine/src/tools/BashTool/BashTool.tsx\nlegacy/typescript_engine/src/tools/BashTool/BashToolResultMessage.ts...[truncated 3245 bytes]",
+      "kind": "system"
+    }
+  ],
+  "drafts": {},
+  "vitals": {
+    "tick": 0,
+    "phi_g": 0.0,
+    "chi": 0.0,
+    "rho": 0.0,
+    "valence": 0.0,
+    "mood": "engaged",
+    "cell_count": 649
+  },
+  "pending_tests": [],
+  "pending_tools": [
+    {
+      "id": 1777430246697,
+      "requested_by": "Ryan@Discord",
+      "task": "inspect KAI social replies and propose what source-backed tools are needed",
+      "plan": [
+        "Understand Ryan's task: inspect KAI social replies and propose what source-backed tools are needed",
+        "Select source-backed KAI/Oracle capabilities from the registry; do not execute yet.",
+        "Propose these tools for approval: kai.bridge.code_tools, kai.bridge.git_tools, kai.main.cli, kai.cognition.voice, kai.cognition.ollama_voice, kai.cognition.working_memory",
+        "Wait for Ryan to approve or deny the proposal.",
+        "After approval, execute only through a future adapter scoped to the approved tool ids."
+      ],
+      "tools": [
+        {
+          "id": "kai.bridge.code_tools",
+          "label": "Code Tools",
+          "source_path": "src/bridge/code_tools.rs",
+          "capability": "Source inspection and code-analysis helpers for Oracle-style agent work.",
+          "risk": "read-only-code",
+          "status": "proposed"
+        },
+        {
+          "id": "kai.bridge.git_tools",
+          "label": "Git Tools",
+          "source_path": "src/bridge/git_tools.rs",
+          "capability": "Repository status, diff, and git-oriented workflow helpers.",
+          "risk": "repo-write-risk",
+          "status": "proposed"
+        },
+        {
+          "id": "kai.main.cli",
+          "label": "Main CLI/TUI",
+          "source_path": "src/main.rs",
+          "capability": "Headless Oracle mode, TUI entry points, diagnostics, and command references.",
+          "risk": "interactive-runtime",
+          "status": "proposed"
+        },
+        {
+          "id": "kai.cognition.voice",
+          "label": "Voice",
+          "source_path": "src/cognition/voice.rs",
+          "capability": "Rule/local voice synthesis layer for turning grounded memory into replies.",
+          "risk": "reply-output",
+          "status": "proposed"
+        },
+        {
+          "id": "kai.cognition.ollama_voice",
+          "label": "Ollama Voice",
+          "source_path": "src/cognition/ollama_voice.rs",
+          "capability": "Optional small local LLM mouth bridge for more natural language.",
+          "risk": "model-call",
+          "status": "proposed"
+        },
+        {
+          "id": "kai.cognition.working_memory",
+          "label": "Working Memory",
+          "source_path": "src/cognition/working_memory.rs",
+          "capability": "Short-term context continuity and recent conversational state.",
+          "risk": "memory-state",
+          "status": "proposed"
+        }
+      ],
+      "action": null,
+      "status": "execution-not-implemented",
+      "result": "Approved, but execution is intentionally not implemented in this phase. This is the registry and approval skeleton only."
+    },
+    {
+      "id": 1777430312195,
+      "requested_by": "Ryan@Oracle",
+      "task": "check why Kai social conversation feels generic",
+      "plan": [
+        "Understand Ryan's task: check why Kai social conversation feels generic",
+        "Select source-backed KAI/Oracle capabilities from the registry; do not execute yet.",
+        "Propose these tools for approval: kai.cognition.voice, kai.cognition.ollama_voice, kai.cognition.working_memory",
+        "Wait for Ryan to approve or deny the proposal.",
+        "After approval, execute only through a future adapter scoped to the approved tool ids."
+      ],
+      "tools": [
+        {
+          "id": "kai.cognition.voice",
+          "label": "Voice",
+          "source_path": "src/cognition/voice.rs",
+          "capability": "Rule/local voice synthesis layer for turning grounded memory into replies.",
+          "risk": "reply-output",
+          "status": "proposed"
+        },
+        {
+          "id": "kai.cognition.ollama_voice",
+          "label": "Ollama Voice",
+          "source_path": "src/cognition/ollama_voice.rs",
+          "capability": "Optional small local LLM mouth bridge for more natural language.",
+          "risk": "model-call",
+          "status": "proposed"
+        },
+        {
+          "id": "kai.cognition.working_memory",
+          "label": "Working Memory",
+          "source_path": "src/cognition/working_memory.rs",
+          "capability": "Short-term context continuity and recent conversational state.",
+          "risk": "memory-state",
+          "status": "proposed"
+        }
+      ],
+      "action": null,
+      "status": "pending",
+      "result": null
+    },
+    {
+      "id": 1777430480883,
+      "requested_by": "Ryan@Discord",
+      "task": "inspect KAI voice and social conversation routing",
+      "plan": [
+        "Understand Ryan's task: inspect KAI voice and social conversation routing",
+        "Select source-backed KAI/Oracle capabilities from the registry; do not execute yet.",
+        "Propose these tools for approval: kai.cognition.voice, kai.cognition.ollama_voice, kai.cognition.working_memory, kai.core.mind_frame, kai.cognition.global_workspace, kai.core.engine",
+        "Wait for Ryan to approve or deny the proposal.",
+        "After approval, execute only through a future adapter scoped to the approved tool ids."
+      ],
+      "tools": [
+        {
+          "id": "kai.cognition.voice",
+          "label": "Voice",
+          "source_path": "src/cognition/voice.rs",
+          "capability": "Rule/local voice synthesis layer for turning grounded memory into replies.",
+          "risk": "reply-output",
+          "status": "proposed"
+        },
+        {
+          "id": "kai.cognition.ollama_voice",
+          "label": "Ollama Voice",
+          "source_path": "src/cognition/ollama_voice.rs",
+          "capability": "Optional small local LLM mouth bridge for more natural language.",
+          "risk": "model-call",
+          "status": "proposed"
+        },
+        {
+          "id": "kai.cognition.working_memory",
+          "label": "Working Memory",
+          "source_path": "src/cognition/working_memory.rs",
+          "capability": "Short-term context continuity and recent conversational state.",
+          "risk": "memory-state",
+          "status": "proposed"
+        },
+        {
+          "id": "kai.core.mind_frame",
+          "label": "MindFrame",
+          "source_path": "src/core/mind_frame.rs",
+          "capability": "Residual control frame for attention authority, source blocking, and answer routing.",
+          "risk": "routing-authority",
+          "status": "proposed"
+        },
+        {
+          "id": "kai.cognition.global_workspace",
+          "label": "Global Workspace",
+          "source_path": "src/cognition/global_workspace.rs",
+          "capability": "Attention/broadcast candidates for conscious-style routing.",
+          "risk": "attention-routing",
+          "status": "proposed"
+        },
+        {
+          "id": "kai.core.engine",
+          "label": "Engine",
+          "source_path": "src/core/engine.rs",
+          "capability": "Central KAI reasoning path, routing, mind memory, and answer assembly.",
+          "risk": "routing-state",
+          "status": "proposed"
+        }
+      ],
+      "action": null,
+      "status": "execution-not-implemented",
+      "result": "Approved, but execution is intentionally not implemented in this phase. This is the registry and approval skeleton only."
+    },
+    {
+      "id": 1777430986609,
+      "requested_by": "Ryan@Discord",
+      "task": "read file Cargo.toml",
+      "plan": [
+        "Understand Ryan's task: read file Cargo.toml",
+        "Select source-backed KAI/Oracle capabilities from the registry.",
+        "Propose these tools for approval: oracle.read_file, kai.bridge.code_tools, kai.bridge.git_tools, kai.main.cli",
+        "Wait for Ryan to approve or deny the proposal.",
+        "After approval, execute `oracle.read_file` with input `Cargo.toml`."
+      ],
+      "tools": [
+        {
+          "id": "oracle.read_file",
+          "label": "Read File",
+          "source_path": "src/bridge/oracle_server.rs",
+          "capability": "Read a non-sensitive project file after approval.",
+          "risk": "read-only-file",
+          "status": "proposed"
+        },
+        {
+          "id": "kai.bridge.code_tools",
+          "label": "Code Tools",
+          "source_path": "src/bridge/code_tools.rs",
+          "capability": "Source inspection and code-analysis helpers for Oracle-style agent work.",
+          "risk": "read-only-code",
+          "status": "proposed"
+        },
+        {
+          "id": "kai.bridge.git_tools",
+          "label": "Git Tools",
+          "source_path": "src/bridge/git_tools.rs",
+          "capability": "Repository status, diff, and git-oriented workflow helpers.",
+          "risk": "repo-write-risk",
+          "status": "proposed"
+        },
+        {
+          "id": "kai.main.cli",
+          "label": "Main CLI/TUI",
+          "source_path": "src/main.rs",
+          "capability": "Headless Oracle mode, TUI entry points, diagnostics, and command references.",
+          "risk": "interactive-runtime",
+          "status": "proposed"
+        }
+      ],
+      "action": {
+        "tool_id": "oracle.read_file",
+        "input": "Cargo.toml"
+      },
+      "status": "done",
+      "result": "read_file `Cargo.toml`:\n```text\n[package]\nname = \"kai\"\nversion = \"6.0.0\"\nedition = \"2021\"\nauthors = [\"Ryan Ervin <PandaProductionsLogo>\"]\ndescription = \"KAI RSHL UI — Geometric Intelligence Engine\"\nlicense = \"MIT\"\n\n[lib]\nname = \"kai\"\npath = \"src/lib.rs\"\n\n[[bin]]\nname = \"kai\"\npath = \"src/main.rs\"\n\n[dependencies]\nratatui = \"0.29\"\ncrossterm = \"0.28\"\ntokio = { version = \"1\", features = [\"full\"] }\nserde = { version = \"1\", features = [\"derive\"] }\nserde_json = \"1\"\nrand = \"0.8\"\nunicode-width = \"0.2\"\ncrossbeam-channel = \"0.5\"\nrayon = \"1.10\"\nureq = { version = \"2\", features = [\"json\"] }\nchrono = \"0.4\"\nlopdf = \"0.34\"\n\n[profile.release]\nopt-level = 3\nlto = true\ncodegen-units = 1\n\n```"
+    },
+    {
+      "id": 1777430985247,
+      "requested_by": "Ryan@Discord",
+      "task": "list directory src/core",
+      "plan": [
+        "Understand Ryan's task: list directory src/core",
+        "Select source-backed KAI/Oracle capabilities from the registry.",
+        "Propose these tools for approval: oracle.list_directory, oracle.run_command",
+        "Wait for Ryan to approve or deny the proposal.",
+        "After approval, execute `oracle.list_directory` with input `src/core`."
+      ],
+      "tools": [
+        {
+          "id": "oracle.list_directory",
+          "label": "List Directory",
+          "source_path": "src/bridge/oracle_server.rs",
+          "capability": "List files and folders under a project directory after approval.",
+          "risk": "read-only-file",
+          "status": "proposed"
+        },
+        {
+          "id": "oracle.run_command",
+          "label": "Run Safe Command",
+          "source_path": "src/bridge/oracle_server.rs",
+          "capability": "Run a small whitelist of non-destructive commands after approval.",
+          "risk": "safe-command",
+          "status": "proposed"
+        }
+      ],
+      "action": {
+        "tool_id": "oracle.list_directory",
+        "input": "src/core"
+      },
+      "status": "done",
+      "result": "list_directory `src/core`:\n```text\nattention.rs\ncalibration.rs\nclaim.rs\nclaimstore.rs\ncontradiction.rs\nembeddings.rs\nengine.rs\nevidence.rs\nfield_state.rs\nlexicon.rs\nmemory.rs\nmind_frame.rs\nmod.rs\nnormalize.rs\noscillator.rs\npredictive.rs\nreasoning.rs\nregions.rs\nseed.rs\nsparse_vec.rs\nspiral.rs\nstat_lexicon.rs\ntest_write.rs\nuniverse.rs\n```"
+    },
+    {
+      "id": 1777431009447,
+      "requested_by": "Ryan@Discord",
+      "task": "search code MindFrame",
+      "plan": [
+        "Understand Ryan's task: search code MindFrame",
+        "Select source-backed KAI/Oracle capabilities from the registry.",
+        "Propose these tools for approval: oracle.search_code, kai.bridge.code_tools, kai.bridge.git_tools, kai.main.cli, kai.core.mind_frame, kai.cognition.global_workspace",
+        "Wait for Ryan to approve or deny the proposal.",
+        "After approval, execute `oracle.search_code` with input `MindFrame`."
+      ],
+      "tools": [
+        {
+          "id": "oracle.search_code",
+          "label": "Search Code",
+          "source_path": "src/bridge/oracle_server.rs",
+          "capability": "Search project source/text files for a term after approval.",
+          "risk": "read-only-code",
+          "status": "proposed"
+        },
+        {
+          "id": "kai.bridge.code_tools",
+          "label": "Code Tools",
+          "source_path": "src/bridge/code_tools.rs",
+          "capability": "Source inspection and code-analysis helpers for Oracle-style agent work.",
+          "risk": "read-only-code",
+          "status": "proposed"
+        },
+        {
+          "id": "kai.bridge.git_tools",
+          "label": "Git Tools",
+          "source_path": "src/bridge/git_tools.rs",
+          "capability": "Repository status, diff, and git-oriented workflow helpers.",
+          "risk": "repo-write-risk",
+          "status": "proposed"
+        },
+        {
+          "id": "kai.main.cli",
+          "label": "Main CLI/TUI",
+          "source_path": "src/main.rs",
+          "capability": "Headless Oracle mode, TUI entry points, diagnostics, and command references.",
+          "risk": "interactive-runtime",
+          "status": "proposed"
+        },
+        {
+          "id": "kai.core.mind_frame",
+          "label": "MindFrame",
+          "source_path": "src/core/mind_frame.rs",
+          "capability": "Residual control frame for attention authority, source blocking, and answer routing.",
+          "risk": "routing-authority",
+          "status": "proposed"
+        },
+        {
+          "id": "kai.cognition.global_workspace",
+          "label": "Global Workspace",
+          "source_path": "src/cognition/global_workspace.rs",
+          "capability": "Attention/broadcast candidates for conscious-style routing.",
+          "risk": "attention-routing",
+          "status": "proposed"
+        }
+      ],
+      "action": {
+        "tool_id": "oracle.search_code",
+        "input": "MindFrame"
+      },
+      "status": "done",
+      "result": "search_code `MindFrame`:\n```text\nARCHITECTURE.md:38: - **MindFrame**: Semantic router that manages memory regions (Self, Personal, World, Narrative).\nARCHITECTURE.md:56: 2. **Analysis**: Engine routes query through MindFrame.\nCHANGELOG.md:35: ### Commit 5 — Feature: MindFrame Semantic Routing\nREADME.md:30: - **MindFrame Query Routing**: Advanced semantic navigation through Self-State, Personal, World, and Narrative memory regions.\nsrc/bridge/oracle_server.rs:833: None => Err(\"No executable action was inferred for this plan. Try a clearer command like `oracle plan read file src/main.rs`, `oracle plan list directory src/core`, `oracle plan se...[truncated 98 bytes]\nsrc/bridge/oracle_server.rs:870: tool_def(\"kai.core.mind_frame\", \"MindFrame\", \"src/core/mind_frame.rs\", \"Residual control frame for attention authority, source blocking, and answer routing.\", \"routing-authority\"),\nsrc/bridge/oracle_server.rs:930: if contains_any(&lower, &[\"attention\", \"workspace\", \"mindframe\", \"route\", \"routing\", \"focus\"]) {\nsrc/core/engine.rs:131: crate::core::MindFrame::from_query(query).requires_mind_memory()\nsrc/core/engine.rs:151: pub fn contribute_to_mind_frame(&self, frame: &mut MindFrame) {\nsrc/core/engine.rs:290: frame.mark_observed(\"thalamus\", self.thalamus.gate_gain, \"attention gate is not wired into MindFrame routing yet\");\nsrc/core/engine.rs:291: frame.mark_observed(\"cerebellum\", self.cerebellum.precision_score, \"precision model is not wired into MindFrame routing yet\");\nsrc/core/engine.rs:322: \"exists in the brain stack but has no direct MindFrame authority in this pass\",\nsrc/core/engine.rs:353: frame.mark_decorative(module, \"processes or stores local state but has no MindFrame authority yet\");\nsrc/core/mind_frame.rs:51: pub struct MindFrame {\nsrc/core/mind_frame.rs:70: impl MindFrame {\nsrc/core/mind_frame.rs:469: use super::{MindAction, MindFrame, MindIntent};\nsrc/core/mind_frame.rs:473: let frame = MindFrame::from_query(\"what is my name?\");\nsrc/core/mind_frame.rs:483: let frame = MindFrame::from_query(\"what is your narrative from this memory?\");\nsrc/core/mind_frame.rs:492: let frame = MindFrame::from_query(\"what is the capital of France?\");\nsrc/core/mod.rs:28: AttentionHeadScore, MindAction, MindFrame, MindIntent, ModuleContribution,\nsrc/core/seed.rs:60: \"MindFrame is KAI central cognitive authority manages attention routing \\\nsrc/core/universe.rs:264: \"MindFrame is KAI central cognitive authority manages attention routing \\\nsrc/core/universe.rs:269: \"MindFrame routes input through cognition modules amygdala hippocampus \\\nsrc/core/universe.rs:634: /// Query for cells, but only within specific MindFrame regions (e.g. \"SelfState\", \"World\").\nsrc/core/universe.rs:1008: /// his own architecture (MindFrame, ClaimStore, regions, etc.) because\nsrc/main.rs:4663: let mut mind_frame = kai::core::MindFrame::from_query(&reasoning_input);\nsrc/main.rs:7274: fn diagnose_mindframe(args: &[String]) {\nsrc/main.rs:7279: .position(|a| a == \"diagnose-mindframe\" || a == \"--diagnose-mindframe\");\nsrc/main.rs:7306: println!(\"mindframe_diagnostic: start\");\nsrc/main.rs:7308: let mut frame = kai::core::MindFrame::from_query(&query);\nsrc/main.rs:7362: println!(\"mindframe_diagnostic: done\");\nsrc/main.rs:9791: .any(|a| a == \"diagnose-mindframe\" || a == \"--diagnose-mindframe\")\nsrc/main.rs:9793: diagnose_mindframe(&args);\nVISION.md:27: - `src/core/`: The objective engine. Universe, SparseVec, Engine, Claims, MindFrame.\n```"
+    },
+    {
+      "id": 1777431084954,
+      "requested_by": "Ryan@Discord",
+      "task": "run command cargo check --release --bin kai",
+      "plan": [
+        "Understand Ryan's task: run command cargo check --release --bin kai",
+        "Select source-backed KAI/Oracle capabilities from the registry.",
+        "Propose these tools for approval: oracle.run_command, kai.bridge.code_tools, kai.bridge.git_tools, kai.main.cli",
+        "Wait for Ryan to approve or deny the proposal.",
+        "After approval, execute `oracle.run_command` with input `cargo check --release --bin kai`."
+      ],
+      "tools": [
+        {
+          "id": "oracle.run_command",
+          "label": "Run Safe Command",
+          "source_path": "src/bridge/oracle_server.rs",
+          "capability": "Run a small whitelist of non-destructive commands after approval.",
+          "risk": "safe-command",
+          "status": "proposed"
+        },
+        {
+          "id": "kai.bridge.code_tools",
+          "label": "Code Tools",
+          "source_path": "src/bridge/code_tools.rs",
+          "capability": "Source inspection and code-analysis helpers for Oracle-style agent work.",
+          "risk": "read-only-code",
+          "status": "proposed"
+        },
+        {
+          "id": "kai.bridge.git_tools",
+          "label": "Git Tools",
+          "source_path": "src/bridge/git_tools.rs",
+          "capability": "Repository status, diff, and git-oriented workflow helpers.",
+          "risk": "repo-write-risk",
+          "status": "proposed"
+        },
+        {
+          "id": "kai.main.cli",
+          "label": "Main CLI/TUI",
+          "source_path": "src/main.rs",
+          "capability": "Headless Oracle mode, TUI entry points, diagnostics, and command references.",
+          "risk": "interactive-runtime",
+          "status": "proposed"
+        }
+      ],
+      "action": {
+        "tool_id": "oracle.run_command",
+        "input": "cargo check --release --bin kai"
+      },
+      "status": "done",
+      "result": "run_command `cargo check --release --bin kai`:\n```text\nwarning: unused imports: `omega` and `psi_bridge`\n  --> src\\core\\field_state.rs:27:26\n   |\n27 |     compute_region_core, omega, phi_left, phi_right, psi_bridge, r_cross, select_top_k, Region,\n   |                          ^^^^^                       ^^^^^^^^^^\n   |\n   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default\n\nwarning: unused import: `std::time::Instant`\n --> src\\streams\\cpu_stream.rs:9:5\n  |\n9 | use std::time::Instant;\n  |     ^^^^^^^^^^^^^^^^^^\n\nwarning: unused import: `std::time::Instant`\n  --> src\\streams\\ram_stream.rs:10:5\n   |\n10 | use std::time::Instant;\n   |     ^^^^^^^^^^^^^^^^^^\n\nwarning: unused variable: `target_focus`\n   --> src\\core\\engine.rs:827:13\n    |\n827 |         let target_focus = (self.pfc.meta_confidence * 0.20\n    |             ^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_target_focus`\n    |\n    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default\n\nwarning: unused variable: `phi_l`\n   --> src\\core\\field_state.rs:479:13\n    |\n479 |         let phi_l = phi_left(&left);\n    |             ^^^^^ help: if this is intentional, prefix it with an underscore: `_phi_l`\n\nwarning: unused variable: `phi_r`\n   --> src\\core\\field_state.rs:492:13\n    |\n492 |         let phi_r = phi_right(&right);\n    |             ^^^^^ help: if this is intentional, prefix it with an underscore: `_phi_r`\n\nwarning: unused variable: `rc`\n   --> src\\core\\field_state.rs:497:13\n    |\n497 |         let rc = r_cross(&top_l, &top_r);\n    |             ^^ help: if this is intentional, prefix it with an underscore: `_rc`\n\nwarning: constant `BOREDOM_SCALE` is never used\n  --> src\\drive\\mod.rs:40:7\n   |\n40 | const BOREDOM_SCALE: f32 = 0.3;\n   |       ^^^^^^^^^^^^^\n   |\n   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default\n\nwarning: `kai` (lib) generated 8 warnings (run `cargo fix --lib -p kai` to apply 7 suggestions)\nwarning: unused import: `PromotionThresholds`\n  --> src\\main.rs:10:66\n   |\n10 |     detect_query_type, BrainSignals, CandidateBuffer, MoodState, PromotionThresholds,\n   |                                                                  ^^^^^^^^^^^^^^^^^^^\n   |\n   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default\n\nwarning: `kai` (bin \"kai\") generated 1 warning (run `cargo fix --bin \"kai\" -p kai` to apply 1 suggestion)\n    Finished `release` profile [optimized] target(s) in 0.22s\n\n```"
+    },
+    {
+      "id": 1777431461885,
+      "requested_by": "Ryan@Discord",
+      "task": "use agent tools and grep to inspect why KAI social conversation is stiff",
+      "plan": [
+        "Understand Ryan's task: use agent tools and grep to inspect why KAI social conversation is stiff",
+        "Select source-backed KAI/Oracle capabilities from the registry.",
+        "Propose these tools for approval: oracle.search_code, legacy.grep, legacy.glob, oracle.run_command, legacy.bash, legacy.powershell, legacy.agent_tool, legacy.task_management",
+        "Wait for Ryan to approve or deny the proposal.",
+        "No concrete executable action was inferred yet; approval will not run a tool until the task is clearer."
+      ],
+      "tools": [
+        {
+          "id": "oracle.search_code",
+          "label": "Search Code",
+          "source_path": "src/bridge/oracle_server.rs",
+          "capability": "Search project source/text files for a term after approval.",
+          "risk": "read-only-code",
+          "status": "proposed"
+        },
+        {
+          "id": "legacy.grep",
+          "label": "Legacy GrepTool",
+          "source_path": "legacy/typescript_engine/src/tools/GrepTool",
+          "capability": "High-speed code/text search design.",
+          "risk": "read-only-code-reference",
+          "status": "proposed"
+        },
+        {
+          "id": "legacy.glob",
+          "label": "Legacy GlobTool",
+          "source_path": "legacy/typescript_engine/src/tools/GlobTool",
+          "capability": "Glob/listing patterns for repository discovery.",
+          "risk": "read-only-code-reference",
+          "status": "proposed"
+        },
+        {
+          "id": "oracle.run_command",
+          "label": "Run Safe Command",
+          "source_path": "src/bridge/oracle_server.rs",
+          "capability": "Run a small whitelist of non-destructive commands after approval.",
+          "risk": "safe-command",
+          "status": "proposed"
+        },
+        {
+          "id": "legacy.bash",
+          "label": "Legacy BashTool",
+          "source_path": "legacy/typescript_engine/src/tools/BashTool",
+          "capability": "Shell execution design with command semantics, path validation, permissions, and destructive-command warnings.",
+          "risk": "high-risk-shell-adapter",
+          "status": "proposed"
+        },
+        {
+          "id": "legacy.powershell",
+          "label": "Legacy PowerShellTool",
+          "source_path": "legacy/typescript_engine/src/tools/PowerShellTool",
+          "capability": "Windows-native command design with CLM types, path validation, permissions, and safety checks.",
+          "risk": "high-risk-shell-adapter",
+          "status": "proposed"
+        },
+        {
+          "id": "legacy.agent_tool",
+          "label": "Legacy AgentTool",
+          "source_path": "legacy/typescript_engine/src/tools/AgentTool",
+          "capability": "Sub-agent orchestration, built-in agent roles, memory snapshots, resume/fork/run flows.",
+          "risk": "agent-orchestration",
+          "status": "proposed"
+        },
+        {
+          "id": "legacy.task_management",
+          "label": "Legacy Task Tools",
+          "source_path": "legacy/typescript_engine/src/tools/TaskCreateTool",
+          "capability": "Task create/get/list/update/output/stop workflow patterns.",
+          "risk": "agent-task-reference",
+          "status": "proposed"
+        }
+      ],
+      "action": null,
+      "status": "pending",
+      "result": null
+    },
+    {
+      "id": 1777431418703,
+      "requested_by": "Ryan@Discord",
+      "task": "search code AgentTool",
+      "plan": [
+        "Understand Ryan's task: search code AgentTool",
+        "Select source-backed KAI/Oracle capabilities from the registry.",
+        "Propose these tools for approval: oracle.search_code, legacy.grep, legacy.glob, legacy.agent_tool, legacy.task_management, legacy.team, legacy.send_message, kai.bridge.code_tools",
+        "Wait for Ryan to approve or deny the proposal.",
+        "After approval, execute `oracle.search_code` with input `AgentTool`."
+      ],
+      "tools": [
+        {
+          "id": "oracle.search_code",
+          "label": "Search Code",
+          "source_path": "src/bridge/oracle_server.rs",
+          "capability": "Search project source/text files for a term after approval.",
+          "risk": "read-only-code",
+          "status": "proposed"
+        },
+        {
+          "id": "legacy.grep",
+          "label": "Legacy GrepTool",
+          "source_path": "legacy/typescript_engine/src/tools/GrepTool",
+          "capability": "High-speed code/text search design.",
+          "risk": "read-only-code-reference",
+          "status": "proposed"
+        },
+        {
+          "id": "legacy.glob",
+          "label": "Legacy GlobTool",
+          "source_path": "legacy/typescript_engine/src/tools/GlobTool",
+          "capability": "Glob/listing patterns for repository discovery.",
+          "risk": "read-only-code-reference",
+          "status": "proposed"
+        },
+        {
+          "id": "legacy.agent_tool",
+          "label": "Legacy AgentTool",
+          "source_path": "legacy/typescript_engine/src/tools/AgentTool",
+          "capability": "Sub-agent orchestration, built-in agent roles, memory snapshots, resume/fork/run flows.",
+          "risk": "agent-orchestration",
+          "status": "proposed"
+        },
+        {
+          "id": "legacy.task_management",
+          "label": "Legacy Task Tools",
+          "source_path": "legacy/typescript_engine/src/tools/TaskCreateTool",
+          "capability": "Task create/get/list/update/output/stop workflow patterns.",
+          "risk": "agent-task-reference",
+          "status": "proposed"
+        },
+        {
+          "id": "legacy.team",
+          "label": "Legacy Team Tools",
+          "source_path": "legacy/typescript_engine/src/tools/TeamCreateTool",
+          "capability": "Team create/delete collaboration patterns.",
+          "risk": "agent-orchestration-reference",
+          "status": "proposed"
+        },
+        {
+          "id": "legacy.send_message",
+          "label": "Legacy SendMessageTool",
+          "source_path": "legacy/typescript_engine/src/tools/SendMessageTool",
+          "capability": "External/roundtable messaging pattern.",
+          "risk": "message-output-reference",
+          "status": "proposed"
+        },
+        {
+          "id": "kai.bridge.code_tools",
+          "label": "Code Tools",
+          "source_path": "src/bridge/code_tools.rs",
+          "capability": "Source inspection and code-analysis helpers for Oracle-style agent work.",
+          "risk": "read-only-code",
+          "status": "proposed"
+        }
+      ],
+      "action": {
+        "tool_id": "oracle.search_code",
+        "input": "AgentTool"
+      },
+      "status": "done",
+      "result": "search_code `AgentTool`:\n```text\ndata/oracle-sessions/0.json:633: \"text\": \"oracle plan search code AgentTool\",\ndata/oracle-sessions/0.json:639: \"text\": \"[TOOL PLAN]\\nID: 1777431418703\\nRequested by: Ryan@Discord\\nTask: search code AgentTool\\nTools: oracle.search_code, legacy.grep, legacy.glob, legacy.agent_tool, legacy.tas...[truncated 562 bytes]\ndata/oracle-sessions/0.json:645: \"text\": \"Tool plan created.\\nID: 1777431418703\\nTask: search code AgentTool\\nProposed tools: oracle.search_code, legacy.grep, legacy.glob, legacy.agent_tool, legacy.task_management...[truncated 229 bytes]\ndata/oracle-sessions/0.json:1102: \"label\": \"Legacy AgentTool\",\ndata/oracle-sessions/0.json:1103: \"source_path\": \"legacy/typescript_engine/src/tools/AgentTool\",\ndata/oracle-sessions/0.json:1124: \"task\": \"search code AgentTool\",\ndata/oracle-sessions/0.json:1126: \"Understand Ryan's task: search code AgentTool\",\ndata/oracle-sessions/0.json:1130: \"After approval, execute `oracle.search_code` with input `AgentTool`.\"\ndata/oracle-sessions/0.json:1159: \"label\": \"Legacy AgentTool\",\ndata/oracle-sessions/0.json:1160: \"source_path\": \"legacy/typescript_engine/src/tools/AgentTool\",\ndata/oracle-sessions/0.json:1200: \"input\": \"AgentTool\"\ndata/oracle_session.json:633: \"text\": \"oracle plan search code AgentTool\",\ndata/oracle_session.json:639: \"text\": \"[TOOL PLAN]\\nID: 1777431418703\\nRequested by: Ryan@Discord\\nTask: search code AgentTool\\nTools: oracle.search_code, legacy.grep, legacy.glob, legacy.agent_tool, legacy.tas...[truncated 562 bytes]\ndata/oracle_session.json:645: \"text\": \"Tool plan created.\\nID: 1777431418703\\nTask: search code AgentTool\\nProposed tools: oracle.search_code, legacy.grep, legacy.glob, legacy.agent_tool, legacy.task_management...[truncated 229 bytes]\ndata/oracle_session.json:1102: \"label\": \"Legacy AgentTool\",\ndata/oracle_session.json:1103: \"source_path\": \"legacy/typescript_engine/src/tools/AgentTool\",\ndata/oracle_session.json:1124: \"task\": \"search code AgentTool\",\ndata/oracle_session.json:1126: \"Understand Ryan's task: search code AgentTool\",\ndata/oracle_session.json:1130: \"After approval, execute `oracle.search_code` with input `AgentTool`.\"\ndata/oracle_session.json:1159: \"label\": \"Legacy AgentTool\",\ndata/oracle_session.json:1160: \"source_path\": \"legacy/typescript_engine/src/tools/AgentTool\",\ndata/oracle_session.json:1200: \"input\": \"AgentTool\"\nlegacy/typescript_engine/src/bootstrap/state.ts:11: import type { AgentColorName } from 'src/tools/AgentTool/agentColorManager.js'\nlegacy/typescript_engine/src/cli/handlers/agents.ts:13: } from '../../tools/AgentTool/agentDisplay.js'\nlegacy/typescript_engine/src/cli/handlers/agents.ts:17: } from '../../tools/AgentTool/loadAgentsDir.js'\nlegacy/typescript_engine/src/cli/print.ts:40: } from 'src/tools/AgentTool/loadAgentsDir.js'\nlegacy/typescript_engine/src/cli/print.ts:4928: require('../tools/AgentTool/loadAgentsDir.js') as typeof import('../tools/AgentTool/loadAgentsDir.js')\nlegacy/typescript_engine/src/cli/print.ts:5130: require('../tools/AgentTool/loadAgentsDir.js') as typeof import('../tools/AgentTool/loadAgentsDir.js')\nlegacy/typescript_engine/src/commands/clear/caches.ts:137: void import('../../tools/AgentTool/loadAgentsDir.js').then(\nlegacy/typescript_engine/src/commands/color/color.ts:7: } from '../../tools/AgentTool/agentColorManager.js'\nlegacy/typescript_engine/src/commands/context/context-noninteractive.ts:5: import type { AgentDefinitionsResult } from '../../tools/AgentTool/loadAgentsDir.js'\nlegacy/typescript_engine/src/commands/insights.ts:21: } from '../tools/AgentTool/constants.js'\nlegacy/typescript_engine/src/commands/statusline.tsx:3: import { AGENT_TOOL_NAME } from '../tools/AgentTool/constants.js';\nlegacy/typescript_engine/src/components/agents/AgentDetail.tsx:8: import { getAgentColor } from '../../tools/AgentTool/agentColorManager.js';\nlegacy/typescript_engine/src/components/agents/AgentDetail.tsx:9: import { getMemoryScopeDisplay } from '../../tools/AgentTool/agentMemory.js';\nlegacy/typescript_engine/src/components/agents/AgentDetail.tsx:10: import { resolveAgentTools } from '../../tools/AgentTool/agentToolUtils.js';\nlegacy/typescript_engine/src/components/agents/AgentDetail.tsx:11: import { type AgentDefinition, isBuiltInAgent } from '../../tools/AgentTool/loadAgentsDir.js';\nlegacy/typescript_engine/src/components/agents/AgentDetail.tsx:28: const resolvedTools = resolveAgentTools(agent, tools, false);\nlegacy/typescript_engine/src/components/agents/AgentEditor.tsx:10: import { type AgentColorName, setAgentColor } from '../../tools/AgentTool/agentColorManager.js';\nlegacy/typescript_engine/src/components/agents/AgentEditor.tsx:11: import { type AgentDefinition, getActiveAgentsFromList, isCustomAgent, isPluginAgent } from '../../tools/AgentTool/loadAgentsDir.js';\n```"
+    },
+    {
+      "id": 1777431607859,
+      "requested_by": "Ryan@Discord",
+      "task": "search code AgentTool",
+      "plan": [
+        "Understand Ryan's task: search code AgentTool",
+        "Select source-backed KAI/Oracle capabilities from the registry.",
+        "Propose these tools for approval: oracle.search_code, legacy.grep, legacy.glob, legacy.agent_tool, legacy.task_management, legacy.team, legacy.send_message, kai.bridge.code_tools",
+        "Wait for Ryan to approve or deny the proposal.",
+        "After approval, execute `oracle.search_code` with input `AgentTool`."
+      ],
+      "tools": [
+        {
+          "id": "oracle.search_code",
+          "label": "Search Code",
+          "source_path": "src/bridge/oracle_server.rs",
+          "capability": "Search project source/text files for a term after approval.",
+          "risk": "read-only-code",
+          "status": "proposed"
+        },
+        {
+          "id": "legacy.grep",
+          "label": "Legacy GrepTool",
+          "source_path": "legacy/typescript_engine/src/tools/GrepTool",
+          "capability": "High-speed code/text search design.",
+          "risk": "read-only-code-reference",
+          "status": "proposed"
+        },
+        {
+          "id": "legacy.glob",
+          "label": "Legacy GlobTool",
+          "source_path": "legacy/typescript_engine/src/tools/GlobTool",
+          "capability": "Glob/listing patterns for repository discovery.",
+          "risk": "read-only-code-reference",
+          "status": "proposed"
+        },
+        {
+          "id": "legacy.agent_tool",
+          "label": "Legacy AgentTool",
+          "source_path": "legacy/typescript_engine/src/tools/AgentTool",
+          "capability": "Sub-agent orchestration, built-in agent roles, memory snapshots, resume/fork/run flows.",
+          "risk": "agent-orchestration",
+          "status": "proposed"
+        },
+        {
+          "id": "legacy.task_management",
+          "label": "Legacy Task Tools",
+          "source_path": "legacy/typescript_engine/src/tools/TaskCreateTool",
+          "capability": "Task create/get/list/update/output/stop workflow patterns.",
+          "risk": "agent-task-reference",
+          "status": "proposed"
+        },
+        {
+          "id": "legacy.team",
+          "label": "Legacy Team Tools",
+          "source_path": "legacy/typescript_engine/src/tools/TeamCreateTool",
+          "capability": "Team create/delete collaboration patterns.",
+          "risk": "agent-orchestration-reference",
+          "status": "proposed"
+        },
+        {
+          "id": "legacy.send_message",
+          "label": "Legacy SendMessageTool",
+          "source_path": "legacy/typescript_engine/src/tools/SendMessageTool",
+          "capability": "External/roundtable messaging pattern.",
+          "risk": "message-output-reference",
+          "status": "proposed"
+        },
+        {
+          "id": "kai.bridge.code_tools",
+          "label": "Code Tools",
+          "source_path": "src/bridge/code_tools.rs",
+          "capability": "Source inspection and code-analysis helpers for Oracle-style agent work.",
+          "risk": "read-only-code",
+          "status": "proposed"
+        }
+      ],
+      "action": {
+        "tool_id": "oracle.search_code",
+        "input": "AgentTool"
+      },
+      "status": "done",
+      "result": "search_code `AgentTool`:\n```text\nlegacy/typescript_engine/src/bootstrap/state.ts:11: import type { AgentColorName } from 'src/tools/AgentTool/agentColorManager.js'\nlegacy/typescript_engine/src/cli/handlers/agents.ts:13: } from '../../tools/AgentTool/agentDisplay.js'\nlegacy/typescript_engine/src/cli/handlers/agents.ts:17: } from '../../tools/AgentTool/loadAgentsDir.js'\nlegacy/typescript_engine/src/cli/print.ts:40: } from 'src/tools/AgentTool/loadAgentsDir.js'\nlegacy/typescript_engine/src/cli/print.ts:4928: require('../tools/AgentTool/loadAgentsDir.js') as typeof import('../tools/AgentTool/loadAgentsDir.js')\nlegacy/typescript_engine/src/cli/print.ts:5130: require('../tools/AgentTool/loadAgentsDir.js') as typeof import('../tools/AgentTool/loadAgentsDir.js')\nlegacy/typescript_engine/src/commands/clear/caches.ts:137: void import('../../tools/AgentTool/loadAgentsDir.js').then(\nlegacy/typescript_engine/src/commands/color/color.ts:7: } from '../../tools/AgentTool/agentColorManager.js'\nlegacy/typescript_engine/src/commands/context/context-noninteractive.ts:5: import type { AgentDefinitionsResult } from '../../tools/AgentTool/loadAgentsDir.js'\nlegacy/typescript_engine/src/commands/insights.ts:21: } from '../tools/AgentTool/constants.js'\nlegacy/typescript_engine/src/commands/statusline.tsx:3: import { AGENT_TOOL_NAME } from '../tools/AgentTool/constants.js';\nlegacy/typescript_engine/src/components/agents/AgentDetail.tsx:8: import { getAgentColor } from '../../tools/AgentTool/agentColorManager.js';\nlegacy/typescript_engine/src/components/agents/AgentDetail.tsx:9: import { getMemoryScopeDisplay } from '../../tools/AgentTool/agentMemory.js';\nlegacy/typescript_engine/src/components/agents/AgentDetail.tsx:10: import { resolveAgentTools } from '../../tools/AgentTool/agentToolUtils.js';\nlegacy/typescript_engine/src/components/agents/AgentDetail.tsx:11: import { type AgentDefinition, isBuiltInAgent } from '../../tools/AgentTool/loadAgentsDir.js';\nlegacy/typescript_engine/src/components/agents/AgentDetail.tsx:28: const resolvedTools = resolveAgentTools(agent, tools, false);\nlegacy/typescript_engine/src/components/agents/AgentEditor.tsx:10: import { type AgentColorName, setAgentColor } from '../../tools/AgentTool/agentColorManager.js';\nlegacy/typescript_engine/src/components/agents/AgentEditor.tsx:11: import { type AgentDefinition, getActiveAgentsFromList, isCustomAgent, isPluginAgent } from '../../tools/AgentTool/loadAgentsDir.js';\nlegacy/typescript_engine/src/components/agents/agentFileUtils.ts:5: import type { AgentMemoryScope } from '../../tools/AgentTool/agentMemory.js'\nlegacy/typescript_engine/src/components/agents/agentFileUtils.ts:10: } from '../../tools/AgentTool/loadAgentsDir.js'\nlegacy/typescript_engine/src/components/agents/AgentsList.tsx:7: import type { ResolvedAgent } from '../../tools/AgentTool/agentDisplay.js';\nlegacy/typescript_engine/src/components/agents/AgentsList.tsx:8: import { AGENT_SOURCE_GROUPS, compareAgentsByName, getOverrideSourceLabel, resolveAgentModelDisplay } from '../../tools/AgentTool/agentDisplay.js';\nlegacy/typescript_engine/src/components/agents/AgentsList.tsx:9: import type { AgentDefinition } from '../../tools/AgentTool/loadAgentsDir.js';\nlegacy/typescript_engine/src/components/agents/AgentsMenu.tsx:12: import { type ResolvedAgent, resolveAgentOverrides } from '../../tools/AgentTool/agentDisplay.js';\nlegacy/typescript_engine/src/components/agents/AgentsMenu.tsx:13: import { type AgentDefinition, getActiveAgentsFromList } from '../../tools/AgentTool/loadAgentsDir.js';\nlegacy/typescript_engine/src/components/agents/ColorPicker.tsx:6: import { AGENT_COLOR_TO_THEME_COLOR, AGENT_COLORS, type AgentColorName } from '../../tools/AgentTool/agentColorManager.js';\nlegacy/typescript_engine/src/components/agents/generateAgent.ts:5: import { AGENT_TOOL_NAME } from 'src/tools/AgentTool/constants.js'\nlegacy/typescript_engine/src/components/agents/new-agent-creation/CreateAgentWizard.tsx:5: import type { AgentDefinition } from '../../../tools/AgentTool/loadAgentsDir.js';\nlegacy/typescript_engine/src/components/agents/new-agent-creation/wizard-steps/ColorStep.tsx:5: import type { AgentColorName } from '../../../../tools/AgentTool/agentColorManager.js';\nlegacy/typescript_engine/src/components/agents/new-agent-creation/wizard-steps/ConfirmStep.tsx:8: import { getMemoryScopeDisplay } from '../../../../tools/AgentTool/agentMemory.js';\nlegacy/typescript_engine/src/components/agents/new-agent-creation/wizard-steps/ConfirmStep.tsx:9: import type { AgentDefinition } from '../../../../tools/AgentTool/loadAgentsDir.js';\nlegacy/typescript_engine/src/components/agents/new-agent-creation/wizard-steps/ConfirmStepWrapper.tsx:6: import type { AgentDefinition } from '../../../../tools/AgentTool/loadAgentsDir.js';\nlegacy/typescript_engine/src/components/agents/new-agent-creation/wizard-steps/ConfirmStepWrapper.tsx:7: import { getActiveAgentsFromList } from '../../../../tools/AgentTool/loadAgentsDir.js';\nlegacy/typescript_engine/src/components/agents/new-agent-creation/wizard-steps/MemoryStep.tsx:6: import { type AgentMemoryScope, loadAgentMemoryPrompt } from '../../../../tools/AgentTool/agentMemory.js';\nlegacy/typescript_engine/src/components/agents/new-agent-creation/wizard-steps/TypeStep.tsx:5: import type { AgentDefinition } from '../../../../tools/AgentTool/loadAgentsDir.js';\nlegacy/typescript_engine/src/components/agents/ToolSelector.tsx:7: import { filterToolsForAgent } from 'src/tools/AgentTool/agentToolUtils.js';\nlegacy/typescript_engine/src/components/agents/ToolSelector.tsx:8: import { AGENT_TOOL_NAME } from 'src/tools/AgentTool/constants.js';\nlegacy/typescript_engine/src/components/agents/ToolSelector.tsx:117: const customAgentTools = t1;\nlegacy/typescript_engine/src/components/agents/ToolSelector.tsx:119: if ($[2] !== customAgentTools || $[3] !== initialTools) {\nlegacy/typescript_engine/src/components/agents/ToolSelector.tsx:120: t2 = !initialTools || initialTools.includes(\"*\") ? customAgentTools.map(_temp) : initialTools;\n```"
+    },
+    {
+      "id": 1777432280002,
+      "requested_by": "Ryan@Discord",
+      "task": "legacy grep AgentTool",
+      "plan": [
+        "Understand Ryan's task: legacy grep AgentTool",
+        "Select source-backed KAI/Oracle capabilities from the registry.",
+        "Propose these tools for approval: oracle.search_code, legacy.grep, legacy.glob, legacy.agent_tool, legacy.task_management, legacy.team, legacy.send_message, kai.bridge.oracle_server",
+        "Wait for Ryan to approve or deny the proposal.",
+        "After approval, execute `legacy.grep` with input `AgentTool`."
+      ],
+      "tools": [
+        {
+          "id": "oracle.search_code",
+          "label": "Search Code",
+          "source_path": "src/bridge/oracle_server.rs",
+          "capability": "Search project source/text files for a term after approval.",
+          "risk": "read-only-code",
+          "status": "proposed"
+        },
+        {
+          "id": "legacy.grep",
+          "label": "Legacy GrepTool",
+          "source_path": "legacy/typescript_engine/src/tools/GrepTool",
+          "capability": "High-speed code/text search design.",
+          "risk": "read-only-code-reference",
+          "status": "proposed"
+        },
+        {
+          "id": "legacy.glob",
+          "label": "Legacy GlobTool",
+          "source_path": "legacy/typescript_engine/src/tools/GlobTool",
+          "capability": "Glob/listing patterns for repository discovery.",
+          "risk": "read-only-code-reference",
+          "status": "proposed"
+        },
+        {
+          "id": "legacy.agent_tool",
+          "label": "Legacy AgentTool",
+          "source_path": "legacy/typescript_engine/src/tools/AgentTool",
+          "capability": "Sub-agent orchestration, built-in agent roles, memory snapshots, resume/fork/run flows.",
+          "risk": "agent-orchestration",
+          "status": "proposed"
+        },
+        {
+          "id": "legacy.task_management",
+          "label": "Legacy Task Tools",
+          "source_path": "legacy/typescript_engine/src/tools/TaskCreateTool",
+          "capability": "Task create/get/list/update/output/stop workflow patterns.",
+          "risk": "agent-task-reference",
+          "status": "proposed"
+        },
+        {
+          "id": "legacy.team",
+          "label": "Legacy Team Tools",
+          "source_path": "legacy/typescript_engine/src/tools/TeamCreateTool",
+          "capability": "Team create/delete collaboration patterns.",
+          "risk": "agent-orchestration-reference",
+          "status": "proposed"
+        },
+        {
+          "id": "legacy.send_message",
+          "label": "Legacy SendMessageTool",
+          "source_path": "legacy/typescript_engine/src/tools/SendMessageTool",
+          "capability": "External/roundtable messaging pattern.",
+          "risk": "message-output-reference",
+          "status": "proposed"
+        },
+        {
+          "id": "kai.bridge.oracle_server",
+          "label": "Oracle Server",
+          "source_path": "src/bridge/oracle_server.rs",
+          "capability": "Roundtable, Discord/OpenJarvis endpoint, model routing, and approval queues.",
+          "risk": "agent-control",
+          "status": "proposed"
+        }
+      ],
+      "action": {
+        "tool_id": "legacy.grep",
+        "input": "AgentTool"
+      },
+      "status": "done",
+      "result": "legacy.grep `AgentTool`:\n```text\nlegacy/typescript_engine/src/bootstrap/state.ts:11: import type { AgentColorName } from 'src/tools/AgentTool/agentColorManager.js'\nlegacy/typescript_engine/src/cli/handlers/agents.ts:13: } from '../../tools/AgentTool/agentDisplay.js'\nlegacy/typescript_engine/src/cli/handlers/agents.ts:17: } from '../../tools/AgentTool/loadAgentsDir.js'\nlegacy/typescript_engine/src/cli/print.ts:40: } from 'src/tools/AgentTool/loadAgentsDir.js'\nlegacy/typescript_engine/src/cli/print.ts:4928: require('../tools/AgentTool/loadAgentsDir.js') as typeof import('../tools/AgentTool/loadAgentsDir.js')\nlegacy/typescript_engine/src/cli/print.ts:5130: require('../tools/AgentTool/loadAgentsDir.js') as typeof import('../tools/AgentTool/loadAgentsDir.js')\nlegacy/typescript_engine/src/commands/clear/caches.ts:137: void import('../../tools/AgentTool/loadAgentsDir.js').then(\nlegacy/typescript_engine/src/commands/color/color.ts:7: } from '../../tools/AgentTool/agentColorManager.js'\nlegacy/typescript_engine/src/commands/context/context-noninteractive.ts:5: import type { AgentDefinitionsResult } from '../../tools/AgentTool/loadAgentsDir.js'\nlegacy/typescript_engine/src/commands/insights.ts:21: } from '../tools/AgentTool/constants.js'\nlegacy/typescript_engine/src/commands/statusline.tsx:3: import { AGENT_TOOL_NAME } from '../tools/AgentTool/constants.js';\nlegacy/typescript_engine/src/components/agents/AgentDetail.tsx:8: import { getAgentColor } from '../../tools/AgentTool/agentColorManager.js';\nlegacy/typescript_engine/src/components/agents/AgentDetail.tsx:9: import { getMemoryScopeDisplay } from '../../tools/AgentTool/agentMemory.js';\nlegacy/typescript_engine/src/components/agents/AgentDetail.tsx:10: import { resolveAgentTools } from '../../tools/AgentTool/agentToolUtils.js';\nlegacy/typescript_engine/src/components/agents/AgentDetail.tsx:11: import { type AgentDefinition, isBuiltInAgent } from '../../tools/AgentTool/loadAgentsDir.js';\nlegacy/typescript_engine/src/components/agents/AgentDetail.tsx:28: const resolvedTools = resolveAgentTools(agent, tools, false);\nlegacy/typescript_engine/src/components/agents/AgentEditor.tsx:10: import { type AgentColorName, setAgentColor } from '../../tools/AgentTool/agentColorManager.js';\nlegacy/typescript_engine/src/components/agents/AgentEditor.tsx:11: import { type AgentDefinition, getActiveAgentsFromList, isCustomAgent, isPluginAgent } from '../../tools/AgentTool/loadAgentsDir.js';\nlegacy/typescript_engine/src/components/agents/agentFileUtils.ts:5: import type { AgentMemoryScope } from '../../tools/AgentTool/agentMemory.js'\nlegacy/typescript_engine/src/components/agents/agentFileUtils.ts:10: } from '../../tools/AgentTool/loadAgentsDir.js'\nlegacy/typescript_engine/src/components/agents/AgentsList.tsx:7: import type { ResolvedAgent } from '../../tools/AgentTool/agentDisplay.js';\nlegacy/typescript_engine/src/components/agents/AgentsList.tsx:8: import { AGENT_SOURCE_GROUPS, compareAgentsByName, getOverrideSourceLabel, resolveAgentModelDisplay } from '../../tools/AgentTool/agentDisplay.js';\nlegacy/typescript_engine/src/components/agents/AgentsList.tsx:9: import type { AgentDefinition } from '../../tools/AgentTool/loadAgentsDir.js';\nlegacy/typescript_engine/src/components/agents/AgentsMenu.tsx:12: import { type ResolvedAgent, resolveAgentOverrides } from '../../tools/AgentTool/agentDisplay.js';\nlegacy/typescript_engine/src/components/agents/AgentsMenu.tsx:13: import { type AgentDefinition, getActiveAgentsFromList } from '../../tools/AgentTool/loadAgentsDir.js';\nlegacy/typescript_engine/src/components/agents/ColorPicker.tsx:6: import { AGENT_COLOR_TO_THEME_COLOR, AGENT_COLORS, type AgentColorName } from '../../tools/AgentTool/agentColorManager.js';\nlegacy/typescript_engine/src/components/agents/generateAgent.ts:5: import { AGENT_TOOL_NAME } from 'src/tools/AgentTool/constants.js'\nlegacy/typescript_engine/src/components/agents/new-agent-creation/CreateAgentWizard.tsx:5: import type { AgentDefinition } from '../../../tools/AgentTool/loadAgentsDir.js';\nlegacy/typescript_engine/src/components/agents/new-agent-creation/wizard-steps/ColorStep.tsx:5: import type { AgentColorName } from '../../../../tools/AgentTool/agentColorManager.js';\nlegacy/typescript_engine/src/components/agents/new-agent-creation/wizard-steps/ConfirmStep.tsx:8: import { getMemoryScopeDisplay } from '../../../../tools/AgentTool/agentMemory.js';\nlegacy/typescript_engine/src/components/agents/new-agent-creation/wizard-steps/ConfirmStep.tsx:9: import type { AgentDefinition } from '../../../../tools/AgentTool/loadAgentsDir.js';\nlegacy/typescript_engine/src/components/agents/new-agent-creation/wizard-steps/ConfirmStepWrapper.tsx:6: import type { AgentDefinition } from '../../../../tools/AgentTool/loadAgentsDir.js';\nlegacy/typescript_engine/src/components/agents/new-agent-creation/wizard-steps/ConfirmStepWrapper.tsx:7: import { getActiveAgentsFromList } from '../../../../tools/AgentTool/loadAgentsDir.js';\nlegacy/typescript_engine/src/components/agents/new-agent-creation/wizard-steps/MemoryStep.tsx:6: import { type AgentMemoryScope, loadAgentMemoryPrompt } from '../../../../tools/AgentTool/agentMemory.js';\nlegacy/typescript_engine/src/components/agents/new-agent-creation/wizard-steps/TypeStep.tsx:5: import type { AgentDefinition } from '../../../../tools/AgentTool/loadAgentsDir.js';\nlegacy/typescript_engine/src/components/agents/ToolSelector.tsx:7: import { filterToolsForAgent } from 'src/tools/AgentTool/agentToolUtils.js';\nlegacy/typescript_engine/src/components/agents/ToolSelector.tsx:8: import { AGENT_TOOL_NAME } from 'src/tools/AgentTool/constants.js';\nlegacy/typescript_engine/src/components/agents/ToolSelector.tsx:117: const customAgentTools = t1;\nlegacy/typescript_engine/src/components/agents/ToolSelector.tsx:119: if ($[2] !== customAgentTools || $[3] !== initialTools) {\nlegacy/typescript_engine/src/components/agents/ToolSelector.tsx:120: t2 = !initialTools || initialTools.includes(\"*\") ? customAgentTools.map(_temp) : initialTools;\n```"
+    },
+    {
+      "id": 1777432263922,
+      "requested_by": "Ryan@Discord",
+      "task": "legacy glob legacy/typescript_engine/src/tools/*Tool*",
+      "plan": [
+        "Understand Ryan's task: legacy glob legacy/typescript_engine/src/tools/*Tool*",
+        "Select source-backed KAI/Oracle capabilities from the registry.",
+        "Propose these tools for approval: oracle.run_command, legacy.bash, legacy.powershell, legacy.lsp, legacy.grep, legacy.file_read",
+        "Wait for Ryan to approve or deny the proposal.",
+        "No concrete executable action was inferred yet; approval will not run a tool until the task is clearer."
+      ],
+      "tools": [
+        {
+          "id": "oracle.run_command",
+          "label": "Run Safe Command",
+          "source_path": "src/bridge/oracle_server.rs",
+          "capability": "Run a small whitelist of non-destructive commands after approval.",
+          "risk": "safe-command",
+          "status": "proposed"
+        },
+        {
+          "id": "legacy.bash",
+          "label": "Legacy BashTool",
+          "source_path": "legacy/typescript_engine/src/tools/BashTool",
+          "capability": "Shell execution design with command semantics, path validation, permissions, and destructive-command warnings.",
+          "risk": "high-risk-shell-adapter",
+          "status": "proposed"
+        },
+        {
+          "id": "legacy.powershell",
+          "label": "Legacy PowerShellTool",
+          "source_path": "legacy/typescript_engine/src/tools/PowerShellTool",
+          "capability": "Windows-native command design with CLM types, path validation, permissions, and safety checks.",
+          "risk": "high-risk-shell-adapter",
+          "status": "proposed"
+        },
+        {
+          "id": "legacy.lsp",
+          "label": "Legacy LSPTool",
+          "source_path": "legacy/typescript_engine/src/tools/LSPTool",
+          "capability": "Language-server style symbol context, references, and formatter patterns.",
+          "risk": "code-intelligence-reference",
+          "status": "proposed"
+        },
+        {
+          "id": "legacy.grep",
+          "label": "Legacy GrepTool",
+          "source_path": "legacy/typescript_engine/src/tools/GrepTool",
+          "capability": "High-speed code/text search design.",
+          "risk": "read-only-code-reference",
+          "status": "proposed"
+        },
+        {
+          "id": "legacy.file_read",
+          "label": "Legacy FileReadTool",
+          "source_path": "legacy/typescript_engine/src/tools/FileReadTool",
+          "capability": "Advanced file reading, limits, image processing, and UI affordances.",
+          "risk": "read-only-file-reference",
+          "status": "proposed"
+        }
+      ],
+      "action": null,
+      "status": "failed",
+      "result": "No executable action was inferred for this plan. Try a clearer command like `oracle plan read file src/main.rs`, `oracle plan list directory src/core`, `oracle plan search code MindFrame`, or `oracle plan run command cargo check --release --bin kai`."
+    },
+    {
+      "id": 1777432426230,
+      "requested_by": "Ryan@Discord",
+      "task": "legacy glob legacy/typescript_engine/src/tools/*Tool*",
+      "plan": [
+        "Understand Ryan's task: legacy glob legacy/typescript_engine/src/tools/*Tool*",
+        "Select source-backed KAI/Oracle capabilities from the registry.",
+        "Propose these tools for approval: oracle.list_directory, legacy.glob, oracle.run_command, legacy.bash, legacy.powershell, legacy.lsp, legacy.grep, legacy.file_read",
+        "Wait for Ryan to approve or deny the proposal.",
+        "After approval, execute `legacy.glob` with input `legacy/typescript_engine/src/tools/*Tool*`."
+      ],
+      "tools": [
+        {
+          "id": "oracle.list_directory",
+          "label": "List Directory",
+          "source_path": "src/bridge/oracle_server.rs",
+          "capability": "List files and folders under a project directory after approval.",
+          "risk": "read-only-file",
+          "status": "proposed"
+        },
+        {
+          "id": "legacy.glob",
+          "label": "Legacy GlobTool",
+          "source_path": "legacy/typescript_engine/src/tools/GlobTool",
+          "capability": "Glob/listing patterns for repository discovery.",
+          "risk": "read-only-code-reference",
+          "status": "proposed"
+        },
+        {
+          "id": "oracle.run_command",
+          "label": "Run Safe Command",
+          "source_path": "src/bridge/oracle_server.rs",
+          "capability": "Run a small whitelist of non-destructive commands after approval.",
+          "risk": "safe-command",
+          "status": "proposed"
+        },
+        {
+          "id": "legacy.bash",
+          "label": "Legacy BashTool",
+          "source_path": "legacy/typescript_engine/src/tools/BashTool",
+          "capability": "Shell execution design with command semantics, path validation, permissions, and destructive-command warnings.",
+          "risk": "high-risk-shell-adapter",
+          "status": "proposed"
+        },
+        {
+          "id": "legacy.powershell",
+          "label": "Legacy PowerShellTool",
+          "source_path": "legacy/typescript_engine/src/tools/PowerShellTool",
+          "capability": "Windows-native command design with CLM types, path validation, permissions, and safety checks.",
+          "risk": "high-risk-shell-adapter",
+          "status": "proposed"
+        },
+        {
+          "id": "legacy.lsp",
+          "label": "Legacy LSPTool",
+          "source_path": "legacy/typescript_engine/src/tools/LSPTool",
+          "capability": "Language-server style symbol context, references, and formatter patterns.",
+          "risk": "code-intelligence-reference",
+          "status": "proposed"
+        },
+        {
+          "id": "legacy.grep",
+          "label": "Legacy GrepTool",
+          "source_path": "legacy/typescript_engine/src/tools/GrepTool",
+          "capability": "High-speed code/text search design.",
+          "risk": "read-only-code-reference",
+          "status": "proposed"
+        },
+        {
+          "id": "legacy.file_read",
+          "label": "Legacy FileReadTool",
+          "source_path": "legacy/typescript_engine/src/tools/FileReadTool",
+          "capability": "Advanced file reading, limits, image processing, and UI affordances.",
+          "risk": "read-only-file-reference",
+          "status": "proposed"
+        }
+      ],
+      "action": {
+        "tool_id": "legacy.glob",
+        "input": "legacy/typescript_engine/src/tools/*Tool*"
+      },
+      "status": "done",
+      "result": "legacy.glob `legacy/typescript_engine/src/tools/*Tool*`:\n```text\nlegacy/typescript_engine/src/tools/AgentTool/agentColorManager.ts\nlegacy/typescript_engine/src/tools/AgentTool/agentDisplay.ts\nlegacy/typescript_engine/src/tools/AgentTool/agentMemory.ts\nlegacy/typescript_engine/src/tools/AgentTool/agentMemorySnapshot.ts\nlegacy/typescript_engine/src/tools/AgentTool/AgentTool.tsx\nlegacy/typescript_engine/src/tools/AgentTool/agentToolUtils.ts\nlegacy/typescript_engine/src/tools/AgentTool/built-in/exploreAgent.ts\nlegacy/typescript_engine/src/tools/AgentTool/built-in/generalPurposeAgent.ts\nlegacy/typescript_engine/src/tools/AgentTool/built-in/kaiGuideAgent.ts\nlegacy/typescript_engine/src/tools/AgentTool/built-in/planAgent.ts\nlegacy/typescript_engine/src/tools/AgentTool/built-in/statuslineSetup.ts\nlegacy/typescript_engine/src/tools/AgentTool/built-in/verificationAgent.ts\nlegacy/typescript_engine/src/tools/AgentTool/builtInAgents.ts\nlegacy/typescript_engine/src/tools/AgentTool/constants.ts\nlegacy/typescript_engine/src/tools/AgentTool/forkSubagent.ts\nlegacy/typescript_engine/src/tools/AgentTool/loadAgentsDir.ts\nlegacy/typescript_engine/src/tools/AgentTool/prompt.ts\nlegacy/typescript_engine/src/tools/AgentTool/resumeAgent.ts\nlegacy/typescript_engine/src/tools/AgentTool/runAgent.ts\nlegacy/typescript_engine/src/tools/AgentTool/UI.tsx\nlegacy/typescript_engine/src/tools/AskUserQuestionTool/AskUserQuestionTool.tsx\nlegacy/typescript_engine/src/tools/AskUserQuestionTool/prompt.ts\nlegacy/typescript_engine/src/tools/BashTool/bashCommandHelpers.ts\nlegacy/typescript_engine/src/tools/BashTool/bashPermissions.ts\nlegacy/typescript_engine/src/tools/BashTool/bashSecurity.ts\nlegacy/typescript_engine/src/tools/BashTool/BashTool.tsx\nlegacy/typescript_engine/src/tools/BashTool/BashToolResultMessage.tsx\nlegacy/typescript_engine/src/tools/BashTool/commandSemantics.ts\nlegacy/typescript_engine/src/tools/BashTool/commentLabel.ts\nlegacy/typescript_engine/src/tools/BashTool/destructiveCommandWarning.ts\nlegacy/typescript_engine/src/tools/BashTool/modeValidation.ts\nlegacy/typescript_engine/src/tools/BashTool/pathValidation.ts\nlegacy/typescript_engine/src/tools/BashTool/prompt.ts\nlegacy/typescript_engine/src/tools/BashTool/readOnlyValidation.ts\nlegacy/typescript_engine/src/tools/BashTool/sedEditParser.ts\nlegacy/typescript_engine/src/tools/BashTool/sedValidation.ts\nlegacy/typescript_engine/src/tools/BashTool/shouldUseSandbox.ts\nlegacy/typescript_engine/src/tools/BashTool/toolName.ts\nlegacy/typescript_engine/src/tools/BashTool/UI.tsx\nlegacy/typescript_engine/src/tools/BashTool/utils.ts\nlegacy/typescript_engine/src/tools/BriefTool/attachments.ts\nlegacy/typescript_engine/src/tools/BriefTool/BriefTool.ts\nlegacy/typescript_engine/src/tools/BriefTool/prompt.ts\nlegacy/typescript_engine/src/tools/BriefTool/UI.tsx\nlegacy/typescript_engine/src/tools/BriefTool/upload.ts\nlegacy/typescript_engine/src/tools/ConfigTool/ConfigTool.ts\nlegacy/typescript_engine/src/tools/ConfigTool/constants.ts\nlegacy/typescript_engine/src/tools/ConfigTool/prompt.ts\nlegacy/typescript_engine/src/tools/ConfigTool/supportedSettings.ts\nlegacy/typescript_engine/src/tools/ConfigTool/UI.tsx\nlegacy/typescript_engine/src/tools/EnterPlanModeTool/constants.ts\nlegacy/typescript_engine/src/tools/EnterPlanModeTool/EnterPlanModeTool.ts\nlegacy/typescript_engine/src/tools/EnterPlanModeTool/prompt.ts\nlegacy/typescript_engine/src/tools/EnterPlanModeTool/UI.tsx\nlegacy/typescript_engine/src/tools/EnterWorktreeTool/constants.ts\nlegacy/typescript_engine/src/tools/EnterWorktreeTool/EnterWorktreeTool.ts\nlegacy/typescript_engine/src/tools/EnterWorktreeTool/prompt.ts\nlegacy/typescript_engine/src/tools/EnterWorktreeTool/UI.tsx\nlegacy/typescript_engine/src/tools/ExitPlanModeTool/constants.ts\nlegacy/typescript_engine/src/tools/ExitPlanModeTool/ExitPlanModeV2Tool.ts\nlegacy/typescript_engine/src/tools/ExitPlanModeTool/prompt.ts\nlegacy/typescript_engine/src/tools/ExitPlanModeTool/UI.tsx\nlegacy/typescript_engine/src/tools/ExitWorktreeTool/constants.ts\nlegacy/typescript_engine/src/tools/ExitWorktreeTool/ExitWorktreeTool.ts\nlegacy/typescript_engine/src/tools/ExitWorktreeTool/prompt.ts\nlegacy/typescript_engine/src/tools/ExitWorktreeTool/UI.tsx\nlegacy/typescript_engine/src/tools/FileEditTool/constants.ts\nlegacy/typescript_engine/src/tools/FileEditTool/FileEditTool.ts\nlegacy/typescript_engine/src/tools/FileEditTool/prompt.ts\nlegacy/typescript_engine/src/tools/FileEditTool/types.ts\nlegacy/typescript_engine/src/tools/FileEditTool/UI.tsx\nlegacy/typescript_engine/src/tools/FileEditTool/utils.ts\nlegacy/typescript_engine/src/tools/FileReadTool/FileReadTool.ts\nlegacy/typescript_engine/src/tools/FileReadTool/imageProcessor.ts\nlegacy/typescript_engine/src/tools/FileReadTool/limits.ts\nlegacy/typescript_engine/src/tools/FileReadTool/prompt.ts\nlegacy/typescript_engine/src/tools/FileReadTool/UI.tsx\nlegacy/typescript_engine/src/tools/FileWriteTool/FileWriteTool.ts\nlegacy/typescript_engine/src/tools/FileWriteTool/prompt.ts\nlegacy/typescript_engine/src/tools/FileWriteTool/UI.tsx\n```"
+    }
+  ],
+  "file_cache": {}
+}

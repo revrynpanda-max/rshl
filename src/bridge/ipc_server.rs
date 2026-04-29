@@ -616,35 +616,26 @@ fn live_self_state_hit(
         region: "state".to_string(),
         score,
         strength,
-        source: "self-model".to_string(),
+        source: "self-state".to_string(),
     }
+}
+
+fn err_json(msg: &str) -> String {
+    format!(r#"{{"ok":false,"error":"{}"}}"#, msg)
 }
 
 fn kai_grounding_rank(text: &str) -> i32 {
     let lower = text.to_lowercase();
     let mut score = 0;
 
-    if lower.contains("physical body") {
-        score += 5;
-    }
-    if lower.contains("exist") {
-        score += 4;
-    }
-    if lower.contains("machine") {
-        score += 4;
-    }
-    if lower.contains("geometric") {
-        score += 2;
-    }
-    if lower.contains("kai") {
-        score += 1;
-    }
+    if lower.contains("physical body") { score += 5; }
+    if lower.contains("exist") { score += 4; }
+    if lower.contains("machine") { score += 4; }
+    if lower.contains("geometric") { score += 2; }
+    if lower.contains("rshl") { score += 1; }
+
+    if lower.contains("mood") { score -= 4; }
+    if lower.contains("valence") { score -= 4; }
 
     score
 }
-
-fn err_json(msg: &str) -> String {
-    serde_json::json!({"ok": false, "error": msg}).to_string()
-}
-
-// KAI v6.0.0

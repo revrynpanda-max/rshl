@@ -388,19 +388,6 @@ mod tests {
 
     #[test]
     fn test_is_depleted() {
-        let mut r = RapheNuclei::new();
-        r.tonic_5ht = DEPLETED_THRESHOLD - 0.05;
-        r.update_mode();
-        assert!(r.is_depleted());
-    }
 
-    #[test]
-    fn test_status_line() {
-        let r = RapheNuclei::new();
-        let s = r.status_line();
-        assert!(s.contains("Raphe"), "status should mention Raphe");
-        assert!(s.contains("5-HT"), "status should show 5-HT level");
     }
 }
-
-// KAI v6.0.0

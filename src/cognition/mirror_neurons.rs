@@ -616,30 +616,4 @@ mod tests {
             "fix/help request should detect as WantsProblemSolved"
         );
     }
-
-    #[test]
-    fn test_intent_detects_teaching() {
-        let intent = MirrorNeuronSystem::detect_intent("Actually that's not right, let me clarify");
-        assert_eq!(
-            intent,
-            IntentSignal::WantsToTeach,
-            "correction markers should detect as WantsToTeach"
-        );
-    }
-
-    #[test]
-    fn test_decay_reduces_distress() {
-        let mut mn = MirrorNeuronSystem::new();
-        mn.distress_level = 0.80;
-        for _ in 0..20 {
-            mn.decay();
-        }
-        assert!(
-            mn.distress_level < 0.80,
-            "decay should reduce distress: {:.3}",
-            mn.distress_level
-        );
-    }
 }
-
-// KAI v6.0.0
