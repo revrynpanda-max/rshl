@@ -1,4 +1,4 @@
-"""Tests for EnergyMonitor ABC, EnergySample, EnergyVendor, and factory."""
+﻿"""Tests for EnergyMonitor ABC, EnergySample, EnergyVendor, and factory."""
 
 from __future__ import annotations
 
@@ -242,3 +242,5 @@ class TestCreateEnergyMonitor:
             result = create_energy_monitor(prefer_vendor="cpu_rapl")
             assert result is None
             assert call_order == ["rapl", "nvidia", "amd", "apple"]
+
+

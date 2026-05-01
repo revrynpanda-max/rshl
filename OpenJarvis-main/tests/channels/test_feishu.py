@@ -1,4 +1,4 @@
-"""Tests for the FeishuChannel adapter."""
+﻿"""Tests for the FeishuChannel adapter."""
 
 from __future__ import annotations
 
@@ -127,3 +127,5 @@ class TestStatus:
         ch = FeishuChannel()
         ch.connect()
         assert ch.status() == ChannelStatus.ERROR
+
+

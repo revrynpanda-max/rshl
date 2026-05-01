@@ -1,4 +1,4 @@
-"""Tests for the MattermostChannel adapter."""
+﻿"""Tests for the MattermostChannel adapter."""
 
 from __future__ import annotations
 
@@ -139,3 +139,5 @@ class TestStatus:
         ch = MattermostChannel()
         ch.connect()
         assert ch.status() == ChannelStatus.ERROR
+
+

@@ -1,4 +1,4 @@
-"""Tests for DeepPlanning benchmark."""
+﻿"""Tests for DeepPlanning benchmark."""
 
 from unittest.mock import MagicMock
 
@@ -90,3 +90,5 @@ class TestDeepPlanningCLI:
 
         s = _build_scorer("deepplanning", _mock_backend(), "test-model")
         assert s.scorer_id == "deepplanning"
+
+

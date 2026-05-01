@@ -1,4 +1,4 @@
-"""Tests for workflow engine (Phase 15.1)."""
+﻿"""Tests for workflow engine (Phase 15.1)."""
 
 from __future__ import annotations
 
@@ -150,3 +150,5 @@ class TestWorkflowEngine:
         event_types = {e.event_type for e in bus.history}
         assert EventType.WORKFLOW_START in event_types
         assert EventType.WORKFLOW_END in event_types
+
+

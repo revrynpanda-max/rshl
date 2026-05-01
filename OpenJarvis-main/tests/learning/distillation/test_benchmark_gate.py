@@ -1,6 +1,6 @@
-"""Tests for openjarvis.learning.distillation.gate.benchmark_gate module.
+﻿"""Tests for openjarvis.learning.distillation.gate.benchmark_gate module.
 
-All tests use mock scorers — no live EvalRunner.
+All tests use mock scorers â€” no live EvalRunner.
 """
 
 from __future__ import annotations
@@ -145,3 +145,5 @@ class TestBenchmarkGate:
         result = gate.evaluate(before=before, session_seed=42)
         assert isinstance(result.snapshot, BenchmarkSnapshot)
         assert result.snapshot.benchmark_version == "v1"
+
+

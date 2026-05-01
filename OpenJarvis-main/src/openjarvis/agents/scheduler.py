@@ -1,4 +1,4 @@
-"""AgentScheduler — cron/interval tick scheduling for managed agents."""
+﻿"""AgentScheduler â€” cron/interval tick scheduling for managed agents."""
 
 from __future__ import annotations
 
@@ -288,3 +288,4 @@ class AgentScheduler:
         agent_id = event.data.get("agent_id")
         if agent_id and event.data.get("status") == "ok":
             self._on_tick_completed(agent_id)
+

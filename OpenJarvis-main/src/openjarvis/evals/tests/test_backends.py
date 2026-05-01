@@ -1,4 +1,4 @@
-"""Tests for backend construction with mocks."""
+﻿"""Tests for backend construction with mocks."""
 
 from __future__ import annotations
 
@@ -137,3 +137,4 @@ class TestJarvisAgentBackend:
         assert result["content"] == "The answer is 4."
         assert result["turns"] == 2
         assert len(result["tool_results"]) == 1
+

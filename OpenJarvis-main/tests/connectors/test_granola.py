@@ -1,4 +1,4 @@
-"""Tests for GranolaConnector — Granola meeting notes sync connector.
+﻿"""Tests for GranolaConnector â€” Granola meeting notes sync connector.
 
 All Granola API calls are mocked; no network access is required.
 """
@@ -98,7 +98,7 @@ def connector(tmp_path: Path):
 
 
 # ---------------------------------------------------------------------------
-# Test 1 — not connected without a key or credentials file
+# Test 1 â€” not connected without a key or credentials file
 # ---------------------------------------------------------------------------
 
 
@@ -108,7 +108,7 @@ def test_not_connected_without_key(connector) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 2 — connected when api_key is provided directly
+# Test 2 â€” connected when api_key is provided directly
 # ---------------------------------------------------------------------------
 
 
@@ -121,7 +121,7 @@ def test_connected_with_key() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 3 — auth_url references granola.ai
+# Test 3 â€” auth_url references granola.ai
 # ---------------------------------------------------------------------------
 
 
@@ -132,7 +132,7 @@ def test_auth_url(connector) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 4 — sync yields documents with correct fields (mocked API)
+# Test 4 â€” sync yields documents with correct fields (mocked API)
 # ---------------------------------------------------------------------------
 
 
@@ -181,7 +181,7 @@ def test_sync_yields_documents(
 
 
 # ---------------------------------------------------------------------------
-# Test 5 — _format_note_content produces correct summary + transcript
+# Test 5 â€” _format_note_content produces correct summary + transcript
 # ---------------------------------------------------------------------------
 
 
@@ -201,7 +201,7 @@ def test_format_note_content() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 6 — disconnect removes the credentials file
+# Test 6 â€” disconnect removes the credentials file
 # ---------------------------------------------------------------------------
 
 
@@ -219,7 +219,7 @@ def test_disconnect(connector, tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 7 — mcp_tools returns the two expected tool specs
+# Test 7 â€” mcp_tools returns the two expected tool specs
 # ---------------------------------------------------------------------------
 
 
@@ -233,7 +233,7 @@ def test_mcp_tools(connector) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 8 — ConnectorRegistry contains "granola" after import
+# Test 8 â€” ConnectorRegistry contains "granola" after import
 # ---------------------------------------------------------------------------
 
 
@@ -245,3 +245,5 @@ def test_registry() -> None:
     assert ConnectorRegistry.contains("granola")
     cls = ConnectorRegistry.get("granola")
     assert cls.connector_id == "granola"
+
+

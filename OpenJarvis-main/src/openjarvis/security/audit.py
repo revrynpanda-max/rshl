@@ -1,4 +1,4 @@
-"""Audit logger — persist security events to SQLite with Merkle hash chain."""
+﻿"""Audit logger â€” persist security events to SQLite with Merkle hash chain."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ class AuditLogger:
     db_path:
         Path to the SQLite database file.
     bus:
-        Optional event bus — if provided, subscribes to security events
+        Optional event bus â€” if provided, subscribes to security events
         (``SECURITY_SCAN``, ``SECURITY_ALERT``, ``SECURITY_BLOCK``).
     """
 
@@ -264,3 +264,4 @@ class AuditLogger:
 
 
 __all__ = ["AuditLogger"]
+

@@ -1,4 +1,4 @@
-"""Tests for AgentConfigEvolver — trace-driven agent config evolution."""
+﻿"""Tests for AgentConfigEvolver â€” trace-driven agent config evolution."""
 
 from __future__ import annotations
 
@@ -87,7 +87,7 @@ class TestAgentConfigEvolver:
         store.close()
 
     def test_evolve_recommends_tool_changes(self, tmp_path: Path) -> None:
-        """Traces with different tools — best tools recommended for each query class."""
+        """Traces with different tools â€” best tools recommended for each query class."""
         db = tmp_path / "traces.db"
         store = TraceStore(db)
         config_dir = tmp_path / "configs"
@@ -116,7 +116,7 @@ class TestAgentConfigEvolver:
             store.save(t)
 
         # Create traces where "calculator" alone is used in math queries
-        # but with lower feedback — so the combo (calculator+think) should win
+        # but with lower feedback â€” so the combo (calculator+think) should win
         for i in range(3):
             t = _make_trace(
                 query=f"compute the integral of x^{i}",
@@ -141,7 +141,7 @@ class TestAgentConfigEvolver:
             assert "sample_count" in rec
             assert rec["sample_count"] > 0
 
-        # Find the math recommendation — "calculator" should be in recommended tools
+        # Find the math recommendation â€” "calculator" should be in recommended tools
         math_recs = [r for r in recs if r["query_class"] == "math"]
         if math_recs:
             assert "calculator" in math_recs[0]["recommended_tools"]
@@ -215,7 +215,7 @@ class TestAgentConfigEvolver:
         assert current["agent"]["tools"] == ["calculator", "web_search"]
         assert current["agent"]["system_prompt"] == "v2 prompt"
 
-        # List versions — should have at least 2 entries
+        # List versions â€” should have at least 2 entries
         versions = evolver.list_versions("my_agent")
         assert len(versions) >= 2
         for v in versions:
@@ -238,3 +238,5 @@ class TestAgentConfigEvolver:
             evolver.rollback("my_agent", version=999)
 
         store.close()
+
+

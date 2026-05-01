@@ -1,4 +1,4 @@
-"""TrialRunner -- evaluates a proposed config against a benchmark."""
+﻿"""TrialRunner -- evaluates a proposed config against a benchmark."""
 
 from __future__ import annotations
 
@@ -401,3 +401,4 @@ class MultiBenchTrialRunner:
 
 
 __all__ = ["BenchmarkSpec", "MultiBenchTrialRunner", "TrialRunner"]
+

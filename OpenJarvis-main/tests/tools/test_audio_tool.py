@@ -1,4 +1,4 @@
-"""Tests for the audio_transcribe tool."""
+﻿"""Tests for the audio_transcribe tool."""
 
 from __future__ import annotations
 
@@ -187,7 +187,7 @@ class TestAudioTranscribeTool:
             f = tmp_path / f"audio{ext}"
             f.write_bytes(b"\x00" * 100)
             result = tool.execute(file_path=str(f))
-            # Should not fail on format — will fail on API/import instead
+            # Should not fail on format â€” will fail on API/import instead
             assert "Unsupported audio format" not in result.content
 
     def test_to_openai_function(self):
@@ -195,3 +195,5 @@ class TestAudioTranscribeTool:
         fn = tool.to_openai_function()
         assert fn["type"] == "function"
         assert fn["function"]["name"] == "audio_transcribe"
+
+

@@ -1,4 +1,4 @@
-"""A2A server — exposes agents via /.well-known/agent.json and /a2a/tasks."""
+﻿"""A2A server â€” exposes agents via /.well-known/agent.json and /a2a/tasks."""
 
 from __future__ import annotations
 
@@ -54,7 +54,7 @@ class A2AServer:
             ).to_dict()
 
     def _handle_task_send(self, params: Dict[str, Any], req_id: str) -> Dict[str, Any]:
-        """Handle tasks/send — create and execute a task."""
+        """Handle tasks/send â€” create and execute a task."""
         input_text = params.get("message", {}).get("parts", [{}])[0].get("text", "")
         if not input_text:
             input_text = params.get("input", "")
@@ -91,7 +91,7 @@ class A2AServer:
         return A2AResponse(result=task.to_dict(), request_id=req_id).to_dict()
 
     def _handle_task_get(self, params: Dict[str, Any], req_id: str) -> Dict[str, Any]:
-        """Handle tasks/get — retrieve task status."""
+        """Handle tasks/get â€” retrieve task status."""
         task_id = params.get("id", "")
         task = self._tasks.get(task_id)
         if not task:
@@ -106,7 +106,7 @@ class A2AServer:
         params: Dict[str, Any],
         req_id: str,
     ) -> Dict[str, Any]:
-        """Handle tasks/cancel — cancel a running task."""
+        """Handle tasks/cancel â€” cancel a running task."""
         task_id = params.get("id", "")
         task = self._tasks.get(task_id)
         if not task:
@@ -130,3 +130,4 @@ class A2AServer:
 
 
 __all__ = ["A2AServer"]
+

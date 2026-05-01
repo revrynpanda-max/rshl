@@ -1,4 +1,4 @@
-"""HLE scorer -- LLM-as-judge for Humanity's Last Exam.
+﻿"""HLE scorer -- LLM-as-judge for Humanity's Last Exam.
 
 Uses the same exact-match-then-LLM-fallback pattern as the reasoning
 judge but with an HLE-specific grading template.  Adapted from IPW's
@@ -100,3 +100,4 @@ class HLEScorer(LLMJudgeScorer):
 
 
 __all__ = ["HLEScorer"]
+

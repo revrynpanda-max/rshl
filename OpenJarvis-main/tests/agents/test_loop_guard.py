@@ -1,4 +1,4 @@
-"""Tests for agent loop guard (Phase 14.3)."""
+﻿"""Tests for agent loop guard (Phase 14.3)."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ class TestLoopGuard:
         guard, bus = self._make_guard(max_identical_calls=2)
         v1 = guard.check_call("calc", '{"x": 1}')
         assert not v1.blocked
-        # Rust backend uses a HashSet — blocks on the second identical call
+        # Rust backend uses a HashSet â€” blocks on the second identical call
         v2 = guard.check_call("calc", '{"x": 1}')
         assert v2.blocked
         assert "identical" in v2.reason.lower()
@@ -132,3 +132,5 @@ class TestLoopGuard:
             guard.check_call("x", '{"a": 1}')
         # Guard is still created but check_call still works
         # (the enabled flag is checked at the ToolUsingAgent level)
+
+

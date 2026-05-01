@@ -1,4 +1,4 @@
-"""``jarvis channel`` -- channel management commands."""
+﻿"""``jarvis channel`` -- channel management commands."""
 
 from __future__ import annotations
 
@@ -264,3 +264,4 @@ def channel_status(
     key = channel_type or config.channel.default_channel or "unknown"
     console.print(f"Channel: [cyan]{key}[/cyan]")
     console.print(f"Status: [{color}]{st.value}[/{color}]")
+

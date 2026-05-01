@@ -1,4 +1,4 @@
-"""Browser accessibility tree extraction tool.
+﻿"""Browser accessibility tree extraction tool.
 
 Extracts the accessibility tree (AX tree) from the current browser page,
 providing a structured text representation of the DOM with element IDs,
@@ -19,7 +19,7 @@ from openjarvis.tools._stubs import BaseTool, ToolSpec
 # ``openjarvis.tools.browser_axtree._session``.
 try:
     from openjarvis.tools.browser import _session
-except Exception:  # pragma: no cover — optional dependency
+except Exception:  # pragma: no cover â€” optional dependency
     _session = None  # type: ignore[assignment]
 
 
@@ -135,3 +135,4 @@ def _count_nodes(node: dict) -> int:
 
 
 __all__ = ["BrowserAXTreeTool"]
+

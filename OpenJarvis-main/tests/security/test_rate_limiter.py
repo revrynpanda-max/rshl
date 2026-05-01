@@ -1,4 +1,4 @@
-"""Tests for rate limiter -- token bucket algorithm."""
+﻿"""Tests for rate limiter -- token bucket algorithm."""
 
 from __future__ import annotations
 
@@ -138,3 +138,5 @@ class TestRateLimiter:
         assert limiter.config.requests_per_minute == 60
         assert limiter.config.burst_size == 10
         assert limiter.config.enabled is True
+
+

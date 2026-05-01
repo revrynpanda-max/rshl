@@ -1,4 +1,4 @@
-"""End-to-end test: create agent from template, add task, verify state."""
+﻿"""End-to-end test: create agent from template, add task, verify state."""
 
 from __future__ import annotations
 
@@ -85,3 +85,5 @@ class TestResearchMonitorE2E:
         config = agent["config"]
         assert config["schedule_value"] == "0 */6 * * *"
         assert config["temperature"] == 0.5
+
+

@@ -1,4 +1,4 @@
-"""Tests for WASM sandbox (Phase 16.4)."""
+﻿"""Tests for WASM sandbox (Phase 16.4)."""
 
 from __future__ import annotations
 
@@ -56,3 +56,5 @@ class TestCreateSandboxRunner:
         runner = create_sandbox_runner(FakeConfig())
         if WasmRunner.available():
             assert isinstance(runner, WasmRunner)
+
+

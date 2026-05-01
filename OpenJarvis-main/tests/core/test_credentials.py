@@ -1,4 +1,4 @@
-"""Tests for credential persistence module."""
+﻿"""Tests for credential persistence module."""
 
 import os
 
@@ -54,3 +54,5 @@ def test_file_permissions(cred_path):
     save_credential("web_search", "TAVILY_API_KEY", "tvly-x", path=cred_path)
     mode = oct(cred_path.stat().st_mode & 0o777)
     assert mode == "0o600"
+
+

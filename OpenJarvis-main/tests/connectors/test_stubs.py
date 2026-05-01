@@ -1,4 +1,4 @@
-"""Tests for connector base types and registry."""
+﻿"""Tests for connector base types and registry."""
 
 from __future__ import annotations
 
@@ -100,3 +100,5 @@ def test_connector_registry() -> None:
 def test_mcp_tools_default_empty() -> None:
     conn = FakeConnector()
     assert conn.mcp_tools() == []
+
+

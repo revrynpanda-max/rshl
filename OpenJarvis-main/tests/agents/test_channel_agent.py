@@ -1,4 +1,4 @@
-"""Tests for ChannelAgent and classify_query."""
+﻿"""Tests for ChannelAgent and classify_query."""
 
 from __future__ import annotations
 
@@ -70,7 +70,7 @@ class FakeChannel(BaseChannel):
 
 
 # ---------------------------------------------------------------------------
-# classify_query — 11 tests
+# classify_query â€” 11 tests
 # ---------------------------------------------------------------------------
 
 
@@ -119,7 +119,7 @@ class TestClassifyQuery:
 
 
 # ---------------------------------------------------------------------------
-# ChannelAgent — 6 tests
+# ChannelAgent â€” 6 tests
 # ---------------------------------------------------------------------------
 
 
@@ -153,7 +153,7 @@ class TestChannelAgent:
         ca.shutdown()
 
     def test_quick_query_sends_inline_response(self):
-        """Quick query with short response → inline, no escalation link."""
+        """Quick query with short response â†’ inline, no escalation link."""
         channel = FakeChannel()
         agent = _make_agent("Here is your answer.")
         ca = ChannelAgent(channel, agent)
@@ -168,7 +168,7 @@ class TestChannelAgent:
         assert "Here is your answer." in sent_content
 
     def test_deep_query_sends_preview_and_escalation_link(self):
-        """Deep query → preview truncated to 300 chars + openjarvis:// link."""
+        """Deep query â†’ preview truncated to 300 chars + openjarvis:// link."""
         channel = FakeChannel()
         agent = _make_agent("Deep analysis result.")
         ca = ChannelAgent(channel, agent)
@@ -251,3 +251,5 @@ class TestChannelAgent:
         assert len(channel._sent) == 1
         sent_content = channel._sent[0]["content"]
         assert "openjarvis://research/" in sent_content
+
+

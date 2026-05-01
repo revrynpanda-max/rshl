@@ -1,4 +1,4 @@
-"""TeamsChannel — Microsoft Teams Bot Framework adapter."""
+﻿"""TeamsChannel â€” Microsoft Teams Bot Framework adapter."""
 
 from __future__ import annotations
 
@@ -56,7 +56,7 @@ class TeamsChannel(BaseChannel):
     # -- connection lifecycle ---------------------------------------------------
 
     def connect(self) -> None:
-        """Mark as connected (send-only — no persistent connection)."""
+        """Mark as connected (send-only â€” no persistent connection)."""
         if not self._app_id or not self._app_password:
             logger.warning("No Teams app_id or app_password configured")
             self._status = ChannelStatus.ERROR
@@ -143,3 +143,4 @@ class TeamsChannel(BaseChannel):
 
 
 __all__ = ["TeamsChannel"]
+

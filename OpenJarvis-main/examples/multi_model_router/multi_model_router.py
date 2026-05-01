@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
-"""Multi-Model Router — route queries to the cheapest capable model.
+﻿#!/usr/bin/env python3
+"""Multi-Model Router â€” route queries to the cheapest capable model.
 
 Usage:
     python examples/multi_model_router/multi_model_router.py --help
@@ -149,3 +149,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

@@ -1,4 +1,4 @@
-"""ABC for inference engine backends.
+﻿"""ABC for inference engine backends.
 
 Adapted from IPW's ``InferenceClient`` at ``src/ipw/clients/base.py``.
 Phase 1 will provide concrete implementations (vLLM, Ollama, etc.).
@@ -65,7 +65,7 @@ class InferenceEngine(ABC):
         max_tokens: int = 1024,
         **kwargs: Any,
     ) -> Dict[str, Any]:
-        """Synchronous completion — returns a dict with ``content`` and ``usage``."""
+        """Synchronous completion â€” returns a dict with ``content`` and ``usage``."""
 
     @abstractmethod
     async def stream(
@@ -121,3 +121,4 @@ class InferenceEngine(ABC):
 
 
 __all__ = ["InferenceEngine", "ResponseFormat", "StreamChunk"]
+

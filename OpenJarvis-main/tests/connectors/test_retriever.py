@@ -1,4 +1,4 @@
-"""Tests for TwoStageRetriever — BM25 recall + optional semantic reranking."""
+﻿"""Tests for TwoStageRetriever â€” BM25 recall + optional semantic reranking."""
 
 from __future__ import annotations
 
@@ -66,7 +66,7 @@ def retriever(store: KnowledgeStore) -> TwoStageRetriever:
 
 
 # ---------------------------------------------------------------------------
-# Test 1: retrieve_returns_results — basic search works
+# Test 1: retrieve_returns_results â€” basic search works
 # ---------------------------------------------------------------------------
 
 
@@ -79,7 +79,7 @@ def test_retrieve_returns_results(retriever: TwoStageRetriever) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 2: retrieve_respects_top_k — limits results
+# Test 2: retrieve_respects_top_k â€” limits results
 # ---------------------------------------------------------------------------
 
 
@@ -90,7 +90,7 @@ def test_retrieve_respects_top_k(retriever: TwoStageRetriever) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 3: retrieve_with_source_filter — filters pass through to store
+# Test 3: retrieve_with_source_filter â€” filters pass through to store
 # ---------------------------------------------------------------------------
 
 
@@ -106,7 +106,7 @@ def test_retrieve_with_source_filter(
 
 
 # ---------------------------------------------------------------------------
-# Test 4: retrieve_with_author_filter — filters pass through
+# Test 4: retrieve_with_author_filter â€” filters pass through
 # ---------------------------------------------------------------------------
 
 
@@ -122,7 +122,7 @@ def test_retrieve_with_author_filter(
 
 
 # ---------------------------------------------------------------------------
-# Test 5: retrieve_bm25_only_when_no_colbert — works without reranker
+# Test 5: retrieve_bm25_only_when_no_colbert â€” works without reranker
 # ---------------------------------------------------------------------------
 
 
@@ -137,7 +137,7 @@ def test_retrieve_bm25_only_when_no_reranker(
 
 
 # ---------------------------------------------------------------------------
-# Test 6: retrieve_with_colbert_reranking — mock reranker is called
+# Test 6: retrieve_with_colbert_reranking â€” mock reranker is called
 # ---------------------------------------------------------------------------
 
 
@@ -177,7 +177,7 @@ def test_retrieve_with_colbert_reranking(
 
 
 # ---------------------------------------------------------------------------
-# Test 7: retrieve_no_results — empty for nonexistent query
+# Test 7: retrieve_no_results â€” empty for nonexistent query
 # ---------------------------------------------------------------------------
 
 
@@ -188,7 +188,7 @@ def test_retrieve_no_results(retriever: TwoStageRetriever) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 8: retrieve_recall_k_larger_than_top_k — BM25 fetches more than final k
+# Test 8: retrieve_recall_k_larger_than_top_k â€” BM25 fetches more than final k
 # ---------------------------------------------------------------------------
 
 
@@ -216,12 +216,12 @@ def test_retrieve_recall_k_larger_than_top_k(
 
     # Stage-1 must have requested more candidates than the final top_k
     assert len(call_log) == 1
-    # recall_k=50 vs top_k*3=6 → should use 50
+    # recall_k=50 vs top_k*3=6 â†’ should use 50
     assert call_log[0] == 50
 
 
 # ---------------------------------------------------------------------------
-# Test 9: reranker_uses_cached_embeddings — EmbeddingStore integration
+# Test 9: reranker_uses_cached_embeddings â€” EmbeddingStore integration
 # ---------------------------------------------------------------------------
 
 
@@ -275,7 +275,7 @@ def test_reranker_uses_cached_embeddings() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 10: reranker_caches_new_embeddings — stores after compute
+# Test 10: reranker_caches_new_embeddings â€” stores after compute
 # ---------------------------------------------------------------------------
 
 
@@ -321,3 +321,5 @@ def test_reranker_caches_new_embeddings() -> None:
     assert call_args[0][1].shape == (20, 128)  # squeezed tensor
 
     assert len(results) == 1
+
+

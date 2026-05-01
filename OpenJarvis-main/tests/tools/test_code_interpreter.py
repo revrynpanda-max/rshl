@@ -1,4 +1,4 @@
-"""Tests for the code interpreter tool."""
+﻿"""Tests for the code interpreter tool."""
 
 from __future__ import annotations
 
@@ -130,3 +130,5 @@ class TestCodeInterpreterTool:
     def test_registry_registration(self):
         ToolRegistry.register_value("code_interpreter", CodeInterpreterTool)
         assert ToolRegistry.contains("code_interpreter")
+
+

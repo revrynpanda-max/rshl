@@ -1,4 +1,4 @@
-"""Tests for ``jarvis model`` subcommands."""
+﻿"""Tests for ``jarvis model`` subcommands."""
 
 from __future__ import annotations
 
@@ -68,3 +68,5 @@ class TestModelInfo:
         monkeypatch.setattr(_model_mod, "discover_models", lambda e: {})
         result = CliRunner().invoke(cli, ["model", "info", "nonexistent-model"])
         assert result.exit_code != 0
+
+

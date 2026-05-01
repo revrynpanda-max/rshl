@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """M2: Collect distilled eval results and produce comparison table.
 
 Reads .summary.json files from results/neurips-2026/{distilled,baselines}/
@@ -11,7 +11,7 @@ import json
 import sys
 from pathlib import Path
 
-# Jon's Step 1 baselines — used when a local baseline result doesn't exist
+# Jon's Step 1 baselines â€” used when a local baseline result doesn't exist
 STEP1_BASELINES = {
     "2b":  {"toolcall15": 33.3, "pinchbench": 69.6, "livecodebench": 5.6,  "taubench": 70.0, "taubench-telecom": 0.0,  "gaia": 0.0,  "liveresearch": 0.0,  "liveresearchbench": None},
     "9b":  {"toolcall15": 46.7, "pinchbench": 95.7, "livecodebench": 17.6, "taubench": 85.0, "taubench-telecom": 80.0, "gaia": 38.0, "liveresearch": 75.0, "liveresearchbench": None},
@@ -26,7 +26,7 @@ BASELINE_ROOT = Path("results/neurips-2026/baselines")
 
 
 def find_summary(root: Path, size: str, bench: str) -> Path | None:
-    """Find the summary JSON for a model × benchmark run."""
+    """Find the summary JSON for a model Ã— benchmark run."""
     # Expected path: root/qwen-{size}/{bench}/{bench}_Qwen-Qwen3.5-{size}.summary.json
     candidates = list(root.glob(f"qwen-{size}/{bench}/*.summary.json"))
     return candidates[0] if candidates else None
@@ -81,14 +81,14 @@ def main() -> int:
             distilled = load_accuracy(distilled_path) if distilled_path else None
 
             # Format
-            b_str = f"{baseline:.1f}%" if baseline is not None else "—"
+            b_str = f"{baseline:.1f}%" if baseline is not None else "â€”"
             d_str = f"{distilled:.1f}%" if distilled is not None else "pending"
             if baseline is not None and distilled is not None:
                 delta = distilled - baseline
                 d_sign = "+" if delta >= 0 else ""
                 delta_str = f"{d_sign}{delta:.1f}%"
             else:
-                delta_str = "—"
+                delta_str = "â€”"
             agent = "AGENT" if bench in AGENT_BENCHMARKS else "direct"
 
             print(f"qwen-{size:4} {bench:20} {b_str:>10} {d_str:>10} {delta_str:>10} {agent:>10}")
@@ -131,3 +131,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+

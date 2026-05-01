@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from typing import Any, Optional
 
@@ -37,3 +37,4 @@ class GatewayDaemon:
     def stop(self) -> None:
         """Stop the daemon."""
         self._running = False
+

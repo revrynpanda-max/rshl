@@ -1,4 +1,4 @@
-"""Trace data model for agentic eval runs."""
+﻿"""Trace data model for agentic eval runs."""
 
 from __future__ import annotations
 
@@ -277,3 +277,4 @@ class QueryTrace:
 
 
 __all__ = ["TurnTrace", "QueryTrace"]
+

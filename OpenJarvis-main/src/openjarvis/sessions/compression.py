@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 from abc import ABC, abstractmethod
@@ -100,3 +100,4 @@ class TieredSummaries(BaseCompressor):
             )
         result.extend(l0_msgs)
         return result
+

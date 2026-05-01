@@ -1,4 +1,4 @@
-"""Tests for eval display functions."""
+﻿"""Tests for eval display functions."""
 
 from __future__ import annotations
 
@@ -150,3 +150,4 @@ class TestFullResults:
         print_full_results(console, summary)
         output = console.file.getvalue()
         assert "Accuracy" in output
+

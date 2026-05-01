@@ -1,4 +1,4 @@
-"""WorkflowEngine — executes a WorkflowGraph against a JarvisSystem."""
+﻿"""WorkflowEngine â€” executes a WorkflowGraph against a JarvisSystem."""
 
 from __future__ import annotations
 
@@ -274,7 +274,7 @@ class WorkflowEngine:
                 success=True,
                 output="true",
             )
-        # Simple expression evaluation — check if key exists and is truthy
+        # Simple expression evaluation â€” check if key exists and is truthy
         # Supports: "node_id.success", "node_id.output contains 'text'"
         try:
             result = str(eval(expr, {"__builtins__": {}}, {"outputs": outputs}))  # noqa: S307
@@ -336,3 +336,4 @@ class WorkflowEngine:
 
 
 __all__ = ["WorkflowEngine"]
+

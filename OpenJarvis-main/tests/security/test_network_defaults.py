@@ -1,4 +1,4 @@
-"""Tests for secure network defaults (Section 1 of security hardening)."""
+﻿"""Tests for secure network defaults (Section 1 of security hardening)."""
 
 from __future__ import annotations
 
@@ -182,3 +182,5 @@ class TestCORSConfiguration:
             assert resp.headers.get("access-control-allow-origin") == origin, (
                 f"Tauri origin {origin} was not allowed by default CORS list"
             )
+
+

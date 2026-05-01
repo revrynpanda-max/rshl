@@ -1,4 +1,4 @@
-"""Kokoro TTS backend — fully open-source, runs locally.
+﻿"""Kokoro TTS backend â€” fully open-source, runs locally.
 
 Requires the kokoro package: pip install kokoro
 Falls back gracefully if not installed.
@@ -15,7 +15,7 @@ from openjarvis.speech.tts import TTSBackend, TTSResult
 
 @TTSRegistry.register("kokoro")
 class KokoroTTSBackend(TTSBackend):
-    """Kokoro TTS — local open-source voice synthesis."""
+    """Kokoro TTS â€” local open-source voice synthesis."""
 
     backend_id = "kokoro"
 
@@ -78,3 +78,4 @@ class KokoroTTSBackend(TTSBackend):
             return True
         except RuntimeError:
             return False
+

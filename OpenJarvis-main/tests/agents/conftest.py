@@ -1,4 +1,4 @@
-"""Shared fixtures for agent tests."""
+﻿"""Shared fixtures for agent tests."""
 
 from __future__ import annotations
 
@@ -47,3 +47,5 @@ def scenario_harness(tmp_path):
         system=system,
         db_path=db_path,
     )
+
+

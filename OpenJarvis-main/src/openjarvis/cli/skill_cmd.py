@@ -1,4 +1,4 @@
-"""CLI commands for skill management."""
+﻿"""CLI commands for skill management."""
 
 from __future__ import annotations
 
@@ -369,7 +369,7 @@ def sources():
     table.add_column("Filter")
     table.add_column("Auto-update")
     for s in cfg.skills.sources:
-        filt = ", ".join(f"{k}={v}" for k, v in (s.filter or {}).items()) or "—"
+        filt = ", ".join(f"{k}={v}" for k, v in (s.filter or {}).items()) or "â€”"
         table.add_row(
             s.source,
             s.url or "(default)",
@@ -623,3 +623,4 @@ def show_overlay(skill_name: str) -> None:
 
 
 __all__ = ["skill"]
+

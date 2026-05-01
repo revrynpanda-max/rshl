@@ -1,4 +1,4 @@
-"""Audio transcription tool — transcribe audio via OpenAI Whisper."""
+﻿"""Audio transcription tool â€” transcribe audio via OpenAI Whisper."""
 
 from __future__ import annotations
 
@@ -178,3 +178,4 @@ class AudioTranscribeTool(BaseTool):
 
 
 __all__ = ["AudioTranscribeTool"]
+

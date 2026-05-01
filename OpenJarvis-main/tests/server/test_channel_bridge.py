@@ -1,4 +1,4 @@
-"""Tests for the ChannelBridge orchestrator."""
+﻿"""Tests for the ChannelBridge orchestrator."""
 
 from __future__ import annotations
 
@@ -186,3 +186,5 @@ class TestResponseFormatting:
         reply = bridge.handle_incoming("user1", "hi", "fake")
         assert reply == "short answer"
         assert "/more" not in reply
+
+

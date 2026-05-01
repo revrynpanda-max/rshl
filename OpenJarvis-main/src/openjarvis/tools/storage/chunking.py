@@ -1,4 +1,4 @@
-"""Document chunking with configurable size and overlap.
+﻿"""Document chunking with configurable size and overlap.
 
 Splits text into fixed-size chunks (measured in whitespace-split tokens)
 with a configurable overlap.  Paragraph boundaries are respected when they
@@ -152,3 +152,4 @@ def chunk_text(
 
 
 __all__ = ["Chunk", "ChunkConfig", "chunk_text"]
+

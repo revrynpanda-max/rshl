@@ -1,4 +1,4 @@
-"""Tests for Docker and deployment files."""
+﻿"""Tests for Docker and deployment files."""
 
 from __future__ import annotations
 
@@ -48,3 +48,5 @@ class TestDockerFiles:
 
     def test_systemd_service_exists(self):
         assert (ROOT / "deploy" / "systemd" / "openjarvis.service").is_file()
+
+

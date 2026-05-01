@@ -1,4 +1,4 @@
-"""vLLM Prometheus metrics scraper — fetches and parses /metrics endpoint."""
+﻿"""vLLM Prometheus metrics scraper â€” fetches and parses /metrics endpoint."""
 
 from __future__ import annotations
 
@@ -165,7 +165,7 @@ class VLLMMetricsScraper:
         e2e_p50 = _percentile_from_buckets(e2e_buckets, 50)
         e2e_p95 = _percentile_from_buckets(e2e_buckets, 95)
 
-        # Queue depth (gauge) — num_requests_waiting
+        # Queue depth (gauge) â€” num_requests_waiting
         queue_depth = _parse_gauge(lines, "vllm:num_requests_waiting")
 
         return VLLMMetrics(
@@ -180,3 +180,4 @@ class VLLMMetricsScraper:
 
 
 __all__ = ["VLLMMetrics", "VLLMMetricsScraper"]
+

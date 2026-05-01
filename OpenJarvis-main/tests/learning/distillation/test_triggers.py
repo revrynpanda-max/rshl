@@ -1,4 +1,4 @@
-"""Tests for openjarvis.learning.distillation.triggers module."""
+﻿"""Tests for openjarvis.learning.distillation.triggers module."""
 
 from __future__ import annotations
 
@@ -50,3 +50,5 @@ class TestClusterTrigger:
         assert t.kind.value == "cluster"
         assert len(t.trace_ids) == 3
         assert t.failure_rate == 0.8
+
+

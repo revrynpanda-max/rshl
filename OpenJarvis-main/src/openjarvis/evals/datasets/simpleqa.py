@@ -1,4 +1,4 @@
-"""SimpleQA dataset provider (basicv8vc/SimpleQA).
+﻿"""SimpleQA dataset provider (basicv8vc/SimpleQA).
 
 Short-answer factual QA benchmark for evaluating factual accuracy.
 """
@@ -80,7 +80,7 @@ class SimpleQADataset(DatasetProvider):
         if not question or not answer:
             return None
 
-        # Parse metadata — may be a JSON string or a dict
+        # Parse metadata â€” may be a JSON string or a dict
         meta_raw = raw.get("metadata")
         parsed_meta = _parse_metadata(meta_raw)
 
@@ -127,3 +127,4 @@ def _parse_metadata(meta_raw: object) -> Dict[str, Any]:
 
 
 __all__ = ["SimpleQADataset"]
+

@@ -1,4 +1,4 @@
-"""Tests for AppleHealthConnector -- local HealthKit DB / export XML."""
+﻿"""Tests for AppleHealthConnector -- local HealthKit DB / export XML."""
 
 from __future__ import annotations
 
@@ -159,3 +159,5 @@ def test_disconnect_is_noop(tmp_path):
         healthkit_db_path=str(tmp_path / "nope.sqlite"),
     )
     connector.disconnect()  # should not raise
+
+

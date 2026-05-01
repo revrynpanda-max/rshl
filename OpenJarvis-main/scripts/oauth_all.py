@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Run OAuth flows for Google, Strava, and Spotify in sequence.
 
 Usage:
@@ -25,7 +25,7 @@ CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 CALLBACK_PORT = 8789
 REDIRECT_URI = f"http://localhost:{CALLBACK_PORT}/callback"
 
-# ── Credentials (read from stored files, then env vars) ──────────────────────
+# â”€â”€ Credentials (read from stored files, then env vars) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 def _load_creds(filename: str) -> Dict[str, str]:
@@ -55,7 +55,7 @@ _spotify = _load_creds("spotify.json")
 SPOTIFY_CLIENT_ID = os.environ.get("OPENJARVIS_SPOTIFY_CLIENT_ID", "") or _spotify["client_id"]
 SPOTIFY_CLIENT_SECRET = os.environ.get("OPENJARVIS_SPOTIFY_CLIENT_SECRET", "") or _spotify["client_secret"]
 
-# ── Generic OAuth helpers ────────────────────────────────────────────────────
+# â”€â”€ Generic OAuth helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 def _wait_for_code(port: int = CALLBACK_PORT, timeout: int = 120) -> str:
@@ -104,7 +104,7 @@ def _save(path: Path, data: Dict[str, Any]) -> None:
     print(f"  Saved tokens to {path}")
 
 
-# ── Google ───────────────────────────────────────────────────────────────────
+# â”€â”€ Google â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 def do_google() -> None:
@@ -162,7 +162,7 @@ def do_google() -> None:
     print("  Google OAuth complete!")
 
 
-# ── Strava ───────────────────────────────────────────────────────────────────
+# â”€â”€ Strava â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 def do_strava() -> None:
@@ -203,7 +203,7 @@ def do_strava() -> None:
     print("  Strava OAuth complete!")
 
 
-# ── Spotify ──────────────────────────────────────────────────────────────────
+# â”€â”€ Spotify â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 def _make_self_signed_cert() -> tuple[str, str]:
@@ -320,7 +320,7 @@ def do_spotify() -> None:
     print("  Spotify OAuth complete!")
 
 
-# ── Main ─────────────────────────────────────────────────────────────────────
+# â”€â”€ Main â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run OAuth flows for OpenJarvis connectors")
@@ -339,3 +339,4 @@ if __name__ == "__main__":
         do_spotify()
 
     print("\nDone! All OAuth flows complete.")
+

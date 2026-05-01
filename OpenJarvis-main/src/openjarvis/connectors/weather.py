@@ -1,4 +1,4 @@
-"""Weather connector — current conditions and forecast via OpenWeatherMap API.
+﻿"""Weather connector â€” current conditions and forecast via OpenWeatherMap API.
 
 Uses an API key stored in the connector config dir.
 All API calls are in module-level functions for easy mocking in tests.
@@ -75,7 +75,7 @@ class WeatherConnector(BaseConnector):
             w.get("description", "") for w in current.get("weather", [])
         )
         content = (
-            f"Temperature: {main.get('temp')}°F, "
+            f"Temperature: {main.get('temp')}Â°F, "
             f"Conditions: {weather_desc}, "
             f"Humidity: {main.get('humidity')}%, "
             f"Wind: {current.get('wind', {}).get('speed')} mph"
@@ -85,7 +85,7 @@ class WeatherConnector(BaseConnector):
             source="weather",
             doc_type="current",
             content=content,
-            title=f"Current Weather — {location}",
+            title=f"Current Weather â€” {location}",
             timestamp=datetime.now(),
             metadata={
                 "location": location,
@@ -111,7 +111,7 @@ class WeatherConnector(BaseConnector):
             dt_txt = entry.get("dt_txt", "")
             temp = entry.get("main", {}).get("temp")
             desc = ", ".join(w.get("description", "") for w in entry.get("weather", []))
-            summaries.append(f"{dt_txt}: {temp}°F, {desc}")
+            summaries.append(f"{dt_txt}: {temp}Â°F, {desc}")
         forecast_content = "Forecast:\n" + "\n".join(summaries)
 
         yield Document(
@@ -119,7 +119,7 @@ class WeatherConnector(BaseConnector):
             source="weather",
             doc_type="forecast",
             content=forecast_content,
-            title=f"Weather Forecast — {location}",
+            title=f"Weather Forecast â€” {location}",
             timestamp=datetime.now(),
             metadata={"location": location},
         )
@@ -129,3 +129,4 @@ class WeatherConnector(BaseConnector):
 
     def sync_status(self) -> SyncStatus:
         return self._status
+

@@ -1,4 +1,4 @@
-"""Tests for energy telemetry wiring — verify CLI, SDK, bench, and
+﻿"""Tests for energy telemetry wiring â€” verify CLI, SDK, bench, and
 telemetry stats all flow through InstrumentedEngine + EnergyMonitor."""
 
 from __future__ import annotations
@@ -545,7 +545,7 @@ class TestInstrumentedEngineEnergy:
             energy_monitor=monitor,
         )
         messages = [Message(role=Role.USER, content="Hi")]
-        # Should not crash — energy is best-effort.
+        # Should not crash â€” energy is best-effort.
         # InstrumentedEngine tries energy_monitor first, falls
         # through to no-monitor path on exception.
         # Note: current impl doesn't catch, so this tests that
@@ -673,7 +673,7 @@ class TestBenchWiring:
 
 
 # ---------------------------------------------------------------------------
-# Telemetry stats wiring — energy columns in output
+# Telemetry stats wiring â€” energy columns in output
 # ---------------------------------------------------------------------------
 
 
@@ -919,7 +919,7 @@ class TestAggregatorEnergy:
 
 
 class TestEndToEndPipeline:
-    """Full pipeline: ask → InstrumentedEngine → energy → SQLite → stats."""
+    """Full pipeline: ask â†’ InstrumentedEngine â†’ energy â†’ SQLite â†’ stats."""
 
     def test_ask_to_stats_with_energy(
         self,
@@ -1019,3 +1019,5 @@ class TestEndToEndPipeline:
         assert len(data) == 1
         assert data[0]["energy_joules"] == pytest.approx(42.5)
         assert data[0]["energy_method"] == "hw_counter"
+
+

@@ -1,4 +1,4 @@
-"""Health check tests for all data source connectors.
+﻿"""Health check tests for all data source connectors.
 
 Verifies that each connector can be instantiated, reports connection
 status correctly, and has the required interface methods.
@@ -173,3 +173,5 @@ def test_knowledge_store_sources_have_chunks() -> None:
             assert count > 0, f"Source '{source}' has 0 chunks"
     finally:
         store.close()
+
+

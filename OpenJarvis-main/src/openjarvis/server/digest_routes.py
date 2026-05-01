@@ -1,4 +1,4 @@
-"""FastAPI routes for the morning digest."""
+﻿"""FastAPI routes for the morning digest."""
 
 from __future__ import annotations
 
@@ -122,3 +122,4 @@ def create_digest_router(*, db_path: str = "") -> APIRouter:
         }
 
     return router
+

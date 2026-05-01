@@ -1,4 +1,4 @@
-"""Tests for the heuristic model router (canonical location)."""
+﻿"""Tests for the heuristic model router (canonical location)."""
 
 from __future__ import annotations
 
@@ -122,7 +122,7 @@ class TestHeuristicRouter:
             default_model="large",
             fallback_model="small",
         )
-        # Medium complexity, no code/math, no reasoning → falls to default
+        # Medium complexity, no code/math, no reasoning â†’ falls to default
         ctx = RoutingContext(
             query="Tell me about cats",
             query_length=60,
@@ -159,3 +159,5 @@ class TestHeuristicRouter:
             has_code=True,
         )
         assert router.select_model(ctx) == "large"
+
+

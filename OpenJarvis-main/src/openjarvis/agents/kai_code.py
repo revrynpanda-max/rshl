@@ -1,4 +1,4 @@
-"""ClaudeCodeAgent -- wraps the Claude Agent SDK via Node.js subprocess bridge.
+﻿"""ClaudeCodeAgent -- wraps the Claude Agent SDK via Node.js subprocess bridge.
 
 Spawns a Node.js runner process that calls the ``@anthropic-ai/claude-code``
 SDK, communicating via JSON over stdin/stdout with sentinel-delimited output.
@@ -245,3 +245,4 @@ class ClaudeCodeAgent(BaseAgent):
 
 
 __all__ = ["ClaudeCodeAgent"]
+

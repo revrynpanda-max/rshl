@@ -1,4 +1,4 @@
-"""Tests for vLLM engine with extended local model set."""
+﻿"""Tests for vLLM engine with extended local model set."""
 
 from __future__ import annotations
 
@@ -188,7 +188,7 @@ class TestVLLMModelDiscovery:
 
 class TestVLLMErrors:
     def test_connection_refused(self) -> None:
-        """No mock — ConnectError raises EngineConnectionError."""
+        """No mock â€” ConnectError raises EngineConnectionError."""
         engine = VLLMEngine(host="http://localhost:19999")
         with respx.mock:
             respx.post("http://localhost:19999/v1/chat/completions").mock(
@@ -219,3 +219,5 @@ class TestVLLMErrors:
                 engine.generate(
                     [Message(role=Role.USER, content="Hi")], model="qwen3:8b"
                 )
+
+

@@ -1,4 +1,4 @@
-"""Tests for MultiBenchTrialRunner and related multi-benchmark features."""
+﻿"""Tests for MultiBenchTrialRunner and related multi-benchmark features."""
 
 from __future__ import annotations
 
@@ -316,3 +316,5 @@ class TestParamToRecipe:
         )
         recipe = config.to_recipe()
         assert recipe.max_tokens == 16384
+
+

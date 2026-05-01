@@ -1,4 +1,4 @@
-"""Manage persistent agent memory (MEMORY.md)."""
+﻿"""Manage persistent agent memory (MEMORY.md)."""
 
 from __future__ import annotations
 
@@ -137,3 +137,4 @@ class MemoryManageTool(BaseTool):
             success=True,
             content=f"Removed: {entry}",
         )
+

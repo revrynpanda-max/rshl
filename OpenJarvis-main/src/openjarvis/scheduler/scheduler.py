@@ -1,4 +1,4 @@
-"""Task scheduler — cron/interval/once execution with background polling."""
+﻿"""Task scheduler â€” cron/interval/once execution with background polling."""
 
 from __future__ import annotations
 
@@ -350,3 +350,4 @@ __all__ = [
     "ScheduledTask",
     "TaskScheduler",
 ]
+

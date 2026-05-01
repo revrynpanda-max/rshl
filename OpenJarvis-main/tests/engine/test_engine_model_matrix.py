@@ -1,4 +1,4 @@
-"""Cross-product parametrized tests: engine x scenario."""
+﻿"""Cross-product parametrized tests: engine x scenario."""
 
 from __future__ import annotations
 
@@ -270,3 +270,5 @@ class TestEngineHealth:
                 side_effect=httpx.ConnectError("refused")
             )
         assert engine.health() is False
+
+

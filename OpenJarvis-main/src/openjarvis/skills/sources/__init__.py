@@ -1,4 +1,4 @@
-"""Skill source resolvers — Hermes, OpenClaw, generic GitHub."""
+﻿"""Skill source resolvers â€” Hermes, OpenClaw, generic GitHub."""
 
 from openjarvis.skills.sources.base import ResolvedSkill, SourceResolver
 from openjarvis.skills.sources.github import GitHubResolver
@@ -14,3 +14,4 @@ __all__ = [
     "ResolvedSkill",
     "SourceResolver",
 ]
+

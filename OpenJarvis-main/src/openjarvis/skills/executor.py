@@ -1,4 +1,4 @@
-"""SkillExecutor — runs skill steps sequentially through ToolExecutor."""
+﻿"""SkillExecutor â€” runs skill steps sequentially through ToolExecutor."""
 
 from __future__ import annotations
 
@@ -178,3 +178,4 @@ class SkillExecutor:
 
 
 __all__ = ["SkillExecutor", "SkillResolver", "SkillResult"]
+

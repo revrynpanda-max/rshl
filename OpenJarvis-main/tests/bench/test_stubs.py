@@ -1,4 +1,4 @@
-"""Tests for benchmark stubs — BenchmarkResult, BaseBenchmark, BenchmarkSuite."""
+﻿"""Tests for benchmark stubs â€” BenchmarkResult, BaseBenchmark, BenchmarkSuite."""
 
 from __future__ import annotations
 
@@ -127,3 +127,5 @@ class TestBenchmarkSuite:
         summary = suite.summary(results)
         assert summary["benchmark_count"] == 2
         assert len(summary["benchmarks"]) == 2
+
+

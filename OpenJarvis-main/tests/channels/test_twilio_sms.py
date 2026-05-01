@@ -1,4 +1,4 @@
-"""Tests for Twilio SMS channel."""
+﻿"""Tests for Twilio SMS channel."""
 
 from __future__ import annotations
 
@@ -124,3 +124,5 @@ class TestStatus:
             ch.connect()
             ch.disconnect()
         assert ch.status() == ChannelStatus.DISCONNECTED
+
+

@@ -1,4 +1,4 @@
-"""Real student runner for distillation experiments.
+﻿"""Real student runner for distillation experiments.
 
 Replaces the ``MagicMock()`` in the experiment runner script with a
 callable that actually invokes the student model via vLLM (or any
@@ -133,3 +133,4 @@ def build_benchmark_samples_from_traces(
         )
     logger.info("Built %d benchmark samples from traces", len(samples))
     return samples
+

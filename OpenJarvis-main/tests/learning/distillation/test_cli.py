@@ -1,4 +1,4 @@
-"""Tests for the jarvis learning CLI subcommand group."""
+﻿"""Tests for the jarvis learning CLI subcommand group."""
 
 from __future__ import annotations
 
@@ -42,3 +42,5 @@ class TestLearningCLI:
         runner = CliRunner()
         result = runner.invoke(learning_group, ["rollback", "--help"])
         assert result.exit_code == 0
+
+

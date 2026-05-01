@@ -1,4 +1,4 @@
-"""Shared test fixtures for the evaluation framework."""
+﻿"""Shared test fixtures for the evaluation framework."""
 
 from __future__ import annotations
 
@@ -152,3 +152,4 @@ def sample_records():
 @pytest.fixture()
 def mock_dataset(sample_records):
     return MockDataset(sample_records)
+

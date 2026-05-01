@@ -1,4 +1,4 @@
-"""Decorator-based registry for runtime discovery of pluggable components.
+﻿"""Decorator-based registry for runtime discovery of pluggable components.
 
 Adapted from IPW's ``src/ipw/core/registry.py``.  Each typed subclass gets its
 own isolated storage so registrations in one registry never leak into another.
@@ -93,7 +93,7 @@ class RegistryBase(Generic[T]):
 
 
 # ---------------------------------------------------------------------------
-# Typed subclass registries — one per primitive
+# Typed subclass registries â€” one per primitive
 # ---------------------------------------------------------------------------
 
 
@@ -170,3 +170,4 @@ __all__ = [
     "TTSRegistry",
     "ToolRegistry",
 ]
+

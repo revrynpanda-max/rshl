@@ -1,4 +1,4 @@
-"""Tests for orchestrator SFT trainer."""
+﻿"""Tests for orchestrator SFT trainer."""
 
 from __future__ import annotations
 
@@ -130,3 +130,5 @@ class TestSFTRegistration:
         from openjarvis.core.registry import LearningRegistry
 
         assert LearningRegistry.contains("orchestrator_sft")
+
+

@@ -1,4 +1,4 @@
-"""Tests for openjarvis.learning.distillation.checkpoint.store module."""
+﻿"""Tests for openjarvis.learning.distillation.checkpoint.store module."""
 
 from __future__ import annotations
 
@@ -112,7 +112,7 @@ class TestStageCommitDiscard:
         body = _git(root, "log", "-1", "--format=%B", new_sha)
         assert "Edit-ID: edit-001" in body
         assert "Session-ID: session-001" in body
-        assert "Risk-Tier: review" in body
+        assert "Ridummy-sk-Tier: review" in body
 
     def test_discard_stage_restores_working_tree(self, tmp_path: Path) -> None:
         from openjarvis.learning.distillation.checkpoint.store import (
@@ -216,3 +216,5 @@ class TestRevertSession:
 
         result = store.revert_session("session-with-no-commits")
         assert result == []
+
+

@@ -1,4 +1,4 @@
-"""LearningOrchestrator — coordinate the full trace->learn->eval loop.
+﻿"""LearningOrchestrator â€” coordinate the full trace->learn->eval loop.
 
 Pulls traces from a :class:`TraceStore`, mines training data via
 :class:`TrainingDataMiner`, evolves agent configs via
@@ -98,7 +98,7 @@ class LearningOrchestrator:
             "timestamp": time.time(),
         }
 
-        # 0. Skill optimization (Plan 2A C2) — runs INDEPENDENTLY of the
+        # 0. Skill optimization (Plan 2A C2) â€” runs INDEPENDENTLY of the
         # routing/agent SFT pipeline.  Skills are tagged via trace metadata
         # rather than mined as SFT pairs, so they can be optimized even when
         # there's no other training data available.
@@ -185,7 +185,7 @@ class LearningOrchestrator:
                     f"threshold {self._min_improvement}"
                 )
         else:
-            # No eval gate — always accept
+            # No eval gate â€” always accept
             result["accepted"] = True
             result["status"] = "completed"
 
@@ -254,3 +254,4 @@ class LearningOrchestrator:
 
 
 __all__ = ["LearningOrchestrator"]
+

@@ -1,4 +1,4 @@
-"""Tests for MFU/MBU efficiency calculator."""
+﻿"""Tests for MFU/MBU efficiency calculator."""
 
 from __future__ import annotations
 
@@ -74,13 +74,13 @@ class TestComputeEfficiency:
         assert m.actual_flops == pytest.approx(1.4e12)
         # peak_flops = 312e12
         assert m.peak_flops == pytest.approx(312e12)
-        # MFU = 1.4e12 / 312e12 * 100 ≈ 0.4487%
+        # MFU = 1.4e12 / 312e12 * 100 â‰ˆ 0.4487%
         expected_mfu = 1.4e12 / 312e12 * 100.0
         assert m.mfu_pct == pytest.approx(expected_mfu)
 
         # actual_bandwidth = 14e9 * 100 / 1e9 = 1400 GB/s
         assert m.actual_bandwidth_gb_s == pytest.approx(1400.0)
-        # MBU = 1400 / 2039 * 100 ≈ 68.66%
+        # MBU = 1400 / 2039 * 100 â‰ˆ 68.66%
         expected_mbu = 1400.0 / 2039.0 * 100.0
         assert m.mbu_pct == pytest.approx(expected_mbu)
 
@@ -189,3 +189,5 @@ class TestComputeEfficiency:
             tokens_per_sec=100.0,
         )
         assert m.mfu_pct == pytest.approx(m_fp16.mfu_pct)
+
+

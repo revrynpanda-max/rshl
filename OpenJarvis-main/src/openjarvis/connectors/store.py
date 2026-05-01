@@ -1,4 +1,4 @@
-"""KnowledgeStore — source-aware SQLite/FTS5 memory backend for Deep Research.
+﻿"""KnowledgeStore â€” source-aware SQLite/FTS5 memory backend for Deep Research.
 
 Extends ``MemoryBackend`` with per-document provenance columns so that the
 IngestionPipeline and the ``knowledge_search`` tool can filter results by
@@ -305,7 +305,7 @@ class KnowledgeStore(MemoryBackend):
         try:
             rows = self._conn.execute(sql, [query] + params + [top_k]).fetchall()
         except sqlite3.OperationalError:
-            # Malformed FTS query — return empty rather than crash
+            # Malformed FTS query â€” return empty rather than crash
             return []
 
         results: List[RetrievalResult] = []
@@ -374,3 +374,4 @@ class KnowledgeStore(MemoryBackend):
 
 
 __all__ = ["KnowledgeStore"]
+

@@ -1,4 +1,4 @@
-"""Tests for the gemma.cpp engine backend."""
+﻿"""Tests for the gemma.cpp engine backend."""
 
 from __future__ import annotations
 
@@ -372,7 +372,7 @@ class TestGemmaCppDiscovery:
 
 @pytest.mark.live
 class TestGemmaCppLive:
-    """Integration tests — require pygemma and downloaded Gemma weights.
+    """Integration tests â€” require pygemma and downloaded Gemma weights.
 
     Set GEMMA_CPP_MODEL_PATH, GEMMA_CPP_TOKENIZER_PATH, and
     GEMMA_CPP_MODEL_TYPE env vars before running.
@@ -421,3 +421,5 @@ class TestGemmaCppLive:
         assert result["usage"]["prompt_tokens"] > 0
         assert result["usage"]["completion_tokens"] > 0
         assert result["usage"]["total_tokens"] > 0
+
+

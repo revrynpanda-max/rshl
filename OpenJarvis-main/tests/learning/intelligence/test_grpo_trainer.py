@@ -1,4 +1,4 @@
-"""Tests for the general-purpose GRPO trainer."""
+﻿"""Tests for the general-purpose GRPO trainer."""
 
 from __future__ import annotations
 
@@ -86,3 +86,5 @@ class TestGRPOTrainer:
             result = trainer.train(mock_store)
             mock_mine.assert_called_once_with(mock_store)
             assert result["status"] == "skipped"
+
+

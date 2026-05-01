@@ -1,4 +1,4 @@
-"""Tests for the calculator tool."""
+﻿"""Tests for the calculator tool."""
 
 from __future__ import annotations
 
@@ -110,3 +110,5 @@ class TestCalculatorTool:
         fn = tool.to_openai_function()
         assert fn["function"]["name"] == "calculator"
         assert "expression" in fn["function"]["parameters"]["properties"]
+
+

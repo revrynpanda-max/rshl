@@ -1,4 +1,4 @@
-"""News/RSS connector — aggregate headlines from RSS and Atom feeds.
+﻿"""News/RSS connector â€” aggregate headlines from RSS and Atom feeds.
 
 Uses stdlib xml.etree.ElementTree for parsing (no extra dependencies).
 Config file lists feeds to follow. All HTTP calls are in module-level
@@ -160,3 +160,4 @@ class NewsRSSConnector(BaseConnector):
 
     def sync_status(self) -> SyncStatus:
         return self._status
+

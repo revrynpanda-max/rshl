@@ -1,4 +1,4 @@
-"""Per-channel config→kwargs mappers for ChannelRegistry.create()."""
+﻿"""Per-channel configâ†’kwargs mappers for ChannelRegistry.create()."""
 
 from __future__ import annotations
 
@@ -161,7 +161,7 @@ def _sendblue(c: Any) -> Dict[str, Any]:
     return kw
 
 
-# Maps channel key → (config.channel.<attr>, mapper).
+# Maps channel key â†’ (config.channel.<attr>, mapper).
 # Omit a channel here to have it fall through with only {"bus": bus}.
 _CHANNEL_MAPPERS: Dict[str, tuple] = {
     "telegram": ("telegram", _telegram),
@@ -187,7 +187,7 @@ _CHANNEL_MAPPERS: Dict[str, tuple] = {
 def build_channel_kwargs(channel_config: Any, key: str) -> Dict[str, Any]:
     """Return channel-specific kwargs for ChannelRegistry.create(key, ...).
 
-    Does not include ``bus`` — the caller adds that.
+    Does not include ``bus`` â€” the caller adds that.
     """
     entry: Optional[tuple] = _CHANNEL_MAPPERS.get(key)
     if entry is None:
@@ -197,3 +197,4 @@ def build_channel_kwargs(channel_config: Any, key: str) -> Dict[str, Any]:
     if sub_cfg is None:
         return {}
     return mapper(sub_cfg)
+

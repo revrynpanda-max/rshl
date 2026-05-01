@@ -1,4 +1,4 @@
-"""SkillOptimizer — per-skill DSPy/GEPA optimization wrapper (Plan 2A).
+﻿"""SkillOptimizer â€” per-skill DSPy/GEPA optimization wrapper (Plan 2A).
 
 Buckets traces by skill name, runs the underlying optimizer on each skill's
 bucket, and writes the result as a sidecar overlay file in
@@ -6,7 +6,7 @@ bucket, and writes the result as a sidecar overlay file in
 
 The actual DSPy/GEPA invocation is done in ``_run_dspy`` / ``_run_gepa``,
 which are isolated for easy mocking in tests.  In Plan 2A these are
-deliberately minimal — they call the existing optimizer modules and extract
+deliberately minimal â€” they call the existing optimizer modules and extract
 the description + few-shot examples.  Plan 2B will measure the impact via
 benchmarks.
 """
@@ -195,7 +195,7 @@ class SkillOptimizer:
     ) -> _OptimizerOutput:
         """Run DSPyAgentOptimizer on the bucket and extract description + few-shot.
 
-        In Plan 2A this is intentionally simple — it pulls the few highest-
+        In Plan 2A this is intentionally simple â€” it pulls the few highest-
         feedback traces as candidate few-shot examples and uses the agent
         optimizer's output `system_prompt` as the new skill description if
         non-empty.  Plan 2B will measure and refine.
@@ -310,3 +310,4 @@ class SkillOptimizer:
 
 
 __all__ = ["SkillOptimizer", "SkillOptimizationResult"]
+

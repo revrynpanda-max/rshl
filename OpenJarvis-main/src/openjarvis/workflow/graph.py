@@ -1,4 +1,4 @@
-"""WorkflowGraph — DAG with validation and topological sort."""
+﻿"""WorkflowGraph â€” DAG with validation and topological sort."""
 
 from __future__ import annotations
 
@@ -125,3 +125,4 @@ class WorkflowGraph:
 
 
 __all__ = ["WorkflowGraph"]
+

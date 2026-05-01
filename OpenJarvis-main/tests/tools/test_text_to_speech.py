@@ -1,4 +1,4 @@
-"""Tests for the text_to_speech tool."""
+﻿"""Tests for the text_to_speech tool."""
 
 from __future__ import annotations
 
@@ -51,3 +51,5 @@ def test_tts_tool_empty_text():
     tool = TextToSpeechTool()
     result = tool.execute(text="")
     assert result.success is False
+
+

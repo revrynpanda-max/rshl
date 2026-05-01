@@ -1,4 +1,4 @@
-"""ABC for agent implementations.
+﻿"""ABC for agent implementations.
 
 Adapted from IPW's ``BaseAgent`` at ``src/agents/base.py``.
 Provides ``BaseAgent`` with concrete helper methods for event emission,
@@ -356,3 +356,4 @@ class ToolUsingAgent(BaseAgent):
 
 
 __all__ = ["AgentContext", "AgentResult", "BaseAgent", "ToolUsingAgent"]
+

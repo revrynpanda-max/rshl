@@ -1,4 +1,4 @@
-"""Sandboxed REPL environment for the RLM agent.
+﻿"""Sandboxed REPL environment for the RLM agent.
 
 Provides a persistent Python namespace with injected helper functions
 (``llm_query``, ``llm_batch``, ``FINAL``, ``FINAL_VAR``) that the RLM
@@ -77,7 +77,7 @@ class RLMRepl:
             except ImportError:
                 pass
 
-        # answer dict — code can set answer["ready"] = True, answer["value"] = ...
+        # answer dict â€” code can set answer["ready"] = True, answer["value"] = ...
         self._namespace["answer"] = {"ready": False, "value": None}
 
         # Inject FINAL / FINAL_VAR
@@ -181,3 +181,4 @@ class RLMRepl:
 
 
 __all__ = ["RLMRepl"]
+

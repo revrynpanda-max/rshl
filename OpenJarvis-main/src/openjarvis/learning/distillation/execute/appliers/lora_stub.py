@@ -1,10 +1,10 @@
-"""LoRA fine-tuning stub — deferred to v2.
+﻿"""LoRA fine-tuning stub â€” deferred to v2.
 
 The planner can emit LORA_FINETUNE edits so the diagnosis surfaces
 "this should be a weight update" pressure to the user, but the executor
 refuses them in v1.
 
-See spec §4.1.
+See spec Â§4.1.
 """
 
 from __future__ import annotations
@@ -36,3 +36,4 @@ class LoraStubApplier(EditApplier):
 
     def rollback(self, edit: Edit, ctx: ApplyContext) -> None:
         pass
+

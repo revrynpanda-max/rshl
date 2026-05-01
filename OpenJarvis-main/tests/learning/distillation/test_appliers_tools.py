@@ -1,4 +1,4 @@
-"""Tests for tools-pillar appliers."""
+﻿"""Tests for tools-pillar appliers."""
 
 from __future__ import annotations
 
@@ -143,3 +143,5 @@ class TestEditToolDescriptionApplier:
         content = (ctx.tools_dir / "descriptions.toml").read_text()
         assert "[calculator]" in content
         assert "Evaluate mathematical" in content
+
+

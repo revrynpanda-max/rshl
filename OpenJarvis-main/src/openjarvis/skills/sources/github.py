@@ -1,4 +1,4 @@
-"""GitHubResolver — generic resolver for any GitHub repo containing skills.
+﻿"""GitHubResolver â€” generic resolver for any GitHub repo containing skills.
 
 Performs a recursive walk for SKILL.md (or skill.md) files anywhere
 under the cache directory.
@@ -119,3 +119,4 @@ class GitHubResolver(SourceResolver):
 
 
 __all__ = ["GitHubResolver"]
+

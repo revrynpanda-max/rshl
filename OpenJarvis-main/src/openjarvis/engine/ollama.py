@@ -1,4 +1,4 @@
-"""Ollama inference engine backend."""
+﻿"""Ollama inference engine backend."""
 
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ class OllamaEngine(InferenceEngine):
             host = env_host or self._DEFAULT_HOST
         self._host = host.rstrip("/")
         self._client = httpx.Client(base_url=self._host, timeout=timeout)
-        # Last stream usage — captured from Ollama's final chunk
+        # Last stream usage â€” captured from Ollama's final chunk
         self._last_stream_usage: Dict[str, int] = {}
 
     def generate(
@@ -117,8 +117,8 @@ class OllamaEngine(InferenceEngine):
         # prompt_eval_count = tokens actually evaluated (KV-cache-aware).
         # estimate_prompt_tokens = full prompt size (for cost comparison).
         # We report both so downstream can use the right one:
-        #   prompt_tokens        → full size (what cloud would charge)
-        #   prompt_tokens_evaluated → actual compute (with KV cache)
+        #   prompt_tokens        â†’ full size (what cloud would charge)
+        #   prompt_tokens_evaluated â†’ actual compute (with KV cache)
         reported_prompt = data.get("prompt_eval_count", 0)
         estimated_prompt = estimate_prompt_tokens(messages)
         prompt_tokens = max(reported_prompt, estimated_prompt)
@@ -138,7 +138,7 @@ class OllamaEngine(InferenceEngine):
             "model": data.get("model", model),
             "finish_reason": "stop",
         }
-        # Extract timing from Ollama response (nanoseconds → seconds)
+        # Extract timing from Ollama response (nanoseconds â†’ seconds)
         result["ttft"] = data.get("prompt_eval_duration", 0) / 1e9
         result["engine_timing"] = {
             k: data[k]
@@ -288,7 +288,7 @@ class OllamaEngine(InferenceEngine):
         try:
             with self._client.stream("POST", "/api/chat", json=payload) as resp:
                 if resp.status_code == 400 and retry_without_tools:
-                    # Model doesn't support tools — retry without them.
+                    # Model doesn't support tools â€” retry without them.
                     payload.pop("tools", None)
                     async for c in self._run_stream(
                         payload, messages, retry_without_tools=False
@@ -398,3 +398,4 @@ class OllamaEngine(InferenceEngine):
 
 
 __all__ = ["OllamaEngine"]
+

@@ -1,4 +1,4 @@
-"""Tests for MCP protocol message types."""
+﻿"""Tests for MCP protocol message types."""
 
 from __future__ import annotations
 
@@ -165,3 +165,5 @@ class TestErrorCodes:
 
     def test_internal_error(self):
         assert INTERNAL_ERROR == -32603
+
+

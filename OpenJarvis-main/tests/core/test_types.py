@@ -1,4 +1,4 @@
-"""Tests for core data types."""
+﻿"""Tests for core data types."""
 
 from __future__ import annotations
 
@@ -101,3 +101,5 @@ class TestTelemetryRecord:
         )
         assert rec.total_tokens == 30
         assert rec.energy_joules == 0.0
+
+

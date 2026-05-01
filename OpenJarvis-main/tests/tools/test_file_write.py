@@ -1,4 +1,4 @@
-"""Tests for the file_write tool."""
+﻿"""Tests for the file_write tool."""
 
 from __future__ import annotations
 
@@ -133,3 +133,5 @@ class TestFileWriteTool:
         )
         assert result.success is False
         assert "Invalid mode" in result.content
+
+

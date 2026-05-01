@@ -1,4 +1,4 @@
-"""Tests for OuraConnector — Oura Ring REST API v2."""
+﻿"""Tests for OuraConnector â€” Oura Ring REST API v2."""
 
 from __future__ import annotations
 
@@ -93,3 +93,5 @@ def test_sync_yields_documents(connector):
 def test_disconnect(connector):
     connector.disconnect()
     assert connector.is_connected() is False
+
+

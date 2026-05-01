@@ -1,4 +1,4 @@
-"""Tests for scheduler MCP tools."""
+﻿"""Tests for scheduler MCP tools."""
 
 from __future__ import annotations
 
@@ -136,3 +136,5 @@ class TestWithScheduler:
         result = tool.execute()  # missing task_id
         assert not result.success
         assert "Missing" in result.content
+
+

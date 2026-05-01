@@ -341,3 +341,5 @@ class TestModelDiscovery:
         register_builtin_models()
         register_builtin_models()  # should not raise
         assert ModelRegistry.contains("qwen3:8b")
+
+

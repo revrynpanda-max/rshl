@@ -1,4 +1,4 @@
-"""SWEfficiency dataset (swefficiency/swefficiency).
+﻿"""SWEfficiency dataset (swefficiency/swefficiency).
 
 Agentic benchmark for software performance optimization.
 """
@@ -34,7 +34,7 @@ Target speedup: **{expected_speedup}x**
 - Produce an optimized patch (unified diff format) that achieves at least the target speedup.
 - The patch must apply cleanly against commit `{base_commit}`.
 - Focus on algorithmic improvements, data structure changes, or computation optimizations.
-- Return ONLY the patch — no explanation, no markdown fences."""
+- Return ONLY the patch â€” no explanation, no markdown fences."""
 
 
 def _parse_test_list(value: object) -> List[str]:
@@ -171,3 +171,4 @@ class SWEfficiencyDataset(DatasetProvider):
 
 
 __all__ = ["SWEfficiencyDataset"]
+

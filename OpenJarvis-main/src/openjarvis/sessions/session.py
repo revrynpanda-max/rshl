@@ -1,4 +1,4 @@
-"""Session management — cross-channel persistent sessions.
+﻿"""Session management â€” cross-channel persistent sessions.
 
 Supports consolidation and decay.
 """
@@ -361,3 +361,4 @@ class SessionStore:
 
 
 __all__ = ["Session", "SessionIdentity", "SessionMessage", "SessionStore"]
+

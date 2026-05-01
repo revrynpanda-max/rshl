@@ -1,10 +1,10 @@
-"""Filesystem path resolution for the distillation subsystem.
+﻿"""Filesystem path resolution for the distillation subsystem.
 
-The keystone of artifact isolation (spec §11): the resolved distillation root
+The keystone of artifact isolation (spec Â§11): the resolved distillation root
 must NEVER be inside the OpenJarvis source tree. ``resolve_distillation_root``
 walks up from this module's ``__file__`` looking for a ``pyproject.toml`` that
 identifies the OpenJarvis source root, then refuses to operate if the resolved
-root is inside it. Defense in depth — if a user accidentally points
+root is inside it. Defense in depth â€” if a user accidentally points
 ``OPENJARVIS_HOME`` at the repo, the system fails loudly instead of silently
 writing artifacts into the working tree.
 """
@@ -63,7 +63,7 @@ def resolve_distillation_root() -> Path:
         try:
             home.relative_to(source_root)
         except ValueError:
-            pass  # Good — not inside the source tree.
+            pass  # Good â€” not inside the source tree.
         else:
             raise ConfigurationError(
                 f"OPENJARVIS_HOME ({home}) is inside the source tree "
@@ -88,3 +88,4 @@ def ensure_distillation_dirs() -> Path:
     secure_mkdir(root / "benchmarks" / "reference_outputs")
     secure_mkdir(root / "pending_review")
     return root
+

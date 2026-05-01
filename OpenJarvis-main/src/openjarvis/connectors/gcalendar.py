@@ -1,4 +1,4 @@
-"""Google Calendar connector — event sync via the Calendar REST API v3.
+﻿"""Google Calendar connector â€” event sync via the Calendar REST API v3.
 
 Uses OAuth 2.0 tokens stored locally (see :mod:`openjarvis.connectors.oauth`).
 All network calls are isolated in module-level functions (``_gcal_api_*``)
@@ -137,7 +137,7 @@ def _format_event(event: Dict[str, Any]) -> str:
     start_str = start.get("dateTime") or start.get("date", "")
     end_str = end.get("dateTime") or end.get("date", "")
     if start_str or end_str:
-        lines.append(f"When: {start_str} – {end_str}")
+        lines.append(f"When: {start_str} â€“ {end_str}")
 
     # Location
     location = event.get("location", "")
@@ -174,7 +174,7 @@ def _parse_event_timestamp(event: Dict[str, Any]) -> datetime:
     if not date_time_str:
         return datetime.now()
     try:
-        # RFC3339 — Python 3.11+ fromisoformat handles the trailing 'Z'.
+        # RFC3339 â€” Python 3.11+ fromisoformat handles the trailing 'Z'.
         # For older versions we replace 'Z' with '+00:00'.
         normalized = date_time_str.replace("Z", "+00:00")
         return datetime.fromisoformat(normalized)
@@ -472,3 +472,4 @@ class GCalendarConnector(BaseConnector):
                 category="productivity",
             ),
         ]
+

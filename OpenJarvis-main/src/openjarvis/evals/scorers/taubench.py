@@ -1,4 +1,4 @@
-"""TauBench scorer — wraps tau2-bench's evaluation results.
+﻿"""TauBench scorer â€” wraps tau2-bench's evaluation results.
 
 Since TauBench runs its own simulation loop (agent + user simulator +
 tools + evaluation), the scorer simply reads the reward that was
@@ -14,7 +14,7 @@ from openjarvis.evals.core.types import EvalRecord
 
 
 class TauBenchScorer(Scorer):
-    """TauBench scorer — reads pre-computed rewards from tau2-bench.
+    """TauBench scorer â€” reads pre-computed rewards from tau2-bench.
 
     The actual evaluation (DB state checks, action matching,
     communication checks, NL assertions) is done by tau2-bench's
@@ -46,3 +46,4 @@ class TauBenchScorer(Scorer):
 
 
 __all__ = ["TauBenchScorer"]
+

@@ -1,4 +1,4 @@
-"""WhatsAppBaileysChannel -- bidirectional WhatsApp messaging via Baileys protocol.
+﻿"""WhatsAppBaileysChannel -- bidirectional WhatsApp messaging via Baileys protocol.
 
 Spawns a Node.js subprocess that runs the Baileys bridge (JSON-line protocol
 on stdio).  The bridge handles QR-code authentication, message sending, and
@@ -338,3 +338,4 @@ class WhatsAppBaileysChannel(BaseChannel):
 
 
 __all__ = ["WhatsAppBaileysChannel"]
+

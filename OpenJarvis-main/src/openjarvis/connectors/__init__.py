@@ -1,4 +1,4 @@
-"""Data source connectors for Deep Research."""
+﻿"""Data source connectors for Deep Research."""
 
 from openjarvis.connectors._stubs import (
     Attachment,
@@ -132,3 +132,4 @@ try:
     import openjarvis.connectors.news_rss  # noqa: F401
 except ImportError:
     pass
+

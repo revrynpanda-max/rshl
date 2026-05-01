@@ -1,4 +1,4 @@
-"""Matrix tests — verify every built-in tool is discoverable and callable via MCP."""
+﻿"""Matrix tests â€” verify every built-in tool is discoverable and callable via MCP."""
 
 from __future__ import annotations
 
@@ -80,3 +80,5 @@ class TestMCPToolsMatrix:
         tools = client.list_tools()
         names = [t.name for t in tools]
         assert tool_name in names
+
+

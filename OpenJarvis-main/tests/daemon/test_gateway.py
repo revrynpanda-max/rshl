@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 
 def test_gateway_session_key_format():
@@ -16,3 +16,5 @@ def test_gateway_session_key_deterministic():
     key1 = GatewayDaemon.session_key("discord", "group", "abc", "thread1")
     key2 = GatewayDaemon.session_key("discord", "group", "abc", "thread1")
     assert key1 == key2
+
+

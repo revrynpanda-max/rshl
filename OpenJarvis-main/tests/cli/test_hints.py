@@ -1,4 +1,4 @@
-"""Tests for CLI error hint functions."""
+﻿"""Tests for CLI error hint functions."""
 
 from __future__ import annotations
 
@@ -45,3 +45,5 @@ class TestHintFunctions:
         msg = hint_no_engine("vllm")
         assert "config set" in msg
         assert "engine.vllm.host" in msg
+
+

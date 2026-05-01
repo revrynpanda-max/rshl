@@ -1,4 +1,4 @@
-"""Tests for the SQLite/FTS5 memory backend."""
+﻿"""Tests for the SQLite/FTS5 memory backend."""
 
 from __future__ import annotations
 
@@ -163,3 +163,5 @@ def test_event_bus_integration_retrieve(tmp_path: Path):
     finally:
         mod.get_event_bus = original
     backend.close()
+
+

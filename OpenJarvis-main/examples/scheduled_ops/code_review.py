@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
-"""Weekly code review — summarizes recent commits in a repository.
+﻿#!/usr/bin/env python3
+"""Weekly code review â€” summarizes recent commits in a repository.
 
 Run manually::
 
@@ -93,7 +93,7 @@ def main(repo_path: str, days: int, model: str | None, engine_key: str | None) -
         j.close()
 
     click.echo(f"\n{'=' * 60}")
-    click.echo(f"  Weekly Code Review — {today}")
+    click.echo(f"  Weekly Code Review â€” {today}")
     click.echo(f"  Repository: {repo_path}")
     click.echo(f"  Period: last {days} days")
     click.echo(f"{'=' * 60}\n")
@@ -103,3 +103,4 @@ def main(repo_path: str, days: int, model: str | None, engine_key: str | None) -
 
 if __name__ == "__main__":
     main()
+

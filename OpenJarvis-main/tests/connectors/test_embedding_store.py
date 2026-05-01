@@ -1,4 +1,4 @@
-"""Tests for EmbeddingStore — disk-persistent ColBERT token-level embeddings."""
+﻿"""Tests for EmbeddingStore â€” didummy-sk-persistent ColBERT token-level embeddings."""
 
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ def _make_tensor(rows: int = 20, cols: int = 128):
 
 
 # ---------------------------------------------------------------------------
-# Test 1: store_and_get — round-trip persistence
+# Test 1: store_and_get â€” round-trip persistence
 # ---------------------------------------------------------------------------
 
 
@@ -48,7 +48,7 @@ def test_store_and_get(emb_store: EmbeddingStore) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 2: has — True after store, False for unknown
+# Test 2: has â€” True after store, False for unknown
 # ---------------------------------------------------------------------------
 
 
@@ -64,7 +64,7 @@ def test_has(emb_store: EmbeddingStore) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 3: count — 0 initially, increments on store
+# Test 3: count â€” 0 initially, increments on store
 # ---------------------------------------------------------------------------
 
 
@@ -80,7 +80,7 @@ def test_count(emb_store: EmbeddingStore) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 4: delete — removes tensor, has() returns False after
+# Test 4: delete â€” removes tensor, has() returns False after
 # ---------------------------------------------------------------------------
 
 
@@ -103,7 +103,7 @@ def test_delete_nonexistent(emb_store: EmbeddingStore) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 5: get_nonexistent — returns None
+# Test 5: get_nonexistent â€” returns None
 # ---------------------------------------------------------------------------
 
 
@@ -113,7 +113,7 @@ def test_get_nonexistent(emb_store: EmbeddingStore) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 6: graceful_without_torch — mock torch import failure
+# Test 6: graceful_without_torch â€” mock torch import failure
 # ---------------------------------------------------------------------------
 
 
@@ -162,3 +162,5 @@ def test_store_overwrites(emb_store: EmbeddingStore) -> None:
     assert loaded is not None
     assert loaded.shape == (15, 128)
     assert torch.allclose(t2, loaded)
+
+

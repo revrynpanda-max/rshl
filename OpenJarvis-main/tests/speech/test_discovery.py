@@ -1,4 +1,4 @@
-"""Tests for speech backend auto-discovery."""
+﻿"""Tests for speech backend auto-discovery."""
 
 from unittest.mock import patch
 
@@ -46,3 +46,5 @@ def test_auto_discovery_priority():
     assert DISCOVERY_ORDER[0] == "faster-whisper"
     assert "openai" in DISCOVERY_ORDER
     assert "deepgram" in DISCOVERY_ORDER
+
+

@@ -1,4 +1,4 @@
-"""Type-aware semantic chunker for Deep Research ingestion.
+﻿"""Type-aware semantic chunker for Deep Research ingestion.
 
 Splits text based on document type, never splitting mid-sentence.
 Returns ``ChunkResult`` dataclass objects with section metadata and
@@ -7,13 +7,13 @@ inherited parent metadata.
 Splitting strategy by doc_type
 -------------------------------
 - ``event``, ``contact`` : Always a single chunk; never split.
-- ``email``              : Split on reply boundaries (``On … wrote:``),
+- ``email``              : Split on reply boundaries (``On â€¦ wrote:``),
                            then sentence-split within each part.
 - ``message``            : Split on double-newline boundaries, accumulate
                            into chunks up to *max_tokens*.
 - ``document``, ``note``,
-  anything else          : Split on ``## Heading`` section boundaries →
-                           paragraph boundaries (``\\n\\n``) within sections →
+  anything else          : Split on ``## Heading`` section boundaries â†’
+                           paragraph boundaries (``\\n\\n``) within sections â†’
                            sentence boundaries as a last resort.
 
 Token counting uses whitespace splitting: ``len(text.split())``.
@@ -196,7 +196,7 @@ class SemanticChunker:
         # so we re-attach the header to the following segment.
         boundaries = _REPLY_BOUNDARY_RE.split(text)
 
-        # Each boundary match is a separator; reassemble so the "On … wrote:"
+        # Each boundary match is a separator; reassemble so the "On â€¦ wrote:"
         # line stays with the content that follows it (the quoted block).
         raw_parts: List[str] = []
         if boundaries:
@@ -205,7 +205,7 @@ class SemanticChunker:
             raw_parts.append(boundaries[0])
             # Subsequent elements alternate: matched boundary, then text after.
             # Because we used split() (not findall), the boundaries themselves
-            # are not in the list — only the text segments between them.
+            # are not in the list â€” only the text segments between them.
             # So boundaries[1:] are the segments after each matched header.
             # We need to re-find the headers to reassemble.
             headers = _REPLY_BOUNDARY_RE.findall(text)
@@ -235,12 +235,12 @@ class SemanticChunker:
         return [(c, {}) for c in raw_chunks if c]
 
     def _chunk_document(self, text: str) -> List[tuple[str, Dict[str, Any]]]:
-        """Split on ## headings → paragraphs → sentences."""
+        """Split on ## headings â†’ paragraphs â†’ sentences."""
         # Find all ## heading positions
         section_matches = list(_SECTION_RE.finditer(text))
 
         if not section_matches:
-            # No headings — fall back to paragraph/sentence splitting
+            # No headings â€” fall back to paragraph/sentence splitting
             raw_chunks = _paragraph_chunks(text, max_tokens=self.max_tokens)
             return [(c, {}) for c in raw_chunks if c]
 
@@ -269,7 +269,7 @@ class SemanticChunker:
         for title, body in sections:
             section_meta: Dict[str, Any] = {"section": title}
             if not body:
-                # Empty section — emit a placeholder chunk with just the title
+                # Empty section â€” emit a placeholder chunk with just the title
                 result.append((title, section_meta))
                 continue
 
@@ -282,3 +282,4 @@ class SemanticChunker:
 
 
 __all__ = ["ChunkResult", "SemanticChunker"]
+

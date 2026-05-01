@@ -1,4 +1,4 @@
-"""KAI (Recursive Sparse Hyperdimensional Lattice) Engine backend.
+﻿"""KAI (Recursive Sparse Hyperdimensional Lattice) Engine backend.
 
 Bridges OpenJarvis reasoning to KAI's Oracle server.
 """
@@ -137,3 +137,4 @@ class KAIEngine(InferenceEngine):
 
 
 __all__ = ["KAIEngine"]
+

@@ -1,4 +1,4 @@
-"""Tests for Ollama engine with extended local model set."""
+﻿"""Tests for Ollama engine with extended local model set."""
 
 from __future__ import annotations
 
@@ -248,3 +248,5 @@ class TestOllamaErrors:
         respx_mock.post(f"{OLLAMA_HOST}/api/chat").mock(side_effect=capture)
         engine.generate([Message(role=Role.USER, content="Hello")], model="qwen3:8b")
         assert "tools" not in captured["body"]
+
+

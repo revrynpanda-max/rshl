@@ -1,4 +1,4 @@
-"""Tests for AppleMusicConnector -- local Music.app via AppleScript.
+﻿"""Tests for AppleMusicConnector -- local Music.app via AppleScript.
 
 All tests mock ``subprocess.run`` so no actual Music.app interaction is needed.
 """
@@ -175,3 +175,5 @@ def test_sync_handles_failure(connector):
 def test_disconnect_is_noop(connector):
     """disconnect() does nothing (local connector)."""
     connector.disconnect()  # should not raise
+
+

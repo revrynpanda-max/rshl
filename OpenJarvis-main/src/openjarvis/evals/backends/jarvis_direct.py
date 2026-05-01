@@ -12,7 +12,7 @@ class JarvisDirectBackend(InferenceBackend):
     """Direct engine inference via SystemBuilder.
 
     Works for both local models (Ollama, vLLM, etc.) and cloud models
-    (OpenAI, Geometric Intelligence, Google) via the CloudEngine.
+    (OpenAI, GeometricIntelligence, Google) via the CloudEngine.
     """
 
     backend_id = "jarvis-direct"
@@ -100,3 +100,4 @@ class JarvisDirectBackend(InferenceBackend):
 
 
 __all__ = ["JarvisDirectBackend"]
+

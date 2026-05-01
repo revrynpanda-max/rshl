@@ -1,4 +1,4 @@
-"""BoundaryGuard — scans content at device exit points.
+﻿"""BoundaryGuard â€” scans content at device exit points.
 
 Wraps SecretScanner and PIIScanner to redact, warn, or block
 secrets and PII before data leaves the device via cloud engines
@@ -137,3 +137,4 @@ class BoundaryGuard:
             )
         except Exception:
             logger.debug("Failed to emit security alert event", exc_info=True)
+

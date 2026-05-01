@@ -1,4 +1,4 @@
-"""Tests for model resolution fallback chain in jarvis ask."""
+﻿"""Tests for model resolution fallback chain in jarvis ask."""
 
 from __future__ import annotations
 
@@ -129,3 +129,5 @@ class TestAskModelResolution:
             cfg.agent.context_from_memory = False
             result = CliRunner().invoke(cli, ["ask", "Hello"])
         assert result.exit_code == 0
+
+

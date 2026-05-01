@@ -1,4 +1,4 @@
-"""Tests for the MCP server."""
+﻿"""Tests for the MCP server."""
 
 from __future__ import annotations
 
@@ -193,3 +193,5 @@ class TestMCPServer:
         assert resp.error is None
         assert resp.result["isError"] is False
         assert "inf" in resp.result["content"][0]["text"]
+
+

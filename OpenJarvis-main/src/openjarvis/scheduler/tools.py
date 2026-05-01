@@ -1,4 +1,4 @@
-"""MCP tools for scheduler operations — schedule, list, pause, resume, cancel."""
+﻿"""MCP tools for scheduler operations â€” schedule, list, pause, resume, cancel."""
 
 from __future__ import annotations
 
@@ -348,3 +348,4 @@ __all__ = [
     "ResumeScheduledTaskTool",
     "ScheduleTaskTool",
 ]
+

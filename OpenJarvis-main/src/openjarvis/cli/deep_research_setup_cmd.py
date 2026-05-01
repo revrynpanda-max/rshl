@@ -1,4 +1,4 @@
-"""``jarvis deep-research-setup`` — auto-detect local sources, ingest, and chat.
+﻿"""``jarvis deep-research-setup`` â€” auto-detect local sources, ingest, and chat.
 
 Walks the user through connecting local data sources (Apple Notes, iMessage,
 Obsidian), ingesting them into a shared KnowledgeStore, and launching an
@@ -437,3 +437,4 @@ def deep_research_setup(obsidian_vault: Optional[str], skip_chat: bool) -> None:
         return
 
     _launch_chat(store, console)
+

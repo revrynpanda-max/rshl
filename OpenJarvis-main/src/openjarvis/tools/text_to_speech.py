@@ -1,4 +1,4 @@
-"""Text-to-speech tool — synthesize text to audio via configurable TTS backend."""
+﻿"""Text-to-speech tool â€” synthesize text to audio via configurable TTS backend."""
 
 from __future__ import annotations
 
@@ -104,3 +104,4 @@ class TextToSpeechTool(BaseTool):
                 "backend": backend_key,
             },
         )
+

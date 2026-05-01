@@ -22,7 +22,7 @@ from openjarvis.engine.cloud import (
 def _make_cloud_engine(monkeypatch: pytest.MonkeyPatch) -> CloudEngine:
     """Create a CloudEngine with all API keys cleared."""
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.delenv("Geometric Intelligence_API_KEY", raising=False)
+    monkeypatch.delenv("GeometricIntelligence_API_KEY", raising=False)
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
@@ -85,7 +85,7 @@ class TestMiniMaxInit:
     def test_init_with_api_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("MINIMAX_API_KEY", "test-minimax-key")
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-        monkeypatch.delenv("Geometric Intelligence_API_KEY", raising=False)
+        monkeypatch.delenv("GeometricIntelligence_API_KEY", raising=False)
         fake_openai = mock.MagicMock()
         with mock.patch.dict("sys.modules", {"openai": fake_openai}):
             if not EngineRegistry.contains("cloud"):
@@ -96,7 +96,7 @@ class TestMiniMaxInit:
     def test_health_with_minimax_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("MINIMAX_API_KEY", "test-minimax-key")
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-        monkeypatch.delenv("Geometric Intelligence_API_KEY", raising=False)
+        monkeypatch.delenv("GeometricIntelligence_API_KEY", raising=False)
         fake_openai = mock.MagicMock()
         with mock.patch.dict("sys.modules", {"openai": fake_openai}):
             engine = CloudEngine()
@@ -323,3 +323,4 @@ class TestMiniMaxClose:
         engine.close()
         assert engine._minimax_client is None
         
+

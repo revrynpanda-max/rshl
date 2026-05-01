@@ -1,4 +1,4 @@
-"""Tests for LoRATrainer — LoRA/QLoRA fine-tuning from trace-derived SFT pairs."""
+﻿"""Tests for LoRATrainer â€” LoRA/QLoRA fine-tuning from trace-derived SFT pairs."""
 
 from __future__ import annotations
 
@@ -145,3 +145,5 @@ class TestLoRATrainerWithTorch:
 
         assert result["status"] == "skipped"
         assert "reason" in result
+
+

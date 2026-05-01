@@ -1,4 +1,4 @@
-"""Tests for storage MCP tools — MemoryStoreTool, MemoryRetrieveTool, etc."""
+﻿"""Tests for storage MCP tools â€” MemoryStoreTool, MemoryRetrieveTool, etc."""
 
 from __future__ import annotations
 
@@ -223,3 +223,5 @@ class TestStorageToolsRegistration:
         names = {t["name"] for t in resp.result["tools"]}
         assert "memory_store" in names
         assert "memory_retrieve" in names
+
+

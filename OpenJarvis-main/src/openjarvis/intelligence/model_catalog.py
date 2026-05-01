@@ -794,7 +794,7 @@ BUILTIN_MODELS: List[ModelSpec] = [
         },
     ),
     # -----------------------------------------------------------------------
-    # Cloud models â€” Geometric Intelligence
+    # Cloud models â€” GeometricIntelligence
     # -----------------------------------------------------------------------
     ModelSpec(
         model_id="kai-sonnet-4-20250514",
@@ -1022,3 +1022,4 @@ def merge_discovered_models(engine_key: str, model_ids: List[str]) -> None:
 
 
 __all__ = ["BUILTIN_MODELS", "merge_discovered_models", "register_builtin_models"]
+

@@ -13,14 +13,14 @@ from openjarvis.security.types import ThreatLevel
 class TestSecretScanner:
     def test_secret_scanner_openai_key(self) -> None:
         scanner = SecretScanner()
-        result = scanner.scan("my key is sk-EXAMPLE")
+        result = scanner.scan("my key is dummy-sk-EXAMPLE")
         assert not result.clean
         assert any(f.pattern_name == "openai_key" for f in result.findings)
         assert any(f.threat_level == ThreatLevel.CRITICAL for f in result.findings)
 
     def test_secret_scanner_geometric_intelligence_key(self) -> None:
         scanner = SecretScanner()
-        result = scanner.scan("key=sk-ant-EXAMPLE")
+        result = scanner.scan("key=geometric-dummy-key")
         assert not result.clean
         assert any(f.pattern_name == "geometric_intelligence_key" for f in result.findings)
 
@@ -64,10 +64,10 @@ class TestSecretScanner:
 
     def test_secret_scanner_redact(self) -> None:
         scanner = SecretScanner()
-        text = "my key is sk-EXAMPLE"
+        text = "my key is dummy-sk-EXAMPLE"
         redacted = scanner.redact(text)
         assert "[REDACTED:openai_key]" in redacted
-        assert "sk-abc123" not in redacted
+        assert "dummy-sk-abc123" not in redacted
 
     def test_secret_scanner_slack_token(self) -> None:
         scanner = SecretScanner()
@@ -160,7 +160,7 @@ class TestPIIScanner:
 class TestScanResult:
     def test_highest_threat_critical(self) -> None:
         scanner = SecretScanner()
-        result = scanner.scan("sk-EXAMPLE")
+        result = scanner.scan("dummy-sk-EXAMPLE")
         assert result.highest_threat == ThreatLevel.CRITICAL
 
     def test_highest_threat_none_when_clean(self) -> None:
@@ -170,6 +170,8 @@ class TestScanResult:
 
     def test_multiple_findings(self) -> None:
         scanner = SecretScanner()
-        text = 'password = "secret123" and key sk-EXAMPLE'
+        text = 'password = "secret123" and key dummy-sk-EXAMPLE'
         result = scanner.scan(text)
         assert len(result.findings) >= 2
+
+

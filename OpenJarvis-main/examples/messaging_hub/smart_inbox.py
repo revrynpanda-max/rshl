@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
-"""Smart Inbox — message triage and auto-reply with an orchestrator agent.
+﻿#!/usr/bin/env python3
+"""Smart Inbox â€” message triage and auto-reply with an orchestrator agent.
 
 Usage:
     python examples/messaging_hub/smart_inbox.py --demo
@@ -102,7 +102,7 @@ def _run_demo(model: str, engine_key: str) -> None:
 
     tools = ["think", "memory_store", "memory_search"]
 
-    click.echo("Smart Inbox — Demo Mode")
+    click.echo("Smart Inbox â€” Demo Mode")
     click.echo(f"Model: {model}  |  Engine: {engine_key}")
     click.echo("=" * 60)
     click.echo(f"Processing {len(DEMO_MESSAGES)} messages...\n")
@@ -111,7 +111,7 @@ def _run_demo(model: str, engine_key: str) -> None:
         j = Jarvis(model=model, engine_key=engine_key)
     except Exception as exc:
         click.echo(
-            f"Error: could not initialize Jarvis — {exc}\n\n"
+            f"Error: could not initialize Jarvis â€” {exc}\n\n"
             "Make sure your engine is running. For Ollama:\n"
             "  ollama serve\n"
             "  ollama pull qwen3:8b\n\n"
@@ -172,7 +172,7 @@ def _run_channel(channel: str, model: str, engine_key: str) -> None:
     This mode requires channel credentials to be configured. See the
     README for setup instructions for each supported channel.
     """
-    click.echo("Smart Inbox — Live Channel Mode")
+    click.echo("Smart Inbox â€” Live Channel Mode")
     click.echo(f"Channel: {channel}  |  Model: {model}  |  Engine: {engine_key}")
     click.echo("=" * 60)
     click.echo()
@@ -243,7 +243,7 @@ def _run_channel(channel: str, model: str, engine_key: str) -> None:
     help="Run in demo mode with sample messages (no channel required).",
 )
 def main(channel: str, model: str, engine_key: str, demo: bool) -> None:
-    """Smart inbox assistant — classify and reply to messages.
+    """Smart inbox assistant â€” classify and reply to messages.
 
     Processes incoming messages through an orchestrator agent that classifies
     each message as URGENT, ACTION_REQUIRED, FYI, or SPAM, drafts concise
@@ -265,3 +265,4 @@ def main(channel: str, model: str, engine_key: str, demo: bool) -> None:
 
 if __name__ == "__main__":
     main()
+

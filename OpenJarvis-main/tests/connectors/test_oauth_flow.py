@@ -1,4 +1,4 @@
-"""Tests for OAuth token exchange and Google connector integration."""
+﻿"""Tests for OAuth token exchange and Google connector integration."""
 
 from __future__ import annotations
 
@@ -144,3 +144,5 @@ def test_gdrive_auth_url_returns_consent_url_with_client_id(
     url = conn.auth_url()
     assert "accounts.google.com" in url
     assert "test-id.apps.googleusercontent.com" in url
+
+

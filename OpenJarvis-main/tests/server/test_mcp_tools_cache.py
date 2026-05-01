@@ -1,4 +1,4 @@
-"""Tests for _get_mcp_tools() caching in agent_manager_routes."""
+﻿"""Tests for _get_mcp_tools() caching in agent_manager_routes."""
 
 from __future__ import annotations
 
@@ -152,3 +152,5 @@ def test_handles_config_load_failure(mock_load_config: MagicMock):
 
     assert tools == []
     assert adapters == {}
+
+

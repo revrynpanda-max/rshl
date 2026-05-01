@@ -1,4 +1,4 @@
-"""LLM-judge scorer for personal benchmarks."""
+﻿"""LLM-judge scorer for personal benchmarks."""
 
 from __future__ import annotations
 
@@ -48,3 +48,4 @@ class PersonalBenchmarkScorer(LLMJudgeScorer):
 
 
 __all__ = ["PersonalBenchmarkScorer"]
+

@@ -1,4 +1,4 @@
-"""``jarvis chat`` — interactive multi-turn chat REPL."""
+﻿"""``jarvis chat`` â€” interactive multi-turn chat REPL."""
 
 from __future__ import annotations
 
@@ -38,11 +38,11 @@ def chat(
     """Start an interactive multi-turn chat session.
 
     Commands during chat:
-      /quit, /exit  — end session
-      /clear        — clear conversation history
-      /model        — show current model
-      /help         — show available commands
-      /history      — show conversation history
+      /quit, /exit  â€” end session
+      /clear        â€” clear conversation history
+      /model        â€” show current model
+      /help         â€” show available commands
+      /history      â€” show conversation history
     """
     console = Console(stderr=True)
 
@@ -78,7 +78,7 @@ def chat(
     agent_key = agent_name or config.agent.default_agent
     if agent_key and agent_key != "none":
         try:
-            import openjarvis.agents  # noqa: F401 — trigger registration
+            import openjarvis.agents  # noqa: F401 â€” trigger registration
             from openjarvis.core.events import EventBus
             from openjarvis.core.registry import AgentRegistry
 
@@ -93,7 +93,7 @@ def chat(
                         getattr(config.agent, "tools", None),
                     )
                     if tool_names_list:
-                        import openjarvis.tools  # noqa: F401 — trigger registration
+                        import openjarvis.tools  # noqa: F401 â€” trigger registration
                         from openjarvis.core.registry import ToolRegistry
                         from openjarvis.tools._stubs import BaseTool
 
@@ -168,11 +168,11 @@ def chat(
         elif cmd == "/help":
             console.print(
                 "[bold]Commands:[/bold]\n"
-                "  /quit, /exit  — end session\n"
-                "  /clear        — clear conversation\n"
-                "  /model        — show model info\n"
-                "  /history      — show conversation\n"
-                "  /help         — this message"
+                "  /quit, /exit  â€” end session\n"
+                "  /clear        â€” clear conversation\n"
+                "  /model        â€” show model info\n"
+                "  /history      â€” show conversation\n"
+                "  /help         â€” this message"
             )
             continue
         elif cmd == "/history":
@@ -214,3 +214,4 @@ def chat(
 
 
 __all__ = ["chat"]
+

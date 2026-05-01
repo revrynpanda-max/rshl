@@ -1,4 +1,4 @@
-"""LiveCodeBench scorer — sandboxed code execution with test cases.
+﻿"""LiveCodeBench scorer â€” sandboxed code execution with test cases.
 
 Extracts code from model output, runs it against test cases in a
 sandboxed subprocess with timeout and resource limits, and scores
@@ -253,3 +253,4 @@ class LiveCodeBenchScorer(Scorer):
 
 
 __all__ = ["LiveCodeBenchScorer"]
+

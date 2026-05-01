@@ -1,4 +1,4 @@
-"""Policy model wrapper for orchestrator training.
+﻿"""Policy model wrapper for orchestrator training.
 
 Adapted from IPW's ``policy.py``.  Wraps a HuggingFace causal LM
 (e.g. Qwen3-1.7B) to predict structured actions in the orchestrator
@@ -278,3 +278,4 @@ class OrchestratorPolicyModel:
 
 
 __all__ = ["OrchestratorPolicyModel"]
+

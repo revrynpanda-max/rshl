@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from pathlib import Path
 
@@ -48,3 +48,5 @@ def test_memory_create_if_missing(tmp_path: Path):
     assert result.success
     assert path.exists()
     assert "new fact" in path.read_text()
+
+

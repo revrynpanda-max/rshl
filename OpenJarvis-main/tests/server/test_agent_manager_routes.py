@@ -1,4 +1,4 @@
-"""Tests for Agent Manager API routes."""
+﻿"""Tests for Agent Manager API routes."""
 
 from __future__ import annotations
 
@@ -429,7 +429,7 @@ class TestAgentManagerStreaming:
 
 @pytest.mark.skipif(not HAS_FASTAPI, reason="fastapi not installed")
 class TestResolveToolSpecs:
-    """Unit tests for _resolve_tool_specs — converts template string
+    """Unit tests for _resolve_tool_specs â€” converts template string
     tool names into OpenAI-format function specs so the engine can
     actually bind them to the model.
     """
@@ -494,3 +494,5 @@ class TestResolveToolSpecs:
 
         assert _resolve_tool_specs(None) == []
         assert _resolve_tool_specs([]) == []
+
+

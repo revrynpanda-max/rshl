@@ -1,4 +1,4 @@
-"""Tests for channel session store."""
+﻿"""Tests for channel session store."""
 
 from __future__ import annotations
 
@@ -115,3 +115,5 @@ class TestLastActiveChannel:
 
     def test_returns_none_for_unknown_user(self, store):
         assert store.get_last_active_channel("nobody") is None
+
+

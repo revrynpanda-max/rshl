@@ -1,4 +1,4 @@
-"""AgentConfigEvolver — analyze traces to evolve agent TOML configs.
+﻿"""AgentConfigEvolver â€” analyze traces to evolve agent TOML configs.
 
 Reads interaction traces to determine which agent/tool/parameter
 combinations perform best for different query classes, then writes
@@ -363,3 +363,4 @@ class _AgentScore:
 
 
 __all__ = ["AgentConfigEvolver"]
+

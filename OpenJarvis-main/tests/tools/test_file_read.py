@@ -1,4 +1,4 @@
-"""Tests for the file_read tool."""
+﻿"""Tests for the file_read tool."""
 
 from __future__ import annotations
 
@@ -93,3 +93,5 @@ class TestFileReadTool:
         tool = FileReadTool()
         result = tool.execute(path=str(f))
         assert result.success is True
+
+

@@ -1,7 +1,7 @@
-"""Live smoke test — full pipeline with real markdown files.
+﻿"""Live smoke test â€” full pipeline with real markdown files.
 
 NOT mocked. Uses the actual OpenJarvis docs/ directory as an Obsidian-like vault.
-Exercises: ObsidianConnector → SyncEngine → KnowledgeStore → knowledge_search tool.
+Exercises: ObsidianConnector â†’ SyncEngine â†’ KnowledgeStore â†’ knowledge_search tool.
 """
 
 from __future__ import annotations
@@ -41,7 +41,7 @@ def test_live_obsidian_full_pipeline() -> None:
         # 2. Verify connection
         assert connector.is_connected(), "Connector should see docs dir"
 
-        # 3. Sync — this reads real files
+        # 3. Sync â€” this reads real files
         items = engine.sync(connector)
         print(f"\n  Synced {items} chunks from {DOCS_DIR}")
         assert items > 0, "Should have indexed some chunks"
@@ -76,7 +76,7 @@ def test_live_obsidian_full_pipeline() -> None:
         assert result.success
         assert "No relevant results" in result.content
 
-        # 6. Verify result quality — check that results have metadata
+        # 6. Verify result quality â€” check that results have metadata
         result = tool.execute(query="registry pattern")
         if result.metadata["num_results"] > 0:
             # Results should have source attribution
@@ -84,5 +84,7 @@ def test_live_obsidian_full_pipeline() -> None:
             print("  'registry pattern': found with attribution")
 
         print(
-            f"\n  SMOKE TEST PASSED — {items} chunks indexed, search working end-to-end"
+            f"\n  SMOKE TEST PASSED â€” {items} chunks indexed, search working end-to-end"
         )
+
+

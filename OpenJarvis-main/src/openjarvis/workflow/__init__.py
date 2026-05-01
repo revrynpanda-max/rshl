@@ -1,4 +1,4 @@
-"""Workflow engine — DAG-based multi-agent pipelines."""
+﻿"""Workflow engine â€” DAG-based multi-agent pipelines."""
 
 from openjarvis.workflow.builder import WorkflowBuilder
 from openjarvis.workflow.engine import WorkflowEngine
@@ -21,3 +21,4 @@ __all__ = [
     "WorkflowStepResult",
     "load_workflow",
 ]
+

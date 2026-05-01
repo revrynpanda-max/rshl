@@ -1,4 +1,4 @@
-"""TauBench V2 dataset provider — multi-turn customer service benchmark.
+﻿"""TauBench V2 dataset provider â€” multi-turn customer service benchmark.
 
 Wraps the tau2-bench framework for evaluation within OpenJarvis.
 Supports airline, retail, and telecom domains.
@@ -257,3 +257,4 @@ class TauBenchDataset(DatasetProvider):
 
 
 __all__ = ["TauBenchDataset"]
+

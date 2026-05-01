@@ -1,4 +1,4 @@
-"""Tests for query complexity analyzer."""
+﻿"""Tests for query complexity analyzer."""
 
 from __future__ import annotations
 
@@ -181,3 +181,5 @@ class TestComplexityQueryAnalyzer:
         ctx = analyzer.analyze("Hi")
         assert "complexity_tier" in ctx.metadata
         assert "signals" in ctx.metadata
+
+

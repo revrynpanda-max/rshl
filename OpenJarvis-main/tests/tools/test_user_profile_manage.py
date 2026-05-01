@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from pathlib import Path
 
@@ -37,3 +37,5 @@ def test_user_update(user_file: Path):
     assert result.success
     assert "Bob" in user_file.read_text()
     assert "Alice" not in user_file.read_text()
+
+

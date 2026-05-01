@@ -1,4 +1,4 @@
-"""Tests for SKILL.md and directory-based skill loading."""
+﻿"""Tests for SKILL.md and directory-based skill loading."""
 
 from __future__ import annotations
 
@@ -213,3 +213,5 @@ class TestLoadSkillDirectorySourcePromotion:
         # Should load the manifest without raising
         manifest = load_skill_directory(skill_dir)
         assert manifest.name == "bad"
+
+

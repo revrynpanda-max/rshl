@@ -1,4 +1,4 @@
-"""Shared OAuth 2.0 helpers for all connectors.
+﻿"""Shared OAuth 2.0 helpers for all connectors.
 
 Provides:
 - ``OAuthProvider`` registry with configs for Google, Strava, Spotify
@@ -45,7 +45,7 @@ class OAuthProvider:
     callback_path: str = "/callback"
     token_auth: str = "body"  # "body" or "basic"
     extra_auth_params: Dict[str, str] = field(default_factory=dict)
-    # Which connector IDs this provider covers (one flow → all connected)
+    # Which connector IDs this provider covers (one flow â†’ all connected)
     connector_ids: Tuple[str, ...] = ()
     # Filenames in ~/.openjarvis/connectors/ to save tokens to
     credential_files: Tuple[str, ...] = ()
@@ -171,7 +171,7 @@ def save_client_credentials(
 
 
 # ---------------------------------------------------------------------------
-# Shared credentials file — one OAuth flow covers all Google connectors
+# Shared credentials file â€” one OAuth flow covers all Google connectors
 # ---------------------------------------------------------------------------
 
 _SHARED_GOOGLE_CREDENTIALS_PATH: str = str(_CONNECTORS_DIR / "google.json")
@@ -375,7 +375,7 @@ def run_oauth_flow(
     error: List[str] = []
 
     class _CallbackHandler(BaseHTTPRequestHandler):
-        def do_GET(self) -> None:  # noqa: N802 — required override name
+        def do_GET(self) -> None:  # noqa: N802 â€” required override name
             parsed = urlparse(self.path)
             params = parse_qs(parsed.query)
 
@@ -416,7 +416,7 @@ def run_oauth_flow(
         test_sock.bind(("127.0.0.1", port))
         test_sock.close()
     except OSError:
-        # Port in use — try to free it
+        # Port in use â€” try to free it
         test_sock.close()
         import subprocess
 
@@ -474,7 +474,7 @@ def run_oauth_flow(
 
 
 # ---------------------------------------------------------------------------
-# Generic OAuth flow — works with any OAuthProvider
+# Generic OAuth flow â€” works with any OAuthProvider
 # ---------------------------------------------------------------------------
 
 
@@ -594,7 +594,7 @@ def run_connector_oauth(
     """Run a complete OAuth flow for *connector_id*.
 
     1. Look up the ``OAuthProvider``
-    2. Resolve client credentials (arg → stored → env)
+    2. Resolve client credentials (arg â†’ stored â†’ env)
     3. Build auth URL and open the user's browser
     4. Start localhost callback server and wait for the code
     5. Exchange the code for tokens
@@ -660,3 +660,4 @@ def run_connector_oauth(
         save_tokens(str(_CONNECTORS_DIR / filename), payload)
 
     return tokens
+

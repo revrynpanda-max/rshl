@@ -1,4 +1,4 @@
-"""GuardrailsEngine — security-aware inference engine wrapper."""
+﻿"""GuardrailsEngine â€” security-aware inference engine wrapper."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ class SecurityBlockError(Exception):
 class GuardrailsEngine(InferenceEngine):
     """Wraps an existing ``InferenceEngine`` with security scanning.
 
-    Not registered in ``EngineRegistry`` — instantiated dynamically to wrap
+    Not registered in ``EngineRegistry`` â€” instantiated dynamically to wrap
     any engine at runtime.
 
     Parameters
@@ -102,7 +102,7 @@ class GuardrailsEngine(InferenceEngine):
         result:
             Scan result containing findings.
         direction:
-            ``"input"`` or ``"output"`` — used in event data.
+            ``"input"`` or ``"output"`` â€” used in event data.
 
         Returns
         -------
@@ -315,3 +315,4 @@ class GuardrailsEngine(InferenceEngine):
 
 
 __all__ = ["GuardrailsEngine", "SecurityBlockError"]
+

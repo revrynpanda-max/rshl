@@ -1,4 +1,4 @@
-"""Tests for intent-based agent routing in JarvisSystem."""
+﻿"""Tests for intent-based agent routing in JarvisSystem."""
 
 from __future__ import annotations
 
@@ -64,3 +64,5 @@ class TestDetectAgentIntent:
         with patch("openjarvis.core.registry.AgentRegistry") as reg:
             reg.contains.return_value = False
             assert system._detect_agent_intent("Good morning!") is None
+
+

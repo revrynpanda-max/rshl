@@ -1,4 +1,4 @@
-"""Tests for the think tool."""
+﻿"""Tests for the think tool."""
 
 from __future__ import annotations
 
@@ -35,3 +35,5 @@ class TestThinkTool:
         fn = tool.to_openai_function()
         assert fn["function"]["name"] == "think"
         assert "thought" in fn["function"]["parameters"]["properties"]
+
+

@@ -1,4 +1,4 @@
-"""Engine discovery — probe running engines and aggregate available models."""
+﻿"""Engine discovery â€” probe running engines and aggregate available models."""
 
 from __future__ import annotations
 
@@ -130,3 +130,4 @@ def get_engine(
 
 
 __all__ = ["discover_engines", "discover_models", "get_engine"]
+

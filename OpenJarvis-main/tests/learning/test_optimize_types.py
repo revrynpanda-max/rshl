@@ -1,4 +1,4 @@
-"""Tests for openjarvis.optimize.types module."""
+﻿"""Tests for openjarvis.optimize.types module."""
 
 from __future__ import annotations
 
@@ -574,3 +574,5 @@ class TestTrialFeedback:
         fb2 = TrialFeedback()
         fb1.failure_patterns.append("error")
         assert fb2.failure_patterns == []
+
+

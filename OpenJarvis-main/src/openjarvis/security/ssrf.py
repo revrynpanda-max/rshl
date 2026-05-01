@@ -1,4 +1,4 @@
-"""SSRF protection — block requests to private IPs and cloud metadata endpoints."""
+﻿"""SSRF protection â€” block requests to private IPs and cloud metadata endpoints."""
 
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ def is_private_ip(ip_str: str) -> bool:
 
 
 def check_ssrf(url: str) -> Optional[str]:
-    """Check a URL for SSRF vulnerabilities — always via Rust backend."""
+    """Check a URL for SSRF vulnerabilities â€” always via Rust backend."""
     from openjarvis._rust_bridge import get_rust_module
 
     _rust = get_rust_module()
@@ -46,7 +46,7 @@ def check_ssrf(url: str) -> Optional[str]:
 
 
 def _check_ssrf_python(url: str) -> Optional[str]:
-    """Legacy Python SSRF check — kept for reference only."""
+    """Legacy Python SSRF check â€” kept for reference only."""
     from urllib.parse import urlparse
 
     parsed = urlparse(url)
@@ -71,9 +71,10 @@ def _check_ssrf_python(url: str) -> Optional[str]:
             if is_private_ip(ip):
                 return f"URL resolves to private IP: {ip}"
     except socket.gaierror:
-        pass  # DNS resolution failed — allow (will fail at request time)
+        pass  # DNS resolution failed â€” allow (will fail at request time)
 
     return None  # Safe
 
 
 __all__ = ["check_ssrf", "is_private_ip"]
+

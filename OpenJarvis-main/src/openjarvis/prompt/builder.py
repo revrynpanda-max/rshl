@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -102,3 +102,4 @@ class SystemPromptBuilder:
                 + text[-tail_size:]
             )
         return text[:max_chars] + "\n[...truncated...]"
+

@@ -302,3 +302,4 @@ if __name__ == "__main__":
         if subdir.is_dir():
             files = list(subdir.glob("*.toml"))
             print(f"  {subdir.name}/: {len(files)} configs")
+

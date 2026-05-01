@@ -1,4 +1,4 @@
-"""gemma.cpp inference engine backend via pygemma pybind11 bindings."""
+﻿"""gemma.cpp inference engine backend via pygemma pybind11 bindings."""
 
 from __future__ import annotations
 
@@ -61,7 +61,7 @@ class GemmaCppEngine(InferenceEngine):
         return "".join(parts)
 
     def _ensure_loaded(self) -> None:
-        """Lazy model loading — called before inference."""
+        """Lazy model loading â€” called before inference."""
         if self._gemma is None:
             if not self._model_path:
                 raise FileNotFoundError(
@@ -177,3 +177,4 @@ class GemmaCppEngine(InferenceEngine):
 
 
 __all__ = ["GemmaCppEngine"]
+

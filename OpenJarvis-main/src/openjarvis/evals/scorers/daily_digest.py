@@ -1,4 +1,4 @@
-"""daily_digest scorer — phrase match, ordering, and checklist evaluation.
+﻿"""daily_digest scorer â€” phrase match, ordering, and checklist evaluation.
 
 Tier 1 (phrase match): Check each must-mention item against model output.
 Tier 1 (ordering): Check that top-priority items appear in first half of response.
@@ -167,3 +167,4 @@ class DailyDigestScorer(Scorer):
 
 
 __all__ = ["DailyDigestScorer"]
+

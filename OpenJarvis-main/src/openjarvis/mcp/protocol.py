@@ -1,4 +1,4 @@
-"""MCP JSON-RPC 2.0 protocol message types."""
+﻿"""MCP JSON-RPC 2.0 protocol message types."""
 
 from __future__ import annotations
 
@@ -143,3 +143,4 @@ __all__ = [
     "METHOD_NOT_FOUND",
     "PARSE_ERROR",
 ]
+

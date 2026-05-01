@@ -1,4 +1,4 @@
-"""FRAMES scorer — LLM-as-judge for multi-hop factual retrieval.
+﻿"""FRAMES scorer â€” LLM-as-judge for multi-hop factual retrieval.
 
 Adapted from IPW's frames.py evaluation handler.
 """
@@ -103,3 +103,4 @@ class FRAMESScorer(LLMJudgeScorer):
 
 
 __all__ = ["FRAMESScorer"]
+

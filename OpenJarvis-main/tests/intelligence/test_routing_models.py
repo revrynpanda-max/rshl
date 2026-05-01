@@ -1,4 +1,4 @@
-"""Tests for the router with model catalog via canonical imports."""
+﻿"""Tests for the router with model catalog via canonical imports."""
 
 from __future__ import annotations
 
@@ -30,3 +30,5 @@ class TestRouterWithModels:
         )
         ctx = build_routing_context("def merge_sort(arr):")
         assert router.select_model(ctx) == "gpt-oss:120b"
+
+

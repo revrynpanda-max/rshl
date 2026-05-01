@@ -1,4 +1,4 @@
-"""GPQA dataset provider (Idavidrein/gpqa).
+﻿"""GPQA dataset provider (Idavidrein/gpqa).
 
 Adapted from IPW's gpqa.py dataset loader.
 """
@@ -144,3 +144,4 @@ class GPQADataset(DatasetProvider):
 
 
 __all__ = ["GPQADataset"]
+

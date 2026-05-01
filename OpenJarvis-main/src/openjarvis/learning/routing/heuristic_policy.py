@@ -1,4 +1,4 @@
-"""Wire the existing HeuristicRouter into the RouterPolicyRegistry."""
+﻿"""Wire the existing HeuristicRouter into the RouterPolicyRegistry."""
 
 from __future__ import annotations
 
@@ -13,3 +13,4 @@ def ensure_registered() -> None:
 
 
 ensure_registered()
+

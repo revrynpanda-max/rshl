@@ -1,4 +1,4 @@
-"""SuperGPQA dataset provider (m-a-p/SuperGPQA).
+﻿"""SuperGPQA dataset provider (m-a-p/SuperGPQA).
 
 Adapted from IPW's supergpqa.py dataset loader.
 """
@@ -126,3 +126,4 @@ class SuperGPQADataset(DatasetProvider):
 
 
 __all__ = ["SuperGPQADataset"]
+

@@ -1,8 +1,8 @@
-"""Scorer for WorkArena++ enterprise workflow tasks.
+﻿"""Scorer for WorkArena++ enterprise workflow tasks.
 
 Uses the native ``task.validate()`` reward from BrowserGym, which checks
 the actual state of the ServiceNow instance via Playwright.  No LLM
-judging — scoring is fully deterministic based on environment validation.
+judging â€” scoring is fully deterministic based on environment validation.
 
 This mirrors the TerminalBenchNativeScorer pattern: the ``WorkArenaTaskEnv``
 populates ``record.metadata["is_resolved"]`` and ``record.metadata["reward"]``
@@ -86,3 +86,4 @@ class WorkArenaScorer(Scorer):
 
 
 __all__ = ["WorkArenaScorer"]
+

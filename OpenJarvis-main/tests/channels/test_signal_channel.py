@@ -1,4 +1,4 @@
-"""Tests for the SignalChannel adapter."""
+﻿"""Tests for the SignalChannel adapter."""
 
 from __future__ import annotations
 
@@ -129,3 +129,5 @@ class TestStatus:
         ch = SignalChannel()
         ch.connect()
         assert ch.status() == ChannelStatus.ERROR
+
+

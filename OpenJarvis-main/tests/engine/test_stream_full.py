@@ -1,4 +1,4 @@
-"""Tests for StreamChunk dataclass and stream_full() engine method."""
+﻿"""Tests for StreamChunk dataclass and stream_full() engine method."""
 
 from __future__ import annotations
 
@@ -248,3 +248,5 @@ class TestOpenAICompatStreamFull:
         assert chunks[1].tool_calls is not None
         # Third chunk has finish_reason="tool_calls"
         assert chunks[2].finish_reason == "tool_calls"
+
+

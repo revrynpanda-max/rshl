@@ -1,4 +1,4 @@
-"""Scorer for PaperArena: MC exact match + LLM judge for CA/OA."""
+﻿"""Scorer for PaperArena: MC exact match + LLM judge for CA/OA."""
 
 from __future__ import annotations
 
@@ -160,3 +160,4 @@ class PaperArenaScorer(LLMJudgeScorer):
 
 
 __all__ = ["PaperArenaScorer"]
+

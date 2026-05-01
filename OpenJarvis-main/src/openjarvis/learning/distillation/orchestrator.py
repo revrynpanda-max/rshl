@@ -1,9 +1,9 @@
-"""DistillationOrchestrator: top-level driver for a learning session.
+﻿"""DistillationOrchestrator: top-level driver for a learning session.
 
-Wires diagnose (M2) → plan (M3) → execute (M4) → gate (M5) into a
+Wires diagnose (M2) â†’ plan (M3) â†’ execute (M4) â†’ gate (M5) into a
 single ``run(trigger)`` method. All dependencies are injected.
 
-See spec §3, §7.2, §7.7.
+See spec Â§3, Â§7.2, Â§7.7.
 """
 
 from __future__ import annotations
@@ -336,7 +336,7 @@ class DistillationOrchestrator:
                         )
                     )
                 else:
-                    # Gate rejected — rollback the edit
+                    # Gate rejected â€” rollback the edit
                     try:
                         applier.rollback(edit, ctx)
                     except Exception as rb_exc:
@@ -416,3 +416,4 @@ class DistillationOrchestrator:
             if path.exists():
                 return path.read_text(encoding="utf-8")
         return ""
+

@@ -1,4 +1,4 @@
-"""Tests for ``jarvis scan`` privacy scanner CLI command."""
+﻿"""Tests for ``jarvis scan`` privacy scanner CLI command."""
 
 from __future__ import annotations
 
@@ -109,7 +109,7 @@ class TestMDM:
 
 class TestCloudSync:
     def test_no_agents(self) -> None:
-        """pgrep returns non-zero → no sync agents running."""
+        """pgrep returns non-zero â†’ no sync agents running."""
         scanner = PrivacyScanner()
         with patch(
             "subprocess.run",
@@ -461,3 +461,5 @@ class TestJsonOutput:
         assert isinstance(data, list)
         assert data[0]["name"] == "Test"
         assert data[0]["status"] == "ok"
+
+

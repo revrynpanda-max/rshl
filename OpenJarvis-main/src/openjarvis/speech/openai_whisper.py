@@ -1,4 +1,4 @@
-"""OpenAI Whisper API speech-to-text backend (cloud)."""
+﻿"""OpenAI Whisper API speech-to-text backend (cloud)."""
 
 from __future__ import annotations
 
@@ -62,3 +62,4 @@ class OpenAIWhisperBackend(SpeechBackend):
 
     def supported_formats(self) -> List[str]:
         return ["mp3", "mp4", "mpeg", "mpga", "m4a", "wav", "webm"]
+

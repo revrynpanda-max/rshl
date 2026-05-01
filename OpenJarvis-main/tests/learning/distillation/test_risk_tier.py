@@ -1,4 +1,4 @@
-"""Tests for openjarvis.learning.distillation.plan.risk_tier module."""
+﻿"""Tests for openjarvis.learning.distillation.plan.risk_tier module."""
 
 from __future__ import annotations
 
@@ -92,7 +92,7 @@ class TestAssignTiers:
             payload={"diff": "--- a\n+++ b\n@@ -1 +1 @@\n-old\n+new"},
             rationale="Improve prompt",
             expected_improvement="cluster-001",
-            risk_tier=EditRiskTier.AUTO,  # Wrong — should be REVIEW
+            risk_tier=EditRiskTier.AUTO,  # Wrong â€” should be REVIEW
         )
         result = assign_tiers([edit])
         assert result[0].risk_tier == EditRiskTier.REVIEW
@@ -118,3 +118,5 @@ class TestAssignTiers:
         )
         result = assign_tiers([edit])
         assert result[0].risk_tier == EditRiskTier.AUTO
+
+

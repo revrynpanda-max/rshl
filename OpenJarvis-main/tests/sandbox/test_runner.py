@@ -1,4 +1,4 @@
-"""Tests for ContainerRunner and SandboxedAgent."""
+﻿"""Tests for ContainerRunner and SandboxedAgent."""
 
 from __future__ import annotations
 
@@ -313,3 +313,5 @@ class TestSandboxedAgentRun:
         types = [e.event_type for e in bus.history]
         assert EventType.AGENT_TURN_START in types
         assert EventType.AGENT_TURN_END in types
+
+

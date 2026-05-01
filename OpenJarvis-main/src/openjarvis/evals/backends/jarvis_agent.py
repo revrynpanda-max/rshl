@@ -1,4 +1,4 @@
-"""Jarvis Agent backend — agent-level inference with tool calling."""
+﻿"""Jarvis Agent backend â€” agent-level inference with tool calling."""
 
 from __future__ import annotations
 
@@ -158,3 +158,4 @@ class JarvisAgentBackend(InferenceBackend):
 
 
 __all__ = ["JarvisAgentBackend"]
+

@@ -1,4 +1,4 @@
-"""CLI commands for Cloudflare Tunnel management."""
+﻿"""CLI commands for Cloudflare Tunnel management."""
 
 from __future__ import annotations
 
@@ -69,3 +69,4 @@ def status() -> None:
         click.echo("cloudflared: installed")
     else:
         click.echo("cloudflared: not installed")
+

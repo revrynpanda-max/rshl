@@ -1,4 +1,4 @@
-"""Tests for tool_calls extraction in _OpenAICompatibleEngine and OllamaEngine."""
+﻿"""Tests for tool_calls extraction in _OpenAICompatibleEngine and OllamaEngine."""
 
 from __future__ import annotations
 
@@ -91,7 +91,7 @@ class TestOpenAICompatToolCalls:
         assert tc["id"] == "call_abc"
         assert tc["name"] == "calculator"
         assert tc["arguments"] == '{"expression":"2+2"}'
-        assert result["content"] == ""  # None → ""
+        assert result["content"] == ""  # None â†’ ""
 
     def test_tools_kwarg_passthrough(self, respx_mock):
         """Tools kwarg is spread into the payload via **kwargs."""
@@ -237,7 +237,7 @@ class TestOllamaToolCalls:
         assert "tools" in captured["body"]
 
     def test_dict_arguments_serialized_to_json(self, respx_mock):
-        """Ollama returns arguments as dict — engine must serialize."""
+        """Ollama returns arguments as dict â€” engine must serialize."""
         respx_mock.post("http://localhost:11434/api/chat").mock(
             return_value=httpx.Response(
                 200,
@@ -291,3 +291,5 @@ class TestOllamaToolCalls:
             model="test",
         )
         assert "tools" not in captured["body"]
+
+

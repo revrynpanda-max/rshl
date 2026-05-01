@@ -1,4 +1,4 @@
-"""Tests for the ``jarvis skill`` CLI commands."""
+﻿"""Tests for the ``jarvis skill`` CLI commands."""
 
 from __future__ import annotations
 
@@ -353,3 +353,5 @@ class TestSkillShowOverlayCommand:
             assert "Better description" in result.output
             assert "42" in result.output
             assert "dspy" in result.output
+
+

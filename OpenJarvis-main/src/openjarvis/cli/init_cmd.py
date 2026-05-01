@@ -1,4 +1,4 @@
-"""``jarvis init`` — detect hardware, generate config, write to disk."""
+﻿"""``jarvis init`` â€” detect hardware, generate config, write to disk."""
 
 from __future__ import annotations
 
@@ -407,12 +407,12 @@ def init(
             else:
                 console.print(
                     f"  [yellow]Warning:[/yellow] Host returned status "
-                    f"{resp.status_code} — writing config anyway."
+                    f"{resp.status_code} â€” writing config anyway."
                 )
         except Exception:
             console.print(
                 f"  [yellow]Warning:[/yellow] Host unreachable ({host}) "
-                f"— writing config anyway."
+                f"â€” writing config anyway."
             )
 
     if config:
@@ -440,7 +440,7 @@ def init(
     # Append Morning Digest section if requested
     if enable_digest:
         digest_section = """
-# ─── Morning Digest ─────────────────────────────────────────
+# â”€â”€â”€ Morning Digest â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 [digest]
 enabled = true
 schedule = "0 7 * * *"
@@ -533,3 +533,4 @@ sources = ["hackernews", "news_rss"]
             border_style="cyan",
         )
     )
+

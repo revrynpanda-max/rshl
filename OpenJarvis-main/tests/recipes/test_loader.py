@@ -1,4 +1,4 @@
-"""Tests for recipe system — loader, discovery, and resolution."""
+﻿"""Tests for recipe system â€” loader, discovery, and resolution."""
 
 from __future__ import annotations
 
@@ -157,3 +157,5 @@ class TestResolveRecipe:
     def test_resolve_recipe_not_found(self) -> None:
         result = resolve_recipe("nonexistent_recipe_xyz")
         assert result is None
+
+

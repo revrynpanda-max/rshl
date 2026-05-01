@@ -1,4 +1,4 @@
-"""Tests for PWA static file serving in the SPA catch-all endpoint."""
+﻿"""Tests for PWA static file serving in the SPA catch-all endpoint."""
 
 from __future__ import annotations
 
@@ -104,3 +104,5 @@ class TestPWAServing:
         assert resp.status_code == 200
         # Should get index.html, not the passwd file
         assert "SPA" in resp.text
+
+

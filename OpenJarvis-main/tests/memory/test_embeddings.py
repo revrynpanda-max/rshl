@@ -1,4 +1,4 @@
-"""Tests for the embeddings abstraction layer."""
+﻿"""Tests for the embeddings abstraction layer."""
 
 from __future__ import annotations
 
@@ -71,3 +71,5 @@ def test_embedder_abc_cannot_instantiate():
     """Embedder ABC cannot be instantiated directly."""
     with pytest.raises(TypeError):
         Embedder()  # type: ignore[abstract]
+
+

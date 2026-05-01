@@ -1,4 +1,4 @@
-"""DigestStore — SQLite-backed storage for pre-computed digest artifacts."""
+﻿"""DigestStore â€” SQLite-backed storage for pre-computed digest artifacts."""
 
 from __future__ import annotations
 
@@ -151,3 +151,4 @@ class DigestStore:
 
     def close(self) -> None:
         self._conn.close()
+

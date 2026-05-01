@@ -1,4 +1,4 @@
-"""Latency benchmark — measures per-call inference latency."""
+﻿"""Latency benchmark â€” measures per-call inference latency."""
 
 from __future__ import annotations
 
@@ -90,3 +90,4 @@ def ensure_registered() -> None:
 
 
 __all__ = ["LatencyBenchmark"]
+

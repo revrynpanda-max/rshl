@@ -1,4 +1,4 @@
-"""Tests for structured error_detail in executor traces."""
+﻿"""Tests for structured error_detail in executor traces."""
 
 from openjarvis.agents.errors import EscalateError, FatalError, RetryableError
 from openjarvis.agents.executor import AgentExecutor
@@ -36,3 +36,5 @@ def test_build_error_detail_escalate(tmp_path):
     error = EscalateError("agent needs help")
     detail = exe._build_error_detail(error)
     assert detail["error_type"] == "escalate"
+
+

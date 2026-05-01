@@ -1,4 +1,4 @@
-"""Tests for the shared binary checklist scorer."""
+﻿"""Tests for the shared binary checklist scorer."""
 
 from __future__ import annotations
 
@@ -46,8 +46,8 @@ class FakeJudgeBackend:
 
 def test_checklist_scorer_all_pass():
     response = (
-        "1. yes — The response mentions Redis\n"
-        "2. yes — The response mentions port 6379\n"
+        "1. yes â€” The response mentions Redis\n"
+        "2. yes â€” The response mentions port 6379\n"
     )
     backend = FakeJudgeBackend(response)
     scorer = ChecklistScorer(backend, "test-model")
@@ -64,7 +64,7 @@ def test_checklist_scorer_all_pass():
 
 
 def test_checklist_scorer_partial():
-    response = "1. yes — Redis is mentioned\n2. no — Port number not found\n"
+    response = "1. yes â€” Redis is mentioned\n2. no â€” Port number not found\n"
     backend = FakeJudgeBackend(response)
     scorer = ChecklistScorer(backend, "test-model")
     score, details = scorer.score_checklist(
@@ -87,3 +87,5 @@ def test_checklist_scorer_empty_answer():
         checklist=["Something"],
     )
     assert score == 0.0
+
+

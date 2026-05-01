@@ -1,4 +1,4 @@
-"""SyncEngine — checkpoint/resume orchestration for connector syncs.
+﻿"""SyncEngine â€” checkpoint/resume orchestration for connector syncs.
 
 Wraps ``IngestionPipeline`` with a lightweight SQLite state database so that
 long-running syncs can be interrupted and resumed from the last saved cursor.
@@ -132,7 +132,7 @@ class SyncEngine:
             )
             raise
 
-        # Final checkpoint — clear any previous error.
+        # Final checkpoint â€” clear any previous error.
         self._save_checkpoint(
             connector_id,
             prior_items + items_ingested,
@@ -190,3 +190,4 @@ class SyncEngine:
 
 
 __all__ = ["SyncEngine"]
+

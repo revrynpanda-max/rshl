@@ -1,4 +1,4 @@
-"""Webhook endpoints for receiving messages from external platforms."""
+﻿"""Webhook endpoints for receiving messages from external platforms."""
 
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ def _validate_twilio_signature(
     if no auth_token is configured.
     """
     if not auth_token:
-        logger.error("Twilio auth token not configured — rejecting webhook")
+        logger.error("Twilio auth token not configured â€” rejecting webhook")
         return False
     try:
         from twilio.request_validator import RequestValidator
@@ -49,7 +49,7 @@ def _validate_twilio_signature(
         return validator.validate(url, params, signature)
     except ImportError:
         logger.error(
-            "twilio SDK not installed — rejecting webhook. "
+            "twilio SDK not installed â€” rejecting webhook. "
             "Install it: pip install twilio"
         )
         return False
@@ -346,7 +346,7 @@ def create_webhook_router(
     async def sendblue_incoming(request: Request) -> Response:
         payload = await request.json()
 
-        # Get the SendBlue channel — may be passed at init or set later
+        # Get the SendBlue channel â€” may be passed at init or set later
         sb = sendblue_channel or getattr(request.app.state, "sendblue_channel", None)
 
         # Verify webhook secret if configured
@@ -376,7 +376,7 @@ def create_webhook_router(
         active_bridge = bridge or getattr(request.app.state, "channel_bridge", None)
 
         if not active_bridge:
-            logger.warning("No channel bridge — cannot process SendBlue msg")
+            logger.warning("No channel bridge â€” cannot process SendBlue msg")
             return Response("OK", status_code=200)
 
         # Message queue tracking (per-sender)
@@ -446,3 +446,4 @@ def create_webhook_router(
         return Response("OK", status_code=200)
 
     return router
+

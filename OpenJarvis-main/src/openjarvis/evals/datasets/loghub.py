@@ -1,4 +1,4 @@
-"""LogHub log anomaly detection dataset.
+﻿"""LogHub log anomaly detection dataset.
 
 Supports HDFS, BGL, and Thunderbird log datasets from
 https://github.com/logpai/loghub for evaluating log analysis agents.
@@ -258,3 +258,4 @@ class LogHubDataset(DatasetProvider):
 
 
 __all__ = ["LogHubDataset"]
+

@@ -1,4 +1,4 @@
-"""``jarvis model`` — model management subcommands."""
+﻿"""``jarvis model`` â€” model management subcommands."""
 
 from __future__ import annotations
 
@@ -263,3 +263,4 @@ def pull(model_name: str, engine: str | None) -> None:
             f"Manual download required for engine [cyan]{engine}[/cyan].\n"
             f"Check the engine documentation for instructions."
         )
+

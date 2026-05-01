@@ -1,4 +1,4 @@
-"""AgentExecutor — runs a single agent tick."""
+﻿"""AgentExecutor â€” runs a single agent tick."""
 
 from __future__ import annotations
 
@@ -44,7 +44,7 @@ class AgentExecutor:
         self._trace_store = trace_store
 
     def set_system(self, system: Any) -> None:
-        """Deferred system injection — called after JarvisSystem is constructed."""
+        """Deferred system injection â€” called after JarvisSystem is constructed."""
         self._system = system
 
     def _set_activity(self, agent_id: str, activity: str) -> None:
@@ -650,3 +650,4 @@ class AgentExecutor:
                 agent_id,
                 exc_info=True,
             )
+

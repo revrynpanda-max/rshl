@@ -1,4 +1,4 @@
-"""SkillImporter — install ResolvedSkill instances into ~/.openjarvis/skills/.
+﻿"""SkillImporter â€” install ResolvedSkill instances into ~/.openjarvis/skills/.
 
 Steps performed by ``import_skill``:
 
@@ -193,3 +193,4 @@ class SkillImporter:
 
 
 __all__ = ["ImportResult", "SkillImporter"]
+

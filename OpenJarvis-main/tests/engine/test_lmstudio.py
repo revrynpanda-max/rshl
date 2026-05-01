@@ -1,4 +1,4 @@
-"""Tests for the LM Studio engine backend."""
+﻿"""Tests for the LM Studio engine backend."""
 
 from __future__ import annotations
 
@@ -95,3 +95,5 @@ class TestLMStudioListModels:
                 )
             )
             assert engine.list_models() == ["llama-3.1-8b", "phi-3-mini"]
+
+

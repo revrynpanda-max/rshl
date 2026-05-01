@@ -1,4 +1,4 @@
-"""Slack connector — bulk channel message sync via the Slack Web API.
+﻿"""Slack connector â€” bulk channel message sync via the Slack Web API.
 
 Uses OAuth tokens stored locally (see :mod:`openjarvis.connectors.oauth`).
 All network calls are isolated in module-level functions (``_slack_api_*``)
@@ -156,7 +156,7 @@ def _slack_api_with_retry(
 
 
 def _build_user_map(members: List[Dict[str, Any]]) -> Dict[str, Dict[str, str]]:
-    """Build a user_id → {name, email} map from a ``users.list`` members list."""
+    """Build a user_id â†’ {name, email} map from a ``users.list`` members list."""
     user_map: Dict[str, Dict[str, str]] = {}
     for member in members:
         uid = member.get("id", "")
@@ -234,7 +234,7 @@ class SlackConnector(BaseConnector):
     def auth_url(self) -> str:
         """Return a Slack OAuth consent URL requesting channel history scopes."""
         params = {
-            "client_id": "",  # placeholder — real client_id from config
+            "client_id": "",  # placeholder â€” real client_id from config
             "scope": _SLACK_SCOPES,
             "redirect_uri": "http://localhost:8789/callback",
         }
@@ -251,8 +251,8 @@ class SlackConnector(BaseConnector):
     def sync(
         self,
         *,
-        since: Optional[datetime] = None,  # noqa: ARG002 — reserved for future use
-        cursor: Optional[str] = None,  # noqa: ARG002 — reserved for future use
+        since: Optional[datetime] = None,  # noqa: ARG002 â€” reserved for future use
+        cursor: Optional[str] = None,  # noqa: ARG002 â€” reserved for future use
     ) -> Iterator[Document]:
         """Yield :class:`Document` objects for Slack channel messages.
 
@@ -477,3 +477,4 @@ class SlackConnector(BaseConnector):
                 category="communication",
             ),
         ]
+

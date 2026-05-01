@@ -1,4 +1,4 @@
-"""Tests for the image_generate tool."""
+﻿"""Tests for the image_generate tool."""
 
 from __future__ import annotations
 
@@ -148,3 +148,5 @@ class TestImageGenerateTool:
         fn = tool.to_openai_function()
         assert fn["type"] == "function"
         assert fn["function"]["name"] == "image_generate"
+
+

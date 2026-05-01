@@ -1,4 +1,4 @@
-"""Tests for PyTorch device selection (cuda > mps > cpu)."""
+﻿"""Tests for PyTorch device selection (cuda > mps > cpu)."""
 
 from __future__ import annotations
 
@@ -81,3 +81,5 @@ class TestSelectTorchDevice:
         )
 
         assert callable(_select_torch_device)
+
+

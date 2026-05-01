@@ -1,4 +1,4 @@
-"""Context injection — retrieve relevant memory and inject into prompts."""
+﻿"""Context injection â€” retrieve relevant memory and inject into prompts."""
 
 from __future__ import annotations
 
@@ -66,7 +66,7 @@ def inject_context(
 ) -> List[Message]:
     """Retrieve relevant context and prepend it to *messages*.
 
-    Returns a **new** list — the original list is not mutated.
+    Returns a **new** list â€” the original list is not mutated.
     If no results pass the score threshold, returns the original
     messages unchanged.
 
@@ -129,3 +129,4 @@ __all__ = [
     "format_context",
     "inject_context",
 ]
+

@@ -1,4 +1,4 @@
-"""doc_qa scorer — fact match, citation check, and checklist evaluation.
+﻿"""doc_qa scorer â€” fact match, citation check, and checklist evaluation.
 
 Tier 1 (fact match): Check if model answer contains each required fact.
 Tier 1 (citation check): Verify document citations match expected sources.
@@ -184,3 +184,4 @@ class DocQAScorer(Scorer):
 
 
 __all__ = ["DocQAScorer"]
+

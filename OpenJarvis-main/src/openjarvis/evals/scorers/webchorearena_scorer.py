@@ -1,8 +1,8 @@
-"""Scorer for WebChoreArena web chore tasks.
+﻿"""Scorer for WebChoreArena web chore tasks.
 
 Uses the environment-validated scoring pattern (same as WorkArenaScorer):
 the ``WebChoreArenaTaskEnv`` runs the original WebArena evaluation harness
-(StringEvaluator × URLEvaluator × HTMLContentEvaluator, multiplicative)
+(StringEvaluator Ã— URLEvaluator Ã— HTMLContentEvaluator, multiplicative)
 and populates ``record.metadata["is_resolved"]`` and ``record.metadata["reward"]``.
 This scorer reads those fields.
 
@@ -92,3 +92,4 @@ class WebChoreArenaScorer(Scorer):
 
 
 __all__ = ["WebChoreArenaScorer"]
+

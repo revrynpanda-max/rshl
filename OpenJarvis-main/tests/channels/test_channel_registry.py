@@ -1,4 +1,4 @@
-"""Tests for channel registration in the ChannelRegistry."""
+﻿"""Tests for channel registration in the ChannelRegistry."""
 
 from __future__ import annotations
 
@@ -128,3 +128,5 @@ class TestChannelRegistry:
         assert "test-ch" in ChannelRegistry.keys()
         keys_from_items = [k for k, v in ChannelRegistry.items()]
         assert "test-ch" in keys_from_items
+
+

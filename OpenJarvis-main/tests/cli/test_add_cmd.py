@@ -1,4 +1,4 @@
-"""Tests for the ``jarvis add`` CLI command."""
+﻿"""Tests for the ``jarvis add`` CLI command."""
 
 from __future__ import annotations
 
@@ -59,3 +59,5 @@ class TestAddCmd:
             assert required_fields.issubset(tmpl.keys()), (
                 f"Template '{name}' missing fields: {required_fields - tmpl.keys()}"
             )
+
+

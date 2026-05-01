@@ -1,4 +1,4 @@
-"""Tests for the ``jarvis registry`` CLI commands."""
+﻿"""Tests for the ``jarvis registry`` CLI commands."""
 
 from __future__ import annotations
 
@@ -152,3 +152,5 @@ class TestRegistryCmd:
                 result = CliRunner().invoke(cli, ["registry", "show", "tool"])
                 assert result.exit_code == 0
                 assert "error" in result.output.lower()
+
+

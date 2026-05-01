@@ -1,4 +1,4 @@
-"""Tests for the API server routes."""
+﻿"""Tests for the API server routes."""
 
 from __future__ import annotations
 
@@ -313,3 +313,5 @@ class TestCreateApp:
         engine = _make_engine()
         app = create_app(engine, "test-model")
         assert app.state.agent is None
+
+

@@ -1,4 +1,4 @@
-"""Tests for the LLM tool."""
+﻿"""Tests for the LLM tool."""
 
 from __future__ import annotations
 
@@ -65,3 +65,5 @@ class TestLLMTool:
         result = tool.execute(prompt="hello")
         assert result.success is False
         assert "LLM error" in result.content
+
+

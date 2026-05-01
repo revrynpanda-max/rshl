@@ -1,4 +1,4 @@
-"""``jarvis telemetry`` — query and manage telemetry data."""
+﻿"""``jarvis telemetry`` â€” query and manage telemetry data."""
 
 from __future__ import annotations
 
@@ -230,3 +230,4 @@ def clear(confirmed: bool) -> None:
         click.echo(f"Deleted {count} telemetry records.")
     finally:
         agg.close()
+

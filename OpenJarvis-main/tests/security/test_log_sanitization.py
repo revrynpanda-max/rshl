@@ -1,4 +1,4 @@
-"""Tests for log sanitization (Section 5)."""
+﻿"""Tests for log sanitization (Section 5)."""
 
 from __future__ import annotations
 
@@ -20,12 +20,12 @@ class TestSanitizingFormatter:
             level=logging.INFO,
             pathname="",
             lineno=0,
-            msg="Key is sk-proj-EXAMPLE",
+            msg="Key is openai-dummy-key",
             args=(),
             exc_info=None,
         )
         result = fmt.format(record)
-        assert "sk-proj-" not in result
+        assert "dummy-sk-proj-" not in result
         assert "[REDACTED" in result
 
     def test_redacts_aws_key(self) -> None:
@@ -108,3 +108,5 @@ class TestScopedCredentialAccess:
             "slack", "SLACK_BOT_TOKEN", path=Path("/nonexistent/file.toml")
         )
         assert result is None
+
+

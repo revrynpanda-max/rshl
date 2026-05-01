@@ -1,4 +1,4 @@
-"""Tests for ``jarvis start|stop|restart|status`` daemon management commands."""
+﻿"""Tests for ``jarvis start|stop|restart|status`` daemon management commands."""
 
 from __future__ import annotations
 
@@ -79,3 +79,5 @@ class TestDaemonCommands:
             result = CliRunner().invoke(cli, ["start"])
         assert result.exit_code != 0
         assert "already running" in result.output
+
+

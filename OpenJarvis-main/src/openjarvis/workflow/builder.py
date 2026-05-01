@@ -1,4 +1,4 @@
-"""WorkflowBuilder — fluent API for constructing workflows."""
+﻿"""WorkflowBuilder â€” fluent API for constructing workflows."""
 
 from __future__ import annotations
 
@@ -148,3 +148,4 @@ class WorkflowBuilder:
 
 
 __all__ = ["WorkflowBuilder"]
+

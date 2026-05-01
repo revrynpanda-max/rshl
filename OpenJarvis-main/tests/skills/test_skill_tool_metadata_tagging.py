@@ -1,4 +1,4 @@
-"""Tests for SkillTool metadata tagging (Plan 2A trace tagging)."""
+﻿"""Tests for SkillTool metadata tagging (Plan 2A trace tagging)."""
 
 from __future__ import annotations
 
@@ -103,3 +103,5 @@ class TestSkillToolMetadataTagging:
         assert result.success is False
         assert result.metadata["skill"] == "broken"
         assert result.metadata["skill_kind"] == "executable"
+
+

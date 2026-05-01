@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import re
 from typing import List, Tuple
@@ -29,3 +29,4 @@ def wrap_tool_output(tool_name: str, content: str, success: bool = True) -> str:
     status = "success" if success else "error"
     header = f'<tool_result name="{tool_name}" status="{status}">'
     return f"{header}\n{content}\n</tool_result>"
+

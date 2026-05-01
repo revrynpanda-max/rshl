@@ -1,4 +1,4 @@
-"""Tests for configuration, hardware detection, and engine recommendation."""
+﻿"""Tests for configuration, hardware detection, and engine recommendation."""
 
 from __future__ import annotations
 
@@ -81,7 +81,7 @@ class TestTomlLoading:
     def test_load_missing_file_uses_defaults(self, tmp_path: Path) -> None:
         cfg = load_config(tmp_path / "nonexistent.toml")
         assert isinstance(cfg, JarvisConfig)
-        # engine default is derived from detected hardware — just ensure it's a string
+        # engine default is derived from detected hardware â€” just ensure it's a string
         assert isinstance(cfg.engine.default, str)
 
     def test_load_overrides(self, tmp_path: Path) -> None:
@@ -508,3 +508,5 @@ class TestWhatsAppBaileysChannelConfig:
     def test_on_channel_config(self) -> None:
         cc = ChannelConfig()
         assert isinstance(cc.whatsapp_baileys, WhatsAppBaileysChannelConfig)
+
+

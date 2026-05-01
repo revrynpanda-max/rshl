@@ -1,4 +1,4 @@
-"""Outlook / Microsoft 365 connector — reads email via IMAP with app password.
+﻿"""Outlook / Microsoft 365 connector â€” reads email via IMAP with app password.
 
 Thin subclass of GmailIMAPConnector that defaults to the Outlook IMAP host
 and relabels documents with source='outlook'.
@@ -56,3 +56,4 @@ class OutlookConnector(GmailIMAPConnector):
             doc.source = "outlook"
             doc.doc_id = doc.doc_id.replace("gmail:", "outlook:", 1)
             yield doc
+

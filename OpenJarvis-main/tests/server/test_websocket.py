@@ -1,4 +1,4 @@
-"""Tests for the WebSocket streaming endpoint."""
+﻿"""Tests for the WebSocket streaming endpoint."""
 
 from __future__ import annotations
 
@@ -160,7 +160,7 @@ class TestWebSocketStreaming:
                 data = ws.receive_json()
                 if data["type"] == "done":
                     break
-            # The mock stream function was called — we can't easily inspect
+            # The mock stream function was called â€” we can't easily inspect
             # async-generator call args, but the exchange completed without error
             assert data["content"] == "OK"
 
@@ -171,7 +171,7 @@ class TestWebSocketStreaming:
         async def bad_stream(messages, *, model="test-model", **kwargs):
             raise RuntimeError("Engine exploded")
             # Make it look like an async generator to the endpoint
-            yield  # pragma: no cover – unreachable, but needed for async gen syntax
+            yield  # pragma: no cover â€“ unreachable, but needed for async gen syntax
 
         engine.stream = bad_stream
         app = _make_app(engine=engine)
@@ -213,3 +213,5 @@ class TestWebSocketStreaming:
 __all__ = [
     "TestWebSocketStreaming",
 ]
+
+

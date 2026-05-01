@@ -1,4 +1,4 @@
-"""HermesResolver — resolves skills from NousResearch/hermes-agent.
+﻿"""HermesResolver â€” resolves skills from NousResearch/hermes-agent.
 
 Layout:
     skills/<category>/<skill-name>/SKILL.md
@@ -128,3 +128,4 @@ class HermesResolver(SourceResolver):
 
 
 __all__ = ["HermesResolver", "HERMES_REPO_URL"]
+

@@ -1,4 +1,4 @@
-"""GAIA scorer — normalized exact match with LLM fallback.
+﻿"""GAIA scorer â€” normalized exact match with LLM fallback.
 
 Adapted from IPW's gaia.py evaluation handler.
 """
@@ -165,3 +165,4 @@ class GAIAScorer(LLMJudgeScorer):
 
 
 __all__ = ["GAIAScorer", "exact_match"]
+

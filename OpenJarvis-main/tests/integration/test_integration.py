@@ -1,4 +1,4 @@
-"""End-to-end integration tests for Phase 3 and Phase 4 components."""
+﻿"""End-to-end integration tests for Phase 3 and Phase 4 components."""
 
 from __future__ import annotations
 
@@ -76,7 +76,7 @@ class TestSimpleAgentPipeline:
         assert result.content == "The answer is 42."
         assert result.turns == 1
 
-        # Verify event chain — INFERENCE_START/END and TELEMETRY_RECORD
+        # Verify event chain â€” INFERENCE_START/END and TELEMETRY_RECORD
         # are now published by InstrumentedEngine, not by agents directly
         event_types = [e.event_type for e in bus.history]
         assert EventType.AGENT_TURN_START in event_types
@@ -338,7 +338,7 @@ class TestRouterPolicyRegistryDiscovery:
 
 
 class TestTelemetryPipeline:
-    """TelemetryStore → TelemetryAggregator pipeline."""
+    """TelemetryStore â†’ TelemetryAggregator pipeline."""
 
     def test_store_then_aggregate(self, tmp_path):
         import time
@@ -384,7 +384,7 @@ class TestTelemetryPipeline:
 
 
 class TestEventBusTelemetryAggregator:
-    """EventBus → TelemetryStore → TelemetryAggregator end-to-end."""
+    """EventBus â†’ TelemetryStore â†’ TelemetryAggregator end-to-end."""
 
     def test_event_driven_pipeline(self, tmp_path):
         from openjarvis.telemetry.aggregator import TelemetryAggregator
@@ -583,7 +583,7 @@ class TestBenchmarkSuiteRunAll:
 
 
 class TestFullPipeline:
-    """Full pipeline: SDK → agent → engine → telemetry."""
+    """Full pipeline: SDK â†’ agent â†’ engine â†’ telemetry."""
 
     def test_full_pipeline(self, tmp_path):
         from unittest.mock import patch
@@ -619,3 +619,5 @@ class TestFullPipeline:
             result = j.ask("Full pipeline test", agent="pipeline-test")
             assert result == "Pipeline response"
             j.close()
+
+

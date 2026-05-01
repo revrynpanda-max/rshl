@@ -75,3 +75,5 @@ def test_history(tmp_path):
     assert len(history) == 2
     assert history[0].text == "Digest 2"  # Most recent first
     store.close()
+
+

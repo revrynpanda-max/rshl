@@ -1,4 +1,4 @@
-"""Tests for ``jarvis chat`` interactive REPL command."""
+﻿"""Tests for ``jarvis chat`` interactive REPL command."""
 
 from __future__ import annotations
 
@@ -145,3 +145,5 @@ class TestChatAgents:
         assert result.exit_code == 0
         assert "Confirm:" in result.output
         assert "chat executed!" in result.output
+
+

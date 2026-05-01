@@ -1,4 +1,4 @@
-"""``jarvis compose`` — unified composition CLI for discrete agents and operators."""
+﻿"""``jarvis compose`` â€” unified composition CLI for discrete agents and operators."""
 
 from __future__ import annotations
 
@@ -481,3 +481,4 @@ def compose_status() -> None:
 
 
 __all__ = ["compose"]
+

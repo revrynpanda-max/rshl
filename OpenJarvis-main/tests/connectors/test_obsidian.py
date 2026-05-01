@@ -1,4 +1,4 @@
-"""Tests for ObsidianConnector — filesystem Markdown vault connector."""
+﻿"""Tests for ObsidianConnector â€” filesystem Markdown vault connector."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from openjarvis.core.registry import ConnectorRegistry
 @pytest.fixture()
 def vault(tmp_path: Path) -> Path:
     """Build a minimal Obsidian vault under *tmp_path*."""
-    # note1.md — has frontmatter with title and tags
+    # note1.md â€” has frontmatter with title and tags
     (tmp_path / "note1.md").write_text(
         "---\n"
         "title: My First Note\n"
@@ -29,13 +29,13 @@ def vault(tmp_path: Path) -> Path:
         encoding="utf-8",
     )
 
-    # note2.md — no frontmatter
+    # note2.md â€” no frontmatter
     (tmp_path / "note2.md").write_text(
         "# Plain Note\n\nNo frontmatter here.\n",
         encoding="utf-8",
     )
 
-    # subdir/deep.md — nested note
+    # subdir/deep.md â€” nested note
     subdir = tmp_path / "subdir"
     subdir.mkdir()
     (subdir / "deep.md").write_text(
@@ -43,12 +43,12 @@ def vault(tmp_path: Path) -> Path:
         encoding="utf-8",
     )
 
-    # .obsidian/config.json — should be skipped (hidden dir)
+    # .obsidian/config.json â€” should be skipped (hidden dir)
     hidden = tmp_path / ".obsidian"
     hidden.mkdir()
     (hidden / "config.json").write_text('{"theme": "dark"}\n', encoding="utf-8")
 
-    # image.png — should be skipped (binary/non-text extension)
+    # image.png â€” should be skipped (binary/non-text extension)
     (tmp_path / "image.png").write_bytes(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR")
 
     return tmp_path
@@ -68,7 +68,7 @@ def _sync_all(vault_path: Path) -> List[Document]:
 
 
 # ---------------------------------------------------------------------------
-# Test 1: is_connected — True for a valid directory
+# Test 1: is_connected â€” True for a valid directory
 # ---------------------------------------------------------------------------
 
 
@@ -80,7 +80,7 @@ def test_is_connected(vault: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 2: not_connected_bad_path — False for a nonexistent path
+# Test 2: not_connected_bad_path â€” False for a nonexistent path
 # ---------------------------------------------------------------------------
 
 
@@ -92,20 +92,20 @@ def test_not_connected_bad_path() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 3: sync_yields_markdown_files — correct count including subdirs
+# Test 3: sync_yields_markdown_files â€” correct count including subdirs
 # ---------------------------------------------------------------------------
 
 
 def test_sync_yields_markdown_files(vault: Path) -> None:
     """sync() yields all .md files including those in subdirectories."""
     docs = _sync_all(vault)
-    # note1.md, note2.md, subdir/deep.md  →  3 documents
+    # note1.md, note2.md, subdir/deep.md  â†’  3 documents
     # .obsidian/config.json and image.png must NOT appear
     assert len(docs) == 3
 
 
 # ---------------------------------------------------------------------------
-# Test 4: sync_skips_hidden_dirs — .obsidian dir content not included
+# Test 4: sync_skips_hidden_dirs â€” .obsidian dir content not included
 # ---------------------------------------------------------------------------
 
 
@@ -119,7 +119,7 @@ def test_sync_skips_hidden_dirs(vault: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 5: sync_skips_binary_files — .png files not included
+# Test 5: sync_skips_binary_files â€” .png files not included
 # ---------------------------------------------------------------------------
 
 
@@ -131,7 +131,7 @@ def test_sync_skips_binary_files(vault: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 6: sync_parses_frontmatter — title and tags extracted
+# Test 6: sync_parses_frontmatter â€” title and tags extracted
 # ---------------------------------------------------------------------------
 
 
@@ -144,7 +144,7 @@ def test_sync_parses_frontmatter(vault: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 7: sync_sets_doc_type_note — all docs have doc_type="note", source="obsidian"
+# Test 7: sync_sets_doc_type_note â€” all docs have doc_type="note", source="obsidian"
 # ---------------------------------------------------------------------------
 
 
@@ -158,7 +158,7 @@ def test_sync_sets_doc_type_note(vault: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 8: disconnect — sets is_connected to False
+# Test 8: disconnect â€” sets is_connected to False
 # ---------------------------------------------------------------------------
 
 
@@ -172,7 +172,7 @@ def test_disconnect(vault: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 9: registry — ConnectorRegistry.contains("obsidian") after import
+# Test 9: registry â€” ConnectorRegistry.contains("obsidian") after import
 # ---------------------------------------------------------------------------
 
 
@@ -184,3 +184,5 @@ def test_registry() -> None:
     assert ConnectorRegistry.contains("obsidian")
     cls = ConnectorRegistry.get("obsidian")
     assert cls.connector_id == "obsidian"
+
+

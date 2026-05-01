@@ -1,4 +1,4 @@
-"""Tests for the WhatsApp chat export connector."""
+﻿"""Tests for the WhatsApp chat export connector."""
 
 from __future__ import annotations
 
@@ -39,7 +39,7 @@ def _write_chat(directory: Path, filename: str, content: str) -> Path:
 
 
 # ---------------------------------------------------------------------------
-# Test 1: Parse a single export file → one Document with correct fields
+# Test 1: Parse a single export file â†’ one Document with correct fields
 # ---------------------------------------------------------------------------
 
 
@@ -64,7 +64,7 @@ def test_parse_single_export_file(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 2: Multiple export files → one Document per file
+# Test 2: Multiple export files â†’ one Document per file
 # ---------------------------------------------------------------------------
 
 
@@ -87,7 +87,7 @@ def test_multiple_export_files(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 3: since filtering — skip chats whose latest message is before cutoff
+# Test 3: since filtering â€” skip chats whose latest message is before cutoff
 # ---------------------------------------------------------------------------
 
 
@@ -147,7 +147,7 @@ def test_is_connected_with_txt_files(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 5: sync with no export_path → empty
+# Test 5: sync with no export_path â†’ empty
 # ---------------------------------------------------------------------------
 
 
@@ -192,3 +192,5 @@ def test_registry_registration() -> None:
     assert cls.connector_id == "whatsapp"
     assert cls.display_name == "WhatsApp"
     assert cls.auth_type == "filesystem"
+
+

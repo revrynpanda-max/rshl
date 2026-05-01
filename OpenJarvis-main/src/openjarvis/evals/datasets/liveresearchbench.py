@@ -1,4 +1,4 @@
-"""LiveResearchBench dataset provider — Salesforce's checklist-based benchmark.
+﻿"""LiveResearchBench dataset provider â€” Salesforce's checklist-based benchmark.
 
 Loads Salesforce/LiveResearchBench from HuggingFace. Each task has a research
 question and a set of checklist items used for fine-grained, coverage-based
@@ -31,7 +31,7 @@ DEFAULT_HF_SPLIT = "test"
 
 
 def _parse_checklist(checklist: Any) -> List[str]:
-    """Parse the checklist field — may be a JSON string, list, or newline text."""
+    """Parse the checklist field â€” may be a JSON string, list, or newline text."""
     if isinstance(checklist, list):
         return [str(item).strip() for item in checklist if str(item).strip()]
     if not isinstance(checklist, str) or not checklist.strip():
@@ -49,7 +49,7 @@ def _parse_checklist(checklist: Any) -> List[str]:
 
 
 class LiveResearchBenchDataset(DatasetProvider):
-    """LiveResearchBench — Salesforce's expert-curated deep research benchmark.
+    """LiveResearchBench â€” Salesforce's expert-curated deep research benchmark.
 
     Loads tasks from HuggingFace with per-task checklists used for
     coverage-based evaluation. Tasks span 7 domains (Science/Tech, Business,
@@ -178,3 +178,4 @@ class LiveResearchBenchDataset(DatasetProvider):
 
 
 __all__ = ["LiveResearchBenchDataset"]
+

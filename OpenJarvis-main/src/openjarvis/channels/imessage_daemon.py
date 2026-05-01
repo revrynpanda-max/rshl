@@ -1,4 +1,4 @@
-"""iMessage daemon — polls chat.db and routes to DeepResearchAgent.
+﻿"""iMessage daemon â€” polls chat.db and routes to DeepResearchAgent.
 
 Monitors a designated iMessage conversation for new messages, routes
 them to the agent, and sends responses back via AppleScript.
@@ -95,7 +95,7 @@ def run_daemon(
 
     last_rowid = _get_max_rowid(db_path)
     logger.info(
-        "iMessage daemon started — monitoring %s from ROWID %d",
+        "iMessage daemon started â€” monitoring %s from ROWID %d",
         chat_identifier,
         last_rowid,
     )
@@ -181,3 +181,4 @@ def stop_daemon() -> bool:
     except (ValueError, ProcessLookupError, PermissionError):
         pid_path.unlink(missing_ok=True)
         return False
+

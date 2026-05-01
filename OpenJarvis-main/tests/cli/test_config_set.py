@@ -1,4 +1,4 @@
-"""Tests for ``jarvis config set`` command."""
+﻿"""Tests for ``jarvis config set`` command."""
 
 from __future__ import annotations
 
@@ -152,3 +152,5 @@ class TestConfigSet:
         assert result.exit_code == 0
         assert "Set" in result.output
         assert "engine.default" in result.output
+
+

@@ -1,4 +1,4 @@
-"""Verify security wiring reaches agents and ToolExecutor."""
+﻿"""Verify security wiring reaches agents and ToolExecutor."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from openjarvis.security import setup_security
 
 
 class _ConcreteAgent(ToolUsingAgent):
-    """Minimal concrete subclass — ToolUsingAgent is abstract."""
+    """Minimal concrete subclass â€” ToolUsingAgent is abstract."""
 
     agent_id = "test"
 
@@ -80,3 +80,5 @@ class TestCapabilityPolicyReachesExecutor:
         assert agent._executor._capability_policy is None
         # Engine should be the original, unwrapped
         assert sec.engine is engine
+
+

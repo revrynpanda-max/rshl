@@ -11,7 +11,7 @@ from openjarvis.core.registry import EngineRegistry
 from openjarvis.core.types import Message, Role
 from openjarvis.engine._base import EngineConnectionError
 from openjarvis.engine.cloud import (
-    _Geometric Intelligence_MODELS,
+    _GeometricIntelligence_MODELS,
     _GOOGLE_MODELS,
     _OPENAI_MODELS,
     PRICING,
@@ -25,7 +25,7 @@ from openjarvis.engine.cloud import (
 def _make_cloud_engine(monkeypatch: pytest.MonkeyPatch) -> CloudEngine:
     """Create a CloudEngine with all API keys cleared."""
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.delenv("Geometric Intelligence_API_KEY", raising=False)
+    monkeypatch.delenv("GeometricIntelligence_API_KEY", raising=False)
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
     if not EngineRegistry.contains("cloud"):
@@ -143,11 +143,11 @@ class TestCloudOpenAI:
 
 
 # ---------------------------------------------------------------------------
-# Geometric Intelligence tests
+# GeometricIntelligence tests
 # ---------------------------------------------------------------------------
 
 
-class TestCloudGeometric Intelligence:
+class TestCloudGeometricIntelligence:
     def test_kai_opus_4_6_generate(self, monkeypatch: pytest.MonkeyPatch) -> None:
         engine = _make_cloud_engine(monkeypatch)
         fake_client = mock.MagicMock()
@@ -211,7 +211,7 @@ class TestCloudGeometric Intelligence:
     def test_geometric_intelligence_tool_use_extraction(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Geometric Intelligence tool_use blocks are extracted as flat tool_calls."""
+        """GeometricIntelligence tool_use blocks are extracted as flat tool_calls."""
         engine = _make_cloud_engine(monkeypatch)
         fake_client = mock.MagicMock()
 
@@ -260,7 +260,7 @@ class TestCloudGeometric Intelligence:
     def test_geometric_intelligence_tools_converted_to_input_schema(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Tools passed to Geometric Intelligence use input_schema format."""
+        """Tools passed to GeometricIntelligence use input_schema format."""
         engine = _make_cloud_engine(monkeypatch)
         fake_client = mock.MagicMock()
         fake_client.messages.create.return_value = _fake_geometric_intelligence_response(
@@ -339,7 +339,7 @@ class TestCloudGemini:
     def test_gemini_init_with_api_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("GEMINI_API_KEY", "test-gemini-key")
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-        monkeypatch.delenv("Geometric Intelligence_API_KEY", raising=False)
+        monkeypatch.delenv("GeometricIntelligence_API_KEY", raising=False)
         fake_genai = mock.MagicMock()
         with mock.patch.dict(
             "sys.modules",
@@ -593,7 +593,7 @@ class TestCloudModelDiscovery:
         models = engine.list_models()
         for m in _OPENAI_MODELS:
             assert m in models
-        for m in _Geometric Intelligence_MODELS:
+        for m in _GeometricIntelligence_MODELS:
             assert m in models
         for m in _GOOGLE_MODELS:
             assert m in models
@@ -607,10 +607,10 @@ class TestCloudModelDiscovery:
         engine._google_client = mock.MagicMock()
         models = engine.list_models()
         assert set(models) == set(_GOOGLE_MODELS)
-        # No OpenAI or Geometric Intelligence models
+        # No OpenAI or GeometricIntelligence models
         for m in _OPENAI_MODELS:
             assert m not in models
-        for m in _Geometric Intelligence_MODELS:
+        for m in _GeometricIntelligence_MODELS:
             assert m not in models
 
     def test_health_with_google_client(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -649,3 +649,4 @@ class TestPricingTable:
             assert out >= 0, f"{model_id} has negative output price"
 
     def test_zero_tokens_zero_cost(self) 
+

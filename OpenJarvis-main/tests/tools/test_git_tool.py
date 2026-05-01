@@ -1,4 +1,4 @@
-"""Tests for the git tools (status, diff, commit, log).
+﻿"""Tests for the git tools (status, diff, commit, log).
 
 Tests mock the Rust backend (``get_rust_module``) so that the compiled
 ``openjarvis_rust`` extension is not required.  The mock simulates Rust
@@ -19,7 +19,7 @@ from openjarvis.tools.git_tool import (
 )
 
 # ---------------------------------------------------------------------------
-# Helpers — mock Rust backend
+# Helpers â€” mock Rust backend
 # ---------------------------------------------------------------------------
 
 
@@ -154,7 +154,7 @@ class TestGitStatusTool:
         with patch("openjarvis.tools.git_tool.get_rust_module", return_value=mock_mod):
             result = tool.execute(repo_path=str(tmp_path))
         assert result.success is True
-        # Clean repo — Rust uses --short so no output
+        # Clean repo â€” Rust uses --short so no output
         assert result.content == "(no output)"
 
     def test_modified_file(self, tmp_path):
@@ -282,7 +282,7 @@ class TestGitDiffTool:
         )
         tool = GitDiffTool()
         mock_mod = _make_mock_rust(tmp_path)
-        # path= specified → falls back to Python _run_git, but
+        # path= specified â†’ falls back to Python _run_git, but
         # get_rust_module() is still called before the branch.
         with patch("openjarvis.tools.git_tool.get_rust_module", return_value=mock_mod):
             result = tool.execute(repo_path=str(tmp_path), path="README.md")
@@ -510,7 +510,7 @@ class TestGitLogTool:
         tool = GitLogTool()
         mock_mod = _make_mock_rust_git_not_found()
         with patch("openjarvis.tools.git_tool.get_rust_module", return_value=mock_mod):
-            # Rust raises → Python fallback via _run_git, which also
+            # Rust raises â†’ Python fallback via _run_git, which also
             # checks shutil.which
             with patch("openjarvis.tools.git_tool.shutil.which", return_value=None):
                 result = tool.execute(repo_path=".")
@@ -537,3 +537,5 @@ class TestGitLogTool:
         fn = tool.to_openai_function()
         assert fn["type"] == "function"
         assert fn["function"]["name"] == "git_log"
+
+

@@ -1,4 +1,4 @@
-"""A2A protocol types — Google A2A spec (JSON-RPC 2.0)."""
+﻿"""A2A protocol types â€” Google A2A spec (JSON-RPC 2.0)."""
 
 from __future__ import annotations
 
@@ -114,3 +114,4 @@ class A2AResponse:
 
 
 __all__ = ["A2ARequest", "A2AResponse", "A2ATask", "AgentCard", "TaskState"]
+

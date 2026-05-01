@@ -1,4 +1,4 @@
-"""Tests for ``jarvis doctor`` CLI command."""
+﻿"""Tests for ``jarvis doctor`` CLI command."""
 
 from __future__ import annotations
 
@@ -164,3 +164,5 @@ class TestCheckNodejs:
         assert "Not found" in result.message
         assert result.details is not None
         assert "OpenClaw" not in result.details
+
+

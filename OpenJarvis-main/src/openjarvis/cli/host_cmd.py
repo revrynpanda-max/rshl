@@ -1,4 +1,4 @@
-"""``jarvis host`` — download and serve a model locally with auto backend setup."""
+﻿"""``jarvis host`` â€” download and serve a model locally with auto backend setup."""
 
 from __future__ import annotations
 
@@ -390,3 +390,4 @@ def host(
         console.print(f"[red]Command not found:[/red] {cmd[0]}")
         console.print(f"Make sure {info['display']} is installed and on your PATH.")
         raise SystemExit(1)
+

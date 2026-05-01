@@ -1,4 +1,4 @@
-"""Tests for system_prompt_template expansion in agent creation."""
+﻿"""Tests for system_prompt_template expansion in agent creation."""
 
 from __future__ import annotations
 
@@ -36,5 +36,7 @@ def test_create_from_template_preserves_icon(tmp_path):
     mgr = AgentManager(db_path=str(tmp_path / "test.db"))
     agent = mgr.create_from_template("research_monitor", "Test Agent")
     config = agent["config"]
-    assert config.get("icon") == "🔬"
+    assert config.get("icon") == "ðŸ”¬"
     mgr.close()
+
+

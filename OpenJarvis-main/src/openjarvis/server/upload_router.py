@@ -1,4 +1,4 @@
-"""Upload / Paste router for ingesting documents into the knowledge store."""
+﻿"""Upload / Paste router for ingesting documents into the knowledge store."""
 
 from __future__ import annotations
 
@@ -216,3 +216,4 @@ async def ingest_files(
         )
 
     return IngestResponse(chunks_added=total_chunks)
+

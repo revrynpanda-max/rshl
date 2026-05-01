@@ -1,4 +1,4 @@
-"""Apple Music connector -- reads tracks from the local Music.app via AppleScript.
+﻿"""Apple Music connector -- reads tracks from the local Music.app via AppleScript.
 
 Uses ``osascript`` subprocess calls to query Music.app on macOS.  No API keys
 or network access required; everything stays local.
@@ -249,3 +249,4 @@ class AppleMusicConnector(BaseConnector):
     def sync_status(self) -> SyncStatus:
         """Return sync progress from the most recent :meth:`sync` call."""
         return self._status
+

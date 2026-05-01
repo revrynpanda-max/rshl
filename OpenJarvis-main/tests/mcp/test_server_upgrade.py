@@ -1,4 +1,4 @@
-"""Tests for MCP server upgrade to protocol version 2025-11-25."""
+﻿"""Tests for MCP server upgrade to protocol version 2025-11-25."""
 
 from __future__ import annotations
 
@@ -130,3 +130,5 @@ class TestStorageToolAnnotations:
         tool = resp.result["tools"][0]
         assert tool["annotations"]["readOnlyHint"] is True
         assert tool["annotations"]["destructiveHint"] is False
+
+

@@ -1,6 +1,6 @@
-"""Mount validation and security for container sandboxes.
+﻿"""Mount validation and security for container sandboxes.
 
-Port of NanoClaw's ``mount-security.ts`` — validates bind mounts
+Port of NanoClaw's ``mount-security.ts`` â€” validates bind mounts
 against an allowlist and blocks paths containing sensitive files.
 """
 
@@ -193,3 +193,4 @@ __all__ = [
     "validate_mount",
     "validate_mounts",
 ]
+

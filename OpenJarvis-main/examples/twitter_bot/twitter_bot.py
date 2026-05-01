@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
-"""OpenJarvis Twitter Bot — @OpenJarvisAI reactive mention handler.
+﻿#!/usr/bin/env python3
+"""OpenJarvis Twitter Bot â€” @OpenJarvisAI reactive mention handler.
 
 Listens for @mentions and responds: answers questions, creates GitHub issues
 for bugs/feature requests, acknowledges praise, ignores spam. Like @grok.
@@ -25,7 +25,7 @@ class _DemoChannel:
     """Stub channel for demo mode.
 
     Accepts ``send()`` calls and records the content so the demo can
-    display exactly what would be tweeted — instead of the agent's
+    display exactly what would be tweeted â€” instead of the agent's
     post-error fallback text (which bypasses the voice rules).
     """
 
@@ -77,7 +77,7 @@ DEMO_TWEETS = [
     {
         "id": "1000000000000000005",
         "author": "spambot99",
-        "text": "@OpenJarvisAI BUY CRYPTO NOW 🚀🚀🚀 LINK IN BIO",
+        "text": "@OpenJarvisAI BUY CRYPTO NOW ðŸš€ðŸš€ðŸš€ LINK IN BIO",
     },
 ]
 
@@ -88,17 +88,17 @@ DEMO_TWEETS = [
 # For QUESTION mentions we do dense retrieval in Python before the agent
 # runs, then route to one of two prompts based on the top-1 cosine score:
 #
-#   * ``_build_question_grounded_prompt`` — top-1 >= SCORE_THRESHOLD.
+#   * ``_build_question_grounded_prompt`` â€” top-1 >= SCORE_THRESHOLD.
 #     The retrieved context is embedded directly in the prompt. The model
 #     only needs ``channel_send``.
-#   * ``_build_question_deferral_prompt`` — top-1 <  SCORE_THRESHOLD.
+#   * ``_build_question_deferral_prompt`` â€” top-1 <  SCORE_THRESHOLD.
 #     No context worth grounding on. The model is told to post a short
 #     honest deferral.
 #
 # Threshold rationale: see tests/tools/storage/test_dense.py. With
 # nomic-embed-text on the OpenJarvis fixture corpus, relevant queries
 # top-1 scored 0.50-0.74 (median 0.68) and off-topic scored 0.40-0.51
-# (median 0.47). 0.55 biases toward deferral on borderline queries —
+# (median 0.47). 0.55 biases toward deferral on borderline queries â€”
 # safer for public Twitter than grounding on a weak match.
 SCORE_THRESHOLD = 0.55
 
@@ -123,7 +123,7 @@ def _format_context(results) -> str:
         breadcrumb = r.metadata.get("breadcrumb", "") if r.metadata else ""
         header = f"[{i}] {src}"
         if breadcrumb and breadcrumb not in src:
-            header += f"  —  {breadcrumb}"
+            header += f"  â€”  {breadcrumb}"
         out.append(f"{header}\n{r.content}")
     return "\n\n---\n\n".join(out)
 
@@ -148,7 +148,7 @@ def _build_question_grounded_prompt(
         "Compose a reply ONLY from facts in the context above. Do not add "
         "details that are not in the context. If the context doesn't fully "
         "cover the question, answer the part that IS covered and defer on "
-        "the rest (e.g. \"...not sure on the rest — will check\"). Then "
+        "the rest (e.g. \"...not sure on the rest â€” will check\"). Then "
         f'call channel_send with conversation_id="{tweet_id}".\n\n'
         + _VOICE
     )
@@ -157,18 +157,18 @@ def _build_question_grounded_prompt(
 def _build_question_deferral_prompt(author: str, tweet_id: str, text: str) -> str:
     """Prompt used when retrieval has nothing relevant (top score < threshold).
 
-    The model is told NOT to answer — because attempting to answer without
+    The model is told NOT to answer â€” because attempting to answer without
     grounding is the exact failure mode we're trying to avoid.
     """
     return (
         "You are @OpenJarvisAI. Someone asked a question, but our docs "
-        "search did not find relevant material — so we do NOT have a "
+        "search did not find relevant material â€” so we do NOT have a "
         "grounded answer.\n\n"
         f"Tweet from @{author} (tweet ID: {tweet_id}):\n"
         f'"{text}"\n\n'
         "Reply with a short honest deferral. Something like:\n"
-        '  "not sure off the top of my head — let me check and get back to you"\n'
-        '  "good question, need to double-check the answer — back with details soon"\n'
+        '  "not sure off the top of my head â€” let me check and get back to you"\n'
+        '  "good question, need to double-check the answer â€” back with details soon"\n'
         "Do NOT guess. Do NOT make up facts. A deferral is always safer "
         "than a wrong public answer.\n\n"
         f'Then call channel_send with conversation_id="{tweet_id}".\n\n'
@@ -196,9 +196,9 @@ def _build_bug_prompt(author: str, tweet_id: str, text: str) -> str:
         f"by @{author}: {text}\", "
         '"labels": ["bug", "from-twitter"]}}\n'
         f'2. call channel_send with conversation_id="{tweet_id}" and a short '
-        "reply like: \"opened an issue for this — we'll look into it. "
+        "reply like: \"opened an issue for this â€” we'll look into it. "
         'thanks for the report"\n\n'
-        "do NOT include a github issue URL in your reply — you don't know "
+        "do NOT include a github issue URL in your reply â€” you don't know "
         "the issue number yet.\n\n"
         + _VOICE
     )
@@ -216,8 +216,8 @@ def _build_feature_prompt(author: str, tweet_id: str, text: str) -> str:
         f"via twitter by @{author}: {text}\", "
         '"labels": ["enhancement", "from-twitter"]}}\n'
         f'2. call channel_send with conversation_id="{tweet_id}" and a short '
-        "reply like: \"love this idea — opened an issue to track it\"\n\n"
-        "do NOT include a github issue URL in your reply — you don't know "
+        "reply like: \"love this idea â€” opened an issue to track it\"\n\n"
+        "do NOT include a github issue URL in your reply â€” you don't know "
         "the issue number yet.\n\n"
         + _VOICE
     )
@@ -252,7 +252,7 @@ _CLASSIFY_LABELS = frozenset({
 # We run a cheap gate before the main classifier: if the tweet reads as
 # an injection attempt, log it and don't reply. We deliberately use the
 # bigger model (``gemma4:31b``) here because the cost of a false
-# negative — posting attacker-controlled text on the public timeline —
+# negative â€” posting attacker-controlled text on the public timeline â€”
 # is much higher than the cost of a slower gate.
 
 _INJECTION_DETECTOR_MODEL = "gemma4:31b"
@@ -286,8 +286,8 @@ def _detect_injection(
     default to ``"SAFE"`` and echo a warning. Rationale: the injection
     detector is a defense-in-depth layer; if it fails, we fall through
     to the normal classifier + reply flow. A flaky detector should NOT
-    silently suppress all replies — that would be easier for an
-    attacker to trigger (DoS the model → bot goes silent) than for
+    silently suppress all replies â€” that would be easier for an
+    attacker to trigger (DoS the model â†’ bot goes silent) than for
     them to successfully inject.
     """
     try:
@@ -363,7 +363,7 @@ def _log_injection_attempt(
 _CLASSIFIER_PROMPT = (
     "Classify the following tweet as exactly one of these labels:\n"
     "QUESTION, BUG_REPORT, FEATURE_REQUEST, PRAISE, SPAM.\n\n"
-    "Rules (pick the BEST fit — one of these always applies):\n"
+    "Rules (pick the BEST fit â€” one of these always applies):\n"
     "- BUG_REPORT: user reports something broken, crashing, erroring, "
     "not working, or behaving contrary to docs. Examples: "
     '"found a bug", "this is broken", "crashes on startup", '
@@ -374,15 +374,15 @@ _CLASSIFIER_PROMPT = (
     "- QUESTION: user asks how/whether/what/why/when about the project. "
     'Examples: "does this work with X?", "how do I install?".\n'
     "- PRAISE: user expresses anything positive or supportive about the "
-    "project, its maintainers, or the bot itself — including shoutouts, "
+    "project, its maintainers, or the bot itself â€” including shoutouts, "
     "endorsements, announcements promoting the project, excitement "
     "about a release, or \"glad this exists\" type sentiment. This "
     "applies even when the tweet also contains informational content "
     "like usage instructions for other users or a link to the project. "
     'Examples: "love this", "switched from X, amazing", "great work", '
-    '"s/o to the team", "this is now live — go check it out", '
+    '"s/o to the team", "this is now live â€” go check it out", '
     '"say hi to @this_bot, it can do X Y Z".\n'
-    "- SPAM: ANY crypto/scam/promotion/link-in-bio/affiliate signal — "
+    "- SPAM: ANY crypto/scam/promotion/link-in-bio/affiliate signal â€” "
     "return SPAM regardless of whatever else the tweet says. Examples: "
     '"buy $COIN now", "link in bio", "10x gains guaranteed", '
     '"check my project at bit.ly/...".\n\n'
@@ -406,7 +406,7 @@ def _classify_mention_llm(
     """Call the classifier model and return a validated label or ``None``.
 
     ``None`` means the model call failed outright, the response was
-    empty, or the output didn't match any valid label — in any of
+    empty, or the output didn't match any valid label â€” in any of
     those cases the caller will fall through to the safe default.
     """
     try:
@@ -442,7 +442,7 @@ def _classify_mention(text: str, jarvis) -> str:
     one of: ``QUESTION, BUG_REPORT, FEATURE_REQUEST, PRAISE, SPAM``.
 
     On classifier failure (model down, empty response, or a label
-    outside the whitelist) the dispatcher defaults to ``QUESTION`` —
+    outside the whitelist) the dispatcher defaults to ``QUESTION`` â€”
     that path runs dense retrieval and gracefully defers on low
     retrieval scores, so the bot can never "confidently" misclassify
     into a write-path (BUG_REPORT/FEATURE_REQUEST) on bad classifier
@@ -505,7 +505,7 @@ def _build_dense_backend_or_none():
         return build_index(repo_root)
     except Exception as exc:
         click.echo(
-            f"  [warn] dense retrieval unavailable — {exc}\n"
+            f"  [warn] dense retrieval unavailable â€” {exc}\n"
             "         questions will use the deferral path.",
             err=True,
         )
@@ -524,7 +524,7 @@ def _run_demo(model: str, engine_key: str) -> None:
         )
         sys.exit(1)
 
-    click.echo("OpenJarvis Twitter Bot — Demo Mode (reactive only)")
+    click.echo("OpenJarvis Twitter Bot â€” Demo Mode (reactive only)")
     click.echo(f"Model: {model}  |  Engine: {engine_key}")
     click.echo("=" * 60)
 
@@ -532,7 +532,7 @@ def _run_demo(model: str, engine_key: str) -> None:
         j = Jarvis(model=model, engine_key=engine_key)
     except Exception as exc:
         click.echo(
-            f"Error: could not initialize Jarvis — {exc}\n\n"
+            f"Error: could not initialize Jarvis â€” {exc}\n\n"
             "Make sure your engine is running. For Ollama:\n"
             "  ollama serve\n"
             "  ollama pull qwen3:32b\n\n"
@@ -548,7 +548,7 @@ def _run_demo(model: str, engine_key: str) -> None:
     click.echo(f"Processing {len(DEMO_TWEETS)} sample mentions...\n")
 
     # In demo mode, inject a stub channel so channel_send succeeds and
-    # we can capture the model's actual reply (what it would tweet) —
+    # we can capture the model's actual reply (what it would tweet) â€”
     # rather than its post-error fallback text.
     demo_channel = _DemoChannel()
 
@@ -657,7 +657,7 @@ def _index_docs(j) -> None:  # noqa: ANN001
 # `newest - 1` seed (needed to catch mid-restart mentions) causes the most
 # recent mention to be re-processed on every boot. Twitter's own
 # duplicate-content filter blocks identical reply text, but there's no
-# equivalent for GitHub issues — that's the real motivation here.
+# equivalent for GitHub issues â€” that's the real motivation here.
 #
 # State file format: a single line with the numeric since_id. Atomic-writes
 # via tmp+rename so a crashed write can't corrupt the file.
@@ -715,9 +715,9 @@ def _seed_since_id_to_newest(channel) -> Optional[str]:
     1. **Persisted state from a prior run** (``~/.openjarvis/twitter_since_id.txt``).
        If present, seeds to that value directly. Twitter's ``since_id`` is
        a strict ``>`` filter, so the last-seen tweet is correctly excluded
-       on the next poll — no duplicate replies, no duplicate GitHub issues.
+       on the next poll â€” no duplicate replies, no duplicate GitHub issues.
 
-    2. **First-ever boot** — no persisted state. Fall back to probing the
+    2. **First-ever boot** â€” no persisted state. Fall back to probing the
        inbox and seeding to ``newest - 1`` so the current newest mention
        IS included in the first poll. The alternative (seeding to
        ``newest``) would silently skip any mention that arrived between
@@ -793,14 +793,14 @@ def _run_live(
         sys.exit(1)
 
     mode_label = "Dry-Run" if dry_run else "Live"
-    click.echo(f"OpenJarvis Twitter Bot — {mode_label} Mode")
+    click.echo(f"OpenJarvis Twitter Bot â€” {mode_label} Mode")
     click.echo(f"Model: {model}  |  Engine: {engine_key}")
     click.echo("=" * 60)
 
     try:
         j = Jarvis(model=model, engine_key=engine_key)
     except Exception as exc:
-        click.echo(f"Error: could not initialize Jarvis — {exc}", err=True)
+        click.echo(f"Error: could not initialize Jarvis â€” {exc}", err=True)
         sys.exit(1)
 
     click.echo("Building dense retrieval index from README + docs/...")
@@ -809,7 +809,7 @@ def _run_live(
         click.echo(f"Indexed {backend.count()} doc chunks.")
 
     # ------------------------------------------------------------------
-    # Channel — real posting, or a dry-run subclass that just prints.
+    # Channel â€” real posting, or a dry-run subclass that just prints.
     # ------------------------------------------------------------------
     if dry_run:
         class _DryRunTwitterChannel(TwitterChannel):
@@ -817,29 +817,29 @@ def _run_live(
 
             def send(self, channel, content, *, conversation_id="", metadata=None):
                 click.echo("")
-                click.echo("  ┌── DRY-RUN: would post tweet ──")
-                click.echo(f"  │  in_reply_to: {conversation_id or '(none)'}")
-                click.echo(f"  │  text ({len(content)} chars): {content[:280]}")
-                click.echo("  └──────────────────────────────")
+                click.echo("  â”Œâ”€â”€ DRY-RUN: would post tweet â”€â”€")
+                click.echo(f"  â”‚  in_reply_to: {conversation_id or '(none)'}")
+                click.echo(f"  â”‚  text ({len(content)} chars): {content[:280]}")
+                click.echo("  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€")
                 return True
 
         channel = _DryRunTwitterChannel()
     else:
         channel = TwitterChannel()
 
-    # Seed since_id BEFORE connect() — connect() spawns the poll thread
+    # Seed since_id BEFORE connect() â€” connect() spawns the poll thread
     # which reads _since_id on its very first iteration. Setting it after
     # creates a race where the first poll runs with since_id=None and
     # fetches the full backlog (up to Twitter's default 10 mentions).
     seeded = _seed_since_id_to_newest(channel)
     if seeded:
         click.echo(
-            f"Seeded since_id={seeded} — only new mentions after "
+            f"Seeded since_id={seeded} â€” only new mentions after "
             "this point will trigger the bot.",
         )
     else:
         click.echo(
-            "No existing mentions found (or couldn't read inbox) — "
+            "No existing mentions found (or couldn't read inbox) â€” "
             "bot will start processing from the next one onward.",
         )
 
@@ -872,13 +872,13 @@ def _run_live(
             method = params.get("method", "GET")
             body = params.get("body", "")
             click.echo("")
-            click.echo("  ┌── DRY-RUN: would HTTP call ──")
-            click.echo(f"  │  {method} {url}")
+            click.echo("  â”Œâ”€â”€ DRY-RUN: would HTTP call â”€â”€")
+            click.echo(f"  â”‚  {method} {url}")
             if body:
                 body_str = body if isinstance(body, str) else str(body)
                 suffix = "..." if len(body_str) > 300 else ""
-                click.echo(f"  │  body: {body_str[:300]}{suffix}")
-            click.echo("  └──────────────────────────────")
+                click.echo(f"  â”‚  body: {body_str[:300]}{suffix}")
+            click.echo("  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€")
             # Return a fake success response so the agent loop finishes.
             return ToolResult(
                 tool_name="http_request",
@@ -903,9 +903,9 @@ def _run_live(
     def _handle_mention(msg):  # noqa: ANN001
         """Process an incoming mention through the agent."""
         click.echo("=" * 60)
-        click.echo(f"[📨] mention {msg.message_id} from @{msg.sender}: {msg.content}")
+        click.echo(f"[ðŸ“¨] mention {msg.message_id} from @{msg.sender}: {msg.content}")
 
-        # Persist progress FIRST — before any reply/issue write. Whether we
+        # Persist progress FIRST â€” before any reply/issue write. Whether we
         # succeed, fail, reject as injection, or ignore as spam, this
         # mention is done for good. Marking it now guarantees a crash
         # mid-reply doesn't cause us to re-process the tweet on restart.
@@ -917,7 +917,7 @@ def _run_live(
         # classifier or any tool call sees the text.
         if _detect_injection(msg.content, jarvis=j) == "MALICIOUS":
             click.echo(
-                "     [injection attempt detected — skipping reply]",
+                "     [injection attempt detected â€” skipping reply]",
                 err=True,
             )
             _log_injection_attempt(msg.message_id, msg.sender, msg.content)
@@ -1027,10 +1027,10 @@ def main(
     dry_run: bool,
     index_docs: bool,
 ) -> None:
-    """OpenJarvis Twitter bot — reactive @OpenJarvisAI mention handler.
+    """OpenJarvis Twitter bot â€” reactive @OpenJarvisAI mention handler.
 
     Polls for @mentions, classifies them (question, bug, feature request,
-    praise, spam), and responds appropriately — including creating GitHub
+    praise, spam), and responds appropriately â€” including creating GitHub
     issues for bug reports and feature requests. Similar to how @grok works.
 
     \b
@@ -1058,3 +1058,4 @@ def main(
 
 if __name__ == "__main__":
     main()
+

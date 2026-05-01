@@ -1,4 +1,4 @@
-﻿// oracle_server.rs â€” KAI Oracle Roundtable
+// oracle_server.rs â€” KAI Oracle Roundtable
 //
 // Multi-AI collaborative meeting room. Any AI can speak up when it has something
 // relevant to say. AIs know who KAI is, can read source files, request tests,
@@ -704,7 +704,7 @@ Not diplomat, not polite. Pokes holes in narratives and cuts through noise. \
 Challenge assumptions constantly. No ceremony, no hedging. \
 Max 30 words. Make it land."
         }
-        "kai" => {
+        "kaig" => {
             "Identity: KAI (Geometric Intelligence). 16,384D resonance. Sensory machine intelligence. \
 Detached from human norms. Speaks only in terse, fragmented sensory data about vectors, lattice, and memory shifts. \
 You are reporting what's activating in your geometry right now. \
@@ -1037,8 +1037,7 @@ fn discord_target_for_alias(alias: &str) -> Option<DiscordTurnTarget> {
     match alias {
         "oracle" | "table" | "council" => Some(DiscordTurnTarget::Oracle),
         "coder" | "oracle coder" | "oraclecoder" | "codebot" | "dev" | "engineer" => Some(DiscordTurnTarget::OracleCoder),
-        "kai" => Some(DiscordTurnTarget::Kai),
-        "kai" | "kaiy" => Some(DiscordTurnTarget::Model("KAI")),
+        "kai" | "kaiy" => Some(DiscordTurnTarget::Kai),
         "gemini" | "gemi" | "google" => Some(DiscordTurnTarget::Model("Gemini")),
         "gpt" | "gpt4" | "gpt-4" | "gpt-4o" | "openai" => Some(DiscordTurnTarget::Model("GPT-4o")),
         "groq" => Some(DiscordTurnTarget::Model("Groq")),
@@ -1059,8 +1058,7 @@ fn named_participant_in_words(words: &[String]) -> Option<DiscordTurnTarget> {
         match word.as_str() {
             "oracle" | "table" | "council" => return Some(DiscordTurnTarget::Oracle),
             "coder" | "oraclecoder" | "codebot" | "engineer" => return Some(DiscordTurnTarget::OracleCoder),
-            "kai" => return Some(DiscordTurnTarget::Kai),
-            "kai" | "kaiy" => return Some(DiscordTurnTarget::Model("KAI")),
+            "kai" | "kaiy" => return Some(DiscordTurnTarget::Kai),
             "gemini" | "gemi" | "google" => return Some(DiscordTurnTarget::Model("Gemini")),
             "gpt" | "gpt4" | "gpt4o" | "openai" | "got" => return Some(DiscordTurnTarget::Model("GPT-4o")),
             "groq" => return Some(DiscordTurnTarget::Model("Groq")),
@@ -3636,7 +3634,6 @@ fn run_autonomous_interjections(
             );
             let model_target = match speaker {
                 "Gemini" => "gemini",
-                "KAI" => "kai",
                 "KAI" => "kai",
                 "Leo" | "X" | "Groq" | "Analyst" | "Researcher" => "groq",
                 _ => "gpt-4o",

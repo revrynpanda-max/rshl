@@ -1,4 +1,4 @@
-"""Load tool description overrides from $OPENJARVIS_HOME/tools/descriptions.toml.
+﻿"""Load tool description overrides from $OPENJARVIS_HOME/tools/descriptions.toml.
 
 Distillation (M1) proposes tool description edits that get written to disk by
 ``EditToolDescriptionApplier``.  This module loads those overrides so agents
@@ -77,3 +77,4 @@ def clear_cache() -> None:
     """Clear the cached overrides (useful for testing)."""
     global _cache  # noqa: PLW0603
     _cache = None
+

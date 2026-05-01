@@ -1,4 +1,4 @@
-"""ToolCall-15 dataset provider — lightweight tool calling benchmark.
+﻿"""ToolCall-15 dataset provider â€” lightweight tool calling benchmark.
 
 Provides 15 scenarios across 5 categories (3 per category) that test
 whether a model can call the right tool with the right arguments.
@@ -715,3 +715,4 @@ class ToolCall15Dataset(DatasetProvider):
 
 
 __all__ = ["ToolCall15Dataset"]
+

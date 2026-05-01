@@ -1,4 +1,4 @@
-"""OpenClawResolver — resolves skills from the OpenClaw skill index.
+﻿"""OpenClawResolver â€” resolves skills from the OpenClaw skill index.
 
 Layout:
     skills/<owner>/<skill-name>/SKILL.md
@@ -127,3 +127,4 @@ class OpenClawResolver(SourceResolver):
 
 
 __all__ = ["OpenClawResolver", "OPENCLAW_REPO_URL"]
+

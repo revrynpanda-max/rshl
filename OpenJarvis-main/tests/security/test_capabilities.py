@@ -1,4 +1,4 @@
-"""Tests for RBAC capabilities system (Phase 14.4)."""
+﻿"""Tests for RBAC capabilities system (Phase 14.4)."""
 
 from __future__ import annotations
 
@@ -112,3 +112,5 @@ class TestCapabilityPolicy:
         assert "file:read" in DEFAULT_TOOL_CAPABILITIES.get("file_read", [])
         assert "network:fetch" in DEFAULT_TOOL_CAPABILITIES.get("web_search", [])
         assert "code:execute" in DEFAULT_TOOL_CAPABILITIES.get("code_interpreter", [])
+
+

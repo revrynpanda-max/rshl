@@ -1,4 +1,4 @@
-"""Subprocess sandbox — secure process execution with environment isolation."""
+﻿"""Subprocess sandbox â€” secure process execution with environment isolation."""
 
 from __future__ import annotations
 
@@ -124,3 +124,4 @@ def run_sandboxed(
 
 
 __all__ = ["SandboxResult", "build_safe_env", "kill_process_tree", "run_sandboxed"]
+

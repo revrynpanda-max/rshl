@@ -1,4 +1,4 @@
-"""OpenHandsAgent -- wraps the real openhands-sdk for AI-driven development.
+﻿"""OpenHandsAgent -- wraps the real openhands-sdk for AI-driven development.
 
 Requires the ``openhands-sdk`` package (``uv sync --extra openhands``).
 For the native CodeAct-style agent, see :mod:`openjarvis.agents.native_openhands`.
@@ -84,3 +84,4 @@ class OpenHandsAgent(BaseAgent):
 
 
 __all__ = ["OpenHandsAgent"]
+

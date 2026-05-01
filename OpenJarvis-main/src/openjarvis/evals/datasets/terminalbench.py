@@ -1,4 +1,4 @@
-"""TerminalBench dataset (terminal-bench/terminal-bench).
+﻿"""TerminalBench dataset (terminal-bench/terminal-bench).
 
 Agentic benchmark for terminal / command-line tasks.
 """
@@ -121,3 +121,4 @@ class TerminalBenchDataset(DatasetProvider):
 
 
 __all__ = ["TerminalBenchDataset"]
+

@@ -1,4 +1,4 @@
-"""Tests for the MCP client."""
+﻿"""Tests for the MCP client."""
 
 from __future__ import annotations
 
@@ -101,3 +101,5 @@ class TestMCPClient:
         result = client.call_tool("think")
         # Think tool echoes empty thought
         assert result["isError"] is False
+
+

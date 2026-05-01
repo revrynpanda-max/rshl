@@ -1,4 +1,4 @@
-"""Apple Health connector -- reads HealthKit SQLite DB or iPhone Health export XML.
+﻿"""Apple Health connector -- reads HealthKit SQLite DB or iPhone Health export XML.
 
 Two data sources are tried in order:
 1. HealthKit SQLite DB at ``~/Library/Health/healthdb_secure.sqlite`` (macOS
@@ -417,3 +417,4 @@ class AppleHealthConnector(BaseConnector):
                 ),
                 metadata={"data_type": "workout", "activity": activity},
             )
+

@@ -1,4 +1,4 @@
-"""Retrieval tool — search memory backends for relevant context."""
+﻿"""Retrieval tool â€” search memory backends for relevant context."""
 
 from __future__ import annotations
 
@@ -90,3 +90,4 @@ class RetrievalTool(BaseTool):
 
 
 __all__ = ["RetrievalTool"]
+

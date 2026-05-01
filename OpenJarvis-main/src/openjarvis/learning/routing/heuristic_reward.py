@@ -1,4 +1,4 @@
-"""Heuristic reward function — weighted score from latency, cost, efficiency."""
+﻿"""Heuristic reward function â€” weighted score from latency, cost, efficiency."""
 
 from __future__ import annotations
 
@@ -54,3 +54,4 @@ class HeuristicRewardFunction(RewardFunction):
 
 
 __all__ = ["HeuristicRewardFunction"]
+

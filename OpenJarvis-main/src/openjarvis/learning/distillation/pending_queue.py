@@ -1,10 +1,10 @@
-"""Pending review queue for edits awaiting user approval.
+﻿"""Pending review queue for edits awaiting user approval.
 
 Edits in the ``review`` tier (when autonomy mode is ``tiered``) are
 written here as JSON files. The user reviews them via ``jarvis learning
 review`` and approves or rejects.
 
-See spec §7.5.
+See spec Â§7.5.
 """
 
 from __future__ import annotations
@@ -72,3 +72,4 @@ class PendingQueue:
             logger.info("Resolved pending edit %s", edit_id)
             return True
         return False
+

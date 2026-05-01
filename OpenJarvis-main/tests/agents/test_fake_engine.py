@@ -1,4 +1,4 @@
-"""Tests for FakeEngine."""
+﻿"""Tests for FakeEngine."""
 
 from __future__ import annotations
 
@@ -48,3 +48,5 @@ def test_fake_engine_tool_calls():
     r = engine.generate([], model="m")
     assert r["finish_reason"] == "tool_calls"
     assert len(r["tool_calls"]) == 1
+
+

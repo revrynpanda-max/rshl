@@ -1,4 +1,4 @@
-"""Tests for SkillsLearningConfig and its wiring into LearningConfig."""
+﻿"""Tests for SkillsLearningConfig and its wiring into LearningConfig."""
 
 from __future__ import annotations
 
@@ -38,3 +38,5 @@ class TestLearningConfigSkillsField:
     def test_skills_field_default_disabled(self):
         cfg = LearningConfig()
         assert cfg.skills.auto_optimize is False
+
+

@@ -1,4 +1,4 @@
-"""WebChoreArena: Realistic tedious web browsing tasks.
+﻿"""WebChoreArena: Realistic tedious web browsing tasks.
 
 Evaluates web agents on 532 tasks across Shopping, Shopping Admin,
 Reddit, GitLab, and Cross-site environments. Tests massive memory,
@@ -38,7 +38,7 @@ _SITE_DIRS = {
 
 
 class WebChoreArenaDataset(DatasetProvider):
-    """WebChoreArena benchmark — interactive browser-based web tasks.
+    """WebChoreArena benchmark â€” interactive browser-based web tasks.
 
     Tasks are enumerated from the original GitHub repository's
     ``config_files/`` JSON files.  Each task requires a live WebArena
@@ -106,7 +106,7 @@ class WebChoreArenaDataset(DatasetProvider):
                 "Install with: pip install playwright && playwright install"
             )
 
-        # Core services — eval fails without these
+        # Core services â€” eval fails without these
         _REQUIRED = {
             "SHOPPING": "http://localhost:7770",
             "SHOPPING_ADMIN": "http://localhost:7780",
@@ -114,7 +114,7 @@ class WebChoreArenaDataset(DatasetProvider):
             "GITLAB": "http://localhost:8023",
             "WIKIPEDIA": "http://localhost:8888",
         }
-        # Optional — only needed for map tasks; requires a full OpenStreetMap
+        # Optional â€” only needed for map tasks; requires a full OpenStreetMap
         # Docker Compose setup (AWS AMI or manual)
         _OPTIONAL = {
             "MAP": "http://localhost:3000",
@@ -141,7 +141,7 @@ class WebChoreArenaDataset(DatasetProvider):
                 urllib.request.urlopen(url, timeout=5)
             except Exception:
                 logger.warning(
-                    "Optional WebArena service %s (%s) is not reachable — "
+                    "Optional WebArena service %s (%s) is not reachable â€” "
                     "map-related tasks will fail. "
                     "See scripts/setup_webchorearena.sh for setup instructions.",
                     env_var,
@@ -264,3 +264,4 @@ class WebChoreArenaDataset(DatasetProvider):
 
 
 __all__ = ["WebChoreArenaDataset"]
+

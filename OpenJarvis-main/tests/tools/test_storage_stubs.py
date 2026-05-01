@@ -1,4 +1,4 @@
-"""Tests for tools/storage — canonical location for memory backends."""
+﻿"""Tests for tools/storage â€” canonical location for memory backends."""
 
 from __future__ import annotations
 
@@ -84,3 +84,5 @@ class TestStorageStubs:
         from openjarvis.tools.storage.sqlite import SQLiteMemory as S1
 
         assert S1 is not None
+
+

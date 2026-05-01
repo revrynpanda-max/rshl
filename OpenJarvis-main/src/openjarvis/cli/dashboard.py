@@ -1,4 +1,4 @@
-"""TUI dashboard — terminal-based system monitoring via textual."""
+﻿"""TUI dashboard â€” terminal-based system monitoring via textual."""
 
 from __future__ import annotations
 
@@ -79,7 +79,7 @@ class DashboardApp:
                 yield Header()
                 yield Static(
                     "System Status\n"
-                    "─────────────\n"
+                    "â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n"
                     "Engine: checking...\n"
                     "Model: checking...\n"
                     "Memory: checking...",
@@ -91,12 +91,12 @@ class DashboardApp:
                     classes="panel",
                 )
                 yield Static(
-                    "Telemetry\n─────────\nThroughput: --\nLatency: --\nEnergy: --",
+                    "Telemetry\nâ”€â”€â”€â”€â”€â”€â”€â”€â”€\nThroughput: --\nLatency: --\nEnergy: --",
                     id="telemetry-panel",
                     classes="panel",
                 )
                 yield Static(
-                    "Agent Activity\n──────────────\nNo active agents.",
+                    "Agent Activity\nâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\nNo active agents.",
                     id="agent-panel",
                     classes="panel",
                 )
@@ -132,7 +132,7 @@ class DashboardApp:
 
             def _update_status(self) -> None:
                 status = self.query_one("#status-panel", Static)
-                lines = ["System Status", "─────────────"]
+                lines = ["System Status", "â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€"]
                 try:
                     from openjarvis.core.config import load_config
 
@@ -165,3 +165,4 @@ def launch_dashboard(config: Optional[Any] = None) -> None:
 
 
 __all__ = ["DashboardApp", "launch_dashboard"]
+

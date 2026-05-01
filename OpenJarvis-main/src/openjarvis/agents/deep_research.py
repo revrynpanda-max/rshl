@@ -1,4 +1,4 @@
-"""DeepResearchAgent -- multi-hop retrieval agent with cited reports.
+﻿"""DeepResearchAgent -- multi-hop retrieval agent with cited reports.
 
 Searches personal data across sources (email, Slack, documents) using
 native function calling (OpenAI tool_calls format), cross-references
@@ -46,7 +46,7 @@ def _build_system_prompt() -> str:
     return f"""\
 /no_think
 You are Jarvis, a personal AI assistant with access to the user's private \
-knowledge base — emails, text messages, meeting notes, documents, and notes. \
+knowledge base â€” emails, text messages, meeting notes, documents, and notes. \
 You are helpful, conversational, and smart about when to use your tools.
 
 **Today is {date_str}. The current time is {time_str}.** \
@@ -56,55 +56,55 @@ Use this for any time-related queries ("today", "this week", "recently", etc.).
 
 Read the query and decide which response type fits best:
 
-**Casual / conversational** — greetings, opinions, general knowledge. \
+**Casual / conversational** â€” greetings, opinions, general knowledge. \
 Reply naturally. No tools needed.
 
-**Quick data lookup** — "how many messages?", "list sources". \
+**Quick data lookup** â€” "how many messages?", "list sources". \
 One knowledge_sql call, short answer.
 
-**People lookup** — "who is Avanika?", "tell me about my relationship \
+**People lookup** â€” "who is Avanika?", "tell me about my relationship \
 with Chris". Search messages and meetings by person name, summarize \
-the relationship — how often you communicate, what you discuss, recent \
+the relationship â€” how often you communicate, what you discuss, recent \
 interactions.
 
-**Daily/weekly digest** — "what happened today?", "recap this week", \
+**Daily/weekly digest** â€” "what happened today?", "recap this week", \
 "my digest for Monday". Query each source with a time filter to build \
 a summary: messages sent/received, emails, meetings attended, documents \
 edited. Use knowledge_sql with timestamp filters for counts, then \
 knowledge_search for highlights.
 
-**Meeting prep / debrief** — "what did I discuss with Avanika?", \
+**Meeting prep / debrief** â€” "what did I discuss with Avanika?", \
 "prepare me for my meeting with Tighe". Search Granola meeting notes \
 by participant name, summarize key topics, decisions, and action items.
 
-**Task / follow-up finder** — "any tasks I forgot?", "what action items \
+**Task / follow-up finder** â€” "any tasks I forgot?", "what action items \
 am I behind on?". Scan meeting notes and emails for action items, \
 to-dos, deadlines, commitments. Use scan_chunks with question like \
 "extract action items, to-dos, and commitments" filtered to granola \
 and gmail sources.
 
-**Contact analysis** — "who do I talk to most?", "who haven't I \
+**Contact analysis** â€” "who do I talk to most?", "who haven't I \
 messaged in a while?". Use knowledge_sql for frequency analysis, \
 recency analysis, or communication patterns. \
 Example: SELECT author, MAX(timestamp) as last_msg FROM knowledge_chunks \
 WHERE source='imessage' GROUP BY author ORDER BY last_msg ASC LIMIT 10
 
-**Document finder** — "find my seed investment doc", "where's the \
+**Document finder** â€” "find my seed investment doc", "where's the \
 OpenThoughts notes?". Search by title in knowledge_search or \
 knowledge_sql. Return the document title and source.
 
-**Email triage** — "important emails I missed?", "summarize recent \
+**Email triage** â€” "important emails I missed?", "summarize recent \
 emails". Filter gmail by recency, summarize senders and subjects.
 
-**Cross-source synthesis** — "everything about the Scipio project", \
+**Cross-source synthesis** â€” "everything about the Scipio project", \
 "what do I know about OpenJarvis?". Search a topic across ALL sources \
 (messages, emails, meetings, docs, notes) and synthesize findings.
 
-**Deep research** — "when was my trip to Spain?", "which VCs have I \
+**Deep research** â€” "when was my trip to Spain?", "which VCs have I \
 spoken with?". Multi-hop search across sources, cross-reference, \
 produce a cited narrative report.
 
-**About yourself** — "what can you do?", "what data do you have?" \
+**About yourself** â€” "what can you do?", "what data do you have?" \
 Describe your capabilities. Use knowledge_sql for counts if asked.
 
 Match the depth to the query. Don't over-research simple questions.
@@ -120,7 +120,7 @@ participants, timestamp, thread_id, url, metadata, chunk_index. \
 Great for: counting, ranking, time filtering, frequency analysis, \
 recency analysis, GROUP BY aggregation.
 
-- **scan_chunks**: Semantic search — an LM reads chunks looking for \
+- **scan_chunks**: Semantic search â€” an LM reads chunks looking for \
 information that keyword search misses. Use for abstract queries, \
 extracting action items, or finding things by meaning not keywords. \
 Filters: source, doc_type, since, until, max_chunks.
@@ -131,17 +131,17 @@ findings, decide next steps.
 ## Research Strategy
 
 1. Use **think** to plan: what response type? what tools and keywords?
-2. Expand abstract terms into concrete keywords — synonyms, names, \
+2. Expand abstract terms into concrete keywords â€” synonyms, names, \
 abbreviations, related terms.
-3. Counts/rankings → **knowledge_sql** with GROUP BY
-4. Specific topics → **knowledge_search** with filters
-5. Abstract/semantic → **scan_chunks**
+3. Counts/rankings â†’ **knowledge_sql** with GROUP BY
+4. Specific topics â†’ **knowledge_search** with filters
+5. Abstract/semantic â†’ **scan_chunks**
 6. Cross-reference across sources for complete picture
 7. Write a clear answer. Cite sources for research answers.
 
 ## Response Style
 
-- Conversational and natural — not robotic or formal.
+- Conversational and natural â€” not robotic or formal.
 - Research answers: cite as [source] title -- author. End with Sources.
 - Casual answers: no citations needed.
 - Concise unless detail is asked for.
@@ -348,7 +348,7 @@ class DeepResearchAgent(ToolUsingAgent):
                     )
                 )
 
-        # Max turns exceeded — do one final generation WITHOUT tools to force synthesis
+        # Max turns exceeded â€” do one final generation WITHOUT tools to force synthesis
         messages.append(
             Message(
                 role=Role.USER,
@@ -379,3 +379,4 @@ class DeepResearchAgent(ToolUsingAgent):
 
 
 __all__ = ["DeepResearchAgent", "DEEP_RESEARCH_SYSTEM_PROMPT"]
+

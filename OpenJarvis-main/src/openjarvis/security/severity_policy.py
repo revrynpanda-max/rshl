@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from openjarvis.security.types import ThreatLevel
 
@@ -20,3 +20,4 @@ class SeverityPolicy:
 
     def action_for(self, level: ThreatLevel) -> str:
         return self._actions.get(level, "log")
+

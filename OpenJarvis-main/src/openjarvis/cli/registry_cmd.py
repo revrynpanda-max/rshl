@@ -1,4 +1,4 @@
-"""``jarvis registry`` — registry inspection commands."""
+﻿"""``jarvis registry`` â€” registry inspection commands."""
 
 from __future__ import annotations
 
@@ -64,7 +64,7 @@ def _load_registry_map() -> tuple[dict[str, object], dict[str, object]]:
 
 @click.group()
 def registry() -> None:
-    """Inspect registered components — list registries, show entries."""
+    """Inspect registered components â€” list registries, show entries."""
 
 
 @registry.command("list")
@@ -119,7 +119,7 @@ def show(registry_name: str, verbose: bool) -> None:
             console.print(f"[dim]{registry_name} is empty.[/dim]")
             return
 
-        console.print(f"[bold]{registry_name}[/bold] — {len(keys)} entry/entries")
+        console.print(f"[bold]{registry_name}[/bold] â€” {len(keys)} entry/entries")
 
         if verbose:
             for key in keys:
@@ -144,3 +144,4 @@ def show(registry_name: str, verbose: bool) -> None:
 
 
 __all__ = ["registry"]
+

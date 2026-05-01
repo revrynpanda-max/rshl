@@ -1,4 +1,4 @@
-"""Tests for the WebhookChannel adapter."""
+﻿"""Tests for the WebhookChannel adapter."""
 
 from __future__ import annotations
 
@@ -182,3 +182,5 @@ class TestDisconnect:
         ch._status = ChannelStatus.CONNECTED
         ch.disconnect()
         assert ch.status() == ChannelStatus.DISCONNECTED
+
+

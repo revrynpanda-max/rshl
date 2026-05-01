@@ -1,4 +1,4 @@
-"""Tests for InstrumentedEngine, GuardrailsEngine, and MultiEngine stream_full
+﻿"""Tests for InstrumentedEngine, GuardrailsEngine, and MultiEngine stream_full
 delegation."""
 
 from __future__ import annotations
@@ -140,3 +140,5 @@ async def test_multi_routes_stream_full_by_model():
         result_b.append(chunk)
 
     assert result_b[0].content == "from B"
+
+

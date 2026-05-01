@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Stress-test the twitter bot on diverse mentions with the dense-retrieval pipeline.
 
 For each mention:
@@ -274,3 +274,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

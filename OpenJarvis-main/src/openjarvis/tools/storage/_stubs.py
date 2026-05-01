@@ -1,4 +1,4 @@
-"""ABC for memory / retrieval backends.
+﻿"""ABC for memory / retrieval backends.
 
 Phase 2 will provide concrete implementations (SQLite/FTS5, FAISS,
 ColBERTv2, BM25, Hybrid).
@@ -60,3 +60,4 @@ class MemoryBackend(ABC):
 
 
 __all__ = ["MemoryBackend", "RetrievalResult"]
+

@@ -1,4 +1,4 @@
-"""IRCChannel — IRC adapter using stdlib socket."""
+﻿"""IRCChannel â€” IRC adapter using stdlib socket."""
 
 from __future__ import annotations
 
@@ -63,7 +63,7 @@ class IRCChannel(BaseChannel):
     # -- connection lifecycle ---------------------------------------------------
 
     def connect(self) -> None:
-        """Mark as connected (send-only — no persistent connection)."""
+        """Mark as connected (send-only â€” no persistent connection)."""
         if not self._server:
             logger.warning("No IRC server configured")
             self._status = ChannelStatus.ERROR
@@ -143,3 +143,4 @@ class IRCChannel(BaseChannel):
 
 
 __all__ = ["IRCChannel"]
+

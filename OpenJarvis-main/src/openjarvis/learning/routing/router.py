@@ -1,4 +1,4 @@
-"""Heuristic model router — selects the best model based on query characteristics."""
+﻿"""Heuristic model router â€” selects the best model based on query characteristics."""
 
 from __future__ import annotations
 
@@ -92,12 +92,12 @@ class HeuristicRouter(RouterPolicy):
     """Rule-based model router.
 
     Rules (applied in order):
-    1. Code detected → prefer model with "code"/"coder" in name
-    2. Math detected → prefer larger model
-    3. Low complexity (score < 0.20) → prefer smaller/faster model
-    4. High complexity (score >= 0.55 OR reasoning keywords) → prefer larger model
-    5. High urgency (>0.8) → override to smaller model
-    6. Default fallback → default_model → fallback_model → first available
+    1. Code detected â†’ prefer model with "code"/"coder" in name
+    2. Math detected â†’ prefer larger model
+    3. Low complexity (score < 0.20) â†’ prefer smaller/faster model
+    4. High complexity (score >= 0.55 OR reasoning keywords) â†’ prefer larger model
+    5. High urgency (>0.8) â†’ override to smaller model
+    6. Default fallback â†’ default_model â†’ fallback_model â†’ first available
     """
 
     def __init__(
@@ -120,11 +120,11 @@ class HeuristicRouter(RouterPolicy):
         if not available:
             return self._default or self._fallback or ""
 
-        # Rule 5: High urgency overrides everything → smallest model
+        # Rule 5: High urgency overrides everything â†’ smallest model
         if context.urgency > 0.8:
             return _smallest_model(available) or available[0]
 
-        # Rule 1: Code detected → prefer model with code/coder in name
+        # Rule 1: Code detected â†’ prefer model with code/coder in name
         if context.has_code:
             code_model = _find_model_by_tag(available, "code") or _find_model_by_tag(
                 available, "coder"
@@ -134,15 +134,15 @@ class HeuristicRouter(RouterPolicy):
             # Fall through to larger model for code
             return _largest_model(available) or available[0]
 
-        # Rule 2: Math detected → prefer larger model
+        # Rule 2: Math detected â†’ prefer larger model
         if context.has_math:
             return _largest_model(available) or available[0]
 
-        # Rule 3: Low complexity → prefer smaller model
+        # Rule 3: Low complexity â†’ prefer smaller model
         if context.complexity_score < 0.20:
             return _smallest_model(available) or available[0]
 
-        # Rule 4: High complexity or reasoning → prefer larger model
+        # Rule 4: High complexity or reasoning â†’ prefer larger model
         if context.complexity_score >= 0.55 or context.has_reasoning:
             return _largest_model(available) or available[0]
 
@@ -172,3 +172,4 @@ __all__ = [
     "HeuristicRouter",
     "build_routing_context",
 ]
+

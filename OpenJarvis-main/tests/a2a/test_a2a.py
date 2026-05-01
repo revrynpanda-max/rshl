@@ -1,4 +1,4 @@
-"""Tests for A2A protocol (Phase 16.1)."""
+﻿"""Tests for A2A protocol (Phase 16.1)."""
 
 from __future__ import annotations
 
@@ -221,3 +221,5 @@ class TestA2AServer:
             }
         )
         assert response["result"]["state"] == "failed"
+
+

@@ -1,4 +1,4 @@
-"""SQLite-backed telemetry storage."""
+﻿"""SQLite-backed telemetry storage."""
 
 from __future__ import annotations
 
@@ -128,7 +128,7 @@ class TelemetryStore:
                     f"ALTER TABLE telemetry ADD COLUMN {col_name} {col_def}",
                 )
             except sqlite3.OperationalError:
-                pass  # Column already exists — safe to ignore
+                pass  # Column already exists â€” safe to ignore
         self._conn.commit()
 
     def record(self, rec: TelemetryRecord) -> None:
@@ -202,3 +202,4 @@ class TelemetryStore:
 
 
 __all__ = ["TelemetryStore"]
+

@@ -1,4 +1,4 @@
-"""Think tool — zero-cost reasoning scratchpad."""
+﻿"""Think tool â€” zero-cost reasoning scratchpad."""
 
 from __future__ import annotations
 
@@ -56,3 +56,4 @@ class ThinkTool(BaseTool):
 
 
 __all__ = ["ThinkTool"]
+

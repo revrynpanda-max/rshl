@@ -1,4 +1,4 @@
-"""General-purpose SFT trainer -- fine-tune any local LM on trace-derived pairs.
+﻿"""General-purpose SFT trainer -- fine-tune any local LM on trace-derived pairs.
 
 Delegates to :class:`LoRATrainer` from ``training/lora.py`` when ``use_lora=True``.
 Supports ``train(trace_store)`` for end-to-end pipeline and ``train_on_pairs()``
@@ -145,3 +145,4 @@ class _SFTLearningPolicy(IntelligenceLearningPolicy):
 
 
 __all__ = ["SFTTrainer"]
+

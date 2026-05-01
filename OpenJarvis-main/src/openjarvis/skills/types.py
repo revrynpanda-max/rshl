@@ -1,4 +1,4 @@
-"""Skill type definitions."""
+﻿"""Skill type definitions."""
 
 from __future__ import annotations
 
@@ -60,3 +60,4 @@ class SkillManifest:
 
 
 __all__ = ["SkillManifest", "SkillStep"]
+

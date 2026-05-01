@@ -1,4 +1,4 @@
-"""RLM (Recursive Language Model) Agent — recursive decomposition via persistent REPL.
+﻿"""RLM (Recursive Language Model) Agent â€” recursive decomposition via persistent REPL.
 
 Based on the RLM paper (arxiv:2512.24601). Instead of passing long context
 directly in the LLM prompt, RLM stores context as a Python variable in a
@@ -31,15 +31,15 @@ RLM_SYSTEM_PROMPT = (
     "You are an AI assistant that solves problems by writing "
     "Python code in a persistent REPL.\n\n"
     "## Available REPL Functions\n\n"
-    "- `llm_query(prompt: str) -> str` — Call a sub-LM with a "
+    "- `llm_query(prompt: str) -> str` â€” Call a sub-LM with a "
     "prompt and get a response.\n"
-    "- `llm_batch(prompts: list[str]) -> list[str]` — Call a "
+    "- `llm_batch(prompts: list[str]) -> list[str]` â€” Call a "
     "sub-LM with multiple prompts.\n"
-    "- `FINAL(value)` — Terminate and return `value` as the "
+    "- `FINAL(value)` â€” Terminate and return `value` as the "
     "final answer.\n"
-    "- `FINAL_VAR(var_name: str)` — Terminate and return the "
+    "- `FINAL_VAR(var_name: str)` â€” Terminate and return the "
     "value of variable `var_name`.\n"
-    '- `answer` dict — Set `answer["value"] = ...` and '
+    '- `answer` dict â€” Set `answer["value"] = ...` and '
     '`answer["ready"] = True` to terminate.\n\n'
     "{tool_section}"
     "## Available Modules\n\n"
@@ -64,7 +64,7 @@ RLM_SYSTEM_PROMPT = (
     "each with `llm_query()`.\n"
     "- Use `llm_batch()` for parallel sub-queries on multiple "
     "chunks.\n"
-    "- Store intermediate results in variables — the REPL "
+    "- Store intermediate results in variables â€” the REPL "
     "persists state across turns.\n"
     "- Build up the answer incrementally across multiple code "
     "blocks.\n"
@@ -369,3 +369,4 @@ class RLMAgent(ToolUsingAgent):
 
 
 __all__ = ["RLMAgent", "RLM_SYSTEM_PROMPT"]
+

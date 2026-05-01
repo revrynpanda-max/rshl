@@ -1,4 +1,4 @@
-"""Tests for LoRA stub applier."""
+﻿"""Tests for LoRA stub applier."""
 
 from __future__ import annotations
 
@@ -51,3 +51,5 @@ class TestLoraStubApplier:
         ctx = ApplyContext(openjarvis_home=tmp_path, session_id="s1")
         with pytest.raises(NotImplementedError, match="deferred to v2"):
             applier.apply(_make_lora_edit(), ctx)
+
+

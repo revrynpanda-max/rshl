@@ -1,4 +1,4 @@
-"""NVIDIA energy monitor — hardware counters (Volta+) with polling fallback."""
+﻿"""NVIDIA energy monitor â€” hardware counters (Volta+) with polling fallback."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ class NvidiaEnergyMonitor(EnergyMonitor):
     start/end hardware counters (millijoules).  Delta / 1000 = joules.
 
     **Fallback mode** (pre-Volta): Trapezoidal integration of
-    ``nvmlDeviceGetPowerUsage()`` — same algorithm as legacy ``GpuMonitor``.
+    ``nvmlDeviceGetPowerUsage()`` â€” same algorithm as legacy ``GpuMonitor``.
 
     A lightweight polling thread still runs in both modes for utilization,
     memory, and temperature metrics (no hw counter for those).
@@ -255,3 +255,4 @@ class NvidiaEnergyMonitor(EnergyMonitor):
 
 
 __all__ = ["NvidiaEnergyMonitor"]
+

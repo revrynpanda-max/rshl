@@ -1,4 +1,4 @@
-"""Database query tool — execute SQL queries against SQLite and PostgreSQL."""
+﻿"""Database query tool â€” execute SQL queries against SQLite and PostgreSQL."""
 
 from __future__ import annotations
 
@@ -355,3 +355,4 @@ class DatabaseQueryTool(BaseTool):
 
 
 __all__ = ["DatabaseQueryTool"]
+

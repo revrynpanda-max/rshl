@@ -1,4 +1,4 @@
-"""Secure file and directory creation helpers.
+﻿"""Secure file and directory creation helpers.
 
 All OpenJarvis data files under ``~/.openjarvis/`` should be created
 through these helpers to ensure consistent, restrictive permissions.
@@ -32,3 +32,4 @@ def secure_create(path: Path, mode: int = 0o600) -> Path:
         path.touch()
     os.chmod(path, mode)
     return path
+

@@ -1,4 +1,4 @@
-"""TerminalBench Native dataset — loads from the terminal-bench pip package (v2 API).
+﻿"""TerminalBench Native dataset â€” loads from the terminal-bench pip package (v2 API).
 
 Agentic benchmark using the native terminal-bench SDK for task loading
 and test-based evaluation.
@@ -185,3 +185,4 @@ class TerminalBenchNativeDataset(DatasetProvider):
 
 
 __all__ = ["TerminalBenchNativeDataset"]
+

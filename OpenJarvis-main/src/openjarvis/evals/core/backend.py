@@ -1,4 +1,4 @@
-"""Abstract base class for inference backends."""
+﻿"""Abstract base class for inference backends."""
 
 from __future__ import annotations
 
@@ -43,3 +43,4 @@ class InferenceBackend(ABC):
 
 
 __all__ = ["InferenceBackend"]
+

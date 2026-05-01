@@ -1,4 +1,4 @@
-"""Code interpreter tool — safe Python code execution in subprocess."""
+﻿"""Code interpreter tool â€” safe Python code execution in subprocess."""
 
 from __future__ import annotations
 
@@ -109,3 +109,4 @@ class CodeInterpreterTool(BaseTool):
 
 
 __all__ = ["CodeInterpreterTool"]
+

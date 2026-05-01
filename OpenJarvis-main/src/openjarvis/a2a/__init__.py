@@ -1,4 +1,4 @@
-"""Agent-to-Agent protocol — Google A2A spec implementation."""
+﻿"""Agent-to-Agent protocol â€” Google A2A spec implementation."""
 
 from openjarvis.a2a.client import A2AClient
 from openjarvis.a2a.protocol import A2ARequest, A2AResponse, A2ATask, AgentCard
@@ -14,3 +14,4 @@ __all__ = [
     "A2ATask",
     "AgentCard",
 ]
+

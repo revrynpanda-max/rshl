@@ -1,4 +1,4 @@
-"""Tests for QueryTrace and TurnTrace data model."""
+﻿"""Tests for QueryTrace and TurnTrace data model."""
 
 from __future__ import annotations
 
@@ -149,3 +149,5 @@ class TestQueryTrace:
             ]
         )
         assert t.total_tool_calls == 3
+
+

@@ -1,4 +1,4 @@
-"""LifelongAgentBench dataset loader.
+﻿"""LifelongAgentBench dataset loader.
 
 Faithful reimplementation of:
   https://github.com/caixd-220529/LifelongAgentBench
@@ -22,7 +22,7 @@ Key design decisions matching the original:
 2. **Multi-turn interaction**: Each record provides a ``create_task_env()``
    that returns a ``TaskEnvironment`` for multi-turn agent interaction.
    DB tasks interact with a real database, KG tasks with an API simulator,
-   OS tasks with a Docker container — matching the original's protocol.
+   OS tasks with a Docker container â€” matching the original's protocol.
 
 3. **Environment requirements**: DB tasks need Docker+MySQL (SQLite fallback
    warns loudly).  OS tasks need Docker.  KG tasks need a SPARQL endpoint
@@ -135,7 +135,7 @@ class LifelongAgentDataset(DatasetProvider):
     Loads from HuggingFace with three subsets: db_bench, knowledge_graph,
     os_interaction.  Set ``subset="all"`` to load all subsets (default).
 
-    Tasks within each subset form a *lifelong episode* — they are
+    Tasks within each subset form a *lifelong episode* â€” they are
     processed sequentially with the agent accumulating experience across
     tasks.  Use ``episode_mode=True`` in RunConfig to enable this,
     mirroring the original's ``PreviousSampleUtilizationCallback``.
@@ -219,13 +219,13 @@ class LifelongAgentDataset(DatasetProvider):
             )
 
         # NOTE: Do NOT shuffle records.  The original LifelongAgentBench
-        # processes tasks strictly by sample_index within each subset —
+        # processes tasks strictly by sample_index within each subset â€”
         # shuffling would break the lifelong learning protocol where later
         # tasks may depend on skills/state from earlier ones.  The seed
         # parameter is accepted for API compatibility but ignored.
         if seed is not None:
             logger.info(
-                "LifelongAgentBench: seed=%d ignored — lifelong protocol "
+                "LifelongAgentBench: seed=%d ignored â€” lifelong protocol "
                 "requires strict sample_index ordering.",
                 seed,
             )
@@ -515,3 +515,4 @@ class LifelongAgentDataset(DatasetProvider):
 
 
 __all__ = ["LifelongAgentDataset"]
+

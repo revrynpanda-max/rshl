@@ -1,4 +1,4 @@
-"""Tests for SSRF protection module."""
+﻿"""Tests for SSRF protection module."""
 
 from __future__ import annotations
 
@@ -99,7 +99,7 @@ class TestCheckSsrf:
         assert "Invalid URL" in result
 
     def test_dns_failure_allowed(self):
-        """DNS resolution failure should not block — request will fail at HTTP time."""
+        """DNS resolution failure should not block â€” request will fail at HTTP time."""
         import socket
 
         with patch(
@@ -121,3 +121,5 @@ class TestCheckSsrf:
 
 
 __all__ = ["TestCheckSsrf", "TestIsPrivateIp"]
+
+

@@ -552,3 +552,5 @@ class TestAgentRoutingMatrix:
         msgs = call_args[0][0]
         # First message is ReAct system prompt, then context
         assert any(m.content == "You are helpful." for m in msgs)
+
+

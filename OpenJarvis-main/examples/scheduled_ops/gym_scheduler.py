@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
-"""Gym schedule checker — looks up gym hours and class availability.
+﻿#!/usr/bin/env python3
+"""Gym schedule checker â€” looks up gym hours and class availability.
 
 Run manually::
 
@@ -99,7 +99,7 @@ def main(
         j.close()
 
     click.echo(f"\n{'=' * 60}")
-    click.echo(f"  Gym Schedule — {today}")
+    click.echo(f"  Gym Schedule â€” {today}")
     click.echo(f"  Gym: {gym}")
     click.echo(f"{'=' * 60}\n")
     click.echo(response)
@@ -135,3 +135,4 @@ def _register_task(gym: str) -> None:
 
 if __name__ == "__main__":
     main()
+

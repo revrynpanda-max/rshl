@@ -1,4 +1,4 @@
-"""Tests for skill system (Phase 15.2)."""
+﻿"""Tests for skill system (Phase 15.2)."""
 
 from __future__ import annotations
 
@@ -293,3 +293,5 @@ class TestSkillTool:
         assert skill_tool.spec.name == "skill_tool_skill"
         result = skill_tool.execute(input="hello")
         assert result.success
+
+

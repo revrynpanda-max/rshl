@@ -1,4 +1,4 @@
-"""Live integration tests for the skills system.
+﻿"""Live integration tests for the skills system.
 
 These tests require a running Ollama instance with qwen3.5:4b.
 Mark: live
@@ -77,7 +77,7 @@ class TestSkillSystemIntegration:
         print(f"  code-explainer returned: {result.content[:200]}...")
 
         # Verify the bus is reachable (instruction-only skills don't run
-        # a pipeline, so no SKILL_EXECUTE_* events here — tool-mode skills
+        # a pipeline, so no SKILL_EXECUTE_* events here â€” tool-mode skills
         # emit them, covered in TestSkillEventsAndTracing below)
         assert bus.history is not None
 
@@ -106,7 +106,7 @@ class TestSkillSystemIntegration:
             tool_names = [t.spec.name for t in system.tools]
             print(f"  Tool names: {tool_names}")
 
-            # Ask a simple question — agent should work normally
+            # Ask a simple question â€” agent should work normally
             result = system.ask("What is 2 + 2?")
             assert "content" in result
             content = result["content"]
@@ -173,3 +173,5 @@ class TestSkillEventsAndTracing:
         end_event = next(e for e in events if e[0] == EventType.SKILL_EXECUTE_END)
         assert end_event[1]["success"] is True
         print("  Events correctly emitted with skill metadata")
+
+

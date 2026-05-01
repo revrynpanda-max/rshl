@@ -1,4 +1,4 @@
-"""Load system prompt and few-shot overrides from $OPENJARVIS_HOME.
+﻿"""Load system prompt and few-shot overrides from $OPENJARVIS_HOME.
 
 Distillation (M1) proposes edits that get written to disk by appliers.
 This module lets agents pick those overrides up at runtime:
@@ -6,7 +6,7 @@ This module lets agents pick those overrides up at runtime:
 - System prompts: ``$OPENJARVIS_HOME/agents/{name}/system_prompt.md``
 - Few-shot exemplars: ``$OPENJARVIS_HOME/agents/{name}/few_shot.json``
 
-Override files are templates — they may contain ``{tool_descriptions}`` and
+Override files are templates â€” they may contain ``{tool_descriptions}`` and
 other format placeholders that the agent fills in via ``.format()``, exactly
 like the hardcoded constants.
 """
@@ -81,3 +81,4 @@ def load_few_shot_exemplars(
             exc_info=True,
         )
         return []
+

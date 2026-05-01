@@ -1,4 +1,4 @@
-"""Tests for the GoogleChatChannel adapter."""
+﻿"""Tests for the GoogleChatChannel adapter."""
 
 from __future__ import annotations
 
@@ -137,3 +137,5 @@ class TestStatus:
         ch = GoogleChatChannel()
         ch.connect()
         assert ch.status() == ChannelStatus.ERROR
+
+

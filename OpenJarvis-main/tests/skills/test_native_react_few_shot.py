@@ -1,4 +1,4 @@
-"""Tests for native_react skill_few_shot_examples wiring (Plan 2B I3 fix)."""
+﻿"""Tests for native_react skill_few_shot_examples wiring (Plan 2B I3 fix)."""
 
 from __future__ import annotations
 
@@ -165,3 +165,5 @@ class TestRunAgentForwardsExamples:
         assert captured_kwargs["skill_few_shot_examples"] == [
             "### research-skill\nInput: q\nOutput: a"
         ]
+
+

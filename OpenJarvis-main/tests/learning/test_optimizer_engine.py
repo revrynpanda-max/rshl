@@ -1,4 +1,4 @@
-"""Tests for openjarvis.optimize.optimizer module."""
+﻿"""Tests for openjarvis.optimize.optimizer module."""
 
 from __future__ import annotations
 
@@ -789,3 +789,5 @@ class TestTargetedAndMerge:
 
         # Merge should be triggered at trial_num=5
         assert optimizer.propose_merge.called
+
+

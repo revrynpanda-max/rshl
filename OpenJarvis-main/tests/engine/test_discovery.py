@@ -1,4 +1,4 @@
-"""Tests for engine discovery."""
+﻿"""Tests for engine discovery."""
 
 from __future__ import annotations
 
@@ -124,3 +124,5 @@ class TestGetEngine:
             result = get_engine(cfg, engine_key="requested")
         assert result is not None
         assert result[0] == "running"
+
+

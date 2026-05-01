@@ -1,4 +1,4 @@
-"""OptimizationEngine -- orchestrates the optimize loop.
+﻿"""OptimizationEngine -- orchestrates the optimize loop.
 
 Ties together the LLM optimizer, trial runner, and persistence store
 into a single propose -> evaluate -> analyze -> repeat loop.
@@ -200,7 +200,7 @@ class OptimizationEngine:
             # Evaluate
             result = self.trial_runner.run_trial(config)
 
-            # Analyze — returns TrialFeedback
+            # Analyze â€” returns TrialFeedback
             if result.summary is not None:
                 feedback = self.llm_optimizer.analyze_trial(
                     config,
@@ -435,3 +435,4 @@ class OptimizationEngine:
 
 
 __all__ = ["OptimizationEngine", "compute_pareto_frontier"]
+

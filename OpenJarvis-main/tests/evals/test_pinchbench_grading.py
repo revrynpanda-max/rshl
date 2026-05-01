@@ -1,4 +1,4 @@
-"""Tests for PinchBench grading functions."""
+﻿"""Tests for PinchBench grading functions."""
 
 from openjarvis.evals.core.types import EvalRecord
 from openjarvis.evals.scorers.pinchbench import (
@@ -159,3 +159,5 @@ class TestGradeRouter:
             record=record, transcript=[], workspace_path=str(tmp_path)
         )
         assert result["score"] == 0.0
+
+

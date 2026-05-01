@@ -1,4 +1,4 @@
-"""Tests for TaskScheduler — scheduling logic, lifecycle, and execution."""
+﻿"""Tests for TaskScheduler â€” scheduling logic, lifecycle, and execution."""
 
 from __future__ import annotations
 
@@ -318,3 +318,5 @@ class TestLifecycle:
 
         logs = store.get_run_logs(task.id)
         assert len(logs) >= 1
+
+

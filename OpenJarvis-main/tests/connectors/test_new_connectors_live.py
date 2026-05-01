@@ -1,4 +1,4 @@
-"""Live smoke tests for new connectors — require real API credentials.
+﻿"""Live smoke tests for new connectors â€” require real API credentials.
 
 Run with: uv run pytest tests/connectors/test_new_connectors_live.py -v -m cloud
 """
@@ -55,3 +55,5 @@ class TestGoogleTasksLive:
         docs = list(conn.sync(since=datetime.now() - timedelta(days=7)))
         assert all(isinstance(d, Document) for d in docs)
         assert all(d.source == "google_tasks" for d in docs)
+
+

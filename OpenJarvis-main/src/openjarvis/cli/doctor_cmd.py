@@ -351,3 +351,4 @@ def doctor(as_json: bool) -> None:
     console.print()
     console.print(f"  {ok_count} passed, {warn_count} warnings, {fail_count} failures")
     console.print()
+

@@ -1,4 +1,4 @@
-"""Agent lifecycle scenario tests.
+﻿"""Agent lifecycle scenario tests.
 
 Twelve+ scenarios exercising the full managed-agent stack (manager, executor,
 scheduler) with real SQLite state and a scripted FakeEngine.
@@ -63,7 +63,7 @@ def test_interval_scheduled_agent(scenario_harness: ScenarioHarness) -> None:
     )
     aid = agent["id"]
 
-    # Register at base_time — next_fire = base_time + 60
+    # Register at base_time â€” next_fire = base_time + 60
     with patch("openjarvis.agents.scheduler.time") as mock_time:
         mock_time.time.return_value = base_time
         h.scheduler.register_agent(aid)
@@ -370,7 +370,7 @@ def test_pause_resume(scenario_harness: ScenarioHarness) -> None:
     # Pause the agent
     h.manager.pause_agent(aid)
 
-    # Advance past interval — should NOT fire because paused
+    # Advance past interval â€” should NOT fire because paused
     with patch("openjarvis.agents.scheduler.time") as mock_time:
         mock_time.time.return_value = base_time + 61
         h.scheduler._check_due_agents()
@@ -382,7 +382,7 @@ def test_pause_resume(scenario_harness: ScenarioHarness) -> None:
     # Resume
     h.manager.resume_agent(aid)
 
-    # Now advance again — should fire
+    # Now advance again â€” should fire
     with patch("openjarvis.agents.scheduler.time") as mock_time:
         mock_time.time.return_value = base_time + 61
         h.scheduler._check_due_agents()
@@ -536,3 +536,5 @@ def test_memory_persistence_across_ticks(scenario_harness: ScenarioHarness) -> N
     agent = h.manager.get_agent(aid)
     assert agent is not None
     assert "Tick two builds on prior context." in agent["summary_memory"]
+
+

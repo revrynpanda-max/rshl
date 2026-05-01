@@ -1,4 +1,4 @@
-"""Tests for TrainingDataMiner — SFT, routing, and agent config extraction."""
+﻿"""Tests for TrainingDataMiner â€” SFT, routing, and agent config extraction."""
 
 from __future__ import annotations
 
@@ -236,3 +236,5 @@ class TestEmptyStore:
         assert miner.extract_sft_pairs() == []
         assert miner.extract_routing_pairs() == {}
         assert miner.extract_agent_config_pairs() == {}
+
+

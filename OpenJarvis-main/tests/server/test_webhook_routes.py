@@ -1,4 +1,4 @@
-"""Tests for webhook routes."""
+﻿"""Tests for webhook routes."""
 
 from __future__ import annotations
 
@@ -213,3 +213,5 @@ class TestWhatsAppWebhook:
             },
         )
         assert resp.status_code == 200
+
+

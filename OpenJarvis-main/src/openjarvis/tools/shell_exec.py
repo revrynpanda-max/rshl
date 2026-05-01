@@ -1,4 +1,4 @@
-"""Shell execution tool — run shell commands with security constraints."""
+﻿"""Shell execution tool â€” run shell commands with security constraints."""
 
 from __future__ import annotations
 
@@ -214,3 +214,4 @@ class ShellExecTool(BaseTool):
 
 
 __all__ = ["ShellExecTool"]
+

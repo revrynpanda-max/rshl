@@ -1,4 +1,4 @@
-"""Tests for llama.cpp engine with compatible models."""
+﻿"""Tests for llama.cpp engine with compatible models."""
 
 from __future__ import annotations
 
@@ -100,7 +100,7 @@ class TestLlamaCppGenerate:
         assert result["tool_calls"][0]["name"] == "calculator"
 
     def test_generate_tool_fallback(self, respx_mock, model_id: str) -> None:
-        """400 with tools in payload → retry without tools."""
+        """400 with tools in payload â†’ retry without tools."""
         engine = _make_engine()
         call_count = 0
 
@@ -206,3 +206,5 @@ class TestLlamaCppErrors:
     def test_engine_id(self) -> None:
         engine = LlamaCppEngine()
         assert engine.engine_id == "llamacpp"
+
+

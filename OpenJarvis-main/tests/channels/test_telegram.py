@@ -1,4 +1,4 @@
-"""Tests for the TelegramChannel adapter."""
+﻿"""Tests for the TelegramChannel adapter."""
 
 from __future__ import annotations
 
@@ -187,7 +187,7 @@ class TestAllowedChatIds:
 
 
 class TestChannelAgentWiring:
-    """Tests for the channel → agent handler wired in serve.py."""
+    """Tests for the channel â†’ agent handler wired in serve.py."""
 
     def test_on_message_handler_invoked_on_message(self):
         """on_message callback registered on a channel is called when a message
@@ -233,3 +233,5 @@ class TestChannelAgentWiring:
 
         assert len(calls_a) == 1
         assert len(calls_b) == 1
+
+

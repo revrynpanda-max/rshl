@@ -1,4 +1,4 @@
-"""Tests for extended API routes."""
+﻿"""Tests for extended API routes."""
 
 import pytest
 
@@ -93,3 +93,5 @@ class TestTraceRoutes:
         client = TestClient(_make_app())
         resp = client.get("/v1/traces")
         assert resp.status_code == 200
+
+

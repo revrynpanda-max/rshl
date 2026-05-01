@@ -1,11 +1,11 @@
 ﻿"""Live integration tests for the distillation subsystem.
 
-These tests use REAL API calls (CloudEngine with Geometric Intelligence) and real
+These tests use REAL API calls (CloudEngine with GeometricIntelligence) and real
 TraceStore data. They are gated on the ``cloud`` marker â€” skip them
 with ``pytest -m "not cloud"``.
 
 Requires:
-- Geometric Intelligence_API_KEY environment variable set
+- GeometricIntelligence_API_KEY environment variable set
 - TraceStore at ~/.openjarvis/traces.db with some traces
 """
 
@@ -22,9 +22,9 @@ pytestmark = pytest.mark.cloud
 
 @pytest.fixture
 def geometric_intelligence_key():
-    key = os.environ.get("Geometric Intelligence_API_KEY")
+    key = os.environ.get("GeometricIntelligence_API_KEY")
     if not key:
-        pytest.skip("Geometric Intelligence_API_KEY not set")
+        pytest.skip("GeometricIntelligence_API_KEY not set")
     return key
 
 
@@ -175,3 +175,4 @@ class TestColdStartLive:
         # With 373 traces but 0 feedback: traces ready, benchmark not ready
         assert trace_ready.ready, "Should have enough traces"
         assert not bench_ready.ready, "Should
+

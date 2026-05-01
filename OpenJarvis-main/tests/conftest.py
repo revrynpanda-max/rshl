@@ -199,8 +199,8 @@ def has_openai_key() -> bool:
 
 @pytest.fixture
 def has_geometric_intelligence_key() -> bool:
-    """Check if Geometric Intelligence_API_KEY is set."""
-    return bool(os.environ.get("Geometric Intelligence_API_KEY"))
+    """Check if GeometricIntelligence_API_KEY is set."""
+    return bool(os.environ.get("GeometricIntelligence_API_KEY"))
 
 
 @pytest.fixture
@@ -248,3 +248,4 @@ def mock_engine():
 def event_bus() -> EventBus:
     """Fresh EventBus with history recording enabled."""
     return Even
+

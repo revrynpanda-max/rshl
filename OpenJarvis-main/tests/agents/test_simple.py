@@ -1,4 +1,4 @@
-"""Tests for the SimpleAgent."""
+﻿"""Tests for the SimpleAgent."""
 
 from __future__ import annotations
 
@@ -138,3 +138,5 @@ class TestSimpleAgent:
         agent.run("Hello")
         call_kwargs = engine.generate.call_args[1]
         assert call_kwargs["model"] == "qwen3:8b"
+
+

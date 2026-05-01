@@ -1,4 +1,4 @@
-"""SyncScheduler — background thread for periodic incremental connector syncs.
+﻿"""SyncScheduler â€” background thread for periodic incremental connector syncs.
 
 Registers connectors for timed re-sync and runs them on a configurable
 interval.  Designed to be long-lived (daemon thread) inside a running
@@ -107,7 +107,7 @@ class SyncScheduler:
         Returns
         -------
         dict[str, int]
-            Mapping of ``connector_id`` → number of new chunks ingested.
+            Mapping of ``connector_id`` â†’ number of new chunks ingested.
             Only connectors that are currently connected are included.
         """
         results: Dict[str, int] = {}
@@ -147,3 +147,4 @@ class SyncScheduler:
 
 
 __all__ = ["SyncScheduler"]
+

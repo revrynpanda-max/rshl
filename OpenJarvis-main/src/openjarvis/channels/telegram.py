@@ -1,4 +1,4 @@
-"""TelegramChannel — native Telegram Bot API adapter."""
+﻿"""TelegramChannel â€” native Telegram Bot API adapter."""
 
 from __future__ import annotations
 
@@ -78,7 +78,7 @@ class TelegramChannel(BaseChannel):
             self._status = ChannelStatus.CONNECTED
             logger.info("Telegram channel connected (long polling)")
         except ImportError:
-            # python-telegram-bot not installed — send-only mode
+            # python-telegram-bot not installed â€” send-only mode
             logger.info(
                 "python-telegram-bot not installed; send-only mode",
             )
@@ -222,3 +222,4 @@ class TelegramChannel(BaseChannel):
 
 
 __all__ = ["TelegramChannel"]
+

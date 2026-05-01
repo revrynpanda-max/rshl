@@ -1,4 +1,4 @@
-"""Git-backed checkpoint store for distillation config rollback.
+﻿"""Git-backed checkpoint store for distillation config rollback.
 
 A thin wrapper over a local git repository at ``<openjarvis_home>/.git``.
 The repo tracks ``config.toml``, ``agents/``, and ``tools/`` so that the
@@ -7,9 +7,9 @@ The repo does NOT track ``learning/`` (sessions are append-only artifacts,
 not config state).
 
 The wrapper shells out to ``git`` via ``subprocess`` rather than depending
-on a third-party library — keeps the dependency surface zero.
+on a third-party library â€” keeps the dependency surface zero.
 
-See spec §7.4 and §7.6.
+See spec Â§7.4 and Â§7.6.
 """
 
 from __future__ import annotations
@@ -73,7 +73,7 @@ class CheckpointStore:
         """Initialize the checkpoint repo if it doesn't exist.
 
         Refuses to initialize if ``self.root`` is inside the OpenJarvis source
-        tree — this is the same defense-in-depth check as
+        tree â€” this is the same defense-in-depth check as
         ``resolve_distillation_root``: we never want a stray git repo writing
         config snapshots into the working copy.
 
@@ -104,7 +104,7 @@ class CheckpointStore:
             self._git("config", "user.name", "OpenJarvis Distillation")
 
         # Stage whatever tracked paths currently exist (it's OK if some
-        # don't yet — the user may not have agents or tools dirs at first
+        # don't yet â€” the user may not have agents or tools dirs at first
         # init time, in which case the baseline commit is empty).
         for rel in _TRACKED_PATHS:
             target = self._root / rel
@@ -139,7 +139,7 @@ class CheckpointStore:
         ------
         DirtyWorkingTreeError
             If there are uncommitted changes to tracked files. The
-            orchestrator should never start a stage on a dirty tree —
+            orchestrator should never start a stage on a dirty tree â€”
             it indicates the user has manual edits in progress.
         """
         if self._working_tree_dirty():
@@ -196,7 +196,7 @@ class CheckpointStore:
         # Sanity check: HEAD must still equal the pre-stage sha.
         if self.current_sha() != handle.pre_stage_sha:
             raise RuntimeError(
-                "discard_stage left HEAD at unexpected sha — something "
+                "discard_stage left HEAD at unexpected sha â€” something "
                 "committed during the stage. Aborting for safety."
             )
 
@@ -253,3 +253,4 @@ class CheckpointStore:
         """Return True if there are uncommitted changes to tracked files."""
         status = self._git("status", "--porcelain")
         return bool(status.strip())
+

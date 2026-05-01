@@ -1,4 +1,4 @@
-"""Tests for GContactsConnector — OAuth-authenticated Google Contacts sync connector.
+﻿"""Tests for GContactsConnector â€” OAuth-authenticated Google Contacts sync connector.
 
 All People API calls are mocked; no network access is required.
 """
@@ -16,7 +16,7 @@ from openjarvis.connectors._stubs import Document
 from openjarvis.core.registry import ConnectorRegistry
 
 # ---------------------------------------------------------------------------
-# Helpers — fake API payloads
+# Helpers â€” fake API payloads
 # ---------------------------------------------------------------------------
 
 _CONNECTIONS_RESPONSE = {
@@ -62,7 +62,7 @@ def connector(tmp_path: Path):
 
 
 # ---------------------------------------------------------------------------
-# Test 1 — not connected without a credentials file
+# Test 1 â€” not connected without a credentials file
 # ---------------------------------------------------------------------------
 
 
@@ -72,7 +72,7 @@ def test_not_connected(connector) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 2 — auth_url contains contacts.readonly scope
+# Test 2 â€” auth_url contains contacts.readonly scope
 # ---------------------------------------------------------------------------
 
 
@@ -85,7 +85,7 @@ def test_auth_url(connector) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 3 — sync yields contacts with correct fields (mocked API)
+# Test 3 â€” sync yields contacts with correct fields (mocked API)
 # ---------------------------------------------------------------------------
 
 
@@ -129,7 +129,7 @@ def test_sync_yields_contacts(
 
 
 # ---------------------------------------------------------------------------
-# Test 4 — disconnect removes the credentials file
+# Test 4 â€” disconnect removes the credentials file
 # ---------------------------------------------------------------------------
 
 
@@ -146,7 +146,7 @@ def test_disconnect(connector, tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 5 — mcp_tools returns the two expected tool specs
+# Test 5 â€” mcp_tools returns the two expected tool specs
 # ---------------------------------------------------------------------------
 
 
@@ -160,7 +160,7 @@ def test_mcp_tools(connector) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 6 — ConnectorRegistry contains "gcontacts" after import
+# Test 6 â€” ConnectorRegistry contains "gcontacts" after import
 # ---------------------------------------------------------------------------
 
 
@@ -174,3 +174,5 @@ def test_registry() -> None:
     assert ConnectorRegistry.contains("gcontacts")
     cls = ConnectorRegistry.get("gcontacts")
     assert cls.connector_id == "gcontacts"
+
+

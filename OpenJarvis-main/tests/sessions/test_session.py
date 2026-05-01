@@ -1,4 +1,4 @@
-"""Tests for session management (Phase 15.4)."""
+﻿"""Tests for session management (Phase 15.4)."""
 
 from __future__ import annotations
 
@@ -127,3 +127,5 @@ class TestSessionStore:
         assert reloaded.messages[0].channel == "telegram"
         assert reloaded.messages[1].channel == "discord"
         store.close()
+
+

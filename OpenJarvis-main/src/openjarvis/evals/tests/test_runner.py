@@ -1,4 +1,4 @@
-"""Tests for the EvalRunner."""
+﻿"""Tests for the EvalRunner."""
 
 from __future__ import annotations
 
@@ -253,9 +253,9 @@ class TestEvalRunner:
 
         lines = output_path.read_text().strip().split("\n")
         r = json.loads(lines[0])
-        # accuracy=1.0, power=250W → IPW = 1/250 = 0.004
+        # accuracy=1.0, power=250W â†’ IPW = 1/250 = 0.004
         assert r["ipw"] == pytest.approx(1.0 / 250.0, rel=1e-4)
-        # accuracy=1.0, energy=50J → IPJ = 1/50 = 0.02
+        # accuracy=1.0, energy=50J â†’ IPJ = 1/50 = 0.02
         assert r["ipj"] == pytest.approx(1.0 / 50.0, rel=1e-4)
 
     def test_ipw_ipj_zero_for_incorrect(self, tmp_path):
@@ -463,3 +463,4 @@ class TestMetricStatsHelpers:
         assert "p90" in d
         assert "p95" in d
         assert "p99" in d
+

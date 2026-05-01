@@ -1,4 +1,4 @@
-"""Tests for ``jarvis init`` next-steps guidance."""
+﻿"""Tests for ``jarvis init`` next-steps guidance."""
 
 from __future__ import annotations
 
@@ -238,3 +238,5 @@ class TestInitPrivacyHook:
             result = CliRunner().invoke(cli, ["init", "--engine", "llamacpp", _NO_DL])
         assert result.exit_code == 0
         assert "jarvis scan" in result.output
+
+

@@ -1,4 +1,4 @@
-"""Tests for eval CLI display flags."""
+﻿"""Tests for eval CLI display flags."""
 
 from __future__ import annotations
 
@@ -17,3 +17,4 @@ class TestCompactFlag:
         runner = CliRunner()
         result = runner.invoke(main, ["run", "--help"])
         assert "--trace-detail" in result.output
+

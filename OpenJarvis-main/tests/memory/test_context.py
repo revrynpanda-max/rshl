@@ -1,4 +1,4 @@
-"""Tests for context injection."""
+﻿"""Tests for context injection."""
 
 from __future__ import annotations
 
@@ -119,12 +119,12 @@ def test_inject_context_filters_low_score():
         backend,
         config=cfg,
     )
-    # Low score filtered out — no context added
+    # Low score filtered out â€” no context added
     assert len(augmented) == 1
 
 
 def test_inject_context_respects_max_tokens():
-    # Each result has ~100 tokens, max is 150 → only 1 should be included
+    # Each result has ~100 tokens, max is 150 â†’ only 1 should be included
     content = " ".join(f"word{i}" for i in range(100))
     results = [
         RetrievalResult(content=content, score=1.0, source="a.md"),
@@ -198,3 +198,5 @@ def test_inject_context_does_not_mutate_original():
     augmented = inject_context("query", messages, backend)
     assert len(messages) == original_len
     assert len(augmented) == original_len + 1
+
+

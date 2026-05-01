@@ -1,4 +1,4 @@
-"""Docker-sandboxed code interpreter tool."""
+﻿"""Docker-sandboxed code interpreter tool."""
 
 from __future__ import annotations
 
@@ -139,3 +139,4 @@ class DockerCodeInterpreterTool(BaseTool):
 
 
 __all__ = ["DockerCodeInterpreterTool"]
+

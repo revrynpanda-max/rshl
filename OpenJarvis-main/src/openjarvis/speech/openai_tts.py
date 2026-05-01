@@ -1,4 +1,4 @@
-"""OpenAI TTS backend — cloud-based voice synthesis via OpenAI API."""
+﻿"""OpenAI TTS backend â€” cloud-based voice synthesis via OpenAI API."""
 
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ def _openai_tts_request(
 
 @TTSRegistry.register("openai_tts")
 class OpenAITTSBackend(TTSBackend):
-    """OpenAI TTS backend — cloud synthesis."""
+    """OpenAI TTS backend â€” cloud synthesis."""
 
     backend_id = "openai_tts"
 
@@ -80,3 +80,4 @@ class OpenAITTSBackend(TTSBackend):
 
     def health(self) -> bool:
         return bool(self._api_key)
+

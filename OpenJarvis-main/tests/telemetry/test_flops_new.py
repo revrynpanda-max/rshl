@@ -1,4 +1,4 @@
-"""Tests for FLOPs estimation and MFU computation."""
+﻿"""Tests for FLOPs estimation and MFU computation."""
 
 from __future__ import annotations
 
@@ -64,7 +64,7 @@ class TestEstimateFlopsNoKvCache:
 
 class TestComputeMfu:
     def test_known_gpu(self):
-        # 100 TFLOPS actual for 1s on H100 → 100 / 989 * 100 ≈ 10.1%
+        # 100 TFLOPS actual for 1s on H100 â†’ 100 / 989 * 100 â‰ˆ 10.1%
         flops = 100e12
         mfu = compute_mfu(flops, 1.0, "H100")
         assert mfu == pytest.approx(100.0 / 989.0 * 100.0, rel=1e-3)
@@ -91,3 +91,5 @@ class TestComputeMfu:
     def test_tables_nonempty(self):
         assert len(GPU_PEAK_TFLOPS_BF16) > 0
         assert len(MODEL_PARAMS_B) > 0
+
+

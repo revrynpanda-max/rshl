@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from pathlib import Path
 
@@ -86,3 +86,5 @@ def test_skill_load(skills_dir: Path):
     result = tool.execute(action="load", name="my_skill")
     assert "web_search" in result.content
     assert "My skill desc" in result.content
+
+

@@ -1,4 +1,4 @@
-"""``jarvis tool`` — tool management commands."""
+﻿"""``jarvis tool`` â€” tool management commands."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from rich.table import Table
 
 @click.group()
 def tool() -> None:
-    """Manage tools — list, inspect."""
+    """Manage tools â€” list, inspect."""
 
 
 @tool.command("list")
@@ -93,7 +93,7 @@ def inspect(tool_name: str) -> None:
                             param_type = param_info.get("type", "any")
                             param_desc = param_info.get("description", "")
                             console.print(
-                                f"    • {param_name}: {param_type} — {param_desc}"
+                                f"    â€¢ {param_name}: {param_type} â€” {param_desc}"
                             )
                     else:
                         console.print(f"    {params}")
@@ -105,3 +105,4 @@ def inspect(tool_name: str) -> None:
 
 
 __all__ = ["tool"]
+

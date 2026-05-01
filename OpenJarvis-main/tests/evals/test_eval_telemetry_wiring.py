@@ -1,4 +1,4 @@
-"""Tests for telemetry wiring in the eval pipeline.
+﻿"""Tests for telemetry wiring in the eval pipeline.
 
 Verifies that:
 - FLOPs estimation flows from config metadata through to EvalResult and RunSummary
@@ -589,3 +589,5 @@ class TestTelemetryEndToEnd:
         assert result.energy_per_output_token_joules == 0.25
         assert result.throughput_per_watt == 0.133
         assert result.mean_itl_ms == 28.5
+
+

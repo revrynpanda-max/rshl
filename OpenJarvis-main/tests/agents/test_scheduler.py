@@ -1,4 +1,4 @@
-"""Tests for AgentScheduler tick scheduling."""
+﻿"""Tests for AgentScheduler tick scheduling."""
 
 from __future__ import annotations
 
@@ -137,3 +137,5 @@ class TestSchedulerBasic:
         scheduler.stop()
 
         executor.execute_tick.assert_not_called()
+
+

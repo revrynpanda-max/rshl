@@ -1,4 +1,4 @@
-"""Shared harness dataclasses for agent lifecycle scenario tests."""
+﻿"""Shared harness dataclasses for agent lifecycle scenario tests."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from tests.agents.fake_engine import FakeEngine
 
 @dataclass(slots=True)
 class FakeSystem:
-    """Lightweight stand-in for JarvisSystem — just engine + model."""
+    """Lightweight stand-in for JarvisSystem â€” just engine + model."""
 
     engine: FakeEngine
     model: str = "fake-model"
@@ -36,3 +36,5 @@ class ScenarioHarness:
     engine: FakeEngine
     system: FakeSystem
     db_path: str
+
+

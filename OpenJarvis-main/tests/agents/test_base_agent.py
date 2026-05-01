@@ -1,4 +1,4 @@
-"""Tests for BaseAgent helpers and ToolUsingAgent."""
+﻿"""Tests for BaseAgent helpers and ToolUsingAgent."""
 
 from __future__ import annotations
 
@@ -325,3 +325,5 @@ class TestToolUsingAgent:
 
         assert result.success is True
         confirm.assert_called_once()
+
+

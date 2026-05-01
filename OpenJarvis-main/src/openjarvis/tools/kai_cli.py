@@ -1,7 +1,7 @@
-"""KAI Shell & Code Execution Tool.
+﻿"""KAI Shell & Code Execution Tool.
 
 Gives Oracle the ability to run shell commands, read/write files, and
-execute code — the same capabilities the KAI CLI source provides, but
+execute code â€” the same capabilities the KAI CLI source provides, but
 wired natively through OpenJarvis without requiring a TypeScript build.
 """
 
@@ -20,7 +20,7 @@ from openjarvis.core.types import ToolResult
 class KAICLITool(BaseTool):
     """Execute shell commands, read files, and inspect the KAI project.
 
-    This is Oracle's coding arm — the same capabilities as the KAI CLI,
+    This is Oracle's coding arm â€” the same capabilities as the KAI CLI,
     directly available without a TypeScript runtime dependency.
     """
 
@@ -154,9 +154,9 @@ class KAICLITool(BaseTool):
             dirs = sorted([e for e in entries if os.path.isdir(os.path.join(path, e))])
             files = sorted([e for e in entries if os.path.isfile(os.path.join(path, e))])
             listing = f"DIRECTORY: {path}\n\nFolders:\n"
-            listing += "\n".join(f"  📁 {d}" for d in dirs) or "  (none)"
+            listing += "\n".join(f"  ðŸ“ {d}" for d in dirs) or "  (none)"
             listing += "\n\nFiles:\n"
-            listing += "\n".join(f"  📄 {f}" for f in files[:50]) or "  (none)"
+            listing += "\n".join(f"  ðŸ“„ {f}" for f in files[:50]) or "  (none)"
             if len(files) > 50:
                 listing += f"\n  ...and {len(files)-50} more files"
             return ToolResult(tool_name="kai_cli", content=listing, success=True)
@@ -164,29 +164,30 @@ class KAICLITool(BaseTool):
             return ToolResult(tool_name="kai_cli", content=f"Cannot list '{path}': {e}", success=False)
 
     def _kai_status(self) -> ToolResult:
-        """Check KAI system status — Oracle server, OpenJarvis, lattice."""
+        """Check KAI system status â€” Oracle server, OpenJarvis, lattice."""
         import requests
         lines = []
         try:
             r = requests.get("http://127.0.0.1:3333/api/status", timeout=3)
             if r.ok:
                 data = r.json()
-                lines.append(f"✅ Oracle Server: ONLINE")
+                lines.append(f"âœ… Oracle Server: ONLINE")
                 lines.append(f"   Lattice cells: {data.get('lattice_size', '?')}")
                 lines.append(f"   Anchors (strength>4): {data.get('anchor_count', '?')}")
                 lines.append(f"   Time: {data.get('time', '?')}")
             else:
-                lines.append(f"⚠️  Oracle Server: HTTP {r.status_code}")
+                lines.append(f"âš ï¸  Oracle Server: HTTP {r.status_code}")
         except Exception as e:
-            lines.append(f"❌ Oracle Server: OFFLINE ({e})")
+            lines.append(f"âŒ Oracle Server: OFFLINE ({e})")
 
         try:
             r2 = requests.get("http://127.0.0.1:8080/health", timeout=3)
-            lines.append(f"{'✅' if r2.ok else '⚠️ '} OpenJarvis: {'ONLINE' if r2.ok else 'HTTP ' + str(r2.status_code)}")
+            lines.append(f"{'âœ…' if r2.ok else 'âš ï¸ '} OpenJarvis: {'ONLINE' if r2.ok else 'HTTP ' + str(r2.status_code)}")
         except Exception:
-            lines.append("❌ OpenJarvis: OFFLINE")
+            lines.append("âŒ OpenJarvis: OFFLINE")
 
         return ToolResult(tool_name="kai_cli", content="\n".join(lines), success=True)
 
 
 __all__ = ["KAICLITool"]
+

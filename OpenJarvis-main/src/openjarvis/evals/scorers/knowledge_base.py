@@ -1,4 +1,4 @@
-"""Knowledge base scorer — answer correctness via normalized match + LLM fallback.
+﻿"""Knowledge base scorer â€” answer correctness via normalized match + LLM fallback.
 
 Evaluates document-grounded QA by checking if the model answer
 matches the reference answer using exact match with normalization,
@@ -116,3 +116,4 @@ class KnowledgeBaseScorer(LLMJudgeScorer):
 
 
 __all__ = ["KnowledgeBaseScorer"]
+

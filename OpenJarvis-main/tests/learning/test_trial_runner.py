@@ -1,4 +1,4 @@
-"""Tests for openjarvis.optimize.trial_runner module."""
+﻿"""Tests for openjarvis.optimize.trial_runner module."""
 
 from __future__ import annotations
 
@@ -427,3 +427,5 @@ class TestRunTrial:
         assert result.sample_scores[1].record_id == "r2"
         assert result.sample_scores[1].is_correct is False
         assert result.sample_scores[1].error == "parse error"
+
+

@@ -1,4 +1,4 @@
-"""SignalChannel — Signal adapter via signal-cli REST API."""
+﻿"""SignalChannel â€” Signal adapter via signal-cli REST API."""
 
 from __future__ import annotations
 
@@ -54,7 +54,7 @@ class SignalChannel(BaseChannel):
     # -- connection lifecycle ---------------------------------------------------
 
     def connect(self) -> None:
-        """Mark as connected (send-only — no persistent connection)."""
+        """Mark as connected (send-only â€” no persistent connection)."""
         if not self._api_url:
             logger.warning("No Signal API URL configured")
             self._status = ChannelStatus.ERROR
@@ -131,3 +131,4 @@ class SignalChannel(BaseChannel):
 
 
 __all__ = ["SignalChannel"]
+

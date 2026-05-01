@@ -1,4 +1,4 @@
-"""Operator loader — load operator manifests from TOML files."""
+﻿"""Operator loader â€” load operator manifests from TOML files."""
 
 from __future__ import annotations
 
@@ -69,3 +69,4 @@ def load_operator(path: str | Path) -> OperatorManifest:
 
 
 __all__ = ["load_operator"]
+

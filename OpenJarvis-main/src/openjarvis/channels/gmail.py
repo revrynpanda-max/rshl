@@ -1,4 +1,4 @@
-"""GmailChannel — native Gmail API adapter using OAuth2."""
+﻿"""GmailChannel â€” native Gmail API adapter using OAuth2."""
 
 from __future__ import annotations
 
@@ -303,3 +303,4 @@ class GmailChannel(BaseChannel):
 
 
 __all__ = ["GmailChannel"]
+

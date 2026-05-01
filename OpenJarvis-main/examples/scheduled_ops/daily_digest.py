@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
-"""Daily news digest — searches for and summarizes top stories on chosen topics.
+﻿#!/usr/bin/env python3
+"""Daily news digest â€” searches for and summarizes top stories on chosen topics.
 
 Run manually::
 
@@ -82,7 +82,7 @@ def main(topics: str, model: str | None, engine_key: str | None) -> None:
         j.close()
 
     click.echo(f"\n{'=' * 60}")
-    click.echo(f"  Daily Digest — {today}")
+    click.echo(f"  Daily Digest â€” {today}")
     click.echo(f"  Topics: {', '.join(topic_list)}")
     click.echo(f"{'=' * 60}\n")
     click.echo(response)
@@ -91,3 +91,4 @@ def main(topics: str, model: str | None, engine_key: str | None) -> None:
 
 if __name__ == "__main__":
     main()
+

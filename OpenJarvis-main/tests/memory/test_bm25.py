@@ -1,4 +1,4 @@
-"""Tests for the BM25 memory backend."""
+﻿"""Tests for the BM25 memory backend."""
 
 from __future__ import annotations
 
@@ -154,3 +154,5 @@ def test_event_bus_retrieve():
         assert events[0].data["num_results"] >= 1
     finally:
         mod.get_event_bus = original
+
+

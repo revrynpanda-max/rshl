@@ -1,4 +1,4 @@
-"""Gmail connector — bulk email sync via the Gmail REST API.
+﻿"""Gmail connector â€” bulk email sync via the Gmail REST API.
 
 Uses OAuth 2.0 tokens stored locally (see :mod:`openjarvis.connectors.oauth`).
 All network calls are isolated in module-level functions (``_gmail_api_*``)
@@ -214,7 +214,7 @@ class GmailConnector(BaseConnector):
     def auth_url(self) -> str:
         """Return a Google OAuth consent URL requesting ``gmail.readonly`` scope."""
         return build_google_auth_url(
-            client_id="",  # placeholder — real client_id from config
+            client_id="",  # placeholder â€” real client_id from config
             scopes=GOOGLE_ALL_SCOPES,
         )
 
@@ -400,3 +400,4 @@ class GmailConnector(BaseConnector):
                 category="communication",
             ),
         ]
+

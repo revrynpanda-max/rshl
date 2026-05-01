@@ -1,4 +1,4 @@
-"""Prompt injection scanner — detect malicious patterns in text."""
+﻿"""Prompt injection scanner â€” detect malicious patterns in text."""
 
 from __future__ import annotations
 
@@ -131,10 +131,11 @@ class InjectionScanner:
         self._rust_impl = _rust.InjectionScanner()
 
     def scan(self, text: str) -> InjectionScanResult:
-        """Scan text for injection patterns — always via Rust backend."""
+        """Scan text for injection patterns â€” always via Rust backend."""
         from openjarvis._rust_bridge import injection_result_from_json
 
         return injection_result_from_json(self._rust_impl.scan(text))
 
 
 __all__ = ["InjectionScanner", "InjectionScanResult"]
+

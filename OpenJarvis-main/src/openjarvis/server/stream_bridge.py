@@ -1,4 +1,4 @@
-"""Bridge sync agent.run() + EventBus events to an async SSE generator.
+﻿"""Bridge sync agent.run() + EventBus events to an async SSE generator.
 
 Subscribes to EventBus callbacks that push events into an asyncio.Queue,
 runs agent.run() in a background thread, and yields SSE-formatted strings
@@ -366,3 +366,4 @@ async def create_agent_stream(
 
 
 __all__ = ["AgentStreamBridge", "create_agent_stream"]
+

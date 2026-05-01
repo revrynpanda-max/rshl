@@ -1,4 +1,4 @@
-"""Tests for the ``jarvis agents`` CLI commands."""
+﻿"""Tests for the ``jarvis agents`` CLI commands."""
 
 from __future__ import annotations
 
@@ -96,3 +96,5 @@ class TestNewAgentCommands:
         )
         for cmd in cmds:
             assert cmd in result.output, f"Missing command: {cmd}"
+
+

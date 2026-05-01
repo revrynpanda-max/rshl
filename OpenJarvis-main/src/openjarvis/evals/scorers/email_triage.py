@@ -1,4 +1,4 @@
-"""Email triage scorer — classification accuracy + draft quality.
+﻿"""Email triage scorer â€” classification accuracy + draft quality.
 
 Scores urgency and category via exact match, with LLM fallback
 for draft reply quality assessment.
@@ -134,3 +134,4 @@ class EmailTriageScorer(LLMJudgeScorer):
 
 
 __all__ = ["EmailTriageScorer"]
+

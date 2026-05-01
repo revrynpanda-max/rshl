@@ -1,10 +1,10 @@
-"""Cold start detection and bootstrap for the distillation subsystem.
+﻿"""Cold start detection and bootstrap for the distillation subsystem.
 
 Day one: no traces, no benchmark. The system must not crash and must
 give the user a clear message about what's needed. This module provides
 readiness checks and the bootstrap logic.
 
-See spec §13.
+See spec Â§13.
 """
 
 from __future__ import annotations
@@ -107,3 +107,4 @@ def check_benchmark_ready(
         trace_count=trace_store.count(),
         high_feedback_count=count,
     )
+

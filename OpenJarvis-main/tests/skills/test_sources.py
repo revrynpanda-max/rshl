@@ -1,4 +1,4 @@
-"""Tests for SourceResolver ABC and resolver implementations."""
+﻿"""Tests for SourceResolver ABC and resolver implementations."""
 
 from __future__ import annotations
 
@@ -192,7 +192,7 @@ class TestHermesResolver:
         skills_root = tmp_path / "skills"
         category_dir = skills_root / "apple"
         category_dir.mkdir(parents=True)
-        # DESCRIPTION.md at category level — should be skipped
+        # DESCRIPTION.md at category level â€” should be skipped
         (category_dir / "DESCRIPTION.md").write_text("# Apple skills")
         (category_dir / "apple-notes").mkdir()
         (category_dir / "apple-notes" / "SKILL.md").write_text(
@@ -327,3 +327,5 @@ class TestGitHubResolver:
         resolver = GitHubResolver(cache_root=tmp_path, repo_url="https://example.com/x")
         skills = resolver.list_skills()
         assert len(skills) == 1
+
+

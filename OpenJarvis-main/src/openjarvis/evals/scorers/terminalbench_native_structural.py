@@ -1,4 +1,4 @@
-"""TerminalBench Native scorer — test-result-based evaluation.
+﻿"""TerminalBench Native scorer â€” test-result-based evaluation.
 
 Reads ``is_resolved`` and ``test_results`` from the record's metadata
 (populated by the native terminal-bench harness) and returns a
@@ -30,7 +30,7 @@ class TerminalBenchNativeScorer(Scorer):
         judge_model: str = "",
     ) -> None:
         # Accept judge_backend/judge_model so the CLI factory pattern works,
-        # but they are unused — scoring is based on test results.
+        # but they are unused â€” scoring is based on test results.
         self._judge_backend = judge_backend
         self._judge_model = judge_model
 
@@ -67,3 +67,4 @@ class TerminalBenchNativeScorer(Scorer):
 
 
 __all__ = ["TerminalBenchNativeScorer"]
+

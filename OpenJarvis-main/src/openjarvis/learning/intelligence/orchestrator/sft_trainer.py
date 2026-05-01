@@ -1,4 +1,4 @@
-"""SFT (Supervised Fine-Tuning) trainer for orchestrator.
+﻿"""SFT (Supervised Fine-Tuning) trainer for orchestrator.
 
 Adapted from IPW's ``sft_trainer.py``.  Trains the orchestrator policy
 using supervised learning on trajectories.  All ``torch``/``transformers``
@@ -259,7 +259,7 @@ class OrchestratorSFTTrainer:
         )
 
     def _generate_traces(self) -> None:
-        """Generate SFT traces (placeholder — requires running engine)."""
+        """Generate SFT traces (placeholder â€” requires running engine)."""
         trace_path = Path(self.config.trace_cache_path)
         trace_path.parent.mkdir(parents=True, exist_ok=True)
         if not trace_path.exists():
@@ -405,3 +405,4 @@ __all__ = [
     "OrchestratorSFTTrainer",
     "_select_torch_device",
 ]
+

@@ -48,8 +48,8 @@ class TestOpenAIStructuredOutput:
     def _make_engine(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> tuple[CloudEngine, mock.MagicMock]:
-        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
-        monkeypatch.delenv("Geometric Intelligence_API_KEY", raising=False)
+        monkeypatch.setenv("OPENAI_API_KEY", "dummy-sk-test")
+        monkeypatch.delenv("GeometricIntelligence_API_KEY", raising=False)
         EngineRegistry.register_value("cloud", CloudEngine)
         engine = CloudEngine()
         fake_client = mock.MagicMock()
@@ -115,16 +115,16 @@ class TestOpenAIStructuredOutput:
 
 
 # ---------------------------------------------------------------------------
-# Cloud engine â€” Geometric Intelligence
+# Cloud engine â€” GeometricIntelligence
 # ---------------------------------------------------------------------------
 
 
-class TestGeometric IntelligenceStructuredOutput:
+class TestGeometricIntelligenceStructuredOutput:
     def _make_engine(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> tuple[CloudEngine, mock.MagicMock]:
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-        monkeypatch.setenv("Geometric Intelligence_API_KEY", "sk-ant-test")
+        monkeypatch.setenv("GeometricIntelligence_API_KEY", "geometric-dummy-key")
         EngineRegistry.register_value("cloud", CloudEngine)
         engine = CloudEngine()
         fake_client = mock.MagicMock()
@@ -215,7 +215,7 @@ class TestGoogleStructuredOutput:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> tuple[CloudEngine, mock.MagicMock]:
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-        monkeypatch.delenv("Geometric Intelligence_API_KEY", raising=False)
+        monkeypatch.delenv("GeometricIntelligence_API_KEY", raising=False)
         monkeypatch.setenv("GEMINI_API_KEY", "test-key")
         EngineRegistry.register_value("cloud", CloudEngine)
         engine = CloudEngine()
@@ -375,3 +375,4 @@ class TestOllamaStructuredOutput:
             )
             sent_payload = json.loads(route.calls[0].request.content)
          
+

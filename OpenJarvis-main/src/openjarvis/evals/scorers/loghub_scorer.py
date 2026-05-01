@@ -1,4 +1,4 @@
-"""Scorer for LogHub log anomaly detection benchmark."""
+﻿"""Scorer for LogHub log anomaly detection benchmark."""
 
 from __future__ import annotations
 
@@ -36,12 +36,12 @@ class LogHubScorer(LLMJudgeScorer):
         elif has_normal and not has_anomaly:
             predicted = "normal"
         elif has_anomaly and has_normal:
-            # Ambiguous — check which appears first
+            # Ambiguous â€” check which appears first
             a_pos = _ANOMALY_PATTERN.search(model_answer).start()
             n_pos = _NORMAL_PATTERN.search(model_answer).start()
             predicted = "anomaly" if a_pos < n_pos else "normal"
         else:
-            # Neither keyword found — use LLM judge fallback
+            # Neither keyword found â€” use LLM judge fallback
             return self._llm_fallback(record, model_answer)
 
         is_correct = predicted == reference
@@ -81,3 +81,4 @@ class LogHubScorer(LLMJudgeScorer):
                 "match_type": "llm_fallback_error",
                 "error": str(exc),
             }
+

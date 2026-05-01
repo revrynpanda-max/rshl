@@ -1,4 +1,4 @@
-"""Workflow loader — load workflows from TOML files."""
+﻿"""Workflow loader â€” load workflows from TOML files."""
 
 from __future__ import annotations
 
@@ -82,3 +82,4 @@ def _parse_node(data: Dict[str, Any]) -> WorkflowNode:
 
 
 __all__ = ["load_workflow"]
+

@@ -35,3 +35,5 @@ def test_already_list_content_gets_cache_control():
     ]
     annotated = _annotate_geometric_intelligence_cache(messages)
     assert annotated[0]["content"][0]["cache_control"] == {"type": "ephemeral"}
+
+

@@ -1,4 +1,4 @@
-"""``jarvis scan`` — audit your environment for privacy and security risks."""
+﻿"""``jarvis scan`` â€” audit your environment for privacy and security risks."""
 
 from __future__ import annotations
 
@@ -100,7 +100,7 @@ class PrivacyScanner:
             proc = self._run(["profiles", "status", "-type", "enrollment"])
             output = proc.stdout + proc.stderr
             lower = output.lower()
-            # "not enrolled" is a strong negative signal — check it first.
+            # "not enrolled" is a strong negative signal â€” check it first.
             not_enrolled = "not enrolled" in lower or "no" in lower
             # Positive signals: explicit Yes/enrolled without a negation.
             enrolled_yes = (
@@ -255,7 +255,7 @@ class PrivacyScanner:
         return self._check_processes(
             names=_CLOUD_SYNC_PROCS,
             check_name="Cloud Sync Agents",
-            warn_msg="{name} sync agent is running — weights may be uploaded to cloud.",
+            warn_msg="{name} sync agent is running â€” weights may be uploaded to cloud.",
             platform="all",
         )
 
@@ -303,7 +303,7 @@ class PrivacyScanner:
         return self._check_processes(
             names=_SCREEN_RECORDING_PROCS,
             check_name="Screen Recording",
-            warn_msg="{name} is running — screen may be accessible remotely.",
+            warn_msg="{name} is running â€” screen may be accessible remotely.",
             platform="darwin",
         )
 
@@ -312,7 +312,7 @@ class PrivacyScanner:
         return self._check_processes(
             names=_REMOTE_ACCESS_PROCS,
             check_name="Remote Access",
-            warn_msg="{name} is running — system may be accessible remotely.",
+            warn_msg="{name} is running â€” system may be accessible remotely.",
             platform="all",
         )
 
@@ -486,7 +486,7 @@ def _render_results(results: List[ScanResult]) -> None:
         console.print()
     elif warn_count:
         console.print(
-            "[yellow]Review warnings above[/yellow] — they may not block "
+            "[yellow]Review warnings above[/yellow] â€” they may not block "
             "usage but could affect your privacy posture."
         )
         console.print()
@@ -520,3 +520,4 @@ def scan(quick: bool, as_json: bool) -> None:
         return
 
     _render_results(results)
+

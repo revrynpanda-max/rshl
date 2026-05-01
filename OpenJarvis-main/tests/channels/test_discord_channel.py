@@ -1,4 +1,4 @@
-"""Tests for the DiscordChannel adapter."""
+﻿"""Tests for the DiscordChannel adapter."""
 
 from __future__ import annotations
 
@@ -119,3 +119,5 @@ class TestStatus:
         ch = DiscordChannel()
         ch.connect()
         assert ch.status() == ChannelStatus.ERROR
+
+

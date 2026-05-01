@@ -1,4 +1,4 @@
-"""Tests for SuperGPQA scorer logic."""
+﻿"""Tests for SuperGPQA scorer logic."""
 
 from __future__ import annotations
 
@@ -103,3 +103,4 @@ class TestSuperGPQAScorer:
 
         assert is_correct is True
         assert meta["candidate_letter"] == "C"
+

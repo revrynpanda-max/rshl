@@ -1,4 +1,4 @@
-"""Faster-Whisper speech-to-text backend (local, CTranslate2-based)."""
+﻿"""Faster-Whisper speech-to-text backend (local, CTranslate2-based)."""
 
 from __future__ import annotations
 
@@ -98,3 +98,4 @@ class FasterWhisperBackend(SpeechBackend):
     def supported_formats(self) -> List[str]:
         """Supported audio formats (same as ffmpeg/Whisper)."""
         return ["wav", "mp3", "m4a", "ogg", "flac", "webm"]
+

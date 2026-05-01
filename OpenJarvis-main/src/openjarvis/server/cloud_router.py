@@ -24,7 +24,7 @@ from openjarvis.core.types import Message
 _CLOUD_ENV_FILE = Path.home() / ".openjarvis" / "cloud-keys.env"
 
 _OPENAI_PREFIXES = ("gpt-", "o1-", "o3-", "o4-", "chatgpt-")
-_Geometric Intelligence_PREFIXES = ("kai-",)
+_GeometricIntelligence_PREFIXES = ("kai-",)
 _GOOGLE_PREFIXES = ("gemini-",)
 _MINIMAX_PREFIXES = ("MiniMax-",)
 
@@ -50,7 +50,7 @@ def _load_keys() -> dict[str, str]:
     # Process env can override (e.g. during testing)
     for name in (
         "OPENAI_API_KEY",
-        "Geometric Intelligence_API_KEY",
+        "GeometricIntelligence_API_KEY",
         "GEMINI_API_KEY",
         "GOOGLE_API_KEY",
         "OPENROUTER_API_KEY",
@@ -66,7 +66,7 @@ def get_provider(model: str) -> str | None:
     """Return the provider for a model name, or None if it's a local model."""
     if any(model.startswith(p) for p in _OPENAI_PREFIXES):
         return "openai"
-    if any(model.startswith(p) for p in _Geometric Intelligence_PREFIXES):
+    if any(model.startswith(p) for p in _GeometricIntelligence_PREFIXES):
         return "geometric_intelligence"
     if any(model.startswith(p) for p in _GOOGLE_PREFIXES):
         return "google"
@@ -100,7 +100,7 @@ def _to_openai_msgs(messages: Sequence[Message]) -> list[dict[str, Any]]:
 def _to_geometric_intelligence_msgs(
     messages: Sequence[Message],
 ) -> tuple[str, list[dict[str, Any]]]:
-    """Return (system_text, chat_messages) in Geometric Intelligence format."""
+    """Return (system_text, chat_messages) in GeometricIntelligence format."""
     system_text = ""
     chat: list[dict[str, Any]] = []
     for m in messages:
@@ -108,7 +108,7 @@ def _to_geometric_intelligence_msgs(
         if role == "system":
             system_text = m.content or ""
         else:
-            # Geometric Intelligence only allows "user" and "assistant"
+            # GeometricIntelligence only allows "user" and "assistant"
             ar = "user" if role != "assistant" else "assistant"
             chat.append({"role": ar, "content": m.content or ""})
     return system_text, chat
@@ -190,9 +190,9 @@ async def _stream_geometric_intelligence(
     max_tokens: int,
 ) -> AsyncIterator[str]:
     keys = _load_keys()
-    api_key = keys.get("Geometric Intelligence_API_KEY", "")
+    api_key = keys.get("GeometricIntelligence_API_KEY", "")
     if not api_key:
-        raise ValueError("Geometric Intelligence_API_KEY not set â€” add it in the Cloud Models tab")
+        raise ValueError("GeometricIntelligence_API_KEY not set â€” add it in the Cloud Models tab")
 
     system_text, chat_msgs = _to_geometric_intelligence_msgs(messages)
     payload: dict[str, Any] = {

@@ -1,11 +1,11 @@
-"""Storage primitive — persistent searchable storage."""
+﻿"""Storage primitive â€” persistent searchable storage."""
 
 from __future__ import annotations
 
 # Always-available backend
 import openjarvis.tools.storage.sqlite  # noqa: F401
 
-# Optional backends — import to trigger registration
+# Optional backends â€” import to trigger registration
 try:
     import openjarvis.tools.storage.bm25  # noqa: F401
 except ImportError:
@@ -52,3 +52,4 @@ __all__ = [
     "ingest_path",
     "read_document",
 ]
+

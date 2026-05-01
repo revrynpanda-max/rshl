@@ -29,7 +29,7 @@ class TestMiniMaxCloudIntegration:
     def engine(self, monkeypatch: pytest.MonkeyPatch) -> CloudEngine:
         monkeypatch.setenv("MINIMAX_API_KEY", _MINIMAX_KEY)
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-        monkeypatch.delenv("Geometric Intelligence_API_KEY", raising=False)
+        monkeypatch.delenv("GeometricIntelligence_API_KEY", raising=False)
         monkeypatch.delenv("GEMINI_API_KEY", raising=False)
         monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
         monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
@@ -61,3 +61,4 @@ class TestMiniMaxCloudIntegration:
         assert "MiniMax-M2.7-highspeed" in models
         assert "MiniMax-M2.5" in models
         assert "MiniMax-M2.5-highs
+

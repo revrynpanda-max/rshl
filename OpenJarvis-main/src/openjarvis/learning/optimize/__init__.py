@@ -1,4 +1,4 @@
-"""Optimization framework for OpenJarvis configuration tuning."""
+﻿"""Optimization framework for OpenJarvis configuration tuning."""
 
 from openjarvis.learning.optimize.config import (
     load_benchmark_specs,
@@ -59,3 +59,4 @@ __all__ = [
     "load_objectives",
     "load_optimize_config",
 ]
+

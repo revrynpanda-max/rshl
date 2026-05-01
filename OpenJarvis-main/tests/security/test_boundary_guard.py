@@ -1,4 +1,4 @@
-"""Tests for BoundaryGuard — scanning at device exit points."""
+﻿"""Tests for BoundaryGuard â€” scanning at device exit points."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ class _MockSecretScanner:
     """Regex-only secret scanner for testing without Rust."""
 
     _PATTERNS = [
-        ("openai_key", re.compile(r"sk-[A-Za-z0-9_-]{20,}")),
+        ("openai_key", re.compile(r"dummy-sk-[A-Za-z0-9_-]{20,}")),
         ("aws_key", re.compile(r"AKIA[0-9A-Z]{16}")),
         ("slack_token", re.compile(r"xoxb-[0-9A-Za-z\-]+")),
     ]
@@ -70,9 +70,9 @@ class TestBoundaryGuardScanOutbound:
 
     def test_redacts_openai_key(self) -> None:
         guard = _make_guard(mode="redact")
-        text = "Use this key: sk-proj-EXAMPLE"
+        text = "Use this key: openai-dummy-key"
         result = guard.scan_outbound(text, destination="openai")
-        assert "sk-proj-" not in result
+        assert "dummy-sk-proj-" not in result
         assert "[REDACTED" in result
 
     def test_redacts_aws_key(self) -> None:
@@ -83,7 +83,7 @@ class TestBoundaryGuardScanOutbound:
 
     def test_warn_mode_does_not_alter_text(self) -> None:
         guard = _make_guard(mode="warn")
-        text = "Use this key: sk-proj-EXAMPLE"
+        text = "Use this key: openai-dummy-key"
         result = guard.scan_outbound(text, destination="openai")
         assert result == text
 
@@ -91,7 +91,7 @@ class TestBoundaryGuardScanOutbound:
         from openjarvis.security.boundary import SecurityBlockError
 
         guard = _make_guard(mode="block")
-        text = "Use this key: sk-proj-EXAMPLE"
+        text = "Use this key: openai-dummy-key"
         with pytest.raises(SecurityBlockError):
             guard.scan_outbound(text, destination="openai")
 
@@ -111,11 +111,11 @@ class TestBoundaryGuardCheckOutbound:
             id="test_1",
             name="web_search",
             arguments=(
-                '{"query": "my key is sk-proj-EXAMPLE"}'
+                '{"query": "my key is openai-dummy-key"}'
             ),
         )
         result = guard.check_outbound(tc)
-        assert "sk-proj-" not in result.arguments
+        assert "dummy-sk-proj-" not in result.arguments
         assert result.id == "test_1"
         assert result.name == "web_search"
 
@@ -143,7 +143,7 @@ class TestBoundaryGuardDisabled:
 
     def test_disabled_passes_secrets_through(self) -> None:
         guard = _make_guard(mode="redact", enabled=False)
-        text = "sk-proj-EXAMPLE"
+        text = "openai-dummy-key"
         result = guard.scan_outbound(text, destination="openai")
         assert result == text
 
@@ -249,18 +249,20 @@ class TestToolExecutorBoundaryIntegration:
             id="t1",
             name="fake_external",
             arguments=(
-                '{"q": "my key is sk-proj-EXAMPLE"}'
+                '{"q": "my key is openai-dummy-key"}'
             ),
         )
         result = executor.execute(tc)
-        assert "sk-proj-" not in result.content
+        assert "dummy-sk-proj-" not in result.content
 
     def test_no_guard_passes_through(self) -> None:
         executor = self._make_executor(boundary_guard=None)
         tc = ToolCall(
             id="t2",
             name="fake_external",
-            arguments='{"q": "sk-proj-EXAMPLE"}',
+            arguments='{"q": "openai-dummy-key"}',
         )
         result = executor.execute(tc)
-        assert "sk-proj-" in result.content
+        assert "dummy-sk-proj-" in result.content
+
+

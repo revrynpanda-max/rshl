@@ -1,4 +1,4 @@
-"""``jarvis digest`` — display and play the morning digest."""
+﻿"""``jarvis digest`` â€” display and play the morning digest."""
 
 from __future__ import annotations
 
@@ -171,7 +171,7 @@ def digest(
         for artifact in past:
             console.print(
                 f"[bold]{artifact.generated_at.strftime('%Y-%m-%d %H:%M')}[/bold]"
-                f" — {artifact.model_used} / {artifact.voice_used}"
+                f" â€” {artifact.model_used} / {artifact.voice_used}"
             )
             console.print(artifact.text[:200] + "...\n")
         store.close()
@@ -262,3 +262,4 @@ def _handle_schedule(console: Console, schedule: str) -> None:
             "  [dim]Note: scheduler task not created "
             "(start the scheduler separately).[/dim]"
         )
+

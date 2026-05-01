@@ -1,4 +1,4 @@
-"""Tests for ClaudeCodeAgent."""
+﻿"""Tests for ClaudeCodeAgent."""
 
 from __future__ import annotations
 
@@ -200,7 +200,7 @@ class TestClaudeCodeRun:
 
     def test_stdin_json_payload(self):
         agent = self._make_agent(
-            api_key="sk-test",
+            api_key="dummy-sk-test",
             workspace="/projects/myapp",
             session_id="sess-123",
             allowed_tools=["Read", "Write"],
@@ -231,7 +231,7 @@ class TestClaudeCodeRun:
         call_kwargs = mock_run.call_args
         stdin_json = json.loads(call_kwargs.kwargs["input"])
         assert stdin_json["prompt"] == "Do something"
-        assert stdin_json["api_key"] == "sk-test"
+        assert stdin_json["api_key"] == "dummy-sk-test"
         assert stdin_json["workspace"] == "/projects/myapp"
         assert stdin_json["session_id"] == "sess-123"
         assert stdin_json["allowed_tools"] == ["Read", "Write"]
@@ -562,3 +562,5 @@ class TestClaudeCodeDefaults:
             result = agent.run("Hello")
 
         assert result.content == "ok"
+
+

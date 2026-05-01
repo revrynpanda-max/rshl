@@ -1,4 +1,4 @@
-"""Tests for dependency graph and cycle detection (Task 3)."""
+﻿"""Tests for dependency graph and cycle detection (Task 3)."""
 
 from __future__ import annotations
 
@@ -164,7 +164,7 @@ class TestValidateDependencies:
     def test_missing_dependency_silently_skipped(self):
         from openjarvis.skills.dependency import validate_dependencies
 
-        # "missing" is not in skills — should not raise
+        # "missing" is not in skills â€” should not raise
         skills = {
             "a": _manifest("a", depends=["missing"]),
         }
@@ -249,3 +249,5 @@ class TestComputeCapabilityUnion:
         skills = {}
         caps = compute_capability_union("nonexistent", skills)
         assert caps == []
+
+

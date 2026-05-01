@@ -1,4 +1,4 @@
-"""FastAPI router for /v1/connectors — connector management endpoints."""
+﻿"""FastAPI router for /v1/connectors â€” connector management endpoints."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 # Module-level cache of connector instances (keyed by connector_id).
 _instances: Dict[str, Any] = {}
 
-# Shared KnowledgeStore — opened once, reused for all chunk-count queries.
+# Shared KnowledgeStore â€” opened once, reused for all chunk-count queries.
 _knowledge_store: Any = None
 
 
@@ -65,7 +65,7 @@ def _ensure_connectors_registered() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Pydantic request model — defined at module level so FastAPI can resolve
+# Pydantic request model â€” defined at module level so FastAPI can resolve
 # the type annotation correctly when injecting request bodies.
 # ---------------------------------------------------------------------------
 
@@ -513,11 +513,11 @@ def create_connectors_router():
             except Exception as exc:
                 error_msg = str(exc)
                 if "401" in error_msg or "Unauthorized" in error_msg:
-                    error_msg = "Authentication failed — credentials may have expired."
+                    error_msg = "Authentication failed â€” credentials may have expired."
                 elif "403" in error_msg or "Forbidden" in error_msg:
-                    error_msg = "Permission denied — check API scopes."
+                    error_msg = "Permission denied â€” check API scopes."
                 elif "429" in error_msg or "Too Many Requests" in error_msg:
-                    error_msg = "Rate limited — wait a minute and try again."
+                    error_msg = "Rate limited â€” wait a minute and try again."
                 elif "timeout" in error_msg.lower():
                     error_msg = "Connection timed out."
                 logger.error("Sync failed for %s: %s", connector_id, error_msg)
@@ -578,3 +578,4 @@ def create_connectors_router():
 
 
 __all__ = ["ConnectRequest", "create_connectors_router"]
+

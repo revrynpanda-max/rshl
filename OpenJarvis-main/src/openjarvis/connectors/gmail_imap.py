@@ -1,4 +1,4 @@
-"""Gmail IMAP connector — reads email via IMAP with app password.
+﻿"""Gmail IMAP connector â€” reads email via IMAP with app password.
 
 Simpler alternative to the OAuth-based Gmail connector.
 Uses Python's built-in imaplib + email modules (no dependencies).
@@ -77,7 +77,7 @@ def _parse_date(msg: email_lib.message.Message) -> datetime:
 class GmailIMAPConnector(BaseConnector):
     """Gmail connector using IMAP + app password.
 
-    No OAuth needed — just an email address and app password.
+    No OAuth needed â€” just an email address and app password.
     """
 
     connector_id = "gmail_imap"
@@ -103,7 +103,7 @@ class GmailIMAPConnector(BaseConnector):
         self._items_total = 0
 
     def _resolve_credentials(self) -> tuple[str, str]:
-        """Return (email, password) — direct args take priority."""
+        """Return (email, password) â€” direct args take priority."""
         if self._email and self._password:
             return self._email, self._password
         tokens = load_tokens(self._credentials_path)
@@ -245,3 +245,4 @@ class GmailIMAPConnector(BaseConnector):
                 category="communication",
             ),
         ]
+

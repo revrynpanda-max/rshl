@@ -1,10 +1,10 @@
-"""End-to-end integration test for skill trace tagging (Plan 2A C1 fix).
+﻿"""End-to-end integration test for skill trace tagging (Plan 2A C1 fix).
 
 Verifies the full flow:
     SkillTool.execute()
-        → ToolExecutor publishes TOOL_CALL_END with metadata
-            → TraceCollector copies metadata into TraceStep.metadata
-                → SkillOptimizer can bucket traces by skill name
+        â†’ ToolExecutor publishes TOOL_CALL_END with metadata
+            â†’ TraceCollector copies metadata into TraceStep.metadata
+                â†’ SkillOptimizer can bucket traces by skill name
 
 If this test passes, the trace tagging path is wired end-to-end.
 """
@@ -118,7 +118,7 @@ class _TaintingTool(BaseTool):
     """Test tool whose result triggers the auto_detect_taint codepath.
 
     Returns content containing strings the security taint scanner picks
-    up as user-input or external — those add a `_taint: TaintSet` to
+    up as user-input or external â€” those add a `_taint: TaintSet` to
     the result metadata before TOOL_CALL_END is published.
     """
 
@@ -162,7 +162,7 @@ class TestEventMetadataIsJsonSafe:
         tool_executor.execute(ToolCall(id="t1", name="tainting", arguments="{}"))
 
         # The published metadata must be JSON serializable end-to-end
-        # — TraceCollector will eventually feed this to TraceStore.save()
+        # â€” TraceCollector will eventually feed this to TraceStore.save()
         # which calls json.dumps() on TraceStep.metadata.
         try:
             json.dumps(captured)
@@ -210,3 +210,5 @@ class TestEventMetadataIsJsonSafe:
 
         # And it must still be JSON-serializable
         json.dumps(captured)
+
+

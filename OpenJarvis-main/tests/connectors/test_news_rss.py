@@ -1,4 +1,4 @@
-"""Tests for NewsRSSConnector — RSS/Atom feed aggregator."""
+﻿"""Tests for NewsRSSConnector â€” RSS/Atom feed aggregator."""
 
 from __future__ import annotations
 
@@ -171,3 +171,5 @@ def test_sync_filters_by_since(connector):
 def test_disconnect(connector):
     connector.disconnect()
     assert connector.is_connected() is False
+
+

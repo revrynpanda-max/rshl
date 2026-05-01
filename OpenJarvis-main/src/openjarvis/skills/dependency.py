@@ -1,4 +1,4 @@
-"""Dependency graph: cycle detection, topological sort, capability union."""
+﻿"""Dependency graph: cycle detection, topological sort, capability union."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ def build_dependency_graph(skills: Dict[str, "SkillManifest"]) -> Dict[str, Set[
     for topological analysis).
 
     Args:
-        skills: Mapping of skill name → SkillManifest.
+        skills: Mapping of skill name â†’ SkillManifest.
 
     Returns:
         Dict mapping each skill name to the set of its direct dependencies.
@@ -61,7 +61,7 @@ def validate_dependencies(
     silently skipped.
 
     Args:
-        skills: Mapping of skill name → SkillManifest.
+        skills: Mapping of skill name â†’ SkillManifest.
         max_depth: Maximum allowed dependency chain depth (default 5).
 
     Returns:
@@ -145,7 +145,7 @@ def compute_capability_union(
 
     Args:
         skill_name: Name of the root skill to start from.
-        skills: Mapping of skill name → SkillManifest.
+        skills: Mapping of skill name â†’ SkillManifest.
 
     Returns:
         Deduplicated list of capability strings.  Returns an empty list if the
@@ -184,3 +184,4 @@ __all__ = [
     "validate_dependencies",
     "compute_capability_union",
 ]
+

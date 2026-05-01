@@ -1,4 +1,4 @@
-"""Tests for `jarvis digest` CLI command."""
+﻿"""Tests for `jarvis digest` CLI command."""
 
 from __future__ import annotations
 
@@ -52,3 +52,5 @@ def test_digest_no_cache(tmp_path):
     result = runner.invoke(cli, ["digest", "--db-path", db_path])
     assert result.exit_code == 0
     assert "No digest for today" in result.output
+
+

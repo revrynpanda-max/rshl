@@ -1,4 +1,4 @@
-"""Canonical data types shared across all OpenJarvis primitives."""
+﻿"""Canonical data types shared across all OpenJarvis primitives."""
 
 from __future__ import annotations
 
@@ -171,7 +171,7 @@ class TelemetryRecord:
 
 
 # ---------------------------------------------------------------------------
-# Trace types — full interaction-level recording
+# Trace types â€” full interaction-level recording
 # ---------------------------------------------------------------------------
 
 
@@ -215,7 +215,7 @@ class Trace:
     """Complete trace of an agent handling a query.
 
     A trace captures the full sequence of steps an agent took to handle a
-    query — which model was selected, what memory was retrieved, which tools
+    query â€” which model was selected, what memory was retrieved, which tools
     were called, and the final response.  Traces are the primary input to the
     learning system: by analyzing which decisions led to good outcomes, the
     system can improve routing, tool selection, and memory strategies.
@@ -275,3 +275,4 @@ __all__ = [
     "TraceStep",
     "_message_to_dict",
 ]
+

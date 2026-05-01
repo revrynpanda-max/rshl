@@ -1,4 +1,4 @@
-"""TerminalBench scorer — LLM-as-judge for terminal task evaluation.
+﻿"""TerminalBench scorer â€” LLM-as-judge for terminal task evaluation.
 
 Compares predicted terminal output / commands against the expected
 answer using an LLM judge.
@@ -21,7 +21,7 @@ Compare the predicted answer against the Ground Truth Answer and determine if th
 
 ## Evaluation Guidelines
 
-1. **Focus on functional equivalence**: The predicted command or output does not need to match verbatim — it should achieve the same result.
+1. **Focus on functional equivalence**: The predicted command or output does not need to match verbatim â€” it should achieve the same result.
 2. **Assess correctness**: Determine whether the essential behavior, output, or command from the Ground Truth is present in the prediction.
 3. **Ignore minor differences**: Whitespace, quoting style, flag ordering, and trivial formatting differences are acceptable.
 4. **Partial credit**: If the Ground Truth has multiple parts, all essential parts must be present for a correct rating.
@@ -107,3 +107,4 @@ class TerminalBenchScorer(LLMJudgeScorer):
 
 
 __all__ = ["TerminalBenchScorer"]
+

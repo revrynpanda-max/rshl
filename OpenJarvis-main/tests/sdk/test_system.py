@@ -1,4 +1,4 @@
-"""Tests for the composition layer."""
+﻿"""Tests for the composition layer."""
 
 from __future__ import annotations
 
@@ -436,3 +436,5 @@ class TestJarvisSystemClose:
         )
         assert system.agent_scheduler is None
         assert system.agent_executor is None
+
+

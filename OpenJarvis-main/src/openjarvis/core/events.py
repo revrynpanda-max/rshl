@@ -1,4 +1,4 @@
-"""Thread-safe pub/sub event bus for inter-primitive telemetry.
+﻿"""Thread-safe pub/sub event bus for inter-primitive telemetry.
 
 Extends IPW's ``EventRecorder`` into a full publish/subscribe system so that
 any primitive can emit events (e.g. ``INFERENCE_END``) and any other primitive can
@@ -41,12 +41,12 @@ class EventType(str, Enum):
     SCHEDULER_TASK_END = "scheduler_task_end"
     BATCH_START = "batch_start"
     BATCH_END = "batch_end"
-    # Phase 14 — Agent Hardening & Security
+    # Phase 14 â€” Agent Hardening & Security
     TOOL_TIMEOUT = "tool_timeout"
     LOOP_GUARD_TRIGGERED = "loop_guard_triggered"
     CAPABILITY_DENIED = "capability_denied"
     TAINT_VIOLATION = "taint_violation"
-    # Phase 15 — Workflow, Skills, Sessions
+    # Phase 15 â€” Workflow, Skills, Sessions
     WORKFLOW_START = "workflow_start"
     WORKFLOW_NODE_START = "workflow_node_start"
     WORKFLOW_NODE_END = "workflow_node_end"
@@ -55,10 +55,10 @@ class EventType(str, Enum):
     SKILL_EXECUTE_END = "skill_execute_end"
     SESSION_START = "session_start"
     SESSION_END = "session_end"
-    # Phase 16 — A2A Protocol
+    # Phase 16 â€” A2A Protocol
     A2A_TASK_RECEIVED = "a2a_task_received"
     A2A_TASK_COMPLETED = "a2a_task_completed"
-    # Phase 22 — Operators
+    # Phase 22 â€” Operators
     OPERATOR_TICK_START = "operator_tick_start"
     OPERATOR_TICK_END = "operator_tick_end"
     # Managed agent lifecycle (distinct from OPERATOR_TICK_* for the operator subsystem)
@@ -71,7 +71,7 @@ class EventType(str, Enum):
     AGENT_LEARNING_COMPLETED = "agent_learning_completed"
     AGENT_MESSAGE_RECEIVED = "agent_message_received"
     AGENT_CHECKPOINT_SAVED = "agent_checkpoint_saved"
-    # Phase 25 — Configuration Optimization
+    # Phase 25 â€” Configuration Optimization
     OPTIMIZE_RUN_START = "optimize_run_start"
     OPTIMIZE_TRIAL_START = "optimize_trial_start"
     OPTIMIZE_TRIAL_END = "optimize_trial_end"
@@ -125,7 +125,7 @@ class EventBus:
             try:
                 listeners.remove(callback)
             except ValueError:
-                pass  # Callback already removed — idempotent
+                pass  # Callback already removed â€” idempotent
 
     # -- publish ------------------------------------------------------------
 
@@ -196,3 +196,4 @@ __all__ = [
     "get_event_bus",
     "reset_event_bus",
 ]
+

@@ -1,4 +1,4 @@
-"""WebhookChannel — generic outbound webhook adapter (zero extra deps)."""
+﻿"""WebhookChannel â€” generic outbound webhook adapter (zero extra deps)."""
 
 from __future__ import annotations
 
@@ -52,7 +52,7 @@ class WebhookChannel(BaseChannel):
     # -- connection lifecycle ---------------------------------------------------
 
     def connect(self) -> None:
-        """Mark as connected (send-only — no persistent connection)."""
+        """Mark as connected (send-only â€” no persistent connection)."""
         if not self._url:
             logger.warning("No webhook URL configured")
             self._status = ChannelStatus.ERROR
@@ -141,3 +141,4 @@ class WebhookChannel(BaseChannel):
 
 
 __all__ = ["WebhookChannel"]
+

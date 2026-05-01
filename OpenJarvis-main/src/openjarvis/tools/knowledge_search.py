@@ -1,4 +1,4 @@
-"""KnowledgeSearchTool — filtered BM25 retrieval with source attribution.
+﻿"""KnowledgeSearchTool â€” filtered BM25 retrieval with source attribution.
 
 Wraps ``KnowledgeStore`` so agents can search ingested documents by text query
 and optional provenance filters (source, doc_type, author, date range).
@@ -180,3 +180,4 @@ class KnowledgeSearchTool(BaseTool):
 
 
 __all__ = ["KnowledgeSearchTool"]
+

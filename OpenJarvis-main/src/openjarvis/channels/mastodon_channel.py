@@ -1,4 +1,4 @@
-"""MastodonChannel — Mastodon adapter via Mastodon.py."""
+﻿"""MastodonChannel â€” Mastodon adapter via Mastodon.py."""
 
 from __future__ import annotations
 
@@ -106,7 +106,7 @@ class MastodonChannel(BaseChannel):
             if channel in ("public", "unlisted", "private", "direct"):
                 visibility = channel
             elif channel.startswith("@"):
-                # Direct message — prepend mention
+                # Direct message â€” prepend mention
                 visibility = "direct"
                 if not content.startswith(channel):
                     content = f"{channel} {content}"
@@ -155,3 +155,4 @@ class MastodonChannel(BaseChannel):
 
 
 __all__ = ["MastodonChannel"]
+

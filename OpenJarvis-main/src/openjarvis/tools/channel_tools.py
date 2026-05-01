@@ -1,4 +1,4 @@
-"""Channel MCP tools — expose channel operations as BaseTool instances.
+﻿"""Channel MCP tools â€” expose channel operations as BaseTool instances.
 
 These tools wrap the ``BaseChannel`` ABC so that channel operations
 (send, list, status) are discoverable and callable via MCP.
@@ -187,3 +187,4 @@ __all__ = [
     "ChannelSendTool",
     "ChannelStatusTool",
 ]
+

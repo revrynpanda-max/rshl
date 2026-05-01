@@ -1,4 +1,4 @@
-"""SWEfficiency scorer — structural patch validation.
+﻿"""SWEfficiency scorer â€” structural patch validation.
 
 Full SWEfficiency evaluation requires running performance benchmarks
 inside the repository environment.  This scorer performs lightweight
@@ -31,7 +31,7 @@ class SWEfficiencyScorer(Scorer):
     benchmarks in a sandboxed repository checkout, this scorer only
     checks whether the model produced something that looks like a valid
     unified diff.  The ``is_correct`` field is set to ``None``
-    (indeterminate) when a patch-like response is detected — downstream
+    (indeterminate) when a patch-like response is detected â€” downstream
     harnesses should measure the actual speedup.
     """
 
@@ -43,7 +43,7 @@ class SWEfficiencyScorer(Scorer):
         judge_model: str = "",
     ) -> None:
         # Accept judge_backend/judge_model so the CLI factory pattern works,
-        # but they are unused — scoring is purely structural.
+        # but they are unused â€” scoring is purely structural.
         self._judge_backend = judge_backend
         self._judge_model = judge_model
 
@@ -70,3 +70,4 @@ class SWEfficiencyScorer(Scorer):
 
 
 __all__ = ["SWEfficiencyScorer"]
+

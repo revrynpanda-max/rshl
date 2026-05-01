@@ -1,4 +1,4 @@
-"""LLM tool — delegate a sub-query to an inference engine."""
+﻿"""LLM tool â€” delegate a sub-query to an inference engine."""
 
 from __future__ import annotations
 
@@ -93,3 +93,4 @@ class LLMTool(BaseTool):
 
 
 __all__ = ["LLMTool"]
+

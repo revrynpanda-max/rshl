@@ -1,4 +1,4 @@
-"""Shared parametrized tests for channel implementations.
+﻿"""Shared parametrized tests for channel implementations.
 
 Every channel must pass these baseline tests. Import and call
 ``make_common_channel_tests`` to generate a test class.
@@ -63,3 +63,5 @@ def make_common_channel_tests(
     CommonChannelTests.__name__ = f"TestCommon_{channel_key}"
     CommonChannelTests.__qualname__ = f"TestCommon_{channel_key}"
     return CommonChannelTests
+
+

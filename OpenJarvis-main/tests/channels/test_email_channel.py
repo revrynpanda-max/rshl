@@ -1,4 +1,4 @@
-"""Tests for the EmailChannel adapter."""
+﻿"""Tests for the EmailChannel adapter."""
 
 from __future__ import annotations
 
@@ -186,3 +186,5 @@ class TestConnect:
         assert ch.status() == ChannelStatus.CONNECTED
         # No IMAP, so no listener thread
         assert ch._listener_thread is None
+
+

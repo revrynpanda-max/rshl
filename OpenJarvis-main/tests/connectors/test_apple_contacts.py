@@ -1,4 +1,4 @@
-"""Tests for AppleContactsConnector — local macOS Contacts database connector.
+﻿"""Tests for AppleContactsConnector â€” local macOS Contacts database connector.
 
 All tests use a temporary SQLite database that mimics the real AddressBook
 schema.  No actual macOS Contacts database is required.
@@ -135,7 +135,7 @@ def _create_fake_contacts_db(db_path: Path) -> None:
         );
     """)
 
-    # ── System row (ZISALL=1, no name — should be skipped) ───────────
+    # â”€â”€ System row (ZISALL=1, no name â€” should be skipped) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     conn.execute(
         "INSERT INTO ZABCDRECORD "
         "(Z_PK, ZISALL, ZFIRSTNAME, ZLASTNAME, ZORGANIZATION, "
@@ -143,7 +143,7 @@ def _create_fake_contacts_db(db_path: Path) -> None:
         "VALUES (1, 1, NULL, NULL, NULL, 700000000.0, 700000000.0, 'sys-all')"
     )
 
-    # ── Contact 1: Alice Smith ───────────────────────────────────────
+    # â”€â”€ Contact 1: Alice Smith â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     conn.execute(
         "INSERT INTO ZABCDRECORD "
         "(Z_PK, ZFIRSTNAME, ZMIDDLENAME, ZLASTNAME, ZORGANIZATION, "
@@ -191,7 +191,7 @@ def _create_fake_contacts_db(db_path: Path) -> None:
         "VALUES (1, 2, 'Met at WWDC 2024')"
     )
 
-    # ── Contact 2: Acme Corp (org-only, no person name) ─────────────
+    # â”€â”€ Contact 2: Acme Corp (org-only, no person name) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     conn.execute(
         "INSERT INTO ZABCDRECORD "
         "(Z_PK, ZFIRSTNAME, ZLASTNAME, ZORGANIZATION, "
@@ -206,7 +206,7 @@ def _create_fake_contacts_db(db_path: Path) -> None:
         "VALUES (2, 0, 3, '1-800-ACME', '_$!<Main>!$_')"
     )
 
-    # ── Contact 3: Bob Jones (minimal — name only) ──────────────────
+    # â”€â”€ Contact 3: Bob Jones (minimal â€” name only) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     conn.execute(
         "INSERT INTO ZABCDRECORD "
         "(Z_PK, ZFIRSTNAME, ZLASTNAME, "
@@ -241,7 +241,7 @@ def connector(fake_db: Path):
 
 
 # ---------------------------------------------------------------------------
-# Test 1 — is_connected returns True when db_path exists
+# Test 1 â€” is_connected returns True when db_path exists
 # ---------------------------------------------------------------------------
 
 
@@ -251,7 +251,7 @@ def test_is_connected(connector) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 2 — is_connected returns False for a missing file
+# Test 2 â€” is_connected returns False for a missing file
 # ---------------------------------------------------------------------------
 
 
@@ -264,7 +264,7 @@ def test_not_connected_missing_db() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 3 — sync yields 3 contacts (skips system row), correct source/type
+# Test 3 â€” sync yields 3 contacts (skips system row), correct source/type
 # ---------------------------------------------------------------------------
 
 
@@ -278,7 +278,7 @@ def test_sync_yields_contacts(connector) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 4 — sync extracts phone numbers, emails, addresses, URLs, socials
+# Test 4 â€” sync extracts phone numbers, emails, addresses, URLs, socials
 # ---------------------------------------------------------------------------
 
 
@@ -298,7 +298,7 @@ def test_sync_extracts_all_fields(connector) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 5 — sync cleans Apple label markup
+# Test 5 â€” sync cleans Apple label markup
 # ---------------------------------------------------------------------------
 
 
@@ -314,7 +314,7 @@ def test_sync_cleans_labels(connector) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 6 — org-only contact uses organization as title
+# Test 6 â€” org-only contact uses organization as title
 # ---------------------------------------------------------------------------
 
 
@@ -328,7 +328,7 @@ def test_org_only_contact(connector) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 7 — minimal contact (name only, no other fields)
+# Test 7 â€” minimal contact (name only, no other fields)
 # ---------------------------------------------------------------------------
 
 
@@ -342,7 +342,7 @@ def test_minimal_contact(connector) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 8 — sync respects the since filter
+# Test 8 â€” sync respects the since filter
 # ---------------------------------------------------------------------------
 
 
@@ -361,7 +361,7 @@ def test_sync_since_filter(connector) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 9 — sync_status tracks progress
+# Test 9 â€” sync_status tracks progress
 # ---------------------------------------------------------------------------
 
 
@@ -376,7 +376,7 @@ def test_sync_status(connector) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 10 — metadata contains structured fields
+# Test 10 â€” metadata contains structured fields
 # ---------------------------------------------------------------------------
 
 
@@ -393,7 +393,7 @@ def test_metadata_fields(connector) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 11 — disconnect sets connected flag to False
+# Test 11 â€” disconnect sets connected flag to False
 # ---------------------------------------------------------------------------
 
 
@@ -405,7 +405,7 @@ def test_disconnect(connector) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 12 — mcp_tools returns exactly 2 tool specs
+# Test 12 â€” mcp_tools returns exactly 2 tool specs
 # ---------------------------------------------------------------------------
 
 
@@ -419,7 +419,7 @@ def test_mcp_tools(connector) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 13 — ConnectorRegistry contains "apple_contacts" after import
+# Test 13 â€” ConnectorRegistry contains "apple_contacts" after import
 # ---------------------------------------------------------------------------
 
 
@@ -434,7 +434,7 @@ def test_registry() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 14 — sync handles empty database gracefully
+# Test 14 â€” sync handles empty database gracefully
 # ---------------------------------------------------------------------------
 
 
@@ -488,7 +488,7 @@ def test_sync_empty_db(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 15 — sync handles missing database gracefully
+# Test 15 â€” sync handles missing database gracefully
 # ---------------------------------------------------------------------------
 
 
@@ -560,7 +560,7 @@ def _create_minimal_db(db_path: Path, contacts: list[tuple]) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 16 — sync reads contacts from iCloud source databases
+# Test 16 â€” sync reads contacts from iCloud source databases
 # ---------------------------------------------------------------------------
 
 
@@ -594,7 +594,7 @@ def test_sync_reads_source_databases(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 17 — sync deduplicates contacts across sources
+# Test 17 â€” sync deduplicates contacts across sources
 # ---------------------------------------------------------------------------
 
 
@@ -624,3 +624,5 @@ def test_sync_deduplicates_across_sources(tmp_path: Path) -> None:
     ids = {d.doc_id for d in docs}
     assert "apple_contacts:uid-alice" in ids
     assert "apple_contacts:uid-bob" in ids
+
+

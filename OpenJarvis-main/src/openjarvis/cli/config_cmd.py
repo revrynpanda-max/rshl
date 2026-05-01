@@ -1,4 +1,4 @@
-"""``jarvis config`` — configuration inspection commands."""
+﻿"""``jarvis config`` â€” configuration inspection commands."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from rich.table import Table
 
 @click.group()
 def config() -> None:
-    """Inspect configuration — show loaded settings, hardware, and config files."""
+    """Inspect configuration â€” show loaded settings, hardware, and config files."""
 
 
 def _get_config_path(path: str | None) -> Path:
@@ -285,12 +285,12 @@ def _probe_engine_host(url: str, console: Console) -> None:
         else:
             console.print(
                 f"  [yellow]Warning:[/yellow] Host returned status "
-                f"{resp.status_code} — config saved anyway."
+                f"{resp.status_code} â€” config saved anyway."
             )
     except Exception:
         console.print(
             f"  [yellow]Warning:[/yellow] Host unreachable ({url}) "
-            f"— config saved anyway."
+            f"â€” config saved anyway."
         )
 
 
@@ -373,3 +373,4 @@ config.add_command(set_config, "set")
 
 
 __all__ = ["config"]
+

@@ -1,4 +1,4 @@
-"""Tests for TUI dashboard (Phase 16.5)."""
+﻿"""Tests for TUI dashboard (Phase 16.5)."""
 
 from __future__ import annotations
 
@@ -29,3 +29,5 @@ class TestDashboard:
         # Just test that DashboardApp is properly importable and constructible
         app = DashboardApp()
         assert hasattr(app, "run")
+
+

@@ -1,4 +1,4 @@
-"""Tests for GPU monitor -- mock pynvml (no real GPU required)."""
+﻿"""Tests for GPU monitor -- mock pynvml (no real GPU required)."""
 
 from __future__ import annotations
 
@@ -385,3 +385,5 @@ class TestDataclasses:
         assert s.energy_joules == 0.0
         assert s.num_snapshots == 0
         assert s.duration_seconds == 0.0
+
+

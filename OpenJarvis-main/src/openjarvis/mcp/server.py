@@ -1,4 +1,4 @@
-"""MCP Server — wraps OpenJarvis tools as MCP-discoverable tools."""
+﻿"""MCP Server â€” wraps OpenJarvis tools as MCP-discoverable tools."""
 
 from __future__ import annotations
 
@@ -61,7 +61,7 @@ class MCPServer:
     def _auto_discover_tools() -> List[BaseTool]:
         """Auto-discover all built-in tools by direct import.
 
-        Does not rely on ToolRegistry state — imports each tool class
+        Does not rely on ToolRegistry state â€” imports each tool class
         directly and attempts instantiation with no arguments.
         """
         tools: List[BaseTool] = []
@@ -143,7 +143,7 @@ class MCPServer:
         except ImportError:
             pass
 
-        # LM tool (needs engine/model — instantiate with None)
+        # LM tool (needs engine/model â€” instantiate with None)
         try:
             from openjarvis.tools.llm_tool import LLMTool
 
@@ -151,7 +151,7 @@ class MCPServer:
         except ImportError:
             pass
 
-        # Retrieval tool (needs backend — instantiate with None)
+        # Retrieval tool (needs backend â€” instantiate with None)
         try:
             from openjarvis.tools.retrieval import RetrievalTool
 
@@ -220,7 +220,7 @@ class MCPServer:
         )
 
     def _handle_tools_list(self, req: MCPRequest) -> MCPResponse:
-        """Handle tools/list — return specs for all registered tools."""
+        """Handle tools/list â€” return specs for all registered tools."""
         tool_list = []
         for tool in self._tools.values():
             s = tool.spec
@@ -237,7 +237,7 @@ class MCPServer:
         return MCPResponse(result={"tools": tool_list}, id=req.id)
 
     def _handle_tools_call(self, req: MCPRequest) -> MCPResponse:
-        """Handle tools/call — execute a tool and return the result."""
+        """Handle tools/call â€” execute a tool and return the result."""
         tool_name = req.params.get("name")
         arguments = req.params.get("arguments", {})
 
@@ -282,3 +282,4 @@ class MCPServer:
 
 
 __all__ = ["MCPServer"]
+

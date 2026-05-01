@@ -717,3 +717,4 @@ class TestCLIConfig:
         # Should print suite info before failing
         assert "test-suite" in result.output
         assert "1 model(s) x 1 benchmark(s)" in result.output
+

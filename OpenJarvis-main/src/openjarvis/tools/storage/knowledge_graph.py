@@ -1,4 +1,4 @@
-"""Knowledge graph storage backend — entity-relation store with pattern queries."""
+﻿"""Knowledge graph storage backend â€” entity-relation store with pattern queries."""
 
 from __future__ import annotations
 
@@ -314,3 +314,4 @@ class KnowledgeGraphMemory:
 
 
 __all__ = ["Entity", "GraphQueryResult", "KnowledgeGraphMemory", "Relation"]
+

@@ -1,4 +1,4 @@
-"""MFU/MBU efficiency calculator for GPU inference telemetry.
+﻿"""MFU/MBU efficiency calculator for GPU inference telemetry.
 
 Computes Model FLOPs Utilization (MFU) and Model Bandwidth Utilization (MBU)
 to quantify how efficiently a model uses available GPU compute and memory bandwidth.
@@ -28,7 +28,7 @@ def estimate_model_flops_per_token(
 ) -> float:
     """Estimate FLOPs for one forward-pass token of a dense transformer.
 
-    For dense models, FLOPs per token ≈ 2 * params.  For MoE models, pass
+    For dense models, FLOPs per token â‰ˆ 2 * params.  For MoE models, pass
     ``active_params_b`` (the number of *active* parameters per token).
 
     Args:
@@ -127,3 +127,4 @@ __all__ = [
     "estimate_model_bytes_per_token",
     "estimate_model_flops_per_token",
 ]
+

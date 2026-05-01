@@ -1,4 +1,4 @@
-﻿/// Universe Ã¢â‚¬" The cell store for KAI's memory.
+/// Universe Ã¢â‚¬" The cell store for KAI's memory.
 ///
 /// Each cell is a belief: text + vector + region + strength + metadata.
 /// ALL queries use rayon parallel cosine across all 12 CPU threads.
@@ -481,7 +481,7 @@ fn extract_query_keywords(text: &str) -> Vec<String> {
                 && c != '-'
                 && c != '*'
                 && c != '/'
-                && c != 'Â²'
+                && c != '²'
         })
         .filter(|w| !w.is_empty() && w.len() >= 3 && !STOPWORDS.contains(w))
         .map(|w| w.to_string())

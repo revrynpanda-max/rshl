@@ -1,4 +1,4 @@
-"""SQLite-backed session store for channel conversations."""
+﻿"""SQLite-backed session store for channel conversations."""
 
 from __future__ import annotations
 
@@ -175,3 +175,4 @@ class SessionStore:
 
     def close(self) -> None:
         self._db.close()
+

@@ -1,4 +1,4 @@
-"""Environment provider ABC for benchmarks requiring external environments."""
+﻿"""Environment provider ABC for benchmarks requiring external environments."""
 
 from __future__ import annotations
 
@@ -50,3 +50,4 @@ class EnvironmentProvider(ABC):
     @abstractmethod
     def teardown(self) -> None:
         """Stop the environment and release resources."""
+

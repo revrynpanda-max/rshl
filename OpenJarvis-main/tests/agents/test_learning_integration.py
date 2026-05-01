@@ -1,4 +1,4 @@
-"""Integration tests for LearningOrchestrator agent_id scoping."""
+﻿"""Integration tests for LearningOrchestrator agent_id scoping."""
 
 from __future__ import annotations
 
@@ -103,3 +103,5 @@ def test_scheduler_no_learning_when_disabled(tmp_path):
     ]
     assert len(learning_events) == 0
     mgr.close()
+
+

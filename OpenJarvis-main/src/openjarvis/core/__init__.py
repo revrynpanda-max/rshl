@@ -1,4 +1,4 @@
-"""Core module — registries, types, configuration, and event bus."""
+﻿"""Core module â€” registries, types, configuration, and event bus."""
 
 from __future__ import annotations
 
@@ -35,3 +35,4 @@ __all__ = [
     "ToolRegistry",
     "ToolResult",
 ]
+

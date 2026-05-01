@@ -1,4 +1,4 @@
-"""Tests for agent-pillar appliers."""
+﻿"""Tests for agent-pillar appliers."""
 
 from __future__ import annotations
 
@@ -208,3 +208,5 @@ class TestEditFewShotExemplarsApplier:
         data = json.loads(fs_path.read_text())
         assert len(data) == 2
         assert data[0]["input"] == "What is 2+2?"
+
+

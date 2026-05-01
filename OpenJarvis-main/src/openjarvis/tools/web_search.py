@@ -1,4 +1,4 @@
-"""Web search tool — Tavily API with DuckDuckGo fallback."""
+﻿"""Web search tool â€” Tavily API with DuckDuckGo fallback."""
 
 from __future__ import annotations
 
@@ -67,7 +67,7 @@ class WebSearchTool(BaseTool):
         """Convert known PDF URLs to their HTML equivalents."""
         import re as _re
 
-        # arxiv: /pdf/ID → /abs/ID (abstract page with full metadata)
+        # arxiv: /pdf/ID â†’ /abs/ID (abstract page with full metadata)
         m = _re.match(r"(https?://arxiv\.org)/pdf/(.+?)(?:\.pdf)?$", url)
         if m:
             return f"{m.group(1)}/abs/{m.group(2)}"
@@ -205,3 +205,4 @@ class WebSearchTool(BaseTool):
 
 
 __all__ = ["WebSearchTool"]
+

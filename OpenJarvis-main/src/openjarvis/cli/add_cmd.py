@@ -1,4 +1,4 @@
-"""``jarvis add`` — quick MCP server setup."""
+﻿"""``jarvis add`` â€” quick MCP server setup."""
 
 from __future__ import annotations
 
@@ -94,7 +94,7 @@ def add(server_name: str, key: str | None, extra_args: str | None) -> None:
         console.print(f"[red]Unknown MCP server: {server_name}[/red]")
         console.print("[dim]Known servers:[/dim]")
         for name, tmpl in _MCP_TEMPLATES.items():
-            console.print(f"  [cyan]{name}[/cyan] — {tmpl['description']}")
+            console.print(f"  [cyan]{name}[/cyan] â€” {tmpl['description']}")
         sys.exit(1)
 
     # Build server config
@@ -136,3 +136,4 @@ def add(server_name: str, key: str | None, extra_args: str | None) -> None:
 
 
 __all__ = ["add"]
+

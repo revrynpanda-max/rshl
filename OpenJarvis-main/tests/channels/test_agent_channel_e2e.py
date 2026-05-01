@@ -1,4 +1,4 @@
-"""Agent-channel E2E tests — using WebChatChannel (in-memory, no external deps)."""
+﻿"""Agent-channel E2E tests â€” using WebChatChannel (in-memory, no external deps)."""
 
 from __future__ import annotations
 
@@ -71,3 +71,5 @@ def test_agent_with_channel_binding(scenario_harness: ScenarioHarness):
     data = h.manager.get_agent(aid)
     assert data["status"] == "idle"
     webchat.disconnect()
+
+

@@ -1,4 +1,4 @@
-"""Scorer for LifelongAgentBench.
+﻿"""Scorer for LifelongAgentBench.
 
 Reproduces the original evaluation methodology from:
   https://github.com/caixd-220529/LifelongAgentBench
@@ -6,22 +6,22 @@ Reproduces the original evaluation methodology from:
 When used with interactive environments (episode_mode=True), the
 TaskEnvironment handles scoring directly.  This scorer serves as:
 
-1. **Fallback** for non-interactive (single-shot) evaluation — with loud
+1. **Fallback** for non-interactive (single-shot) evaluation â€” with loud
    warnings that results are degraded and not faithful to the original.
 2. **Helper library** for shared scoring functions used by both the
    environments and this scorer.
 
 Three subset scoring strategies matching the original:
 
-1. **db_bench** — Two modes matching the original ``Task._complete()``:
+1. **db_bench** â€” Two modes matching the original ``Task._complete()``:
    - *direct* (SELECT): Execute agent SQL, compare tuples with numeric
      tolerance (``rel_tol=1e-6``).
    - *md5* (INSERT/UPDATE/DELETE): Execute SQL, compare full table state.
 
-2. **knowledge_graph** — Exact-set match + F1 score on answer entities,
+2. **knowledge_graph** â€” Exact-set match + F1 score on answer entities,
    matching the original's ``calculate_metric()``.
 
-3. **os_interaction** — Docker evaluation with exit_code == 0.
+3. **os_interaction** â€” Docker evaluation with exit_code == 0.
 
 IMPORTANT: Single-shot scoring is DEGRADED and will always emit warnings.
 The original benchmark is multi-turn interactive.  Use ``episode_mode=True``
@@ -84,7 +84,7 @@ class LifelongAgentScorer(Scorer):
     this scorer provides degraded fallback scoring with clear warnings.
 
     Constructor accepts ``(judge_backend, judge_model)`` for CLI
-    compatibility but does not use them — all scoring is deterministic.
+    compatibility but does not use them â€” all scoring is deterministic.
     """
 
     scorer_id = "lifelong-agent"
@@ -100,7 +100,7 @@ class LifelongAgentScorer(Scorer):
         model_answer: str,
     ) -> Tuple[Optional[bool], Dict[str, Any]]:
         # If this result came from interactive evaluation, the metadata
-        # already contains the score — pass it through.
+        # already contains the score â€” pass it through.
         # (The EvalRunner handles this case directly; this is just safety.)
 
         if not model_answer or not model_answer.strip():
@@ -329,7 +329,7 @@ class LifelongAgentScorer(Scorer):
         # provides "Final Answer: #N" referencing a variable.  The system
         # then executes the composed query to get the actual entity set.
         #
-        # In single-shot mode we cannot resolve variable references — any
+        # In single-shot mode we cannot resolve variable references â€” any
         # attempt to heuristically extract entity IDs from the response text
         # produces unreliable results (IDs from intermediate reasoning, not
         # the final answer).  Return unscorable rather than misleading scores.
@@ -381,7 +381,7 @@ class LifelongAgentScorer(Scorer):
                 "Install Docker and ensure the daemon is running."
             )
             logger.error(
-                "OS task %s: Docker not available — task NOT scorable. "
+                "OS task %s: Docker not available â€” task NOT scorable. "
                 "Install Docker for faithful evaluation.",
                 record.record_id,
             )
@@ -658,7 +658,7 @@ def extract_kg_answers(text: str) -> List[str]:
         text,
     )
     if var_ref:
-        # Can't resolve variable in single-shot mode — look for entity IDs
+        # Can't resolve variable in single-shot mode â€” look for entity IDs
         # in the full response as a heuristic.
         entities = re.findall(r"[mg]\.\w+", text)
         if entities:
@@ -839,7 +839,7 @@ def _evaluate_os_in_docker(
 
         if not eval_cmd_str:
             logger.error(
-                "No evaluation command found — cannot determine correctness. "
+                "No evaluation command found â€” cannot determine correctness. "
                 "The original benchmark requires evaluation_command_item."
             )
             return False
@@ -927,3 +927,4 @@ def values_match(expected: Any, actual: Any) -> bool:
 
 
 __all__ = ["LifelongAgentScorer"]
+

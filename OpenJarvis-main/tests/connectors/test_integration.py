@@ -1,4 +1,4 @@
-"""Integration test: Obsidian vault → SyncEngine → KnowledgeStore → knowledge_search."""
+﻿"""Integration test: Obsidian vault â†’ SyncEngine â†’ KnowledgeStore â†’ knowledge_search."""
 
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ def vault(tmp_path: Path) -> Path:
 
 
 def test_full_pipeline_obsidian_to_search(vault: Path, tmp_path: Path) -> None:
-    """End-to-end: Obsidian vault → SyncEngine → KnowledgeStore → knowledge_search."""
+    """End-to-end: Obsidian vault â†’ SyncEngine â†’ KnowledgeStore â†’ knowledge_search."""
     # 1. Setup
     store = KnowledgeStore(db_path=str(tmp_path / "integration.db"))
     pipeline = IngestionPipeline(store=store)
@@ -73,3 +73,5 @@ def test_full_pipeline_obsidian_to_search(vault: Path, tmp_path: Path) -> None:
 
     result = tool.execute(query="migration", source="gmail")
     assert "No relevant results" in result.content
+
+

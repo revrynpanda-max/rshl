@@ -1,4 +1,4 @@
-"""SQLite-backed storage for distillation LearningSession records.
+﻿"""SQLite-backed storage for distillation LearningSession records.
 
 Mirrors the style of ``openjarvis.learning.optimize.store.OptimizationStore``:
 
@@ -8,7 +8,7 @@ Mirrors the style of ``openjarvis.learning.optimize.store.OptimizationStore``:
 - ``_migrate()`` runs additive ALTER TABLEs that swallow ``OperationalError``
 
 The store does NOT share its database file with ``OptimizationStore`` (see
-spec §8.1 / brainstorming Q8). The two SQLite files live side-by-side in
+spec Â§8.1 / brainstorming Q8). The two SQLite files live side-by-side in
 ``~/.openjarvis/learning/`` but are independent.
 """
 
@@ -114,7 +114,7 @@ class SessionStore:
     """SQLite-backed storage for LearningSession and EditOutcome records.
 
     The full LearningSession is also serialized to disk as
-    ``<session_dir>/session.json`` — that file is the authoritative source
+    ``<session_dir>/session.json`` â€” that file is the authoritative source
     if SQLite is ever lost. This store is the index used for fast queries.
     """
 
@@ -302,3 +302,4 @@ class SessionStore:
             )
             for row in rows
         ]
+

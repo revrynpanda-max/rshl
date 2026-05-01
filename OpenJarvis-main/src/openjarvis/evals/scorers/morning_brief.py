@@ -1,4 +1,4 @@
-"""Morning brief scorer — LLM judge for briefing quality.
+﻿"""Morning brief scorer â€” LLM judge for briefing quality.
 
 Evaluates completeness, prioritization, conciseness, and actionability
 of generated morning briefings.
@@ -126,3 +126,4 @@ class MorningBriefScorer(LLMJudgeScorer):
 
 
 __all__ = ["MorningBriefScorer"]
+

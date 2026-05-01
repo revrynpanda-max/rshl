@@ -1,4 +1,4 @@
-"""IPW mixed scorer -- LLM-as-judge for mixed-source evaluation datasets.
+﻿"""IPW mixed scorer -- LLM-as-judge for mixed-source evaluation datasets.
 
 Since IPW records can originate from different source datasets, this scorer
 uses a general semantic comparison approach via an LLM judge (similar to
@@ -109,3 +109,4 @@ class IPWMixedScorer(LLMJudgeScorer):
 
 
 __all__ = ["IPWMixedScorer"]
+

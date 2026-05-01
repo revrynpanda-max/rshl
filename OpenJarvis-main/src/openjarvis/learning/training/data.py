@@ -1,12 +1,12 @@
-"""TrainingDataMiner — extract supervised training pairs from the TraceStore.
+﻿"""TrainingDataMiner â€” extract supervised training pairs from the TraceStore.
 
 Provides three extraction modes:
 
-* **SFT pairs** — (input, output) pairs from high-quality traces for
+* **SFT pairs** â€” (input, output) pairs from high-quality traces for
   supervised fine-tuning.
-* **Routing pairs** — per-query-class statistics identifying the best
+* **Routing pairs** â€” per-query-class statistics identifying the best
   model for each class.
-* **Agent config pairs** — per-query-class statistics identifying the
+* **Agent config pairs** â€” per-query-class statistics identifying the
   best agent and tool combination.
 """
 
@@ -111,10 +111,10 @@ class TrainingDataMiner:
 
         Returns a dict mapping query class to:
 
-        * ``best_model`` — model with highest average feedback for the class.
-        * ``avg_feedback`` — average feedback across all models for the class.
-        * ``sample_count`` — total number of qualifying traces in the class.
-        * ``all_models`` — dict of ``{model: {"avg_feedback": float, "count": int}}``.
+        * ``best_model`` â€” model with highest average feedback for the class.
+        * ``avg_feedback`` â€” average feedback across all models for the class.
+        * ``sample_count`` â€” total number of qualifying traces in the class.
+        * ``all_models`` â€” dict of ``{model: {"avg_feedback": float, "count": int}}``.
         """
         traces = self._quality_traces(agent=agent)
 
@@ -162,10 +162,10 @@ class TrainingDataMiner:
 
         Returns a dict mapping query class to:
 
-        * ``best_agent`` — agent with the highest average feedback.
-        * ``best_tools`` — most frequently used tools by the best agent.
-        * ``avg_feedback`` — average feedback across all agents for the class.
-        * ``sample_count`` — total number of qualifying traces in the class.
+        * ``best_agent`` â€” agent with the highest average feedback.
+        * ``best_tools`` â€” most frequently used tools by the best agent.
+        * ``avg_feedback`` â€” average feedback across all agents for the class.
+        * ``sample_count`` â€” total number of qualifying traces in the class.
         """
         traces = self._quality_traces(agent=agent)
 
@@ -219,3 +219,4 @@ class TrainingDataMiner:
 
 
 __all__ = ["TrainingDataMiner"]
+

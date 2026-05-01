@@ -1,4 +1,4 @@
-"""Tests for the RLM agent."""
+﻿"""Tests for the RLM agent."""
 
 from __future__ import annotations
 
@@ -228,7 +228,7 @@ class TestRLMSubLMCalls:
 
 class TestRLMMultiTurn:
     def test_multi_turn_loop(self):
-        """Agent should loop: generate code → execute → feed output → generate again."""
+        """Agent should loop: generate code â†’ execute â†’ feed output â†’ generate again."""
         engine = MagicMock()
         engine.engine_id = "mock"
         engine.generate.side_effect = [
@@ -451,3 +451,5 @@ class TestRLMReplResults:
         assert len(result.tool_results) == 1
         assert result.tool_results[0].tool_name == "rlm_repl"
         assert "hello" in result.tool_results[0].content
+
+

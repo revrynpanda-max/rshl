@@ -1,4 +1,4 @@
-"""Oura Ring connector — sleep, readiness, and activity via REST API v2.
+﻿"""Oura Ring connector â€” sleep, readiness, and activity via REST API v2.
 
 Uses a Personal Access Token (PAT) stored in the connector config dir.
 All API calls are in module-level functions for easy mocking in tests.
@@ -78,7 +78,7 @@ class OuraConnector(BaseConnector):
                     source="oura",
                     doc_type=data_type,
                     content=json.dumps(item),
-                    title=f"Oura {data_type.replace('_', ' ').title()} — {day}",
+                    title=f"Oura {data_type.replace('_', ' ').title()} â€” {day}",
                     timestamp=datetime.fromisoformat(day),
                     metadata={"data_type": data_type, "day": day},
                 )
@@ -88,3 +88,4 @@ class OuraConnector(BaseConnector):
 
     def sync_status(self) -> SyncStatus:
         return self._status
+

@@ -122,8 +122,8 @@ def judge_one(ce: CloudEngine, trace_id: str, query: str, result: str) -> dict:
 
 
 def main() -> int:
-    if not os.environ.get("Geometric Intelligence_API_KEY"):
-        print("ERROR: Geometric Intelligence_API_KEY not set", file=sys.stderr)
+    if not os.environ.get("GeometricIntelligence_API_KEY"):
+        print("ERROR: GeometricIntelligence_API_KEY not set", file=sys.stderr)
         return 1
 
     store = TraceStore(DB)

@@ -1,4 +1,4 @@
-"""EvalRunner — parallel execution of evaluation samples.
+﻿"""EvalRunner â€” parallel execution of evaluation samples.
 
 Supports two modes:
 - **Parallel mode** (default): Samples processed concurrently via ThreadPoolExecutor.
@@ -8,7 +8,7 @@ Supports two modes:
 
 When a dataset provides ``create_task_env()`` returning a ``TaskEnvironment``,
 samples are evaluated via multi-turn interactive loops instead of single-shot
-generation — matching benchmarks that require agent-environment interaction.
+generation â€” matching benchmarks that require agent-environment interaction.
 """
 
 from __future__ import annotations
@@ -105,7 +105,7 @@ class EvalRunner:
         # iter_episodes() (i.e. it is a lifelong/sequential benchmark like
         # LifelongAgentBench).  The base DatasetProvider always defines a
         # default iter_episodes() that wraps each record in its own episode,
-        # so hasattr() is always True — we must check for a real override.
+        # so hasattr() is always True â€” we must check for a real override.
         from openjarvis.evals.core.dataset import DatasetProvider as _DP
 
         try:
@@ -116,7 +116,7 @@ class EvalRunner:
             _overrides_episodes = False
         if not cfg.episode_mode and _overrides_episodes:
             LOGGER.info(
-                "%s requires sequential episode processing — "
+                "%s requires sequential episode processing â€” "
                 "auto-enabling episode_mode.",
                 cfg.benchmark,
             )
@@ -189,7 +189,7 @@ class EvalRunner:
             if cfg.episode_mode:
                 self._run_episode_mode(records, progress_callback, total)
             elif self._has_task_env and not self._task_env_thread_safe:
-                # Task environments (PinchBench etc.) change CWD —
+                # Task environments (PinchBench etc.) change CWD â€”
                 # must process sequentially for thread safety.
                 # Envs that opt in via THREAD_SAFE=True fall through to the
                 # parallel ThreadPoolExecutor branch below.
@@ -448,7 +448,7 @@ class EvalRunner:
         """
         # Only treat a dataset as having interactive environments if it actually
         # overrides create_task_env.  The DatasetProvider base class provides a
-        # default implementation that returns None, so hasattr() is always True —
+        # default implementation that returns None, so hasattr() is always True â€”
         # we must check for a real override to avoid calling env.reset() on None.
         from openjarvis.evals.core.dataset import DatasetProvider
 
@@ -594,7 +594,7 @@ class EvalRunner:
             if system_prompt:
                 messages.append({"role": "system", "content": system_prompt})
 
-            # Inject prior examples (lifelong learning) — use full
+            # Inject prior examples (lifelong learning) â€” use full
             # interaction history when available, matching the original's
             # PreviousSampleUtilizationCallback which replays the complete
             # chat history from prior successful sessions.
@@ -628,7 +628,7 @@ class EvalRunner:
                     }
                 )
 
-            # Initial task message — always use the full problem text which
+            # Initial task message â€” always use the full problem text which
             # contains the system prompt, schema, AND task instruction.
             # env.reset() is called for side effects (DB init, container
             # start) but its return value (schema-only observation) is
@@ -772,7 +772,7 @@ class EvalRunner:
             line = json.dumps(record_dict, default=str)
         except Exception as exc:
             LOGGER.error(
-                "Failed to serialize result %s to JSON: %s — writing error record",
+                "Failed to serialize result %s to JSON: %s â€” writing error record",
                 result.record_id,
                 exc,
             )
@@ -1154,3 +1154,4 @@ def _result_to_trace_dict(result: EvalResult) -> Dict[str, Any]:
 
 
 __all__ = ["EvalRunner"]
+

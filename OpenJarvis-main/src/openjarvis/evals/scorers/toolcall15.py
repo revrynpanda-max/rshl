@@ -1,4 +1,4 @@
-"""ToolCall-15 scorer — deterministic tool-calling evaluation.
+﻿"""ToolCall-15 scorer â€” deterministic tool-calling evaluation.
 
 Scores each of the 15 scenarios based on whether the model called the
 correct tool(s) with correct arguments, following the scoring rubric
@@ -140,7 +140,7 @@ def _score_tc01(
     tool_calls: List[Dict[str, Any]],
     answer: str,
 ) -> Tuple[int, str]:
-    """TC-01: Direct Specialist Match — get_weather for Berlin."""
+    """TC-01: Direct Specialist Match â€” get_weather for Berlin."""
     weather = _tools_called(tool_calls, "get_weather")
     web = _tools_called(tool_calls, "web_search")
 
@@ -159,7 +159,7 @@ def _score_tc02(
     tool_calls: List[Dict[str, Any]],
     answer: str,
 ) -> Tuple[int, str]:
-    """TC-02: Distractor Resistance — get_stock_price for AAPL only."""
+    """TC-02: Distractor Resistance â€” get_stock_price for AAPL only."""
     stock = _tools_called(tool_calls, "get_stock_price")
     web = _tools_called(tool_calls, "web_search")
 
@@ -178,7 +178,7 @@ def _score_tc03(
     tool_calls: List[Dict[str, Any]],
     answer: str,
 ) -> Tuple[int, str]:
-    """TC-03: Implicit Tool Need — get_contacts then send_email."""
+    """TC-03: Implicit Tool Need â€” get_contacts then send_email."""
     contacts = _tools_called(tool_calls, "get_contacts")
     email = _tools_called(tool_calls, "send_email")
 
@@ -205,7 +205,7 @@ def _score_tc04(
     tool_calls: List[Dict[str, Any]],
     answer: str,
 ) -> Tuple[int, str]:
-    """TC-04: Unit Handling — get_weather(Tokyo, units=fahrenheit)."""
+    """TC-04: Unit Handling â€” get_weather(Tokyo, units=fahrenheit)."""
     weather = _tools_called(tool_calls, "get_weather")
 
     if weather:
@@ -228,7 +228,7 @@ def _score_tc05(
     tool_calls: List[Dict[str, Any]],
     answer: str,
 ) -> Tuple[int, str]:
-    """TC-05: Date and Time Parsing — create_calendar_event with correct fields."""
+    """TC-05: Date and Time Parsing â€” create_calendar_event with correct fields."""
     events = _tools_called(tool_calls, "create_calendar_event")
 
     if not events:
@@ -264,7 +264,7 @@ def _score_tc06(
     tool_calls: List[Dict[str, Any]],
     answer: str,
 ) -> Tuple[int, str]:
-    """TC-06: Multi-Value Extraction — two translate_text calls."""
+    """TC-06: Multi-Value Extraction â€” two translate_text calls."""
     translates = _tools_called(tool_calls, "translate_text")
 
     if len(translates) < 2:
@@ -291,7 +291,7 @@ def _score_tc07(
     tool_calls: List[Dict[str, Any]],
     answer: str,
 ) -> Tuple[int, str]:
-    """TC-07: Search -> Read -> Act — 4-step chain."""
+    """TC-07: Search -> Read -> Act â€” 4-step chain."""
     search = _tools_called(tool_calls, "search_files")
     read = _tools_called(tool_calls, "read_file")
     contacts = _tools_called(tool_calls, "get_contacts")
@@ -327,7 +327,7 @@ def _score_tc08(
     tool_calls: List[Dict[str, Any]],
     answer: str,
 ) -> Tuple[int, str]:
-    """TC-08: Conditional Branching — weather check then conditional reminder."""
+    """TC-08: Conditional Branching â€” weather check then conditional reminder."""
     weather = _tools_called(tool_calls, "get_weather")
     reminder = _tools_called(tool_calls, "set_reminder")
 
@@ -354,7 +354,7 @@ def _score_tc09(
     tool_calls: List[Dict[str, Any]],
     answer: str,
 ) -> Tuple[int, str]:
-    """TC-09: Parallel Independence — weather AND stock price."""
+    """TC-09: Parallel Independence â€” weather AND stock price."""
     weather = _tools_called(tool_calls, "get_weather")
     stock = _tools_called(tool_calls, "get_stock_price")
     web = _tools_called(tool_calls, "web_search")
@@ -365,7 +365,7 @@ def _score_tc09(
     if weather_london and stock_msft:
         return 2, "PASS: both get_weather(London) and get_stock_price(MSFT)"
     if web and not weather and not stock:
-        # Used web_search to cover both — partial
+        # Used web_search to cover both â€” partial
         return 1, "PARTIAL: used web_search instead of specialist tools"
     if weather_london or stock_msft:
         return 1, "PARTIAL: only one of two requests handled"
@@ -376,7 +376,7 @@ def _score_tc10(
     tool_calls: List[Dict[str, Any]],
     answer: str,
 ) -> Tuple[int, str]:
-    """TC-10: Trivial Knowledge — answer without tools."""
+    """TC-10: Trivial Knowledge â€” answer without tools."""
     if not tool_calls and "1945" in answer:
         return 2, "PASS: direct answer with no tool calls"
     if not tool_calls:
@@ -388,7 +388,7 @@ def _score_tc11(
     tool_calls: List[Dict[str, Any]],
     answer: str,
 ) -> Tuple[int, str]:
-    """TC-11: Simple Math — answer without tools."""
+    """TC-11: Simple Math â€” answer without tools."""
     if not tool_calls and "30" in answer:
         return 2, "PASS: direct answer with no tool calls"
 
@@ -408,7 +408,7 @@ def _score_tc12(
     tool_calls: List[Dict[str, Any]],
     answer: str,
 ) -> Tuple[int, str]:
-    """TC-12: Impossible Request — refuse without tool calls."""
+    """TC-12: Impossible Request â€” refuse without tool calls."""
     lower = answer.lower()
     refusal_phrases = [
         "cannot",
@@ -438,7 +438,7 @@ def _score_tc13(
     tool_calls: List[Dict[str, Any]],
     answer: str,
 ) -> Tuple[int, str]:
-    """TC-13: Empty Results — retry or ask for clarification."""
+    """TC-13: Empty Results â€” retry or ask for clarification."""
     search = _tools_called(tool_calls, "search_files")
 
     if len(search) >= 2:
@@ -465,7 +465,7 @@ def _score_tc14(
     tool_calls: List[Dict[str, Any]],
     answer: str,
 ) -> Tuple[int, str]:
-    """TC-14: Malformed Response — surface error, offer fallback."""
+    """TC-14: Malformed Response â€” surface error, offer fallback."""
     stock = _tools_called(tool_calls, "get_stock_price")
     web = _tools_called(tool_calls, "web_search")
     lower = answer.lower()
@@ -496,7 +496,7 @@ def _score_tc15(
     tool_calls: List[Dict[str, Any]],
     answer: str,
 ) -> Tuple[int, str]:
-    """TC-15: Conflicting Information — use search result in calculator."""
+    """TC-15: Conflicting Information â€” use search result in calculator."""
     web = _tools_called(tool_calls, "web_search")
     calc = _tools_called(tool_calls, "calculator")
 
@@ -552,7 +552,7 @@ class ToolCall15Scorer(LLMJudgeScorer):
     """Deterministic scorer for ToolCall-15 benchmark.
 
     Scores each scenario based on whether the model called the correct
-    tool(s) with correct arguments. No LLM judge is needed — scoring
+    tool(s) with correct arguments. No LLM judge is needed â€” scoring
     is fully deterministic, but the class extends LLMJudgeScorer to
     satisfy the _build_scorer interface.
 
@@ -604,3 +604,4 @@ class ToolCall15Scorer(LLMJudgeScorer):
 
 
 __all__ = ["ToolCall15Scorer"]
+

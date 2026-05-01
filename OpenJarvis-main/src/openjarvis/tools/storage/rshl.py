@@ -1,4 +1,4 @@
-"""RSHL (Recursive Sparse Hyperdimensional Lattice) Storage Backend.
+﻿"""RSHL (Recursive Sparse Hyperdimensional Lattice) Storage Backend.
 
 Bridges OpenJarvis to KAI's native geometric intelligence engine via the Oracle API.
 """
@@ -106,3 +106,4 @@ class RSHLBackend(MemoryBackend):
 
 
 __all__ = ["RSHLBackend"]
+

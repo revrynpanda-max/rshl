@@ -1,4 +1,4 @@
-"""NVIDIA-specific hardware tests."""
+﻿"""NVIDIA-specific hardware tests."""
 
 from __future__ import annotations
 
@@ -166,3 +166,5 @@ class TestNVIDIAEngineRecommendation:
         )
         assert recommend_engine(hw) == "vllm"
         assert hw.gpu.count == 8
+
+

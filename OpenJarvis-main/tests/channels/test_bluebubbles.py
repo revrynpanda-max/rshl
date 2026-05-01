@@ -1,4 +1,4 @@
-"""Tests for the BlueBubblesChannel adapter."""
+﻿"""Tests for the BlueBubblesChannel adapter."""
 
 from __future__ import annotations
 
@@ -129,3 +129,5 @@ class TestStatus:
         ch = BlueBubblesChannel()
         ch.connect()
         assert ch.status() == ChannelStatus.ERROR
+
+

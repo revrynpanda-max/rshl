@@ -1,4 +1,4 @@
-"""Benchmarking framework for OpenJarvis inference engines."""
+﻿"""Benchmarking framework for OpenJarvis inference engines."""
 
 from __future__ import annotations
 
@@ -27,3 +27,4 @@ __all__ = [
     "BenchmarkSuite",
     "ensure_registered",
 ]
+

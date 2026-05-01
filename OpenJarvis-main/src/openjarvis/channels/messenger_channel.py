@@ -1,4 +1,4 @@
-"""MessengerChannel — Facebook Messenger adapter via pymessenger."""
+﻿"""MessengerChannel â€” Facebook Messenger adapter via pymessenger."""
 
 from __future__ import annotations
 
@@ -134,3 +134,4 @@ class MessengerChannel(BaseChannel):
 
 
 __all__ = ["MessengerChannel"]
+

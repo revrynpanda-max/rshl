@@ -1,4 +1,4 @@
-"""Tests for bundled skill TOML files."""
+﻿"""Tests for bundled skill TOML files."""
 
 from __future__ import annotations
 
@@ -95,3 +95,5 @@ class TestStepsHaveToolNames:
         manifest = load_skill(toml_path)
         for i, step in enumerate(manifest.steps):
             assert step.tool_name, f"{toml_path.name} step {i} has empty tool_name"
+
+

@@ -1,4 +1,4 @@
-"""Tests for the ``jarvis workflow`` CLI commands."""
+﻿"""Tests for the ``jarvis workflow`` CLI commands."""
 
 from __future__ import annotations
 
@@ -26,3 +26,5 @@ class TestWorkflowCmd:
         assert "list" in result.output
         assert "run" in result.output
         assert "status" in result.output
+
+

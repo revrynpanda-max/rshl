@@ -1,4 +1,4 @@
-"""End-to-end tests for ``jarvis ask``."""
+﻿"""End-to-end tests for ``jarvis ask``."""
 
 from __future__ import annotations
 
@@ -91,3 +91,5 @@ class TestAskCommand:
         CliRunner().invoke(cli, ["ask", "Hello"])
         db_path = tmp_path / "telemetry.db"
         assert db_path.exists()
+
+

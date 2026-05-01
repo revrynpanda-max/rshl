@@ -1,4 +1,4 @@
-"""Test ChannelBridge routes to DeepResearchAgent."""
+﻿"""Test ChannelBridge routes to DeepResearchAgent."""
 
 from __future__ import annotations
 
@@ -53,3 +53,5 @@ def test_handle_chat_falls_back_to_system() -> None:
 
     assert result == "Generic response"
     mock_system.ask.assert_called_once()
+
+

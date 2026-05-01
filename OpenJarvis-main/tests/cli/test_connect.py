@@ -1,4 +1,4 @@
-"""Tests for ``jarvis connect`` CLI command."""
+﻿"""Tests for ``jarvis connect`` CLI command."""
 
 from __future__ import annotations
 
@@ -108,3 +108,5 @@ def test_connect_disconnect() -> None:
 
     assert result.exit_code == 0
     mock_instance.disconnect.assert_called_once()
+
+

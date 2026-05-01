@@ -1,4 +1,4 @@
-"""Tests for the security_scanner scorer."""
+﻿"""Tests for the security_scanner scorer."""
 
 from openjarvis.evals.core.types import EvalRecord
 from openjarvis.evals.scorers.security_scanner import SecurityScannerScorer
@@ -39,7 +39,7 @@ def test_all_vulns_found():
         "## Security Report\n\n"
         "**app.py**: Found SQL injection vulnerability "
         "(CRITICAL severity) in the database query.\n\n"
-        "**config.py**: Hardcoded secret — API key "
+        "**config.py**: Hardcoded secret â€” API key "
         "embedded in source code (HIGH severity).\n\n"
         "### Recommendations\n"
         "1. Use parameterized queries\n"
@@ -121,3 +121,5 @@ def test_no_vulnerabilities():
     )
     assert is_correct is None
     assert meta["reason"] == "no_vulnerabilities_in_manifest"
+
+

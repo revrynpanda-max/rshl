@@ -1,4 +1,4 @@
-"""Tests for the MLX engine (OpenAI-compatible)."""
+﻿"""Tests for the MLX engine (OpenAI-compatible)."""
 
 from __future__ import annotations
 
@@ -68,3 +68,5 @@ class TestMLXHealth:
                 side_effect=httpx.ConnectError("refused")
             )
             assert engine.health() is False
+
+

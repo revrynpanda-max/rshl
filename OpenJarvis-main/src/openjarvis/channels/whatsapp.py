@@ -1,4 +1,4 @@
-"""WhatsAppChannel — WhatsApp Cloud API adapter."""
+﻿"""WhatsAppChannel â€” WhatsApp Cloud API adapter."""
 
 from __future__ import annotations
 
@@ -54,7 +54,7 @@ class WhatsAppChannel(BaseChannel):
     # -- connection lifecycle ---------------------------------------------------
 
     def connect(self) -> None:
-        """Mark as connected (send-only — no persistent connection)."""
+        """Mark as connected (send-only â€” no persistent connection)."""
         if not self._token:
             logger.warning("No WhatsApp access token configured")
             self._status = ChannelStatus.ERROR
@@ -141,3 +141,4 @@ class WhatsAppChannel(BaseChannel):
 
 
 __all__ = ["WhatsAppChannel"]
+

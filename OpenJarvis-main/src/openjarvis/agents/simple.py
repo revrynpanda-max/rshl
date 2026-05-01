@@ -1,4 +1,4 @@
-"""SimpleAgent — single-turn query-to-response agent (no tool calling)."""
+﻿"""SimpleAgent â€” single-turn query-to-response agent (no tool calling)."""
 
 from __future__ import annotations
 
@@ -33,3 +33,4 @@ class SimpleAgent(BaseAgent):
 
 
 __all__ = ["SimpleAgent"]
+

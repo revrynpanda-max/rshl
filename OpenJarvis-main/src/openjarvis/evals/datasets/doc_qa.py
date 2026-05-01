@@ -1,4 +1,4 @@
-"""doc_qa dataset — 30 document-grounded QA tasks.
+﻿"""doc_qa dataset â€” 30 document-grounded QA tasks.
 
 Each task provides 3-6 real-world documentation excerpts and a question.
 The agent must answer using only the provided documents and cite sources.
@@ -215,7 +215,7 @@ _EASY_TASKS: List[Dict[str, Any]] = [
         "documents": [
             {
                 "title": "Redis: Cluster",
-                "content": "Redis Cluster provides a way to run a Redis installation where data is automatically sharded across multiple Redis nodes. It uses hash slots — there are 16384 hash slots in Redis Cluster. Every node in a Redis Cluster is responsible for a subset of the hash slots. Redis Cluster provides automatic failover when a master node becomes unreachable.",
+                "content": "Redis Cluster provides a way to run a Redis installation where data is automatically sharded across multiple Redis nodes. It uses hash slots â€” there are 16384 hash slots in Redis Cluster. Every node in a Redis Cluster is responsible for a subset of the hash slots. Redis Cluster provides automatic failover when a master node becomes unreachable.",
             },
             {
                 "title": "Redis: Sentinel",
@@ -268,7 +268,7 @@ _MEDIUM_TASKS: List[Dict[str, Any]] = [
         "documents": [
             {
                 "title": "Redis: RDB Persistence",
-                "content": "RDB persistence performs point-in-time snapshots at specified intervals. It produces compact single-file backups, perfect for disaster recovery. RDB maximizes Redis performance since the only work the Redis parent process needs to do is forking. However, RDB is not good if you need to minimize data loss — you might lose several minutes of data if Redis stops working.",
+                "content": "RDB persistence performs point-in-time snapshots at specified intervals. It produces compact single-file backups, perfect for disaster recovery. RDB maximizes Redis performance since the only work the Redis parent process needs to do is forking. However, RDB is not good if you need to minimize data loss â€” you might lose several minutes of data if Redis stops working.",
             },
             {
                 "title": "Redis: AOF Persistence",
@@ -389,7 +389,7 @@ _MEDIUM_TASKS: List[Dict[str, Any]] = [
         "documents": [
             {
                 "title": "Python: asyncio Event Loop",
-                "content": "The event loop runs asynchronous tasks and callbacks, performs network IO operations, and runs subprocesses. asyncio.run() creates a new event loop, runs the given coroutine, and closes the loop. Only one event loop can run per thread. The event loop uses cooperative multitasking — tasks must yield control voluntarily.",
+                "content": "The event loop runs asynchronous tasks and callbacks, performs network IO operations, and runs subprocesses. asyncio.run() creates a new event loop, runs the given coroutine, and closes the loop. Only one event loop can run per thread. The event loop uses cooperative multitasking â€” tasks must yield control voluntarily.",
             },
             {
                 "title": "Python: asyncio Tasks",
@@ -526,11 +526,11 @@ _MEDIUM_TASKS: List[Dict[str, Any]] = [
         "documents": [
             {
                 "title": "FastAPI: WebSocket",
-                "content": "FastAPI supports WebSocket endpoints using @app.websocket() decorator. Unlike HTTP, WebSocket provides full-duplex communication — both client and server can send messages at any time. The connection remains open until explicitly closed. You use await websocket.accept() to accept the connection, and await websocket.receive_text() / await websocket.send_text() for messaging.",
+                "content": "FastAPI supports WebSocket endpoints using @app.websocket() decorator. Unlike HTTP, WebSocket provides full-duplex communication â€” both client and server can send messages at any time. The connection remains open until explicitly closed. You use await websocket.accept() to accept the connection, and await websocket.receive_text() / await websocket.send_text() for messaging.",
             },
             {
                 "title": "FastAPI: HTTP Endpoints",
-                "content": "Regular HTTP endpoints use @app.get(), @app.post(), etc. Each request creates a new connection, the server processes it, and returns a response. HTTP is stateless — each request is independent. FastAPI automatically generates OpenAPI documentation for HTTP endpoints.",
+                "content": "Regular HTTP endpoints use @app.get(), @app.post(), etc. Each request creates a new connection, the server processes it, and returns a response. HTTP is stateless â€” each request is independent. FastAPI automatically generates OpenAPI documentation for HTTP endpoints.",
             },
             {
                 "title": "FastAPI: Testing",
@@ -712,7 +712,7 @@ _HARD_TASKS: List[Dict[str, Any]] = [
             },
             {
                 "title": "Redis: Pub/Sub",
-                "content": "PUBLISH/SUBSCRIBE allows message passing between Redis clients. Messages are fire-and-forget — if no subscriber is listening, the message is lost. For durable messaging, use Redis Streams instead.",
+                "content": "PUBLISH/SUBSCRIBE allows message passing between Redis clients. Messages are fire-and-forget â€” if no subscriber is listening, the message is lost. For durable messaging, use Redis Streams instead.",
             },
             {
                 "title": "Redis: Keyspace Notifications",
@@ -751,7 +751,7 @@ _HARD_TASKS: List[Dict[str, Any]] = [
             },
             {
                 "title": "FastAPI: Dependency Injection",
-                "content": "Dependencies can be scoped to path operations, routers, or the entire app. Use yield dependencies for setup/teardown (e.g., database sessions). Dependencies form a DAG — FastAPI resolves them in the correct order. Sub-dependencies are cached per-request by default.",
+                "content": "Dependencies can be scoped to path operations, routers, or the entire app. Use yield dependencies for setup/teardown (e.g., database sessions). Dependencies form a DAG â€” FastAPI resolves them in the correct order. Sub-dependencies are cached per-request by default.",
             },
             {
                 "title": "FastAPI: Exception Handling",
@@ -789,7 +789,7 @@ _HARD_TASKS: List[Dict[str, Any]] = [
         "documents": [
             {
                 "title": "K8s: Network Policies",
-                "content": "Network policies use label selectors to control pod-to-pod traffic. A default-deny policy blocks all ingress traffic to pods in a namespace. Egress policies can restrict outbound traffic. Network policies require a CNI plugin that supports them (Calico, Cilium, Weave Net). Policies are additive — if any policy allows traffic, it is allowed.",
+                "content": "Network policies use label selectors to control pod-to-pod traffic. A default-deny policy blocks all ingress traffic to pods in a namespace. Egress policies can restrict outbound traffic. Network policies require a CNI plugin that supports them (Calico, Cilium, Weave Net). Policies are additive â€” if any policy allows traffic, it is allowed.",
             },
             {
                 "title": "K8s: RBAC",
@@ -829,7 +829,7 @@ _HARD_TASKS: List[Dict[str, Any]] = [
         "documents": [
             {
                 "title": "Python: logging Configuration",
-                "content": "dictConfig() provides the most flexible configuration. Loggers form a hierarchy based on dot-separated names. The root logger catches all unhandled log records. Each logger can have multiple handlers with different levels. Propagation sends records up the hierarchy — set propagate=False to prevent duplicate logs.",
+                "content": "dictConfig() provides the most flexible configuration. Loggers form a hierarchy based on dot-separated names. The root logger catches all unhandled log records. Each logger can have multiple handlers with different levels. Propagation sends records up the hierarchy â€” set propagate=False to prevent duplicate logs.",
             },
             {
                 "title": "Python: logging Handlers",
@@ -961,7 +961,7 @@ _HARD_TASKS: List[Dict[str, Any]] = [
             },
             {
                 "title": "Redis: Lua Scripting",
-                "content": "EVAL runs Lua scripts atomically on the server. Scripts can read and write multiple keys atomically. Use EVALSHA with script caching for performance. Lua scripts block other commands during execution — keep them short. Scripts have access to redis.call() and redis.pcall() functions.",
+                "content": "EVAL runs Lua scripts atomically on the server. Scripts can read and write multiple keys atomically. Use EVALSHA with script caching for performance. Lua scripts block other commands during execution â€” keep them short. Scripts have access to redis.call() and redis.pcall() functions.",
             },
             {
                 "title": "Redis: Pub/Sub",
@@ -969,7 +969,7 @@ _HARD_TASKS: List[Dict[str, Any]] = [
             },
             {
                 "title": "Redis: Transactions",
-                "content": "MULTI/EXEC executes commands atomically. WATCH provides optimistic locking — if a watched key changes before EXEC, the transaction is aborted. Transactions do not support rollback — all or nothing execution. DISCARD cancels a transaction.",
+                "content": "MULTI/EXEC executes commands atomically. WATCH provides optimistic locking â€” if a watched key changes before EXEC, the transaction is aborted. Transactions do not support rollback â€” all or nothing execution. DISCARD cancels a transaction.",
             },
             {
                 "title": "Redis: Cluster",
@@ -977,7 +977,7 @@ _HARD_TASKS: List[Dict[str, Any]] = [
             },
             {
                 "title": "Redis: Monitoring",
-                "content": "SLOWLOG records queries exceeding a time threshold. CLIENT LIST shows connected clients. MONITOR streams all commands received — use sparingly as it impacts performance. INFO commandstats shows per-command statistics.",
+                "content": "SLOWLOG records queries exceeding a time threshold. CLIENT LIST shows connected clients. MONITOR streams all commands received â€” use sparingly as it impacts performance. INFO commandstats shows per-command statistics.",
             },
         ],
         "required_facts": [
@@ -1104,3 +1104,4 @@ class DocQADataset(DatasetProvider):
 
 
 __all__ = ["DocQADataset"]
+

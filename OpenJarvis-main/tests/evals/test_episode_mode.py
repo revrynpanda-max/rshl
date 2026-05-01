@@ -1,4 +1,4 @@
-"""Tests for EvalRunner episode mode."""
+﻿"""Tests for EvalRunner episode mode."""
 
 from openjarvis.evals.core.dataset import DatasetProvider
 from openjarvis.evals.core.types import EvalRecord
@@ -51,3 +51,5 @@ class TestRunConfigEpisodeMode:
 
         cfg = RunConfig(benchmark="test", backend="test", model="test")
         assert cfg.episode_mode is False
+
+

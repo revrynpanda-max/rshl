@@ -1,4 +1,4 @@
-"""Abstract base for multi-turn task environments."""
+﻿"""Abstract base for multi-turn task environments."""
 
 from __future__ import annotations
 
@@ -37,10 +37,10 @@ class TaskEnvironment(ABC):
     """Environment for multi-turn interactive evaluation.
 
     Subclasses implement the reset/step/evaluate lifecycle:
-    1. ``reset(record)`` — initialize the environment, return initial observation
-    2. ``step(agent_response)`` — parse agent action, execute, return feedback
-    3. ``evaluate()`` — assess final state, return (is_correct, metadata)
-    4. ``close()`` — release resources
+    1. ``reset(record)`` â€” initialize the environment, return initial observation
+    2. ``step(agent_response)`` â€” parse agent action, execute, return feedback
+    3. ``evaluate()`` â€” assess final state, return (is_correct, metadata)
+    4. ``close()`` â€” release resources
     """
 
     @abstractmethod
@@ -94,7 +94,7 @@ class TaskEnvironment(ABC):
         generate_fn: Any,
         record: "EvalRecord",
     ) -> str:
-        """Run the full reset → [generate → step] × N → evaluate cycle.
+        """Run the full reset â†’ [generate â†’ step] Ã— N â†’ evaluate cycle.
 
         Called by AgenticRunner for environments that use the
         reset/step/evaluate protocol instead of one-shot generation.
@@ -113,7 +113,7 @@ class TaskEnvironment(ABC):
 
         messages: List[Dict[str, str]] = []
 
-        # Use the full record.problem as the first user message — it
+        # Use the full record.problem as the first user message â€” it
         # already contains the system prompt, schema, and task instruction.
         messages.append({"role": "user", "content": record.problem})
 
@@ -152,3 +152,4 @@ class TaskEnvironment(ABC):
 
 
 __all__ = ["TaskEnvironment"]
+

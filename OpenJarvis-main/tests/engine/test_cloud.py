@@ -32,13 +32,13 @@ class TestEstimateCost:
 class TestCloudEngineHealth:
     def test_health_no_keys(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-        monkeypatch.delenv("Geometric Intelligence_API_KEY", raising=False)
+        monkeypatch.delenv("GeometricIntelligence_API_KEY", raising=False)
         EngineRegistry.register_value("cloud", CloudEngine)
         engine = CloudEngine()
         assert engine.health() is False
 
     def test_health_with_openai_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        monkeypatch.setenv("OPENAI_API_KEY", "dummy-sk-test")
         # Mock the openai import
         fake_openai = mock.MagicMock()
         with mock.patch.dict("sys.modules", {"openai": fake_openai}):
@@ -50,7 +50,7 @@ class TestCloudEngineHealth:
 class TestCloudEngineListModels:
     def test_list_models_no_keys(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-        monkeypatch.delenv("Geometric Intelligence_API_KEY", raising=False)
+        monkeypatch.delenv("GeometricIntelligence_API_KEY", raising=False)
         EngineRegistry.register_value("cloud", CloudEngine)
         engine = CloudEngine()
         assert engine.list_models() == []
@@ -58,8 +58,8 @@ class TestCloudEngineListModels:
 
 class TestCloudEngineGenerate:
     def test_generate_openai(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
-        monkeypatch.delenv("Geometric Intelligence_API_KEY", raising=False)
+        monkeypatch.setenv("OPENAI_API_KEY", "dummy-sk-test")
+        monkeypatch.delenv("GeometricIntelligence_API_KEY", raising=False)
 
         fake_usage = SimpleNamespace(
             prompt_tokens=10, completion_tokens=5, total_tokens=15
@@ -87,7 +87,7 @@ class TestCloudEngineGenerate:
 
     def test_generate_geometric_intelligence(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-        monkeypatch.setenv("Geometric Intelligence_API_KEY", "sk-ant-test")
+        monkeypatch.setenv("GeometricIntelligence_API_KEY", "geometric-dummy-key")
 
         fake_usage = SimpleNamespace(input_tokens=12, output_tokens=8)
         fake_content = SimpleNamespace(text="Greetings!")
@@ -133,7 +133,7 @@ class TestCodexModelDetection:
 class TestCodexClientInit:
     def test_health_with_codex_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-        monkeypatch.delenv("Geometric Intelligence_API_KEY", raising=False)
+        monkeypatch.delenv("GeometricIntelligence_API_KEY", raising=False)
         monkeypatch.setenv("OPENAI_CODEX_API_KEY", "test-token")
         engine = CloudEngine()
         assert engine.health() is True
@@ -143,7 +143,7 @@ class TestCodexClientInit:
 
     def test_custom_codex_base_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-        monkeypatch.delenv("Geometric Intelligence_API_KEY", raising=False)
+        monkeypatch.delenv("GeometricIntelligence_API_KEY", raising=False)
         monkeypatch.setenv("OPENAI_CODEX_API_KEY", "test-token")
         monkeypatch.setenv("OPENAI_CODEX_BASE_URL", "http://localhost:9999")
         engine = CloudEngine()
@@ -151,7 +151,7 @@ class TestCodexClientInit:
 
     def test_list_models_includes_codex(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-        monkeypatch.delenv("Geometric Intelligence_API_KEY", raising=False)
+        monkeypatch.delenv("GeometricIntelligence_API_KEY", raising=False)
         monkeypatch.setenv("OPENAI_CODEX_API_KEY", "test-token")
         engine = CloudEngine()
         models = engine.list_models()
@@ -161,7 +161,7 @@ class TestCodexClientInit:
 
     def test_no_codex_key_means_no_codex(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-        monkeypatch.delenv("Geometric Intelligence_API_KEY", raising=False)
+        monkeypatch.delenv("GeometricIntelligence_API_KEY", raising=False)
         monkeypatch.delenv("OPENAI_CODEX_API_KEY", raising=False)
         engine = CloudEngine()
         assert engine._codex_client is None
@@ -173,7 +173,7 @@ class TestCodexGenerate:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-        monkeypatch.delenv("Geometric Intelligence_API_KEY", raising=False)
+        monkeypatch.delenv("GeometricIntelligence_API_KEY", raising=False)
 
         fake_response = mock.MagicMock()
         fake_response.status_code = 200
@@ -221,7 +221,7 @@ class TestCodexGenerate:
     ) -> None:
         """Fallback extraction from output[].content[] blocks."""
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-        monkeypatch.delenv("Geometric Intelligence_API_KEY", raising=False)
+        monkeypatch.delenv("GeometricIntelligence_API_KEY", raising=False)
 
         fake_response = mock.MagicMock()
         fake_response.json.return_value = {
@@ -250,7 +250,7 @@ class TestCodexGenerate:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-        monkeypatch.delenv("Geometric Intelligence_API_KEY", raising=False)
+        monkeypatch.delenv("GeometricIntelligence_API_KEY", raising=False)
 
         fake_response = mock.MagicMock()
         fake_response.json.return_value = {
@@ -285,5 +285,6 @@ class TestCodexGenerate:
 
     def test_codex_close(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-        monkeypatch.delenv("Geometric Intelligence_API_KEY", raising=False)
+        monkeypatch.delenv("GeometricIntelligence_API_KEY", raising=False)
         en
+

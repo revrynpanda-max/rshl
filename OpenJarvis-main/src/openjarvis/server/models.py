@@ -1,4 +1,4 @@
-"""Pydantic request/response models for the OpenAI-compatible API."""
+﻿"""Pydantic request/response models for the OpenAI-compatible API."""
 
 from __future__ import annotations
 
@@ -129,3 +129,4 @@ __all__ = [
     "StreamChoice",
     "UsageInfo",
 ]
+

@@ -1,4 +1,4 @@
-"""``jarvis agents`` — persistent agent lifecycle management."""
+﻿"""``jarvis agents`` â€” persistent agent lifecycle management."""
 
 from __future__ import annotations
 
@@ -46,7 +46,7 @@ def _resolve_agent_id(manager, agent_id_or_name: str) -> str:
 
 @click.group("agents")
 def agent() -> None:
-    """Manage persistent agents — create, inspect, chat, bind channels."""
+    """Manage persistent agents â€” create, inspect, chat, bind channels."""
 
 
 @agent.command("list")
@@ -345,7 +345,7 @@ def launch():
     templates = _AM.list_templates()
     click.echo("Available templates:")
     for i, t in enumerate(templates, 1):
-        click.echo(f"  [{i}] {t['name']} — {t.get('description', '')}")
+        click.echo(f"  [{i}] {t['name']} â€” {t.get('description', '')}")
     click.echo(f"  [{len(templates) + 1}] Custom (from scratch)")
     choice = click.prompt("Select template", type=int, default=1)
     if choice <= len(templates):
@@ -568,7 +568,7 @@ def trace(agent_id, run_number, limit):
     if run_number is not None and 1 <= run_number <= len(traces):
         t = traces[run_number - 1]
         click.echo(
-            f"Trace #{run_number} — {t.outcome} ({t.total_latency_seconds:.1f}s)"
+            f"Trace #{run_number} â€” {t.outcome} ({t.total_latency_seconds:.1f}s)"
         )
         for i, step in enumerate(t.steps, 1):
             click.echo(
@@ -748,3 +748,4 @@ def messages(agent_id):
 
 
 __all__ = ["agent"]
+

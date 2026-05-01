@@ -1,4 +1,4 @@
-"""Container sandbox for isolated agent execution."""
+﻿"""Container sandbox for isolated agent execution."""
 
 from openjarvis.sandbox.mount_security import (
     AllowedRoot,
@@ -16,3 +16,4 @@ __all__ = [
     "validate_mount",
     "validate_mounts",
 ]
+

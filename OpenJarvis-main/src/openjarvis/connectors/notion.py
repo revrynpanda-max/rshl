@@ -1,4 +1,4 @@
-"""Notion connector — syncs pages via the Notion REST API.
+﻿"""Notion connector â€” syncs pages via the Notion REST API.
 
 Uses a Notion internal integration token stored locally.  All network calls
 are isolated in module-level functions (``_notion_api_*``) to make them
@@ -119,18 +119,18 @@ def _render_blocks_to_markdown(blocks: List[Dict[str, Any]]) -> str:
     """Convert a list of Notion block objects to a markdown string.
 
     Supported block types:
-    - ``paragraph`` → plain text
-    - ``heading_1`` → ``# text``
-    - ``heading_2`` → ``## text``
-    - ``heading_3`` → ``### text``
-    - ``bulleted_list_item`` → ``- text``
-    - ``numbered_list_item`` → ``1. text``
-    - ``to_do`` → ``- [ ] text`` or ``- [x] text``
-    - ``code`` → fenced code block
-    - ``quote`` → ``> text``
-    - ``divider`` → ``---``
-    - ``toggle`` → rendered as plain heading + content
-    - Everything else → extract rich_text if available, skip otherwise
+    - ``paragraph`` â†’ plain text
+    - ``heading_1`` â†’ ``# text``
+    - ``heading_2`` â†’ ``## text``
+    - ``heading_3`` â†’ ``### text``
+    - ``bulleted_list_item`` â†’ ``- text``
+    - ``numbered_list_item`` â†’ ``1. text``
+    - ``to_do`` â†’ ``- [ ] text`` or ``- [x] text``
+    - ``code`` â†’ fenced code block
+    - ``quote`` â†’ ``> text``
+    - ``divider`` â†’ ``---``
+    - ``toggle`` â†’ rendered as plain heading + content
+    - Everything else â†’ extract rich_text if available, skip otherwise
     """
     lines: List[str] = []
 
@@ -272,7 +272,7 @@ class NotionConnector(BaseConnector):
     # ------------------------------------------------------------------
 
     def _resolve_token(self) -> str:
-        """Return the active token — direct > file."""
+        """Return the active token â€” direct > file."""
         if self._token:
             return self._token
         tokens = load_tokens(self._credentials_path)
@@ -437,3 +437,4 @@ class NotionConnector(BaseConnector):
                 category="knowledge",
             ),
         ]
+

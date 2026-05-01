@@ -1,4 +1,4 @@
-"""Tests for the Rich display helpers in openjarvis.evals.core.display."""
+﻿"""Tests for the Rich display helpers in openjarvis.evals.core.display."""
 
 from __future__ import annotations
 
@@ -134,7 +134,7 @@ class TestPrintMetricsTable:
         console, buf = _make_console()
         print_metrics_table(console, summary)
         output = buf.getvalue()
-        assert "Task-Level Metrics" in output
+        assert "Tadummy-sk-Level Metrics" in output
         assert "Accuracy" in output
         assert "Latency" in output
         assert "Energy" in output
@@ -211,3 +211,5 @@ class TestPrintCompletion:
         print_completion(console, summary)
         output = buf.getvalue()
         assert "complete" in output.lower()
+
+

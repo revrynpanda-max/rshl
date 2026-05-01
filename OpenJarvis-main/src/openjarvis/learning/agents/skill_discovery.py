@@ -1,4 +1,4 @@
-"""Skill discovery -- mine recurring tool sequences from traces."""
+﻿"""Skill discovery -- mine recurring tool sequences from traces."""
 
 from __future__ import annotations
 
@@ -202,3 +202,4 @@ class SkillDiscovery:
 
 
 __all__ = ["DiscoveredSkill", "SkillDiscovery"]
+

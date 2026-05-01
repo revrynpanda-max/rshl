@@ -1,8 +1,8 @@
-"""WorkArena++ enterprise workflow benchmark on ServiceNow.
+﻿"""WorkArena++ enterprise workflow benchmark on ServiceNow.
 
 Faithful integration of the original browsergym-workarena package.
 Tasks are Python classes that run against a live ServiceNow instance
-via BrowserGym / Playwright — NOT a static JSON dataset.
+via BrowserGym / Playwright â€” NOT a static JSON dataset.
 
 L1 = 33 atomic tasks (ICML 2024)
 L2/L3 = 682 composite tasks (NeurIPS 2024)
@@ -52,7 +52,7 @@ class WorkArenaDataset(DatasetProvider):
     package exactly as in the original benchmark.  Each task class is
     instantiated with a seed by BrowserGym at evaluation time.  Scoring
     uses the task's native ``validate()`` method against the live
-    ServiceNow instance — no LLM judge or text matching.
+    ServiceNow instance â€” no LLM judge or text matching.
     """
 
     dataset_id = "workarena"
@@ -154,7 +154,7 @@ class WorkArenaDataset(DatasetProvider):
         level = self._infer_level(task_class)
 
         problem = (
-            f"[BrowserGym task — goal provided by environment at runtime]\n"
+            f"[BrowserGym task â€” goal provided by environment at runtime]\n"
             f"Task ID: {task_id}\n"
             f"Category: {category}\n"
             f"Level: {level}"
@@ -255,3 +255,4 @@ class WorkArenaDataset(DatasetProvider):
 
 
 __all__ = ["WorkArenaDataset"]
+

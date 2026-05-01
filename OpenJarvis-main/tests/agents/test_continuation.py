@@ -1,4 +1,4 @@
-"""Tests for continuation handling (Phase 14.2)."""
+﻿"""Tests for continuation handling (Phase 14.2)."""
 
 from __future__ import annotations
 
@@ -100,3 +100,5 @@ class TestContinuation:
         agent = ContinuationAgent(engine, "test-model")
         result = agent.run("Hi")
         assert result.content == "Done"
+
+

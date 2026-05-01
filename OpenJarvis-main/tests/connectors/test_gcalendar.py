@@ -1,4 +1,4 @@
-"""Tests for GCalendarConnector — OAuth-authenticated Google Calendar sync connector.
+﻿"""Tests for GCalendarConnector â€” OAuth-authenticated Google Calendar sync connector.
 
 All Calendar API calls are mocked; no network access is required.
 """
@@ -16,7 +16,7 @@ from openjarvis.connectors._stubs import Document
 from openjarvis.core.registry import ConnectorRegistry
 
 # ---------------------------------------------------------------------------
-# Helpers — fake API payloads
+# Helpers â€” fake API payloads
 # ---------------------------------------------------------------------------
 
 _CALENDARS_RESPONSE = {"items": [{"id": "primary", "summary": "My Calendar"}]}
@@ -70,7 +70,7 @@ def connector(tmp_path: Path):
 
 
 # ---------------------------------------------------------------------------
-# Test 1 — not connected without a credentials file
+# Test 1 â€” not connected without a credentials file
 # ---------------------------------------------------------------------------
 
 
@@ -80,7 +80,7 @@ def test_not_connected(connector) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 2 — auth_url contains calendar.readonly scope
+# Test 2 â€” auth_url contains calendar.readonly scope
 # ---------------------------------------------------------------------------
 
 
@@ -93,7 +93,7 @@ def test_auth_url(connector) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 3 — sync yields events with correct fields (mocked API)
+# Test 3 â€” sync yields events with correct fields (mocked API)
 # ---------------------------------------------------------------------------
 
 
@@ -135,7 +135,7 @@ def test_sync_yields_events(
 
 
 # ---------------------------------------------------------------------------
-# Test 4 — disconnect removes the credentials file
+# Test 4 â€” disconnect removes the credentials file
 # ---------------------------------------------------------------------------
 
 
@@ -152,7 +152,7 @@ def test_disconnect(connector, tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 5 — mcp_tools returns the three expected tool specs
+# Test 5 â€” mcp_tools returns the three expected tool specs
 # ---------------------------------------------------------------------------
 
 
@@ -167,7 +167,7 @@ def test_mcp_tools(connector) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 6 — ConnectorRegistry contains "gcalendar" after import
+# Test 6 â€” ConnectorRegistry contains "gcalendar" after import
 # ---------------------------------------------------------------------------
 
 
@@ -181,3 +181,5 @@ def test_registry() -> None:
     assert ConnectorRegistry.contains("gcalendar")
     cls = ConnectorRegistry.get("gcalendar")
     assert cls.connector_id == "gcalendar"
+
+

@@ -1,4 +1,4 @@
-"""EnergyMonitor ABC — multi-vendor energy measurement with hardware counters."""
+﻿"""EnergyMonitor ABC â€” multi-vendor energy measurement with hardware counters."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ class EnergyVendor(str, Enum):
 class EnergySample:
     """Aggregated energy metrics over an inference bracket.
 
-    Superset of ``GpuSample`` — adds vendor, device info, energy method,
+    Superset of ``GpuSample`` â€” adds vendor, device info, energy method,
     and per-component breakdown (CPU, GPU, DRAM, ANE).
     """
 
@@ -104,14 +104,14 @@ def create_energy_monitor(
     poll_interval_ms: int = 50,
     prefer_vendor: Optional[str] = None,
 ) -> Optional[EnergyMonitor]:
-    """Factory — auto-detect and return the best available EnergyMonitor.
+    """Factory â€” auto-detect and return the best available EnergyMonitor.
 
     Detection order: NVIDIA > AMD > Apple > CPU RAPL.
     If *prefer_vendor* is set, try that vendor first.
 
     Returns ``None`` if no energy monitoring is available.
     """
-    # Build ordered candidate list — imports are defensive because vendor
+    # Build ordered candidate list â€” imports are defensive because vendor
     # packages (amdsmi, pynvml) may be installed but non-functional on the
     # current platform (e.g. amdsmi on macOS).
     vendor_map: dict[str, type[EnergyMonitor]] = {}
@@ -174,3 +174,4 @@ __all__ = [
     "EnergyVendor",
     "create_energy_monitor",
 ]
+

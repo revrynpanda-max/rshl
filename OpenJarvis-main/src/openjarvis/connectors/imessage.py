@@ -1,11 +1,11 @@
-"""iMessage connector — reads directly from the macOS Messages SQLite database.
+﻿"""iMessage connector â€” reads directly from the macOS Messages SQLite database.
 
 No API calls, no OAuth.  The connector opens ``~/Library/Messages/chat.db``
 in read-only mode and yields one :class:`Document` per message that has
 non-NULL text.
 
 Requires **Full Disk Access** granted to the terminal / app in
-System Settings → Privacy & Security → Full Disk Access.
+System Settings â†’ Privacy & Security â†’ Full Disk Access.
 
 Timestamp notes
 ---------------
@@ -128,14 +128,14 @@ class IMessageConnector(BaseConnector):
 
         try:
             # ------------------------------------------------------------------
-            # 1. Build handle_id → identifier map
+            # 1. Build handle_id â†’ identifier map
             # ------------------------------------------------------------------
             handle_map: Dict[int, str] = {}
             for row in conn.execute("SELECT ROWID, id FROM handle"):
                 handle_map[row[0]] = row[1]
 
             # ------------------------------------------------------------------
-            # 2. Build message_id → chat_id map
+            # 2. Build message_id â†’ chat_id map
             # ------------------------------------------------------------------
             msg_to_chat: Dict[int, int] = {}
             for row in conn.execute(
@@ -144,7 +144,7 @@ class IMessageConnector(BaseConnector):
                 msg_to_chat[row[0]] = row[1]
 
             # ------------------------------------------------------------------
-            # 3. Build chat_id → {identifier, display_name} map
+            # 3. Build chat_id â†’ {identifier, display_name} map
             # ------------------------------------------------------------------
             chat_map: Dict[int, Tuple[str, str]] = {}
             for row in conn.execute(
@@ -284,3 +284,4 @@ class IMessageConnector(BaseConnector):
                 category="knowledge",
             ),
         ]
+

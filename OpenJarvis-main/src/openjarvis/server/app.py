@@ -1,4 +1,4 @@
-"""FastAPI application factory for the OpenJarvis API server."""
+﻿"""FastAPI application factory for the OpenJarvis API server."""
 
 from __future__ import annotations
 
@@ -268,7 +268,7 @@ def create_app(
         except Exception as exc:
             logger.debug("Auth middleware init skipped: %s", exc)
 
-    # Mount webhook routes (always — SendBlue may be configured dynamically)
+    # Mount webhook routes (always â€” SendBlue may be configured dynamically)
     if webhook_config:
         try:
             from openjarvis.server.webhook_routes import (
@@ -297,7 +297,7 @@ def create_app(
                 name="static-assets",
             )
 
-        # Explicit root route — must be registered before the catch-all
+        # Explicit root route â€” must be registered before the catch-all
         @app.get("/")
         async def spa_root():
             """Serve the SPA index for the root path."""
@@ -321,3 +321,4 @@ def create_app(
 
 
 __all__ = ["create_app"]
+

@@ -1,4 +1,4 @@
-"""Tests for ``jarvis ask --agent`` CLI integration."""
+﻿"""Tests for ``jarvis ask --agent`` CLI integration."""
 
 from __future__ import annotations
 
@@ -304,3 +304,5 @@ class TestBuildTools:
         config = JarvisConfig()
         tools = _build_tools(["calculator", "think"], config, mock_setup, "test-model")
         assert len(tools) == 2
+
+

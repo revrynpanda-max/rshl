@@ -1,4 +1,4 @@
-"""Tests for AuditLogger."""
+﻿"""Tests for AuditLogger."""
 
 from __future__ import annotations
 
@@ -24,14 +24,14 @@ class TestAuditLogger:
             findings=[
                 ScanFinding(
                     pattern_name="openai_key",
-                    matched_text="sk-abc123...",
+                    matched_text="dummy-sk-abc123...",
                     threat_level=ThreatLevel.CRITICAL,
                     start=0,
                     end=12,
                     description="OpenAI API key",
                 )
             ],
-            content_preview="sk-abc123...",
+            content_preview="dummy-sk-abc123...",
             action_taken="warn",
         )
         logger.log(event)
@@ -167,3 +167,5 @@ class TestAuditLogger:
         logger2 = AuditLogger(db_path=db_path)
         assert logger2.count() == 1
         logger2.close()
+
+

@@ -1,4 +1,4 @@
-"""``jarvis connect`` -- manage data source connections."""
+﻿"""``jarvis connect`` -- manage data source connections."""
 
 from __future__ import annotations
 
@@ -95,7 +95,7 @@ def _connect_source(registry: object, source: str, path: str = "") -> None:
             )
 
     elif auth_type == "oauth":
-        # OAuth connectors — auto-open browser + catch callback
+        # OAuth connectors â€” auto-open browser + catch callback
         from openjarvis.connectors.oauth import (
             get_client_credentials,
             get_provider_for_connector,
@@ -134,7 +134,7 @@ def _connect_source(registry: object, source: str, path: str = "") -> None:
             console.print(f"[red]OAuth flow failed for {source}: {exc}[/red]")
 
     elif auth_type == "token":
-        # Token-based connectors (e.g. Oura) — prompt for personal access token
+        # Token-based connectors (e.g. Oura) â€” prompt for personal access token
         import json
         from pathlib import Path
 
@@ -204,7 +204,7 @@ def connect(
 ) -> None:
     """Manage data source connections (Gmail, Obsidian, etc.)."""
     # Lazy imports to avoid top-level side effects
-    import openjarvis.connectors  # noqa: F401 — registers all connectors
+    import openjarvis.connectors  # noqa: F401 â€” registers all connectors
     from openjarvis.core.registry import ConnectorRegistry
 
     if list_sources:
@@ -223,5 +223,6 @@ def connect(
         _connect_source(ConnectorRegistry, source, path=path)
         return
 
-    # No arguments — show help
+    # No arguments â€” show help
     click.echo(ctx.get_help())
+

@@ -1,4 +1,4 @@
-"""ChannelAgent — bridge between messaging channels and AI agents.
+﻿"""ChannelAgent â€” bridge between messaging channels and AI agents.
 
 Routes incoming :class:`~openjarvis.channels._stubs.ChannelMessage` objects
 to an agent, classifies queries as "quick" or "deep", and delivers responses
@@ -55,7 +55,7 @@ def classify_query(text: str) -> str:
 # ChannelAgent
 # ---------------------------------------------------------------------------
 
-_ESCALATION_TEMPLATE = "{preview}...\n\n---\nFull report ready — open in OpenJarvis:\nopenjarvis://research/{session_id}"
+_ESCALATION_TEMPLATE = "{preview}...\n\n---\nFull report ready â€” open in OpenJarvis:\nopenjarvis://research/{session_id}"
 _LONG_RESPONSE_THRESHOLD = 500
 
 
@@ -146,3 +146,4 @@ class ChannelAgent:
 
 
 __all__ = ["ChannelAgent", "classify_query"]
+

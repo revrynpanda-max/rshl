@@ -1,4 +1,4 @@
-"""Tests for the channel abstraction stubs."""
+﻿"""Tests for the channel abstraction stubs."""
 
 from __future__ import annotations
 
@@ -118,3 +118,5 @@ class TestBaseChannel:
         assert ch.status() == ChannelStatus.DISCONNECTED
         assert ch.send("test", "hello") is True
         assert ch.list_channels() == []
+
+

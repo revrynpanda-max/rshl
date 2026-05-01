@@ -1,4 +1,4 @@
-"""MMLU-Pro MCQ scorer — LLM-based letter extraction + exact match.
+﻿"""MMLU-Pro MCQ scorer â€” LLM-based letter extraction + exact match.
 
 Adapted from IPW's mcq.py evaluation handler.
 """
@@ -104,3 +104,4 @@ class MMLUProScorer(LLMJudgeScorer):
 
 
 __all__ = ["MMLUProScorer"]
+

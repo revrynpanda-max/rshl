@@ -1,4 +1,4 @@
-"""PaperArena: scientific literature reasoning benchmark.
+﻿"""PaperArena: scientific literature reasoning benchmark.
 
 Evaluates agents on research paper comprehension with three question types:
 MC (multiple choice), CA (closed answer), OA (open answer) across
@@ -167,3 +167,4 @@ class PaperArenaDataset(DatasetProvider):
 
 
 __all__ = ["PaperArenaDataset"]
+

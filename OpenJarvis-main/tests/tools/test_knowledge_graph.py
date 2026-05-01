@@ -1,4 +1,4 @@
-"""Tests for knowledge graph storage backend (Phase 15.3)."""
+﻿"""Tests for knowledge graph storage backend (Phase 15.3)."""
 
 from __future__ import annotations
 
@@ -133,3 +133,5 @@ class TestKnowledgeGraph:
         kg.add_entity(Entity(entity_id="a", entity_type="test", name="A"))
         assert kg.entity_count() == 1
         kg.close()
+
+

@@ -1,4 +1,4 @@
-"""Tests for all 15 benchmark dataset and scorer registrations.
+﻿"""Tests for all 15 benchmark dataset and scorer registrations.
 
 These tests verify:
 1. Each dataset class can be instantiated
@@ -431,3 +431,5 @@ class TestStructuralScorers:
         )
         is_correct, meta = scorer.score(record, "output")
         assert is_correct is True
+
+

@@ -1,4 +1,4 @@
-"""Browser automation tools — Playwright-based web interaction."""
+﻿"""Browser automation tools â€” Playwright-based web interaction."""
 
 from __future__ import annotations
 
@@ -538,3 +538,4 @@ __all__ = [
     "BrowserScreenshotTool",
     "BrowserExtractTool",
 ]
+

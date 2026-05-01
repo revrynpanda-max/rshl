@@ -1,4 +1,4 @@
-"""Tests for eval export utilities."""
+﻿"""Tests for eval export utilities."""
 
 from __future__ import annotations
 
@@ -428,3 +428,5 @@ class TestHardwareInfo:
         assert "platform" in hw
         assert "cpu_count" in hw
         assert hw["cpu_count"] > 0
+
+

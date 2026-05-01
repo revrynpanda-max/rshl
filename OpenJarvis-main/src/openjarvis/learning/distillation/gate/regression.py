@@ -1,10 +1,10 @@
-"""Per-cluster regression detection for the benchmark gate.
+﻿"""Per-cluster regression detection for the benchmark gate.
 
 After an edit is applied, the gate compares the before and after
 BenchmarkSnapshots. If any cluster's score dropped by more than
 ``max_regression``, the edit is rejected.
 
-See spec §7.3.
+See spec Â§7.3.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ class RegressionResult:
 
     has_regression: bool
     regressed_clusters: dict[str, float] = field(default_factory=dict)
-    """Cluster id → negative delta for clusters that regressed beyond threshold."""
+    """Cluster id â†’ negative delta for clusters that regressed beyond threshold."""
 
 
 def regression_check(
@@ -58,3 +58,4 @@ def regression_check(
         has_regression=bool(regressed),
         regressed_clusters=regressed,
     )
+

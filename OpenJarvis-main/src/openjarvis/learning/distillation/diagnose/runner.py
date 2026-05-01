@@ -316,3 +316,4 @@ def _parse_cluster_list(json_str: str) -> list[FailureCluster]:
             logger.warning("Skipping invalid cluster: %s", e)
             continue
     return clusters
+

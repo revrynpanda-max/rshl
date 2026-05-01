@@ -1,4 +1,4 @@
-"""Tests for VLLMMetricsScraper — Prometheus text format parsing."""
+﻿"""Tests for VLLMMetricsScraper â€” Prometheus text format parsing."""
 
 from __future__ import annotations
 
@@ -200,3 +200,5 @@ class TestVLLMMetricsScraper:
         scraper = VLLMMetricsScraper()
         metrics = scraper._parse("")
         assert metrics == VLLMMetrics()
+
+

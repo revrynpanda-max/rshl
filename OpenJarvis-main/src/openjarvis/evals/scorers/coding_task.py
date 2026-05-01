@@ -1,4 +1,4 @@
-"""Coding task scorer — test pass rate + structural validation.
+﻿"""Coding task scorer â€” test pass rate + structural validation.
 
 Extracts the function/class from model output and runs test cases
 to determine correctness.
@@ -140,3 +140,4 @@ class CodingTaskScorer(Scorer):
 
 
 __all__ = ["CodingTaskScorer"]
+

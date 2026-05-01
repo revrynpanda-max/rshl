@@ -1,4 +1,4 @@
-"""Abstract base classes and data types for text-to-speech backends."""
+﻿"""Abstract base classes and data types for text-to-speech backends."""
 
 from __future__ import annotations
 
@@ -51,3 +51,4 @@ class TTSBackend(ABC):
 
 
 __all__ = ["TTSBackend", "TTSResult"]
+

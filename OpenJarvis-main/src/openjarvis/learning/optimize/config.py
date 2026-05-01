@@ -1,4 +1,4 @@
-"""TOML config loader for optimization runs."""
+﻿"""TOML config loader for optimization runs."""
 
 from __future__ import annotations
 
@@ -100,3 +100,4 @@ def load_benchmark_specs(data: Dict[str, Any]) -> List[Any]:
 
 
 __all__ = ["load_benchmark_specs", "load_objectives", "load_optimize_config"]
+

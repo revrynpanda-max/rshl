@@ -1,4 +1,4 @@
-"""Tests for the Python SDK — Jarvis class and MemoryHandle."""
+﻿"""Tests for the Python SDK â€” Jarvis class and MemoryHandle."""
 
 from __future__ import annotations
 
@@ -295,3 +295,5 @@ class TestJarvisLifecycle:
         j = Jarvis(config=JarvisConfig())
         j.close()
         j.close()  # should not raise
+
+

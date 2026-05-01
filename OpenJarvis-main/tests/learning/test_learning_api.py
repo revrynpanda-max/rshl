@@ -1,4 +1,4 @@
-"""Tests for the Learning Dashboard API endpoints."""
+﻿"""Tests for the Learning Dashboard API endpoints."""
 
 from __future__ import annotations
 
@@ -79,3 +79,5 @@ def test_learning_policy_enabled_is_bool():
     client = _client()
     data = client.get("/v1/learning/policy").json()
     assert isinstance(data["enabled"], bool)
+
+

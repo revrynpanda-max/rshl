@@ -1,4 +1,4 @@
-"""Global logging configuration for the OpenJarvis CLI."""
+﻿"""Global logging configuration for the OpenJarvis CLI."""
 
 from __future__ import annotations
 
@@ -84,3 +84,4 @@ def setup_logging(
         logger.addHandler(file_handler)
 
     return logger
+

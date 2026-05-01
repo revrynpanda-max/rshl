@@ -1,4 +1,4 @@
-"""SkillManageTool — create, list, load, or delete agent-authored skills."""
+﻿"""SkillManageTool â€” create, list, load, or delete agent-authored skills."""
 
 from __future__ import annotations
 
@@ -150,3 +150,4 @@ class SkillManageTool(BaseTool):
             success=True,
             content=f"Deleted skill: {name}",
         )
+

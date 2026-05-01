@@ -1,4 +1,4 @@
-"""SlackChannel — native Slack Web API adapter."""
+﻿"""SlackChannel â€” native Slack Web API adapter."""
 
 from __future__ import annotations
 
@@ -224,3 +224,4 @@ class SlackChannel(BaseChannel):
 
 
 __all__ = ["SlackChannel"]
+

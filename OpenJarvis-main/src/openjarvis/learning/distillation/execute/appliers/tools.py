@@ -1,6 +1,6 @@
-"""Tools-pillar appliers: add/remove tools, edit descriptions.
+﻿"""Tools-pillar appliers: add/remove tools, edit descriptions.
 
-See spec §4.1 op semantics for tool ops.
+See spec Â§4.1 op semantics for tool ops.
 """
 
 from __future__ import annotations
@@ -157,3 +157,4 @@ class EditToolDescriptionApplier(EditApplier):
 
     def rollback(self, edit: Edit, ctx: ApplyContext) -> None:
         pass
+

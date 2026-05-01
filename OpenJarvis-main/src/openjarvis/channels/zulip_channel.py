@@ -1,4 +1,4 @@
-"""ZulipChannel — Zulip adapter via zulip Python bindings."""
+﻿"""ZulipChannel â€” Zulip adapter via zulip Python bindings."""
 
 from __future__ import annotations
 
@@ -167,3 +167,4 @@ class ZulipChannel(BaseChannel):
 
 
 __all__ = ["ZulipChannel"]
+

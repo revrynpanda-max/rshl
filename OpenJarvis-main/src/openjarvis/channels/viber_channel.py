@@ -1,4 +1,4 @@
-"""ViberChannel — Viber adapter via viberbot."""
+﻿"""ViberChannel â€” Viber adapter via viberbot."""
 
 from __future__ import annotations
 
@@ -144,3 +144,4 @@ class ViberChannel(BaseChannel):
 
 
 __all__ = ["ViberChannel"]
+

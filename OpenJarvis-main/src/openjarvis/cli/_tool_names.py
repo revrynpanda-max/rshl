@@ -1,4 +1,4 @@
-"""Helpers for resolving CLI tool selections."""
+﻿"""Helpers for resolving CLI tool selections."""
 
 from __future__ import annotations
 
@@ -38,3 +38,4 @@ def resolve_tool_names(
             return names
 
     return []
+

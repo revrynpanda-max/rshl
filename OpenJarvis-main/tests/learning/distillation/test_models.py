@@ -584,3 +584,5 @@ class TestLearningSession:
 
         with pytest.raises(ValidationError):
             LearningSession(**kwargs)
+
+

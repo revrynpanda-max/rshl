@@ -1,4 +1,4 @@
-"""Tests for Merkle audit trail (Phase 14.6)."""
+﻿"""Tests for Merkle audit trail (Phase 14.6)."""
 
 from __future__ import annotations
 
@@ -109,9 +109,11 @@ class TestMerkleAudit:
         logger1.log(_make_event())
         logger1.close()
 
-        # Re-open — migration should not fail
+        # Re-open â€” migration should not fail
         logger2 = AuditLogger(db_path=db_path)
         logger2.log(_make_event())
         valid, _ = logger2.verify_chain()
         assert valid
         logger2.close()
+
+

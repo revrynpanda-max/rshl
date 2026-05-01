@@ -1,4 +1,4 @@
-"""Tests for the ``jarvis bench`` CLI commands."""
+﻿"""Tests for the ``jarvis bench`` CLI commands."""
 
 from __future__ import annotations
 
@@ -82,3 +82,5 @@ class TestBenchCLI:
             )
         assert result.exit_code == 0
         assert out_file.exists()
+
+

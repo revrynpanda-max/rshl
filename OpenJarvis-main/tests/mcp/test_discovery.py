@@ -1,4 +1,4 @@
-"""Tests for _discover_external_mcp in SystemBuilder."""
+﻿"""Tests for _discover_external_mcp in SystemBuilder."""
 
 from __future__ import annotations
 
@@ -193,3 +193,5 @@ class TestStringConfig:
         builder._discover_external_mcp(cfg_str)
 
         mock_transport_cls.assert_called_once_with(url="http://localhost:8080/mcp")
+
+

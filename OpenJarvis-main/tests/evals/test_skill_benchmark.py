@@ -1,4 +1,4 @@
-"""Tests for SkillBenchmarkRunner (Plan 2B)."""
+﻿"""Tests for SkillBenchmarkRunner (Plan 2B)."""
 
 from __future__ import annotations
 
@@ -237,7 +237,7 @@ class TestRunCondition:
 
         result = runner.run_condition("no_skills")
         assert result.mean_pass_rate == 0.42
-        # Single seed → stddev is 0
+        # Single seed â†’ stddev is 0
         assert result.stddev_pass_rate == 0.0
 
 
@@ -380,3 +380,5 @@ class TestWriteReport:
         assert "no_skills" in content
         assert "0.31" in content or "31.0" in content
         assert "task_001" in content
+
+

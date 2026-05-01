@@ -1,4 +1,4 @@
-"""Tests for channel configuration."""
+﻿"""Tests for channel configuration."""
 
 from __future__ import annotations
 
@@ -76,3 +76,5 @@ class TestLoadConfigWithChannel:
         assert cfg.channel.enabled is True
         # Non-specified fields keep defaults
         assert cfg.channel.default_agent == "simple"
+
+

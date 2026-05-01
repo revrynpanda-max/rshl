@@ -1,4 +1,4 @@
-"""File write tool — write content to files with path validation."""
+﻿"""File write tool â€” write content to files with path validation."""
 
 from __future__ import annotations
 
@@ -174,7 +174,7 @@ class FileWriteTool(BaseTool):
                     success=False,
                 )
         else:
-            # append mode — always Python
+            # append mode â€” always Python
             try:
                 with open(path, "a", encoding="utf-8") as f:
                     f.write(content)
@@ -206,3 +206,4 @@ class FileWriteTool(BaseTool):
 
 
 __all__ = ["FileWriteTool"]
+

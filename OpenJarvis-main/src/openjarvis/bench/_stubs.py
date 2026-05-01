@@ -1,4 +1,4 @@
-"""ABC for benchmark implementations and the BenchmarkSuite runner."""
+﻿"""ABC for benchmark implementations and the BenchmarkSuite runner."""
 
 from __future__ import annotations
 
@@ -114,3 +114,4 @@ class BenchmarkSuite:
 
 
 __all__ = ["BaseBenchmark", "BenchmarkResult", "BenchmarkSuite"]
+

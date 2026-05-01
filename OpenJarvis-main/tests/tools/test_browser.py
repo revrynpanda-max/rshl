@@ -1,4 +1,4 @@
-"""Tests for browser automation tools."""
+﻿"""Tests for browser automation tools."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import pytest
 from openjarvis.core.registry import ToolRegistry
 
 # ---------------------------------------------------------------------------
-# Helpers — mock the _session before importing tools
+# Helpers â€” mock the _session before importing tools
 # ---------------------------------------------------------------------------
 
 
@@ -904,3 +904,5 @@ class TestRegistryIntegration:
         assert "BrowserTypeTool" in __all__
         assert "BrowserScreenshotTool" in __all__
         assert "BrowserExtractTool" in __all__
+
+

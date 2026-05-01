@@ -1,4 +1,4 @@
-"""PDF text extraction tool — extract text from PDF files via pdfplumber."""
+﻿"""PDF text extraction tool â€” extract text from PDF files via pdfplumber."""
 
 from __future__ import annotations
 
@@ -174,3 +174,4 @@ class PDFExtractTool(BaseTool):
 
 
 __all__ = ["PDFExtractTool"]
+

@@ -1,11 +1,11 @@
-"""Prompt diff utilities for the plan phase.
+﻿"""Prompt diff utilities for the plan phase.
 
-Handles the PATCH_SYSTEM_PROMPT → REPLACE_SYSTEM_PROMPT downgrade logic.
+Handles the PATCH_SYSTEM_PROMPT â†’ REPLACE_SYSTEM_PROMPT downgrade logic.
 When the teacher proposes a PATCH edit, the planner checks if the diff
 would change more than 50% of lines. If so, it downgrades to a full
 REPLACE so the user sees the complete new prompt in the review queue.
 
-See spec §6.3.
+See spec Â§6.3.
 """
 
 from __future__ import annotations
@@ -63,7 +63,7 @@ def apply_unified_diff(original: str, diff: str) -> Optional[str]:
         while i < len(diff_lines) and not diff_lines[i].startswith("@@"):
             i += 1
 
-        # No hunk headers found — not a valid unified diff
+        # No hunk headers found â€” not a valid unified diff
         if i >= len(diff_lines):
             return None
 
@@ -95,7 +95,7 @@ def apply_unified_diff(original: str, diff: str) -> Optional[str]:
                     content += "\n"
                 result_lines.append(content)
             elif line.startswith(" "):
-                # Context line — copy from original
+                # Context line â€” copy from original
                 if src_idx < len(lines):
                     result_lines.append(lines[src_idx])
                 src_idx += 1
@@ -139,7 +139,7 @@ def maybe_downgrade_to_replace(
     patched = apply_unified_diff(original, diff_str)
 
     if patched is None:
-        # Can't apply the diff — downgrade to REPLACE with a warning
+        # Can't apply the diff â€” downgrade to REPLACE with a warning
         logger.warning(
             "Edit %s: diff could not be applied, downgrading to REPLACE",
             edit.id,
@@ -155,7 +155,7 @@ def maybe_downgrade_to_replace(
     if ratio > _DOWNGRADE_THRESHOLD:
         logger.info(
             "Edit %s: diff changes %.0f%% of lines (>%.0f%%), "
-            "downgrading PATCH → REPLACE",
+            "downgrading PATCH â†’ REPLACE",
             edit.id,
             ratio * 100,
             _DOWNGRADE_THRESHOLD * 100,
@@ -168,3 +168,4 @@ def maybe_downgrade_to_replace(
         )
 
     return edit
+

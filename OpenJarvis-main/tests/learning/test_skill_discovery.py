@@ -1,4 +1,4 @@
-"""Tests for SkillDiscovery — mining recurring tool sequences from traces."""
+﻿"""Tests for SkillDiscovery â€” mining recurring tool sequences from traces."""
 
 from __future__ import annotations
 
@@ -209,3 +209,5 @@ class TestSkillDiscovery:
         assert len(result) >= 1
         names = [s.name for s in result]
         assert "tool_a_tool_b" in names
+
+

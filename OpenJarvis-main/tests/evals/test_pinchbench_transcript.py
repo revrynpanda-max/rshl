@@ -1,4 +1,4 @@
-"""Tests for TurnTrace tool_calls field and PinchBench transcript translation."""
+﻿"""Tests for TurnTrace tool_calls field and PinchBench transcript translation."""
 
 from openjarvis.evals.core.event_recorder import AgentEvent, EventType
 from openjarvis.evals.core.trace import TurnTrace
@@ -91,3 +91,5 @@ def test_events_to_transcript_ignores_non_tool_events():
         _make_event(EventType.LM_INFERENCE_END, prompt_tokens=10, completion_tokens=5),
     ]
     assert events_to_transcript(events) == []
+
+

@@ -1,4 +1,4 @@
-"""Tests for ``jarvis quickstart`` command."""
+﻿"""Tests for ``jarvis quickstart`` command."""
 
 from __future__ import annotations
 
@@ -220,3 +220,5 @@ class TestQuickstartCommand:
         assert result.exit_code == 0
         assert "falling back" in result.output.lower()
         assert "ollama" in result.output
+
+

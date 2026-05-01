@@ -1,4 +1,4 @@
-"""Shared statistics helpers for benchmark per-sample metrics."""
+﻿"""Shared statistics helpers for benchmark per-sample metrics."""
 
 from __future__ import annotations
 
@@ -33,3 +33,4 @@ def compute_stats(name: str, values: List[float]) -> Dict[str, float]:
         f"max_{name}": max(values),
         f"std_{name}": statistics.stdev(values) if len(values) > 1 else 0.0,
     }
+

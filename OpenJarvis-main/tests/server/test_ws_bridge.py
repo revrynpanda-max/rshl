@@ -1,4 +1,4 @@
-"""Tests for WebSocket event bridge."""
+﻿"""Tests for WebSocket event bridge."""
 
 from __future__ import annotations
 
@@ -60,3 +60,5 @@ class TestWSBridge:
             time.sleep(0.05)  # Let call_soon_threadsafe deliver to queue
             data = ws.receive_json()
             assert data["data"]["agent_id"] == "agent-A"
+
+

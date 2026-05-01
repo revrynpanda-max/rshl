@@ -1,4 +1,4 @@
-"""Strava connector — recent activities via REST API v3.
+﻿"""Strava connector â€” recent activities via REST API v3.
 
 Uses OAuth2 tokens stored locally. Refresh handled automatically.
 """
@@ -171,3 +171,4 @@ class StravaConnector(BaseConnector):
 
     def sync_status(self) -> SyncStatus:
         return self._status
+

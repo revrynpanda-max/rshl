@@ -1,4 +1,4 @@
-"""Parametrized contract tests — verify every channel implements BaseChannel correctly.
+﻿"""Parametrized contract tests â€” verify every channel implements BaseChannel correctly.
 
 These tests run without any credentials and verify that all channel adapters
 handle graceful degradation (no crashes on missing auth, idempotent disconnect,
@@ -11,7 +11,7 @@ import importlib
 
 import pytest
 
-import openjarvis.channels  # noqa: F401 — trigger registration
+import openjarvis.channels  # noqa: F401 â€” trigger registration
 from openjarvis.channels._stubs import ChannelStatus
 from openjarvis.core.registry import ChannelRegistry
 
@@ -26,7 +26,7 @@ _ALL_CHANNELS = [(key, ChannelRegistry.get(key)) for key in ChannelRegistry.keys
 def channel_entry(request):
     """Parametrized fixture yielding (channel_key, channel_cls) tuples.
 
-    Uses the class reference captured at import time — does not depend
+    Uses the class reference captured at import time â€” does not depend
     on the registry being populated at test time.
     """
     return request.param
@@ -43,7 +43,7 @@ def test_connect_no_credentials_no_crash(channel_entry):
     key, channel_cls = channel_entry
     ch = channel_cls()
     ch.connect()
-    # Should not raise — just set status to ERROR or DISCONNECTED
+    # Should not raise â€” just set status to ERROR or DISCONNECTED
 
 
 def test_disconnect_idempotent(channel_entry):
@@ -81,3 +81,5 @@ def test_on_message_accepts_handler(channel_entry):
     ch = channel_cls()
     ch.on_message(lambda msg: None)
     # Should not raise
+
+

@@ -1,4 +1,4 @@
-"""TerminalBench task environment — per-task Docker lifecycle + test execution."""
+﻿"""TerminalBench task environment â€” per-task Docker lifecycle + test execution."""
 
 from __future__ import annotations
 
@@ -181,3 +181,4 @@ class TerminalBenchTaskEnv:
 
 
 __all__ = ["TerminalBenchTaskEnv"]
+

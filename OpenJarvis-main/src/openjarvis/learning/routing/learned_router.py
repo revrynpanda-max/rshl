@@ -1,4 +1,4 @@
-"""Learned router policy — trace-driven query_class -> model mapping.
+﻿"""Learned router policy â€” trace-driven query_class -> model mapping.
 
 Merges the runtime ``select_model()`` logic from ``TraceDrivenPolicy``
 with the batch ``update()`` logic from ``SFTRouterPolicy`` into a single
@@ -234,3 +234,4 @@ def ensure_registered() -> None:
 ensure_registered()
 
 __all__ = ["LearnedRouterPolicy", "ensure_registered"]
+

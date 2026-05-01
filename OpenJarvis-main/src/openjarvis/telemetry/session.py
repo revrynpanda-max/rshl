@@ -1,6 +1,6 @@
-"""Background-sampling telemetry session.
+﻿"""Background-sampling telemetry session.
 
-Uses Rust ring buffer — Rust backend is mandatory.
+Uses Rust ring buffer â€” Rust backend is mandatory.
 """
 
 from __future__ import annotations
@@ -146,3 +146,4 @@ class TelemetrySession:
 
     def __exit__(self, *args: Any) -> None:
         self.stop()
+

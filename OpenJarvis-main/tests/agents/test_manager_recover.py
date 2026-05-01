@@ -1,4 +1,4 @@
-"""Tests for AgentManager.recover_agent() always resetting status."""
+﻿"""Tests for AgentManager.recover_agent() always resetting status."""
 
 import pytest
 
@@ -35,3 +35,5 @@ def test_recover_resets_to_idle_with_checkpoint(manager):
     assert result["tick_id"] == "tick-1"
     refreshed = manager.get_agent(agent["id"])
     assert refreshed["status"] == "idle"
+
+

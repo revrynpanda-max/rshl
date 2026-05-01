@@ -1,4 +1,4 @@
-"""Tests for the HTTP request tool with SSRF protection."""
+﻿"""Tests for the HTTP request tool with SSRF protection."""
 
 from __future__ import annotations
 
@@ -272,3 +272,5 @@ class TestHttpRequestTool:
 
 
 __all__ = ["TestHttpRequestTool"]
+
+

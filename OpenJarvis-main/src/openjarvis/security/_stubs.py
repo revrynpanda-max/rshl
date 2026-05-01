@@ -1,4 +1,4 @@
-"""ABC for security scanners."""
+﻿"""ABC for security scanners."""
 
 from __future__ import annotations
 
@@ -26,3 +26,4 @@ class BaseScanner(ABC):
 
 
 __all__ = ["BaseScanner"]
+

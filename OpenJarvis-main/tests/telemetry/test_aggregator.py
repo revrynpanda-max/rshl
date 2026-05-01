@@ -1,4 +1,4 @@
-"""Tests for TelemetryAggregator."""
+﻿"""Tests for TelemetryAggregator."""
 
 from __future__ import annotations
 
@@ -248,3 +248,5 @@ class TestDataclassDefaults:
         assert a.total_calls == 0
         assert a.per_model == []
         assert a.per_engine == []
+
+

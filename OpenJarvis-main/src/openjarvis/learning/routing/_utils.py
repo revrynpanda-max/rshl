@@ -1,4 +1,4 @@
-"""Shared query classification utilities for routing policies.
+﻿"""Shared query classification utilities for routing policies.
 
 Extracted from ``trace_policy.py`` so multiple modules can use
 ``classify_query()`` without depending on the full policy.
@@ -32,3 +32,4 @@ def classify_query(query: str) -> str:
 
 
 __all__ = ["classify_query"]
+

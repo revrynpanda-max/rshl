@@ -1,4 +1,4 @@
-"""FAISS dense retrieval memory backend.
+﻿"""FAISS dense retrieval memory backend.
 
 Uses cosine similarity via inner-product search on L2-normalised
 vectors.  Requires ``faiss-cpu`` (or ``faiss-gpu``) and ``numpy``.
@@ -159,3 +159,4 @@ class FAISSMemory(MemoryBackend):
 
 
 __all__ = ["FAISSMemory"]
+

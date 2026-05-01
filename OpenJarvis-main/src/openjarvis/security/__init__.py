@@ -1,4 +1,4 @@
-"""Security guardrails — scanners, engine wrapper, audit, SSRF."""
+﻿"""Security guardrails â€” scanners, engine wrapper, audit, SSRF."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class SecurityContext:
-    """Result of setup_security() — wrapped engine, policy, audit."""
+    """Result of setup_security() â€” wrapped engine, policy, audit."""
 
     engine: Any
     capability_policy: Any = None
@@ -121,3 +121,4 @@ __all__ = [
     "is_sensitive_file",
     "setup_security",
 ]
+

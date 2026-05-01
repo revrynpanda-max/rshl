@@ -1,4 +1,4 @@
-"""Tests for LogHub dataset provider."""
+﻿"""Tests for LogHub dataset provider."""
 
 import csv
 from pathlib import Path
@@ -165,3 +165,5 @@ class TestLogHubCLI:
         s = _build_scorer("loghub", _mock_backend(), "test-model")
         assert s is not None
         assert s.scorer_id == "loghub"
+
+

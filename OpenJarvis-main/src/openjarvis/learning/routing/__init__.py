@@ -1,3 +1,4 @@
-"""Routing policies — model selection based on query characteristics."""
+﻿"""Routing policies â€” model selection based on query characteristics."""
 
 from __future__ import annotations
+

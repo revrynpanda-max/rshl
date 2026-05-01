@@ -1,4 +1,4 @@
-"""Tests for ``jarvis memory`` CLI commands."""
+﻿"""Tests for ``jarvis memory`` CLI commands."""
 
 from __future__ import annotations
 
@@ -108,3 +108,5 @@ def test_memory_stats_shows_count(tmp_path: Path, monkeypatch):
     assert result.exit_code == 0
     assert "2" in result.output
     backend.close()
+
+

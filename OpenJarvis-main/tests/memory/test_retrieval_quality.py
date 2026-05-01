@@ -1,4 +1,4 @@
-"""Retrieval quality tests with a fixed corpus across backends."""
+﻿"""Retrieval quality tests with a fixed corpus across backends."""
 
 from __future__ import annotations
 
@@ -193,3 +193,5 @@ class TestSQLiteRetrievalSpecifics:
         _build_corpus(backend)
         results = backend.retrieve("xylophone")
         assert len(results) == 0
+
+

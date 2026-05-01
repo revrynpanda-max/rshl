@@ -1,4 +1,4 @@
-"""CLI commands for API key management."""
+﻿"""CLI commands for API key management."""
 
 from __future__ import annotations
 
@@ -69,3 +69,4 @@ def revoke_key() -> None:
     content = re.sub(r'api_key\s*=\s*"[^"]*"', 'api_key = ""', content)
     config_path.write_text(content)
     click.echo("API key revoked.")
+

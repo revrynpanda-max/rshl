@@ -1,4 +1,4 @@
-"""Persistent Python REPL tool — maintains state across calls within a session.
+﻿"""Persistent Python REPL tool â€” maintains state across calls within a session.
 
 Unlike ``CodeInterpreterTool`` (which runs each snippet in a fresh subprocess),
 this tool keeps variables, functions, and imports alive across invocations
@@ -37,7 +37,7 @@ _BLOCKED_PATTERNS = [
     "urllib",
 ]
 
-# Layer 2: Restricted builtins — remove dangerous ones
+# Layer 2: Restricted builtins â€” remove dangerous ones
 _REMOVED_BUILTINS = {
     "open",
     "exec",
@@ -305,7 +305,7 @@ class ReplTool(BaseTool):
                         if val is not None:
                             print(repr(val))  # noqa: T201
                     except SyntaxError:
-                        # Not an expression — execute as statements
+                        # Not an expression â€” execute as statements
                         compiled = compile(code, "<repl>", "exec")
                         exec(compiled, session.namespace)  # noqa: S102
             except Exception as exc:
@@ -333,3 +333,4 @@ class ReplTool(BaseTool):
 
 
 __all__ = ["ReplTool"]
+

@@ -1,4 +1,4 @@
-"""Tests for the telemetry SQLite store."""
+﻿"""Tests for the telemetry SQLite store."""
 
 from __future__ import annotations
 
@@ -91,3 +91,5 @@ class TestTelemetryRecordFields:
     def test_tokens_per_joule_set(self):
         rec = TelemetryRecord(timestamp=1.0, model_id="test", tokens_per_joule=80.0)
         assert rec.tokens_per_joule == 80.0
+
+

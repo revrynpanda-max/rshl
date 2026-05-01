@@ -1,4 +1,4 @@
-"""AMD-specific hardware tests."""
+﻿"""AMD-specific hardware tests."""
 
 from __future__ import annotations
 
@@ -202,3 +202,5 @@ class TestAMDEngineRecommendation:
             ),
         )
         assert recommend_engine(hw) == "vllm"
+
+

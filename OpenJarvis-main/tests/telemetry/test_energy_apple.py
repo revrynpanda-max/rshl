@@ -1,4 +1,4 @@
-"""Tests for AppleEnergyMonitor -- mock zeus (no real Apple Silicon required)."""
+﻿"""Tests for AppleEnergyMonitor -- mock zeus (no real Apple Silicon required)."""
 
 from __future__ import annotations
 
@@ -174,3 +174,5 @@ class TestSampleUninitialized:
         assert_sample_result_basics(
             result, vendor="apple", energy_method="cpu_time_estimate"
         )
+
+

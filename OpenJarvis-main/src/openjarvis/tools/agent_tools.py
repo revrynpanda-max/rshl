@@ -1,4 +1,4 @@
-"""Inter-agent lifecycle tools — spawn, send, list, and kill agents.
+﻿"""Inter-agent lifecycle tools â€” spawn, send, list, and kill agents.
 
 These MCP tools allow an orchestrating agent (or the system) to manage
 child agent lifecycles at runtime.  Spawned agent metadata is tracked in
@@ -21,7 +21,7 @@ from openjarvis.tools._stubs import BaseTool, ToolSpec
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Module-level state — tracks spawned agents
+# Module-level state â€” tracks spawned agents
 # ---------------------------------------------------------------------------
 
 _SPAWNED_AGENTS: Dict[str, Dict[str, Any]] = {}
@@ -322,3 +322,4 @@ class AgentKillTool(BaseTool):
 
 
 __all__ = ["AgentKillTool", "AgentListTool", "AgentSendTool", "AgentSpawnTool"]
+

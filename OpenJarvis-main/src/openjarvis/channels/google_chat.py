@@ -1,4 +1,4 @@
-"""GoogleChatChannel — Google Chat webhook adapter."""
+﻿"""GoogleChatChannel â€” Google Chat webhook adapter."""
 
 from __future__ import annotations
 
@@ -49,7 +49,7 @@ class GoogleChatChannel(BaseChannel):
     # -- connection lifecycle ---------------------------------------------------
 
     def connect(self) -> None:
-        """Mark as connected (send-only — no persistent connection)."""
+        """Mark as connected (send-only â€” no persistent connection)."""
         if not self._webhook_url:
             logger.warning("No Google Chat webhook URL configured")
             self._status = ChannelStatus.ERROR
@@ -125,3 +125,4 @@ class GoogleChatChannel(BaseChannel):
 
 
 __all__ = ["GoogleChatChannel"]
+

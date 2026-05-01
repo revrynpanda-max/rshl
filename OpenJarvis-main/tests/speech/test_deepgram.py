@@ -1,4 +1,4 @@
-"""Tests for Deepgram speech backend."""
+﻿"""Tests for Deepgram speech backend."""
 
 from unittest.mock import MagicMock, patch
 
@@ -59,3 +59,5 @@ def test_deepgram_health_no_key():
         backend._client = None
         backend._api_key = ""
         assert backend.health() is False
+
+

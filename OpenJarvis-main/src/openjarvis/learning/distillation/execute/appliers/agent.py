@@ -1,6 +1,6 @@
-"""Agent-pillar appliers: prompts, class, params, few-shot.
+﻿"""Agent-pillar appliers: prompts, class, params, few-shot.
 
-See spec §4.1 op semantics for agent ops.
+See spec Â§4.1 op semantics for agent ops.
 """
 
 from __future__ import annotations
@@ -224,3 +224,4 @@ class EditFewShotExemplarsApplier(EditApplier):
 
     def rollback(self, edit: Edit, ctx: ApplyContext) -> None:
         pass
+

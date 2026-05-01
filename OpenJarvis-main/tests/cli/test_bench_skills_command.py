@@ -1,4 +1,4 @@
-"""Tests for jarvis bench skills CLI command (Plan 2B)."""
+﻿"""Tests for jarvis bench skills CLI command (Plan 2B)."""
 
 from __future__ import annotations
 
@@ -113,3 +113,5 @@ class TestBenchSkillsCommand:
             assert result.exit_code == 0, result.output
             assert "skills_optimized_dspy" in result.output
             assert "0.700" in result.output or "0.7" in result.output
+
+

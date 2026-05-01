@@ -1,4 +1,4 @@
-"""Tests for SyncEngine — checkpoint/resume connector orchestration."""
+﻿"""Tests for SyncEngine â€” checkpoint/resume connector orchestration."""
 
 from __future__ import annotations
 
@@ -88,7 +88,7 @@ def engine(pipeline: IngestionPipeline, tmp_path: Path) -> SyncEngine:
 
 
 # ---------------------------------------------------------------------------
-# Test 1: sync_connector — 5 docs from StubConnector all stored
+# Test 1: sync_connector â€” 5 docs from StubConnector all stored
 # ---------------------------------------------------------------------------
 
 
@@ -108,7 +108,7 @@ def test_sync_connector(engine: SyncEngine, store: KnowledgeStore) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 2: sync_saves_checkpoint — checkpoint items_synced is correct
+# Test 2: sync_saves_checkpoint â€” checkpoint items_synced is correct
 # ---------------------------------------------------------------------------
 
 
@@ -127,7 +127,7 @@ def test_sync_saves_checkpoint(engine: SyncEngine) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 3: sync_status_for_unsynced — None for unknown connector
+# Test 3: sync_status_for_unsynced â€” None for unknown connector
 # ---------------------------------------------------------------------------
 
 
@@ -138,7 +138,7 @@ def test_sync_status_for_unsynced(engine: SyncEngine) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 4: sync_multiple_connectors — filter by source works
+# Test 4: sync_multiple_connectors â€” filter by source works
 # ---------------------------------------------------------------------------
 
 
@@ -182,3 +182,5 @@ def test_sync_multiple_connectors(
     assert len(results_b) >= 1
     for r in results_b:
         assert r.metadata.get("source") == "source_b"
+
+

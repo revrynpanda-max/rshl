@@ -1,10 +1,10 @@
-"""Trigger types for the distillation subsystem.
+﻿"""Trigger types for the distillation subsystem.
 
 A trigger is what kicks off a learning session. Four trigger types exist,
 all funneling into ``DistillationOrchestrator.run(trigger)``. The trigger
 object is stored on the ``LearningSession`` for queryability.
 
-See spec §3.3.
+See spec Â§3.3.
 """
 
 from __future__ import annotations
@@ -64,3 +64,4 @@ class ClusterTrigger:
             "trace_ids": self.trace_ids,
             "failure_rate": self.failure_rate,
         }
+

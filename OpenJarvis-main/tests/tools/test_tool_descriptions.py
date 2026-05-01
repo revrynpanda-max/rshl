@@ -1,4 +1,4 @@
-"""Tests for the shared build_tool_descriptions() builder."""
+﻿"""Tests for the shared build_tool_descriptions() builder."""
 
 from __future__ import annotations
 
@@ -179,3 +179,5 @@ class TestBuildToolDescriptions:
         assert "Does nothing." in result
         # No Parameters section since no properties
         assert "Parameters:" not in result
+
+

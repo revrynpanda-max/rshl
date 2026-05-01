@@ -442,3 +442,4 @@ class TestEvalSuiteConfig:
         assert s.meta.name == "test"
         assert len(s.models) == 2
         assert len(s.benchmarks) == 1
+

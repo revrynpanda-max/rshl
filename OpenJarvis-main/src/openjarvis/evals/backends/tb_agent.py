@@ -1,4 +1,4 @@
-"""Custom terminal-bench agent that wraps NaiveAgent with LiteLLM construction."""
+﻿"""Custom terminal-bench agent that wraps NaiveAgent with LiteLLM construction."""
 
 from __future__ import annotations
 
@@ -30,3 +30,4 @@ class OpenJarvisTerminalBenchAgent(NaiveAgent):
             api_base=api_base,
         )
         super().__init__(llm=llm, **kwargs)
+

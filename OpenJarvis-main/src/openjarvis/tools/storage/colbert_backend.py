@@ -1,7 +1,7 @@
-"""ColBERTv2 late interaction memory backend.
+﻿"""ColBERTv2 late interaction memory backend.
 
 Uses ColBERT's token-level embeddings with MaxSim scoring for
-high-quality semantic retrieval.  All data lives in memory — there is
+high-quality semantic retrieval.  All data lives in memory â€” there is
 no persistence across restarts.
 
 Requires the ``colbert-ai`` and ``torch`` packages::
@@ -101,7 +101,7 @@ class ColBERTMemory(MemoryBackend):
         """
         self._load_checkpoint()
         embs = self._checkpoint_obj.queryFromText([text])
-        # queryFromText returns (batch, tokens, dim) — squeeze batch
+        # queryFromText returns (batch, tokens, dim) â€” squeeze batch
         return embs[0]
 
     # -- MaxSim scoring -----------------------------------------------------
@@ -120,9 +120,9 @@ class ColBERTMemory(MemoryBackend):
         Parameters
         ----------
         query_embs:
-            Tensor of shape ``(Q, D)`` — Q query tokens.
+            Tensor of shape ``(Q, D)`` â€” Q query tokens.
         doc_embs:
-            Tensor of shape ``(N, D)`` — N document tokens.
+            Tensor of shape ``(N, D)`` â€” N document tokens.
 
         Returns
         -------
@@ -249,3 +249,4 @@ class ColBERTMemory(MemoryBackend):
 
 
 __all__ = ["ColBERTMemory"]
+

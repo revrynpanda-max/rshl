@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from unittest.mock import MagicMock
 
@@ -66,3 +66,5 @@ def test_default_behavior_unchanged():
     v = guard.check_call("search", '{"q": "test"}')
     assert v.blocked
     assert not v.warned
+
+

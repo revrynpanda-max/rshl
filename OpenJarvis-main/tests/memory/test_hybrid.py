@@ -1,4 +1,4 @@
-"""Tests for the Hybrid RRF memory backend."""
+﻿"""Tests for the Hybrid RRF memory backend."""
 
 from __future__ import annotations
 
@@ -91,12 +91,12 @@ def test_rrf_scoring_correctness():
     fused = reciprocal_rank_fusion([list1, list2], k=60)
 
     scores = {r.content: r.score for r in fused}
-    # A: only in list1 at rank 0 → 1/(60+1) ≈ 0.01639
+    # A: only in list1 at rank 0 â†’ 1/(60+1) â‰ˆ 0.01639
     assert abs(scores["A"] - 1 / 61) < 1e-6
-    # B: list1 rank 1 + list2 rank 0 → 1/(60+2) + 1/(60+1)
+    # B: list1 rank 1 + list2 rank 0 â†’ 1/(60+2) + 1/(60+1)
     expected_b = 1 / 62 + 1 / 61
     assert abs(scores["B"] - expected_b) < 1e-6
-    # C: only in list2 at rank 1 → 1/(60+2)
+    # C: only in list2 at rank 1 â†’ 1/(60+2)
     assert abs(scores["C"] - 1 / 62) < 1e-6
     # B should be ranked first (appears in both lists)
     assert fused[0].content == "B"
@@ -222,3 +222,5 @@ def test_event_bus_retrieve():
         assert any(e.data.get("backend") == "hybrid" for e in events)
     finally:
         mod.get_event_bus = original
+
+

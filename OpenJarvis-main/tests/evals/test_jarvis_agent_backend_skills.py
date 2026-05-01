@@ -1,4 +1,4 @@
-"""Tests for JarvisAgentBackend skills_enabled / overlay_dir kwargs (Plan 2B)."""
+﻿"""Tests for JarvisAgentBackend skills_enabled / overlay_dir kwargs (Plan 2B)."""
 
 from __future__ import annotations
 
@@ -68,3 +68,5 @@ class TestJarvisAgentBackendSkillsKwargs:
         sig = inspect.signature(JarvisAgentBackend.__init__)
         assert "skills_enabled" in sig.parameters
         assert "overlay_dir" in sig.parameters
+
+

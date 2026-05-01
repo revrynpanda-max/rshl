@@ -1,4 +1,4 @@
-"""Tests for server Pydantic models."""
+﻿"""Tests for server Pydantic models."""
 
 from __future__ import annotations
 
@@ -102,3 +102,5 @@ class TestChatMessage:
     def test_with_tool_call_id(self):
         msg = ChatMessage(role="tool", content="result", tool_call_id="abc")
         assert msg.tool_call_id == "abc"
+
+

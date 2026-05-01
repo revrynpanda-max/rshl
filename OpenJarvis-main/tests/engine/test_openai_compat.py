@@ -1,4 +1,4 @@
-"""Tests for the OpenAI-compatible engine base (covers vLLM + llama.cpp)."""
+﻿"""Tests for the OpenAI-compatible engine base (covers vLLM + llama.cpp)."""
 
 from __future__ import annotations
 
@@ -129,3 +129,5 @@ class TestOpenAICompatStream:
             ):
                 tokens.append(tok)
         assert tokens == ["Hi", " there"]
+
+

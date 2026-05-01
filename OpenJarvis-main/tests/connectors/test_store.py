@@ -1,4 +1,4 @@
-"""Tests for KnowledgeStore — source-aware SQLite/FTS5 memory backend."""
+﻿"""Tests for KnowledgeStore â€” source-aware SQLite/FTS5 memory backend."""
 
 from __future__ import annotations
 
@@ -333,3 +333,5 @@ def test_memory_retrieve_event_emitted(tmp_path: Path) -> None:
 
     types = [e.event_type for e in bus.history]
     assert EventType.MEMORY_RETRIEVE in types
+
+

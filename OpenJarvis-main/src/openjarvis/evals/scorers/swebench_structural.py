@@ -1,4 +1,4 @@
-"""SWE-bench scorer — structural patch validation.
+﻿"""SWE-bench scorer â€” structural patch validation.
 
 Full SWE-bench evaluation requires running tests inside the repository
 environment.  This scorer performs lightweight structural checks on the
@@ -30,7 +30,7 @@ class SWEBenchScorer(Scorer):
     repository checkout, this scorer only checks whether the model
     produced something that looks like a valid unified diff.  The
     ``is_correct`` field is set to ``None`` (indeterminate) when a
-    patch-like response is detected — downstream harnesses should run
+    patch-like response is detected â€” downstream harnesses should run
     the actual tests.
     """
 
@@ -42,7 +42,7 @@ class SWEBenchScorer(Scorer):
         judge_model: str = "",
     ) -> None:
         # Accept judge_backend/judge_model so the CLI factory pattern works,
-        # but they are unused — scoring is purely structural.
+        # but they are unused â€” scoring is purely structural.
         self._judge_backend = judge_backend
         self._judge_model = judge_model
 
@@ -69,3 +69,4 @@ class SWEBenchScorer(Scorer):
 
 
 __all__ = ["SWEBenchScorer"]
+

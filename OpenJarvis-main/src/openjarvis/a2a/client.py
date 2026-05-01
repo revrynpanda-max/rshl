@@ -1,4 +1,4 @@
-"""A2A client — discover and call external A2A agents."""
+﻿"""A2A client â€” discover and call external A2A agents."""
 
 from __future__ import annotations
 
@@ -113,3 +113,4 @@ class A2AClient:
 
 
 __all__ = ["A2AClient"]
+

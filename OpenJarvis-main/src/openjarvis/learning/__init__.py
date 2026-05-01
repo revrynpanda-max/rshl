@@ -1,4 +1,4 @@
-"""Learning primitive -- router policies, reward functions, learning."""
+﻿"""Learning primitive -- router policies, reward functions, learning."""
 
 from __future__ import annotations
 
@@ -84,3 +84,4 @@ __all__ = [
     "ensure_registered",
     "score_complexity",
 ]
+

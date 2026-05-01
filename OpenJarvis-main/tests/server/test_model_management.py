@@ -1,4 +1,4 @@
-"""Tests for model pull / delete API endpoints and streaming resilience."""
+﻿"""Tests for model pull / delete API endpoints and streaming resilience."""
 
 from __future__ import annotations
 
@@ -221,7 +221,7 @@ class TestStreamingResilience:
                 "model": "test-model",
                 "messages": [{"role": "user", "content": "Hello"}],
                 "stream": True,
-                # No tools — should use direct engine stream
+                # No tools â€” should use direct engine stream
             },
         )
         assert resp.status_code == 200
@@ -268,3 +268,5 @@ class TestModelsEndpointExtended:
         assert resp.status_code == 200
         # The endpoint returns whatever list_models() gives
         assert resp.json()["object"] == "list"
+
+

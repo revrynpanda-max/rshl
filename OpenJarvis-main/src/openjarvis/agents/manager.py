@@ -1,6 +1,6 @@
-"""Persistent agent lifecycle manager.
+﻿"""Persistent agent lifecycle manager.
 
-Composition layer — stores agent state in SQLite, delegates all computation
+Composition layer â€” stores agent state in SQLite, delegates all computation
 to the five existing primitives (Intelligence, Agent, Tools, Engine, Learning).
 """
 
@@ -127,7 +127,7 @@ class AgentManager:
     def close(self) -> None:
         self._conn.close()
 
-    # ── Agent CRUD ────────────────────────────────────────────────
+    # â”€â”€ Agent CRUD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def create_agent(
         self,
@@ -225,7 +225,7 @@ class AgentManager:
         )
         self._conn.commit()
 
-    # ── Tick concurrency guard ────────────────────────────────────
+    # â”€â”€ Tick concurrency guard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def start_tick(self, agent_id: str) -> None:
         """Mark agent as running. Raises ValueError if already running."""
@@ -242,7 +242,7 @@ class AgentManager:
         )
         self._conn.commit()
 
-    # ── Checkpoints ───────────────────────────────────────────────
+    # â”€â”€ Checkpoints â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     _CHECKPOINT_RETENTION = 5
 
@@ -301,7 +301,7 @@ class AgentManager:
 
     def recover_agent(self, agent_id: str) -> Optional[Dict[str, Any]]:
         checkpoint = self.get_latest_checkpoint(agent_id)
-        # Always reset to idle — clearing the error state is the primary purpose
+        # Always reset to idle â€” clearing the error state is the primary purpose
         self.update_agent(agent_id, status="idle")
         return checkpoint
 
@@ -316,7 +316,7 @@ class AgentManager:
             "created_at": row["created_at"],
         }
 
-    # ── Summary memory ────────────────────────────────────────────
+    # â”€â”€ Summary memory â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def update_summary_memory(self, agent_id: str, summary: str) -> None:
         truncated = summary[:_SUMMARY_MAX]
@@ -326,7 +326,7 @@ class AgentManager:
         )
         self._conn.commit()
 
-    # ── Task CRUD ─────────────────────────────────────────────────
+    # â”€â”€ Task CRUD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def create_task(
         self, agent_id: str, description: str, status: str = "pending"
@@ -385,7 +385,7 @@ class AgentManager:
         ).fetchone()
         return self._row_to_task(row) if row else None
 
-    # ── Channel bindings ──────────────────────────────────────────
+    # â”€â”€ Channel bindings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def bind_channel(
         self,
@@ -437,7 +437,7 @@ class AgentManager:
                 return binding
         return None
 
-    # ── Templates ─────────────────────────────────────────────────
+    # â”€â”€ Templates â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     @staticmethod
     def list_templates() -> List[Dict[str, Any]]:
@@ -501,7 +501,7 @@ class AgentManager:
 
         return self.create_agent(name=name, agent_type=agent_type, config=config)
 
-    # ── Message queue ─────────────────────────────────────────────
+    # â”€â”€ Message queue â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def send_message(self, agent_id: str, content: str, mode: str = "queued") -> dict:
         msg_id = uuid4().hex[:16]
@@ -625,7 +625,7 @@ class AgentManager:
             "tool_calls": tool_calls,
         }
 
-    # ── Learning log ──────────────────────────────────────────
+    # â”€â”€ Learning log â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def add_learning_log(
         self,
@@ -670,7 +670,7 @@ class AgentManager:
             for r in rows
         ]
 
-    # ── Row converters ────────────────────────────────────────────
+    # â”€â”€ Row converters â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     @staticmethod
     def _row_to_agent(row: sqlite3.Row) -> Dict[str, Any]:
@@ -720,3 +720,4 @@ class AgentManager:
             "session_id": row["session_id"] or "",
             "routing_mode": row["routing_mode"] or "auto",
         }
+

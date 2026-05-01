@@ -1,4 +1,4 @@
-"""Throughput benchmark — measures tokens per second with per-sample stats."""
+﻿"""Throughput benchmark â€” measures tokens per second with per-sample stats."""
 
 from __future__ import annotations
 
@@ -99,3 +99,4 @@ def ensure_registered() -> None:
 
 
 __all__ = ["ThroughputBenchmark"]
+

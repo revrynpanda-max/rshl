@@ -1,4 +1,4 @@
-"""``jarvis gateway start|stop|status|logs`` — multi-channel gateway management."""
+﻿"""``jarvis gateway start|stop|status|logs`` â€” multi-channel gateway management."""
 
 from __future__ import annotations
 
@@ -105,3 +105,4 @@ def logs() -> None:
             ["journalctl", "--user", "-u", "openjarvis-gateway", "-f"],
             check=False,
         )
+

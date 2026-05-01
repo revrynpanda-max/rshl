@@ -1,11 +1,11 @@
-"""Recipe loader — load and resolve TOML recipe files.
+﻿"""Recipe loader â€” load and resolve TOML recipe files.
 
 Recipes are the universal composition format for OpenJarvis.  Each recipe
 specifies all five primitives (Intelligence, Engine, Agent, Tools, Learning)
 and carries a ``kind`` that determines its lifecycle:
 
-* ``"discrete"`` — one-shot or benchmark-oriented agents
-* ``"operator"`` — persistent, scheduled agents
+* ``"discrete"`` â€” one-shot or benchmark-oriented agents
+* ``"operator"`` â€” persistent, scheduled agents
 """
 
 from __future__ import annotations
@@ -332,3 +332,4 @@ def resolve_recipe(name: str) -> Optional[Recipe]:
 
 
 __all__ = ["Recipe", "discover_recipes", "load_recipe", "resolve_recipe"]
+

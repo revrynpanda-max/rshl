@@ -1,4 +1,4 @@
-"""DiscordChannel — native Discord Bot API adapter."""
+﻿"""DiscordChannel â€” native Discord Bot API adapter."""
 
 from __future__ import annotations
 
@@ -199,3 +199,4 @@ class DiscordChannel(BaseChannel):
 
 
 __all__ = ["DiscordChannel"]
+

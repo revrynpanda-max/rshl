@@ -1,4 +1,4 @@
-"""Calculator tool — safe math evaluation via ``ast`` module."""
+﻿"""Calculator tool â€” safe math evaluation via ``ast`` module."""
 
 from __future__ import annotations
 
@@ -89,7 +89,7 @@ def _safe_eval_node(node: ast.AST) -> Any:
 
 
 def safe_eval(expression: str) -> float:
-    """Evaluate a math expression safely — Rust backend with Python fallback."""
+    """Evaluate a math expression safely â€” Rust backend with Python fallback."""
     try:
         from openjarvis._rust_bridge import get_rust_module
 
@@ -162,3 +162,4 @@ class CalculatorTool(BaseTool):
 
 
 __all__ = ["CalculatorTool", "safe_eval"]
+

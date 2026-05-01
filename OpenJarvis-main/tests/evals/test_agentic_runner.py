@@ -1,4 +1,4 @@
-"""Tests for AgenticRunner with mock agent and dataset."""
+﻿"""Tests for AgenticRunner with mock agent and dataset."""
 
 from __future__ import annotations
 
@@ -165,3 +165,5 @@ class TestExtractPatch:
         text = "This is just a regular response with no code changes."
         patch = _extract_patch(text)
         assert patch is None
+
+

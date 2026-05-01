@@ -1,4 +1,4 @@
-"""Tests for NativeReActAgent (formerly ReActAgent)."""
+﻿"""Tests for NativeReActAgent (formerly ReActAgent)."""
 
 from __future__ import annotations
 
@@ -545,3 +545,5 @@ def test_native_react_with_different_models(model):
     assert result.content == "Hello!"
     call_kwargs = engine.generate.call_args[1]
     assert call_kwargs["model"] == model
+
+

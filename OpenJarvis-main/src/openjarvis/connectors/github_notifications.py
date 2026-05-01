@@ -1,4 +1,4 @@
-"""GitHub Notifications connector — unread notifications via GitHub REST API.
+﻿"""GitHub Notifications connector â€” unread notifications via GitHub REST API.
 
 Uses a Personal Access Token stored in the connector config dir.
 All API calls are in module-level functions for easy mocking in tests.
@@ -109,3 +109,4 @@ class GitHubNotificationsConnector(BaseConnector):
 
     def sync_status(self) -> SyncStatus:
         return self._status
+

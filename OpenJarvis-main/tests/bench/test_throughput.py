@@ -1,4 +1,4 @@
-"""Tests for the throughput benchmark."""
+﻿"""Tests for the throughput benchmark."""
 
 from __future__ import annotations
 
@@ -76,3 +76,5 @@ class TestThroughputBenchmark:
         result = b.run(engine, "test-model", num_samples=3)
         assert result.errors == 3
         assert result.metrics.get("mean_tokens_per_second", 0.0) == 0.0
+
+

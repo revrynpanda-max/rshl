@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from pathlib import Path
 
@@ -123,3 +123,5 @@ def test_missing_files_handled(tmp_path: Path):
     )
     prompt = builder.build()
     assert "Jarvis" in prompt
+
+

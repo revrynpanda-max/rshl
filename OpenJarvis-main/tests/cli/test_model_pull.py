@@ -1,4 +1,4 @@
-"""Tests for ``jarvis model pull`` multi-engine support."""
+﻿"""Tests for ``jarvis model pull`` multi-engine support."""
 
 from __future__ import annotations
 
@@ -107,3 +107,5 @@ class TestPullCliMultiEngine:
 
         assert result.exit_code != 0
         assert "huggingface_hub" in result.output or "pip install" in result.output
+
+

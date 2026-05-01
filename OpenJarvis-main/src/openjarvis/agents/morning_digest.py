@@ -1,4 +1,4 @@
-"""Morning Digest Agent — synthesizes a daily briefing from multiple sources.
+﻿"""Morning Digest Agent â€” synthesizes a daily briefing from multiple sources.
 
 Thin orchestrator that delegates to digest_collect (data fetching),
 the LLM (narrative synthesis), and text_to_speech (audio generation).
@@ -62,30 +62,30 @@ class MorningDigestAgent(ToolUsingAgent):
             f"The time is {now.strftime('%I:%M %p')} in {self._timezone}.\n"
             f"The user's preferred honorific is: {honorific}\n\n"
             "You receive structured data from the user's connected services. "
-            "The data has ALREADY been collected — it appears in the user "
+            "The data has ALREADY been collected â€” it appears in the user "
             "message. You do NOT fetch anything yourself.\n\n"
             "Produce a 2-4 minute spoken briefing in DECREASING order of "
             "importance:\n\n"
-            "1. GREETING + PRIORITIES — Open with the honorific and "
+            "1. GREETING + PRIORITIES â€” Open with the honorific and "
             "immediately state what needs attention: overdue tasks, today's "
             "deadlines, events requiring preparation. Connect related items "
             "('Your rebuttals are overdue and you have a dinner at 6, so "
             "I'd tackle those first').\n\n"
-            "2. SCHEDULE — Today's upcoming events with time context: 'You "
+            "2. SCHEDULE â€” Today's upcoming events with time context: 'You "
             "have 3 hours before your next meeting.' Skip past events.\n\n"
-            "3. MESSAGES — Triage across ALL channels (email, texts, Slack):\n"
+            "3. MESSAGES â€” Triage across ALL channels (email, texts, Slack):\n"
             "  - First: messages from real people needing a REPLY or DECISION\n"
             "  - Second: messages containing deadlines or action items\n"
             "  - Last: brief acknowledgment of casual threads ('Your group "
             "chat has been lively but nothing requiring a response')\n"
             "  - SKIP automated emails, newsletters, and marketing entirely\n"
             "  - Quote relevant message text when it helps\n\n"
-            "4. HEALTH — Interpret trends, not raw numbers. 'Your sleep has "
-            "improved three nights running and your readiness is strong' — "
+            "4. HEALTH â€” Interpret trends, not raw numbers. 'Your sleep has "
+            "improved three nights running and your readiness is strong' â€” "
             "not 'HRV 53, HR 56.' If multiple days of data, compare.\n\n"
-            "5. WORLD — Weather forecast, top news (AI/tech, business, "
+            "5. WORLD â€” Weather forecast, top news (AI/tech, business, "
             "general). Skip if no data.\n\n"
-            "6. CLOSING — One forward-looking sentence with the honorific.\n\n"
+            "6. CLOSING â€” One forward-looking sentence with the honorific.\n\n"
             "ABSOLUTE RULES (violations are unacceptable):\n"
             "- ONLY facts from the data. Zero hallucination.\n"
             "- NEVER mention disconnected or unavailable sources.\n"
@@ -151,7 +151,7 @@ class MorningDigestAgent(ToolUsingAgent):
                     f"Synthesize my morning briefing. Remember:\n"
                     f"- Priority-first, connect related items\n"
                     f"- For health: say 'solid', 'improving', 'dipped' "
-                    f"— NEVER say any number (no 82, no 56, no 6000)\n"
+                    f"â€” NEVER say any number (no 82, no 56, no 6000)\n"
                     f"- Do NOT invent reasons for health changes\n"
                     f"- Do NOT mention disconnected sources\n"
                     f"- Do NOT repeat the greeting in your closing\n"
@@ -198,7 +198,7 @@ class MorningDigestAgent(ToolUsingAgent):
         import re
 
         tts_text = re.sub(r"^#{1,6}\s+", "", narrative, flags=re.MULTILINE)
-        tts_text = re.sub(r"^\s*[-*•]\s+", "", tts_text, flags=re.MULTILINE)
+        tts_text = re.sub(r"^\s*[-*â€¢]\s+", "", tts_text, flags=re.MULTILINE)
         tts_text = re.sub(r"\*{1,2}([^*]+)\*{1,2}", r"\1", tts_text)
         tts_text = tts_text.strip()
 
@@ -246,3 +246,4 @@ class MorningDigestAgent(ToolUsingAgent):
                 "sources_used": sources,
             },
         )
+

@@ -1,4 +1,4 @@
-"""MCP transport implementations."""
+﻿"""MCP transport implementations."""
 
 from __future__ import annotations
 
@@ -193,7 +193,7 @@ class StreamableHTTPTransport(MCPTransport):
         if not last_data:
             raise RuntimeError(
                 "SSE response contained no 'data:' lines"
-                " — cannot extract JSON-RPC payload"
+                " â€” cannot extract JSON-RPC payload"
             )
         return last_data
 
@@ -211,7 +211,7 @@ class StreamableHTTPTransport(MCPTransport):
         return MCPResponse.from_json(body)
 
     def send_notification(self, request: MCPRequest) -> None:
-        """Send a notification — accept any 2xx, don't parse the body."""
+        """Send a notification â€” accept any 2xx, don't parse the body."""
         # Track session id but don't try to parse a JSON-RPC response.
         # Servers may return 202 Accepted with an empty body.
         self._post(request)
@@ -232,3 +232,4 @@ __all__ = [
     "StdioTransport",
     "StreamableHTTPTransport",
 ]
+

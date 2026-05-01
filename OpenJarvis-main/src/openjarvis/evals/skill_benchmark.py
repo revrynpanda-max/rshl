@@ -1,4 +1,4 @@
-"""SkillBenchmarkRunner — orchestrate the 4-condition × N-seed × M-task
+﻿"""SkillBenchmarkRunner â€” orchestrate the 4-condition Ã— N-seed Ã— M-task
 PinchBench sweep that measures whether skills + DSPy/GEPA optimization
 improves agent performance.
 
@@ -72,8 +72,8 @@ class ConditionResult:
     per_seed_pass_rate: Dict[int, float]
     mean_pass_rate: float
     stddev_pass_rate: float
-    per_task_results: Dict[str, List[bool]]  # task_id → [pass_seed1, ...]
-    skill_invocation_counts: Dict[str, int]  # skill_name → total invocations
+    per_task_results: Dict[str, List[bool]]  # task_id â†’ [pass_seed1, ...]
+    skill_invocation_counts: Dict[str, int]  # skill_name â†’ total invocations
     total_tokens: int
     total_runtime_seconds: float
 
@@ -90,7 +90,7 @@ class ConditionComparison:
 
 
 class SkillBenchmarkRunner:
-    """Orchestrates the 4-condition × N-seed × M-task PinchBench sweep.
+    """Orchestrates the 4-condition Ã— N-seed Ã— M-task PinchBench sweep.
 
     Each condition is a different SystemBuilder configuration:
     - no_skills:               cfg.skills.enabled = False
@@ -120,7 +120,7 @@ class SkillBenchmarkRunner:
     def _backend_kwargs_for_condition(self, condition: str) -> Dict[str, Any]:
         """Return the kwargs to pass to JarvisAgentBackend for *condition*.
 
-        Pure function — no side effects, no SystemBuilder construction.
+        Pure function â€” no side effects, no SystemBuilder construction.
         Tested in isolation so we can verify the per-condition switches
         without invoking the engine.
         """
@@ -238,7 +238,7 @@ class SkillBenchmarkRunner:
         elapsed = time.monotonic() - t0
 
         # Aggregate per-task results.  RunSummary doesn't carry the
-        # per-record list — that lives on the runner instance via the
+        # per-record list â€” that lives on the runner instance via the
         # `results` property (which returns List[EvalResult]).
         per_task: Dict[str, bool] = {}
         for r in eval_runner.results:
@@ -302,7 +302,7 @@ class SkillBenchmarkRunner:
     def run_condition(self, condition: str) -> ConditionResult:
         """Run the benchmark for *condition* across all configured seeds.
 
-        Returns a ConditionResult with mean ± stddev pass rate and the
+        Returns a ConditionResult with mean Â± stddev pass rate and the
         per-task / per-skill aggregations.
         """
         if condition not in CONDITIONS:
@@ -351,7 +351,7 @@ class SkillBenchmarkRunner:
     # ------------------------------------------------------------------
 
     def run_all_conditions(self) -> ConditionComparison:
-        """Run all 4 conditions × all seeds.
+        """Run all 4 conditions Ã— all seeds.
 
         Returns a ConditionComparison with per-condition results and the
         computed deltas (skills_on - no_skills, etc.).
@@ -402,7 +402,7 @@ class SkillBenchmarkRunner:
         path = out_dir / f"pinchbench-skills-eval-{date_str}.md"
 
         lines: List[str] = []
-        lines.append(f"# PinchBench Skills Evaluation — {date_str}")
+        lines.append(f"# PinchBench Skills Evaluation â€” {date_str}")
         lines.append("")
         lines.append(f"**Started:** {comparison.started_at}")
         lines.append(f"**Ended:** {comparison.ended_at}")
@@ -462,7 +462,7 @@ class SkillBenchmarkRunner:
                         r.per_task_results.get(task_id, []) if r is not None else []
                     )
                     if not passes:
-                        row.append("—")
+                        row.append("â€”")
                     else:
                         n_pass = sum(1 for v in passes if v)
                         row.append(f"{n_pass}/{len(passes)}")
@@ -506,3 +506,4 @@ __all__ = [
     "SkillBenchmarkConfig",
     "SkillBenchmarkRunner",
 ]
+

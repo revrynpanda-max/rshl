@@ -1,4 +1,4 @@
-"""Cost calculator -- estimate monthly cloud API costs for common use cases."""
+﻿"""Cost calculator -- estimate monthly cloud API costs for common use cases."""
 
 from __future__ import annotations
 
@@ -135,3 +135,4 @@ __all__ = [
     "estimate_monthly_cost",
     "estimate_scenario",
 ]
+

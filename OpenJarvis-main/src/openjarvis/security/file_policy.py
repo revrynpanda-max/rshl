@@ -1,4 +1,4 @@
-"""File sensitivity policy — block access to secrets, credentials, and keys."""
+﻿"""File sensitivity policy â€” block access to secrets, credentials, and keys."""
 
 from __future__ import annotations
 
@@ -65,3 +65,4 @@ __all__ = [
     "filter_sensitive_paths",
     "is_sensitive_file",
 ]
+

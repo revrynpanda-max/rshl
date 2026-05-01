@@ -1,4 +1,4 @@
-"""TwoStageRetriever — BM25 recall from KnowledgeStore + optional reranking.
+﻿"""TwoStageRetriever â€” BM25 recall from KnowledgeStore + optional reranking.
 
 Composes a fast BM25 first-stage recall (via ``KnowledgeStore``) with an
 optional second-stage ``Reranker`` for semantic reordering.  The default
@@ -299,3 +299,4 @@ class TwoStageRetriever:
 
 
 __all__ = ["ColBERTReranker", "Reranker", "TwoStageRetriever"]
+

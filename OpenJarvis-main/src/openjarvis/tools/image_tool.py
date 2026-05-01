@@ -1,4 +1,4 @@
-"""Image generation tool — generate images via OpenAI DALL-E."""
+﻿"""Image generation tool â€” generate images via OpenAI DALL-E."""
 
 from __future__ import annotations
 
@@ -149,3 +149,4 @@ class ImageGenerateTool(BaseTool):
 
 
 __all__ = ["ImageGenerateTool"]
+

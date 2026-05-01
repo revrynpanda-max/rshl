@@ -1,4 +1,4 @@
-"""LiveResearchBench scorer — checklist-based LLM-as-judge scoring.
+﻿"""LiveResearchBench scorer â€” checklist-based LLM-as-judge scoring.
 
 For each task, LiveResearchBench provides a list of checklist items that a
 good response must cover. The scorer asks an LLM judge to evaluate each
@@ -136,7 +136,7 @@ def _parse_judge_response(raw: str, num_items: int) -> List[Dict[str, Any]]:
             break
 
     if not judgments:
-        LOGGER.warning("Failed to parse judge response — marking all items uncovered")
+        LOGGER.warning("Failed to parse judge response â€” marking all items uncovered")
 
     # Fill gaps with covered=False so downstream code always sees N items.
     return [
@@ -180,7 +180,7 @@ class LiveResearchBenchScorer(LLMJudgeScorer):
 
         if not checklist:
             LOGGER.warning(
-                "No checklist attached to %s — scoring cannot produce a coverage number",
+                "No checklist attached to %s â€” scoring cannot produce a coverage number",
                 record.record_id,
             )
             return None, {
@@ -226,3 +226,4 @@ class LiveResearchBenchScorer(LLMJudgeScorer):
 
 
 __all__ = ["LiveResearchBenchScorer"]
+

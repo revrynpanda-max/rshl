@@ -1,4 +1,4 @@
-"""Tests for the document chunking pipeline."""
+﻿"""Tests for the document chunking pipeline."""
 
 from __future__ import annotations
 
@@ -90,3 +90,5 @@ def test_chunk_index_sequential():
     chunks = chunk_text(text, config=cfg)
     for i, chunk in enumerate(chunks):
         assert chunk.index == i
+
+

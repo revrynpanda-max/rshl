@@ -1,4 +1,4 @@
-"""Auto-discover available speech-to-text backends."""
+﻿"""Auto-discover available speech-to-text backends."""
 
 from __future__ import annotations
 
@@ -73,3 +73,4 @@ def get_speech_backend(config: "JarvisConfig") -> Optional["SpeechBackend"]:
             return backend
 
     return None
+

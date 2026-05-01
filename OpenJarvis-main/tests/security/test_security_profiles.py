@@ -1,4 +1,4 @@
-"""Tests for security profile expansion (Section 7)."""
+﻿"""Tests for security profile expansion (Section 7)."""
 
 from __future__ import annotations
 
@@ -52,3 +52,5 @@ class TestProfileExpansion:
         cfg = SecurityConfig(profile="nonexistent")
         with pytest.raises(ValueError, match="Unknown security profile"):
             apply_security_profile(cfg, None)
+
+

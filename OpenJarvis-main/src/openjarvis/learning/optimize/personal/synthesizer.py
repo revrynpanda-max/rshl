@@ -1,4 +1,4 @@
-"""Synthesize personal benchmarks from interaction traces."""
+﻿"""Synthesize personal benchmarks from interaction traces."""
 
 from __future__ import annotations
 
@@ -117,3 +117,4 @@ __all__ = [
     "PersonalBenchmarkSample",
     "PersonalBenchmarkSynthesizer",
 ]
+

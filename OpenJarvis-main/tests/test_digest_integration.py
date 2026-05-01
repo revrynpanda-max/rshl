@@ -77,3 +77,5 @@ def test_full_digest_pipeline(tmp_path):
     assert "Good morning" in artifact.text
     assert artifact.model_used == "kai-sonnet-4-6"
     store.close()
+
+

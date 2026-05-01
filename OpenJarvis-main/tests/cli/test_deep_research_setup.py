@@ -1,4 +1,4 @@
-"""Tests for the deep-research-setup CLI command."""
+﻿"""Tests for the deep-research-setup CLI command."""
 
 from __future__ import annotations
 
@@ -181,3 +181,5 @@ def test_detect_token_sources_empty_dir(tmp_path: Path) -> None:
 
     sources = detect_token_sources(connectors_dir=connectors_dir)
     assert len(sources) == 0
+
+

@@ -1,4 +1,4 @@
-"""browser_assistant scorer — exact match, semantic checklist, and source check.
+﻿"""browser_assistant scorer â€” exact match, semantic checklist, and source check.
 
 Tier 1 (exact match): For exact facts, normalize and match numbers/names/versions.
 Tier 2 (semantic checklist): For semantic facts, binary yes/no via LLM judge.
@@ -234,3 +234,4 @@ class BrowserAssistantScorer(Scorer):
 
 
 __all__ = ["BrowserAssistantScorer"]
+

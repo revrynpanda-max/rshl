@@ -1,4 +1,4 @@
-"""TwitterChannel — Twitter/X API v2 adapter using OAuth 1.0a."""
+﻿"""TwitterChannel â€” Twitter/X API v2 adapter using OAuth 1.0a."""
 
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ _API_BASE = "https://api.twitter.com/2"
 
 
 # ---------------------------------------------------------------------------
-# OAuth 1.0a signing (stdlib only — no authlib dependency)
+# OAuth 1.0a signing (stdlib only â€” no authlib dependency)
 # ---------------------------------------------------------------------------
 
 
@@ -333,3 +333,4 @@ class TwitterChannel(BaseChannel):
 
 
 __all__ = ["TwitterChannel"]
+

@@ -1,4 +1,4 @@
-"""FRAMES benchmark dataset (google/frames-benchmark).
+﻿"""FRAMES benchmark dataset (google/frames-benchmark).
 
 Adapted from IPW's frames.py dataset loader.
 """
@@ -139,3 +139,4 @@ class FRAMESDataset(DatasetProvider):
 
 
 __all__ = ["FRAMESDataset"]
+

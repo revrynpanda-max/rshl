@@ -1,4 +1,4 @@
-"""Isolated QueryOrchestrator tests using a minimal fake system."""
+﻿"""Isolated QueryOrchestrator tests using a minimal fake system."""
 
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ class _FakeEngine:
 
 @dataclass
 class _FakeSystem:
-    """Minimum surface QueryOrchestrator reads — no subsystems wired."""
+    """Minimum surface QueryOrchestrator reads â€” no subsystems wired."""
 
     config: JarvisConfig = field(default_factory=JarvisConfig)
     bus: EventBus = field(default_factory=EventBus)
@@ -143,3 +143,5 @@ class TestDetectAgentIntent:
         system = _FakeSystem()
         orchestrator = QueryOrchestrator(system)
         assert orchestrator._detect_agent_intent("what's the weather") is None
+
+

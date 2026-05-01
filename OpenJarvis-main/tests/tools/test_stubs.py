@@ -1,4 +1,4 @@
-"""Tests for tools/_stubs.py — ToolSpec, BaseTool, ToolExecutor."""
+﻿"""Tests for tools/_stubs.py â€” ToolSpec, BaseTool, ToolExecutor."""
 
 from __future__ import annotations
 
@@ -196,3 +196,5 @@ class TestToolExecutor:
         executor = ToolExecutor([])
         assert executor.available_tools() == []
         assert executor.get_openai_tools() == []
+
+

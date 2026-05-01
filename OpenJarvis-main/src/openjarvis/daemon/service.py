@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import sys
 from pathlib import Path
@@ -55,3 +55,4 @@ def generate_launchd_plist(output: Path | None = None) -> str:
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(content)
     return content
+

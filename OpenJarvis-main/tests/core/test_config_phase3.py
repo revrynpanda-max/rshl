@@ -1,4 +1,4 @@
-"""Tests for Phase 3 config additions (AgentConfig expansion, ServerConfig)."""
+﻿"""Tests for Phase 3 config additions (AgentConfig expansion, ServerConfig)."""
 
 from __future__ import annotations
 
@@ -76,3 +76,5 @@ class TestGenerateDefaultToml:
         toml_str = generate_default_toml(hw)
         assert "[agent]" in toml_str
         assert "default_agent" in toml_str
+
+

@@ -1,4 +1,4 @@
-"""``jarvis quickstart`` — guided 5-step setup for new users."""
+﻿"""``jarvis quickstart`` â€” guided 5-step setup for new users."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 def _check_engine_health(engine_key: str) -> bool:
     """Return True if the recommended engine is reachable."""
     try:
-        import openjarvis.engine  # noqa: F401 — trigger registration
+        import openjarvis.engine  # noqa: F401 â€” trigger registration
         from openjarvis.core.config import load_config
         from openjarvis.core.registry import EngineRegistry
         from openjarvis.engine import _discovery
@@ -39,7 +39,7 @@ def _check_engine_health(engine_key: str) -> bool:
 def _discover_healthy_engines() -> list[str]:
     """Return keys for all healthy engines discovered at runtime."""
     try:
-        import openjarvis.engine  # noqa: F401 — trigger registration
+        import openjarvis.engine  # noqa: F401 â€” trigger registration
         from openjarvis.core.config import load_config
         from openjarvis.engine import _discovery
 
@@ -158,3 +158,4 @@ def quickstart(force: bool) -> None:
     console.print(
         '[bold green]Setup complete![/bold green] Try: [bold]jarvis ask "Hello"[/bold]'
     )
+

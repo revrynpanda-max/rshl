@@ -1,4 +1,4 @@
-"""Steady-state detection for energy measurement at thermal equilibrium."""
+﻿"""Steady-state detection for energy measurement at thermal equilibrium."""
 
 from __future__ import annotations
 
@@ -127,3 +127,4 @@ __all__ = [
     "SteadyStateDetector",
     "SteadyStateResult",
 ]
+

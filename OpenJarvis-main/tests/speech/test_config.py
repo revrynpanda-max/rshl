@@ -1,4 +1,4 @@
-"""Tests for speech configuration."""
+﻿"""Tests for speech configuration."""
 
 from openjarvis.core.config import JarvisConfig, SpeechConfig
 
@@ -24,3 +24,5 @@ def test_jarvis_system_has_speech_backend():
     from openjarvis.system import JarvisSystem
 
     assert "speech_backend" in JarvisSystem.__dataclass_fields__
+
+

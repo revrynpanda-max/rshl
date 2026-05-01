@@ -1,4 +1,4 @@
-"""Tests for skill index — sync and search."""
+﻿"""Tests for skill index â€” sync and search."""
 
 from __future__ import annotations
 
@@ -103,3 +103,5 @@ class TestSkillIndex:
     def test_missing_index_file(self, tmp_path: Path):
         index = SkillIndex(tmp_path)
         assert index.entries == {}
+
+

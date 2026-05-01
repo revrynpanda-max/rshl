@@ -1,4 +1,4 @@
-"""Tests for the persistent REPL tool."""
+﻿"""Tests for the persistent REPL tool."""
 
 from __future__ import annotations
 
@@ -148,7 +148,7 @@ class TestReplSessionManagement:
         time.sleep(0.01)
         # s1 is oldest; creating s3 should evict s1
         tool.execute(code="x = 'third'", session_id="s3")
-        # s1 should be gone — new session with no x
+        # s1 should be gone â€” new session with no x
         result = tool.execute(code="print(x)", session_id="s1")
         assert "NameError" in result.content
 
@@ -262,3 +262,5 @@ class TestReplRegistration:
         # Re-register after conftest clears all registries
         ToolRegistry.register_value("repl", ReplTool)
         assert ToolRegistry.contains("repl")
+
+

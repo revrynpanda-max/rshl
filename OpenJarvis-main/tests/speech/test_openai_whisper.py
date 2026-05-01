@@ -1,4 +1,4 @@
-"""Tests for OpenAI Whisper API speech backend."""
+﻿"""Tests for OpenAI Whisper API speech backend."""
 
 from unittest.mock import MagicMock, patch
 
@@ -55,3 +55,5 @@ def test_openai_whisper_health_no_key():
         backend._client = None
         backend._api_key = ""
         assert backend.health() is False
+
+

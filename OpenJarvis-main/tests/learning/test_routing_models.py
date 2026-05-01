@@ -225,3 +225,5 @@ class TestRouterParameterized:
             urgency=urgency,
         )
         assert router.select_model(ctx) == "qwen3:8b"
+
+

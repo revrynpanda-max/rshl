@@ -1,4 +1,4 @@
-"""Tests for the WebChatChannel adapter."""
+﻿"""Tests for the WebChatChannel adapter."""
 
 from __future__ import annotations
 
@@ -68,3 +68,5 @@ class TestStatus:
         ch = WebChatChannel()
         ch.connect()
         assert ch.status() == ChannelStatus.CONNECTED
+
+

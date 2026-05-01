@@ -1,4 +1,4 @@
-"""Tests for the StreamableHTTPTransport class."""
+﻿"""Tests for the StreamableHTTPTransport class."""
 
 from __future__ import annotations
 
@@ -78,7 +78,7 @@ class TestStreamableHTTPTransport:
 
         assert transport._session_id == "sess-abc-123"
 
-        # Second request — prepare new response without session header
+        # Second request â€” prepare new response without session header
         mock_client.post.return_value = _make_http_response({"tools": []})
         req2 = MCPRequest(method="tools/list", id=2)
         transport.send(req2)
@@ -140,3 +140,5 @@ class TestStreamableHTTPTransport:
         from openjarvis.mcp.transport import SSETransport, StreamableHTTPTransport
 
         assert SSETransport is StreamableHTTPTransport
+
+

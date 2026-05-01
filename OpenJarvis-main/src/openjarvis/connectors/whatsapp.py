@@ -1,7 +1,7 @@
-"""WhatsApp chat export connector.
+﻿"""WhatsApp chat export connector.
 
 Reads WhatsApp chat history from exported .txt files.  WhatsApp allows
-exporting individual chats via *Chat → More → Export Chat* on iOS/Android,
+exporting individual chats via *Chat â†’ More â†’ Export Chat* on iOS/Android,
 producing plain-text files in a well-known format.
 
 Export line format::
@@ -73,7 +73,7 @@ class WhatsAppConnector(BaseConnector):
     """Read WhatsApp message history from exported .txt files.
 
     WhatsApp allows exporting individual chats as plain-text files via
-    *Chat → More → Export Chat*.  Point this connector at the directory
+    *Chat â†’ More â†’ Export Chat*.  Point this connector at the directory
     containing those files (one file per chat) and it will parse each file
     into a :class:`~openjarvis.connectors._stubs.Document`.
 
@@ -248,7 +248,7 @@ class WhatsAppConnector(BaseConnector):
         for raw_line in raw.splitlines():
             m = _LINE_RE.match(raw_line.strip())
             if not m:
-                # System message or continuation line — append to previous
+                # System message or continuation line â€” append to previous
                 if lines:
                     lines[-1] = lines[-1] + " " + raw_line.strip()
                 continue
@@ -296,3 +296,4 @@ class WhatsAppConnector(BaseConnector):
 
 
 __all__ = ["WhatsAppConnector"]
+

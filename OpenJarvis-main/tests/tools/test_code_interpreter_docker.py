@@ -1,4 +1,4 @@
-"""Tests for the Docker-sandboxed code interpreter tool."""
+﻿"""Tests for the Docker-sandboxed code interpreter tool."""
 
 from __future__ import annotations
 
@@ -147,3 +147,5 @@ class TestDockerCodeInterpreterTool:
 
         assert not result.success
         mock_container.remove.assert_called_once_with(force=True)
+
+

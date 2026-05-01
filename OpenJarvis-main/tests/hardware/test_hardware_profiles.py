@@ -1,4 +1,4 @@
-"""Tests for hardware detection, GPU vendor identification,
+﻿"""Tests for hardware detection, GPU vendor identification,
 and engine recommendation."""
 
 from __future__ import annotations
@@ -129,3 +129,5 @@ class TestHardwareProfileSerialization:
         small_gpu = GpuInfo(vendor="nvidia", name="RTX 3060", vram_gb=12.0, count=1)
         large_model_gb = 70.0
         assert small_gpu.vram_gb < large_model_gb
+
+

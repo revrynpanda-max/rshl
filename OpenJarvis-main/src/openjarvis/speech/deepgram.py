@@ -1,4 +1,4 @@
-"""Deepgram speech-to-text backend (cloud)."""
+﻿"""Deepgram speech-to-text backend (cloud)."""
 
 from __future__ import annotations
 
@@ -95,3 +95,4 @@ class DeepgramSpeechBackend(SpeechBackend):
 
     def supported_formats(self) -> List[str]:
         return ["wav", "mp3", "ogg", "flac", "webm", "m4a"]
+

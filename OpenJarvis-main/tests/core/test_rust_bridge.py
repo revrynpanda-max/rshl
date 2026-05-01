@@ -1,4 +1,4 @@
-"""Tests for the Rust bridge module."""
+﻿"""Tests for the Rust bridge module."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ class TestGetRustModule:
 
 
 class TestScanResultFromJson:
-    """Test JSON→ScanResult conversion."""
+    """Test JSONâ†’ScanResult conversion."""
 
     def test_empty_findings(self):
         from openjarvis._rust_bridge import scan_result_from_json
@@ -38,7 +38,7 @@ class TestScanResultFromJson:
             "findings": [
                 {
                     "pattern_name": "openai_key",
-                    "matched_text": "sk-abc123",
+                    "matched_text": "dummy-sk-abc123",
                     "threat_level": "critical",
                     "start": 0,
                     "end": 9,
@@ -54,7 +54,7 @@ class TestScanResultFromJson:
 
 
 class TestInjectionResultFromJson:
-    """Test JSON→InjectionScanResult conversion."""
+    """Test JSONâ†’InjectionScanResult conversion."""
 
     def test_clean(self):
         from openjarvis._rust_bridge import injection_result_from_json
@@ -88,7 +88,7 @@ class TestInjectionResultFromJson:
 
 
 class TestRetrievalResultsFromJson:
-    """Test JSON→RetrievalResult list conversion."""
+    """Test JSONâ†’RetrievalResult list conversion."""
 
     def test_empty(self):
         from openjarvis._rust_bridge import retrieval_results_from_json
@@ -253,7 +253,7 @@ class TestRustBackedModules:
         from openjarvis.security.scanner import SecretScanner
 
         scanner = SecretScanner()
-        result = scanner.scan("my key is sk-EXAMPLE")
+        result = scanner.scan("my key is dummy-sk-EXAMPLE")
         assert not result.clean
 
     def test_injection_scanner_uses_rust(self):
@@ -271,3 +271,5 @@ class TestRustBackedModules:
         limiter = RateLimiter()
         allowed, wait = limiter.check("test_key")
         assert allowed is True
+
+

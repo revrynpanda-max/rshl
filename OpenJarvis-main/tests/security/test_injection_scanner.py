@@ -1,4 +1,4 @@
-"""Tests for prompt injection scanner."""
+﻿"""Tests for prompt injection scanner."""
 
 from __future__ import annotations
 
@@ -89,3 +89,5 @@ class TestInjectionScanner:
         assert not result.is_clean
         assert any(f.pattern_name == "code_injection" for f in result.findings)
         assert result.threat_level == ThreatLevel.HIGH
+
+

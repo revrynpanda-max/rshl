@@ -1,4 +1,4 @@
-"""Tests for Ed25519 signing (Phase 14.6)."""
+﻿"""Tests for Ed25519 signing (Phase 14.6)."""
 
 from __future__ import annotations
 
@@ -85,3 +85,5 @@ class TestSigning:
 
         sig = sign(b"test", kp.private_key)
         assert verify(b"test", sig, loaded_pub)
+
+

@@ -1,4 +1,4 @@
-"""Intelligence learning — model fine-tuning via SFT and GRPO."""
+﻿"""Intelligence learning â€” model fine-tuning via SFT and GRPO."""
 
 from __future__ import annotations
 
@@ -11,3 +11,4 @@ try:
     from openjarvis.learning.intelligence import grpo_trainer as _grpo  # noqa: F401
 except ImportError:
     pass
+

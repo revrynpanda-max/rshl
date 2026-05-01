@@ -1,4 +1,4 @@
-"""``jarvis vault`` — encrypted credential store."""
+﻿"""``jarvis vault`` â€” encrypted credential store."""
 
 from __future__ import annotations
 
@@ -138,3 +138,4 @@ def vault_remove(key: str) -> None:
 
 
 __all__ = ["vault"]
+

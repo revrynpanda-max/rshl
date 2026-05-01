@@ -1,4 +1,4 @@
-"""Tests for taint tracking system (Phase 14.5)."""
+﻿"""Tests for taint tracking system (Phase 14.5)."""
 
 from __future__ import annotations
 
@@ -108,7 +108,7 @@ class TestAutoDetect:
         assert ts.has(TaintLabel.PII)
 
     def test_detect_api_key(self):
-        ts = auto_detect_taint("Key: sk-EXAMPLE")
+        ts = auto_detect_taint("Key: dummy-sk-EXAMPLE")
         assert ts.has(TaintLabel.SECRET)
 
     def test_detect_github_token(self):
@@ -137,6 +137,8 @@ class TestPropagate:
 
     def test_propagate_merges(self):
         input_taint = TaintSet.from_labels(TaintLabel.EXTERNAL)
-        result = propagate_taint(input_taint, "Key: sk-EXAMPLE")
+        result = propagate_taint(input_taint, "Key: dummy-sk-EXAMPLE")
         assert result.has(TaintLabel.EXTERNAL)
         assert result.has(TaintLabel.SECRET)
+
+

@@ -1,4 +1,4 @@
-"""Parametrized storage tests across all memory backends."""
+﻿"""Parametrized storage tests across all memory backends."""
 
 from __future__ import annotations
 
@@ -187,3 +187,5 @@ class TestStorageSuiteOptional:
         backend.clear()
         results = backend.retrieve("first")
         assert len(results) == 0
+
+

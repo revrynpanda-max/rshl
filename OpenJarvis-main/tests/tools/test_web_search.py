@@ -1,4 +1,4 @@
-"""Tests for the web search tool."""
+﻿"""Tests for the web search tool."""
 
 from __future__ import annotations
 
@@ -425,3 +425,5 @@ class TestExecuteWithUrl:
         result = tool.execute(query="https://example.com/broken")
         assert result.success is False
         assert "Failed to fetch URL" in result.content
+
+

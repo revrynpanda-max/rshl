@@ -1,4 +1,4 @@
-"""Tests for tool confirmation enforcement in ToolExecutor."""
+﻿"""Tests for tool confirmation enforcement in ToolExecutor."""
 
 from __future__ import annotations
 
@@ -53,7 +53,7 @@ class _DangerousTool(BaseTool):
 
 class TestToolConfirmation:
     def test_requires_confirmation_no_callback(self) -> None:
-        """Tool requiring confirmation but no callback → blocked."""
+        """Tool requiring confirmation but no callback â†’ blocked."""
         executor = ToolExecutor([_DangerousTool()])
         call = ToolCall(id="1", name="dangerous", arguments="{}")
         result = executor.execute(call)
@@ -61,7 +61,7 @@ class TestToolConfirmation:
         assert "requires confirmation" in result.content
 
     def test_requires_confirmation_not_interactive(self) -> None:
-        """Tool requiring confirmation but interactive=False → blocked."""
+        """Tool requiring confirmation but interactive=False â†’ blocked."""
         executor = ToolExecutor(
             [_DangerousTool()],
             interactive=False,
@@ -73,7 +73,7 @@ class TestToolConfirmation:
         assert "requires confirmation" in result.content
 
     def test_requires_confirmation_denied(self) -> None:
-        """Tool requiring confirmation, callback returns False → denied."""
+        """Tool requiring confirmation, callback returns False â†’ denied."""
         executor = ToolExecutor(
             [_DangerousTool()],
             interactive=True,
@@ -85,7 +85,7 @@ class TestToolConfirmation:
         assert "denied by user" in result.content
 
     def test_requires_confirmation_approved(self) -> None:
-        """Tool requiring confirmation, callback returns True → executes."""
+        """Tool requiring confirmation, callback returns True â†’ executes."""
         executor = ToolExecutor(
             [_DangerousTool()],
             interactive=True,
@@ -137,3 +137,5 @@ class TestToolConfirmation:
         assert len(received) == 1
         assert "dangerous" in received[0]
         assert "action" in received[0]
+
+

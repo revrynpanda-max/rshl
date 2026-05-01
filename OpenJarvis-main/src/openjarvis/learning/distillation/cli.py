@@ -1,6 +1,6 @@
-"""``jarvis learning`` — distillation learning CLI subcommands.
+﻿"""``jarvis learning`` â€” distillation learning CLI subcommands.
 
-See spec §12.
+See spec Â§12.
 """
 
 from __future__ import annotations
@@ -44,7 +44,7 @@ def learning_run(autonomy: str) -> None:
     console.print("[yellow]On-demand session started.[/yellow]")
     console.print("[dim]Use 'jarvis learning history' to check results.[/dim]")
     console.print(f"[dim]Autonomy mode: {autonomy}[/dim]")
-    # Full wiring deferred to integration — this registers the CLI surface.
+    # Full wiring deferred to integration â€” this registers the CLI surface.
     console.print("[dim]Full orchestration requires configured teacher engine.[/dim]")
 
 
@@ -130,3 +130,4 @@ def daemon_stop() -> None:
 def daemon_status() -> None:
     """Check daemon status."""
     console.print("[dim]Daemon status.[/dim]")
+

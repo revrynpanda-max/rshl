@@ -1,4 +1,4 @@
-"""Tests for the SkillParser strict + tolerant passes."""
+﻿"""Tests for the SkillParser strict + tolerant passes."""
 
 from __future__ import annotations
 
@@ -211,3 +211,5 @@ class TestTolerantFieldMapping:
         # Platforms get rendered into a compatibility string under metadata
         oj = manifest.metadata.get("openjarvis", {})
         assert "platforms" in oj or "compatibility" in oj
+
+

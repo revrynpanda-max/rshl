@@ -1,4 +1,4 @@
-"""Tests for CLI log configuration."""
+﻿"""Tests for CLI log configuration."""
 
 from __future__ import annotations
 
@@ -35,3 +35,5 @@ class TestSetupLogging:
         for h in logger.handlers[:]:
             logger.removeHandler(h)
             h.close()
+
+

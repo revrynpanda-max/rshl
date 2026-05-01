@@ -1,4 +1,4 @@
-"""Tests for context injection integration in ``jarvis ask``."""
+﻿"""Tests for context injection integration in ``jarvis ask``."""
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ def test_get_memory_backend_returns_backend_even_when_empty(
 ):
     """_get_memory_backend returns a backend for an empty DB.
 
-    Retrieval against an empty store is a valid operation — it simply
+    Retrieval against an empty store is a valid operation â€” it simply
     returns no hits. Callers must check ``len(results)``; returning
     ``None`` here would conflate "backend unavailable" with "no docs",
     which is the kind of ambiguity that leads to silent grounding
@@ -82,3 +82,5 @@ def test_get_memory_backend_returns_backend_with_docs(
     assert result is not None
     if hasattr(result, "close"):
         result.close()
+
+

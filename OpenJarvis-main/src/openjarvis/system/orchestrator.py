@@ -1,4 +1,4 @@
-"""Executes user queries through the engine or through an agent."""
+﻿"""Executes user queries through the engine or through an agent."""
 
 from __future__ import annotations
 
@@ -312,3 +312,4 @@ class QueryOrchestrator:
             except Exception as exc:
                 logger.warning("Failed to build tool %r: %s", name, exc)
         return tools
+

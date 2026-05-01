@@ -1,4 +1,4 @@
-"""Tests for document ingestion and file type detection."""
+﻿"""Tests for document ingestion and file type detection."""
 
 from __future__ import annotations
 
@@ -58,7 +58,7 @@ def test_read_document_pdf_missing_dep(tmp_path: Path):
     p = tmp_path / "doc.pdf"
     p.write_bytes(b"%PDF-1.4 fake pdf content")
     # Should raise ImportError when pdfplumber not installed
-    # or succeed if it IS installed — either way just check it's handled
+    # or succeed if it IS installed â€” either way just check it's handled
     try:
         read_document(p)
     except ImportError as exc:
@@ -175,3 +175,5 @@ def test_ingest_processes_normal_files(tmp_path: Path):
     sources = {c.source for c in chunks}
     assert any("app.py" in s for s in sources)
     assert any("doc.md" in s for s in sources)
+
+

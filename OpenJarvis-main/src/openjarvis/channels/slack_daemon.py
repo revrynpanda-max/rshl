@@ -1,4 +1,4 @@
-"""Slack Socket Mode daemon — listens for DMs and responds with DeepResearch.
+﻿"""Slack Socket Mode daemon â€” listens for DMs and responds with DeepResearch.
 
 Run as a standalone process or import start_slack_daemon() to spawn
 from the server. Uses slack-bolt for reliable Socket Mode handling.
@@ -21,13 +21,13 @@ _PID_FILE = str(Path.home() / ".openjarvis" / "slack-daemon.pid")
 
 def _to_slack_fmt(text: str) -> str:
     """Convert markdown to Slack mrkdwn format."""
-    # Headers → bold
+    # Headers â†’ bold
     text = re.sub(r"^#{1,6}\s+(.+)$", r"*\1*", text, flags=re.MULTILINE)
-    # Bold: **text** → *text*
+    # Bold: **text** â†’ *text*
     text = re.sub(r"\*\*(.+?)\*\*", r"*\1*", text)
-    # Strikethrough: ~~text~~ → ~text~
+    # Strikethrough: ~~text~~ â†’ ~text~
     text = re.sub(r"~~(.+?)~~", r"~\1~", text)
-    # Links: [text](url) → <url|text>
+    # Links: [text](url) â†’ <url|text>
     text = re.sub(r"\[(.+?)\]\((.+?)\)", r"<\2|\1>", text)
     # Remove LaTeX
     text = re.sub(r"\$\$.+?\$\$", "", text)
@@ -211,3 +211,4 @@ if __name__ == "__main__":
         app_token=args.app_token,
         model=args.model,
     )
+

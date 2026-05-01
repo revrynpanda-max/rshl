@@ -1,4 +1,4 @@
-"""DeepResearchBench scorer — LLM-as-judge for deep research quality.
+﻿"""DeepResearchBench scorer â€” LLM-as-judge for deep research quality.
 
 Evaluates research output quality across four dimensions from the
 DeepResearchBench rubric: comprehensiveness, insight, instruction_following,
@@ -257,7 +257,7 @@ class LiveResearchBenchScorer(LLMJudgeScorer):
         if not model_answer or not model_answer.strip():
             return False, {"reason": "empty_response", "score": 0.0}
 
-        # Build rubric — use task-specific criteria if available
+        # Build rubric â€” use task-specific criteria if available
         criterions = record.metadata.get("criterions")
         if criterions and isinstance(criterions, dict):
             rubric = _format_criteria_rubric(criterions)
@@ -314,3 +314,4 @@ class LiveResearchBenchScorer(LLMJudgeScorer):
 
 
 __all__ = ["LiveResearchBenchScorer"]
+

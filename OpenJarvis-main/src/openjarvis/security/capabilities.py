@@ -1,4 +1,4 @@
-"""RBAC capability system — fine-grained permission model for tool dispatch."""
+﻿"""RBAC capability system â€” fine-grained permission model for tool dispatch."""
 
 from __future__ import annotations
 
@@ -99,10 +99,10 @@ class CapabilityPolicy:
         return self._rust_impl.check(agent_id, capability, resource)
 
     def _check_python(self, agent_id: str, capability: str, resource: str = "") -> bool:
-        """Legacy Python check — kept for reference only."""
+        """Legacy Python check â€” kept for reference only."""
         policy = self._policies.get(agent_id)
         if policy is None:
-            # No explicit policy — use default
+            # No explicit policy â€” use default
             return not self._default_deny
 
         # Explicit denials take precedence
@@ -188,3 +188,4 @@ __all__ = [
     "CapabilityPolicy",
     "DEFAULT_TOOL_CAPABILITIES",
 ]
+

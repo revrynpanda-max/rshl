@@ -1,4 +1,4 @@
-"""Tests for wire_channel session history"""
+﻿"""Tests for wire_channel session history"""
 
 from __future__ import annotations
 
@@ -113,3 +113,5 @@ class TestWireChannelHistory:
 
         assert len(captured) == 1
         assert captured[0] == []
+
+

@@ -1,4 +1,4 @@
-"""BlueBubblesChannel — BlueBubbles (iMessage bridge) adapter."""
+﻿"""BlueBubblesChannel â€” BlueBubbles (iMessage bridge) adapter."""
 
 from __future__ import annotations
 
@@ -50,7 +50,7 @@ class BlueBubblesChannel(BaseChannel):
     # -- connection lifecycle ---------------------------------------------------
 
     def connect(self) -> None:
-        """Mark as connected (send-only — no persistent connection)."""
+        """Mark as connected (send-only â€” no persistent connection)."""
         if not self._url or not self._password:
             logger.warning("No BlueBubbles URL or password configured")
             self._status = ChannelStatus.ERROR
@@ -132,3 +132,4 @@ class BlueBubblesChannel(BaseChannel):
 
 
 __all__ = ["BlueBubblesChannel"]
+

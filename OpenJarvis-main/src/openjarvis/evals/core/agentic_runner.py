@@ -1,4 +1,4 @@
-"""AgenticRunner — multi-turn agent execution with energy telemetry correlation.
+﻿"""AgenticRunner â€” multi-turn agent execution with energy telemetry correlation.
 
 Orchestrates agentic workloads where a single query may involve multiple
 LLM turns and tool calls, capturing per-turn traces with energy attribution.
@@ -323,7 +323,7 @@ class AgenticRunner:
 
         event_recorder.clear()
 
-        # Bridge EventBus → EventRecorder so tool events are captured.
+        # Bridge EventBus â†’ EventRecorder so tool events are captured.
         # ToolExecutor publishes to JarvisSystem.bus; we relay those into
         # the EventRecorder for transcript building and trace enrichment.
         _bus_unsubs: list[tuple] = []
@@ -797,3 +797,4 @@ class AgenticRunner:
 
 
 __all__ = ["AgenticRunner"]
+

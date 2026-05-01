@@ -1,4 +1,4 @@
-"""End-to-end CLI tests for skill install + sync against fake sources."""
+﻿"""End-to-end CLI tests for skill install + sync against fake sources."""
 
 from __future__ import annotations
 
@@ -81,3 +81,5 @@ class TestCliInstallE2E:
         body = installed.read_text()
         assert "shell_exec" in body
         assert "file_read" in body
+
+

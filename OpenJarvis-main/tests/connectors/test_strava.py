@@ -1,4 +1,4 @@
-"""Tests for StravaConnector — Strava REST API v3."""
+﻿"""Tests for StravaConnector â€” Strava REST API v3."""
 
 from __future__ import annotations
 
@@ -73,3 +73,5 @@ def test_sync_yields_activities(connector):
     assert docs[0].title == "Morning Run"
     assert docs[1].doc_type == "ride"
     assert docs[0].metadata["distance_m"] == 5200.0
+
+

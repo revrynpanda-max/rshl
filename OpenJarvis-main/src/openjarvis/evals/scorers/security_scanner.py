@@ -1,4 +1,4 @@
-"""security_scanner scorer — vulnerability detection evaluation.
+﻿"""security_scanner scorer â€” vulnerability detection evaluation.
 
 Tier 1: Pattern-match model output against vulnerability manifest.
 Tier 2: Binary checklist for severity correctness and fix quality.
@@ -261,3 +261,4 @@ class SecurityScannerScorer(Scorer):
 
 
 __all__ = ["SecurityScannerScorer"]
+

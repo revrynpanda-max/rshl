@@ -1,4 +1,4 @@
-"""Cross-product tests: agent x engine x model."""
+﻿"""Cross-product tests: agent x engine x model."""
 
 from __future__ import annotations
 
@@ -183,3 +183,5 @@ def test_no_tool_results_for_simple_query(agent_key):
     agent = AGENT_FACTORIES[agent_key](engine, "test-model", None)
     result = agent.run("Hello")
     assert result.tool_results == []
+
+

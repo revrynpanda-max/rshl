@@ -1,4 +1,4 @@
-"""WorkArena task environment — per-task BrowserGym lifecycle + validation.
+﻿"""WorkArena task environment â€” per-task BrowserGym lifecycle + validation.
 
 Wraps BrowserGym's ``BrowserEnv`` to provide per-task browser/ServiceNow
 setup, observation access, action stepping, and native ``validate()``
@@ -252,7 +252,7 @@ class WorkArenaTaskEnv:
         """Validate the task using the native WorkArena validate() method.
 
         This calls ``task.validate(page, chat_messages)`` which checks the
-        actual state of the ServiceNow instance — the canonical evaluation
+        actual state of the ServiceNow instance â€” the canonical evaluation
         method from the original benchmark.
         """
         results: Dict[str, Any] = {
@@ -319,12 +319,12 @@ class WorkArenaTaskEnv:
         action from its response, and steps the environment until the
         task is done or *max_steps* is reached.
 
-        Validation (``run_tests``) is **not** called here — the caller
+        Validation (``run_tests``) is **not** called here â€” the caller
         (e.g. ``AgenticRunner``) is responsible for that.
         """
         if self._env is None:
             raise RuntimeError(
-                "WorkArena environment not initialised — use as context manager"
+                "WorkArena environment not initialised â€” use as context manager"
             )
 
         if max_steps is None:
@@ -437,7 +437,7 @@ class WorkArenaTaskEnv:
             for i, (u, t) in enumerate(
                 zip(open_urls, open_titles or [""] * len(open_urls))
             ):
-                tabs.append(f"  [{i}] {t} — {u}")
+                tabs.append(f"  [{i}] {t} â€” {u}")
             parts.append("## Open Tabs\n" + "\n".join(tabs))
 
         return "\n\n".join(parts)
@@ -494,3 +494,4 @@ def _safe_serialize(obj: Any) -> Any:
 
 
 __all__ = ["WorkArenaTaskEnv"]
+

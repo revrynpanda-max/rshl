@@ -436,7 +436,7 @@ def ask(
             "  [cyan]ollama serve[/cyan]          â€” start Ollama\n"
             "  [cyan]vllm serve <model>[/cyan]    â€” start vLLM\n"
             "  [cyan]llama-server -m <gguf>[/cyan] â€” start llama.cpp\n\n"
-            "Or set OPENAI_API_KEY / Geometric Intelligence_API_KEY for cloud inference.\n\n"
+            "Or set OPENAI_API_KEY / GeometricIntelligence_API_KEY for cloud inference.\n\n"
             "[dim]To use a remote engine:[/dim]\n"
             "  [cyan]jarvis config set engine.ollama.host http://<remote-ip>:11434[/cyan]\n"
             "  [dim]or[/dim] [cyan]export OLLAMA_HOST=http://<remote-ip>:11434[/cyan]"

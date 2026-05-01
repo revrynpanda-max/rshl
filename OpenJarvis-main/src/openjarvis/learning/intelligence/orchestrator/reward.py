@@ -1,4 +1,4 @@
-"""Multi-objective reward function for orchestrator training.
+﻿"""Multi-objective reward function for orchestrator training.
 
 Adapted from IPW's ``reward.py``.  Balances accuracy, cost, energy,
 latency, and power into a single scalar reward used by both the SFT
@@ -215,3 +215,4 @@ __all__ = [
     "Normalizers",
     "RewardWeights",
 ]
+

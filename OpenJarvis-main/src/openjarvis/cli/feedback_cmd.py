@@ -1,4 +1,4 @@
-"""``jarvis feedback`` — trace feedback management CLI."""
+﻿"""``jarvis feedback`` â€” trace feedback management CLI."""
 
 from __future__ import annotations
 
@@ -196,3 +196,4 @@ def feedback_stats() -> None:
 
 
 __all__ = ["feedback_group"]
+

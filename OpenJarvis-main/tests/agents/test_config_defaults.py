@@ -1,4 +1,4 @@
-"""Tests for agent constructor config-based default resolution."""
+﻿"""Tests for agent constructor config-based default resolution."""
 
 from __future__ import annotations
 
@@ -169,3 +169,5 @@ class TestClassLevelDefaults:
         assert agent._temperature == 0.9
         assert agent._max_tokens == 100
         assert agent._max_turns == 2
+
+

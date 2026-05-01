@@ -1,4 +1,4 @@
-"""Shared binary checklist scorer and text normalization utilities.
+﻿"""Shared binary checklist scorer and text normalization utilities.
 
 Provides:
 - ChecklistScorer: evaluates model output against yes/no checklist items
@@ -67,7 +67,7 @@ Checklist:
 {checklist_text}
 
 Respond with exactly one line per item in this format:
-<number>. <yes or no> — <brief reason>
+<number>. <yes or no> â€” <brief reason>
 """
 
 
@@ -143,7 +143,7 @@ class ChecklistScorer:
         details: List[Dict[str, Any]] = []
 
         for i, item in enumerate(checklist):
-            pattern = rf"(?:^|\n)\s*{i + 1}\.\s*(yes|no)\b\s*(?:—|-)?\s*(.*)"
+            pattern = rf"(?:^|\n)\s*{i + 1}\.\s*(yes|no)\b\s*(?:â€”|-)?\s*(.*)"
             match = re.search(pattern, raw, re.IGNORECASE)
 
             if match:
@@ -170,3 +170,4 @@ __all__ = [
     "normalize_number_str",
     "normalize_str",
 ]
+

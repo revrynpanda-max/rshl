@@ -1,4 +1,4 @@
-"""Integration tests for the SendBlue webhook endpoint.
+﻿"""Integration tests for the SendBlue webhook endpoint.
 
 Tests the /webhooks/sendblue route, health check endpoint, and the
 full flow from incoming webhook -> bridge -> agent -> send response.
@@ -234,3 +234,5 @@ class TestSendBlueHealth:
         assert resp.status_code == 200
         data = resp.json()
         assert data["ready"] is False
+
+

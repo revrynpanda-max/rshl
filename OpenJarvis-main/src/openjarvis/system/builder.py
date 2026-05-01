@@ -1,4 +1,4 @@
-"""Config-driven fluent builder that wires up a JarvisSystem."""
+﻿"""Config-driven fluent builder that wires up a JarvisSystem."""
 
 from __future__ import annotations
 
@@ -597,7 +597,7 @@ class SystemBuilder:
             transport = StdioTransport(command=[command] + args)
         else:
             logger.warning(
-                "MCP server '%s' has neither 'url' nor 'command' — skipping",
+                "MCP server '%s' has neither 'url' nor 'command' â€” skipping",
                 name,
             )
             return []
@@ -623,3 +623,4 @@ class SystemBuilder:
             name,
         )
         return discovered
+

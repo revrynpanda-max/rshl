@@ -1,4 +1,4 @@
-"""Tests for OrchestratorAgent structured mode."""
+﻿"""Tests for OrchestratorAgent structured mode."""
 
 from __future__ import annotations
 
@@ -181,3 +181,5 @@ class TestParseStructuredResponse:
         assert parsed["thought"] == ""
         assert parsed["tool"] == ""
         assert parsed["final_answer"] == ""
+
+

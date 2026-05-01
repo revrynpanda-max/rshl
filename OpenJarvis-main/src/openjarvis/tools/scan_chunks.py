@@ -1,4 +1,4 @@
-"""ScanChunksTool — semantic grep via LM-powered chunk scanning.
+﻿"""ScanChunksTool â€” semantic grep via LM-powered chunk scanning.
 
 Pulls chunks from the KnowledgeStore by filter, batches them, and asks the
 LM to extract information relevant to a question.  Catches semantic matches
@@ -21,7 +21,7 @@ _DEFAULT_BATCH_SIZE = 20
 
 @ToolRegistry.register("scan_chunks")
 class ScanChunksTool(BaseTool):
-    """Semantic grep — feeds chunks to the LM to find information BM25 misses."""
+    """Semantic grep â€” feeds chunks to the LM to find information BM25 misses."""
 
     tool_id = "scan_chunks"
 
@@ -40,7 +40,7 @@ class ScanChunksTool(BaseTool):
         return ToolSpec(
             name="scan_chunks",
             description=(
-                "Semantic search — feeds chunks from the knowledge store to an LM "
+                "Semantic search â€” feeds chunks from the knowledge store to an LM "
                 "that reads the actual text looking for relevant information. "
                 "Use when keyword search (knowledge_search) misses semantic matches "
                 "(e.g. searching for 'VCs' when text says 'fundraising round'). "
@@ -172,7 +172,7 @@ class ScanChunksTool(BaseTool):
         if not findings:
             return ToolResult(
                 tool_name="scan_chunks",
-                content=f"Scanned {len(rows)} chunks — no relevant information found.",
+                content=f"Scanned {len(rows)} chunks â€” no relevant information found.",
                 success=True,
                 metadata={"chunks_scanned": len(rows)},
             )
@@ -189,3 +189,4 @@ class ScanChunksTool(BaseTool):
 
 
 __all__ = ["ScanChunksTool"]
+

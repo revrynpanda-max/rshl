@@ -1,4 +1,4 @@
-"""Native terminal-bench v2 backend.
+﻿"""Native terminal-bench v2 backend.
 
 Uses Harness for Docker-based execution and scoring.
 """
@@ -122,3 +122,4 @@ class TerminalBenchNativeBackend(InferenceBackend):
 
 
 __all__ = ["TerminalBenchNativeBackend"]
+

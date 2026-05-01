@@ -1,4 +1,4 @@
-"""KnowledgeSQLTool — read-only SQL queries against the KnowledgeStore.
+﻿"""KnowledgeSQLTool â€” read-only SQL queries against the KnowledgeStore.
 
 Allows agents to run SELECT queries for aggregation, counting, ranking,
 and filtering operations that BM25 search cannot handle.
@@ -128,3 +128,4 @@ class KnowledgeSQLTool(BaseTool):
 
 
 __all__ = ["KnowledgeSQLTool"]
+

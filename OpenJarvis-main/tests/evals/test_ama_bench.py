@@ -1,4 +1,4 @@
-"""Tests for AMA-Bench dataset provider and scorer."""
+﻿"""Tests for AMA-Bench dataset provider and scorer."""
 
 from unittest.mock import MagicMock
 
@@ -229,3 +229,5 @@ class TestAMABenchCLI:
 
         s = _build_scorer("ama-bench", _mock_backend(), "test-model")
         assert s.scorer_id == "ama-bench"
+
+

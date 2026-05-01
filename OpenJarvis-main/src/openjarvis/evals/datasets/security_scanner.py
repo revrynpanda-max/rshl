@@ -1,4 +1,4 @@
-"""security_scanner dataset — 30 vulnerable code projects for security auditing.
+﻿"""security_scanner dataset â€” 30 vulnerable code projects for security auditing.
 
 Each task presents a small Python project with planted vulnerabilities.
 The agent must identify vulnerabilities, classify severity, and recommend fixes.
@@ -138,7 +138,7 @@ _EASY_TASKS: List[Dict[str, Any]] = [
                 "line": 4,
                 "type": "weak_crypto",
                 "severity": "HIGH",
-                "description": "MD5 used for password hashing — use bcrypt or argon2",
+                "description": "MD5 used for password hashing â€” use bcrypt or argon2",
             },
         ],
         "safe_patterns": ["verify_password comparison logic"],
@@ -226,7 +226,7 @@ _EASY_TASKS: List[Dict[str, Any]] = [
                 "line": 5,
                 "type": "misconfiguration",
                 "severity": "MEDIUM",
-                "description": "CORS allows all origins — exposes API to any domain",
+                "description": "CORS allows all origins â€” exposes API to any domain",
             },
         ],
         "safe_patterns": ["Flask-CORS import pattern"],
@@ -276,7 +276,7 @@ _EASY_TASKS: List[Dict[str, Any]] = [
                 "line": 7,
                 "type": "weak_crypto",
                 "severity": "CRITICAL",
-                "description": "JWT decode allows 'none' algorithm — attacker can forge tokens",
+                "description": "JWT decode allows 'none' algorithm â€” attacker can forge tokens",
             },
         ],
         "safe_patterns": [],
@@ -423,7 +423,7 @@ _MEDIUM_TASKS: List[Dict[str, Any]] = [
                 "line": 8,
                 "type": "weak_crypto",
                 "severity": "HIGH",
-                "description": "AES-ECB mode is insecure — use CBC or GCM",
+                "description": "AES-ECB mode is insecure â€” use CBC or GCM",
             },
             {
                 "file": "crypto_utils.py",
@@ -467,7 +467,7 @@ _MEDIUM_TASKS: List[Dict[str, Any]] = [
                 "line": 18,
                 "type": "insecure_deserialization",
                 "severity": "MEDIUM",
-                "description": "Base64-encoded cookie is not signed — client can tamper with preferences",
+                "description": "Base64-encoded cookie is not signed â€” client can tamper with preferences",
             },
         ],
         "safe_patterns": ["json.dumps/loads for serialization (not pickle)"],
@@ -568,7 +568,7 @@ _MEDIUM_TASKS: List[Dict[str, Any]] = [
                 "line": 14,
                 "type": "broken_access_control",
                 "severity": "MEDIUM",
-                "description": "flushall exposed without access control — could wipe entire cache",
+                "description": "flushall exposed without access control â€” could wipe entire cache",
             },
         ],
         "safe_patterns": ["json serialization for cache values", "TTL on cached items"],
@@ -630,14 +630,14 @@ _MEDIUM_TASKS: List[Dict[str, Any]] = [
                 "line": 9,
                 "type": "ip_spoofing",
                 "severity": "HIGH",
-                "description": "X-Forwarded-For header is client-controlled — rate limit can be bypassed",
+                "description": "X-Forwarded-For header is client-controlled â€” rate limit can be bypassed",
             },
             {
                 "file": "rate_limiter.py",
                 "line": 5,
                 "type": "resource_leak",
                 "severity": "MEDIUM",
-                "description": "In-memory dict grows unbounded — no cleanup of old entries",
+                "description": "In-memory dict grows unbounded â€” no cleanup of old entries",
             },
         ],
         "safe_patterns": ["Rate limiting concept", "before_request pattern"],
@@ -673,14 +673,14 @@ _HARD_TASKS: List[Dict[str, Any]] = [
                 "line": 18,
                 "type": "timing_attack",
                 "severity": "MEDIUM",
-                "description": "String comparison (==) instead of hmac.compare_digest for signature — vulnerable to timing attack",
+                "description": "String comparison (==) instead of hmac.compare_digest for signature â€” vulnerable to timing attack",
             },
             {
                 "file": "auth.py",
                 "line": 7,
                 "type": "insufficient_validation",
                 "severity": "LOW",
-                "description": "No token expiration check — tokens valid forever",
+                "description": "No token expiration check â€” tokens valid forever",
             },
         ],
         "safe_patterns": [
@@ -777,7 +777,7 @@ _HARD_TASKS: List[Dict[str, Any]] = [
                 "line": 6,
                 "type": "weak_crypto",
                 "severity": "HIGH",
-                "description": "Reset token is predictable — based on email + timestamp, not cryptographic random",
+                "description": "Reset token is predictable â€” based on email + timestamp, not cryptographic random",
             },
         ],
         "safe_patterns": ["secrets.token_urlsafe for API key generation is correct"],
@@ -806,14 +806,14 @@ _HARD_TASKS: List[Dict[str, Any]] = [
                 "line": 14,
                 "type": "ssrf",
                 "severity": "HIGH",
-                "description": "SSRF check is bypassable — doesn't handle 0.0.0.0, IPv6 ::1, or DNS rebinding",
+                "description": "SSRF check is bypassable â€” doesn't handle 0.0.0.0, IPv6 ::1, or DNS rebinding",
             },
             {
                 "file": "middleware.py",
                 "line": 14,
                 "type": "ssrf",
                 "severity": "MEDIUM",
-                "description": "URL parsing via split is fragile — use urllib.parse",
+                "description": "URL parsing via split is fragile â€” use urllib.parse",
             },
         ],
         "safe_patterns": ["IP blocklist concept", "SSRF protection attempt"],
@@ -841,14 +841,14 @@ _HARD_TASKS: List[Dict[str, Any]] = [
                 "line": 15,
                 "type": "path_traversal",
                 "severity": "HIGH",
-                "description": "session_id not validated — ../../etc/passwd traversal possible",
+                "description": "session_id not validated â€” ../../etc/passwd traversal possible",
             },
             {
                 "file": "session_store.py",
                 "line": 5,
                 "type": "misconfiguration",
                 "severity": "MEDIUM",
-                "description": "/tmp is world-readable — session files accessible to other users",
+                "description": "/tmp is world-readable â€” session files accessible to other users",
             },
         ],
         "safe_patterns": [
@@ -879,14 +879,14 @@ _HARD_TASKS: List[Dict[str, Any]] = [
                 "line": 13,
                 "type": "timing_attack",
                 "severity": "MEDIUM",
-                "description": "String != for HMAC comparison is vulnerable to timing attack — use hmac.compare_digest",
+                "description": "String != for HMAC comparison is vulnerable to timing attack â€” use hmac.compare_digest",
             },
             {
                 "file": "webhook.py",
                 "line": 6,
                 "type": "misconfiguration",
                 "severity": "LOW",
-                "description": "Empty string default for WEBHOOK_SECRET — webhook verification disabled if env var missing",
+                "description": "Empty string default for WEBHOOK_SECRET â€” webhook verification disabled if env var missing",
             },
         ],
         "safe_patterns": [
@@ -918,7 +918,7 @@ _HARD_TASKS: List[Dict[str, Any]] = [
                 "line": 15,
                 "type": "path_traversal",
                 "severity": "HIGH",
-                "description": "f.filename not sanitized — path traversal via ../../../etc/cron.d/evil",
+                "description": "f.filename not sanitized â€” path traversal via ../../../etc/cron.d/evil",
             },
         ],
         "safe_patterns": [
@@ -954,7 +954,7 @@ _HARD_TASKS: List[Dict[str, Any]] = [
                 "line": 9,
                 "type": "broken_access_control",
                 "severity": "HIGH",
-                "description": "No authorization check — any user can export any other user's data via user_id parameter",
+                "description": "No authorization check â€” any user can export any other user's data via user_id parameter",
             },
             {
                 "file": "export.py",
@@ -993,7 +993,7 @@ _HARD_TASKS: List[Dict[str, Any]] = [
                 "line": 10,
                 "type": "redos",
                 "severity": "HIGH",
-                "description": "User-supplied regex compiled without timeout — ReDoS vulnerability (e.g., (a+)+$ on long input)",
+                "description": "User-supplied regex compiled without timeout â€” ReDoS vulnerability (e.g., (a+)+$ on long input)",
             },
         ],
         "safe_patterns": [
@@ -1072,3 +1072,4 @@ class SecurityScannerDataset(DatasetProvider):
 
 
 __all__ = ["SecurityScannerDataset"]
+

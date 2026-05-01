@@ -1,4 +1,4 @@
-"""Tests for ``jarvis doctor`` optional dependency labels."""
+﻿"""Tests for ``jarvis doctor`` optional dependency labels."""
 
 from __future__ import annotations
 
@@ -64,3 +64,5 @@ class TestDoctorOptionalLabels:
         ]
         assert len(nvidia_checks) == 1
         assert "Not installed (openjarvis[gpu-metrics])" == nvidia_checks[0]["message"]
+
+

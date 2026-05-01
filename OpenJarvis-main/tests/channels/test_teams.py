@@ -1,4 +1,4 @@
-"""Tests for the TeamsChannel adapter."""
+﻿"""Tests for the TeamsChannel adapter."""
 
 from __future__ import annotations
 
@@ -119,3 +119,5 @@ class TestStatus:
         ch = TeamsChannel()
         ch.connect()
         assert ch.status() == ChannelStatus.ERROR
+
+

@@ -1,4 +1,4 @@
-"""Tests for activity-based stall detection."""
+﻿"""Tests for activity-based stall detection."""
 
 import time
 from unittest.mock import patch
@@ -141,3 +141,5 @@ def test_reconcile_retries_exhausted_sets_error(tmp_path):
     updated = mgr.get_agent(agent["id"])
     assert updated["status"] == "error"
     mgr.close()
+
+

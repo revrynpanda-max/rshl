@@ -1,14 +1,14 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Verify that dense retrieval grounds the bot's reply in real doc facts.
 
 Question: "can I run the orchestrator agent on a laptop without a gpu?"
-Ground truth is scattered across docs/ — mentions of ``llama.cpp`` (pure
+Ground truth is scattered across docs/ â€” mentions of ``llama.cpp`` (pure
 C++ inference, "ideal for laptops without a discrete GPU"), CPU-only
 mode, 4B-model recommendation on CPU, Metal on Apple Silicon.
 
 Stages:
-  1. **Unground**: backend empty → bot hits the deferral prompt path.
-  2. **Grounded**: DenseMemory indexed over README + docs/ → bot hits
+  1. **Unground**: backend empty â†’ bot hits the deferral prompt path.
+  2. **Grounded**: DenseMemory indexed over README + docs/ â†’ bot hits
      the grounded prompt with retrieved context embedded.
 
 Success: stage 2's reply cites one of the concrete doc facts
@@ -72,7 +72,7 @@ def main():
 
     # ------------------------------------------------------------------ #
     print("=" * 80)
-    print("STAGE 1: No retrieval — forced deferral path")
+    print("STAGE 1: No retrieval â€” forced deferral path")
     print("=" * 80)
     empty_backend = DenseMemory()  # empty index
     reply_1, score_1 = _ask_once(j, demo_channel, empty_backend)
@@ -81,7 +81,7 @@ def main():
 
     # ------------------------------------------------------------------ #
     print("=" * 80)
-    print("STAGE 2: Full docs indexed — grounded path if score >= threshold")
+    print("STAGE 2: Full docs indexed â€” grounded path if score >= threshold")
     print("=" * 80)
     backend = build_index(repo_root)
     print(f"Indexed {backend.count()} chunks from README + docs/")
@@ -124,3 +124,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

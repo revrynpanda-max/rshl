@@ -1,4 +1,4 @@
-"""Tests for the retrieval tool."""
+﻿"""Tests for the retrieval tool."""
 
 from __future__ import annotations
 
@@ -108,3 +108,5 @@ class TestRetrievalTool:
         tool = RetrievalTool()
         fn = tool.to_openai_function()
         assert fn["function"]["name"] == "retrieval"
+
+

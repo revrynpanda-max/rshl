@@ -1,4 +1,4 @@
-"""TwitchChannel — Twitch chat adapter via twitchio."""
+﻿"""TwitchChannel â€” Twitch chat adapter via twitchio."""
 
 from __future__ import annotations
 
@@ -162,3 +162,4 @@ class TwitchChannel(BaseChannel):
 
 
 __all__ = ["TwitchChannel"]
+

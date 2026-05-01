@@ -1,4 +1,4 @@
-"""Integration test: apply session then rollback via CheckpointStore."""
+﻿"""Integration test: apply session then rollback via CheckpointStore."""
 
 from __future__ import annotations
 
@@ -85,3 +85,5 @@ class TestRollbackIntegration:
 
         result = store.revert_session("nonexistent-session")
         assert result == []
+
+

@@ -1,4 +1,4 @@
-"""Tests for Tier 2.1 — phase energy split: decode_latency, prefill/decode energy."""
+﻿"""Tests for Tier 2.1 â€” phase energy split: decode_latency, prefill/decode energy."""
 
 from __future__ import annotations
 
@@ -104,7 +104,7 @@ class TestDecodeLatency:
 
 
 class TestPhaseEnergySplit:
-    """prefill_energy + decode_energy ≈ total energy."""
+    """prefill_energy + decode_energy â‰ˆ total energy."""
 
     def test_energy_split_proportional(self):
         bus = EventBus()
@@ -161,7 +161,7 @@ class TestPhaseEnergySplit:
 
         ie.generate([Message(role=Role.USER, content="hi")], model="m")
         rec = records[0]
-        # No ttft → no prefill_latency → no split
+        # No ttft â†’ no prefill_latency â†’ no split
         assert rec.prefill_energy_joules == 0.0
         assert rec.decode_energy_joules == 0.0
 
@@ -229,3 +229,5 @@ class TestPhaseEnergyStorage:
         assert stats[0].total_decode_energy_joules == pytest.approx(7.0)
         agg.close()
         store.close()
+
+

@@ -1,4 +1,4 @@
-"""Tests for eval result trackers (W&B + Google Sheets)."""
+﻿"""Tests for eval result trackers (W&B + Google Sheets)."""
 
 from __future__ import annotations
 
@@ -342,3 +342,5 @@ class TestSheetsTracker:
         finally:
             st_mod.gspread = original
             st_mod.Credentials = original_creds
+
+

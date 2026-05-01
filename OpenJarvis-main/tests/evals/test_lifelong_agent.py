@@ -1,4 +1,4 @@
-"""Tests for LifelongAgentBench benchmark.
+﻿"""Tests for LifelongAgentBench benchmark.
 
 Covers:
 - DB building and state comparison
@@ -737,7 +737,7 @@ class TestKGEnvironment:
         obs = env.reset(record)
         assert "Question" in obs
 
-        # Turn 1: agent calls API — oracle infers relation from next action
+        # Turn 1: agent calls API â€” oracle infers relation from next action
         obs, done = env.step("Action: get_relations(m.02h8b9t)")
         assert not done
         assert "Result" in obs
@@ -828,7 +828,7 @@ class TestOSEnvironment:
         from openjarvis.evals.environments.lifelong_agent_env import OSEnvironment
 
         if shutil.which("docker"):
-            # Docker is available — test that it at least initializes
+            # Docker is available â€” test that it at least initializes
             env = OSEnvironment()
             # Don't actually run the full test on CI
             env.close()
@@ -1095,3 +1095,5 @@ class TestNumericTolerance:
     def test_abs_tol_just_outside(self) -> None:
         """Values beyond abs_tol should not match."""
         assert not values_match(0, 1e-5)
+
+

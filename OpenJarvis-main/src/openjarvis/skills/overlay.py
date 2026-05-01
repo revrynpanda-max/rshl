@@ -1,4 +1,4 @@
-"""SkillOverlay — sidecar storage for optimization output (Plan 2A).
+﻿"""SkillOverlay â€” sidecar storage for optimization output (Plan 2A).
 
 Optimization results from DSPy/GEPA are written to
 ``~/.openjarvis/learning/skills/<skill-name>/optimized.toml``.  This module
@@ -61,7 +61,7 @@ class SkillOverlayLoader:
         """Load the overlay for *skill_name*.
 
         Returns ``None`` if the overlay file is missing or malformed.
-        Never raises — bad overlay files should not break skill loading.
+        Never raises â€” bad overlay files should not break skill loading.
         """
         path = self._root / skill_name / "optimized.toml"
         if not path.exists():
@@ -149,3 +149,4 @@ def _escape(text: str) -> str:
 
 
 __all__ = ["SkillOverlay", "SkillOverlayLoader", "write_overlay"]
+

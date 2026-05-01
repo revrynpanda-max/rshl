@@ -1,4 +1,4 @@
-"""``jarvis scheduler`` -- task scheduling commands."""
+﻿"""``jarvis scheduler`` -- task scheduling commands."""
 
 from __future__ import annotations
 
@@ -257,3 +257,4 @@ def scheduler_start(poll_interval: int) -> None:
 
         while True:
             time.sleep(1)
+

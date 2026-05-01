@@ -1,4 +1,4 @@
-"""Tests for browser_axtree tool."""
+﻿"""Tests for browser_axtree tool."""
 
 from unittest.mock import MagicMock, PropertyMock, patch
 
@@ -119,3 +119,5 @@ class TestBrowserAXTreeTool:
             result = tool.execute()
         assert result.success is False
         assert "AX tree extraction error" in result.content
+
+

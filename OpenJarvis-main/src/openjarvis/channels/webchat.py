@@ -1,4 +1,4 @@
-"""WebChatChannel — in-memory message queue for webchat/testing."""
+﻿"""WebChatChannel â€” in-memory message queue for webchat/testing."""
 
 from __future__ import annotations
 
@@ -112,3 +112,4 @@ class WebChatChannel(BaseChannel):
 
 
 __all__ = ["WebChatChannel"]
+

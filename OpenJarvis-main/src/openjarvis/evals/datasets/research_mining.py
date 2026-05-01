@@ -1,4 +1,4 @@
-"""Research mining benchmark dataset.
+﻿"""Research mining benchmark dataset.
 
 Research questions spanning multiple domains for evaluating synthesis,
 source quality, and accuracy of AI research assistants.
@@ -264,3 +264,4 @@ class ResearchMiningDataset(DatasetProvider):
 
 
 __all__ = ["ResearchMiningDataset"]
+

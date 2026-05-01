@@ -1,4 +1,4 @@
-"""Twilio SMS channel for sending and receiving text messages."""
+﻿"""Twilio SMS channel for sending and receiving text messages."""
 
 from __future__ import annotations
 
@@ -138,3 +138,4 @@ class TwilioSMSChannel(BaseChannel):
                     "conversation_id": conversation_id,
                 },
             )
+

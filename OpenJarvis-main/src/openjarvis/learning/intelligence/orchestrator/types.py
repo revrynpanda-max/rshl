@@ -1,4 +1,4 @@
-"""Episode dataclasses for orchestrator training.
+﻿"""Episode dataclasses for orchestrator training.
 
 Adapted from IPW's ``episode_builder.py``. These types represent the core
 data structures for orchestrator RL/SFT training: actions, observations,
@@ -332,3 +332,4 @@ __all__ = [
     "grade_answer",
     "normalize_number",
 ]
+

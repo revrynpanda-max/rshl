@@ -1,4 +1,4 @@
-"""Core data types for the evaluation framework."""
+﻿"""Core data types for the evaluation framework."""
 
 from __future__ import annotations
 
@@ -271,3 +271,4 @@ __all__ = [
     "BenchmarkConfig",
     "EvalSuiteConfig",
 ]
+

@@ -1,4 +1,4 @@
-"""Tests for SyncScheduler — periodic incremental sync background thread."""
+﻿"""Tests for SyncScheduler â€” periodic incremental sync background thread."""
 
 from __future__ import annotations
 
@@ -125,7 +125,7 @@ def test_start_stop_does_not_crash(engine: SyncEngine) -> None:
 
 
 def test_run_once_returns_chunk_counts(engine: SyncEngine) -> None:
-    """run_once() returns a mapping of connector_id → chunks ingested."""
+    """run_once() returns a mapping of connector_id â†’ chunks ingested."""
     conn_a = _FakeConnector("conn_a", connected=True, doc_count=2)
     conn_b = _FakeConnector("conn_b", connected=True, doc_count=4)
 
@@ -138,3 +138,5 @@ def test_run_once_returns_chunk_counts(engine: SyncEngine) -> None:
     assert results["conn_a"] == 2
     assert results["conn_b"] == 4
     assert len(results) == 2
+
+

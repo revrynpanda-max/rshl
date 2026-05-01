@@ -1,4 +1,4 @@
-"""Tests for AppleNotesConnector — local macOS Notes database connector.
+﻿"""Tests for AppleNotesConnector â€” local macOS Notes database connector.
 
 All tests use a temporary SQLite database that mimics the real NoteStore.sqlite
 schema.  No actual macOS Notes database is required.
@@ -40,7 +40,7 @@ def _create_fake_notes_db(db_path: Path) -> None:
         );
     """)
 
-    # Note 1 — Shopping List
+    # Note 1 â€” Shopping List
     html1 = "<html><body><h1>Shopping List</h1><p>Milk, eggs, bread</p></body></html>"
     compressed1 = gzip.compress(html1.encode())
     conn.execute(
@@ -49,7 +49,7 @@ def _create_fake_notes_db(db_path: Path) -> None:
     )
     conn.execute("INSERT INTO ZICNOTEDATA VALUES (1, ?, 1)", (compressed1,))
 
-    # Note 2 — Meeting Notes
+    # Note 2 â€” Meeting Notes
     html2 = "<html><body><p>Meeting notes from Monday</p></body></html>"
     compressed2 = gzip.compress(html2.encode())
     conn.execute(
@@ -84,7 +84,7 @@ def connector(fake_db: Path):
 
 
 # ---------------------------------------------------------------------------
-# Test 1 — is_connected returns True when db_path exists
+# Test 1 â€” is_connected returns True when db_path exists
 # ---------------------------------------------------------------------------
 
 
@@ -94,7 +94,7 @@ def test_is_connected(connector) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 2 — is_connected returns False for a missing file
+# Test 2 â€” is_connected returns False for a missing file
 # ---------------------------------------------------------------------------
 
 
@@ -107,7 +107,7 @@ def test_not_connected_missing_db() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 3 — sync yields 2 notes with correct source and doc_type
+# Test 3 â€” sync yields 2 notes with correct source and doc_type
 # ---------------------------------------------------------------------------
 
 
@@ -121,7 +121,7 @@ def test_sync_yields_notes(connector) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 4 — sync decompresses content and strips HTML tags
+# Test 4 â€” sync decompresses content and strips HTML tags
 # ---------------------------------------------------------------------------
 
 
@@ -142,7 +142,7 @@ def test_sync_decompresses_content(connector) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 5 — sync sets doc_type to "note"
+# Test 5 â€” sync sets doc_type to "note"
 # ---------------------------------------------------------------------------
 
 
@@ -154,7 +154,7 @@ def test_sync_sets_doc_type_note(connector) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 6 — sync sets correct doc_id and title
+# Test 6 â€” sync sets correct doc_id and title
 # ---------------------------------------------------------------------------
 
 
@@ -170,7 +170,7 @@ def test_sync_doc_ids_and_titles(connector) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 7 — disconnect sets connected flag to False
+# Test 7 â€” disconnect sets connected flag to False
 # ---------------------------------------------------------------------------
 
 
@@ -182,7 +182,7 @@ def test_disconnect(connector) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 8 — mcp_tools returns exactly 2 tool specs
+# Test 8 â€” mcp_tools returns exactly 2 tool specs
 # ---------------------------------------------------------------------------
 
 
@@ -196,7 +196,7 @@ def test_mcp_tools(connector) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 9 — ConnectorRegistry contains "apple_notes" after import
+# Test 9 â€” ConnectorRegistry contains "apple_notes" after import
 # ---------------------------------------------------------------------------
 
 
@@ -208,3 +208,5 @@ def test_registry() -> None:
     assert ConnectorRegistry.contains("apple_notes")
     cls = ConnectorRegistry.get("apple_notes")
     assert cls.connector_id == "apple_notes"
+
+

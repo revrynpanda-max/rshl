@@ -1,4 +1,4 @@
-"""WebChoreArena task environment — Playwright-based browser interaction.
+﻿"""WebChoreArena task environment â€” Playwright-based browser interaction.
 
 Wraps the WebArena browser environment to provide per-task setup,
 observation access, action stepping, and evaluation using the
@@ -165,7 +165,7 @@ class WebChoreArenaTaskEnv:
         Returns the agent's final answer text.
         """
         if self._page is None:
-            raise RuntimeError("Environment not initialized — use as context manager")
+            raise RuntimeError("Environment not initialized â€” use as context manager")
 
         if max_steps is None:
             max_steps = _MAX_STEPS_DEFAULT
@@ -201,7 +201,7 @@ class WebChoreArenaTaskEnv:
         self._run_evaluation()
 
     # ------------------------------------------------------------------
-    # Evaluation — faithful to original WebArena evaluator_router
+    # Evaluation â€” faithful to original WebArena evaluator_router
     # ------------------------------------------------------------------
 
     def _run_evaluation(self) -> None:
@@ -258,7 +258,7 @@ class WebChoreArenaTaskEnv:
     # -- StringEvaluator (exact_match, must_include, fuzzy_match) ------
 
     def _eval_string_match(self, eval_config: Dict[str, Any]) -> float:
-        """Evaluate string matching — mirrors original StringEvaluator.__call__."""
+        """Evaluate string matching â€” mirrors original StringEvaluator.__call__."""
         ref_answers = eval_config.get("reference_answers", {})
         pred = _clean_answer(self._agent_answer)
         score = 1.0
@@ -307,7 +307,7 @@ class WebChoreArenaTaskEnv:
     # -- URLEvaluator --------------------------------------------------
 
     def _eval_url_match(self, eval_config: Dict[str, Any]) -> float:
-        """Evaluate URL matching — mirrors original URLEvaluator.__call__.
+        """Evaluate URL matching â€” mirrors original URLEvaluator.__call__.
 
         Checks the browser's current page URL against reference URLs.
         """
@@ -357,7 +357,7 @@ class WebChoreArenaTaskEnv:
     # -- HTMLContentEvaluator (program_html) ---------------------------
 
     def _eval_program_html(self, eval_config: Dict[str, Any]) -> float:
-        """Evaluate program_html — mirrors original HTMLContentEvaluator.
+        """Evaluate program_html â€” mirrors original HTMLContentEvaluator.
 
         Navigates to target URLs, runs JS locators to select DOM elements,
         and checks content against expected values.
@@ -470,7 +470,7 @@ class WebChoreArenaTaskEnv:
     # ------------------------------------------------------------------
 
     def _llm_fuzzy_match(self, pred: str, reference: str, intent: str) -> float:
-        """LLM-based fuzzy matching — mirrors original llm_fuzzy_match."""
+        """LLM-based fuzzy matching â€” mirrors original llm_fuzzy_match."""
         prompt = (
             "Help a teacher to grade the answer of a student "
             "given a question. Keep in mind that the student "
@@ -501,7 +501,7 @@ class WebChoreArenaTaskEnv:
         return 0.0
 
     def _llm_ua_match(self, pred: str, reference: str, intent: str) -> float:
-        """LLM-based unachievable task matching — mirrors original llm_ua_match."""
+        """LLM-based unachievable task matching â€” mirrors original llm_ua_match."""
         prompt = (
             f"task: {intent}\n"
             f"actual unachievable reason: {reference}\n"
@@ -692,7 +692,7 @@ def _clean_answer(answer: str) -> str:
 
 
 def _must_include(ref: str, pred: str, tokenize: bool = False) -> float:
-    """Check if pred includes ref — mirrors original must_include with |OR| support."""
+    """Check if pred includes ref â€” mirrors original must_include with |OR| support."""
     clean_ref = _clean_answer(ref)
     clean_pred = _clean_answer(pred)
 
@@ -775,3 +775,4 @@ def _flatten_axtree(node: Any, depth: int = 0) -> str:
 
 
 __all__ = ["WebChoreArenaTaskEnv"]
+

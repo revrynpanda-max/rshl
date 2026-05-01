@@ -1,4 +1,4 @@
-"""Tests for openjarvis.learning.distillation.gate.regression module."""
+﻿"""Tests for openjarvis.learning.distillation.gate.regression module."""
 
 from __future__ import annotations
 
@@ -69,7 +69,7 @@ class TestRegressionCheck:
 
         before = _make_snapshot(overall=0.7, clusters={"c1": 0.6, "c2": 0.8})
         after = _make_snapshot(overall=0.72, clusters={"c1": 0.65})
-        # c2 disappeared — treat as regression (score went from 0.8 to 0.0)
+        # c2 disappeared â€” treat as regression (score went from 0.8 to 0.0)
         result = regression_check(before, after, max_regression=0.05)
         assert result.has_regression
         assert "c2" in result.regressed_clusters
@@ -87,3 +87,5 @@ class TestRegressionCheck:
         # Check that deltas are provided
         for cluster_id, delta in result.regressed_clusters.items():
             assert delta < 0
+
+

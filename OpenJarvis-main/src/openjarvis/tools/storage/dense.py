@@ -1,4 +1,4 @@
-"""In-memory dense retrieval backend.
+﻿"""In-memory dense retrieval backend.
 
 Uses any :class:`Embedder` (default: :class:`OllamaEmbedder` with
 ``nomic-embed-text``) to embed stored text, then ranks queries by
@@ -14,7 +14,7 @@ Design notes
   unit vectors means retrieval is one ``docs @ query`` dot product.
 * **Store growth is amortized**: we keep a list of per-call embedding
   matrices and concatenate lazily in :meth:`retrieve`. This avoids an
-  O(n²) ``np.concatenate`` pattern while still giving callers one
+  O(nÂ²) ``np.concatenate`` pattern while still giving callers one
   contiguous matrix when they actually need to search.
 """
 
@@ -50,7 +50,7 @@ class MdChunk:
 
     content: str           # chunk body text (with breadcrumb prefix)
     source: str            # originating file
-    # e.g. "macOS Installation Guide > Step-by-Step > Step 6 — Install llama.cpp"
+    # e.g. "macOS Installation Guide > Step-by-Step > Step 6 â€” Install llama.cpp"
     breadcrumb: str
     start_line: int = 0
 
@@ -85,7 +85,7 @@ def chunk_markdown(
       1. Detect section boundaries at h2 (``##``) and h3 (``###``).
          h1 (``#``) is treated as the document title (captured in the
          breadcrumb but not used to split).
-      2. Skip headers that appear inside fenced code blocks — those are
+      2. Skip headers that appear inside fenced code blocks â€” those are
          usually shell comments (``# Install X``) not real headers.
       3. If a section body exceeds ``max_section_tokens`` (whitespace
          tokens) OR ``max_section_chars`` (raw chars), slide a window
@@ -95,12 +95,12 @@ def chunk_markdown(
 
     The char cap is the critical safety net: embedding models count BPE
     tokens, and technical content (file paths, code, URLs) has ~8 BPE
-    tokens per whitespace token — so a whitespace-token-only limit
-    silently lets 2–3× overflows through and some embedders (e.g.
+    tokens per whitespace token â€” so a whitespace-token-only limit
+    silently lets 2â€“3Ã— overflows through and some embedders (e.g.
     ``nomic-embed-text``) reject them at runtime. 4000 chars is a
     conservative ceiling for ``nomic-embed-text``'s 8192-token window.
 
-    Empty input → empty list.
+    Empty input â†’ empty list.
     """
     if not text or not text.strip():
         return []
@@ -138,7 +138,7 @@ def chunk_markdown(
         hashes, title = m.group(1), m.group(2).strip()
         level = len(hashes)
         if level == 1:
-            # Document title — flush whatever we had, then set h1
+            # Document title â€” flush whatever we had, then set h1
             _flush(section_start_line)
             h1 = title
             h2 = None
@@ -184,7 +184,7 @@ def chunk_markdown(
             )
             continue
 
-        # Oversized — slide over paragraphs, with a token-level fallback
+        # Oversized â€” slide over paragraphs, with a token-level fallback
         # for single paragraphs that are themselves larger than the window.
         paragraphs = [p for p in body.split("\n\n") if p.strip()]
         window_paragraphs: List[str] = []
@@ -218,7 +218,7 @@ def chunk_markdown(
             # have, then slide a fixed token window over it.
             if _over_limit(len(p_tokens), len(para)):
                 _emit_window()
-                # Use whichever cap is tighter for this paragraph —
+                # Use whichever cap is tighter for this paragraph â€”
                 # if it's char-bound, slide by chars; else by tokens.
                 char_bound = (
                     len(para) > max_section_chars
@@ -378,12 +378,12 @@ class _UnionFind:
 
 
 def _path_specificity(source: str) -> Tuple[int, int, str]:
-    """Sort key — bigger is more specific.
+    """Sort key â€” bigger is more specific.
 
     Tiebreakers:
-      1. Path depth (slashes) — deeper = more specific.
-      2. Length of basename — proxy for descriptiveness.
-      3. Lexicographic source path — deterministic last-resort.
+      1. Path depth (slashes) â€” deeper = more specific.
+      2. Length of basename â€” proxy for descriptiveness.
+      3. Lexicographic source path â€” deterministic last-resort.
     """
     if not source:
         return (-1, 0, "")
@@ -418,7 +418,7 @@ def dedupe_chunks(
     tiebreak); the rest are dropped.
 
     Returns ``(surviving_chunks, report)``. The chunker, embedder and
-    retrieval logic are NOT modified — this function is a pure pre-
+    retrieval logic are NOT modified â€” this function is a pure pre-
     processing pass over the chunk list before embedding.
     """
     n = len(chunks)
@@ -441,7 +441,7 @@ def dedupe_chunks(
     # 3) Build candidate-pair set: any pair sharing at least one n-gram.
     #    For each n-gram, at most ``cap`` chunks contribute to candidate
     #    pairs to avoid quadratic blowup on hyper-common n-grams (e.g.
-    #    ``("the", "the", ...)``-style noise — unlikely but defensive).
+    #    ``("the", "the", ...)``-style noise â€” unlikely but defensive).
     cap = 200
     candidate_pairs: set = set()
     for chunk_ids in inverted.values():
@@ -475,7 +475,7 @@ def dedupe_chunks(
             continue
         distinct_files = {chunks[i].source for i in members}
         if len(distinct_files) < min_files_for_dup:
-            continue  # not boilerplate enough — keep all
+            continue  # not boilerplate enough â€” keep all
 
         # Pick canonical: most-specific source path
         sorted_members = sorted(
@@ -633,7 +633,7 @@ class DenseMemory(MemoryBackend):
 
         Scores are in ``[-1, 1]`` for normalized vectors; for
         nomic-embed-text in practice scores on reasonable queries
-        fall in ``[0.3, 0.8]``. Empty index or query → empty list.
+        fall in ``[0.3, 0.8]``. Empty index or query â†’ empty list.
         """
         import numpy as np
 
@@ -725,3 +725,4 @@ __all__ = [
     "dedupe_chunks",
     "log_dedupe_report",
 ]
+

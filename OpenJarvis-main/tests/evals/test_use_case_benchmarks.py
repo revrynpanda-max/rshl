@@ -1,4 +1,4 @@
-"""Tests for the 5 use-case benchmark datasets and scorers.
+﻿"""Tests for the 5 use-case benchmark datasets and scorers.
 
 Tests verify:
 1. Each dataset can be instantiated with correct attributes
@@ -149,7 +149,7 @@ class TestCodingTaskDataset:
         assert ds.size() == 5
         records = list(ds.iter_records())
         r = records[0]
-        assert r.record_id.startswith("coding-task-")
+        assert r.record_id.startswith("coding-tadummy-sk-")
         assert "test_cases" in r.metadata
         assert "signature" in r.metadata
 
@@ -458,3 +458,5 @@ class TestSavings:
         summary = compute_savings(500, 500)
         for p in summary.per_provider:
             assert p.energy_wh > 0, f"{p.provider}: energy_wh should be > 0"
+
+

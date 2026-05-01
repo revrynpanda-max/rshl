@@ -1,4 +1,4 @@
-"""Google Contacts connector — bulk contact sync via the People REST API v1.
+﻿"""Google Contacts connector â€” bulk contact sync via the People REST API v1.
 
 Uses OAuth 2.0 tokens stored locally (see :mod:`openjarvis.connectors.oauth`).
 All network calls are isolated in module-level functions (``_gcontacts_api_*``)
@@ -230,7 +230,7 @@ class GContactsConnector(BaseConnector):
     def sync(
         self,
         *,
-        since: Optional[datetime] = None,  # noqa: ARG002 — reserved for future use
+        since: Optional[datetime] = None,  # noqa: ARG002 â€” reserved for future use
         cursor: Optional[str] = None,
     ) -> Iterator[Document]:
         """Yield :class:`Document` objects for Google Contacts.
@@ -366,3 +366,4 @@ class GContactsConnector(BaseConnector):
                 category="communication",
             ),
         ]
+

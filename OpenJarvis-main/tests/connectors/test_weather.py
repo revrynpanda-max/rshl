@@ -1,4 +1,4 @@
-"""Tests for WeatherConnector — OpenWeatherMap API."""
+﻿"""Tests for WeatherConnector â€” OpenWeatherMap API."""
 
 from __future__ import annotations
 
@@ -94,3 +94,5 @@ def test_sync_yields_two_documents(connector):
 def test_disconnect(connector):
     connector.disconnect()
     assert connector.is_connected() is False
+
+

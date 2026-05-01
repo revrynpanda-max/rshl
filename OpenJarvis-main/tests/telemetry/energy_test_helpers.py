@@ -1,4 +1,4 @@
-"""Shared assertion helpers for energy monitor tests.
+﻿"""Shared assertion helpers for energy monitor tests.
 
 These helpers capture common test patterns used across the AMD, Apple,
 NVIDIA, and RAPL energy monitor test files, reducing duplication without
@@ -53,3 +53,5 @@ def assert_close_sets_uninitialized(monitor):
     """Assert that close() marks the monitor as not initialized."""
     monitor.close()
     assert monitor._initialized is False
+
+

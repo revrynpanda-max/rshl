@@ -1,4 +1,4 @@
-"""Hacker News connector — top stories from the HN Firebase API.
+﻿"""Hacker News connector â€” top stories from the HN Firebase API.
 
 No authentication required. All API calls are in module-level functions
 for easy mocking in tests.
@@ -89,3 +89,4 @@ class HackerNewsConnector(BaseConnector):
 
     def sync_status(self) -> SyncStatus:
         return self._status
+

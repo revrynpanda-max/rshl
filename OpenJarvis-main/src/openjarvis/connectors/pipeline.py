@@ -1,4 +1,4 @@
-"""IngestionPipeline — deduplicate, chunk, and store Documents.
+﻿"""IngestionPipeline â€” deduplicate, chunk, and store Documents.
 
 Takes ``Document`` objects from connectors, deduplicates by ``doc_id``,
 splits content using ``SemanticChunker``, and persists chunks to a
@@ -202,3 +202,4 @@ class IngestionPipeline:
 
 
 __all__ = ["IngestionPipeline"]
+

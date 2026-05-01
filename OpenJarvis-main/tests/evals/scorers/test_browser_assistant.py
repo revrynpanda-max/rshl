@@ -1,4 +1,4 @@
-"""Tests for the browser_assistant scorer."""
+﻿"""Tests for the browser_assistant scorer."""
 
 from openjarvis.evals.core.types import EvalRecord
 from openjarvis.evals.scorers.browser_assistant import (
@@ -103,3 +103,5 @@ def test_no_facts():
     is_correct, meta = scorer.score(record, "Some answer.")
     assert is_correct is None
     assert meta["reason"] == "no_expected_facts"
+
+

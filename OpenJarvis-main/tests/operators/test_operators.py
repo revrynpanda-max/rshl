@@ -1,4 +1,4 @@
-"""Tests for the Operators subsystem."""
+﻿"""Tests for the Operators subsystem."""
 
 from __future__ import annotations
 
@@ -916,3 +916,5 @@ class TestLoadBundledOperators:
         m = load_operator(operators_dir / "system_monitor.toml")
         assert m.id == "system_monitor"
         assert m.schedule_value == "300"
+
+

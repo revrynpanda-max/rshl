@@ -1,4 +1,4 @@
-"""Tests for IMessageConnector — local macOS Messages database connector.
+﻿"""Tests for IMessageConnector â€” local macOS Messages database connector.
 
 All tests use a temporary SQLite database that mimics the real chat.db schema.
 No actual macOS Messages database is required.
@@ -87,7 +87,7 @@ def connector(fake_db: Path):
 
 
 # ---------------------------------------------------------------------------
-# Test 1 — is_connected returns True when db_path exists
+# Test 1 â€” is_connected returns True when db_path exists
 # ---------------------------------------------------------------------------
 
 
@@ -97,7 +97,7 @@ def test_is_connected(connector) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 2 — is_connected returns False for a missing file
+# Test 2 â€” is_connected returns False for a missing file
 # ---------------------------------------------------------------------------
 
 
@@ -110,7 +110,7 @@ def test_not_connected_missing_db() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 3 — sync yields all 3 messages with correct source and doc_type
+# Test 3 â€” sync yields all 3 messages with correct source and doc_type
 # ---------------------------------------------------------------------------
 
 
@@ -124,7 +124,7 @@ def test_sync_yields_messages(connector) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 4 — sync_message_content checks specific text is present
+# Test 4 â€” sync_message_content checks specific text is present
 # ---------------------------------------------------------------------------
 
 
@@ -138,7 +138,7 @@ def test_sync_message_content(connector) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 5 — sync sets author to handle identifier for received messages
+# Test 5 â€” sync sets author to handle identifier for received messages
 # ---------------------------------------------------------------------------
 
 
@@ -160,7 +160,7 @@ def test_sync_sets_author(connector) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 6 — disconnect sets connected flag to False
+# Test 6 â€” disconnect sets connected flag to False
 # ---------------------------------------------------------------------------
 
 
@@ -174,7 +174,7 @@ def test_disconnect(connector) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 7 — mcp_tools returns exactly 2 tool specs
+# Test 7 â€” mcp_tools returns exactly 2 tool specs
 # ---------------------------------------------------------------------------
 
 
@@ -188,7 +188,7 @@ def test_mcp_tools(connector) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 8 — ConnectorRegistry contains "imessage" after import
+# Test 8 â€” ConnectorRegistry contains "imessage" after import
 # ---------------------------------------------------------------------------
 
 
@@ -200,3 +200,5 @@ def test_registry() -> None:
     assert ConnectorRegistry.contains("imessage")
     cls = ConnectorRegistry.get("imessage")
     assert cls.connector_id == "imessage"
+
+

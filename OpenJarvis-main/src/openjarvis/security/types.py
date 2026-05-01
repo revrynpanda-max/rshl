@@ -1,4 +1,4 @@
-"""Security data types — threat levels, scan findings, and security events."""
+﻿"""Security data types â€” threat levels, scan findings, and security events."""
 
 from __future__ import annotations
 
@@ -102,3 +102,4 @@ __all__ = [
     "SecurityEventType",
     "ThreatLevel",
 ]
+

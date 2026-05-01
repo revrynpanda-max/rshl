@@ -1,4 +1,4 @@
-"""Tests for MonitorOperativeAgent."""
+﻿"""Tests for MonitorOperativeAgent."""
 
 from unittest.mock import MagicMock
 
@@ -63,3 +63,5 @@ class TestMonitorOperativeAgent:
         result = agent.run("What is the answer?")
         assert result.content == "The answer is 42."
         assert result.turns >= 1
+
+

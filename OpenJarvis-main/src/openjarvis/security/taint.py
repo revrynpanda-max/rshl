@@ -1,4 +1,4 @@
-"""Taint tracking — information flow control.
+﻿"""Taint tracking â€” information flow control.
 
 Prevents data leakage through tool chains.
 """
@@ -135,3 +135,4 @@ __all__ = [
     "declassify",
     "propagate_taint",
 ]
+

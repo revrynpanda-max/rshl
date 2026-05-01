@@ -1,4 +1,4 @@
-"""Tests for InstrumentedEngine telemetry wrapper."""
+﻿"""Tests for InstrumentedEngine telemetry wrapper."""
 
 from __future__ import annotations
 
@@ -137,7 +137,7 @@ class TestTokensPerJoule:
         """Verify the formula: tokens_per_joule = completion_tokens / energy_joules."""
         from openjarvis.core.types import TelemetryRecord
 
-        # Direct construction — verifies the field accepts computed values
+        # Direct construction â€” verifies the field accepts computed values
         rec = TelemetryRecord(
             timestamp=1.0,
             model_id="test",
@@ -159,3 +159,5 @@ class TestTokensPerJoule:
             tokens_per_joule=0.0,
         )
         assert rec.tokens_per_joule == 0.0
+
+

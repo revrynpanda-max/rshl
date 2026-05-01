@@ -1,4 +1,4 @@
-"""Tests for jarvis optimize skills CLI command (Plan 2A)."""
+﻿"""Tests for jarvis optimize skills CLI command (Plan 2A)."""
 
 from __future__ import annotations
 
@@ -80,3 +80,5 @@ class TestOptimizeSkillsCommand:
                 assert result.exit_code == 0
                 assert "research-skill" in result.output
                 assert "optimized" in result.output
+
+

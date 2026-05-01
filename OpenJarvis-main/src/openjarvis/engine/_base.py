@@ -1,4 +1,4 @@
-"""Shared engine utilities and re-exports."""
+﻿"""Shared engine utilities and re-exports."""
 
 from __future__ import annotations
 
@@ -45,7 +45,7 @@ def estimate_prompt_tokens(messages: Sequence[Message]) -> int:
     tokens when KV-cache hits occur, under-counting the system prompt
     and earlier conversation turns.  This helper provides a
     cache-agnostic estimate so that downstream cost / FLOPs / energy
-    calculations reflect the true prompt size — matching what a cloud
+    calculations reflect the true prompt size â€” matching what a cloud
     provider would charge.
 
     Uses ~4 characters per token (standard BPE average for English) plus
@@ -63,3 +63,4 @@ __all__ = [
     "estimate_prompt_tokens",
     "messages_to_dicts",
 ]
+

@@ -1,4 +1,4 @@
-"""Embeddings abstraction for dense retrieval backends."""
+﻿"""Embeddings abstraction for dense retrieval backends."""
 
 from __future__ import annotations
 
@@ -70,7 +70,7 @@ class OllamaEmbedder(Embedder):
     base_url:
         Ollama server base URL.  Defaults to ``http://localhost:11434``.
     batch_size:
-        Items per HTTP request.  Tuned for Ollama — larger batches help
+        Items per HTTP request.  Tuned for Ollama â€” larger batches help
         throughput but increase memory on the server.
     max_parallel:
         How many concurrent HTTP requests to issue.  Ollama CPU/GPU
@@ -119,7 +119,7 @@ class OllamaEmbedder(Embedder):
         """Return a numpy array of shape ``(len(texts), dim)``.
 
         Float32, L2-normalized per row so callers can use dot-product
-        as cosine similarity. Empty input → shape ``(0, dim)``.
+        as cosine similarity. Empty input â†’ shape ``(0, dim)``.
         """
         import numpy as np
 
@@ -171,3 +171,4 @@ class OllamaEmbedder(Embedder):
 
 
 __all__ = ["Embedder", "OllamaEmbedder", "SentenceTransformerEmbedder"]
+

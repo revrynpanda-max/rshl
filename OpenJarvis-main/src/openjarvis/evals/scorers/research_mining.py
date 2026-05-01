@@ -1,4 +1,4 @@
-"""Research mining scorer — LLM judge for research synthesis quality.
+﻿"""Research mining scorer â€” LLM judge for research synthesis quality.
 
 Evaluates accuracy, depth, source quality, and synthesis of
 AI-generated research responses.
@@ -107,3 +107,4 @@ class ResearchMiningScorer(LLMJudgeScorer):
 
 
 __all__ = ["ResearchMiningScorer"]
+

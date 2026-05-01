@@ -1,4 +1,4 @@
-"""Tests for LearnedRouterPolicy (merged trace-driven + SFT routing)."""
+﻿"""Tests for LearnedRouterPolicy (merged trace-driven + SFT routing)."""
 
 from __future__ import annotations
 
@@ -167,3 +167,5 @@ class TestLearnedRouterPolicy:
         result = policy.update(mock_store)
         assert isinstance(result, dict)
         assert "policy_map" in result
+
+

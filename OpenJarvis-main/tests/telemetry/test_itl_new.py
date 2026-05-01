@@ -1,4 +1,4 @@
-"""Tests for inter-token latency percentile computation."""
+﻿"""Tests for inter-token latency percentile computation."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ class TestComputeItlStats:
         assert result["max_ms"] == 10.0
 
     def test_uniform_spacing(self):
-        # 11 timestamps 5ms apart → 10 ITLs all = 5.0
+        # 11 timestamps 5ms apart â†’ 10 ITLs all = 5.0
         timestamps = [i * 5.0 for i in range(11)]
         result = compute_itl_stats(timestamps)
         assert result["p50_ms"] == pytest.approx(5.0)
@@ -38,13 +38,13 @@ class TestComputeItlStats:
         assert result["max_ms"] == pytest.approx(5.0)
 
     def test_varying_spacing(self):
-        # [0, 1, 3, 6, 10] → ITLs = [1, 2, 3, 4]
+        # [0, 1, 3, 6, 10] â†’ ITLs = [1, 2, 3, 4]
         timestamps = [0.0, 1.0, 3.0, 6.0, 10.0]
         result = compute_itl_stats(timestamps)
         assert result["min_ms"] == pytest.approx(1.0)
         assert result["max_ms"] == pytest.approx(4.0)
         assert result["mean_ms"] == pytest.approx(2.5)
-        # Median of sorted [1,2,3,4] → 2.5
+        # Median of sorted [1,2,3,4] â†’ 2.5
         assert result["p50_ms"] == pytest.approx(2.5)
 
     def test_percentile_ordering(self):
@@ -66,3 +66,5 @@ class TestComputeItlStats:
             "max_ms",
         }
         assert set(result.keys()) == expected_keys
+
+

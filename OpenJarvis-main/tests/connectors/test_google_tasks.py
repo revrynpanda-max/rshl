@@ -1,4 +1,4 @@
-"""Tests for GoogleTasksConnector — Google Tasks API v1."""
+﻿"""Tests for GoogleTasksConnector â€” Google Tasks API v1."""
 
 from __future__ import annotations
 
@@ -70,3 +70,5 @@ def test_sync_yields_tasks(connector):
     assert docs[0].title == "Review PR #42"
     assert docs[0].metadata["status"] == "needsAction"
     assert docs[1].metadata["status"] == "completed"
+
+

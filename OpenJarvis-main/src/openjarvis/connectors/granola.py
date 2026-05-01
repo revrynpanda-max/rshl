@@ -1,11 +1,11 @@
-"""Granola connector — syncs meeting notes via the Granola public API.
+﻿"""Granola connector â€” syncs meeting notes via the Granola public API.
 
 Uses an API key (Bearer token) stored locally.  All network calls are
 isolated in module-level functions (``_granola_api_*``) to make them
 trivially mockable in tests.
 
 Users create an API key in the Granola desktop app under
-Settings → API (requires Business or Enterprise plan).
+Settings â†’ API (requires Business or Enterprise plan).
 """
 
 from __future__ import annotations
@@ -138,7 +138,7 @@ def _format_note_content(note: Dict[str, Any]) -> str:
                 speaker = str(raw_speaker)
             text: str = turn.get("text", "")
             parts.append(f"**{speaker}:** {text}")
-    # (empty transcript → section header with no turns is fine)
+    # (empty transcript â†’ section header with no turns is fine)
 
     return "\n".join(parts)
 
@@ -171,7 +171,7 @@ class GranolaConnector(BaseConnector):
     """Connector that syncs meeting notes from Granola via the public REST API.
 
     Authentication uses an API key created in the Granola desktop app
-    (Settings → API, requires Business or Enterprise plan).  The key is
+    (Settings â†’ API, requires Business or Enterprise plan).  The key is
     stored locally in a JSON credentials file.
 
     Parameters
@@ -205,7 +205,7 @@ class GranolaConnector(BaseConnector):
     # ------------------------------------------------------------------
 
     def _resolve_api_key(self) -> str:
-        """Return the active API key — direct > credentials file."""
+        """Return the active API key â€” direct > credentials file."""
         if self._api_key:
             return self._api_key
         tokens = load_tokens(self._credentials_path)
@@ -230,11 +230,11 @@ class GranolaConnector(BaseConnector):
         """Return the URL where users can create a Granola API key.
 
         Users must open the Granola desktop app and navigate to
-        Settings → API to generate their key.
+        Settings â†’ API to generate their key.
         """
         return (
-            "https://www.granola.ai — open the Granola desktop app and go to "
-            "Settings → API to create your API key "
+            "https://www.granola.ai â€” open the Granola desktop app and go to "
+            "Settings â†’ API to create your API key "
             "(Business or Enterprise plan required)."
         )
 
@@ -402,3 +402,4 @@ class GranolaConnector(BaseConnector):
                 category="knowledge",
             ),
         ]
+

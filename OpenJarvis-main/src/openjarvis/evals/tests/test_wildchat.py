@@ -1,4 +1,4 @@
-"""Tests for WildChat scorer (verdict parsing and dual comparison)."""
+﻿"""Tests for WildChat scorer (verdict parsing and dual comparison)."""
 
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ class TestWildChatScorer:
     def test_model_wins(self):
         backend = MockBackend()
         # First call: model as A, verdict A>>B (model better)
-        # Second call: reference as A, verdict A>>B (reference better → model loses)
+        # Second call: reference as A, verdict A>>B (reference better â†’ model loses)
         # But since it's OR logic, model wins if either comparison says it's good
         call_count = 0
 
@@ -71,10 +71,10 @@ class TestWildChatScorer:
             nonlocal call_count
             call_count += 1
             if call_count == 1:
-                # model as A, reference as B → B wins
+                # model as A, reference as B â†’ B wins
                 return '```json\n{"verdict": "[[B>>A]]"}\n```'
             else:
-                # reference as A, model as B → A wins (reference better)
+                # reference as A, model as B â†’ A wins (reference better)
                 return '```json\n{"verdict": "[[A>>B]]"}\n```'
 
         backend.generate = mock_generate
@@ -115,3 +115,4 @@ class TestWildChatScorer:
 
         assert is_correct is None
         assert "missing_verdicts" in str(meta.get("reason", ""))
+

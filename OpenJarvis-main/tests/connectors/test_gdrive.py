@@ -1,4 +1,4 @@
-"""Tests for GDriveConnector — OAuth-authenticated Google Drive sync connector.
+﻿"""Tests for GDriveConnector â€” OAuth-authenticated Google Drive sync connector.
 
 All Drive API calls are mocked; no network access is required.
 """
@@ -16,7 +16,7 @@ from openjarvis.connectors._stubs import Document
 from openjarvis.core.registry import ConnectorRegistry
 
 # ---------------------------------------------------------------------------
-# Helpers — fake API payloads
+# Helpers â€” fake API payloads
 # ---------------------------------------------------------------------------
 
 _FILES_LIST_RESPONSE = {
@@ -64,7 +64,7 @@ def connector(tmp_path: Path):
 
 
 # ---------------------------------------------------------------------------
-# Test 1 — not connected without a credentials file
+# Test 1 â€” not connected without a credentials file
 # ---------------------------------------------------------------------------
 
 
@@ -74,7 +74,7 @@ def test_not_connected(connector) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 2 — auth_url contains drive.readonly scope
+# Test 2 â€” auth_url contains drive.readonly scope
 # ---------------------------------------------------------------------------
 
 
@@ -87,7 +87,7 @@ def test_auth_url(connector) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 3 — sync yields documents with correct fields (mocked API)
+# Test 3 â€” sync yields documents with correct fields (mocked API)
 # ---------------------------------------------------------------------------
 
 
@@ -134,7 +134,7 @@ def test_sync_yields_documents(
 
 
 # ---------------------------------------------------------------------------
-# Test 4 — disconnect removes the credentials file
+# Test 4 â€” disconnect removes the credentials file
 # ---------------------------------------------------------------------------
 
 
@@ -151,7 +151,7 @@ def test_disconnect(connector, tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 5 — mcp_tools returns the three expected tool specs
+# Test 5 â€” mcp_tools returns the three expected tool specs
 # ---------------------------------------------------------------------------
 
 
@@ -166,7 +166,7 @@ def test_mcp_tools(connector) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 6 — ConnectorRegistry contains "gdrive" after import
+# Test 6 â€” ConnectorRegistry contains "gdrive" after import
 # ---------------------------------------------------------------------------
 
 
@@ -180,3 +180,5 @@ def test_registry() -> None:
     assert ConnectorRegistry.contains("gdrive")
     cls = ConnectorRegistry.get("gdrive")
     assert cls.connector_id == "gdrive"
+
+

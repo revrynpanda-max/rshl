@@ -1,4 +1,4 @@
-"""Coding task benchmark dataset.
+﻿"""Coding task benchmark dataset.
 
 Standalone function-level coding problems with test cases for evaluating
 code generation accuracy.
@@ -282,3 +282,4 @@ class CodingTaskDataset(DatasetProvider):
 
 
 __all__ = ["CodingTaskDataset"]
+

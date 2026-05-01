@@ -1,4 +1,4 @@
-"""Rate limiter -- token bucket algorithm for per-agent/per-tool throttling."""
+﻿"""Rate limiter -- token bucket algorithm for per-agent/per-tool throttling."""
 
 from __future__ import annotations
 
@@ -76,7 +76,7 @@ class RateLimiter:
         )
 
     def check(self, key: str) -> Tuple[bool, float]:
-        """Check if request is allowed for key — always via Rust backend."""
+        """Check if request is allowed for key â€” always via Rust backend."""
         if not self._config.enabled:
             return True, 0.0
         return self._rust_impl.check(key)
@@ -93,7 +93,7 @@ class RateLimiter:
             return self._buckets[key]
 
     def reset(self, key: Optional[str] = None) -> None:
-        """Reset rate limit state for a key or all keys — always via Rust backend."""
+        """Reset rate limit state for a key or all keys â€” always via Rust backend."""
         self._rust_impl.reset(key)
         return
         with self._lock:
@@ -105,3 +105,4 @@ class RateLimiter:
     @property
     def config(self) -> RateLimitConfig:
         return self._config
+

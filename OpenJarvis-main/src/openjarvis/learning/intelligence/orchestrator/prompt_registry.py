@@ -1,4 +1,4 @@
-"""Prompt registry for orchestrator structured mode.
+﻿"""Prompt registry for orchestrator structured mode.
 
 Adapted from IPW's ``prompt_registry.py``.  Provides the canonical system
 prompt template and tool descriptions used by the structured-mode
@@ -343,3 +343,4 @@ __all__ = [
     "TOOL_DESCRIPTIONS",
     "build_system_prompt",
 ]
+

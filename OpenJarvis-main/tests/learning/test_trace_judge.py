@@ -1,4 +1,4 @@
-"""Tests for openjarvis.optimize.feedback.judge module."""
+﻿"""Tests for openjarvis.optimize.feedback.judge module."""
 
 from __future__ import annotations
 
@@ -208,3 +208,5 @@ class TestBatchEvaluate:
 
         assert results[0][0] == 0.9
         assert results[1][0] == 0.3
+
+

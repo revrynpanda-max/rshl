@@ -1,4 +1,4 @@
-"""SimpleQA scorer -- normalized exact match with LLM fallback.
+﻿"""SimpleQA scorer -- normalized exact match with LLM fallback.
 
 Evaluates short factual answers using exact string matching (with
 normalization) and falls back to an LLM judge for semantic comparison.
@@ -140,3 +140,4 @@ class SimpleQAScorer(LLMJudgeScorer):
 
 
 __all__ = ["SimpleQAScorer", "exact_match"]
+

@@ -1,9 +1,9 @@
-"""Per-edit execution loop for the distillation execute phase.
+﻿"""Per-edit execution loop for the distillation execute phase.
 
 Iterates over a plan's edits, handles tier routing, validates, and applies.
-Does NOT include the benchmark gate — that's wired in M5.
+Does NOT include the benchmark gate â€” that's wired in M5.
 
-See spec §7.2.
+See spec Â§7.2.
 """
 
 from __future__ import annotations
@@ -192,3 +192,4 @@ def execute_edits(
             )
 
     return outcomes
+

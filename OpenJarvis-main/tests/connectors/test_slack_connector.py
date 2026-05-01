@@ -1,4 +1,4 @@
-"""Tests for SlackConnector — OAuth-authenticated Slack channel message sync.
+﻿"""Tests for SlackConnector â€” OAuth-authenticated Slack channel message sync.
 
 All Slack API calls are mocked; no network access is required.
 """
@@ -67,7 +67,7 @@ def connector(tmp_path: Path):
 
 
 # ---------------------------------------------------------------------------
-# Test 1 — not connected without a credentials file
+# Test 1 â€” not connected without a credentials file
 # ---------------------------------------------------------------------------
 
 
@@ -77,7 +77,7 @@ def test_not_connected_without_credentials(connector) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 2 — auth_type is "oauth"
+# Test 2 â€” auth_type is "oauth"
 # ---------------------------------------------------------------------------
 
 
@@ -87,7 +87,7 @@ def test_auth_type_is_oauth(connector) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 3 — auth_url contains "slack.com"
+# Test 3 â€” auth_url contains "slack.com"
 # ---------------------------------------------------------------------------
 
 
@@ -100,7 +100,7 @@ def test_auth_url(connector) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 4 — sync yields documents with correct fields (mocked API)
+# Test 4 â€” sync yields documents with correct fields (mocked API)
 # ---------------------------------------------------------------------------
 
 
@@ -129,7 +129,7 @@ def test_sync_yields_documents(
 
     docs: List[Document] = list(connector.sync())
 
-    # 2 channels × 2 messages = 4 documents
+    # 2 channels Ã— 2 messages = 4 documents
     assert len(docs) == 4
 
     # Verify all docs have correct source and doc_type
@@ -167,7 +167,7 @@ def test_sync_yields_documents(
 
 
 # ---------------------------------------------------------------------------
-# Test 5 — disconnect removes the credentials file
+# Test 5 â€” disconnect removes the credentials file
 # ---------------------------------------------------------------------------
 
 
@@ -184,7 +184,7 @@ def test_disconnect(connector, tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 6 — mcp_tools returns the three expected tool specs
+# Test 6 â€” mcp_tools returns the three expected tool specs
 # ---------------------------------------------------------------------------
 
 
@@ -199,7 +199,7 @@ def test_mcp_tools(connector) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 7 — ConnectorRegistry contains "slack" after import
+# Test 7 â€” ConnectorRegistry contains "slack" after import
 # ---------------------------------------------------------------------------
 
 
@@ -213,3 +213,5 @@ def test_registry() -> None:
     assert ConnectorRegistry.contains("slack")
     cls = ConnectorRegistry.get("slack")
     assert cls.connector_id == "slack"
+
+

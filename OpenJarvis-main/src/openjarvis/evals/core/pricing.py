@@ -1,4 +1,4 @@
-"""Cost computation for agentic eval runs — wraps engine/cloud.py pricing."""
+﻿"""Cost computation for agentic eval runs â€” wraps engine/cloud.py pricing."""
 
 from __future__ import annotations
 
@@ -15,3 +15,4 @@ def compute_turn_cost(model: str, input_tokens: int, output_tokens: int) -> floa
 
 
 __all__ = ["PRICING", "compute_turn_cost", "estimate_cost"]
+

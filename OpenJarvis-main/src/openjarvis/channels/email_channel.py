@@ -1,4 +1,4 @@
-"""EmailChannel — SMTP/IMAP email adapter (stdlib only, zero extra deps)."""
+﻿"""EmailChannel â€” SMTP/IMAP email adapter (stdlib only, zero extra deps)."""
 
 from __future__ import annotations
 
@@ -241,3 +241,4 @@ class EmailChannel(BaseChannel):
 
 
 __all__ = ["EmailChannel"]
+

@@ -1,4 +1,4 @@
-# Inference Engines
+﻿# Inference Engines
 
 OpenJarvis supports several inference backends.
 
@@ -16,4 +16,5 @@ Pure C++ inference. Runs on CPU, Metal, CUDA, or ROCm. Ideal for laptops without
 
 ## Picking an Engine
 
-Run `jarvis init` — it detects your hardware and recommends the best fit. You can override with `--engine <name>`.
+Run `jarvis init` â€” it detects your hardware and recommends the best fit. You can override with `--engine <name>`.
+

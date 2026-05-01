@@ -1,4 +1,4 @@
-"""Knowledge base benchmark dataset.
+﻿"""Knowledge base benchmark dataset.
 
 Document-grounded retrieval questions for evaluating retrieval accuracy
 and answer correctness from a knowledge corpus.
@@ -225,3 +225,4 @@ class KnowledgeBaseDataset(DatasetProvider):
 
 
 __all__ = ["KnowledgeBaseDataset"]
+

@@ -1,4 +1,4 @@
-"""Apple Foundation Models shim.
+﻿"""Apple Foundation Models shim.
 
 Thin FastAPI server exposing Apple FM as OpenAI-compatible API.
 Only runs on macOS 15+ with Apple Silicon. Wraps python-apple-fm-sdk's
@@ -162,3 +162,4 @@ async def chat_completions(
             },
         }
     )
+

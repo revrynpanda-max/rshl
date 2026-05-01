@@ -1,4 +1,4 @@
-"""SQLite-backed persistence for scheduled tasks and run logs."""
+﻿"""SQLite-backed persistence for scheduled tasks and run logs."""
 
 from __future__ import annotations
 
@@ -111,7 +111,7 @@ class SchedulerStore:
         return [self._row_to_dict(r) for r in rows]
 
     def update_task(self, task: Dict[str, Any]) -> None:
-        """Update an existing task (same as save_task — uses INSERT OR REPLACE)."""
+        """Update an existing task (same as save_task â€” uses INSERT OR REPLACE)."""
         self.save_task(task)
 
     def delete_task(self, task_id: str) -> None:
@@ -165,3 +165,4 @@ class SchedulerStore:
 
 
 __all__ = ["SchedulerStore"]
+

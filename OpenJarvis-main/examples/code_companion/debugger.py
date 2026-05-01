@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
-"""Debug Assistant — investigate errors and propose fixes with a ReAct agent.
+﻿#!/usr/bin/env python3
+"""Debug Assistant â€” investigate errors and propose fixes with a ReAct agent.
 
 Usage::
 
@@ -99,7 +99,7 @@ def main(
         j = Jarvis(model=model, engine_key=engine_key)
     except Exception as exc:
         click.echo(
-            f"Error: could not initialize Jarvis — {exc}\n\n"
+            f"Error: could not initialize Jarvis â€” {exc}\n\n"
             "Make sure your engine is running. For Ollama:\n"
             "  ollama serve\n"
             "  ollama pull qwen3:8b\n\n"
@@ -121,3 +121,4 @@ def main(
 
 if __name__ == "__main__":
     main()
+

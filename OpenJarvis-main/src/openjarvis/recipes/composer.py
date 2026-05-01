@@ -1,4 +1,4 @@
-"""Composer bridges — convert a Recipe into EvalSuiteConfig or OperatorManifest.
+﻿"""Composer bridges â€” convert a Recipe into EvalSuiteConfig or OperatorManifest.
 
 These are pure-function transformations that let the unified Recipe format
 drive both the eval framework and the operator system without those systems
@@ -141,3 +141,4 @@ def recipe_to_operator(recipe: Recipe) -> OperatorManifest:
 
 
 __all__ = ["recipe_to_eval_suite", "recipe_to_operator"]
+

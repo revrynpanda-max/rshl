@@ -1,4 +1,4 @@
-"""Tests for the MatrixChannel adapter."""
+﻿"""Tests for the MatrixChannel adapter."""
 
 from __future__ import annotations
 
@@ -141,3 +141,5 @@ class TestStatus:
         ch = MatrixChannel()
         ch.connect()
         assert ch.status() == ChannelStatus.ERROR
+
+

@@ -1,4 +1,4 @@
-"""XMPPChannel — XMPP/Jabber adapter via slixmpp."""
+﻿"""XMPPChannel â€” XMPP/Jabber adapter via slixmpp."""
 
 from __future__ import annotations
 
@@ -151,3 +151,4 @@ class XMPPChannel(BaseChannel):
 
 
 __all__ = ["XMPPChannel"]
+

@@ -1,4 +1,4 @@
-"""Tests for SkillManager.discover_from_traces (Plan 2A)."""
+﻿"""Tests for SkillManager.discover_from_traces (Plan 2A)."""
 
 from __future__ import annotations
 
@@ -59,7 +59,7 @@ class TestDiscoverFromTraces:
         assert any(Path(item["path"]).exists() for item in written)
 
     def test_respects_min_frequency_filter(self, tmp_path: Path):
-        # Only 2 occurrences — below default min_frequency of 3
+        # Only 2 occurrences â€” below default min_frequency of 3
         traces = [_make_trace(["web_search", "calculator"]) for _ in range(2)]
         store = _FakeTraceStore(traces)
 
@@ -109,3 +109,5 @@ class TestDiscoverFromTraces:
         # At least one of the discovered skills should be loadable
         names = mgr2.skill_names()
         assert len(names) >= 1
+
+

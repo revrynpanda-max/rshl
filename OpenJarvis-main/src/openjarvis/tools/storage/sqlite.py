@@ -1,4 +1,4 @@
-"""SQLite/FTS5 memory backend — zero-dependency default."""
+﻿"""SQLite/FTS5 memory backend â€” zero-dependency default."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ def _check_fts5(conn: sqlite3.Connection) -> bool:
 class SQLiteMemory(MemoryBackend):
     """Full-text search memory backend using SQLite FTS5.
 
-    Uses the built-in ``sqlite3`` module — no extra dependencies.
+    Uses the built-in ``sqlite3`` module â€” no extra dependencies.
     """
 
     backend_id: str = "sqlite"
@@ -90,7 +90,7 @@ class SQLiteMemory(MemoryBackend):
         top_k: int = 5,
         **kwargs: Any,
     ) -> List[RetrievalResult]:
-        """Search via FTS5 MATCH with BM25 ranking — always via Rust backend."""
+        """Search via FTS5 MATCH with BM25 ranking â€” always via Rust backend."""
         if not query.strip():
             return []
 
@@ -111,15 +111,15 @@ class SQLiteMemory(MemoryBackend):
         return results
 
     def delete(self, doc_id: str) -> bool:
-        """Delete a document by id — always via Rust backend."""
+        """Delete a document by id â€” always via Rust backend."""
         return self._rust_impl.delete(doc_id)
 
     def clear(self) -> None:
-        """Remove all stored documents — always via Rust backend."""
+        """Remove all stored documents â€” always via Rust backend."""
         self._rust_impl.clear()
 
     def count(self) -> int:
-        """Return the number of stored documents — always via Rust backend."""
+        """Return the number of stored documents â€” always via Rust backend."""
         return self._rust_impl.count()
 
     def close(self) -> None:
@@ -128,3 +128,4 @@ class SQLiteMemory(MemoryBackend):
 
 
 __all__ = ["SQLiteMemory"]
+

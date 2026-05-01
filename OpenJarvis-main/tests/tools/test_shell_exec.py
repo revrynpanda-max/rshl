@@ -1,4 +1,4 @@
-"""Tests for the shell_exec tool.
+﻿"""Tests for the shell_exec tool.
 
 Tests mock the Rust backend to verify the Python wrapper handles
 the Rust output format correctly:
@@ -96,7 +96,7 @@ class TestShellExecTool:
         assert "--- stderr ---" in result.content
 
     @pytest.mark.skip(
-        reason="Rust backend has no timeout — Command::output() blocks",
+        reason="Rust backend has no timeout â€” Command::output() blocks",
     )
     def test_timeout_exceeded(self):
         tool = ShellExecTool()
@@ -148,7 +148,7 @@ class TestShellExecTool:
         assert result.success is False
         assert "not a directory" in result.content
 
-    @pytest.mark.skip(reason="Rust backend inherits parent env — no env isolation")
+    @pytest.mark.skip(reason="Rust backend inherits parent env â€” no env isolation")
     def test_env_clearing(self):
         """Verify that arbitrary env vars are NOT passed through."""
         marker = "OPENJARVIS_TEST_SECRET_12345"
@@ -162,7 +162,7 @@ class TestShellExecTool:
             os.environ.pop(marker, None)
 
     @pytest.mark.skip(
-        reason="Rust backend inherits parent env — no env_passthrough",
+        reason="Rust backend inherits parent env â€” no env_passthrough",
     )
     def test_env_passthrough(self):
         """Verify that explicitly listed env vars ARE passed through."""
@@ -273,3 +273,5 @@ class TestShellExecTool:
             result = tool.execute(command="/nonexistent_binary")
         assert result.success is False
         assert result.metadata["returncode"] == -1
+
+

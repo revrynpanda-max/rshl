@@ -1,4 +1,4 @@
-"""Google Drive connector — bulk file sync via the Drive REST API v3.
+﻿"""Google Drive connector â€” bulk file sync via the Drive REST API v3.
 
 Uses OAuth 2.0 tokens stored locally (see :mod:`openjarvis.connectors.oauth`).
 All network calls are isolated in module-level functions (``_gdrive_api_*``)
@@ -215,7 +215,7 @@ class GDriveConnector(BaseConnector):
     def sync(
         self,
         *,
-        since: Optional[datetime] = None,  # noqa: ARG002 — reserved for future use
+        since: Optional[datetime] = None,  # noqa: ARG002 â€” reserved for future use
         cursor: Optional[str] = None,
     ) -> Iterator[Document]:
         """Yield :class:`Document` objects for Google Drive files.
@@ -381,3 +381,4 @@ class GDriveConnector(BaseConnector):
                 category="productivity",
             ),
         ]
+

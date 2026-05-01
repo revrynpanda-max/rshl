@@ -1,4 +1,4 @@
-"""``jarvis operators`` — operator lifecycle management commands."""
+﻿"""``jarvis operators`` â€” operator lifecycle management commands."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ def _builtin_operators_dir() -> Path:
 
 @click.group()
 def operators() -> None:
-    """Manage operators — persistent, scheduled autonomous agents."""
+    """Manage operators â€” persistent, scheduled autonomous agents."""
 
 
 @operators.command("list")
@@ -284,3 +284,4 @@ def _build_system_with_operators():
 
 
 __all__ = ["operators"]
+

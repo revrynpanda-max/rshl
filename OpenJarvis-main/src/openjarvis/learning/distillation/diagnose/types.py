@@ -1,10 +1,10 @@
-"""Data types for the diagnose phase.
+﻿"""Data types for the diagnose phase.
 
 Lightweight dataclasses used as return types by diagnostic tools and
-as internal data carriers. These are NOT pydantic models — they don't
+as internal data carriers. These are NOT pydantic models â€” they don't
 need validation or JSON schema generation.
 
-See spec §5.2 for the tool return type rationale.
+See spec Â§5.2 for the tool return type rationale.
 """
 
 from __future__ import annotations
@@ -127,3 +127,4 @@ class ToolCallRecord:
             "latency_ms": self.latency_ms,
             "cost_usd": self.cost_usd,
         }
+

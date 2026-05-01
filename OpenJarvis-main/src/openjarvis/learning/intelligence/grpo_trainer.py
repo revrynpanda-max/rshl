@@ -1,4 +1,4 @@
-"""General-purpose GRPO trainer -- Group Relative Policy Optimization.
+﻿"""General-purpose GRPO trainer -- Group Relative Policy Optimization.
 
 Fine-tunes any local model by sampling N responses per prompt,
 computing group-relative advantages, and applying a clipped policy
@@ -371,3 +371,4 @@ class _GRPOLearningPolicy(IntelligenceLearningPolicy):
 
 
 __all__ = ["DefaultRewardFn", "GRPOTrainer", "RewardFn"]
+

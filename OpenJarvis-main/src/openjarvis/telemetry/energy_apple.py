@@ -1,4 +1,4 @@
-"""Apple Silicon energy monitor — via zeus-ml[apple] or CPU-time estimation."""
+﻿"""Apple Silicon energy monitor â€” via zeus-ml[apple] or CPU-time estimation."""
 
 from __future__ import annotations
 
@@ -148,11 +148,11 @@ class AppleEnergyMonitor(EnergyMonitor):
     ) -> Generator[EnergySample, None, None]:
         """Estimate energy from user+system CPU time and chip TDP.
 
-        Energy ≈ (cpu_seconds / wall_seconds) × TDP × wall_seconds
-              = cpu_seconds × TDP
+        Energy â‰ˆ (cpu_seconds / wall_seconds) Ã— TDP Ã— wall_seconds
+              = cpu_seconds Ã— TDP
 
-        This is an approximation — real power varies with clock speed,
-        workload mix, and thermal state — but it gives useful non-zero
+        This is an approximation â€” real power varies with clock speed,
+        workload mix, and thermal state â€” but it gives useful non-zero
         readings without requiring root or external libraries.
         """
         _ACTIVE_RATIO = 0.60
@@ -182,3 +182,4 @@ class AppleEnergyMonitor(EnergyMonitor):
 
 
 __all__ = ["AppleEnergyMonitor"]
+

@@ -1,9 +1,9 @@
-"""Tests for the DenseMemory backend.
+﻿"""Tests for the DenseMemory backend.
 
 These tests exercise retrieval quality on a small fixture corpus, then
 assert on the actual cosine-similarity score distribution the embedding
 model produces. The thresholds here are set **empirically** from the
-observed scores on nomic-embed-text — not guessed upfront — so a
+observed scores on nomic-embed-text â€” not guessed upfront â€” so a
 regression in either the embedder or the chunker will show up as a
 failing assertion rather than a silently bad result.
 
@@ -141,7 +141,7 @@ class TestDedupeChunks:
         assert report.removed_count == 0
 
     def test_dedupes_boilerplate_across_three_files(self):
-        """Same blurb in 3+ files → keep one canonical, drop the rest."""
+        """Same blurb in 3+ files â†’ keep one canonical, drop the rest."""
         body = "openjarvis runs entirely on your hardware no cloud needed local first"
         chunks = [
             _mk(body, "docs/index.md"),
@@ -183,7 +183,7 @@ class TestDedupeChunks:
         """A one-word swap in a long boilerplate paragraph still clusters.
 
         At 5-grams a one-word change kills 5 n-grams; in a short 14-word
-        sentence that's half the grams (Jaccard ~0.33 — below the 0.7
+        sentence that's half the grams (Jaccard ~0.33 â€” below the 0.7
         threshold), but in real boilerplate paragraphs the change is a
         small fraction of total grams and the cluster still forms. This
         test uses a paragraph long enough to put Jaccard above 0.7.
@@ -203,7 +203,7 @@ class TestDedupeChunks:
         chunks = [_mk(a, "a.md"), _mk(b, "b.md"), _mk(c, "c.md")]
         survivors, report = dedupe_chunks(chunks)
         assert len(survivors) == 1, (
-            f"got {len(survivors)} survivors — "
+            f"got {len(survivors)} survivors â€” "
             "expected single cluster from boilerplate"
         )
         assert report.removed_count == 2
@@ -268,7 +268,7 @@ class TestDedupeChunks:
         body = "boilerplate about how openjarvis runs entirely on your hardware locally"
         chunks = [_mk(body, f"f{i}.md") for i in range(10)]
         survivors, report = dedupe_chunks(chunks, min_files_for_dup=3)
-        # 10 files all duplicates → 1 survives
+        # 10 files all duplicates â†’ 1 survives
         assert len(survivors) == 1
         assert report.removed_count == 9
         assert report.output_count + report.removed_count == report.input_count
@@ -301,7 +301,7 @@ def indexed_backend():
 
 @ollama_required
 def test_index_built_with_expected_chunk_count(indexed_backend):
-    # 4 fixture files with small sections should give a modest chunk count —
+    # 4 fixture files with small sections should give a modest chunk count â€”
     # not 1 (indexing broken), not 100 (splitting gone wild).
     n = indexed_backend.count()
     assert 8 <= n <= 25, f"unexpected chunk count: {n}"
@@ -335,7 +335,7 @@ def test_paraphrase_matches_semantically(indexed_backend):
     Note: for the "can I run this on a laptop without a gpu?" case the
     top hit is ``engines.md > llama.cpp`` (not ``hardware.md > Running
     Without a GPU``) because the llama.cpp section explicitly says
-    "ideal for laptops without a discrete GPU" — a near-literal match
+    "ideal for laptops without a discrete GPU" â€” a near-literal match
     for the query. That's fine for grounding: both chunks contain the
     facts we need (CPU-only, llama.cpp).
     """
@@ -373,7 +373,7 @@ def test_off_topic_query_scores_below_threshold(indexed_backend):
     grounding on nonsense.
 
     Note: ``nomic-embed-text`` inflates off-topic scores (observed
-    up to ~0.51 on this corpus) — a plain sentence-transformer would
+    up to ~0.51 on this corpus) â€” a plain sentence-transformer would
     give a wider gap, but we're optimizing for the in-process embedder
     we actually have.
     """
@@ -387,7 +387,7 @@ def test_off_topic_query_scores_below_threshold(indexed_backend):
         hits = indexed_backend.retrieve(q, top_k=1)
         assert hits, f"expected any hit for {q!r}"
         assert hits[0].score < _SCORE_THRESHOLD, (
-            f"off-topic query {q!r} scored {hits[0].score:.3f} — above "
+            f"off-topic query {q!r} scored {hits[0].score:.3f} â€” above "
             f"threshold {_SCORE_THRESHOLD}, would trigger a false-positive "
             f"ground. Tune threshold up or expand corpus."
         )
@@ -397,7 +397,7 @@ def test_off_topic_query_scores_below_threshold(indexed_backend):
 def test_score_distribution_vs_threshold(indexed_backend, capsys):
     """Document the observed score distribution so the threshold is audit-able.
 
-    We do NOT assert ``rel_min > off_max`` — nomic-embed-text produces
+    We do NOT assert ``rel_min > off_max`` â€” nomic-embed-text produces
     overlapping ranges on small narrow corpora. Instead we verify that
     the chosen threshold cleanly separates the two *medians*, which is
     the property we actually rely on at the router: **most** relevant
@@ -435,11 +435,11 @@ def test_score_distribution_vs_threshold(indexed_backend, capsys):
 
     # Medians must be cleanly separated by the threshold
     assert rel_median > _SCORE_THRESHOLD, (
-        f"relevant median {rel_median:.3f} <= threshold {_SCORE_THRESHOLD} — "
+        f"relevant median {rel_median:.3f} <= threshold {_SCORE_THRESHOLD} â€” "
         f"too many relevant queries will be deferred."
     )
     assert off_median < _SCORE_THRESHOLD, (
-        f"off-topic median {off_median:.3f} >= threshold {_SCORE_THRESHOLD} — "
+        f"off-topic median {off_median:.3f} >= threshold {_SCORE_THRESHOLD} â€” "
         f"too many nonsense queries will ground."
     )
 
@@ -474,3 +474,5 @@ class TestDenseMemoryAPI:
         backend.clear()
         assert backend.count() == 0
         assert backend.retrieve("foo", top_k=1) == []
+
+

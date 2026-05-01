@@ -1,8 +1,8 @@
-"""Single point of contact between Python and the Rust ``openjarvis_rust`` module.
+﻿"""Single point of contact between Python and the Rust ``openjarvis_rust`` module.
 
 Every Python module that wants to delegate to Rust should import helpers from
 here rather than importing ``openjarvis_rust`` directly.  The Rust backend is
-mandatory — if it cannot be imported, a hard ``ImportError`` is raised.
+mandatory â€” if it cannot be imported, a hard ``ImportError`` is raised.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     import types as _types
 
 # ---------------------------------------------------------------------------
-# Mandatory import — Rust backend is required
+# Mandatory import â€” Rust backend is required
 # ---------------------------------------------------------------------------
 
 
@@ -25,7 +25,7 @@ def get_rust_module() -> _types.ModuleType:
 
     Raises ``ImportError`` if the compiled extension is not available.
     The Rust backend is mandatory for all modules that have Rust
-    implementations — there is no Python fallback.
+    implementations â€” there is no Python fallback.
     """
     import openjarvis_rust  # type: ignore[import-untyped]
 
@@ -127,7 +127,7 @@ def retrieval_results_from_json(json_str: str) -> list:
 
 
 # ---------------------------------------------------------------------------
-# Phase 2 converters — optimization & engine types
+# Phase 2 converters â€” optimization & engine types
 # ---------------------------------------------------------------------------
 
 
@@ -178,3 +178,4 @@ __all__ = [
     "scan_result_from_json",
     "trial_result_from_json",
 ]
+

@@ -1,4 +1,4 @@
-"""Tests for API key authentication middleware."""
+﻿"""Tests for API key authentication middleware."""
 
 from __future__ import annotations
 
@@ -69,3 +69,5 @@ class TestAuthMiddleware:
         client = TestClient(_make_app(""))
         resp = client.get("/v1/models")
         assert resp.status_code == 200
+
+

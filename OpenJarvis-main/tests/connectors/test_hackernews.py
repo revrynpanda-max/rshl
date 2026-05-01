@@ -1,4 +1,4 @@
-"""Tests for HackerNewsConnector — HN Firebase API."""
+﻿"""Tests for HackerNewsConnector â€” HN Firebase API."""
 
 from __future__ import annotations
 
@@ -122,3 +122,5 @@ def test_disconnect_is_noop(connector):
     """Disconnect should succeed without error."""
     connector.disconnect()
     assert connector.is_connected() is True
+
+

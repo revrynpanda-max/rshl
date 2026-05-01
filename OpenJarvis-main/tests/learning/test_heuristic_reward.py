@@ -1,4 +1,4 @@
-"""Tests for HeuristicRewardFunction."""
+﻿"""Tests for HeuristicRewardFunction."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ class TestHeuristicRewardFunction:
             prompt_tokens=10,
             completion_tokens=10,
         )
-        # latency=1.0, cost=1.0, efficiency=0.5 → 0.4*1 + 0.3*1 + 0.3*0.5 = 0.85
+        # latency=1.0, cost=1.0, efficiency=0.5 â†’ 0.4*1 + 0.3*1 + 0.3*0.5 = 0.85
         assert score == pytest.approx(0.85)
 
     def test_worst_score(self) -> None:
@@ -149,3 +149,5 @@ class TestHeuristicRewardFunction:
             random_extra="ignored",
         )
         assert 0.0 <= score <= 1.0
+
+

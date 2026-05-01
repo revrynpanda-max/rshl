@@ -1,4 +1,4 @@
-"""Agent template system — pre-configured agent manifests."""
+﻿"""Agent template system â€” pre-configured agent manifests."""
 
 from openjarvis.templates.agent_templates import (
     AgentTemplate,
@@ -7,3 +7,4 @@ from openjarvis.templates.agent_templates import (
 )
 
 __all__ = ["AgentTemplate", "discover_templates", "load_template"]
+

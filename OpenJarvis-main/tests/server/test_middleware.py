@@ -1,4 +1,4 @@
-"""Tests for security middleware -- HTTP security headers."""
+﻿"""Tests for security middleware -- HTTP security headers."""
 
 from __future__ import annotations
 
@@ -118,3 +118,5 @@ class TestSecurityHeaders:
         assert "access-control-allow-origin" in resp.headers
         # Security headers should NOT be present on preflight
         assert "X-Frame-Options" not in resp.headers
+
+

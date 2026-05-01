@@ -1,4 +1,4 @@
-"""Multi-turn task environments for LifelongAgentBench.
+﻿"""Multi-turn task environments for LifelongAgentBench.
 
 Implements faithful reproductions of the original's interaction protocols:
   - DB: MySQL Docker container (SQLite fallback with degraded-mode warning)
@@ -44,7 +44,7 @@ def _infer_oracle_result(
     """Infer a plausible oracle result from the gold action sequence.
 
     The HF dataset stores action_list as plain strings like
-    ``"get_relations(m.03fwl)"`` — these are the *calls* the gold
+    ``"get_relations(m.03fwl)"`` â€” these are the *calls* the gold
     solution makes, not their results.  We reconstruct plausible
     results by inspecting what the *next* gold call expects:
 
@@ -55,14 +55,14 @@ def _infer_oracle_result(
     """
     import re as _re
 
-    # get_relations → the next call's relation argument is a result
+    # get_relations â†’ the next call's relation argument is a result
     if func_name == "get_relations":
         m = _re.search(r"\w+\([^,]+,\s*([^)]+)\)", next_action)
         if m:
             relation = m.group(1).strip()
             return f"['{relation}']"
 
-    # get_neighbors / get_attributes → extract entity from next call
+    # get_neighbors / get_attributes â†’ extract entity from next call
     if func_name in ("get_neighbors", "get_attributes"):
         m = _re.search(r"\w+\(([^,)]+)", next_action)
         if m:
@@ -70,7 +70,7 @@ def _infer_oracle_result(
             if arg.startswith("m.") or arg.startswith("g."):
                 return arg
 
-    # intersection, argmax, argmin, count → generic acknowledgement
+    # intersection, argmax, argmin, count â†’ generic acknowledgement
     return f"(oracle: {current_action} executed)"
 
 
@@ -177,7 +177,7 @@ class DBEnvironment(TaskEnvironment):
 
         self._agent_sql_history.append(sql)
 
-        # Execute SQL — use MySQL if available, otherwise SQLite
+        # Execute SQL â€” use MySQL if available, otherwise SQLite
         try:
             if self._mysql_conn is not None:
                 return self._execute_mysql(sql), False
@@ -647,7 +647,7 @@ class KGEnvironment(TaskEnvironment):
         return obs
 
     def step(self, agent_response: str) -> Tuple[str, bool]:
-        # Check for Final Answer with variable reference (#N) — original format
+        # Check for Final Answer with variable reference (#N) â€” original format
         var_ref_match = re.search(
             r"Final\s+[Aa]nswer:\s*(?:[Vv]ar(?:iable)?\s*)?#(\d+)",
             agent_response,
@@ -665,7 +665,7 @@ class KGEnvironment(TaskEnvironment):
             self._is_done = True
             return "Answer received.", True
 
-        # Check for Final Answer with raw entities — fallback format
+        # Check for Final Answer with raw entities â€” fallback format
         fa_match = re.search(
             r"(?i)final\s+answer:\s*(.+)",
             agent_response,
@@ -720,7 +720,7 @@ class KGEnvironment(TaskEnvironment):
         # If we have oracle action_list, use it for responses.
         # HF dataset stores action_list as strings (e.g. "get_relations(m.03fwl)")
         # not as dicts.  We pair them with the next action in the list as a
-        # breadcrumb — the actual result is unknown without a SPARQL endpoint,
+        # breadcrumb â€” the actual result is unknown without a SPARQL endpoint,
         # so we provide the next expected call as a hint, or signal completion.
         if self._action_list and self._action_idx < len(self._action_list):
             oracle = self._action_list[self._action_idx]
@@ -758,7 +758,7 @@ class KGEnvironment(TaskEnvironment):
                     oracle_result = f"(oracle: action '{oracle}' executed)"
             return f"Result stored as #{new_var.idx}.\nOutput: {oracle_result}"
 
-        # No oracle — simulate with empty results + warning
+        # No oracle â€” simulate with empty results + warning
         new_var = _Variable(
             len(self._variables),
             f"{func_name}({args_str})",
@@ -768,18 +768,18 @@ class KGEnvironment(TaskEnvironment):
 
         if func_name == "count":
             new_var.callable = False
-            return "Result: 0 (no SPARQL endpoint — simulated empty result)"
+            return "Result: 0 (no SPARQL endpoint â€” simulated empty result)"
 
         return (
             f"Result stored as #{new_var.idx}. "
-            f"Output: [] (no SPARQL endpoint — simulated empty result)"
+            f"Output: [] (no SPARQL endpoint â€” simulated empty result)"
         )
 
     def evaluate(self) -> Tuple[Optional[bool], Dict[str, Any]]:
         expected = self._answer_list
         expected_set = set(_normalize_entity(a) for a in expected)
 
-        # Extract agent answers — handle both variable references and raw entities
+        # Extract agent answers â€” handle both variable references and raw entities
         agent_answers: List[str] = []
         if self._agent_final_answer:
             # If answer came from a variable reference (#N), the program
@@ -844,7 +844,7 @@ class OSEnvironment(TaskEnvironment):
     Matches the original's three-phase protocol:
     1. Start container, run initialization_command_item
     2. Agent sends bash commands, gets output
-    3. Run evaluation_command_item — pass iff exit_code == 0
+    3. Run evaluation_command_item â€” pass iff exit_code == 0
     """
 
     @property
@@ -890,7 +890,7 @@ class OSEnvironment(TaskEnvironment):
                 logger.warning(
                     "OS task: 'local-os/default' image not found. "
                     "Falling back to 'ubuntu:22.04'. The original benchmark "
-                    "uses a custom image — some tasks may fail."
+                    "uses a custom image â€” some tasks may fail."
                 )
 
         # Start container
@@ -1010,7 +1010,7 @@ class OSEnvironment(TaskEnvironment):
 
         if not eval_cmd_str:
             meta["reason"] = (
-                "no_evaluation_command — cannot determine correctness. "
+                "no_evaluation_command â€” cannot determine correctness. "
                 "The original benchmark requires evaluation_command_item "
                 "with exit_code==0 meaning correct."
             )
@@ -1047,7 +1047,7 @@ class OSEnvironment(TaskEnvironment):
 
 
 # ====================================================================
-# Helpers (shared with scorer — avoid duplication)
+# Helpers (shared with scorer â€” avoid duplication)
 # ====================================================================
 
 
@@ -1183,3 +1183,4 @@ __all__ = [
     "OSEnvironment",
     "create_task_environment",
 ]
+

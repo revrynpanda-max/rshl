@@ -1,4 +1,4 @@
-"""Tests for orchestrator GRPO trainer."""
+﻿"""Tests for orchestrator GRPO trainer."""
 
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ class TestGroupAdvantageNormalization:
         rewards = [0.5, 0.5, 0.5, 0.5]
         mean_r = sum(rewards) / len(rewards)
         std_r = (sum((r - mean_r) ** 2 for r in rewards) / len(rewards)) ** 0.5
-        # All same → std=0 → advantages should be 0
+        # All same â†’ std=0 â†’ advantages should be 0
         assert std_r < 1e-8
         advantages = [0.0] * len(rewards)
         assert all(a == 0.0 for a in advantages)
@@ -101,3 +101,5 @@ class TestGRPORegistration:
         from openjarvis.core.registry import LearningRegistry
 
         assert LearningRegistry.contains("orchestrator_grpo")
+
+

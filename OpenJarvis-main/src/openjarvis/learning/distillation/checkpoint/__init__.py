@@ -1,1 +1,2 @@
-"""Git-backed checkpoint store for config rollback."""
+﻿"""Git-backed checkpoint store for config rollback."""
+

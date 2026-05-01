@@ -1,4 +1,4 @@
-"""Shared fixtures for channel integration tests."""
+﻿"""Shared fixtures for channel integration tests."""
 
 from __future__ import annotations
 
@@ -67,3 +67,5 @@ def credential_env(channel_name: str, **creds: str):
                 os.environ.pop(env_key, None)
             else:
                 os.environ[env_key] = old
+
+

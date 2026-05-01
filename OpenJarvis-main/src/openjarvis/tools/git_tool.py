@@ -1,4 +1,4 @@
-"""Git tools — version control operations via subprocess."""
+﻿"""Git tools â€” version control operations via subprocess."""
 
 from __future__ import annotations
 
@@ -385,3 +385,4 @@ class GitLogTool(BaseTool):
 
 
 __all__ = ["GitStatusTool", "GitDiffTool", "GitCommitTool", "GitLogTool"]
+

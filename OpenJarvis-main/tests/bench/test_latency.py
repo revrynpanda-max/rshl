@@ -1,4 +1,4 @@
-"""Tests for the latency benchmark."""
+﻿"""Tests for the latency benchmark."""
 
 from __future__ import annotations
 
@@ -84,3 +84,5 @@ class TestLatencyBenchmark:
 
         ensure_registered()  # should not raise
         assert BenchmarkRegistry.contains("latency")
+
+

@@ -1,4 +1,4 @@
-"""Tests for the coding_assistant dataset."""
+﻿"""Tests for the coding_assistant dataset."""
 
 from openjarvis.evals.datasets.coding_assistant import CodingAssistantDataset
 
@@ -36,3 +36,5 @@ def test_difficulty_tiers():
     assert "easy" in subjects
     assert "medium" in subjects
     assert "hard" in subjects
+
+

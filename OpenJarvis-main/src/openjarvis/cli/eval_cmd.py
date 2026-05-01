@@ -1,4 +1,4 @@
-"""``jarvis eval`` — evaluation framework CLI commands."""
+﻿"""``jarvis eval`` â€” evaluation framework CLI commands."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ import click
 from rich.console import Console
 from rich.table import Table
 
-# Known benchmarks and backends — mirrored from the evals framework so the
+# Known benchmarks and backends â€” mirrored from the evals framework so the
 # CLI can display them even when the (optional) evals package is not installed.
 KNOWN_BENCHMARKS = {
     "supergpqa": {"category": "reasoning", "description": "SuperGPQA multiple-choice"},
@@ -65,7 +65,7 @@ KNOWN_BACKENDS = {
 
 @click.group("eval")
 def eval_group() -> None:
-    """Evaluation framework — benchmark models, agents, and learning."""
+    """Evaluation framework â€” benchmark models, agents, and learning."""
 
 
 @eval_group.command("list")
@@ -464,7 +464,7 @@ def eval_compare(result_files: tuple[str, ...], metric: str) -> None:
         return
 
     table = Table(
-        title=f"[bold]Comparison — {metric}[/bold]",
+        title=f"[bold]Comparison â€” {metric}[/bold]",
         border_style="bright_blue",
         title_style="bold cyan",
     )
@@ -576,3 +576,4 @@ def eval_report(result_file: str) -> None:
 
 
 __all__ = ["eval_group"]
+

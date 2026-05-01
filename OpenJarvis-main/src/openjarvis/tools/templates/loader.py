@@ -1,4 +1,4 @@
-"""Template loader — dynamically construct BaseTool from TOML definitions."""
+﻿"""Template loader â€” dynamically construct BaseTool from TOML definitions."""
 
 from __future__ import annotations
 
@@ -203,3 +203,4 @@ def discover_templates(
 
 
 __all__ = ["ToolTemplate", "discover_templates", "load_template"]
+

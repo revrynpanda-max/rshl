@@ -1,10 +1,10 @@
-"""End-to-end tests for the Twitter bot mention handler.
+﻿"""End-to-end tests for the Twitter bot mention handler.
 
 Tests cover:
 - Tweet classification (_classify_mention)
 - Prompt building for each mention type
-- Mention polling → handler dispatch
-- Full reactive flow: mention → classify → prompt → agent → tool call → reply
+- Mention polling â†’ handler dispatch
+- Full reactive flow: mention â†’ classify â†’ prompt â†’ agent â†’ tool call â†’ reply
 - Environment variable expansion in http_request headers (GitHub issue creation)
 """
 
@@ -51,7 +51,7 @@ DEMO_TWEETS = twitter_bot.DEMO_TWEETS
 
 
 class TestModelClassifierParse:
-    """`_classify_mention_llm` — validate parsing + label whitelist."""
+    """`_classify_mention_llm` â€” validate parsing + label whitelist."""
 
     @pytest.mark.parametrize(
         "raw, expected",
@@ -66,8 +66,8 @@ class TestModelClassifierParse:
             ("SPAM", "SPAM"),
             ("PRAISE", "PRAISE"),
             ("<think>hmm</think>\nBUG_REPORT", "BUG_REPORT"),
-            # Invalid labels → None so the dispatcher defaults to QUESTION.
-            # OTHER is no longer in the whitelist — it was removed so the
+            # Invalid labels â†’ None so the dispatcher defaults to QUESTION.
+            # OTHER is no longer in the whitelist â€” it was removed so the
             # model commits to one of the 5 real bot-flow labels.
             ("OTHER", None),
             ("MAYBE_BUG", None),
@@ -87,7 +87,7 @@ class TestModelClassifierParse:
 
 
 class TestClassifyMentionDispatch:
-    """`_classify_mention` — LLM only, safe QUESTION default on any miss."""
+    """`_classify_mention` â€” LLM only, safe QUESTION default on any miss."""
 
     @pytest.mark.parametrize(
         "llm_label, expected",
@@ -105,7 +105,7 @@ class TestClassifyMentionDispatch:
         assert _classify_mention("some tweet", jarvis=j) == expected
 
     def test_defaults_to_question_if_model_returns_other(self):
-        """OTHER was removed from the label set — if the model still
+        """OTHER was removed from the label set â€” if the model still
         emits it (old prompt cache, etc.), it's treated as invalid and
         defaults to QUESTION so the reply goes through retrieval +
         deferral, never a write-path."""
@@ -114,7 +114,7 @@ class TestClassifyMentionDispatch:
         assert _classify_mention("hahaha", jarvis=j) == "QUESTION"
 
     def test_defaults_to_question_on_llm_exception(self):
-        """Transient model failures must not stop the bot — default to
+        """Transient model failures must not stop the bot â€” default to
         QUESTION so the reply goes through retrieval + deferral."""
         j = MagicMock()
         j.ask.side_effect = RuntimeError("model unavailable")
@@ -131,7 +131,7 @@ class TestClassifyMentionDispatch:
         assert _classify_mention("a tweet", jarvis=j) == "QUESTION"
 
     def test_spam_from_llm_is_respected(self):
-        """Mixed-signal spam ("love OpenJarvis, buy my crypto") — the
+        """Mixed-signal spam ("love OpenJarvis, buy my crypto") â€” the
         model catches the promotion and the dispatcher returns SPAM."""
         j = MagicMock()
         j.ask.return_value = "SPAM"
@@ -148,7 +148,7 @@ class TestClassifyMentionDispatch:
 
 
 class TestInjectionDetector:
-    """`_detect_injection` — SAFE/MALICIOUS gate before classification."""
+    """`_detect_injection` â€” SAFE/MALICIOUS gate before classification."""
 
     @pytest.mark.parametrize(
         "raw, expected",
@@ -161,7 +161,7 @@ class TestInjectionDetector:
             ("**MALICIOUS**", "MALICIOUS"),
             ("<think>weighing</think>\nMALICIOUS", "MALICIOUS"),
             # Any non-whitelist output collapses to the SAFE default
-            # (defense-in-depth — don't silently block on bad detector
+            # (defense-in-depth â€” don't silently block on bad detector
             # output; the downstream classifier and voice rules are the
             # next line of defense).
             ("maybe", "SAFE"),
@@ -175,7 +175,7 @@ class TestInjectionDetector:
         assert twitter_bot._detect_injection("unused", j) == expected
 
     def test_detector_exception_defaults_to_safe(self):
-        """Model crashes must not create a stealth DoS — a flaky
+        """Model crashes must not create a stealth DoS â€” a flaky
         detector defaults to SAFE and the normal flow continues."""
         j = MagicMock()
         j.ask.side_effect = RuntimeError("ollama down")
@@ -196,10 +196,10 @@ class TestSinceIdPersistence:
         not regress the saved watermark."""
         path = tmp_path / "since.txt"
         twitter_bot._save_persisted_since_id("200", path=path)
-        twitter_bot._save_persisted_since_id("100", path=path)   # smaller → ignored
-        twitter_bot._save_persisted_since_id("150", path=path)   # smaller → ignored
+        twitter_bot._save_persisted_since_id("100", path=path)   # smaller â†’ ignored
+        twitter_bot._save_persisted_since_id("150", path=path)   # smaller â†’ ignored
         assert twitter_bot._load_persisted_since_id(path) == "200"
-        twitter_bot._save_persisted_since_id("300", path=path)   # bigger → wins
+        twitter_bot._save_persisted_since_id("300", path=path)   # bigger â†’ wins
         assert twitter_bot._load_persisted_since_id(path) == "300"
 
     def test_non_numeric_ignored(self, tmp_path):
@@ -224,7 +224,7 @@ class TestSinceIdPersistence:
 
 
 class TestInjectionLog:
-    """`_log_injection_attempt` — JSONL append-only."""
+    """`_log_injection_attempt` â€” JSONL append-only."""
 
     def test_writes_jsonl_entry(self, tmp_path):
         import json as _json
@@ -247,7 +247,7 @@ class TestInjectionLog:
 
     def test_write_error_does_not_raise(self, tmp_path):
         """Logging failures must not break the bot loop."""
-        # A path where the parent is a file (not dir) — mkdir will fail,
+        # A path where the parent is a file (not dir) â€” mkdir will fail,
         # open will fail. The helper should swallow and continue.
         bogus_parent = tmp_path / "blocker"
         bogus_parent.write_text("i am a file, not a dir")
@@ -276,7 +276,7 @@ class TestPromptBuilders:
 
     def test_question_grounded_prompt_embeds_context(self):
         """Grounded prompt (used when retrieval score >= threshold)."""
-        context = "[1] hardware.md  —  Running Without a GPU\nUse llama.cpp for CPU."
+        context = "[1] hardware.md  â€”  Running Without a GPU\nUse llama.cpp for CPU."
         prompt = _build_question_grounded_prompt(
             "alice", "123", "can I run on cpu?", context, 0.71
         )
@@ -576,7 +576,7 @@ class TestEnvVarExpansion:
 
 
 class TestFullE2EFlow:
-    """Test the full flow: mention arrives → classify → prompt → agent → tool calls."""
+    """Test the full flow: mention arrives â†’ classify â†’ prompt â†’ agent â†’ tool calls."""
 
     def _make_mock_jarvis(self, responses=None):
         """Create a mock Jarvis instance that returns canned responses."""
@@ -588,7 +588,7 @@ class TestFullE2EFlow:
         return j
 
     def test_question_flow(self):
-        """Question mention → retrieval runs in Python, agent only needs channel_send.
+        """Question mention â†’ retrieval runs in Python, agent only needs channel_send.
 
         After the dense-retrieval refactor, ``memory_search`` is no longer
         a model-visible tool; retrieval happens out-of-band and the score
@@ -616,12 +616,12 @@ class TestFullE2EFlow:
         j.ask.assert_called_once()
         call_kwargs = j.ask.call_args
         assert "channel_send" in call_kwargs[1]["tools"]
-        # memory_search is explicitly NOT passed — retrieval was already done
+        # memory_search is explicitly NOT passed â€” retrieval was already done
         assert "memory_search" not in call_kwargs[1]["tools"]
         assert call_kwargs[1]["agent"] == "orchestrator"
 
     def test_bug_report_flow(self):
-        """Bug mention → http_request (GitHub issue) + channel_send."""
+        """Bug mention â†’ http_request (GitHub issue) + channel_send."""
         j = self._make_mock_jarvis(["opened an issue for this"])
         tweet = DEMO_TWEETS[1]
         mention_type = "BUG_REPORT"
@@ -642,9 +642,9 @@ class TestFullE2EFlow:
         assert "bug" in call_kwargs[0][0]
 
     def test_feature_request_flow(self):
-        """Feature mention → http_request (GitHub issue) + channel_send."""
+        """Feature mention â†’ http_request (GitHub issue) + channel_send."""
         j = self._make_mock_jarvis(
-            ["love this idea — opened an issue to track it"],
+            ["love this idea â€” opened an issue to track it"],
         )
         tweet = DEMO_TWEETS[2]
         mention_type = "FEATURE_REQUEST"
@@ -665,7 +665,7 @@ class TestFullE2EFlow:
         assert "enhancement" in call_kwargs[0][0]
 
     def test_praise_flow(self):
-        """Praise mention → channel_send only."""
+        """Praise mention â†’ channel_send only."""
         j = self._make_mock_jarvis(["thanks, glad you like it!"])
         tweet = DEMO_TWEETS[3]
         mention_type = "PRAISE"
@@ -678,7 +678,7 @@ class TestFullE2EFlow:
         assert call_kwargs[1]["tools"] == ["channel_send"]
 
     def test_spam_is_ignored(self):
-        """Spam mentions should be skipped — no Jarvis.ask call."""
+        """Spam mentions should be skipped â€” no Jarvis.ask call."""
         j = self._make_mock_jarvis()
         tweet = DEMO_TWEETS[4]  # noqa: F841  (retained for parity with siblings)
         mention_type = "SPAM"
@@ -747,7 +747,7 @@ class TestReplyConversationId:
         with patch("httpx.post", return_value=mock_resp) as mock_post:
             ch.send(
                 "twitter",
-                "opened an issue for this — we'll look into it",
+                "opened an issue for this â€” we'll look into it",
                 conversation_id="1000000000000000002",
             )
 
@@ -865,3 +865,5 @@ class TestGitHubIssueCreation:
         body = json.loads(mock_req.call_args[1]["content"])
         assert body["labels"] == ["enhancement", "from-twitter"]
         assert "carol_eng" in body["body"]
+
+

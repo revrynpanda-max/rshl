@@ -1,4 +1,4 @@
-"""Tests for SchedulerStore — SQLite CRUD for scheduled tasks and run logs."""
+﻿"""Tests for SchedulerStore â€” SQLite CRUD for scheduled tasks and run logs."""
 
 from __future__ import annotations
 
@@ -162,3 +162,5 @@ class TestRunLogs:
     def test_get_run_logs_empty(self, store):
         logs = store.get_run_logs("nonexistent")
         assert logs == []
+
+

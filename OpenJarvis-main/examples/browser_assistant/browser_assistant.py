@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
-"""Browser Assistant — web browsing agent with orchestrator loop.
+﻿#!/usr/bin/env python3
+"""Browser Assistant â€” web browsing agent with orchestrator loop.
 
 Usage:
     python examples/browser_assistant/browser_assistant.py --help
@@ -111,3 +111,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

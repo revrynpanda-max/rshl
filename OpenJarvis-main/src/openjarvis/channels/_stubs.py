@@ -1,4 +1,4 @@
-"""ABC for channel implementations and shared types."""
+﻿"""ABC for channel implementations and shared types."""
 
 from __future__ import annotations
 
@@ -76,3 +76,4 @@ class BaseChannel(ABC):
 
 
 __all__ = ["BaseChannel", "ChannelHandler", "ChannelMessage", "ChannelStatus"]
+

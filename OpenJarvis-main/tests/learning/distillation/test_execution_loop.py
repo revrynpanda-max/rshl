@@ -1,4 +1,4 @@
-"""Tests for the per-edit execution loop."""
+﻿"""Tests for the per-edit execution loop."""
 
 from __future__ import annotations
 
@@ -148,3 +148,5 @@ class TestExecuteEdits:
         assert outcomes[0].status == "applied"
         assert outcomes[1].status == "pending_review"
         assert outcomes[2].status == "skipped"
+
+

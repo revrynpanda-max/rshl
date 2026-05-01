@@ -1,4 +1,4 @@
-"""Tests for KnowledgeSQLTool."""
+﻿"""Tests for KnowledgeSQLTool."""
 
 from __future__ import annotations
 
@@ -88,3 +88,5 @@ def test_registered() -> None:
 
     ToolRegistry.register_value("knowledge_sql", KnowledgeSQLTool)
     assert ToolRegistry.contains("knowledge_sql")
+
+

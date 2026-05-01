@@ -1,4 +1,4 @@
-"""ResultTracker ABC for external experiment tracking."""
+﻿"""ResultTracker ABC for external experiment tracking."""
 
 from __future__ import annotations
 
@@ -32,3 +32,4 @@ class ResultTracker(ABC):
 
 
 __all__ = ["ResultTracker"]
+

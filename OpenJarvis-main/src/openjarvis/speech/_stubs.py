@@ -1,4 +1,4 @@
-"""Abstract base classes and data types for the speech subsystem."""
+﻿"""Abstract base classes and data types for the speech subsystem."""
 
 from __future__ import annotations
 
@@ -53,3 +53,4 @@ class SpeechBackend(ABC):
 
 
 __all__ = ["Segment", "SpeechBackend", "TranscriptionResult"]
+

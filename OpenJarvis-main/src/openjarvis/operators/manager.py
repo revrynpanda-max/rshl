@@ -1,4 +1,4 @@
-"""Operator manager — lifecycle management for autonomous operators."""
+﻿"""Operator manager â€” lifecycle management for autonomous operators."""
 
 from __future__ import annotations
 
@@ -211,3 +211,4 @@ class OperatorManager:
 
 
 __all__ = ["OperatorManager"]
+

@@ -1,4 +1,4 @@
-"""Tests for SteadyStateConfig, SteadyStateDetector, and SteadyStateResult."""
+﻿"""Tests for SteadyStateConfig, SteadyStateDetector, and SteadyStateResult."""
 
 from __future__ import annotations
 
@@ -159,3 +159,5 @@ class TestSteadyStateDetector:
         detector = SteadyStateDetector(None)
         assert detector._config.warmup_samples == 5
         assert detector._config.window_size == 5
+
+

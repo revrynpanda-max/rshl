@@ -1,4 +1,4 @@
-"""Tests for eval pricing module."""
+﻿"""Tests for eval pricing module."""
 
 from __future__ import annotations
 
@@ -36,3 +36,5 @@ class TestPricing:
         # estimate_cost is the same as engine/cloud.py estimate_cost
         cost = estimate_cost("unknown-model", 100, 50)
         assert cost == 0.0
+
+

@@ -1,4 +1,4 @@
-"""MattermostChannel — Mattermost REST API adapter."""
+﻿"""MattermostChannel â€” Mattermost REST API adapter."""
 
 from __future__ import annotations
 
@@ -50,7 +50,7 @@ class MattermostChannel(BaseChannel):
     # -- connection lifecycle ---------------------------------------------------
 
     def connect(self) -> None:
-        """Mark as connected (send-only — no persistent connection)."""
+        """Mark as connected (send-only â€” no persistent connection)."""
         if not self._url or not self._token:
             logger.warning("No Mattermost URL or token configured")
             self._status = ChannelStatus.ERROR
@@ -136,3 +136,4 @@ class MattermostChannel(BaseChannel):
 
 
 __all__ = ["MattermostChannel"]
+

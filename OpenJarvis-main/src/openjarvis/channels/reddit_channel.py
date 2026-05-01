@@ -1,4 +1,4 @@
-"""RedditChannel — Reddit adapter via praw."""
+﻿"""RedditChannel â€” Reddit adapter via praw."""
 
 from __future__ import annotations
 
@@ -169,3 +169,4 @@ class RedditChannel(BaseChannel):
 
 
 __all__ = ["RedditChannel"]
+

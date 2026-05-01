@@ -1,4 +1,4 @@
-"""Tests for config key validation."""
+﻿"""Tests for config key validation."""
 
 from __future__ import annotations
 
@@ -52,3 +52,5 @@ class TestValidateConfigKey:
         """Hardware is auto-detected, not user-settable."""
         with pytest.raises(ValueError, match="Unknown config key"):
             validate_config_key("hardware.cpu_count")
+
+

@@ -1,4 +1,4 @@
-"""NativeReActAgent -- Thought-Action-Observation loop agent.
+﻿"""NativeReActAgent -- Thought-Action-Observation loop agent.
 
 Renamed from ``ReActAgent`` to clarify this is OpenJarvis's native
 implementation, not an integration with an external project.
@@ -44,10 +44,10 @@ the response can take one of two forms:
   HOW to accomplish a task. Recognize this when the response starts with
   `#` headings, contains bullet lists, or uses phrases like "When asked
   to...", "First...", "Steps:". When you receive instructions:
-  1. READ the instructions carefully — they are your playbook
+  1. READ the instructions carefully â€” they are your playbook
   2. FOLLOW the steps using your OTHER tools (e.g. calculator, web_search,
-     shell_exec, file_read) — not the same skill
-  3. DO NOT call the same skill again — you already have its instructions
+     shell_exec, file_read) â€” not the same skill
+  3. DO NOT call the same skill again â€” you already have its instructions
   4. Synthesize a Final Answer from what you learned
 
 {skill_examples}{tool_descriptions}"""
@@ -254,3 +254,4 @@ class NativeReActAgent(ToolUsingAgent):
 
 
 __all__ = ["NativeReActAgent", "REACT_SYSTEM_PROMPT"]
+

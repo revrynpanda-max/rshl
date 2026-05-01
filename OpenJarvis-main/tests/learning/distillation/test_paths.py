@@ -1,4 +1,4 @@
-"""Tests for openjarvis.learning.distillation.storage.paths module."""
+﻿"""Tests for openjarvis.learning.distillation.storage.paths module."""
 
 from __future__ import annotations
 
@@ -105,3 +105,5 @@ class TestEnsureDistillationDirs:
 
         assert first == second
         assert first.exists()
+
+

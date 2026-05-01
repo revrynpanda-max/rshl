@@ -1,4 +1,4 @@
-"""Verify that importing openjarvis.tools registers all built-in tools."""
+﻿"""Verify that importing openjarvis.tools registers all built-in tools."""
 
 from __future__ import annotations
 
@@ -100,3 +100,5 @@ def test_all_builtin_tools_registered():
     assert not missing, (
         f"Tools not registered (missing import in __init__.py?): {sorted(missing)}"
     )
+
+

@@ -1,4 +1,4 @@
-"""Tests for openjarvis.learning.distillation.diagnose.types module."""
+﻿"""Tests for openjarvis.learning.distillation.diagnose.types module."""
 
 from __future__ import annotations
 
@@ -45,12 +45,12 @@ class TestBenchmarkTask:
         from openjarvis.learning.distillation.diagnose.types import BenchmarkTask
 
         task = BenchmarkTask(
-            task_id="task-001",
+            task_id="tadummy-sk-001",
             query="Explain quantum computing",
             reference_answer="Quantum computing uses qubits...",
             category="reasoning",
         )
-        assert task.task_id == "task-001"
+        assert task.task_id == "tadummy-sk-001"
         assert task.category == "reasoning"
 
 
@@ -61,7 +61,7 @@ class TestStudentRun:
         from openjarvis.learning.distillation.diagnose.types import StudentRun
 
         run = StudentRun(
-            task_id="task-001",
+            task_id="tadummy-sk-001",
             output="The answer is 4.",
             score=0.9,
             trace_id="trace-new-001",
@@ -79,7 +79,7 @@ class TestTeacherRun:
         from openjarvis.learning.distillation.diagnose.types import TeacherRun
 
         run = TeacherRun(
-            task_id="task-001",
+            task_id="tadummy-sk-001",
             output="Quantum computing is...",
             reasoning="I approached this by...",
             cost_usd=0.05,
@@ -95,7 +95,7 @@ class TestComparisonResult:
         from openjarvis.learning.distillation.diagnose.types import ComparisonResult
 
         result = ComparisonResult(
-            task_id="task-001",
+            task_id="tadummy-sk-001",
             student_score=0.3,
             teacher_score=0.9,
             judge_reasoning="The student missed the key concept...",
@@ -171,3 +171,5 @@ class TestToolCallRecord:
         assert d["tool"] == "get_trace"
         assert d["timestamp"] == "2026-04-09T03:00:00+00:00"
         assert d["cost_usd"] == 0.01
+
+

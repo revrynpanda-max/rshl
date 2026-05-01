@@ -1,4 +1,4 @@
-"""Tests for batch-level energy accounting."""
+﻿"""Tests for batch-level energy accounting."""
 
 from __future__ import annotations
 
@@ -281,3 +281,5 @@ class TestPerRequestEnergy:
         m = batch.metrics
         assert m is not None
         assert m.per_request_energy == [0.0, 0.0]
+
+

@@ -1,4 +1,4 @@
-"""Storage MCP tools — expose MemoryBackend operations as BaseTool instances.
+﻿"""Storage MCP tools â€” expose MemoryBackend operations as BaseTool instances.
 
 These tools wrap the ``MemoryBackend`` ABC so that memory operations
 (store, retrieve, search, index) are discoverable and callable via MCP.
@@ -309,3 +309,4 @@ __all__ = [
     "MemorySearchTool",
     "MemoryStoreTool",
 ]
+

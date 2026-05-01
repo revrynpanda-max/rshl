@@ -1,4 +1,4 @@
-"""Tests for AmdEnergyMonitor -- mock amdsmi (no real GPU required)."""
+﻿"""Tests for AmdEnergyMonitor -- mock amdsmi (no real GPU required)."""
 
 from __future__ import annotations
 
@@ -186,3 +186,5 @@ class TestClose:
                 fake_amdsmi.amdsmi_shut_down.assert_called_once()
             finally:
                 mod._AMDSMI_AVAILABLE = orig
+
+

@@ -1,4 +1,4 @@
-"""Tests for SemanticChunker — type-aware text splitting."""
+﻿"""Tests for SemanticChunker â€” type-aware text splitting."""
 
 from __future__ import annotations
 
@@ -262,3 +262,5 @@ def test_document_no_headings_uses_paragraphs() -> None:
     text = f"{para1}\n\n{para2}"
     results = chunker.chunk(text, doc_type="document")
     assert len(results) >= 2
+
+

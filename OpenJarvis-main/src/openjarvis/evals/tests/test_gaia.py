@@ -1,4 +1,4 @@
-"""Tests for GAIA scorer logic (normalization and exact match)."""
+﻿"""Tests for GAIA scorer logic (normalization and exact match)."""
 
 from __future__ import annotations
 
@@ -136,3 +136,4 @@ class TestGAIAScorer:
 
         assert is_correct is None
         assert meta["reason"] == "no_ground_truth"
+

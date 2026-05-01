@@ -1,4 +1,4 @@
-"""Tests for speech API endpoints."""
+﻿"""Tests for speech API endpoints."""
 
 from unittest.mock import MagicMock
 
@@ -84,3 +84,5 @@ def test_health_no_backend():
     assert response.status_code == 200
     data = response.json()
     assert data["available"] is False
+
+

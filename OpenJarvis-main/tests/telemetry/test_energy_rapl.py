@@ -1,4 +1,4 @@
-"""Tests for RaplEnergyMonitor -- mock sysfs (no real RAPL required)."""
+﻿"""Tests for RaplEnergyMonitor -- mock sysfs (no real RAPL required)."""
 
 from __future__ import annotations
 
@@ -255,3 +255,5 @@ class TestClose:
 
         assert_close_sets_uninitialized(monitor)
         assert monitor._domains == []
+
+

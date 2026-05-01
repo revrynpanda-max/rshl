@@ -1,4 +1,4 @@
-"""Tests for the coding_assistant scorer."""
+﻿"""Tests for the coding_assistant scorer."""
 
 from openjarvis.evals.core.types import EvalRecord
 from openjarvis.evals.scorers.coding_assistant import CodingAssistantScorer
@@ -67,3 +67,5 @@ def test_empty_answer():
     is_correct, meta = scorer.score(record, "")
     assert is_correct is False
     assert meta["reason"] == "empty_response"
+
+

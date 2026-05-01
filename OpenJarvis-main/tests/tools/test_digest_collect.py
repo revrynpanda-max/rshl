@@ -1,4 +1,4 @@
-"""Tests for the digest_collect tool."""
+﻿"""Tests for the digest_collect tool."""
 
 from __future__ import annotations
 
@@ -58,3 +58,5 @@ def test_digest_collect_missing_connector():
 
     assert result.success is True  # Partial success
     assert "not available" in result.content
+
+

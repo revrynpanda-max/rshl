@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 
 def test_strips_openai_key():
@@ -7,10 +7,10 @@ def test_strips_openai_key():
     stripper = CredentialStripper()
     text = (
         "Error: auth failed with key "
-        "sk-proj-EXAMPLE"
+        "openai-dummy-key"
     )
     result = stripper.strip(text)
-    assert "sk-proj-" not in result
+    assert "dummy-sk-proj-" not in result
     assert "[REDACTED:" in result
 
 
@@ -50,3 +50,5 @@ def test_tool_output_wrapping():
     assert '<tool_result name="web_search" status="success">' in wrapped
     assert "Search results" in wrapped
     assert "</tool_result>" in wrapped
+
+

@@ -1,4 +1,4 @@
-"""DSPy agent optimizer -- programmatic pipeline optimization.
+﻿"""DSPy agent optimizer -- programmatic pipeline optimization.
 
 Wraps an agent's reasoning pipeline as a DSPy Module and optimizes
 it end-to-end using DSPy teleprompters. Outputs TOML-compatible
@@ -206,3 +206,4 @@ class _DSPyLearningPolicy(AgentLearningPolicy):
 
 
 __all__ = ["DSPyAgentOptimizer"]
+

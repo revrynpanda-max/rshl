@@ -1,4 +1,4 @@
-"""Skill loader — load and verify skill manifests from TOML files."""
+﻿"""Skill loader â€” load and verify skill manifests from TOML files."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ def _read_source_metadata(path: Path) -> dict:
     """Read .source TOML file if present, returning the parsed dict.
 
     Returns an empty dict if the file is missing or malformed.  Never
-    raises — bad sidecar files should never break skill loading.  Logs
+    raises â€” bad sidecar files should never break skill loading.  Logs
     a warning when a malformed file is encountered so users can debug
     why their imported source provenance is missing.
     """
@@ -184,7 +184,7 @@ def load_skill_markdown(path: str | Path) -> SkillManifest:
     try:
         return parser.parse_frontmatter(frontmatter, markdown_content=markdown_content)
     except SkillParseError:
-        # Legacy fallback — build manifest directly without strict validation
+        # Legacy fallback â€” build manifest directly without strict validation
         return SkillManifest(
             name=str(frontmatter.get("name", path.stem)),
             description=str(frontmatter.get("description", "")),
@@ -317,3 +317,4 @@ __all__ = [
     "load_skill_directory",
     "discover_skills",
 ]
+

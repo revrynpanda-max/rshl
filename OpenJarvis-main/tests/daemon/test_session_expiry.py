@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from unittest.mock import MagicMock
 
@@ -27,3 +27,5 @@ def test_session_expiry_skips_short_sessions():
     hook.on_session_expiry(session_id="test-session", messages=messages)
 
     executor.run_ephemeral.assert_not_called()
+
+

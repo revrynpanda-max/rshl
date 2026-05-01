@@ -1,4 +1,4 @@
-"""Tests for the CLI skeleton."""
+﻿"""Tests for the CLI skeleton."""
 
 from __future__ import annotations
 
@@ -90,3 +90,5 @@ class TestCLI:
         assert config_path.exists()
         content = config_path.read_text()
         assert "[engine]" in content
+
+

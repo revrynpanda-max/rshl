@@ -1,4 +1,4 @@
-"""Tests for the DSPy agent optimizer (mocked -- no dspy dependency required)."""
+﻿"""Tests for the DSPy agent optimizer (mocked -- no dspy dependency required)."""
 
 from __future__ import annotations
 
@@ -88,3 +88,5 @@ class TestDSPyOptimizerTraceConversion:
                 result = optimizer.optimize(mock_store)
                 assert result["status"] == "completed"
                 assert "config_updates" in result
+
+

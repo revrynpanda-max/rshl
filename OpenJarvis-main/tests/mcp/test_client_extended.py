@@ -1,4 +1,4 @@
-"""Extended tests for MCPClient — initialize params, notify, context manager."""
+﻿"""Extended tests for MCPClient â€” initialize params, notify, context manager."""
 
 from __future__ import annotations
 
@@ -174,3 +174,5 @@ class TestCallTool:
 
         req = mock_transport.send.call_args[0][0]
         assert req.params == {"name": "ping", "arguments": {}}
+
+

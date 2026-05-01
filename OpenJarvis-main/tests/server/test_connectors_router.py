@@ -1,4 +1,4 @@
-"""Tests for the /v1/connectors API router."""
+﻿"""Tests for the /v1/connectors API router."""
 
 from __future__ import annotations
 
@@ -92,3 +92,5 @@ def test_trigger_sync(app, tmp_path: Path) -> None:
     assert resp.status_code == 200
     data = resp.json()
     assert data["chunks_indexed"] >= 1
+
+

@@ -1,4 +1,4 @@
-"""Tests for the MCP tool adapter — round-trip through MCPServer + MCPClient."""
+﻿"""Tests for the MCP tool adapter â€” round-trip through MCPServer + MCPClient."""
 
 from __future__ import annotations
 
@@ -120,7 +120,7 @@ class TestMCPToolProvider:
 
 
 class TestMCPAdapterRoundTrip:
-    """End-to-end: Server → InProcessTransport → Client → Adapter → execute."""
+    """End-to-end: Server â†’ InProcessTransport â†’ Client â†’ Adapter â†’ execute."""
 
     def test_full_round_trip(self):
         server = MCPServer([CalculatorTool(), ThinkTool()])
@@ -156,3 +156,5 @@ class TestMCPAdapterRoundTrip:
         provider = MCPToolProvider(client)
         tools = provider.discover()
         assert tools == []
+
+

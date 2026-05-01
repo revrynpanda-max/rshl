@@ -1,4 +1,4 @@
-"""Skill system — reusable multi-tool compositions."""
+﻿"""Skill system â€” reusable multi-tool compositions."""
 
 from openjarvis.skills.dependency import (
     DependencyCycleError,
@@ -44,3 +44,4 @@ __all__ = [
     "load_skill_markdown",
     "validate_dependencies",
 ]
+

@@ -1,4 +1,4 @@
-"""MonitorOperativeAgent -- long-horizon agent with configurable strategies.
+﻿"""MonitorOperativeAgent -- long-horizon agent with configurable strategies.
 
 Extends ToolUsingAgent (not OperativeAgent) with four configurable strategy
 axes for long-horizon benchmark evaluation:
@@ -744,3 +744,4 @@ class MonitorOperativeAgent(ToolUsingAgent):
 
 
 __all__ = ["MonitorOperativeAgent", "MONITOR_OPERATIVE_SYSTEM_PROMPT"]
+

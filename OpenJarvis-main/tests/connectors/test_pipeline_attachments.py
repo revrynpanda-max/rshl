@@ -1,4 +1,4 @@
-"""Tests for attachment processing in IngestionPipeline."""
+﻿"""Tests for attachment processing in IngestionPipeline."""
 
 from __future__ import annotations
 
@@ -161,3 +161,5 @@ def test_no_attachments_no_regression(
     # No blobs should be stored
     rows = att_store._conn.execute("SELECT COUNT(*) FROM attachments").fetchone()
     assert rows[0] == 0
+
+

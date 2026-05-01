@@ -1,4 +1,4 @@
-"""Scripted inference engine for deterministic agent testing."""
+﻿"""Scripted inference engine for deterministic agent testing."""
 
 from __future__ import annotations
 
@@ -75,3 +75,5 @@ class FakeEngine(InferenceEngine):
 
     def health(self) -> bool:
         return True
+
+

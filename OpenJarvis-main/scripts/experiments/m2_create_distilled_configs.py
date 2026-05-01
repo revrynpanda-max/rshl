@@ -305,3 +305,4 @@ if __name__ == "__main__":
             tool_change = f"-{removed}" if removed else "â€”"
         mt_change = f"10â†’{DISTILLED_MAX_TURNS}" if is_agent else "â€”"
         print(f"{bk:20} {b['backend']:14} {temp_change:12} {str(tool_change):20} {mt_change:12}")
+

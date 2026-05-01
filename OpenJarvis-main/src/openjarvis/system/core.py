@@ -1,4 +1,4 @@
-"""JarvisSystem — the fully wired system dataclass."""
+﻿"""JarvisSystem â€” the fully wired system dataclass."""
 
 from __future__ import annotations
 
@@ -318,3 +318,4 @@ class JarvisSystem:
 
 
 __all__ = ["JarvisSystem"]
+

@@ -1,4 +1,4 @@
-"""Tests for OpenHandsAgent (real openhands-sdk wrapper)."""
+﻿"""Tests for OpenHandsAgent (real openhands-sdk wrapper)."""
 
 from __future__ import annotations
 
@@ -53,5 +53,7 @@ class TestOpenHandsAgentConstructor:
 
     def test_custom_api_key(self):
         engine = MagicMock()
-        agent = OpenHandsAgent(engine, "test-model", api_key="sk-test")
-        assert agent._api_key == "sk-test"
+        agent = OpenHandsAgent(engine, "test-model", api_key="dummy-sk-test")
+        assert agent._api_key == "dummy-sk-test"
+
+

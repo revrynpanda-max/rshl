@@ -1,4 +1,4 @@
-"""Tests for SkillManager — discovery, catalog, tools, and resolve."""
+﻿"""Tests for SkillManager â€” discovery, catalog, tools, and resolve."""
 
 from __future__ import annotations
 
@@ -78,7 +78,7 @@ class TestSkillManagerDiscovery:
         _write_toml_skill(user, "shared", description="user version")
 
         mgr = SkillManager(bus=EventBus())
-        # workspace is listed first → highest precedence
+        # workspace is listed first â†’ highest precedence
         mgr.discover(paths=[workspace, user])
 
         manifest = mgr.resolve("shared")
@@ -418,7 +418,7 @@ class TestSkillManagerOverlayLoading:
             "---\nname: test-skill\ndescription: original\n---\nBody"
         )
 
-        # No overlay_dir argument — should still work
+        # No overlay_dir argument â€” should still work
         mgr = SkillManager(bus=EventBus())
         mgr.discover(paths=[tmp_path / "skills"])
         manifest = mgr.resolve("test-skill")
@@ -511,7 +511,7 @@ class TestSkillManagerOverlayLoading:
             description="Original description",
             markdown_content="Body",
         )
-        # Call discover() with no paths — should still load overlays
+        # Call discover() with no paths â€” should still load overlays
         mgr.discover()
 
         manifest = mgr.resolve("seeded-skill")
@@ -567,3 +567,5 @@ class TestSkillManagerRemove:
         mgr = SkillManager(bus=EventBus())
         with pytest.raises(FileNotFoundError):
             mgr.remove("ghost", roots=[tmp_path])
+
+

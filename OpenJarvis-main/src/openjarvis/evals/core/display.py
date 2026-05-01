@@ -1,4 +1,4 @@
-"""Rich display helpers for the evaluation framework and bench CLI."""
+﻿"""Rich display helpers for the evaluation framework and bench CLI."""
 
 from __future__ import annotations
 
@@ -451,3 +451,4 @@ __all__ = [
     "print_suite_summary",
     "print_trace_summary",
 ]
+

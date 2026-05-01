@@ -1,4 +1,4 @@
-"""Tests for GmailConnector — OAuth-authenticated Gmail sync connector.
+﻿"""Tests for GmailConnector â€” OAuth-authenticated Gmail sync connector.
 
 All Gmail API calls are mocked; no network access is required.
 """
@@ -16,7 +16,7 @@ from openjarvis.connectors._stubs import Document
 from openjarvis.core.registry import ConnectorRegistry
 
 # ---------------------------------------------------------------------------
-# Helpers — fake API payloads
+# Helpers â€” fake API payloads
 # ---------------------------------------------------------------------------
 
 # base64url("Hello world") == "SGVsbG8gd29ybGQ="
@@ -56,7 +56,7 @@ _MSG2 = {
 
 _LIST_RESPONSE = {
     "messages": [{"id": "msg1"}, {"id": "msg2"}],
-    # No nextPageToken → single page
+    # No nextPageToken â†’ single page
 }
 
 
@@ -82,7 +82,7 @@ def connector(tmp_path: Path):
 
 
 # ---------------------------------------------------------------------------
-# Test 1 — not connected without a credentials file
+# Test 1 â€” not connected without a credentials file
 # ---------------------------------------------------------------------------
 
 
@@ -92,7 +92,7 @@ def test_not_connected_without_credentials(connector) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 2 — auth_type is "oauth"
+# Test 2 â€” auth_type is "oauth"
 # ---------------------------------------------------------------------------
 
 
@@ -102,7 +102,7 @@ def test_auth_type_is_oauth(connector) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 3 — auth_url returns a valid Google consent URL
+# Test 3 â€” auth_url returns a valid Google consent URL
 # ---------------------------------------------------------------------------
 
 
@@ -115,7 +115,7 @@ def test_auth_url_returns_string(connector) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 4 — sync yields documents with correct fields (mocked API)
+# Test 4 â€” sync yields documents with correct fields (mocked API)
 # ---------------------------------------------------------------------------
 
 
@@ -163,7 +163,7 @@ def test_sync_yields_documents(
 
 
 # ---------------------------------------------------------------------------
-# Test 5 — disconnect removes the credentials file
+# Test 5 â€” disconnect removes the credentials file
 # ---------------------------------------------------------------------------
 
 
@@ -180,7 +180,7 @@ def test_disconnect(connector, tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 6 — mcp_tools returns the three expected tool specs
+# Test 6 â€” mcp_tools returns the three expected tool specs
 # ---------------------------------------------------------------------------
 
 
@@ -195,7 +195,7 @@ def test_mcp_tools(connector) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 7 — sync passes since as an after: query to the list messages API
+# Test 7 â€” sync passes since as an after: query to the list messages API
 # ---------------------------------------------------------------------------
 
 
@@ -229,7 +229,7 @@ def test_sync_passes_since_as_query(
 
 
 # ---------------------------------------------------------------------------
-# Test 8 — sync without since passes an empty query
+# Test 8 â€” sync without since passes an empty query
 # ---------------------------------------------------------------------------
 
 
@@ -255,7 +255,7 @@ def test_sync_without_since_passes_empty_query(
 
 
 # ---------------------------------------------------------------------------
-# Test 9 — ConnectorRegistry contains "gmail" after import
+# Test 9 â€” ConnectorRegistry contains "gmail" after import
 # ---------------------------------------------------------------------------
 
 
@@ -269,3 +269,5 @@ def test_registry() -> None:
     assert ConnectorRegistry.contains("gmail")
     cls = ConnectorRegistry.get("gmail")
     assert cls.connector_id == "gmail"
+
+

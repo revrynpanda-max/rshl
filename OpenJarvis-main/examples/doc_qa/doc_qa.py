@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
-"""Document QA — index documents and answer questions with citations.
+﻿#!/usr/bin/env python3
+"""Document QA â€” index documents and answer questions with citations.
 
 Usage:
     python examples/doc_qa/doc_qa.py --help
@@ -118,3 +118,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

@@ -250,3 +250,5 @@ class TestTeacherAgentResult:
         assert hasattr(result, "total_cost_usd")
         assert hasattr(result, "tool_call_records")
         assert hasattr(result, "total_tokens")
+
+

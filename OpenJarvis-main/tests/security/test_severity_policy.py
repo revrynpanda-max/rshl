@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 
 def test_severity_policy_block():
@@ -31,3 +31,5 @@ def test_severity_policy_log():
 
     policy = SeverityPolicy()
     assert policy.action_for(ThreatLevel.LOW) == "log"
+
+

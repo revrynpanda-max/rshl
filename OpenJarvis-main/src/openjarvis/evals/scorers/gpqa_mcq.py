@@ -1,4 +1,4 @@
-"""GPQA MCQ scorer — LLM-based letter extraction + exact match.
+﻿"""GPQA MCQ scorer â€” LLM-based letter extraction + exact match.
 
 Adapted from IPW's mcq.py and gpqa.py evaluation handlers.
 """
@@ -104,3 +104,4 @@ class GPQAScorer(LLMJudgeScorer):
 
 
 __all__ = ["GPQAScorer"]
+

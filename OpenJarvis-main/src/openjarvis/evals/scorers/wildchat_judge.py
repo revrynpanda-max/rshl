@@ -1,4 +1,4 @@
-"""WildChat scorer — dual-comparison LLM-as-judge.
+﻿"""WildChat scorer â€” dual-comparison LLM-as-judge.
 
 Adapted from IPW's wildchat.py evaluation handler.
 """
@@ -16,16 +16,16 @@ LOGGER = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """You are an impartial judge evaluating the quality of two AI-assistant replies to the same user prompt.
 
-Step 1 – Generate your own answer
+Step 1 â€“ Generate your own answer
 Write the response *you* would give to the user. Keep it separate from later analysis.
 
-Step 2 – Decide the query type
+Step 2 â€“ Decide the query type
 Classify the user prompt as either
-• **Subjective / open-ended** (creative writing, opinion, advice, brainstorming)
-• **Objective / technical** (code, math, logical derivations with a single correct outcome)
+â€¢ **Subjective / open-ended** (creative writing, opinion, advice, brainstorming)
+â€¢ **Objective / technical** (code, math, logical derivations with a single correct outcome)
 If uncertain, default to "Subjective".
 
-Step 3 – Score each assistant with the correct rubric
+Step 3 â€“ Score each assistant with the correct rubric
 
 | Query type | Criteria |
 |------------|----------|
@@ -35,10 +35,10 @@ Step 3 – Score each assistant with the correct rubric
 When using the multi-criteria rubric, note strengths and weaknesses for **each** dimension.
 When using the single-criterion rubric, focus exclusively on factual / functional accuracy and ignore style or flair.
 
-Step 4 – Compare & justify
+Step 4 â€“ Compare & justify
 Explain which assistant is better and why, correcting any mistakes you find. Highlight missing but important details. **Be concise.**
 
-Step 5 – Verdict
+Step 5 â€“ Verdict
 1. Assistant A is significantly better: [[A>>B]]
 2. Assistant A is slightly better: [[A>B]]
 3. Tie, Assistant A is equal: [[A=B]]
@@ -171,3 +171,4 @@ class WildChatScorer(LLMJudgeScorer):
 
 
 __all__ = ["WildChatScorer"]
+

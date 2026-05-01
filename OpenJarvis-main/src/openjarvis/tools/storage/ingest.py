@@ -1,4 +1,4 @@
-"""Document ingestion — file reading, type detection, directory walking."""
+﻿"""Document ingestion â€” file reading, type detection, directory walking."""
 
 from __future__ import annotations
 
@@ -178,7 +178,7 @@ def ingest_path(
     # Directory: recursive walk
     all_chunks: List[Chunk] = []
     for child in sorted(path.rglob("*")):
-        # Skip directories themselves — rglob yields files too
+        # Skip directories themselves â€” rglob yields files too
         if child.is_dir():
             continue
 
@@ -244,3 +244,4 @@ def ingest_path(
 
 
 __all__ = ["DocumentMeta", "detect_file_type", "ingest_path", "read_document"]
+

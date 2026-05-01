@@ -1,4 +1,4 @@
-"""Recipe system — composable primitive configurations."""
+﻿"""Recipe system â€” composable primitive configurations."""
 
 from openjarvis.recipes.composer import (
     recipe_to_eval_suite,
@@ -19,3 +19,4 @@ __all__ = [
     "recipe_to_operator",
     "resolve_recipe",
 ]
+

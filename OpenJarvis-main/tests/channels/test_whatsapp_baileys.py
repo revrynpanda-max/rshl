@@ -1,4 +1,4 @@
-"""Tests for the WhatsAppBaileysChannel adapter."""
+﻿"""Tests for the WhatsAppBaileysChannel adapter."""
 
 from __future__ import annotations
 
@@ -331,3 +331,5 @@ class TestReaderLoop:
             }
         )
         bad_handler.assert_called_once()
+
+

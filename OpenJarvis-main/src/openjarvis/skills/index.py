@@ -1,4 +1,4 @@
-"""Skill index — load and search a remote/local skill catalog."""
+﻿"""Skill index â€” load and search a remote/local skill catalog."""
 
 from __future__ import annotations
 
@@ -97,3 +97,4 @@ class SkillIndex:
 
 
 __all__ = ["SkillIndexEntry", "SkillIndex"]
+

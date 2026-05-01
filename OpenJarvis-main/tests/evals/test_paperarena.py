@@ -1,4 +1,4 @@
-"""Tests for PaperArena benchmark."""
+﻿"""Tests for PaperArena benchmark."""
 
 from unittest.mock import MagicMock
 
@@ -118,3 +118,5 @@ class TestPaperArenaCLI:
 
         s = _build_scorer("paperarena", _mock_backend(), "test-model")
         assert s.scorer_id == "paperarena"
+
+

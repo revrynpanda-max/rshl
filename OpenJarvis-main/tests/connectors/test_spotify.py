@@ -1,4 +1,4 @@
-"""Tests for SpotifyConnector — Spotify Web API."""
+﻿"""Tests for SpotifyConnector â€” Spotify Web API."""
 
 from __future__ import annotations
 
@@ -70,3 +70,5 @@ def test_sync_yields_tracks(connector):
     assert docs[0].doc_type == "recently_played"
     assert "Queen" in docs[0].title
     assert docs[0].metadata["track_name"] == "Bohemian Rhapsody"
+
+

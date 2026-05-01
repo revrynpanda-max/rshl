@@ -1,4 +1,4 @@
-"""Spotify connector — recently played tracks via Spotify Web API.
+﻿"""Spotify connector â€” recently played tracks via Spotify Web API.
 
 Uses OAuth2 tokens stored locally. Requires user-read-recently-played scope.
 """
@@ -139,7 +139,7 @@ class SpotifyConnector(BaseConnector):
                 source="spotify",
                 doc_type="recently_played",
                 content=json.dumps(item),
-                title=f"{track.get('name', 'Unknown')} — {artists}",
+                title=f"{track.get('name', 'Unknown')} â€” {artists}",
                 author=artists,
                 timestamp=ts,
                 url=track.get("external_urls", {}).get("spotify", ""),
@@ -155,3 +155,4 @@ class SpotifyConnector(BaseConnector):
 
     def sync_status(self) -> SyncStatus:
         return self._status
+

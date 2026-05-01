@@ -1,4 +1,4 @@
-"""Tests for the OrchestratorAgent."""
+﻿"""Tests for the OrchestratorAgent."""
 
 from __future__ import annotations
 
@@ -33,7 +33,7 @@ class _CalculatorStub(BaseTool):
     def execute(self, **params) -> ToolResult:
         expr = params.get("expression", "0")
         try:
-            val = eval(expr)  # noqa: S307 — safe in tests
+            val = eval(expr)  # noqa: S307 â€” safe in tests
         except Exception as e:
             return ToolResult(tool_name="calculator", content=str(e), success=False)
         return ToolResult(tool_name="calculator", content=str(val), success=True)
@@ -638,7 +638,7 @@ class TestOrchestratorParallelTools:
         assert result.tool_results[0].content == "result_1"
         assert result.tool_results[1].content == "result_2"
         assert result.tool_results[2].content == "result_3"
-        # Should be parallel — 3 tools at 0.1s each should take < 0.25s, not 0.3s+
+        # Should be parallel â€” 3 tools at 0.1s each should take < 0.25s, not 0.3s+
         assert elapsed < 0.25
 
     def test_sequential_tool_execution(self):
@@ -665,3 +665,5 @@ class TestOrchestratorParallelTools:
         )
         result = agent.run("What is 2+2?")
         assert result.content == "The answer is 4."
+
+

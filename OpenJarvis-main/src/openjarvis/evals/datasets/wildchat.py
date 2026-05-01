@@ -1,4 +1,4 @@
-"""WildChat dataset provider (allenai/WildChat-1M).
+﻿"""WildChat dataset provider (allenai/WildChat-1M).
 
 Filters to English single-turn conversations for chat quality evaluation.
 """
@@ -109,3 +109,4 @@ class WildChatDataset(DatasetProvider):
 
 
 __all__ = ["WildChatDataset"]
+

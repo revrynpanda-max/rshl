@@ -1,4 +1,4 @@
-"""Email triage benchmark dataset.
+﻿"""Email triage benchmark dataset.
 
 Synthetic email threads for evaluating urgency classification,
 category assignment, and draft response generation.
@@ -65,7 +65,7 @@ _EMAILS = [
     },
     {
         "sender": "hr@company.com",
-        "subject": "New hire starting Monday — setup needed",
+        "subject": "New hire starting Monday â€” setup needed",
         "date": "2025-12-02 11:00",
         "body": "Sarah Chen is joining the ML team on Monday. Please ensure her dev environment, Slack access, and GitHub permissions are set up before she arrives. She'll need access to the model-training and inference repos.",
         "urgency": "high",
@@ -115,7 +115,7 @@ _EMAILS = [
         "sender": "marketing@company.com",
         "subject": "Blog post draft for review",
         "date": "2025-12-03 13:00",
-        "body": "I've written a blog post about our new on-device inference feature. Could you review the technical accuracy of the benchmarks section? No rush — we're planning to publish next week. Draft is in the shared Google Doc.",
+        "body": "I've written a blog post about our new on-device inference feature. Could you review the technical accuracy of the benchmarks section? No rush â€” we're planning to publish next week. Draft is in the shared Google Doc.",
         "urgency": "medium",
         "category": "action",
     },
@@ -153,7 +153,7 @@ _EMAILS = [
     },
     {
         "sender": "cfo@company.com",
-        "subject": "Cost optimization meeting — Thursday 2pm",
+        "subject": "Cost optimization meeting â€” Thursday 2pm",
         "date": "2025-12-04 14:00",
         "body": "I'm setting up a meeting to discuss cloud cost optimization. Our GPU compute spend increased 40% last quarter. Please come prepared with data on your team's usage and any ideas for reducing costs without impacting performance.",
         "urgency": "high",
@@ -177,7 +177,7 @@ _EMAILS = [
     },
     {
         "sender": "partner@aicloud.io",
-        "subject": "Partnership proposal — joint webinar",
+        "subject": "Partnership proposal â€” joint webinar",
         "date": "2025-12-05 10:00",
         "body": "We'd love to co-host a webinar on local vs cloud AI inference with your team. We think a balanced comparison would be valuable for both our audiences. Proposed date: January 15. Would you be interested?",
         "urgency": "medium",
@@ -201,9 +201,9 @@ _EMAILS = [
     },
     {
         "sender": "board@company.com",
-        "subject": "Board meeting prep — AI strategy deck",
+        "subject": "Board meeting prep â€” AI strategy deck",
         "date": "2025-12-06 10:00",
-        "body": "The board meeting is next Thursday. I need 3-4 slides on our AI cost savings strategy — specifically how on-device inference reduces our operational costs. Can you prepare the slides with actual numbers by Tuesday?",
+        "body": "The board meeting is next Thursday. I need 3-4 slides on our AI cost savings strategy â€” specifically how on-device inference reduces our operational costs. Can you prepare the slides with actual numbers by Tuesday?",
         "urgency": "high",
         "category": "action",
     },
@@ -235,7 +235,7 @@ _EMAILS = [
         "sender": "ceo@company.com",
         "subject": "Company all-hands: cost savings milestone",
         "date": "2025-12-07 08:00",
-        "body": "Great news — we've saved over $500K this year by running AI inference locally. I want to highlight this at the all-hands on Friday. Can someone from the infra team prepare a 5-minute demo of the savings dashboard?",
+        "body": "Great news â€” we've saved over $500K this year by running AI inference locally. I want to highlight this at the all-hands on Friday. Can someone from the infra team prepare a 5-minute demo of the savings dashboard?",
         "urgency": "high",
         "category": "action",
     },
@@ -332,3 +332,4 @@ class EmailTriageDataset(DatasetProvider):
 
 
 __all__ = ["EmailTriageDataset"]
+

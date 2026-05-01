@@ -1,4 +1,4 @@
-"""TOML config loader and matrix expansion for eval suites."""
+﻿"""TOML config loader and matrix expansion for eval suites."""
 
 from __future__ import annotations
 
@@ -305,3 +305,4 @@ def expand_suite(suite: EvalSuiteConfig) -> List[RunConfig]:
 
 
 __all__ = ["EvalConfigError", "load_eval_config", "expand_suite"]
+

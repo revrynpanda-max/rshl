@@ -1,4 +1,4 @@
-"""Rich-formatted error hints for common CLI failure modes."""
+﻿"""Rich-formatted error hints for common CLI failure modes."""
 
 from __future__ import annotations
 
@@ -43,3 +43,4 @@ def hint_no_model(model_name: Optional[str] = None) -> str:
         "  Pull a model first: [bold]ollama pull qwen3.5:2b[/bold]\n"
         "  Run [bold]jarvis model list[/bold] to see available models."
     )
+

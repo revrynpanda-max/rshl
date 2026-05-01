@@ -1,4 +1,4 @@
-"""SQLite-backed storage for optimization runs and trials."""
+﻿"""SQLite-backed storage for optimization runs and trials."""
 
 from __future__ import annotations
 
@@ -105,7 +105,7 @@ class OptimizationStore:
             try:
                 self._conn.execute(stmt)
             except sqlite3.OperationalError:
-                pass  # Column already exists — safe to ignore
+                pass  # Column already exists â€” safe to ignore
         self._conn.commit()
 
     # ------------------------------------------------------------------
@@ -506,3 +506,4 @@ class OptimizationStore:
 
 
 __all__ = ["OptimizationStore"]
+

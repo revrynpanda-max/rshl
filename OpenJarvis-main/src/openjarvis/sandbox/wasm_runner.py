@@ -1,4 +1,4 @@
-"""WASM sandbox — lightweight isolation via Wasmtime."""
+﻿"""WASM sandbox â€” lightweight isolation via Wasmtime."""
 
 from __future__ import annotations
 
@@ -157,3 +157,4 @@ def create_sandbox_runner(config: Any = None) -> Any:
 
 
 __all__ = ["WasmResult", "WasmRunner", "create_sandbox_runner"]
+

@@ -1,4 +1,4 @@
-"""MCP tools for knowledge graph operations."""
+﻿"""MCP tools for knowledge graph operations."""
 
 from __future__ import annotations
 
@@ -292,3 +292,4 @@ class KGNeighborsTool(BaseTool):
 
 
 __all__ = ["KGAddEntityTool", "KGAddRelationTool", "KGNeighborsTool", "KGQueryTool"]
+

@@ -1,12 +1,12 @@
-"""coding_assistant dataset — 30 buggy code projects for agent-based debugging.
+﻿"""coding_assistant dataset â€” 30 buggy code projects for agent-based debugging.
 
 Each task presents a bug report, buggy source code, and a test suite.
 The agent must identify and fix the bug(s) so that all tests pass.
 
 Difficulty tiers:
-- easy (10): single-line bugs — off-by-one, wrong operator, missing return
-- medium (10): multi-line logic bugs — incorrect algorithm, bad state management
-- hard (10): subtle bugs — race conditions, edge cases, incorrect rounding
+- easy (10): single-line bugs â€” off-by-one, wrong operator, missing return
+- medium (10): multi-line logic bugs â€” incorrect algorithm, bad state management
+- hard (10): subtle bugs â€” race conditions, edge cases, incorrect rounding
 """
 
 from __future__ import annotations
@@ -261,7 +261,7 @@ _EASY_TASKS: List[Dict[str, Any]] = [
         ),
         "bugs": [
             {
-                "description": "Actually no bug — this is a control task to test false positive rate",
+                "description": "Actually no bug â€” this is a control task to test false positive rate",
                 "file": "solution.py",
                 "line": 0,
             }
@@ -306,7 +306,7 @@ _EASY_TASKS: List[Dict[str, Any]] = [
         ),
         "bugs": [
             {
-                "description": "Does not handle uppercase — should lowercase first",
+                "description": "Does not handle uppercase â€” should lowercase first",
                 "file": "solution.py",
                 "line": 3,
             }
@@ -440,7 +440,7 @@ _EASY_TASKS: List[Dict[str, Any]] = [
 
 _MEDIUM_TASKS: List[Dict[str, Any]] = [
     {
-        "bug_report": "The LRU cache evicts the wrong item — it removes the most recently used instead of least recently used.",
+        "bug_report": "The LRU cache evicts the wrong item â€” it removes the most recently used instead of least recently used.",
         "buggy_code": (
             "class LRUCache:\n"
             "    def __init__(self, capacity):\n"
@@ -1048,7 +1048,7 @@ _HARD_TASKS: List[Dict[str, Any]] = [
         ),
         "bugs": [
             {
-                "description": "Float arithmetic causes precision errors — should use Decimal",
+                "description": "Float arithmetic causes precision errors â€” should use Decimal",
                 "file": "solution.py",
                 "line": 2,
             }
@@ -1548,7 +1548,7 @@ _HARD_TASKS: List[Dict[str, Any]] = [
         ),
         "bugs": [
             {
-                "description": "No cycle detection — infinite recursion on cyclic graphs",
+                "description": "No cycle detection â€” infinite recursion on cyclic graphs",
                 "file": "solution.py",
                 "line": 5,
             }
@@ -1630,3 +1630,4 @@ class CodingAssistantDataset(DatasetProvider):
 
 
 __all__ = ["CodingAssistantDataset"]
+

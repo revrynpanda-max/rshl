@@ -1,4 +1,4 @@
-"""ChannelBridge — unified orchestrator for multi-channel messaging."""
+﻿"""ChannelBridge â€” unified orchestrator for multi-channel messaging."""
 
 from __future__ import annotations
 
@@ -17,15 +17,15 @@ _SMS_MAX_LENGTH = 1600
 
 _HELP_TEXT = """\
 Available commands:
-/agents — list running agents
-/agent <id> status — agent state and current task
-/agent <id> <message> — send a message to an agent
-/agent <id> pause — pause an agent
-/agent <id> resume — resume an agent
-/notify <channel> — set where to receive notifications
-/sessions — list your active sessions
-/more — get the rest of a truncated response
-/help — show this message\
+/agents â€” list running agents
+/agent <id> status â€” agent state and current task
+/agent <id> <message> â€” send a message to an agent
+/agent <id> pause â€” pause an agent
+/agent <id> resume â€” resume an agent
+/notify <channel> â€” set where to receive notifications
+/sessions â€” list your active sessions
+/more â€” get the rest of a truncated response
+/help â€” show this message\
 """
 
 # Events the bridge subscribes to for notifications
@@ -130,7 +130,7 @@ class ChannelBridge:
             if result is not None:
                 return result
 
-        # Regular chat — route to JarvisSystem.ask()
+        # Regular chat â€” route to JarvisSystem.ask()
         return self._handle_chat(sender_id, stripped, channel_type, max_length)
 
     # --------------------------------------------------------------
@@ -170,7 +170,7 @@ class ChannelBridge:
             rest = parts[2] if len(parts) > 2 else "status"
             return self._handle_agent_command(agent_id, rest)
 
-        # Unknown command — fall through to chat
+        # Unknown command â€” fall through to chat
         return None
 
     def _handle_more(self, sender_id: str, channel_type: str) -> str:
@@ -191,7 +191,7 @@ class ChannelBridge:
         for a in agents:
             name = a.get("name", a.get("agent_id", "unknown"))
             status = a.get("status", "unknown")
-            lines.append(f"  {name} — {status}")
+            lines.append(f"  {name} â€” {status}")
         return "Running agents:\n" + "\n".join(lines)
 
     def _handle_agent_command(self, agent_id: str, action: str) -> str:
@@ -377,3 +377,4 @@ class ChannelBridge:
             ch.send(sender_id, message)
         except Exception:
             logger.exception("Failed to send notification to %s", channel_type)
+

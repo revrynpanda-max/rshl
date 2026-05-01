@@ -1,4 +1,4 @@
-"""Tests for benchmark stats output and Rich table rendering."""
+﻿"""Tests for benchmark stats output and Rich table rendering."""
 
 from __future__ import annotations
 
@@ -67,3 +67,5 @@ class TestRenderStatsTable:
         _render_stats_table(console, result)
         output = console.file.getvalue()
         assert "tokens_per_second" in output or "42.5" in output
+
+

@@ -1,4 +1,4 @@
-"""Tests for NativeOpenHandsAgent (formerly OpenHandsAgent)."""
+﻿"""Tests for NativeOpenHandsAgent (formerly OpenHandsAgent)."""
 
 from __future__ import annotations
 
@@ -546,3 +546,5 @@ class TestUrlExpansion:
         call_messages = engine.generate.call_args[0][0]
         system_msg = call_messages[0].content
         assert "tool" not in system_msg.lower()
+
+

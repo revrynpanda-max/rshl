@@ -1,4 +1,4 @@
-"""Tests for DeepResearchAgent -- multi-hop retrieval with citations."""
+﻿"""Tests for DeepResearchAgent -- multi-hop retrieval with citations."""
 
 from __future__ import annotations
 
@@ -176,3 +176,5 @@ def test_agent_defaults():
     assert DeepResearchAgent._default_max_turns == 8
     assert DeepResearchAgent._default_temperature == 0.3
     assert DeepResearchAgent._default_max_tokens == 4096
+
+

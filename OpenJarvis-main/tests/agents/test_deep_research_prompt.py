@@ -1,4 +1,4 @@
-"""Tests for DeepResearch system prompt — date injection and adaptive behavior."""
+﻿"""Tests for DeepResearch system prompt â€” date injection and adaptive behavior."""
 
 from __future__ import annotations
 
@@ -39,7 +39,7 @@ def test_system_prompt_is_dynamic() -> None:
 
     p1 = _build_system_prompt()
     p2 = _build_system_prompt()
-    # Both should contain "Today is" — they may differ by seconds
+    # Both should contain "Today is" â€” they may differ by seconds
     assert "Today is" in p1
     assert "Today is" in p2
 
@@ -84,3 +84,5 @@ def test_system_prompt_mentions_jarvis() -> None:
 
     prompt = _build_system_prompt()
     assert "Jarvis" in prompt
+
+

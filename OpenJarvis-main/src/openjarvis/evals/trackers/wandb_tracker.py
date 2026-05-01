@@ -1,4 +1,4 @@
-"""W&B experiment tracker for the eval framework."""
+﻿"""W&B experiment tracker for the eval framework."""
 
 from __future__ import annotations
 
@@ -155,3 +155,4 @@ class WandbTracker(ResultTracker):
 
 
 __all__ = ["WandbTracker"]
+

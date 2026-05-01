@@ -1,4 +1,4 @@
-"""Shared base for OpenAI-compatible ``/v1/`` engines."""
+﻿"""Shared base for OpenAI-compatible ``/v1/`` engines."""
 
 from __future__ import annotations
 
@@ -82,7 +82,7 @@ class _OpenAICompatibleEngine(InferenceEngine):
         usage = data.get("usage", {})
         # Ensure prompt_tokens reflects the full prompt size (including
         # system prompt and all conversation history).
-        # OpenAI-compat APIs (vLLM, SGLang) report full counts — KV
+        # OpenAI-compat APIs (vLLM, SGLang) report full counts â€” KV
         # caching is transparent, so evaluated == full.
         reported_prompt = usage.get("prompt_tokens", 0)
         estimated_prompt = estimate_prompt_tokens(messages)
@@ -246,3 +246,4 @@ class _OpenAICompatibleEngine(InferenceEngine):
 
 
 __all__ = ["_OpenAICompatibleEngine"]
+

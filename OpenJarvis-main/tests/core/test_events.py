@@ -1,4 +1,4 @@
-"""Tests for the pub/sub event bus."""
+﻿"""Tests for the pub/sub event bus."""
 
 from __future__ import annotations
 
@@ -122,3 +122,5 @@ class TestSingleton:
         reset_event_bus()
         b = get_event_bus()
         assert a is not b
+
+

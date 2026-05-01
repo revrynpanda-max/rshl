@@ -54,7 +54,7 @@ def _make_stub_trace_store(traces: list[_StubTrace] | None = None) -> MagicMock:
 def _make_stub_benchmark_samples() -> list:
     """Return a list of stub PersonalBenchmarkSample objects."""
     sample = MagicMock()
-    sample.trace_id = "task-001"
+    sample.trace_id = "tadummy-sk-001"
     sample.query = "What is quantum computing?"
     sample.reference_answer = "Quantum computing uses qubits..."
     sample.category = "reasoning"
@@ -279,4 +279,6 @@ class TestListPersonalBenchmark:
         result = list_bench.fn(limit=10)
         parsed = json.loads(result)
         assert len(parsed) == 1
-        assert parsed[0]["task_id"] == "task-001"
+        assert parsed[0]["task_id"] == "tadummy-sk-001"
+
+

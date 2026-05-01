@@ -1,4 +1,4 @@
-"""Tests for ScanChunksTool."""
+﻿"""Tests for ScanChunksTool."""
 
 from __future__ import annotations
 
@@ -70,3 +70,5 @@ def test_registered() -> None:
 
     ToolRegistry.register_value("scan_chunks", ScanChunksTool)
     assert ToolRegistry.contains("scan_chunks")
+
+

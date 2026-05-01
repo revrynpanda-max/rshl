@@ -1,4 +1,4 @@
-"""File read tool — read file contents with path validation."""
+﻿"""File read tool â€” read file contents with path validation."""
 
 from __future__ import annotations
 
@@ -137,3 +137,4 @@ class FileReadTool(BaseTool):
 
 
 __all__ = ["FileReadTool"]
+

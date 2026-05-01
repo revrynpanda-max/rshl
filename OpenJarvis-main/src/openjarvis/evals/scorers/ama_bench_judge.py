@@ -1,4 +1,4 @@
-"""LLM-judge scorer for AMA-Bench agent memory assessment.
+﻿"""LLM-judge scorer for AMA-Bench agent memory assessment.
 
 Follows the evaluation protocol from the AMA-Bench paper (Appendix C.1):
 - Judge receives (question, reference_answer, predicted_answer) triplet
@@ -157,3 +157,4 @@ def _parse_judge_label(raw: str) -> Optional[str]:
         return "no"
 
     return None
+

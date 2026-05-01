@@ -35,7 +35,7 @@ CLOUD_PRICING: Dict[str, Dict[str, float]] = {
         "input_per_1m": 5.00,
         "output_per_1m": 25.00,
         "label": "KAI Opus 4.6",
-        "provider": "Geometric Intelligence",
+        "provider": "GeometricIntelligence",
         "params_b": 137.0,
         "energy_wh_per_1k_tokens": 0.5,
         "flops_per_token": 4.0e12,
@@ -196,3 +196,4 @@ __all__ = [
     "compute_savings",
     "savings_to_dict",
 ]
+

@@ -1,4 +1,4 @@
-"""OperativeAgent — persistent, scheduled agent for autonomous operation.
+﻿"""OperativeAgent â€” persistent, scheduled agent for autonomous operation.
 
 Extends ToolUsingAgent with built-in session persistence and state recall.
 Designed for Operators: autonomous agents that run on a schedule with
@@ -27,12 +27,12 @@ class OperativeAgent(ToolUsingAgent):
 
     The Operative agent extends the standard tool-calling loop with:
 
-    1. **Session loading** — restores conversation history from previous ticks.
-    2. **State recall** — retrieves previous state JSON from memory backend.
-    3. **System prompt** — injects the operator's protocol instructions.
-    4. **Tool loop** — standard function-calling loop (same as Orchestrator).
-    5. **Session save** — persists the tick's prompt and response.
-    6. **State persistence** — auto-persists state if the agent didn't do it
+    1. **Session loading** â€” restores conversation history from previous ticks.
+    2. **State recall** â€” retrieves previous state JSON from memory backend.
+    3. **System prompt** â€” injects the operator's protocol instructions.
+    4. **Tool loop** â€” standard function-calling loop (same as Orchestrator).
+    5. **Session save** â€” persists the tick's prompt and response.
+    6. **State persistence** â€” auto-persists state if the agent didn't do it
        explicitly via memory_store tool.
     """
 
@@ -317,3 +317,4 @@ class OperativeAgent(ToolUsingAgent):
 
 
 __all__ = ["OperativeAgent"]
+

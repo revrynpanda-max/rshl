@@ -1,4 +1,4 @@
-"""MMLU-Pro dataset provider (TIGER-Lab/MMLU-Pro).
+﻿"""MMLU-Pro dataset provider (TIGER-Lab/MMLU-Pro).
 
 Adapted from IPW's mmlu_pro.py dataset loader.
 """
@@ -113,3 +113,4 @@ class MMLUProDataset(DatasetProvider):
 
 
 __all__ = ["MMLUProDataset"]
+

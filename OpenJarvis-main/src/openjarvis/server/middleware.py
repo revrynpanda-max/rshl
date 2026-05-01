@@ -1,4 +1,4 @@
-"""Security middleware -- HTTP security headers and request guards."""
+﻿"""Security middleware -- HTTP security headers and request guards."""
 
 from __future__ import annotations
 
@@ -66,3 +66,4 @@ SECURITY_HEADERS = {
     "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
     "Content-Security-Policy": "default-src 'self' 'unsafe-inline' 'unsafe-eval'",
 }
+

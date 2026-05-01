@@ -1,4 +1,4 @@
-"""Tests for channel MCP tools — ChannelSendTool, ChannelListTool, ChannelStatusTool."""
+﻿"""Tests for channel MCP tools â€” ChannelSendTool, ChannelListTool, ChannelStatusTool."""
 
 from __future__ import annotations
 
@@ -221,3 +221,5 @@ class TestChannelToolsMCPDiscovery:
 
         list_tool = tools_by_name.get("channel_list", {})
         assert list_tool.get("annotations", {}).get("readOnlyHint") is True
+
+

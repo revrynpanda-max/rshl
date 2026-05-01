@@ -1,4 +1,4 @@
-"""Tests for NvidiaEnergyMonitor -- mock pynvml (no real GPU required)."""
+﻿"""Tests for NvidiaEnergyMonitor -- mock pynvml (no real GPU required)."""
 
 from __future__ import annotations
 
@@ -359,3 +359,5 @@ class TestClose:
                 fake_pynvml.nvmlShutdown.assert_called_once()
             finally:
                 mod._PYNVML_AVAILABLE = orig
+
+

@@ -1,4 +1,4 @@
-"""Tests for the instrumented inference wrappers."""
+﻿"""Tests for the instrumented inference wrappers."""
 
 from __future__ import annotations
 
@@ -110,3 +110,5 @@ class TestInstrumentedGenerate:
         _, kwargs = engine.generate.call_args
         assert kwargs["temperature"] == 0.1
         assert kwargs["max_tokens"] == 512
+
+

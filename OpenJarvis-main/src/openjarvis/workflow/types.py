@@ -1,4 +1,4 @@
-"""Workflow type definitions."""
+﻿"""Workflow type definitions."""
 
 from __future__ import annotations
 
@@ -64,3 +64,4 @@ __all__ = [
     "WorkflowResult",
     "WorkflowStepResult",
 ]
+

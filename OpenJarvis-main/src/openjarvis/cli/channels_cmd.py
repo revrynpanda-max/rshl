@@ -1,4 +1,4 @@
-"""``jarvis channels`` — manage messaging channels for the agent."""
+﻿"""``jarvis channels`` â€” manage messaging channels for the agent."""
 
 from __future__ import annotations
 
@@ -91,7 +91,7 @@ def imessage_start(
         )
     else:
         console.print(
-            f"[green]Starting iMessage daemon[/green] — monitoring {chat_identifier}"
+            f"[green]Starting iMessage daemon[/green] â€” monitoring {chat_identifier}"
         )
         console.print("Press Ctrl+C to stop.\n")
 
@@ -151,3 +151,4 @@ def imessage_stop() -> None:
         console.print("[green]iMessage daemon stopped.[/green]")
     else:
         console.print("[dim]iMessage daemon is not running.[/dim]")
+

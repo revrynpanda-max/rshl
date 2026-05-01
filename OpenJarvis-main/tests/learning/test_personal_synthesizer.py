@@ -1,4 +1,4 @@
-"""Tests for the personal benchmark system."""
+﻿"""Tests for the personal benchmark system."""
 
 from __future__ import annotations
 
@@ -390,3 +390,5 @@ class TestPersonalBenchmarkScorer:
         scorer = self._make_scorer("")
         is_correct, _ = scorer.score(self._make_record(), "4")
         assert is_correct is False
+
+

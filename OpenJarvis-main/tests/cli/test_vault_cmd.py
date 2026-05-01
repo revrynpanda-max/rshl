@@ -1,4 +1,4 @@
-"""Tests for the ``jarvis vault`` CLI commands."""
+﻿"""Tests for the ``jarvis vault`` CLI commands."""
 
 from __future__ import annotations
 
@@ -70,3 +70,5 @@ class TestVaultCmd:
             result = CliRunner().invoke(vault, ["remove", "nonexistent"])
             assert result.exit_code == 0
             assert "not found" in result.output.lower()
+
+

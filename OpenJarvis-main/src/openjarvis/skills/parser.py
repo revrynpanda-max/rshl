@@ -1,14 +1,14 @@
-"""SkillParser — strict spec validation + tolerant field mapping.
+﻿"""SkillParser â€” strict spec validation + tolerant field mapping.
 
 The parser is the single chokepoint for converting raw frontmatter dicts
 into normalized SkillManifest instances.  It runs two passes:
 
-1. Strict pass — validates required fields, length limits, naming rules.
-2. Tolerant pass — maps non-spec top-level fields to their canonical
+1. Strict pass â€” validates required fields, length limits, naming rules.
+2. Tolerant pass â€” maps non-spec top-level fields to their canonical
    locations under metadata.openjarvis.* via FIELD_MAPPING.
 
 The mapping table is data, not code paths.  Adding support for a new
-vendor's fields means adding entries to FIELD_MAPPING — no logic changes.
+vendor's fields means adding entries to FIELD_MAPPING â€” no logic changes.
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ SPEC_FIELDS = frozenset(
 )
 
 # ---------------------------------------------------------------------------
-# Field mapping table — non-spec top-level fields → canonical locations
+# Field mapping table â€” non-spec top-level fields â†’ canonical locations
 # ---------------------------------------------------------------------------
 
 # Each entry maps a non-spec top-level field name to (target_kind, attr).
@@ -151,7 +151,7 @@ class SkillParser:
                 )
 
     # ------------------------------------------------------------------
-    # Build manifest (placeholder — Task 2 adds tolerant pass)
+    # Build manifest (placeholder â€” Task 2 adds tolerant pass)
     # ------------------------------------------------------------------
 
     def _build_manifest(
@@ -229,3 +229,4 @@ class SkillParser:
 
 
 __all__ = ["SkillParseError", "SkillParser", "SPEC_FIELDS", "FIELD_MAPPING"]
+

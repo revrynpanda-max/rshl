@@ -1,4 +1,4 @@
-"""Tests for the doc_qa dataset."""
+﻿"""Tests for the doc_qa dataset."""
 
 from openjarvis.evals.datasets.doc_qa import DocQADataset
 
@@ -54,3 +54,5 @@ def test_difficulty_tiers():
     assert "easy" in subjects
     assert "medium" in subjects
     assert "hard" in subjects
+
+

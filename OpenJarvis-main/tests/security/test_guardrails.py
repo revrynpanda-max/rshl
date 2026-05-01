@@ -1,4 +1,4 @@
-"""Tests for GuardrailsEngine."""
+﻿"""Tests for GuardrailsEngine."""
 
 from __future__ import annotations
 
@@ -31,20 +31,20 @@ class TestGuardrailsEngineWarnMode:
     def test_warn_mode_passes_through(self) -> None:
         """WARN mode passes through content but publishes event."""
         bus = EventBus(record_history=True)
-        mock = _make_mock_engine("The key is sk-EXAMPLE")
+        mock = _make_mock_engine("The key is dummy-sk-EXAMPLE")
         ge = GuardrailsEngine(mock, mode=RedactionMode.WARN, bus=bus)
 
         messages = [Message(role=Role.USER, content="tell me something")]
         result = ge.generate(messages, model="test")
 
         # Content should pass through unchanged
-        assert result["content"] == "The key is sk-EXAMPLE"
+        assert result["content"] == "The key is dummy-sk-EXAMPLE"
         # Event should be published
         alerts = [e for e in bus.history if e.event_type == EventType.SECURITY_ALERT]
         assert len(alerts) >= 1
 
     def test_warn_mode_no_findings(self) -> None:
-        """WARN mode with clean content — no events."""
+        """WARN mode with clean content â€” no events."""
         bus = EventBus(record_history=True)
         mock = _make_mock_engine("Just a normal response")
         ge = GuardrailsEngine(mock, mode=RedactionMode.WARN, bus=bus)
@@ -61,17 +61,17 @@ class TestGuardrailsEngineRedactMode:
     def test_redact_mode_redacts_output(self) -> None:
         """REDACT mode replaces sensitive content in output."""
         bus = EventBus(record_history=True)
-        mock = _make_mock_engine("The key is sk-EXAMPLE")
+        mock = _make_mock_engine("The key is dummy-sk-EXAMPLE")
         ge = GuardrailsEngine(mock, mode=RedactionMode.REDACT, bus=bus)
 
         messages = [Message(role=Role.USER, content="tell me")]
         result = ge.generate(messages, model="test")
 
-        assert "sk-abc123" not in result["content"]
+        assert "dummy-sk-abc123" not in result["content"]
         assert "[REDACTED:" in result["content"]
 
     def test_redact_mode_clean_passthrough(self) -> None:
-        """REDACT mode with clean content — no changes."""
+        """REDACT mode with clean content â€” no changes."""
         mock = _make_mock_engine("Hello there!")
         ge = GuardrailsEngine(mock, mode=RedactionMode.REDACT)
 
@@ -85,7 +85,7 @@ class TestGuardrailsEngineBlockMode:
     def test_block_mode_raises(self) -> None:
         """BLOCK mode raises SecurityBlockError when findings in output."""
         bus = EventBus(record_history=True)
-        mock = _make_mock_engine("The key is sk-EXAMPLE")
+        mock = _make_mock_engine("The key is dummy-sk-EXAMPLE")
         ge = GuardrailsEngine(mock, mode=RedactionMode.BLOCK, bus=bus)
 
         messages = [Message(role=Role.USER, content="tell me")]
@@ -96,7 +96,7 @@ class TestGuardrailsEngineBlockMode:
         assert len(blocks) >= 1
 
     def test_block_mode_clean_passthrough(self) -> None:
-        """BLOCK mode with clean content — no exception."""
+        """BLOCK mode with clean content â€” no exception."""
         mock = _make_mock_engine("All good!")
         ge = GuardrailsEngine(mock, mode=RedactionMode.BLOCK)
 
@@ -117,7 +117,7 @@ class TestGuardrailsEngineInputScanning:
             bus=bus,
         )
 
-        secret = "my key sk-EXAMPLE"
+        secret = "my key dummy-sk-EXAMPLE"
         messages = [Message(role=Role.USER, content=secret)]
         ge.generate(messages, model="test")
 
@@ -137,14 +137,14 @@ class TestGuardrailsEngineInputScanning:
             scan_input=True,
         )
 
-        secret = "my key sk-EXAMPLE"
+        secret = "my key dummy-sk-EXAMPLE"
         messages = [Message(role=Role.USER, content=secret)]
         ge.generate(messages, model="test")
 
         # Engine should receive redacted content
         call_args = mock.generate.call_args
         sent_messages = call_args[0][0]
-        assert "sk-abc123" not in sent_messages[0].content
+        assert "dummy-sk-abc123" not in sent_messages[0].content
         assert "[REDACTED:" in sent_messages[0].content
 
     def test_scan_input_disabled(self) -> None:
@@ -158,7 +158,7 @@ class TestGuardrailsEngineInputScanning:
             bus=bus,
         )
 
-        secret = "my key sk-EXAMPLE"
+        secret = "my key dummy-sk-EXAMPLE"
         messages = [Message(role=Role.USER, content=secret)]
         ge.generate(messages, model="test")
 
@@ -196,7 +196,7 @@ class TestGuardrailsEngineDelegation:
 
 class TestGuardrailsEngineCleanPassthrough:
     def test_clean_passthrough(self) -> None:
-        """No findings → content passes through unchanged in all modes."""
+        """No findings â†’ content passes through unchanged in all modes."""
         for mode in RedactionMode:
             mock = _make_mock_engine("Nothing special here")
             ge = GuardrailsEngine(mock, mode=mode)
@@ -236,7 +236,7 @@ class TestGuardrailsEngineStream:
         bus = EventBus(record_history=True)
         mock = _make_mock_engine()
         mock.stream = lambda messages, **kw: _async_token_iter(
-            ["The key is ", "sk-EXAMPLE"],
+            ["The key is ", "dummy-sk-EXAMPLE"],
         )
         ge = GuardrailsEngine(mock, bus=bus)
 
@@ -253,7 +253,7 @@ class TestGuardrailsEngineStream:
         bus = EventBus(record_history=True)
         mock = _make_mock_engine()
         mock.stream = lambda messages, **kw: _async_token_iter(
-            ["The key is ", "sk-EXAMPLE"],
+            ["The key is ", "dummy-sk-EXAMPLE"],
         )
         ge = GuardrailsEngine(mock, bus=bus)
 
@@ -271,7 +271,7 @@ class TestGuardrailsEngineStream:
         bus = EventBus(record_history=True)
         mock = _make_mock_engine()
         mock.stream = lambda messages, **kw: _async_token_iter(
-            ["The key is ", "sk-EXAMPLE"],
+            ["The key is ", "dummy-sk-EXAMPLE"],
         )
         ge = GuardrailsEngine(mock, scan_output=False, bus=bus)
 
@@ -295,3 +295,5 @@ class TestGuardrailsEngineStream:
 
         alerts = [e for e in bus.history if e.event_type == EventType.SECURITY_ALERT]
         assert len(alerts) == 0
+
+

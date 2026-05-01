@@ -1,4 +1,4 @@
-# Memory and Retrieval
+﻿# Memory and Retrieval
 
 OpenJarvis stores facts the agent has learned so it can retrieve them later.
 
@@ -13,3 +13,4 @@ When you store "X is true" today and "X is false" tomorrow, the memory system ke
 ## Deleting Memories
 
 Call `backend.delete(doc_id)` to remove a single record, or `backend.clear()` to wipe everything. There is currently no undo.
+

@@ -1,4 +1,4 @@
-"""Tests for ``jarvis init --host`` option."""
+﻿"""Tests for ``jarvis init --host`` option."""
 
 from __future__ import annotations
 
@@ -115,3 +115,5 @@ class TestGenerateTomlHost:
             hw, engine="ollama", host="http://remote:11434"
         )
         assert "http://remote:11434" in toml_str
+
+

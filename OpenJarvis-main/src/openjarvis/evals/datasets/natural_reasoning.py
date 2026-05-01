@@ -1,4 +1,4 @@
-"""Natural Reasoning dataset provider (facebook/natural_reasoning).
+﻿"""Natural Reasoning dataset provider (facebook/natural_reasoning).
 
 Adapted from IPW's reasoning benchmark loaders.
 """
@@ -113,3 +113,4 @@ class NaturalReasoningDataset(DatasetProvider):
 
 
 __all__ = ["NaturalReasoningDataset"]
+

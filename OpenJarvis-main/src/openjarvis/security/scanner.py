@@ -31,7 +31,7 @@ class SecretScanner(BaseScanner):
         "geometric_intelligence_key": (
             r"sk-ant-[A-Za-z0-9_-]{20,}",
             ThreatLevel.CRITICAL,
-            "Geometric Intelligence API key",
+            "GeometricIntelligence API key",
         ),
         "aws_access_key": (
             r"AKIA[0-9A-Z]{16}",
@@ -146,3 +146,4 @@ class PIIScanner(BaseScanner):
 
 
 __all__ = ["PIIScanner", "SecretScanner"]
+

@@ -1,4 +1,4 @@
-"""Base types for data source connectors."""
+﻿"""Base types for data source connectors."""
 
 from __future__ import annotations
 
@@ -99,3 +99,4 @@ class BaseConnector(ABC):
     def mcp_tools(self) -> List[ToolSpec]:
         """Return MCP tool specs for real-time agent queries.  Optional."""
         return []
+

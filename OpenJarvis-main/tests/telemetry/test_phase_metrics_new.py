@@ -1,4 +1,4 @@
-"""Tests for phase metrics computation."""
+﻿"""Tests for phase metrics computation."""
 
 from __future__ import annotations
 
@@ -49,3 +49,5 @@ class TestComputePhaseMetrics:
         assert decode["tokens"] == 100
         assert prefill["duration_s"] == pytest.approx(0.5, abs=1e-6)
         assert decode["duration_s"] == pytest.approx(0.5, abs=1e-6)
+
+

@@ -1,4 +1,4 @@
-"""Tests for intelligence-pillar appliers."""
+﻿"""Tests for intelligence-pillar appliers."""
 
 from __future__ import annotations
 
@@ -120,3 +120,5 @@ class TestSetModelParamApplier:
         content = ctx.config_path.read_text()
         assert "temperature" in content
         assert "0.3" in content
+
+

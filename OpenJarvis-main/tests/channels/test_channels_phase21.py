@@ -1,4 +1,4 @@
-"""Tests for Phase 21 messaging channels."""
+﻿"""Tests for Phase 21 messaging channels."""
 
 from __future__ import annotations
 
@@ -87,7 +87,7 @@ class TestChannelNotConnected:
     def test_connect_no_credentials_sets_error(self, cls, key, lib_mod, pip_pkg):
         ch = cls()
         # connect() without credentials should set ERROR status
-        # (unless the import check fires first — but with no creds it
+        # (unless the import check fires first â€” but with no creds it
         # should short-circuit before the import)
         try:
             ch.connect()
@@ -331,3 +331,5 @@ class TestNostrChannel:
     def test_default_relay(self):
         ch = NostrChannel()
         assert "wss://relay.damus.io" in ch._relays
+
+

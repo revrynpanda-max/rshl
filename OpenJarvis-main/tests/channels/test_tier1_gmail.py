@@ -1,4 +1,4 @@
-"""Tests for the GmailChannel adapter."""
+﻿"""Tests for the GmailChannel adapter."""
 
 from __future__ import annotations
 
@@ -193,3 +193,5 @@ class TestLive:
         )
         assert result is True
         ch.disconnect()
+
+

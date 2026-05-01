@@ -1,4 +1,4 @@
-"""EmbeddingStore --- disk-persistent ColBERT token-level embeddings.
+﻿"""EmbeddingStore --- disk-persistent ColBERT token-level embeddings.
 
 Stores per-chunk ColBERTv2 token embeddings as individual ``.pt`` files on
 disk with a SQLite index for O(1) chunk_id lookups.  Designed to be used by
@@ -177,3 +177,4 @@ class EmbeddingStore:
 
 
 __all__ = ["EmbeddingStore"]
+

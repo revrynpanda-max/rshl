@@ -1,4 +1,4 @@
-"""LineChannel — LINE Messaging API adapter via line-bot-sdk."""
+﻿"""LineChannel â€” LINE Messaging API adapter via line-bot-sdk."""
 
 from __future__ import annotations
 
@@ -154,3 +154,4 @@ class LineChannel(BaseChannel):
 
 
 __all__ = ["LineChannel"]
+

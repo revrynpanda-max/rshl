@@ -1,4 +1,4 @@
-"""Tests for classify_query utility."""
+﻿"""Tests for classify_query utility."""
 
 from __future__ import annotations
 
@@ -25,3 +25,5 @@ class TestClassifyQuery:
     def test_general(self) -> None:
         q = "Tell me about the history of artificial intelligence research"
         assert classify_query(q) == "general"
+
+

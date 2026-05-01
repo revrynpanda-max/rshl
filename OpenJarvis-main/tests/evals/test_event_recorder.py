@@ -1,4 +1,4 @@
-"""Tests for EventRecorder thread safety and functionality."""
+﻿"""Tests for EventRecorder thread safety and functionality."""
 
 from __future__ import annotations
 
@@ -87,3 +87,5 @@ class TestEventRecorder:
         assert len(rec) == 400
         events = rec.get_events()
         assert len(events) == 400
+
+

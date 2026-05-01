@@ -1,4 +1,4 @@
-"""Tests for openjarvis.learning.distillation.gate.cold_start module."""
+﻿"""Tests for openjarvis.learning.distillation.gate.cold_start module."""
 
 from __future__ import annotations
 
@@ -99,3 +99,5 @@ class TestCheckBenchmarkReady:
         store = _make_trace_store(count=30, high_feedback_count=15)
         result = check_benchmark_ready(store, min_feedback=0.7, min_samples=10)
         assert result.ready
+
+

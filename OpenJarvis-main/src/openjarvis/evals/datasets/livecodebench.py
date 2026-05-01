@@ -1,4 +1,4 @@
-"""LiveCodeBench dataset provider — competitive programming code generation.
+﻿"""LiveCodeBench dataset provider â€” competitive programming code generation.
 
 Loads problems from the LiveCodeBench HuggingFace dataset
 (livecodebench/code_generation_lite) for evaluating code generation capability.
@@ -141,7 +141,7 @@ class LiveCodeBenchDataset(DatasetProvider):
         raw: MutableMapping[str, object],
         idx: int,
     ) -> Optional[EvalRecord]:
-        # Extract problem statement — field names vary across dataset versions
+        # Extract problem statement â€” field names vary across dataset versions
         problem_text = str(
             raw.get("question_content")
             or raw.get("problem_description")
@@ -181,7 +181,7 @@ class LiveCodeBenchDataset(DatasetProvider):
         output_format = str(raw.get("output_format", "")).strip()
         constraints = str(raw.get("constraints", "")).strip()
 
-        # Extract test cases — various possible field names and formats
+        # Extract test cases â€” various possible field names and formats
         test_inputs = _parse_json_field(raw.get("input", raw.get("test_inputs", [])))
         test_outputs = _parse_json_field(raw.get("output", raw.get("test_outputs", [])))
         public_test_cases = _parse_json_field(
@@ -275,3 +275,4 @@ class LiveCodeBenchDataset(DatasetProvider):
 
 
 __all__ = ["LiveCodeBenchDataset"]
+

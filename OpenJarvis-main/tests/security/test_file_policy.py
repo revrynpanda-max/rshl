@@ -1,4 +1,4 @@
-"""Tests for file sensitivity policy."""
+﻿"""Tests for file sensitivity policy."""
 
 from __future__ import annotations
 
@@ -101,3 +101,5 @@ class TestFilterSensitivePaths:
 
     def test_filter_empty(self) -> None:
         assert filter_sensitive_paths([]) == []
+
+

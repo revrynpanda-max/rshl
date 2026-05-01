@@ -1,9 +1,9 @@
-"""BenchmarkGate: accept or reject edits based on benchmark performance.
+﻿"""BenchmarkGate: accept or reject edits based on benchmark performance.
 
 Runs the personal benchmark via a provided scorer callable, compares
 before/after snapshots, and decides accept/reject based on thresholds.
 
-See spec §7.3.
+See spec Â§7.3.
 """
 
 from __future__ import annotations
@@ -129,3 +129,4 @@ class BenchmarkGate:
             snapshot=after,
             delta=delta,
         )
+

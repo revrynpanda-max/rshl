@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
-"""Security Scanner — scan a local project for secrets and vulnerabilities.
+﻿#!/usr/bin/env python3
+"""Security Scanner â€” scan a local project for secrets and vulnerabilities.
 
 Usage:
     python examples/security_scanner/security_scanner.py --help
@@ -115,3 +115,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

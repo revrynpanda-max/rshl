@@ -1,4 +1,4 @@
-"""Tests for compute_pareto_frontier."""
+﻿"""Tests for compute_pareto_frontier."""
 
 from __future__ import annotations
 
@@ -222,3 +222,5 @@ class TestComputeParetoFrontier:
             "A (best accuracy) and B (best energy) form the frontier; "
             "C is dominated by both"
         )
+
+

@@ -1,4 +1,4 @@
-"""GAIA benchmark dataset (gaia-benchmark/GAIA).
+﻿"""GAIA benchmark dataset (gaia-benchmark/GAIA).
 
 Adapted from IPW's gaia.py dataset loader.
 """
@@ -166,3 +166,4 @@ class GAIADataset(DatasetProvider):
 
 
 __all__ = ["GAIADataset"]
+

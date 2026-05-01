@@ -1,4 +1,4 @@
-"""Test that _build_deep_research_tools works correctly."""
+﻿"""Test that _build_deep_research_tools works correctly."""
 
 from __future__ import annotations
 
@@ -53,3 +53,5 @@ def test_deep_research_tools_returns_empty_when_no_db() -> None:
     )
 
     assert tools == []
+
+

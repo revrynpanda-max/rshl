@@ -1,4 +1,4 @@
-"""Agent template loader — load pre-configured agent manifests from TOML files."""
+﻿"""Agent template loader â€” load pre-configured agent manifests from TOML files."""
 
 from __future__ import annotations
 
@@ -104,3 +104,4 @@ def discover_templates(
 
 
 __all__ = ["AgentTemplate", "discover_templates", "load_template"]
+

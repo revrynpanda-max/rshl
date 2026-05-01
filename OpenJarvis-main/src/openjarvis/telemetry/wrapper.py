@@ -1,4 +1,4 @@
-"""Instrumented wrappers for inference engines — timing and telemetry publishing."""
+﻿"""Instrumented wrappers for inference engines â€” timing and telemetry publishing."""
 
 from __future__ import annotations
 
@@ -55,3 +55,4 @@ def instrumented_generate(
 
 
 __all__ = ["instrumented_generate"]
+

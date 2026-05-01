@@ -466,3 +466,5 @@ class TestNewFieldsPersistence:
         assert loaded[0].sample_scores == []
         assert loaded[0].structured_feedback is None
         store.close()
+
+

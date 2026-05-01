@@ -1,4 +1,4 @@
-"""Read-only telemetry aggregation — query stored inference records."""
+﻿"""Read-only telemetry aggregation â€” query stored inference records."""
 
 from __future__ import annotations
 
@@ -423,3 +423,4 @@ __all__ = [
     "ModelStats",
     "TelemetryAggregator",
 ]
+

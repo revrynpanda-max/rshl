@@ -1,4 +1,4 @@
-"""Hybrid memory backend — Reciprocal Rank Fusion of two retrievers."""
+﻿"""Hybrid memory backend â€” Reciprocal Rank Fusion of two retrievers."""
 
 from __future__ import annotations
 
@@ -107,7 +107,7 @@ class HybridMemory(MemoryBackend):
             source=source,
             metadata=metadata,
         )
-        # Store in dense — it generates its own id
+        # Store in dense â€” it generates its own id
         dense_id = self._dense.store(
             content,
             source=source,
@@ -182,3 +182,4 @@ class HybridMemory(MemoryBackend):
 
 
 __all__ = ["HybridMemory", "reciprocal_rank_fusion"]
+

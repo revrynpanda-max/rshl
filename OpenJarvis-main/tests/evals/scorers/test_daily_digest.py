@@ -1,4 +1,4 @@
-"""Tests for the daily_digest scorer."""
+﻿"""Tests for the daily_digest scorer."""
 
 from openjarvis.evals.core.types import EvalRecord
 from openjarvis.evals.scorers.daily_digest import DailyDigestScorer
@@ -26,7 +26,7 @@ def test_all_items_mentioned():
 
     answer = (
         "## Priority\n"
-        "- **Sprint planning** at 9am — prepare stories\n"
+        "- **Sprint planning** at 9am â€” prepare stories\n"
         "- **PR review** for auth module needed\n\n"
         "## Other\n"
         "- Team lunch at noon\n\n"
@@ -86,3 +86,5 @@ def test_no_must_mention():
     is_correct, meta = scorer.score(record, "Some digest.")
     assert is_correct is None
     assert meta["reason"] == "no_must_mention_items"
+
+

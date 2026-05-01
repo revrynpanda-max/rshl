@@ -1,4 +1,4 @@
-"""Tests for the ``jarvis tool`` CLI commands."""
+﻿"""Tests for the ``jarvis tool`` CLI commands."""
 
 from __future__ import annotations
 
@@ -236,3 +236,5 @@ class TestToolCmd:
                 assert result.exit_code == 0
                 # Should handle gracefully and show the tool name
                 assert "mock_tool" in result.output or "Total" in result.output
+
+

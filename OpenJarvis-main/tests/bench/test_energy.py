@@ -1,4 +1,4 @@
-"""Tests for the energy benchmark."""
+﻿"""Tests for the energy benchmark."""
 
 from __future__ import annotations
 
@@ -118,3 +118,5 @@ class TestEnergyBenchmark:
 
         ensure_registered()  # should not raise
         assert BenchmarkRegistry.contains("energy")
+
+

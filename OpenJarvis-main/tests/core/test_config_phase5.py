@@ -1,4 +1,4 @@
-"""Phase 5 foundation tests — BenchmarkRegistry and config."""
+﻿"""Phase 5 foundation tests â€” BenchmarkRegistry and config."""
 
 from __future__ import annotations
 
@@ -51,3 +51,5 @@ class TestConfigPhase5:
     def test_load_config_default(self):
         cfg = load_config()
         assert isinstance(cfg, JarvisConfig)
+
+

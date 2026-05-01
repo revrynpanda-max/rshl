@@ -1,4 +1,4 @@
-"""Tests for the ``jarvis eval`` CLI commands."""
+﻿"""Tests for the ``jarvis eval`` CLI commands."""
 
 from __future__ import annotations
 
@@ -37,3 +37,5 @@ class TestEvalCLI:
         # Should fail because neither --config nor --benchmark/--model given
         assert result.exit_code != 0
         assert "config" in result.output.lower() or "benchmark" in result.output.lower()
+
+

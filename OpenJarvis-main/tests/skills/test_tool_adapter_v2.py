@@ -1,4 +1,4 @@
-"""Tests for SkillTool v2 — parameter extraction and markdown support."""
+﻿"""Tests for SkillTool v2 â€” parameter extraction and markdown support."""
 
 from __future__ import annotations
 
@@ -200,3 +200,5 @@ class TestMarkdownReturn:
         # Should not raise
         skill_tool = SkillTool(manifest, _make_executor(), skill_manager=None)
         assert skill_tool.tool_id == "skill_mgr_skill"
+
+

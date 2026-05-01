@@ -1,4 +1,4 @@
-"""Tests for the ``jarvis channel`` CLI commands."""
+﻿"""Tests for the ``jarvis channel`` CLI commands."""
 
 from __future__ import annotations
 
@@ -102,3 +102,5 @@ class TestChannelStatus:
             result = CliRunner().invoke(cli, ["channel", "status"])
         assert result.exit_code == 0
         assert "disconnected" in result.output
+
+

@@ -1,4 +1,4 @@
-"""Tests for IngestionPipeline — dedup, chunking, and indexed storage."""
+﻿"""Tests for IngestionPipeline â€” dedup, chunking, and indexed storage."""
 
 from __future__ import annotations
 
@@ -51,7 +51,7 @@ def pipeline(store: KnowledgeStore) -> IngestionPipeline:
 
 
 # ---------------------------------------------------------------------------
-# Test 1: ingest single short document → 1 chunk stored, retrievable
+# Test 1: ingest single short document â†’ 1 chunk stored, retrievable
 # ---------------------------------------------------------------------------
 
 
@@ -80,7 +80,7 @@ def test_ingest_single_short_document(
 
 
 # ---------------------------------------------------------------------------
-# Test 2: ingest same doc_id twice → only 1 copy stored (dedup)
+# Test 2: ingest same doc_id twice â†’ only 1 copy stored (dedup)
 # ---------------------------------------------------------------------------
 
 
@@ -137,7 +137,7 @@ def test_ingest_dedup_persists_across_pipeline_instances(
 
 
 # ---------------------------------------------------------------------------
-# Test 3: ingest long document → multiple chunks, all inherit parent metadata
+# Test 3: ingest long document â†’ multiple chunks, all inherit parent metadata
 # ---------------------------------------------------------------------------
 
 
@@ -183,7 +183,7 @@ def test_ingest_long_document_multiple_chunks(
 
 
 # ---------------------------------------------------------------------------
-# Test 4: ingest event → single chunk (atomic, never split)
+# Test 4: ingest event â†’ single chunk (atomic, never split)
 # ---------------------------------------------------------------------------
 
 
@@ -206,7 +206,7 @@ def test_ingest_event_single_chunk(
 
     n = pipeline.ingest([doc])
 
-    # Events are atomic — must be exactly 1 chunk
+    # Events are atomic â€” must be exactly 1 chunk
     assert n == 1
     assert store.count() == 1
 
@@ -217,7 +217,7 @@ def test_ingest_event_single_chunk(
 
 
 # ---------------------------------------------------------------------------
-# Test 5: ingest from multiple sources → filter by source works
+# Test 5: ingest from multiple sources â†’ filter by source works
 # ---------------------------------------------------------------------------
 
 
@@ -292,3 +292,5 @@ def test_ingest_chunk_count_return_value(
     assert n2 == 1  # only doc_c is new
 
     assert store.count() == 3
+
+

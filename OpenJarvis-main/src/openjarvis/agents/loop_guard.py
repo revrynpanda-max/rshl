@@ -1,4 +1,4 @@
-"""Agent loop guard — detect and prevent degenerate tool-calling loops."""
+﻿"""Agent loop guard â€” detect and prevent degenerate tool-calling loops."""
 
 from __future__ import annotations
 
@@ -93,7 +93,7 @@ class LoopGuard:
 
     def _python_check(self, tool_name: str, arguments: str) -> LoopVerdict:
         """Pure-Python fallback when Rust backend is not available."""
-        # 1. Hash tracking — identical calls
+        # 1. Hash tracking â€” identical calls
         call_hash = hashlib.sha256(f"{tool_name}:{arguments}".encode()).hexdigest()[:16]
         self._call_counts[call_hash] = self._call_counts.get(call_hash, 0) + 1
         if self._call_counts[call_hash] > self._config.max_identical_calls:
@@ -150,7 +150,7 @@ class LoopGuard:
 
         Stages:
         1. Summarize old tool results (replace content with "[Tool result truncated]")
-        2. Sliding window — keep only recent messages
+        2. Sliding window â€” keep only recent messages
         3. Drop tool call/result pairs from the middle
         4. Truncate to system + last 2 exchanges
         """
@@ -182,7 +182,7 @@ class LoopGuard:
         if len(compressed) <= self._config.max_context_messages:
             return compressed
 
-        # Stage 2: Sliding window — keep system + recent
+        # Stage 2: Sliding window â€” keep system + recent
         system_msgs = [m for m in compressed if self._is_system(m)]
         non_system = [m for m in compressed if not self._is_system(m)]
         window_size = self._config.max_context_messages - len(system_msgs)
@@ -204,13 +204,13 @@ class LoopGuard:
         if len(compressed) <= self._config.max_context_messages:
             return compressed
 
-        # Stage 4: Extreme — system + last 2 exchanges
+        # Stage 4: Extreme â€” system + last 2 exchanges
         sys_final = [m for m in compressed if self._is_system(m)]
         tail = [m for m in compressed if not self._is_system(m)]
         return sys_final + tail[-4:]
 
     def reset(self) -> None:
-        """Reset all tracking state — always via Rust backend."""
+        """Reset all tracking state â€” always via Rust backend."""
         self._call_counts.clear()
         self._tool_sequence.clear()
         self._per_tool_counts.clear()
@@ -241,3 +241,4 @@ class LoopGuard:
 
 
 __all__ = ["LoopGuard", "LoopGuardConfig", "LoopVerdict"]
+

@@ -1,4 +1,4 @@
-"""AMA-Bench dataset loader.
+﻿"""AMA-Bench dataset loader.
 
 Reference dataset:
 https://huggingface.co/datasets/AMA-bench/AMA-bench
@@ -32,7 +32,7 @@ LOGGER = logging.getLogger(__name__)
 _HF_REPO_ID = "AMA-bench/AMA-bench"
 _DEFAULT_SPLIT = "test"
 # Token budget for trajectory context.
-# Approximate chars ≈ tokens * 4.
+# Approximate chars â‰ˆ tokens * 4.
 # Budget is intentionally conservative: max_model_len (typically 32K) minus
 # output tokens (4K), agent/system-prompt overhead (~4K for tools + instructions),
 # and a safety margin.  This leaves 20K for the trajectory itself.
@@ -270,3 +270,4 @@ class AMABenchDataset(DatasetProvider):
 
 
 __all__ = ["AMABenchDataset"]
+

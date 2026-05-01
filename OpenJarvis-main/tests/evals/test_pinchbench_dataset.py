@@ -1,4 +1,4 @@
-"""Tests for PinchBench dataset provider."""
+﻿"""Tests for PinchBench dataset provider."""
 
 import textwrap
 
@@ -128,3 +128,5 @@ def test_parse_task_markdown_no_automated_checks():
     task = _parse_task_markdown(md, filename="task_03_blog.md")
     assert task["automated_checks"] is None
     assert "Writing" in task["llm_judge_rubric"]
+
+

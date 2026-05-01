@@ -1,4 +1,4 @@
-"""Tests for AgentExecutor single-tick execution."""
+﻿"""Tests for AgentExecutor single-tick execution."""
 
 from __future__ import annotations
 
@@ -163,3 +163,5 @@ def test_finalize_tick_reads_agent_result_metadata(tmp_path):
     assert updated["total_cost"] == 0.05
     assert updated["stall_retries"] == 0
     mgr.close()
+
+

@@ -1,4 +1,4 @@
-"""Abstract base class for dataset providers."""
+﻿"""Abstract base class for dataset providers."""
 
 from __future__ import annotations
 
@@ -56,3 +56,4 @@ class DatasetProvider(ABC):
 
 
 __all__ = ["DatasetProvider"]
+

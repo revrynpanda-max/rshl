@@ -1,4 +1,4 @@
-"""Tests for NotionConnector — Notion API sync connector.
+﻿"""Tests for NotionConnector â€” Notion API sync connector.
 
 All Notion API calls are mocked; no network access is required.
 """
@@ -59,7 +59,7 @@ def connector(tmp_path: Path):
 
 
 # ---------------------------------------------------------------------------
-# Test 1 — not connected without a token or credentials file
+# Test 1 â€” not connected without a token or credentials file
 # ---------------------------------------------------------------------------
 
 
@@ -69,7 +69,7 @@ def test_not_connected_without_token(connector) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 2 — connected when token is provided directly
+# Test 2 â€” connected when token is provided directly
 # ---------------------------------------------------------------------------
 
 
@@ -82,7 +82,7 @@ def test_connected_with_token() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 3 — auth_url references notion.so
+# Test 3 â€” auth_url references notion.so
 # ---------------------------------------------------------------------------
 
 
@@ -93,7 +93,7 @@ def test_auth_url(connector) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 4 — sync yields documents with correct fields (mocked API)
+# Test 4 â€” sync yields documents with correct fields (mocked API)
 # ---------------------------------------------------------------------------
 
 
@@ -137,7 +137,7 @@ def test_sync_yields_documents(
 
 
 # ---------------------------------------------------------------------------
-# Test 5 — render_blocks_to_markdown handles various block types
+# Test 5 â€” render_blocks_to_markdown handles various block types
 # ---------------------------------------------------------------------------
 
 
@@ -206,7 +206,7 @@ def test_render_blocks_to_markdown() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 6 — disconnect removes the credentials file
+# Test 6 â€” disconnect removes the credentials file
 # ---------------------------------------------------------------------------
 
 
@@ -223,7 +223,7 @@ def test_disconnect(connector, tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 7 — mcp_tools returns the two expected tool specs
+# Test 7 â€” mcp_tools returns the two expected tool specs
 # ---------------------------------------------------------------------------
 
 
@@ -237,7 +237,7 @@ def test_mcp_tools(connector) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 8 — ConnectorRegistry contains "notion" after import
+# Test 8 â€” ConnectorRegistry contains "notion" after import
 # ---------------------------------------------------------------------------
 
 
@@ -249,3 +249,5 @@ def test_registry() -> None:
     assert ConnectorRegistry.contains("notion")
     cls = ConnectorRegistry.get("notion")
     assert cls.connector_id == "notion"
+
+

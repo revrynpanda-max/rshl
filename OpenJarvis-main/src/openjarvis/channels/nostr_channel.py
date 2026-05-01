@@ -1,4 +1,4 @@
-"""NostrChannel — Nostr protocol adapter via pynostr."""
+﻿"""NostrChannel â€” Nostr protocol adapter via pynostr."""
 
 from __future__ import annotations
 
@@ -162,3 +162,4 @@ class NostrChannel(BaseChannel):
 
 
 __all__ = ["NostrChannel"]
+

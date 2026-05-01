@@ -1,4 +1,4 @@
-"""Nexa SDK shim.
+﻿"""Nexa SDK shim.
 
 Thin FastAPI server wrapping the Nexa SDK (``nexaai``) as an
 OpenAI-compatible API on port 18181.  Intended for on-device inference
@@ -162,3 +162,4 @@ async def chat_completions(
             },
         }
     )
+

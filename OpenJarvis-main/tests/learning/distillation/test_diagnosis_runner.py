@@ -233,3 +233,5 @@ class TestDiagnosisRunner:
         assert result.clusters == []
         # Diagnosis artifact is still written
         assert (tmp_path / "session-001" / "diagnosis.md").exists()
+
+

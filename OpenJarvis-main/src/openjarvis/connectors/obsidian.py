@@ -1,4 +1,4 @@
-"""Obsidian / Markdown vault connector.
+﻿"""Obsidian / Markdown vault connector.
 
 Reads ``.md``, ``.markdown``, and ``.txt`` files from a local vault directory,
 parses optional YAML frontmatter, and yields :class:`Document` objects that
@@ -42,7 +42,7 @@ def _parse_frontmatter(text: str) -> Tuple[Dict[str, Any], str]:
 
     Frontmatter is the block between two ``---`` lines at the very start of
     the file.  Only simple ``key: value`` and ``key: [a, b, c]`` syntax is
-    handled — no nested YAML.
+    handled â€” no nested YAML.
     """
     if not text.startswith("---"):
         return {}, text
@@ -99,7 +99,7 @@ class ObsidianConnector(BaseConnector):
     ----------
     vault_path:
         Absolute path to the vault root directory.  An empty string means
-        "not yet configured" — :meth:`is_connected` will return ``False``.
+        "not yet configured" â€” :meth:`is_connected` will return ``False``.
     """
 
     connector_id = "obsidian"
@@ -129,7 +129,7 @@ class ObsidianConnector(BaseConnector):
         self,
         *,
         since: Optional[datetime] = None,
-        cursor: Optional[str] = None,  # noqa: ARG002 — unused but part of ABC
+        cursor: Optional[str] = None,  # noqa: ARG002 â€” unused but part of ABC
     ) -> Iterator[Document]:
         """Walk the vault and yield one :class:`Document` per text file.
 
@@ -233,3 +233,4 @@ class ObsidianConnector(BaseConnector):
                 category="knowledge",
             )
         ]
+

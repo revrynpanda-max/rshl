@@ -1,4 +1,4 @@
-"""Intelligence primitive — the model definition and catalog."""
+﻿"""Intelligence primitive â€” the model definition and catalog."""
 
 from __future__ import annotations
 
@@ -9,3 +9,4 @@ from openjarvis.intelligence.model_catalog import (
 )
 
 __all__ = ["BUILTIN_MODELS", "merge_discovered_models", "register_builtin_models"]
+

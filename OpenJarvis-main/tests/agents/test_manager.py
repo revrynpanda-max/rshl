@@ -1,4 +1,4 @@
-"""Tests for AgentManager persistent agent lifecycle."""
+﻿"""Tests for AgentManager persistent agent lifecycle."""
 
 from __future__ import annotations
 
@@ -368,3 +368,5 @@ class TestSchemaAndThreading:
         t.join(timeout=5)
         assert len(results) == 1
         assert results[0]["name"] == "threaded"
+
+

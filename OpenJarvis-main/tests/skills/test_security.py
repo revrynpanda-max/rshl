@@ -1,4 +1,4 @@
-"""Tests for skill security — capability validation and trust tiers."""
+﻿"""Tests for skill security â€” capability validation and trust tiers."""
 
 from __future__ import annotations
 
@@ -57,3 +57,5 @@ class TestDangerousCapabilities:
             name="test", required_capabilities=["network:fetch", "filesystem:read"]
         )
         assert has_dangerous_capabilities(manifest) == []
+
+

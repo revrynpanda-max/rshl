@@ -1,4 +1,4 @@
-"""Tests for GET /v1/tools endpoint."""
+﻿"""Tests for GET /v1/tools endpoint."""
 
 import pytest
 
@@ -45,3 +45,5 @@ def test_browser_meta_group():
     names = {t["name"] for t in tools}
     assert "browser" in names
     assert "browser_navigate" not in names
+
+

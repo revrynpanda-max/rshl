@@ -1,4 +1,4 @@
-"""Tests for SkillOptimizer (Plan 2A) — buckets traces by skill, runs DSPy/GEPA."""
+﻿"""Tests for SkillOptimizer (Plan 2A) â€” buckets traces by skill, runs DSPy/GEPA."""
 
 from __future__ import annotations
 
@@ -139,3 +139,5 @@ class TestSkillOptimizerOptimize:
         assert "An optimized description" in content
         assert "hello" in content
         assert "world" in content
+
+

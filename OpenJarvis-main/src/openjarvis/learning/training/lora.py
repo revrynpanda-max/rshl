@@ -1,4 +1,4 @@
-"""LoRATrainer — fine-tune local models via LoRA/QLoRA from trace-derived SFT pairs.
+﻿"""LoRATrainer â€” fine-tune local models via LoRA/QLoRA from trace-derived SFT pairs.
 
 All ``torch``, ``transformers``, and ``peft`` imports are guarded so the
 module can be imported without GPU dependencies.  The :class:`LoRATrainingConfig`
@@ -428,3 +428,4 @@ __all__ = [
     "LoRATrainer",
     "LoRATrainingConfig",
 ]
+

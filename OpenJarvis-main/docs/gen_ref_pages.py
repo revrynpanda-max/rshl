@@ -1,4 +1,4 @@
-"""Generate the code reference pages."""
+﻿"""Generate the code reference pages."""
 from pathlib import Path
 
 import mkdocs_gen_files
@@ -29,3 +29,4 @@ for path in sorted(src.rglob("*.py")):
 
 with mkdocs_gen_files.open("api-reference/SUMMARY.md", "w") as nav_file:
     nav_file.writelines(nav.build_literate_nav())
+

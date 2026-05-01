@@ -1,4 +1,4 @@
-"""Core data types for the optimization framework."""
+﻿"""Core data types for the optimization framework."""
 
 from __future__ import annotations
 
@@ -251,3 +251,4 @@ __all__ = [
     "TrialFeedback",
     "TrialResult",
 ]
+

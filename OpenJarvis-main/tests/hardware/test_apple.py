@@ -1,4 +1,4 @@
-"""Apple Silicon hardware tests."""
+﻿"""Apple Silicon hardware tests."""
 
 from __future__ import annotations
 
@@ -134,3 +134,5 @@ class TestAppleEngineRecommendation:
         )
         assert hw.gpu.vram_gb == hw.ram_gb
         assert recommend_engine(hw) == "mlx"
+
+

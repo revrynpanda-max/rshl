@@ -1,4 +1,4 @@
-"""Tests for Faster-Whisper speech backend."""
+﻿"""Tests for Faster-Whisper speech backend."""
 
 from unittest.mock import MagicMock, patch
 
@@ -76,3 +76,5 @@ def test_faster_whisper_supported_formats():
         assert "wav" in formats
         assert "mp3" in formats
         assert "webm" in formats
+
+

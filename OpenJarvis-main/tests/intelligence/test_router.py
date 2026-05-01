@@ -1,4 +1,4 @@
-"""Tests for the intelligence router via canonical learning.routing.router imports."""
+﻿"""Tests for the intelligence router via canonical learning.routing.router imports."""
 
 from __future__ import annotations
 
@@ -44,3 +44,5 @@ class TestRouter:
         )
         ctx = RoutingContext(query="Hi", query_length=2)
         assert router.select_model(ctx) == "small"
+
+

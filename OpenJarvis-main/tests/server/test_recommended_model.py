@@ -50,3 +50,5 @@ def test_parse_param_count():
     assert _parse_param_count("qwen3.5:0.8b") == 0.8
     assert _parse_param_count("qwen3.5:35b") == 35.0
     assert _parse_param_count("gpt-4o") == 0.0
+
+

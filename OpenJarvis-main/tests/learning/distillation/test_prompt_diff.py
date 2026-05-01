@@ -1,4 +1,4 @@
-"""Tests for openjarvis.learning.distillation.plan.prompt_diff module."""
+﻿"""Tests for openjarvis.learning.distillation.plan.prompt_diff module."""
 
 from __future__ import annotations
 
@@ -210,3 +210,5 @@ class TestMaybeDowngradeToReplace:
         )
         # Can't apply the diff, so it should downgrade
         assert result.op == EditOp.REPLACE_SYSTEM_PROMPT
+
+

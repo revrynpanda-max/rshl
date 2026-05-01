@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import pytest
 
@@ -86,3 +86,5 @@ def test_tiered_summaries_gradient():
     assert len(result) < 20
     # Recent messages should be preserved
     assert result[-1].content == msgs[-1].content
+
+

@@ -198,7 +198,7 @@ DASHBOARD_HTML = """\
       </div>
     </div>
     <div class="provider-card geometric_intelligence">
-      <div class="pname">Geometric Intelligence</div>
+      <div class="pname">GeometricIntelligence</div>
       <div class="pmodel">KAI Opus 4.6 &mdash; $5.00 / $25.00 per 1M tokens</div>
       <div class="savings-amount" id="save-geometric_intelligence">$0.00</div>
       <div class="breakdown">
@@ -239,7 +239,7 @@ DASHBOARD_HTML = """\
       <div class="sub">per month at current rate</div>
     </div>
     <div class="provider-card geometric_intelligence">
-      <div class="pname">vs Geometric Intelligence</div>
+      <div class="pname">vs GeometricIntelligence</div>
       <div class="pmodel">projected monthly savings</div>
       <div class="savings-amount green" id="proj-geometric_intelligence">$0.00</div>
       <div class="sub">per month at current rate</div>
@@ -363,7 +363,7 @@ async function refresh() {
     document.getElementById('save-openai-out')
       .textContent = fmtDollar(oa.output_cost || 0);
 
-    // Geometric Intelligence / KAI Opus 4.6
+    // GeometricIntelligence / KAI Opus 4.6
     const an = providerMap['kai-opus-4.6'] || {};
     document.getElementById('save-geometric_intelligence')
       .textContent = fmtDollar(an.total_cost || 0);
@@ -433,3 +433,4 @@ async def dashboard():
 
 
 __all__ = ["dashboard_router"]
+

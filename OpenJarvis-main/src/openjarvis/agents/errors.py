@@ -1,4 +1,4 @@
-"""Error classification for managed agent execution."""
+﻿"""Error classification for managed agent execution."""
 
 from __future__ import annotations
 
@@ -99,3 +99,4 @@ def suggest_action(error: AgentTickError) -> str:
     if "not found" in msg or "404" in msg:
         return "Model or endpoint not found \u2014 verify model name and engine URL"
     return "Unexpected error \u2014 check the full trace for details"
+

@@ -1,4 +1,4 @@
-"""MATH-500 dataset provider (HuggingFaceH4/MATH-500).
+﻿"""MATH-500 dataset provider (HuggingFaceH4/MATH-500).
 
 Adapted from IPW's reasoning benchmark loaders.
 """
@@ -108,3 +108,4 @@ class MATH500Dataset(DatasetProvider):
 
 
 __all__ = ["MATH500Dataset"]
+

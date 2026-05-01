@@ -1,4 +1,4 @@
-"""MCP tool adapter — wraps external MCP server tools as native BaseTool instances."""
+﻿"""MCP tool adapter â€” wraps external MCP server tools as native BaseTool instances."""
 
 from __future__ import annotations
 
@@ -73,3 +73,4 @@ class MCPToolProvider:
 
 
 __all__ = ["MCPToolAdapter", "MCPToolProvider"]
+

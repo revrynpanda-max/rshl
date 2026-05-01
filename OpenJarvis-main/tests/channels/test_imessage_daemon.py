@@ -1,4 +1,4 @@
-"""Tests for iMessage AppleScript daemon."""
+﻿"""Tests for iMessage AppleScript daemon."""
 
 from __future__ import annotations
 
@@ -106,3 +106,5 @@ def test_poll_skips_own_messages(tmp_path: Path) -> None:
         chat_identifier="+15551234567",
     )
     assert len(messages) == 0
+
+

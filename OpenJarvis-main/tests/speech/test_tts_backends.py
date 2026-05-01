@@ -1,4 +1,4 @@
-"""Tests for TTS backend infrastructure."""
+﻿"""Tests for TTS backend infrastructure."""
 
 from __future__ import annotations
 
@@ -104,3 +104,5 @@ def test_openai_tts_synthesize():
 
     assert result.audio == b"fake-openai-audio"
     assert result.voice_id == "nova"
+
+

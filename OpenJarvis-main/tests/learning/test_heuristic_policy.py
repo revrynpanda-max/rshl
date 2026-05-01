@@ -1,4 +1,4 @@
-"""Tests for heuristic policy registration."""
+﻿"""Tests for heuristic policy registration."""
 
 from __future__ import annotations
 
@@ -21,3 +21,5 @@ class TestHeuristicPolicy:
         cls = RouterPolicyRegistry.get("heuristic")
         router = cls(available_models=["model-a"])
         assert router.available_models == ["model-a"]
+
+

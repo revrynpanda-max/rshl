@@ -1,4 +1,4 @@
-"""WebSocket bridge: EventBus → connected WebSocket clients."""
+﻿"""WebSocket bridge: EventBus â†’ connected WebSocket clients."""
 
 from __future__ import annotations
 
@@ -80,3 +80,4 @@ def create_ws_router(event_bus: EventBus) -> Any:
 
 
 __all__ = ["create_ws_router"]
+

@@ -1,4 +1,4 @@
-"""Check for newer OpenJarvis releases on GitHub."""
+﻿"""Check for newer OpenJarvis releases on GitHub."""
 
 from __future__ import annotations
 
@@ -87,3 +87,4 @@ def _get_latest_version(current: str) -> str | None:
         pass
 
     return latest
+

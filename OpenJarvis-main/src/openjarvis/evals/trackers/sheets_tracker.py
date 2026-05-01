@@ -1,4 +1,4 @@
-"""Google Sheets experiment tracker for the eval framework."""
+﻿"""Google Sheets experiment tracker for the eval framework."""
 
 from __future__ import annotations
 
@@ -162,3 +162,4 @@ class SheetsTracker(ResultTracker):
 
 
 __all__ = ["SheetsTracker", "SHEET_COLUMNS"]
+

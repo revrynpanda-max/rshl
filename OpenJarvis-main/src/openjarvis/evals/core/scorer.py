@@ -1,4 +1,4 @@
-"""Abstract base classes for scoring."""
+﻿"""Abstract base classes for scoring."""
 
 from __future__ import annotations
 
@@ -53,3 +53,4 @@ class LLMJudgeScorer(Scorer):
 
 
 __all__ = ["LLMJudgeScorer", "Scorer"]
+

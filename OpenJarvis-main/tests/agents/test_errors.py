@@ -1,4 +1,4 @@
-"""Tests for agent error classification."""
+﻿"""Tests for agent error classification."""
 
 from __future__ import annotations
 
@@ -56,3 +56,5 @@ class TestErrorClassification:
         assert retry_delay(2) == 40
         # Capped at 300 seconds
         assert retry_delay(10) == 300
+
+

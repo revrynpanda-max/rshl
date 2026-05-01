@@ -1,4 +1,4 @@
-"""SkillTool — wraps a skill as a tool that agents can invoke."""
+﻿"""SkillTool â€” wraps a skill as a tool that agents can invoke."""
 
 from __future__ import annotations
 
@@ -194,3 +194,4 @@ class SkillTool(BaseTool):
 
 
 __all__ = ["SkillTool"]
+

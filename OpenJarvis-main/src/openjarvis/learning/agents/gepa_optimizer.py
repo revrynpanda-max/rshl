@@ -1,4 +1,4 @@
-"""GEPA agent optimizer -- Pareto-efficient evolutionary optimization.
+﻿"""GEPA agent optimizer -- Pareto-efficient evolutionary optimization.
 
 Uses GEPA's adapter pattern to bridge OpenJarvis traces into GEPA's
 evolutionary optimization framework. Outputs TOML config updates
@@ -324,3 +324,4 @@ class _GEPALearningPolicy(AgentLearningPolicy):
 
 
 __all__ = ["GEPAAgentOptimizer", "OpenJarvisGEPAAdapter"]
+

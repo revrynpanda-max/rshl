@@ -1,4 +1,4 @@
-"""Tests for JarvisSystem.wire_channel() — channel → agent routing.
+﻿"""Tests for JarvisSystem.wire_channel() â€” channel â†’ agent routing.
 
 These tests exercise wire_channel() on JarvisSystem directly. The serve.py
 entrypoint now delegates all channel-wiring logic there.
@@ -150,7 +150,7 @@ class TestWireChannelSessionIsolation:
         handler(_make_channel_message(content="111", conversation_id="111"))
         handler(_make_channel_message(content="222", conversation_id="222"))
 
-        # Reload sessions — each chat must have only its own messages
+        # Reload sessions â€” each chat must have only its own messages
         s1 = system.session_store.get_or_create("telegram:111")
         s2 = system.session_store.get_or_create("telegram:222")
         c1 = {m.content for m in s1.messages}
@@ -226,7 +226,7 @@ class TestChannelToolLoading:
         assert system.tools[0].spec.name == "fake"
 
     def test_non_tool_agent_receives_empty_tools(self, tmp_path):
-        """JarvisSystem with no tools list results in empty tools — simple agent
+        """JarvisSystem with no tools list results in empty tools â€” simple agent
         unaffected."""
         config = JarvisConfig()
         config.sessions.db_path = str(tmp_path / "sessions.db")
@@ -296,3 +296,5 @@ class TestPerChatSessionIsolation:
             channel_user_id="42",
         )
         assert [m.content for m in reloaded.messages] == ["first", "reply"]
+
+

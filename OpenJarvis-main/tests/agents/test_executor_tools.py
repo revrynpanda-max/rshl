@@ -1,4 +1,4 @@
-"""Tests for tool wiring in AgentExecutor."""
+﻿"""Tests for tool wiring in AgentExecutor."""
 
 from __future__ import annotations
 
@@ -102,3 +102,5 @@ def test_executor_handles_string_tools(tmp_path):
     result_agent = mgr.get_agent(agent["id"])
     assert result_agent["status"] == "idle"
     mgr.close()
+
+

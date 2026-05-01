@@ -1,4 +1,4 @@
-"""Tests for the Lemonade engine backend.
+﻿"""Tests for the Lemonade engine backend.
 
 Validates that the ``/v1`` prefix is used correctly for models listing
 and chat completions.
@@ -108,3 +108,5 @@ class TestLemonadeListModels:
                 )
             )
             assert engine.list_models() == ["Qwen3-4B-Instruct", "Llama-3.1-8B"]
+
+

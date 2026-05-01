@@ -1,4 +1,4 @@
-"""Orchestrator training infrastructure — SFT and GRPO pipelines.
+﻿"""Orchestrator training infrastructure â€” SFT and GRPO pipelines.
 
 Provides structured-mode training for the OrchestratorAgent with:
 
@@ -85,3 +85,4 @@ __all__ = [
     "OrchestratorGRPOConfig",
     "OrchestratorGRPOTrainer",
 ]
+

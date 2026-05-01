@@ -370,3 +370,4 @@ class LearningSession(BaseModel):
         default=None,
         description="If status is FAILED, the error message that caused it.",
     )
+

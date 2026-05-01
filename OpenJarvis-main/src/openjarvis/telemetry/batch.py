@@ -1,4 +1,4 @@
-"""Batch-level energy accounting — group requests and compute per-token energy."""
+﻿"""Batch-level energy accounting â€” group requests and compute per-token energy."""
 
 from __future__ import annotations
 
@@ -124,3 +124,4 @@ __all__ = [
     "BatchMetrics",
     "EnergyBatch",
 ]
+

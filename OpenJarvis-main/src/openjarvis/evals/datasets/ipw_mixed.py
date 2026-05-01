@@ -1,7 +1,7 @@
-"""IPW mixed dataset provider.
+﻿"""IPW mixed dataset provider.
 
 Loads evaluation data from a local directory containing HuggingFace Arrow
-datasets or JSONL files.  Does *not* download from HuggingFace — the data
+datasets or JSONL files.  Does *not* download from HuggingFace â€” the data
 must be present on disk (e.g. bundled from the IPW repository).
 """
 
@@ -193,3 +193,4 @@ class IPWDataset(DatasetProvider):
 
 
 __all__ = ["IPWDataset"]
+

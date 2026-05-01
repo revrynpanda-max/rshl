@@ -1,4 +1,4 @@
-"""Tests for the GEPA agent optimizer (mocked -- no gepa dependency required)."""
+﻿"""Tests for the GEPA agent optimizer (mocked -- no gepa dependency required)."""
 
 from __future__ import annotations
 
@@ -95,3 +95,5 @@ class TestOpenJarvisGEPAAdapter:
             GEPAOptimizerConfig(),
         )
         assert adapter.agent_name == "native_react"
+
+

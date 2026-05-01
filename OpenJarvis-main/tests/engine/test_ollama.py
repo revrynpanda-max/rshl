@@ -1,4 +1,4 @@
-"""Tests for the Ollama engine backend."""
+﻿"""Tests for the Ollama engine backend."""
 
 from __future__ import annotations
 
@@ -100,3 +100,5 @@ class TestOllamaStream:
             ):
                 tokens.append(tok)
         assert "Hello" in tokens
+
+

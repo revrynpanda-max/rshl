@@ -1,4 +1,4 @@
-"""Tests for digest schedule integration — CLI and API endpoints."""
+﻿"""Tests for digest schedule integration â€” CLI and API endpoints."""
 
 from __future__ import annotations
 
@@ -191,3 +191,5 @@ class TestDigestScheduleEndpoints:
         assert data["cron"] == "0 6 * * *"
         mock_save.assert_called_once_with(enabled=False, cron="0 6 * * *")
         mock_cancel.assert_called_once()
+
+

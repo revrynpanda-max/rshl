@@ -1,4 +1,4 @@
-"""Energy benchmark — per-sample energy, power, and efficiency measurement."""
+﻿"""Energy benchmark â€” per-sample energy, power, and efficiency measurement."""
 
 from __future__ import annotations
 
@@ -160,3 +160,4 @@ def ensure_registered() -> None:
 
 
 __all__ = ["EnergyBenchmark"]
+

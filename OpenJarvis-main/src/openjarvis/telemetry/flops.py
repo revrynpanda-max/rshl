@@ -1,4 +1,4 @@
-"""FLOPs estimation and Model FLOPs Utilization (MFU) computation."""
+﻿"""FLOPs estimation and Model FLOPs Utilization (MFU) computation."""
 
 from __future__ import annotations
 
@@ -51,7 +51,7 @@ def estimate_flops(
     Returns (total_flops, flops_per_token).
 
     ``input_tokens`` must include system-prompt tokens and must *not*
-    be reduced for KV-cache reuse — it should represent the full prompt
+    be reduced for KV-cache reuse â€” it should represent the full prompt
     size that was sent to the engine.
     """
     params_b = _get_params_b(model)
@@ -99,3 +99,4 @@ def compute_mfu(
         return 0.0
     actual_tflops = flops / (duration_s * 1e12)
     return (actual_tflops / (peak * num_gpus)) * 100.0
+

@@ -1,4 +1,4 @@
-"""Tests for suggest_action helper."""
+﻿"""Tests for suggest_action helper."""
 
 from openjarvis.agents.errors import FatalError, RetryableError, suggest_action
 
@@ -27,3 +27,5 @@ def test_suggest_action_not_found():
 def test_suggest_action_unknown():
     err = RetryableError("something weird happened")
     assert "trace" in suggest_action(err).lower()
+
+

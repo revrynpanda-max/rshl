@@ -1,4 +1,4 @@
-"""SuperGPQA MCQ scorer — LLM-based letter extraction + exact match.
+﻿"""SuperGPQA MCQ scorer â€” LLM-based letter extraction + exact match.
 
 Adapted from IPW's mcq.py and gpqa.py evaluation handlers.
 """
@@ -104,3 +104,4 @@ class SuperGPQAScorer(LLMJudgeScorer):
 
 
 __all__ = ["SuperGPQAScorer"]
+

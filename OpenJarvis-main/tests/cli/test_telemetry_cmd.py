@@ -1,4 +1,4 @@
-"""Tests for the ``jarvis telemetry`` CLI commands."""
+﻿"""Tests for the ``jarvis telemetry`` CLI commands."""
 
 from __future__ import annotations
 
@@ -152,3 +152,5 @@ class TestTelemetryClear:
             result = CliRunner().invoke(cli, ["telemetry", "clear"], input="n\n")
         assert result.exit_code == 0
         assert "Aborted" in result.output
+
+

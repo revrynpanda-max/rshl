@@ -1,4 +1,4 @@
-"""Tests for trace recording in AgentExecutor."""
+﻿"""Tests for trace recording in AgentExecutor."""
 
 from __future__ import annotations
 
@@ -99,3 +99,5 @@ def test_executor_no_trace_without_store(tmp_path):
     updated = mgr.get_agent(agent["id"])
     assert updated["status"] == "idle"
     mgr.close()
+
+

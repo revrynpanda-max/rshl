@@ -1,4 +1,4 @@
-"""Tests for Tier 3 — per-token timestamps, ITL percentiles, streaming telemetry."""
+﻿"""Tests for Tier 3 â€” per-token timestamps, ITL percentiles, streaming telemetry."""
 
 from __future__ import annotations
 
@@ -185,7 +185,7 @@ class TestStreamTelemetry:
 
         asyncio.run(run())
         rec = records[0]
-        # 5 tokens → 4 ITL deltas
+        # 5 tokens â†’ 4 ITL deltas
         assert rec.mean_itl_ms >= 0
         assert rec.median_itl_ms >= 0
         assert rec.p90_itl_ms >= 0
@@ -322,7 +322,7 @@ class TestGenerateMeanItlApproximation:
 
         ie.generate([Message(role=Role.USER, content="hi")], model="m")
         rec = records[0]
-        assert rec.mean_itl_ms == 0.0  # no decode_latency → no ITL
+        assert rec.mean_itl_ms == 0.0  # no decode_latency â†’ no ITL
 
 
 class TestItlStorage:
@@ -353,3 +353,5 @@ class TestItlStorage:
         assert stats[0].avg_p95_itl_ms == pytest.approx(25.0)
         agg.close()
         store.close()
+
+

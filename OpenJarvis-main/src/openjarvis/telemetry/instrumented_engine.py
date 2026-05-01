@@ -1,4 +1,4 @@
-"""Transparent telemetry wrapper for inference engines."""
+﻿"""Transparent telemetry wrapper for inference engines."""
 
 from __future__ import annotations
 
@@ -503,3 +503,4 @@ class InstrumentedEngine(InferenceEngine):
 
 
 __all__ = ["InstrumentedEngine", "_compute_itl_stats", "_percentile"]
+

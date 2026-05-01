@@ -1,4 +1,4 @@
-"""CPU RAPL energy monitor — reads Intel/AMD RAPL counters from sysfs."""
+﻿"""CPU RAPL energy monitor â€” reads Intel/AMD RAPL counters from sysfs."""
 
 from __future__ import annotations
 
@@ -80,7 +80,7 @@ def _discover_domains(base: Path = _RAPL_BASE) -> List[RaplDomain]:
 class RaplEnergyMonitor(EnergyMonitor):
     """CPU energy monitor reading Intel RAPL counters from sysfs.
 
-    No external dependencies — reads directly from
+    No external dependencies â€” reads directly from
     ``/sys/class/powercap/intel-rapl/``.  Handles counter wrap-around
     using ``max_energy_range_uj``.
     """
@@ -195,3 +195,4 @@ class RaplEnergyMonitor(EnergyMonitor):
 
 
 __all__ = ["RaplEnergyMonitor"]
+

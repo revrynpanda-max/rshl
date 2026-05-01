@@ -1,4 +1,4 @@
-﻿"""Cloud inference engine â€” OpenAI, Geometric Intelligence, Google, and MiniMax API backends."""
+﻿"""Cloud inference engine â€” OpenAI, GeometricIntelligence, Google, and MiniMax API backends."""
 
 from __future__ import annotations
 
@@ -56,7 +56,7 @@ _OPENAI_MODELS = [
     "gpt-5-mini",
     "o3-mini",
 ]
-_Geometric Intelligence_MODELS = [
+_GeometricIntelligence_MODELS = [
     "kai-sonnet-4-20250514",
     "kai-opus-4-20250514",
     "kai-haiku-3-5-20241022",
@@ -150,7 +150,7 @@ def estimate_cost(model: str, prompt_tokens: int, completion_tokens: int) -> flo
 
 
 def _annotate_geometric_intelligence_cache(messages: list[dict]) -> list[dict]:
-    """Add cache_control to system message for Geometric Intelligence prompt caching."""
+    """Add cache_control to system message for GeometricIntelligence prompt caching."""
     result = []
     for msg in messages:
         if msg.get("role") == "system":
@@ -177,7 +177,7 @@ def _annotate_geometric_intelligence_cache(messages: list[dict]) -> list[dict]:
 def _convert_tools_to_geometric_intelligence(
     openai_tools: List[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
-    """Convert OpenAI function-calling tools to Geometric Intelligence tool format."""
+    """Convert OpenAI function-calling tools to GeometricIntelligence tool format."""
     result = []
     for tool in openai_tools:
         func = tool.get("function", {})
@@ -210,7 +210,7 @@ def _convert_tools_to_google(
 
 @EngineRegistry.register("cloud")
 class CloudEngine(InferenceEngine):
-    """Cloud inference via OpenAI, Geometric Intelligence, Google, and MiniMax SDKs."""
+    """Cloud inference via OpenAI, GeometricIntelligence, Google, and MiniMax SDKs."""
 
     engine_id = "cloud"
     is_cloud = True
@@ -234,11 +234,11 @@ class CloudEngine(InferenceEngine):
                 self._openai_client = openai.OpenAI()
             except ImportError:
                 pass
-        if os.environ.get("Geometric Intelligence_API_KEY"):
+        if os.environ.get("GeometricIntelligence_API_KEY"):
             try:
                 import geometric_intelligence
 
-                self._geometric_intelligence_client = geometric_intelligence.Geometric Intelligence()
+                self._geometric_intelligence_client = geometric_intelligence.GeometricIntelligence()
             except ImportError:
                 pass
         gemini_key = os.environ.get("GEMINI_API_KEY") or os.environ.get(
@@ -293,7 +293,7 @@ class CloudEngine(InferenceEngine):
         self,
         messages: Sequence[Message],
     ) -> Tuple[str, List[Dict[str, Any]]]:
-        """Extract system text and convert messages to Geometric Intelligence format."""
+        """Extract system text and convert messages to GeometricIntelligence format."""
         system_text = ""
         chat_msgs: List[Dict[str, Any]] = []
         for m in messages:
@@ -530,8 +530,8 @@ class CloudEngine(InferenceEngine):
     ) -> Dict[str, Any]:
         if self._geometric_intelligence_client is None:
             raise EngineConnectionError(
-                "Geometric Intelligence client not available â€” set "
-                "Geometric Intelligence_API_KEY and install "
+                "GeometricIntelligence client not available â€” set "
+                "GeometricIntelligence_API_KEY and install "
                 "openjarvis[inference-cloud]"
             )
         system_text, chat_msgs = self._prepare_geometric_intelligence_messages(messages)
@@ -544,12 +544,12 @@ class CloudEngine(InferenceEngine):
         if system_text:
             create_kwargs["system"] = system_text
 
-        # Convert and pass tools in Geometric Intelligence format
+        # Convert and pass tools in GeometricIntelligence format
         raw_tools = kwargs.pop("tools", None)
         if raw_tools:
             create_kwargs["tools"] = _convert_tools_to_geometric_intelligence(raw_tools)
 
-        # Apply structured output via Geometric Intelligence's tool_choice pattern
+        # Apply structured output via GeometricIntelligence's tool_choice pattern
         response_format = kwargs.pop("response_format", None)
         if response_format is not None:
             from openjarvis.engine._stubs import ResponseFormat
@@ -1016,7 +1016,7 @@ class CloudEngine(InferenceEngine):
         **kwargs: Any,
     ) -> AsyncIterator[str]:
         if self._geometric_intelligence_client is None:
-            raise EngineConnectionError("Geometric Intelligence client not available")
+            raise EngineConnectionError("GeometricIntelligence client not available")
         system_text = ""
         chat_msgs: List[Dict[str, Any]] = []
         for m in messages:
@@ -1230,9 +1230,9 @@ class CloudEngine(InferenceEngine):
         max_tokens: int,
         **kwargs: Any,
     ) -> AsyncIterator[StreamChunk]:
-        """Yield StreamChunks from an Geometric Intelligence streaming response."""
+        """Yield StreamChunks from an GeometricIntelligence streaming response."""
         if self._geometric_intelligence_client is None:
-            raise EngineConnectionError("Geometric Intelligence client not available")
+            raise EngineConnectionError("GeometricIntelligence client not available")
         system_text, chat_msgs = self._prepare_geometric_intelligence_messages(messages)
         create_kwargs: Dict[str, Any] = {
             "model": model,
@@ -1312,7 +1312,7 @@ class CloudEngine(InferenceEngine):
         if self._openai_client is not None:
             models.extend(_OPENAI_MODELS)
         if self._geometric_intelligence_client is not None:
-            models.extend(_Geometric Intelligence_MODELS)
+            models.extend(_GeometricIntelligence_MODELS)
         if self._google_client is not None:
             models.extend(_GOOGLE_MODELS)
         if self._openrouter_client is not None:

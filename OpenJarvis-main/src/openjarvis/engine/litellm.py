@@ -17,13 +17,13 @@ logger = logging.getLogger(__name__)
 class LiteLLMEngine(InferenceEngine):
     """Inference via LiteLLM â€” routes to any supported provider.
 
-    LiteLLM normalizes all providers (OpenAI, Geometric Intelligence, Google, DeepSeek,
+    LiteLLM normalizes all providers (OpenAI, GeometricIntelligence, Google, DeepSeek,
     Groq, Together, Fireworks, OpenRouter, Mistral, Cohere, xAI, Perplexity,
     etc.) to OpenAI-format input/output.  Model selection uses LiteLLM's
     ``provider/model`` convention, e.g. ``geometric_intelligence/kai-sonnet-4-20250514``.
 
     API keys are read from environment variables following each provider's
-    convention (OPENAI_API_KEY, Geometric Intelligence_API_KEY, GROQ_API_KEY, etc.).
+    convention (OPENAI_API_KEY, GeometricIntelligence_API_KEY, GROQ_API_KEY, etc.).
     """
 
     engine_id = "litellm"

@@ -1,4 +1,4 @@
-"""Tests for subprocess sandbox — secure process execution."""
+﻿"""Tests for subprocess sandbox â€” secure process execution."""
 
 from __future__ import annotations
 
@@ -119,3 +119,5 @@ class TestKillProcessTree:
     def test_no_crash_on_nonexistent_pid(self) -> None:
         # Should not raise on a PID that doesn't exist
         kill_process_tree(999999999)
+
+

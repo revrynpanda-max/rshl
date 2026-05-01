@@ -1,4 +1,4 @@
-"""Tests for SendBlue iMessage/SMS channel.
+﻿"""Tests for SendBlue iMessage/SMS channel.
 
 Covers: init, env-var fallback, connect, send (mocked httpx), webhook
 handler, event emission, and registry registration.
@@ -264,3 +264,5 @@ class TestProperties:
     def test_from_number(self):
         ch = _make_channel(from_number="+15559876543")
         assert ch.from_number == "+15559876543"
+
+

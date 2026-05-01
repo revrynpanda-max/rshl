@@ -1,4 +1,4 @@
-"""Channel abstraction for multi-platform messaging."""
+﻿"""Channel abstraction for multi-platform messaging."""
 
 import importlib
 
@@ -10,7 +10,7 @@ from openjarvis.channels._stubs import (
 )
 
 # Trigger registration of built-in channels.
-# Each module uses @ChannelRegistry.register() — importing is sufficient.
+# Each module uses @ChannelRegistry.register() â€” importing is sufficient.
 _CHANNEL_MODULES = [
     "telegram",
     "discord_channel",
@@ -56,3 +56,4 @@ __all__ = [
     "ChannelMessage",
     "ChannelStatus",
 ]
+

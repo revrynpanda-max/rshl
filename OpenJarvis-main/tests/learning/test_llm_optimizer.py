@@ -983,3 +983,5 @@ class TestProposeMerge:
         assert "c1" in prompt
         assert "c2" in prompt
         assert "Merge" in prompt or "merge" in prompt
+
+

@@ -1,4 +1,4 @@
-"""Tests for the skills overlay loader/writer (Plan 2A)."""
+﻿"""Tests for the skills overlay loader/writer (Plan 2A)."""
 
 from __future__ import annotations
 
@@ -97,3 +97,5 @@ class TestSkillOverlayLoader:
     def test_load_directory_does_not_exist(self, tmp_path: Path):
         loader = SkillOverlayLoader(tmp_path / "does-not-exist")
         assert loader.load("anything") is None
+
+

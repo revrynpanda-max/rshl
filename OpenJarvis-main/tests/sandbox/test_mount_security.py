@@ -1,4 +1,4 @@
-"""Tests for mount_security module."""
+﻿"""Tests for mount_security module."""
 
 from __future__ import annotations
 
@@ -168,3 +168,5 @@ class TestLoadMountAllowlist:
 
         al = load_mount_allowlist(str(f))
         assert al.blocked_patterns == DEFAULT_BLOCKED_PATTERNS
+
+

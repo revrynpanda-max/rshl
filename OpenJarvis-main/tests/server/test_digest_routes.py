@@ -1,4 +1,4 @@
-"""Tests for /api/digest endpoints."""
+﻿"""Tests for /api/digest endpoints."""
 
 from __future__ import annotations
 
@@ -41,7 +41,7 @@ def _make_app(db_path: str):
     from openjarvis.agents.digest_store import DigestStore
     from openjarvis.server.digest_routes import create_digest_router
 
-    # Patch get_today to fall back to get_latest — avoids timezone issues in CI
+    # Patch get_today to fall back to get_latest â€” avoids timezone issues in CI
     original_get_today = DigestStore.get_today
 
     def _get_today_or_latest(self, timezone_name="UTC"):
@@ -102,3 +102,5 @@ def test_get_history(store, tmp_path):
     data = resp.json()
     assert len(data) == 1
     assert data[0]["voice_used"] == "jarvis"
+
+

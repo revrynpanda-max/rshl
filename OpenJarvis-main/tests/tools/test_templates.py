@@ -1,4 +1,4 @@
-"""Tests for MCP templates (Phase 16.3)."""
+﻿"""Tests for MCP templates (Phase 16.3)."""
 
 from __future__ import annotations
 
@@ -159,3 +159,5 @@ transform = "upper"
         templates = discover_templates(tmp_path)
         assert len(templates) == 1
         assert templates[0].spec.name == "custom"
+
+

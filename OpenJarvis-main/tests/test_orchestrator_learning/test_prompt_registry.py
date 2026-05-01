@@ -1,4 +1,4 @@
-"""Tests for orchestrator prompt registry."""
+﻿"""Tests for orchestrator prompt registry."""
 
 from __future__ import annotations
 
@@ -67,3 +67,5 @@ class TestBuildSystemPrompt:
         prompt = build_system_prompt(["calculator", "llm"])
         assert "llm" in prompt.lower()
         assert "REASONING" in prompt
+
+

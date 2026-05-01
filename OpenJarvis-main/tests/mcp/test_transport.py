@@ -1,4 +1,4 @@
-"""Tests for MCP transport implementations."""
+﻿"""Tests for MCP transport implementations."""
 
 from __future__ import annotations
 
@@ -266,3 +266,5 @@ class TestStreamableHTTPTransport:
     def test_sse_transport_alias(self):
         """SSETransport should be an alias for StreamableHTTPTransport."""
         assert SSETransport is StreamableHTTPTransport
+
+

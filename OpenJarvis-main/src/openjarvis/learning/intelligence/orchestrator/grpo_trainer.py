@@ -1,7 +1,7 @@
-"""GRPO (Group Relative Policy Optimization) trainer for orchestrator.
+﻿"""GRPO (Group Relative Policy Optimization) trainer for orchestrator.
 
 Adapted from IPW's ``trainer.py``.  GRPO is simpler than PPO because it
-doesn't require a separate critic model — instead, it uses
+doesn't require a separate critic model â€” instead, it uses
 *group-relative advantages*: for each problem, sample N candidate
 trajectories, compute rewards, normalise within the group, and update
 the policy to increase the probability of better solutions.
@@ -489,3 +489,4 @@ __all__ = [
     "OrchestratorGRPOConfig",
     "OrchestratorGRPOTrainer",
 ]
+

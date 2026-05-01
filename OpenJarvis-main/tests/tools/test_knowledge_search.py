@@ -1,4 +1,4 @@
-"""Tests for the knowledge_search tool."""
+﻿"""Tests for the knowledge_search tool."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ def store(tmp_path):
     """Return a KnowledgeStore pre-loaded with 3 diverse items."""
     s = KnowledgeStore(db_path=tmp_path / "test_knowledge.db")
 
-    # Item 1 — gmail email from alice
+    # Item 1 â€” gmail email from alice
     s.store(
         "Meeting about Kubernetes migration scheduled for next Tuesday.",
         source="gmail",
@@ -33,9 +33,9 @@ def store(tmp_path):
         timestamp="2026-01-15T10:00:00Z",
     )
 
-    # Item 2 — slack message from bob
+    # Item 2 â€” slack message from bob
     s.store(
-        "Discussion about K8s costs — we should consider spot instances.",
+        "Discussion about K8s costs â€” we should consider spot instances.",
         source="slack",
         doc_type="message",
         title="#infrastructure",
@@ -44,7 +44,7 @@ def store(tmp_path):
         timestamp="2026-01-20T14:30:00Z",
     )
 
-    # Item 3 — obsidian document from sarah
+    # Item 3 â€” obsidian document from sarah
     s.store(
         "Research notes on large language model fine-tuning strategies.",
         source="obsidian",
@@ -85,7 +85,7 @@ class TestKnowledgeSearchTool:
     def test_filter_by_author(self, store):
         """author filter restricts results to sarah only."""
         tool = KnowledgeSearchTool(store=store)
-        # Use "language model" — FTS5 does not tokenise hyphenated terms like
+        # Use "language model" â€” FTS5 does not tokenise hyphenated terms like
         # "fine-tuning" as a single token, so we search for a phrase that works.
         result = tool.execute(query="language model", author="sarah@example.com")
         assert result.success is True
@@ -153,3 +153,5 @@ def test_tool_uses_two_stage_retriever(tmp_path: Path) -> None:
     result = tool.execute(query="deep learning")
     assert result.success
     assert result.metadata["num_results"] > 0
+
+

@@ -1,4 +1,4 @@
-"""Tests for the apply_patch tool."""
+﻿"""Tests for the apply_patch tool."""
 
 from __future__ import annotations
 
@@ -140,7 +140,7 @@ class TestApplyPatchTool:
             f"--- a/auto.txt\n+++ b/{f}\n@@ -1,3 +1,3 @@\n one\n-two\n+TWO\n three\n"
         )
         tool = ApplyPatchTool()
-        # No explicit path — should auto-detect from +++ header
+        # No explicit path â€” should auto-detect from +++ header
         result = tool.execute(patch=patch, backup=False)
         assert result.success is True
         assert "TWO" in f.read_text(encoding="utf-8")
@@ -194,3 +194,5 @@ class TestApplyPatchTool:
         assert result.success is True
         content = f.read_text(encoding="utf-8")
         assert content == "keep\nkeep_too\n"
+
+

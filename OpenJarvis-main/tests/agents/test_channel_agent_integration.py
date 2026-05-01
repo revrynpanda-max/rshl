@@ -1,4 +1,4 @@
-"""Integration tests for ChannelAgent with DeepResearchAgent and KnowledgeStore.
+﻿"""Integration tests for ChannelAgent with DeepResearchAgent and KnowledgeStore.
 
 Covers the full path:
   Documents
@@ -112,7 +112,7 @@ _DOCS = [
         source="gmail",
         doc_type="email",
         content=(
-            "Re: API redesign proposal — the new REST endpoints look good"
+            "Re: API redesign proposal â€” the new REST endpoints look good"
             " but we need to handle rate limits and review the budget impact."
         ),
         title="API redesign proposal",
@@ -154,7 +154,7 @@ def _build_store_and_tool(
 
 
 # ---------------------------------------------------------------------------
-# Test 1 — Quick query is answered inline (no escalation link)
+# Test 1 â€” Quick query is answered inline (no escalation link)
 # ---------------------------------------------------------------------------
 
 
@@ -206,7 +206,7 @@ def test_quick_query_inline_response(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 2 — Deep query produces an escalation link
+# Test 2 â€” Deep query produces an escalation link
 # ---------------------------------------------------------------------------
 
 
@@ -265,7 +265,7 @@ def test_deep_query_escalation_link(tmp_path: Path) -> None:
     channel = FakeChannel()
     ca = ChannelAgent(channel, agent)
 
-    # 5. Simulate the deep query (contains "summarize" — classified as deep)
+    # 5. Simulate the deep query (contains "summarize" â€” classified as deep)
     channel.simulate("Summarize all discussions about budget and API redesign")
 
     # 6. Wait for the background worker thread
@@ -282,3 +282,5 @@ def test_deep_query_escalation_link(tmp_path: Path) -> None:
     assert "openjarvis://" in sent_content, (
         f"Deep query must produce an escalation link, but got:\n{sent_content}"
     )
+
+

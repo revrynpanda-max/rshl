@@ -1,4 +1,4 @@
-"""Tests for SystemPromptBuilder skill few-shot injection (Plan 2A)."""
+﻿"""Tests for SystemPromptBuilder skill few-shot injection (Plan 2A)."""
 
 from __future__ import annotations
 
@@ -35,3 +35,5 @@ class TestSystemPromptBuilderFewShot:
         )
         prompt = builder.build()
         assert "## Skill Examples" not in prompt
+
+

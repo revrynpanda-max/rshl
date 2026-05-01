@@ -1,4 +1,4 @@
-"""AMD energy monitor — hardware counters via amdsmi (ROCm 6.1+)."""
+﻿"""AMD energy monitor â€” hardware counters via amdsmi (ROCm 6.1+)."""
 
 from __future__ import annotations
 
@@ -135,3 +135,4 @@ class AmdEnergyMonitor(EnergyMonitor):
 
 
 __all__ = ["AmdEnergyMonitor"]
+

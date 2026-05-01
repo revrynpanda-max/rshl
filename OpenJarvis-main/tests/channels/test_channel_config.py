@@ -1,4 +1,4 @@
-"""Tests for channel configuration — nested sub-configs and TOML loading."""
+﻿"""Tests for channel configuration â€” nested sub-configs and TOML loading."""
 
 from __future__ import annotations
 
@@ -195,3 +195,5 @@ bot_token = "slack-token"
             assert cfg.channel.slack.bot_token == "slack-token"
         finally:
             path.unlink()
+
+

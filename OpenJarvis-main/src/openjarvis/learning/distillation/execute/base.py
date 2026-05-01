@@ -1,9 +1,9 @@
-"""EditApplier ABC, registry, and context types for the execute phase.
+﻿"""EditApplier ABC, registry, and context types for the execute phase.
 
 Each concrete applier implements validate/apply/rollback for a single EditOp.
 Appliers are registered in an EditApplierRegistry keyed by EditOp.
 
-See spec §7.1.
+See spec Â§7.1.
 """
 
 from __future__ import annotations
@@ -93,3 +93,4 @@ class EditApplierRegistry:
     def is_supported(self, op: EditOp) -> bool:
         """Return True if an applier is registered for the op."""
         return op in self._appliers
+

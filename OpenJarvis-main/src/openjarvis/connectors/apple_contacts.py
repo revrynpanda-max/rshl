@@ -1,11 +1,11 @@
-"""Apple Contacts connector — reads directly from the macOS Contacts SQLite database.
+﻿"""Apple Contacts connector â€” reads directly from the macOS Contacts SQLite database.
 
 No API calls, no OAuth.  The connector opens
 ``~/Library/Application Support/AddressBook/AddressBook-v22.abcddb``
 in read-only mode and yields one :class:`Document` per contact.
 
 Requires **Full Disk Access** granted to the terminal / app in
-System Settings → Privacy & Security → Full Disk Access.
+System Settings â†’ Privacy & Security â†’ Full Disk Access.
 
 Timestamp notes
 ---------------
@@ -52,7 +52,7 @@ def _apple_ts_to_datetime(apple_seconds: float) -> datetime:
 
 
 def _clean_label(raw: str | None) -> str:
-    """Strip Apple's internal label markup (``_$!<Work>!$_`` → ``Work``)."""
+    """Strip Apple's internal label markup (``_$!<Work>!$_`` â†’ ``Work``)."""
     if not raw:
         return ""
     if raw.startswith(_LABEL_PREFIX) and raw.endswith(_LABEL_SUFFIX):
@@ -229,7 +229,7 @@ class AppleContactsConnector(BaseConnector):
         dept = meta.get("department", "")
         if org or title:
             org_parts = [p for p in (title, dept, org) if p]
-            lines.append(" — ".join(org_parts))
+            lines.append(" â€” ".join(org_parts))
 
         nickname = meta.get("nickname", "")
         if nickname:
@@ -480,3 +480,4 @@ class AppleContactsConnector(BaseConnector):
                 category="knowledge",
             ),
         ]
+

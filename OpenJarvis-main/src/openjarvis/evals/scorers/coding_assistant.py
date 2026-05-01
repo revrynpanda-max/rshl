@@ -1,4 +1,4 @@
-"""coding_assistant scorer — test-based evaluation of bug fixes.
+﻿"""coding_assistant scorer â€” test-based evaluation of bug fixes.
 
 Extracts fixed code from model output, runs the test suite, and computes:
 - fix_rate: fraction of originally-failing tests now passing
@@ -61,7 +61,7 @@ def _extract_test_functions(test_code: str) -> Dict[str, str]:
                 and not line.startswith((" ", "\t"))
                 and not stripped.startswith("#")
             ):
-                # New top-level definition — end of current test
+                # New top-level definition â€” end of current test
                 tests[current_name] = "\n".join(preamble + current_lines)
                 current_name = None
                 current_lines = []
@@ -170,3 +170,4 @@ class CodingAssistantScorer(Scorer):
 
 
 __all__ = ["CodingAssistantScorer"]
+

@@ -1,4 +1,4 @@
-"""Tests for orchestrator multi-objective reward."""
+﻿"""Tests for orchestrator multi-objective reward."""
 
 from __future__ import annotations
 
@@ -141,3 +141,5 @@ class TestAdaptiveRewardWeights:
         w = adaptive.get_weights(200)
         total = w.alpha + w.beta_cost + w.beta_energy + w.gamma_latency + w.gamma_power
         assert abs(total - 1.0) < 0.01
+
+

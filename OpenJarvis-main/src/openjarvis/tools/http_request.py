@@ -1,4 +1,4 @@
-"""HTTP request tool — make HTTP requests with SSRF protection."""
+﻿"""HTTP request tool â€” make HTTP requests with SSRF protection."""
 
 from __future__ import annotations
 
@@ -193,3 +193,4 @@ class HttpRequestTool(BaseTool):
 
 
 __all__ = ["HttpRequestTool"]
+

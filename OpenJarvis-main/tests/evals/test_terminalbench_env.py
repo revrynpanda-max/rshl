@@ -1,4 +1,4 @@
-"""Tests for TerminalBenchTaskEnv (mocked terminal_bench dependency)."""
+﻿"""Tests for TerminalBenchTaskEnv (mocked terminal_bench dependency)."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import pytest
 
 from openjarvis.evals.execution.terminalbench_env import TerminalBenchTaskEnv
 
-# terminal_bench is an optional dep — skip all tests if unavailable
+# terminal_bench is an optional dep â€” skip all tests if unavailable
 terminal_bench = pytest.importorskip(
     "terminal_bench", reason="terminal_bench not installed"
 )
@@ -46,3 +46,5 @@ class TestTerminalBenchTaskEnv:
         assert is_resolved is False
         assert results["error"] == "terminal_not_running"
         assert metadata["is_resolved"] is False
+
+

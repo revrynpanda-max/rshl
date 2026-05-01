@@ -341,7 +341,7 @@ class NativeOpenHandsAgent(ToolUsingAgent):
             content = self._strip_think_tags(content)
             last_content = content
 
-            # --- Native function-calling path (OpenAI, Geometric Intelligence, etc.) ---
+            # --- Native function-calling path (OpenAI, GeometricIntelligence, etc.) ---
             raw_tool_calls = result.get("tool_calls", [])
             if raw_tool_calls:
                 native_calls = []
@@ -441,3 +441,4 @@ class NativeOpenHandsAgent(ToolUsingAgent):
 
 
 __all__ = ["NativeOpenHandsAgent"]
+

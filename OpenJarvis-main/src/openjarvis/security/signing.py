@@ -1,4 +1,4 @@
-"""Ed25519 signing — supply chain integrity for agent and skill manifests."""
+﻿"""Ed25519 signing â€” supply chain integrity for agent and skill manifests."""
 
 from __future__ import annotations
 
@@ -130,3 +130,4 @@ __all__ = [
     "verify",
     "verify_b64",
 ]
+

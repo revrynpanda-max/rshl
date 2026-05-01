@@ -1,4 +1,4 @@
-"""Integration tests for PinchBench eval pipeline.
+﻿"""Integration tests for PinchBench eval pipeline.
 
 These tests use synthetic task files to verify the full pipeline
 without requiring the actual PinchBench repo or cloud API keys.
@@ -121,3 +121,5 @@ def test_full_grading_pipeline(tmp_path):
     assert record.metadata["pinchbench_score"] == 1.0
     assert record.metadata["pinchbench_breakdown"]["file_exists"] == 1.0
     assert record.metadata["pinchbench_breakdown"]["has_hello"] == 1.0
+
+

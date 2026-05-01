@@ -1,4 +1,4 @@
-"""Tests for openjarvis.optimize.feedback.collector module."""
+﻿"""Tests for openjarvis.optimize.feedback.collector module."""
 
 from __future__ import annotations
 
@@ -237,3 +237,5 @@ class TestStats:
         s = fc.stats()
         assert s["count"] == 2
         assert abs(s["mean_score"] - 0.5) < 1e-6
+
+

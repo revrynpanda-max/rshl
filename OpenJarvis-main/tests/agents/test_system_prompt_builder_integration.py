@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from pathlib import Path
 
@@ -26,3 +26,5 @@ def test_base_agent_uses_builder(tmp_path: Path):
     assert "Jarvis" in prompt
     assert "Python" in prompt
     assert "helpful assistant" in prompt
+
+

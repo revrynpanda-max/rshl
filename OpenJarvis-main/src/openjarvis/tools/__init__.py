@@ -1,4 +1,4 @@
-"""Tools primitive — tool system with ABC interface and built-in tools."""
+﻿"""Tools primitive â€” tool system with ABC interface and built-in tools."""
 
 from __future__ import annotations
 
@@ -142,3 +142,4 @@ except ImportError:
     pass
 
 __all__ = ["BaseTool", "ToolExecutor", "ToolSpec"]
+

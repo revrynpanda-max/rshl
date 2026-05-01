@@ -1,4 +1,4 @@
-"""Skill security — capability validation and trust tiers."""
+﻿"""Skill security â€” capability validation and trust tiers."""
 
 from __future__ import annotations
 
@@ -63,3 +63,4 @@ __all__ = [
     "validate_capabilities",
     "has_dangerous_capabilities",
 ]
+

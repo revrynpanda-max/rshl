@@ -1,4 +1,4 @@
-"""Command-line interface for OpenJarvis (Click-based)."""
+﻿"""Command-line interface for OpenJarvis (Click-based)."""
 
 from __future__ import annotations
 
@@ -41,7 +41,7 @@ from openjarvis.cli.workflow_cmd import workflow
 from openjarvis.learning.distillation.cli import learning_group
 
 
-@click.group(help="OpenJarvis — modular AI assistant backend")
+@click.group(help="OpenJarvis â€” modular AI assistant backend")
 @click.version_option(version=openjarvis.__version__, prog_name="jarvis")
 @click.option("--verbose", is_flag=True, default=False, help="Enable debug logging")
 @click.option("--quiet", is_flag=True, default=False, help="Suppress non-error output")
@@ -123,3 +123,4 @@ def main() -> None:
 
 
 __all__ = ["cli", "main"]
+

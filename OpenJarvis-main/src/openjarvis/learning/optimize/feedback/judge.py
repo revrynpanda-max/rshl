@@ -1,4 +1,4 @@
-"""TraceJudge -- LLM-as-judge scoring for agent traces."""
+﻿"""TraceJudge -- LLM-as-judge scoring for agent traces."""
 
 from __future__ import annotations
 
@@ -117,3 +117,4 @@ class TraceJudge:
 
 
 __all__ = ["TraceJudge"]
+

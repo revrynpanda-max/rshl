@@ -1,4 +1,4 @@
-"""A2AAgentTool — wraps an external A2A agent as an invocable tool."""
+﻿"""A2AAgentTool â€” wraps an external A2A agent as an invocable tool."""
 
 from __future__ import annotations
 
@@ -79,3 +79,4 @@ class A2AAgentTool(BaseTool):
 
 
 __all__ = ["A2AAgentTool"]
+

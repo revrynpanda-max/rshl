@@ -1,4 +1,4 @@
-"""Tests for the WhatsAppChannel adapter."""
+﻿"""Tests for the WhatsAppChannel adapter."""
 
 from __future__ import annotations
 
@@ -130,3 +130,5 @@ class TestStatus:
         ch = WhatsAppChannel()
         ch.connect()
         assert ch.status() == ChannelStatus.ERROR
+
+

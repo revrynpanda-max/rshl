@@ -1,4 +1,4 @@
-"""GPU monitoring via pynvml — background poller for GPU metrics."""
+﻿"""GPU monitoring via pynvml â€” background poller for GPU metrics."""
 
 from __future__ import annotations
 
@@ -320,3 +320,4 @@ __all__ = [
     "GPU_SPECS",
     "lookup_gpu_spec",
 ]
+

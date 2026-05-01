@@ -1,4 +1,4 @@
-"""Tests for setup_security() helper."""
+﻿"""Tests for setup_security() helper."""
 
 from __future__ import annotations
 
@@ -68,7 +68,7 @@ class TestSetupSecurityEnabled:
         bus = EventBus()
         sec = setup_security(_make_config(), engine, bus)
 
-        # Should not raise — scanner failure is caught
+        # Should not raise â€” scanner failure is caught
         assert isinstance(sec, SecurityContext)
 
 
@@ -80,3 +80,5 @@ class TestSetupSecurityDisabled:
         assert sec.engine is engine
         assert sec.capability_policy is None
         assert sec.audit_logger is None
+
+

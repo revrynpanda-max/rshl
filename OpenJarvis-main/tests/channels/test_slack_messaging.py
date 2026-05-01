@@ -1,4 +1,4 @@
-"""Tests for Slack messaging channel — Socket Mode binding and message handling."""
+﻿"""Tests for Slack messaging channel â€” Socket Mode binding and message handling."""
 
 from __future__ import annotations
 
@@ -87,3 +87,5 @@ def test_slack_channel_send_with_token_is_callable() -> None:
     # Don't actually call the API, just verify interface
     assert callable(ch.send)
     assert hasattr(ch, "send")
+
+

@@ -1,4 +1,4 @@
-"""RL environment for orchestrator training.
+﻿"""RL environment for orchestrator training.
 
 Adapted from IPW's ``environment.py``.  Uses OpenJarvis's
 :class:`~openjarvis.tools._stubs.ToolExecutor` for real tool dispatch
@@ -110,3 +110,4 @@ class OrchestratorEnvironment:
 
 
 __all__ = ["OrchestratorEnvironment"]
+

@@ -1,4 +1,4 @@
-"""Tests for MorningDigestAgent."""
+﻿"""Tests for MorningDigestAgent."""
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ def test_morning_digest_run(tmp_path):
     # Mock collect result
     mock_collect_result = ToolResult(
         tool_name="digest_collect",
-        content='=== MESSAGES ===\n[gmail] From: alice@co.com — "Budget" (1h ago)\n',
+        content='=== MESSAGES ===\n[gmail] From: alice@co.com â€” "Budget" (1h ago)\n',
         success=True,
         metadata={"total_items": 2},
     )
@@ -69,3 +69,5 @@ def test_load_persona():
     # Nonexistent persona returns empty string
     result = _load_persona("nonexistent_persona_xyz")
     assert result == ""
+
+

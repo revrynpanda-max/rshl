@@ -1,4 +1,4 @@
-"""Cartesia text-to-speech backend.
+﻿"""Cartesia text-to-speech backend.
 
 Uses the Cartesia REST API for high-quality, low-latency voice synthesis.
 Requires CARTESIA_API_KEY environment variable or config.
@@ -52,7 +52,7 @@ def _cartesia_synthesize(
 
 @TTSRegistry.register("cartesia")
 class CartesiaTTSBackend(TTSBackend):
-    """Cartesia TTS backend — fast, high-quality synthesis."""
+    """Cartesia TTS backend â€” fast, high-quality synthesis."""
 
     backend_id = "cartesia"
 
@@ -71,7 +71,7 @@ class CartesiaTTSBackend(TTSBackend):
         if not self._api_key:
             raise RuntimeError("CARTESIA_API_KEY not set")
 
-        # Default to "British Butler" voice — warm, authoritative, Jarvis-like
+        # Default to "British Butler" voice â€” warm, authoritative, Jarvis-like
         if not voice_id:
             voice_id = "a0e99841-438c-4a64-b679-ae501e7d6091"
 
@@ -107,3 +107,4 @@ class CartesiaTTSBackend(TTSBackend):
 
     def health(self) -> bool:
         return bool(self._api_key)
+

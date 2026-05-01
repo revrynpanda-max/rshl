@@ -1,4 +1,4 @@
-"""Tests for openjarvis.learning.distillation.storage.session_store module."""
+﻿"""Tests for openjarvis.learning.distillation.storage.session_store module."""
 
 from __future__ import annotations
 
@@ -58,7 +58,7 @@ def _make_outcome(
     status: str = "applied",
     benchmark_delta: float | None = 0.04,
 ) -> tuple[EditOutcome, dict]:
-    """Return (EditOutcome, extra_columns) — the SessionStore stores some
+    """Return (EditOutcome, extra_columns) â€” the SessionStore stores some
     metadata that isn't on the EditOutcome model itself (pillar/op/target/
     risk_tier/rationale come from the parent Edit)."""
     outcome = EditOutcome(
@@ -283,3 +283,5 @@ class TestParentSessionChain:
         assert restored is not None
         assert restored.parent_session_id == "parent"
         store.close()
+
+

@@ -1,4 +1,4 @@
-"""Tests for openjarvis.optimize.search_space module."""
+﻿"""Tests for openjarvis.optimize.search_space module."""
 
 from __future__ import annotations
 
@@ -446,3 +446,5 @@ class TestToPromptDescription:
         assert "# Search Space" in desc
         assert "## Fixed Parameters" not in desc
         assert "## Constraints" not in desc
+
+

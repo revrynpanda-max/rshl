@@ -1,4 +1,4 @@
-"""Tests for the IRCChannel adapter."""
+﻿"""Tests for the IRCChannel adapter."""
 
 from __future__ import annotations
 
@@ -129,3 +129,5 @@ class TestStatus:
         ch = IRCChannel()
         ch.connect()
         assert ch.status() == ChannelStatus.ERROR
+
+

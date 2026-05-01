@@ -1,4 +1,4 @@
-"""Event recording system for agent execution telemetry."""
+﻿"""Event recording system for agent execution telemetry."""
 
 from __future__ import annotations
 
@@ -96,3 +96,4 @@ class EventRecorder:
 
 
 __all__ = ["AgentEvent", "EventRecorder", "EventType"]
+

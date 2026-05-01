@@ -1,4 +1,4 @@
-"""AttachmentStore — content-addressed blob storage for Deep Research attachments.
+﻿"""AttachmentStore â€” content-addressed blob storage for Deep Research attachments.
 
 Stores binary attachments at ``{base_dir}/{sha256[:2]}/{sha256}`` and tracks
 metadata in a SQLite database at ``{base_dir}/attachments.db``.
@@ -86,7 +86,7 @@ class AttachmentStore:
     ) -> str:
         """Store *content* and return its SHA-256 hex digest.
 
-        The call is idempotent with respect to the blob file — if the same
+        The call is idempotent with respect to the blob file â€” if the same
         bytes are stored again only the metadata (source_doc_ids) is updated.
         """
         sha = hashlib.sha256(content).hexdigest()
@@ -178,3 +178,4 @@ class AttachmentStore:
 
 
 __all__ = ["AttachmentStore"]
+

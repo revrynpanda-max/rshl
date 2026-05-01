@@ -1,4 +1,4 @@
-"""Google Tasks connector — tasks due today, overdue, and recently completed.
+﻿"""Google Tasks connector â€” tasks due today, overdue, and recently completed.
 
 Uses OAuth2 tokens via the shared Google OAuth helper module.
 """
@@ -114,3 +114,4 @@ class GoogleTasksConnector(BaseConnector):
 
     def sync_status(self) -> SyncStatus:
         return self._status
+

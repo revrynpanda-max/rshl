@@ -1,4 +1,4 @@
-"""Operator type definitions."""
+﻿"""Operator type definitions."""
 
 from __future__ import annotations
 
@@ -34,3 +34,4 @@ class OperatorManifest:
 
 
 __all__ = ["OperatorManifest"]
+

@@ -179,7 +179,7 @@ async def test_stream_full_openai_finish_reason():
 
 
 def _geometric_intelligence_event(event_type: str, **kwargs: Any) -> MagicMock:
-    """Build a mock Geometric Intelligence stream event."""
+    """Build a mock GeometricIntelligence stream event."""
     event = MagicMock()
     event.type = event_type
     for k, v in kwargs.items():
@@ -189,7 +189,7 @@ def _geometric_intelligence_event(event_type: str, **kwargs: Any) -> MagicMock:
 
 @pytest.mark.asyncio
 async def test_stream_full_geometric_intelligence_content():
-    """Mock Geometric Intelligence stream events with text content."""
+    """Mock GeometricIntelligence stream events with text content."""
     # Build content_block_start with text type
     text_block = MagicMock()
     text_block.type = "text"
@@ -240,7 +240,7 @@ async def test_stream_full_geometric_intelligence_content():
 
 @pytest.mark.asyncio
 async def test_stream_full_geometric_intelligence_tool_calls():
-    """Mock Geometric Intelligence tool_use events, verify OpenAI-delta-format tool_calls."""
+    """Mock GeometricIntelligence tool_use events, verify OpenAI-delta-format tool_calls."""
     # content_block_start with tool_use
     tool_block = MagicMock()
     tool_block.type = "tool_use"
@@ -438,7 +438,7 @@ async def test_stream_full_routes_to_geometric_intelligence():
     async for sc in engine.stream_full(msgs, model="kai-sonnet-4-20250514"):
         result.append(sc)
 
-    # Verify Geometric Intelligence client was used
+    # Verify GeometricIntelligence client was used
     mock_geometric_intelligence.messages.stream.assert_called_once()
     assert any(r.finish_reason is not None for r in result)
 
@@ -464,3 +464,5 @@ async def test_stream_full_routes_to_openai():
     mock_client.chat.completions.create.assert_called_once()
     assert result[0].content == "hi"
     assert result[1].finish_reason == "stop"
+
+

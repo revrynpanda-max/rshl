@@ -1,4 +1,4 @@
-"""Tests for the RLM REPL environment."""
+﻿"""Tests for the RLM REPL environment."""
 
 from __future__ import annotations
 
@@ -204,3 +204,5 @@ class TestRLMReplOutput:
         repl = RLMRepl()
         output = repl.execute("x = 1")
         assert output == ""
+
+

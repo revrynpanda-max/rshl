@@ -1,4 +1,4 @@
-"""DatasetProvider adapter for personal benchmarks."""
+﻿"""DatasetProvider adapter for personal benchmarks."""
 
 from __future__ import annotations
 
@@ -52,3 +52,4 @@ class PersonalBenchmarkDataset(DatasetProvider):
 
 
 __all__ = ["PersonalBenchmarkDataset"]
+

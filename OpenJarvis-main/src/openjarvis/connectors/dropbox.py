@@ -1,4 +1,4 @@
-"""Dropbox connector — bulk file sync via the Dropbox API v2.
+﻿"""Dropbox connector â€” bulk file sync via the Dropbox API v2.
 
 Uses OAuth Bearer tokens stored locally.
 All network calls are isolated in module-level functions (``_dropbox_api_*``)
@@ -181,7 +181,7 @@ class DropboxConnector(BaseConnector):
         from urllib.parse import urlencode
 
         params = {
-            "client_id": "",  # placeholder — real client_id from config
+            "client_id": "",  # placeholder â€” real client_id from config
             "response_type": "code",
             "token_access_type": "offline",
             "scope": " ".join(_DROPBOX_SCOPES),
@@ -199,7 +199,7 @@ class DropboxConnector(BaseConnector):
     def sync(
         self,
         *,
-        since: Optional[datetime] = None,  # noqa: ARG002 — reserved for future use
+        since: Optional[datetime] = None,  # noqa: ARG002 â€” reserved for future use
         cursor: Optional[str] = None,
     ) -> Iterator[Document]:
         """Yield :class:`Document` objects for Dropbox files.
@@ -373,3 +373,4 @@ class DropboxConnector(BaseConnector):
                 category="productivity",
             ),
         ]
+

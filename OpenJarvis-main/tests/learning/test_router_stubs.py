@@ -1,4 +1,4 @@
-"""Tests for RouterPolicy and QueryAnalyzer ABCs (canonical location)."""
+﻿"""Tests for RouterPolicy and QueryAnalyzer ABCs (canonical location)."""
 
 from __future__ import annotations
 
@@ -72,3 +72,5 @@ class TestDefaultQueryAnalyzer:
         analyzer = DefaultQueryAnalyzer()
         ctx = analyzer.analyze("quick question", urgency=0.9)
         assert ctx.urgency == 0.9
+
+

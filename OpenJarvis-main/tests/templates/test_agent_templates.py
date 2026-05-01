@@ -1,4 +1,4 @@
-"""Tests for the agent template loader."""
+﻿"""Tests for the agent template loader."""
 
 from __future__ import annotations
 
@@ -64,3 +64,5 @@ def test_template_missing_file_raises() -> None:
     """Loading a non-existent template file raises FileNotFoundError."""
     with pytest.raises(FileNotFoundError):
         load_template("/tmp/nonexistent_template_12345.toml")
+
+

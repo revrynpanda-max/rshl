@@ -1,4 +1,4 @@
-"""Tests for speech ABC and data types."""
+﻿"""Tests for speech ABC and data types."""
 
 from openjarvis.speech._stubs import Segment, SpeechBackend, TranscriptionResult
 
@@ -30,3 +30,5 @@ def test_speech_backend_is_abstract():
 
     with pytest.raises(TypeError):
         SpeechBackend()
+
+

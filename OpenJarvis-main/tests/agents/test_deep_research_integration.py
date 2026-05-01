@@ -1,4 +1,4 @@
-"""End-to-end integration tests for the Deep Research pipeline.
+﻿"""End-to-end integration tests for the Deep Research pipeline.
 
 Covers the full path:
   multi-source Documents
@@ -114,7 +114,7 @@ def _build_populated_store(tmp_path: Path) -> KnowledgeStore:
 
 
 # ---------------------------------------------------------------------------
-# Test 1 — Full research pipeline
+# Test 1 â€” Full research pipeline
 # ---------------------------------------------------------------------------
 
 
@@ -186,7 +186,7 @@ def test_full_research_pipeline(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Test 2 — Cross-platform search finds data from multiple sources
+# Test 2 â€” Cross-platform search finds data from multiple sources
 # ---------------------------------------------------------------------------
 
 
@@ -219,3 +219,5 @@ def test_search_finds_cross_platform_data(tmp_path):
         f"Expected results from at least 2 different sources, "
         f"but only found: {sources_found}\n\nFull output:\n{content}"
     )
+
+

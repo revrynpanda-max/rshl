@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
-"""Overnight Slack preview — generates proactive tweets on a loop.
+﻿#!/usr/bin/env python3
+"""Overnight Slack preview â€” generates proactive tweets on a loop.
 
 Posts to a single Slack thread so it doesn't spam the channel.
 Run in tmux and check the thread in the morning.
@@ -22,7 +22,7 @@ SLACK_CHANNEL = os.environ.get("SLACK_PREVIEW_CHANNEL", "")
 INTERVAL_MINUTES = 30
 
 TOPICS = [
-    # Narrative — opinionated takes that happen to be about OpenJarvis
+    # Narrative â€” opinionated takes that happen to be about OpenJarvis
     "mainframe personal computer computing shift efficiency",
     "Intelligence Per Watt study local models queries latency",
     "personal data cloud APIs privacy terms of service",
@@ -32,7 +32,7 @@ TOPICS = [
     "cloud dependency personal AI thin orchestration layer brain",
     "local inference consumer hardware battery laptop efficiency",
     "open source tools local AI available everyone research",
-    # Technical — but framed as narrative search queries, not product lookups
+    # Technical â€” but framed as narrative search queries, not product lookups
     "channel integrations messaging platforms connect send disconnect",
     "composable primitives intelligence engine agents tools learning",
     "inference engines hardware detection auto configure local",
@@ -110,7 +110,7 @@ def main() -> None:
 
     # Post parent message
     parent_ts = slack_send(
-        "*OpenJarvis Twitter Bot — Overnight Preview*\n"
+        "*OpenJarvis Twitter Bot â€” Overnight Preview*\n"
         f"Generating a tweet every ~{INTERVAL_MINUTES} min. "
         "Check this thread in the morning.",
     )
@@ -129,14 +129,14 @@ def main() -> None:
             recent_list = "\n".join('  - "' + t + '"' for t in recent[-8:])
             recent_section = (
                 "Your recent tweets (DO NOT repeat any of these ideas "
-                "— write something completely different):\n"
+                "â€” write something completely different):\n"
                 + recent_list
                 + "\n"
             )
 
         tool_log.clear()
         r = j.ask_full(
-            "You are @OpenJarvisAI — a researcher/dev who believes local-first "
+            "You are @OpenJarvisAI â€” a researcher/dev who believes local-first "
             "AI is the future. Write one tweet. all lowercase, <=280 chars.\n\n"
             f'1. memory_search: "{topic}"\n'
             "2. Write a tweet that makes someone stop scrolling. Lead with "
@@ -151,7 +151,7 @@ def main() -> None:
             '- "your most personal data routes through someone else\'s '
             'server. we built openjarvis to fix that"\n'
             '- "in the 70s computing moved from mainframes to pcs. not '
-            'because pcs were more powerful — because they got efficient '
+            'because pcs were more powerful â€” because they got efficient '
             'enough. ai is at that moment right now"\n'
             '- "we measure energy per query the way most people measure '
             'accuracy. if your ai runs on battery, efficiency is the whole game"\n'
@@ -209,3 +209,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

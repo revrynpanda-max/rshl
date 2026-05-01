@@ -1,4 +1,4 @@
-"""Tests for the ColBERTv2 late interaction memory backend."""
+﻿"""Tests for the ColBERTv2 late interaction memory backend."""
 
 from __future__ import annotations
 
@@ -162,3 +162,5 @@ def test_event_bus_retrieve():
         assert events[0].data["num_results"] >= 0
     finally:
         mod.get_event_bus = original
+
+

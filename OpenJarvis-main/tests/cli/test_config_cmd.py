@@ -1,4 +1,4 @@
-"""Tests for the ``jarvis config`` CLI commands."""
+﻿"""Tests for the ``jarvis config`` CLI commands."""
 
 from __future__ import annotations
 
@@ -208,3 +208,5 @@ temperature = 0.7
         result = CliRunner().invoke(cli, ["config", "loaded"])
         assert result.exit_code != 0
         assert "no such" in result.output.lower() or "unknown" in result.output.lower()
+
+

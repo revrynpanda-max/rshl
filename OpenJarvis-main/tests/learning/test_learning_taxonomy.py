@@ -1,4 +1,4 @@
-"""Tests for the learning policy ABC taxonomy."""
+﻿"""Tests for the learning policy ABC taxonomy."""
 
 from __future__ import annotations
 
@@ -33,3 +33,5 @@ class TestLearningPolicyABC:
     def test_hierarchy(self):
         assert issubclass(IntelligenceLearningPolicy, LearningPolicy)
         assert issubclass(AgentLearningPolicy, LearningPolicy)
+
+

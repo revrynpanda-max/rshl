@@ -1,4 +1,4 @@
-"""Digest collection tool — fetches recent data from configured connectors."""
+﻿"""Digest collection tool â€” fetches recent data from configured connectors."""
 
 from __future__ import annotations
 
@@ -117,7 +117,7 @@ def _format_oura(doc: Document) -> str:
             parts.append(f"{_format_duration(total)} total sleep")
         if awake is not None:
             parts.append(f"awake {_format_duration(awake)}")
-        return f"[oura] Sleep — {day_str}: {', '.join(parts)}"
+        return f"[oura] Sleep â€” {day_str}: {', '.join(parts)}"
 
     if data_type == "daily_readiness":
         score = data.get("score", "?")
@@ -125,7 +125,7 @@ def _format_oura(doc: Document) -> str:
             "temperature_deviation",
             data.get("temperature_trend_deviation"),
         )
-        line = f"[oura] Readiness — {day_str}: score {score}"
+        line = f"[oura] Readiness â€” {day_str}: score {score}"
         if temp is not None:
             sign = "+" if temp >= 0 else ""
             line += f", temperature deviation {sign}{temp}"
@@ -140,7 +140,7 @@ def _format_oura(doc: Document) -> str:
             parts.append(f"score {score}")
         parts.append(f"steps {steps}")
         parts.append(f"calories {cal}")
-        return f"[oura] Activity — {day_str}: {', '.join(parts)}"
+        return f"[oura] Activity â€” {day_str}: {', '.join(parts)}"
 
     # Fallback for unknown Oura doc types
     return f"[oura] {doc.title}"
@@ -163,7 +163,7 @@ def _format_gmail(doc: Document) -> str:
     ago = _time_ago(doc.timestamp)
     # Include body preview (first 150 chars, single line)
     body = doc.content.replace("\n", " ").strip()[:150] if doc.content else ""
-    line = f'[gmail] From: {sender} — "{subject}" ({ago})'
+    line = f'[gmail] From: {sender} â€” "{subject}" ({ago})'
     if body:
         line += f"\n  Preview: {body}"
     return line
@@ -174,7 +174,7 @@ def _format_gmail_imap(doc: Document) -> str:
     sender = doc.author or "Unknown"
     subject = doc.title or "(no subject)"
     ago = _time_ago(doc.timestamp)
-    return f'[gmail] From: {sender} — "{subject}" ({ago})'
+    return f'[gmail] From: {sender} â€” "{subject}" ({ago})'
 
 
 def _format_google_tasks(doc: Document) -> str:
@@ -231,7 +231,7 @@ def _format_outlook(doc: Document) -> str:
     sender = doc.author or "Unknown"
     subject = doc.title or "(no subject)"
     ago = _time_ago(doc.timestamp)
-    return f'[outlook] From: {sender} — "{subject}" ({ago})'
+    return f'[outlook] From: {sender} â€” "{subject}" ({ago})'
 
 
 def _format_notion(doc: Document) -> str:
@@ -253,7 +253,7 @@ def _format_gcalendar(doc: Document) -> str:
     if duration_match:
         when = duration_match.group(1).strip()
         # Extract just the times from the ISO strings
-        parts = when.split(" – ")
+        parts = when.split(" â€“ ")
         if len(parts) == 2:
             try:
                 start_dt = datetime.fromisoformat(parts[0].replace("Z", "+00:00"))
@@ -271,18 +271,18 @@ def _format_gcalendar(doc: Document) -> str:
                 time_range = f" ({duration})"
             except (ValueError, TypeError):
                 pass
-    return f"[gcalendar] {time_str} — {title}{time_range}"
+    return f"[gcalendar] {time_str} â€” {title}{time_range}"
 
 
 def _format_spotify(doc: Document) -> str:
-    """Format a Spotify recently-played track — returns 'Track — Artist'."""
-    # doc.title is already "Track — Artist" from the connector
+    """Format a Spotify recently-played track â€” returns 'Track â€” Artist'."""
+    # doc.title is already "Track â€” Artist" from the connector
     return doc.title
 
 
 def _format_apple_music(doc: Document) -> str:
-    """Format an Apple Music track — returns 'Track — Artist'."""
-    # doc.title is already "Track — Artist" from the connector
+    """Format an Apple Music track â€” returns 'Track â€” Artist'."""
+    # doc.title is already "Track â€” Artist" from the connector
     return doc.title
 
 
@@ -293,7 +293,7 @@ def _format_weather(doc: Document) -> str:
         temp = data.get("temp_f", "?")
         cond = data.get("conditions", "?")
         humidity = data.get("humidity", "?")
-        return f"[weather] Current: {temp}°F, {cond}, humidity {humidity}%"
+        return f"[weather] Current: {temp}Â°F, {cond}, humidity {humidity}%"
     if doc.doc_type == "forecast":
         return f"[weather] Forecast: {doc.content[:200]}"
     return f"[weather] {doc.title}"
@@ -324,7 +324,7 @@ def _format_news_rss(doc: Document) -> str:
     description = doc.content[:150].replace("\n", " ").strip() if doc.content else ""
     line = f"{prefix} {doc.title}"
     if description:
-        line += f" — {description}"
+        line += f" â€” {description}"
     return line
 
 
@@ -517,3 +517,4 @@ class DigestCollectTool(BaseTool):
                 "total_items": sum(len(v) for v in collected_docs.values()),
             },
         )
+

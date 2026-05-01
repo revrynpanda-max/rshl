@@ -1,10 +1,10 @@
-"""LearningPlanner: converts a diagnosis into a frozen LearningPlan.
+﻿"""LearningPlanner: converts a diagnosis into a frozen LearningPlan.
 
 Makes a single structured-output teacher call (no tools, no multi-turn)
 to generate typed edits for each failure cluster. Post-processes the
 edits with risk tier assignment and patch/replace downgrade.
 
-See spec §6.
+See spec Â§6.
 """
 
 from __future__ import annotations
@@ -154,7 +154,7 @@ class LearningPlanner:
         """
         self._session_dir.mkdir(parents=True, exist_ok=True)
 
-        # Validate clusters — drop those without evidence
+        # Validate clusters â€” drop those without evidence
         surviving, dropped = _validate_clusters(clusters)
 
         # Build the user prompt with diagnosis and cluster info
@@ -201,7 +201,7 @@ class LearningPlanner:
             for e in edits
         ]
 
-        # Wire clusters ↔ edits
+        # Wire clusters â†” edits
         surviving = self._wire_cluster_edit_ids(surviving, edits)
 
         # Build the plan
@@ -247,7 +247,7 @@ class LearningPlanner:
             try:
                 edits.append(Edit.model_validate(raw))
             except Exception as e:
-                logger.warning("Skipping invalid edit: %s — %s", raw.get("id", "?"), e)
+                logger.warning("Skipping invalid edit: %s â€” %s", raw.get("id", "?"), e)
         return edits
 
     def _wire_cluster_edit_ids(
@@ -279,3 +279,4 @@ class LearningPlanner:
         jsonl_path = traces_dir / "plan.jsonl"
         with jsonl_path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(record) + "\n")
+

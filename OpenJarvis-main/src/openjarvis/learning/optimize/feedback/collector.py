@@ -1,4 +1,4 @@
-"""FeedbackCollector -- aggregates feedback from multiple sources."""
+﻿"""FeedbackCollector -- aggregates feedback from multiple sources."""
 
 from __future__ import annotations
 
@@ -118,3 +118,4 @@ class FeedbackCollector:
 
 
 __all__ = ["FeedbackCollector"]
+

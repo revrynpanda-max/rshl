@@ -1,4 +1,4 @@
-"""Tests for GitHubNotificationsConnector — GitHub REST API."""
+﻿"""Tests for GitHubNotificationsConnector â€” GitHub REST API."""
 
 from __future__ import annotations
 
@@ -103,3 +103,5 @@ def test_sync_yields_documents(connector):
 def test_disconnect(connector):
     connector.disconnect()
     assert connector.is_connected() is False
+
+

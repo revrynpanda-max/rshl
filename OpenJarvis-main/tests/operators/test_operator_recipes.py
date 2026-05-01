@@ -1,4 +1,4 @@
-"""Tests for the 3 operator recipes: researcher, correspondent, sentinel."""
+﻿"""Tests for the 3 operator recipes: researcher, correspondent, sentinel."""
 
 from pathlib import Path
 
@@ -96,3 +96,5 @@ class TestAllOperators:
         assert manifest.name
         assert manifest.tools
         assert manifest.system_prompt
+
+

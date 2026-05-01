@@ -1,4 +1,4 @@
-"""Tests for tokens_per_joule storage and aggregation."""
+﻿"""Tests for tokens_per_joule storage and aggregation."""
 
 from __future__ import annotations
 
@@ -63,3 +63,5 @@ class TestTokensPerJouleStorage:
         assert len(stats) == 1
         assert stats[0].avg_tokens_per_joule == pytest.approx(20.0, rel=0.1)
         agg.close()
+
+

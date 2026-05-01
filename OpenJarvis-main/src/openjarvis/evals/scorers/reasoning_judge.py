@@ -1,4 +1,4 @@
-"""Reasoning judge scorer -- LLM-as-judge for math and reasoning tasks.
+﻿"""Reasoning judge scorer -- LLM-as-judge for math and reasoning tasks.
 
 Attempts normalized exact match first, then falls back to an LLM judge
 for semantic comparison.  Adapted from IPW's reasoning evaluation handlers.
@@ -164,3 +164,4 @@ class ReasoningJudgeScorer(LLMJudgeScorer):
 
 
 __all__ = ["ReasoningJudgeScorer", "reasoning_exact_match"]
+

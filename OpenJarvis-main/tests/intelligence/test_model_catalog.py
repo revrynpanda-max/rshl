@@ -1,4 +1,4 @@
-"""Tests for the built-in model catalog."""
+﻿"""Tests for the built-in model catalog."""
 
 from __future__ import annotations
 
@@ -47,3 +47,5 @@ class TestMergeDiscoveredModels:
         original = ModelRegistry.get("qwen3:8b")
         merge_discovered_models("ollama", ["qwen3:8b"])
         assert ModelRegistry.get("qwen3:8b").name == original.name
+
+

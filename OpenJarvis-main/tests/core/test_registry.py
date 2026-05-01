@@ -1,4 +1,4 @@
-"""Tests for the decorator-based registry system."""
+﻿"""Tests for the decorator-based registry system."""
 
 from __future__ import annotations
 
@@ -92,3 +92,5 @@ class TestRouterPolicyRegistry:
         RouterPolicyRegistry.register_value("dup", 1)
         with pytest.raises(ValueError, match="already has an entry"):
             RouterPolicyRegistry.register_value("dup", 2)
+
+

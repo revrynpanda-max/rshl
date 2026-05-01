@@ -1,4 +1,4 @@
-"""Tests for incremental sync via the `since` parameter in SyncEngine."""
+﻿"""Tests for incremental sync via the `since` parameter in SyncEngine."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from openjarvis.connectors.store import KnowledgeStore
 from openjarvis.connectors.sync_engine import SyncEngine
 
 # ---------------------------------------------------------------------------
-# TimestampConnector — records the `since` value it receives
+# TimestampConnector â€” records the `since` value it receives
 # ---------------------------------------------------------------------------
 
 
@@ -88,7 +88,7 @@ def engine(pipeline: IngestionPipeline, tmp_path: Path) -> SyncEngine:
 
 
 # ---------------------------------------------------------------------------
-# Test 1: first sync has no checkpoint — since should be None
+# Test 1: first sync has no checkpoint â€” since should be None
 # ---------------------------------------------------------------------------
 
 
@@ -113,11 +113,11 @@ def test_second_sync_passes_since(engine: SyncEngine) -> None:
     docs = [_make_doc("second:doc:0", content="Document for incremental sync")]
     connector = TimestampConnector(docs)
 
-    # First sync — establishes the checkpoint
+    # First sync â€” establishes the checkpoint
     engine.sync(connector)
     assert connector.received_since[0] is None
 
-    # Second sync — should receive a datetime parsed from last_sync
+    # Second sync â€” should receive a datetime parsed from last_sync
     engine.sync(connector)
     assert len(connector.received_since) == 2
     since_value = connector.received_since[1]
@@ -170,13 +170,13 @@ def test_incremental_only_adds_new_items(
     engine = SyncEngine(pipeline, state_db=str(tmp_path / "incr_sync_state.db"))
     connector = SelectiveTimestampConnector(old_docs, new_docs)
 
-    # First sync — 2 old docs ingested
+    # First sync â€” 2 old docs ingested
     items_first = engine.sync(connector)
     assert items_first == 2
     count_after_first = store.count()
     assert count_after_first == 2
 
-    # Second sync — only 1 new doc returned by the connector
+    # Second sync â€” only 1 new doc returned by the connector
     items_second = engine.sync(connector)
     assert items_second == 1
     assert store.count() == 3
@@ -184,3 +184,5 @@ def test_incremental_only_adds_new_items(
     # The second call received a valid since datetime
     assert connector.received_since[1] is not None
     assert isinstance(connector.received_since[1], datetime)
+
+

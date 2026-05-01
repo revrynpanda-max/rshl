@@ -1,4 +1,4 @@
-"""Telemetry — SQLite-backed inference recording and instrumented wrappers."""
+﻿"""Telemetry â€” SQLite-backed inference recording and instrumented wrappers."""
 
 from __future__ import annotations
 
@@ -109,3 +109,4 @@ __all__ = [
     "create_energy_monitor",
     "instrumented_generate",
 ]
+

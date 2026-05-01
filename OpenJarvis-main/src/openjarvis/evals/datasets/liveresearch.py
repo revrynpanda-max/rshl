@@ -1,4 +1,4 @@
-"""DeepResearchBench dataset provider — deep research benchmark.
+﻿"""DeepResearchBench dataset provider â€” deep research benchmark.
 
 Clones the deep_research_bench repo at runtime and parses query + criteria
 JSONL files into EvalRecords for use with AgenticRunner.
@@ -50,7 +50,7 @@ def _build_criteria_index(
 
 
 class LiveResearchBenchDataset(DatasetProvider):
-    """DeepResearchBench — deep research with 100 expert-curated tasks.
+    """DeepResearchBench â€” deep research with 100 expert-curated tasks.
 
     Clones Ayanami0730/deep_research_bench from GitHub (or uses a local
     path) and parses query + criteria JSONL files into EvalRecords.
@@ -118,7 +118,7 @@ class LiveResearchBenchDataset(DatasetProvider):
         if not queries:
             raise FileNotFoundError(f"No queries found in {query_path}")
 
-        # Load criteria (optional — used for rubric-based scoring)
+        # Load criteria (optional â€” used for rubric-based scoring)
         criteria_path = repo_dir / "data" / "criteria_data" / "criteria.jsonl"
         criteria_index: Dict[int, Dict[str, Any]] = {}
         if criteria_path.exists():
@@ -189,3 +189,4 @@ class LiveResearchBenchDataset(DatasetProvider):
 
 
 __all__ = ["LiveResearchBenchDataset"]
+

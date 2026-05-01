@@ -1,4 +1,4 @@
-"""Search space builder and default search space for configuration optimization."""
+﻿"""Search space builder and default search space for configuration optimization."""
 
 from __future__ import annotations
 
@@ -198,3 +198,4 @@ __all__ = [
     "build_search_space",
     "DEFAULT_SEARCH_SPACE",
 ]
+

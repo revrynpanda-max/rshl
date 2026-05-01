@@ -1,4 +1,4 @@
-"""Tests for the unified compose system — enhanced Recipe, bridges, and discovery."""
+﻿"""Tests for the unified compose system â€” enhanced Recipe, bridges, and discovery."""
 
 from __future__ import annotations
 
@@ -469,3 +469,5 @@ class TestBuiltinRecipes:
         assert r is not None
         assert r.kind == "operator"
         assert r.schedule_type == "interval"
+
+

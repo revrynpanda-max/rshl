@@ -1,4 +1,4 @@
-"""Tests for secure file creation helpers (Section 4)."""
+﻿"""Tests for secure file creation helpers (Section 4)."""
 
 from __future__ import annotations
 
@@ -72,3 +72,5 @@ class TestSecureCreate:
             secure_create(target)
             parent_mode = stat.S_IMODE(os.stat(target.parent).st_mode)
             assert parent_mode == 0o700
+
+

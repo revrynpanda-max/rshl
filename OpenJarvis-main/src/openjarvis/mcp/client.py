@@ -1,4 +1,4 @@
-"""MCP Client — connects to MCP servers and discovers/calls tools."""
+﻿"""MCP Client â€” connects to MCP servers and discovers/calls tools."""
 
 from __future__ import annotations
 
@@ -73,7 +73,7 @@ class MCPClient:
         request = MCPRequest(
             method=method,
             params=params or {},
-            id=None,  # None → no id field in JSON (notification)
+            id=None,  # None â†’ no id field in JSON (notification)
         )
         self._transport.send_notification(request)
 
@@ -120,3 +120,4 @@ class MCPClient:
 
 
 __all__ = ["MCPClient"]
+

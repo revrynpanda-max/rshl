@@ -1,4 +1,4 @@
-"""API key authentication middleware for the OpenJarvis server."""
+﻿"""API key authentication middleware for the OpenJarvis server."""
 
 from __future__ import annotations
 
@@ -69,3 +69,4 @@ def check_bind_safety(host: str, *, api_key: str) -> None:
             host,
         )
         sys.exit(1)
+

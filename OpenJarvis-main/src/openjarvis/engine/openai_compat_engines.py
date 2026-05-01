@@ -1,4 +1,4 @@
-"""Data-driven registration of OpenAI-compatible inference engines."""
+﻿"""Data-driven registration of OpenAI-compatible inference engines."""
 
 from openjarvis.core.registry import EngineRegistry
 from openjarvis.engine._openai_compat import _OpenAICompatibleEngine
@@ -26,3 +26,4 @@ for _key, (_cls_name, _default_host, _api_prefix) in _ENGINES.items():
     globals()[_cls_name] = _cls
 
 __all__ = [name for name, _, _ in _ENGINES.values()]
+

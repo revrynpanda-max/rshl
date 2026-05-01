@@ -1,6 +1,6 @@
-"""Query complexity analyzer — scores queries and suggests token budgets.
+﻿"""Query complexity analyzer â€” scores queries and suggests token budgets.
 
-Produces a numeric complexity score (0.0–1.0) and a suggested
+Produces a numeric complexity score (0.0â€“1.0) and a suggested
 ``max_tokens`` budget based on query characteristics such as length,
 domain signals (code, math, multi-step reasoning), and whether the
 target model is a thinking model that needs extra headroom.
@@ -78,7 +78,7 @@ _THINKING_TOKEN_MULTIPLIER = 2
 class ComplexityResult:
     """Output of the complexity analysis."""
 
-    score: float  # 0.0–1.0
+    score: float  # 0.0â€“1.0
     tier: str
     suggested_max_tokens: int
     signals: dict
@@ -107,7 +107,7 @@ def score_complexity(query: str) -> ComplexityResult:
     signals: dict = {}
     score = 0.0
 
-    # --- Length signal (0–0.20) ---
+    # --- Length signal (0â€“0.20) ---
     length = len(query)
     if length < 20:
         length_score = 0.0
@@ -122,7 +122,7 @@ def score_complexity(query: str) -> ComplexityResult:
     signals["length"] = length_score
     score += 0.20 * length_score
 
-    # --- Domain signals (0–0.25) ---
+    # --- Domain signals (0â€“0.25) ---
     has_code = bool(_CODE_PATTERNS.search(query))
     has_math = bool(_MATH_PATTERNS.search(query))
     domain_score = 0.0
@@ -137,7 +137,7 @@ def score_complexity(query: str) -> ComplexityResult:
     signals["has_math"] = has_math
     score += 0.25 * domain_score
 
-    # --- Reasoning signal (0–0.25) ---
+    # --- Reasoning signal (0â€“0.25) ---
     has_reasoning = bool(_REASONING_PATTERNS.search(query))
     has_multi_step = bool(_MULTI_STEP_PATTERNS.search(query))
     reasoning_score = 0.0
@@ -152,7 +152,7 @@ def score_complexity(query: str) -> ComplexityResult:
     signals["has_multi_step"] = has_multi_step
     score += 0.25 * reasoning_score
 
-    # --- Question / sub-task count (0–0.15) ---
+    # --- Question / sub-task count (0â€“0.15) ---
     n_questions = _count_questions(query)
     n_subtasks = _count_sub_tasks(query)
     multi_part = n_questions + n_subtasks
@@ -167,7 +167,7 @@ def score_complexity(query: str) -> ComplexityResult:
     signals["n_subtasks"] = n_subtasks
     score += 0.15 * multi_score
 
-    # --- Creative / generative signal (0–0.15) ---
+    # --- Creative / generative signal (0â€“0.15) ---
     has_creative = bool(_CREATIVE_PATTERNS.search(query))
     creative_score = 0.7 if has_creative else 0.0
     signals["creative"] = creative_score
@@ -219,7 +219,7 @@ def adjust_tokens_for_model(suggested: int, model_name: Optional[str] = None) ->
 class ComplexityQueryAnalyzer(QueryAnalyzer):
     """Query analyzer that produces a complexity-aware RoutingContext.
 
-    Drop-in replacement for ``DefaultQueryAnalyzer`` — adds
+    Drop-in replacement for ``DefaultQueryAnalyzer`` â€” adds
     ``complexity_score``, ``has_reasoning``, and ``suggested_max_tokens``
     to the returned ``RoutingContext``.
     """
@@ -255,3 +255,4 @@ __all__ = [
     "is_thinking_model",
     "score_complexity",
 ]
+

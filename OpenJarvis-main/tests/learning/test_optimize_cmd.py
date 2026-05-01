@@ -170,3 +170,5 @@ class TestTraceStoreUpdateFeedback:
         assert updated is not None
         assert updated.feedback == pytest.approx(0.8)
         store.close()
+
+

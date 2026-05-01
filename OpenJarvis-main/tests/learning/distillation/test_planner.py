@@ -270,3 +270,5 @@ class TestLearningPlanner:
 
         # Should return a plan with no edits rather than crashing
         assert plan.edits == []
+
+

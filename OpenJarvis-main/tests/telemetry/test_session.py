@@ -1,4 +1,4 @@
-"""Tests for TelemetrySession and ring buffer."""
+﻿"""Tests for TelemetrySession and ring buffer."""
 
 from __future__ import annotations
 
@@ -93,3 +93,5 @@ class TestTelemetrySession:
         session = TelemetrySession(monitor=None)
         session.start()
         session.stop()
+
+

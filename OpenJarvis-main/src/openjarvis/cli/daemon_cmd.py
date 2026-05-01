@@ -1,4 +1,4 @@
-"""``jarvis start|stop|restart|status`` — daemon management commands."""
+﻿"""``jarvis start|stop|restart|status`` â€” daemon management commands."""
 
 from __future__ import annotations
 
@@ -173,3 +173,4 @@ def status() -> None:
 
 
 __all__ = ["daemon", "start", "stop", "restart", "status"]
+

@@ -1,4 +1,4 @@
-"""Tests for the SlackChannel adapter."""
+﻿"""Tests for the SlackChannel adapter."""
 
 from __future__ import annotations
 
@@ -139,3 +139,5 @@ class TestStatus:
         ch = SlackChannel()
         ch.connect()
         assert ch.status() == ChannelStatus.ERROR
+
+

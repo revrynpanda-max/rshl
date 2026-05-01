@@ -1,4 +1,4 @@
-"""SkillManager — coordinates skill discovery, catalog, tool wrapping, and execution."""
+﻿"""SkillManager â€” coordinates skill discovery, catalog, tool wrapping, and execution."""
 
 from __future__ import annotations
 
@@ -72,7 +72,7 @@ class SkillManager:
         ----------
         paths:
             Directories to scan.  If *None* or empty, no skills are loaded
-            from disk — but ``_load_overlays()`` still runs (in case the
+            from disk â€” but ``_load_overlays()`` still runs (in case the
             caller had previously seeded ``self._skills`` directly).
         """
         if paths:
@@ -87,7 +87,7 @@ class SkillManager:
             if self._skills:
                 validate_dependencies(self._skills)
 
-        # Load optimization overlays (Plan 2A) — always runs, even when no
+        # Load optimization overlays (Plan 2A) â€” always runs, even when no
         # paths are provided, so callers can apply overlays to skills loaded
         # via other means.
         self._load_overlays()
@@ -99,7 +99,7 @@ class SkillManager:
         If present, override the manifest description and stash few-shot
         examples under ``manifest.metadata.openjarvis.few_shot``.
 
-        Bad overlays are silently ignored — they should not break discovery.
+        Bad overlays are silently ignored â€” they should not break discovery.
         """
         from openjarvis.skills.overlay import SkillOverlayLoader
 
@@ -438,3 +438,4 @@ class _NullToolExecutor(ToolExecutor):
 
 
 __all__ = ["SkillManager"]
+

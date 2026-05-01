@@ -1,6 +1,6 @@
-"""SWE-bench dataset (princeton-nlp/SWE-bench_Verified).
+﻿"""SWE-bench dataset (princeton-nlp/SWE-bench_Verified).
 
-Agentic coding benchmark — patches for real-world GitHub issues.
+Agentic coding benchmark â€” patches for real-world GitHub issues.
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ _DEFAULT_PROMPT = """You are a software engineer working on the repository **{re
 - Analyze the issue described above.
 - Produce a patch (unified diff format) that resolves the issue.
 - The patch must apply cleanly against commit `{base_commit}`.
-- Return ONLY the patch — no explanation, no markdown fences."""
+- Return ONLY the patch â€” no explanation, no markdown fences."""
 
 
 def _parse_test_list(value: object) -> List[str]:
@@ -166,3 +166,4 @@ class SWEBenchDataset(DatasetProvider):
 
 
 __all__ = ["SWEBenchDataset"]
+

@@ -1,4 +1,4 @@
-"""Apply-patch tool — apply unified diff patches to files."""
+﻿"""Apply-patch tool â€” apply unified diff patches to files."""
 
 from __future__ import annotations
 
@@ -85,7 +85,7 @@ def _parse_patch(patch_text: str) -> tuple[Optional[str], List[_Hunk]]:
             if line.startswith((" ", "+", "-")):
                 current_hunk.lines.append(line)
             elif line == "\\ No newline at end of file":
-                # Informational — skip
+                # Informational â€” skip
                 continue
             # Blank line inside a hunk counts as context (space-prefixed)
             # but some diffs omit the leading space for empty context lines.
@@ -125,7 +125,7 @@ def _apply_hunks(original: str, hunks: List[_Hunk]) -> str:
             content = diff_line[1:]
 
             if tag == " ":
-                # Context line — must match original
+                # Context line â€” must match original
                 if check_pos >= len(orig_lines):
                     raise ValueError(
                         f"Hunk {hunk_idx + 1}: context line beyond end of file"
@@ -143,7 +143,7 @@ def _apply_hunks(original: str, hunks: List[_Hunk]) -> str:
                 check_pos += 1
 
             elif tag == "-":
-                # Removal — verify the line matches before removing
+                # Removal â€” verify the line matches before removing
                 if check_pos >= len(orig_lines):
                     raise ValueError(
                         f"Hunk {hunk_idx + 1}: removal line beyond end of file"
@@ -158,7 +158,7 @@ def _apply_hunks(original: str, hunks: List[_Hunk]) -> str:
                         f" got {orig_content!r}"
                     )
                 check_pos += 1
-                # Do NOT append — line is removed
+                # Do NOT append â€” line is removed
 
             elif tag == "+":
                 # Addition
@@ -338,3 +338,4 @@ class ApplyPatchTool(BaseTool):
 
 
 __all__ = ["ApplyPatchTool"]
+

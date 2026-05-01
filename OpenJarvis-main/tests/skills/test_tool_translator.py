@@ -1,4 +1,4 @@
-"""Tests for ToolTranslator — translate external tool names to OpenJarvis."""
+﻿"""Tests for ToolTranslator â€” translate external tool names to OpenJarvis."""
 
 from __future__ import annotations
 
@@ -79,3 +79,5 @@ class TestAllowedToolsTranslation:
         translator = ToolTranslator()
         new_field, untranslated = translator.translate_allowed_tools("Bash UnknownTool")
         assert "UnknownTool" in untranslated
+
+

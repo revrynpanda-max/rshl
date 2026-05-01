@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Index OpenJarvis docs (README.md + docs/**/*.md) into a DenseMemory backend.
 
 Usage:
@@ -6,7 +6,7 @@ Usage:
     python scripts/index_docs.py --query "can i run this on cpu?"
 
 This script is idempotent: it builds a fresh in-memory index each run.
-There is no disk persistence by design — dense vectors are cheap to
+There is no disk persistence by design â€” dense vectors are cheap to
 rebuild and the docs corpus is small.
 
 Embedding model: ``nomic-embed-text`` via Ollama. Pull it with
@@ -49,8 +49,8 @@ def build_index(
     dedupe: bool = True,
     # Empirical: on the actual OpenJarvis docs the boilerplate that
     # crowds retrieval ("OpenJarvis runs entirely on your hardware...")
-    # appears in exactly 2 files (downloads.md ↔ installation.md).
-    # Spec'd 3+ removes 0 chunks; 2+ removes 15 (1.3%) — all genuine
+    # appears in exactly 2 files (downloads.md â†” installation.md).
+    # Spec'd 3+ removes 0 chunks; 2+ removes 15 (1.3%) â€” all genuine
     # cross-file boilerplate. See the dry-run audit logged at index time.
     dedupe_min_files: int = 2,
     dedupe_threshold: float = 0.7,
@@ -182,3 +182,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+

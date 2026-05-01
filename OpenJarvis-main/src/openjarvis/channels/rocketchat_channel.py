@@ -1,4 +1,4 @@
-"""RocketChatChannel — Rocket.Chat adapter via rocketchat_API."""
+﻿"""RocketChatChannel â€” Rocket.Chat adapter via rocketchat_API."""
 
 from __future__ import annotations
 
@@ -167,3 +167,4 @@ class RocketChatChannel(BaseChannel):
 
 
 __all__ = ["RocketChatChannel"]
+

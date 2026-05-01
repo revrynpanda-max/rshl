@@ -1,4 +1,4 @@
-"""Tests for /v1/channels endpoints.
+﻿"""Tests for /v1/channels endpoints.
 
 Requires the ``[server]`` optional extra (fastapi, uvicorn, pydantic).
 Skipped automatically when those packages are not installed.
@@ -147,3 +147,5 @@ class TestChannelStatus:
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "not_configured"
+
+

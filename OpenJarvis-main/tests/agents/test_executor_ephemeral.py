@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
@@ -43,3 +43,5 @@ def test_run_ephemeral_passes_input():
             input_text="Hello world",
         )
     mock_agent_instance.run.assert_called_once_with("Hello world")
+
+

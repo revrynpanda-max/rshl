@@ -1,4 +1,4 @@
-"""DeepPlanning: long-horizon planning with constraints.
+﻿"""DeepPlanning: long-horizon planning with constraints.
 
 Evaluates agents on complex shopping tasks with hard constraints
 (product attributes, ratings, stock, shipping).
@@ -28,7 +28,7 @@ _SYSTEM_PROMPT = (
     "You are a shopping assistant. Given the user's request and a product catalog, "
     "select the correct products that satisfy ALL stated constraints.\n\n"
     "IMPORTANT INSTRUCTIONS:\n"
-    "- Read through the product catalog data directly — do NOT write code to parse it\n"
+    "- Read through the product catalog data directly â€” do NOT write code to parse it\n"
     "- For each constraint, find products matching ALL requirements\n"
     "- If a constraint references data not in the catalog (e.g., transport time "
     "when only shipping provider is listed), use reasonable inference from "
@@ -234,3 +234,4 @@ class DeepPlanningDataset(DatasetProvider):
 
 
 __all__ = ["DeepPlanningDataset"]
+

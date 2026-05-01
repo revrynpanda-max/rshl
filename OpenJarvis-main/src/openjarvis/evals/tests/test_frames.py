@@ -1,4 +1,4 @@
-"""Tests for FRAMES scorer (judge prompt formatting and verdict parsing)."""
+﻿"""Tests for FRAMES scorer (judge prompt formatting and verdict parsing)."""
 
 from __future__ import annotations
 
@@ -109,3 +109,4 @@ class TestFRAMESScorer:
 
         assert is_correct is None
         assert "error" in meta
+

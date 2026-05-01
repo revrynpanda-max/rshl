@@ -1,4 +1,4 @@
-"""Tests for tool execution timeout (Phase 14.1)."""
+﻿"""Tests for tool execution timeout (Phase 14.1)."""
 
 from __future__ import annotations
 
@@ -110,3 +110,5 @@ class TestToolTimeout:
         result = executor.execute(call)
         assert not result.success
         assert "Unknown tool" in result.content
+
+

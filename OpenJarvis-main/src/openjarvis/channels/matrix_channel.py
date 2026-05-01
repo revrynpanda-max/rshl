@@ -1,4 +1,4 @@
-"""MatrixChannel — Matrix homeserver adapter."""
+﻿"""MatrixChannel â€” Matrix homeserver adapter."""
 
 from __future__ import annotations
 
@@ -50,7 +50,7 @@ class MatrixChannel(BaseChannel):
     # -- connection lifecycle ---------------------------------------------------
 
     def connect(self) -> None:
-        """Mark as connected (send-only — no persistent connection)."""
+        """Mark as connected (send-only â€” no persistent connection)."""
         if not self._homeserver or not self._access_token:
             logger.warning("No Matrix homeserver or access_token configured")
             self._status = ChannelStatus.ERROR
@@ -139,3 +139,4 @@ class MatrixChannel(BaseChannel):
 
 
 __all__ = ["MatrixChannel"]
+

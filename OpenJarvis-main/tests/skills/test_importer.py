@@ -1,4 +1,4 @@
-"""Tests for SkillImporter — installs ResolvedSkill instances on disk."""
+﻿"""Tests for SkillImporter â€” installs ResolvedSkill instances on disk."""
 
 from __future__ import annotations
 
@@ -202,3 +202,5 @@ class TestImportSkill:
 
         installed = target_root / "hermes" / "my-skill" / "SKILL.md"
         assert "Original" in installed.read_text()
+
+

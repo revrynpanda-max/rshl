@@ -1,4 +1,4 @@
-"""``jarvis bench`` — run inference benchmarks."""
+﻿"""``jarvis bench`` â€” run inference benchmarks."""
 
 from __future__ import annotations
 
@@ -76,7 +76,7 @@ def _render_stats_table(console: Console, result: BenchmarkResult) -> None:
         for pfx in prefixes:
             consumed.add(f"{pfx}_{base}")
 
-    # Stat groups → multi-column table (use "—" for missing stats)
+    # Stat groups â†’ multi-column table (use "â€”" for missing stats)
     if groups:
         table = Table(
             title=(
@@ -97,7 +97,7 @@ def _render_stats_table(console: Console, result: BenchmarkResult) -> None:
         table.add_column("P95", justify="right")
 
         def _cell(v: float | None) -> str:
-            return f"{v:.4f}" if v is not None else "—"
+            return f"{v:.4f}" if v is not None else "â€”"
 
         for base, vals in sorted(groups.items()):
             table.add_row(
@@ -111,7 +111,7 @@ def _render_stats_table(console: Console, result: BenchmarkResult) -> None:
             )
         console.print(table)
 
-    # Remaining non-stats metrics → simple key-value table
+    # Remaining non-stats metrics â†’ simple key-value table
     remaining = {k: v for k, v in result.metrics.items() if k not in consumed}
     has_energy_stats = "energy_joules" in groups
     if result.total_energy_joules > 0 and not has_energy_stats:
@@ -282,7 +282,7 @@ def run(
         extra_name = extra_hint.split("[")[1].rstrip("]")
         msg = (
             "[yellow]Energy monitor not available"
-            " — energy metrics will be zero.[/yellow]\n"
+            " â€” energy metrics will be zero.[/yellow]\n"
             f"  Install: [bold]uv sync "
             f"--extra {extra_name}[/bold]\n"
         )
@@ -472,7 +472,7 @@ def skills(
         console.print(f"\n[green]Report written:[/green] {report_path}")
     else:
         result = runner.run_condition(condition)
-        table = Table(title=f"PinchBench Skills — {condition}")
+        table = Table(title=f"PinchBench Skills â€” {condition}")
         table.add_column("Field", style="cyan")
         table.add_column("Value")
         table.add_row("Condition", result.condition)
@@ -485,3 +485,4 @@ def skills(
         table.add_row("Total tokens", str(result.total_tokens))
         table.add_row("Runtime (s)", f"{result.total_runtime_seconds:.1f}")
         console.print(table)
+

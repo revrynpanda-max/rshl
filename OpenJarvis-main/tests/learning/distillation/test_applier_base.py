@@ -1,4 +1,4 @@
-"""Tests for openjarvis.learning.distillation.execute.base module."""
+﻿"""Tests for openjarvis.learning.distillation.execute.base module."""
 
 from __future__ import annotations
 
@@ -103,3 +103,5 @@ class TestEditApplierRegistry:
         registry = EditApplierRegistry()
         with pytest.raises(KeyError):
             registry.get(EditOp.LORA_FINETUNE)
+
+

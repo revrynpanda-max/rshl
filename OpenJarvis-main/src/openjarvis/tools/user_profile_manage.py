@@ -1,4 +1,4 @@
-"""Manage persistent user profile (USER.md)."""
+﻿"""Manage persistent user profile (USER.md)."""
 
 from __future__ import annotations
 
@@ -135,3 +135,4 @@ class UserProfileManageTool(BaseTool):
             success=True,
             content=f"Removed: {entry}",
         )
+

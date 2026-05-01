@@ -1,4 +1,4 @@
-"""Tier 1: derived metrics — energy_per_output_token, throughput_per_watt."""
+﻿"""Tier 1: derived metrics â€” energy_per_output_token, throughput_per_watt."""
 
 from __future__ import annotations
 
@@ -191,3 +191,5 @@ class TestDerivedMetricsInStore:
         assert summary.avg_throughput_per_watt > 0
         agg.close()
         store.close()
+
+

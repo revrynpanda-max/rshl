@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
-"""Daily Digest — morning briefing operator that searches and summarizes news.
+﻿#!/usr/bin/env python3
+"""Daily Digest â€” morning briefing operator that searches and summarizes news.
 
 Usage:
     python examples/daily_digest/daily_digest.py --help
@@ -118,3 +118,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

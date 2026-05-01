@@ -1,11 +1,11 @@
-"""Apple Notes connector — reads directly from the macOS Notes SQLite database.
+﻿"""Apple Notes connector â€” reads directly from the macOS Notes SQLite database.
 
 No API calls, no OAuth.  The connector opens
 ``~/Library/Group Containers/group.com.apple.notes/NoteStore.sqlite``
 in read-only mode and yields one :class:`Document` per note.
 
 Requires **Full Disk Access** granted to the terminal / app in
-System Settings → Privacy & Security → Full Disk Access.
+System Settings â†’ Privacy & Security â†’ Full Disk Access.
 
 Timestamp notes
 ---------------
@@ -76,7 +76,7 @@ def _extract_text_from_zdata(zdata: bytes) -> str:
     Parameters
     ----------
     zdata:
-        Raw bytes from the ``ZDATA`` column — gzip-compressed protobuf
+        Raw bytes from the ``ZDATA`` column â€” gzip-compressed protobuf
         (``com.apple.notes.ICNote``).
 
     Returns
@@ -289,3 +289,4 @@ class AppleNotesConnector(BaseConnector):
                 category="knowledge",
             ),
         ]
+

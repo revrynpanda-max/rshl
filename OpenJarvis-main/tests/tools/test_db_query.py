@@ -1,4 +1,4 @@
-"""Tests for the db_query tool."""
+﻿"""Tests for the db_query tool."""
 
 from __future__ import annotations
 
@@ -281,3 +281,5 @@ class TestDatabaseQueryTool:
         assert "|" in result.content
         assert "short" in result.content
         assert "longer_column" in result.content
+
+

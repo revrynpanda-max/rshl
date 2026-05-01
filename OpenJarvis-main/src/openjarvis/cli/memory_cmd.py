@@ -1,4 +1,4 @@
-"""``jarvis memory`` — memory management subcommands."""
+﻿"""``jarvis memory`` â€” memory management subcommands."""
 
 from __future__ import annotations
 
@@ -204,3 +204,4 @@ def stats(backend: str | None) -> None:
     finally:
         if hasattr(mem, "close"):
             mem.close()
+

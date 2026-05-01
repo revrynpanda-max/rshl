@@ -1,4 +1,4 @@
-"""Credential persistence for tools and channels.
+﻿"""Credential persistence for tools and channels.
 
 Stores credentials in ~/.openjarvis/credentials.toml with 0o600 permissions.
 Thread-safe writes via lock. Sets os.environ on save for immediate effect.
@@ -127,3 +127,4 @@ def get_tool_credential(
     if value is not None:
         return value
     return os.environ.get(key) or None
+

@@ -1,4 +1,4 @@
-"""Source resolver ABC + ResolvedSkill dataclass."""
+﻿"""Source resolver ABC + ResolvedSkill dataclass."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from typing import Any, Dict, List
 class ResolvedSkill:
     """A skill found in an upstream source, ready to import.
 
-    Lightweight — does not include the full SKILL.md body.  The importer
+    Lightweight â€” does not include the full SKILL.md body.  The importer
     reads the file from *path* when actually installing.
     """
 
@@ -64,3 +64,4 @@ class SourceResolver(ABC):
 
 
 __all__ = ["ResolvedSkill", "SourceResolver"]
+

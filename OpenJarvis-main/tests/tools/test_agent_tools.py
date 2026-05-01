@@ -1,4 +1,4 @@
-"""Tests for inter-agent lifecycle tools."""
+﻿"""Tests for inter-agent lifecycle tools."""
 
 from __future__ import annotations
 
@@ -250,3 +250,5 @@ class TestAgentKillTool:
         tool = AgentKillTool()
         result = tool.execute()
         assert not result.success
+
+

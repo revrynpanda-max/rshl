@@ -1,4 +1,4 @@
-"""Tests for the pdf_extract tool."""
+﻿"""Tests for the pdf_extract tool."""
 
 from __future__ import annotations
 
@@ -195,3 +195,5 @@ class TestParsePages:
 
     def test_empty_string(self):
         assert _parse_pages("", 5) == []
+
+
