@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -350,7 +350,7 @@ button:disabled{opacity:0.3;cursor:not-allowed}
   </div>
   <div class="controls">
     <div class="input-area">
-      <textarea id="msg-input" placeholder="Ryan: Message to the roundtable... (Ctrl+Enter to post)"></textarea>
+      <textarea id="msg-input" placeholder="User: Message to the roundtable... (Ctrl+Enter to post)"></textarea>
       <div class="model-chips" id="model-chips">
         <!-- chips rendered by JS -->
       </div>
@@ -655,7 +655,7 @@ async function denyTest(id) {
 $("btn-post").onclick = async () => {
   const text = $("msg-input").value.trim();
   if (!text) return;
-  const res = await api("/api/turn", { from: "Ryan", text });
+  const res = await api("/api/turn", { from: "User", text });
   if (res) { $("msg-input").value = ""; updateUI(res); }
 };
 
