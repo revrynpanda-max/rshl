@@ -1,6 +1,37 @@
 # KAI Development Changelog
 
-## v6.0.0 — Epistemic Architecture & Oracle Diagnostic Suite (April 28, 2026)
+## v6.1.0 — Oracle-KAI Fusion & Voice Council (May 1, 2026)
+
+### Major Milestone: The Agentic Fusion
+v6.1.0 marks the deep integration of the **KAI Blueprint** (OpenJarvis agentic logic) into the Oracle roundtable. The system has shifted from a diagnostic tool to a fully autonomous coding and orchestration engine.
+
+### Commit 1 — Feature: The Voice Council
+`tools/oracle-discord/index.mjs`, `run-oracle-discord.ps1`, `voice.rs`
+- Implemented **Multi-Agent Voice Integration**: Leo can now join Discord voice channels and participate in live discussions with users.
+- **Dynamic Fallback**: Seamless switching between ElevenLabs and OpenAI TTS engines to ensure 100% voice availability.
+- **Personality Preservation**: Centralized bio-seeding ensures all 9 agents (Analyst, Researcher, Groq, etc.) maintain consistent personalities across both text and voice.
+
+### Commit 2 — Feature: KAI Blueprint Integration
+`OpenJarvis-main/`, `src/bridge/oracle_server.rs`
+- Fused the **Claude-CLI agentic logic** (Blueprint) into the Oracle executive layer.
+- Oracle now utilizes OpenJarvis as its "Task Master" for complex file operations, system diagnostics, and autonomous coding plans.
+- Added **Approval-Gated Tooling**: All agentic actions are visible and approval-gated via the Oracle Diagnostic UI.
+
+### Commit 3 — Stability: Rust & Unicode Recovery
+`src/core/universe.rs`, `src/core/sparse_vec.rs`
+- Resolved critical **Unicode corruption** (`Â²` -> `²`) in the RSHL engine that was causing repository-level build failures.
+- Optimized keyword extraction logic to handle extended character sets without tokenization crashes.
+
+### Commit 4 — Security: History Scrubbing & Secret Sanitization
+- Performed a **Hard History Scrub** using `git-filter-repo` to purge all legacy and mock API keys from the repository history.
+- Standardized all test credentials to `dummy_mock_key` patterns to ensure compliance with GitHub Push Protection.
+- Repository is now 100% clean and ready for public/open-source distribution.
+
+### Commit 5 — DevEx: Optimized Startup & Environment
+- Refactored `run-oracle-discord.ps1` to enforce **UTF-8 mode** (`PYTHONUTF8=1`) on Windows, resolving encoding crashes in the `rich` library.
+- Unified the startup sequence: a single command now launches the Rust Oracle, Python Backbone, and Discord Gateway.
+
+---
 
 ### Major Architectural Shift: The Epistemic Machine
 KAI v6.0.0 marks the transition from a text-resonance engine to a structured epistemic system. Memories are now handled as **Claims** with evidence-based validation.

@@ -1,4 +1,4 @@
-# KAI & Oracle — Geometric Resonant Intelligence (v6.1.0)
+# KAI & Oracle — Agentic Resonant Intelligence (v6.1.0)
 
 ![Rust CI](https://github.com/revrynpanda-max/rshl/actions/workflows/rust-ci.yml/badge.svg)
 
