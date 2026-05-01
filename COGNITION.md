@@ -1,4 +1,4 @@
-# KAI — Cognition Reference (v6.0.0)
+# KAI — Cognition Reference (v6.1.0)
 
 KAI is a self-sustaining, autonomous cognitive engine built on **Recursive Sparse Hyperdimensional Lattice (RSHL)** architecture with **Helix-Light-Vortex (HLV)** phase coherence. This document provides the technical specifications for the v6.0.0 "Epistemic Machine" baseline.
 
