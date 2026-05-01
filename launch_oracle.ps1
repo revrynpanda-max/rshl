@@ -15,8 +15,15 @@ Start-Sleep -Seconds 3
 Write-Host "Opening Oracle Diagnostic UI..." -ForegroundColor Green
 Start-Process "oracle.html"
 
+# 4. Launch OpenJarvis Brain
+Write-Host "Launching OpenJarvis Brain..." -ForegroundColor Cyan
+Push-Location "c:\KAI\OpenJarvis-main"
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "uv run jarvis start"
+Pop-Location
+
 Write-Host "--- Systems Active ---" -ForegroundColor Yellow
-Write-Host "Oracle Server is running on http://127.0.0.1:3333"
-Write-Host "You can monitor KAI and talk to the AI Council in the browser window."
-Write-Host "Press any key to close this launcher (KAI will keep running)."
+Write-Host "Oracle Server: http://127.0.0.1:3333"
+Write-Host "OpenJarvis Brain: http://127.0.0.1:8080"
+Write-Host "Diagnostic UI: oracle.html"
+Write-Host "Press any key to exit launcher (processes will remain active)."
 $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")

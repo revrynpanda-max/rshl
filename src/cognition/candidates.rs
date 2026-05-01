@@ -135,7 +135,6 @@ impl CandidateBuffer {
             })
             .collect()
     }
-
     /// Mark as promoted.
     pub fn mark_promoted(&mut self, key: &str) {
         if let Some(e) = self.entries.get_mut(key) {
@@ -147,7 +146,6 @@ impl CandidateBuffer {
     pub fn mark_rejected(&mut self, key: &str) {
         if let Some(e) = self.entries.get_mut(key) {
             e.status = CandidateStatus::Rejected;
-        
         }
     }
 }

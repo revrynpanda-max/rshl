@@ -10,6 +10,15 @@ use lopdf::Document;
 /// Minimum character length for a theoretical claim to be ingested.
 const MIN_CLAIM_LEN: usize = 25;
 
+fn sanitize_title(title: &str) -> String {
+    title.chars()
+        .filter(|c| c.is_alphanumeric() || matches!(c, ' ' | '-' | '_' | '.'))
+        .take(80)
+        .collect::<String>()
+        .trim()
+        .to_string()
+}
+
 /// Ingest the HLV theory directly from a PDF file.
 pub fn ingest_hlv_pdf(
     universe: &mut Universe,
@@ -171,12 +180,78 @@ fn split_sentences(text: String) -> Vec<String> {
         .collect()
 }
 
-fn sanitize_title(title: &str) -> String {
-    title.to_lowercase()
-        .chars()
-        .filter(|c| c.is_alphanumeric() || c.is_whitespace())
-        .collect::<String>()
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join("-")
+/// CLI entry point: load the universe, absorb HLV from a PDF or text file,
+/// save the universe, and print a summary.
+pub fn train_hlv_command(path: &str) {
+    use crate::cognition::candidates::CandidateBuffer;
+    use crate::drive::Drive;
+    use crate::persistence;
+
+    let data_dir = "data";
+
+    // Load existing state or start fresh
+    let (mut universe, candidates, drive, tick, dream_count) =
+        persistence::load(data_dir).unwrap_or_else(|| {
+            (
+                Universe::new(),
+                CandidateBuffer::default(),
+                Drive::default(),
+                0,
+                0,
+            )
+        });
+
+    let result = if path.ends_with(".pdf") {
+        ingest_hlv_pdf(&mut universe, path)
+    } else {
+        match std::fs::read_to_string(path) {
+            Ok(text) => ingest_hlv_text(&mut universe, &text),
+            Err(e) => {
+                eprintln!("Failed to read {}: {}", path, e);
+                return;
+            }
+        }
+    };
+
+    match result {
+        Ok(summary) => {
+            println!(
+                "HLV training complete: {} sections, {} anchors, {} claims added, {} reinforced",
+                summary.total_sections, summary.anchors_added, summary.claims_added, summary.claims_reinforced
+            );
+            let save_result = persistence::save(&universe, &candidates, &drive, tick, dream_count, data_dir);
+            if save_result.ok {
+                println!("Universe saved ({} cells).", save_result.cells);
+            } else {
+                eprintln!("Failed to save universe.");
+            }
+        }
+        Err(e) => eprintln!("HLV training failed: {}", e),
+    }
+}
+
+/// Ingest HLV theory from plain text (alternative to PDF).
+pub fn ingest_hlv_text(
+    universe: &mut Universe,
+    text: &str,
+) -> Result<IngestSummary, Box<dyn std::error::Error>> {
+    let mut summary = IngestSummary::default();
+    let sections = segment_by_toc(text);
+    summary.total_sections = sections.len();
+
+    for (title, content) in sections {
+        let region = format!("hlv:{}", sanitize_title(&title));
+        universe.store_or_reinforce(&format!("Section: {}", title), &region, "hlv-anchor", 0.85);
+        summary.anchors_added += 1;
+
+        for sentence in split_sentences(content) {
+            if sentence.len() < MIN_CLAIM_LEN {
+                continue;
+            }
+            let is_new = universe.store_or_reinforce(&sentence, &region, "hlv-theory", 1.3);
+            if is_new { summary.claims_added += 1; } else { summary.claims_reinforced += 1; }
+        }
+    }
+
+    Ok(summary)
 }

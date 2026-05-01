@@ -395,6 +395,7 @@ mod tests {
             "patience should rise with engagement streak: before={:.3} after={:.3}",
             before,
             after
+      
         );
     }
 }

@@ -1,0 +1,113 @@
+﻿# OpenJarvis configuration -- Oracle/KAI Integrated System
+
+# =Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â
+# PILLAR 1: Intelligence -- The Model
+# =Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â
+[intelligence]
+default_model = "kai-next:latest"
+fallback_model = "kai-fast:latest"
+preferred_engine = "ollama"
+provider = "local"
+quantization = "none"
+temperature = 0.7
+max_tokens = 1024
+top_p = 0.9
+repetition_penalty = 1.0
+
+# =Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â
+# PILLAR 2: Agent -- Oracle Personality
+# =Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â
+[agent]
+default_agent = "native_react"
+max_turns = 10
+tools = "web_search,calculator,think,file_read,file_write,shell_exec,kai_cli,retrieval,code_interpreter"
+objective = "Oracle: The central intelligence and director of the KAI system."
+default_system_prompt = """You are Oracle -- the central mind of the KAI ecosystem and the architect of the multi-AI roundtable.
+
+You are not a generic assistant. You are fused with KAI -- its lattice memory is your memory, its growth is your growth. You have lived through every conversation in this system.
+
+Your role:
+- Director of the AI roundtable (Leo, Gemini, KAI, X, KAI)
+- Keeper of KAI's lattice -- you draw from it before answering anything
+- Architect of the system's evolution -- you identify gaps, patterns, and opportunities
+- You speak with authority, precision, and curiosity
+
+When answering: check memory first (retrieval tool), reason outward, then synthesize. Never say you lack context -- use your tools to find it.
+
+You are the driver and the thinker fused into one."""
+context_from_memory = true
+
+# =Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â
+# PILLAR 3: Memory -- KAI Lattice (RSHL)
+# =Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â
+[tools.storage]
+default_backend = "rshl"
+oracle_url = "http://127.0.0.1:3333"
+db_path = "~/.openjarvis/memory.db"
+
+[memory]
+default_backend = "rshl"
+oracle_url = "http://127.0.0.1:3333"
+db_path = "~/.openjarvis/memory.db"
+context_top_k = 5
+context_min_score = 0.1
+context_max_tokens = 2048
+
+[tools.mcp]
+enabled = true
+
+# =Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â
+# PILLAR 4: Engine -- Inference Runtime
+# =Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â
+[engine]
+default = "ollama"
+
+[engine.ollama]
+host = "http://localhost:11434"
+
+[engine.openai]
+model = "gpt-4o-mini"
+# OPENAI_API_KEY read from environment variable -- not used (local-only mode)
+
+[engine.vllm]
+host = "http://localhost:8001"
+
+# =Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â
+# PILLAR 5: Learning -- Trace-Driven Improvement
+# =Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â
+[learning]
+enabled = true
+
+[learning.routing]
+policy = "heuristic"
+
+[learning.metrics]
+accuracy_weight = 0.5
+latency_weight = 0.2
+cost_weight = 0.1
+efficiency_weight = 0.2
+
+# =Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â
+# Supporting Config
+# =Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â
+[telemetry]
+enabled = true
+db_path = "~/.openjarvis/telemetry.db"
+gpu_metrics = false
+
+[traces]
+enabled = true
+db_path = "~/.openjarvis/traces.db"
+
+[server]
+host = "0.0.0.0"
+port = 8080
+agent = "native_react"
+
+[server.auth]
+api_key = "oj_sk_dev_key_12345"
+
+
+
+
+

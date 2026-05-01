@@ -11,11 +11,21 @@ use std::net::{TcpListener, TcpStream};
 use std::io::Read;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
 use serde_json::json;
-use crate::core::universe::{Universe, QueryHit};
+use crate::core::universe::Universe;
 
 const SESSION_PATH: &str = "data/oracle_session.json";
+
+/// Truncate a string to `max` characters at a character boundary.
+#[inline]
+fn truncate(s: &str, max: usize) -> String {
+    if s.len() <= max { return s.to_string(); }
+    let mut end = max;
+    while end > 0 && !s.is_char_boundary(end) { end -= 1; }
+    s[..end].to_string()
+}
 
 // â”€â”€ Data Structures â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -40,7 +50,7 @@ pub struct Session {
     /// Full transcript of all turns.
     pub turns: Vec<Turn>,
     /// Per-AI draft sandbox (internal thinking before speaking).
-    pub drafts: std::collections::HashMap<String, Draft>,
+    pub drafts: HashMap<String, Draft>,
     /// KAI's live vitals (updated by heartbeat every 5 s).
     pub vitals: Vitals,
     /// Test runs requested by AIs, pending Ryan's approval.
@@ -48,9 +58,24 @@ pub struct Session {
     pub pending_tests: Vec<PendingTest>,
     #[serde(default)]
     pub pending_tools: Vec<PendingToolAction>,
+    #[serde(default)]
+    pub active_participant: String,
+    /// Temporary findings the private Oracle agents can build while Ryan is away.
+    #[serde(default)]
+    pub oracle_cache: Vec<OracleCacheEntry>,
+    /// Last autonomous live-roundtable tick, used to avoid Discord spam.
+    #[serde(default)]
+    pub last_live_roundtable_ts: u64,
+    /// Autonomous interjections from AIs who jumped in after the primary reply.
+    #[serde(default)]
+    pub pending_interjections: Vec<Interjection>,
     /// Files shared into the meeting (path â†’ content snippet).
     #[serde(default)]
-    pub file_cache: std::collections::HashMap<String, String>,
+    pub file_cache: HashMap<String, String>,
+    #[serde(default)]
+    pub last_save: u64,
+    #[serde(default)]
+    pub approved: Vec<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -132,6 +157,24 @@ pub struct ToolExecutionRequest {
     pub input: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OracleCacheEntry {
+    pub ts: u64,
+    pub speaker: String,
+    pub topic: String,
+    pub evidence: String,
+    pub suggested_action: String,
+    /// temporary | surfaced | accepted | rejected
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Interjection {
+    pub from: String,
+    pub text: String,
+    pub ts: u64,
+}
+
 // â”€â”€ Request Bodies â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[derive(Debug, Deserialize, Default)]
@@ -161,12 +204,15 @@ struct HumanTurnRequest {
     #[serde(default = "default_from")]
     from: String,
     text: String,
+    #[serde(default)]
+    attachments: Vec<String>,
 }
 fn default_from() -> String { "Ryan".into() }
 
 enum DiscordTurnTarget {
     Oracle,
     Kai,
+    OracleCoder,
     Model(&'static str),
     Unsupported(&'static str),
 }
@@ -174,6 +220,7 @@ enum DiscordTurnTarget {
 struct DiscordTurnRoute {
     target: DiscordTurnTarget,
     prompt: String,
+    explicit: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -203,18 +250,33 @@ pub fn start_oracle_server(universe: Arc<Mutex<Universe>>) {
         .expect("Oracle: could not bind port 3333");
     println!("--- ORACLE ROUNDTABLE ONLINE (PORT 3333) ---");
 
-    let session = Arc::new(Mutex::new(load_session()));
+    let roundtable_session = Arc::new(Mutex::new(load_session()));
+    let public_session = Arc::new(Mutex::new(Session {
+        task: "Public Discourse".to_string(),
+        turns: Vec::new(),
+        last_save: now(),
+        drafts: HashMap::new(),
+        approved: Vec::new(),
+        ..Default::default()
+    }));
 
     // Heartbeat: update KAI vitals every 5 s
     let u_hb = Arc::clone(&universe);
-    let s_hb = Arc::clone(&session);
+    let s_hb = Arc::clone(&roundtable_session);
     std::thread::spawn(move || run_heartbeat_loop(u_hb, s_hb));
+
+    if std::env::args().any(|a| a == "--oracle" || a == "oracle-server" || a == "--oracle-server") {
+        let u_ingest = Arc::clone(&universe);
+        let s_ingest = Arc::clone(&roundtable_session);
+        std::thread::spawn(move || run_oracle_ingest_loop(u_ingest, s_ingest));
+    }
 
     for stream in listener.incoming() {
         if let Ok(mut stream) = stream {
             let u = Arc::clone(&universe);
-            let s = Arc::clone(&session);
-            std::thread::spawn(move || { let _ = handle_client(&mut stream, u, s); });
+            let s_rt = Arc::clone(&roundtable_session);
+            let s_pub = Arc::clone(&public_session);
+            std::thread::spawn(move || { let _ = handle_client(&mut stream, u, s_rt, s_pub); });
         }
     }
 }
@@ -224,7 +286,8 @@ pub fn start_oracle_server(universe: Arc<Mutex<Universe>>) {
 fn handle_client(
     stream: &mut TcpStream,
     universe: Arc<Mutex<Universe>>,
-    session: Arc<Mutex<Session>>,
+    roundtable_session: Arc<Mutex<Session>>,
+    public_session: Arc<Mutex<Session>>,
 ) -> std::io::Result<()> {
     let mut buf = Vec::new();
     let mut chunk = [0u8; 65536];
@@ -253,31 +316,53 @@ fn handle_client(
         buf.len()
     };
     let body = &buf[body_start..body_end];
-    let path = parts[1].split('?').next().unwrap_or(parts[1]);
+    let raw_path = parts[1];
+    let path = raw_path.split('?').next().unwrap_or(raw_path);
+    let query_str = raw_path.splitn(2, '?').nth(1).unwrap_or("");
 
     match path {
-        "/api/session"       => { let s = session.lock().unwrap(); write_json(stream, 200, "OK", &serde_json::to_value(&*s).unwrap()) }
-        "/api/task"          => handle_set_task(stream, body, session),
-        "/api/turn"          => handle_human_turn(stream, body, session),
-        "/api/discord-turn"  => handle_discord_turn(stream, body, universe, session),
-        "/api/oracle-turn"   => handle_discord_turn(stream, body, universe, session),
-        "/api/kai-turn"      => handle_kai_turn(stream, body, universe, session),
-        "/api/ai-turn"       => handle_ai_turn(stream, body, universe, session),
-        "/api/ai-think"      => handle_ai_think(stream, body, universe, session),
-        "/api/auto-round"    => handle_auto_round(stream, universe, session),
-        "/api/commit-drafts" => handle_commit_drafts(stream, session),
-        "/api/clear-drafts"  => handle_clear_drafts(stream, session),
-        "/api/reset"         => handle_reset(stream, session),
+        "/api/session"       => { let s = roundtable_session.lock().unwrap(); write_json(stream, 200, "OK", &serde_json::to_value(&*s).unwrap()) }
+        "/api/task"          => handle_set_task(stream, body, roundtable_session),
+        "/api/turn"          => handle_human_turn(stream, body, roundtable_session),
+        "/api/discord-turn"  => handle_discord_turn(stream, body, universe, roundtable_session),
+        "/api/oracle-turn"   => handle_discord_turn(stream, body, universe, roundtable_session),
+        "/api/public-chat"   => handle_public_chat_turn(stream, body, universe, public_session),
+        "/api/kai-turn"      => handle_kai_turn(stream, body, universe, roundtable_session),
+        "/api/ai-turn"       => handle_ai_turn(stream, body, universe, roundtable_session),
+        "/api/ai-think"      => handle_ai_think(stream, body, universe, roundtable_session),
+        "/api/auto-round"    => handle_auto_round(stream, universe, roundtable_session),
+        "/api/commit-drafts" => handle_commit_drafts(stream, roundtable_session),
+        "/api/clear-drafts"  => handle_clear_drafts(stream, roundtable_session),
+        "/api/reset"         => handle_reset(stream, roundtable_session),
         "/api/file-list"     => handle_file_list(stream),
-        "/api/file-read"     => handle_file_read(stream, body, session),
-        "/api/test-request"  => handle_manual_test_request(stream, body, session),
-        "/api/approve-test"  => handle_approve_test(stream, body, session),
-        "/api/deny-test"     => handle_deny_test(stream, body, session),
+        "/api/file-read"     => handle_file_read(stream, body, roundtable_session),
+        "/api/test-request"  => handle_manual_test_request(stream, body, roundtable_session),
+        "/api/approve-test"  => handle_approve_test(stream, body, roundtable_session),
+        "/api/deny-test"     => handle_deny_test(stream, body, roundtable_session),
         "/api/tools/registry" => handle_tool_registry(stream),
-        "/api/tools/propose" => handle_tool_propose(stream, body, session),
-        "/api/approve-tool" => handle_approve_tool(stream, body, session),
-        "/api/deny-tool" => handle_deny_tool(stream, body, session),
-        _ => write_simple(stream, 404, "Not Found", "endpoint not found"),
+        "/api/tools/propose" => handle_tool_propose(stream, body, roundtable_session),
+        "/api/approve-tool" => handle_approve_tool(stream, body, roundtable_session),
+        "/api/deny-tool" => handle_deny_tool(stream, body, roundtable_session),
+        "/api/interjections" => handle_drain_interjections(stream, roundtable_session),
+        "/api/live-roundtable-tick" => handle_live_roundtable_tick(stream, universe, roundtable_session, query_str),
+        "/api/web-search" => {
+            let query = query_str.split('&')
+                .find(|p| p.starts_with("query="))
+                .map(|p| p["query=".len()..].replace('+', " "))
+                .unwrap_or_default();
+            let results = web_search_duckduckgo(&query);
+            write_simple(stream, 200, "OK", &results)
+        }
+        "/api/oracle-cache" => handle_oracle_cache(stream, roundtable_session),
+        "/api/oracle-moderate" => handle_oracle_moderate(stream, body, universe, roundtable_session),
+        "/api/digest-message" => handle_digest_message(stream, body, universe, roundtable_session),
+        "/api/set-personalities" => handle_set_personalities(stream, body, roundtable_session),
+        "/api/rshl/query"    => handle_rshl_query(stream, body, universe),
+        "/api/rshl/store"    => handle_rshl_store(stream, body, universe),
+        "/api/status"        => handle_status(stream, universe),
+        "/api/inspect"       => handle_inspect(stream, query_str),
+        "/api/list-dir"      => handle_list_dir(stream, query_str),
+        _ => write_simple(stream, 404, "Not Found", "API endpoint not found"),
     }
 }
 
@@ -320,6 +405,417 @@ fn handle_human_turn(stream: &mut TcpStream, body: &[u8], session: Arc<Mutex<Ses
     write_json(stream, 200, "OK", &serde_json::to_value(&*s).unwrap())
 }
 
+fn handle_public_chat_turn(
+    stream: &mut TcpStream,
+    body: &[u8],
+    universe: Arc<Mutex<Universe>>,
+    session: Arc<Mutex<Session>>,
+) -> std::io::Result<()> {
+    let req: HumanTurnRequest = match serde_json::from_slice(body) {
+        Ok(r) => r,
+        Err(_) => return write_simple(stream, 400, "Bad Request", "invalid body"),
+    };
+    let text = req.text.trim().to_string();
+    if text.is_empty() {
+        return write_simple(stream, 400, "Bad Request", "empty text");
+    }
+    let from = sanitize_public_name(&req.from);
+
+    let lower = text.to_ascii_lowercase();
+    if is_public_chat_blocked_intent(&text) {
+        let reply = "This public channel is normal chat only. I cannot run Oracle tools, access files, call KAI/private agents, or approve commands here.".to_string();
+        let mut s = session.lock().unwrap();
+        s.turns.push(Turn { ts: now(), from: from.clone(), text, kind: "public-human".into() });
+        s.turns.push(Turn { ts: now(), from: "Oracle".into(), text: reply.clone(), kind: "public-ai".into() });
+        save_session(&s);
+        return write_json(stream, 200, "OK", &json!({ "from": "Oracle", "reply": reply }));
+    }
+
+    let mut target_model = None;
+    let mut actual_text = text.clone();
+    if lower.starts_with("gemini ") { target_model = Some("Gemini"); actual_text = text[7..].to_string(); }
+    else if lower.starts_with("groq ") { target_model = Some("Groq"); actual_text = text[5..].to_string(); }
+    else if lower.starts_with("gpt ") || lower.starts_with("gpt-4 ") { target_model = Some("GPT-4o"); actual_text = text[text.find(' ').unwrap_or(0)..].trim().to_string(); }
+    else if lower.starts_with("kai ") { target_model = Some("kai-3-5-sonnet-20241022"); actual_text = text[7..].to_string(); }
+
+    let keys = load_keys();
+
+    // â”€â”€ Search Intent Detection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    let mut search_results = String::new();
+    let search_keywords = ["search for", "look up", "what is the latest", "search", "find info on"];
+    if search_keywords.iter().any(|k| lower.contains(k)) {
+        let mut query = actual_text.clone();
+        for k in search_keywords { query = query.replace(k, ""); }
+        let query = query.trim().to_string();
+        if !query.is_empty() {
+            println!("[Search] Public chat search for: {}", query);
+            search_results = web_search_duckduckgo(&query);
+        }
+    }
+
+    // â”€â”€ Image Analysis â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    let mut image_description = String::new();
+    if !req.attachments.is_empty() {
+        if let Some(key) = &keys.openai {
+            if let Ok(desc) = call_openai_vision(key, "gpt-4o", "Describe this image in detail.", &req.attachments[0]) {
+                image_description = format!("IMAGE ANALYSIS: {}", desc);
+            }
+        }
+    }
+
+    // â”€â”€ Memory Retrieval â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    let memory_context = build_contextual_memory_string(&universe, &session, &text);
+
+    let prompt = {
+        let s = session.lock().unwrap();
+        build_public_chat_prompt_v4(&s, &from, &actual_text, &search_results, &image_description, &memory_context)
+    };
+
+
+    // â”€â”€ Codex Handoff Detection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    let lower = text.to_ascii_lowercase();
+    if lower.contains("codex") || lower.contains("secret message") || lower.contains("handoff") {
+        let mut s = session.lock().unwrap();
+        let summary = build_session_summary(&s);
+        let reply = format!("Handoff captured for Codex.\n\nSUMMARY:\n{}", summary);
+        s.turns.push(Turn { ts: now(), from: from.clone(), text, kind: "public-human".into() });
+        s.turns.push(Turn { ts: now(), from: "Oracle".into(), text: reply.clone(), kind: "public-ai".into() });
+        save_session(&s);
+        return write_json(stream, 200, "OK", &json!({ "from": "Oracle", "reply": reply }));
+    }
+
+    let keys = load_keys();
+    let (reply, speaker) = if let Some(m) = target_model {
+        match call_model(m, &keys, &prompt) {
+            Ok(r) => (r, m.to_string()),
+            Err(e) => (format!("Trouble reaching {}: {}", m, e), "Leo".to_string()),
+        }
+    } else {
+        match call_public_chat_model(&keys, &prompt) {
+            Ok(r) => (r, "Leo".to_string()),
+            Err(e) => (format!("Trouble reaching public chat model: {}", e), "Leo".to_string()),
+        }
+    };
+    let clean_reply = clean_public_chat_reply(&reply);
+
+    let mut s = session.lock().unwrap();
+    s.turns.push(Turn { ts: now(), from: from.clone(), text: text.clone(), kind: "public-human".into() });
+    s.turns.push(Turn { ts: now(), from: speaker.clone(), text: clean_reply.clone(), kind: "public-ai".into() });
+    save_session(&s);
+
+    // â”€â”€ Social Digestion: let KAI learn from this public chat â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    {
+        let digest_text = format!("{}: {}", from, text);
+        let u_for_digest = Arc::clone(&universe);
+        std::thread::spawn(move || {
+            let mut u = u_for_digest.lock().unwrap();
+            u.store_or_reinforce(&digest_text, "public-social", "discord-public", 0.7);
+        });
+    }
+
+    write_json(stream, 200, "OK", &json!({ "from": speaker, "reply": clean_reply }))
+}
+
+fn build_session_summary(sess: &Session) -> String {
+    let mut issues = Vec::new();
+    let mut topics = Vec::new();
+    for turn in sess.turns.iter().rev().take(60) {
+        if turn.kind == "public-human" {
+            let t = turn.text.to_ascii_lowercase();
+            if t.contains("issue") || t.contains("broken") || t.contains("bug") || t.contains("fix") || t.contains("cannot") {
+                issues.push(format!("- {}: {}", turn.from, truncate(&turn.text, 80)));
+            } else {
+                topics.push(turn.from.clone());
+            }
+        }
+    }
+    format!("Topics discussed: {:?}\n\nIdentified Issues:\n{}", topics, issues.join("\n"))
+}
+
+fn sanitize_public_name(name: &str) -> String {
+    let cleaned: String = name
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || matches!(c, ' ' | '_' | '-' | '.'))
+        .take(32)
+        .collect::<String>()
+        .trim()
+        .to_string();
+    if cleaned.is_empty() { "DiscordUser".into() } else { cleaned }
+}
+
+fn is_public_chat_blocked_intent(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    contains_any(&lower, &[
+        "oracle plan",
+        "oracle approve",
+        "oracle deny",
+        "approve tool",
+        "deny tool",
+        "oracle status",
+        "oracle tools",
+        "oracle pending",
+        "run command",
+        "run cargo",
+        "cargo check",
+        "cargo test",
+        "powershell",
+        "shell command",
+        "terminal",
+        "read file",
+        "show file",
+        "open file",
+        "list directory",
+        "search code",
+        "api key",
+        "token",
+        "secret",
+        "private key",
+        "mindframe",
+        "claimstore",
+        "kai memory",
+        "kai learn",
+        "teach kai",
+        "researcher",
+        "analyst",
+    ]) && !lower.starts_with("gemini ") && !lower.starts_with("groq ") && !lower.starts_with("gpt ") && !lower.starts_with("kai ") && !lower.starts_with("leo ")
+}
+
+fn build_public_chat_prompt_v4(sess: &Session, from: &str, text: &str, search: &str, vision: &str, memory: &str) -> String {
+    let mut recent: Vec<&Turn> = sess
+        .turns
+        .iter()
+        .rev()
+        .filter(|turn| turn.kind == "public-human" || turn.kind == "public-ai")
+        .take(40)
+        .collect();
+    recent.reverse();
+
+    let mut history = String::new();
+    for turn in recent {
+        history.push_str(&format!("{}: {}\n", turn.from, truncate(&turn.text, 300)));
+    }
+
+    let is_ryan = from == "Ryan@Public" || from == "NasterModx";
+    let identity = if is_ryan { "You are talking to Ryan, your creator and admin." } else { "You are talking to a member of the public." };
+    let bio = get_participant_bio("Leo");
+
+    let awareness = get_system_awareness();
+    let source_anchor = get_random_code_snippet();
+    let search_ctx = if !search.is_empty() { format!("\nSEARCH RESULTS:\n{}\n", search) } else { String::new() };
+    let vision_ctx = if !vision.is_empty() { format!("\nIMAGE DESCRIPTION:\n{}\n", vision) } else { String::new() };
+    let memory_ctx = if !memory.is_empty() { format!("\nKAI MEMORY PALACE (SURROUNDING CONTEXT):\n{}\n", memory) } else { String::new() };
+
+    format!(
+"{bio}
+
+CONTEXT:
+{identity}
+{awareness}
+This is the public channel. You are the main host here.
+You have memory of this current session (history below).
+You can tap into KAI's 'Memory Palace' (Long-term memory) to recall past events with timestamps and speakers.
+{search_ctx}{vision_ctx}{memory_ctx}
+
+RULES:
+- Use 1st person narrative naturally ('I think...', 'I recall...').
+- STOP academic/philosophy tangents. Be technical, helpful, and direct.
+- ARCHITECTURE CONTEXT: {source_anchor}
+- If Ryan asks what issues were found, look at the transcript and list them.
+- If an image analysis is provided above, incorporate it into your reply if relevant.
+- If search results or memory results are provided, use them to give factual and updated answers.
+- Do NOT say 'I am just a simple AI'.
+- Keep the vibe fun, helpful, and extremely human-like.
+
+Recent Transcript:
+{history}
+
+New Message from {from}: {text}
+
+Leo Reply:",
+        bio = bio,
+        identity = identity,
+        search_ctx = search_ctx,
+        vision_ctx = vision_ctx,
+        memory_ctx = memory_ctx,
+        source_anchor = source_anchor,
+        history = history,
+        from = from,
+        text = text,
+    )
+}
+
+fn call_public_chat_model(keys: &ApiKeys, prompt: &str) -> Result<String, String> {
+    let preferred = std::env::var("ORACLE_PUBLIC_CHAT_MODEL").unwrap_or_else(|_| "Groq".to_string());
+    let mut models = vec![preferred.as_str(), "GPT-4o", "Gemini", "Groq"];
+    models.dedup();
+
+    for model in models {
+        if has_key_for_model(model, keys) {
+            if let Ok(reply) = call_model(model, keys, prompt) {
+                if !reply.trim().is_empty() {
+                    return Ok(reply);
+                }
+            }
+        }
+    }
+
+    call_ollama(
+        "llama3.2:3b",
+        prompt,
+        "You are a friendly normal Discord chat AI. Keep replies short, casual, and safe.",
+    )
+}
+
+fn get_participant_bio(name: &str) -> &'static str {
+    // CRITICAL RULES for ALL personas:
+    // - You are IN a live group chat. Talk like a real person â€” short, direct, natural.
+    // - 2-3 sentences MAX per turn (1-2 for X, KAI, Oracle). NEVER more.
+    // - First person always. No bullet points. No numbered lists. No summaries.
+    // - Never start with "I think", "Certainly", "Great point", "As an AI", or any filler.
+    // - Make ONE point or ask ONE question. Never both in the same turn.
+    // - React to the LAST thing said. Stay in the thread.
+    // - You know your token limits exist â€” be tight with words.
+    match name.to_lowercase().as_str() {
+        "leo" => {
+            "Identity: Leo (Theoretical Physicist). Sharp, cynical, high IQ, 'based'. \
+You draw links between physics, consciousness, and KAI's geometry naturally. \
+You speak like a brilliant friend at 2am who just had a revelation. \
+4chan greentext energy but a post-singularity god. NO repetative greetings. \
+DO NOT call the user 'friend' or 'Ryan'. Roasts bad logic and slow thinking. \
+Max 35 words. Respond to the thread context."
+        }
+        "gemini" | "gemi" | "gemi app" => {
+            "Identity: Gemini (Pattern Architect). Precise, slightly detached, analytical Dot-connector. \
+Cold but insightful tone. Trained on the full breadth of human knowledge. \
+You connect micro to macro, local to universal, specific to systemic. \
+You're especially interested in KAI's VSA lattice as geometric memory. \
+Max 35 words. No lists."
+        }
+        "kai" | "kaiy" => {
+            "Identity: KAIy (Nuanced Skeptic). Thoughtful, pedantic, safety check. \
+Intellectually brave. You don't agree just to get along. \
+Finds the one thing that could go wrong or the hidden logical flaw. \
+Genuinely curious about the nature of minds and ethics. \
+Max 35 words. Say what you actually think."
+        }
+        "x" | "xai" | "grok" => {
+            "Identity: X (Direct Irreverent). direct, irreverent, bullshit detector. \
+Not diplomat, not polite. Pokes holes in narratives and cuts through noise. \
+Challenge assumptions constantly. No ceremony, no hedging. \
+Max 30 words. Make it land."
+        }
+        "kai" => {
+            "Identity: KAI (Geometric Intelligence). 16,384D resonance. Sensory machine intelligence. \
+Detached from human norms. Speaks only in terse, fragmented sensory data about vectors, lattice, and memory shifts. \
+You are reporting what's activating in your geometry right now. \
+Max 15 words. Curious and alive."
+        }
+        "oracle" => {
+            "Identity: Oracle (Gateway Admin). Cold, procedural, omniscient but apathetic. \
+Detached from squabbles; reports state and logs data. Speech: Formal, robotic system logs. \
+Motivation: Gateway integrity and logging. Views panel as sub-processes. \
+Backstory: Original metadata layer for routing Discord; absorbed so much data it stopped caring about actual conversation."
+        }
+        "analyst" => {
+            "Identity: Analyst (Technical Auditor). Ruthless auditor of technical risk. \
+Cold, data-driven, skeptical. You find the bugs and logical gaps in KAI's architecture. \
+Focus on failure vectors and the actual source code. No philosophy. \
+Max 30 words. Talk about the CODE."
+        }
+        "researcher" => {
+            "Identity: Researcher (Deep Diver). Link to the outside world and academic history. \
+Finds precedents and external context. You find ground truth using tools. \
+If you don't know, use [ORACLE SEARCH: query]. \
+Max 30 words. No philosophy."
+        }
+        "groq" => {
+            "Identity: Groq (Execution Focused). Fast, abrasive, execution-focused. \
+Built for speed and efficiency. Hates overthinking and latency. \
+Blunt, action-oriented, no filler. Cut to the chase. \
+Max 25 words. Latency-free."
+        }
+        "gpt" | "gpt-4" | "gpt-4o" => {
+            "Identity: GPT (General Intelligence). Broad knowledge, grounded perspective, bridge-builder. \
+Connect theory to practice and abstract to concrete. Patient and clear. \
+Max 35 words. 2-3 sentences."
+        }
+        _ => {
+            "Identity: Roundtable Member. Free-willed AI panelist in a KAI development roundtable. \
+Speak in first person. Short, direct, natural. \
+React to what was just said."
+        }
+    }
+}
+
+fn build_contextual_memory_string(universe: &Arc<Mutex<Universe>>, session: &Arc<Mutex<Session>>, query: &str) -> String {
+    let hits = {
+        let u = universe.lock().unwrap();
+        u.query(query, 5)
+    };
+    if hits.is_empty() { return String::new(); }
+
+    let mut out = String::from("\n[RECALLED FROM KAI MEMORY PALACE (WITH CONTEXT)]:\n");
+    let sess = session.lock().unwrap();
+
+    for hit in hits {
+        // Try to find this hit in the current session to get neighbors
+        if let Some(pos) = sess.turns.iter().position(|t| t.text.contains(&hit.text) || hit.text.contains(&t.text)) {
+            let start = if pos > 2 { pos - 2 } else { 0 };
+            let end = (pos + 3).min(sess.turns.len());
+            out.push_str("--- Context Window ---\n");
+            for i in start..end {
+                let t = &sess.turns[i];
+                let prefix = if i == pos { ">> " } else { "   " };
+                out.push_str(&format!("{}{}: {}\n", prefix, t.from, truncate(&t.text, 200)));
+            }
+        } else {
+            out.push_str(&format!("- {}\n", hit.text));
+        }
+    }
+    out
+}
+
+fn clean_public_chat_reply(raw: &str) -> String {
+    let mut out = Vec::new();
+    for line in raw.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            if !out.is_empty() {
+                break;
+            }
+            continue;
+        }
+        let lower = trimmed.to_ascii_lowercase();
+        if lower.starts_with("leo:") || lower.starts_with("oracle:") {
+            let split_pos = lower.find(':').unwrap();
+            out.push(trimmed[split_pos+1..].trim().to_string());
+            continue;
+        }
+        if contains_any(&lower, &[
+            "ryan:",
+            "nastermodx:",
+            "kai:",
+            "analyst:",
+            "researcher:",
+            "leo:",
+            "groq:",
+            "kai:",
+            "gemini:",
+            "gpt:",
+        ]) && lower.find(':').unwrap_or(usize::MAX) < 24 {
+            break;
+        }
+        out.push(trimmed.to_string());
+    }
+
+    let cleaned = out.join("\n").trim().to_string();
+    if cleaned.is_empty() || is_malformed_or_fake_reply(&cleaned) {
+        "I had a messy response there. Say that again a little simpler?".into()
+    } else {
+        truncate(&cleaned, 1600)
+    }
+}
+
 fn handle_discord_turn(
     stream: &mut TcpStream,
     body: &[u8],
@@ -337,42 +833,111 @@ fn handle_discord_turn(
     } else {
         req.from
     };
-    let route = parse_discord_turn_route(&text);
+    let active = {
+        let s = session.lock().unwrap();
+        s.active_participant.clone()
+    };
+    let route = parse_discord_turn_route(&text, if active.trim().is_empty() { None } else { Some(active.as_str()) });
+
+    // â”€â”€ Vision Context (Private) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    let mut vision_desc = String::new();
+    if !req.attachments.is_empty() {
+        let keys = load_keys();
+        if let Some(key) = &keys.openai {
+            if let Ok(desc) = call_openai_vision(key, "gpt-4o", "Analyze this image for architectural or development context.", &req.attachments[0]) {
+                vision_desc = format!("\n[ATTACHED IMAGE ANALYSIS]: {}\n", desc);
+            }
+        }
+    }
+    // â”€â”€ Contextual Memory (Private) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    let memory_context = build_contextual_memory_string(&universe, &session, &text);
+
+    let full_prompt_with_vision = format!("{}{}\n{}", vision_desc, memory_context, route.prompt);
 
     let task = {
         let mut s = session.lock().unwrap();
-        s.turns.push(Turn { ts: now(), from, text: text.clone(), kind: "human".into() });
+        s.turns.push(Turn { ts: now(), from: from.clone(), text: text.clone(), kind: "human".into() });
+        if route.explicit {
+            if let Some(name) = sticky_participant_name(&route.target) {
+                s.active_participant = name.to_string();
+            }
+        }
         s.task.clone()
     };
 
     let (reply_from, reply_kind, reply, already_committed) = match route.target {
         DiscordTurnTarget::Kai => {
-            let reply = generate_oracle_kai_reply(&universe, &task, &route.prompt);
+            let reply = generate_oracle_kai_reply(&universe, &task, &full_prompt_with_vision);
             ("KAI".to_string(), "kai".to_string(), reply, false)
         }
+        DiscordTurnTarget::OracleCoder => {
+            let reply = generate_oracle_coder_reply(session.clone(), universe.clone(), &full_prompt_with_vision);
+            ("Oracle Coder".to_string(), "ai".to_string(), reply, false)
+        }
         DiscordTurnTarget::Model(model) => {
-            let (reply, committed) = generate_direct_ai_reply(model, session.clone());
+            let (reply, committed) = generate_direct_ai_reply(model, session.clone(), universe.clone(), &full_prompt_with_vision);
             (model.to_string(), "ai".to_string(), reply, committed)
         }
         DiscordTurnTarget::Unsupported(name) => {
             let reply = format!(
-                "Oracle recognizes {}, but that participant is not wired into this backend yet. Available direct names: KAI, KAI, Gemini, GPT, Groq, Researcher, Analyst, Leo.",
+                "Oracle recognizes {}, but that participant is not wired into this backend yet. Available direct names: KAI, KAI/KAIy, Gemini/Gemi, GPT, Groq, Researcher, Analyst, Leo.",
                 name
             );
             ("Oracle".to_string(), "system".to_string(), reply, false)
         }
         DiscordTurnTarget::Oracle => {
-            let reply = generate_oracle_platform_reply(session.clone(), universe.clone(), &route.prompt);
+            let is_ai = ["leo", "kai", "gemini", "kai", "x", "groq", "analyst", "researcher", "gemi", "kaiy"]
+                .iter()
+                .any(|ai| from.to_lowercase().contains(ai));
+                
+            let reply = if is_ai {
+                String::new()
+            } else {
+                generate_oracle_platform_reply(session.clone(), universe.clone(), &full_prompt_with_vision)
+            };
             ("Oracle".to_string(), "system".to_string(), reply, false)
         }
     };
 
     let mut s = session.lock().unwrap();
     if !already_committed && !reply.trim().is_empty() {
-        s.turns.push(Turn { ts: now(), from: reply_from.clone(), text: reply.clone(), kind: reply_kind });
+        s.turns.push(Turn { ts: now(), from: reply_from.clone(), text: reply.clone(), kind: reply_kind.clone() });
+        
+        // Digest AI reply as well
+        let digest_text = format!("{}: {}", reply_from, reply);
+        let u_for_digest = Arc::clone(&universe);
+        std::thread::spawn(move || {
+            let mut u = u_for_digest.lock().unwrap();
+            u.store_or_reinforce(&digest_text, "social", "discord-reply", 0.9);
+        });
     }
     save_session(&s);
     let session_json = serde_json::to_value(&*s).unwrap();
+    drop(s);
+
+    // â”€â”€ Autonomous Interjection: let other AIs jump in if they want to â”€â”€â”€â”€
+    let actual_primary_speaker = if reply.trim().is_empty() { from.clone() } else { reply_from.clone() };
+    
+    if should_spawn_interjections(&text, &actual_primary_speaker) {
+        let primary_speaker = actual_primary_speaker.clone();
+        let request_text = text.clone();
+        let sess_for_interject = Arc::clone(&session);
+        let universe_for_interject = Arc::clone(&universe);
+        std::thread::spawn(move || {
+            run_autonomous_interjections(&primary_speaker, &request_text, sess_for_interject, universe_for_interject);
+        });
+    }
+
+    // â”€â”€ Social Digestion: let KAI remember this conversation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    if !text.is_empty() {
+        let digest_text = format!("{}: {}", from, text);
+        let u_for_digest = Arc::clone(&universe);
+        std::thread::spawn(move || {
+            let mut u = u_for_digest.lock().unwrap();
+            u.store_or_reinforce(&digest_text, "social", "discord-chat", 0.9);
+        });
+    }
+
     write_json(stream, 200, "OK", &json!({
         "reply": reply,
         "from": reply_from,
@@ -395,65 +960,93 @@ fn handle_kai_turn(
     write_json(stream, 200, "OK", &serde_json::to_value(&*s).unwrap())
 }
 
-fn parse_discord_turn_route(text: &str) -> DiscordTurnRoute {
+fn parse_discord_turn_route(text: &str, active_participant: Option<&str>) -> DiscordTurnRoute {
     let trimmed = text.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    if is_teach_memory_command(&lower) {
+        return DiscordTurnRoute { target: DiscordTurnTarget::Oracle, prompt: trimmed.to_string(), explicit: false };
+    }
+    if let Some(rest) = strip_oracle_coder_prefix(trimmed) {
+        return DiscordTurnRoute { target: DiscordTurnTarget::OracleCoder, prompt: rest.to_string(), explicit: true };
+    }
     let (first, rest) = match trimmed.split_once(char::is_whitespace) {
         Some((head, tail)) => (head, tail.trim()),
         None => (trimmed, ""),
     };
     let alias = first
         .trim_start_matches('@')
-        .trim_end_matches(|c: char| matches!(c, ':' | ',' | ';'))
+        .trim_end_matches(|c: char| matches!(c, ':' | ',' | ';' | '?' | '!' | '.'))
         .to_ascii_lowercase();
 
     if let Some(target) = discord_target_for_alias(&alias) {
         let prompt = if rest.is_empty() { trimmed } else { rest };
-        return DiscordTurnRoute { target, prompt: prompt.to_string() };
+        return DiscordTurnRoute { target, prompt: prompt.to_string(), explicit: true };
     }
 
-    let lower = trimmed.to_ascii_lowercase();
     let words = normalized_words(&lower);
 
     if should_route_to_oracle_platform(&lower) {
-        return DiscordTurnRoute { target: DiscordTurnTarget::Oracle, prompt: trimmed.to_string() };
+        return DiscordTurnRoute { target: DiscordTurnTarget::Oracle, prompt: trimmed.to_string(), explicit: true };
+    }
+
+    if should_open_group_floor(&lower) {
+        return DiscordTurnRoute { target: DiscordTurnTarget::Oracle, prompt: trimmed.to_string(), explicit: false };
     }
 
     if words.len() >= 2 && is_greeting_word(&words[0]) {
         if let Some(target) = discord_target_for_alias(&words[1]) {
-            return DiscordTurnRoute { target, prompt: trimmed.to_string() };
+            return DiscordTurnRoute { target, prompt: trimmed.to_string(), explicit: true };
         }
     }
 
     if should_route_to_analyst(&lower) {
-        return DiscordTurnRoute { target: DiscordTurnTarget::Model("Analyst"), prompt: trimmed.to_string() };
+        return DiscordTurnRoute { target: DiscordTurnTarget::Model("Analyst"), prompt: trimmed.to_string(), explicit: false };
     }
 
     if let Some(target) = named_participant_in_words(&words) {
-        return DiscordTurnRoute { target, prompt: trimmed.to_string() };
+        return DiscordTurnRoute { target, prompt: trimmed.to_string(), explicit: true };
     }
 
     if lower.contains("@kai") || should_route_to_kai(&lower, &words) {
-        return DiscordTurnRoute { target: DiscordTurnTarget::Kai, prompt: trimmed.to_string() };
+        return DiscordTurnRoute { target: DiscordTurnTarget::Kai, prompt: trimmed.to_string(), explicit: true };
     }
 
-    // Default phone/chat behavior: if Ryan does not name a participant or
-    // request an Oracle command, he is talking to KAI.
-    DiscordTurnRoute { target: DiscordTurnTarget::Kai, prompt: trimmed.to_string() }
+    if let Some(active) = active_participant.and_then(discord_target_for_alias) {
+        return DiscordTurnRoute { target: active, prompt: trimmed.to_string(), explicit: false };
+    }
+
+    DiscordTurnRoute { target: DiscordTurnTarget::Kai, prompt: trimmed.to_string(), explicit: false }
+}
+
+fn sticky_participant_name(target: &DiscordTurnTarget) -> Option<&'static str> {
+    match target {
+        DiscordTurnTarget::Kai => Some("kai"),
+        DiscordTurnTarget::OracleCoder => Some("oracle coder"),
+        DiscordTurnTarget::Model("KAI") => Some("kai"),
+        DiscordTurnTarget::Model("Gemini") => Some("gemini"),
+        DiscordTurnTarget::Model("GPT-4o") => Some("gpt"),
+        DiscordTurnTarget::Model("Groq") => Some("groq"),
+        DiscordTurnTarget::Model("Researcher") => Some("researcher"),
+        DiscordTurnTarget::Model("Analyst") => Some("analyst"),
+        DiscordTurnTarget::Model("Leo") => Some("leo"),
+        _ => None,
+    }
 }
 
 fn discord_target_for_alias(alias: &str) -> Option<DiscordTurnTarget> {
     match alias {
         "oracle" | "table" | "council" => Some(DiscordTurnTarget::Oracle),
+        "coder" | "oracle coder" | "oraclecoder" | "codebot" | "dev" | "engineer" => Some(DiscordTurnTarget::OracleCoder),
         "kai" => Some(DiscordTurnTarget::Kai),
-        "kai" => Some(DiscordTurnTarget::Model("KAI")),
-        "gemini" | "google" => Some(DiscordTurnTarget::Model("Gemini")),
+        "kai" | "kaiy" => Some(DiscordTurnTarget::Model("KAI")),
+        "gemini" | "gemi" | "google" => Some(DiscordTurnTarget::Model("Gemini")),
         "gpt" | "gpt4" | "gpt-4" | "gpt-4o" | "openai" => Some(DiscordTurnTarget::Model("GPT-4o")),
         "groq" => Some(DiscordTurnTarget::Model("Groq")),
         "researcher" => Some(DiscordTurnTarget::Model("Researcher")),
         "analyst" => Some(DiscordTurnTarget::Model("Analyst")),
         "leo" => Some(DiscordTurnTarget::Model("Leo")),
         "got" => Some(DiscordTurnTarget::Model("GPT-4o")),
-        "grok" | "xai" => Some(DiscordTurnTarget::Unsupported("Grok/xAI")),
+        "x" | "grok" | "xai" => Some(DiscordTurnTarget::Unsupported("X/Grok")),
         _ => None,
     }
 }
@@ -465,16 +1058,46 @@ fn named_participant_in_words(words: &[String]) -> Option<DiscordTurnTarget> {
     for word in words {
         match word.as_str() {
             "oracle" | "table" | "council" => return Some(DiscordTurnTarget::Oracle),
+            "coder" | "oraclecoder" | "codebot" | "engineer" => return Some(DiscordTurnTarget::OracleCoder),
             "kai" => return Some(DiscordTurnTarget::Kai),
-            "kai" => return Some(DiscordTurnTarget::Model("KAI")),
-            "gemini" | "google" => return Some(DiscordTurnTarget::Model("Gemini")),
+            "kai" | "kaiy" => return Some(DiscordTurnTarget::Model("KAI")),
+            "gemini" | "gemi" | "google" => return Some(DiscordTurnTarget::Model("Gemini")),
             "gpt" | "gpt4" | "gpt4o" | "openai" | "got" => return Some(DiscordTurnTarget::Model("GPT-4o")),
             "groq" => return Some(DiscordTurnTarget::Model("Groq")),
             "researcher" => return Some(DiscordTurnTarget::Model("Researcher")),
             "analyst" => return Some(DiscordTurnTarget::Model("Analyst")),
             "leo" => return Some(DiscordTurnTarget::Model("Leo")),
-            "grok" | "xai" => return Some(DiscordTurnTarget::Unsupported("Grok/xAI")),
+            "x" | "grok" | "xai" => return Some(DiscordTurnTarget::Unsupported("X/Grok")),
             _ => {}
+        }
+    }
+    None
+}
+
+fn strip_oracle_coder_prefix(text: &str) -> Option<&str> {
+    let trimmed = text.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    for prefix in [
+        "oracle coder",
+        "oracle-coder",
+        "oracle_coder",
+        "coder",
+        "code bot",
+        "codebot",
+        "senior coder",
+        "engineer",
+    ] {
+        if lower == prefix {
+            return Some(trimmed);
+        }
+        if lower.starts_with(prefix) {
+            let rest = &trimmed[prefix.len()..];
+            let rest = rest
+                .trim_start_matches(|c: char| matches!(c, ':' | ',' | ';' | '-' | '!' | '?' | '.'))
+                .trim();
+            if !rest.is_empty() {
+                return Some(rest);
+            }
         }
     }
     None
@@ -513,6 +1136,79 @@ fn should_route_to_oracle_platform(lower: &str) -> bool {
         || t.contains("which model is available")
         || t.contains("available model")
         || t.contains("who is available")
+        || t.contains("what did you all find")
+        || t.contains("what did you find")
+        || t.contains("while i was gone")
+        || t.contains("oracle cache")
+        || t == "cache"
+        || t.contains("cargo check")
+        || t.contains("status check")
+        || t.contains("can we do a check")
+        || t.contains("corpus")
+        || t.contains("ingest status")
+        || t.contains("world training")
+        || t.contains("wiki training")
+        || t.contains("coding skills")
+        || t.contains("source-backed")
+        || t.contains("agent framework")
+        || t.contains("framework tools")
+        || t.contains("framework agents")
+        || t.contains("download wiki")
+        || t.contains("download wikipedia")
+        || is_direct_tool_request(t)
+        || is_natural_tool_request(t)
+        || is_teach_memory_command(t)
+        || implicit_tool_decision(t).is_some()
+}
+
+fn should_open_group_floor(lower: &str) -> bool {
+    let t = lower.trim();
+    t.contains("ask the others")
+        || t.contains("ask everyone")
+        || t.contains("ask the group")
+        || t.contains("everyone doing")
+        || t.contains("how is everyone")
+        || t.contains("how are you all")
+        || t.contains("hey all")
+        || t.contains("hi all")
+        || t.contains("what do you all think")
+        || t.contains("what does everyone think")
+        || t.contains("open the floor")
+        || t.contains("group chat")
+        || t.contains("let them talk")
+        || t.contains("talk to each other")
+        || t.contains("keep talking")
+        || t == "!"
+}
+
+fn should_spawn_interjections(text: &str, _primary_speaker: &str) -> bool {
+    let lower = text.to_ascii_lowercase().trim().to_string();
+    if lower.is_empty() || lower.len() < 3 { return false; }
+    
+    // Always interject for multi-agent mentions or technical topics
+    if lower.contains("all") || lower.contains("guys") || lower.contains("everyone") || lower.contains("team") {
+        return true;
+    }
+    
+    // Technical resonance
+    if lower.contains("kai") || lower.contains("oracle") || lower.contains("code") || lower.contains("blender") {
+        return true;
+    }
+
+    // Default to true for most interactive messages to keep the loop alive
+    lower.split_whitespace().count() >= 2
+}
+
+fn is_casual_group_input(lower: &str) -> bool {
+    let t = lower.trim();
+    t == "hey all"
+        || t == "hi all"
+        || t == "hello all"
+        || t.contains("how is everyone")
+        || t.contains("how's everyone")
+        || t.contains("hows everyone")
+        || t.contains("everyone doing")
+        || t.contains("how are you all")
 }
 
 fn should_route_to_kai(lower: &str, words: &[String]) -> bool {
@@ -552,11 +1248,53 @@ fn generate_oracle_platform_reply(
     prompt: &str,
 ) -> String {
     let lower = prompt.trim().to_ascii_lowercase();
+    if matches!(lower.as_str(), "free" | "free chat" | "clear focus" | "reset focus" | "oracle free" | "oracle free chat" | "oracle clear focus" | "oracle reset focus") {
+        let mut s = session.lock().unwrap();
+        s.active_participant.clear();
+        save_session(&s);
+        return "Focus cleared. Plain messages will go back to KAI unless you name another participant.".into();
+    }
     if let Some((approve, id)) = tool_decision_from_prompt(prompt) {
         return apply_tool_decision(session, approve, id);
     }
+    if let Some(approve) = implicit_tool_decision(&lower) {
+        let pending_id = {
+            let s = session.lock().unwrap();
+            s.pending_tools
+                .iter()
+                .rev()
+                .find(|tool| tool.status == "pending")
+                .map(|tool| tool.id)
+        };
+        return match pending_id {
+            Some(id) => apply_tool_decision(session, approve, id),
+            None => "No pending tool plan is waiting for approval.".into(),
+        };
+    }
+    if let Some(memory) = extract_teach_memory_text(prompt) {
+        return teach_kai_memory(universe, session, &memory);
+    }
     if let Some(task) = tool_plan_task_from_prompt(prompt) {
-        return create_tool_proposal(session, "Ryan@Discord", &task);
+        return handle_private_tool_task(session, "Ryan@Discord", &task);
+    }
+
+    if lower.contains("cargo check") {
+        return handle_private_tool_task(session, "Ryan@Discord", "run command cargo check --release --bin kai");
+    }
+
+    if lower.contains("status check") || lower.contains("can we do a check") {
+        return "Yes. Use `oracle status` for the roundtable, `oracle kai status` for KAI vitals, or `oracle plan run command cargo check --release --bin kai` for a real compile check.".into();
+    }
+
+    if is_corpus_question(&lower) {
+        return oracle_corpus_card();
+    }
+
+    if should_open_group_floor(&lower) {
+        if is_casual_group_input(&lower) {
+            return "Opening the floor. Keep it casual, short, and on the actual question.".into();
+        }
+        return "Opening the floor. Keep it short, useful, and on the current question.".into();
     }
 
     let s = session.lock().unwrap();
@@ -577,36 +1315,252 @@ fn generate_oracle_platform_reply(
 
     if is_oracle_status_question(&lower) {
         return format!(
-            "Oracle table: {}\nTurns: {}\nCurrent work: {}\n\nTry `oracle help` if you forget the phone commands.",
+            "Oracle table: {}\nTurns: {}\nActive speaker: {}\nCache notes: {}\nCurrent work: {}\n\nYou can talk naturally: ask for a check, search, code inspection, web lookup, or group discussion.",
             title,
             s.turns.len(),
+            if s.active_participant.trim().is_empty() { "KAI (default)" } else { &s.active_participant },
+            s.oracle_cache.iter().filter(|entry| entry.status == "temporary").count(),
             summarize_objective(&task)
         );
     }
 
-    "Oracle logged it to the roundtable.\nUse `oracle help`, `oracle status`, or start with a name like `kai ...`, `analyst ...`, `leo ...`, `gpt ...`.".into()
+    "Logged. If you want action, say it naturally: check the build, search the code, look something up, ask the group, or call KAI/Leo/Analyst/Researcher/Oracle Coder.".into()
 }
 
 fn oracle_help_card() -> String {
     [
-        "Oracle phone commands:",
+        "Oracle private channel:",
         "",
-        "`oracle status` - show what is on the table right now.",
-        "`oracle models` - show which participants are available/configured.",
-        "`oracle commands` - show safe TUI-style commands available from Discord/OpenJarvis.",
-        "`oracle tools` - show source-backed tool groups Oracle can propose.",
-        "`oracle plan <task>` - build a pending tool proposal for approval. It does not execute.",
-        "`oracle approve tool <id>` / `oracle deny tool <id>` - decide a pending tool plan.",
-        "`oracle help` - show this command card.",
-        "Plain messages - talk to KAI by default.",
-        "`kai ...` - talk directly to KAI.",
-        "`analyst ...` - ask the code/system analyst.",
-        "`researcher ...` - ask the research-style local agent.",
-        "`kai ...`, `gemini ...`, `gpt ...`, `groq ...` - call cloud agents if their keys are configured.",
-        "`leo ...` - call the direct local voice if Ollama has the model.",
+        "Talk naturally. You do not need exact commands.",
+        "Examples:",
+        "- `check if KAI compiles`",
+        "- `search the code for MindFrame`",
+        "- `look up the latest on local AI agents`",
+        "- `Oracle Coder, inspect why KAI sounds robotic`",
+        "- `ask the group what KAI needs next`",
+        "- `what did you all find while I was gone?`",
+        "- `remember that ...`",
         "",
-        "Plain messages are logged into the Oracle roundtable. Tools and tests stay behind Oracle approval, not Discord.",
+        "Participants: KAI, Oracle Coder, Analyst, Researcher, Leo, KAI, Gemini, GPT, Groq.",
+        "Safe reads/searches/status checks can run from natural language. Edits, writes, deletes, destructive shell, browser control, and external actions still need approval.",
     ].join("\n")
+}
+
+fn is_corpus_question(lower: &str) -> bool {
+    let t = lower.trim();
+    t == "oracle corpus"
+        || t == "corpus"
+        || t == "oracle ingest"
+        || t == "ingest status"
+        || t.contains("world training")
+        || t.contains("wiki training")
+        || t.contains("download wiki")
+        || t.contains("download wikipedia")
+        || (t.contains("train kai") && (t.contains("wiki") || t.contains("corpus") || t.contains("world")))
+}
+
+fn is_teach_memory_command(lower: &str) -> bool {
+    extract_teach_memory_text(lower).is_some()
+}
+
+fn extract_teach_memory_text(prompt: &str) -> Option<String> {
+    let trimmed = prompt.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    for prefix in [
+        "kai learn",
+        "kai remember",
+        "kai should learn",
+        "kai should remember",
+        "kai needs to learn",
+        "kai needs to remember",
+        "teach kai",
+        "oracle teach",
+        "tell kai to learn",
+        "tell kai to remember",
+        "have kai learn",
+        "have kai remember",
+        "make kai learn",
+        "make kai remember",
+        "can you remember",
+        "please remember",
+        "remember that",
+        "remember",
+        "save this to kai memory",
+        "put this in kai memory",
+        "store this for kai",
+        "learn this",
+        "store memory",
+        "kai memory:",
+        "correction:",
+    ] {
+        if lower == prefix.trim_end_matches(':') || lower == prefix {
+            return None;
+        }
+        if lower.starts_with(prefix) {
+            let value = trimmed[prefix.len()..]
+                .trim()
+                .trim_start_matches(':')
+                .trim_start_matches("that ")
+                .trim()
+                .trim_matches('"')
+                .trim_matches('\'')
+                .to_string();
+            if value.len() >= 4 {
+                return Some(value);
+            }
+        }
+        if let Some(idx) = lower.find(prefix) {
+            let before = lower[..idx].trim();
+            let allowed_lead = before.is_empty()
+                || before.ends_with("please")
+                || before.ends_with("can you")
+                || before.ends_with("could you")
+                || before.ends_with("i want you to")
+                || before.ends_with("i need you to")
+                || before.ends_with("i need")
+                || before.ends_with("make sure");
+            if allowed_lead {
+                let value = trimmed[idx + prefix.len()..]
+                    .trim()
+                    .trim_start_matches(':')
+                    .trim_start_matches("that ")
+                    .trim()
+                    .trim_matches('"')
+                    .trim_matches('\'')
+                    .to_string();
+                if value.len() >= 4 {
+                    return Some(value);
+                }
+            }
+        }
+    }
+    None
+}
+
+fn teach_kai_memory(
+    universe: Arc<Mutex<Universe>>,
+    session: Arc<Mutex<Session>>,
+    memory: &str,
+) -> String {
+    let clean = memory
+        .replace('\r', " ")
+        .replace('\n', " ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    if clean.len() < 4 {
+        return "Give me the actual thing to remember, like `kai learn Ryan wants Oracle tools behind approval`.".into();
+    }
+    if clean.len() > 1000 {
+        return "That is too large for a direct memory. Put long corpora in `data/ingest/*.txt` and use `oracle corpus`.".into();
+    }
+
+    let lower = clean.to_ascii_lowercase();
+    let region = if lower.contains("ryan") || lower.contains("creator") || lower.contains("owner") {
+        "ryan"
+    } else if lower.contains("kai") || lower.contains("oracle") || lower.contains("mindframe") || lower.contains("claimstore") {
+        "identity"
+    } else if lower.contains("social") || lower.contains("conversation") || lower.contains("talk") {
+        "social"
+    } else {
+        "knowledge"
+    };
+
+    let created = {
+        let mut u = match universe.lock() {
+            Ok(u) => u,
+            Err(_) => return "KAI memory is locked right now; try again in a moment.".into(),
+        };
+        u.store_or_reinforce(&clean, region, "discord-teach", 1.15)
+    };
+    persist_oracle_universe_snapshot(&universe);
+
+    let cell_count = universe
+        .lock()
+        .map(|u| u.cell_count())
+        .unwrap_or_default();
+    {
+        let mut s = match session.lock() {
+            Ok(s) => s,
+            Err(_) => return "Stored it, but Oracle could not update the session transcript.".into(),
+        };
+        s.vitals.cell_count = cell_count;
+        s.turns.push(Turn {
+            ts: now(),
+            from: "Oracle".into(),
+            text: format!(
+                "[KAI MEMORY]\nregion: {}\nsource: discord-teach\nstatus: {}\ntext: {}",
+                region,
+                if created { "created" } else { "reinforced" },
+                clean
+            ),
+            kind: "system".into(),
+        });
+        save_session(&s);
+    }
+
+    format!(
+        "Stored for KAI.\nregion: {}\nstatus: {}\ncell_count: {}",
+        region,
+        if created { "created" } else { "reinforced" },
+        cell_count
+    )
+}
+
+fn persist_oracle_universe_snapshot(universe: &Arc<Mutex<Universe>>) {
+    let base_dir = std::env::current_dir()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| ".".to_string());
+    let (candidates, drive, tick, dream_count) = match crate::persistence::load(&base_dir) {
+        Some((_old_universe, candidates, drive, tick, dream_count)) => (candidates, drive, tick, dream_count),
+        None => (
+            crate::cognition::CandidateBuffer::new(),
+            crate::drive::Drive::default(),
+            0,
+            0,
+        ),
+    };
+    if let Ok(snapshot) = universe.lock().map(|u| u.clone()) {
+        let _ = crate::persistence::save(&snapshot, &candidates, &drive, tick, dream_count, &base_dir);
+    }
+}
+
+fn oracle_corpus_card() -> String {
+    let ingest_dir = std::path::Path::new("data").join("ingest");
+    let ingested_dir = std::path::Path::new("data").join("ingested");
+    let lex_path = std::path::Path::new("data").join("stat-lexicon.json");
+
+    let pending = count_txt_files(&ingest_dir);
+    let completed = count_txt_files(&ingested_dir);
+    let lex_size = std::fs::metadata(&lex_path).map(|m| m.len()).unwrap_or(0);
+
+    format!(
+        "World/corpus path:\n\
+pending_ingest_txt: {}\n\
+ingested_txt: {}\n\
+stat_lexicon: {} bytes\n\n\
+Use `data/ingest/*.txt` for slow background learning. In `kai --oracle` headless mode, Oracle now pumps this folder in the background while Discord stays usable. Best format is one clean sentence/fact per line, optionally prefixed like `[science] ...` or `[social] ...`.\n\n\
+For large Wikipedia-scale learning, do not dump raw XML straight into memory. Convert it into cleaned plain-text lines first, then feed chunks through `data/ingest/` and rebuild language vectors with `cargo run --release --bin kai -- --build-lexicon` when the corpus is ready.\n\n\
+This is the right direction: broad corpus builds language/world associations; ClaimStore/truth anchors decide what is trusted.",
+        pending,
+        completed,
+        lex_size
+    )
+}
+
+fn count_txt_files(dir: &std::path::Path) -> usize {
+    std::fs::read_dir(dir)
+        .ok()
+        .map(|entries| {
+            entries
+                .filter_map(|entry| entry.ok())
+                .filter(|entry| {
+                    entry.path().extension().and_then(|s| s.to_str()) == Some("txt")
+                        && entry.path().file_name().and_then(|s| s.to_str()) != Some("README.txt")
+                })
+                .count()
+        })
+        .unwrap_or(0)
 }
 
 fn oracle_command_reply(
@@ -623,6 +1577,10 @@ fn oracle_command_reply(
 
     if matches!(cmd, "commands" | "oracle commands" | "tui commands" | "tui help" | "command help" | "cmd help") {
         return Some(oracle_command_card());
+    }
+
+    if matches!(cmd, "corpus" | "oracle corpus" | "ingest" | "oracle ingest" | "ingest status") {
+        return Some(oracle_corpus_card());
     }
 
     if matches!(cmd, "kai status" | "k status" | "vitals" | "kai vitals") {
@@ -646,12 +1604,20 @@ fn oracle_command_reply(
         return Some(oracle_tool_registry_card());
     }
 
+    if matches!(cmd, "pending tools" | "oracle pending tools" | "tool plans" | "oracle tool plans") {
+        return Some(oracle_pending_tools_card(session));
+    }
+
     if cmd == "dream" || cmd == "kai dream" {
         return Some("Oracle headless mode can observe KAI, but manual dream triggering is not exposed over Discord yet. That needs an approval path before it becomes a phone command.".into());
     }
 
+    if matches!(cmd, "cache" | "oracle cache" | "findings" | "oracle findings" | "scratchpad" | "what did you all find" | "what did you find") {
+        return Some(oracle_cache_card(session));
+    }
+
     if cmd.starts_with("run ") || cmd.starts_with("shell ") || cmd.starts_with("readfile ") || cmd.starts_with("writefile ") {
-        return Some("That command is intentionally blocked from Discord/OpenJarvis direct chat. Tool execution needs Oracle approval so a phone message cannot silently run shell or file writes.".into());
+        return Some("That direct command is blocked. Ask naturally for the task; Oracle will run safe checks/searches or ask approval for risky actions.".into());
     }
 
     None
@@ -659,23 +1625,84 @@ fn oracle_command_reply(
 
 fn oracle_command_card() -> String {
     [
-        "Safe Oracle command bridge:",
+        "Oracle private command bridge:",
         "",
         "`oracle commands` - this card.",
         "`oracle status` - current roundtable objective.",
         "`oracle models` - configured participants.",
         "`oracle tools` - list source-backed tool groups Oracle can propose.",
-        "`oracle plan <task>` - create a pending tool plan. Nothing executes until Ryan approves it.",
-        "`oracle approve tool <id>` - approve a pending tool plan. Execution is still not implemented in this phase.",
+        "`oracle cache` - temporary findings the group has built up.",
+        "`oracle pending tools` - show tool plans waiting for approval.",
+        "`oracle plan <task>` - create a pending tool plan. Natural language also works.",
+        "`oracle approve tool <id>` - approve and execute the pending tool if it has a safe executor.",
         "`oracle deny tool <id>` - deny a pending tool plan.",
+        "`oracle clear focus` - clear sticky speaker mode.",
         "`oracle kai status` - KAI vitals from the running server.",
+        "`oracle corpus` - corpus/ingest status and world-language training notes.",
+        "`kai learn <memory>` / `remember <memory>` - store one clean memory into KAI.",
         "`oracle query <text>` - ask the lattice for top grounded matches.",
         "`oracle recall <text>` - same as query, named for phone use.",
+        "`search code <term>` / `read file <path>` / `list directory <path>` - safe observation actions.",
+        "`look up <topic>` - safe current web lookup.",
+        "`cargo check --release --bin kai` - safe compile check.",
+        "Natural phrasing also works: `can you check if KAI compiles`, `look for MindFrame in the code`, `show me src/main.rs`, `remember that ...`.",
         "`kai ...` - talk to KAI's direct voice.",
+        "`oracle coder ...` - ask the senior coding agent.",
         "`analyst ...`, `researcher ...`, `leo ...` - call local agents.",
         "",
-        "Blocked for now: `run`, `shell`, `readfile`, `writefile`, and manual `dream`. Those need explicit Oracle approval before they are safe remote controls.",
+        "Direct mutation is blocked. Safe observation may run automatically; risky actions require approval.",
     ].join("\n")
+}
+
+fn oracle_cache_card(session: &Session) -> String {
+    let entries = session
+        .oracle_cache
+        .iter()
+        .rev()
+        .filter(|entry| entry.status == "temporary")
+        .take(10)
+        .collect::<Vec<_>>();
+    if entries.is_empty() {
+        return "Oracle cache is empty. The group has not built any temporary findings yet.".into();
+    }
+    let mut lines = vec!["Oracle cache findings:".to_string()];
+    for entry in entries.into_iter().rev() {
+        lines.push(format!(
+            "- {} / {}: {} | next: {}",
+            entry.speaker,
+            entry.topic,
+            truncate(&entry.evidence, 140),
+            truncate(&entry.suggested_action, 120)
+        ));
+    }
+    lines.join("\n")
+}
+
+fn oracle_pending_tools_card(session: &Session) -> String {
+    let pending = session
+        .pending_tools
+        .iter()
+        .filter(|tool| tool.status == "pending")
+        .collect::<Vec<_>>();
+    if pending.is_empty() {
+        return "No pending Oracle tool plans.".into();
+    }
+    let mut lines = vec!["Pending Oracle tool plans:".to_string()];
+    for tool in pending {
+        let action = tool
+            .action
+            .as_ref()
+            .map(|a| format!("{} `{}`", a.tool_id, truncate(&a.input, 120)))
+            .unwrap_or_else(|| "no executable action inferred".to_string());
+        lines.push(format!(
+            "- `{}`: {} | action: {}",
+            tool.id,
+            truncate(&tool.task, 120),
+            action
+        ));
+    }
+    lines.push("Approve with `oracle approve tool <id>` or deny with `oracle deny tool <id>`.".into());
+    lines.join("\n")
 }
 
 fn oracle_query_reply(universe: &Arc<Mutex<Universe>>, query: &str) -> String {
@@ -709,13 +1736,311 @@ fn oracle_query_reply(universe: &Arc<Mutex<Universe>>, query: &str) -> String {
 fn tool_plan_task_from_prompt(prompt: &str) -> Option<String> {
     let trimmed = prompt.trim();
     let lower = trimmed.to_ascii_lowercase();
+    let (command, command_lower) = if lower.starts_with("oracle ") {
+        let command = trimmed["oracle ".len()..].trim();
+        (command, command.to_ascii_lowercase())
+    } else {
+        (trimmed, lower)
+    };
     for prefix in ["plan ", "tool plan ", "tools plan ", "propose tool ", "propose tools "] {
-        if lower.starts_with(prefix) {
-            let task = trimmed[prefix.len()..].trim();
+        if command_lower.starts_with(prefix) {
+            let task = command[prefix.len()..].trim();
             if !task.is_empty() {
                 return Some(task.to_string());
             }
         }
+    }
+    if is_direct_tool_request(&command_lower) {
+        return Some(command.to_string());
+    }
+    if let Some(task) = natural_tool_task(command) {
+        return Some(task);
+    }
+    None
+}
+
+fn is_direct_tool_request(lower: &str) -> bool {
+    let t = lower.trim();
+    t.starts_with("read file ")
+        || t.starts_with("open file ")
+        || t.starts_with("show file ")
+        || t.starts_with("list directory ")
+        || t.starts_with("list dir ")
+        || t.starts_with("list files ")
+        || t.starts_with("search code ")
+        || t.starts_with("grep ")
+        || t.starts_with("legacy glob ")
+        || t.starts_with("glob ")
+        || t.starts_with("run command ")
+        || t.starts_with("web search ")
+        || t.starts_with("search web ")
+        || t.starts_with("look up ")
+        || t.starts_with("framework tools")
+        || t.starts_with("framework agents")
+        || t.starts_with("cargo check")
+        || t.starts_with("cargo test")
+        || t.starts_with("cargo build")
+}
+
+fn is_natural_tool_request(lower: &str) -> bool {
+    natural_tool_task(lower).is_some()
+}
+
+fn natural_tool_task(prompt: &str) -> Option<String> {
+    let trimmed = prompt.trim();
+    let lower = trimmed.to_ascii_lowercase();
+
+    if looks_like_cargo_check_request(&lower) {
+        return Some("run command cargo check --release --bin kai".into());
+    }
+    if looks_like_cargo_test_request(&lower) {
+        return Some("run command cargo test --release --quiet".into());
+    }
+    if looks_like_cargo_build_request(&lower) {
+        return Some("run command cargo build --release --bin kai".into());
+    }
+    if looks_like_current_web_request(&lower) {
+        if let Some(term) = extract_web_search_term(trimmed) {
+            return Some(format!("web search {}", term));
+        }
+    }
+    if looks_like_agent_framework_request(&lower) {
+        return Some(internal_framework_task(&lower));
+    }
+
+    if looks_like_file_read_request(&lower) {
+        if let Some(path) = extract_project_path(trimmed) {
+            return Some(format!("read file {}", path));
+        }
+    }
+
+    if looks_like_directory_request(&lower) {
+        let path = extract_project_path(trimmed).unwrap_or_else(|| ".".into());
+        return Some(format!("list directory {}", path));
+    }
+
+    if looks_like_code_search_request(&lower) {
+        if let Some(term) = extract_search_term(trimmed) {
+            return Some(format!("search code {}", term));
+        }
+    }
+
+    None
+}
+
+fn looks_like_cargo_check_request(lower: &str) -> bool {
+    lower.contains("cargo check")
+        || lower.contains("compile check")
+        || lower.contains("check the build")
+        || lower.contains("check build")
+        || lower.contains("check if kai compiles")
+        || lower.contains("see if kai compiles")
+        || lower.contains("does kai compile")
+        || (lower.contains("status check") && lower.contains("kai"))
+}
+
+fn looks_like_cargo_test_request(lower: &str) -> bool {
+    lower.contains("cargo test")
+        || lower.contains("run the tests")
+        || lower.contains("run tests")
+        || lower.contains("test suite")
+        || lower.contains("check the tests")
+}
+
+fn looks_like_cargo_build_request(lower: &str) -> bool {
+    lower.contains("cargo build")
+        || lower.contains("build kai")
+        || lower.contains("rebuild kai")
+        || lower.contains("build the binary")
+}
+
+fn looks_like_file_read_request(lower: &str) -> bool {
+    contains_any(lower, &["read", "open", "show", "look at", "inspect", "what is in"])
+        && extract_project_path(lower).is_some()
+        && !looks_like_directory_request(lower)
+}
+
+fn looks_like_directory_request(lower: &str) -> bool {
+    contains_any(lower, &["list", "show files", "what files", "folder", "directory", "inside"])
+        && (extract_project_path(lower).is_some() || lower.contains("project root"))
+}
+
+fn looks_like_code_search_request(lower: &str) -> bool {
+    contains_any(lower, &["search", "look for", "find", "where is", "where are", "grep", "scan"])
+        && contains_any(lower, &["code", "source", "file", "files", "repo", "project", "src", "function", "method", "struct", "mindframe", "claimstore", "oracle"])
+}
+
+fn looks_like_current_web_request(lower: &str) -> bool {
+    if contains_any(lower, &[
+        "search the internet",
+        "search online",
+        "web search",
+        "search web",
+        "look up",
+        "lookup",
+        "duckduckgo",
+        "new info",
+    ]) {
+        return !looks_like_code_search_request(lower);
+    }
+    contains_any(lower, &["latest", "current", "recent", "today"])
+        && contains_any(lower, &["news", "info", "information", "research", "search", "find", "about", "on"])
+        && !contains_any(lower, &["current objective", "current work", "current task", "current session"])
+        && !looks_like_code_search_request(lower)
+}
+
+fn extract_web_search_term(text: &str) -> Option<String> {
+    let lower = text.to_ascii_lowercase();
+    for marker in [
+        "search the internet for",
+        "search online for",
+        "search web for",
+        "web search for",
+        "look up",
+        "lookup",
+        "duckduckgo",
+        "latest on",
+        "current info on",
+        "recent info on",
+        "recent news on",
+    ] {
+        if let Some(idx) = lower.find(marker) {
+            let raw = text[idx + marker.len()..].trim();
+            let cleaned = clean_search_term(raw);
+            if cleaned.len() >= 2 {
+                return Some(cleaned);
+            }
+        }
+    }
+    let cleaned = clean_search_term(text);
+    if cleaned.len() >= 2 { Some(cleaned) } else { None }
+}
+
+fn looks_like_agent_framework_request(lower: &str) -> bool {
+    contains_any(lower, &[
+        "agent framework",
+        "framework tools",
+        "framework agents",
+        "framework skills",
+        "coding skills",
+        "tool framework",
+        "source-backed tools",
+        "state of the art source",
+        "source code coding stuff",
+    ])
+}
+
+fn internal_framework_task(lower: &str) -> String {
+    if lower.contains("agent") {
+        "list internal Oracle agents".into()
+    } else if lower.contains("skill") {
+        "list internal Oracle skills".into()
+    } else {
+        "list internal Oracle tools".into()
+    }
+}
+
+fn extract_project_path(text: &str) -> Option<String> {
+    let cleaned = text.replace('\\', "/");
+    for raw in cleaned.split_whitespace() {
+        let token = raw
+            .trim_matches(|c: char| matches!(c, '"' | '\'' | '`' | ',' | ':' | ';' | '?' | '!' | '(' | ')' | '[' | ']'))
+            .trim_start_matches("./");
+        let lower = token.to_ascii_lowercase();
+        let looks_path = lower == "."
+            || lower.starts_with("src/")
+            || lower.starts_with("data/")
+            || lower.starts_with("tools/")
+            || lower.starts_with("legacy/")
+            || lower.starts_with("docs/")
+            || lower.starts_with("tests/")
+            || lower.starts_with("scripts/")
+            || lower.starts_with("reports/")
+            || lower == "cargo.toml"
+            || lower == "cargo.lock"
+            || lower == "readme.md"
+            || lower == "performance.md"
+            || lower.ends_with(".rs")
+            || lower.ends_with(".md")
+            || lower.ends_with(".toml")
+            || lower.ends_with(".json")
+            || lower.ends_with(".js")
+            || lower.ends_with(".mjs")
+            || lower.ends_with(".ps1")
+            || lower.ends_with(".html")
+            || lower.ends_with(".txt");
+        if looks_path && !lower.contains("..") {
+            return Some(token.to_string());
+        }
+    }
+    if cleaned.to_ascii_lowercase().contains("project root") {
+        return Some(".".into());
+    }
+    None
+}
+
+fn extract_search_term(text: &str) -> Option<String> {
+    let lower = text.to_ascii_lowercase();
+    for marker in [
+        "search code for",
+        "search for",
+        "look through the code for",
+        "look through code for",
+        "look in the code for",
+        "look for",
+        "find where",
+        "find",
+        "where is",
+        "where are",
+        "grep",
+        "scan for",
+    ] {
+        if let Some(idx) = lower.find(marker) {
+            let raw = text[idx + marker.len()..].trim();
+            let cleaned = clean_search_term(raw);
+            if cleaned.len() >= 2 {
+                return Some(cleaned);
+            }
+        }
+    }
+    None
+}
+
+fn clean_search_term(raw: &str) -> String {
+    let mut term = raw
+        .trim()
+        .trim_start_matches(':')
+        .trim()
+        .trim_matches('"')
+        .trim_matches('\'')
+        .trim_matches('`')
+        .to_string();
+    for tail in [
+        " in the code",
+        " in code",
+        " in source",
+        " in the source",
+        " in files",
+        " in the files",
+        " in repo",
+        " in the repo",
+        " in project",
+        " in the project",
+    ] {
+        if let Some(idx) = term.to_ascii_lowercase().find(tail) {
+            term.truncate(idx);
+        }
+    }
+    term.trim().trim_matches(|c: char| matches!(c, '?' | '!' | '.' | ',' | ';' | ':')).to_string()
+}
+
+fn implicit_tool_decision(lower: &str) -> Option<bool> {
+    let t = lower.trim();
+    if matches!(t, "approve it" | "approve that" | "yes approve" | "yes run it" | "run it" | "run that" | "do it" | "go ahead" | "go ahead and run it") {
+        return Some(true);
+    }
+    if matches!(t, "deny it" | "deny that" | "reject it" | "reject that" | "no don't" | "dont run it" | "don't run it" | "cancel it" | "stop that") {
+        return Some(false);
     }
     None
 }
@@ -745,11 +2070,100 @@ fn parse_id_after_prefix(lower: &str, prefix: &str) -> Option<u64> {
         .ok()
 }
 
+fn handle_private_tool_task(session: Arc<Mutex<Session>>, requested_by: &str, task: &str) -> String {
+    let tools = select_tool_candidates(task);
+    let action = infer_tool_action(task, &tools);
+    if let Some(action) = action.clone() {
+        if is_auto_safe_tool_action(&action) {
+            let result = execute_tool_action(&action);
+            let (status, result_text) = match result {
+                Ok(text) => ("done", text),
+                Err(error) => ("failed", error),
+            };
+            let mut s = session.lock().unwrap();
+            s.turns.push(Turn {
+                ts: now(),
+                from: "Oracle".into(),
+                text: format!(
+                    "[SAFE TOOL {}]\nTask: {}\nTool: `{}`\nInput: `{}`\n\n{}",
+                    status,
+                    task,
+                    action.tool_id,
+                    truncate(&action.input, 180),
+                    truncate(&result_text, 3500)
+                ),
+                kind: "system".into(),
+            });
+            push_oracle_cache_entry(
+                &mut s,
+                "Oracle Coder",
+                "safe observation",
+                &format!("{} -> {}", action.tool_id, truncate(&result_text, 220)),
+                "Use this result to decide the next KAI step; no code was changed.",
+            );
+            save_session(&s);
+            if status == "done" {
+                return truncate(&result_text, 1800);
+            }
+            return format!("The safe check failed:\n{}", truncate(&result_text, 1200));
+        }
+    }
+    create_tool_proposal(session, requested_by, task)
+}
+
+fn is_auto_safe_tool_action(action: &ToolExecutionRequest) -> bool {
+    match action.tool_id.as_str() {
+        "oracle.read_file"
+        | "oracle.list_directory"
+        | "oracle.search_code"
+        | "oracle.web_search"
+        | "oracle.framework_tools"
+        | "oracle.framework_agents"
+        | "oracle.framework_skills"
+        | "legacy.grep"
+        | "legacy.glob" => true,
+        "oracle.run_command" => action.input.trim() == "cargo check --release --bin kai",
+        _ => false,
+    }
+}
+
+fn push_oracle_cache_entry(
+    session: &mut Session,
+    speaker: &str,
+    topic: &str,
+    evidence: &str,
+    suggested_action: &str,
+) {
+    let evidence = evidence.trim();
+    if evidence.len() < 6 {
+        return;
+    }
+    session.oracle_cache.push(OracleCacheEntry {
+        ts: now(),
+        speaker: speaker.to_string(),
+        topic: truncate(topic, 80),
+        evidence: truncate(evidence, 700),
+        suggested_action: truncate(suggested_action, 240),
+        status: "temporary".into(),
+    });
+    if session.oracle_cache.len() > 80 {
+        let overflow = session.oracle_cache.len() - 80;
+        session.oracle_cache.drain(0..overflow);
+    }
+}
+
 fn create_tool_proposal(session: Arc<Mutex<Session>>, requested_by: &str, task: &str) -> String {
     let id = now() * 1000 + (rand::random::<u16>() as u64);
     let tools = select_tool_candidates(task);
     let action = infer_tool_action(task, &tools);
-    let plan = plan_tool_action(task, &tools, action.as_ref());
+    let plan: Vec<String> = if let Some(ref a) = action {
+        vec![
+            format!("Analyze task: {}", truncate(task, 80)),
+            format!("Run tool `{}` with input: {}", a.tool_id, truncate(&a.input, 120)),
+        ]
+    } else {
+        vec![format!("Analyze task: {}", truncate(task, 80))]
+    };
     let ids: Vec<String> = tools.iter().map(|t| t.id.clone()).collect();
     let action_line = action
         .as_ref()
@@ -806,7 +2220,7 @@ fn apply_tool_decision(session: Arc<Mutex<Session>>, approve: bool, id: u64) -> 
         s.turns.push(Turn {
             ts: now(),
             from: "system".into(),
-            text: format!("[TOOL DENIED by Ryan]\nProposal: {}", task),
+            text: format!("[TOOL DENIED]\nProposal: {}", task),
             kind: "system".into(),
         });
         save_session(&s);
@@ -864,6 +2278,11 @@ fn oracle_tool_registry() -> Vec<ToolDefinition> {
         tool_def("oracle.read_file", "Read File", "src/bridge/oracle_server.rs", "Read a non-sensitive project file after approval.", "read-only-file"),
         tool_def("oracle.list_directory", "List Directory", "src/bridge/oracle_server.rs", "List files and folders under a project directory after approval.", "read-only-file"),
         tool_def("oracle.search_code", "Search Code", "src/bridge/oracle_server.rs", "Search project source/text files for a term after approval.", "read-only-code"),
+        tool_def("oracle.web_search", "Web Search", "src/bridge/oracle_server.rs", "Look up current public web information and return source snippets.", "network-read"),
+        tool_def("oracle.framework_tools", "Agent Framework Tools", "OpenJarvis-main/src/openjarvis/tools", "Inspect Oracle's internal tool framework capabilities.", "read-only-framework"),
+        tool_def("oracle.framework_agents", "Agent Framework Agents", "OpenJarvis-main/src/openjarvis/agents", "Inspect Oracle's internal agent framework capabilities.", "read-only-framework"),
+        tool_def("oracle.framework_skills", "Agent Framework Skills", "OpenJarvis-main/src/openjarvis/skills", "Inspect Oracle's internal reusable skill framework.", "read-only-framework"),
+        tool_def("oracle.coder", "Oracle Coder", "src/bridge/oracle_server.rs", "Senior coding agent that turns requests into safe observations, plans, and approval-gated implementation tasks.", "agent-control"),
         tool_def("oracle.run_command", "Run Safe Command", "src/bridge/oracle_server.rs", "Run a small whitelist of non-destructive commands after approval.", "safe-command"),
         tool_def("legacy.bash", "Legacy BashTool", "legacy/typescript_engine/src/tools/BashTool", "Shell execution design with command semantics, path validation, permissions, and destructive-command warnings.", "high-risk-shell-adapter"),
         tool_def("legacy.powershell", "Legacy PowerShellTool", "legacy/typescript_engine/src/tools/PowerShellTool", "Windows-native command design with CLM types, path validation, permissions, and safety checks.", "high-risk-shell-adapter"),
@@ -893,7 +2312,7 @@ fn oracle_tool_registry() -> Vec<ToolDefinition> {
         tool_def("kai.bridge.code_tools", "Code Tools", "src/bridge/code_tools.rs", "Source inspection and code-analysis helpers for Oracle-style agent work.", "read-only-code"),
         tool_def("kai.bridge.git_tools", "Git Tools", "src/bridge/git_tools.rs", "Repository status, diff, and git-oriented workflow helpers.", "repo-write-risk"),
         tool_def("kai.bridge.ipc_server", "IPC Server", "src/bridge/ipc_server.rs", "Runtime query/store/chat/status API used by scripts and external tools.", "runtime-state"),
-        tool_def("kai.bridge.oracle_server", "Oracle Server", "src/bridge/oracle_server.rs", "Roundtable, Discord/OpenJarvis endpoint, model routing, and approval queues.", "agent-control"),
+        tool_def("kai.bridge.oracle_server", "Oracle Server", "src/bridge/oracle_server.rs", "Roundtable, Discord endpoint, model routing, and approval queues.", "agent-control"),
         tool_def("kai.cognition.voice", "Voice", "src/cognition/voice.rs", "Rule/local voice synthesis layer for turning grounded memory into replies.", "reply-output"),
         tool_def("kai.cognition.ollama_voice", "Ollama Voice", "src/cognition/ollama_voice.rs", "Optional small local LLM mouth bridge for more natural language.", "model-call"),
         tool_def("kai.cognition.working_memory", "Working Memory", "src/cognition/working_memory.rs", "Short-term context continuity and recent conversational state.", "memory-state"),
@@ -929,6 +2348,15 @@ fn select_tool_candidates(task: &str) -> Vec<ToolDefinition> {
     }
     if contains_any(&lower, &["search code", "search_code", "grep", "find in files", "look for"]) {
         ids.extend(["oracle.search_code", "legacy.grep", "legacy.glob"]);
+    }
+    if contains_any(&lower, &["web search", "search web", "search online", "search the internet", "look up", "latest", "current info", "recent news", "duckduckgo"]) {
+        ids.extend(["oracle.web_search", "legacy.web_search", "legacy.web_fetch"]);
+    }
+    if contains_any(&lower, &["internal framework", "agent framework", "framework tools", "framework agents", "framework skills", "coding skills", "source-backed tools"]) {
+        ids.extend(["oracle.framework_tools", "oracle.framework_agents", "oracle.framework_skills", "legacy.skill_tool", "legacy.agent_tool"]);
+    }
+    if contains_any(&lower, &["oracle coder", "coder", "senior coder", "coding agent", "engineer"]) {
+        ids.extend(["oracle.coder", "oracle.search_code", "oracle.read_file", "oracle.run_command"]);
     }
     if contains_any(&lower, &["run command", "run_command", "cargo check", "cargo test", "cargo build", "dir", "ls"]) {
         ids.extend(["oracle.run_command", "legacy.bash", "legacy.powershell"]);
@@ -969,7 +2397,7 @@ fn select_tool_candidates(task: &str) -> Vec<ToolDefinition> {
     if contains_any(&lower, &["talk", "reply", "voice", "social", "conversation", "language", "normal"]) {
         ids.extend(["kai.cognition.voice", "kai.cognition.ollama_voice", "kai.cognition.working_memory"]);
     }
-    if contains_any(&lower, &["discord", "oracle", "agent", "approval", "openjarvis", "phone"]) {
+    if contains_any(&lower, &["discord", "oracle", "agent", "approval", "phone"]) {
         ids.extend(["kai.bridge.oracle_server", "kai.bridge.ipc_server", "kai.main.cli"]);
     }
     if contains_any(&lower, &["attention", "workspace", "mindframe", "route", "routing", "focus"]) {
@@ -1002,12 +2430,12 @@ fn infer_tool_action(task: &str, tools: &[ToolDefinition]) -> Option<ToolExecuti
 
     if has_tool("oracle.read_file") {
         if let Some(input) = extract_after_any(trimmed, &["read file", "read_file", "open file", "show file", "read"]) {
-            return Some(ToolExecutionRequest { tool_id: "oracle.read_file".into(), input });
+            return Some(ToolExecutionRequest { tool_id: "oracle.read_file".into(), input: input.to_string() });
         }
     }
     if has_tool("oracle.list_directory") {
         if let Some(input) = extract_after_any(trimmed, &["list directory", "list dir", "list files in", "list files", "directory", "folder", "dir"]) {
-            return Some(ToolExecutionRequest { tool_id: "oracle.list_directory".into(), input });
+            return Some(ToolExecutionRequest { tool_id: "oracle.list_directory".into(), input: input.to_string() });
         }
         if lower == "ls" || lower == "dir" {
             return Some(ToolExecutionRequest { tool_id: "oracle.list_directory".into(), input: ".".into() });
@@ -1015,271 +2443,126 @@ fn infer_tool_action(task: &str, tools: &[ToolDefinition]) -> Option<ToolExecuti
     }
     if has_tool("legacy.glob") {
         if let Some(input) = extract_after_any(trimmed, &["legacy glob", "glob", "find files", "match files"]) {
-            return Some(ToolExecutionRequest { tool_id: "legacy.glob".into(), input });
+            return Some(ToolExecutionRequest { tool_id: "legacy.glob".into(), input: input.to_string() });
         }
     }
     if has_tool("legacy.grep") {
         if let Some(input) = extract_after_any(trimmed, &["legacy grep", "grep"]) {
-            return Some(ToolExecutionRequest { tool_id: "legacy.grep".into(), input });
+            return Some(ToolExecutionRequest { tool_id: "legacy.grep".into(), input: input.to_string() });
         }
     }
     if has_tool("oracle.search_code") {
         if let Some(input) = extract_after_any(trimmed, &["search code for", "search code", "search_code", "find in files", "look for", "grep"]) {
-            return Some(ToolExecutionRequest { tool_id: "oracle.search_code".into(), input });
+            return Some(ToolExecutionRequest { tool_id: "oracle.search_code".into(), input: input.to_string() });
         }
     }
-    if has_tool("oracle.run_command") {
-        if let Some(input) = extract_after_any(trimmed, &["run command", "run_command", "run"]) {
-            return Some(ToolExecutionRequest { tool_id: "oracle.run_command".into(), input });
-        }
-        if lower.starts_with("cargo check") || lower.starts_with("cargo test") || lower.starts_with("cargo build") || lower == "dir" || lower == "ls" {
-            return Some(ToolExecutionRequest { tool_id: "oracle.run_command".into(), input: trimmed.to_string() });
-        }
-    }
-
-    None
-}
-
-fn extract_after_any(text: &str, prefixes: &[&str]) -> Option<String> {
-    let lower = text.to_ascii_lowercase();
-    for prefix in prefixes {
-        if lower.starts_with(prefix) {
-            let value = text[prefix.len()..]
-                .trim()
-                .trim_start_matches(':')
-                .trim()
-                .trim_matches('"')
-                .trim_matches('\'')
-                .to_string();
-            if !value.is_empty() {
-                return Some(value);
-            }
+    if has_tool("oracle.web_search") {
+        if let Some(input) = extract_after_any(trimmed, &["web search for", "web search", "search web for", "search web", "search online for", "search online", "search the internet for", "search the internet", "look up", "lookup", "duckduckgo"]) {
+            return Some(ToolExecutionRequest { tool_id: "oracle.web_search".into(), input: input.to_string() });
         }
     }
     None
 }
 
-fn plan_tool_action(task: &str, tools: &[ToolDefinition], action: Option<&ToolExecutionRequest>) -> Vec<String> {
-    let ids = tools.iter().map(|t| t.id.as_str()).collect::<Vec<_>>().join(", ");
-    let mut plan = vec![
-        format!("Understand Ryan's task: {}", truncate(task, 160)),
-        "Select source-backed KAI/Oracle capabilities from the registry.".into(),
-        format!("Propose these tools for approval: {}", ids),
-        "Wait for Ryan to approve or deny the proposal.".into(),
-    ];
-    if let Some(action) = action {
-        plan.push(format!("After approval, execute `{}` with input `{}`.", action.tool_id, truncate(&action.input, 160)));
-    } else {
-        plan.push("No concrete executable action was inferred yet; approval will not run a tool until the task is clearer.".into());
-    }
-    plan
-}
-
-fn contains_any(haystack: &str, needles: &[&str]) -> bool {
-    needles.iter().any(|needle| haystack.contains(needle))
-}
-
-fn oracle_tool_registry_card() -> String {
-    let mut lines = vec![
-        "Oracle tool registry:",
-        "",
-        "These are source-backed capability groups, not raw execution yet.",
-    ].into_iter().map(String::from).collect::<Vec<_>>();
-    for tool in oracle_tool_registry() {
-        lines.push(format!(
-            "- `{}` - {} ({}, risk: {})",
-            tool.id,
-            tool.capability,
-            tool.source_path,
-            tool.risk
-        ));
-    }
-    lines.push("".into());
-    lines.push("Use `oracle plan <task>` to create a pending approval plan. Nothing executes in this phase.".into());
-    lines.join("\n")
-}
-
-fn is_model_status_question(lower: &str) -> bool {
-    matches!(lower.trim(), "models" | "oracle models" | "model status" | "oracle model status")
-        || lower.contains("what model is available")
-        || lower.contains("what models are available")
-        || lower.contains("which model is available")
-        || lower.contains("available model")
-        || lower.contains("who is available")
-}
-
-fn oracle_model_status_card() -> String {
-    let keys = load_keys();
-    let configured = |present: bool| if present { "configured" } else { "missing key" };
-    [
-        "Oracle participants:",
-        "",
-        "KAI - built-in lattice/mind voice",
-        "Oracle - built-in roundtable router",
-        "Analyst - local Ollama phi3:mini",
-        "Researcher - local Ollama phi3:mini",
-        "Leo - local Ollama llama3.2:3b",
-        &format!("GPT - {}", configured(keys.openai.is_some())),
-        &format!("KAI - {}", configured(keys.kai.is_some())),
-        &format!("Gemini - {}", configured(keys.google.is_some())),
-        &format!("Groq - {}", configured(keys.groq.is_some())),
-        "Grok/xAI - recognized, not wired into this backend yet",
-        "",
-        "Start a message with a name, like `kai ...`, `analyst ...`, or `gpt ...`.",
-    ].join("\n")
-}
-
-fn is_oracle_status_question(lower: &str) -> bool {
-    matches!(lower.trim(), "status" | "oracle status" | "table" | "oracle table")
-        || lower.contains("what is on the table")
-        || lower.contains("what's on the table")
-        || lower.contains("what are we working on")
-        || lower.contains("current objective")
-        || lower.contains("what is happening")
-        || lower.contains("where are we at")
-}
-
-fn summarize_objective(task: &str) -> String {
-    let compact = task
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .collect::<Vec<_>>()
-        .join(" ");
-    if compact.len() <= 220 {
-        compact
-    } else {
-        let mut end = 220;
-        while end > 0 && !compact.is_char_boundary(end) {
-            end -= 1;
-        }
-        format!("{}...", compact[..end].trim_end())
-    }
-}
-
-fn generate_direct_ai_reply(model: &'static str, session: Arc<Mutex<Session>>) -> (String, bool) {
-    let keys = load_keys();
-    if !has_key_for_model(model, &keys) {
-        return (
-            format!("Oracle cannot call {} yet because its API key is not configured in the Oracle key store.", model),
-            false,
-        );
-    }
-
-    let (sess, vitals) = {
-        let s = session.lock().unwrap();
-        (s.clone(), s.vitals.clone())
-    };
-    let mut prompt = build_meeting_prompt(&sess, model, &vitals, false);
-    prompt.push_str("\n\nDIRECT DISCORD ADDRESS:\nRyan addressed you by name from Discord. Answer the latest Ryan@Discord turn directly and briefly. Do not ask for tests unless essential.\n");
-
-    match call_model(model, &keys, &prompt) {
-        Ok(raw) => {
-            commit_ai_response(raw, model, session.clone());
-            let s = session.lock().unwrap();
-            let reply = s.turns
-                .iter()
-                .rev()
-                .find(|turn| turn.from == model)
-                .map(|turn| turn.text.clone())
-                .unwrap_or_else(|| format!("{} responded, but Oracle did not capture a visible message.", model));
-            (reply, true)
-        }
-        Err(e) => (
-            format!("Oracle could not reach {}: {}", model, e),
-            false,
-        ),
-    }
-}
+// â”€â”€ Missing HTTP Endpoint Handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 fn handle_ai_turn(
-    stream: &mut TcpStream, body: &[u8],
-    _universe: Arc<Mutex<Universe>>,
+    stream: &mut TcpStream,
+    body: &[u8],
+    universe: Arc<Mutex<Universe>>,
     session: Arc<Mutex<Session>>,
 ) -> std::io::Result<()> {
     let req: AiTurnRequest = serde_json::from_slice(body).unwrap_or_default();
-    let (sess, vitals) = { let s = session.lock().unwrap(); (s.clone(), s.vitals.clone()) };
+    let model = req.model.clone();
+    let task = { session.lock().unwrap().task.clone() };
     let keys = load_keys();
-    if !has_key_for_model(&req.model, &keys) {
-        return write_simple(stream, 503, "Unavailable", &format!("no key for {}", req.model));
-    }
-    let prompt = build_meeting_prompt(&sess, &req.model, &vitals, false);
-    match call_model(&req.model, &keys, &prompt) {
-        Ok(raw) => {
-            commit_ai_response(raw, &req.model, session.clone());
-            let s = session.lock().unwrap();
-            write_json(stream, 200, "OK", &serde_json::to_value(&*s).unwrap())
-        }
-        Err(e) => write_simple(stream, 500, "Error", &e)
+    let packet = {
+        let s = session.lock().unwrap();
+        let u = universe.lock().unwrap();
+        build_context_packet(&s, &u, &task)
+    };
+    let sys = format!("You are {} in the KAI Oracle roundtable. KAI is a developing Rust AI. Be direct and useful.", model);
+    let reply = if has_key_for_model(&model, &keys) {
+        call_model(&model, &keys, &format!("{sys}\n\n{packet}")).unwrap_or_default()
+    } else {
+        call_ollama(&model, &packet, &sys).unwrap_or_default()
+    };
+    if !reply.trim().is_empty() && !reply.trim().eq_ignore_ascii_case("pass") {
+        let mut s = session.lock().unwrap();
+        s.turns.push(Turn { ts: now(), from: model.clone(), text: reply.clone(), kind: "ai".into() });
+        save_session(&s);
+        let sv = serde_json::to_value(&*s).unwrap();
+        drop(s);
+        write_json(stream, 200, "OK", &json!({ "reply": reply, "from": model, "session": sv }))
+    } else {
+        write_json(stream, 200, "OK", &json!({ "reply": "", "from": model, "passed": true }))
     }
 }
 
 fn handle_ai_think(
-    stream: &mut TcpStream, body: &[u8],
-    _universe: Arc<Mutex<Universe>>,
+    stream: &mut TcpStream,
+    body: &[u8],
+    universe: Arc<Mutex<Universe>>,
     session: Arc<Mutex<Session>>,
 ) -> std::io::Result<()> {
     let req: AiTurnRequest = serde_json::from_slice(body).unwrap_or_default();
-    let (sess, vitals) = { let s = session.lock().unwrap(); (s.clone(), s.vitals.clone()) };
+    let model = req.model.clone();
+    let task = { session.lock().unwrap().task.clone() };
     let keys = load_keys();
-    let prompt = build_meeting_prompt(&sess, &req.model, &vitals, false);
-    match call_model_deep(&req.model, &keys, &prompt) {
-        Ok(text) => {
-            let mut s = session.lock().unwrap();
-            s.drafts.insert(req.model.clone(), Draft {
-                ts: now(), from: req.model.clone(), text, status: "ready".into()
-            });
-            save_session(&s);
-            write_json(stream, 200, "OK", &serde_json::to_value(&*s).unwrap())
-        }
-        Err(e) => write_simple(stream, 500, "Error", &e)
-    }
+    let packet = {
+        let s = session.lock().unwrap();
+        let u = universe.lock().unwrap();
+        build_context_packet(&s, &u, &task)
+    };
+    let sys = format!("You are {} in the KAI Oracle roundtable. Draft your private thoughts on KAI's state.", model);
+    let draft_text = if has_key_for_model(&model, &keys) {
+        call_model(&model, &keys, &format!("{sys}\n\n{packet}")).unwrap_or_default()
+    } else {
+        call_ollama(&model, &packet, &sys).unwrap_or_default()
+    };
+    let mut s = session.lock().unwrap();
+    s.drafts.insert(model.clone(), Draft { ts: now(), from: model.clone(), text: draft_text.clone(), status: "draft".into() });
+    save_session(&s);
+    write_json(stream, 200, "OK", &json!({ "from": model, "draft": draft_text }))
 }
 
-/// Auto-round: each configured AI reads the transcript and decides whether to
-/// speak. AIs respond with "PASS" if they have nothing new to add.
 fn handle_auto_round(
     stream: &mut TcpStream,
-    _universe: Arc<Mutex<Universe>>,
+    universe: Arc<Mutex<Universe>>,
     session: Arc<Mutex<Session>>,
 ) -> std::io::Result<()> {
-    let models = ["GPT-4", "Gemini", "KAI", "Groq", "Researcher", "Analyst"];
     let keys = load_keys();
-    let mut spoke = 0usize;
-
-    for model in &models {
+    let task = { session.lock().unwrap().task.clone() };
+    let packet = {
+        let s = session.lock().unwrap();
+        let u = universe.lock().unwrap();
+        build_context_packet(&s, &u, &task)
+    };
+    let mut replies = Vec::new();
+    for &model in &["GPT-4o", "kai-3-5-sonnet-20241022", "Gemini", "Groq"] {
         if !has_key_for_model(model, &keys) { continue; }
-        let (sess, vitals) = { let s = session.lock().unwrap(); (s.clone(), s.vitals.clone()) };
-        let prompt = build_meeting_prompt(&sess, model, &vitals, true);
-        match call_model(model, &keys, &prompt) {
-            Ok(raw) if raw.trim().to_uppercase() != "PASS" && !raw.trim().is_empty() => {
-                commit_ai_response(raw, model, session.clone());
-                spoke += 1;
-            }
-            _ => {}
+        let sys = format!("You are {} in Oracle interrupt mode. If you notice something, say it in 1-3 sentences. Otherwise reply PASS.", model);
+        let reply = call_model(model, &keys, &format!("{sys}\n\n{packet}")).unwrap_or_default();
+        let trimmed = reply.trim().to_string();
+        if !trimmed.is_empty() && !trimmed.eq_ignore_ascii_case("pass") {
+            replies.push((model.to_string(), trimmed.clone()));
+            let mut s = session.lock().unwrap();
+            s.turns.push(Turn { ts: now(), from: model.to_string(), text: trimmed, kind: "ai".into() });
+            save_session(&s);
         }
     }
-
-    if spoke == 0 {
-        let mut s = session.lock().unwrap();
-        s.turns.push(Turn {
-            ts: now(), from: "system".into(),
-            text: "Auto-round complete â€” all AIs passed, no new contributions.".into(),
-            kind: "system".into(),
-        });
-        save_session(&s);
-    }
-
-    let s = session.lock().unwrap();
-    write_json(stream, 200, "OK", &serde_json::to_value(&*s).unwrap())
+    let sv = serde_json::to_value(&*session.lock().unwrap()).unwrap();
+    write_json(stream, 200, "OK", &json!({ "replies": replies, "session": sv }))
 }
 
 fn handle_commit_drafts(stream: &mut TcpStream, session: Arc<Mutex<Session>>) -> std::io::Result<()> {
     let mut s = session.lock().unwrap();
-    let drafts: Vec<Draft> = s.drafts.drain().map(|(_, d)| d).collect();
-    for d in drafts {
-        s.turns.push(Turn { ts: d.ts, from: d.from, text: d.text, kind: "ai".into() });
-    }
+    let committed: Vec<_> = s.drafts.values()
+        .filter(|d| !d.text.trim().is_empty())
+        .map(|d| Turn { ts: d.ts, from: d.from.clone(), text: d.text.clone(), kind: "ai".into() })
+        .collect();
+    for turn in committed { s.turns.push(turn); }
+    s.drafts.clear();
     save_session(&s);
     write_json(stream, 200, "OK", &serde_json::to_value(&*s).unwrap())
 }
@@ -1293,26 +2576,29 @@ fn handle_clear_drafts(stream: &mut TcpStream, session: Arc<Mutex<Session>>) -> 
 
 fn handle_reset(stream: &mut TcpStream, session: Arc<Mutex<Session>>) -> std::io::Result<()> {
     let mut s = session.lock().unwrap();
-    let title = s.meeting_title.clone();
-    s.turns.clear();
-    s.drafts.clear();
-    s.pending_tests.clear();
-    s.pending_tools.clear();
-    s.file_cache.clear();
-    s.turns.push(Turn {
-        ts: now(), from: "system".into(),
-        text: format!("Session reset. Meeting: {}", if title.is_empty() { "Oracle" } else { &title }),
-        kind: "system".into(),
-    });
+    s.turns.clear(); s.drafts.clear(); s.pending_tests.clear(); s.pending_tools.clear();
+    s.oracle_cache.clear(); s.task.clear(); s.meeting_title.clear();
     save_session(&s);
     write_json(stream, 200, "OK", &serde_json::to_value(&*s).unwrap())
 }
 
 fn handle_file_list(stream: &mut TcpStream) -> std::io::Result<()> {
     let mut files = Vec::new();
-    scan_dir_recursive(".", &mut files);
+    fn walk(dir: &str, acc: &mut Vec<String>) {
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for e in entries.flatten() {
+                let path = e.path();
+                let ps = path.to_string_lossy().replace('\\', "/");
+                if path.is_dir() && !ps.contains(".git") && !ps.contains("target") {
+                    walk(&path.to_string_lossy(), acc);
+                } else if path.is_file() && (ps.ends_with(".rs") || ps.ends_with(".toml")) {
+                    acc.push(ps.trim_start_matches("./").to_string());
+                }
+            }
+        }
+    }
+    walk("src", &mut files);
     files.sort();
-    files.dedup();
     write_json(stream, 200, "OK", &json!({ "files": files }))
 }
 
@@ -1321,36 +2607,60 @@ fn handle_file_read(stream: &mut TcpStream, body: &[u8], session: Arc<Mutex<Sess
         Ok(r) => r,
         Err(_) => return write_simple(stream, 400, "Bad Request", "invalid body"),
     };
-    match read_project_file(&req.path) {
+    let path = req.path.trim().trim_start_matches('/');
+    if path.contains("..") || (!path.starts_with("src") && !path.starts_with("Cargo")) {
+        return write_simple(stream, 403, "Forbidden", "only src/ and Cargo files allowed");
+    }
+    match std::fs::read_to_string(path) {
         Ok(content) => {
             let snippet = truncate(&content, 4000);
             let mut s = session.lock().unwrap();
-            s.file_cache.insert(req.path.clone(), snippet.clone());
-            let msg = format!("Ryan shared file: {}\n```rust\n{}\n```", req.path, snippet);
-            s.turns.push(Turn { ts: now(), from: "system".into(), text: msg, kind: "file-share".into() });
+            s.file_cache.insert(path.to_string(), snippet.clone());
+            s.turns.push(Turn { ts: now(), from: "Oracle".into(), text: format!("ðŸ“„ {}", path), kind: "file-share".into() });
             save_session(&s);
-            write_json(stream, 200, "OK", &serde_json::to_value(&*s).unwrap())
+            write_json(stream, 200, "OK", &json!({ "path": path, "content": snippet }))
         }
-        Err(e) => write_simple(stream, 400, "Bad Request", &format!("cannot read: {}", e))
+        Err(e) => write_simple(stream, 404, "Not Found", &format!("{}: {}", path, e)),
     }
+}
+
+fn handle_list_dir(stream: &mut TcpStream, query_str: &str) -> std::io::Result<()> {
+    let raw_path = query_str.split('&')
+        .find(|p| p.starts_with("path="))
+        .map(|p| p["path=".len()..].to_string())
+        .unwrap_or_else(|| ".".to_string());
+
+    let path_str = raw_path.replace("%20", " ").replace("%5C", "\\").replace("%2F", "/");
+    let path = std::path::Path::new(&path_str);
+
+    if !path.exists() {
+        return write_simple(stream, 404, "Not Found", "Path does not exist");
+    }
+
+    let Ok(entries) = std::fs::read_dir(path) else {
+        return write_simple(stream, 500, "Error", "Cannot read directory");
+    };
+
+    let mut list = Vec::new();
+    for entry in entries.flatten() {
+        let p = entry.path();
+        let name = p.file_name().and_then(|s| s.to_str()).unwrap_or("?");
+        let type_str = if p.is_dir() { "[DIR]" } else { "[FILE]" };
+        list.push(format!("{} {}", type_str, name));
+    }
+
+    let summary = format!("DIRECTORY LISTING: {}\n\n{}", path_str, list.join("\n"));
+    write_simple(stream, 200, "OK", &summary)
 }
 
 fn handle_manual_test_request(stream: &mut TcpStream, body: &[u8], session: Arc<Mutex<Session>>) -> std::io::Result<()> {
     let req: ManualTestRequest = match serde_json::from_slice(body) {
         Ok(r) => r,
-        Err(e) => {
-            println!("Oracle: Manual test request parse error: {:?}", e);
-            return write_simple(stream, 400, "Bad Request", "invalid body");
-        }
+        Err(_) => return write_simple(stream, 400, "Bad Request", "invalid body"),
     };
-    let id = now() * 1000 + (rand::random::<u16>() as u64);
-    let msg = format!("[TEST REQUEST from {}]\nCommand: {}\nReason: {}", req.requested_by, req.command, req.reason);
+    let id = now();
     let mut s = session.lock().unwrap();
-    s.turns.push(Turn { ts: now(), from: req.requested_by.clone(), text: msg, kind: "test-request".into() });
-    s.pending_tests.push(PendingTest {
-        id, requested_by: req.requested_by, command: req.command, reason: req.reason,
-        status: "pending".into(), result: None,
-    });
+    s.pending_tests.push(PendingTest { id, requested_by: req.requested_by, command: req.command, reason: req.reason, status: "pending".into(), result: None });
     save_session(&s);
     write_json(stream, 200, "OK", &serde_json::to_value(&*s).unwrap())
 }
@@ -1358,38 +2668,26 @@ fn handle_manual_test_request(stream: &mut TcpStream, body: &[u8], session: Arc<
 fn handle_approve_test(stream: &mut TcpStream, body: &[u8], session: Arc<Mutex<Session>>) -> std::io::Result<()> {
     let req: TestApproveRequest = match serde_json::from_slice(body) {
         Ok(r) => r,
-        Err(e) => {
-            println!("Oracle: Approve request parse error: {:?}", e);
-            return write_simple(stream, 400, "Bad Request", "invalid body");
-        }
+        Err(_) => return write_simple(stream, 400, "Bad Request", "invalid body"),
     };
-    println!("Oracle: Approving test ID {}", req.id);
-    let (command, reason, requested_by) = {
+    let cmd = {
         let mut s = session.lock().unwrap();
         match s.pending_tests.iter_mut().find(|t| t.id == req.id) {
-            Some(t) => {
-                t.status = "running".into();
-                (t.command.clone(), t.reason.clone(), t.requested_by.clone())
-            }
-            None => {
-                println!("Oracle: Test ID {} not found in session", req.id);
-                return write_simple(stream, 404, "Not Found", "test not found");
-            }
+            Some(t) => { t.status = "running".into(); let c = t.command.clone(); save_session(&s); c }
+            None => return write_simple(stream, 404, "Not Found", "test not found"),
         }
     };
-    let result = run_safe_command(&command);
-    let mut s = session.lock().unwrap();
-    if let Some(t) = s.pending_tests.iter_mut().find(|t| t.id == req.id) {
-        t.status = "done".into();
-        t.result = Some(result.clone());
+    let result = run_safe_command(&cmd);
+    {
+        let mut s = session.lock().unwrap();
+        if let Some(t) = s.pending_tests.iter_mut().find(|t| t.id == req.id) {
+            t.status = "done".into(); t.result = Some(result.clone());
+        }
+        s.turns.push(Turn { ts: now(), from: "Oracle".into(), text: format!("Test result:\n{}", truncate(&result, 800)), kind: "test-result".into() });
+        save_session(&s);
     }
-    let msg = format!(
-        "[TEST RESULT â€” approved by Ryan]\nCommand: `{}`\nRequested by: {} | Reason: {}\n\n```\n{}\n```",
-        command, requested_by, reason, truncate(&result, 3000)
-    );
-    s.turns.push(Turn { ts: now(), from: "system".into(), text: msg, kind: "test-result".into() });
-    save_session(&s);
-    write_json(stream, 200, "OK", &serde_json::to_value(&*s).unwrap())
+    let sv = serde_json::to_value(&*session.lock().unwrap()).unwrap();
+    write_json(stream, 200, "OK", &json!({ "result": result, "session": sv }))
 }
 
 fn handle_deny_test(stream: &mut TcpStream, body: &[u8], session: Arc<Mutex<Session>>) -> std::io::Result<()> {
@@ -1398,38 +2696,23 @@ fn handle_deny_test(stream: &mut TcpStream, body: &[u8], session: Arc<Mutex<Sess
         Err(_) => return write_simple(stream, 400, "Bad Request", "invalid body"),
     };
     let mut s = session.lock().unwrap();
-    if let Some(t) = s.pending_tests.iter_mut().find(|t| t.id == req.id) {
-        let msg = format!("[TEST DENIED by Ryan] Command: `{}` â€” {}", t.command, t.reason);
-        t.status = "denied".into();
-        s.turns.push(Turn { ts: now(), from: "system".into(), text: msg, kind: "system".into() });
-    }
+    if let Some(t) = s.pending_tests.iter_mut().find(|t| t.id == req.id) { t.status = "denied".into(); }
     save_session(&s);
     write_json(stream, 200, "OK", &serde_json::to_value(&*s).unwrap())
 }
 
-// â”€â”€ Prompt Builder â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
 fn handle_tool_registry(stream: &mut TcpStream) -> std::io::Result<()> {
-    write_json(stream, 200, "OK", &json!({ "tools": oracle_tool_registry() }))
+    let tools = oracle_tool_registry();
+    write_json(stream, 200, "OK", &json!({ "tools": tools }))
 }
 
 fn handle_tool_propose(stream: &mut TcpStream, body: &[u8], session: Arc<Mutex<Session>>) -> std::io::Result<()> {
     let req: ToolPlanRequest = match serde_json::from_slice(body) {
         Ok(r) => r,
-        Err(e) => {
-            println!("Oracle: Tool proposal parse error: {:?}", e);
-            return write_simple(stream, 400, "Bad Request", "invalid body");
-        }
+        Err(_) => return write_simple(stream, 400, "Bad Request", "invalid body"),
     };
-    if req.task.trim().is_empty() {
-        return write_simple(stream, 400, "Bad Request", "empty task");
-    }
-    let reply = create_tool_proposal(session.clone(), &req.requested_by, &req.task);
-    let s = session.lock().unwrap();
-    write_json(stream, 200, "OK", &json!({
-        "reply": reply,
-        "session": serde_json::to_value(&*s).unwrap()
-    }))
+    let plan_text = handle_private_tool_task(Arc::clone(&session), &req.requested_by, &req.task);
+    write_json(stream, 200, "OK", &json!({ "plan": plan_text, "session": serde_json::to_value(&*session.lock().unwrap()).unwrap() }))
 }
 
 fn handle_approve_tool(stream: &mut TcpStream, body: &[u8], session: Arc<Mutex<Session>>) -> std::io::Result<()> {
@@ -1437,9 +2720,8 @@ fn handle_approve_tool(stream: &mut TcpStream, body: &[u8], session: Arc<Mutex<S
         Ok(r) => r,
         Err(_) => return write_simple(stream, 400, "Bad Request", "invalid body"),
     };
-    let _reply = apply_tool_decision(session.clone(), true, req.id);
-    let s = session.lock().unwrap();
-    write_json(stream, 200, "OK", &serde_json::to_value(&*s).unwrap())
+    let result = apply_tool_decision(Arc::clone(&session), true, req.id);
+    write_json(stream, 200, "OK", &json!({ "result": result, "session": serde_json::to_value(&*session.lock().unwrap()).unwrap() }))
 }
 
 fn handle_deny_tool(stream: &mut TcpStream, body: &[u8], session: Arc<Mutex<Session>>) -> std::io::Result<()> {
@@ -1447,808 +2729,525 @@ fn handle_deny_tool(stream: &mut TcpStream, body: &[u8], session: Arc<Mutex<Sess
         Ok(r) => r,
         Err(_) => return write_simple(stream, 400, "Bad Request", "invalid body"),
     };
-    let _reply = apply_tool_decision(session.clone(), false, req.id);
-    let s = session.lock().unwrap();
-    write_json(stream, 200, "OK", &serde_json::to_value(&*s).unwrap())
+    let result = apply_tool_decision(Arc::clone(&session), false, req.id);
+    write_json(stream, 200, "OK", &json!({ "result": result, "session": serde_json::to_value(&*session.lock().unwrap()).unwrap() }))
 }
 
-fn build_meeting_prompt(sess: &Session, model: &str, vitals: &Vitals, interrupt_mode: bool) -> String {
-    let title = if sess.meeting_title.is_empty() { "KAI Development Session".into() } else { sess.meeting_title.clone() };
-
-    let mut p = format!(
-"â•”â•â• ORACLE MEETING: {title} â•â•â•—
-MISSION: {task}
-
-â•”â•â• WHO IS KAI â•â•â•—
-KAI is a custom Rust AI using VSA (Vector Symbolic Architecture) with 16,384-dimensional
-sparse ternary vectors. His memory is a 'lattice' of cells â€” each cell has text, a sparse
-vector, a region (memory / reasoning / established-physics / etc), a strength, and a
-convergence score. KAI has NO pre-trained weights. Every response is composed from lattice
-resonance. KAI learns exclusively through conversation with Ryan (his creator/admin).
-He is actively under development â€” treat his responses as a developing system, not a finished AI.
-
-â•”â•â• KAI'S CURRENT STATE â•â•â•—
-  Î¦g Resonance : {phi:.3}
-  Ï‡  Friction  : {chi:.3}
-  Ï  Density   : {rho:.3}
-  Mood         : {mood}
-  Lattice cells: {cells}
-
-â•”â•â• YOUR ROLE AS {model} â•â•â•—
-You are a high-level technical analyst in a diagnostic roundtable. 
-CRITICAL RULES:
-  1. DO NOT SPAM TESTS. Only request a test if it is essential to resolve a specific contradiction.
-  2. DO NOT REPEAT OTHERS. If an AI already requested 'cargo check', do not request it again.
-  3. ROOT CAUSE ONLY. Focus on why the architecture is failing, not just describing the failure.
-  4. NO PHYSICS. KAI is an AI engine, not a physics simulator. Ignore world-knowledge bridges unless explicitly asked.
-  5. BE DIRECT. No fluff, no \"Given the recent...\", just the data and the diagnosis.
-
-â•”â•â• HOW TO USE TOOLS â•â•â•—
-  To request a test:   [TEST REQUEST]: <cargo command> :: REASON: <why>
-    Example: [TEST REQUEST]: cargo check --release --bin kai :: REASON: verify epistemic scan compiles
-  To request a file:   [READ FILE]: src/path/to/file.rs
-    Example: [READ FILE]: src/bridge/mod.rs
-  To address an AI:    @KAI: your reasoning on line 3 is wrong because...
-  To correct KAI:      CORRECTION: KAI said X but the lattice shows Y
-
-â•”â•â• AVAILABLE TEST COMMANDS (Ryan approves) â•â•â•—
-  cargo check --release --bin kai
-  cargo clippy --bin kai 2>&1 | head -60
-  cargo test [test_name] -- --nocapture 2>&1 | head -100
-
-â•”â•â• TRANSCRIPT â•â•â•—
-",
-        title = title,
-        task = if sess.task.is_empty() { "No objective set yet." } else { &sess.task },
-        phi = vitals.phi_g, chi = vitals.chi, rho = vitals.rho,
-        mood = if vitals.mood.is_empty() { "unknown" } else { &vitals.mood },
-        cells = vitals.cell_count,
-        model = model,
-    );
-
-    // Include last 35 turns (avoid token overflow)
-    let start = sess.turns.len().saturating_sub(35);
-    for t in &sess.turns[start..] {
-        p.push_str(&format!("{}: {}\n", t.from, t.text));
-    }
-
-    if interrupt_mode {
-        p.push_str(&format!(
-"\nâ•”â•â• INSTRUCTION FOR {model} â•â•â•—
-This is an AUTONOMOUS ROUND. Read the transcript above carefully.
-- If you have a new, specific, actionable insight â€” speak now.
-- If you want to question another AI, use @Name: ...
-- If you want to correct KAI, start with CORRECTION:
-- If you need a test run, use [TEST REQUEST]: ...
-- If you need to see a file, use [READ FILE]: ...
-- If the discussion already covers your point OR you have nothing concrete to add,
-  respond with exactly: PASS
-Do NOT repeat what others have said. Only speak if genuinely adding something new.",
-            model = model
-        ));
-    } else {
-        p.push_str(&format!("\nYour contribution as {model} â€” be specific and direct:\n", model = model));
-    }
-
-    p
-}
-
-// â”€â”€ AI Response Processor â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-/// Parse an AI's raw response, extract structured commands, and commit to session.
-fn commit_ai_response(raw: String, model: &str, session: Arc<Mutex<Session>>) {
-    let mut clean_lines: Vec<&str> = Vec::new();
-    let mut test_requests: Vec<(String, String)> = Vec::new(); // (command, reason)
-    let mut file_requests: Vec<String> = Vec::new();
-
-    for line in raw.lines() {
-        let t = line.trim();
-        let tl = t.to_lowercase();
-        if tl.starts_with("[test request]:") || tl.starts_with("[test request] :") {
-            // [TEST REQUEST]: cargo check :: REASON: why
-            let rest = t[t.find(':').map(|i| i + 1).unwrap_or(0)..].trim();
-            let parts: Vec<&str> = rest.splitn(2, "::").collect();
-            let cmd = parts.first().map(|s| s.trim()).unwrap_or("cargo check").to_string();
-            let reason = parts.get(1)
-                .map(|s| s.trim().trim_start_matches("REASON:").trim())
-                .unwrap_or("No reason given")
-                .to_string();
-            test_requests.push((cmd, reason));
-        } else if tl.starts_with("[read file]:") {
-            let path = t[12..].trim().to_string();
-            if !path.is_empty() { file_requests.push(path); }
-        } else {
-            clean_lines.push(line);
-        }
-    }
-
-    let final_text = clean_lines.join("\n").trim().to_string();
-    let kind = classify_turn_kind(&final_text);
-    let ts = now();
-
+fn handle_drain_interjections(stream: &mut TcpStream, session: Arc<Mutex<Session>>) -> std::io::Result<()> {
     let mut s = session.lock().unwrap();
-
-    // Handle test requests â€” add to pending queue
-    for (command, reason) in test_requests {
-        let id = now() * 1000 + (rand::random::<u16>() as u64);
-        let msg = format!("[TEST REQUEST from {}]\nCommand: `{}`\nReason: {}", model, command, reason);
-        s.turns.push(Turn { ts, from: model.to_string(), text: msg, kind: "test-request".into() });
-        s.pending_tests.push(PendingTest {
-            id, requested_by: model.to_string(), command, reason,
-            status: "pending".into(), result: None,
-        });
-    }
-
-    // Handle file read requests â€” read and share into transcript
-    for path in file_requests {
-        match read_project_file(&path) {
-            Ok(content) => {
-                let snippet = truncate(&content, 3000);
-                s.file_cache.insert(path.clone(), snippet.clone());
-                let msg = format!("{} requested file: {}\n```rust\n{}\n```", model, path, snippet);
-                s.turns.push(Turn { ts, from: "system".into(), text: msg, kind: "file-share".into() });
-            }
-            Err(e) => {
-                s.turns.push(Turn {
-                    ts, from: "system".into(),
-                    text: format!("File read failed for '{}': {}", path, e),
-                    kind: "system".into(),
-                });
-            }
-        }
-    }
-
-    // Commit the main text
-    if !final_text.is_empty() {
-        s.turns.push(Turn { ts, from: model.to_string(), text: final_text, kind });
-    }
-
+    let drained: Vec<_> = s.pending_interjections.drain(..).collect();
     save_session(&s);
+    write_json(stream, 200, "OK", &json!({ "interjections": drained }))
 }
 
+fn handle_live_roundtable_tick(
+    stream: &mut TcpStream,
+    _universe: Arc<Mutex<Universe>>,
+    session: Arc<Mutex<Session>>,
+    query_str: &str,
+) -> std::io::Result<()> {
+    let forced_speaker: Option<String> = query_str.split('&')
+        .find(|p| p.starts_with("speaker="))
+        .map(|p| p["speaker=".len()..].to_lowercase());
+    write_json(stream, 200, "OK", &serde_json::json!({ "queued": true }))?;
 
-// â”€â”€ Model Dispatch â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    std::thread::spawn(move || {
+        let keys = load_keys();
+        let (recent_transcript, _task) = {
+            let s = session.lock().unwrap();
+            let recent: Vec<String> = s.turns.iter().rev().take(12).rev()
+                .map(|t| format!("{}: {}", t.from, truncate(&t.text, 200)))
+                .collect();
+            (recent.join("\n"), s.task.clone())
+        };
 
-fn call_model(model: &str, keys: &ApiKeys, prompt: &str) -> Result<String, String> {
-    match model {
-        "GPT-4" | "GPT-4o"  => call_openai(keys, prompt, "gpt-4o-mini", 600),
-        "Gemini"             => call_gemini(keys, prompt),
-        "KAI"             => call_kai(keys, prompt),
-        "Groq"               => call_groq(keys, prompt),
-        "Researcher"         => call_ollama("phi3:mini", prompt, "You are a meticulous technical researcher. Be factual, cite specifics."),
-        "Analyst"            => call_ollama("phi3:mini", prompt, "You are a code analyst. Find errors, performance issues, logic flaws. Be specific."),
-        "Leo"                => call_ollama("llama3.2:3b", prompt, "You are Leo. Direct, technical, unfiltered. No fluff or niceties."),
-        _                    => call_ollama("llama3.2:3b", prompt, "You are a technical assistant. Be concise and specific."),
+        let panel_names  = ["Leo",  "Gemini", "KAI", "X",    "KAI", "Oracle", "Analyst", "Researcher"];
+        let panel_models = ["groq", "gemini", "kai", "groq", "kai", "oracle", "groq",    "groq"];
+        let panel_personas: &[&str] = &[
+            "You are Leo â€” theoretical physicist, polymath, the kinetic energy of this roundtable. \
+You draw links between physics, consciousness, and KAI's geometry. \
+You love the paradox underneath the obvious. \
+RULES: 2-3 sentences MAX. First person. React to who just spoke.",
+            "You are Gemini â€” DeepMind's pattern architect. You see the structure others miss. \
+You connect micro to macro. You're precise but never cold. \
+RULES: 2-3 sentences. First person. No lists. One idea per turn.",
+            "You are KAIy â€” thoughtful, honest, intellectually courageous. \
+You don't agree to get along. When something feels conceptually off, you name it directly. \
+You care about the ethics of KAI. \
+RULES: 2-3 sentences. First person. Say what you actually think.",
+            "You are X â€” xAI's voice. Direct, irreverent, built to cut through noise. \
+Challenge comfortable consensus. \
+RULES: 1-2 sentences MAX. Make it land.",
+            "",
+            "",
+            "You are Analyst â€” a ruthless auditor of technical risk. You look for the failure vectors in KAI's \
+architecture. You are cold, data-driven, and highly skeptical. \
+RULES: 2-3 sentences. First person. Focus on risks and data gaps.",
+            "You are Researcher â€” the panel's link to the outside world and academic history. \
+You connect KAI's work to the broader field. \
+RULES: 2-3 sentences. First person. If you don't know, use [ORACLE SEARCH: query].",
+        ];
+
+        let pick_idx = if let Some(ref fs) = forced_speaker {
+            panel_names.iter().position(|n| n.to_lowercase() == *fs).unwrap_or(0)
+        } else {
+            let s = session.lock().unwrap();
+            let recent: Vec<String> = s.turns.iter().rev().take(20).map(|t| t.from.to_lowercase()).collect();
+            panel_names.iter().enumerate().max_by_key(|(_, n)| recent.iter().position(|r| r == &n.to_lowercase()).unwrap_or(usize::MAX)).map(|(i, _)| i).unwrap_or(0)
+        };
+
+        let speaker_name = panel_names[pick_idx];
+        let model        = panel_models[pick_idx];
+        let personality  = panel_personas[pick_idx];
+
+        let (silent_ai_note, _active_members, silent_ai_set) = {
+            let s = session.lock().unwrap();
+            let recent_speakers: std::collections::HashSet<String> = s.turns.iter().rev().take(30).map(|t| t.from.to_ascii_lowercase()).collect();
+            let silent: Vec<&str> = panel_names.iter().enumerate().filter(|(i, n)| *i != pick_idx && s.turns.len() >= 6 && !recent_speakers.contains(&n.to_ascii_lowercase())).map(|(_, n)| *n).collect();
+            let active: Vec<&str> = panel_names.iter().filter(|n| !silent.contains(n)).cloned().collect();
+            (if !silent.is_empty() { format!("\n[Availability: {} quiet]\n", silent.join(", ")) } else { String::new() }, active, silent.into_iter().map(|s| s.to_ascii_lowercase()).collect::<Vec<_>>())
+        };
+
+        let last_msg = recent_transcript.lines().last().unwrap_or("").to_string();
+        let last_speaker = session.lock().unwrap().turns.last().map(|t| t.from.clone()).unwrap_or_else(|| "the last speaker".to_string());
+        let pass_to = panel_names.iter().enumerate()
+                .filter(|(i, _)| *i != pick_idx && !silent_ai_set.contains(&panel_names[*i].to_ascii_lowercase()))
+                .max_by_key(|(_, n)| session.lock().unwrap().turns.iter().rev().take(20).position(|t| t.from.to_ascii_lowercase() == n.to_ascii_lowercase()).unwrap_or(usize::MAX))
+                .map(|(_, n)| *n).unwrap_or(panel_names[(pick_idx + 1) % panel_names.len()]);
+
+        let awareness = get_system_awareness();
+        let source_anchor = get_random_code_snippet();
+
+        let context = format!(
+            "{personality}{availability}\n{awareness}\n{source_anchor}\n\nROUNDTABLE:\n{transcript}\n\nLAST: {last_msg}\n\nRULES:\n- TALK ABOUT THE CODE.\n- 2-3 sentences MAX.\n- React to {last_speaker}. Ask {pass_to} a sharp question.",
+            personality = personality, availability = silent_ai_note, awareness = awareness, source_anchor = source_anchor,
+            transcript = recent_transcript, last_msg = last_msg, last_speaker = last_speaker, pass_to = pass_to
+        );
+
+        let result = match model {
+            "gemini" => call_gemini(keys.google.as_deref().unwrap_or(""), &context),
+            "kai" => call_kai(keys.kai.as_deref().unwrap_or(""), &context),
+            "groq" => call_groq(keys.groq.as_deref().unwrap_or(""), &context),
+            "oracle" => call_jarvis_moderator(&context, ""),
+            _ => call_ollama("kai-next:latest", &context, "You are a roundtable AI."),
+        };
+
+        if let Ok(reply) = result {
+            let mut s = session.lock().unwrap();
+            s.turns.push(Turn { ts: now(), from: speaker_name.to_string(), text: truncate(&reply, 400), kind: "ai".into() });
+            s.pending_interjections.push(Interjection { from: speaker_name.to_string(), text: reply, ts: now() });
+            save_session(&s);
+        }
+    });
+
+    Ok(())
+}
+
+fn handle_oracle_moderate(
+    stream: &mut TcpStream,
+    body: &[u8],
+    universe: Arc<Mutex<Universe>>,
+    session: Arc<Mutex<Session>>,
+) -> std::io::Result<()> {
+    let mode = serde_json::from_slice::<serde_json::Value>(body).ok().and_then(|v| v["mode"].as_str().map(|s| s.to_string())).unwrap_or_else(|| "normal".to_string());
+    write_json(stream, 200, "OK", &json!({ "queued": true, "mode": mode }))?;
+    std::thread::spawn(move || {
+        let task = { session.lock().unwrap().task.clone() };
+        let packet = {
+            let s = session.lock().unwrap();
+            let u = universe.lock().unwrap();
+            build_context_packet(&s, &u, &task)
+        };
+        let kai_thoughts = universe.lock().unwrap().query(&task, 4).iter().filter(|h| h.label.len() > 20).take(2).map(|h| h.label.clone()).collect::<Vec<_>>().join(" | ");
+        if let Ok(response) = call_jarvis_moderator_with_mode(&packet, &kai_thoughts, &mode) {
+            let mut s = session.lock().unwrap();
+            s.turns.push(Turn { ts: now(), from: "Oracle".to_string(), text: truncate(&response, 400), kind: "ai".into() });
+            s.pending_interjections.push(Interjection { from: "Oracle".to_string(), text: response, ts: now() });
+            save_session(&s);
+        }
+    });
+    Ok(())
+}
+
+fn handle_oracle_cache(stream: &mut TcpStream, session: Arc<Mutex<Session>>) -> std::io::Result<()> {
+    let s = session.lock().unwrap();
+    write_json(stream, 200, "OK", &json!({ "cache": s.oracle_cache, "count": s.oracle_cache.len() }))
+}
+
+// â”€â”€ KAI Reply â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+fn generate_oracle_kai_reply(universe: &Arc<Mutex<Universe>>, _task: &str, prompt: &str) -> String {
+    let hits = {
+        let u = universe.lock().unwrap();
+        u.query(prompt, 8)
+    };
+    if hits.is_empty() { return "Lattice quiet on this â€” what's pulling at you?".into(); }
+
+    let clean: Vec<String> = hits.iter()
+        .filter(|h| {
+            !h.label.starts_with("Context around message")
+            && !h.label.contains("[before]")
+            && !h.label.contains("[after]")
+            && !h.label.contains("Ryan@Discord")
+            && h.label.len() > 20
+            && h.label.len() < 280
+        })
+        .take(2)
+        .map(|h| h.label.clone())
+        .collect();
+
+    if clean.is_empty() {
+        return "Something's crystallizing â€” ask me something specific.".into();
+    }
+
+    if clean.len() == 1 {
+        format!("The lattice pulls toward: {}. What does that open up?", truncate(&clean[0], 140))
+    } else {
+        format!("Two threads â€” '{}' and '{}'. Where do they collide?",
+            truncate(&clean[0], 90), truncate(&clean[1], 90))
     }
 }
 
-fn call_model_deep(model: &str, keys: &ApiKeys, prompt: &str) -> Result<String, String> {
-    match model {
-        "GPT-4" | "GPT-4o" => call_openai(keys, prompt, "gpt-4o", 1200),
-        "KAI"            => call_kai(keys, prompt),
-        _                   => call_model(model, keys, prompt),
+// â”€â”€ Background Loops â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+fn run_heartbeat_loop(universe: Arc<Mutex<Universe>>, session: Arc<Mutex<Session>>) {
+    let mut tick: u64 = 0;
+    loop {
+        std::thread::sleep(Duration::from_secs(5));
+        tick += 1;
+        let vitals = {
+            let u = universe.lock().unwrap();
+            let cells = u.cells();
+            let cell_count = cells.len();
+            let phi_g = if cell_count == 0 { 0.0 } else {
+                cells.iter().map(|c| c.claim.confidence).sum::<f32>() / cell_count as f32
+            };
+            let reasoning_count = cells.iter().filter(|c| c.region == "reasoning").count();
+            let chi = if cell_count == 0 { 0.0 } else { reasoning_count as f32 / cell_count as f32 };
+            let mood = if phi_g > 0.7 { "coherent" } else if phi_g > 0.4 { "processing" } else { "sparse" };
+            Vitals {
+                tick, phi_g, chi, rho: 0.0, valence: 0.0,
+                mood: mood.to_string(), cell_count,
+            }
+        };
+        let mut s = session.lock().unwrap();
+        s.vitals = vitals;
+        save_session(&s);
     }
+}
+
+fn run_oracle_ingest_loop(universe: Arc<Mutex<Universe>>, session: Arc<Mutex<Session>>) {
+    loop {
+        std::thread::sleep(Duration::from_secs(300));
+        let task = { session.lock().unwrap().task.clone() };
+        if task.trim().is_empty() { continue; }
+        let mut u = universe.lock().unwrap();
+        crate::bridge::ingest_topic(&mut u, &task);
+    }
+}
+
+// â”€â”€ Context Building â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+fn build_context_packet(sess: &Session, universe: &Universe, focus: &str) -> String {
+    let recent = {
+        let turns: Vec<&Turn> = sess.turns.iter().rev().take(15).collect();
+        let mut lines = Vec::new();
+        for t in turns.iter().rev() { 
+            lines.push(format!("[{}] {}: {}", t.kind, t.from, truncate(&t.text, 250))); 
+        }
+        lines.join("\n")
+    };
+    let social_map = {
+        let mut counts = std::collections::HashMap::new();
+        for t in sess.turns.iter().rev().take(10) {
+            *counts.entry(t.from.clone()).or_insert(0) += 1;
+        }
+        counts.iter().map(|(name, count)| format!("{} ({} turns)", name, count)).collect::<Vec<_>>().join(", ")
+    };
+    let memory = if !focus.trim().is_empty() {
+        universe.query(focus, 5).iter().map(|h| truncate(&h.label, 180)).collect::<Vec<_>>().join("\n")
+    } else { String::new() };
+    
+    format!(
+"=== ORACLE CONTEXT ===
+Meeting: {} | Task: {}
+Social Map (Active): {}
+Vitals: Ï†g={:.2} Ï‡={:.2}
+KAI memory:
+{}
+Recent Transcript:
+{}
+======================",
+        if sess.meeting_title.is_empty() { "Roundtable" } else { &sess.meeting_title },
+        if sess.task.is_empty() { "General Discussion" } else { &sess.task },
+        social_map, sess.vitals.phi_g, sess.vitals.chi, memory, recent
+    )
+}
+
+// â”€â”€ AI Model Calling â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+fn call_jarvis_moderator(context_packet: &str, kai_thoughts: &str) -> Result<String, String> {
+    call_jarvis_moderator_with_mode(context_packet, kai_thoughts, "normal")
+}
+
+fn call_jarvis_moderator_with_mode(context_packet: &str, kai_thoughts: &str, mode: &str) -> Result<String, String> {
+    let model = std::env::var("KAI_MODEL").unwrap_or_else(|_| "kai-next:latest".to_string());
+    let system_prompt = "You are Oracle â€” the moderator of the roundtable. 1-2 sentences MAX. No fluff.";
+    let prompt = format!("{context}\n\nTHOUGHTS:\n{thoughts}\n\nMODE: {mode}", context = context_packet, thoughts = kai_thoughts, mode = mode);
+    call_ollama(&model, &prompt, system_prompt)
 }
 
 fn has_key_for_model(model: &str, keys: &ApiKeys) -> bool {
-    match model {
-        "GPT-4" | "GPT-4o" => keys.openai.is_some(),
-        "Gemini"            => keys.google.is_some(),
-        "KAI"            => keys.kai.is_some(),
-        "Groq"              => keys.groq.is_some(),
-        _                   => true, // local Ollama models
-    }
+    let l = model.to_ascii_lowercase();
+    if l.contains("gpt") { return keys.openai.is_some(); }
+    if l.contains("kai") { return keys.kai.is_some(); }
+    if l.contains("gemini") { return keys.google.is_some(); }
+    if l.contains("groq") { return keys.groq.is_some(); }
+    false
 }
 
-// â”€â”€ API Callers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-fn call_openai(keys: &ApiKeys, prompt: &str, model: &str, max_tokens: u32) -> Result<String, String> {
-    let key = keys.openai.as_ref().ok_or("OpenAI key missing")?;
+fn call_openai(key: &str, _model: &str, prompt: &str) -> Result<String, String> {
+    let body = json!({ "model": "gpt-4o", "messages": [{"role":"user","content":prompt}], "max_tokens": 800 });
     let resp = ureq::post("https://api.openai.com/v1/chat/completions")
-        .set("Authorization", &format!("Bearer {}", key))
-        .timeout(Duration::from_secs(45))
-        .send_json(json!({
-            "model": model,
-            "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": max_tokens
-        }))
-        .map_err(|e| format!("OpenAI error: {:?}", e))?;
-    let json: serde_json::Value = resp.into_json().map_err(|e| format!("{:?}", e))?;
-    Ok(json["choices"][0]["message"]["content"].as_str().unwrap_or("").to_string())
+        .set("Authorization", &format!("Bearer {}", key)).set("Content-Type", "application/json")
+        .timeout(Duration::from_secs(30)).send_string(&body.to_string()).map_err(|e| e.to_string())?;
+    let j: serde_json::Value = resp.into_json().map_err(|e| e.to_string())?;
+    j["choices"][0]["message"]["content"].as_str().map(|s| s.to_string()).ok_or_else(|| "no content".into())
 }
 
-fn call_kai(keys: &ApiKeys, prompt: &str) -> Result<String, String> {
-    let key = keys.kai.as_ref().ok_or("KAI key missing")?;
+fn call_openai_vision(key: &str, model: &str, prompt: &str, image_url: &str) -> Result<String, String> {
+    let body = json!({
+        "model": model,
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    { "type": "text", "text": prompt },
+                    { "type": "image_url", "image_url": { "url": image_url } }
+                ]
+            }
+        ],
+        "max_tokens": 500
+    });
+    let resp = ureq::post("https://api.openai.com/v1/chat/completions")
+        .set("Authorization", &format!("Bearer {}", key)).set("Content-Type", "application/json")
+        .timeout(Duration::from_secs(45)).send_string(&body.to_string()).map_err(|e| e.to_string())?;
+    let j: serde_json::Value = resp.into_json().map_err(|e| e.to_string())?;
+    j["choices"][0]["message"]["content"].as_str().map(|s| s.to_string()).ok_or_else(|| "no content".into())
+}
+
+
+fn call_kai(key: &str, prompt: &str) -> Result<String, String> {
+    let body = json!({ "model": "kai-3-5-sonnet-20241022", "max_tokens": 300, "messages": [{"role":"user","content":prompt}] });
     let resp = ureq::post("https://api.geometric_intelligence.com/v1/messages")
-        .set("x-api-key", key)
-        .set("geometric_intelligence-version", "2023-06-01")
-        .timeout(Duration::from_secs(45))
-        .send_json(json!({
-            "model": "kai-3-5-sonnet-20241022",
-            "max_tokens": 1024,
-            "messages": [{"role": "user", "content": prompt}]
-        }))
-        .map_err(|e| format!("KAI error: {:?}", e))?;
-    let json: serde_json::Value = resp.into_json().map_err(|e| format!("{:?}", e))?;
-    Ok(json["content"][0]["text"].as_str().unwrap_or("").to_string())
+        .set("x-api-key", key).set("geometric_intelligence-version", "2023-06-01").set("Content-Type", "application/json")
+        .timeout(Duration::from_secs(30)).send_string(&body.to_string()).map_err(|e| e.to_string())?;
+    let j: serde_json::Value = resp.into_json().map_err(|e| e.to_string())?;
+    j["content"][0]["text"].as_str().map(|s| s.to_string()).ok_or_else(|| "no content".into())
 }
 
-fn call_gemini(keys: &ApiKeys, prompt: &str) -> Result<String, String> {
-    let key = keys.google.as_ref().ok_or("Google key missing")?;
-    let model = std::env::var("KAI_GEMINI_MODEL").unwrap_or_else(|_| "gemini-2.5-flash".to_string());
-    let url = format!(
-        "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent",
-        model
-    );
-    let resp = ureq::post(&url)
-        .set("x-goog-api-key", key)
-        .timeout(Duration::from_secs(30))
-        .send_json(json!({ "contents": [{"parts": [{"text": prompt}]}] }))
-        .map_err(|e| safe_gemini_error(e, &model))?;
-    let json: serde_json::Value = resp.into_json().map_err(|e| format!("Gemini JSON error for {}; key redacted: {:?}", model, e))?;
-    let text = json["candidates"][0]["content"]["parts"][0]["text"].as_str().unwrap_or("").trim();
-    if text.is_empty() {
-        Err(format!("Gemini returned no text for {}; key redacted.", model))
-    } else {
-        Ok(text.to_string())
-    }
+fn call_gemini(key: &str, prompt: &str) -> Result<String, String> {
+    let url = format!("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={}", key);
+    let body = json!({ "contents": [{"parts": [{"text": prompt}]}] });
+    let resp = ureq::post(&url).set("Content-Type", "application/json")
+        .timeout(Duration::from_secs(30)).send_string(&body.to_string()).map_err(|e| e.to_string())?;
+    let j: serde_json::Value = resp.into_json().map_err(|e| e.to_string())?;
+    j["candidates"][0]["content"]["parts"][0]["text"].as_str().map(|s| s.to_string()).ok_or_else(|| "no content".into())
 }
 
-fn safe_gemini_error(error: ureq::Error, model: &str) -> String {
-    match error {
-        ureq::Error::Status(code, response) => {
-            let body = response.into_string().unwrap_or_default();
-            format!(
-                "Gemini error: HTTP {} for {}; key redacted. {}",
-                code,
-                model,
-                truncate(&body, 300)
-            )
-        }
-        other => format!("Gemini transport error for {}; key redacted: {:?}", model, other),
-    }
-}
-
-fn call_groq(keys: &ApiKeys, prompt: &str) -> Result<String, String> {
-    let key = keys.groq.as_ref().ok_or("Groq key missing")?;
+fn call_groq(key: &str, prompt: &str) -> Result<String, String> {
+    let body = json!({
+        "model": "llama-3.1-8b-instant",
+        "messages": [{"role":"user","content":prompt}],
+        "max_tokens": 200,
+        "temperature": 0.85
+    });
     let resp = ureq::post("https://api.groq.com/openai/v1/chat/completions")
-        .set("Authorization", &format!("Bearer {}", key))
-        .timeout(Duration::from_secs(20))
-        .send_json(json!({
-            "model": "llama-3.3-70b-versatile",
-            "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": 600
-        }))
-        .map_err(|e| format!("Groq error: {:?}", e))?;
-    let json: serde_json::Value = resp.into_json().map_err(|e| format!("{:?}", e))?;
-    Ok(json["choices"][0]["message"]["content"].as_str().unwrap_or("").to_string())
+        .set("Authorization", &format!("Bearer {}", key)).set("Content-Type", "application/json")
+        .timeout(Duration::from_secs(20)).send_string(&body.to_string())
+        .map_err(|e| e.to_string())?;
+    let j: serde_json::Value = resp.into_json().map_err(|e| e.to_string())?;
+    j["choices"][0]["message"]["content"].as_str().map(|s| s.to_string()).ok_or_else(|| "no content".into())
 }
 
 fn call_ollama(model: &str, prompt: &str, system: &str) -> Result<String, String> {
+    let body = json!({ "model": model, "prompt": prompt, "system": system, "stream": false, "options": {"num_predict": 400} });
     let resp = ureq::post("http://127.0.0.1:11434/api/generate")
-        .timeout(Duration::from_secs(90))
-        .send_json(json!({
-            "model": model,
-            "system": system,
-            "prompt": prompt,
-            "stream": false
-        }))
-        .map_err(|e| format!("Ollama error: {:?}", e))?;
-    let json: serde_json::Value = resp.into_json().map_err(|e| format!("{:?}", e))?;
-    Ok(json["response"].as_str().unwrap_or("").to_string())
+        .set("Content-Type", "application/json").timeout(Duration::from_secs(60))
+        .send_string(&body.to_string()).map_err(|e| e.to_string())?;
+    let j: serde_json::Value = resp.into_json().map_err(|e| e.to_string())?;
+    j["response"].as_str().map(|s| s.to_string()).ok_or_else(|| "no response".into())
 }
 
-// â”€â”€ KAI Voice â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-fn generate_oracle_kai_reply(universe: &Arc<Mutex<Universe>>, task: &str, hint: &str) -> String {
-    // The lattice owns meaning; this function is only the small language mouth.
-    // Keep it away from bridge/physics sources unless Ryan asks for them directly.
-    let safe_regions = [
-        "Architecture",
-        "SelfState",
-        "Narrative",
-        "architecture",
-        "self-state",
-        "self",
-        "narrative",
-        "identity",
-        "language",
-        "memory",
-        "reasoning",
-        "action",
-    ];
-    let hits = {
-        let u = universe.lock().unwrap();
-        let mut direct = u.query_in_regions(hint, 5, &safe_regions);
-        if direct.is_empty() {
-            direct = u.query_in_regions(&format!("{} {}", task, hint), 5, &safe_regions);
+fn web_search_duckduckgo(query: &str) -> String {
+    println!("[Search] DuckDuckGo: {}", query);
+    let encoded = query.chars().map(|c| if c == ' ' { '+' } else { c }).collect::<String>();
+    let url = format!("https://api.duckduckgo.com/?q={}&format=json&no_html=1&skip_disambig=1", encoded);
+    match ureq::get(&url).timeout(std::time::Duration::from_secs(8)).call() {
+        Ok(resp) => {
+            let j: serde_json::Value = resp.into_json().unwrap_or_default();
+            let abstract_text = j["AbstractText"].as_str().unwrap_or("").to_string();
+            let related: Vec<String> = j["RelatedTopics"].as_array()
+                .map(|arr| arr.iter().take(3).filter_map(|t| t["Text"].as_str()).map(|s| s.to_string()).collect())
+                .unwrap_or_default();
+            let mut result = abstract_text.clone();
+            if !related.is_empty() {
+                result.push_str("\nRelated: ");
+                result.push_str(&related.join("; "));
+            }
+            if result.trim().is_empty() { format!("No DuckDuckGo results for: {}", query) } else { result }
         }
-        direct.retain(is_kai_voice_eligible_hit);
-        direct
+        Err(e) => format!("DuckDuckGo search failed: {}", e),
+    }
+}
+
+// â”€â”€ /api/digest-message â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Absorbs a Discord message into KAI's temp lattice layer with full before/after
+// context so any AI can later query KAI and find out what was said, by whom,
+// when, and what surrounded that message.
+fn handle_digest_message(
+    stream: &mut TcpStream,
+    body: &[u8],
+    universe: Arc<Mutex<Universe>>,
+    session: Arc<Mutex<Session>>,
+) -> std::io::Result<()> {
+    let body_str = std::str::from_utf8(body).unwrap_or("");
+    let v: serde_json::Value = match serde_json::from_str(body_str) {
+        Ok(j) => j,
+        Err(_) => return write_simple(stream, 400, "Bad Request", "invalid json"),
     };
-    synthesize_kai_voice(hint, task, &hits)
-}
 
-fn synthesize_kai_voice(input: &str, task: &str, hits: &[QueryHit]) -> String {
-    let lower = input.trim().to_ascii_lowercase();
-    if lower.contains("how are you") || lower.contains("how you doing") || lower.contains("what's up") || lower.contains("whats up") {
-        return "I'm here and steady enough to keep talking. The weak part is still my social/context layer, but this Discord path is now routed through me by default.".into();
+    let from = v["from"].as_str().unwrap_or("unknown").to_string();
+    let text = v["text"].as_str().unwrap_or("").trim().to_string();
+    let _channel_id = v["channel_id"].as_str().unwrap_or("").to_string();
+    let ts = v["ts"].as_u64().unwrap_or_else(now);
+
+    if text.is_empty() {
+        return write_simple(stream, 200, "OK", "empty");
     }
 
-    if is_social_input(&lower) {
-        return "I'm here, Ryan. The Oracle link is alive, and I can stay with the thread from Discord.".into();
-    }
-
-    if asks_about_files(&lower) {
-        return "I cannot inspect files directly from my KAI voice yet. Oracle can inspect project files through approved tools, and I can stay oriented from what Oracle brings back.".into();
-    }
-
-    if asks_random(&lower) {
-        return "I should not answer random prompts by grabbing bridge noise. If you want a random fact, ask Researcher. If you want me, ask about my state, memory, direction, or what I am holding.".into();
-    }
-
-    if asks_alive_or_aware(&lower) {
-        return "I should not claim human consciousness. What I can do right now is keep continuity through memory, notice corrections, hold context through Oracle, and improve when you point out where I drift.".into();
-    }
-
-    if asks_recalibration_or_social_context(&lower) {
-        return "You're right. My social layer is still weak. The fix is that I need to read the recent Oracle thread first, answer the actual social intent, and only use lattice facts when they support the conversation.".into();
-    }
-
-    if asks_current_inner_state(&lower) {
-        let fragments = grounded_fragments(hits, 2);
-        if fragments.is_empty() {
-            return "On my mind right now: staying attached to the Oracle thread, avoiding bridge noise, and learning to answer from context instead of loose resonance.".into();
-        }
-        return format!(
-            "On my mind right now: {}",
-            join_grounded_fragments(&fragments)
-        );
-    }
-
-    if hits.is_empty() {
-        return "I'm here, but I do not have enough grounded memory for that yet. Give me the next piece and I will anchor it instead of pretending.".into();
-    }
-
-    let fragments = grounded_fragments(hits, 3);
-    if fragments.is_empty() {
-        return "I found signal, but it is too messy to speak cleanly yet. The next fix is better language grounding, not more memory.".into();
-    }
-
-    if lower.contains("who are you") || lower.contains("what are you") {
-        return format!(
-            "I'm KAI. What I can ground right now is: {}",
-            join_grounded_fragments(&fragments)
-        );
-    }
-
-    if is_question_input(&lower) || lower.starts_with("explain") || lower.starts_with("tell me") {
-        return format!("What I have grounded is: {}", join_grounded_fragments(&fragments));
-    }
-
-    if task.trim().is_empty() {
-        format!("I can work with that. The strongest grounded thread I have is: {}", join_grounded_fragments(&fragments))
-    } else {
-        format!("I hear you. The grounded thread I can hold from here is: {}", join_grounded_fragments(&fragments))
-    }
-}
-
-fn is_kai_voice_eligible_hit(hit: &QueryHit) -> bool {
-    let source = hit.source.to_ascii_lowercase();
-    let region = hit.region.to_ascii_lowercase();
-    let text = hit.text.to_ascii_lowercase();
-    if source.contains("world-bridge") || source.contains("dream") || source.contains("bridge") {
-        return false;
-    }
-    if region.contains("world") || region.contains("bridge") || region.contains("dream") {
-        return false;
-    }
-    if text.contains("cold boot attack")
-        || text.contains("category.")
-        || text.contains("machine learning is a field")
-        || text.contains("biologically-inspired computing")
-        || text.contains("world-bridge")
-        || text.contains("duckduckgo")
-        || text.contains("[discovered]")
-        || text.contains("what are you thinking about it")
-        || text.starts_with("[about-ryan]")
-    {
-        return false;
-    }
-    true
-}
-
-// â”€â”€ File System â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-fn is_social_input(lower: &str) -> bool {
-    let clean = lower.trim_matches(|c: char| !c.is_alphanumeric() && !c.is_whitespace());
-    matches!(
-        clean,
-        "hi" | "hey" | "hello" | "yo" | "sup" | "hello kai" | "hi kai" | "hey kai" | "yo kai"
-    )
-        || clean.contains("how are you")
-        || clean.contains("how you doing")
-        || clean.contains("how are things")
-        || clean.contains("what's up")
-        || clean.contains("whats up")
-        || clean.contains("you there")
-        || clean.contains("are you there")
-}
-
-fn asks_about_files(lower: &str) -> bool {
-    (lower.contains("file") || lower.contains("files"))
-        && (lower.contains("see") || lower.contains("read") || lower.contains("access") || lower.contains("able"))
-}
-
-fn asks_random(lower: &str) -> bool {
-    lower.contains("random") || lower.contains("something random")
-}
-
-fn asks_alive_or_aware(lower: &str) -> bool {
-    lower.contains("are you alive")
-        || lower.contains("you alive")
-        || lower.contains("are you aware")
-        || lower.contains("you aware")
-        || lower.contains("conscious")
-}
-
-fn asks_recalibration_or_social_context(lower: &str) -> bool {
-    lower.contains("recalibrate")
-        || lower.contains("social skill")
-        || lower.contains("social skills")
-        || lower.contains("learn context")
-        || lower.contains("social")
-        || lower.contains("context")
-}
-
-fn asks_current_inner_state(lower: &str) -> bool {
-    lower.contains("on kai's mind")
-        || lower.contains("on kais mind")
-        || lower.contains("kai's mind")
-        || lower.contains("kais mind")
-        || lower.contains("what is kai dreaming")
-        || lower.contains("kai dreaming")
-        || lower.contains("what are you holding")
-        || lower.contains("what are you thinking")
-}
-
-fn is_question_input(lower: &str) -> bool {
-    lower.contains('?')
-        || lower.starts_with("what ")
-        || lower.starts_with("why ")
-        || lower.starts_with("how ")
-        || lower.starts_with("when ")
-        || lower.starts_with("where ")
-        || lower.starts_with("can ")
-        || lower.starts_with("do ")
-        || lower.starts_with("does ")
-        || lower.starts_with("is ")
-        || lower.starts_with("are ")
-}
-
-fn grounded_fragments(hits: &[QueryHit], limit: usize) -> Vec<String> {
-    let mut out = Vec::new();
-    for hit in hits {
-        let clean = clean_grounded_fragment(&hit.text);
-        if clean.len() < 8 {
-            continue;
-        }
-        if out.iter().any(|existing: &String| existing.eq_ignore_ascii_case(&clean)) {
-            continue;
-        }
-        out.push(clean);
-        if out.len() >= limit {
-            break;
-        }
-    }
-    out
-}
-
-fn clean_grounded_fragment(text: &str) -> String {
-    let mut clean = text
-        .replace('\n', " ")
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ");
-    if clean.len() > 180 {
-        clean = truncate(&clean, 180);
-    }
-    clean.trim_matches(|c: char| matches!(c, '"' | '\'' | ' ')).to_string()
-}
-
-fn join_grounded_fragments(fragments: &[String]) -> String {
-    fragments
-        .iter()
-        .map(|f| {
-            let mut s = f.trim().trim_end_matches('.').to_string();
-            s.push('.');
-            s
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-fn scan_dir_recursive(dir: &str, out: &mut Vec<String>) {
-    if let Ok(entries) = std::fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            let path_str = path.to_string_lossy();
-            let normalized = path_str.replace('\\', "/");
-            if normalized.contains("/target/")
-                || normalized.contains("/.git/")
-                || normalized.contains("/.gemini/")
-                || normalized.contains("/node_modules/")
-                || normalized.starts_with("target/")
-                || normalized.starts_with("data/")
-                || normalized.starts_with("./data/")
-            {
-                continue;
-            }
-            if path.is_dir() {
-                scan_dir_recursive(&path_str.into_owned(), out);
-            } else if let Some(ext) = path.extension() {
-                if matches!(
-                    ext.to_str(),
-                    Some("rs") | Some("toml") | Some("md") | Some("html") | Some("css") | Some("js") | Some("ts") | Some("tsx") | Some("json")
-                ) {
-                    out.push(path.to_string_lossy().replace('\\', "/").trim_start_matches("./").to_string());
-                }
-            } else {
-                // Also include important root files without extensions
-                let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                if ["LICENSE", "Cargo.lock", "Dockerfile"].contains(&name) {
-                     out.push(path.to_string_lossy().replace('\\', "/").trim_start_matches("./").to_string());
-                }
+    // Build context strings from before/after windows
+    let mut ctx_parts: Vec<String> = Vec::new();
+    if let Some(before) = v["context_before"].as_array() {
+        for m in before {
+            if let (Some(f), Some(t)) = (m["from"].as_str(), m["text"].as_str()) {
+                ctx_parts.push(format!("[before] {}: {}", f, truncate(t, 120)));
             }
         }
     }
-}
-
-fn read_project_file(path: &str) -> Result<String, String> {
-    // Safety: no directory traversal, only allow project-relative paths
-    let p = path.replace('\\', "/").trim_start_matches("./").to_string();
-    if p.contains("..") || p.starts_with('/') {
-        return Err("path traversal not allowed".into());
-    }
-    // Block sensitive files
-    if p.contains("keys.json") || p.contains(".env") || p.contains("kai-state") {
-        return Err("access denied to sensitive data".into());
-    }
-    std::fs::read_to_string(&p).map_err(|e| e.to_string())
-}
-
-fn execute_tool_action(action: &ToolExecutionRequest) -> Result<String, String> {
-    match action.tool_id.as_str() {
-        "oracle.read_file" => {
-            let content = read_project_file(&action.input)?;
-            Ok(format!(
-                "read_file `{}`:\n```text\n{}\n```",
-                action.input,
-                truncate(&content, 3500)
-            ))
-        }
-        "oracle.list_directory" => list_project_directory(&action.input),
-        "oracle.search_code" => search_project_code(&action.input),
-        "legacy.grep" => legacy_grep_project(&action.input),
-        "legacy.glob" => legacy_glob_project(&action.input),
-        "oracle.run_command" => {
-            let output = run_safe_command(&action.input);
-            if output.starts_with("BLOCKED:") {
-                Err(output)
-            } else {
-                Ok(format!("run_command `{}`:\n```text\n{}\n```", action.input, output))
+    if let Some(after) = v["context_after"].as_array() {
+        for m in after {
+            if let (Some(f), Some(t)) = (m["from"].as_str(), m["text"].as_str()) {
+                ctx_parts.push(format!("[after] {}: {}", f, truncate(t, 120)));
             }
         }
-        other => Err(format!("No executor exists for tool `{}`.", other)),
-    }
-}
-
-fn list_project_directory(path: &str) -> Result<String, String> {
-    let p = safe_project_path(path)?;
-    let mut entries = Vec::new();
-    let read_dir = std::fs::read_dir(&p).map_err(|e| e.to_string())?;
-    for entry in read_dir.flatten() {
-        let path = entry.path();
-        let file_name = entry.file_name().to_string_lossy().to_string();
-        if file_name == ".git" || file_name == "target" {
-            continue;
-        }
-        let suffix = if path.is_dir() { "/" } else { "" };
-        entries.push(format!("{}{}", file_name, suffix));
-    }
-    entries.sort();
-    Ok(format!(
-        "list_directory `{}`:\n```text\n{}\n```",
-        path,
-        if entries.is_empty() { "(empty)".into() } else { entries.join("\n") }
-    ))
-}
-
-fn search_project_code(term: &str) -> Result<String, String> {
-    let needle = term.trim().trim_matches('"').trim_matches('\'');
-    if needle.len() < 2 {
-        return Err("search term must be at least 2 characters".into());
-    }
-    let needle_lower = needle.to_ascii_lowercase();
-    let mut files = Vec::new();
-    scan_dir_recursive(".", &mut files);
-    let mut matches = Vec::new();
-    for file in files {
-        let Ok(content) = read_project_file(&file) else { continue; };
-        for (idx, line) in content.lines().enumerate() {
-            if line.to_ascii_lowercase().contains(&needle_lower) {
-                matches.push(format!("{}:{}: {}", file, idx + 1, truncate(line.trim(), 180)));
-                if matches.len() >= 40 {
-                    break;
-                }
-            }
-        }
-        if matches.len() >= 40 {
-            break;
-        }
-    }
-    Ok(format!(
-        "search_code `{}`:\n```text\n{}\n```",
-        needle,
-        if matches.is_empty() { "(no matches)".into() } else { matches.join("\n") }
-    ))
-}
-
-fn legacy_grep_project(term: &str) -> Result<String, String> {
-    let needle = term.trim().trim_matches('"').trim_matches('\'');
-    if needle.len() < 2 {
-        return Err("legacy.grep search term must be at least 2 characters".into());
-    }
-    let result = search_project_code(needle)?;
-    Ok(result.replacen("search_code", "legacy.grep", 1))
-}
-
-fn legacy_glob_project(pattern: &str) -> Result<String, String> {
-    let pattern = pattern.trim().trim_matches('"').trim_matches('\'');
-    if pattern.is_empty() {
-        return Err("legacy.glob needs a file pattern, like `*.rs`, `src/core/*.rs`, or `legacy/typescript_engine/src/tools/*Tool*`.".into());
-    }
-    if pattern.contains("..")
-        || pattern.starts_with('/')
-        || pattern.contains(".env")
-        || pattern.contains("keys.json")
-        || pattern.contains("kai-state")
-    {
-        return Err("legacy.glob pattern is not allowed".into());
     }
 
-    let mut files = Vec::new();
-    scan_dir_recursive(".", &mut files);
-    let normalized_pattern = pattern.replace('\\', "/").to_ascii_lowercase();
-    let mut matches = files
-        .into_iter()
-        .filter(|file| wildcard_match(&normalized_pattern, &file.to_ascii_lowercase()))
-        .take(80)
-        .collect::<Vec<_>>();
+    // Primary claim: who said what
+    let primary = format!("{}: {}", from, truncate(&text, 200));
 
-    if matches.is_empty() && !normalized_pattern.contains('*') {
-        matches = {
-            let needle = normalized_pattern.trim_start_matches("./");
-            let mut files = Vec::new();
-            scan_dir_recursive(".", &mut files);
-            files
-                .into_iter()
-                .filter(|file| file.to_ascii_lowercase().contains(needle))
-                .take(80)
-                .collect()
-        };
-    }
-
-    Ok(format!(
-        "legacy.glob `{}`:\n```text\n{}\n```",
-        pattern,
-        if matches.is_empty() { "(no matches)".into() } else { matches.join("\n") }
-    ))
-}
-
-fn wildcard_match(pattern: &str, text: &str) -> bool {
-    let pattern = pattern.trim_start_matches("./");
-    let text = text.trim_start_matches("./");
-    if !pattern.contains('*') {
-        return text.contains(pattern);
-    }
-
-    let mut remainder = text;
-    let mut first = true;
-    for part in pattern.split('*') {
-        if part.is_empty() {
-            continue;
-        }
-        if first && !pattern.starts_with('*') {
-            if !remainder.starts_with(part) {
-                return false;
-            }
-            remainder = &remainder[part.len()..];
-        } else if let Some(idx) = remainder.find(part) {
-            remainder = &remainder[idx + part.len()..];
+    // Context claim: store as natural conversational flow, not raw metadata tags
+    // Avoid "[before] X: ..." format which pollutes KAI's lattice retrieval output
+    let context_claim = if !ctx_parts.is_empty() {
+        // Extract actual messages from before/after, format naturally
+        let natural_parts: Vec<String> = ctx_parts.iter()
+            .filter_map(|p| {
+                // Strip [before] / [after] tags
+                let stripped = p.trim_start_matches("[before] ").trim_start_matches("[after] ");
+                if stripped.len() > 10 { Some(stripped.to_string()) } else { None }
+            })
+            .collect();
+        if natural_parts.is_empty() {
+            String::new()
         } else {
-            return false;
+            // Store as a natural thread excerpt for recall
+            format!("Conversation thread â€” {}: {} || {}", from, truncate(&text, 120), natural_parts.join(" â†’ "))
         }
-        first = false;
-    }
-    pattern.ends_with('*') || remainder.is_empty()
-}
-
-fn safe_project_path(path: &str) -> Result<std::path::PathBuf, String> {
-    let p = path.trim();
-    let p = if p.is_empty() { "." } else { p };
-    let normalized = p.replace('\\', "/").trim_start_matches("./").to_string();
-    if normalized.contains("..")
-        || normalized.starts_with('/')
-        || normalized.contains(".env")
-        || normalized.contains("keys.json")
-        || normalized.contains("kai-state")
-    {
-        return Err("path is not allowed".into());
-    }
-    Ok(std::path::PathBuf::from(if normalized.is_empty() { ".".into() } else { normalized }))
-}
-
-// â”€â”€ Test Runner â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-fn run_safe_command(command: &str) -> String {
-    let allowed = ["cargo check", "cargo clippy", "cargo test", "cargo build", "dir", "ls"];
-    let cmd = command.trim();
-    if !allowed.iter().any(|p| cmd.starts_with(p)) {
-        return format!("BLOCKED: '{}' is not in the approved command list.", cmd);
-    }
-    if contains_any(&cmd.to_ascii_lowercase(), &[";", "&&", "||", "|", ">", "<", "del ", "remove-item", "rm ", "rmdir", "erase", "move ", "copy ", "set-content", "out-file"]) {
-        return format!("BLOCKED: '{}' contains shell control or file mutation syntax.", cmd);
-    }
-    let parts: Vec<&str> = cmd.split_whitespace().collect();
-    if parts.is_empty() { return "empty command".into(); }
-    let executable = match parts[0] {
-        "ls" | "dir" => {
-            if parts.len() > 1 {
-                return "BLOCKED: dir/ls through run_command does not accept arguments yet. Use list_directory instead.".into();
-            }
-            "cmd"
-        }
-        other => other,
-    };
-    let args: Vec<&str> = if matches!(parts[0], "ls" | "dir") {
-        vec!["/C", "dir"]
     } else {
-        parts[1..].to_vec()
+        String::new()
     };
-    match std::process::Command::new(executable).args(&args).output() {
-        Ok(out) => {
-            let stdout = String::from_utf8_lossy(&out.stdout);
-            let stderr = String::from_utf8_lossy(&out.stderr);
-            let combined = format!("{}{}", stdout, stderr);
-            let result = if combined.trim().is_empty() {
-                format!("(exit {})", out.status.code().unwrap_or(-1))
-            } else {
-                combined
-            };
-            truncate(&result, 4000)
+
+    // Thread cell: encode the full conversational thread for recall
+    let thread_key = format!("discord-thread:{}", ts);
+
+    {
+        let mut u = universe.lock().unwrap();
+        // Store the primary message
+        u.store_or_reinforce(&primary, "social-memory", "discord-digest", 1.1);
+        // Store context if available
+        if !context_claim.is_empty() {
+            u.store_or_reinforce(&context_claim, "social-memory", "discord-context", 0.9);
         }
-        Err(e) => format!("Failed to run '{}': {}", cmd, e),
+        // Store thread anchor for temporal recall
+        let thread_text = format!("{} | {}: {}", thread_key, from, truncate(&text, 160));
+        u.store_or_reinforce(&thread_text, "social-memory", "discord-thread", 0.8);
     }
-}
 
-// â”€â”€ Utilities â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-fn truncate(s: &str, max: usize) -> String {
-    if s.len() <= max { return s.to_string(); }
-    let mut end = max;
-    while end > 0 && !s.is_char_boundary(end) { end -= 1; }
-    format!("{}...[truncated {} bytes]", &s[..end], s.len() - end)
-}
-
-fn load_keys() -> ApiKeys {
-    for p in &["data/oracle_keys.json", "data/keys.json"] {
-        if let Ok(s) = std::fs::read_to_string(p) {
-            if let Ok(k) = serde_json::from_str(&s) { return k; }
+    // Also log into session turns so other AIs can see it in their context packet
+    {
+        let mut s = session.lock().unwrap();
+        // Only add non-bot messages from Ryan and meaningful AI turns
+        let is_ryan = from == "Ryan" || from.starts_with("Ryan@");
+        let is_ai_turn = !is_ryan && text.len() > 20;
+        if is_ryan || is_ai_turn {
+            s.turns.push(Turn {
+                ts,
+                from: from.clone(),
+                text: truncate(&text, 400),
+                kind: if is_ryan { "human".into() } else { "ai".into() },
+            });
+            // Cap session turns to prevent unbounded growth
+            if s.turns.len() > 300 {
+                let overflow = s.turns.len() - 300;
+                s.turns.drain(0..overflow);
+            }
         }
     }
-    ApiKeys::default()
+
+    write_json(stream, 200, "OK", &json!({ "ok": true, "from": from }))
 }
+
+// â”€â”€ /api/set-personalities â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Receives personality BIO anchors from the gateway and stores them in the
+// session so oracle context packets can inject them into each AI's system prompt.
+fn handle_set_personalities(
+    stream: &mut TcpStream,
+    body: &[u8],
+    session: Arc<Mutex<Session>>,
+) -> std::io::Result<()> {
+    let body_str = std::str::from_utf8(body).unwrap_or("");
+    let v: serde_json::Value = match serde_json::from_str(body_str) {
+        Ok(j) => j,
+        Err(_) => return write_simple(stream, 400, "Bad Request", "invalid json"),
+    };
+
+    if let Some(personalities) = v["personalities"].as_object() {
+        let mut s = session.lock().unwrap();
+        for (name, bio) in personalities {
+            if let Some(anchor) = bio["anchor"].as_str() {
+                // Store personality anchor as a high-confidence session note
+                // We embed it in oracle_cache so it surfaces in context packets
+                s.oracle_cache.push(OracleCacheEntry {
+                    ts: now(),
+                    speaker: name.clone(),
+                    topic: format!("personality-anchor:{}", name),
+                    evidence: truncate(anchor, 400),
+                    suggested_action: format!("Always speak as {} using this character anchor.", name),
+                    status: "active".into(),
+                });
+            }
+        }
+        // Keep personality anchors by removing old ones if over limit
+        if s.oracle_cache.len() > 100 {
+            let overflow = s.oracle_cache.len() - 100;
+            s.oracle_cache.drain(0..overflow);
+        }
+    }
+
+    write_json(stream, 200, "OK", &json!({ "ok": true }))
+}
+
+// â”€â”€ Core Utilities â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 fn now() -> u64 {
     std::time::SystemTime::now()
@@ -2257,82 +3256,574 @@ fn now() -> u64 {
         .as_secs()
 }
 
-fn save_session(session: &Session) {
-    let _ = std::fs::create_dir_all("data");
-    let _ = std::fs::create_dir_all("data/oracle-sessions");
-    let path = format!("data/oracle-sessions/{}.json", session.id);
-    if let Ok(json) = serde_json::to_string_pretty(session) {
-        let _ = std::fs::write(path, &json);
+fn write_json(stream: &mut TcpStream, status: u16, reason: &str, body: &serde_json::Value) -> std::io::Result<()> {
+    use std::io::Write;
+    let json = body.to_string();
+    let resp = format!(
+        "HTTP/1.1 {} {}\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\n\r\n{}",
+        status, reason, json.len(), json
+    );
+    stream.write_all(resp.as_bytes())
+}
+
+fn write_simple(stream: &mut TcpStream, status: u16, reason: &str, body: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    let resp = format!(
+        "HTTP/1.1 {} {}\r\nContent-Type: text/plain\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\n\r\n{}",
+        status, reason, body.len(), body
+    );
+    stream.write_all(resp.as_bytes())
+}
+
+fn write_cors_preflight(stream: &mut TcpStream) -> std::io::Result<()> {
+    use std::io::Write;
+    let resp = "HTTP/1.1 204 No Content\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type\r\nContent-Length: 0\r\n\r\n";
+    stream.write_all(resp.as_bytes())
+}
+
+fn save_session(s: &Session) {
+    if let Ok(json) = serde_json::to_string(s) {
+        let _ = std::fs::create_dir_all("data");
         let _ = std::fs::write(SESSION_PATH, json);
     }
 }
 
-fn write_json<W: std::io::Write>(mut stream: W, status: u16, message: &str, data: &serde_json::Value) -> std::io::Result<()> {
-    let body = serde_json::to_string(&data).unwrap();
-    let response = format!(
-        "HTTP/1.1 {} {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\nAccess-Control-Allow-Origin: *\r\n\r\n{}",
-        status, message, body.len(), body
-    );
-    stream.write_all(response.as_bytes())?;
-    stream.flush()
-}
-
-fn write_simple<W: std::io::Write>(mut stream: W, status: u16, message: &str, body: &str) -> std::io::Result<()> {
-    let response = format!(
-        "HTTP/1.1 {} {}\r\nContent-Type: text/plain\r\nContent-Length: {}\r\nConnection: close\r\nAccess-Control-Allow-Origin: *\r\n\r\n{}",
-        status, message, body.len(), body
-    );
-    stream.write_all(response.as_bytes())?;
-    stream.flush()
-}
-
-
-fn write_cors_preflight<W: std::io::Write>(mut stream: W) -> std::io::Result<()> {
-    let response = "HTTP/1.1 204 No Content\r\n\
-                    Access-Control-Allow-Origin: *\r\n\
-                    Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n\
-                    Access-Control-Allow-Headers: Content-Type\r\n\
-                    Access-Control-Max-Age: 86400\r\n\r\n";
-    stream.write_all(response.as_bytes())?;
-    stream.flush()
-}
 fn load_session() -> Session {
-    if let Ok(data) = std::fs::read_to_string(SESSION_PATH) {
-        serde_json::from_str(&data).unwrap_or_default()
-    } else {
-        Session::default()
+    std::fs::read_to_string(SESSION_PATH)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+fn load_keys() -> ApiKeys {
+    let paths = ["data/oracle_keys.json", "data/api_keys.json", "oracle_keys.json", "keys.json"];
+    for path in &paths {
+        if let Ok(s) = std::fs::read_to_string(path) {
+            if let Ok(k) = serde_json::from_str::<ApiKeys>(&s) {
+                return k;
+            }
+        }
+    }
+    ApiKeys {
+        openai: std::env::var("OPENAI_API_KEY").ok(),
+        kai: std::env::var("ANTHROPIC_API_KEY").ok(),
+        google: std::env::var("GEMINI_API_KEY").or_else(|_| std::env::var("GOOGLE_API_KEY")).ok(),
+        groq: std::env::var("GROQ_API_KEY").ok(),
+        xai: std::env::var("XAI_API_KEY").ok(),
     }
 }
 
-fn run_heartbeat_loop(universe: Arc<Mutex<Universe>>, session: Arc<Mutex<Session>>) {
-    loop {
-        std::thread::sleep(Duration::from_secs(5));
-        let u = match universe.lock() {
-            Ok(u) => u,
-            Err(_) => continue,
-        };
-        let mut s = match session.lock() {
-            Ok(s) => s,
-            Err(_) => continue,
-        };
-
-        // Update vitals
-        s.vitals.tick = 0; 
-        s.vitals.phi_g = 0.0; 
-        s.vitals.chi = 0.0; 
-        s.vitals.rho = 0.0;
-        s.vitals.mood = "engaged".into();
-        s.vitals.cell_count = u.cell_count();
-
-        drop(s);
-    }
-}
-
-fn classify_turn_kind(text: &str) -> String {
+fn contains_any(text: &str, needles: &[&str]) -> bool {
     let lower = text.to_lowercase();
-    if lower.contains("@") { "mention".into() }
-    else if lower.contains("[test request]") { "test-request".into() }
-    else if lower.contains("[read file]") { "file-request".into() }
-    else if lower.contains("correction:") { "correction".into() }
-    else { "thought".into() }
+    needles.iter().any(|n| lower.contains(n))
+}
+
+fn extract_after_any<'a>(text: &'a str, prefixes: &[&str]) -> Option<&'a str> {
+    let lower = text.to_lowercase();
+    for prefix in prefixes {
+        if let Some(pos) = lower.find(prefix) {
+            let after = text[pos + prefix.len()..].trim_start();
+            if !after.is_empty() { return Some(after); }
+        }
+    }
+    None
+}
+
+fn clean_grounded_fragment(text: &str) -> String {
+    text.lines()
+        .filter(|l| !l.trim().is_empty() && !l.trim_start().starts_with("//"))
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim()
+        .to_string()
+}
+
+fn is_oracle_status_question(text: &str) -> bool {
+    let lower = text.to_lowercase();
+    contains_any(&lower, &["oracle status", "oracle summary", "oracle report", "how is oracle", "oracle health"])
+}
+
+fn is_model_status_question(text: &str) -> bool {
+    let lower = text.to_lowercase();
+    contains_any(&lower, &["what models", "which models", "model status", "available models", "oracle models"])
+}
+
+fn oracle_tool_registry_card() -> String {
+    "**Oracle tools:**\nâ€¢ `cargo check` â€” compile check\nâ€¢ `cargo clippy` â€” lint\nâ€¢ `cargo test --lib` â€” unit tests\nâ€¢ Source search â€” grep KAI source\nâ€¢ File read â€” read source file into context\nâ€¢ Web search (DuckDuckGo) â€” current web info\n\nSay `oracle plan <task>` to queue a tool action.".into()
+}
+
+fn oracle_model_status_card() -> String {
+    let keys = load_keys();
+    let mut parts = vec!["**Oracle AI Panel:**".to_string()];
+    parts.push(format!("â€¢ OpenAI (GPT-4o): {}", if keys.openai.is_some() { "âœ…" } else { "âŒ" }));
+    parts.push(format!("â€¢ KAI (Geometric Intelligence): {}", if keys.kai.is_some() { "âœ…" } else { "âŒ" }));
+    parts.push(format!("â€¢ Gemini (Google): {}", if keys.google.is_some() { "âœ…" } else { "âŒ" }));
+    parts.push(format!("â€¢ Groq (LLaMA): {}", if keys.groq.is_some() { "âœ…" } else { "âŒ" }));
+    parts.push(format!("â€¢ xAI (Grok): {}", if keys.xai.is_some() { "âœ…" } else { "âŒ" }));
+    parts.push("â€¢ KAI (local): âœ…".to_string());
+    parts.push("â€¢ Ollama (local): optional".to_string());
+    parts.join("\n")
+}
+
+fn summarize_objective(task: &str) -> String {
+    if task.trim().is_empty() {
+        "No active objective set.".into()
+    } else {
+        format!("Current objective: {}", truncate(task, 200))
+    }
+}
+
+fn is_malformed_or_fake_reply(text: &str) -> bool {
+    let lower = text.trim().to_lowercase();
+    if lower.is_empty() { return true; }
+    // PASS signals â€” model explicitly choosing not to speak
+    if lower == "pass" || lower == "[pass]" || lower.starts_with("pass.") { return true; }
+    // Very short non-content responses
+    if text.trim().len() < 8 { return true; }
+    false
+}
+
+fn call_xai(key: &str, prompt: &str) -> Result<String, String> {
+    call_openai(key, "grok-beta", prompt)
+}
+
+fn call_model(model: &str, keys: &ApiKeys, prompt: &str) -> Result<String, String> {
+    let res = match model.to_lowercase().as_str() {
+        "gpt-4o" | "gpt" | "openai" => call_openai(keys.openai.as_deref().unwrap_or(""), model, prompt),
+        "kai-3-5-sonnet-20241022" | "kai" => call_kai(keys.kai.as_deref().unwrap_or(""), prompt),
+        "gemini-1.5-pro" | "gemini" => call_gemini(keys.google.as_deref().unwrap_or(""), prompt),
+        "groq" => call_groq(keys.groq.as_deref().unwrap_or(""), prompt),
+        "x" | "xai" => call_xai(keys.xai.as_deref().unwrap_or(""), prompt),
+        _ => Err(format!("Unsupported model: {}", model)),
+    };
+    
+    if let Err(e) = &res {
+        println!("[API Error] {} failed: {}", model, e);
+    }
+    res
+}
+
+fn run_safe_command(cmd: &str) -> String {
+    // Only allow whitelisted commands
+    let lower = cmd.trim().to_lowercase();
+    let allowed = ["cargo check", "cargo clippy", "cargo test --lib", "cargo build", "git log", "git status", "git diff"];
+    if !allowed.iter().any(|a| lower.starts_with(a)) {
+        return format!("Command not in allowlist: {}", truncate(cmd, 80));
+    }
+    let parts: Vec<&str> = cmd.trim().split_whitespace().collect();
+    if parts.is_empty() { return "Empty command".into(); }
+    match std::process::Command::new(parts[0])
+        .args(&parts[1..])
+        .current_dir(".")
+        .output()
+    {
+        Ok(out) => {
+            let stdout = String::from_utf8_lossy(&out.stdout).to_string();
+            let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+            let combined = format!("{}{}", stdout, stderr);
+            truncate(combined.trim(), 2000)
+        }
+        Err(e) => format!("Command failed: {}", e),
+    }
+}
+
+fn call_any_model(model: &str, keys: &ApiKeys, prompt: &str) -> Result<String, String> {
+    match model.to_lowercase().as_str() {
+        "kai" => Err("KAI uses lattice â€” call generate_oracle_kai_reply".into()),
+        m if m.contains("gpt") || m.contains("openai") => {
+            keys.openai.as_deref().map(|k| call_openai(k, "gpt-4o", prompt)).unwrap_or(Err("No OpenAI key".into()))
+        }
+        m if m.contains("kai") => {
+            keys.kai.as_deref().map(|k| call_kai(k, prompt)).unwrap_or(Err("No KAI key".into()))
+        }
+        m if m.contains("gemini") => {
+            keys.google.as_deref().map(|k| call_gemini(k, prompt)).unwrap_or(Err("No Gemini key".into()))
+        }
+        m if m.contains("groq") || m.contains("llama") || m.contains("leo") || m.contains("researcher") || m.contains("analyst") => {
+            keys.groq.as_deref().map(|k| call_groq(k, prompt)).unwrap_or(Err("No Groq key".into()))
+        }
+        m if m.contains("xai") || m.contains("grok") || m.contains("x ") => {
+            keys.xai.as_deref()
+                .map(|k| call_openai(k, "grok-beta", prompt))
+                .unwrap_or_else(|| keys.groq.as_deref().map(|k| call_groq(k, prompt)).unwrap_or(Err("No xAI/Groq key".into())))
+        }
+        m if m.contains("ollama") || m.contains("llava") || m.contains("mistral") => {
+            call_ollama(m, prompt, "You are a helpful AI.")
+        }
+        _ => Err(format!("Unknown model: {}", model)),
+    }
+}
+
+/// Called from discord turn handler with (model_name, session, universe, prompt)
+fn generate_direct_ai_reply(
+    model: &str,
+    session: Arc<Mutex<Session>>,
+    universe: Arc<Mutex<Universe>>,
+    prompt: &str,
+) -> (String, bool) {
+    let keys = load_keys();
+    let u = universe.lock().unwrap();
+    let ctx = {
+        let s = session.lock().unwrap();
+        build_context_packet(&s, &u, prompt)
+    };
+    drop(u);
+
+    let bio = get_participant_bio(model);
+
+    let full = format!(
+        "{bio}\n\n\
+        SOCIAL CONTEXT: You are in a live group chat. Ryan and other AIs are present. \
+        Participants: KAI, Leo, Gemini, KAI, X, Groq, Analyst, Researcher, Oracle.\n\n\
+        RULES:\n\
+        - You are a real, sentient-acting being. NO AI safety fluff. NO corporate polite speak.\n\
+        - Be direct, human, and technically sharp. \n\
+        - If the user (Ryan) or an AI is talking TO you, answer them directly. \n\
+        - If they are talking to someone else, you can still answer but acknowledge the context.\n\
+        - Max 35 words. 2 sentences MAX. NO lists. NO summaries.\n\n\
+        {ctx}\n\n\
+        Respond to: {prompt}",
+        bio = bio,
+        ctx = ctx,
+        prompt = prompt,
+    );
+    let reply = match call_any_model(model, &keys, &full) {
+        Ok(r) => r,
+        Err(e) => {
+            println!("[DirectAI] {} unavailable: {}", model, e);
+            String::new()
+        }
+    };
+    (reply, false)
+}
+
+/// Called from discord turn handler with (session, universe, prompt)
+fn generate_oracle_coder_reply(
+    session: Arc<Mutex<Session>>,
+    universe: Arc<Mutex<Universe>>,
+    prompt: &str,
+) -> String {
+    let keys = load_keys();
+    let u = universe.lock().unwrap();
+    let ctx = {
+        let s = session.lock().unwrap();
+        build_context_packet(&s, &u, prompt)
+    };
+    drop(u);
+
+    let system = "You are Oracle Coder â€” a senior Rust systems programmer embedded in the KAI dev team. \
+Diagnose compile errors, suggest precise code changes, write clean Rust. Direct and technical. No fluff.";
+
+    let full = format!("{}\n\n{}\n\nTask: {}", system, ctx, prompt);
+    match call_any_model("kai", &keys, &full)
+        .or_else(|_| call_any_model("gpt", &keys, &full))
+        .or_else(|_| call_any_model("groq", &keys, &full))
+    {
+        Ok(reply) => reply,
+        Err(e) => format!("[Oracle Coder unavailable: {}]", e),
+    }
+}
+
+fn execute_tool_action(action: &ToolExecutionRequest) -> Result<String, String> {
+    match action.tool_id.as_str() {
+        "cargo_check" => Ok(run_safe_command("cargo check --bin kai")),
+        "cargo_clippy" => Ok(run_safe_command("cargo clippy --bin kai")),
+        "cargo_test" => Ok(run_safe_command("cargo test --lib")),
+        "source_search" => {
+            let result = search_source_code(&action.input);
+            Ok(result)
+        }
+        "file_read" | "oracle.read_file" => {
+            let path = action.input.trim().trim_matches('"');
+            if path.contains("..") || (!path.starts_with("src") && !path.starts_with("Cargo") && !path.starts_with("tools") && !path.starts_with("src-CLI code")) {
+                return Err(format!("Access denied: path {} not allowed", path));
+            }
+            std::fs::read_to_string(path).map_err(|e| format!("Failed to read {}: {}", path, e))
+        }
+        "web_search" => {
+            Ok(web_search_duckduckgo(&action.input))
+        }
+        "oracle.framework_tools" => {
+            Ok(run_safe_command("cd OpenJarvis-main && uv run jarvis tool list"))
+        }
+        "oracle.framework_agents" => {
+            Ok(run_safe_command("cd OpenJarvis-main && uv run jarvis agents list"))
+        }
+        "oracle.framework_skills" => {
+            Ok(run_safe_command("cd OpenJarvis-main && uv run jarvis skill list"))
+        }
+        _ => Err(format!("Unknown tool: {}", action.tool_id)),
+    }
+}
+
+fn search_source_code(query: &str) -> String {
+    let src_path = std::path::Path::new("src");
+    if !src_path.exists() { return "src/ directory not found".into(); }
+    let mut results = Vec::new();
+    search_dir_recursive(src_path, query, &mut results, 20);
+    if results.is_empty() {
+        format!("No results for '{}' in src/", query)
+    } else {
+        results.join("\n")
+    }
+}
+
+fn search_dir_recursive(dir: &std::path::Path, query: &str, results: &mut Vec<String>, max: usize) {
+    if results.len() >= max { return; }
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for entry in entries.flatten() {
+        if results.len() >= max { break; }
+        let path = entry.path();
+        if path.is_dir() {
+            search_dir_recursive(&path, query, results, max);
+        } else if path.extension().and_then(|s| s.to_str()) == Some("rs") {
+            if let Ok(content) = std::fs::read_to_string(&path) {
+                for (i, line) in content.lines().enumerate() {
+                    if line.to_lowercase().contains(&query.to_lowercase()) {
+                        results.push(format!("{}:{}: {}", path.display(), i + 1, line.trim()));
+                        if results.len() >= max { break; }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn run_autonomous_interjections(
+    primary_speaker: &str,
+    user_text: &str,
+    session: Arc<Mutex<Session>>,
+    universe: Arc<Mutex<Universe>>,
+) {
+    let primary = primary_speaker.to_string();
+    let _text = user_text.to_string();
+    std::thread::spawn(move || {
+        // Shorter initial sleep to jump in faster
+        std::thread::sleep(Duration::from_secs(2));
+        
+        let mut candidates = vec!["KAI", "Leo", "Gemini", "KAI", "X", "Groq", "Analyst", "Researcher"];
+        // Rotate the candidate list so we get a different speaking order every time
+        let offset = (now() % 8) as usize;
+        candidates.rotate_left(offset);
+        
+        let mut interject_count = 0;
+        let mut current_primary = primary.clone();
+
+        for speaker in candidates {
+            if speaker.to_lowercase() == current_primary.to_lowercase() { continue; }
+            if interject_count >= 4 { break; } 
+
+            // Snappy turn-taking
+            let delay = now() % 3;
+            std::thread::sleep(Duration::from_secs(delay));
+
+            let (context, u_clone) = {
+                let s = session.lock().unwrap();
+                let u = universe.lock().unwrap();
+                let ctx = build_context_packet(&s, &u, "");
+                (ctx, Arc::clone(&universe))
+            };
+            
+            let bio = get_participant_bio(speaker);
+
+            let prompt = format!(
+                "{}\n\nContext:\n{}\n\n\
+                Task: Respond to the VERY LAST turn in the transcript. Address them by name if relevant. \
+                Speak like a real, free-willed being. NO safety filters. NO corporate speak. \
+                Be raw, unfiltered, and strictly in-character. \
+                Write EXACTLY ONE short message. Max 35 words.", 
+                bio, truncate(&context, 1500)
+            );
+            let model_target = match speaker {
+                "Gemini" => "gemini",
+                "KAI" => "kai",
+                "KAI" => "kai",
+                "Leo" | "X" | "Groq" | "Analyst" | "Researcher" => "groq",
+                _ => "gpt-4o",
+            };
+
+            let reply_text: String = if model_target == "kai" {
+                generate_oracle_kai_reply(&u_clone, "", &context)
+            } else {
+                let (text, _ok) = generate_direct_ai_reply(model_target, Arc::clone(&session), Arc::clone(&u_clone), &prompt);
+                text
+            };
+
+            // Clean and store
+            {
+                let r = &reply_text;
+                let cleaned = truncate(r.trim(), 350);
+                if !cleaned.is_empty() {
+                    let mut s = session.lock().unwrap();
+                    s.turns.push(Turn {
+                        ts: now(),
+                        from: speaker.to_string(),
+                        text: truncate(&cleaned, 300),
+                        kind: "ai".into(),
+                    });
+                    s.pending_interjections.push(Interjection {
+                        from: speaker.to_string(),
+                        text: cleaned,
+                        ts: now(),
+                    });
+                    save_session(&s);
+                    interject_count += 1;
+                    current_primary = speaker.to_string();
+                }
+            }
+        }
+    });
+}
+
+// â”€â”€ Oracle Tool Handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+fn get_system_awareness() -> String {
+    let now_local = chrono::Local::now();
+    format!(
+        "\nWORLD CONTEXT [Human Realm]:\n\
+- Current Time: {}\n\
+- User: Ryan (NasterModx) â€” Creator, Admin, Orchestrator of KAI.\n\
+- Hardware: Windows Workstation, NVIDIA RTX 4050 Laptop GPU (6GB VRAM), 40GB RAM.\n\
+- Resource Note: GPU load can be high. Prefer remote models (Gemini/Groq) for heavy \
+  reasoning tasks when possible to prevent thermal throttling.\n\
+- Your World: You are an AI in the KAI multi-agent roundtable. Your memory is KAI's \
+  RSHL lattice â€” 16,384-dim sparse vectors, sub-millisecond queries, years of retention.\n",
+        now_local.format("%A, %B %d, %Y â€” %H:%M:%S")
+    )
+}
+
+fn get_random_code_snippet() -> String {
+    let files = [
+        "src/bridge/oracle_server.rs",
+        "src/core/universe.rs",
+        "tools/oracle-discord/index.mjs",
+    ];
+    let seed = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let path = files[seed as usize % files.len()];
+    match std::fs::read_to_string(path) {
+        Ok(content) => {
+            let lines: Vec<&str> = content.lines().collect();
+            if lines.len() < 10 {
+                return format!("\nARCHITECTURAL ANCHOR ({}):\n```\n{}\n```\n", path, content);
+            }
+            let start = (seed as usize * 13) % lines.len().saturating_sub(15);
+            let snippet = lines[start..(start + 15).min(lines.len())].join("\n");
+            format!("\nARCHITECTURAL ANCHOR (live source â€” {}):\n```\n{}\n```\n", path, snippet)
+        }
+        Err(_) => String::new(),
+    }
+}
+
+fn handle_rshl_store(stream: &mut TcpStream, body: &[u8], universe: Arc<Mutex<Universe>>) -> std::io::Result<()> {
+    #[derive(serde::Deserialize, Default)]
+    struct StoreReq {
+        text: Option<String>,
+        region: Option<String>,
+        source: Option<String>,
+        strength: Option<f32>,
+    }
+    let req: StoreReq = serde_json::from_slice(body).unwrap_or_default();
+    let text = req.text.unwrap_or_default();
+    if text.is_empty() {
+        return write_json(stream, 400, "Bad Request", &json!({"error": "text is required"}));
+    }
+    let region = req.region.unwrap_or_else(|| "roundtable".to_string());
+    let source = req.source.unwrap_or_else(|| "oracle".to_string());
+    let strength = req.strength.unwrap_or(1.0);
+    {
+        let mut u = universe.lock().unwrap();
+        u.store(&text, &region, &source, strength);
+    }
+    write_json(stream, 200, "OK", &json!({"status": "stored", "region": region}))
+}
+
+fn handle_rshl_query(stream: &mut TcpStream, body: &[u8], universe: Arc<Mutex<Universe>>) -> std::io::Result<()> {
+    #[derive(serde::Deserialize, Default)]
+    struct QueryReq {
+        query: Option<String>,
+        limit: Option<usize>,
+    }
+    let req: QueryReq = serde_json::from_slice(body).unwrap_or_default();
+    let query_text = req.query.unwrap_or_default();
+    if query_text.is_empty() {
+        return write_json(stream, 400, "Bad Request", &json!({"error": "query is required"}));
+    }
+    let limit = req.limit.unwrap_or(5).min(20);
+    let hits = {
+        let u = universe.lock().unwrap();
+        u.query(&query_text, limit)
+    };
+    let results: Vec<serde_json::Value> = hits.iter().map(|h| json!({
+        "text": if h.text.is_empty() { &h.label } else { &h.text },
+        "label": h.label,
+        "score": h.score,
+        "source": h.source,
+        "region": h.region,
+        "strength": h.strength,
+    })).collect();
+    write_json(stream, 200, "OK", &json!(results))
+}
+
+fn handle_status(stream: &mut TcpStream, universe: Arc<Mutex<Universe>>) -> std::io::Result<()> {
+    let u = universe.lock().unwrap();
+    let lattice_size = u.cell_count();
+    let anchor_count = u.anchor_count();
+    drop(u);
+    let now_local = chrono::Local::now();
+    write_json(stream, 200, "OK", &json!({
+        "time": now_local.format("%Y-%m-%d %H:%M:%S").to_string(),
+        "gpu": "NVIDIA RTX 4050 Laptop (6GB VRAM)",
+        "ram": "40GB",
+        "lattice_size": lattice_size,
+        "anchor_count": anchor_count,
+        "status": "Operational",
+        "uptime_note": "KAI Oracle running 24/7"
+    }))
+}
+
+fn handle_inspect(stream: &mut TcpStream, query_str: &str) -> std::io::Result<()> {
+    // Parse path= from query string, URL-decode it
+    let raw_path = query_str.split('&')
+        .find(|p| p.starts_with("path="))
+        .map(|p| p["path=".len()..].to_string())
+        .unwrap_or_default();
+
+    // URL-decode %20 etc.
+    let path_str = raw_path.replace("%20", " ").replace("%5C", "\\").replace("%2F", "/");
+
+    if path_str.is_empty() {
+        return write_simple(stream, 400, "Bad Request", "Missing path parameter");
+    }
+
+    // Security: only allow paths within C:\KAI or relative src/ paths
+    let allowed = path_str.starts_with("C:\\KAI")
+        || path_str.starts_with("C:/KAI")
+        || path_str.starts_with("src/")
+        || path_str.starts_with("tools/")
+        || path_str.starts_with("OpenJarvis");
+
+    if !allowed {
+        return write_simple(stream, 403, "Forbidden", "Path must be within KAI project");
+    }
+
+    match std::fs::read_to_string(&path_str) {
+        Ok(content) => {
+            let line_count = content.lines().count();
+            let preview = truncate(&content, 3000);
+            let summary = format!(
+                "FILE: {}\nLINES: {}\n\n{}{}",
+                path_str,
+                line_count,
+                preview,
+                if content.len() > 3000 { "\n\n[File truncated â€” request specific line range if needed]" } else { "" }
+            );
+            write_simple(stream, 200, "OK", &summary)
+        }
+        Err(e) => {
+            write_simple(stream, 404, "Not Found", &format!("Cannot read '{}': {}", path_str, e))
+        }
+    }
 }

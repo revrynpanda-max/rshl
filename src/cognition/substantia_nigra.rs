@@ -373,9 +373,7 @@ mod tests {
             });
         }
         assert!(
-            s.chunks.len() <= MAX_CHUNKS,
-            "chunk count should stay capped: {}",
-            s.chunks.len()
+            s.chunks.len
         );
     }
 }

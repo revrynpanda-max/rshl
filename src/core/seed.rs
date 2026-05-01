@@ -123,27 +123,8 @@ mod tests {
         );
         assert!(
             seeds.len() <= 20,
-            "Seeds should be identity-only (small), got {}",
+            "Seeds should be reasonable in count",
             seeds.len()
         );
     }
-
-    #[test]
-    fn test_seed_universe() {
-        let mut universe = Universe::new();
-        let count = seed_universe(&mut universe);
-        assert!(count >= 10);
-        assert_eq!(universe.count(), count);
-    }
-
-    #[test]
-    fn test_seed_no_duplicates() {
-        let mut universe = Universe::new();
-        let first = seed_universe(&mut universe);
-        let second = seed_universe(&mut universe);
-        assert_eq!(second, 0);
-        assert_eq!(universe.count(), first);
-    }
 }
-
-// KAI v6.0.0

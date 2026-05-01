@@ -49,5 +49,6 @@ impl Claim {
             contradictions: Vec::new(),
             vec,
         }
+
     }
 }

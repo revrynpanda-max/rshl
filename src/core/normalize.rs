@@ -1239,7 +1239,7 @@ mod tests {
             "Location queries should share tokens: a={:?} b={:?} shared={:?}",
             a,
             b,
-            shared
+         
         );
     }
 }

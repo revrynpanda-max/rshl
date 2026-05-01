@@ -582,9 +582,7 @@ pub fn reinforce_dream_sources(universe: &mut Universe, dream: &DreamResult) {
     let cells = universe.cells_mut();
     for cell in cells.iter_mut() {
         if cell.label == dream.concept_a || cell.label == dream.concept_b {
-            cell.claim.confidence = (cell.claim.confidence + dream.source_reinforcement).min(5.0);
+            cell.claim.confidence = (cell.claim.confidence + dream.source_reinforcement * 0.1).min(5.0);
         }
     }
 }
-
-// KAI v6.0.0

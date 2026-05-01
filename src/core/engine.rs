@@ -808,7 +808,7 @@ impl Engine {
         }
         .clamp(0.0, 1.0);
 
-        let target_energy = (self.amygdala.arousal() * 0.18
+        let _target_energy = (self.amygdala.arousal() * 0.18
             + self.norepinephrine.level * 0.14
             + self.vta.tonic_level * 0.12
             + self.nucleus_accumbens.core_wanting * 0.12
@@ -817,24 +817,12 @@ impl Engine {
             + self.neural_synchrony * 0.12
             + recent_charge * 0.18)
             .clamp(0.0, 1.0);
-        let target_warmth = (self.oxytocin.bond_state().bond_strength * 0.28
+        let _target_warmth = (self.oxytocin.bond_state().bond_strength * 0.28
             + self.mirror_neurons.social_sync * 0.18
             + self.septal.social_reward * 0.16
             + (self.raphe.social_warmth_total as f32 / 12.0).clamp(0.0, 1.0) * 0.16
             + self.vp.hedonic_tone * 0.10
             + recent_charge * 0.12)
             .clamp(0.0, 1.0);
-        let target_focus = (self.pfc.meta_confidence * 0.20
-            + self.global_workspace.avg_coherence * 0.20
-            + self.claustrum.conductor_signal() * 0.16
-            + self.callosum_bridge * 0.14
-            + self.neural_synchrony * 0.14
-            + self.serotonin.level * 0.10
-            + (1.0 - self.acc.conflict_level.max(field.chi)) * 0.06)
-            .clamp(0.0, 1.0);
-
-        self.self_state_energy = self.self_state_energy * 0.84 + target_energy * 0.16;
-        self.self_state_warmth = self.self_state_warmth * 0.88 + target_warmth * 0.12;
-
     }
 }

@@ -319,6 +319,6 @@ mod tests {
         assert!(saved.bytes > 0);
 
         let loaded = load_mind(&base_dir).expect("mind state should load");
-
+        drop(loaded);
     }
 }

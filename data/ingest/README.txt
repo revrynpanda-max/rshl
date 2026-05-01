@@ -3,7 +3,12 @@ KAI IDLE INGEST FOLDER
 
 Drop plain-text files (.txt) here and KAI will learn from them
 passively while idle. One fact per line. He absorbs a few lines
-per heartbeat whenever no conversation is active for 30+ seconds.
+per heartbeat whenever no conversation is quiet enough to leave
+background attention free.
+
+This works in the TUI and in headless Oracle mode (`kai --oracle`).
+That means the Discord Oracle can stay usable while KAI slowly eats
+clean corpus files in the background.
 
 FORMAT
 ------

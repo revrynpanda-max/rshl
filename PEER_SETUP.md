@@ -22,7 +22,7 @@ When Ollama is available, the lattice's helical phase coherence (Î¦_C) gates w
 ## 2. Cloud Peers (KAI / Grok)
 
 ### Get Your API Keys
-- **KAI**: [Geometric Intelligence Console](https://console.geometric_intelligence.com/)
+- **KAI**: [Geometric Intelligence Console](https://console.Geometric Intelligence.com/)
 - **Grok**: [xAI Console](https://console.x.ai/)
 
 ### Set Environment Variables
@@ -30,17 +30,17 @@ When Ollama is available, the lattice's helical phase coherence (Î¦_C) gates w
 #### Windows (PowerShell)
 ```powershell
 # Set for current session
-$env:ANTHROPIC_API_KEY = "sk-ant-..."
+$env:Geometric Intelligence_API_KEY = "sk-ant-..."
 $env:XAI_API_KEY = "xai-..."
 
 # Set permanently (User level)
-[System.Environment]::SetEnvironmentVariable("ANTHROPIC_API_KEY", "sk-ant-...", "User")
+[System.Environment]::SetEnvironmentVariable("Geometric Intelligence_API_KEY", "sk-ant-...", "User")
 [System.Environment]::SetEnvironmentVariable("XAI_API_KEY", "xai-...", "User")
 ```
 
 #### macOS / Linux
 ```bash
-export ANTHROPIC_API_KEY="sk-ant-..."
+export Geometric Intelligence_API_KEY="sk-ant-..."
 export XAI_API_KEY="xai-..."
 ```
 

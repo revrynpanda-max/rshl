@@ -345,9 +345,7 @@ mod tests {
             s.decay();
         }
         assert!(
-            s.cognitive_discomfort < 0.60,
-            "discomfort should decay: {:.2}",
-            s.cognitive_discomfort
+            s.cognitive_
         );
     }
 }

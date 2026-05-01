@@ -1,4 +1,4 @@
-﻿# Binaries (Local Only)
+# Binaries (Local Only)
 bin/
 target/
 *.exe
@@ -6,10 +6,10 @@ target/
 *.so
 *.dylib
 
-# â”€â”€ Personal identity â€” each user has their own, never shared â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Personal identity — each user has their own, never shared ────────────────
 data/identity.json
 
-# â”€â”€ Runtime memory & state â€” personal to each instance â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Runtime memory & state — personal to each instance ──────────────────────
 # These files hold learned memories, conversation history, and session state.
 # They are local only. Each user builds their own memory pool from scratch.
 data/*.json
@@ -18,7 +18,7 @@ data/*.bin
 data/*.js
 !data/identity.template.json
 
-# â”€â”€ Analytics / plots / logs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Analytics / plots / logs ──────────────────────────────────────────────────
 *.csv
 *.png
 *.txt
@@ -27,19 +27,19 @@ reports/
 scratch/
 !scratch/.gitkeep
 
-# â”€â”€ Node (Legacy & Visualizer) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Node (Legacy & Visualizer) ────────────────────────────────────────────────
 node_modules/
 visualizer/dist/
 visualizer/node_modules/
 legacy/typescript_engine/node_modules/
 
-# â”€â”€ Build Artifacts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Build Artifacts ──────────────────────────────────────────────────────────
 build/
 kai-build/
 kai-build-*/
 build_temp/
 
-# â”€â”€ IDE / OS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── IDE / OS ─────────────────────────────────────────────────────────────────
 .vs/
 .idea/
 .vscode/
@@ -48,7 +48,7 @@ build_temp/
 Thumbs.db
 Desktop.ini
 
-# â”€â”€ Assistant Artifacts & Session Tags (Local Only) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Assistant Artifacts & Session Tags (Local Only) ──────────────────────────
 task.md
 implementation_plan.md
 walkthrough.md
@@ -61,22 +61,24 @@ meta_test_result.json
 test_fetch.glb
 
 # KAI v6.0.0
+tools/oracle-discord/.oracle-discord.local.xml
 
-# KAI v6.1.0
 # ── Privacy & Environment ──
 keys.json
 .env
 *.local
 *.local.xml
 auth_keys.xml
+
 # ── Local Development ──
 .venv/
 __pycache__/
 OpenJarvis-main/.venv/
-OpenJarvis-main/*.log
+OpenJarvis-main/jarvis.log
+OpenJarvis-main/startup.log
+OpenJarvis-main/startup2.log
+
 # ── Source Backups ──
 src-CLI code/
 legacy/
 backup/
-*.md.backup
-*.log

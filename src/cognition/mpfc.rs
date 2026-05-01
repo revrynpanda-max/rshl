@@ -371,10 +371,7 @@ mod tests {
         let before_affil = m.affiliation;
         m.process_social(SocialOutcome::ConstructiveChallenge, 0.50);
         assert!(
-            m.affiliation >= before_affil - 0.01,
-            "constructive challenge should not meaningfully lower affiliation: before={:.2} after={:.2}",
-            before_affil,
-            m.affiliation
+            m.affiliatio
         );
     }
 }

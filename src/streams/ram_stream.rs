@@ -7,7 +7,7 @@ use crossbeam_channel::{Receiver, Sender};
 /// no data races. Handles storage, pruning, homeostasis,
 /// and background fact ingestion.
 use std::sync::{Arc, RwLock};
-use std::time::Instant;
+
 
 /// Run one tick of the RAM stream.
 pub fn ram_tick(

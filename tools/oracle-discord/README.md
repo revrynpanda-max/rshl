@@ -1,74 +1,52 @@
-﻿# Oracle Discord Gateway
+# Oracle Discord Gateway — KAI Roundtable Bridge
 
-Minimal Ryan-only Discord bridge for the local KAI Oracle server.
+A high-fidelity bridge connecting the local **KAI Oracle** server to Discord.
 
-The bot is intentionally dumb:
+## 🔮 Features
 
-- it accepts messages only from `ORACLE_DISCORD_ALLOWED_USER_ID`
-- it calls one Oracle endpoint: `POST /api/discord-turn`
-- Oracle records the Discord turn and routes it to the platform or named participant
-- the bot sends Oracle's returned reply back to Discord
+- **Multi-AI Roundtable**: Communicate with Leo, Gemini, KAI, X, Analyst, Researcher, and Groq.
+- **Voice Channel Integration**: Speak directly to **Leo** in voice channels using ElevenLabs/OpenAI TTS/STT.
+- **Autonomous Interjections**: Agents speak up when relevant, creating a living council.
+- **Public & Private Modes**: Secure administrative lane for Ryan, with a isolated public discourse channel.
 
-## Discord Message Routing
+## 🕹️ Discord Message Routing
 
-- `oracle help` shows the phone commands.
-- `oracle status` shows the current Oracle session status.
-- `kai hello` talks directly to KAI.
-- `kai ...`, `gemini ...`, `gpt ...`, `groq ...`, `researcher ...`, `analyst ...`, and `leo ...` route to those Oracle participants when their backend is configured.
-- A normal unaddressed message is logged into the Oracle session and answered by Oracle as the platform.
+- `oracle help` — Show the command list and quick buttons.
+- `oracle status` — View the current roundtable session and agent vitals.
+- `kai hello` — Talk directly to the KAI Geometric engine.
+- `leo join` / `leo leave` — Manage voice channel presence.
+- `leo voice test` — Trigger a high-fidelity voice check.
 
-## Quick Buttons
+Unaddressed messages in the private channel are logged to the Oracle session and moderated by Oracle.
 
-Every Oracle reply includes quick buttons:
+## 🎙️ Leo Voice Setup
 
-- â” **Help** -> `oracle help`
-- ðŸ“ **Table** -> `oracle status`
-- ðŸ§  **KAI** -> ask KAI what he is holding right now
-- ðŸ”Ž **Analyst** -> ask the analyst for the biggest current issue
-- ðŸ“š **Researcher** -> ask what context is needed next
+Leo uses a dual-engine pipeline for maximum fidelity:
+1. **Transcription**: ElevenLabs Scribe (High accuracy).
+2. **Synthesis**: ElevenLabs Leo Voice (Primary) or OpenAI `onyx` (Fallback).
 
-Discord does not allow bots to add a permanent custom toolbar at the bottom of chat. If you want a persistent control panel, send `oracle help` and manually pin that bot message in the channel.
-
-## Setup
-
-1. Create a Discord application and bot in the Discord Developer Portal.
-2. Enable **Message Content Intent** for the bot:
-   - Discord Developer Portal -> your application -> **Bot**
-   - Scroll to **Privileged Gateway Intents**
-   - Turn on **Message Content Intent**
-   - Save changes
-3. Invite the bot to your private server or DM it.
-4. In Discord, enable **User Settings > Advanced > Developer Mode**.
-5. Right-click your own profile and choose **Copy User ID**. This is the value for `ORACLE_DISCORD_ALLOWED_USER_ID`.
-6. Optional: right-click `#general` or another channel and choose **Copy Channel ID**. This is the value for `ORACLE_DISCORD_ALLOWED_CHANNEL_ID`.
-7. Start KAI so Oracle is listening on `http://127.0.0.1:3333`.
-8. In PowerShell, run the guided starter:
-
+### Configuration
 ```powershell
 cd C:\KAI\tools\oracle-discord
-.\run-oracle-discord.ps1
+.\run-oracle-discord.ps1 -ConfigureVoice
 ```
 
-The script will ask for the bot token, your numeric user ID, and optionally a channel ID. It does not save the token.
+## 🚀 Quick Start
 
-Manual startup is also supported:
+1. Start the **Oracle Engine** (Rust) first.
+2. In PowerShell, run the gateway:
+   ```powershell
+   cd C:\KAI\tools\oracle-discord
+   .\run-oracle-discord.ps1
+   ```
+3. Use the `oracle help` command in Discord to verify connectivity.
 
-```powershell
-cd C:\KAI\tools\oracle-discord
-npm install
-$env:ORACLE_DISCORD_TOKEN="your_bot_token"
-$env:ORACLE_DISCORD_ALLOWED_USER_ID="your_discord_user_id"
-# Optional: lock to one Discord channel
-# $env:ORACLE_DISCORD_ALLOWED_CHANNEL_ID="your_channel_id"
-npm start
-```
+## 📜 Permissions Required
+The bot needs the following in your target server:
+- View Channel / Read Message History
+- Send Messages
+- Connect / Speak (for Leo Voice)
+- Use External Emojis
 
-## Config Check
-
-```powershell
-node index.mjs --check-config
-```
-
-## Notes
-
-This gateway does not expose shell commands, file reads, test approval, or an Oracle command dashboard. Those should be added only after the simple phone loop works.
+---
+Copyright © 2026 Geometric Intelligence Systems.

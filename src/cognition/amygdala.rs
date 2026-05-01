@@ -376,6 +376,7 @@ mod tests {
             "caps+exclamation should amplify: normal={:.3} intense={:.3}",
             normal,
             intense
+    
         );
     }
 }

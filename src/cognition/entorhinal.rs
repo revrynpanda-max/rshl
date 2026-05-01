@@ -372,9 +372,7 @@ mod tests {
         ec.gateway_signal = 0.80;
         ec.decay();
         assert!(
-            ec.gateway_signal < 0.80,
-            "gateway signal should decay: {:.2}",
-            ec.gateway_signal
+            ec.gateway_
         );
     }
 }

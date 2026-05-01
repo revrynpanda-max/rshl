@@ -18,13 +18,33 @@
 ///   Φc   — contradiction-adjusted (Φ × (1-χ))
 ///   Φg   — goal-aligned emergence (Φc × g) — THE KEY METRIC
 ///   M    — momentum (Φg - previous Φg)
+/// Field State — Full RSHL Emergence Metrics
+///
+/// Ported from field-state.js. Pure computation, no side effects.
+/// Given a set of source cells and a synthetic vector, computes
+/// all 17 field metrics that drive dream quality, promotion, and valence.
+///
+/// Metrics:
+///   ρ    — field density (active/total)
+///   R    — mean coherence (agreement between concepts)
+///   s    — stability (1 / (1 + stddev(coherence samples)))
+///   g    — goal alignment (resonance with evolving goal vector)
+///   χ    — contradiction pressure (disagreement between sources)
+///   τ    — temporal recurrence (how often this winner recurs in history)
+///   r    — recency weight (exponential decay by age)
+///   u    — average strength (normalized)
+///   q    — novelty (1 - R)
+///   Φ    — raw emergence (ρ × R² × s)
+///   Φc   — contradiction-adjusted (Φ × (1-χ))
+///   Φg   — goal-aligned emergence (Φc × g) — THE KEY METRIC
+///   M    — momentum (Φg - previous Φg)
 ///   X    — contradiction × novelty pressure
 ///   C    — commit readiness (Φg × (1-χ) × τ)
 ///   Wm   — memory reinforcement weight (Φg × r)
 ///   Pr   — replay priority ((1-Φg + χ + q) / 3)
 use super::{SparseVec, Universe};
 use crate::core::regions::{
-    compute_region_core, omega, phi_left, phi_right, psi_bridge, r_cross, select_top_k, Region,
+    compute_region_core, phi_left, phi_right, Region,
     RegionMetrics, RegionalState,
 };
 use serde::{Deserialize, Serialize};
@@ -478,6 +498,7 @@ impl FieldState {
         };
         let phi_l = phi_left(&left);
 
+
         // Right
         let (rho_r, r_r, chi_r) = compute_region_core(state, current_pattern, Region::Right);
         let right = RegionMetrics {
@@ -491,11 +512,30 @@ impl FieldState {
         };
         let phi_r = phi_right(&right);
 
-        // Bridge: vector form for R_cross, then scalar Ψ_B
-        let top_l = select_top_k(state, Region::Left, 8); // k=8 per our earlier decision
-        let top_r = select_top_k(state, Region::Right, 8);
-        let rc = r_cross(&top_l, &top_r);
+        // Cross-hemisphere coherence — approximate via direct cosine of the state vecs
+        let cross = (state.cosine(current_pattern).abs()).clamp(0.0, 1.0);
+        let chi_diff = (chi_l - chi_r).abs();
+        let momentum = self.m_val;
 
+        // Bridge Φ (Ψ_B)
+        let bridge = (phi_l * phi_r).sqrt() * (cross / (1.0 + chi_diff)) * (1.0 + momentum * 0.1);
 
+        // Omega: unified awareness
+        let omega = (phi_l + phi_r + bridge).min(3.0) / 3.0;
+
+        self.regional = RegionalState {
+            left,
+            right,
+            bridge_phi: bridge,
+            r_cross: cross,
+            chi_disagreement: chi_diff,
+            momentum,
+            omega,
+        };
+
+        // Propagate phi_g from bridge into field-level metric
+        let new_phi = (phi_l + phi_r) * 0.5;
+        self.phi = new_phi;
+        self.phi_g = (self.phi_g * 0.8 + bridge * 0.2).clamp(0.0, 1.0);
     }
 }

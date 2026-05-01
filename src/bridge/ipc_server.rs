@@ -621,21 +621,13 @@ fn live_self_state_hit(
 }
 
 fn err_json(msg: &str) -> String {
-    format!(r#"{{"ok":false,"error":"{}"}}"#, msg)
+    serde_json::json!({"ok": false, "error": msg}).to_string()
 }
 
-fn kai_grounding_rank(text: &str) -> i32 {
-    let lower = text.to_lowercase();
-    let mut score = 0;
-
-    if lower.contains("physical body") { score += 5; }
-    if lower.contains("exist") { score += 4; }
-    if lower.contains("machine") { score += 4; }
-    if lower.contains("geometric") { score += 2; }
-    if lower.contains("rshl") { score += 1; }
-
-    if lower.contains("mood") { score -= 4; }
-    if lower.contains("valence") { score -= 4; }
-
-    score
+fn kai_grounding_rank(label: &str) -> u8 {
+    let lower = label.to_ascii_lowercase();
+    if lower.contains("kai is") || lower.contains("i am kai") { return 3; }
+    if lower.contains("kai") && lower.contains("rust") { return 2; }
+    if lower.contains("kai") { return 1; }
+    0
 }

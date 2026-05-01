@@ -5,9 +5,10 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
+use kai::cognition::hlv_training::train_hlv_command;
 use kai::cognition::voice::QueryType;
 use kai::cognition::{
-    detect_query_type, BrainSignals, CandidateBuffer, MoodState, PromotionThresholds,
+    detect_query_type, BrainSignals, CandidateBuffer, MoodState,
 };
 use kai::core::engine::MindEvent;
 use kai::core::normalize::truncate;
@@ -980,6 +981,7 @@ impl App {
             }
 
             // Show sleep report in conversation and spectate
+            let _target_energy = self.engine.amygdala.arousal() * 0.18;
             let sleep_summary = format!(
                 "ðŸ’¤ Sleep cycle #{}: consolidated {}, pruned {}, {} REM insights ({} ms)",
                 report.consolidated,
@@ -10283,41 +10285,11 @@ fn get_run_info(path: &str) -> (u32, String) {
         (1, "Quasicrystal".to_string())
     } else if path.contains("physics_susy") {
         (2, "SUSY / Standard Model".to_string())
-    } else if path.contains("physics_quantum_vacuum") {
-        (3, "Quantum Vacuum".to_string())
-    } else if path.contains("physics_string_theory") {
-        (4, "String Theory".to_string())
-    } else if path.contains("physics_spacetime_gr") {
-        (5, "Spacetime / GR".to_string())
-    } else if path.contains("physics_fibonacci_nature") {
-        (6, "Fibonacci / Nature".to_string())
+    } else if path.contains("physics_hlv") {
+        (3, "HLV Theory".to_string())
+    } else if path.contains("physics_") {
+        (4, "Physics / Theory".to_string())
     } else {
-        (0, "Unknown".to_string())
+        (0, "General".to_string())
     }
-}
-
-fn train_hlv_command(path: &str) {
-    println!("â”€â”€ HLV Lattice Training Epoch (Surgical) â”€â”€");
-
-    // If the user points to a PDF, redirect to the extracted text version
-    let target_path = if path.to_lowercase().ends_with(".pdf") {
-        let fallback = "data/ingest/hlv_raw.txt";
-        if std::path::Path::new(fallback).exists() {
-            println!("(Redirecting from PDF to extracted text: {})", fallback);
-            fallback
-        } else {
-            path
-        }
-    } else {
-        path
-    };
-
-    let text = match std::fs::read_to_string(target_path) {
-        Ok(t) => t,
-        Err(e) => {
-            eprintln!("ERROR: Could not read text file at {}: {}", target_path, e);
-            return;
-        }
-    };
-    println!("Loaded HLV training text: {} bytes", text.len());
 }

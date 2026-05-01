@@ -350,9 +350,7 @@ mod tests {
             s.affiliation_drive
         );
         assert!(
-            s.affiliation_drive >= AFFIL_BASELINE - 0.05,
-            "affiliation should stay near baseline: {:.2}",
-            s.affiliation_drive
+            s.affiliation_
         );
     }
 }

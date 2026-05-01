@@ -37,6 +37,7 @@ const BASE_INTERVAL_MS: f32 = 5000.0;
 const MIN_INTERVAL_MS: f32 = 2000.0;
 const MAX_INTERVAL_MS: f32 = 12000.0;
 const ENGAGEMENT_SCALE: f32 = 0.4;
+#[allow(dead_code)]
 const BOREDOM_SCALE: f32 = 0.3;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

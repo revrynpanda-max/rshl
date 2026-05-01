@@ -12,5 +12,6 @@ impl ContradictionDetector {
     pub fn check(&self, _universe: &Universe, _text: &str) -> Vec<String> {
         // Placeholder: return empty list of contradictions
         Vec::new()
+   
     }
 }

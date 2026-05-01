@@ -542,6 +542,11 @@ impl Universe {
         self.cells.len()
     }
 
+    /// Number of 'anchor' cells (strength > 4.0).
+    pub fn anchor_count(&self) -> usize {
+        self.cells.iter().filter(|c| c.claim.confidence > 4.0).count()
+    }
+
     /// Store a new belief with a pre-computed vector.
     pub fn store_with_vec(
         &mut self,
@@ -1895,17 +1900,22 @@ impl Universe {
         // `predictive::recency_penalty`). Clamp to 1 so first-time firings
         // at tick 0 still register as "fired".
         let stamp = current_tick.max(1);
-
-        for cell in &mut self.cells {
-            if cell.label == response_text {
-                cell.continuation = crate::core::SparseVec::bundle(&[&cell.continuation, &input_vec]);
+        let mut found = false;
+        for cell in self.cells_mut().iter_mut() {
+            if cell.label == response_text || cell.claim.text == response_text {
+                cell.continuation = cell.continuation.bind(&input_vec);
                 cell.last_fired = stamp;
-                return true;
+                found = true;
+                break;
             }
         }
-        false
+        found
     }
 
+    /// Fuzzy-warm continuations for training: find cells whose label or text
+    /// is contained in (or contains) `response_text`, update their continuation
+    /// to encode `input_text`, and stamp `current_tick`.
+    /// Returns the number of cells warmed.
     pub fn warm_continuation_fuzzy(
         &mut self,
         input_text: &str,
@@ -1915,25 +1925,25 @@ impl Universe {
         if response_text.trim().is_empty() {
             return 0;
         }
-
         let input_vec = SparseVec::encode(input_text).permute(1);
         let stamp = current_tick.max(1);
-        let response_lower = response_text.to_lowercase();
-        let response_words = extract_query_keywords(response_text);
-        let mut warmed = 0usize;
-
-        for cell in &mut self.cells {
-            let cell_lower = cell.claim.text.to_lowercase();
-            let direct_match = response_lower.contains(&cell_lower) || cell_lower.contains(&response_lower);
-            let overlap_match = keyword_overlap_score(&response_words, &cell.claim.text) >= 0.45;
-
-            if direct_match || overlap_match {
-                cell.continuation = crate::core::SparseVec::bundle(&[&cell.continuation, &input_vec]);
+        let resp_lower = response_text.to_lowercase();
+        let mut count = 0;
+        for cell in self.cells_mut().iter_mut() {
+            let label_lower = cell.label.to_lowercase();
+            let text_lower = cell.claim.text.to_lowercase();
+            let matches = label_lower == resp_lower
+                || text_lower == resp_lower
+                || resp_lower.contains(&label_lower)
+                || label_lower.contains(&resp_lower)
+                || resp_lower.contains(&text_lower)
+                || text_lower.contains(&resp_lower);
+            if matches {
+                cell.continuation = cell.continuation.bind(&input_vec);
                 cell.last_fired = stamp;
-                warmed += 1;
+                count += 1;
             }
         }
-
-        warmed
+        count
     }
 }

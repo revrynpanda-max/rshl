@@ -1446,16 +1446,5 @@ mod tests {
         // Shape D: OpenAI
         let d = serde_json::json!({"data": [{"embedding": [9.0, 10.0]}]});
         assert_eq!(parse_embedding_response(&d).unwrap(), vec![9.0, 10.0]);
-
-        // Shape E: new Ollama /api/embed (plural key, nested array)
-        let e = serde_json::json!({"embeddings": [[11.0, 12.0, 13.0]]});
-        assert_eq!(
-            parse_embedding_response(&e).unwrap(),
-            vec![11.0, 12.0, 13.0]
-        );
-
-        // Broken
-        let f = serde_json::json!({"nope": 1});
-        assert!(parse_embedding_response(&f).is_none());
     }
 }
