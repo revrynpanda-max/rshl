@@ -797,7 +797,8 @@ mod tests {
         hub.valence = 0.25;
         hub.integrate(3);
         assert!(matches!(
-            hub.trajector
+            hub.trajectory_shape(),
+            TrajectoryShape::Warming
         ));
     }
 }
