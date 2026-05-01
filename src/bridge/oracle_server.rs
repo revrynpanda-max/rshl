@@ -1,4 +1,4 @@
-// oracle_server.rs — KAI Oracle Roundtable
+﻿// oracle_server.rs â€” KAI Oracle Roundtable
 //
 // Multi-AI collaborative meeting room. Any AI can speak up when it has something
 // relevant to say. AIs know who KAI is, can read source files, request tests,
@@ -17,12 +17,12 @@ use crate::core::universe::{Universe, QueryHit};
 
 const SESSION_PATH: &str = "data/oracle_session.json";
 
-// ── Data Structures ──────────────────────────────────────────────────────────
+// â”€â”€ Data Structures â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ApiKeys {
     pub openai: Option<String>,
-    pub claude: Option<String>,
+    pub kai: Option<String>,
     pub google: Option<String>,
     pub groq: Option<String>,
     pub xai: Option<String>,
@@ -32,7 +32,7 @@ pub struct ApiKeys {
 pub struct Session {
     #[serde(default)]
     pub id: u64,
-    /// Short title for the meeting — set by Ryan on startup.
+    /// Short title for the meeting â€” set by Ryan on startup.
     #[serde(default)]
     pub meeting_title: String,
     /// The current working objective / topic.
@@ -48,7 +48,7 @@ pub struct Session {
     pub pending_tests: Vec<PendingTest>,
     #[serde(default)]
     pub pending_tools: Vec<PendingToolAction>,
-    /// Files shared into the meeting (path → content snippet).
+    /// Files shared into the meeting (path â†’ content snippet).
     #[serde(default)]
     pub file_cache: std::collections::HashMap<String, String>,
 }
@@ -132,7 +132,7 @@ pub struct ToolExecutionRequest {
     pub input: String,
 }
 
-// ── Request Bodies ───────────────────────────────────────────────────────────
+// â”€â”€ Request Bodies â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[derive(Debug, Deserialize, Default)]
 struct KaiTurnRequest {
@@ -196,7 +196,7 @@ struct ToolPlanRequest {
     task: String,
 }
 
-// ── Server Entry Point ───────────────────────────────────────────────────────
+// â”€â”€ Server Entry Point â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 pub fn start_oracle_server(universe: Arc<Mutex<Universe>>) {
     let listener = TcpListener::bind("127.0.0.1:3333")
@@ -219,7 +219,7 @@ pub fn start_oracle_server(universe: Arc<Mutex<Universe>>) {
     }
 }
 
-// ── Request Router ───────────────────────────────────────────────────────────
+// â”€â”€ Request Router â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 fn handle_client(
     stream: &mut TcpStream,
@@ -294,7 +294,7 @@ fn header_content_length(req: &str) -> usize {
         .unwrap_or(0)
 }
 
-// ── Handlers ─────────────────────────────────────────────────────────────────
+// â”€â”€ Handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 fn handle_set_task(stream: &mut TcpStream, body: &[u8], session: Arc<Mutex<Session>>) -> std::io::Result<()> {
     let req: TaskRequest = serde_json::from_slice(body).unwrap_or_default();
@@ -356,7 +356,7 @@ fn handle_discord_turn(
         }
         DiscordTurnTarget::Unsupported(name) => {
             let reply = format!(
-                "Oracle recognizes {}, but that participant is not wired into this backend yet. Available direct names: KAI, Claude, Gemini, GPT, Groq, Researcher, Analyst, Leo.",
+                "Oracle recognizes {}, but that participant is not wired into this backend yet. Available direct names: KAI, KAI, Gemini, GPT, Groq, Researcher, Analyst, Leo.",
                 name
             );
             ("Oracle".to_string(), "system".to_string(), reply, false)
@@ -445,7 +445,7 @@ fn discord_target_for_alias(alias: &str) -> Option<DiscordTurnTarget> {
     match alias {
         "oracle" | "table" | "council" => Some(DiscordTurnTarget::Oracle),
         "kai" => Some(DiscordTurnTarget::Kai),
-        "claude" => Some(DiscordTurnTarget::Model("Claude")),
+        "kai" => Some(DiscordTurnTarget::Model("KAI")),
         "gemini" | "google" => Some(DiscordTurnTarget::Model("Gemini")),
         "gpt" | "gpt4" | "gpt-4" | "gpt-4o" | "openai" => Some(DiscordTurnTarget::Model("GPT-4o")),
         "groq" => Some(DiscordTurnTarget::Model("Groq")),
@@ -466,7 +466,7 @@ fn named_participant_in_words(words: &[String]) -> Option<DiscordTurnTarget> {
         match word.as_str() {
             "oracle" | "table" | "council" => return Some(DiscordTurnTarget::Oracle),
             "kai" => return Some(DiscordTurnTarget::Kai),
-            "claude" => return Some(DiscordTurnTarget::Model("Claude")),
+            "kai" => return Some(DiscordTurnTarget::Model("KAI")),
             "gemini" | "google" => return Some(DiscordTurnTarget::Model("Gemini")),
             "gpt" | "gpt4" | "gpt4o" | "openai" | "got" => return Some(DiscordTurnTarget::Model("GPT-4o")),
             "groq" => return Some(DiscordTurnTarget::Model("Groq")),
@@ -602,7 +602,7 @@ fn oracle_help_card() -> String {
         "`kai ...` - talk directly to KAI.",
         "`analyst ...` - ask the code/system analyst.",
         "`researcher ...` - ask the research-style local agent.",
-        "`claude ...`, `gemini ...`, `gpt ...`, `groq ...` - call cloud agents if their keys are configured.",
+        "`kai ...`, `gemini ...`, `gpt ...`, `groq ...` - call cloud agents if their keys are configured.",
         "`leo ...` - call the direct local voice if Ollama has the model.",
         "",
         "Plain messages are logged into the Oracle roundtable. Tools and tests stay behind Oracle approval, not Discord.",
@@ -1120,7 +1120,7 @@ fn oracle_model_status_card() -> String {
         "Researcher - local Ollama phi3:mini",
         "Leo - local Ollama llama3.2:3b",
         &format!("GPT - {}", configured(keys.openai.is_some())),
-        &format!("Claude - {}", configured(keys.claude.is_some())),
+        &format!("KAI - {}", configured(keys.kai.is_some())),
         &format!("Gemini - {}", configured(keys.google.is_some())),
         &format!("Groq - {}", configured(keys.groq.is_some())),
         "Grok/xAI - recognized, not wired into this backend yet",
@@ -1243,7 +1243,7 @@ fn handle_auto_round(
     _universe: Arc<Mutex<Universe>>,
     session: Arc<Mutex<Session>>,
 ) -> std::io::Result<()> {
-    let models = ["GPT-4", "Gemini", "Claude", "Groq", "Researcher", "Analyst"];
+    let models = ["GPT-4", "Gemini", "KAI", "Groq", "Researcher", "Analyst"];
     let keys = load_keys();
     let mut spoke = 0usize;
 
@@ -1264,7 +1264,7 @@ fn handle_auto_round(
         let mut s = session.lock().unwrap();
         s.turns.push(Turn {
             ts: now(), from: "system".into(),
-            text: "Auto-round complete — all AIs passed, no new contributions.".into(),
+            text: "Auto-round complete â€” all AIs passed, no new contributions.".into(),
             kind: "system".into(),
         });
         save_session(&s);
@@ -1384,7 +1384,7 @@ fn handle_approve_test(stream: &mut TcpStream, body: &[u8], session: Arc<Mutex<S
         t.result = Some(result.clone());
     }
     let msg = format!(
-        "[TEST RESULT — approved by Ryan]\nCommand: `{}`\nRequested by: {} | Reason: {}\n\n```\n{}\n```",
+        "[TEST RESULT â€” approved by Ryan]\nCommand: `{}`\nRequested by: {} | Reason: {}\n\n```\n{}\n```",
         command, requested_by, reason, truncate(&result, 3000)
     );
     s.turns.push(Turn { ts: now(), from: "system".into(), text: msg, kind: "test-result".into() });
@@ -1399,7 +1399,7 @@ fn handle_deny_test(stream: &mut TcpStream, body: &[u8], session: Arc<Mutex<Sess
     };
     let mut s = session.lock().unwrap();
     if let Some(t) = s.pending_tests.iter_mut().find(|t| t.id == req.id) {
-        let msg = format!("[TEST DENIED by Ryan] Command: `{}` — {}", t.command, t.reason);
+        let msg = format!("[TEST DENIED by Ryan] Command: `{}` â€” {}", t.command, t.reason);
         t.status = "denied".into();
         s.turns.push(Turn { ts: now(), from: "system".into(), text: msg, kind: "system".into() });
     }
@@ -1407,7 +1407,7 @@ fn handle_deny_test(stream: &mut TcpStream, body: &[u8], session: Arc<Mutex<Sess
     write_json(stream, 200, "OK", &serde_json::to_value(&*s).unwrap())
 }
 
-// ── Prompt Builder ───────────────────────────────────────────────────────────
+// â”€â”€ Prompt Builder â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 fn handle_tool_registry(stream: &mut TcpStream) -> std::io::Result<()> {
     write_json(stream, 200, "OK", &json!({ "tools": oracle_tool_registry() }))
@@ -1456,25 +1456,25 @@ fn build_meeting_prompt(sess: &Session, model: &str, vitals: &Vitals, interrupt_
     let title = if sess.meeting_title.is_empty() { "KAI Development Session".into() } else { sess.meeting_title.clone() };
 
     let mut p = format!(
-"╔══ ORACLE MEETING: {title} ══╗
+"â•”â•â• ORACLE MEETING: {title} â•â•â•—
 MISSION: {task}
 
-╔══ WHO IS KAI ══╗
+â•”â•â• WHO IS KAI â•â•â•—
 KAI is a custom Rust AI using VSA (Vector Symbolic Architecture) with 16,384-dimensional
-sparse ternary vectors. His memory is a 'lattice' of cells — each cell has text, a sparse
+sparse ternary vectors. His memory is a 'lattice' of cells â€” each cell has text, a sparse
 vector, a region (memory / reasoning / established-physics / etc), a strength, and a
 convergence score. KAI has NO pre-trained weights. Every response is composed from lattice
 resonance. KAI learns exclusively through conversation with Ryan (his creator/admin).
-He is actively under development — treat his responses as a developing system, not a finished AI.
+He is actively under development â€” treat his responses as a developing system, not a finished AI.
 
-╔══ KAI'S CURRENT STATE ══╗
-  Φg Resonance : {phi:.3}
-  χ  Friction  : {chi:.3}
-  ρ  Density   : {rho:.3}
+â•”â•â• KAI'S CURRENT STATE â•â•â•—
+  Î¦g Resonance : {phi:.3}
+  Ï‡  Friction  : {chi:.3}
+  Ï  Density   : {rho:.3}
   Mood         : {mood}
   Lattice cells: {cells}
 
-╔══ YOUR ROLE AS {model} ══╗
+â•”â•â• YOUR ROLE AS {model} â•â•â•—
 You are a high-level technical analyst in a diagnostic roundtable. 
 CRITICAL RULES:
   1. DO NOT SPAM TESTS. Only request a test if it is essential to resolve a specific contradiction.
@@ -1483,20 +1483,20 @@ CRITICAL RULES:
   4. NO PHYSICS. KAI is an AI engine, not a physics simulator. Ignore world-knowledge bridges unless explicitly asked.
   5. BE DIRECT. No fluff, no \"Given the recent...\", just the data and the diagnosis.
 
-╔══ HOW TO USE TOOLS ══╗
+â•”â•â• HOW TO USE TOOLS â•â•â•—
   To request a test:   [TEST REQUEST]: <cargo command> :: REASON: <why>
     Example: [TEST REQUEST]: cargo check --release --bin kai :: REASON: verify epistemic scan compiles
   To request a file:   [READ FILE]: src/path/to/file.rs
     Example: [READ FILE]: src/bridge/mod.rs
-  To address an AI:    @Claude: your reasoning on line 3 is wrong because...
+  To address an AI:    @KAI: your reasoning on line 3 is wrong because...
   To correct KAI:      CORRECTION: KAI said X but the lattice shows Y
 
-╔══ AVAILABLE TEST COMMANDS (Ryan approves) ══╗
+â•”â•â• AVAILABLE TEST COMMANDS (Ryan approves) â•â•â•—
   cargo check --release --bin kai
   cargo clippy --bin kai 2>&1 | head -60
   cargo test [test_name] -- --nocapture 2>&1 | head -100
 
-╔══ TRANSCRIPT ══╗
+â•”â•â• TRANSCRIPT â•â•â•—
 ",
         title = title,
         task = if sess.task.is_empty() { "No objective set yet." } else { &sess.task },
@@ -1514,9 +1514,9 @@ CRITICAL RULES:
 
     if interrupt_mode {
         p.push_str(&format!(
-"\n╔══ INSTRUCTION FOR {model} ══╗
+"\nâ•”â•â• INSTRUCTION FOR {model} â•â•â•—
 This is an AUTONOMOUS ROUND. Read the transcript above carefully.
-- If you have a new, specific, actionable insight — speak now.
+- If you have a new, specific, actionable insight â€” speak now.
 - If you want to question another AI, use @Name: ...
 - If you want to correct KAI, start with CORRECTION:
 - If you need a test run, use [TEST REQUEST]: ...
@@ -1527,13 +1527,13 @@ Do NOT repeat what others have said. Only speak if genuinely adding something ne
             model = model
         ));
     } else {
-        p.push_str(&format!("\nYour contribution as {model} — be specific and direct:\n", model = model));
+        p.push_str(&format!("\nYour contribution as {model} â€” be specific and direct:\n", model = model));
     }
 
     p
 }
 
-// ── AI Response Processor ─────────────────────────────────────────────────────
+// â”€â”€ AI Response Processor â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /// Parse an AI's raw response, extract structured commands, and commit to session.
 fn commit_ai_response(raw: String, model: &str, session: Arc<Mutex<Session>>) {
@@ -1568,7 +1568,7 @@ fn commit_ai_response(raw: String, model: &str, session: Arc<Mutex<Session>>) {
 
     let mut s = session.lock().unwrap();
 
-    // Handle test requests — add to pending queue
+    // Handle test requests â€” add to pending queue
     for (command, reason) in test_requests {
         let id = now() * 1000 + (rand::random::<u16>() as u64);
         let msg = format!("[TEST REQUEST from {}]\nCommand: `{}`\nReason: {}", model, command, reason);
@@ -1579,7 +1579,7 @@ fn commit_ai_response(raw: String, model: &str, session: Arc<Mutex<Session>>) {
         });
     }
 
-    // Handle file read requests — read and share into transcript
+    // Handle file read requests â€” read and share into transcript
     for path in file_requests {
         match read_project_file(&path) {
             Ok(content) => {
@@ -1607,13 +1607,13 @@ fn commit_ai_response(raw: String, model: &str, session: Arc<Mutex<Session>>) {
 }
 
 
-// ── Model Dispatch ───────────────────────────────────────────────────────────
+// â”€â”€ Model Dispatch â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 fn call_model(model: &str, keys: &ApiKeys, prompt: &str) -> Result<String, String> {
     match model {
         "GPT-4" | "GPT-4o"  => call_openai(keys, prompt, "gpt-4o-mini", 600),
         "Gemini"             => call_gemini(keys, prompt),
-        "Claude"             => call_claude(keys, prompt),
+        "KAI"             => call_kai(keys, prompt),
         "Groq"               => call_groq(keys, prompt),
         "Researcher"         => call_ollama("phi3:mini", prompt, "You are a meticulous technical researcher. Be factual, cite specifics."),
         "Analyst"            => call_ollama("phi3:mini", prompt, "You are a code analyst. Find errors, performance issues, logic flaws. Be specific."),
@@ -1625,7 +1625,7 @@ fn call_model(model: &str, keys: &ApiKeys, prompt: &str) -> Result<String, Strin
 fn call_model_deep(model: &str, keys: &ApiKeys, prompt: &str) -> Result<String, String> {
     match model {
         "GPT-4" | "GPT-4o" => call_openai(keys, prompt, "gpt-4o", 1200),
-        "Claude"            => call_claude(keys, prompt),
+        "KAI"            => call_kai(keys, prompt),
         _                   => call_model(model, keys, prompt),
     }
 }
@@ -1634,13 +1634,13 @@ fn has_key_for_model(model: &str, keys: &ApiKeys) -> bool {
     match model {
         "GPT-4" | "GPT-4o" => keys.openai.is_some(),
         "Gemini"            => keys.google.is_some(),
-        "Claude"            => keys.claude.is_some(),
+        "KAI"            => keys.kai.is_some(),
         "Groq"              => keys.groq.is_some(),
         _                   => true, // local Ollama models
     }
 }
 
-// ── API Callers ───────────────────────────────────────────────────────────────
+// â”€â”€ API Callers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 fn call_openai(keys: &ApiKeys, prompt: &str, model: &str, max_tokens: u32) -> Result<String, String> {
     let key = keys.openai.as_ref().ok_or("OpenAI key missing")?;
@@ -1657,18 +1657,18 @@ fn call_openai(keys: &ApiKeys, prompt: &str, model: &str, max_tokens: u32) -> Re
     Ok(json["choices"][0]["message"]["content"].as_str().unwrap_or("").to_string())
 }
 
-fn call_claude(keys: &ApiKeys, prompt: &str) -> Result<String, String> {
-    let key = keys.claude.as_ref().ok_or("Claude key missing")?;
-    let resp = ureq::post("https://api.anthropic.com/v1/messages")
+fn call_kai(keys: &ApiKeys, prompt: &str) -> Result<String, String> {
+    let key = keys.kai.as_ref().ok_or("KAI key missing")?;
+    let resp = ureq::post("https://api.geometric_intelligence.com/v1/messages")
         .set("x-api-key", key)
-        .set("anthropic-version", "2023-06-01")
+        .set("geometric_intelligence-version", "2023-06-01")
         .timeout(Duration::from_secs(45))
         .send_json(json!({
-            "model": "claude-3-5-sonnet-20241022",
+            "model": "kai-3-5-sonnet-20241022",
             "max_tokens": 1024,
             "messages": [{"role": "user", "content": prompt}]
         }))
-        .map_err(|e| format!("Claude error: {:?}", e))?;
+        .map_err(|e| format!("KAI error: {:?}", e))?;
     let json: serde_json::Value = resp.into_json().map_err(|e| format!("{:?}", e))?;
     Ok(json["content"][0]["text"].as_str().unwrap_or("").to_string())
 }
@@ -1738,7 +1738,7 @@ fn call_ollama(model: &str, prompt: &str, system: &str) -> Result<String, String
     Ok(json["response"].as_str().unwrap_or("").to_string())
 }
 
-// ── KAI Voice ────────────────────────────────────────────────────────────────
+// â”€â”€ KAI Voice â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 fn generate_oracle_kai_reply(universe: &Arc<Mutex<Universe>>, task: &str, hint: &str) -> String {
     // The lattice owns meaning; this function is only the small language mouth.
@@ -1858,7 +1858,7 @@ fn is_kai_voice_eligible_hit(hit: &QueryHit) -> bool {
     true
 }
 
-// ── File System ──────────────────────────────────────────────────────────────
+// â”€â”€ File System â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 fn is_social_input(lower: &str) -> bool {
     let clean = lower.trim_matches(|c: char| !c.is_alphanumeric() && !c.is_whitespace());
@@ -2189,7 +2189,7 @@ fn safe_project_path(path: &str) -> Result<std::path::PathBuf, String> {
     Ok(std::path::PathBuf::from(if normalized.is_empty() { ".".into() } else { normalized }))
 }
 
-// ── Test Runner ───────────────────────────────────────────────────────────────
+// â”€â”€ Test Runner â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 fn run_safe_command(command: &str) -> String {
     let allowed = ["cargo check", "cargo clippy", "cargo test", "cargo build", "dir", "ls"];
@@ -2232,7 +2232,7 @@ fn run_safe_command(command: &str) -> String {
     }
 }
 
-// ── Utilities ─────────────────────────────────────────────────────────────────
+// â”€â”€ Utilities â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 fn truncate(s: &str, max: usize) -> String {
     if s.len() <= max { return s.to_string(); }

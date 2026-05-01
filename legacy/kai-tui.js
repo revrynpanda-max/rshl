@@ -1,15 +1,15 @@
-"use strict";
+﻿"use strict";
 
 /**
- * kai-tui.js — KAI Terminal Interface
+ * kai-tui.js â€” KAI Terminal Interface
  *
- * Mimics the Claude Code terminal UX:
+ * Mimics the KAI Code terminal UX:
  *   - Welcome header with KAI ASCII art + status panel
  *   - Shimmer animation on thinking verbs (bright glyph sweeps across text)
- *   - Red beating heartbeat glyph (like Claude's spinner, but cardiac)
+ *   - Red beating heartbeat glyph (like KAI's spinner, but cardiac)
  *   - Conversation stays in middle zone, last 2 turns visible
  *   - Input pinned at bottom
- *   - No tick spam — heartbeat is silent, vitals in header
+ *   - No tick spam â€” heartbeat is silent, vitals in header
  */
 
 const readline = require('readline');
@@ -25,7 +25,7 @@ const bridge          = require('./world-bridge');
 const { runHomeostasis } = require('./homeostasis');
 const drive           = require('./drive');
 
-// ── ANSI ──────────────────────────────────────────────────────────────────────
+// â”€â”€ ANSI â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const E = '\x1b[';
 const A = {
     reset:     `${E}0m`,
@@ -60,7 +60,7 @@ const A = {
 function moveTo(r, c) { return `${E}${r};${c}H`; }
 function stripAnsi(s) { return s.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, ''); }
 
-// ── KAI Spinner verbs (geometric intelligence themed) ─────────────────────────
+// â”€â”€ KAI Spinner verbs (geometric intelligence themed) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const KAI_VERBS = [
     'Resonating', 'Binding', 'Dreaming', 'Bundling', 'Weaving',
     'Crystallizing', 'Aligning', 'Emerging', 'Synthesizing', 'Propagating',
@@ -70,8 +70,8 @@ const KAI_VERBS = [
     'Sculpting', 'Distilling', 'Forging', 'Threading', 'Pulsing',
 ];
 
-// ── Shimmer animation (like Claude's) ─────────────────────────────────────────
-// A bright character sweeps L→R across the text, then resets
+// â”€â”€ Shimmer animation (like KAI's) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// A bright character sweeps Lâ†’R across the text, then resets
 const SHIMMER_WIDTH   = 2;     // how many chars are bright at once
 const SHIMMER_SPEED   = 100;   // ms per position
 const SHIMMER_PAUSE   = 800;   // ms pause between sweeps
@@ -93,31 +93,31 @@ function renderShimmer(text, time) {
     return result;
 }
 
-// ── Heart glyph animation (like Claude's spinner, but a heartbeat) ────────────
-// Claude uses characters that flow: ⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏ then reverse
+// â”€â”€ Heart glyph animation (like KAI's spinner, but a heartbeat) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// KAI uses characters that flow: â ‹â ™â ¹â ¸â ¼â ´â ¦â §â ‡â  then reverse
 // KAI uses a cardiac rhythm with the heart
 const HEART_GLYPHS = [
     // Resting (dim)
-    { ch: '♥', color: A.red },
-    { ch: '♥', color: A.red },
-    { ch: '♥', color: A.red },
-    { ch: '♥', color: A.red },
-    { ch: '♥', color: A.red },
+    { ch: 'â™¥', color: A.red },
+    { ch: 'â™¥', color: A.red },
+    { ch: 'â™¥', color: A.red },
+    { ch: 'â™¥', color: A.red },
+    { ch: 'â™¥', color: A.red },
     // BEAT! (bright, bigger)
-    { ch: '❤', color: A.bRed + A.bold },
-    { ch: '❤', color: A.bRed + A.bold },
+    { ch: 'â¤', color: A.bRed + A.bold },
+    { ch: 'â¤', color: A.bRed + A.bold },
     // Relax
-    { ch: '♥', color: A.red },
-    { ch: '♥', color: A.red },
+    { ch: 'â™¥', color: A.red },
+    { ch: 'â™¥', color: A.red },
     // Second beat
-    { ch: '❤', color: A.bRed + A.bold },
-    { ch: '❤', color: A.bRed + A.bold },
+    { ch: 'â¤', color: A.bRed + A.bold },
+    { ch: 'â¤', color: A.bRed + A.bold },
     // Rest
-    { ch: '♥', color: A.red },
-    { ch: '♥', color: A.red },
-    { ch: '♥', color: A.red },
-    { ch: '♥', color: A.red },
-    { ch: '♥', color: A.red },
+    { ch: 'â™¥', color: A.red },
+    { ch: 'â™¥', color: A.red },
+    { ch: 'â™¥', color: A.red },
+    { ch: 'â™¥', color: A.red },
+    { ch: 'â™¥', color: A.red },
 ];
 
 function getHeartGlyph(time) {
@@ -126,12 +126,12 @@ function getHeartGlyph(time) {
     return `${g.color}${g.ch}${A.reset}`;
 }
 
-// ── Layout constants ──────────────────────────────────────────────────────────
+// â”€â”€ Layout constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const HEADER_HEIGHT = 12;
 const INPUT_HEIGHT  = 3;
 const GOAL_TEXT     = 'coherent world understanding with low contradiction and natural intelligence growth';
 
-// ── State ─────────────────────────────────────────────────────────────────────
+// â”€â”€ State â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 let plasma;
 let turnHistory   = [];
 let showAll       = false;
@@ -143,7 +143,7 @@ let _heartTimer   = null;
 let _heartStart   = Date.now();
 let _rl           = null;
 
-// ── Region colors ─────────────────────────────────────────────────────────────
+// â”€â”€ Region colors â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function regionColor(r) {
     return { memory: A.bMagenta, reasoning: A.bBlue, language: A.bGreen, action: A.bYellow }[r] || A.white;
 }
@@ -151,14 +151,14 @@ function moodColor(m) {
     return { curious: A.bCyan, engaged: A.bGreen, neutral: A.dim, uneasy: A.bYellow, conflicted: A.bRed, dormant: A.dim }[m] || A.dim;
 }
 
-// ── Sizing ────────────────────────────────────────────────────────────────────
+// â”€â”€ Sizing â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function cols() { return process.stdout.columns || 80; }
 function rows() { return process.stdout.rows || 30; }
 function msgZone() {
     return { top: HEADER_HEIGHT + 1, bottom: rows() - INPUT_HEIGHT, height: rows() - HEADER_HEIGHT - INPUT_HEIGHT };
 }
 
-// ── Render Header ─────────────────────────────────────────────────────────────
+// â”€â”€ Render Header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function renderHeader() {
     const w = cols();
     const ds = drive.getState();
@@ -170,15 +170,15 @@ function renderHeader() {
 
     // Left side: KAI branding
     const left = [
-        `${A.bCyan}${A.bold}── KAI v5.0 ──${A.reset}`,
+        `${A.bCyan}${A.bold}â”€â”€ KAI v5.0 â”€â”€${A.reset}`,
         ``,
         `  ${A.bWhite}Geometric Intelligence${A.reset}`,
         ``,
-        `  ${A.bCyan}${A.bold}╦╔═ ╔═╗ ╦${A.reset}`,
-        `  ${A.bCyan}${A.bold}╠╩╗ ╠═╣ ║${A.reset}`,
-        `  ${A.bCyan}${A.bold}╩ ╩ ╩ ╩ ╩${A.reset}`,
+        `  ${A.bCyan}${A.bold}â•¦â•”â• â•”â•â•— â•¦${A.reset}`,
+        `  ${A.bCyan}${A.bold}â• â•©â•— â• â•â•£ â•‘${A.reset}`,
+        `  ${A.bCyan}${A.bold}â•© â•© â•© â•© â•©${A.reset}`,
         ``,
-        `  ${A.dim}RSHL · Sparse Ternary · HDC${A.reset}`,
+        `  ${A.dim}RSHL Â· Sparse Ternary Â· HDC${A.reset}`,
         `  ${A.dim}C:\\KAI${A.reset}`,
     ];
 
@@ -187,12 +187,12 @@ function renderHeader() {
         `${A.bYellow}Status${A.reset}`,
         `${A.dim}Universe:${A.reset}  ${cellCount} cells`,
         `${A.dim}Mood:${A.reset}      ${mc}${ds.mood}${A.reset} ${A.dim}V=${vSign}${ds.valence.toFixed(2)}${A.reset}`,
-        `${A.dim}Heartbeat:${A.reset} ${A.bRed}♥${A.reset} ${A.dim}${hbMs}ms${A.reset}`,
+        `${A.dim}Heartbeat:${A.reset} ${A.bRed}â™¥${A.reset} ${A.dim}${hbMs}ms${A.reset}`,
         `${A.dim}Tick:${A.reset}      ${tick}`,
         ``,
         `${A.bYellow}Drive${A.reset}`,
-        `${A.dim}Φg:${A.reset} ${ds.avgPhiG.toFixed(3)} ${A.dim}χ:${A.reset} ${ds.avgChi.toFixed(3)}`,
-        `${A.dim}Goal:${A.reset} ${ds.hasGoalVector ? `${A.bGreen}●${A.reset} ${ds.goalComponents}` : `${A.dim}○ none${A.reset}`}`,
+        `${A.dim}Î¦g:${A.reset} ${ds.avgPhiG.toFixed(3)} ${A.dim}Ï‡:${A.reset} ${ds.avgChi.toFixed(3)}`,
+        `${A.dim}Goal:${A.reset} ${ds.hasGoalVector ? `${A.bGreen}â—${A.reset} ${ds.goalComponents}` : `${A.dim}â—‹ none${A.reset}`}`,
         `${A.dim}Tempo:${A.reset} ${ds.adaptiveMs < 4000 ? `${A.bGreen}fast${A.reset}` : ds.adaptiveMs > 7000 ? `${A.dim}resting${A.reset}` : `${A.dim}moderate${A.reset}`}`,
     ];
 
@@ -204,7 +204,7 @@ function renderHeader() {
     const sp = ' '.repeat(pad);
 
     process.stdout.write(moveTo(1, 1) + A.clearLine);
-    process.stdout.write(sp + `${A.bCyan}╭${'─'.repeat(maxL + 2)}┬${'─'.repeat(maxR + 2)}╮${A.reset}`);
+    process.stdout.write(sp + `${A.bCyan}â•­${'â”€'.repeat(maxL + 2)}â”¬${'â”€'.repeat(maxR + 2)}â•®${A.reset}`);
 
     for (let i = 0; i < maxRows; i++) {
         const l = left[i] || '';
@@ -212,13 +212,13 @@ function renderHeader() {
         const lPad = maxL - stripAnsi(l).length;
         const rPad = maxR - stripAnsi(r).length;
         process.stdout.write(moveTo(i + 2, 1) + A.clearLine);
-        process.stdout.write(sp + `${A.bCyan}│${A.reset} ${l}${' '.repeat(Math.max(0, lPad))} ${A.bCyan}│${A.reset} ${r}${' '.repeat(Math.max(0, rPad))} ${A.bCyan}│${A.reset}`);
+        process.stdout.write(sp + `${A.bCyan}â”‚${A.reset} ${l}${' '.repeat(Math.max(0, lPad))} ${A.bCyan}â”‚${A.reset} ${r}${' '.repeat(Math.max(0, rPad))} ${A.bCyan}â”‚${A.reset}`);
     }
 
     process.stdout.write(moveTo(maxRows + 2, 1) + A.clearLine);
-    process.stdout.write(sp + `${A.bCyan}╰${'─'.repeat(maxL + 2)}┴${'─'.repeat(maxR + 2)}╯${A.reset}`);
+    process.stdout.write(sp + `${A.bCyan}â•°${'â”€'.repeat(maxL + 2)}â”´${'â”€'.repeat(maxR + 2)}â•¯${A.reset}`);
 
-    // Vitals line (row HEADER_HEIGHT) — animated heart + mood
+    // Vitals line (row HEADER_HEIGHT) â€” animated heart + mood
     renderVitals();
 }
 
@@ -241,7 +241,7 @@ function renderVitals() {
     process.stdout.write(A.restCur);
 }
 
-// ── Spinner (Claude-style shimmer) ────────────────────────────────────────────
+// â”€â”€ Spinner (KAI-style shimmer) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function startSpinner(label) {
     _spinnerVerb = label || KAI_VERBS[Math.floor(Math.random() * KAI_VERBS.length)];
     _spinnerStart = Date.now();
@@ -274,7 +274,7 @@ function stopSpinner() {
     _spinnerVerb = null;
 }
 
-// ── Messages ──────────────────────────────────────────────────────────────────
+// â”€â”€ Messages â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function wrapText(text, max) {
     max = Math.max(20, max || 60);
     const words = text.split(/\s+/);
@@ -296,7 +296,7 @@ function renderMessages() {
     }
 
     if (!turnHistory.length) {
-        const hint = `${A.dim}Just type naturally — KAI will understand. Type ${A.bCyan}help${A.dim} for commands.${A.reset}`;
+        const hint = `${A.dim}Just type naturally â€” KAI will understand. Type ${A.bCyan}help${A.dim} for commands.${A.reset}`;
         const stripped = stripAnsi(hint);
         const pad = Math.max(0, Math.floor((w - stripped.length) / 2));
         process.stdout.write(moveTo(zone.top + Math.floor(zone.height / 2), 1));
@@ -314,7 +314,7 @@ function renderMessages() {
 
         if (turn.role === 'user') {
             process.stdout.write(moveTo(row, 1) + A.clearLine);
-            process.stdout.write(' '.repeat(margin) + `${A.dim}you ›${A.reset}`);
+            process.stdout.write(' '.repeat(margin) + `${A.dim}you â€º${A.reset}`);
             row++;
             for (const line of wrapText(turn.text, maxTextW)) {
                 if (row >= zone.bottom - 1) break;
@@ -324,7 +324,7 @@ function renderMessages() {
             }
         } else {
             process.stdout.write(moveTo(row, 1) + A.clearLine);
-            let label = `${A.bCyan}KAI ‹${A.reset}`;
+            let label = `${A.bCyan}KAI â€¹${A.reset}`;
             if (turn.region) label += ` ${regionColor(turn.region)}[${turn.region}]${A.reset}`;
             if (turn.score) label += ` ${A.dim}(${(turn.score * 100).toFixed(0)}%)${A.reset}`;
             process.stdout.write(' '.repeat(margin) + label);
@@ -341,23 +341,23 @@ function renderMessages() {
 
     if (!showAll && turnHistory.length > 4) {
         process.stdout.write(moveTo(zone.bottom, 1) + A.clearLine);
-        const more = `${A.dim}↑ ${turnHistory.length - 4} older — type "history"${A.reset}`;
+        const more = `${A.dim}â†‘ ${turnHistory.length - 4} older â€” type "history"${A.reset}`;
         const s = stripAnsi(more);
         process.stdout.write(' '.repeat(Math.max(0, Math.floor((w - s.length) / 2))) + more);
     }
 }
 
-// ── Input ─────────────────────────────────────────────────────────────────────
+// â”€â”€ Input â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function renderInput() {
     const w = cols();
     const r = rows();
     const sepPad = Math.max(0, Math.floor((w - 56) / 2));
 
     process.stdout.write(moveTo(r - 2, 1) + A.clearLine);
-    process.stdout.write(' '.repeat(sepPad) + `${A.dim}${'─'.repeat(Math.min(56, w - 8))}${A.reset}`);
+    process.stdout.write(' '.repeat(sepPad) + `${A.dim}${'â”€'.repeat(Math.min(56, w - 8))}${A.reset}`);
 
     process.stdout.write(moveTo(r - 1, 1) + A.clearLine);
-    process.stdout.write(' '.repeat(sepPad) + `  ${A.bCyan}›${A.reset} `);
+    process.stdout.write(' '.repeat(sepPad) + `  ${A.bCyan}â€º${A.reset} `);
 }
 
 function positionCursor() {
@@ -375,7 +375,7 @@ function fullRedraw() {
     positionCursor();
 }
 
-// ── Smart routing ─────────────────────────────────────────────────────────────
+// â”€â”€ Smart routing â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function route(input) {
     const lo = input.toLowerCase().trim();
     if (lo === 'status') return { t: 'status' };
@@ -398,7 +398,7 @@ function route(input) {
     return { t: 'think', b: input };
 }
 
-// ── Status text ───────────────────────────────────────────────────────────────
+// â”€â”€ Status text â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function statusText() {
     const cells = universe.getCells();
     const cands = candidateBuffer.getAll();
@@ -415,7 +415,7 @@ function statusText() {
     return out;
 }
 
-// ── Boot ──────────────────────────────────────────────────────────────────────
+// â”€â”€ Boot â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const args = process.argv.slice(2);
 const FRESH = args.includes('--fresh');
 
@@ -470,7 +470,7 @@ fullRedraw();
 // Handle resize
 process.stdout.on('resize', fullRedraw);
 
-// ── REPL ──────────────────────────────────────────────────────────────────────
+// â”€â”€ REPL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 _rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: true, prompt: '' });
 positionCursor();
 
@@ -479,7 +479,7 @@ _rl.on('line', async (line) => {
     if (!input) { renderInput(); positionCursor(); return; }
 
     if (lastPromo) {
-        turnHistory.push({ role: 'kai', text: `⬆ Belief formed: "${lastPromo.slice(0, 55)}"`, ts: Date.now() });
+        turnHistory.push({ role: 'kai', text: `â¬† Belief formed: "${lastPromo.slice(0, 55)}"`, ts: Date.now() });
         lastPromo = null;
     }
 
@@ -528,7 +528,7 @@ _rl.on('line', async (line) => {
                 let resp = `"${result.thought}"`;
                 if (result.matches.length) {
                     const src = result.matches.slice(0, 2).map(m => `${m.region}(${(m.score*100).toFixed(0)}%)`).join(', ');
-                    resp += ` [${(result.confidence * 100).toFixed(0)}% · ${src}]`;
+                    resp += ` [${(result.confidence * 100).toFixed(0)}% Â· ${src}]`;
                 }
                 turnHistory.push({ role: 'kai', text: resp, score: result.confidence, ts: Date.now() });
             }
@@ -540,7 +540,7 @@ _rl.on('line', async (line) => {
             startSpinner('Storing');
             universe.store(r.b, 'memory', { source: 'user-input' });
             stopSpinner();
-            turnHistory.push({ role: 'kai', text: '✓ Stored in memory region', region: 'memory', ts: Date.now() });
+            turnHistory.push({ role: 'kai', text: 'âœ“ Stored in memory region', region: 'memory', ts: Date.now() });
             process.stdout.write(A.saveCur); renderHeader(); process.stdout.write(A.restCur);
             break;
         }
@@ -550,7 +550,7 @@ _rl.on('line', async (line) => {
             startSpinner('Ingesting');
             const ir = bridge.ingest(r.b, { source: 'manual', topic: 'user-ingest' });
             stopSpinner();
-            turnHistory.push({ role: 'kai', text: ir.stored ? '✓ Ingested (untrusted, str 0.6)' : `✗ Skipped: ${ir.reason}`, ts: Date.now() });
+            turnHistory.push({ role: 'kai', text: ir.stored ? 'âœ“ Ingested (untrusted, str 0.6)' : `âœ— Skipped: ${ir.reason}`, ts: Date.now() });
             break;
         }
 
@@ -562,10 +562,10 @@ _rl.on('line', async (line) => {
             try {
                 const gr = await bridge.ingestFromGitHub(owner, repo);
                 stopSpinner();
-                turnHistory.push({ role: 'kai', text: `✓ ${gr.stored} stored, ${gr.skipped} skipped`, ts: Date.now() });
+                turnHistory.push({ role: 'kai', text: `âœ“ ${gr.stored} stored, ${gr.skipped} skipped`, ts: Date.now() });
             } catch (e) {
                 stopSpinner();
-                turnHistory.push({ role: 'kai', text: `✗ ${e.message}`, ts: Date.now() });
+                turnHistory.push({ role: 'kai', text: `âœ— ${e.message}`, ts: Date.now() });
             }
             break;
         }
@@ -577,7 +577,7 @@ _rl.on('line', async (line) => {
             stopSpinner();
             if (dr) {
                 candidateBuffer.observe(dr);
-                turnHistory.push({ role: 'kai', text: `💭 "${dr.insight.slice(0, 65)}" (Φg:${dr.field.phi_g.toFixed(3)} C:${dr.field.C.toFixed(3)})`, ts: Date.now() });
+                turnHistory.push({ role: 'kai', text: `ðŸ’­ "${dr.insight.slice(0, 65)}" (Î¦g:${dr.field.phi_g.toFixed(3)} C:${dr.field.C.toFixed(3)})`, ts: Date.now() });
             } else {
                 turnHistory.push({ role: 'kai', text: 'No viable dream pair found.', ts: Date.now() });
             }
@@ -589,7 +589,7 @@ _rl.on('line', async (line) => {
             const pr = runPromotion();
             stopSpinner();
             if (pr.promoted.length) {
-                pr.promoted.forEach(p => turnHistory.push({ role: 'kai', text: `⬆ "${p.text.slice(0,55)}" (str=${p.strength.toFixed(1)})`, ts: Date.now() }));
+                pr.promoted.forEach(p => turnHistory.push({ role: 'kai', text: `â¬† "${p.text.slice(0,55)}" (str=${p.strength.toFixed(1)})`, ts: Date.now() }));
             } else {
                 turnHistory.push({ role: 'kai', text: 'No promotions ready.', ts: Date.now() });
             }
@@ -610,16 +610,16 @@ _rl.on('line', async (line) => {
         case 'mood': {
             const ds = drive.getState();
             turnHistory.push({ role: 'user', text: 'mood', ts: Date.now() });
-            turnHistory.push({ role: 'kai', text: `${ds.mood.toUpperCase()} · V=${ds.valence >= 0 ? '+' : ''}${ds.valence.toFixed(3)} · Φg=${ds.avgPhiG.toFixed(4)} · χ=${ds.avgChi.toFixed(4)} · ${ds.adaptiveMs}ms`, ts: Date.now() });
+            turnHistory.push({ role: 'kai', text: `${ds.mood.toUpperCase()} Â· V=${ds.valence >= 0 ? '+' : ''}${ds.valence.toFixed(3)} Â· Î¦g=${ds.avgPhiG.toFixed(4)} Â· Ï‡=${ds.avgChi.toFixed(4)} Â· ${ds.adaptiveMs}ms`, ts: Date.now() });
             break;
         }
 
         case 'drive': {
             const ds = drive.getState();
             const vh = drive.getValenceHistory();
-            const spark = vh.slice(-15).map(v => v > 0.05 ? '▲' : v > 0 ? '△' : v > -0.05 ? '─' : '▼').join('');
+            const spark = vh.slice(-15).map(v => v > 0.05 ? 'â–²' : v > 0 ? 'â–³' : v > -0.05 ? 'â”€' : 'â–¼').join('');
             turnHistory.push({ role: 'user', text: 'drive', ts: Date.now() });
-            turnHistory.push({ role: 'kai', text: `${ds.mood} | V=${ds.valence.toFixed(3)} | Goal: ${ds.hasGoalVector ? 'active' : 'none'} (${ds.goalComponents}) | ${ds.adaptiveMs}ms\n${spark || '─'}`, ts: Date.now() });
+            turnHistory.push({ role: 'kai', text: `${ds.mood} | V=${ds.valence.toFixed(3)} | Goal: ${ds.hasGoalVector ? 'active' : 'none'} (${ds.goalComponents}) | ${ds.adaptiveMs}ms\n${spark || 'â”€'}`, ts: Date.now() });
             break;
         }
 
@@ -637,7 +637,7 @@ _rl.on('line', async (line) => {
             startSpinner('Saving');
             const sr = persistence.save({ heartbeatTick: heartbeat.tickCount(), drive: drive.serialize() });
             stopSpinner();
-            turnHistory.push({ role: 'kai', text: `💾 Saved ${sr.cells} cells, ${sr.candidates} candidates (${Math.round(sr.bytes/1024)} KB)`, ts: Date.now() });
+            turnHistory.push({ role: 'kai', text: `ðŸ’¾ Saved ${sr.cells} cells, ${sr.candidates} candidates (${Math.round(sr.bytes/1024)} KB)`, ts: Date.now() });
             break;
         }
 

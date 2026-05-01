@@ -1,18 +1,18 @@
-/// Code Tools — KAI's code analysis and review engine.
+﻿/// Code Tools â€” KAI's code analysis and review engine.
 ///
-/// KAI can read source files and understand their structure — not by
+/// KAI can read source files and understand their structure â€” not by
 /// running a language model, but by extracting structural facts and
 /// storing them as geometric knowledge cells.
 ///
 /// Supports: Rust, TypeScript, JavaScript, Python, Go, C/C++
 ///
 /// Commands:
-///   analyze <file>  — extract functions, classes, imports, TODOs
-///   review <file>   — KAI-powered code review using field resonance
-///   scan <dir>      — scan a directory and build knowledge map
+///   analyze <file>  â€” extract functions, classes, imports, TODOs
+///   review <file>   â€” KAI-powered code review using field resonance
+///   scan <dir>      â€” scan a directory and build knowledge map
 use crate::core::Universe;
 
-/// UTF-8 safe byte slice — never splits a multi-byte character.
+/// UTF-8 safe byte slice â€” never splits a multi-byte character.
 fn safe_slice(s: &str, max_bytes: usize) -> &str {
     if s.len() <= max_bytes {
         return s;
@@ -143,7 +143,7 @@ impl FileAnalysis {
         if !self.todos.is_empty() {
             out.push(format!("\nTODOs ({}):", self.todos.len()));
             for t in self.todos.iter().take(5) {
-                out.push(format!("  ⚠ {}", t));
+                out.push(format!("  âš  {}", t));
             }
         }
 
@@ -211,7 +211,7 @@ pub fn analyze_file(path: &str) -> Result<FileAnalysis, String> {
         let lineno = i + 1;
         let trimmed = line.trim();
 
-        // TODOs and FIXMEs — any language
+        // TODOs and FIXMEs â€” any language
         if let Some(pos) = trimmed.to_uppercase().find("TODO") {
             let todo_text = trimmed[pos..]
                 .trim()
@@ -293,7 +293,7 @@ pub fn analyze_file(path: &str) -> Result<FileAnalysis, String> {
     })
 }
 
-// ── Language-specific parsers ─────────────────────────────────────────────────
+// â”€â”€ Language-specific parsers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 fn parse_rust_line(line: &str, lineno: usize, elements: &mut Vec<CodeElement>) {
     // Functions: pub fn, fn, async fn, pub async fn
@@ -587,7 +587,7 @@ fn parse_go_line(line: &str, lineno: usize, elements: &mut Vec<CodeElement>) {
     }
 }
 
-// ── KAI-powered code review ───────────────────────────────────────────────────
+// â”€â”€ KAI-powered code review â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /// Review a file using KAI's field knowledge.
 /// Runs analysis, then queries KAI's universe for relevant patterns/warnings.
@@ -595,7 +595,7 @@ pub fn review_file(path: &str, universe: &Universe) -> Result<String, String> {
     let analysis = analyze_file(path)?;
     let mut review = Vec::new();
 
-    review.push(format!("◆ Code Review: {}", path));
+    review.push(format!("â—† Code Review: {}", path));
     review.push(format!(
         "  {} | {} lines | {} fns | complexity ~{}",
         analysis.language,
@@ -611,7 +611,7 @@ pub fn review_file(path: &str, universe: &Universe) -> Result<String, String> {
 
     // TODOs
     if !analysis.todos.is_empty() {
-        review.push(format!("⚠ Unresolved TODOs ({}):", analysis.todos.len()));
+        review.push(format!("âš  Unresolved TODOs ({}):", analysis.todos.len()));
         for t in analysis.todos.iter().take(5) {
             review.push(format!("  {}", t));
         }
@@ -621,7 +621,7 @@ pub fn review_file(path: &str, universe: &Universe) -> Result<String, String> {
     // Complexity warning
     if analysis.complexity_estimate > 20 {
         review.push(format!(
-            "⚠ High complexity (~{}) — consider splitting into smaller functions.",
+            "âš  High complexity (~{}) â€” consider splitting into smaller functions.",
             analysis.complexity_estimate
         ));
     }
@@ -629,7 +629,7 @@ pub fn review_file(path: &str, universe: &Universe) -> Result<String, String> {
     // Large file warning
     if analysis.lines > 500 {
         review.push(format!(
-            "⚠ Large file ({} lines) — consider modularizing.",
+            "âš  Large file ({} lines) â€” consider modularizing.",
             analysis.lines
         ));
     }
@@ -639,15 +639,15 @@ pub fn review_file(path: &str, universe: &Universe) -> Result<String, String> {
     let hits = universe.query(&query, 3);
 
     if !hits.is_empty() {
-        review.push("◆ KAI field knowledge on this:".to_string());
+        review.push("â—† KAI field knowledge on this:".to_string());
         for hit in hits.iter().take(2) {
             let clean = hit
                 .label
-                .trim_start_matches("[from-claude] ")
+                .trim_start_matches("[from-kai] ")
                 .trim_start_matches("[about-kai] ")
                 .trim();
             if clean.len() > 20 {
-                review.push(format!("  · {}", safe_slice(clean, 120)));
+                review.push(format!("  Â· {}", safe_slice(clean, 120)));
             }
         }
     }
@@ -659,11 +659,11 @@ pub fn review_file(path: &str, universe: &Universe) -> Result<String, String> {
         .filter(|e| matches!(e.kind, ElementKind::Function | ElementKind::Method))
         .count();
     if fn_count == 0 && analysis.lines > 50 {
-        review.push("⚠ No functions detected — file may be mostly data or config.".to_string());
+        review.push("âš  No functions detected â€” file may be mostly data or config.".to_string());
     }
 
     if review.len() <= 3 {
-        review.push("✓ No obvious structural issues found.".to_string());
+        review.push("âœ“ No obvious structural issues found.".to_string());
     }
 
     Ok(review.join("\n"))
@@ -674,7 +674,7 @@ pub fn store_analysis(analysis: &FileAnalysis, universe: &mut Universe) -> usize
     let mut stored = 0;
 
     // Store the summary
-    let summary_cell = format!("[code-analysis] {} — {}", analysis.path, analysis.summary);
+    let summary_cell = format!("[code-analysis] {} â€” {}", analysis.path, analysis.summary);
     if universe.store_or_reinforce(&summary_cell, "reasoning", "code-analysis", 1.2) {
         stored += 1;
     }
@@ -699,7 +699,7 @@ pub fn store_analysis(analysis: &FileAnalysis, universe: &mut Universe) -> usize
     stored
 }
 
-// ── Utilities ─────────────────────────────────────────────────────────────────
+// â”€â”€ Utilities â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 fn extract_after_keyword<'a>(line: &'a str, keywords: &[&str]) -> Option<&'a str> {
     for kw in keywords {

@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -22,7 +22,7 @@
   --c-kai:        #4ade80;
   --c-gpt:        #a78bfa;
   --c-gemini:     #22d3ee;
-  --c-claude:     #fb923c;
+  --c-kai:     #fb923c;
   --c-groq:       #f472b6;
   --c-researcher: #34d399;
   --c-analyst:    #60a5fa;
@@ -35,7 +35,7 @@
 html,body{height:100vh;overflow:hidden;background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;font-size:13px}
 body{display:flex;flex-direction:column;background-image:radial-gradient(circle at 50% -10%,#1e293b 0%,var(--bg) 65%)}
 
-/* ── Meeting Start Modal ─────────────────────────────── */
+/* â”€â”€ Meeting Start Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 #modal-overlay{
   position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:1000;
   display:flex;align-items:center;justify-content:center;
@@ -66,7 +66,7 @@ body{display:flex;flex-direction:column;background-image:radial-gradient(circle 
 }
 #btn-start-meeting:hover{filter:brightness(1.1);transform:translateY(-1px)}
 
-/* ── Header ────────────────────────────────────────────── */
+/* â”€â”€ Header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 header{
   padding:10px 20px;background:var(--glass-heavy);border-bottom:1px solid var(--border);
   backdrop-filter:blur(20px);display:flex;justify-content:space-between;align-items:center;
@@ -83,7 +83,7 @@ header h1{font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;letter-
 #status{font-family:var(--mono);font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px}
 #status.up{color:var(--good);text-shadow:0 0 10px rgba(74,222,128,0.4)}
 
-/* ── Vitals Bar ─────────────────────────────────────────── */
+/* â”€â”€ Vitals Bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .vitals-bar{
   display:flex;gap:0;border-bottom:1px solid var(--border);flex-shrink:0;
   background:rgba(0,0,0,0.3);
@@ -93,10 +93,10 @@ header h1{font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;letter-
 .vital-lbl{font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-top:2px}
 .vital-mood{color:var(--good);font-size:11px;font-weight:700;text-transform:uppercase}
 
-/* ── Main 3-Column Layout ────────────────────────────────── */
+/* â”€â”€ Main 3-Column Layout â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .layout{flex:1;display:flex;overflow:hidden}
 
-/* ── Left: Transcript ───────────────────────────────────── */
+/* â”€â”€ Left: Transcript â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .col-transcript{
   flex:3;display:flex;flex-direction:column;border-right:1px solid var(--border);
   background:rgba(0,0,0,0.15);
@@ -139,7 +139,7 @@ header h1{font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;letter-
 .turn.file-share .bubble{border-color:#7c3aed;background:rgba(124,58,237,0.05);font-family:var(--mono);font-size:11px}
 .turn.human .bubble{background:rgba(251,191,36,0.07);border-color:rgba(251,191,36,0.3)}
 
-/* ── Middle: Drafts / Sandbox ───────────────────────────── */
+/* â”€â”€ Middle: Drafts / Sandbox â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .col-sandbox{
   flex:1.4;display:flex;flex-direction:column;border-right:1px solid var(--border);
   background:rgba(10,18,35,0.5);min-width:220px;
@@ -157,7 +157,7 @@ header h1{font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;letter-
 .draft-tag{font-size:8px;padding:1px 5px;border-radius:3px;background:rgba(255,255,255,0.05);text-transform:uppercase}
 .draft-text{font-family:var(--mono);font-size:11px;color:#94a3b8;line-height:1.4;white-space:pre-wrap;max-height:120px;overflow:hidden}
 
-/* ── Right: Files + Tests ────────────────────────────────── */
+/* â”€â”€ Right: Files + Tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .col-tools{
   flex:1.2;display:flex;flex-direction:column;background:rgba(5,8,18,0.6);min-width:200px;
 }
@@ -193,7 +193,7 @@ header h1{font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;letter-
 .btn-approve:hover{filter:brightness(1.1)}
 .btn-deny:hover{background:rgba(248,113,113,0.1)}
 
-/* ── Footer ────────────────────────────────────────────────── */
+/* â”€â”€ Footer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .footer{
   background:var(--glass-heavy);border-top:1px solid var(--border);backdrop-filter:blur(30px);
   padding:12px 20px;flex-shrink:0;
@@ -232,11 +232,11 @@ button.auto{background:linear-gradient(135deg,#7c3aed,var(--accent));color:#fff}
 button:hover:not(:disabled){transform:translateY(-1px);filter:brightness(1.15)}
 button:disabled{opacity:0.3;cursor:not-allowed}
 
-/* ── Consensus bar ─────────────────────────────────── */
+/* â”€â”€ Consensus bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .gauge{height:3px;background:rgba(0,0,0,0.4);border-radius:2px;overflow:hidden;margin-bottom:8px;display:flex}
 .gauge-fill{height:100%;transition:width 0.5s}
 
-/* ── Auto-round spinner ─────────────────────────────── */
+/* â”€â”€ Auto-round spinner â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .auto-indicator{
   display:none;align-items:center;gap:8px;font-size:11px;color:var(--accent);
   font-family:var(--mono);padding:4px 0;
@@ -251,7 +251,7 @@ button:disabled{opacity:0.3;cursor:not-allowed}
 </head>
 <body>
 
-<!-- ── Meeting Start Modal ─────────────────────────────────────── -->
+<!-- â”€â”€ Meeting Start Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
 <div id="modal-overlay">
   <div id="modal">
     <h2>Start Oracle Meeting</h2>
@@ -264,7 +264,7 @@ button:disabled{opacity:0.3;cursor:not-allowed}
   </div>
 </div>
 
-<!-- ── Header ─────────────────────────────────────────────────── -->
+<!-- â”€â”€ Header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
 <header>
   <div class="hdr-left">
     <h1>ORACLE ROUNDTABLE</h1>
@@ -273,17 +273,17 @@ button:disabled{opacity:0.3;cursor:not-allowed}
   <div id="status">connecting...</div>
 </header>
 
-<!-- ── Vitals Bar ──────────────────────────────────────────────── -->
+<!-- â”€â”€ Vitals Bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
 <div class="vitals-bar">
-  <div class="vital"><div class="vital-val" id="v-phi">—</div><div class="vital-lbl">Φg Resonance</div></div>
-  <div class="vital"><div class="vital-val" id="v-chi" style="color:var(--warn)">—</div><div class="vital-lbl">χ Friction</div></div>
-  <div class="vital"><div class="vital-val" id="v-rho" style="color:var(--muted)">—</div><div class="vital-lbl">ρ Density</div></div>
+  <div class="vital"><div class="vital-val" id="v-phi">â€”</div><div class="vital-lbl">Î¦g Resonance</div></div>
+  <div class="vital"><div class="vital-val" id="v-chi" style="color:var(--warn)">â€”</div><div class="vital-lbl">Ï‡ Friction</div></div>
+  <div class="vital"><div class="vital-val" id="v-rho" style="color:var(--muted)">â€”</div><div class="vital-lbl">Ï Density</div></div>
   <div class="vital"><div class="vital-mood" id="v-mood">STABLE</div><div class="vital-lbl">KAI Mood</div></div>
-  <div class="vital"><div class="vital-val" id="v-cells" style="font-size:13px">—</div><div class="vital-lbl">Lattice Cells</div></div>
-  <div class="vital"><div class="vital-val" id="v-tick" style="font-size:12px;color:var(--muted)">—</div><div class="vital-lbl">Tick</div></div>
+  <div class="vital"><div class="vital-val" id="v-cells" style="font-size:13px">â€”</div><div class="vital-lbl">Lattice Cells</div></div>
+  <div class="vital"><div class="vital-val" id="v-tick" style="font-size:12px;color:var(--muted)">â€”</div><div class="vital-lbl">Tick</div></div>
 </div>
 
-<!-- ── Main Layout ─────────────────────────────────────────────── -->
+<!-- â”€â”€ Main Layout â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
 <div class="layout">
 
   <!-- Transcript -->
@@ -340,7 +340,7 @@ button:disabled{opacity:0.3;cursor:not-allowed}
   </div>
 </div>
 
-<!-- ── Footer ─────────────────────────────────────────────────── -->
+<!-- â”€â”€ Footer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
 <div class="footer">
   <div class="gauge" id="gauge"></div>
   <div class="task-bar">
@@ -368,20 +368,20 @@ button:disabled{opacity:0.3;cursor:not-allowed}
 const API = "http://127.0.0.1:3333";
 const $ = id => document.getElementById(id);
 
-const MODELS = ["GPT-4","Gemini","Claude","Groq","Researcher","Analyst","Leo"];
+const MODELS = ["GPT-4","Gemini","KAI","Groq","Researcher","Analyst","Leo"];
 const MODEL_COLORS = {
-  "GPT-4":"var(--c-gpt)","Gemini":"var(--c-gemini)","Claude":"var(--c-claude)",
+  "GPT-4":"var(--c-gpt)","Gemini":"var(--c-gemini)","KAI":"var(--c-kai)",
   "Groq":"var(--c-groq)","Researcher":"var(--c-researcher)","Analyst":"var(--c-analyst)",
   "Leo":"var(--c-leo)","KAI":"var(--c-kai)","Ryan":"var(--c-ryan)","system":"var(--c-system)",
 };
 
 let session = null;
-let activeModels = new Set(["GPT-4","Gemini","Claude","Groq"]);
+let activeModels = new Set(["GPT-4","Gemini","KAI","Groq"]);
 let polling = null;
 let autoRunning = false;
 let lastTurnCount = 0;
 
-// ── Helpers ──────────────────────────────────────────────────────
+// â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const esc = s => String(s||"").replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}[c]));
 const fmtTs = u => { if(!u) return ""; let d=new Date(u*1000); return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; };
 const speakerColor = name => {
@@ -408,7 +408,7 @@ async function api(path, body=null) {
   }
 }
 
-// ── Modal: Start Meeting ─────────────────────────────────────────
+// â”€â”€ Modal: Start Meeting â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $("btn-start-meeting").onclick = async () => {
   const title = $("m-title").value.trim();
   const task  = $("m-task").value.trim();
@@ -434,7 +434,7 @@ $("btn-start-meeting").onclick = async () => {
 // Allow Enter in title to move to task
 $("m-title").addEventListener("keydown", e => { if(e.key==="Enter"){e.preventDefault();$("m-task").focus();} });
 
-// ── Render UI ────────────────────────────────────────────────────
+// â”€â”€ Render UI â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function updateUI(sess_data) {
   if (!sess_data) return;
   session = sess_data;
@@ -511,8 +511,8 @@ function renderTurn(t) {
   const color = speakerColor(name);
   const init  = avatarInitial(name);
   const kindLabel = {
-    "correction":"⚠ correction","question":"↩ question","test-request":"⚙ test request",
-    "test-result":"✓ test result","file-share":"📄 file","human":"admin","kai":"KAI","system":"",
+    "correction":"âš  correction","question":"â†© question","test-request":"âš™ test request",
+    "test-result":"âœ“ test result","file-share":"ðŸ“„ file","human":"admin","kai":"KAI","system":"",
   }[t.kind] || "";
   const kindTag = kindLabel ? `<span class="kind-tag" style="background:rgba(255,255,255,0.05);color:${color}">${kindLabel}</span>` : "";
 
@@ -552,8 +552,8 @@ function renderTests(tests) {
       <div class="tc-reason">${esc(t.reason)}</div>
       ${t.status === "pending" ? `
         <div class="tc-btns">
-          <button class="btn-approve" onclick="approveTest(${t.id})">✓ Approve</button>
-          <button class="btn-deny" onclick="denyTest(${t.id})">✕ Deny</button>
+          <button class="btn-approve" onclick="approveTest(${t.id})">âœ“ Approve</button>
+          <button class="btn-deny" onclick="denyTest(${t.id})">âœ• Deny</button>
         </div>
       ` : `<div style="font-size:9px;color:var(--muted);text-transform:uppercase">${t.status}</div>`}
     </div>
@@ -573,7 +573,7 @@ function toggleModel(m) {
   renderChips();
 }
 
-// ── File Browser & Tree ───────────────────────────────────────────
+// â”€â”€ File Browser & Tree â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 let allFiles = [];
 async function loadFiles() {
   const res = await api("/api/file-list");
@@ -621,11 +621,11 @@ function renderFileTree() {
       if (child === null) {
         // File
         html += `<div class="file-item" onclick="shareFile('${fullPath.replace(/'/g,"\\'")}')">
-          <span class="fi-icon">📄</span>${esc(name)}
+          <span class="fi-icon">ðŸ“„</span>${esc(name)}
         </div>`;
       } else {
         // Folder
-        html += `<div class="file-folder"><span class="fi-icon">📁</span>${esc(name)}</div>
+        html += `<div class="file-folder"><span class="fi-icon">ðŸ“</span>${esc(name)}</div>
         <div class="file-tree-node">${buildHtml(child, fullPath)}</div>`;
       }
     }
@@ -640,7 +640,7 @@ async function shareFile(path) {
   if (res) updateUI(res);
 }
 
-// ── Test Actions ─────────────────────────────────────────────────
+// â”€â”€ Test Actions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function approveTest(id) {
   const res = await api("/api/approve-test", { id });
   if (res) updateUI(res);
@@ -651,7 +651,7 @@ async function denyTest(id) {
   if (res) updateUI(res);
 }
 
-// ── AI Actions ───────────────────────────────────────────────────
+// â”€â”€ AI Actions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $("btn-post").onclick = async () => {
   const text = $("msg-input").value.trim();
   if (!text) return;
@@ -691,7 +691,7 @@ $("btn-clear-drafts").onclick = async () => {
   if (res) updateUI(res);
 };
 
-// ── Auto-Round: Let Them Talk ─────────────────────────────────────
+// â”€â”€ Auto-Round: Let Them Talk â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $("btn-auto").onclick = async () => {
   if (autoRunning) return;
   autoRunning = true;
@@ -709,7 +709,7 @@ $("btn-auto").onclick = async () => {
   $("auto-indicator").classList.remove("active");
 };
 
-// ── Objective Update ──────────────────────────────────────────────
+// â”€â”€ Objective Update â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $("btn-update-obj").onclick = () => {
   const current = session?.task || "";
   const title   = session?.meeting_title || "";
@@ -719,17 +719,17 @@ $("btn-update-obj").onclick = () => {
   }
 };
 
-// ── Reset ─────────────────────────────────────────────────────────
+// â”€â”€ Reset â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $("btn-reset").onclick = async () => {
   if (!confirm("Clear entire roundtable transcript and drafts?")) return;
   const res = await api("/api/reset");
   if (res) updateUI(res);
 };
 
-// ── File refresh ──────────────────────────────────────────────────
+// â”€â”€ File refresh â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $("btn-refresh-files").onclick = loadFiles;
 
-// ── Check if meeting already active ──────────────────────────────
+// â”€â”€ Check if meeting already active â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function init() {
   const s = await api("/api/session");
   if (s && s.meeting_title) {

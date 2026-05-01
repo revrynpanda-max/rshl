@@ -1,15 +1,15 @@
-/// Universe â€" The cell store for KAI's memory.
+﻿/// Universe Ã¢â‚¬" The cell store for KAI's memory.
 ///
 /// Each cell is a belief: text + vector + region + strength + metadata.
 /// ALL queries use rayon parallel cosine across all 12 CPU threads.
 ///
 /// Scoring uses a hybrid of:
 ///   1. Cosine similarity on the 16384-dim sparse ternary vector (semantic layer)
-///   2. Keyword overlap â€" shared significant words between query and cell (exact match layer)
+///   2. Keyword overlap Ã¢â‚¬" shared significant words between query and cell (exact match layer)
 ///
 /// This is the same dual-layer approach that makes Google search fast and precise:
 /// semantic embeddings catch conceptual resonance, keyword overlap catches exact term hits.
-/// "What is RSHL?" finds the RSHL cell because "rshl" appears in both â€" even if the
+/// "What is RSHL?" finds the RSHL cell because "rshl" appears in both Ã¢â‚¬" even if the
 /// full-phrase cosine similarity is diluted by surrounding words.
 use rayon::prelude::*;
 
@@ -176,7 +176,7 @@ pub struct Universe {
     cells: Vec<Cell>,
 }
 
-// ── Epistemic Constants ──────────────────────────────────────────────────
+// â”€â”€ Epistemic Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 pub const TRUTH_ANCHORS: &[(&str, f32)] = &[
     (
         "E equals mc squared mass energy equivalence Einstein special relativity confirmed",
@@ -212,12 +212,12 @@ pub const TRUTH_ANCHORS: &[(&str, f32)] = &[
     ),
 ];
 
-/// Self-knowledge anchors — what KAI knows about his own architecture.
-/// Seeded into the "identity" region at 4.5–5.0 strength so questions
+/// Self-knowledge anchors â€” what KAI knows about his own architecture.
+/// Seeded into the "identity" region at 4.5â€“5.0 strength so questions
 /// about KAI's own structure produce confident, immediate answers instead
 /// of "lattice is quiet" or leaking into physics cells.
 pub const SELF_KNOWLEDGE_ANCHORS: &[(&str, f32)] = &[
-    // ── What KAI is ───────────────────────────────────────────────────────
+    // â”€â”€ What KAI is â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     (
         "KAI is a custom Rust AI using Vector Symbolic Architecture VSA sparse ternary vectors \
          16384 dimensions no pre-trained weights learns only through conversation",
@@ -233,7 +233,7 @@ pub const SELF_KNOWLEDGE_ANCHORS: &[(&str, f32)] = &[
          model KAI composes responses from lattice resonance sparse vector cosine similarity",
         5.0,
     ),
-    // ── Memory regions ────────────────────────────────────────────────────
+    // â”€â”€ Memory regions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     (
         "KAI memory regions are: memory identity reasoning established-physics contested \
          each region organizes cells by type and trust level",
@@ -259,7 +259,7 @@ pub const SELF_KNOWLEDGE_ANCHORS: &[(&str, f32)] = &[
          cells that failed epistemic verification drift outward during reorganization",
         4.0,
     ),
-    // ── Architecture components ───────────────────────────────────────────
+    // â”€â”€ Architecture components â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     (
         "MindFrame is KAI central cognitive authority manages attention routing \
          orchestrates which brain modules activate decides response strategy",
@@ -290,7 +290,7 @@ pub const SELF_KNOWLEDGE_ANCHORS: &[(&str, f32)] = &[
          radius tau_r drive sleep cycle breathing loop phyllotaxis ring reorganization",
         4.0,
     ),
-    // ── Epistemic immune system ───────────────────────────────────────────
+    // â”€â”€ Epistemic immune system â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     (
         "KAI epistemic immune system four components: dynamic calibration monoculture scan \
          ingest_and_verify lattice reorganization protect lattice from bad data",
@@ -306,14 +306,14 @@ pub const SELF_KNOWLEDGE_ANCHORS: &[(&str, f32)] = &[
          physics resonance floor 0.55 coherence floor 0.40 verified contested rejected",
         4.0,
     ),
-    // ── KAI's creator and context ─────────────────────────────────────────
+    // â”€â”€ KAI's creator and context â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     (
         "Ryan is KAI creator admin owner Ryan built KAI in Rust Ryan is the only human \
          KAI learns from through conversation",
         5.0,
     ),
     (
-        "Oracle Roundtable multi-AI meeting room GPT Claude Gemini Groq collaborate \
+        "Oracle Roundtable multi-AI meeting room GPT KAI Gemini Groq collaborate \
          diagnose KAI architecture issues port 3333 oracle.html",
         4.0,
     ),
@@ -329,9 +329,9 @@ pub const MONOCULTURE_MIN_SIZE: usize = 5;
 pub const PHYSICS_RESONANCE_FLOOR: f32 = 0.55;
 pub const COHERENCE_FLOOR: f32 = 0.40;
 
-// ── Keyword overlap helpers (BM25-style exact match layer) ───────────────────
+// â”€â”€ Keyword overlap helpers (BM25-style exact match layer) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-/// Extract significant keywords from a query â€" stopwords removed, â‰¥3 chars.
+/// Extract significant keywords from a query Ã¢â‚¬" stopwords removed, Ã¢â€°Â¥3 chars.
 /// These are the terms we expect to literally appear in a matching cell.
 fn extract_query_keywords(text: &str) -> Vec<String> {
     const STOPWORDS: &[&str] = &[
@@ -428,7 +428,7 @@ fn extract_query_keywords(text: &str) -> Vec<String> {
         "which",
         "its",
         "whose",
-        // Casual fillers that add noise â€" semantically empty in queries
+        // Casual fillers that add noise Ã¢â‚¬" semantically empty in queries
         "again",
         "actually",
         "basically",
@@ -451,7 +451,7 @@ fn extract_query_keywords(text: &str) -> Vec<String> {
         "always",
         "sometimes",
         "often",
-        // Conversational openers / hedge words â€" carry no topic signal
+        // Conversational openers / hedge words Ã¢â‚¬" carry no topic signal
         "wait",
         "like",
         "mean",
@@ -481,15 +481,15 @@ fn extract_query_keywords(text: &str) -> Vec<String> {
                 && c != '-'
                 && c != '*'
                 && c != '/'
-                && c != '²'
+                && c != 'Â²'
         })
         .filter(|w| !w.is_empty() && w.len() >= 3 && !STOPWORDS.contains(w))
         .map(|w| w.to_string())
         .collect()
 }
 
-/// Score how many query keywords appear in cell text (0.0â€"1.0).
-/// Uses morphological prefix matching for words â‰¥4 chars so "dream" matches "dreaming",
+/// Score how many query keywords appear in cell text (0.0Ã¢â‚¬"1.0).
+/// Uses morphological prefix matching for words Ã¢â€°Â¥4 chars so "dream" matches "dreaming",
 /// "feel" matches "feelings", "work" matches "working", etc.
 fn keyword_overlap_score(query_words: &[String], cell_text: &str) -> f32 {
     if query_words.is_empty() {
@@ -616,7 +616,7 @@ impl Universe {
     }
 
     /// Query for the top-N most similar cells.
-    /// Uses rayon parallel iteration â€" all 12 CPU threads compute cosine simultaneously.
+    /// Uses rayon parallel iteration Ã¢â‚¬" all 12 CPU threads compute cosine simultaneously.
     /// Scoring = 60% cosine similarity (semantic) + 40% keyword overlap (exact match).
     /// The keyword layer is the "inverted index" signal: "what is RSHL?" finds the RSHL
     /// cell because "rshl" appears in both, even if the phrase-level cosine is diluted.
@@ -625,7 +625,7 @@ impl Universe {
     /// Those cells exist to record Ryan's raw input for context/continuity; they
     /// must never be surfaced as KAI's own speech output. Without this filter,
     /// a freshly-stored echo cell outranks every other match on the exact input
-    /// Ryan just typed â€" and KAI parrots Ryan's own words back at him. That was
+    /// Ryan just typed Ã¢â‚¬" and KAI parrots Ryan's own words back at him. That was
     /// the "you sound scripted" humiliation; closing the hole here.
     pub fn query(&self, text: &str, n: usize) -> Vec<QueryHit> {
         self.query_in_regions(text, n, &[])
@@ -701,7 +701,7 @@ impl Universe {
     }
 
     /// Query using a pre-computed SparseVec instead of raw text.
-    /// Returns Vec<(Cell, f32)> tuples — (cell, score) — matching the
+    /// Returns Vec<(Cell, f32)> tuples â€” (cell, score) â€” matching the
     /// calling convention used by hippocampus, inner_voice, reasoner,
     /// lattice, and field_state.
     pub fn query_vec(&self, q: &SparseVec, n: usize) -> Vec<(Cell, f32)> {
@@ -743,7 +743,7 @@ impl Universe {
             .collect()
     }
 
-    /// Query only within a specific region — used for self/identity questions
+    /// Query only within a specific region â€” used for self/identity questions
     /// to prevent world-bridge reasoning cells from bleeding into personal answers.
     /// Also uses hybrid cosine + keyword scoring for consistent exact-term retrieval.
     pub fn query_region(&self, text: &str, region: &str, n: usize) -> Vec<QueryHit> {
@@ -805,7 +805,7 @@ impl Universe {
             .collect()
     }
 
-    /// Get all cells with a specific source tag — bypasses score filtering.
+    /// Get all cells with a specific source tag â€” bypasses score filtering.
     pub fn get_by_source(&self, source: &str) -> Vec<QueryHit> {
         self.cells
             .iter()
@@ -815,7 +815,7 @@ impl Universe {
                 text: c.claim.text.clone(),
                 vec: c.claim.vec.clone(),
                 region: c.region.clone(),
-                score: 1.0, // score is irrelevant — selection is by source
+                score: 1.0, // score is irrelevant â€” selection is by source
                 strength: c.claim.confidence,
                 source: c.claim.source.clone(),
             })
@@ -824,7 +824,7 @@ impl Universe {
 
     /// Query the live strength of a named conversation state cell.
     /// State cells live in region="tone", source="state".
-    /// Used by voice.rs for lattice-native routing â€" no word-list context scanning.
+    /// Used by voice.rs for lattice-native routing Ã¢â‚¬" no word-list context scanning.
     /// Returns 0.0 if no matching state cell exists or has decayed below threshold.
     /// The lattice IS the state machine: store when detected, decay naturally.
     pub fn state_strength(&self, key: &str) -> f32 {
@@ -884,7 +884,7 @@ impl Universe {
             let is_bridge =
                 cell.claim.source == "dream-discovery" || cell.claim.source == "hlv-bridge";
 
-            // Survival bonus: bridges with Φg > 1.0 decay MUCH slower (70% reduction in decay)
+            // Survival bonus: bridges with Î¦g > 1.0 decay MUCH slower (70% reduction in decay)
             let effective_factor = if is_bridge && cell.convergence_score > 1.0 {
                 1.0 - (1.0 - factor) * 0.3
             } else if is_bridge {
@@ -902,7 +902,7 @@ impl Universe {
     }
 
     /// Prune cells below minimum strength.
-    /// Also kills "noisy" cells (high-chi / low-Φg) even if they have moderate strength.
+    /// Also kills "noisy" cells (high-chi / low-Î¦g) even if they have moderate strength.
     pub fn prune(&mut self, min_strength: f32) -> usize {
         let before = self.cells.len();
         self.cells.retain(|c| {
@@ -914,11 +914,11 @@ impl Universe {
             }
 
             if is_bridge {
-                // Protect any bridge connected to a cell with Φg > 2.0
+                // Protect any bridge connected to a cell with Î¦g > 2.0
                 if c.convergence_score > 2.0 {
                     return true;
                 }
-                // Only prune bridges that have BOTH low strength AND low Φg
+                // Only prune bridges that have BOTH low strength AND low Î¦g
                 if c.claim.confidence < min_strength && c.convergence_score < 1.0 {
                     return false;
                 }
@@ -930,7 +930,7 @@ impl Universe {
             if c.claim.confidence < min_strength {
                 return false;
             }
-            // 2. High-chi pruning: if strength is mediocre (< 1.5) and Φg is low (< 1.2), it's noise.
+            // 2. High-chi pruning: if strength is mediocre (< 1.5) and Î¦g is low (< 1.2), it's noise.
             if c.claim.confidence < 1.5 && c.convergence_score < 1.2 {
                 return false;
             }
@@ -979,7 +979,7 @@ impl Universe {
         before - self.cells.len()
     }
 
-    // ── Epistemic Methods (Parallel Rebuild) ───────────────────────────────
+    // â”€â”€ Epistemic Methods (Parallel Rebuild) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     /// Re-injects physics truth anchors and penalizes low-coherence physics claims.
     pub fn dynamic_calibrate(&mut self) {
@@ -988,7 +988,7 @@ impl Universe {
             self.store_or_reinforce(anchor, "established-physics", "truth-anchor", *strength);
         }
 
-        // 2. Reinforce self-knowledge anchors — KAI must know who he is
+        // 2. Reinforce self-knowledge anchors â€” KAI must know who he is
         self.seed_self_knowledge();
 
         // 3. Parallel penalty for low-coherence physics cells
@@ -1018,7 +1018,7 @@ impl Universe {
     }
 
     /// Parallel Lattice Reorganisation.
-    /// Uses the Golden Angle (≈ 137.5°) for phyllotaxis-style ring packing.
+    /// Uses the Golden Angle (â‰ˆ 137.5Â°) for phyllotaxis-style ring packing.
     pub fn reorganize_with_spiral(&mut self, spiral_radius: f32) {
         use std::f32::consts::TAU;
         const GOLDEN_ANGLE: f32 = 2.399_963_23_f32;
@@ -1156,7 +1156,7 @@ impl Universe {
         Some((&self.cells[i], &self.cells[j]))
     }
 
-    /// Reinforce a cell by exact text match (Hebbian: fire together â†’ wire together).
+    /// Reinforce a cell by exact text match (Hebbian: fire together Ã¢â€ â€™ wire together).
     /// Bumps strength by `delta`, capped at 2.5.
     pub fn reinforce_by_text(&mut self, text: &str, delta: f32) {
         for cell in &mut self.cells {
@@ -1401,7 +1401,7 @@ impl Universe {
         vec: Option<SparseVec>,
         conv_score: Option<f32>,
     ) -> bool {
-        // Phase 1: exact string match (fast path — O(n) string compare)
+        // Phase 1: exact string match (fast path â€” O(n) string compare)
         // Optimization: In a future pass we can use a label map, but for 2k cells, 
         // string comparison is already nanoseconds. We'll use par_iter here to be safe.
         if let Some(cell) = self.cells.par_iter_mut().find_any(|c| c.label == text) {
@@ -1438,7 +1438,7 @@ impl Universe {
                 .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
                 .unwrap_or((0, 0.0));
             if best_score > 0.85 && best_idx < self.cells.len() {
-                // Semantic duplicate — update existing cell with new text/vec
+                // Semantic duplicate â€” update existing cell with new text/vec
                 // if it's high-strength (trusted training) or from ryan.
                 if strength >= 0.8 || source == "ryan" {
                     self.cells[best_idx].label = text.to_string();
@@ -1448,7 +1448,7 @@ impl Universe {
                     self.cells[best_idx].claim.confidence =
                         (self.cells[best_idx].claim.confidence + 0.20).min(5.0);
                 } else {
-                    // Regular ingestion — just reinforce
+                    // Regular ingestion â€” just reinforce
                     self.cells[best_idx].claim.confidence =
                         (self.cells[best_idx].claim.confidence + 0.10).min(5.0);
                 }
@@ -1460,7 +1460,7 @@ impl Universe {
         true
     }
 
-    // ── Predictive RSHL ─────────────────────────────────────────────────
+    // â”€â”€ Predictive RSHL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     //
     // Iterative predictive retrieval. 8-step (minimum) refinement loop
     // inside, followed by a single scored pass with the paper-backed
@@ -1470,13 +1470,13 @@ impl Universe {
     ///
     /// 1. Runs `steps.max(8)` passes of a light context mixer that
     ///    nudges the query state toward the conversation trace
-    ///    (6·state + 5·trace, ternary-clamped).
+    ///    (6Â·state + 5Â·trace, ternary-clamped).
     /// 2. Scores every eligible cell with:
     ///        0.20 * similarity(state, cell.vec)
     ///      + 0.55 * predictive_match(trace, cell.continuation)
     ///      + 0.15 * multi_head_consensus(state, cell.vec)
     ///      - 0.20 * recency_penalty(cell.last_fired)
-    ///    Continuation binding dominates static similarity â€" the whole
+    ///    Continuation binding dominates static similarity Ã¢â‚¬" the whole
     ///    point of the upgrade.
     /// 3. Returns the top-5 hits.
     pub fn predictive_query(
@@ -1488,7 +1488,7 @@ impl Universe {
         self.predictive_query_filtered(input, trace, steps, |_| true)
     }
 
-    /// Source-scoped variant for the voice path (greeting / empathy / â€¦).
+    /// Source-scoped variant for the voice path (greeting / empathy / Ã¢â‚¬Â¦).
     /// Same pipeline, just filters eligible cells to a single source tag.
     pub fn predictive_query_by_source(
         &self,
@@ -1691,7 +1691,7 @@ impl Universe {
             return Vec::new();
         }
 
-        // ─────────────── Iterative context mixer (conjunctive gating) ───────────────
+        // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Iterative context mixer (conjunctive gating) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         // Transformer-style attention gate: the `state * trace` term is
         // a multiplicative mask that only passes signal where the query
         // and the conversation history resonate (same sign). Where they
@@ -1722,7 +1722,7 @@ impl Universe {
             state = SparseVec::from_raw(data);
         }
 
-        // ─────────────── Final scoring with look-ahead prediction anchor ─────────────
+        // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Final scoring with look-ahead prediction anchor â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         // Cells were bound with permute(1) applied to the input, so
         // their `continuation` lives in the "next-slot" role-space. To
         // retrieve them we project the current trace forward into that
@@ -1772,14 +1772,14 @@ impl Universe {
 
     /// Predictive query that returns *cell references* with scores
     /// instead of display-only `QueryHit`s. Same scoring pipeline as
-    /// `predictive_query` (iterative conjunctive mixer â†’ look-ahead
-    /// anchor â†’ similarity + predict_match + multi-head âˆ’ recency),
+    /// `predictive_query` (iterative conjunctive mixer Ã¢â€ â€™ look-ahead
+    /// anchor Ã¢â€ â€™ similarity + predict_match + multi-head Ã¢Ë†â€™ recency),
     /// but the caller keeps direct access to `Cell::vec` and
-    /// `Cell::continuation` â€" exactly what the generative encoder
+    /// `Cell::continuation` Ã¢â‚¬" exactly what the generative encoder
     /// needs to fold memory into the latent state.
     ///
     /// `top_k` is configurable so the generative path can pull the
-    /// 6â€"8 most relevant cells (the retrieval path that powers the
+    /// 6Ã¢â‚¬"8 most relevant cells (the retrieval path that powers the
     /// TUI still uses the fixed top-5 via `predictive_query`).
     pub fn predictive_query_vecs(
         &self,
@@ -1802,7 +1802,7 @@ impl Universe {
             return Vec::new();
         }
 
-        // Iterative conjunctive mixer â€" mirrors predictive_query_filtered.
+        // Iterative conjunctive mixer Ã¢â‚¬" mirrors predictive_query_filtered.
         let iter_steps = steps.max(predictive::DEFAULT_ITER_STEPS);
         let mut state = input.clone();
         let dim = state.data.len();
@@ -1871,7 +1871,7 @@ impl Universe {
         crate::cognition::generative::build_generative_state(self, lex, prompt, trace, field)
     }
 
-    /// Sequence binding â€" teach the lattice that `response_text` fired
+    /// Sequence binding Ã¢â‚¬" teach the lattice that `response_text` fired
     /// after `input_text`. Each call:
     ///   1. Bundles the current input vector into the response cell's
     ///      `continuation` hypervector (majority-vote over history).
@@ -1879,7 +1879,7 @@ impl Universe {
     ///
     /// If multiple cells share `response_text` only the first is updated
     /// (there should only ever be one, but the guard is cheap). A missing
-    /// text is silently ignored â€" a response composed from several cells
+    /// text is silently ignored Ã¢â‚¬" a response composed from several cells
     /// doesn't have a single owner.
     pub fn bind_sequence(
         &mut self,

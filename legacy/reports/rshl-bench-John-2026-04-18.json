@@ -1,4 +1,4 @@
-{
+﻿{
   "machine": {
     "hostname": "John",
     "platform": "win32 x64",
@@ -210,7 +210,7 @@
         "expected": "UPDATE",
         "got": "UPDATE",
         "pass": true,
-        "replaced": "Ryan works at Anthropic as engineer",
+        "replaced": "Ryan works at Geometric Intelligence as engineer",
         "score": 0.8051614074704398
       },
       {
@@ -254,7 +254,7 @@
         "score": 0.7212393040623687
       },
       {
-        "scenario": "First-person → user token",
+        "scenario": "First-person â†’ user token",
         "expected": "ADD",
         "got": "ADD",
         "pass": true,
@@ -315,12 +315,12 @@
         "source": "arXiv:2504.19413"
       },
       "zep": {
-        "query_ms_range": "10–300ms",
+        "query_ms_range": "10â€“300ms",
         "requires_api": true,
         "source": "arXiv:2501.13956"
       },
       "memgpt": {
-        "query_ms_range": "10–50ms",
+        "query_ms_range": "10â€“50ms",
         "requires_api": true,
         "source": "arXiv:2310.08560"
       }

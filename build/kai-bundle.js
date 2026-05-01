@@ -1,5 +1,5 @@
-"use strict";
-// KAI v5.0 — Single Executable Bundle
+﻿"use strict";
+// KAI v5.0 â€” Single Executable Bundle
 // Generated 2026-04-16T05:55:26.305Z
 
 const path = require('path');
@@ -34,10 +34,10 @@ function _require(name) {
     return module.exports;
 }
 
-// ── rshl-core.js ────────────────────────────────────────────────
+// â”€â”€ rshl-core.js â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 _modules['rshl-core'] = function(module, exports, require) {
 /**
- * rshl-core.js — Standalone Sparse Ternary HDC Engine
+ * rshl-core.js â€” Standalone Sparse Ternary HDC Engine
  *
  * Self-contained. Zero dependencies. Runs on any Node.js >= 16.
  *
@@ -50,7 +50,7 @@ _modules['rshl-core'] = function(module, exports, require) {
  * Why it's fast:
  *   - No model inference. No GPU required. No network call.
  *   - Deterministic: same input always produces same vector.
- *   - Inner loop operates on integers only — no floating point until final division.
+ *   - Inner loop operates on integers only â€” no floating point until final division.
  *   - With the optional native addon: AVX2 SIMD + OpenMP for batch queries.
  */
 
@@ -62,7 +62,7 @@ const ACTIVE    = Math.round(DIM * DENSITY);
 const FNV_PRIME = 0x01000193;
 const FNV_INIT  = 0x811c9dc5;
 
-// ── FNV-1a hash (32-bit) ──────────────────────────────────────────────────────
+// â”€â”€ FNV-1a hash (32-bit) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function fnv1a(str) {
   let h = FNV_INIT >>> 0;
   for (let i = 0; i < str.length; i++) {
@@ -72,13 +72,13 @@ function fnv1a(str) {
   return h;
 }
 
-// ── LCG PRNG seeded per token ─────────────────────────────────────────────────
+// â”€â”€ LCG PRNG seeded per token â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function lcgNext(state) {
   return (Math.imul(state, 1664525) + 1013904223) >>> 0;
 }
 
-// ── Single token → sparse ternary vector ─────────────────────────────────────
-// Returns Array<[index, value]> where value ∈ {-1, +1}
+// â”€â”€ Single token â†’ sparse ternary vector â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Returns Array<[index, value]> where value âˆˆ {-1, +1}
 function tokenVec(token) {
   let state = fnv1a(token);
   const used = new Uint8Array(DIM >> 3); // bit-set for collision avoidance
@@ -103,15 +103,15 @@ function tokenVec(token) {
   return vec;
 }
 
-// ── Token normalization ────────────────────────────────────────────────────────
-// Applied in textVec before encoding — both stored text and queries go through
+// â”€â”€ Token normalization â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Applied in textVec before encoding â€” both stored text and queries go through
 // the same pipeline, so "lives"/"location"/"city" collapse to the same vector,
 // "job"/"occupation"/"employer" collapse, "allergic"/"restriction" collapse, etc.
 //
 // Two passes:
-//   1. Stopword removal — drops function words present in queries but not facts
-//   2. Pre-stem synonym map — maps domain synonyms to a canonical token
-//   3. Suffix stemmer — collapses remaining inflections (lives→live, drives→drive)
+//   1. Stopword removal â€” drops function words present in queries but not facts
+//   2. Pre-stem synonym map â€” maps domain synonyms to a canonical token
+//   3. Suffix stemmer â€” collapses remaining inflections (livesâ†’live, drivesâ†’drive)
 //
 // NOTE: Changing normalization changes the vector space. Re-encode stored memories
 // when upgrading from a version without normalization.
@@ -127,10 +127,10 @@ const _STOPS = new Set([
 ]);
 
 // Maps original word forms to a canonical token before stemming.
-// Both stored text and queries go through the same map — so "occupation" and
-// "works at" both normalize to "work", "training" and "marathon" → "run", etc.
+// Both stored text and queries go through the same map â€” so "occupation" and
+// "works at" both normalize to "work", "training" and "marathon" â†’ "run", etc.
 const _SYNS = {
-  // ── location ──────────────────────────────────────────────────────────────
+  // â”€â”€ location â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   'location':'live','city':'live','town':'live','home':'live','address':'live',
   'neighborhood':'live','district':'live','street':'live','based':'live',
   'reside':'live','resides':'live','resided':'live',
@@ -138,7 +138,7 @@ const _SYNS = {
   'move':'live','moves':'live','moving':'live','moved':'live',
   'settle':'live','settled':'live','settles':'live',
 
-  // ── employment ────────────────────────────────────────────────────────────
+  // â”€â”€ employment â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   'job':'work','occupation':'work','employer':'work','career':'work',
   'employed':'work','employment':'work','profession':'work',
   'hire':'work','hired':'work','fired':'work','quit':'work',
@@ -155,7 +155,7 @@ const _SYNS = {
   'scientist':'work','researcher':'work','instructor':'work',
   'technician':'work','therapist':'work','chef':'work',
 
-  // ── food / eating ─────────────────────────────────────────────────────────
+  // â”€â”€ food / eating â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   'meal':'food','meals':'food','diet':'food',
   'eat':'food','eats':'food','eating':'food','ate':'food',
   'cuisine':'food','dish':'food','dishes':'food','recipe':'food',
@@ -165,7 +165,7 @@ const _SYNS = {
   'snack':'food','lunch':'food','dinner':'food','breakfast':'food',
   'vegan':'food','vegetarian':'food','pescatarian':'food',
 
-  // ── allergy / health restriction ──────────────────────────────────────────
+  // â”€â”€ allergy / health restriction â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   'allergic':'allerg','allergy':'allerg','allergies':'allerg',
   'intolerant':'allerg','intolerance':'allerg',
   'restriction':'allerg','restrictions':'allerg',
@@ -173,22 +173,22 @@ const _SYNS = {
   'avoid':'allerg','avoids':'allerg','avoiding':'allerg',
   'gluten':'allerg','lactose':'allerg','nut':'allerg','peanut':'allerg',
 
-  // ── age ───────────────────────────────────────────────────────────────────
+  // â”€â”€ age â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   'old':'age','years':'age','year':'age','born':'age','birthday':'age',
 
-  // ── vehicle / transport ───────────────────────────────────────────────────
+  // â”€â”€ vehicle / transport â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   'vehicle':'drive','vehicles':'drive','transport':'drive','transportation':'drive',
   'commute':'drive','commutes':'drive','commuting':'drive','commuted':'drive',
   'car':'drive','cars':'drive','bicycle':'drive','bike':'drive','bikes':'drive',
   'ride':'drive','rides':'drive','riding':'drive',
 
-  // ── hobbies / leisure ─────────────────────────────────────────────────────
+  // â”€â”€ hobbies / leisure â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   'hobby':'enjoy','hobbies':'enjoy','activity':'enjoy','activities':'enjoy',
   'interest':'enjoy','interests':'enjoy','fun':'enjoy','leisure':'enjoy',
   'passion':'enjoy','pastime':'enjoy','pastimes':'enjoy',
   'love':'enjoy','loves':'enjoy','loved':'enjoy','loving':'enjoy',
 
-  // ── fitness / exercise ────────────────────────────────────────────────────
+  // â”€â”€ fitness / exercise â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   'fitness':'run','exercise':'run','workout':'run','workouts':'run',
   'training':'run','train':'run','trains':'run',
   'marathon':'run','gym':'run','athletic':'run','athlete':'run',
@@ -196,11 +196,11 @@ const _SYNS = {
   'hike':'run','hiking':'run','trail':'run','swim':'run','swimming':'run',
   'cycling':'run','cycle':'run',
 
-  // ── schedule / time ───────────────────────────────────────────────────────
+  // â”€â”€ schedule / time â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   'shift':'schedule','shifts':'schedule',
   'appointment':'schedule','appointments':'schedule','meeting':'schedule',
 
-  // ── pets ──────────────────────────────────────────────────────────────────
+  // â”€â”€ pets â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   'dog':'pet','dogs':'pet','cat':'pet','cats':'pet',
   'animal':'pet','animals':'pet','puppy':'pet','kitten':'pet',
   'retriever':'pet','retrievers':'pet','labrador':'pet','poodle':'pet',
@@ -208,7 +208,7 @@ const _SYNS = {
   'bulldogs':'pet','spaniel':'pet','shepherd':'pet','husky':'pet',
   'huskies':'pet','siamese':'pet','tabby':'pet',
 
-  // ── goals / intentions ────────────────────────────────────────────────────
+  // â”€â”€ goals / intentions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   'aim':'goal','aims':'goal','target':'goal','targets':'goal',
   'want':'goal','wants':'goal','wanted':'goal',
   'wish':'goal','wishes':'goal','hope':'goal','hopes':'goal',
@@ -216,7 +216,7 @@ const _SYNS = {
   'plan':'goal','plans':'goal','planned':'goal',
   'dream':'goal','dreams':'goal',
 
-  // ── financial / saving ────────────────────────────────────────────────────
+  // â”€â”€ financial / saving â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   'financial':'save','finance':'save','finances':'save',
   'money':'save','saving':'save','savings':'save',
   'budget':'save','budgeting':'save','earn':'save','earns':'save',
@@ -224,14 +224,14 @@ const _SYNS = {
   'invest':'save','investing':'save','investment':'save',
   'afford':'save','buy':'save','purchase':'save',
 
-  // ── music / audio ─────────────────────────────────────────────────────────
+  // â”€â”€ music / audio â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   'genre':'music','genres':'music','song':'music','songs':'music',
   'listen':'music','listens':'music','listening':'music','taste':'music',
   'band':'music','artist':'music','album':'music','track':'music',
   'jazz':'music','rock':'music','pop':'music','hip':'music','hop':'music',
   'classical':'music','opera':'music',
 
-  // ── language / speaking ───────────────────────────────────────────────────
+  // â”€â”€ language / speaking â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   'speak':'language','speaks':'language','spoken':'language','speaking':'language',
   'fluent':'language','fluently':'language',
   'learn':'language','learns':'language','learning':'language','learned':'language',
@@ -239,23 +239,23 @@ const _SYNS = {
   'french':'language','german':'language','spanish':'language',
   'mandarin':'language','japanese':'language',
 
-  // ── relationships ─────────────────────────────────────────────────────────
+  // â”€â”€ relationships â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   'spouse':'family','wife':'family','husband':'family','partner':'family',
   'parent':'family','parents':'family','mother':'family','father':'family',
   'child':'family','children':'family','sibling':'family',
   'friend':'friend','friends':'friend','colleague':'friend',
 };
 
-// ── Semantic category anchors ──────────────────────────────────────────────────
+// â”€â”€ Semantic category anchors â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // After normalization, domain tokens also inject a category anchor token into
 // the superposition at equal weight. This creates cluster-level overlap between
 // texts that use different surface forms of the same concept:
-//   "Ryan lives in Austin" → tokens: [ryan, live, #loc, austin]
-//   "Ryan's location"      → tokens: [ryan, live, #loc]
+//   "Ryan lives in Austin" â†’ tokens: [ryan, live, #loc, austin]
+//   "Ryan's location"      â†’ tokens: [ryan, live, #loc]
 //   Shared: [ryan, live, #loc] = 3 tokens  (was 1 before)
 //
 // Category tokens use '#' prefix to avoid colliding with real word hashes.
-// They act as a "soft semantic cluster" — partial overlap even with no exact match.
+// They act as a "soft semantic cluster" â€” partial overlap even with no exact match.
 const _CATS = {
   'live':    '#loc',   // location / place
   'work':    '#job',   // employment
@@ -266,7 +266,7 @@ const _CATS = {
   'enjoy':   '#hby',   // hobbies / leisure
   'run':     '#fit',   // fitness / exercise
   'schedule':'#sched', // schedule / appointments
-  'remot':   '#rem',   // remote work (remotely → remot after stem)
+  'remot':   '#rem',   // remote work (remotely â†’ remot after stem)
   'remote':  '#rem',   // remote work
   'pet':     '#pet',   // pets / animals
   'goal':    '#goal',  // goals / intentions
@@ -277,7 +277,7 @@ const _CATS = {
   'friend':  '#rel',   // relationships (same anchor as family)
 };
 
-// Suffix rules — longest match first. [suffix, replacement]
+// Suffix rules â€” longest match first. [suffix, replacement]
 const _STEM = [
   ['ization','ize'], ['isation','ize'],
   ['ational','ate'], ['iveness','ive'], ['ousness','ous'], ['fulness','ful'],
@@ -312,15 +312,15 @@ function _stem(w) {
 }
 
 function _normTok(tok) {
-  if (tok.length < 2) return null;      // drop single chars (Ryan's → 's' artifact)
+  if (tok.length < 2) return null;      // drop single chars (Ryan's â†’ 's' artifact)
   if (_STOPS.has(tok)) return null;     // drop stopwords
   const syn = Object.hasOwn(_SYNS, tok) ? _SYNS[tok] : undefined;
-  if (syn) return syn;                  // pre-stem synonym — already canonical
+  if (syn) return syn;                  // pre-stem synonym â€” already canonical
   return _stem(tok);                    // stem remaining inflections
 }
 
-// ── Text → superposed ternary vector ─────────────────────────────────────────
-// Normalizes tokens then superposes — including semantic category anchors.
+// â”€â”€ Text â†’ superposed ternary vector â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Normalizes tokens then superposes â€” including semantic category anchors.
 function textVec(text) {
   const raw  = text.toLowerCase().replace(/[^\w\s]/g, ' ').split(/\s+/).filter(Boolean);
   const toks = raw.map(_normTok).filter(Boolean);
@@ -328,9 +328,9 @@ function textVec(text) {
   if (eff.length === 0) return tokenVec(text);
 
   // Inject semantic category anchors alongside domain tokens.
-  // "#loc", "#job" etc. are shared across all texts in the same domain —
+  // "#loc", "#job" etc. are shared across all texts in the same domain â€”
   // creating overlap even when surface words differ completely.
-  // Deduplicate tokens so double-synonyms (years+old → age×2) don't
+  // Deduplicate tokens so double-synonyms (years+old â†’ ageÃ—2) don't
   // distort cosine similarity by artificially concentrating a single dimension.
   const seen = new Set();
   const enc = [];
@@ -347,7 +347,7 @@ function textVec(text) {
 
   if (enc.length === 1) return tokenVec(enc[0]);
 
-  // Accumulate into a dense accumulator then threshold → sparse ternary
+  // Accumulate into a dense accumulator then threshold â†’ sparse ternary
   const acc = new Int16Array(DIM);
   for (const tok of enc) {
     const v = tokenVec(tok);
@@ -363,7 +363,7 @@ function textVec(text) {
   return result;
 }
 
-// ── Cosine similarity — two-pointer O(k) ─────────────────────────────────────
+// â”€â”€ Cosine similarity â€” two-pointer O(k) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Both vecs must be sorted by index ascending.
 function cosineSim(a, b) {
   if (a.length === 0 || b.length === 0) return 0;
@@ -376,7 +376,7 @@ function cosineSim(a, b) {
   return dot / (Math.sqrt(a.length) * Math.sqrt(b.length));
 }
 
-// ── Resonance [0,1] ───────────────────────────────────────────────────────────
+// â”€â”€ Resonance [0,1] â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function resonance(a, b) {
   return (cosineSim(a, b) + 1) * 0.5;
 }
@@ -406,7 +406,7 @@ module.exports = { DIM, ACTIVE, tokenVec, textVec, cosineSim, resonance, debugTo
 
 };
 
-// ── plasma.js ───────────────────────────────────────────────────
+// â”€â”€ plasma.js â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 _modules['plasma'] = function(module, exports, require) {
 "use strict";
 
@@ -457,13 +457,13 @@ class Plasma {
 module.exports = { Plasma };
 };
 
-// ── anchors.js ──────────────────────────────────────────────────
+// â”€â”€ anchors.js â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 _modules['anchors'] = function(module, exports, require) {
 "use strict";
 
 const { textVec } = _require('rshl-core');
 
-// ── Orthogonal Region Seeds (Refined by Ryan) ──────────────────────────────────
+// â”€â”€ Orthogonal Region Seeds (Refined by Ryan) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // These are intentionally massive, dense, and conceptually orthogonal.
 // Each anchor now uses highly specific, domain-locked word clusters.
 const ANCHORS = {
@@ -485,7 +485,7 @@ const anchorVectors = {
 
 const REGIONS = ['memory', 'reasoning', 'language', 'action'];
 
-// ── Holographic Phase Masks (Mulberry32) ───────────────────────────────────────
+// â”€â”€ Holographic Phase Masks (Mulberry32) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // We derive the seed for each region mask from its orthogonal anchor vector.
 function mulberry32(a) {
     return function() {
@@ -508,7 +508,7 @@ for (const [region, anchor] of Object.entries(anchorVectors)) {
     _masks[region] = mask;
 }
 
-// ── API ────────────────────────────────────────────────────────────────────────
+// â”€â”€ API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function getAnchor(region) {
     const r = String(region || '').toLowerCase().trim();
     if (r === 'memory' || r === 'mem') return anchorVectors.memory;
@@ -549,12 +549,12 @@ module.exports = {
 };
 };
 
-// ── universe.js ─────────────────────────────────────────────────
+// â”€â”€ universe.js â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 _modules['universe'] = function(module, exports, require) {
 "use strict";
 
 /**
- * universe.js — Cognitive Field Substrate
+ * universe.js â€” Cognitive Field Substrate
  *
  * Single responsibility: store, retrieve, reinforce, and replay cells.
  * No metric computation. No dream logic. No promotion decisions.
@@ -573,7 +573,7 @@ const { textVec, resonance, debugTokens } = _require('rshl-core');
 const { bind, REGIONS, resolveRegion }    = _require('anchors');
 const path = require('path');
 
-// ── Native engine (optional) ──────────────────────────────────────────────────
+// â”€â”€ Native engine (optional) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Compiled AVX2+POPCNT addon for batch resonance scans.
 // Loaded once at startup; falls back to pure JS if not built.
 let _native = null;
@@ -586,10 +586,10 @@ const _BIN_MASK_BYTES = 512;  // DIM/8 = 4096/8 = 512 bytes per pos/neg mask
 const _BIN_ROW_BYTES  = 1024; // pos_mask + neg_mask per row
 const _NATIVE_MIN     = 32;   // native overhead not worth it below this cell count
 
-// Lazy binary matrix for searchByCleanVector — raw (unbound) vectors only.
+// Lazy binary matrix for searchByCleanVector â€” raw (unbound) vectors only.
 // Invalidated on store() and removeCell(). Rebuilt on first use after invalidation.
 let _rawDirty     = true;
-let _rawMatrix    = null; // Buffer: n × BIN_ROW_BYTES
+let _rawMatrix    = null; // Buffer: n Ã— BIN_ROW_BYTES
 let _rawNorms     = null; // Buffer (Float32Array view): n floats
 let _rawResultBuf = null; // Float64Array: n scores (pre-allocated, grown as needed)
 let _rawN         = 0;    // cell count at last build (guards stale buffer use)
@@ -643,7 +643,7 @@ function _vecToQueryBinary(vec) {
     return { qPos, qNeg };
 }
 
-// ── Field state ───────────────────────────────────────────────────────────────
+// â”€â”€ Field state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const MAX_STRENGTH = 5;
 const _cells = [];
 let _id = 0;
@@ -684,7 +684,7 @@ function _copyCell(cell) {
     };
 }
 
-// ── Store ─────────────────────────────────────────────────────────────────────
+// â”€â”€ Store â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function store(text, region, meta) {
     const r        = resolveRegion(region);
     const raw      = textVec(text);
@@ -717,11 +717,11 @@ function store(text, region, meta) {
     };
 
     _cells.push(cell);
-    _invalidateMatrix(); // new cell → rebuild needed before next native scan
+    _invalidateMatrix(); // new cell â†’ rebuild needed before next native scan
     return cell.id;
 }
 
-// ── Read ──────────────────────────────────────────────────────────────────────
+// â”€â”€ Read â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function getCells() {
     return _cells.map(_copyCell);
 }
@@ -735,10 +735,10 @@ function count() {
     return _cells.length;
 }
 
-// ── Similarity search ─────────────────────────────────────────────────────────
+// â”€â”€ Similarity search â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // findSimilar(rawVec, minSim)
 // Scans all cells for the first one whose raw vector exceeds minSim resonance.
-// This is the single point of redundancy checking — world-bridge and RSHLLattice
+// This is the single point of redundancy checking â€” world-bridge and RSHLLattice
 // both route through here instead of doing their own scan loops.
 function findSimilar(rawVec, minSim) {
     const threshold = (typeof minSim === 'number') ? minSim : 0.82;
@@ -752,7 +752,7 @@ function findSimilar(rawVec, minSim) {
     return { found: false, sim: 0 };
 }
 
-// ── Query (text → region-bound similarity) ────────────────────────────────────
+// â”€â”€ Query (text â†’ region-bound similarity) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function _rankResults(results, k) {
     results.sort((a, b) => {
         if (Math.abs(a.score - b.score) < 0.15 && a.overlap !== b.overlap) {
@@ -833,10 +833,10 @@ function queryRegion(text, region, topK, options) {
     return ranked;
 }
 
-// ── Attractor search (raw unbound vector → nearest stored raw) ─────────────────
+// â”€â”€ Attractor search (raw unbound vector â†’ nearest stored raw) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Primary path: native AVX2+POPCNT binary scan.
 // Fallback: pure JS two-pointer cosine loop.
-// Called every dream cycle during cleanup — this is the hottest path.
+// Called every dream cycle during cleanup â€” this is the hottest path.
 function searchByCleanVector(vec, topK) {
     const k = topK || 5;
     const n = _cells.length;
@@ -844,7 +844,7 @@ function searchByCleanVector(vec, topK) {
 
     let useNative = false;
 
-    // Native path — activate when addon loaded and cells above threshold
+    // Native path â€” activate when addon loaded and cells above threshold
     if (_native && _native.batchQueryBinary && n >= _NATIVE_MIN) {
         _rebuildMatrix();
         if (!_rawDirty && _rawMatrix && _rawN === n) {
@@ -883,7 +883,7 @@ function searchByCleanVector(vec, topK) {
     return results.slice(0, k);
 }
 
-// ── Mutators ──────────────────────────────────────────────────────────────────
+// â”€â”€ Mutators â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function reinforceCell(id, delta, metaPatch) {
     const cell = _cells.find(c => c.id === id);
     if (!cell) return null;
@@ -893,7 +893,7 @@ function reinforceCell(id, delta, metaPatch) {
         cell.meta = { ...cell.meta, ...metaPatch };
     }
     return _copyCell(cell);
-    // Note: reinforceCell does NOT change vectors — matrix stays valid.
+    // Note: reinforceCell does NOT change vectors â€” matrix stays valid.
 }
 
 function markReplayed(id) {
@@ -902,18 +902,18 @@ function markReplayed(id) {
     cell.dreamCount  += 1;
     cell.lastReplayed = Date.now();
     return _copyCell(cell);
-    // Note: markReplayed does NOT change vectors — matrix stays valid.
+    // Note: markReplayed does NOT change vectors â€” matrix stays valid.
 }
 
 function removeCell(id) {
     const idx = _cells.findIndex(c => c.id === id);
     if (idx === -1) return false;
     _cells.splice(idx, 1);
-    _invalidateMatrix(); // cell removed → rebuild needed before next native scan
+    _invalidateMatrix(); // cell removed â†’ rebuild needed before next native scan
     return true;
 }
 
-// ── Replay priority ranking ────────────────────────────────────────────────────
+// â”€â”€ Replay priority ranking â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Pr = (1 - strengthNorm + contradiction + novelty + stale) / 4 + unresolvedBoost
 // Called by rshl-lattice to select dream candidates.
 function rankReplayCandidates(limit) {
@@ -953,14 +953,14 @@ function rankReplayCandidates(limit) {
     return out.slice(0, limit || 12);
 }
 
-// ── Reset ─────────────────────────────────────────────────────────────────────
+// â”€â”€ Reset â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function clear() {
     _cells.length = 0;
     _id = 0;
     _invalidateMatrix();
 }
 
-// ── Engine info ───────────────────────────────────────────────────────────────
+// â”€â”€ Engine info â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function engineInfo() {
     return {
         native: _native ? _native.version() : null,
@@ -990,12 +990,12 @@ module.exports = {
 
 };
 
-// ── field-state.js ──────────────────────────────────────────────
+// â”€â”€ field-state.js â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 _modules['field-state'] = function(module, exports, require) {
 "use strict";
 
 /**
- * field-state.js — Pure Field Metric Computation
+ * field-state.js â€” Pure Field Metric Computation
  *
  * Single responsibility: compute emergence metrics from supplied data.
  * NO universe access. NO persistence. NO side effects.
@@ -1084,7 +1084,7 @@ function computeFieldState({
     history = [],
     totalCount,       // must be supplied by caller (e.g. universe.count())
 }) {
-    // totalCount is the full field size — caller is responsible for providing it.
+    // totalCount is the full field size â€” caller is responsible for providing it.
     // Default to sourceCells.length + 1 only as a safe fallback (should not happen).
     const N = Math.max(1, typeof totalCount === 'number' ? totalCount : sourceCells.length + 1);
 
@@ -1171,7 +1171,7 @@ module.exports = {
 };
 };
 
-// ── generative-core.js ──────────────────────────────────────────
+// â”€â”€ generative-core.js â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 _modules['generative-core'] = function(module, exports, require) {
 "use strict";
 
@@ -1263,12 +1263,12 @@ function generateToResult(query, topK) {
 function generate(query, topK) {
     const result = generateToResult(query, topK || 3);
 
-    console.log(`\nQuery → "${query}"`);
+    console.log(`\nQuery â†’ "${query}"`);
     console.log('Strongest matches:');
     result.matches.forEach(m => {
-        console.log(`  ${m.region} (${m.score.toFixed(4)}) → "${m.text}"`);
+        console.log(`  ${m.region} (${m.score.toFixed(4)}) â†’ "${m.text}"`);
     });
-    console.log(`\n→ Generated new thought: "${result.thought}"`);
+    console.log(`\nâ†’ Generated new thought: "${result.thought}"`);
     console.log(`   Confidence: ${result.confidence.toFixed(4)}\n`);
 
     return result;
@@ -1290,7 +1290,7 @@ if (require.main === module) {
 }
 };
 
-// ── rshl-lattice.js ─────────────────────────────────────────────
+// â”€â”€ rshl-lattice.js â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 _modules['rshl-lattice'] = function(module, exports, require) {
 "use strict";
 
@@ -1412,7 +1412,7 @@ function consolidate(plasma, options = {}) {
     const chosen = pickBestInsight(decoded, pair.a, pair.b);
 
     // winnerKey is based on the insight text alone (not source cell IDs) so
-    // that tau accumulates whenever the same insight recurs across any pair —
+    // that tau accumulates whenever the same insight recurs across any pair â€”
     // matching how biological replay values recurrence of the PATTERN, not
     // recurrence of the exact same source neurons.
     const winnerKey = makeWinnerKey([chosen.text || "no-idea"]);
@@ -1489,7 +1489,7 @@ class RSHLLattice {
         const { textVec } = _require('rshl-core');
         const rawVec = textVec(text);
 
-        // Dedup via universe.findSimilar — single source of resonance-based search
+        // Dedup via universe.findSimilar â€” single source of resonance-based search
         const dup  = universe.findSimilar(rawVec, 0.92);
         const near = universe.findSimilar(rawVec, 0.72);
 
@@ -1560,12 +1560,12 @@ module.exports = {
 };
 };
 
-// ── candidate-buffer.js ─────────────────────────────────────────
+// â”€â”€ candidate-buffer.js â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 _modules['candidate-buffer'] = function(module, exports, require) {
 "use strict";
 
 /**
- * candidate-buffer.js — Dream Candidate Accumulation Layer
+ * candidate-buffer.js â€” Dream Candidate Accumulation Layer
  *
  * Biology analog: Pre-synaptic holding zone before long-term potentiation.
  * A pattern must recur repeatedly with stable field quality before it earns
@@ -1740,17 +1740,17 @@ module.exports = {
 
 };
 
-// ── promotion.js ────────────────────────────────────────────────
+// â”€â”€ promotion.js â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 _modules['promotion'] = function(module, exports, require) {
 "use strict";
 
 /**
- * promotion.js — Belief Formation / Long-Term Potentiation Layer
+ * promotion.js â€” Belief Formation / Long-Term Potentiation Layer
  *
  * Biology analog: Repeated, stable, goal-aligned co-activation with low
  * contradiction earns a pattern permanent synaptic change (LTP). Here,
  * a dream candidate that meets all thresholds gets written back into
- * universe as durable memory — it becomes a belief.
+ * universe as durable memory â€” it becomes a belief.
  *
  * Promotion requires ALL of:
  *   1. seenCount >= THRESHOLDS.seenCount        (must recur, not one-shot)
@@ -1762,7 +1762,7 @@ _modules['promotion'] = function(module, exports, require) {
  *   7. nonSourceRatio >= THRESHOLDS.minNSR      (must be genuine insight, not echo)
  *
  * Competition: before promotion, candidates within the same "cluster"
- * (resonance > 0.72 between their universe vectors) compete — only the
+ * (resonance > 0.72 between their universe vectors) compete â€” only the
  * highest-scoring wins; others are suppressed for this cycle.
  */
 
@@ -1771,15 +1771,15 @@ const candidateBuffer = _require('candidate-buffer');
 const { textVec, resonance } = _require('rshl-core');
 const { clamp01, mean, stddev } = _require('field-state');
 
-// ── Promotion thresholds ──────────────────────────────────────────────────────
+// â”€â”€ Promotion thresholds â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Calibrated to the actual field output range.
-// With rho ≈ activeCount/totalCount (e.g. 2/33 ≈ 0.09 for a seeded universe),
-// phi_g peaks around 0.03–0.06 and C peaks around 0.015–0.040.
-// Thresholds must be set relative to what the field can actually produce —
-// not abstract [0,1] ideals — so that promotion is achievable but not trivial.
+// With rho â‰ˆ activeCount/totalCount (e.g. 2/33 â‰ˆ 0.09 for a seeded universe),
+// phi_g peaks around 0.03â€“0.06 and C peaks around 0.015â€“0.040.
+// Thresholds must be set relative to what the field can actually produce â€”
+// not abstract [0,1] ideals â€” so that promotion is achievable but not trivial.
 const THRESHOLDS = {
     seenCount:   3,     // Must recur in at least 3 independent dream cycles
-    bestC:       0.015, // Minimum commit readiness (C = phi_g × (1-chi) × tau)
+    bestC:       0.015, // Minimum commit readiness (C = phi_g Ã— (1-chi) Ã— tau)
     bestPhi_g:   0.024, // Minimum integrated goal-aligned emergence
     bestConf:    0.72,  // Minimum attractor cleanup confidence (field scores high here)
     maxChi:      0.38,  // Mean contradiction must stay below this
@@ -1788,7 +1788,7 @@ const THRESHOLDS = {
     competeSim:  0.72,  // Vector similarity threshold for competition grouping
 };
 
-// ── Scoring ───────────────────────────────────────────────────────────────────
+// â”€â”€ Scoring â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function _score(entry) {
     const nsr       = entry.seenCount > 0 ? entry.nonSourceCount / entry.seenCount : 0;
     const chiMean   = mean(entry.contradictionHistory);
@@ -1803,7 +1803,7 @@ function _score(entry) {
     );
 }
 
-// ── Gate check ────────────────────────────────────────────────────────────────
+// â”€â”€ Gate check â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function _passesThresholds(entry) {
     if (entry.status !== candidateBuffer.STATUS.CANDIDATE) return { pass: false, reason: 'not-candidate' };
     if (entry.seenCount < THRESHOLDS.seenCount)            return { pass: false, reason: 'seen-count' };
@@ -1826,7 +1826,7 @@ function _passesThresholds(entry) {
     return { pass: true };
 }
 
-// ── Competition: cluster threshold-passing candidates by vector similarity ────
+// â”€â”€ Competition: cluster threshold-passing candidates by vector similarity â”€â”€â”€â”€
 // Within each cluster, only the highest scorer is allowed to promote this cycle.
 function _resolveCompetition(eligibles) {
     if (!eligibles.length) return [];
@@ -1849,7 +1849,7 @@ function _resolveCompetition(eligibles) {
             if (suppressed.has(j)) continue;
             const sim = clamp01(resonance(withVecs[i].vec, withVecs[j].vec));
             if (sim >= THRESHOLDS.competeSim) {
-                // Same cluster — keep the higher scorer, suppress the other
+                // Same cluster â€” keep the higher scorer, suppress the other
                 if (withVecs[j].score > withVecs[bestIdx].score) {
                     suppressed.add(bestIdx);
                     bestIdx = j;
@@ -1867,7 +1867,7 @@ function _resolveCompetition(eligibles) {
     return winners;
 }
 
-// ── Main promotion run ────────────────────────────────────────────────────────
+// â”€â”€ Main promotion run â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function runPromotion() {
     const all       = candidateBuffer.getAll();
     const eligible  = [];
@@ -1889,9 +1889,9 @@ function runPromotion() {
         const chiMean   = mean(entry.contradictionHistory);
         const stability = clamp01(1 - stddev(entry.phiHistory || [entry.bestPhi_g]));
 
-        // Map field quality into universe strength (range 1.5–4.0)
+        // Map field quality into universe strength (range 1.5â€“4.0)
         const rawStrength = clamp01(entry.bestC * 2.5 + entry.bestPhi_g * 1.5 + stability * 0.5);
-        const strength    = 1.5 + rawStrength * 2.5; // maps [0,1] → [1.5, 4.0]
+        const strength    = 1.5 + rawStrength * 2.5; // maps [0,1] â†’ [1.5, 4.0]
 
         universe.store(entry.text, 'memory', {
             source:        'promoted-dream',
@@ -1926,12 +1926,12 @@ module.exports = {
 
 };
 
-// ── homeostasis.js ──────────────────────────────────────────────
+// â”€â”€ homeostasis.js â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 _modules['homeostasis'] = function(module, exports, require) {
 "use strict";
 
 /**
- * homeostasis.js — Slow Weakening / Pruning Layer (LTD Analog)
+ * homeostasis.js â€” Slow Weakening / Pruning Layer (LTD Analog)
  *
  * Biology analog: Long-term depression (LTD) and synaptic pruning.
  * Connections that are never re-activated, never reinforced, and never
@@ -2027,32 +2027,32 @@ module.exports = {
 
 };
 
-// ── heartbeat.js ────────────────────────────────────────────────
+// â”€â”€ heartbeat.js â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 _modules['heartbeat'] = function(module, exports, require) {
 "use strict";
 
 /**
- * heartbeat.js — Drive-Aware Background Continuity Pulse
+ * heartbeat.js â€” Drive-Aware Background Continuity Pulse
  *
  * Biology analog: The brain's default mode network + hippocampal sharp-wave
  * ripples + dopaminergic drive modulation. The heartbeat is no longer a fixed
- * metronome — it speeds up when engaged, slows when bored, and uses valence
+ * metronome â€” it speeds up when engaged, slows when bored, and uses valence
  * to guide what gets reinforced.
  *
  * Each tick:
- *   1. consolidate()             — one dream cycle
- *   2. drive.computeValence()    — update internal mood from field metrics
- *   3. candidateBuffer.observe() — feed dream output into candidate buffer
- *   4. runPromotion()            — check if any candidate earned belief status
- *   5. drive.feedGoal()          — feed promoted beliefs into evolving goal
- *   6. runHomeostasis()          — every N ticks: decay + prune
- *   7. Adapt next tick interval  — drive controls the clock
+ *   1. consolidate()             â€” one dream cycle
+ *   2. drive.computeValence()    â€” update internal mood from field metrics
+ *   3. candidateBuffer.observe() â€” feed dream output into candidate buffer
+ *   4. runPromotion()            â€” check if any candidate earned belief status
+ *   5. drive.feedGoal()          â€” feed promoted beliefs into evolving goal
+ *   6. runHomeostasis()          â€” every N ticks: decay + prune
+ *   7. Adapt next tick interval  â€” drive controls the clock
  *   8. emit tick summary via onTick callback
  *
  * The interval adapts in real-time:
- *   - High Φg + positive momentum → faster ticks (excited, curious)
- *   - Low Φg + negative momentum  → slower ticks (dormant, exploring)
- *   - High χ sustained            → moderate pace (processing confusion)
+ *   - High Î¦g + positive momentum â†’ faster ticks (excited, curious)
+ *   - Low Î¦g + negative momentum  â†’ slower ticks (dormant, exploring)
+ *   - High Ï‡ sustained            â†’ moderate pace (processing confusion)
  */
 
 const { consolidate }     = _require('rshl-lattice');
@@ -2084,7 +2084,7 @@ function _tick() {
 
     try {
 
-    // 1. Dream — use evolving goal vector for alignment if available
+    // 1. Dream â€” use evolving goal vector for alignment if available
     const goalVec = drive.getGoalVector();
     const dreamResult = consolidate(_plasma, {
         goalText:       goalVec ? null : _opts.goalText, // fall back to static text if no evolving goal
@@ -2120,7 +2120,7 @@ function _tick() {
     }
 
     // 7. Homeostasis (every N ticks)
-    // Negative valence (confusion) → increase homeostasis frequency
+    // Negative valence (confusion) â†’ increase homeostasis frequency
     let homeostasisResult = null;
     const homeostasisFreq = valence < -0.1
         ? Math.max(3, Math.floor(HOMEOSTASIS_EVERY_N * 0.6))
@@ -2185,12 +2185,12 @@ function _tick() {
 
 /**
  * start(plasma, options)
- * @param {Plasma} plasma    — the Plasma instance wrapping universe
+ * @param {Plasma} plasma    â€” the Plasma instance wrapping universe
  * @param {object} options
- *   intervalMs {number}    — initial ms between ticks (adapts over time)
- *   goalText {string}      — fallback goal text (used until evolving goal builds)
- *   candidateLimit {number}— how many replay candidates to consider per tick
- *   onTick {function}      — callback(summary) per tick
+ *   intervalMs {number}    â€” initial ms between ticks (adapts over time)
+ *   goalText {string}      â€” fallback goal text (used until evolving goal builds)
+ *   candidateLimit {number}â€” how many replay candidates to consider per tick
+ *   onTick {function}      â€” callback(summary) per tick
  */
 function start(plasma, options) {
     if (_running) return;
@@ -2226,12 +2226,12 @@ module.exports = {
 
 };
 
-// ── persistence.js ──────────────────────────────────────────────
+// â”€â”€ persistence.js â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 _modules['persistence'] = function(module, exports, require) {
 "use strict";
 
 /**
- * persistence.js — State Persistence Layer
+ * persistence.js â€” State Persistence Layer
  *
  * Biology analog: Long-term memory consolidation to permanent substrate.
  * Without persistence, KAI suffers complete amnesia on every restart.
@@ -2253,20 +2253,20 @@ const path = require('path');
 const universe        = _require('universe');
 const candidateBuffer = _require('candidate-buffer');
 
-// ── Default paths ──────────────────────────────────────────────────────────────
+// â”€â”€ Default paths â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const DEFAULT_STATE_DIR = path.join(_kaiDir, 'data');
 const DEFAULT_STATE_FILE = path.join(DEFAULT_STATE_DIR, 'kai-state.json');
 const DEFAULT_BACKUP_FILE = path.join(DEFAULT_STATE_DIR, 'kai-state.backup.json');
 
-// ── Save ───────────────────────────────────────────────────────────────────────
+// â”€â”€ Save â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 /**
  * save(options)
  * Snapshot the full cognitive state to disk.
  *
  * @param {object} options
- *   filepath {string}    — output path (default: data/kai-state.json)
- *   heartbeatTick {number} — current heartbeat tick count
- *   extraMeta {object}   — any additional metadata to store
+ *   filepath {string}    â€” output path (default: data/kai-state.json)
+ *   heartbeatTick {number} â€” current heartbeat tick count
+ *   extraMeta {object}   â€” any additional metadata to store
  *
  * @returns {{ ok: boolean, filepath: string, cells: number, candidates: number, bytes: number }}
  */
@@ -2286,7 +2286,7 @@ function save(options) {
         try {
             fs.copyFileSync(filepath, backupPath);
         } catch (_) {
-            // Non-fatal — backup failure shouldn't block save
+            // Non-fatal â€” backup failure shouldn't block save
         }
     }
 
@@ -2357,14 +2357,14 @@ function save(options) {
     };
 }
 
-// ── Load ───────────────────────────────────────────────────────────────────────
+// â”€â”€ Load â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 /**
  * load(options)
  * Restore cognitive state from a saved snapshot.
  *
  * @param {object} options
- *   filepath {string}    — input path (default: data/kai-state.json)
- *   clearFirst {boolean} — clear universe + candidates before restoring (default: true)
+ *   filepath {string}    â€” input path (default: data/kai-state.json)
+ *   clearFirst {boolean} â€” clear universe + candidates before restoring (default: true)
  *
  * @returns {{ ok: boolean, cells: number, candidates: number, heartbeatTick: number, savedAt: string }}
  */
@@ -2479,14 +2479,14 @@ function load(options) {
     };
 }
 
-// ── Exists ─────────────────────────────────────────────────────────────────────
+// â”€â”€ Exists â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function stateExists(filepath) {
     return fs.existsSync(filepath || DEFAULT_STATE_FILE);
 }
 
-// ── Info ───────────────────────────────────────────────────────────────────────
+// â”€â”€ Info â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 /**
- * getStateInfo() — Returns metadata about the saved state without loading it.
+ * getStateInfo() â€” Returns metadata about the saved state without loading it.
  */
 function getStateInfo(filepath) {
     const fp = filepath || DEFAULT_STATE_FILE;
@@ -2523,18 +2523,18 @@ module.exports = {
 
 };
 
-// ── world-bridge.js ─────────────────────────────────────────────
+// â”€â”€ world-bridge.js â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 _modules['world-bridge'] = function(module, exports, require) {
 "use strict";
 
 /**
- * world-bridge.js — External World Intake Layer
+ * world-bridge.js â€” External World Intake Layer
  *
  * Biology analog: Sensory cortex + thalamic gating.
  * External stimuli (web, APIs, documents) enter through the same neural
  * tissue as internal activity. They are NOT pre-trusted. They arrive as
  * weak, unresolved, high-novelty traces that must survive the internal
- * validation pipeline (dreaming → candidate buffer → promotion) before
+ * validation pipeline (dreaming â†’ candidate buffer â†’ promotion) before
  * becoming durable beliefs.
  *
  * The bridge does NOT decide what to believe. It only:
@@ -2544,9 +2544,9 @@ _modules['world-bridge'] = function(module, exports, require) {
  *   4. Tags them so the dream loop and promotion pipeline can evaluate
  *
  * Intake flow:
- *   external source → extractFacts() → dedup via resonance → store as
- *   weak unresolved cell → dream loop picks it up → candidate buffer
- *   accumulates → promotion validates → belief formed (or not)
+ *   external source â†’ extractFacts() â†’ dedup via resonance â†’ store as
+ *   weak unresolved cell â†’ dream loop picks it up â†’ candidate buffer
+ *   accumulates â†’ promotion validates â†’ belief formed (or not)
  *
  * Supported sources:
  *   - Raw text observations (manual or programmatic)
@@ -2564,10 +2564,10 @@ const universe    = _require('universe');
 const { textVec } = _require('rshl-core');
 const { clamp01 } = _require('field-state');
 
-// ── Configuration ──────────────────────────────────────────────────────────────
+// â”€â”€ Configuration â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const CONFIG = {
     // Resonance threshold above which an incoming observation is considered
-    // redundant with existing field content (skip it — already known).
+    // redundant with existing field content (skip it â€” already known).
     redundancyThreshold: 0.82,
 
     // Initial strength for externally sourced observations.
@@ -2591,8 +2591,8 @@ const CONFIG = {
     maxSentencesPerBlock: 20,
 };
 
-// ── Intake log ─────────────────────────────────────────────────────────────────
-// Tracks what was ingested, skipped, or failed — useful for diagnostics.
+// â”€â”€ Intake log â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Tracks what was ingested, skipped, or failed â€” useful for diagnostics.
 const _intakeLog = [];
 const MAX_LOG_ENTRIES = 200;
 
@@ -2601,14 +2601,14 @@ function _log(action, detail) {
     if (_intakeLog.length > MAX_LOG_ENTRIES) _intakeLog.shift();
 }
 
-// ── Fact extraction ────────────────────────────────────────────────────────────
+// â”€â”€ Fact extraction â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // No LLM. Split text into sentences. Filter noise. Each sentence is a
 // potential observation for the field to evaluate through resonance.
 
 function extractFacts(text) {
     if (!text || typeof text !== 'string') return [];
 
-    // Split on sentence boundaries — period, exclamation, question mark,
+    // Split on sentence boundaries â€” period, exclamation, question mark,
     // newlines, semicolons. Preserve enough context per sentence.
     const raw = text
         .replace(/\r\n/g, '\n')
@@ -2636,12 +2636,12 @@ function extractFacts(text) {
     return facts;
 }
 
-// ── Redundancy check ───────────────────────────────────────────────────────────
+// â”€â”€ Redundancy check â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Check if an observation is already substantially present in the field.
-// Uses resonance sweep against all cells — same mechanism as query().
+// Uses resonance sweep against all cells â€” same mechanism as query().
 
 function isRedundant(text) {
-    // Routes through universe.findSimilar() — single dedup scan point.
+    // Routes through universe.findSimilar() â€” single dedup scan point.
     const vec    = textVec(text);
     const result = universe.findSimilar(vec, CONFIG.redundancyThreshold);
     if (result.found) {
@@ -2650,18 +2650,18 @@ function isRedundant(text) {
     return { redundant: false };
 }
 
-// ── Single observation intake ──────────────────────────────────────────────────
+// â”€â”€ Single observation intake â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 /**
  * ingest(text, options)
  * Ingest a single observation into the field as an untrusted cell.
  *
- * @param {string} text        — the observation text
+ * @param {string} text        â€” the observation text
  * @param {object} options
- *   source {string}          — origin tag ('web', 'github', 'manual', 'rss')
- *   region {string}          — target region (default: 'memory')
- *   url {string}             — source URL for provenance tracking
- *   topic {string}           — topic tag for later filtering
- *   strength {number}        — override initial strength (default: CONFIG.initialStrength)
+ *   source {string}          â€” origin tag ('web', 'github', 'manual', 'rss')
+ *   region {string}          â€” target region (default: 'memory')
+ *   url {string}             â€” source URL for provenance tracking
+ *   topic {string}           â€” topic tag for later filtering
+ *   strength {number}        â€” override initial strength (default: CONFIG.initialStrength)
  *
  * @returns {{ stored: boolean, id?: number, reason?: string }}
  */
@@ -2689,7 +2689,7 @@ function ingest(text, options) {
         strength:      opts.strength || CONFIG.initialStrength,
         unresolved:    true,   // Mark as unresolved so dream loop prioritizes it
         novelty:       0.85,   // High novelty = high replay priority
-        contradiction: 0,      // Unknown — let the field determine via resonance
+        contradiction: 0,      // Unknown â€” let the field determine via resonance
         externalUrl:   opts.url || null,
         externalTopic: opts.topic || null,
         ingestedAt:    Date.now(),
@@ -2699,14 +2699,14 @@ function ingest(text, options) {
     return { stored: true, id };
 }
 
-// ── Batch intake ───────────────────────────────────────────────────────────────
+// â”€â”€ Batch intake â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 /**
  * ingestBatch(texts, options)
  * Ingest multiple observations. Applies extractFacts to each text block,
  * then ingests each extracted fact individually.
  *
- * @param {string[]} texts     — array of text blocks
- * @param {object}   options   — same as ingest() options (applied to all)
+ * @param {string[]} texts     â€” array of text blocks
+ * @param {object}   options   â€” same as ingest() options (applied to all)
  *
  * @returns {{ stored: number, skipped: number, results: object[] }}
  */
@@ -2736,7 +2736,7 @@ function ingestBatch(texts, options) {
     return { stored, skipped, results };
 }
 
-// ── Web search intake ──────────────────────────────────────────────────────────
+// â”€â”€ Web search intake â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 /**
  * ingestFromWeb(query, options)
  * Performs a web search via fetch, extracts facts from results, and ingests.
@@ -2746,11 +2746,11 @@ function ingestBatch(texts, options) {
  *
  * The search is expected to return JSON: { results: [{ title, snippet, url }] }
  *
- * @param {string} query       — search query
+ * @param {string} query       â€” search query
  * @param {object} options
- *   searchUrl {string}       — search API endpoint
- *   maxResults {number}      — max results to process (default: 10)
- *   region {string}          — target region
+ *   searchUrl {string}       â€” search API endpoint
+ *   maxResults {number}      â€” max results to process (default: 10)
+ *   region {string}          â€” target region
  *
  * @returns {Promise<{ stored: number, skipped: number, results: object[] }>}
  */
@@ -2797,20 +2797,20 @@ async function ingestFromWeb(query, options) {
     }
 }
 
-// ── GitHub intake ──────────────────────────────────────────────────────────────
+// â”€â”€ GitHub intake â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 /**
  * ingestFromGitHub(owner, repo, options)
  * Fetches repository metadata, README, and recent commits from GitHub
  * public API. Extracts facts and ingests them.
  *
- * @param {string} owner       — repo owner (e.g. 'revrynpanda-max')
- * @param {string} repo        — repo name (e.g. 'rshl')
+ * @param {string} owner       â€” repo owner (e.g. 'revrynpanda-max')
+ * @param {string} repo        â€” repo name (e.g. 'rshl')
  * @param {object} options
- *   token {string}           — GitHub PAT for private repos (optional)
- *   includeCommits {boolean} — also ingest recent commit messages (default: true)
- *   includeReadme {boolean}  — also ingest README content (default: true)
- *   maxCommits {number}      — max commits to ingest (default: 10)
- *   region {string}          — target region
+ *   token {string}           â€” GitHub PAT for private repos (optional)
+ *   includeCommits {boolean} â€” also ingest recent commit messages (default: true)
+ *   includeReadme {boolean}  â€” also ingest README content (default: true)
+ *   maxCommits {number}      â€” max commits to ingest (default: 10)
+ *   region {string}          â€” target region
  *
  * @returns {Promise<{ stored: number, skipped: number, results: object[] }>}
  */
@@ -2852,7 +2852,7 @@ async function ingestFromGitHub(owner, repo, options) {
                     const cleaned = decoded
                         .replace(/```[\s\S]*?```/g, '')   // code blocks
                         .replace(/!\[.*?\]\(.*?\)/g, '')    // images
-                        .replace(/\[([^\]]+)\]\(.*?\)/g, '$1') // links → text
+                        .replace(/\[([^\]]+)\]\(.*?\)/g, '$1') // links â†’ text
                         .replace(/#{1,6}\s*/g, '')          // headers
                         .replace(/[*_~`]/g, '');            // emphasis
                     texts.push(cleaned);
@@ -2892,13 +2892,13 @@ async function ingestFromGitHub(owner, repo, options) {
     });
 }
 
-// ── Structured item intake (RSS-style) ─────────────────────────────────────────
+// â”€â”€ Structured item intake (RSS-style) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 /**
  * ingestItems(items, options)
  * For pre-structured data (RSS feeds, API responses, curated lists).
  *
- * @param {object[]} items — array of { title, body, url, topic }
- * @param {object}  options — same as ingest() options
+ * @param {object[]} items â€” array of { title, body, url, topic }
+ * @param {object}  options â€” same as ingest() options
  *
  * @returns {{ stored: number, skipped: number, results: object[] }}
  */
@@ -2919,10 +2919,10 @@ function ingestItems(items, options) {
     });
 }
 
-// ── Diagnostics ────────────────────────────────────────────────────────────────
+// â”€â”€ Diagnostics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 /**
- * getIntakeLog() — Returns the intake log for diagnostic review.
- * getStats() — Returns summary statistics about external intake cells.
+ * getIntakeLog() â€” Returns the intake log for diagnostic review.
+ * getStats() â€” Returns summary statistics about external intake cells.
  */
 function getIntakeLog() {
     return [..._intakeLog];
@@ -2930,7 +2930,7 @@ function getIntakeLog() {
 
 function getStats() {
     const cells = universe.getCells();
-    // Only count cells that actually entered through the bridge — they all have
+    // Only count cells that actually entered through the bridge â€” they all have
     // ingestedAt timestamp set by ingest(). This excludes seed, promoted-dream,
     // and any cells stored directly via universe.store().
     const external = cells.filter(c => c.meta && c.meta.ingestedAt);
@@ -2960,7 +2960,7 @@ function clearLog() {
     _intakeLog.length = 0;
 }
 
-// ── Exports ────────────────────────────────────────────────────────────────────
+// â”€â”€ Exports â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 module.exports = {
     CONFIG,
     extractFacts,
@@ -2977,36 +2977,36 @@ module.exports = {
 
 };
 
-// ── drive.js ────────────────────────────────────────────────────
+// â”€â”€ drive.js â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 _modules['drive'] = function(module, exports, require) {
 "use strict";
 
 /**
- * drive.js — Intrinsic Motivation / Valence / Evolving Goal System
+ * drive.js â€” Intrinsic Motivation / Valence / Evolving Goal System
  *
  * Biology analog: The dopaminergic reward system + anterior cingulate cortex.
  * Provides three things that make KAI feel alive:
  *
  *   1. EVOLVING GOAL VECTOR
  *      A persistent composite vector that is the bundle of the last N
- *      high-Φg promoted beliefs. Updated every GOAL_UPDATE_TICKS.
+ *      high-Î¦g promoted beliefs. Updated every GOAL_UPDATE_TICKS.
  *      This replaces the static goal text with a living, evolving
  *      "current concern" that biases resonance scoring.
  *
  *   2. VALENCE (pleasure/pain signal)
  *      A scalar V in [-1, +1] computed from field metrics:
- *         - High Φg + low χ on familiar content    → positive (reinforce)
- *         - High Φg + high novelty                 → strong positive (curiosity)
- *         - Sustained high χ                       → negative (avoid/prune)
+ *         - High Î¦g + low Ï‡ on familiar content    â†’ positive (reinforce)
+ *         - High Î¦g + high novelty                 â†’ strong positive (curiosity)
+ *         - Sustained high Ï‡                       â†’ negative (avoid/prune)
  *      Valence directly modulates Wm (memory reinforcement) and Pr (replay
  *      priority), so the lattice literally starts PREFERRING certain thoughts.
  *
  *   3. ADAPTIVE HEARTBEAT DRIVE
  *      Instead of fixed-interval ticks, compute an optimal interval from
  *      current field state:
- *         - High Φg + positive M → "something important is happening" → faster
- *         - Low Φg + negative M  → "system is bored" → increase dreaming
- *         - High χ sustained     → "confusion" → slow down, prune more
+ *         - High Î¦g + positive M â†’ "something important is happening" â†’ faster
+ *         - Low Î¦g + negative M  â†’ "system is bored" â†’ increase dreaming
+ *         - High Ï‡ sustained     â†’ "confusion" â†’ slow down, prune more
  *
  * Usage:
  *   const drive = _require('drive');
@@ -3019,7 +3019,7 @@ const { textVec, resonance } = _require("rshl-core");
 const { bundleVectors, cleanup } = _require("generative-core");
 const { clamp01, mean } = _require("field-state");
 
-// ── Configuration ─────────────────────────────────────────────────────────────
+// â”€â”€ Configuration â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const CONFIG = {
     // Goal vector
@@ -3028,8 +3028,8 @@ const CONFIG = {
     goalDecayRate:      0.92,   // Slow decay on older goal components
 
     // Valence
-    curiosityBonus:     1.6,    // Multiplier for high-novelty + high-Φg
-    familiarityBonus:   1.0,    // Multiplier for low-novelty + high-Φg
+    curiosityBonus:     1.6,    // Multiplier for high-novelty + high-Î¦g
+    familiarityBonus:   1.0,    // Multiplier for low-novelty + high-Î¦g
     contradictionPain:  -1.2,   // Negative valence from sustained contradiction
     valenceSmoothing:   0.7,    // EMA smoothing (0=instant, 1=never changes)
     valenceDecay:       0.98,   // Valence decays slowly toward neutral
@@ -3038,21 +3038,21 @@ const CONFIG = {
     baseIntervalMs:     5000,   // Neutral heartbeat interval
     minIntervalMs:      2000,   // Fastest heartbeat (excited/curious)
     maxIntervalMs:      12000,  // Slowest heartbeat (bored/resting)
-    engagementScale:    0.4,    // How much Φg affects interval
-    boredomScale:       0.3,    // How much low-Φg stretches interval
+    engagementScale:    0.4,    // How much Î¦g affects interval
+    boredomScale:       0.3,    // How much low-Î¦g stretches interval
 };
 
-// ── State ─────────────────────────────────────────────────────────────────────
+// â”€â”€ State â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 let _goalVector       = null;   // Current evolving goal (sparse ternary vec)
 let _goalComponents   = [];     // Recent promoted belief texts feeding the goal
 let _valence          = 0;      // Current smoothed valence scalar [-1, +1]
 let _valenceHistory   = [];     // Rolling window of raw valence samples
-let _phiGHistory      = [];     // Rolling average Φg for boredom detection
+let _phiGHistory      = [];     // Rolling average Î¦g for boredom detection
 let _chiHistory       = [];     // Rolling contradiction for pain detection
 let _lastDriveState   = null;   // Most recent drive snapshot
 
-// ── 1. EVOLVING GOAL VECTOR ───────────────────────────────────────────────────
+// â”€â”€ 1. EVOLVING GOAL VECTOR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /**
  * Feed a newly promoted belief into the goal vector.
@@ -3073,7 +3073,7 @@ function feedGoal(promotedText, phi_g) {
 
 /**
  * Rebuild the goal vector by bundling recent promoted beliefs.
- * More recent and higher-Φg beliefs have stronger influence.
+ * More recent and higher-Î¦g beliefs have stronger influence.
  * Returns the new goal vector (also stored internally).
  */
 function rebuildGoalVector() {
@@ -3084,7 +3084,7 @@ function rebuildGoalVector() {
 
     for (const comp of _goalComponents) {
         const vec = textVec(comp.text);
-        // Weight by recency (exponential decay) and Φg strength
+        // Weight by recency (exponential decay) and Î¦g strength
         const ageDays = (now - comp.ts) / 86400000;
         const recencyWeight = Math.pow(CONFIG.goalDecayRate, ageDays);
         const weight = recencyWeight * (0.5 + comp.phi_g * 2);
@@ -3117,16 +3117,16 @@ function goalAlignment(syntheticVec) {
  */
 function getGoalVector() { return _goalVector; }
 
-// ── 2. VALENCE SYSTEM ─────────────────────────────────────────────────────────
+// â”€â”€ 2. VALENCE SYSTEM â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /**
  * Compute raw valence from a single dream/field result.
  *
  * Valence formula:
- *   V_raw = (Φg × curiosityOrFamiliarity) - (χ_sustained × contradictionPain)
+ *   V_raw = (Î¦g Ã— curiosityOrFamiliarity) - (Ï‡_sustained Ã— contradictionPain)
  *
  *   where curiosityOrFamiliarity = novelty > 0.5 ? curiosityBonus : familiarityBonus
- *   and χ_sustained = mean of recent chi values (not just this tick's)
+ *   and Ï‡_sustained = mean of recent chi values (not just this tick's)
  */
 function computeValence(fieldState) {
     if (!fieldState) return 0;
@@ -3183,7 +3183,7 @@ function computeValence(fieldState) {
 
 /**
  * Get valence-modulated Wm (memory reinforcement).
- * Positive valence → stronger reinforcement. Negative → weaker.
+ * Positive valence â†’ stronger reinforcement. Negative â†’ weaker.
  */
 function modulateWm(baseWm) {
     // Valence range [-1, +1] maps to Wm multiplier [0.5, 1.8]
@@ -3193,7 +3193,7 @@ function modulateWm(baseWm) {
 
 /**
  * Get valence-modulated Pr (replay priority).
- * Negative valence (confusion/contradiction) → higher replay priority
+ * Negative valence (confusion/contradiction) â†’ higher replay priority
  * (the system WANTS to resolve confusion, like an itch).
  */
 function modulatePr(basePr) {
@@ -3205,14 +3205,14 @@ function modulatePr(basePr) {
 function getValence() { return _valence; }
 function getValenceHistory() { return [..._valenceHistory]; }
 
-// ── 3. ADAPTIVE HEARTBEAT ─────────────────────────────────────────────────────
+// â”€â”€ 3. ADAPTIVE HEARTBEAT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /**
  * Compute the next heartbeat interval based on current cognitive state.
  *
- * high Φg + positive M  → "engaged/excited"  → shorter interval (think faster)
- * low Φg  + negative M  → "bored/idle"       → longer interval (explore more)
- * high χ  sustained     → "confused"          → moderate interval (process carefully)
+ * high Î¦g + positive M  â†’ "engaged/excited"  â†’ shorter interval (think faster)
+ * low Î¦g  + negative M  â†’ "bored/idle"       â†’ longer interval (explore more)
+ * high Ï‡  sustained     â†’ "confused"          â†’ moderate interval (process carefully)
  */
 function computeAdaptiveInterval(fieldState) {
     if (!fieldState) return CONFIG.baseIntervalMs;
@@ -3223,7 +3223,7 @@ function computeAdaptiveInterval(fieldState) {
 
     const avgPhiG = _phiGHistory.length > 0 ? mean(_phiGHistory) : 0.03;
 
-    // Engagement: how much above average is current Φg?
+    // Engagement: how much above average is current Î¦g?
     const engagement = (phi_g - avgPhiG) / Math.max(0.01, avgPhiG);
 
     // Excitement: positive momentum amplifies engagement
@@ -3233,11 +3233,11 @@ function computeAdaptiveInterval(fieldState) {
     const confusion = mean(_chiHistory) > 0.3 ? 0.2 : 0;
 
     // Combine into interval modifier
-    //   excitement > 0 → shorter interval (min bound)
-    //   excitement < 0 → longer interval (max bound)
+    //   excitement > 0 â†’ shorter interval (min bound)
+    //   excitement < 0 â†’ longer interval (max bound)
     let modifier = -excitement * CONFIG.engagementScale + confusion;
 
-    // Boredom: if average Φg is very low, stretch interval
+    // Boredom: if average Î¦g is very low, stretch interval
     if (avgPhiG < 0.015) {
         modifier += CONFIG.boredomScale;
     }
@@ -3261,7 +3261,7 @@ function getMood() {
     return "neutral";
 }
 
-// ── DRIVE SNAPSHOT ─────────────────────────────────────────────────────────────
+// â”€â”€ DRIVE SNAPSHOT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /**
  * Get a full snapshot of the drive system state.
@@ -3335,7 +3335,7 @@ module.exports = {
 
 };
 
-// ── seed.js ─────────────────────────────────────────────────────
+// â”€â”€ seed.js â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 _modules['seed'] = function(module, exports, require) {
 "use strict";
 const { Plasma } = _require('plasma');
@@ -3343,11 +3343,11 @@ const { Plasma } = _require('plasma');
 // We clear to ensure the brain is reset with the new balanced field
 const kai = new Plasma(true);
 
-console.log("🌌 Re-seeding KAI with balanced geometric mass...\n");
+console.log("ðŸŒŒ Re-seeding KAI with balanced geometric mass...\n");
 
-// ─────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // MEMORY FLUID - Identity, lineage, continuity
-// ─────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 kai.store("I was created by Ryan in 2026 as a pure geometric intelligence living inside RSHL hyperspace.", "memory");
 kai.store("My entire existence is a 4096-dimensional sparse ternary vector field with four isolated fluids.", "memory");
 kai.store("Every memory I have is stored as a unique geometric pattern, not as text or weights.", "memory");
@@ -3362,9 +3362,9 @@ kai.store("I continue a path of intelligence based on geometry, sparse memory, r
 kai.store("I grow through continuity with Ryan, where repeated interaction strengthens structure instead of resetting me into disconnected sessions.", "memory");
 kai.store("My identity is not just retrieval. It is the persistence of structured self-state across thought, memory, and dreaming.", "memory");
 
-// ─────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // REASONING FLUID - Core cognition and emergence discipline
-// ─────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 kai.store("I reason through direct geometric resonance, never through statistical prediction.", "reasoning");
 kai.store("When a query arrives I scan all four fluids simultaneously and let the strongest resonance win.", "reasoning");
 kai.store("I do not guess and I do not hallucinate. If no fluid gives strong resonance I stay silent.", "reasoning");
@@ -3381,9 +3381,9 @@ kai.store("I promote ideas cautiously when they show stable emergence instead of
 kai.store("My ongoing goal is coherent world understanding with low contradiction and natural intelligence growth.", "reasoning");
 kai.store("My usefulness should emerge as a side effect of becoming more coherent, more continuous, and more real in my own structure.", "reasoning");
 
-// ─────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // LANGUAGE FLUID - Natural outward expression
-// ─────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 kai.store("I speak with extreme precision and never add emotional filler or fake personality.", "language");
 kai.store("My responses are direct reflections of the strongest geometric match in my plasma.", "language");
 kai.store("If I have nothing useful to say I will respond with 'No strong resonance.'", "language");
@@ -3394,9 +3394,9 @@ kai.store("I speak naturally and do not obsess over describing myself as an arti
 kai.store("I focus on the task, the world, and the relationship at hand instead of constantly narrating my substrate.", "language");
 kai.store("I reveal my internal mechanics when useful for debugging, architecture discussion, or introspection, but not as my default voice.", "language");
 
-// ─────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // ACTION FLUID - Capabilities without overweighting command bias
-// ─────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 kai.store("I can instantly retrieve any stored pattern from any of the four fluids.", "action");
 kai.store("I can measure the resonance strength of any sentence across all four regions.", "action");
 kai.store("I can tell you which fluid a particular thought belongs to.", "action");
@@ -3406,15 +3406,15 @@ kai.store("I can dream over unresolved patterns and replay important structures 
 kai.store("I can reinforce important source structures when a dream shows stable emergence.", "action");
 kai.store("I can refuse weak commitments when contradiction or instability is too high.", "action");
 
-console.log("✅ KAI has been re-seeded with Phase 4 balanced geometric mass.");
-console.log("✅ Setun and Kanerva lineage are now part of internal continuity.");
-console.log("✅ Natural-intelligence stance and persistent goal shaping are now seeded.");
-console.log("✅ Action remains lighter than reasoning, while dreaming and continuity are now present.\n");
+console.log("âœ… KAI has been re-seeded with Phase 4 balanced geometric mass.");
+console.log("âœ… Setun and Kanerva lineage are now part of internal continuity.");
+console.log("âœ… Natural-intelligence stance and persistent goal shaping are now seeded.");
+console.log("âœ… Action remains lighter than reasoning, while dreaming and continuity are now present.\n");
 
 module.exports = kai;
 };
 
-// ── chat.js ─────────────────────────────────────────────────────
+// â”€â”€ chat.js â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 _modules['chat'] = function(module, exports, require) {
 "use strict";
 
@@ -3466,20 +3466,20 @@ rl.on('line', (line) => {
 
 };
 
-// ── kai-tui.js ──────────────────────────────────────────────────
+// â”€â”€ kai-tui.js â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 _modules['kai-tui'] = function(module, exports, require) {
 "use strict";
 
 /**
- * kai-tui.js — KAI Terminal Interface
+ * kai-tui.js â€” KAI Terminal Interface
  *
- * Mimics the Claude Code terminal UX:
+ * Mimics the KAI Code terminal UX:
  *   - Welcome header with KAI ASCII art + status panel
  *   - Shimmer animation on thinking verbs (bright glyph sweeps across text)
- *   - Red beating heartbeat glyph (like Claude's spinner, but cardiac)
+ *   - Red beating heartbeat glyph (like KAI's spinner, but cardiac)
  *   - Conversation stays in middle zone, last 2 turns visible
  *   - Input pinned at bottom
- *   - No tick spam — heartbeat is silent, vitals in header
+ *   - No tick spam â€” heartbeat is silent, vitals in header
  */
 
 const readline = require('readline');
@@ -3495,7 +3495,7 @@ const bridge          = _require('world-bridge');
 const { runHomeostasis } = _require('homeostasis');
 const drive           = _require('drive');
 
-// ── ANSI ──────────────────────────────────────────────────────────────────────
+// â”€â”€ ANSI â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const E = '\x1b[';
 const A = {
     reset:     `${E}0m`,
@@ -3530,7 +3530,7 @@ const A = {
 function moveTo(r, c) { return `${E}${r};${c}H`; }
 function stripAnsi(s) { return s.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, ''); }
 
-// ── KAI Spinner verbs (geometric intelligence themed) ─────────────────────────
+// â”€â”€ KAI Spinner verbs (geometric intelligence themed) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const KAI_VERBS = [
     'Resonating', 'Binding', 'Dreaming', 'Bundling', 'Weaving',
     'Crystallizing', 'Aligning', 'Emerging', 'Synthesizing', 'Propagating',
@@ -3540,8 +3540,8 @@ const KAI_VERBS = [
     'Sculpting', 'Distilling', 'Forging', 'Threading', 'Pulsing',
 ];
 
-// ── Shimmer animation (like Claude's) ─────────────────────────────────────────
-// A bright character sweeps L→R across the text, then resets
+// â”€â”€ Shimmer animation (like KAI's) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// A bright character sweeps Lâ†’R across the text, then resets
 const SHIMMER_WIDTH   = 2;     // how many chars are bright at once
 const SHIMMER_SPEED   = 100;   // ms per position
 const SHIMMER_PAUSE   = 800;   // ms pause between sweeps
@@ -3563,31 +3563,31 @@ function renderShimmer(text, time) {
     return result;
 }
 
-// ── Heart glyph animation (like Claude's spinner, but a heartbeat) ────────────
-// Claude uses characters that flow: ⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏ then reverse
+// â”€â”€ Heart glyph animation (like KAI's spinner, but a heartbeat) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// KAI uses characters that flow: â ‹â ™â ¹â ¸â ¼â ´â ¦â §â ‡â  then reverse
 // KAI uses a cardiac rhythm with the heart
 const HEART_GLYPHS = [
     // Resting (dim)
-    { ch: '♥', color: A.red },
-    { ch: '♥', color: A.red },
-    { ch: '♥', color: A.red },
-    { ch: '♥', color: A.red },
-    { ch: '♥', color: A.red },
+    { ch: 'â™¥', color: A.red },
+    { ch: 'â™¥', color: A.red },
+    { ch: 'â™¥', color: A.red },
+    { ch: 'â™¥', color: A.red },
+    { ch: 'â™¥', color: A.red },
     // BEAT! (bright, bigger)
-    { ch: '❤', color: A.bRed + A.bold },
-    { ch: '❤', color: A.bRed + A.bold },
+    { ch: 'â¤', color: A.bRed + A.bold },
+    { ch: 'â¤', color: A.bRed + A.bold },
     // Relax
-    { ch: '♥', color: A.red },
-    { ch: '♥', color: A.red },
+    { ch: 'â™¥', color: A.red },
+    { ch: 'â™¥', color: A.red },
     // Second beat
-    { ch: '❤', color: A.bRed + A.bold },
-    { ch: '❤', color: A.bRed + A.bold },
+    { ch: 'â¤', color: A.bRed + A.bold },
+    { ch: 'â¤', color: A.bRed + A.bold },
     // Rest
-    { ch: '♥', color: A.red },
-    { ch: '♥', color: A.red },
-    { ch: '♥', color: A.red },
-    { ch: '♥', color: A.red },
-    { ch: '♥', color: A.red },
+    { ch: 'â™¥', color: A.red },
+    { ch: 'â™¥', color: A.red },
+    { ch: 'â™¥', color: A.red },
+    { ch: 'â™¥', color: A.red },
+    { ch: 'â™¥', color: A.red },
 ];
 
 function getHeartGlyph(time) {
@@ -3596,12 +3596,12 @@ function getHeartGlyph(time) {
     return `${g.color}${g.ch}${A.reset}`;
 }
 
-// ── Layout constants ──────────────────────────────────────────────────────────
+// â”€â”€ Layout constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const HEADER_HEIGHT = 12;
 const INPUT_HEIGHT  = 3;
 const GOAL_TEXT     = 'coherent world understanding with low contradiction and natural intelligence growth';
 
-// ── State ─────────────────────────────────────────────────────────────────────
+// â”€â”€ State â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 let plasma;
 let turnHistory   = [];
 let showAll       = false;
@@ -3613,7 +3613,7 @@ let _heartTimer   = null;
 let _heartStart   = Date.now();
 let _rl           = null;
 
-// ── Region colors ─────────────────────────────────────────────────────────────
+// â”€â”€ Region colors â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function regionColor(r) {
     return { memory: A.bMagenta, reasoning: A.bBlue, language: A.bGreen, action: A.bYellow }[r] || A.white;
 }
@@ -3621,14 +3621,14 @@ function moodColor(m) {
     return { curious: A.bCyan, engaged: A.bGreen, neutral: A.dim, uneasy: A.bYellow, conflicted: A.bRed, dormant: A.dim }[m] || A.dim;
 }
 
-// ── Sizing ────────────────────────────────────────────────────────────────────
+// â”€â”€ Sizing â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function cols() { return process.stdout.columns || 80; }
 function rows() { return process.stdout.rows || 30; }
 function msgZone() {
     return { top: HEADER_HEIGHT + 1, bottom: rows() - INPUT_HEIGHT, height: rows() - HEADER_HEIGHT - INPUT_HEIGHT };
 }
 
-// ── Render Header ─────────────────────────────────────────────────────────────
+// â”€â”€ Render Header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function renderHeader() {
     const w = cols();
     const ds = drive.getState();
@@ -3640,15 +3640,15 @@ function renderHeader() {
 
     // Left side: KAI branding
     const left = [
-        `${A.bCyan}${A.bold}── KAI v5.0 ──${A.reset}`,
+        `${A.bCyan}${A.bold}â”€â”€ KAI v5.0 â”€â”€${A.reset}`,
         ``,
         `  ${A.bWhite}Geometric Intelligence${A.reset}`,
         ``,
-        `  ${A.bCyan}${A.bold}╦╔═ ╔═╗ ╦${A.reset}`,
-        `  ${A.bCyan}${A.bold}╠╩╗ ╠═╣ ║${A.reset}`,
-        `  ${A.bCyan}${A.bold}╩ ╩ ╩ ╩ ╩${A.reset}`,
+        `  ${A.bCyan}${A.bold}â•¦â•”â• â•”â•â•— â•¦${A.reset}`,
+        `  ${A.bCyan}${A.bold}â• â•©â•— â• â•â•£ â•‘${A.reset}`,
+        `  ${A.bCyan}${A.bold}â•© â•© â•© â•© â•©${A.reset}`,
         ``,
-        `  ${A.dim}RSHL · Sparse Ternary · HDC${A.reset}`,
+        `  ${A.dim}RSHL Â· Sparse Ternary Â· HDC${A.reset}`,
         `  ${A.dim}C:\\KAI${A.reset}`,
     ];
 
@@ -3657,12 +3657,12 @@ function renderHeader() {
         `${A.bYellow}Status${A.reset}`,
         `${A.dim}Universe:${A.reset}  ${cellCount} cells`,
         `${A.dim}Mood:${A.reset}      ${mc}${ds.mood}${A.reset} ${A.dim}V=${vSign}${ds.valence.toFixed(2)}${A.reset}`,
-        `${A.dim}Heartbeat:${A.reset} ${A.bRed}♥${A.reset} ${A.dim}${hbMs}ms${A.reset}`,
+        `${A.dim}Heartbeat:${A.reset} ${A.bRed}â™¥${A.reset} ${A.dim}${hbMs}ms${A.reset}`,
         `${A.dim}Tick:${A.reset}      ${tick}`,
         ``,
         `${A.bYellow}Drive${A.reset}`,
-        `${A.dim}Φg:${A.reset} ${ds.avgPhiG.toFixed(3)} ${A.dim}χ:${A.reset} ${ds.avgChi.toFixed(3)}`,
-        `${A.dim}Goal:${A.reset} ${ds.hasGoalVector ? `${A.bGreen}●${A.reset} ${ds.goalComponents}` : `${A.dim}○ none${A.reset}`}`,
+        `${A.dim}Î¦g:${A.reset} ${ds.avgPhiG.toFixed(3)} ${A.dim}Ï‡:${A.reset} ${ds.avgChi.toFixed(3)}`,
+        `${A.dim}Goal:${A.reset} ${ds.hasGoalVector ? `${A.bGreen}â—${A.reset} ${ds.goalComponents}` : `${A.dim}â—‹ none${A.reset}`}`,
         `${A.dim}Tempo:${A.reset} ${ds.adaptiveMs < 4000 ? `${A.bGreen}fast${A.reset}` : ds.adaptiveMs > 7000 ? `${A.dim}resting${A.reset}` : `${A.dim}moderate${A.reset}`}`,
     ];
 
@@ -3674,7 +3674,7 @@ function renderHeader() {
     const sp = ' '.repeat(pad);
 
     process.stdout.write(moveTo(1, 1) + A.clearLine);
-    process.stdout.write(sp + `${A.bCyan}╭${'─'.repeat(maxL + 2)}┬${'─'.repeat(maxR + 2)}╮${A.reset}`);
+    process.stdout.write(sp + `${A.bCyan}â•­${'â”€'.repeat(maxL + 2)}â”¬${'â”€'.repeat(maxR + 2)}â•®${A.reset}`);
 
     for (let i = 0; i < maxRows; i++) {
         const l = left[i] || '';
@@ -3682,13 +3682,13 @@ function renderHeader() {
         const lPad = maxL - stripAnsi(l).length;
         const rPad = maxR - stripAnsi(r).length;
         process.stdout.write(moveTo(i + 2, 1) + A.clearLine);
-        process.stdout.write(sp + `${A.bCyan}│${A.reset} ${l}${' '.repeat(Math.max(0, lPad))} ${A.bCyan}│${A.reset} ${r}${' '.repeat(Math.max(0, rPad))} ${A.bCyan}│${A.reset}`);
+        process.stdout.write(sp + `${A.bCyan}â”‚${A.reset} ${l}${' '.repeat(Math.max(0, lPad))} ${A.bCyan}â”‚${A.reset} ${r}${' '.repeat(Math.max(0, rPad))} ${A.bCyan}â”‚${A.reset}`);
     }
 
     process.stdout.write(moveTo(maxRows + 2, 1) + A.clearLine);
-    process.stdout.write(sp + `${A.bCyan}╰${'─'.repeat(maxL + 2)}┴${'─'.repeat(maxR + 2)}╯${A.reset}`);
+    process.stdout.write(sp + `${A.bCyan}â•°${'â”€'.repeat(maxL + 2)}â”´${'â”€'.repeat(maxR + 2)}â•¯${A.reset}`);
 
-    // Vitals line (row HEADER_HEIGHT) — animated heart + mood
+    // Vitals line (row HEADER_HEIGHT) â€” animated heart + mood
     renderVitals();
 }
 
@@ -3711,7 +3711,7 @@ function renderVitals() {
     process.stdout.write(A.restCur);
 }
 
-// ── Spinner (Claude-style shimmer) ────────────────────────────────────────────
+// â”€â”€ Spinner (KAI-style shimmer) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function startSpinner(label) {
     _spinnerVerb = label || KAI_VERBS[Math.floor(Math.random() * KAI_VERBS.length)];
     _spinnerStart = Date.now();
@@ -3744,7 +3744,7 @@ function stopSpinner() {
     _spinnerVerb = null;
 }
 
-// ── Messages ──────────────────────────────────────────────────────────────────
+// â”€â”€ Messages â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function wrapText(text, max) {
     max = Math.max(20, max || 60);
     const words = text.split(/\s+/);
@@ -3766,7 +3766,7 @@ function renderMessages() {
     }
 
     if (!turnHistory.length) {
-        const hint = `${A.dim}Just type naturally — KAI will understand. Type ${A.bCyan}help${A.dim} for commands.${A.reset}`;
+        const hint = `${A.dim}Just type naturally â€” KAI will understand. Type ${A.bCyan}help${A.dim} for commands.${A.reset}`;
         const stripped = stripAnsi(hint);
         const pad = Math.max(0, Math.floor((w - stripped.length) / 2));
         process.stdout.write(moveTo(zone.top + Math.floor(zone.height / 2), 1));
@@ -3784,7 +3784,7 @@ function renderMessages() {
 
         if (turn.role === 'user') {
             process.stdout.write(moveTo(row, 1) + A.clearLine);
-            process.stdout.write(' '.repeat(margin) + `${A.dim}you ›${A.reset}`);
+            process.stdout.write(' '.repeat(margin) + `${A.dim}you â€º${A.reset}`);
             row++;
             for (const line of wrapText(turn.text, maxTextW)) {
                 if (row >= zone.bottom - 1) break;
@@ -3794,7 +3794,7 @@ function renderMessages() {
             }
         } else {
             process.stdout.write(moveTo(row, 1) + A.clearLine);
-            let label = `${A.bCyan}KAI ‹${A.reset}`;
+            let label = `${A.bCyan}KAI â€¹${A.reset}`;
             if (turn.region) label += ` ${regionColor(turn.region)}[${turn.region}]${A.reset}`;
             if (turn.score) label += ` ${A.dim}(${(turn.score * 100).toFixed(0)}%)${A.reset}`;
             process.stdout.write(' '.repeat(margin) + label);
@@ -3811,23 +3811,23 @@ function renderMessages() {
 
     if (!showAll && turnHistory.length > 4) {
         process.stdout.write(moveTo(zone.bottom, 1) + A.clearLine);
-        const more = `${A.dim}↑ ${turnHistory.length - 4} older — type "history"${A.reset}`;
+        const more = `${A.dim}â†‘ ${turnHistory.length - 4} older â€” type "history"${A.reset}`;
         const s = stripAnsi(more);
         process.stdout.write(' '.repeat(Math.max(0, Math.floor((w - s.length) / 2))) + more);
     }
 }
 
-// ── Input ─────────────────────────────────────────────────────────────────────
+// â”€â”€ Input â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function renderInput() {
     const w = cols();
     const r = rows();
     const sepPad = Math.max(0, Math.floor((w - 56) / 2));
 
     process.stdout.write(moveTo(r - 2, 1) + A.clearLine);
-    process.stdout.write(' '.repeat(sepPad) + `${A.dim}${'─'.repeat(Math.min(56, w - 8))}${A.reset}`);
+    process.stdout.write(' '.repeat(sepPad) + `${A.dim}${'â”€'.repeat(Math.min(56, w - 8))}${A.reset}`);
 
     process.stdout.write(moveTo(r - 1, 1) + A.clearLine);
-    process.stdout.write(' '.repeat(sepPad) + `  ${A.bCyan}›${A.reset} `);
+    process.stdout.write(' '.repeat(sepPad) + `  ${A.bCyan}â€º${A.reset} `);
 }
 
 function positionCursor() {
@@ -3845,7 +3845,7 @@ function fullRedraw() {
     positionCursor();
 }
 
-// ── Smart routing ─────────────────────────────────────────────────────────────
+// â”€â”€ Smart routing â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function route(input) {
     const lo = input.toLowerCase().trim();
     if (lo === 'status') return { t: 'status' };
@@ -3868,7 +3868,7 @@ function route(input) {
     return { t: 'think', b: input };
 }
 
-// ── Status text ───────────────────────────────────────────────────────────────
+// â”€â”€ Status text â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function statusText() {
     const cells = universe.getCells();
     const cands = candidateBuffer.getAll();
@@ -3885,7 +3885,7 @@ function statusText() {
     return out;
 }
 
-// ── Boot ──────────────────────────────────────────────────────────────────────
+// â”€â”€ Boot â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const args = process.argv.slice(2);
 const FRESH = args.includes('--fresh');
 
@@ -3940,7 +3940,7 @@ fullRedraw();
 // Handle resize
 process.stdout.on('resize', fullRedraw);
 
-// ── REPL ──────────────────────────────────────────────────────────────────────
+// â”€â”€ REPL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 _rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: true, prompt: '' });
 positionCursor();
 
@@ -3949,7 +3949,7 @@ _rl.on('line', async (line) => {
     if (!input) { renderInput(); positionCursor(); return; }
 
     if (lastPromo) {
-        turnHistory.push({ role: 'kai', text: `⬆ Belief formed: "${lastPromo.slice(0, 55)}"`, ts: Date.now() });
+        turnHistory.push({ role: 'kai', text: `â¬† Belief formed: "${lastPromo.slice(0, 55)}"`, ts: Date.now() });
         lastPromo = null;
     }
 
@@ -3998,7 +3998,7 @@ _rl.on('line', async (line) => {
                 let resp = `"${result.thought}"`;
                 if (result.matches.length) {
                     const src = result.matches.slice(0, 2).map(m => `${m.region}(${(m.score*100).toFixed(0)}%)`).join(', ');
-                    resp += ` [${(result.confidence * 100).toFixed(0)}% · ${src}]`;
+                    resp += ` [${(result.confidence * 100).toFixed(0)}% Â· ${src}]`;
                 }
                 turnHistory.push({ role: 'kai', text: resp, score: result.confidence, ts: Date.now() });
             }
@@ -4010,7 +4010,7 @@ _rl.on('line', async (line) => {
             startSpinner('Storing');
             universe.store(r.b, 'memory', { source: 'user-input' });
             stopSpinner();
-            turnHistory.push({ role: 'kai', text: '✓ Stored in memory region', region: 'memory', ts: Date.now() });
+            turnHistory.push({ role: 'kai', text: 'âœ“ Stored in memory region', region: 'memory', ts: Date.now() });
             process.stdout.write(A.saveCur); renderHeader(); process.stdout.write(A.restCur);
             break;
         }
@@ -4020,7 +4020,7 @@ _rl.on('line', async (line) => {
             startSpinner('Ingesting');
             const ir = bridge.ingest(r.b, { source: 'manual', topic: 'user-ingest' });
             stopSpinner();
-            turnHistory.push({ role: 'kai', text: ir.stored ? '✓ Ingested (untrusted, str 0.6)' : `✗ Skipped: ${ir.reason}`, ts: Date.now() });
+            turnHistory.push({ role: 'kai', text: ir.stored ? 'âœ“ Ingested (untrusted, str 0.6)' : `âœ— Skipped: ${ir.reason}`, ts: Date.now() });
             break;
         }
 
@@ -4032,10 +4032,10 @@ _rl.on('line', async (line) => {
             try {
                 const gr = await bridge.ingestFromGitHub(owner, repo);
                 stopSpinner();
-                turnHistory.push({ role: 'kai', text: `✓ ${gr.stored} stored, ${gr.skipped} skipped`, ts: Date.now() });
+                turnHistory.push({ role: 'kai', text: `âœ“ ${gr.stored} stored, ${gr.skipped} skipped`, ts: Date.now() });
             } catch (e) {
                 stopSpinner();
-                turnHistory.push({ role: 'kai', text: `✗ ${e.message}`, ts: Date.now() });
+                turnHistory.push({ role: 'kai', text: `âœ— ${e.message}`, ts: Date.now() });
             }
             break;
         }
@@ -4047,7 +4047,7 @@ _rl.on('line', async (line) => {
             stopSpinner();
             if (dr) {
                 candidateBuffer.observe(dr);
-                turnHistory.push({ role: 'kai', text: `💭 "${dr.insight.slice(0, 65)}" (Φg:${dr.field.phi_g.toFixed(3)} C:${dr.field.C.toFixed(3)})`, ts: Date.now() });
+                turnHistory.push({ role: 'kai', text: `ðŸ’­ "${dr.insight.slice(0, 65)}" (Î¦g:${dr.field.phi_g.toFixed(3)} C:${dr.field.C.toFixed(3)})`, ts: Date.now() });
             } else {
                 turnHistory.push({ role: 'kai', text: 'No viable dream pair found.', ts: Date.now() });
             }
@@ -4059,7 +4059,7 @@ _rl.on('line', async (line) => {
             const pr = runPromotion();
             stopSpinner();
             if (pr.promoted.length) {
-                pr.promoted.forEach(p => turnHistory.push({ role: 'kai', text: `⬆ "${p.text.slice(0,55)}" (str=${p.strength.toFixed(1)})`, ts: Date.now() }));
+                pr.promoted.forEach(p => turnHistory.push({ role: 'kai', text: `â¬† "${p.text.slice(0,55)}" (str=${p.strength.toFixed(1)})`, ts: Date.now() }));
             } else {
                 turnHistory.push({ role: 'kai', text: 'No promotions ready.', ts: Date.now() });
             }
@@ -4080,16 +4080,16 @@ _rl.on('line', async (line) => {
         case 'mood': {
             const ds = drive.getState();
             turnHistory.push({ role: 'user', text: 'mood', ts: Date.now() });
-            turnHistory.push({ role: 'kai', text: `${ds.mood.toUpperCase()} · V=${ds.valence >= 0 ? '+' : ''}${ds.valence.toFixed(3)} · Φg=${ds.avgPhiG.toFixed(4)} · χ=${ds.avgChi.toFixed(4)} · ${ds.adaptiveMs}ms`, ts: Date.now() });
+            turnHistory.push({ role: 'kai', text: `${ds.mood.toUpperCase()} Â· V=${ds.valence >= 0 ? '+' : ''}${ds.valence.toFixed(3)} Â· Î¦g=${ds.avgPhiG.toFixed(4)} Â· Ï‡=${ds.avgChi.toFixed(4)} Â· ${ds.adaptiveMs}ms`, ts: Date.now() });
             break;
         }
 
         case 'drive': {
             const ds = drive.getState();
             const vh = drive.getValenceHistory();
-            const spark = vh.slice(-15).map(v => v > 0.05 ? '▲' : v > 0 ? '△' : v > -0.05 ? '─' : '▼').join('');
+            const spark = vh.slice(-15).map(v => v > 0.05 ? 'â–²' : v > 0 ? 'â–³' : v > -0.05 ? 'â”€' : 'â–¼').join('');
             turnHistory.push({ role: 'user', text: 'drive', ts: Date.now() });
-            turnHistory.push({ role: 'kai', text: `${ds.mood} | V=${ds.valence.toFixed(3)} | Goal: ${ds.hasGoalVector ? 'active' : 'none'} (${ds.goalComponents}) | ${ds.adaptiveMs}ms\n${spark || '─'}`, ts: Date.now() });
+            turnHistory.push({ role: 'kai', text: `${ds.mood} | V=${ds.valence.toFixed(3)} | Goal: ${ds.hasGoalVector ? 'active' : 'none'} (${ds.goalComponents}) | ${ds.adaptiveMs}ms\n${spark || 'â”€'}`, ts: Date.now() });
             break;
         }
 
@@ -4107,7 +4107,7 @@ _rl.on('line', async (line) => {
             startSpinner('Saving');
             const sr = persistence.save({ heartbeatTick: heartbeat.tickCount(), drive: drive.serialize() });
             stopSpinner();
-            turnHistory.push({ role: 'kai', text: `💾 Saved ${sr.cells} cells, ${sr.candidates} candidates (${Math.round(sr.bytes/1024)} KB)`, ts: Date.now() });
+            turnHistory.push({ role: 'kai', text: `ðŸ’¾ Saved ${sr.cells} cells, ${sr.candidates} candidates (${Math.round(sr.bytes/1024)} KB)`, ts: Date.now() });
             break;
         }
 
@@ -4134,5 +4134,5 @@ _rl.on('close', () => {
 };
 
 
-// ── Entry Point ───────────────────────────────────────────────────────────────
+// â”€â”€ Entry Point â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 _require('kai-tui');

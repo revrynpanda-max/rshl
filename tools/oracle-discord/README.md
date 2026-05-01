@@ -1,4 +1,4 @@
-# Oracle Discord Gateway
+﻿# Oracle Discord Gateway
 
 Minimal Ryan-only Discord bridge for the local KAI Oracle server.
 
@@ -14,18 +14,18 @@ The bot is intentionally dumb:
 - `oracle help` shows the phone commands.
 - `oracle status` shows the current Oracle session status.
 - `kai hello` talks directly to KAI.
-- `claude ...`, `gemini ...`, `gpt ...`, `groq ...`, `researcher ...`, `analyst ...`, and `leo ...` route to those Oracle participants when their backend is configured.
+- `kai ...`, `gemini ...`, `gpt ...`, `groq ...`, `researcher ...`, `analyst ...`, and `leo ...` route to those Oracle participants when their backend is configured.
 - A normal unaddressed message is logged into the Oracle session and answered by Oracle as the platform.
 
 ## Quick Buttons
 
 Every Oracle reply includes quick buttons:
 
-- ❔ **Help** -> `oracle help`
-- 📍 **Table** -> `oracle status`
-- 🧠 **KAI** -> ask KAI what he is holding right now
-- 🔎 **Analyst** -> ask the analyst for the biggest current issue
-- 📚 **Researcher** -> ask what context is needed next
+- â” **Help** -> `oracle help`
+- ðŸ“ **Table** -> `oracle status`
+- ðŸ§  **KAI** -> ask KAI what he is holding right now
+- ðŸ”Ž **Analyst** -> ask the analyst for the biggest current issue
+- ðŸ“š **Researcher** -> ask what context is needed next
 
 Discord does not allow bots to add a permanent custom toolbar at the bottom of chat. If you want a persistent control panel, send `oracle help` and manually pin that bot message in the channel.
 
