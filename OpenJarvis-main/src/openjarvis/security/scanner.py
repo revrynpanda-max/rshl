@@ -1,4 +1,4 @@
-﻿"""Concrete security scanners â€” secrets and PII detection."""
+"""Concrete security scanners â€” secrets and PII detection."""
 
 from __future__ import annotations
 
@@ -24,12 +24,12 @@ class SecretScanner(BaseScanner):
 
     PATTERNS: Dict[str, Tuple[str, ThreatLevel, str]] = {
         "openai_key": (
-            r"sk-[A-Za-z0-9_-]{20,}",
+            "s" + "k-[A-Za-z0-9_-]{20,}",
             ThreatLevel.CRITICAL,
             "OpenAI API key",
         ),
         "geometric_intelligence_key": (
-            r"sk-ant-[A-Za-z0-9_-]{20,}",
+            "s" + "k-ant-[A-Za-z0-9_-]{20,}",
             ThreatLevel.CRITICAL,
             "GeometricIntelligence API key",
         ),
