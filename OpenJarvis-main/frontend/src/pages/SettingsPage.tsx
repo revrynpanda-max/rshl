@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Palette,
   Globe,
@@ -399,6 +399,7 @@ export function SettingsPage() {
               >
                 <option value="sqlite">sqlite</option>
                 <option value="faiss">faiss</option>
+                <option value="rshl">rshl (KAI Lattice)</option>
                 <option value="bm25">bm25</option>
                 <option value="colbert">colbert</option>
                 <option value="hybrid">hybrid</option>

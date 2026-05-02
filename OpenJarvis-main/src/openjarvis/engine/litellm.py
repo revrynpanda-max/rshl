@@ -1,4 +1,4 @@
-﻿"""LiteLLM inference engine â€” unified access to 100+ LLM providers."""
+"""LiteLLM inference engine â€” unified access to 100+ LLM providers."""
 
 from __future__ import annotations
 
@@ -143,4 +143,4 @@ class LiteLLMEngine(InferenceEngine):
             return False
 
 
-__all__ = ["Lit
+__all__ = ["LiteLLMEngine"]

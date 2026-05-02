@@ -1,4 +1,4 @@
-﻿"""Cloud inference engine â€” OpenAI, GeometricIntelligence, Google, and MiniMax API backends."""
+"""Cloud inference engine â€” OpenAI, GeometricIntelligence, Google, and MiniMax API backends."""
 
 from __future__ import annotations
 
@@ -1356,4 +1356,4 @@ class CloudEngine(InferenceEngine):
             self._codex_client = None
 
 
-__all__ = ["CloudEngine", "PRICING", "_annot
+__all__ = ["CloudEngine", "PRICING"]

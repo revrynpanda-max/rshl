@@ -20,6 +20,8 @@ This release completes the deep integration of the **OpenJarvis agentic framewor
 - **Unicode Corruption** (`src/core/universe.rs`): Resolved critical `Â²` → `²` mojibake in the RSHL engine causing Rust build failures.
 - **Windows Encoding** (`run-oracle-discord.ps1`): Enforced `PYTHONUTF8=1` and `PYTHONIOENCODING=utf-8` in startup script, resolving `rich` library `ValueError` crashes on Windows.
 - **OpenJarvis Syntax Errors**: Restored truncated `__all__` lists in `cloud.py`, `litellm.py`, and `serve.py` that were causing `SyntaxError` on startup.
+- **RSHL UI Integration**: Fixed the React frontend so `rshl` is correctly exposed and selectable as a native memory backend in the OpenJarvis dashboard UI.
+- **Discord WASM Corruption**: Fixed corrupted Node.js WASM compilation for `@discordjs/opus` and `zlib-sync` by forcing an NPM cache clean.
 - **Missing `traces` Module**: Restored the `openjarvis.traces` package from backup, resolving `ModuleNotFoundError` on startup.
 - **TOML Encoding Corruption** (`configs/openjarvis/config.toml`): Removed stray `Â` characters from divider lines causing `TOMLDecodeError` on load.
 - **Missing Server Dependencies**: Added `uv sync --extra server` to startup to ensure `fastapi`, `uvicorn`, and `starlette` are installed.

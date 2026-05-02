@@ -1,4 +1,4 @@
-﻿"""``jarvis serve`` â€” OpenAI-compatible API server."""
+"""``jarvis serve`` â€” OpenAI-compatible API server."""
 
 from __future__ import annotations
 
@@ -507,4 +507,4 @@ def serve(
 
     import uvicorn
 
-    uvicorn.run(app, host=bind_host
+    uvicorn.run(app, host=bind_host, port=bind_port)
