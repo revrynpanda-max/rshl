@@ -232,13 +232,13 @@ mod tests {
     #[test]
     fn test_initial_state() {
         let b = BNST::new();
-        assert!((b.threat_context - THREAT_BASELINE).abs() < 0.01);
+        assert!((_b.threat_context - THREAT_BASELINE).abs() < 0.01);
         assert!(!b.is_anxious());
     }
 
     #[test]
     fn test_high_amygdala_raises_threat() {
-        let mut b = BNST::new();
+        let mut _b = BNST::new();
         let mut input = default_input();
         input.amygdala_arousal = 0.90;
         let out = b.update(&input);
@@ -251,7 +251,7 @@ mod tests {
 
     #[test]
     fn test_habenula_activity_raises_threat() {
-        let mut b = BNST::new();
+        let mut _b = BNST::new();
         let mut input = default_input();
         input.habenula_activity = 0.70;
         let out = b.update(&input);
@@ -264,8 +264,8 @@ mod tests {
 
     #[test]
     fn test_safety_signal_reduces_threat() {
-        let mut b = BNST::new();
-        b.threat_context = 0.50;
+        let mut _b = BNST::new();
+        _b.threat_context = 0.50;
         let mut input = default_input();
         input.safety_signal = true;
         let out = b.update(&input);
@@ -278,8 +278,8 @@ mod tests {
 
     #[test]
     fn test_high_bond_reduces_threat() {
-        let mut b = BNST::new();
-        b.threat_context = 0.55;
+        let mut _b = BNST::new();
+        _b.threat_context = 0.55;
         let mut input = default_input();
         input.bond_level = 0.85;
         let out = b.update(&input);
@@ -292,7 +292,7 @@ mod tests {
 
     #[test]
     fn test_multiple_conflicts_raise_threat() {
-        let mut b = BNST::new();
+        let mut _b = BNST::new();
         let mut input = default_input();
         input.recent_conflicts = 3;
         let out = b.update(&input);
@@ -305,8 +305,8 @@ mod tests {
 
     #[test]
     fn test_crf_fires_when_threat_high() {
-        let mut b = BNST::new();
-        b.threat_context = 0.70;
+        let mut _b = BNST::new();
+        _b.threat_context = 0.70;
         let mut input = default_input();
         input.amygdala_arousal = 0.80;
         let out = b.update(&input);
@@ -321,26 +321,26 @@ mod tests {
 
     #[test]
     fn test_decay_toward_baseline() {
-        let mut b = BNST::new();
-        b.threat_context = 0.70;
+        let mut _b = BNST::new();
+        _b.threat_context = 0.70;
         for _ in 0..20 {
             b.decay();
         }
         assert!(
-            b.threat_context < 0.70,
+            _b.threat_context < 0.70,
             "threat should decay: {:.2}",
-            b.threat_context
+            _b.threat_context
         );
         assert!(
-            b.threat_context >= THREAT_BASELINE,
+            _b.threat_context >= THREAT_BASELINE,
             "should not go below baseline: {:.2}",
-            b.threat_context
+            _b.threat_context
         );
     }
 
     #[test]
     fn test_caution_mode_at_high_vigilance() {
-        let mut b = BNST::new();
+        let mut _b = BNST::new();
         b.vigilance = 0.60;
         assert!(
             b.caution_mode(),
@@ -350,8 +350,9 @@ mod tests {
 
     #[test]
     fn test_is_anxious_threshold() {
-        let mut b = BNST::new();
-        b.threat_context = 0.60;
+        let mut _b = BNST::new();
+        _b.threat_context = 0.60;
     
     }
 }
+

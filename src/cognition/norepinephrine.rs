@@ -261,7 +261,7 @@ mod tests {
 
     #[test]
     fn test_novel_input_raises_level() {
-        let mut ne = NorepinephrineSystem::new();
+        let _ne = NorepinephrineSystem::new();
         let before = ne.level;
         ne.process(NeEvent::NovelInput);
         assert!(ne.level > before, "novel input should raise NE");
@@ -269,7 +269,7 @@ mod tests {
 
     #[test]
     fn test_threat_raises_stress() {
-        let mut ne = NorepinephrineSystem::new();
+        let _ne = NorepinephrineSystem::new();
         for _ in 0..12 {
             ne.process(NeEvent::Threat);
         }
@@ -281,7 +281,7 @@ mod tests {
 
     #[test]
     fn test_success_reduces_stress() {
-        let mut ne = NorepinephrineSystem::new();
+        let _ne = NorepinephrineSystem::new();
         ne.stress_load = 0.80;
         let before = ne.stress_load;
         ne.process(NeEvent::Success);
@@ -290,7 +290,7 @@ mod tests {
 
     #[test]
     fn test_alertness_peaks_at_optimal() {
-        let mut ne = NorepinephrineSystem::new();
+        let _ne = NorepinephrineSystem::new();
         // Set level to optimal
         ne.level = 0.55;
         let at_optimal = ne.alertness_score();
@@ -316,7 +316,7 @@ mod tests {
 
     #[test]
     fn test_inverted_u_symmetry() {
-        let mut ne = NorepinephrineSystem::new();
+        let _ne = NorepinephrineSystem::new();
         // Test symmetry around 0.55
         ne.level = 0.55 - 0.15; // 0.40
         let below = ne.alertness_score();
@@ -333,7 +333,7 @@ mod tests {
 
     #[test]
     fn test_gain_factor_rises_with_level() {
-        let mut ne = NorepinephrineSystem::new();
+        let _ne = NorepinephrineSystem::new();
         ne.level = 0.30;
         ne.gain = 1.0 + ne.level * (2.0 - 1.0);
         let low_gain = ne.gain_factor();
@@ -345,7 +345,7 @@ mod tests {
 
     #[test]
     fn test_attention_threshold_stress_tunnel() {
-        let mut ne = NorepinephrineSystem::new();
+        let _ne = NorepinephrineSystem::new();
         ne.stress_load = 0.80; // well above threshold
         let stressed_threshold = ne.attention_threshold();
         ne.stress_load = 0.0;
@@ -360,7 +360,7 @@ mod tests {
 
     #[test]
     fn test_decay_moves_toward_baseline() {
-        let mut ne = NorepinephrineSystem::new();
+        let _ne = NorepinephrineSystem::new();
         ne.level = 0.90; // spike
         for _ in 0..50 {
             ne.decay();
@@ -371,7 +371,7 @@ mod tests {
 
     #[test]
     fn test_arousal_state_labels() {
-        let mut ne = NorepinephrineSystem::new();
+        let _ne = NorepinephrineSystem::new();
         ne.level = 0.10;
         assert_eq!(ne.arousal_state(), "understimulated");
         ne.level = 0.52;
@@ -402,7 +402,8 @@ mod tests {
 
     #[test]
     fn test_fatigue_drops_level() {
-        let mut ne = NorepinephrineSystem::new();
+        let _ne = NorepinephrineSystem::new();
 
     }
 }
+

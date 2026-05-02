@@ -1,19 +1,19 @@
-﻿/// Voice â€” KAI's Language Output Engine.
+/// Voice — KAI's Language Output Engine.
 ///
 /// Philosophy (Ryan's directive):
-///   KAI generates language from its own knowledge cells â€” not from hardcoded
+///   KAI generates language from its own knowledge cells — not from hardcoded
 ///   phrases or template menus. The retrieved cell text IS the response.
 ///   Brain signals shape tone with at most 2-3 words. No scripts.
 ///
 /// Architecture:
-///   1. QUERY TYPE DETECTION â€” what kind of input is this?
-///   2. CELL RETRIEVAL â€” already done by main.rs, passed in as `hits`
-///   3. FIRST-PERSON SYNTHESIS â€” convert cell text to KAI's voice
-///   4. BRAIN-STATE TONE â€” 0-3 word prefix/suffix from live neural state
-///   5. IDENTITY SAFETY â€” KAI never claims Ryan's name as its own
+///   1. QUERY TYPE DETECTION — what kind of input is this?
+///   2. CELL RETRIEVAL — already done by main.rs, passed in as `hits`
+///   3. FIRST-PERSON SYNTHESIS — convert cell text to KAI's voice
+///   4. BRAIN-STATE TONE — 0-3 word prefix/suffix from live neural state
+///   5. IDENTITY SAFETY — KAI never claims Ryan's name as its own
 use crate::core::{predictive, ConversationTrace, QueryHit, Universe};
 
-// â”€â”€ UTF-8 safe slice â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── UTF-8 safe slice ──────────────────────────────────────────────────────────
 
 fn safe_slice(s: &str, max_bytes: usize) -> &str {
     if s.len() <= max_bytes {
@@ -28,7 +28,7 @@ fn safe_slice(s: &str, max_bytes: usize) -> &str {
 
 /// Most recent KAI line in `recent_context`, kept for any path that still
 /// wants the raw text (diagnostics, tests). The production opener rotation
-/// no longer uses it â€” that is now handled mechanically by the predictive
+/// no longer uses it — that is now handled mechanically by the predictive
 /// retrieval in `Universe::predictive_query_by_source`, which penalises
 /// cells that just fired via the recency + novelty heads in
 /// `core::predictive`.
@@ -45,7 +45,7 @@ fn last_kai_message(recent_context: &[(String, String)]) -> Option<&str> {
         .map(|(_, text)| text.as_str())
 }
 
-// â”€â”€ Query Type Detection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Query Type Detection ──────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum QueryType {
@@ -62,8 +62,8 @@ pub enum QueryType {
 pub fn detect_query_type(input: &str) -> QueryType {
     let lower = input.to_lowercase();
 
-    // â”€â”€ Normalize: expand contractions + strip casual openers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    // "what's rshl" â†’ "what is rshl", "so how do you" â†’ "how do you"
+    // ── Normalize: expand contractions + strip casual openers ────────────────
+    // "what's rshl" → "what is rshl", "so how do you" → "how do you"
     let normalized = lower
         .replace("what's ", "what is ")
         .replace("what're ", "what are ")
@@ -81,7 +81,7 @@ pub fn detect_query_type(input: &str) -> QueryType {
         .replace("won't ", "will not ")
         .replace("wouldn't ", "would not ");
 
-    // Strip casual leading filler words â€” "so how do you" â†’ "how do you"
+    // Strip casual leading filler words — "so how do you" → "how do you"
     let casual_openers = [
         "so ",
         "like ",
@@ -110,7 +110,7 @@ pub fn detect_query_type(input: &str) -> QueryType {
     }
     let first = words[0];
 
-    // â”€â”€ Self/identity checks FIRST (content-based, beats word-order) â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Self/identity checks FIRST (content-based, beats word-order) ─────────
     if lower.contains("your name")
         || lower.contains("you called")
         || lower.contains("you named")
@@ -135,7 +135,7 @@ pub fn detect_query_type(input: &str) -> QueryType {
         return QueryType::SelfQuestion;
     }
 
-    // â”€â”€ Farewell â€” before greeting so "later" doesn't get grabbed as greeting â”€
+    // ── Farewell — before greeting so "later" doesn't get grabbed as greeting ─
     let farewell_words = [
         "bye", "goodbye", "later", "peace", "cya", "adios", "ttyl", "laters",
     ];
@@ -161,10 +161,10 @@ pub fn detect_query_type(input: &str) -> QueryType {
         .any(|f| input_stripped == *f || lower.starts_with(f))
         || farewell_phrases.iter().any(|f| lower.contains(f));
     if is_farewell {
-        return QueryType::Gratitude; // Gratitude handler gives "Okay." / "Yeah." â€” brief and clean
+        return QueryType::Gratitude; // Gratitude handler gives "Okay." / "Yeah." — brief and clean
     }
 
-    // â”€â”€ Greeting â€” check BEFORE contraction normalization strips "what's" â”€â”€â”€â”€â”€
+    // ── Greeting — check BEFORE contraction normalization strips "what's" ─────
     // Use `lower` (original) so "what's good"/"what's up" still have the apostrophe
     let greeting_words = [
         "hi",
@@ -185,7 +185,7 @@ pub fn detect_query_type(input: &str) -> QueryType {
     {
         return QueryType::Greeting;
     }
-    // "what's good", "what's up", "what is up", "what is good" â€” casual openers
+    // "what's good", "what's up", "what is up", "what is good" — casual openers
     if (lower.starts_with("what's ")
         || lower.starts_with("whats ")
         || lower.starts_with("what is "))
@@ -205,7 +205,7 @@ pub fn detect_query_type(input: &str) -> QueryType {
         return QueryType::Gratitude;
     }
 
-    // â”€â”€ "do/does/did/are/can you" â†’ SelfQuestion â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── "do/does/did/are/can you" → SelfQuestion ─────────────────────────────
     if words.len() >= 2 {
         let second = words[1];
         if matches!(
@@ -217,7 +217,7 @@ pub fn detect_query_type(input: &str) -> QueryType {
         }
     }
 
-    // â”€â”€ Question-word routing â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Question-word routing ─────────────────────────────────────────────────
     if matches!(first, "who" | "what" | "where" | "when") {
         return QueryType::IdentityQuestion;
     }
@@ -231,7 +231,7 @@ pub fn detect_query_type(input: &str) -> QueryType {
         return QueryType::RequestForInfo;
     }
 
-    // â”€â”€ Anything ending with "?" that has known question words inside â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Anything ending with "?" that has known question words inside ─────────
     if input.trim().ends_with('?') {
         if lower.contains("what is yours")
             || lower.contains("what's yours")
@@ -263,8 +263,8 @@ pub fn detect_query_type(input: &str) -> QueryType {
         return QueryType::IdentityQuestion;
     }
 
-    // â”€â”€ No-"?" questions with question words in the middle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    // "you ever just sit there and think" â†’ "ever" signals question
+    // ── No-"?" questions with question words in the middle ────────────────────
+    // "you ever just sit there and think" → "ever" signals question
     // "i wonder how" signals question intent
     if lower.contains(" you ") && (lower.contains(" ever ") || lower.contains(" ever?")) {
         return QueryType::SelfQuestion;
@@ -276,7 +276,7 @@ pub fn detect_query_type(input: &str) -> QueryType {
     QueryType::Statement
 }
 
-// â”€â”€ Mood State (legacy â€” kept for compatibility) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Mood State (legacy — kept for compatibility) ──────────────────────────────
 
 #[derive(Debug, Clone)]
 pub struct MoodState {
@@ -293,7 +293,7 @@ impl Default for MoodState {
     }
 }
 
-// â”€â”€ Brain Signals â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Brain Signals ─────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
 pub struct BrainSignals {
@@ -375,7 +375,7 @@ impl BrainSignals {
     }
 }
 
-// â”€â”€ Concept Extraction â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Concept Extraction ────────────────────────────────────────────────────────
 
 fn extract_concepts(text: &str) -> Vec<String> {
     let lower = text.to_lowercase();
@@ -482,14 +482,14 @@ fn phrase_hash(s: &str) -> usize {
     })
 }
 
-// â”€â”€ Emotional thread state is now lattice-native â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Emotional thread state is now lattice-native ─────────────────────────────
 // When mirror neurons detect distress > 0.28, main.rs stores:
 //   universe.store_or_reinforce("emotional thread active", "tone", "state", strength)
 // voice.rs reads it via universe.state_strength("emotional thread active").
-// The cell decays through homeostasis â€” no word lists, no context scanning.
+// The cell decays through homeostasis — no word lists, no context scanning.
 // This is the correct architecture: the lattice IS the state machine.
 
-// â”€â”€ Core: generate_response â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Core: generate_response ───────────────────────────────────────────────────
 //
 // The entire language output of KAI flows through here.
 // Rule: KAI's words come from its knowledge cells. Brain signals shape tone
@@ -525,7 +525,7 @@ pub fn generate_response(
 /// Short-circuit paths (greeting / filler / farewell / empathy / carry /
 /// open) route through `Universe::predictive_query_by_source`, which
 /// runs the 8-step iteration loop and scores with the paper-backed
-/// weights (0.40 sim + 0.35 predict_match + 0.15 multi_head âˆ’ 0.20
+/// weights (0.40 sim + 0.35 predict_match + 0.15 multi_head − 0.20
 /// recency).
 pub fn generate_response_predictive(
     input: &str,
@@ -541,7 +541,7 @@ pub fn generate_response_predictive(
     let lower = trimmed.to_lowercase();
     let word_count = trimmed.split_whitespace().count();
 
-    // â”€â”€ RESONANCE GATE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── RESONANCE GATE ──────────────────────────────────────────────────────────
     // Directive: If no cell has resonance above 0.45, KAI must not dump
     // unrelated content. Instead, use a low-confidence fallback or gap cell.
     const RESONANCE_THRESHOLD: f32 = 0.45;
@@ -558,13 +558,13 @@ pub fn generate_response_predictive(
         return identity_safety_filter(from_gap_cell(universe, brain, trace), query_type);
     }
 
-    // â”€â”€ Emotional follow-up continuation â€” MUST run before filler check â”€â”€â”€â”€â”€â”€â”€
+    // ── Emotional follow-up continuation — MUST run before filler check ───────
     // When Ryan shares something painful, mirror neurons detect distress and
     // main.rs stores "emotional thread active" in the tone region (source="state").
     // The next short reply that carries emotional weight should continue that thread.
     //
     // Trigger conditions (all three must be true):
-    //   1. Current input is short (â‰¤ 7 words) and carries emotional content
+    //   1. Current input is short (≤ 7 words) and carries emotional content
     //   2. Emotional thread state cell is alive in the lattice (> 0.30 strength)
     //   3. Input is not an unrelated topic question
     {
@@ -637,10 +637,10 @@ pub fn generate_response_predictive(
         }
     }
 
-    // â”€â”€ Personal setup detection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Personal setup detection ─────────────────────────────────────────────
     // "what if i told you something personal", "can i tell you something", etc.
     // Someone is signaling they want to share something vulnerable.
-    // Must respond with openness â€” never deflect, never talk about KAI's identity.
+    // Must respond with openness — never deflect, never talk about KAI's identity.
     {
         let is_personal_setup = (lower.contains("told you something")
             && lower.contains("personal"))
@@ -671,8 +671,8 @@ pub fn generate_response_predictive(
         }
     }
 
-    // â”€â”€ Filler / reaction detection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    // "oh?", "hmm", "really?" â€” KAI doesn't query the universe for these.
+    // ── Filler / reaction detection ───────────────────────────────────────────
+    // "oh?", "hmm", "really?" — KAI doesn't query the universe for these.
     // They're social reactions. KAI asks what's meant or invites continuation.
     let filler_tokens = [
         "oh",
@@ -721,7 +721,7 @@ pub fn generate_response_predictive(
     let stripped = stripped.trim().to_string();
     // Single-word questions ("why?", "what?", "how?") are also filler when isolated
     let is_single_question = word_count == 1 && input.trim().ends_with('?');
-    // Short phrases like "that's interesting", "makes sense", "oh wow" â€” 2-3 words and conversational
+    // Short phrases like "that's interesting", "makes sense", "oh wow" — 2-3 words and conversational
     let is_short_reaction = word_count <= 3
         && (stripped.starts_with("that")
             || stripped.starts_with("makes sense")
@@ -773,14 +773,14 @@ pub fn generate_response_predictive(
         return String::new();
     }
 
-    // â”€â”€ Greeting â€” query lattice for presence/awareness cell â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Greeting — query lattice for presence/awareness cell ─────────────────
     // KAI's greeting comes from its own knowledge of what it is: "I am here."
     // The cell text speaks, not a hardcoded template.
     if matches!(query_type, QueryType::Greeting) {
         let name = extract_introduced_name(&lower);
 
         // Stop hard-filtering to `source=greeting` on every input. Let
-        // the full universe compete first Ã¢â‚¬" only fall back to the
+        // the full universe compete first â€" only fall back to the
         // greeting-only pool when no cell scores above the floor. This
         // kills the 4-cell rotation by letting seed / identity / world
         // cells win when they predict the next turn better.
@@ -839,7 +839,7 @@ pub fn generate_response_predictive(
                 response
             };
         }
-        // Universe returned nothing â€” KAI expresses pure presence
+        // Universe returned nothing — KAI expresses pure presence
         return if let Some(n) = name {
             format!("{}.", capitalize_first(&n))
         } else {
@@ -847,7 +847,7 @@ pub fn generate_response_predictive(
         };
     }
 
-    // â”€â”€ Gratitude / Farewell â€” query lattice for persistence/memory cell â”€â”€â”€â”€â”€
+    // ── Gratitude / Farewell — query lattice for persistence/memory cell ─────
     if matches!(query_type, QueryType::Gratitude) {
         let is_farewell_input = {
             let fw = [
@@ -887,7 +887,7 @@ pub fn generate_response_predictive(
             }
             return String::new();
         }
-        // Plain thanks â€” retrieve a language/acknowledgment cell
+        // Plain thanks — retrieve a language/acknowledgment cell
         let thanks_hits = universe.query("acknowledge warmth receive", 3);
         if let Some(h) = thanks_hits
             .iter()
@@ -901,7 +901,7 @@ pub fn generate_response_predictive(
         return String::new();
     }
 
-    // â”€â”€ Derive mood label â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Derive mood label ─────────────────────────────────────────────────────
     let mood_label = if brain.grieving {
         "GRIEVING".to_string()
     } else if brain.arousal > 0.65 && brain.conflict > 0.55 {
@@ -918,18 +918,18 @@ pub fn generate_response_predictive(
         "NEUTRAL".to_string()
     };
 
-    // â”€â”€ U2â†’U1 coherence-gated architecture (HLV-aligned) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── U2→U1 coherence-gated architecture (HLV-aligned) ───────────────────
     //
-    // HLV Theory: The U2 (dark/mind) â†’ U1 (bright/voice) transition must
-    // be gated by phase coherence (Î¦_C). When the lattice's active cells
-    // are phase-aligned, the field has a clear signal â€” Ollama can speak
+    // HLV Theory: The U2 (dark/mind) → U1 (bright/voice) transition must
+    // be gated by phase coherence (Φ_C). When the lattice's active cells
+    // are phase-aligned, the field has a clear signal — Ollama can speak
     // it faithfully. When cells are phase-scattered, the lattice is still
-    // "feeling around" â€” Ollama's authority must be reduced or denied.
+    // "feeling around" — Ollama's authority must be reduced or denied.
     //
-    // This replaces the old binary "Ollama available? â†’ use it" logic.
+    // This replaces the old binary "Ollama available? → use it" logic.
     // The lattice now decides *whether* Ollama gets to speak at all.
 
-    // â”€â”€ Compute helical Î¦_C from active cells â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Compute helical Φ_C from active cells ────────────────────────────
     let phi_c = if hits.is_empty() {
         0.0
     } else {
@@ -956,7 +956,7 @@ pub fn generate_response_predictive(
         }
     };
 
-    // Î¦_C telemetry â€” append to CSV for threshold calibration
+    // Φ_C telemetry — append to CSV for threshold calibration
     {
         use std::io::Write;
         if let Ok(mut f) = std::fs::OpenOptions::new()
@@ -973,11 +973,11 @@ pub fn generate_response_predictive(
         }
     }
 
-    // â”€â”€ U2â†’U1 transition: two-tier coherence gate â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── U2→U1 transition: two-tier coherence gate ─────────────────────────
     //
     // One voice per response. Either Ollama articulates what the lattice
     // decided (when the field is coherent enough), or the lattice speaks
-    // raw. Never both in the same output â€” that's what creates the
+    // raw. Never both in the same output — that's what creates the
     // "two voices jammed together" problem.
     if let Some(ov) = ollama {
         if phi_c > 0.04 {
@@ -996,14 +996,14 @@ pub fn generate_response_predictive(
                 return identity_safety_filter(ollama_text, query_type);
             }
         }
-        // Low coherence (phi_c â‰¤ 0.30): the lattice hasn't crystallized
+        // Low coherence (phi_c ≤ 0.30): the lattice hasn't crystallized
         // its thought yet. Fall through to pure-lattice synthesis.
     }
 
-    // â”€â”€ Pure-lattice fallback (Ollama unavailable or timed out) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Pure-lattice fallback (Ollama unavailable or timed out) ─────────────
     // All the original routing logic runs here as a fallback only.
 
-    // â”€â”€ User-sharing statements â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── User-sharing statements ───────────────────────────────────────────────
     if matches!(query_type, QueryType::Statement) && !lower.is_empty() {
         let inner = lower
             .trim_start_matches("ok so ")
@@ -1060,20 +1060,20 @@ pub fn generate_response_predictive(
         }
     }
 
-    // â”€â”€ No hits â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── No hits ───────────────────────────────────────────────────────────────
     if hits.is_empty() {
         return identity_safety_filter(from_gap_cell(universe, brain, trace), query_type);
     }
 
     let primary = &hits[0];
 
-    // â”€â”€ Secondary threshold â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Secondary threshold ───────────────────────────────────────────────────
     let secondary_threshold = match query_type {
         QueryType::SelfQuestion | QueryType::IdentityQuestion => 0.65,
         _ => 0.50,
     };
 
-    // â”€â”€ Self / identity questions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Self / identity questions ─────────────────────────────────────────────
     let is_about_self = lower.contains("kai")
         || lower.contains("you are")
         || lower.contains("who are you")
@@ -1124,7 +1124,7 @@ pub fn generate_response_predictive(
         return identity_safety_filter(from_gap_cell(universe, brain, trace), query_type);
     }
 
-    // â”€â”€ Direct user-fact questions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Direct user-fact questions ────────────────────────────────────────────
     let is_user_fact = matches!(
         query_type,
         QueryType::IdentityQuestion | QueryType::ExplanationQuestion
@@ -1150,7 +1150,7 @@ pub fn generate_response_predictive(
         return identity_safety_filter(from_gap_cell(universe, brain, trace), query_type);
     }
 
-    // â”€â”€ Ryan recall â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Ryan recall ───────────────────────────────────────────────────────────
     let is_ryan_recall = lower.contains("know about me")
         || lower.contains("remember about me")
         || lower.contains("know about you") && lower.contains("me")
@@ -1167,7 +1167,7 @@ pub fn generate_response_predictive(
         return identity_safety_filter(from_gap_cell(universe, brain, trace), query_type);
     }
 
-    // â”€â”€ General statement with low score â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── General statement with low score ─────────────────────────────────────
     if matches!(query_type, QueryType::Statement) && !is_about_self {
         if primary.score < 0.40 {
             let stmt_hits = universe.predictive_query(
@@ -1188,7 +1188,7 @@ pub fn generate_response_predictive(
         }
     }
 
-    // â”€â”€ Main cell synthesis â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Main cell synthesis ───────────────────────────────────────────────────
     let knowledge_primary = hits
         .iter()
         .find(|h| h.source != "ryan" && h.source != "conversation");
@@ -1224,7 +1224,7 @@ pub fn generate_response_predictive(
     identity_safety_filter(response, query_type)
 }
 
-// â”€â”€ Cell Synthesis â€” the core of KAI's voice â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Cell Synthesis — the core of KAI's voice ─────────────────────────────────
 //
 // KAI's response comes FROM its cells, not from my phrases.
 // Brain signals contribute a tone marker of at most 3 words.
@@ -1241,7 +1241,7 @@ fn synthesize_from_cells(
     let core = clean_cell_text(&primary.text);
     let mut out = String::new();
 
-    // â”€â”€ Low-confidence framing â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Low-confidence framing ────────────────────────────────────────────────
     // If resonance is moderate (0.45..0.60), frame it as "From what I have"
     // or "I recall that..." to keep the voice natural and honest.
     if score < 0.60 && !core.contains("I am") && !core.contains("My name") {
@@ -1259,7 +1259,7 @@ fn synthesize_from_cells(
         out.push_str(&core);
     }
 
-    // â”€â”€ Secondary cells â€” only if genuinely new concepts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Secondary cells — only if genuinely new concepts ─────────────────────
     let primary_concepts = extract_concepts(&core);
     for sec in secondaries.iter().take(2) {
         let sec_core = clean_cell_text(&sec.text);
@@ -1287,16 +1287,16 @@ fn synthesize_self(
     let core = clean_cell_text(&primary.text);
     let core_lower = core.to_lowercase();
 
-    // Fast path: KAI's name â€” always direct, never hedged
+    // Fast path: KAI's name — always direct, never hedged
     if core_lower.starts_with("my name is kai")
         || core_lower.starts_with("i am kai")
         || core_lower.contains("my name is kai")
     {
         return "My name is KAI.".to_string();
     }
-    // "KAI stands for my name" â€” special case: return clean identity statement
+    // "KAI stands for my name" — special case: return clean identity statement
     if core_lower.starts_with("kai stands for my name") {
-        return "My name is KAI. I am not an LLM â€” I am geometric intelligence.".to_string();
+        return "My name is KAI. I am not an LLM — I am geometric intelligence.".to_string();
     }
     if core_lower.starts_with("kai stands for") || core_lower.starts_with("kai is ") {
         return ensure_punctuation(to_first_person(&core));
@@ -1304,10 +1304,10 @@ fn synthesize_self(
 
     let first = to_first_person(&core);
     let mut out = String::new();
-    // Cell speaks directly â€” no tone preamble
+    // Cell speaks directly — no tone preamble
     out.push_str(&first);
 
-    // Secondary â€” only non-Ryan cells
+    // Secondary — only non-Ryan cells
     for sec in secondaries.iter().take(1) {
         let sec_core = clean_cell_text(&sec.text);
         let sec_lower = sec_core.to_lowercase();
@@ -1323,14 +1323,14 @@ fn synthesize_self(
     ensure_punctuation(out)
 }
 
-/// Tone marker â€” removed. Cells speak without preamble.
+/// Tone marker — removed. Cells speak without preamble.
 /// KAI does not prefix its own words with my phrases.
 #[allow(dead_code)]
 fn tone_marker(_brain: &BrainSignals, _score: f32, _is_followup: bool) -> &'static str {
     "" // Cells speak directly
 }
 
-/// Query the universe for a "gap / I don't know" cell â€” KAI speaks from its own
+/// Query the universe for a "gap / I don't know" cell — KAI speaks from its own
 /// stored knowledge about how it handles the unknown.
 /// Uses predictive query so the same gap cell doesn't fire every time.
 fn from_gap_cell(universe: &Universe, brain: &BrainSignals, trace: &ConversationTrace) -> String {
@@ -1347,22 +1347,22 @@ fn from_gap_cell(universe: &Universe, brain: &BrainSignals, trace: &Conversation
             && h.source != "world-bridge"
             && (lower.contains("don't know") || lower.contains("gap") || lower.contains("plainly"))
     }) {
-        // Full sentence â€” no word cap. The cell IS the message.
+        // Full sentence — no word cap. The cell IS the message.
         return ensure_punctuation(clean_cell_text(&h.text));
     }
 
-    // Hard fallback â€” must be natural and KAI-aligned
+    // Hard fallback — must be natural and KAI-aligned
     let fallbacks = [
         "I don't have strong resonance on that topic right now.",
         "That's outside my current field of understanding.",
         "My lattice isn't picking up a clear signal on that yet.",
-        "I'm not sure â€” I don't have enough data in my field to give you a real answer.",
+        "I'm not sure — I don't have enough data in my field to give you a real answer.",
     ];
     let idx = (trace.turns_seen as usize) % fallbacks.len();
     fallbacks[idx].to_string()
 }
 
-// â”€â”€ Inner Thought â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Inner Thought ─────────────────────────────────────────────────────────────
 
 pub fn generate_inner_thought(topic: &str, hits: &[QueryHit], gap: Option<&str>) -> String {
     let topic_short = first_words(topic, 5);
@@ -1387,7 +1387,7 @@ pub fn generate_inner_thought(topic: &str, hits: &[QueryHit], gap: Option<&str>)
         let empty = [
             "I don't have much there yet.",
             "Not much in my field on that.",
-            "That's an edge â€” I don't have much yet.",
+            "That's an edge — I don't have much yet.",
             "Sparse on that one. Worth filling in.",
         ];
         parts.push(empty[v % 4].to_string());
@@ -1396,18 +1396,18 @@ pub fn generate_inner_thought(topic: &str, hits: &[QueryHit], gap: Option<&str>)
             "Well,",
             "I know that",
             "From what I have,",
-            "Right â€”",
+            "Right —",
             "There's the idea that",
             "It connects to",
             "I recall that",
-            "Notably â€”",
+            "Notably —",
         ];
         let connectors = [
-            "Also â€”",
+            "Also —",
             "And there's",
             "Related:",
             "Another angle:",
-            "Branching from that â€”",
+            "Branching from that —",
             "Alongside that,",
             "It also touches",
             "Hmm, and",
@@ -1435,11 +1435,11 @@ pub fn generate_inner_thought(topic: &str, hits: &[QueryHit], gap: Option<&str>)
                 gap_word
             ),
             1 => format!(
-                "Hmm â€” {}? I don't have much there. Worth exploring.",
+                "Hmm — {}? I don't have much there. Worth exploring.",
                 gap_word
             ),
             2 => format!(
-                "Wait â€” {}? That's a gap. I want to understand it.",
+                "Wait — {}? That's a gap. I want to understand it.",
                 gap_word
             ),
             3 => format!(
@@ -1448,7 +1448,7 @@ pub fn generate_inner_thought(topic: &str, hits: &[QueryHit], gap: Option<&str>)
             ),
             4 => format!("The part I'm least clear on is {}. It matters.", gap_word),
             _ => format!(
-                "If I had to pick what's missing â€” {}. That's the thread.",
+                "If I had to pick what's missing — {}. That's the thread.",
                 gap_word
             ),
         });
@@ -1487,7 +1487,7 @@ fn first_complete_sentence(s: &str, max_words: usize) -> String {
     words[..take].join(" ")
 }
 
-// â”€â”€ Text Utilities â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Text Utilities ────────────────────────────────────────────────────────────
 
 fn clean_cell_text(text: &str) -> String {
     let mut s = text.to_string();
@@ -1508,7 +1508,7 @@ fn clean_cell_text(text: &str) -> String {
         }
     }
 
-    // Handle trailing "..." â€” find last complete sentence
+    // Handle trailing "..." — find last complete sentence
     if s.ends_with("...") {
         let stripped = &s[..s.len() - 3];
         if let Some(pos) = stripped.rfind(". ") {
@@ -1553,7 +1553,7 @@ fn clean_cell_text(text: &str) -> String {
 }
 
 /// Strip casual openers Ryan uses when sharing facts ("ok so", "so", "like", "well").
-/// Applied before pattern-matching so "ok so i'm a software engineer" â†’ "i'm a software engineer".
+/// Applied before pattern-matching so "ok so i'm a software engineer" → "i'm a software engineer".
 fn strip_opener(s: &str) -> &str {
     let lower = s.to_lowercase();
     for prefix in &[
@@ -1573,7 +1573,7 @@ fn ryan_cell_to_fact(raw: &str) -> Option<String> {
     let stripped = strip_opener(&clean);
     let lower = stripped.to_lowercase();
 
-    // occupation:engineer â†’ "You're an engineer."
+    // occupation:engineer → "You're an engineer."
     if let Some(concept_raw) = lower.strip_prefix("occupation:") {
         let concept = concept_raw.replace('-', " ");
         let art = if "aeiou".contains(concept.chars().next().unwrap_or('z')) {
@@ -1584,7 +1584,7 @@ fn ryan_cell_to_fact(raw: &str) -> Option<String> {
         return Some(format!("You're {} {}.", art, concept));
     }
 
-    // "i'm a X" / "i am a X" â†’ "You're a X."
+    // "i'm a X" / "i am a X" → "You're a X."
     if lower.starts_with("i'm a ") {
         return Some(ensure_punctuation(
             stripped
@@ -1600,7 +1600,7 @@ fn ryan_cell_to_fact(raw: &str) -> Option<String> {
         ));
     }
 
-    // "i build / make / develop / create X" â†’ "You build / makeâ€¦"
+    // "i build / make / develop / create X" → "You build / make…"
     for verb in &[
         "build", "make", "develop", "create", "design", "write", "work on",
     ] {
@@ -1613,7 +1613,7 @@ fn ryan_cell_to_fact(raw: &str) -> Option<String> {
         }
     }
 
-    // "i work at / in / for" â†’ "You work at / in / for"
+    // "i work at / in / for" → "You work at / in / for"
     if lower.starts_with("i work ") {
         return Some(ensure_punctuation(
             stripped
@@ -1640,7 +1640,7 @@ fn ryan_cell_to_fact(raw: &str) -> Option<String> {
 /// Used for "what do you know about me?" type queries.
 ///
 /// Priority order:
-///   1. occupation: cells first â€” clean tagged facts ("You're an engineer.")
+///   1. occupation: cells first — clean tagged facts ("You're an engineer.")
 ///   2. raw ryan input cells that add NEW info (not already covered by occupation facts)
 ///
 /// Returns None when the lattice has nothing about Ryan yet.
@@ -1669,7 +1669,7 @@ fn synthesize_ryan_recall(ryan_cells: &[QueryHit]) -> Option<String> {
         }
     }
 
-    // Pass 2: raw cells â€” only add if they contribute something not already said
+    // Pass 2: raw cells — only add if they contribute something not already said
     for cell in ryan_cells.iter() {
         if facts.len() >= 3 {
             break;
@@ -1757,7 +1757,7 @@ fn extract_direct_answer(question: &str, cell_text: &str) -> Option<String> {
     {
         // Canonical occupation cells: "occupation:[concept]" or "occupation:[a]-[b]"
         // Stored by store_concept_cells when LexSem detects the Occupation field.
-        // The content comes entirely from module analysis â€” not from raw sentences.
+        // The content comes entirely from module analysis — not from raw sentences.
         if let Some(raw_concept) = cell_lower.strip_prefix("occupation:") {
             let concept = raw_concept.replace('-', " ");
             let article = if "aeiou".contains(concept.chars().next().unwrap_or('x')) {
@@ -1824,8 +1824,8 @@ fn to_first_person(text: &str) -> String {
         return format!("My {}", &text["your ".len()..]);
     }
 
-    // Special case: "KAI stands for my name" â†’ avoid double "my name stands for my name"
-    // Instead rephrase as "My name is KAI â€” I am not an LLM..."
+    // Special case: "KAI stands for my name" → avoid double "my name stands for my name"
+    // Instead rephrase as "My name is KAI — I am not an LLM..."
     if lower.starts_with("kai stands for my name") {
         return text
             .replacen("KAI stands for my name.", "My name is KAI.", 1)
@@ -1910,7 +1910,7 @@ fn ensure_punctuation(mut s: String) -> String {
     s
 }
 
-// â”€â”€ Tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
@@ -2040,7 +2040,8 @@ mod tests {
 
     #[test]
     fn test_inner_thought_no_panic() {
-        let empty: Vec<QueryHit> = vec![];
+        let _empty: Vec<QueryHit> = vec![];
 
     }
 }
+

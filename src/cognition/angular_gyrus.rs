@@ -293,7 +293,7 @@ mod tests {
     #[test]
     fn test_metaphor_detected() {
         let mut ag = AngularGyrus::new();
-        let out = ag.analyze("this is like a river that flows through your mind");
+        let _out = ag.analyze("this is like a river that flows through your mind");
         assert!(
             out.has_metaphor,
             "explicit 'like a' should be detected as metaphor"
@@ -307,7 +307,7 @@ mod tests {
     #[test]
     fn test_no_metaphor_in_literal() {
         let mut ag = AngularGyrus::new();
-        let out = ag.analyze("the cat sat on the mat at noon");
+        let _out = ag.analyze("the cat sat on the mat at noon");
         assert!(
             !out.has_metaphor,
             "literal sentence should not trigger metaphor detection"
@@ -317,7 +317,7 @@ mod tests {
     #[test]
     fn test_quantifiers_detected() {
         let mut ag = AngularGyrus::new();
-        let out = ag.analyze("most of the time nearly all signals are roughly equal in magnitude");
+        let _out = ag.analyze("most of the time nearly all signals are roughly equal in magnitude");
         assert!(
             out.quantifier_density > 0.0,
             "quantifier-dense text should have high quantifier density: {:.2}",
@@ -328,7 +328,7 @@ mod tests {
     #[test]
     fn test_abstract_language_raises_coherence() {
         let mut ag = AngularGyrus::new();
-        let out = ag.analyze("the concept of emergence as a pattern in complex systems creates a dynamic relationship between structure and behavior");
+        let _out = ag.analyze("the concept of emergence as a pattern in complex systems creates a dynamic relationship between structure and behavior");
         assert!(
             out.semantic_richness > 0.20,
             "abstract language should raise semantic richness: {:.2}",
@@ -352,7 +352,7 @@ mod tests {
     #[test]
     fn test_semantic_incongruity() {
         let mut ag = AngularGyrus::new();
-        let out = ag.analyze("the cold warmth of the system creates complexity");
+        let _out = ag.analyze("the cold warmth of the system creates complexity");
         assert!(
             out.has_incongruity,
             "incongruent word pair 'cold'+'warmth' should be flagged"
@@ -362,7 +362,7 @@ mod tests {
     #[test]
     fn test_no_incongruity_in_normal_text() {
         let mut ag = AngularGyrus::new();
-        let out = ag.analyze("the hippocampus stores memories efficiently");
+        let _out = ag.analyze("the hippocampus stores memories efficiently");
         assert!(
             !out.has_incongruity,
             "normal text should not flag incongruity"
@@ -372,7 +372,8 @@ mod tests {
     #[test]
     fn test_analogy_trigger_on_abstract() {
         let mut ag = AngularGyrus::new();
-        let out = ag.analyze("the core concept relationship between framework and pattern reveals the structure of the system");
+        let _out = ag.analyze("the core concept relationship between framework and pattern reveals the structure of the system");
 
     }
 }
+

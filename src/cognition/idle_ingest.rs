@@ -802,7 +802,7 @@ mod tests {
 
     #[test]
     fn extract_concepts_picks_rare_words() {
-        let concepts = extract_significant_concepts(
+        let _concepts = extract_significant_concepts(
             "Photosynthesis converts carbon dioxide and water into glucose using sunlight.",
             3,
         );
@@ -816,10 +816,11 @@ mod tests {
 
     #[test]
     fn extract_concepts_dedupes() {
-        let concepts = extract_significant_concepts(
+        let _concepts = extract_significant_concepts(
             "A neuron is a specialized cell. Neurons transmit information through synapses.",
             5,
         );
 
     }
 }
+

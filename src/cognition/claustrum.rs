@@ -337,10 +337,11 @@ mod tests {
     #[test]
     fn test_integration_score_updates() {
         let mut c = Claustrum::new();
-        let initial_score = c.integration_score;
+        let _initial_score = c.integration_score;
         c.bind("reasoning", "deep philosophical content", 0.90, 0.90);
         c.bind("emotion", "high emotional charge", 0.85, 0.90);
         // Score should have shifted
 
     }
 }
+

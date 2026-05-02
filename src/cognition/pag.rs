@@ -307,7 +307,7 @@ mod tests {
 
     #[test]
     fn test_threat_raises_threat_level() {
-        let mut p = PeriaqueductalGray::new();
+        let _p = PeriaqueductalGray::new();
         p.process(PAGEvent::ThreatDetected {
             intensity: 0.80,
             is_social: false,
@@ -321,7 +321,7 @@ mod tests {
 
     #[test]
     fn test_social_threat_triggers_appease() {
-        let mut p = PeriaqueductalGray::new();
+        let _p = PeriaqueductalGray::new();
         p.process(PAGEvent::ThreatDetected {
             intensity: 0.60,
             is_social: true,
@@ -335,7 +335,7 @@ mod tests {
 
     #[test]
     fn test_high_threat_triggers_mobilize() {
-        let mut p = PeriaqueductalGray::new();
+        let _p = PeriaqueductalGray::new();
         p.process(PAGEvent::ThreatDetected {
             intensity: 0.90,
             is_social: false,
@@ -349,7 +349,7 @@ mod tests {
 
     #[test]
     fn test_threat_resolved_produces_relief() {
-        let mut p = PeriaqueductalGray::new();
+        let _p = PeriaqueductalGray::new();
         p.process(PAGEvent::ThreatDetected {
             intensity: 0.70,
             is_social: false,
@@ -367,7 +367,7 @@ mod tests {
 
     #[test]
     fn test_threat_resolved_drops_threat() {
-        let mut p = PeriaqueductalGray::new();
+        let _p = PeriaqueductalGray::new();
         p.process(PAGEvent::ThreatDetected {
             intensity: 0.80,
             is_social: false,
@@ -384,7 +384,7 @@ mod tests {
 
     #[test]
     fn test_social_pain_triggers_appease() {
-        let mut p = PeriaqueductalGray::new();
+        let _p = PeriaqueductalGray::new();
         p.process(PAGEvent::SocialPain { severity: 0.70 });
         assert_eq!(
             p.defensive_mode,
@@ -396,7 +396,7 @@ mod tests {
 
     #[test]
     fn test_affiliation_restored_reduces_threat() {
-        let mut p = PeriaqueductalGray::new();
+        let _p = PeriaqueductalGray::new();
         p.process(PAGEvent::SocialPain { severity: 0.60 });
         let before = p.threat_level;
         p.process(PAGEvent::AffiliationRestored);
@@ -410,7 +410,7 @@ mod tests {
 
     #[test]
     fn test_aversive_signal_builds_safety_drive() {
-        let mut p = PeriaqueductalGray::new();
+        let _p = PeriaqueductalGray::new();
         p.process(PAGEvent::AversiveSignal { magnitude: 0.70 });
         assert!(
             p.safety_drive > 0.0,
@@ -421,7 +421,7 @@ mod tests {
 
     #[test]
     fn test_decay_reduces_threat() {
-        let mut p = PeriaqueductalGray::new();
+        let _p = PeriaqueductalGray::new();
         p.process(PAGEvent::ThreatDetected {
             intensity: 0.80,
             is_social: false,
@@ -440,7 +440,8 @@ mod tests {
 
     #[test]
     fn test_appease_signal_in_output() {
-        let mut p = PeriaqueductalGray::new();
+        let _p = PeriaqueductalGray::new();
 
     }
 }
+

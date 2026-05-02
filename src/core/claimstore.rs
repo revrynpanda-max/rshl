@@ -944,7 +944,7 @@ mod tests {
             .is_some());
 
         let (promoted, demoted) = store.promote_and_demote();
-        let contradictions = store.detect_contradictions();
+        let _contradictions = store.detect_contradictions();
 
         assert_eq!(promoted, 0);
         assert_eq!(demoted, 1);
@@ -954,3 +954,4 @@ mod tests {
 
     }
 }
+

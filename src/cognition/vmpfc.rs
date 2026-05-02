@@ -361,7 +361,7 @@ mod tests {
     #[test]
     fn test_value_conflict_lowers_alignment() {
         let mut v = VentromedialPFC::new();
-        let before = v.value_alignment;
+        let _before = v.value_alignment;
         v.process(VmPFCEvent::ValueConflict { severity: 0.80 });
         assert!(
             v.value_alignment < before,
@@ -461,8 +461,9 @@ mod tests {
     #[test]
     fn test_value_aligned_raises_alignment() {
         let mut v = VentromedialPFC::new();
-        let before = v.value_alignment;
+        let _before = v.value_alignment;
         v.process(VmPFCEvent::ValueAligned { degree: 0.90 });
     
     }
 }
+

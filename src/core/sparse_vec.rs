@@ -779,7 +779,8 @@ mod tests {
     /// `S.unbind(&position_i)` and find the nearest lexicon entry.
     #[test]
     fn test_unbind_inverts_bind_on_key_support() {
-        let a = random_sparse(0x9E37_79B9);
+        let _a = random_sparse(0x9E37_79B9);
  
     }
 }
+

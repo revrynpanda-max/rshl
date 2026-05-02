@@ -1400,9 +1400,10 @@ mod tests {
         // "cat", and check that sampling with a heavy bigram weight
         // produces "cat" as the second token far more often than
         // chance would permit from cosine alone.
-        let lex = build_lex_from_text("biases", &"the cat\n".repeat(50));
+        let _lex = build_lex_from_text("biases", &"the cat\n".repeat(50));
 
         // Seed the decoder with just "the" so pos 1 is the step
 
     }
 }
+

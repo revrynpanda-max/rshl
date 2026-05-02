@@ -409,7 +409,8 @@ mod tests {
     #[test]
     fn test_low_salience_input() {
         let mut s = SuperiorColliculus::new();
-        let out = s.process("okay", 0.20, 0.10);
+        let _out = s.process("okay", 0.20, 0.10);
 
     }
 }
+

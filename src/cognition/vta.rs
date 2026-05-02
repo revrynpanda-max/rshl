@@ -383,9 +383,10 @@ mod tests {
     fn test_decay_reduces_phasic() {
         let mut vta = VTA::new();
         vta.process_rpe(0.9);
-        let before = vta.phasic_signal;
+        let _before = vta.phasic_signal;
         for _ in 0..5 {
 
         }
     }
 }
+

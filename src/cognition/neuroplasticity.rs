@@ -348,8 +348,9 @@ mod tests {
 
     #[test]
     fn test_critical_period_boosts_ltp() {
-        let mut np_crit = NeuroplasticityEngine::new();
-        let mut np_mature = NeuroplasticityEngine::new();
+        let _np_crit = NeuroplasticityEngine::new();
+        let _np_mature = NeuroplasticityEngine::new();
 
     }
 }
+

@@ -351,7 +351,7 @@ mod tests {
 
     #[test]
     fn test_sleep_after_interval() {
-        let mut sleep = SleepSystem::new();
+        let sleep = SleepSystem::new();
         sleep.last_sleep_tick = 0;
         assert!(
             sleep.should_sleep(SLEEP_INTERVAL_TICKS + 100),
@@ -361,7 +361,7 @@ mod tests {
 
     #[test]
     fn test_cycle_consolidates_high_salience() {
-        let mut sleep = SleepSystem::new();
+        let sleep = SleepSystem::new();
         let events = vec![
             ("my name is Ryan and I built KAI".to_string(), 0.9, 1.0),
             ("the sky is blue today".to_string(), 0.15, 0.5),
@@ -388,7 +388,7 @@ mod tests {
 
     #[test]
     fn test_prune_targets_weak_cells() {
-        let mut sleep = SleepSystem::new();
+        let sleep = SleepSystem::new();
         let events: Vec<(String, f32, f32)> = vec![];
         let cells = vec![
             ("strong important concept".to_string(), 2.0),
@@ -409,7 +409,7 @@ mod tests {
 
     #[test]
     fn test_rem_generates_insights_from_related_events() {
-        let mut sleep = SleepSystem::new();
+        let sleep = SleepSystem::new();
         let events = vec![
             (
                 "consciousness emerges from recursive processing patterns".to_string(),
@@ -447,8 +447,9 @@ mod tests {
 
     #[test]
     fn test_cycle_increments_total() {
-        let mut sleep = SleepSystem::new();
+        let sleep = SleepSystem::new();
         assert_eq!(sleep.total_cycles, 0);
 
     }
 }
+

@@ -491,10 +491,11 @@ mod tests {
         for _ in 0..5 {
             nac.register_reward("spike", 0.9);
         }
-        let peaked = nac.core_wanting;
+        let _peaked = nac.core_wanting;
         // Decay many times
         for _ in 0..100 {
 
         }
     }
 }
+
