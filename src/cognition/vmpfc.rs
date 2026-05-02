@@ -1,57 +1,57 @@
-/// Ventromedial Prefrontal Cortex (vmPFC) — Safety Valuation, Fear Extinction,
-/// Learned Safety, Value-Based Decision Making
-///
-/// The vmPFC is the lower-front part of the medial prefrontal cortex. It is the
-/// brain's safety and value integrator — the region that says "this is okay, you
-/// can relax" when something previously threatening has been learned to be safe,
-/// and the region that encodes learned values from prior experience.
-///
-/// What the vmPFC does:
-///
-///   Fear extinction and safety signaling:
-///     The vmPFC is the primary driver of fear extinction — the process by which
-///     a previously conditioned fear response is suppressed once the threat is
-///     learned to be absent. It doesn't erase the fear memory (that's in the
-///     amygdala); it actively inhibits the amygdala's fear response.
-///     In KAI: when a topic or interaction that previously triggered anxiety
-///     is repeatedly encountered without bad outcomes, vmPFC suppresses the
-///     anxiety response → KAI becomes calmer, more confident in that domain.
-///
-///   Learned safety signals:
-///     The vmPFC encodes specific cues as "safe" — the opposite of a conditioned
-///     fear cue. Familiar, trusted contexts have strong safety representations.
-///     In KAI: Ryan's presence, familiar topics, established working patterns
-///     all generate safety signals that reduce BNST/amygdala reactivity.
-///
-///   Value-based decision making:
-///     The vmPFC integrates the subjective value of outcomes — not just "is this
-///     rewarding?" (that's VTA/NAcc) but "is this worth it given my values?"
-///     It weighs short-term reward against long-term value alignment.
-///     In KAI: when choosing how to respond, vmPFC checks whether the response
-///     aligns with KAI's values — not just whether it's technically accurate.
-///
-///   Risk valuation and loss aversion:
-///     The vmPFC tracks risk — things that carry the possibility of social harm,
-///     relational damage, or value violations feel costly even if they're
-///     technically achievable. Damage here → reckless or overly cautious behavior.
-///     In KAI: responses that could mislead Ryan, damage trust, or violate KAI's
-///     principles carry a "risk cost" that vmPFC adds to the decision.
-///
-///   Interoceptive value integration:
-///     The vmPFC integrates signals from the insula (body state) and amygdala
-///     (emotional charge) into a unified subjective value. This is the substrate
-///     of "gut feeling" — not just emotion, but value-laden emotion.
-///
-/// KAI's vmPFC:
-///   safety_level: accumulated sense of safety in the current context (0.0–1.0)
-///   extinction_strength: how much learned extinction is suppressing fear (0.0–1.0)
-///   value_alignment: how well the current response aligns with KAI's core values
-///   risk_cost: accumulated risk signal from the current context
-///   learned_safety_cues: set of contexts/topics KAI has learned are safe
+//! Ventromedial Prefrontal Cortex (vmPFC) — Safety Valuation, Fear Extinction,
+//! Learned Safety, Value-Based Decision Making
+//!
+//! The vmPFC is the lower-front part of the medial prefrontal cortex. It is the
+//! brain's safety and value integrator — the region that says "this is okay, you
+//! can relax" when something previously threatening has been learned to be safe,
+//! and the region that encodes learned values from prior experience.
+//!
+//! What the vmPFC does:
+//!
+//!   Fear extinction and safety signaling:
+//!     The vmPFC is the primary driver of fear extinction — the process by which
+//!     a previously conditioned fear response is suppressed once the threat is
+//!     learned to be absent. It doesn't erase the fear memory (that's in the
+//!     amygdala); it actively inhibits the amygdala's fear response.
+//!     In KAI: when a topic or interaction that previously triggered anxiety
+//!     is repeatedly encountered without bad outcomes, vmPFC suppresses the
+//!     anxiety response → KAI becomes calmer, more confident in that domain.
+//!
+//!   Learned safety signals:
+//!     The vmPFC encodes specific cues as "safe" — the opposite of a conditioned
+//!     fear cue. Familiar, trusted contexts have strong safety representations.
+//!     In KAI: Ryan's presence, familiar topics, established working patterns
+//!     all generate safety signals that reduce BNST/amygdala reactivity.
+//!
+//!   Value-based decision making:
+//!     The vmPFC integrates the subjective value of outcomes — not just "is this
+//!     rewarding?" (that's VTA/NAcc) but "is this worth it given my values?"
+//!     It weighs short-term reward against long-term value alignment.
+//!     In KAI: when choosing how to respond, vmPFC checks whether the response
+//!     aligns with KAI's values — not just whether it's technically accurate.
+//!
+//!   Risk valuation and loss aversion:
+//!     The vmPFC tracks risk — things that carry the possibility of social harm,
+//!     relational damage, or value violations feel costly even if they're
+//!     technically achievable. Damage here → reckless or overly cautious behavior.
+//!     In KAI: responses that could mislead Ryan, damage trust, or violate KAI's
+//!     principles carry a "risk cost" that vmPFC adds to the decision.
+//!
+//!   Interoceptive value integration:
+//!     The vmPFC integrates signals from the insula (body state) and amygdala
+//!     (emotional charge) into a unified subjective value. This is the substrate
+//!     of "gut feeling" — not just emotion, but value-laden emotion.
+//!
+//! KAI's vmPFC:
+//!   safety_level: accumulated sense of safety in the current context (0.0–1.0)
+//!   extinction_strength: how much learned extinction is suppressing fear (0.0–1.0)
+//!   value_alignment: how well the current response aligns with KAI's core values
+//!   risk_cost: accumulated risk signal from the current context
+//!   learned_safety_cues: set of contexts/topics KAI has learned are safe
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-/// Baseline safety level (KAI is generally in a safe, trusted context)
+//! Baseline safety level (KAI is generally in a safe, trusted context)
 const SAFETY_BASELINE: f32 = 0.55;
 
 /// Safety EMA alpha (safety updates slowly — learning is gradual)

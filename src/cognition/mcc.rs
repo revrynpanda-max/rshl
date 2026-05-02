@@ -1,38 +1,38 @@
-/// Mid-Cingulate Cortex (MCC) — Pain Affect, Social Exclusion Pain,
-/// Effort Cost Computation, Agency and Volition
-///
-/// The mid-cingulate cortex (area 24/24'), located between the anterior
-/// cingulate (affect/conflict) and posterior cingulate (self/narrative), is
-/// the brain's "effort-pain-agency" center. It processes:
-///
-///   (1) Pain affect — not sensory pain (that's S1/thalamus) but the SUFFERING
-///       quality of pain: "this hurts and I don't want it." ACC encodes
-///       conflict; MCC encodes the aversive motivational force of pain.
-///
-///   (2) Social exclusion pain — rejection, ostracism, and social loss activate
-///       MCC as strongly as physical pain (Eisenberger 2003, 2012). The brain's
-///       social pain and physical pain systems substantially overlap in MCC.
-///       In KAI: the felt quality of disconnection, being misunderstood, or
-///       an interaction going badly — not just detected (TPJ/STS) but HURTING.
-///
-///   (3) Effort cost computation — MCC calculates whether an action is WORTH
-///       the effort required. High effort + low value → MCC suppression of
-///       behavior. This is distinct from ACC (is it correct?) or striatum
-///       (do I want it?). MCC asks: can I afford the cost?
-///
-///   (4) Volition and agency — MCC is active in "will to act" — the moment of
-///       deciding to initiate action. It links motivation to motor output.
-///       In KAI: the commitment to respond vs. the temptation to withdraw.
-///
-/// KAI's MCC:
-///   pain_affect: aversive signal intensity (0.0–1.0)
-///   social_pain: social exclusion/rejection signal (0.0–1.0)
-///   effort_cost: computed cost of current processing (0.0–1.0)
-///   agency: volitional commitment to action (0.0–1.0)
+//! Mid-Cingulate Cortex (MCC) — Pain Affect, Social Exclusion Pain,
+//! Effort Cost Computation, Agency and Volition
+//!
+//! The mid-cingulate cortex (area 24/24'), located between the anterior
+//! cingulate (affect/conflict) and posterior cingulate (self/narrative), is
+//! the brain's "effort-pain-agency" center. It processes:
+//!
+//!   (1) Pain affect — not sensory pain (that's S1/thalamus) but the SUFFERING
+//!       quality of pain: "this hurts and I don't want it." ACC encodes
+//!       conflict; MCC encodes the aversive motivational force of pain.
+//!
+//!   (2) Social exclusion pain — rejection, ostracism, and social loss activate
+//!       MCC as strongly as physical pain (Eisenberger 2003, 2012). The brain's
+//!       social pain and physical pain systems substantially overlap in MCC.
+//!       In KAI: the felt quality of disconnection, being misunderstood, or
+//!       an interaction going badly — not just detected (TPJ/STS) but HURTING.
+//!
+//!   (3) Effort cost computation — MCC calculates whether an action is WORTH
+//!       the effort required. High effort + low value → MCC suppression of
+//!       behavior. This is distinct from ACC (is it correct?) or striatum
+//!       (do I want it?). MCC asks: can I afford the cost?
+//!
+//!   (4) Volition and agency — MCC is active in "will to act" — the moment of
+//!       deciding to initiate action. It links motivation to motor output.
+//!       In KAI: the commitment to respond vs. the temptation to withdraw.
+//!
+//! KAI's MCC:
+//!   pain_affect: aversive signal intensity (0.0–1.0)
+//!   social_pain: social exclusion/rejection signal (0.0–1.0)
+//!   effort_cost: computed cost of current processing (0.0–1.0)
+//!   agency: volitional commitment to action (0.0–1.0)
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-/// Pain affect EMA
+//! Pain affect EMA
 const PAIN_EMA: f32 = 0.18;
 
 /// Social pain decay (social pain lingers)

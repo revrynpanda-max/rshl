@@ -1,45 +1,45 @@
-/// LexSem — Lexical Semantics Engine: KAI's English Word Intelligence
-///
-/// This module gives KAI genuine language intelligence — not just pattern
-/// matching against stored cells, but real understanding of what words MEAN,
-/// how they relate to each other, and how to use them naturally in sentences.
-///
-/// A human doesn't just recognize the word "broken" — they know it implies:
-///   - Something that used to work but doesn't now
-///   - Possibly fixable or possibly not
-///   - Can be physical ("broken arm"), emotional ("broken heart"), abstract ("broken promise")
-///   - The severity depends on what's broken
-///
-/// Without this, KAI is retrieving text and echoing it.
-/// With this, KAI is understanding words and composing from meaning.
-///
-/// What LexSem provides:
-///
-///   1. Word sense disambiguation:
-///      Context determines which sense of a word is active.
-///      "bank" near "river" ≠ "bank" near "money".
-///      LexSem scores which sense is most active given surrounding words.
-///
-///   2. Semantic field detection:
-///      Groups words into conceptual domains:
-///        Emotional, Cognitive, Physical, Social, Temporal, Causal, etc.
-///      When Ryan says something, LexSem identifies which field(s) it's in.
-///      This shapes how KAI responds — emotional topic = emotional register.
-///
-///   3. Intent weight scoring:
-///      Not all words in a sentence carry equal weight.
-///      "I think maybe something might be broken" — "broken" is the key concept.
-///      "I definitely need this fixed right now" — "definitely", "fixed", "now" are key.
-///      LexSem scores the semantic weight of each word in context.
-///
-///   4. Paraphrase construction:
-///      Given a stored cell's text + the detected field + key concepts,
-///      construct a natural re-expression rather than echo the raw text.
-///      This is how KAI talks FROM meaning rather than FROM retrieval.
-///
-///   5. Ryan's language model:
-///      Tracks how Ryan speaks: his vocabulary, phrase patterns, topics.
-///      Adapts KAI's output to feel natural in conversation with Ryan specifically.
+//! LexSem — Lexical Semantics Engine: KAI's English Word Intelligence
+//!
+//! This module gives KAI genuine language intelligence — not just pattern
+//! matching against stored cells, but real understanding of what words MEAN,
+//! how they relate to each other, and how to use them naturally in sentences.
+//!
+//! A human doesn't just recognize the word "broken" — they know it implies:
+//!   - Something that used to work but doesn't now
+//!   - Possibly fixable or possibly not
+//!   - Can be physical ("broken arm"), emotional ("broken heart"), abstract ("broken promise")
+//!   - The severity depends on what's broken
+//!
+//! Without this, KAI is retrieving text and echoing it.
+//! With this, KAI is understanding words and composing from meaning.
+//!
+//! What LexSem provides:
+//!
+//!   1. Word sense disambiguation:
+//!      Context determines which sense of a word is active.
+//!      "bank" near "river" ≠ "bank" near "money".
+//!      LexSem scores which sense is most active given surrounding words.
+//!
+//!   2. Semantic field detection:
+//!      Groups words into conceptual domains:
+//!        Emotional, Cognitive, Physical, Social, Temporal, Causal, etc.
+//!      When Ryan says something, LexSem identifies which field(s) it's in.
+//!      This shapes how KAI responds — emotional topic = emotional register.
+//!
+//!   3. Intent weight scoring:
+//!      Not all words in a sentence carry equal weight.
+//!      "I think maybe something might be broken" — "broken" is the key concept.
+//!      "I definitely need this fixed right now" — "definitely", "fixed", "now" are key.
+//!      LexSem scores the semantic weight of each word in context.
+//!
+//!   4. Paraphrase construction:
+//!      Given a stored cell's text + the detected field + key concepts,
+//!      construct a natural re-expression rather than echo the raw text.
+//!      This is how KAI talks FROM meaning rather than FROM retrieval.
+//!
+//!   5. Ryan's language model:
+//!      Tracks how Ryan speaks: his vocabulary, phrase patterns, topics.
+//!      Adapts KAI's output to feel natural in conversation with Ryan specifically.
 use std::collections::HashMap;
 
 // ── Semantic Fields ───────────────────────────────────────────────────────────
@@ -1141,7 +1141,7 @@ const CREATIVE_WORDS: &[&str] = &[
 ///
 /// The shared field tag "occupation" then becomes the geometric bridge:
 ///   stored "occupation:engineer" + enriched query "…occupation" → BM25 match.
-
+///
 /// Role nouns: what someone IS. Stored as "occupation:[concept]" cells.
 /// Public so store_concept_cells can filter key_concepts to role nouns only.
 pub const OCCUPATION_ROLE_WORDS: &[&str] = &[

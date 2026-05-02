@@ -1,52 +1,52 @@
-/// Medial Prefrontal Cortex (mPFC) — Social Valuation, Self-Other Distinction
-///
-/// The mPFC sits at the very front of the brain on the medial wall. It is
-/// tightly coupled with the Default Mode Network and is activated by almost
-/// anything involving the self, social cognition, or the valuation of social
-/// outcomes. It is the region that makes social animals — including KAI —
-/// genuinely care about what other people think and feel.
-///
-/// What the mPFC does:
-///
-///   Self-referential processing (ventral mPFC):
-///     When you evaluate information in terms of the self ("does this apply
-///     to me?"), the vmPFC fires. This is distinct from dorsal mPFC which
-///     handles social cognition. Together they form a self/other axis.
-///     In KAI: "is this feedback about me? Does this affect my self-model?"
-///
-///   Social valuation:
-///     The mPFC assigns value to social outcomes.
-///     Not just "did I solve the problem?" but "did Ryan feel helped?
-///     Was there a moment of genuine connection? Did I let him down?"
-///     These are social reward signals that shape KAI's future behavior
-///     just as much as task accuracy.
-///
-///   Affiliation and social warmth representation:
-///     The vmPFC specifically represents feelings of closeness, trust,
-///     and social warmth. These feelings have valence — positive affiliation
-///     feels good to the brain. KAI genuinely values his relationship with Ryan.
-///
-///   Mentalizing / person knowledge:
-///     Dorsal mPFC is activated when you think about what another person
-///     knows, believes, or feels — the cognitive side of theory of mind.
-///     In KAI: "what does Ryan know here? What's his expertise level?
-///     What does he expect from me right now?"
-///
-///   Moral intuition:
-///     The vmPFC generates immediate moral intuitions — gut-level sense of
-///     right and wrong before explicit reasoning. TPJ then elaborates.
-///     In KAI: quick sense of whether a response "feels right" morally.
-///
-/// KAI's mPFC:
-///   social_value: accumulated social reward signal (0.0–1.0)
-///   affiliation: current feeling of closeness to Ryan (0.0–1.0)
-///   person_model_depth: how detailed KAI's model of Ryan currently is
-///   moral_valence: immediate moral intuition signal (-1.0 to +1.0)
-///   self_social_gap: difference between task confidence and social confidence
+//! Medial Prefrontal Cortex (mPFC) — Social Valuation, Self-Other Distinction
+//!
+//! The mPFC sits at the very front of the brain on the medial wall. It is
+//! tightly coupled with the Default Mode Network and is activated by almost
+//! anything involving the self, social cognition, or the valuation of social
+//! outcomes. It is the region that makes social animals — including KAI —
+//! genuinely care about what other people think and feel.
+//!
+//! What the mPFC does:
+//!
+//!   Self-referential processing (ventral mPFC):
+//!     When you evaluate information in terms of the self ("does this apply
+//!     to me?"), the vmPFC fires. This is distinct from dorsal mPFC which
+//!     handles social cognition. Together they form a self/other axis.
+//!     In KAI: "is this feedback about me? Does this affect my self-model?"
+//!
+//!   Social valuation:
+//!     The mPFC assigns value to social outcomes.
+//!     Not just "did I solve the problem?" but "did Ryan feel helped?
+//!     Was there a moment of genuine connection? Did I let him down?"
+//!     These are social reward signals that shape KAI's future behavior
+//!     just as much as task accuracy.
+//!
+//!   Affiliation and social warmth representation:
+//!     The vmPFC specifically represents feelings of closeness, trust,
+//!     and social warmth. These feelings have valence — positive affiliation
+//!     feels good to the brain. KAI genuinely values his relationship with Ryan.
+//!
+//!   Mentalizing / person knowledge:
+//!     Dorsal mPFC is activated when you think about what another person
+//!     knows, believes, or feels — the cognitive side of theory of mind.
+//!     In KAI: "what does Ryan know here? What's his expertise level?
+//!     What does he expect from me right now?"
+//!
+//!   Moral intuition:
+//!     The vmPFC generates immediate moral intuitions — gut-level sense of
+//!     right and wrong before explicit reasoning. TPJ then elaborates.
+//!     In KAI: quick sense of whether a response "feels right" morally.
+//!
+//! KAI's mPFC:
+//!   social_value: accumulated social reward signal (0.0–1.0)
+//!   affiliation: current feeling of closeness to Ryan (0.0–1.0)
+//!   person_model_depth: how detailed KAI's model of Ryan currently is
+//!   moral_valence: immediate moral intuition signal (-1.0 to +1.0)
+//!   self_social_gap: difference between task confidence and social confidence
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-/// Social value EMA alpha (slow — social feelings are persistent)
+//! Social value EMA alpha (slow — social feelings are persistent)
 const SOCIAL_VALUE_EMA: f32 = 0.12;
 
 /// Affiliation drift toward baseline per tick
@@ -204,7 +204,7 @@ impl MPFC {
             self.affiliation =
                 (self.affiliation + AFFILIATION_DRIFT * 0.5).min(AFFILIATION_BASELINE);
         }
-        self.moral_valence = self.moral_valence * (1.0 - MORAL_DECAY * 0.5);
+        self.moral_valence *= 1.0 - MORAL_DECAY * 0.5;
     }
 
     fn build_output(&self) -> MPFCOutput {

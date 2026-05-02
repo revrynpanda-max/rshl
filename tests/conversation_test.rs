@@ -628,18 +628,17 @@ fn kai_conversation() {
         }
 
         // Greeting should not output template phrases
-        if matches!(*label, "Greeting" | "Compound") {
-            if r_lower.contains("nice to meet")
+        if matches!(*label, "Greeting" | "Compound")
+            && (r_lower.contains("nice to meet")
                 || r_lower.contains("great to meet")
                 || r_lower.contains("good to meet")
-                || r_lower.contains("how can i")
+                || r_lower.contains("how can i"))
             {
                 issues.push(format!(
                     "[{}] SCRIPTED GREETING: \"{}\" → \"{}\"",
                     label, input, resp
                 ));
             }
-        }
 
         // Responses should not be empty
         if resp.trim().is_empty() {
@@ -756,11 +755,10 @@ fn say_live(u: &mut Universe, input: &str, recent: &mut Vec<(String, String)>) -
     if !matches!(
         qt,
         QueryType::Greeting | QueryType::Gratitude | QueryType::SelfQuestion
-    ) {
-        if !input.contains('?') && input.split_whitespace().count() >= 4 {
+    )
+        && !input.contains('?') && input.split_whitespace().count() >= 4 {
             u.store_or_reinforce(input, "memory", "ryan", 1.3);
         }
-    }
     // Run occupation tagging — mirrors store_concept_cells in main.rs.
     // Creates "occupation:engineer" cells so work-recall queries can find them.
     store_occupation_tags(u, input);

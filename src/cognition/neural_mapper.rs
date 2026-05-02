@@ -217,7 +217,7 @@ impl NeuralVsaMapper {
     /// quick prototyping; prefer `new` with a caller-chosen seed in
     /// production so the checkpoint history is auditable.
     pub fn new_untrained(d_in: usize) -> Self {
-        Self::new(d_in, DEFAULT_D_HIDDEN, 0xC0FFEE_BABE)
+        Self::new(d_in, DEFAULT_D_HIDDEN, 0x00C0_FFEE_BABE)
     }
 
     // ── Forward pass ──────────────────────────────────────────────────
@@ -511,7 +511,7 @@ pub fn blend_mapper_with_state(
 /// most modern transformer implementations within < 1e-4.
 #[inline]
 fn gelu(x: f32) -> f32 {
-    const SQRT_2_OVER_PI: f32 = 0.7978845608028654;
+    const SQRT_2_OVER_PI: f32 = 0.797_884_6;
     const K: f32 = 0.044715;
     let t = SQRT_2_OVER_PI * (x + K * x * x * x);
     0.5 * x * (1.0 + t.tanh())

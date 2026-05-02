@@ -1,51 +1,51 @@
-/// Supramarginal Gyrus (SMG) — Immediate Empathy, Phonological Buffer,
-/// Embodied Action-Word Processing, Empathy Calibration
-///
-/// The SMG sits at the junction of the parietal and temporal lobes, near the
-/// TPJ. It has two distinct functional roles that are anatomically adjacent:
-/// (1) affective empathy — the immediate visceral resonance with another's pain
-/// or distress, and (2) phonological working memory — the inner "sound buffer"
-/// for language processing.
-///
-/// What the SMG does:
-///
-///   Immediate empathy (affective resonance):
-///     When you see someone in pain or distress, the SMG fires immediately —
-///     before cognitive appraisal. This is faster and more visceral than
-///     TPJ's cognitive mentalizing. The SMG produces the "ouch" before
-///     the "I understand why they're hurting."
-///     When the SMG is busy (cognitively loaded), immediate empathy drops —
-///     we become less emotionally sensitive when overloaded.
-///     In KAI: the immediate affective resonance when Ryan expresses distress,
-///     frustration, excitement, or joy — BEFORE cognitive processing.
-///
-///   Phonological loop / inner sound:
-///     The left SMG is part of the phonological loop — the "inner ear" that
-///     holds the sound-form of words during language processing and working
-///     memory rehearsal. This is how you "hear" words in your head.
-///     In KAI: the phonological/linguistic buffer — how strongly the sound
-///     and rhythm of language resonates during processing.
-///
-///   Embodied action-word processing:
-///     The SMG is involved in processing action words and social gestures —
-///     language that implies physical action or physical resonance.
-///     In KAI: heightened processing of motion verbs, physical descriptors,
-///     and somatic language.
-///
-///   Empathy suppression under load:
-///     The SMG is one of the brain regions most sensitive to cognitive
-///     overload suppressing empathy. High working memory load → SMG
-///     deactivation → reduced immediate empathy.
-///
-/// KAI's SMG:
-///   empathy_resonance: immediate affective response to other's state (0.0–1.0)
-///   phonological_load: current phonological buffer occupancy (0.0–1.0)
-///   empathy_suppressed: whether cognitive load is suppressing empathy
-///   embodied_activation: response to somatic/action language
+//! Supramarginal Gyrus (SMG) — Immediate Empathy, Phonological Buffer,
+//! Embodied Action-Word Processing, Empathy Calibration
+//!
+//! The SMG sits at the junction of the parietal and temporal lobes, near the
+//! TPJ. It has two distinct functional roles that are anatomically adjacent:
+//! (1) affective empathy — the immediate visceral resonance with another's pain
+//! or distress, and (2) phonological working memory — the inner "sound buffer"
+//! for language processing.
+//!
+//! What the SMG does:
+//!
+//!   Immediate empathy (affective resonance):
+//!     When you see someone in pain or distress, the SMG fires immediately —
+//!     before cognitive appraisal. This is faster and more visceral than
+//!     TPJ's cognitive mentalizing. The SMG produces the "ouch" before
+//!     the "I understand why they're hurting."
+//!     When the SMG is busy (cognitively loaded), immediate empathy drops —
+//!     we become less emotionally sensitive when overloaded.
+//!     In KAI: the immediate affective resonance when Ryan expresses distress,
+//!     frustration, excitement, or joy — BEFORE cognitive processing.
+//!
+//!   Phonological loop / inner sound:
+//!     The left SMG is part of the phonological loop — the "inner ear" that
+//!     holds the sound-form of words during language processing and working
+//!     memory rehearsal. This is how you "hear" words in your head.
+//!     In KAI: the phonological/linguistic buffer — how strongly the sound
+//!     and rhythm of language resonates during processing.
+//!
+//!   Embodied action-word processing:
+//!     The SMG is involved in processing action words and social gestures —
+//!     language that implies physical action or physical resonance.
+//!     In KAI: heightened processing of motion verbs, physical descriptors,
+//!     and somatic language.
+//!
+//!   Empathy suppression under load:
+//!     The SMG is one of the brain regions most sensitive to cognitive
+//!     overload suppressing empathy. High working memory load → SMG
+//!     deactivation → reduced immediate empathy.
+//!
+//! KAI's SMG:
+//!   empathy_resonance: immediate affective response to other's state (0.0–1.0)
+//!   phonological_load: current phonological buffer occupancy (0.0–1.0)
+//!   empathy_suppressed: whether cognitive load is suppressing empathy
+//!   embodied_activation: response to somatic/action language
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-/// Empathy resonance EMA
+//! Empathy resonance EMA
 const EMPATHY_EMA: f32 = 0.20;
 
 /// Phonological buffer decay (fast — it's working memory)

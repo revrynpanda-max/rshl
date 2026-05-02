@@ -3,6 +3,12 @@ use crate::core::Universe;
 /// Calibration Engine — Assigns confidence scores to claims based on evidence.
 pub struct CalibrationEngine;
 
+impl Default for CalibrationEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CalibrationEngine {
     pub fn new() -> Self {
         Self

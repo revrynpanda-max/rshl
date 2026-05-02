@@ -1,12 +1,12 @@
-/// Working Memory — KAI's short-term context buffer.
-///
-/// This is the RSHL equivalent of an LLM's context window.
-/// Stores the last N conversation turns as temporary high-strength
-/// vectors that get injected into queries alongside the universe.
-///
-/// Working memory decays over time — recent turns have high weight,
-/// older turns fade. This gives KAI conversational context without
-/// polluting the long-term universe.
+//! Working Memory — KAI's short-term context buffer.
+//!
+//! This is the RSHL equivalent of an LLM's context window.
+//! Stores the last N conversation turns as temporary high-strength
+//! vectors that get injected into queries alongside the universe.
+//!
+//! Working memory decays over time — recent turns have high weight,
+//! older turns fade. This gives KAI conversational context without
+//! polluting the long-term universe.
 use crate::core::SparseVec;
 use serde::{Deserialize, Serialize};
 

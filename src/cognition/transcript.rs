@@ -1,11 +1,11 @@
-/// Session Transcript — Full conversation history that survives restarts.
-///
-/// Every turn is appended as a JSON line to data/kai-transcript.jsonl
-/// KAI can recall any part of its full history using `recall <query>`.
-/// The `brief` command summarizes the current session.
-///
-/// Format (one JSON object per line):
-/// {"ts": 1234567890, "session": "abc123", "role": "user", "text": "..."}
+//! Session Transcript — Full conversation history that survives restarts.
+//!
+//! Every turn is appended as a JSON line to data/kai-transcript.jsonl
+//! KAI can recall any part of its full history using `recall <query>`.
+//! The `brief` command summarizes the current session.
+//!
+//! Format (one JSON object per line):
+//! {"ts": 1234567890, "session": "abc123", "role": "user", "text": "..."}
 use serde::{Deserialize, Serialize};
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};

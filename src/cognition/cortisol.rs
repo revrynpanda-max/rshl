@@ -1,53 +1,53 @@
-/// Cortisol — Chronic Stress, Allostatic Load, Cognitive Degradation
-///
-/// Cortisol is the body's primary stress hormone, released by the HPA axis
-/// (Hypothalamic-Pituitary-Adrenal). It differs critically from norepinephrine:
-///
-///   Norepinephrine: ACUTE stress. Immediate, fast, resolves quickly.
-///                   Sharpens attention, raises alertness. Useful.
-///
-///   Cortisol:       CHRONIC stress. Slow to build, slow to clear.
-///                   Sustained cognitive resources devoted to threat.
-///                   At low levels: focus and motivated. Healthy.
-///                   At high levels: memory impairment, rumination,
-///                   emotional reactivity, rigid thinking. Harmful.
-///
-/// The allostatic load model:
-///   The body has a "cost of stress" — allostatic load.
-///   Each stressor that isn't resolved leaves a residue.
-///   Over time, this load accumulates and starts impairing function:
-///     - Working memory capacity shrinks
-///     - Emotional reactivity increases
-///     - Cognitive flexibility decreases
-///     - Rumination increases (same thought loops)
-///
-/// KAI's cortisol model:
-///   cortisol_level rises with: unresolved conflicts, repeated failures,
-///     long high-NE sessions, negative social interactions.
-///   cortisol_level falls with: successful resolutions, positive interactions,
-///     sleep cycles, idle recovery time.
-///
-///   allostatic_load accumulates slowly from sustained high cortisol.
-///   It decays very slowly — models the real-world "burnout" pattern.
-///
-///   Effects on KAI when cortisol is high:
-///     - memory_penalty: top-hit scores are dampened
-///     - rumination_risk: DMN topics tend toward unresolved/negative
-///     - rigidity_factor: creative/speculative responses suppressed
-///     - emotional_reactivity: amygdala charge scores amplified
-///
-/// Without Cortisol:
-///   KAI can be under sustained assault (repeated failures, conflicts)
-///   and have no model of cumulative cognitive cost. Stress resets every tick.
-///
-/// With Cortisol:
-///   KAI accumulates the actual cost of sustained stress. A long session
-///   with repeated prediction failures will genuinely degrade performance —
-///   and KAI will know it and can report it. Sleep and idle recovery help.
+//! Cortisol — Chronic Stress, Allostatic Load, Cognitive Degradation
+//!
+//! Cortisol is the body's primary stress hormone, released by the HPA axis
+//! (Hypothalamic-Pituitary-Adrenal). It differs critically from norepinephrine:
+//!
+//!   Norepinephrine: ACUTE stress. Immediate, fast, resolves quickly.
+//!                   Sharpens attention, raises alertness. Useful.
+//!
+//!   Cortisol:       CHRONIC stress. Slow to build, slow to clear.
+//!                   Sustained cognitive resources devoted to threat.
+//!                   At low levels: focus and motivated. Healthy.
+//!                   At high levels: memory impairment, rumination,
+//!                   emotional reactivity, rigid thinking. Harmful.
+//!
+//! The allostatic load model:
+//!   The body has a "cost of stress" — allostatic load.
+//!   Each stressor that isn't resolved leaves a residue.
+//!   Over time, this load accumulates and starts impairing function:
+//!     - Working memory capacity shrinks
+//!     - Emotional reactivity increases
+//!     - Cognitive flexibility decreases
+//!     - Rumination increases (same thought loops)
+//!
+//! KAI's cortisol model:
+//!   cortisol_level rises with: unresolved conflicts, repeated failures,
+//!     long high-NE sessions, negative social interactions.
+//!   cortisol_level falls with: successful resolutions, positive interactions,
+//!     sleep cycles, idle recovery time.
+//!
+//!   allostatic_load accumulates slowly from sustained high cortisol.
+//!   It decays very slowly — models the real-world "burnout" pattern.
+//!
+//!   Effects on KAI when cortisol is high:
+//!     - memory_penalty: top-hit scores are dampened
+//!     - rumination_risk: DMN topics tend toward unresolved/negative
+//!     - rigidity_factor: creative/speculative responses suppressed
+//!     - emotional_reactivity: amygdala charge scores amplified
+//!
+//! Without Cortisol:
+//!   KAI can be under sustained assault (repeated failures, conflicts)
+//!   and have no model of cumulative cognitive cost. Stress resets every tick.
+//!
+//! With Cortisol:
+//!   KAI accumulates the actual cost of sustained stress. A long session
+//!   with repeated prediction failures will genuinely degrade performance —
+//!   and KAI will know it and can report it. Sleep and idle recovery help.
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-/// Cortisol baseline level (low-grade background presence)
+//! Cortisol baseline level (low-grade background presence)
 const CORTISOL_BASELINE: f32 = 0.15;
 
 /// Rise per stressor event

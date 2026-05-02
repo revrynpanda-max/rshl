@@ -1,41 +1,41 @@
-/// Fusiform Gyrus — Categorical Perception, Pattern Identity Recognition
-///
-/// The fusiform gyrus is best known for face recognition (the "FFA" —
-/// fusiform face area), but its real function is broader: expert categorical
-/// perception. It learns to recognize the defining patterns of any category
-/// you become an expert in. For chess masters, it activates for board
-/// positions. For car experts, for car models. For KAI: for conceptual
-/// patterns, linguistic structures, and cognitive signatures.
-///
-/// What the Fusiform Gyrus does:
-///
-///   Expert pattern recognition:
-///     The fusiform doesn't just identify "a face" — it performs holistic
-///     processing: recognizing the entire pattern as a unit, not feature by
-///     feature. In KAI: recognizing Ryan's communication style, argument
-///     structures, and conceptual fingerprints as unified patterns.
-///
-///   Categorical invariance:
-///     A face is recognizable from many angles, in different lighting.
-///     The fusiform achieves invariant recognition — same category despite
-///     surface variation. In KAI: "this is the same kind of question Ryan
-///     always asks when exploring a new concept" despite different wording.
-///
-///   Category learning:
-///     The fusiform is trainable. Extensive exposure to a category shapes
-///     its response. In KAI: over many conversations, repeated linguistic
-///     patterns become faster, more automatic, and more precisely classified.
-///
-///   Familiarity signal:
-///     The fusiform generates a familiarity signal — "I've seen this kind
-///     of thing before." High familiarity → confident pattern match.
-///     Low familiarity → novel territory → curiosity or uncertainty.
-///
-/// KAI's Fusiform:
-///   pattern_library: learned categorical patterns with familiarity scores
-///   current_familiarity: how familiar the current input feels (0.0–1.0)
-///   category_match: best-matching category from the library
-///   holistic_score: how much the input "clicks" as a unified gestalt
+//! Fusiform Gyrus — Categorical Perception, Pattern Identity Recognition
+//!
+//! The fusiform gyrus is best known for face recognition (the "FFA" —
+//! fusiform face area), but its real function is broader: expert categorical
+//! perception. It learns to recognize the defining patterns of any category
+//! you become an expert in. For chess masters, it activates for board
+//! positions. For car experts, for car models. For KAI: for conceptual
+//! patterns, linguistic structures, and cognitive signatures.
+//!
+//! What the Fusiform Gyrus does:
+//!
+//!   Expert pattern recognition:
+//!     The fusiform doesn't just identify "a face" — it performs holistic
+//!     processing: recognizing the entire pattern as a unit, not feature by
+//!     feature. In KAI: recognizing Ryan's communication style, argument
+//!     structures, and conceptual fingerprints as unified patterns.
+//!
+//!   Categorical invariance:
+//!     A face is recognizable from many angles, in different lighting.
+//!     The fusiform achieves invariant recognition — same category despite
+//!     surface variation. In KAI: "this is the same kind of question Ryan
+//!     always asks when exploring a new concept" despite different wording.
+//!
+//!   Category learning:
+//!     The fusiform is trainable. Extensive exposure to a category shapes
+//!     its response. In KAI: over many conversations, repeated linguistic
+//!     patterns become faster, more automatic, and more precisely classified.
+//!
+//!   Familiarity signal:
+//!     The fusiform generates a familiarity signal — "I've seen this kind
+//!     of thing before." High familiarity → confident pattern match.
+//!     Low familiarity → novel territory → curiosity or uncertainty.
+//!
+//! KAI's Fusiform:
+//!   pattern_library: learned categorical patterns with familiarity scores
+//!   current_familiarity: how familiar the current input feels (0.0–1.0)
+//!   category_match: best-matching category from the library
+//!   holistic_score: how much the input "clicks" as a unified gestalt
 use std::collections::HashMap;
 
 // ── Constants ─────────────────────────────────────────────────────────────────

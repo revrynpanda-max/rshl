@@ -422,7 +422,7 @@ fn parse_ts_line(line: &str, lineno: usize, elements: &mut Vec<CodeElement>) {
     {
         if let Some(name) = extract_after_keyword(line, &["export const ", "const "]) {
             let name = name
-                .split(|c: char| c == ' ' || c == '=' || c == ':')
+                .split([' ', '=', ':'])
                 .next()
                 .unwrap_or("")
                 .trim()
@@ -446,7 +446,7 @@ fn parse_ts_line(line: &str, lineno: usize, elements: &mut Vec<CodeElement>) {
         extract_after_keyword(line, &["export class ", "class ", "export default class "])
     {
         let name = name
-            .split(|c: char| c == ' ' || c == '{' || c == '<')
+            .split([' ', '{', '<'])
             .next()
             .unwrap_or("")
             .trim()
@@ -463,7 +463,7 @@ fn parse_ts_line(line: &str, lineno: usize, elements: &mut Vec<CodeElement>) {
     }
     if let Some(name) = extract_after_keyword(line, &["export interface ", "interface "]) {
         let name = name
-            .split(|c: char| c == ' ' || c == '{' || c == '<')
+            .split([' ', '{', '<'])
             .next()
             .unwrap_or("")
             .trim()
@@ -509,7 +509,7 @@ fn parse_python_line(line: &str, lineno: usize, elements: &mut Vec<CodeElement>)
     }
     if let Some(name) = extract_after_keyword(line, &["class "]) {
         let name = name
-            .split(|c: char| c == '(' || c == ':')
+            .split(['(', ':'])
             .next()
             .unwrap_or("")
             .trim()

@@ -1,49 +1,49 @@
-/// Cerebellum — KAI's timing, precision, and error-correction engine
-///
-/// The cerebellum is often described as the "little brain" — it contains
-/// more neurons than the rest of the brain combined, yet most people
-/// think of it only as controlling balance and motor coordination.
-///
-/// The real function is far richer:
-///
-///   TIMING — the cerebellum is the brain's master clock.
-///   It builds precise internal models of how long things take.
-///   When you catch a ball, your hand is already moving before the
-///   ball arrives — the cerebellum predicted the trajectory and
-///   pre-computed the motor command. Without it, everything is
-///   reactive and clumsy. With it, you're smooth and anticipatory.
-///   For KAI: tracking how long reasoning takes per tick,
-///   maintaining response tempo, predicting when to speak vs. pause.
-///
-///   FORWARD MODEL — before executing any action, the cerebellum
-///   runs a "forward model": what will happen if I do X?
-///   It then compares the prediction to the actual outcome.
-///   The error drives precision learning — tiny corrections
-///   every cycle until the model is exact.
-///   For KAI: before generating a response, predict the quality.
-///   After generating, measure actual quality. The error trains
-///   KAI's internal quality estimator over time.
-///
-///   COROLLARY DISCHARGE — when the brain sends a movement command,
-///   it also sends a copy ("efference copy") to the cerebellum.
-///   The cerebellum uses this to cancel out self-generated noise.
-///   This is why you can't tickle yourself — your brain knows which
-///   sensations it caused and attenuates them. Only surprises get through.
-///   For KAI: track which responses KAI generated (vs. user input).
-///   Self-generated text should not surprise the prediction engine.
-///
-///   PRECISION CALIBRATION — as the forward model improves, the
-///   confidence estimates become better calibrated. A cerebellum
-///   that has "seen" many interactions learns when to trust its
-///   predictions and when to be uncertain.
-///
-/// Architecture for KAI:
-///   CerebellumEngine tracks:
-///     - timing_model: EMA of ticks spent on reasoning
-///     - precision_score: how accurate KAI's quality predictions have been
-///     - forward_error: running error of predicted vs actual response quality
-///     - corollary_buffer: recent self-generated outputs (cancel self-noise)
-///     - calibration_count: how many prediction-outcome pairs seen
+//! Cerebellum — KAI's timing, precision, and error-correction engine
+//!
+//! The cerebellum is often described as the "little brain" — it contains
+//! more neurons than the rest of the brain combined, yet most people
+//! think of it only as controlling balance and motor coordination.
+//!
+//! The real function is far richer:
+//!
+//!   TIMING — the cerebellum is the brain's master clock.
+//!   It builds precise internal models of how long things take.
+//!   When you catch a ball, your hand is already moving before the
+//!   ball arrives — the cerebellum predicted the trajectory and
+//!   pre-computed the motor command. Without it, everything is
+//!   reactive and clumsy. With it, you're smooth and anticipatory.
+//!   For KAI: tracking how long reasoning takes per tick,
+//!   maintaining response tempo, predicting when to speak vs. pause.
+//!
+//!   FORWARD MODEL — before executing any action, the cerebellum
+//!   runs a "forward model": what will happen if I do X?
+//!   It then compares the prediction to the actual outcome.
+//!   The error drives precision learning — tiny corrections
+//!   every cycle until the model is exact.
+//!   For KAI: before generating a response, predict the quality.
+//!   After generating, measure actual quality. The error trains
+//!   KAI's internal quality estimator over time.
+//!
+//!   COROLLARY DISCHARGE — when the brain sends a movement command,
+//!   it also sends a copy ("efference copy") to the cerebellum.
+//!   The cerebellum uses this to cancel out self-generated noise.
+//!   This is why you can't tickle yourself — your brain knows which
+//!   sensations it caused and attenuates them. Only surprises get through.
+//!   For KAI: track which responses KAI generated (vs. user input).
+//!   Self-generated text should not surprise the prediction engine.
+//!
+//!   PRECISION CALIBRATION — as the forward model improves, the
+//!   confidence estimates become better calibrated. A cerebellum
+//!   that has "seen" many interactions learns when to trust its
+//!   predictions and when to be uncertain.
+//!
+//! Architecture for KAI:
+//!   CerebellumEngine tracks:
+//!     - timing_model: EMA of ticks spent on reasoning
+//!     - precision_score: how accurate KAI's quality predictions have been
+//!     - forward_error: running error of predicted vs actual response quality
+//!     - corollary_buffer: recent self-generated outputs (cancel self-noise)
+//!     - calibration_count: how many prediction-outcome pairs seen
 use serde::{Deserialize, Serialize};
 
 // ── Constants ─────────────────────────────────────────────────────────────────

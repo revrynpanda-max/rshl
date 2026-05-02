@@ -1,50 +1,50 @@
-/// Basal Ganglia — KAI's habit formation and action selection engine
-///
-/// The basal ganglia are a cluster of nuclei deep in the brain that
-/// most people associate with Parkinson's disease (when they fail)
-/// but almost never think about when working correctly. They are the
-/// brain's action selection system — the gatekeeper between "thinking
-/// about doing something" and "actually doing it."
-///
-/// Three key mechanisms:
-///
-///   ACTION SELECTION (Go/NoGo pathways)
-///   The basal ganglia run two competing channels simultaneously:
-///   - "Go" pathway: releases inhibition → allows an action
-///   - "NoGo" pathway: increases inhibition → suppresses an action
-///   At any moment, the balance of Go vs. NoGo determines whether
-///   an action gets executed or stays suppressed.
-///   For KAI: controls whether a candidate response "goes through"
-///   or gets inhibited. High-utility patterns get the Go signal.
-///   Risky or low-quality patterns get suppressed.
-///
-///   HABIT FORMATION (striatal reinforcement)
-///   The striatum (part of basal ganglia) learns which actions in
-///   which contexts lead to reward. Over thousands of repetitions,
-///   a behavior that was once deliberate (needs PFC attention)
-///   becomes a habit (runs automatically on a trigger).
-///   For KAI: tracks which response patterns (by type and context)
-///   have historically been rewarded. High-reward patterns become
-///   habitual — they fire faster and with less "effort".
-///
-///   DOPAMINE GATE (reward contingency)
-///   The basal ganglia are drenched in dopamine receptors.
-///   Dopamine controls learning: high dopamine = strengthen the
-///   currently active action. Low dopamine = let connections weaken.
-///   This is why dopamine depletion (Parkinson's) causes movement
-///   difficulty — the Go pathway can't be reinforced.
-///   For KAI: dopamine level gates how much habit learning happens.
-///   A rewarding exchange (high dopamine) burns the response pattern
-///   deeper into the habit bank. A poor exchange weakens it.
-///
-/// Architecture for KAI:
-///   BasalGanglia tracks:
-///     - habit_bank: learned utility scores per (context_type, response_type)
-///     - go_threshold: the current minimum utility needed to execute
-///     - go_signal: sum of Go activations this cycle
-///     - nogo_signal: sum of NoGo activations this cycle
-///     - action_count: total actions executed
-///     - suppressed_count: total actions suppressed (NoGo won)
+//! Basal Ganglia — KAI's habit formation and action selection engine
+//!
+//! The basal ganglia are a cluster of nuclei deep in the brain that
+//! most people associate with Parkinson's disease (when they fail)
+//! but almost never think about when working correctly. They are the
+//! brain's action selection system — the gatekeeper between "thinking
+//! about doing something" and "actually doing it."
+//!
+//! Three key mechanisms:
+//!
+//!   ACTION SELECTION (Go/NoGo pathways)
+//!   The basal ganglia run two competing channels simultaneously:
+//!   - "Go" pathway: releases inhibition → allows an action
+//!   - "NoGo" pathway: increases inhibition → suppresses an action
+//!   At any moment, the balance of Go vs. NoGo determines whether
+//!   an action gets executed or stays suppressed.
+//!   For KAI: controls whether a candidate response "goes through"
+//!   or gets inhibited. High-utility patterns get the Go signal.
+//!   Risky or low-quality patterns get suppressed.
+//!
+//!   HABIT FORMATION (striatal reinforcement)
+//!   The striatum (part of basal ganglia) learns which actions in
+//!   which contexts lead to reward. Over thousands of repetitions,
+//!   a behavior that was once deliberate (needs PFC attention)
+//!   becomes a habit (runs automatically on a trigger).
+//!   For KAI: tracks which response patterns (by type and context)
+//!   have historically been rewarded. High-reward patterns become
+//!   habitual — they fire faster and with less "effort".
+//!
+//!   DOPAMINE GATE (reward contingency)
+//!   The basal ganglia are drenched in dopamine receptors.
+//!   Dopamine controls learning: high dopamine = strengthen the
+//!   currently active action. Low dopamine = let connections weaken.
+//!   This is why dopamine depletion (Parkinson's) causes movement
+//!   difficulty — the Go pathway can't be reinforced.
+//!   For KAI: dopamine level gates how much habit learning happens.
+//!   A rewarding exchange (high dopamine) burns the response pattern
+//!   deeper into the habit bank. A poor exchange weakens it.
+//!
+//! Architecture for KAI:
+//!   BasalGanglia tracks:
+//!     - habit_bank: learned utility scores per (context_type, response_type)
+//!     - go_threshold: the current minimum utility needed to execute
+//!     - go_signal: sum of Go activations this cycle
+//!     - nogo_signal: sum of NoGo activations this cycle
+//!     - action_count: total actions executed
+//!     - suppressed_count: total actions suppressed (NoGo won)
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 

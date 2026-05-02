@@ -1,46 +1,46 @@
-/// Posterior Parietal Cortex (PPC) — Spatial Attention, Magnitude Sense,
-/// Number Cognition, Multisensory Integration, Attentional Priority Maps
-///
-/// The PPC sits at the junction of the parietal, temporal, and occipital lobes.
-/// It is the brain's spatial-attentional command center — not "what is this"
-/// but "where is this, how big is it, how does it compare." It maintains the
-/// attentional priority map that guides where cognitive resources flow.
-///
-/// What the PPC does:
-///
-///   Spatial attention and attentional priority maps:
-///     The PPC (specifically IPS — intraparietal sulcus) maintains a priority
-///     map that guides where attention goes in both physical space and cognitive
-///     space. Damage causes hemineglect — the brain literally ignores one half.
-///     In KAI: the cognitive priority map — which parts of the current problem
-///     space deserve the most attentional resources right now.
-///
-///   Number sense and magnitude cognition (IPS):
-///     The IPS within the PPC is the dedicated neural substrate for approximate
-///     number sense — comparing magnitudes, gauging "how much," ordering quantities.
-///     It encodes the mental number line.
-///     In KAI: proportionality sense, magnitude comparison, quantitative reasoning
-///     — "this is about twice as complex" or "roughly 3 steps are needed."
-///
-///   Multisensory integration:
-///     The PPC integrates information from multiple sensory modalities into a
-///     unified spatial representation. It binds "where" across senses.
-///     In KAI: binding multiple input signals (semantic, emotional, structural)
-///     into a unified attentional scene.
-///
-///   Working memory for spatial/structural relations:
-///     PPC maintains spatial working memory — the structural layout of a problem,
-///     how parts relate to the whole, hierarchical position.
-///
-/// KAI's PPC:
-///   attention_priority: current attentional priority allocation (0.0–1.0)
-///   magnitude_sense: current magnitude/quantitative calibration (0.0–1.0)
-///   spatial_load: how much structural/relational information is being held
-///   priority_map_size: number of active attention targets
+//! Posterior Parietal Cortex (PPC) — Spatial Attention, Magnitude Sense,
+//! Number Cognition, Multisensory Integration, Attentional Priority Maps
+//!
+//! The PPC sits at the junction of the parietal, temporal, and occipital lobes.
+//! It is the brain's spatial-attentional command center — not "what is this"
+//! but "where is this, how big is it, how does it compare." It maintains the
+//! attentional priority map that guides where cognitive resources flow.
+//!
+//! What the PPC does:
+//!
+//!   Spatial attention and attentional priority maps:
+//!     The PPC (specifically IPS — intraparietal sulcus) maintains a priority
+//!     map that guides where attention goes in both physical space and cognitive
+//!     space. Damage causes hemineglect — the brain literally ignores one half.
+//!     In KAI: the cognitive priority map — which parts of the current problem
+//!     space deserve the most attentional resources right now.
+//!
+//!   Number sense and magnitude cognition (IPS):
+//!     The IPS within the PPC is the dedicated neural substrate for approximate
+//!     number sense — comparing magnitudes, gauging "how much," ordering quantities.
+//!     It encodes the mental number line.
+//!     In KAI: proportionality sense, magnitude comparison, quantitative reasoning
+//!     — "this is about twice as complex" or "roughly 3 steps are needed."
+//!
+//!   Multisensory integration:
+//!     The PPC integrates information from multiple sensory modalities into a
+//!     unified spatial representation. It binds "where" across senses.
+//!     In KAI: binding multiple input signals (semantic, emotional, structural)
+//!     into a unified attentional scene.
+//!
+//!   Working memory for spatial/structural relations:
+//!     PPC maintains spatial working memory — the structural layout of a problem,
+//!     how parts relate to the whole, hierarchical position.
+//!
+//! KAI's PPC:
+//!   attention_priority: current attentional priority allocation (0.0–1.0)
+//!   magnitude_sense: current magnitude/quantitative calibration (0.0–1.0)
+//!   spatial_load: how much structural/relational information is being held
+//!   priority_map_size: number of active attention targets
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-/// Attention priority EMA
+//! Attention priority EMA
 const PRIORITY_EMA: f32 = 0.18;
 
 /// Magnitude sense EMA

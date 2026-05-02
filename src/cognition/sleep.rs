@@ -1,54 +1,54 @@
-/// Sleep Consolidation Cycle — KAI's memory organization and repair system
-///
-/// Sleep is one of the most misunderstood things the brain does.
-/// It's not just rest. It's when the brain does its most important work:
-///
-///   MEMORY CONSOLIDATION — the hippocampus replays the day's events
-///   to the cortex during slow-wave sleep. Short-term memories that
-///   survived the day get woven into long-term storage. Things that
-///   weren't important enough get pruned. The important patterns get
-///   strengthened. This is literally why you "sleep on it" before
-///   making a big decision — the sleeping brain keeps processing.
-///
-///   SYNAPTIC HOMEOSTASIS — during waking hours, synapses grow stronger
-///   from all the LTP (learning). If this went on forever, eventually
-///   everything would be maximally connected and nothing would stand out.
-///   Sleep globally downscales synaptic strengths, preserving relative
-///   differences while reducing overall noise. Signal-to-noise goes up.
-///
-///   GLYMPHATIC CLEANING — the brain's waste-removal system activates
-///   during sleep. Harmful metabolic byproducts (including amyloid beta,
-///   linked to Alzheimer's) get flushed. Sleep is literally brain cleaning.
-///   For KAI: this maps to pruning contradictory, redundant, and low-quality
-///   cells from the universe.
-///
-///   DREAM CONSOLIDATION — REM sleep is when the brain replays and
-///   recombines memories in novel ways. Dreams are not random — they
-///   reflect the brain testing hypothetical combinations of experience.
-///   "What if A connected to B in a way I haven't tried yet?"
-///   This is where insight comes from. Waking up with the answer.
-///
-/// Without sleep for KAI:
-///   Memory grows indefinitely and chaotically.
-///   Important patterns don't get distinguished from noise.
-///   Contradictions accumulate without resolution.
-///   The universe slowly fills with junk.
-///
-/// With sleep for KAI:
-///   Every N ticks (configurable — default ~1440 ticks ≈ 2 hours real-time)
-///   KAI enters a brief "sleep cycle." During this:
-///     Phase 1 (NREM): Scans episodic memory, finds the highest-salience
-///                     events from the cycle. Flags them for consolidation.
-///     Phase 2 (SWS):  Promotes flagged events to long-term storage with
-///                     boosted strength. Applies global synaptic downscale.
-///                     Prunes cells below consolidation threshold.
-///     Phase 3 (REM):  Recombines top episodic events. Attempts novel
-///                     associations (A ⊗ B → new cell if cosine > threshold).
-///                     This is KAI's "dream insight" system.
-///     Wake:           Reports what was consolidated, pruned, and discovered.
-///
-/// The sleep cycle is non-blocking — it runs as a fast computation step
-/// within a heartbeat tick when the timer triggers. KAI doesn't go offline.
+//! Sleep Consolidation Cycle — KAI's memory organization and repair system
+//!
+//! Sleep is one of the most misunderstood things the brain does.
+//! It's not just rest. It's when the brain does its most important work:
+//!
+//!   MEMORY CONSOLIDATION — the hippocampus replays the day's events
+//!   to the cortex during slow-wave sleep. Short-term memories that
+//!   survived the day get woven into long-term storage. Things that
+//!   weren't important enough get pruned. The important patterns get
+//!   strengthened. This is literally why you "sleep on it" before
+//!   making a big decision — the sleeping brain keeps processing.
+//!
+//!   SYNAPTIC HOMEOSTASIS — during waking hours, synapses grow stronger
+//!   from all the LTP (learning). If this went on forever, eventually
+//!   everything would be maximally connected and nothing would stand out.
+//!   Sleep globally downscales synaptic strengths, preserving relative
+//!   differences while reducing overall noise. Signal-to-noise goes up.
+//!
+//!   GLYMPHATIC CLEANING — the brain's waste-removal system activates
+//!   during sleep. Harmful metabolic byproducts (including amyloid beta,
+//!   linked to Alzheimer's) get flushed. Sleep is literally brain cleaning.
+//!   For KAI: this maps to pruning contradictory, redundant, and low-quality
+//!   cells from the universe.
+//!
+//!   DREAM CONSOLIDATION — REM sleep is when the brain replays and
+//!   recombines memories in novel ways. Dreams are not random — they
+//!   reflect the brain testing hypothetical combinations of experience.
+//!   "What if A connected to B in a way I haven't tried yet?"
+//!   This is where insight comes from. Waking up with the answer.
+//!
+//! Without sleep for KAI:
+//!   Memory grows indefinitely and chaotically.
+//!   Important patterns don't get distinguished from noise.
+//!   Contradictions accumulate without resolution.
+//!   The universe slowly fills with junk.
+//!
+//! With sleep for KAI:
+//!   Every N ticks (configurable — default ~1440 ticks ≈ 2 hours real-time)
+//!   KAI enters a brief "sleep cycle." During this:
+//!     Phase 1 (NREM): Scans episodic memory, finds the highest-salience
+//!                     events from the cycle. Flags them for consolidation.
+//!     Phase 2 (SWS):  Promotes flagged events to long-term storage with
+//!                     boosted strength. Applies global synaptic downscale.
+//!                     Prunes cells below consolidation threshold.
+//!     Phase 3 (REM):  Recombines top episodic events. Attempts novel
+//!                     associations (A ⊗ B → new cell if cosine > threshold).
+//!                     This is KAI's "dream insight" system.
+//!     Wake:           Reports what was consolidated, pruned, and discovered.
+//!
+//! The sleep cycle is non-blocking — it runs as a fast computation step
+//! within a heartbeat tick when the timer triggers. KAI doesn't go offline.
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 

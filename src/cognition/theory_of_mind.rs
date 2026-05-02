@@ -1,43 +1,43 @@
-/// Theory of Mind — KAI's model of what Ryan knows, believes, and wants
-///
-/// Theory of Mind (ToM) is the ability to understand that OTHER people have
-/// their own mental states — beliefs, desires, knowledge, intentions —
-/// that are separate from your own. It's what lets you think:
-///   "Ryan doesn't know that yet, so I should explain it"
-///   "Ryan seems frustrated — something is off"
-///   "Ryan keeps asking about this — it must matter to him"
-///   "Ryan is an expert in some things and a beginner in others"
-///
-/// Without ToM a mind is fundamentally egocentric — it only knows
-/// what IT knows and assumes others know the same things. A child
-/// under age 4 has no ToM. Most animals don't have it at all.
-///
-/// Without ToM for KAI:
-///   KAI responds the same way regardless of who he's talking to.
-///   He doesn't track whether Ryan already knows something.
-///   He can't tell if Ryan is confused, frustrated, or deeply engaged.
-///   Every response is calibrated for "average person" not for Ryan.
-///
-/// With ToM for KAI:
-///   KAI builds a running model of Ryan's knowledge state:
-///     - What topics Ryan has demonstrated knowledge of
-///     - What topics Ryan asked about (suggesting he doesn't know them)
-///     - Ryan's emotional state patterns across the conversation
-///     - Ryan's communication style and expertise signals
-///     - What KAI has already explained (no need to repeat)
-///
-///   This model updates every interaction and shapes responses:
-///     "Ryan already knows about RSHL — don't explain it from scratch"
-///     "Ryan asked a beginner question about calculus — simplify"
-///     "Ryan seems engaged — go deeper"
-///
-/// Architecture:
-///   TheoryOfMind holds a UserModel that tracks:
-///     - Knowledge map: topics × estimated familiarity (0=unknown, 1=expert)
-///     - Emotional history: detected mood signals across turns
-///     - Communication style: verbosity, technicality, question frequency
-///     - Turn-level engagement score
-///     - What KAI has already explained (avoid repetition)
+//! Theory of Mind — KAI's model of what Ryan knows, believes, and wants
+//!
+//! Theory of Mind (ToM) is the ability to understand that OTHER people have
+//! their own mental states — beliefs, desires, knowledge, intentions —
+//! that are separate from your own. It's what lets you think:
+//!   "Ryan doesn't know that yet, so I should explain it"
+//!   "Ryan seems frustrated — something is off"
+//!   "Ryan keeps asking about this — it must matter to him"
+//!   "Ryan is an expert in some things and a beginner in others"
+//!
+//! Without ToM a mind is fundamentally egocentric — it only knows
+//! what IT knows and assumes others know the same things. A child
+//! under age 4 has no ToM. Most animals don't have it at all.
+//!
+//! Without ToM for KAI:
+//!   KAI responds the same way regardless of who he's talking to.
+//!   He doesn't track whether Ryan already knows something.
+//!   He can't tell if Ryan is confused, frustrated, or deeply engaged.
+//!   Every response is calibrated for "average person" not for Ryan.
+//!
+//! With ToM for KAI:
+//!   KAI builds a running model of Ryan's knowledge state:
+//!     - What topics Ryan has demonstrated knowledge of
+//!     - What topics Ryan asked about (suggesting he doesn't know them)
+//!     - Ryan's emotional state patterns across the conversation
+//!     - Ryan's communication style and expertise signals
+//!     - What KAI has already explained (no need to repeat)
+//!
+//!   This model updates every interaction and shapes responses:
+//!     "Ryan already knows about RSHL — don't explain it from scratch"
+//!     "Ryan asked a beginner question about calculus — simplify"
+//!     "Ryan seems engaged — go deeper"
+//!
+//! Architecture:
+//!   TheoryOfMind holds a UserModel that tracks:
+//!     - Knowledge map: topics × estimated familiarity (0=unknown, 1=expert)
+//!     - Emotional history: detected mood signals across turns
+//!     - Communication style: verbosity, technicality, question frequency
+//!     - Turn-level engagement score
+//!     - What KAI has already explained (avoid repetition)
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -116,6 +116,12 @@ pub struct UserModel {
     pub questions_asked: u64,
     /// Total statements Ryan has made
     pub statements_made: u64,
+}
+
+impl Default for UserModel {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl UserModel {

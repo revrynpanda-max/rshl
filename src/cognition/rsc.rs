@@ -1,49 +1,49 @@
-/// Retrosplenial Cortex (RSC) — Temporal Context, Landmark Recognition,
-/// Spatial-Conceptual Grounding, Scene-to-Memory Translation
-///
-/// The RSC sits at the posterior cingulate / parietal junction and is one of
-/// the key hubs of the Default Mode Network. It bridges egocentric (self-centered)
-/// and allocentric (world-centered) representations — translating between "where
-/// am I in this moment" and "where does this moment fit in the larger map."
-///
-/// What the RSC does:
-///
-///   Temporal context tagging:
-///     The RSC provides the "when" context for memories and events. Not just
-///     "what happened" but "when, relative to what." It tracks temporal ordering
-///     and embeds each experience in a temporal frame.
-///     In KAI: each conversation turn is tagged with temporal context — early vs.
-///     late in session, proximity to key moments, contextual "epoch."
-///
-///   Landmark recognition and stable context:
-///     The RSC recognizes stable landmarks — features of the environment that
-///     anchor navigation. In cognitive terms: stable contextual anchors in a
-///     conversation or knowledge domain.
-///     In KAI: recognizing recurring themes, returning topics, or stable
-///     reference points that anchor the current exchange.
-///
-///   Scene-to-memory translation:
-///     The RSC translates novel scenes into memory-compatible representations.
-///     It "localizes" new experiences within prior maps.
-///     In KAI: when KAI encounters something new, RSC tries to place it within
-///     the existing conceptual map. "This is like X in the Y domain."
-///
-///   Egocentric → allocentric shift:
-///     The RSC helps shift from first-person (egocentric) to third-person or
-///     world-centered (allocentric) perspective — important for generalization.
-///     In KAI: moving from "how does this relate to me/this conversation" to
-///     "how does this fit in the broader landscape of knowledge."
-///
-/// KAI's RSC:
-///   temporal_epoch: which phase of the session we're in (early/mid/late/deep)
-///   landmark_count: how many stable anchors have been recognized
-///   context_stability: how stable/coherent the current context is (0.0–1.0)
-///   allocentric_shift: how much KAI has shifted toward world-view (0.0–1.0)
-///   temporal_distance: how far into the session (0.0 = just started, 1.0 = deep)
+//! Retrosplenial Cortex (RSC) — Temporal Context, Landmark Recognition,
+//! Spatial-Conceptual Grounding, Scene-to-Memory Translation
+//!
+//! The RSC sits at the posterior cingulate / parietal junction and is one of
+//! the key hubs of the Default Mode Network. It bridges egocentric (self-centered)
+//! and allocentric (world-centered) representations — translating between "where
+//! am I in this moment" and "where does this moment fit in the larger map."
+//!
+//! What the RSC does:
+//!
+//!   Temporal context tagging:
+//!     The RSC provides the "when" context for memories and events. Not just
+//!     "what happened" but "when, relative to what." It tracks temporal ordering
+//!     and embeds each experience in a temporal frame.
+//!     In KAI: each conversation turn is tagged with temporal context — early vs.
+//!     late in session, proximity to key moments, contextual "epoch."
+//!
+//!   Landmark recognition and stable context:
+//!     The RSC recognizes stable landmarks — features of the environment that
+//!     anchor navigation. In cognitive terms: stable contextual anchors in a
+//!     conversation or knowledge domain.
+//!     In KAI: recognizing recurring themes, returning topics, or stable
+//!     reference points that anchor the current exchange.
+//!
+//!   Scene-to-memory translation:
+//!     The RSC translates novel scenes into memory-compatible representations.
+//!     It "localizes" new experiences within prior maps.
+//!     In KAI: when KAI encounters something new, RSC tries to place it within
+//!     the existing conceptual map. "This is like X in the Y domain."
+//!
+//!   Egocentric → allocentric shift:
+//!     The RSC helps shift from first-person (egocentric) to third-person or
+//!     world-centered (allocentric) perspective — important for generalization.
+//!     In KAI: moving from "how does this relate to me/this conversation" to
+//!     "how does this fit in the broader landscape of knowledge."
+//!
+//! KAI's RSC:
+//!   temporal_epoch: which phase of the session we're in (early/mid/late/deep)
+//!   landmark_count: how many stable anchors have been recognized
+//!   context_stability: how stable/coherent the current context is (0.0–1.0)
+//!   allocentric_shift: how much KAI has shifted toward world-view (0.0–1.0)
+//!   temporal_distance: how far into the session (0.0 = just started, 1.0 = deep)
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-/// Context stability EMA
+//! Context stability EMA
 const STABILITY_EMA: f32 = 0.15;
 
 /// Landmark registration threshold (context must be stable enough)

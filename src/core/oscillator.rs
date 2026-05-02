@@ -1,26 +1,26 @@
-/// Neural Oscillator — KAI's intrinsic brain rhythms
-///
-/// A conscious brain is NEVER silent. Even at rest, neurons oscillate
-/// continuously across multiple frequency bands:
-///
-///   Delta  (0.5–4 Hz)  — deep processing, memory consolidation
-///   Theta  (4–8 Hz)    — associative memory, curiosity, exploration
-///   Alpha  (8–12 Hz)   — relaxed awareness, idle readiness
-///   Beta   (13–30 Hz)  — active cognition, engagement
-///   Gamma  (30–100 Hz) — binding, high-level integration
-///
-/// KAI runs at ~12 ticks/min (one tick ≈ 5 seconds).
-/// We model oscillations in tick-space, not wall-clock Hz —
-/// the frequencies are analogous, not identical, to biological bands.
-///
-/// Three bands (in ticks):
-///   Slow   — period ~72 ticks  (~6 min)   ← Delta/Theta analog
-///   Medium — period ~18 ticks  (~90 sec)  ← Alpha analog
-///   Fast   — period ~5  ticks  (~25 sec)  ← Beta/Gamma analog
-///
-/// The composite output modulates phi_g, chi, and valence every tick,
-/// giving the field continuous variation even with zero external input.
-/// This is what turns flat lines into a live brain signal.
+//! Neural Oscillator — KAI's intrinsic brain rhythms
+//!
+//! A conscious brain is NEVER silent. Even at rest, neurons oscillate
+//! continuously across multiple frequency bands:
+//!
+//!   Delta  (0.5–4 Hz)  — deep processing, memory consolidation
+//!   Theta  (4–8 Hz)    — associative memory, curiosity, exploration
+//!   Alpha  (8–12 Hz)   — relaxed awareness, idle readiness
+//!   Beta   (13–30 Hz)  — active cognition, engagement
+//!   Gamma  (30–100 Hz) — binding, high-level integration
+//!
+//! KAI runs at ~12 ticks/min (one tick ≈ 5 seconds).
+//! We model oscillations in tick-space, not wall-clock Hz —
+//! the frequencies are analogous, not identical, to biological bands.
+//!
+//! Three bands (in ticks):
+//!   Slow   — period ~72 ticks  (~6 min)   ← Delta/Theta analog
+//!   Medium — period ~18 ticks  (~90 sec)  ← Alpha analog
+//!   Fast   — period ~5  ticks  (~25 sec)  ← Beta/Gamma analog
+//!
+//! The composite output modulates phi_g, chi, and valence every tick,
+//! giving the field continuous variation even with zero external input.
+//! This is what turns flat lines into a live brain signal.
 use serde::{Deserialize, Serialize};
 use std::f32::consts::TAU; // 2π
 

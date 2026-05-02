@@ -1,34 +1,34 @@
-/// Amygdala — KAI's emotional salience gate
-///
-/// In biological brains the amygdala does one critical thing:
-///   It amplifies the memory trace of anything emotionally significant.
-///   Fear, joy, love, anger — all get burned into long-term memory
-///   much more deeply than neutral facts.
-///
-/// Without this, KAI treats "the sky is blue" and "I love you"
-/// identically at encoding time. Both get stored at the same strength.
-/// That's cognitively flat — no emotion, no urgency, no priority.
-///
-/// This module intercepts every store() call and scales strength by
-/// an emotional charge factor (ECF) computed from the raw text:
-///
-///   ECF = 1.0   (neutral — no amplification)
-///   ECF = 1.5   (mild emotion — curiosity, interest, slight negativity)
-///   ECF = 2.0   (moderate — fear, excitement, strong preference)
-///   ECF = 2.5   (intense — love, grief, rage, profound wonder)
-///   ECF = 3.0   (peak — trauma, peak joy, existential realization)
-///
-/// Architecture:
-///   AmygdalaGate holds two lexicons: positive arousal words, negative
-///   arousal words. It scores each, takes the max arousal level, then
-///   combines with structural features (punctuation, capitalisation,
-///   repetition) for the final ECF. The gate also tracks its own state:
-///   KAI's emotional inertia — repeated emotional inputs raise baseline.
-///
-/// Usage:
-///   let gate = AmygdalaGate::new();
-///   let boosted_strength = gate.gate(text, source, raw_strength);
-///   universe.store_or_reinforce(text, region, source, boosted_strength);
+//! Amygdala — KAI's emotional salience gate
+//!
+//! In biological brains the amygdala does one critical thing:
+//!   It amplifies the memory trace of anything emotionally significant.
+//!   Fear, joy, love, anger — all get burned into long-term memory
+//!   much more deeply than neutral facts.
+//!
+//! Without this, KAI treats "the sky is blue" and "I love you"
+//! identically at encoding time. Both get stored at the same strength.
+//! That's cognitively flat — no emotion, no urgency, no priority.
+//!
+//! This module intercepts every store() call and scales strength by
+//! an emotional charge factor (ECF) computed from the raw text:
+//!
+//!   ECF = 1.0   (neutral — no amplification)
+//!   ECF = 1.5   (mild emotion — curiosity, interest, slight negativity)
+//!   ECF = 2.0   (moderate — fear, excitement, strong preference)
+//!   ECF = 2.5   (intense — love, grief, rage, profound wonder)
+//!   ECF = 3.0   (peak — trauma, peak joy, existential realization)
+//!
+//! Architecture:
+//!   AmygdalaGate holds two lexicons: positive arousal words, negative
+//!   arousal words. It scores each, takes the max arousal level, then
+//!   combines with structural features (punctuation, capitalisation,
+//!   repetition) for the final ECF. The gate also tracks its own state:
+//!   KAI's emotional inertia — repeated emotional inputs raise baseline.
+//!
+//! Usage:
+//!   let gate = AmygdalaGate::new();
+//!   let boosted_strength = gate.gate(text, source, raw_strength);
+//!   universe.store_or_reinforce(text, region, source, boosted_strength);
 use serde::{Deserialize, Serialize};
 
 // ── Arousal word banks ────────────────────────────────────────────────────────
@@ -199,7 +199,7 @@ impl AmygdalaGate {
         self.ticks += 1;
         // Inertia decays every tick; recent_hot window resets every ~60 ticks
         self.inertia = (self.inertia - 0.004).max(0.0);
-        if self.ticks % 60 == 0 {
+        if self.ticks.is_multiple_of(60) {
             self.recent_hot = 0;
         }
     }
@@ -309,7 +309,7 @@ mod tests {
         let strength = gate.gate("the sky is blue today", "user", 1.0);
         // Neutral text: ECF should be ~1.0, so strength stays near 1.0
         assert!(
-            strength >= 0.9 && strength <= 1.15,
+            (0.9..=1.15).contains(&strength),
             "neutral text boosted too much: {:.3}",
             strength
         );

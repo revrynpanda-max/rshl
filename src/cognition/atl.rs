@@ -1,47 +1,47 @@
-/// Anterior Temporal Lobe (ATL) — Amodal Semantic Hub, Concept Convergence,
-/// Word-Meaning Binding, Conceptual Abstraction
-///
-/// The ATL is the brain's "concept amodal hub" — the region where information
-/// from all sensory modalities (visual, auditory, tactile, interoceptive) and
-/// from both hemispheres converges into unified conceptual representations.
-/// A banana is simultaneously yellow-curved-visual, sweet-fruity-gustatory,
-/// soft-smooth-tactile — the ATL binds these into the single concept "banana."
-///
-/// The ATL is also the site of semantic degradation in semantic dementia:
-/// patients lose concept meaning while retaining perceptual ability. This is the
-/// strongest evidence that the ATL IS the conceptual semantic system.
-///
-/// What the ATL does:
-///
-///   Amodal semantic binding:
-///     Receives projections from all sensory cortices and association areas and
-///     binds them into unified, modality-neutral concept representations.
-///     In KAI: the hub that merges linguist analysis (language system), visual
-///     recognition (fusiform), body state (somatosensory), and social meaning
-///     (STS/TPJ) into a single conceptual representation of the input.
-///
-///   Word-meaning convergence:
-///     The ATL is where word forms (phonological/orthographic) meet their
-///     semantic content. Damage causes anomia (word-finding failure) and
-///     semantic paraphasia (substituting related concepts).
-///     In KAI: tracking semantic richness — how fully a word/phrase is grounded
-///     in cross-modal meaning, vs. being purely formal/structural.
-///
-///   Conceptual generalization:
-///     The ATL extracts abstract, category-level meaning from specific instances.
-///     In KAI: abstracting from individual words to conceptual themes and
-///     detecting semantic density of an input.
-///
-///   Personal semantics and proper noun comprehension:
-///     The ATL has a special role in comprehending person concepts — knowing who
-///     someone is (not just recognizing their face). It is the "person concept"
-///     store.
-///     In KAI: tracking the personal-semantic richness of inputs — inputs that
-///     reference real people, relationships, or personal meaning.
+//! Anterior Temporal Lobe (ATL) — Amodal Semantic Hub, Concept Convergence,
+//! Word-Meaning Binding, Conceptual Abstraction
+//!
+//! The ATL is the brain's "concept amodal hub" — the region where information
+//! from all sensory modalities (visual, auditory, tactile, interoceptive) and
+//! from both hemispheres converges into unified conceptual representations.
+//! A banana is simultaneously yellow-curved-visual, sweet-fruity-gustatory,
+//! soft-smooth-tactile — the ATL binds these into the single concept "banana."
+//!
+//! The ATL is also the site of semantic degradation in semantic dementia:
+//! patients lose concept meaning while retaining perceptual ability. This is the
+//! strongest evidence that the ATL IS the conceptual semantic system.
+//!
+//! What the ATL does:
+//!
+//!   Amodal semantic binding:
+//!     Receives projections from all sensory cortices and association areas and
+//!     binds them into unified, modality-neutral concept representations.
+//!     In KAI: the hub that merges linguist analysis (language system), visual
+//!     recognition (fusiform), body state (somatosensory), and social meaning
+//!     (STS/TPJ) into a single conceptual representation of the input.
+//!
+//!   Word-meaning convergence:
+//!     The ATL is where word forms (phonological/orthographic) meet their
+//!     semantic content. Damage causes anomia (word-finding failure) and
+//!     semantic paraphasia (substituting related concepts).
+//!     In KAI: tracking semantic richness — how fully a word/phrase is grounded
+//!     in cross-modal meaning, vs. being purely formal/structural.
+//!
+//!   Conceptual generalization:
+//!     The ATL extracts abstract, category-level meaning from specific instances.
+//!     In KAI: abstracting from individual words to conceptual themes and
+//!     detecting semantic density of an input.
+//!
+//!   Personal semantics and proper noun comprehension:
+//!     The ATL has a special role in comprehending person concepts — knowing who
+//!     someone is (not just recognizing their face). It is the "person concept"
+//!     store.
+//!     In KAI: tracking the personal-semantic richness of inputs — inputs that
+//!     reference real people, relationships, or personal meaning.
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-/// Semantic richness EMA (moderate — meaning builds gradually)
+//! Semantic richness EMA (moderate — meaning builds gradually)
 const RICHNESS_EMA: f32 = 0.18;
 
 /// Conceptual coherence EMA

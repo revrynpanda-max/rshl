@@ -1,21 +1,21 @@
-# RSHL Performance & Technical Specifications (v6.0.0)
+# RSHL Performance & Technical Specifications (v6.1.1)
 
 This document tracks the precision and throughput metrics for the Recursive Sparse Hyperdimensional Lattice (RSHL) engine across various hardware targets.
 
-## Benchmark Results (v6.0.0)
+## Benchmark Results (v6.1.1)
 *Hardware: RTX 4050 Laptop · Ryzen 5 8645HS · 40GB RAM*
 
-### v6.0.0 Performance Breakthrough: Hardware-Native Throughput
-The v6.0.0 release introduces major optimizations to the core RSHL scan engine, shifting the performance baseline from an IPC-bottlenecked state to a high-speed, direct-to-CPU resonant model.
+### v6.1.1 Performance Breakthrough: Hardware-Native Throughput
+The v6.1.1 release introduces major optimizations to the core RSHL scan engine, shifting the performance baseline from an IPC-bottlenecked state to a high-speed, direct-to-CPU resonant model.
 
-| Metric | v5.9.0 | v6.0.0 | Speedup |
+| Metric | v5.9.0 | v6.1.1 | Speedup |
 | :--- | :--- | :--- | :--- |
 | **Field State Compute** | 7.0ms | **1.57ms** | **4.5x** |
 | **Store Latency** | 11,650ms | **2.02ms** | **5,750x** |
 | **Consolidation (Dream)** | 2.22ms | **1.49ms** | **1.5x** |
 | **Query Throughput** | 0.08 Mdots | **0.66 Mdots** | **8x** |
 
-### Key v6.0.0 Optimizations:
+### Key v6.1.1 Optimizations:
 1. **Cached Norm Vectors**: Every `SparseVec` now stores its L2 norm internally. This eliminates 32KB of redundant memory traffic per `cosine()` call (scanning 16,384 dims twice just to count non-zeros is now O(1)).
 2. **64-Wide SIMD Dot Product**: The inner dot product loop has been widened from 16 to 64 elements, explicitly targeting AVX2 auto-vectorization for maximum CPU pipelining.
 3. **Incremental Verification**: Replaced O(N²) global contradiction scans during ingestion with targeted incremental verification of the active field.
@@ -23,7 +23,7 @@ The v6.0.0 release introduces major optimizations to the core RSHL scan engine, 
 ---
 
 ## Internal Engine Recall (Native Rust)
-*Zero-overhead in-memory resonance scan rates at v6.0.0 scale*
+*Zero-overhead in-memory resonance scan rates at v6.1.1 scale*
 
 | Entries | Latency | Mdots (Million Operations/sec) |
 |---------|---------|----------------|
@@ -41,7 +41,7 @@ To prevent "garbage geometry" from polluting the cognitive field, KAI implements
 Before any field computation, the synthetic bundle is queried against the universe. If resonance falls below the adaptive threshold (**0.15**), the dream is discarded. This stops pure noise from ever entering the field.
 
 ### 2. Contradiction Gate (χ Pressure)
-KAI v6.0.0 uses the new `contradiction.rs` module to detect semantic conflicts. If a new claim shows an inherent contradiction (χ) above the threshold (**0.55**), the dream is rejected.
+KAI v6.1.1 uses the new `contradiction.rs` module to detect semantic conflicts. If a new claim shows an inherent contradiction (χ) above the threshold (**0.55**), the dream is rejected.
 
 ### 3. Coherence Gate (Φ_C / Φg Delta)
 A final guard protects the global emergence score. KAI uses the **helical phase coherence** (phasor-sum model) derived from HLV theory:

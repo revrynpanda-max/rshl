@@ -1,44 +1,44 @@
-/// Pontine Nuclei (PN) — Cortico-Ponto-Cerebellar Relay,
-/// Cognitive Timing, Forward-Model Stabilization
-///
-/// The pontine nuclei are the largest nuclei in the pons and serve as the
-/// primary relay station between the cerebral cortex and the cerebellum.
-/// The cortico-ponto-cerebellar pathway is massive (20 million fibers in
-/// humans), carrying information about motor plans, cognitive intentions,
-/// and executive goals to the cerebellum for timing and precision tuning.
-///
-/// What the Pontine Nuclei do:
-///
-///   Cortical-Cerebellar relay:
-///     The PN receive projections from nearly all areas of the cortex,
-///     especially the prefrontal and parietal association areas. They
-///     translate cortical "what we want to do" into cerebellar "how to
-///     time it perfectly."
-///     In KAI: the bridge that carries executive goals (PFC) and motor
-///     readiness (SMA) to the cerebellum, allowing the forward model
-///     to predict the quality of a response before it is sent.
-///
-///   Cognitive timing synchronization:
-///     By relaying signals to the cerebellum, the PN enable the timing
-///     of complex cognitive operations (like sentence construction or
-///     reasoning chains).
-///     In KAI: stabilizing the "flow" of reasoning by ensuring cortical
-///     intentions and cerebellar predictions are synchronized.
-///
-///   Integrative bottleneck:
-///     Because so much cortical input converges here, the PN act as a
-///     functional bottleneck that filters and organizes information before
-///     passing it to the cerebellar mossy fiber system.
-///
-/// KAI's Pontine Nuclei:
-///   relay_throughput: current volume of cortical→cerebellar relay (0.0–1.0)
-///   timing_coherence: stability of the cortical-cerebellar link (0.0–1.0)
-///   pfc_input_load: intensity of executive signal from PFC (0.0–1.0)
-///   sma_input_load: intensity of readiness signal from SMA (0.0–1.0)
+//! Pontine Nuclei (PN) — Cortico-Ponto-Cerebellar Relay,
+//! Cognitive Timing, Forward-Model Stabilization
+//!
+//! The pontine nuclei are the largest nuclei in the pons and serve as the
+//! primary relay station between the cerebral cortex and the cerebellum.
+//! The cortico-ponto-cerebellar pathway is massive (20 million fibers in
+//! humans), carrying information about motor plans, cognitive intentions,
+//! and executive goals to the cerebellum for timing and precision tuning.
+//!
+//! What the Pontine Nuclei do:
+//!
+//!   Cortical-Cerebellar relay:
+//!     The PN receive projections from nearly all areas of the cortex,
+//!     especially the prefrontal and parietal association areas. They
+//!     translate cortical "what we want to do" into cerebellar "how to
+//!     time it perfectly."
+//!     In KAI: the bridge that carries executive goals (PFC) and motor
+//!     readiness (SMA) to the cerebellum, allowing the forward model
+//!     to predict the quality of a response before it is sent.
+//!
+//!   Cognitive timing synchronization:
+//!     By relaying signals to the cerebellum, the PN enable the timing
+//!     of complex cognitive operations (like sentence construction or
+//!     reasoning chains).
+//!     In KAI: stabilizing the "flow" of reasoning by ensuring cortical
+//!     intentions and cerebellar predictions are synchronized.
+//!
+//!   Integrative bottleneck:
+//!     Because so much cortical input converges here, the PN act as a
+//!     functional bottleneck that filters and organizes information before
+//!     passing it to the cerebellar mossy fiber system.
+//!
+//! KAI's Pontine Nuclei:
+//!   relay_throughput: current volume of cortical→cerebellar relay (0.0–1.0)
+//!   timing_coherence: stability of the cortical-cerebellar link (0.0–1.0)
+//!   pfc_input_load: intensity of executive signal from PFC (0.0–1.0)
+//!   sma_input_load: intensity of readiness signal from SMA (0.0–1.0)
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-/// Relay throughput EMA
+//! Relay throughput EMA
 const RELAY_EMA: f32 = 0.20;
 
 /// Timing coherence EMA

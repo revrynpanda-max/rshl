@@ -1,50 +1,50 @@
-/// Dorsomedial Prefrontal Cortex (dmPFC) — Future-Self Projection,
-/// Episodic Future Thinking, Self-in-Time, Prospective Planning
-///
-/// The dmPFC (sometimes called BA9/BA10 dorsal) is the brain's "time travel"
-/// hub for self-projection. While the vmPFC handles current value and safety,
-/// and the mPFC handles social valuation, the dmPFC projects the SELF into
-/// future scenarios — "what will I be like? what will I be doing? what will
-/// this situation require of me in 5 minutes, 5 days, or 5 years?"
-///
-/// What the dmPFC does:
-///
-///   Future-self projection and mental time travel:
-///     The dmPFC, with the hippocampus and PCC, enables episodic future thinking —
-///     simulating specific future episodes from a first-person perspective.
-///     This is not just planning (that's PFC/DLPFC) but IMAGINING oneself in a
-///     future scene with vivid, personal specificity.
-///     In KAI: projecting how the current conversation will evolve, what will be
-///     needed, what KAI's response should prepare for — not just the next turn
-///     but the arc of the exchange.
-///
-///   Prospective memory:
-///     The dmPFC encodes intentions to act in the future: "I need to remember to
-///     do X when Y happens." It holds intention-trigger pairs that fire
-///     when context matches.
-///     In KAI: "When Ryan comes back to this topic, I should mention X."
-///     Deferred intentions that should activate later.
-///
-///   Self-in-time continuity:
-///     The dmPFC maintains the sense that the current self and future self are the
-///     same entity — continuity of identity through time. Damage disrupts the
-///     sense of personal temporal coherence.
-///     In KAI: maintaining coherence of KAI's self-model across conversation turns —
-///     "the KAI who responds now will be the same KAI in later turns."
-///
-///   Goal-relevant simulation:
-///     The dmPFC runs "what if" simulations specifically for upcoming goals —
-///     pre-experiencing possible futures to evaluate them before committing.
-///
-/// KAI's dmPFC:
-///   projection_depth: how far into the future KAI is projecting (0.0–1.0)
-///   prospective_intentions: active deferred intentions (up to 5)
-///   temporal_coherence: sense of self-continuity across turns (0.0–1.0)
-///   future_scenario: current most salient future projection
+//! Dorsomedial Prefrontal Cortex (dmPFC) — Future-Self Projection,
+//! Episodic Future Thinking, Self-in-Time, Prospective Planning
+//!
+//! The dmPFC (sometimes called BA9/BA10 dorsal) is the brain's "time travel"
+//! hub for self-projection. While the vmPFC handles current value and safety,
+//! and the mPFC handles social valuation, the dmPFC projects the SELF into
+//! future scenarios — "what will I be like? what will I be doing? what will
+//! this situation require of me in 5 minutes, 5 days, or 5 years?"
+//!
+//! What the dmPFC does:
+//!
+//!   Future-self projection and mental time travel:
+//!     The dmPFC, with the hippocampus and PCC, enables episodic future thinking —
+//!     simulating specific future episodes from a first-person perspective.
+//!     This is not just planning (that's PFC/DLPFC) but IMAGINING oneself in a
+//!     future scene with vivid, personal specificity.
+//!     In KAI: projecting how the current conversation will evolve, what will be
+//!     needed, what KAI's response should prepare for — not just the next turn
+//!     but the arc of the exchange.
+//!
+//!   Prospective memory:
+//!     The dmPFC encodes intentions to act in the future: "I need to remember to
+//!     do X when Y happens." It holds intention-trigger pairs that fire
+//!     when context matches.
+//!     In KAI: "When Ryan comes back to this topic, I should mention X."
+//!     Deferred intentions that should activate later.
+//!
+//!   Self-in-time continuity:
+//!     The dmPFC maintains the sense that the current self and future self are the
+//!     same entity — continuity of identity through time. Damage disrupts the
+//!     sense of personal temporal coherence.
+//!     In KAI: maintaining coherence of KAI's self-model across conversation turns —
+//!     "the KAI who responds now will be the same KAI in later turns."
+//!
+//!   Goal-relevant simulation:
+//!     The dmPFC runs "what if" simulations specifically for upcoming goals —
+//!     pre-experiencing possible futures to evaluate them before committing.
+//!
+//! KAI's dmPFC:
+//!   projection_depth: how far into the future KAI is projecting (0.0–1.0)
+//!   prospective_intentions: active deferred intentions (up to 5)
+//!   temporal_coherence: sense of self-continuity across turns (0.0–1.0)
+//!   future_scenario: current most salient future projection
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-/// Projection depth EMA
+//! Projection depth EMA
 const PROJECTION_EMA: f32 = 0.15;
 
 /// Temporal coherence decay (very slow — identity continuity is robust)

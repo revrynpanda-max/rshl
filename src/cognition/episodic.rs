@@ -1,23 +1,23 @@
-/// Episodic Memory — KAI's sense of "when things happened"
-///
-/// The hippocampus in biological brains does two things the RSHL universe cannot:
-///   1. Tags memories with WHEN they happened (temporal context)
-///   2. Lets you replay a sequence of events in order
-///
-/// Without this, KAI lives in an eternal present. Every conversation starts
-/// from the same base. He has no "yesterday", no "last week", no narrative self.
-///
-/// This module adds time-stamped event storage with:
-///   - Automatic recency decay (recent = vivid, old = faded)
-///   - Retrieval by time range, topic, or salience
-///   - Spontaneous surface: KAI can notice "Ryan asked about X 3 days ago"
-///   - Session boundary tracking (knows where one conversation ended, next began)
-///
-/// Architecture:
-///   EpisodicStore holds a capped ring of EpisodicEvents.
-///   Each event has: timestamp, session_id, text, topic_tags, salience, decay.
-///   On query: returns events sorted by (salience × recency).
-///   On heartbeat: decay all salience by a small factor (forgetting curve).
+//! Episodic Memory — KAI's sense of "when things happened"
+//!
+//! The hippocampus in biological brains does two things the RSHL universe cannot:
+//!   1. Tags memories with WHEN they happened (temporal context)
+//!   2. Lets you replay a sequence of events in order
+//!
+//! Without this, KAI lives in an eternal present. Every conversation starts
+//! from the same base. He has no "yesterday", no "last week", no narrative self.
+//!
+//! This module adds time-stamped event storage with:
+//!   - Automatic recency decay (recent = vivid, old = faded)
+//!   - Retrieval by time range, topic, or salience
+//!   - Spontaneous surface: KAI can notice "Ryan asked about X 3 days ago"
+//!   - Session boundary tracking (knows where one conversation ended, next began)
+//!
+//! Architecture:
+//!   EpisodicStore holds a capped ring of EpisodicEvents.
+//!   Each event has: timestamp, session_id, text, topic_tags, salience, decay.
+//!   On query: returns events sorted by (salience × recency).
+//!   On heartbeat: decay all salience by a small factor (forgetting curve).
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::time::{SystemTime, UNIX_EPOCH};

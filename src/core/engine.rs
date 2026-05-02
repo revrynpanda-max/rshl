@@ -228,7 +228,7 @@ impl Engine {
             frame.mark_observed("insula", load, "internal load is low");
         }
 
-        if self.global_workspace.len() > 0 {
+        if !self.global_workspace.is_empty() {
             let gw_strength = self.global_workspace.avg_coherence.clamp(0.0, 1.0);
             if narrative_relevant || self_relevant {
                 frame.add_narrative_signal("global_workspace", gw_strength, "broadcast coherence is available");
@@ -403,19 +403,19 @@ impl Engine {
         let working_memory = mind
             .as_ref()
             .map(|m| m.working_memory.clone())
-            .unwrap_or_else(WorkingMemory::new);
+            .unwrap_or_default();
         let hub = mind
             .as_ref()
             .map(|m| m.self_state_hub.clone())
-            .unwrap_or_else(SelfStateHub::new);
+            .unwrap_or_default();
         let episodic = mind
             .as_ref()
             .map(|m| m.episodic.clone())
-            .unwrap_or_else(EpisodicStore::new);
+            .unwrap_or_default();
         let global_workspace = mind
             .as_ref()
             .map(|m| m.global_workspace.clone())
-            .unwrap_or_else(GlobalWorkspace::new);
+            .unwrap_or_default();
 
         Self {
             universe,
@@ -687,7 +687,7 @@ impl Engine {
                 field.m_val,
                 field.q,
                 field.s,
-                self.drive.mood.to_string(),
+                self.drive.mood,
                 self.drive.valence,
                 field.regional.left.phi,
                 field.regional.right.phi,
@@ -706,7 +706,7 @@ impl Engine {
         }
 
         // DREAM CYCLE (STREAM 1)
-        if self.tick % 3 == 0 {
+        if self.tick.is_multiple_of(3) {
             self.run_dream_cycle();
         }
 

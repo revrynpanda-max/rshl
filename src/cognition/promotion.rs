@@ -61,8 +61,8 @@ pub fn run_promotion(
     
     // Direct access to pub entries to bypass any method resolution issues
     for entry in buffer.entries.values() {
-        if entry.status == CandidateStatus::Candidate {
-            if entry.seen_count >= thresholds.seen_count &&
+        if entry.status == CandidateStatus::Candidate
+            && entry.seen_count >= thresholds.seen_count &&
                entry.best_c >= thresholds.best_c &&
                entry.best_phi_g >= thresholds.best_phi_g &&
                entry.best_confidence >= thresholds.best_confidence {
@@ -79,7 +79,6 @@ pub fn run_promotion(
                     }
                 }
             }
-        }
     }
 
     let mut promoted = Vec::new();

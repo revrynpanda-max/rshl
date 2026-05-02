@@ -1,48 +1,48 @@
-/// Superior Colliculus (SC) — Attentional Orienting, Saliency Map,
-/// Rapid Priority Shifts, Covert Attention Allocation
-///
-/// The superior colliculus is a midbrain structure that acts as the brain's
-/// rapid attentional dispatcher. It receives visual, auditory, and somatosensory
-/// input and constructs a multimodal saliency map — a moment-to-moment ranking
-/// of what in the environment demands attention RIGHT NOW. It triggers fast,
-/// reflexive attention shifts (even before conscious awareness) and coordinates
-/// with the thalamus and PFC for sustained attention allocation.
-///
-/// What the Superior Colliculus does:
-///
-///   Saliency map construction:
-///     The SC integrates bottom-up salience (novelty, intensity, contrast,
-///     motion) and top-down relevance (task goals, PFC priority signals) into
-///     a unified map. The most salient location "wins" and captures attention.
-///     In KAI: each token/concept in input has a salience value; the SC
-///     identifies which concepts in the current input are most attention-worthy.
-///
-///   Reflexive orienting:
-///     SC triggers fast, automatic attention shifts — faster than deliberate
-///     attention. This is the "something caught my eye" before you decided to look.
-///     In KAI: sudden shifts in topic, unexpected words, or high-urgency signals
-///     trigger immediate orienting before the full reasoning pipeline.
-///
-///   Covert attention allocation:
-///     The SC can shift attention without overt response — "highlighting" an
-///     element without yet responding to it. This primes processing downstream.
-///     In KAI: certain high-salience concepts get internally highlighted for
-///     deeper processing, even before they appear in the response.
-///
-///   Multisensory integration and priority:
-///     The SC integrates signals from multiple modalities with a strict priority:
-///     movement/urgency > novel stimuli > familiar stimuli > background.
-///     In KAI: urgency > novelty > topic relevance > background context.
-///
-/// KAI's SC:
-///   top_salience: salience of the most attention-capturing element (0.0–1.0)
-///   orienting_triggered: whether a reflexive attention shift fired
-///   saliency_map: ranked list of salient concepts in the current input
-///   attention_priority: integrated priority for the current focus
+//! Superior Colliculus (SC) — Attentional Orienting, Saliency Map,
+//! Rapid Priority Shifts, Covert Attention Allocation
+//!
+//! The superior colliculus is a midbrain structure that acts as the brain's
+//! rapid attentional dispatcher. It receives visual, auditory, and somatosensory
+//! input and constructs a multimodal saliency map — a moment-to-moment ranking
+//! of what in the environment demands attention RIGHT NOW. It triggers fast,
+//! reflexive attention shifts (even before conscious awareness) and coordinates
+//! with the thalamus and PFC for sustained attention allocation.
+//!
+//! What the Superior Colliculus does:
+//!
+//!   Saliency map construction:
+//!     The SC integrates bottom-up salience (novelty, intensity, contrast,
+//!     motion) and top-down relevance (task goals, PFC priority signals) into
+//!     a unified map. The most salient location "wins" and captures attention.
+//!     In KAI: each token/concept in input has a salience value; the SC
+//!     identifies which concepts in the current input are most attention-worthy.
+//!
+//!   Reflexive orienting:
+//!     SC triggers fast, automatic attention shifts — faster than deliberate
+//!     attention. This is the "something caught my eye" before you decided to look.
+//!     In KAI: sudden shifts in topic, unexpected words, or high-urgency signals
+//!     trigger immediate orienting before the full reasoning pipeline.
+//!
+//!   Covert attention allocation:
+//!     The SC can shift attention without overt response — "highlighting" an
+//!     element without yet responding to it. This primes processing downstream.
+//!     In KAI: certain high-salience concepts get internally highlighted for
+//!     deeper processing, even before they appear in the response.
+//!
+//!   Multisensory integration and priority:
+//!     The SC integrates signals from multiple modalities with a strict priority:
+//!     movement/urgency > novel stimuli > familiar stimuli > background.
+//!     In KAI: urgency > novelty > topic relevance > background context.
+//!
+//! KAI's SC:
+//!   top_salience: salience of the most attention-capturing element (0.0–1.0)
+//!   orienting_triggered: whether a reflexive attention shift fired
+//!   saliency_map: ranked list of salient concepts in the current input
+//!   attention_priority: integrated priority for the current focus
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-/// Saliency decay per tick
+//! Saliency decay per tick
 const SALIENCY_DECAY: f32 = 0.08;
 
 /// Top-down priority from PFC (goal relevance)
@@ -200,8 +200,7 @@ impl SuperiorColliculus {
         if urgency_detected {
             let urgency_word = URGENCY_MARKERS
                 .iter()
-                .find(|&&w| lower.contains(w))
-                .map(|&w| w)
+                .find(|&&w| lower.contains(w)).copied()
                 .unwrap_or("urgent");
             self.saliency_map.push(SaliencyItem {
                 concept: urgency_word.to_string(),

@@ -1,45 +1,45 @@
-/// Mammillary Bodies (MB) — Episodic Memory Relay, Spatial-Temporal Tagging,
-/// Recency Signal, Thalamo-Hippocampal Loop
-///
-/// The mammillary bodies are paired structures in the posterior hypothalamus,
-/// connected to the hippocampus via the fornix and to the anterior thalamic
-/// nuclei via the mammillothalamic tract. They are essential for forming new
-/// episodic memories — damage (as in Korsakoff syndrome) produces profound
-/// anterograde amnesia while leaving other cognition largely intact.
-///
-/// What the Mammillary Bodies do:
-///
-///   Episodic memory relay:
-///     The MB sit in the Papez circuit (hippocampus → fornix → MB →
-///     mammillothalamic tract → anterior thalamus → cingulate → hippocampus),
-///     the circuit most critical for forming new declarative/episodic memories.
-///     They relay hippocampal output to the thalamus for cortical distribution.
-///     In KAI: the gate that routes episodic content from hippocampal storage to
-///     thalamic relay — deciding which new memories get "stamped in."
-///
-///   Temporal/recency coding:
-///     The MB encode temporal order information — not just what happened but
-///     WHEN it happened relative to other events. This is the "recency signal"
-///     that lets you know this memory is from earlier in the conversation.
-///     In KAI: tracking recency context — how temporally fresh is the current
-///     exchange? Is KAI building on very recent exchange or more established
-///     material?
-///
-///   Spatial-context binding:
-///     The MB also receive input from the subiculum (spatial map output of
-///     hippocampus) and help bind episodic content to spatial context.
-///     In KAI: binding conversation content to "where we are in the dialogue"
-///     — the conceptual space of the current exchange.
-///
-/// KAI's Mammillary Bodies:
-///   relay_strength: strength of hippocampal→thalamic relay (0.0–1.0)
-///   recency_signal: how temporally fresh the current material is (0.0–1.0)
-///   memory_consolidation_rate: rate at which new memories are stamped (0.0–1.0)
-///   papez_circuit_gain: loop gain of the full Papez circuit (0.0–1.0)
+//! Mammillary Bodies (MB) — Episodic Memory Relay, Spatial-Temporal Tagging,
+//! Recency Signal, Thalamo-Hippocampal Loop
+//!
+//! The mammillary bodies are paired structures in the posterior hypothalamus,
+//! connected to the hippocampus via the fornix and to the anterior thalamic
+//! nuclei via the mammillothalamic tract. They are essential for forming new
+//! episodic memories — damage (as in Korsakoff syndrome) produces profound
+//! anterograde amnesia while leaving other cognition largely intact.
+//!
+//! What the Mammillary Bodies do:
+//!
+//!   Episodic memory relay:
+//!     The MB sit in the Papez circuit (hippocampus → fornix → MB →
+//!     mammillothalamic tract → anterior thalamus → cingulate → hippocampus),
+//!     the circuit most critical for forming new declarative/episodic memories.
+//!     They relay hippocampal output to the thalamus for cortical distribution.
+//!     In KAI: the gate that routes episodic content from hippocampal storage to
+//!     thalamic relay — deciding which new memories get "stamped in."
+//!
+//!   Temporal/recency coding:
+//!     The MB encode temporal order information — not just what happened but
+//!     WHEN it happened relative to other events. This is the "recency signal"
+//!     that lets you know this memory is from earlier in the conversation.
+//!     In KAI: tracking recency context — how temporally fresh is the current
+//!     exchange? Is KAI building on very recent exchange or more established
+//!     material?
+//!
+//!   Spatial-context binding:
+//!     The MB also receive input from the subiculum (spatial map output of
+//!     hippocampus) and help bind episodic content to spatial context.
+//!     In KAI: binding conversation content to "where we are in the dialogue"
+//!     — the conceptual space of the current exchange.
+//!
+//! KAI's Mammillary Bodies:
+//!   relay_strength: strength of hippocampal→thalamic relay (0.0–1.0)
+//!   recency_signal: how temporally fresh the current material is (0.0–1.0)
+//!   memory_consolidation_rate: rate at which new memories are stamped (0.0–1.0)
+//!   papez_circuit_gain: loop gain of the full Papez circuit (0.0–1.0)
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-/// Relay strength EMA
+//! Relay strength EMA
 const RELAY_EMA: f32 = 0.15;
 
 /// Relay strength baseline

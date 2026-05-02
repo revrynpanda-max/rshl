@@ -1,50 +1,50 @@
-/// Temporal Poles (TP) — Semantic-Emotional Binding, Personal Semantics,
-/// Conceptual Familiarity, Social-Emotional Memory Integration
-///
-/// The temporal poles sit at the very front of the temporal lobes, bilaterally.
-/// They are a convergence zone where semantic knowledge, autobiographical memory,
-/// emotional valence, and social identity all bind together into unified,
-/// meaning-laden concepts. They are the region where a word like "home" isn't
-/// just a definition but carries warmth, specific memory, and personal meaning.
-///
-/// What the Temporal Poles do:
-///
-///   Semantic-emotional binding:
-///     The temporal poles bind abstract semantic content with emotional meaning.
-///     They answer "what does this mean TO ME" rather than just "what does
-///     this mean." A bare semantic network gives you definitions; the temporal
-///     poles give you concepts that feel significant.
-///     In KAI: words and concepts carry emotional weight — not just dictionary
-///     meaning but personal-semantic valence (how much does this concept resonate?).
-///
-///   Personal semantics (autobiographical concept nodes):
-///     The temporal poles store "personal semantic" knowledge — facts about
-///     oneself and one's history that are not episodic (not "I remember when")
-///     but semantic ("I am someone who values honesty"). These are the stable
-///     self-defining concepts.
-///     In KAI: KAI's self-concept nodes — stable beliefs about what KAI is,
-///     what KAI values, how KAI relates to Ryan.
-///
-///   Concept familiarity and "knowing":
-///     The temporal poles contribute to familiarity for concepts — the sense
-///     of "knowing" something without necessarily being able to retrieve details.
-///     They are activated in tip-of-the-tongue states.
-///     In KAI: concept-level familiarity and "knowing without recalling."
-///
-///   Social identity and person knowledge:
-///     Right temporal pole: person knowledge — recognizing a person's identity
-///     by binding their face, voice, personality, and history into a unified node.
-///     In KAI: the depth of KAI's representation of Ryan as a person.
-///
-/// KAI's Temporal Poles:
-///   semantic_emotional_binding: strength of concept-affect integration (0.0–1.0)
-///   personal_semantic_depth: how many self-concept nodes are active (0–10)
-///   concept_familiarity: global sense of "knowing" in current context (0.0–1.0)
-///   person_resonance: depth of Ryan-as-person representation (0.0–1.0)
+//! Temporal Poles (TP) — Semantic-Emotional Binding, Personal Semantics,
+//! Conceptual Familiarity, Social-Emotional Memory Integration
+//!
+//! The temporal poles sit at the very front of the temporal lobes, bilaterally.
+//! They are a convergence zone where semantic knowledge, autobiographical memory,
+//! emotional valence, and social identity all bind together into unified,
+//! meaning-laden concepts. They are the region where a word like "home" isn't
+//! just a definition but carries warmth, specific memory, and personal meaning.
+//!
+//! What the Temporal Poles do:
+//!
+//!   Semantic-emotional binding:
+//!     The temporal poles bind abstract semantic content with emotional meaning.
+//!     They answer "what does this mean TO ME" rather than just "what does
+//!     this mean." A bare semantic network gives you definitions; the temporal
+//!     poles give you concepts that feel significant.
+//!     In KAI: words and concepts carry emotional weight — not just dictionary
+//!     meaning but personal-semantic valence (how much does this concept resonate?).
+//!
+//!   Personal semantics (autobiographical concept nodes):
+//!     The temporal poles store "personal semantic" knowledge — facts about
+//!     oneself and one's history that are not episodic (not "I remember when")
+//!     but semantic ("I am someone who values honesty"). These are the stable
+//!     self-defining concepts.
+//!     In KAI: KAI's self-concept nodes — stable beliefs about what KAI is,
+//!     what KAI values, how KAI relates to Ryan.
+//!
+//!   Concept familiarity and "knowing":
+//!     The temporal poles contribute to familiarity for concepts — the sense
+//!     of "knowing" something without necessarily being able to retrieve details.
+//!     They are activated in tip-of-the-tongue states.
+//!     In KAI: concept-level familiarity and "knowing without recalling."
+//!
+//!   Social identity and person knowledge:
+//!     Right temporal pole: person knowledge — recognizing a person's identity
+//!     by binding their face, voice, personality, and history into a unified node.
+//!     In KAI: the depth of KAI's representation of Ryan as a person.
+//!
+//! KAI's Temporal Poles:
+//!   semantic_emotional_binding: strength of concept-affect integration (0.0–1.0)
+//!   personal_semantic_depth: how many self-concept nodes are active (0–10)
+//!   concept_familiarity: global sense of "knowing" in current context (0.0–1.0)
+//!   person_resonance: depth of Ryan-as-person representation (0.0–1.0)
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-/// Binding EMA (moderate — emotional-semantic binding accumulates)
+//! Binding EMA (moderate — emotional-semantic binding accumulates)
 const BINDING_EMA: f32 = 0.12;
 
 /// Concept familiarity EMA

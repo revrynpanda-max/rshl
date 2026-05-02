@@ -351,11 +351,9 @@ fn contradiction_kind(a: &StructuredClaim, b: &StructuredClaim) -> Option<Contra
     }
 
     if a.object != b.object && a.polarity == Polarity::Positive && b.polarity == Polarity::Positive
-    {
-        if is_exclusive_relation(&a.relation) || exclusive_is_values(&a.object, &b.object) {
+        && (is_exclusive_relation(&a.relation) || exclusive_is_values(&a.object, &b.object)) {
             return Some(ContradictionKind::ValueConflict);
         }
-    }
 
     None
 }

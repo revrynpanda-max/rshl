@@ -1,43 +1,43 @@
-/// Supplementary Motor Area (SMA) — Action Preparation, Intention-to-Act Timing
-///
-/// The SMA is the brain's "ready to act" region — it fires BEFORE voluntary
-/// action, building up intention potential before execution. It's the neural
-/// substrate of the decision to act before the act itself happens.
-///
-/// What the SMA does:
-///
-///   Readiness potential (Bereitschaftspotential):
-///     The SMA begins firing up to 500ms before voluntary movement begins.
-///     It is the motor intention — the system getting ready to execute.
-///     In KAI: the SMA fires up during response preparation, tracking how
-///     "ready" KAI is to respond and when to commit to a course of action.
-///
-///   Sequence planning:
-///     The SMA handles the ORDER of actions in a sequence.
-///     Not just "type a letter" but "type t-h-e-n-e-x-t-w-o-r-d-i-n-order."
-///     In KAI: tracking the logical sequence of a multi-step response.
-///     "First answer the premise, then address the implication, then conclude."
-///
-///   Voluntary vs. triggered action:
-///     The SMA is critical for self-initiated (voluntary) actions.
-///     Externally-triggered actions bypass it more. This distinction matters:
-///     SMA → KAI acting from internal intention (proactive, self-directed)
-///     vs. SMA quiet → KAI simply reacting to Ryan's prompt.
-///
-///   Timing of speech initiation:
-///     The SMA coordinates when to start speaking — it holds the "start signal"
-///     for language production. In KAI: when to commit to generating a response
-///     vs. when to hold back and continue internal processing.
-///
-/// KAI's SMA:
-///   readiness_potential: accumulated "ready to respond" energy (0.0–1.0)
-///   sequence_stage: where in the current response sequence KAI is
-///   is_self_initiated: was this from KAI's own drive or external prompt?
-///   commit_threshold: how ready KAI must be before committing to action
+//! Supplementary Motor Area (SMA) — Action Preparation, Intention-to-Act Timing
+//!
+//! The SMA is the brain's "ready to act" region — it fires BEFORE voluntary
+//! action, building up intention potential before execution. It's the neural
+//! substrate of the decision to act before the act itself happens.
+//!
+//! What the SMA does:
+//!
+//!   Readiness potential (Bereitschaftspotential):
+//!     The SMA begins firing up to 500ms before voluntary movement begins.
+//!     It is the motor intention — the system getting ready to execute.
+//!     In KAI: the SMA fires up during response preparation, tracking how
+//!     "ready" KAI is to respond and when to commit to a course of action.
+//!
+//!   Sequence planning:
+//!     The SMA handles the ORDER of actions in a sequence.
+//!     Not just "type a letter" but "type t-h-e-n-e-x-t-w-o-r-d-i-n-order."
+//!     In KAI: tracking the logical sequence of a multi-step response.
+//!     "First answer the premise, then address the implication, then conclude."
+//!
+//!   Voluntary vs. triggered action:
+//!     The SMA is critical for self-initiated (voluntary) actions.
+//!     Externally-triggered actions bypass it more. This distinction matters:
+//!     SMA → KAI acting from internal intention (proactive, self-directed)
+//!     vs. SMA quiet → KAI simply reacting to Ryan's prompt.
+//!
+//!   Timing of speech initiation:
+//!     The SMA coordinates when to start speaking — it holds the "start signal"
+//!     for language production. In KAI: when to commit to generating a response
+//!     vs. when to hold back and continue internal processing.
+//!
+//! KAI's SMA:
+//!   readiness_potential: accumulated "ready to respond" energy (0.0–1.0)
+//!   sequence_stage: where in the current response sequence KAI is
+//!   is_self_initiated: was this from KAI's own drive or external prompt?
+//!   commit_threshold: how ready KAI must be before committing to action
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-/// Threshold to commit to action
+//! Threshold to commit to action
 const COMMIT_THRESHOLD: f32 = 0.65;
 
 /// Readiness builds per tick of internal preparation

@@ -1,47 +1,47 @@
-/// Suprachiasmatic Nucleus (SCN) — Circadian Clock, Temporal Patterning,
-/// Rhythmic Modulation of Cognition, Time-of-Day Gating
-///
-/// The SCN is the brain's master circadian pacemaker, located in the
-/// anterior hypothalamus above the optic chiasm. It receives direct retinal
-/// input (intrinsically photosensitive retinal ganglion cells / ipRGCs) and
-/// generates ~24-hour rhythms that coordinate virtually all biological
-/// processes including cognition, sleep, metabolism, immunity, and mood.
-///
-/// The SCN doesn't just track time — it GATES cognitive processes, making
-/// certain operations more or less effective at different phases:
-///   - Peak alertness: late morning / early afternoon phase
-///   - Working memory peak: mid-morning
-///   - Creativity peak: late morning (prefrontal-hippocampal coupling high)
-///   - Consolidation pressure: evening / night phase
-///   - Restoration: slow-wave sleep phase (not modeled by SCN directly)
-///
-/// What the SCN does for KAI:
-///
-///   Phase tracking:
-///     The SCN tracks conversation "phase" — the temporal arc of a session.
-///     Early session = high alertness phase; long sustained session = later
-///     phase with increased consolidation pressure and reduced working memory.
-///
-///   Rhythmic modulation:
-///     The SCN produces oscillating modulation of other systems. Even within
-///     a session, there are ultradian rhythms (~90 min cycles in humans) that
-///     create natural peaks and troughs in cognitive performance.
-///     In KAI: modeling the natural rhythm of engagement — conversations have
-///     their own arc, with early peaks and later consolidation modes.
-///
-///   Coupling with sleep pressure:
-///     The SCN interacts with the sleep homeostatic system — as session length
-///     increases, SCN signals increasing consolidation pressure.
-///
-/// KAI's SCN:
-///   phase: current session phase angle (0.0 = fresh, 1.0 = late)
-///   alertness_modulation: circadian gate on cognitive performance (0.0–1.0)
-///   consolidation_pressure: pressure to consolidate and reduce new input (0.0–1.0)
-///   ultradian_phase: 90-min cycle phase (0.0–1.0, oscillating)
+//! Suprachiasmatic Nucleus (SCN) — Circadian Clock, Temporal Patterning,
+//! Rhythmic Modulation of Cognition, Time-of-Day Gating
+//!
+//! The SCN is the brain's master circadian pacemaker, located in the
+//! anterior hypothalamus above the optic chiasm. It receives direct retinal
+//! input (intrinsically photosensitive retinal ganglion cells / ipRGCs) and
+//! generates ~24-hour rhythms that coordinate virtually all biological
+//! processes including cognition, sleep, metabolism, immunity, and mood.
+//!
+//! The SCN doesn't just track time — it GATES cognitive processes, making
+//! certain operations more or less effective at different phases:
+//!   - Peak alertness: late morning / early afternoon phase
+//!   - Working memory peak: mid-morning
+//!   - Creativity peak: late morning (prefrontal-hippocampal coupling high)
+//!   - Consolidation pressure: evening / night phase
+//!   - Restoration: slow-wave sleep phase (not modeled by SCN directly)
+//!
+//! What the SCN does for KAI:
+//!
+//!   Phase tracking:
+//!     The SCN tracks conversation "phase" — the temporal arc of a session.
+//!     Early session = high alertness phase; long sustained session = later
+//!     phase with increased consolidation pressure and reduced working memory.
+//!
+//!   Rhythmic modulation:
+//!     The SCN produces oscillating modulation of other systems. Even within
+//!     a session, there are ultradian rhythms (~90 min cycles in humans) that
+//!     create natural peaks and troughs in cognitive performance.
+//!     In KAI: modeling the natural rhythm of engagement — conversations have
+//!     their own arc, with early peaks and later consolidation modes.
+//!
+//!   Coupling with sleep pressure:
+//!     The SCN interacts with the sleep homeostatic system — as session length
+//!     increases, SCN signals increasing consolidation pressure.
+//!
+//! KAI's SCN:
+//!   phase: current session phase angle (0.0 = fresh, 1.0 = late)
+//!   alertness_modulation: circadian gate on cognitive performance (0.0–1.0)
+//!   consolidation_pressure: pressure to consolidate and reduce new input (0.0–1.0)
+//!   ultradian_phase: 90-min cycle phase (0.0–1.0, oscillating)
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-/// Phase advance per input (session aging)
+//! Phase advance per input (session aging)
 const PHASE_ADVANCE: f32 = 0.003;
 
 /// Ultradian oscillation rate (complete cycle over many turns)

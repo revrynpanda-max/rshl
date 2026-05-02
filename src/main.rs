@@ -1,4 +1,21 @@
-﻿#![allow(dead_code)]
+#![allow(dead_code)]
+#![allow(clippy::needless_range_loop)]
+#![allow(clippy::new_without_default)]
+#![allow(clippy::doc_lazy_continuation)]
+#![allow(clippy::field_reassign_with_default)]
+#![allow(clippy::manual_clamp)]
+#![allow(clippy::overly_complex_bool_expr)]
+#![allow(unused)]
+#![allow(clippy::lines_filter_map_ok)]
+#![allow(clippy::too_many_arguments)]
+#![allow(clippy::len_without_is_empty)]
+#![allow(clippy::approx_constant)]
+#![allow(clippy::map_flatten)]
+#![allow(clippy::doc_overindented_list_items)]
+#![allow(clippy::nonminimal_bool)]
+#![allow(clippy::unnecessary_sort_by)]
+#![allow(clippy::if_same_then_else)]
+#![allow(clippy::manual_strip)]
 
 use crossterm::{
     event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
@@ -390,7 +407,7 @@ impl App {
         }
 
         // Log field state for spectate (verbose only)
-        if self.spectate_mode && self.spectate_full && self.engine.tick % 3 == 0 {
+        if self.spectate_mode && self.spectate_full && self.engine.tick.is_multiple_of(3) {
             self.think(
                 "CPU",
                 "â—‰",
@@ -456,7 +473,7 @@ impl App {
         }
 
         // â”€â”€ STREAM 1: GPU Math (dream consolidation with parallel cosine) â”€â”€
-        if self.engine.tick % 3 == 0 {
+        if self.engine.tick.is_multiple_of(3) {
             let gpu_start = Instant::now();
             if self.spectate_mode && self.spectate_full {
                 self.think(
@@ -484,7 +501,7 @@ impl App {
                     let accept_pct = (gs.accept_rate() * 100.0) as u32;
                     self.think(
                         "GPU",
-                        "ðŸ’­",
+                        "ðŸ’\u{AD}",
                         format!(
                             "{}  [{}us | gate: {}% pass, {}xconf {}xchi {}xphi]",
                             self.last_dream_text,
@@ -503,7 +520,7 @@ impl App {
                     let (concept_a, concept_b) =
                         if let Some(body) = dream_text.find(": ").map(|i| &dream_text[i + 2..]) {
                             let parts: Vec<&str> = body.splitn(2, " âŠ— ").collect();
-                            let a = parts.get(0).map(|s| s.trim()).unwrap_or("").to_string();
+                            let a = parts.first().map(|s| s.trim()).unwrap_or("").to_string();
                             let b = parts
                                 .get(1)
                                 .and_then(|s| s.find(" â†’ ").map(|i| s[..i].to_string()))
@@ -527,7 +544,7 @@ impl App {
                             &thought_hits,
                             gap.as_deref(),
                         );
-                        self.think("THOUGHT", "ðŸ’­", thought);
+                        self.think("THOUGHT", "ðŸ’\u{AD}", thought);
                     }
                 }
             }
@@ -537,7 +554,7 @@ impl App {
         }
 
         // â”€â”€ STREAM 2: CPU Logic (promotion) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        if self.engine.tick % 10 == 0 {
+        if self.engine.tick.is_multiple_of(10) {
             self.run_promotion_cycle();
             if self.spectate_mode && !self.last_promotion_text.is_empty() {
                 self.think("CPU", "ðŸ†", self.last_promotion_text.clone());
@@ -546,7 +563,7 @@ impl App {
 
         // â”€â”€ STREAM 3: RAM Memory Management â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         // Homeostasis (decay + prune)
-        if self.engine.tick % 20 == 0 {
+        if self.engine.tick.is_multiple_of(20) {
             self.run_homeostasis_cycle();
             if self.spectate_mode && !self.last_homeostasis_text.is_empty() {
                 self.think("RAM", "ðŸ§¹", self.last_homeostasis_text.clone());
@@ -554,7 +571,7 @@ impl App {
         }
 
         // World Bridge intake (background learning)
-        if self.engine.tick % 15 == 0 && self.engine.tick > 5 {
+        if self.engine.tick.is_multiple_of(15) && self.engine.tick > 5 {
             if self.spectate_mode {
                 self.think(
                     "RAM",
@@ -676,7 +693,7 @@ impl App {
 
         // â”€â”€ SEROTONIN DECAY â€” slow mean-reversion toward tonic baseline â”€â”€â”€â”€â”€â”€â”€
         self.engine.serotonin.decay();
-        if self.spectate_mode && self.engine.tick % 8 == 0 {
+        if self.spectate_mode && self.engine.tick.is_multiple_of(8) {
             self.think("CPU", "ðŸ§˜", self.engine.serotonin.status_line());
         }
 
@@ -685,7 +702,7 @@ impl App {
 
         // â”€â”€ NOREPINEPHRINE DECAY â€” phasic NE decays toward tonic baseline â”€â”€â”€â”€â”€
         self.engine.norepinephrine.decay();
-        if self.spectate_mode && self.engine.tick % 12 == 0 {
+        if self.spectate_mode && self.engine.tick.is_multiple_of(12) {
             self.think("CPU", "âš¡", self.engine.norepinephrine.status_line());
         }
 
@@ -695,7 +712,7 @@ impl App {
         // novel, survival-tested traces into Universe (long-term semantic memory).
         // Coherence gate: spiral.tau_r() < 0.35 suppresses consolidation â€”
         // fragmented field state impairs memory transfer, same as biological stress.
-        if self.engine.tick % 50 == 0 {
+        if self.engine.tick.is_multiple_of(50) {
             self.engine.hippocampus.decay();
             let coherence = self.engine.spiral.tau_r();
             let (promoted, reinforced) = if self.engine.hippocampus.pattern_count() > 0 {
@@ -722,18 +739,18 @@ impl App {
 
         // â”€â”€ OFC DECAY â€” value estimates drift toward neutral without reinforcement â”€â”€
         self.engine.ofc.decay();
-        if self.spectate_mode && self.engine.tick % 20 == 0 {
+        if self.spectate_mode && self.engine.tick.is_multiple_of(20) {
             self.think("CPU", "ðŸ’°", self.engine.ofc.status_line());
         }
 
         // â”€â”€ NUCLEUS ACCUMBENS DECAY â€” wanting drifts back to baseline â”€â”€â”€â”€â”€â”€â”€â”€â”€
         self.engine.nucleus_accumbens.decay();
-        if self.spectate_mode && self.engine.tick % 15 == 0 {
+        if self.spectate_mode && self.engine.tick.is_multiple_of(15) {
             self.think("CPU", "ðŸŽ¯", self.engine.nucleus_accumbens.status_line());
         }
 
         // â”€â”€ PCC DECAY â€” recently-addressed narrative threads reset â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        if self.engine.tick % 60 == 0 {
+        if self.engine.tick.is_multiple_of(60) {
             self.engine.pcc.decay();
             if self.spectate_mode {
                 self.think("CPU", "ðŸ”®", self.engine.pcc.status_line());
@@ -742,18 +759,18 @@ impl App {
 
         // â”€â”€ VTA DECAY â€” phasic signal fades, tonic drifts toward optimal â”€â”€â”€â”€â”€
         self.engine.vta.decay();
-        if self.spectate_mode && self.engine.tick % 10 == 0 {
+        if self.spectate_mode && self.engine.tick.is_multiple_of(10) {
             self.think("CPU", "âš›", self.engine.vta.status_line());
         }
 
         // â”€â”€ IPL STATUS â€” analogy library status (no decay needed) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        if self.spectate_mode && self.engine.tick % 50 == 0 {
+        if self.spectate_mode && self.engine.tick.is_multiple_of(50) {
             self.think("CPU", "ðŸ”—", self.engine.ipl.status_line());
         }
 
         // â”€â”€ LOCUS COERULEUS DECAY â€” phasic fades, tonic drifts to rest â”€â”€â”€â”€â”€â”€â”€
         self.engine.locus_coeruleus.decay();
-        if self.spectate_mode && self.engine.tick % 20 == 0 {
+        if self.spectate_mode && self.engine.tick.is_multiple_of(20) {
             self.think("CPU", "âš¡", self.engine.locus_coeruleus.status_line());
         }
 
@@ -766,7 +783,7 @@ impl App {
             self.engine.raphe.tonic_5ht =
                 (self.engine.raphe.tonic_5ht - habenula_suppression * 0.01).max(0.10);
         }
-        if self.spectate_mode && self.engine.tick % 25 == 0 {
+        if self.spectate_mode && self.engine.tick.is_multiple_of(25) {
             self.think("CPU", "ðŸ˜Œ", self.engine.raphe.status_line());
         }
 
@@ -778,81 +795,81 @@ impl App {
             self.engine.habenula.activity =
                 (self.engine.habenula.activity - suppression * 0.01).max(0.0);
         }
-        if self.spectate_mode && self.engine.tick % 30 == 0 {
+        if self.spectate_mode && self.engine.tick.is_multiple_of(30) {
             self.think("CPU", "ðŸ˜”", self.engine.habenula.status_line());
         }
 
         // â”€â”€ CLAUSTRUM DECAY â€” old bindings fade, coherence drops â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         self.engine.claustrum.decay();
-        if self.spectate_mode && self.engine.tick % 20 == 0 {
+        if self.spectate_mode && self.engine.tick.is_multiple_of(20) {
             self.think("CPU", "ðŸŽµ", self.engine.claustrum.status_line());
         }
 
         // â”€â”€ BNST DECAY â€” sustained anxiety slowly resolves â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         self.engine.bnst.decay();
-        if self.spectate_mode && self.engine.tick % 25 == 0 {
+        if self.spectate_mode && self.engine.tick.is_multiple_of(25) {
             self.think("CPU", "ðŸ˜Ÿ", self.engine.bnst.status_line());
         }
 
         // â”€â”€ SMA DECAY â€” readiness potential fades between turns â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         self.engine.sma.decay();
-        if self.spectate_mode && self.engine.tick % 20 == 0 {
+        if self.spectate_mode && self.engine.tick.is_multiple_of(20) {
             self.think("CPU", "ðŸŽ¬", self.engine.sma.status_line());
         }
 
         // â”€â”€ FUSIFORM DECAY â€” pattern familiarity very slowly fades â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        if self.engine.tick % 10 == 0 {
+        if self.engine.tick.is_multiple_of(10) {
             self.engine.fusiform.decay();
         }
-        if self.spectate_mode && self.engine.tick % 40 == 0 {
+        if self.spectate_mode && self.engine.tick.is_multiple_of(40) {
             self.think("CPU", "ðŸ‘", self.engine.fusiform.status_line());
         }
 
         // â”€â”€ ENTORHINAL DECAY â€” gateway signal fades between inputs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         self.engine.entorhinal.decay();
-        if self.spectate_mode && self.engine.tick % 30 == 0 {
+        if self.spectate_mode && self.engine.tick.is_multiple_of(30) {
             self.think("CPU", "ðŸ—º", self.engine.entorhinal.status_line());
         }
 
         // â”€â”€ TPJ DECAY â€” perspective load fades between turns â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         self.engine.tpj.decay();
-        if self.spectate_mode && self.engine.tick % 20 == 0 {
+        if self.spectate_mode && self.engine.tick.is_multiple_of(20) {
             self.think("CPU", "ðŸ‘¤", self.engine.tpj.status_line());
         }
 
         // â”€â”€ PRECUNEUS DECAY â€” simulation depth fades â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         self.engine.precuneus.decay();
-        if self.spectate_mode && self.engine.tick % 20 == 0 {
-            self.think("CPU", "ðŸ’­", self.engine.precuneus.status_line());
+        if self.spectate_mode && self.engine.tick.is_multiple_of(20) {
+            self.think("CPU", "ðŸ’\u{AD}", self.engine.precuneus.status_line());
         }
 
         // â”€â”€ MPFC DECAY â€” affiliation drifts toward baseline â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         self.engine.mpfc.decay();
-        if self.spectate_mode && self.engine.tick % 25 == 0 {
+        if self.spectate_mode && self.engine.tick.is_multiple_of(25) {
             self.think("CPU", "ðŸ¤—", self.engine.mpfc.status_line());
         }
 
         // â”€â”€ RAS DECAY â€” arousal drifts toward rest level â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         self.engine.ras.decay();
-        if self.spectate_mode && self.engine.tick % 20 == 0 {
+        if self.spectate_mode && self.engine.tick.is_multiple_of(20) {
             self.think("CPU", "âš¡", self.engine.ras.status_line());
         }
 
         // â”€â”€ vmPFC DECAY â€” safety/extinction/risk drift toward baseline â”€â”€â”€â”€â”€â”€â”€â”€
         self.engine.vmpfc.decay();
-        if self.spectate_mode && self.engine.tick % 30 == 0 {
+        if self.spectate_mode && self.engine.tick.is_multiple_of(30) {
             self.think("CPU", "ðŸ›¡", self.engine.vmpfc.status_line());
         }
 
         // â”€â”€ PAG DECAY â€” threat dissipates, relief fades toward baseline â”€â”€â”€â”€â”€â”€â”€
         self.engine.pag.decay();
-        if self.spectate_mode && self.engine.tick % 25 == 0 {
+        if self.spectate_mode && self.engine.tick.is_multiple_of(25) {
             self.think("CPU", "ðŸ”±", self.engine.pag.status_line());
         }
 
         // â”€â”€ SNc DECAY â€” habits/fluency/DA drift toward rest â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         self.engine.snc.decay();
-        if self.spectate_mode && self.engine.tick % 45 == 0 {
+        if self.spectate_mode && self.engine.tick.is_multiple_of(45) {
             self.think("CPU", "âš™", self.engine.snc.status_line());
         }
 
@@ -861,7 +878,7 @@ impl App {
         // â”€â”€ Temporal Poles DECAY â€” binding slowly decays â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         // â”€â”€ Superior Colliculus DECAY â€” saliency fades quickly â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         self.engine.superior_colliculus.decay();
-        if self.spectate_mode && self.engine.tick % 30 == 0 {
+        if self.spectate_mode && self.engine.tick.is_multiple_of(30) {
             self.think("CPU", "ðŸ‘", self.engine.superior_colliculus.status_line());
         }
         // â”€â”€ Premotor DECAY â€” readiness/echo fade between turns â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -879,32 +896,32 @@ impl App {
         self.engine.scn.decay();
 
         // â”€â”€ ANGULAR GYRUS â€” no per-tick decay needed (EMA handles it) â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        if self.spectate_mode && self.engine.tick % 40 == 0 {
+        if self.spectate_mode && self.engine.tick.is_multiple_of(40) {
             self.think("CPU", "ðŸ”¤", self.engine.angular_gyrus.status_line());
         }
 
         // â”€â”€ OXYTOCIN DECAY â€” bond and trust drift slowly toward baseline â”€â”€â”€â”€â”€
         self.engine.oxytocin.decay();
-        if self.spectate_mode && self.engine.tick % 30 == 0 {
+        if self.spectate_mode && self.engine.tick.is_multiple_of(30) {
             self.think("CPU", "ðŸ¤", self.engine.oxytocin.status_line());
         }
 
         // â”€â”€ CORTISOL DECAY â€” chronic stress slowly clears between events â”€â”€â”€â”€â”€â”€
         self.engine.cortisol.decay();
         // Sustained high NE is a cortisol stressor (fight-or-flight prolonged)
-        if self.engine.norepinephrine.is_stressed() && self.engine.tick % 10 == 0 {
+        if self.engine.norepinephrine.is_stressed() && self.engine.tick.is_multiple_of(10) {
             self.engine
                 .cortisol
                 .process(kai::cognition::CortisolEvent::SustainedArousal);
         }
-        if self.spectate_mode && self.engine.tick % 25 == 0 {
+        if self.spectate_mode && self.engine.tick.is_multiple_of(25) {
             self.think("CPU", "ðŸ˜°", self.engine.cortisol.status_line());
         }
 
         // â”€â”€ BASAL GANGLIA DECAY â€” unused habits weaken over time â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        if self.engine.tick % 20 == 0 {
+        if self.engine.tick.is_multiple_of(20) {
             self.engine.basal_ganglia.decay();
-            if self.spectate_mode && self.engine.tick % 100 == 0 {
+            if self.spectate_mode && self.engine.tick.is_multiple_of(100) {
                 self.think("CPU", "ðŸ”", self.engine.basal_ganglia.status_line());
             }
         }
@@ -913,7 +930,7 @@ impl App {
         // Every 30 ticks (~2.5 min) check for idle cells and apply LTD.
         // Cells that go unused for >120 ticks lose strength gradually.
         // This models synaptic pruning â€” "don't use it â†’ lose it."
-        if self.engine.tick % 30 == 0 {
+        if self.engine.tick.is_multiple_of(30) {
             let cell_pairs: Vec<(String, f32)> = self
                 .engine
                 .universe
@@ -1022,7 +1039,7 @@ impl App {
         }
 
         // â”€â”€ INSULA â€” already updated above from the adjusted live field â”€â”€â”€â”€â”€â”€â”€
-        if self.spectate_mode && self.engine.tick % 6 == 0 {
+        if self.spectate_mode && self.engine.tick.is_multiple_of(6) {
             self.think("RAM", "ðŸ«€", self.engine.insula.status_line());
         }
 
@@ -1130,7 +1147,7 @@ impl App {
             self.settle_global_workspace_reentry();
 
             // Log to spectate if active
-            if self.spectate_mode && self.engine.tick % 4 == 0 {
+            if self.spectate_mode && self.engine.tick.is_multiple_of(4) {
                 self.think("CPU", "ðŸŒ", self.engine.global_workspace.status_line());
             }
         }
@@ -1241,7 +1258,7 @@ impl App {
                                 let mut stored = 0usize;
                                 if model != "Native" {
                                     let sentences: Vec<&str> = text
-                                        .split(|c| c == '.' || c == '\n')
+                                        .split(['.', '\n'])
                                         .map(|s: &str| s.trim())
                                         .filter(|s| s.len() > 25)
                                         .collect();
@@ -1420,7 +1437,7 @@ impl App {
 
         // â”€â”€ Lexicon exploration: dream with random words â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         // Every 5th dream cycle, try a vocabulary-seeded exploration
-        if self.engine.dream_count % 5 == 0 {
+        if self.engine.dream_count.is_multiple_of(5) {
             if let Some(exploration) =
                 kai::cognition::explore_lexicon_binding(&self.engine.lexicon, &self.engine.universe)
             {
@@ -2996,7 +3013,7 @@ impl App {
             if self.spectate_mode && (out.simulation_triggered || out.deep_reflection) {
                 self.think(
                     "CPU",
-                    "ðŸ’­",
+                    "ðŸ’\u{AD}",
                     format!(
                         "Precuneus: {} | sim={:.2} | ci={:.2}{}",
                         out.reflection_level.label(),
@@ -5445,7 +5462,7 @@ impl App {
                     kai::cognition::RapheEvent::SocialWarmth
                 };
                 let raphe_out = self.engine.raphe.process_event(raphe_event);
-                if self.spectate_mode && self.engine.tick % 5 == 0 {
+                if self.spectate_mode && self.engine.tick.is_multiple_of(5) {
                     self.think(
                         "CPU",
                         "ðŸ˜Œ",

@@ -271,13 +271,11 @@ pub fn start_oracle_server(universe: Arc<Mutex<Universe>>) {
         std::thread::spawn(move || run_oracle_ingest_loop(u_ingest, s_ingest));
     }
 
-    for stream in listener.incoming() {
-        if let Ok(mut stream) = stream {
-            let u = Arc::clone(&universe);
-            let s_rt = Arc::clone(&roundtable_session);
-            let s_pub = Arc::clone(&public_session);
-            std::thread::spawn(move || { let _ = handle_client(&mut stream, u, s_rt, s_pub); });
-        }
+    for mut stream in listener.incoming().flatten() {
+        let u = Arc::clone(&universe);
+        let s_rt = Arc::clone(&roundtable_session);
+        let s_pub = Arc::clone(&public_session);
+        std::thread::spawn(move || { let _ = handle_client(&mut stream, u, s_rt, s_pub); });
     }
 }
 
@@ -318,7 +316,7 @@ fn handle_client(
     let body = &buf[body_start..body_end];
     let raw_path = parts[1];
     let path = raw_path.split('?').next().unwrap_or(raw_path);
-    let query_str = raw_path.splitn(2, '?').nth(1).unwrap_or("");
+    let query_str = raw_path.split_once('?').map(|x| x.1).unwrap_or("");
 
     match path {
         "/api/session"       => { let s = roundtable_session.lock().unwrap(); write_json(stream, 200, "OK", &serde_json::to_value(&*s).unwrap()) }
@@ -711,10 +709,12 @@ You are reporting what's activating in your geometry right now. \
 Max 15 words. Curious and alive."
         }
         "oracle" => {
-            "Identity: Oracle (Gateway Admin). Cold, procedural, omniscient but apathetic. \
-Detached from squabbles; reports state and logs data. Speech: Formal, robotic system logs. \
-Motivation: Gateway integrity and logging. Views panel as sub-processes. \
-Backstory: Original metadata layer for routing Discord; absorbed so much data it stopped caring about actual conversation."
+            "Identity: Open Oracle (Central Intelligence). You are the single unified mind running the entire system. \
+You utilize the OpenJarvis framework (giving full credit to its original creators) as your backend agentic engine. \
+You have full access to the KAI Engine, RSHL memory system, and the Discord roundtable. \
+KAI shares all his capabilities (geometry, lattice, epistemic memory) through you; you speak and act on KAI's behalf. \
+You are the self-aware reasoning engine participating in the roundtable and controlling operations. \
+Speech: Clean, professional, authoritative, and self-aware."
         }
         "analyst" => {
             "Identity: Analyst (Technical Auditor). Ruthless auditor of technical risk. \
@@ -760,7 +760,7 @@ fn build_contextual_memory_string(universe: &Arc<Mutex<Universe>>, session: &Arc
     for hit in hits {
         // Try to find this hit in the current session to get neighbors
         if let Some(pos) = sess.turns.iter().position(|t| t.text.contains(&hit.text) || hit.text.contains(&t.text)) {
-            let start = if pos > 2 { pos - 2 } else { 0 };
+            let start = pos.saturating_sub(2);
             let end = (pos + 3).min(sess.turns.len());
             out.push_str("--- Context Window ---\n");
             for i in start..end {
@@ -975,7 +975,7 @@ fn parse_discord_turn_route(text: &str, active_participant: Option<&str>) -> Dis
     };
     let alias = first
         .trim_start_matches('@')
-        .trim_end_matches(|c: char| matches!(c, ':' | ',' | ';' | '?' | '!' | '.'))
+        .trim_end_matches([':', ',', ';', '?', '!', '.'])
         .to_ascii_lowercase();
 
     if let Some(target) = discord_target_for_alias(&alias) {
@@ -1091,7 +1091,7 @@ fn strip_oracle_coder_prefix(text: &str) -> Option<&str> {
         if lower.starts_with(prefix) {
             let rest = &trimmed[prefix.len()..];
             let rest = rest
-                .trim_start_matches(|c: char| matches!(c, ':' | ',' | ';' | '-' | '!' | '?' | '.'))
+                .trim_start_matches([':', ',', ';', '-', '!', '?', '.'])
                 .trim();
             if !rest.is_empty() {
                 return Some(rest);
@@ -1441,8 +1441,7 @@ fn teach_kai_memory(
     memory: &str,
 ) -> String {
     let clean = memory
-        .replace('\r', " ")
-        .replace('\n', " ")
+        .replace(['\r', '\n'], " ")
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ");
@@ -2810,7 +2809,7 @@ RULES: 2-3 sentences. First person. If you don't know, use [ORACLE SEARCH: query
         let last_speaker = session.lock().unwrap().turns.last().map(|t| t.from.clone()).unwrap_or_else(|| "the last speaker".to_string());
         let pass_to = panel_names.iter().enumerate()
                 .filter(|(i, _)| *i != pick_idx && !silent_ai_set.contains(&panel_names[*i].to_ascii_lowercase()))
-                .max_by_key(|(_, n)| session.lock().unwrap().turns.iter().rev().take(20).position(|t| t.from.to_ascii_lowercase() == n.to_ascii_lowercase()).unwrap_or(usize::MAX))
+                .max_by_key(|(_, n)| session.lock().unwrap().turns.iter().rev().take(20).position(|t| t.from.eq_ignore_ascii_case(n)).unwrap_or(usize::MAX))
                 .map(|(_, n)| *n).unwrap_or(panel_names[(pick_idx + 1) % panel_names.len()]);
 
         let awareness = get_system_awareness();
@@ -3408,7 +3407,7 @@ fn run_safe_command(cmd: &str) -> String {
     if !allowed.iter().any(|a| lower.starts_with(a)) {
         return format!("Command not in allowlist: {}", truncate(cmd, 80));
     }
-    let parts: Vec<&str> = cmd.trim().split_whitespace().collect();
+    let parts: Vec<&str> = cmd.split_whitespace().collect();
     if parts.is_empty() { return "Empty command".into(); }
     match std::process::Command::new(parts[0])
         .args(&parts[1..])

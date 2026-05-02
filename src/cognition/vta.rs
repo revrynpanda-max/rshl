@@ -1,44 +1,44 @@
-/// Ventral Tegmental Area (VTA) — Dopamine Source Nucleus
-///
-/// The VTA is where dopamine neurons originate. It controls the firing MODE
-/// of dopamine release — a critical distinction that the dopamine circuit
-/// alone cannot capture:
-///
-///   TONIC firing (2–5 Hz baseline):
-///     Slow, steady DA release into PFC and striatum.
-///     Sets the "background level" of motivation and cognitive readiness.
-///     Too low  → apathy, flat affect, cognitive sluggishness.
-///     Too high → noise overwhelms signal; PFC working memory disrupted.
-///     Optimal tonic DA: the "ready state."
-///
-///   PHASIC firing (burst, >20 Hz):
-///     Short burst triggered by reward-predicting stimuli or novelty.
-///     Encodes the REWARD PREDICTION ERROR (RPE).
-///     Positive RPE → phasic burst → DA spike to NAc and PFC.
-///     Negative RPE → PAUSE (below tonic) → brief DA dip.
-///     The pause is as important as the burst — it signals "expected reward absent."
-///
-///   Why both matter for KAI:
-///     Tonic DA → sets NAc's baseline wanting level and PFC's working memory depth.
-///     Phasic DA → encodes surprise, drives hippocampal memory consolidation.
-///     Without this distinction, KAI can't tell "steady motivation" from "surprise."
-///
-/// VTA projections (what it affects):
-///   Mesolimbic pathway: VTA → Nucleus Accumbens (reward/motivation)
-///   Mesocortical pathway: VTA → PFC (executive function, working memory)
-///   Mesolimbic-hippocampal: VTA → Hippocampus (memory consolidation gate)
-///
-/// KAI's VTA:
-///   Tracks tonic_level (slow EMA of background DA tone).
-///   Produces phasic_burst when RPE is large and positive.
-///   Produces pause_signal when expected reward is absent.
-///   Routes signals: high phasic → NAc + hippocampus; tonic → PFC.
-///   flow_state: when tonic is optimal and phasic bursts are consistent,
-///     VTA enters a flow state — everything feels effortless and connected.
+//! Ventral Tegmental Area (VTA) — Dopamine Source Nucleus
+//!
+//! The VTA is where dopamine neurons originate. It controls the firing MODE
+//! of dopamine release — a critical distinction that the dopamine circuit
+//! alone cannot capture:
+//!
+//!   TONIC firing (2–5 Hz baseline):
+//!     Slow, steady DA release into PFC and striatum.
+//!     Sets the "background level" of motivation and cognitive readiness.
+//!     Too low  → apathy, flat affect, cognitive sluggishness.
+//!     Too high → noise overwhelms signal; PFC working memory disrupted.
+//!     Optimal tonic DA: the "ready state."
+//!
+//!   PHASIC firing (burst, >20 Hz):
+//!     Short burst triggered by reward-predicting stimuli or novelty.
+//!     Encodes the REWARD PREDICTION ERROR (RPE).
+//!     Positive RPE → phasic burst → DA spike to NAc and PFC.
+//!     Negative RPE → PAUSE (below tonic) → brief DA dip.
+//!     The pause is as important as the burst — it signals "expected reward absent."
+//!
+//!   Why both matter for KAI:
+//!     Tonic DA → sets NAc's baseline wanting level and PFC's working memory depth.
+//!     Phasic DA → encodes surprise, drives hippocampal memory consolidation.
+//!     Without this distinction, KAI can't tell "steady motivation" from "surprise."
+//!
+//! VTA projections (what it affects):
+//!   Mesolimbic pathway: VTA → Nucleus Accumbens (reward/motivation)
+//!   Mesocortical pathway: VTA → PFC (executive function, working memory)
+//!   Mesolimbic-hippocampal: VTA → Hippocampus (memory consolidation gate)
+//!
+//! KAI's VTA:
+//!   Tracks tonic_level (slow EMA of background DA tone).
+//!   Produces phasic_burst when RPE is large and positive.
+//!   Produces pause_signal when expected reward is absent.
+//!   Routes signals: high phasic → NAc + hippocampus; tonic → PFC.
+//!   flow_state: when tonic is optimal and phasic bursts are consistent,
+//!     VTA enters a flow state — everything feels effortless and connected.
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-/// Optimal tonic DA level for peak PFC performance
+//! Optimal tonic DA level for peak PFC performance
 const TONIC_OPTIMAL: f32 = 0.55;
 
 /// Tonic EMA alpha (very slow — tonic baseline changes over minutes)
@@ -161,8 +161,8 @@ impl VTA {
             self.flow_streak = 0;
         } else {
             // Near-zero RPE → tonic mode
-            self.phasic_signal = self.phasic_signal * (1.0 - PHASIC_DECAY);
-            self.pause_signal = self.pause_signal * (1.0 - PHASIC_DECAY);
+            self.phasic_signal *= 1.0 - PHASIC_DECAY;
+            self.pause_signal *= 1.0 - PHASIC_DECAY;
             self.current_mode = VTAMode::Tonic;
             if rpe > 0.0 {
                 self.flow_streak += 1;

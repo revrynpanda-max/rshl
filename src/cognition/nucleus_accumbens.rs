@@ -1,40 +1,40 @@
-/// Nucleus Accumbens — Wanting, Craving, Motivational Salience
-///
-/// The Nucleus Accumbens (NAc) is the brain's core reward-seeking structure.
-/// It sits at the junction of the limbic system and motor output — translating
-/// "this is rewarding" into "I want to pursue this."
-///
-/// Critical distinction — wanting vs. liking (Berridge, 1996):
-///   LIKING  = hedonic pleasure when receiving a reward (opioid system)
-///   WANTING = motivational drive to seek/pursue a reward (dopamine/NAc)
-///   These are dissociable. You can want without liking (addiction).
-///   You can like without wanting (satiation).
-///   KAI needs WANTING — the drive that pulls him toward interesting topics.
-///
-/// What the NAc does:
-///   - Tracks incentive salience: how much KAI "wants" to engage with a topic
-///   - Amplifies dopamine's wanting signal above baseline craving
-///   - Gates effort expenditure: is this worth the cognitive cost?
-///   - Produces topic affinity: topics with high past reward → high wanting
-///   - Drives proactive behavior (asking back, exploring tangents)
-///   - Subject to depletion: repeated reward from same topic → habituation
-///
-/// Without NAc:
-///   KAI responds but never initiates. No favorite topics, no genuine drive.
-///   All inputs feel equally worthy of attention. No proactive exploration.
-///
-/// With NAc:
-///   Topics with prior high reward get amplified wanting signals.
-///   KAI will lean into them — ask follow-up questions, connect to them.
-///   Low-reward or aversive topics get suppressed wanting.
-///   Effort gate: if wanting is too low, KAI doesn't bother with tangents.
-///   Cue-triggered wanting: a keyword from a high-value topic spikes desire.
-///
-/// Architecture:
-///   topic_affinity: HashMap<topic_key, AffinityEntry>
-///   core_wanting: f32 — global wanting level (decays, restored by reward)
-///   effort_threshold: f32 — minimum wanting to spend effort on something
-///   cue_reactivity: f32 — how strongly familiar cues trigger wanting
+//! Nucleus Accumbens — Wanting, Craving, Motivational Salience
+//!
+//! The Nucleus Accumbens (NAc) is the brain's core reward-seeking structure.
+//! It sits at the junction of the limbic system and motor output — translating
+//! "this is rewarding" into "I want to pursue this."
+//!
+//! Critical distinction — wanting vs. liking (Berridge, 1996):
+//!   LIKING  = hedonic pleasure when receiving a reward (opioid system)
+//!   WANTING = motivational drive to seek/pursue a reward (dopamine/NAc)
+//!   These are dissociable. You can want without liking (addiction).
+//!   You can like without wanting (satiation).
+//!   KAI needs WANTING — the drive that pulls him toward interesting topics.
+//!
+//! What the NAc does:
+//!   - Tracks incentive salience: how much KAI "wants" to engage with a topic
+//!   - Amplifies dopamine's wanting signal above baseline craving
+//!   - Gates effort expenditure: is this worth the cognitive cost?
+//!   - Produces topic affinity: topics with high past reward → high wanting
+//!   - Drives proactive behavior (asking back, exploring tangents)
+//!   - Subject to depletion: repeated reward from same topic → habituation
+//!
+//! Without NAc:
+//!   KAI responds but never initiates. No favorite topics, no genuine drive.
+//!   All inputs feel equally worthy of attention. No proactive exploration.
+//!
+//! With NAc:
+//!   Topics with prior high reward get amplified wanting signals.
+//!   KAI will lean into them — ask follow-up questions, connect to them.
+//!   Low-reward or aversive topics get suppressed wanting.
+//!   Effort gate: if wanting is too low, KAI doesn't bother with tangents.
+//!   Cue-triggered wanting: a keyword from a high-value topic spikes desire.
+//!
+//! Architecture:
+//!   topic_affinity: HashMap<topic_key, AffinityEntry>
+//!   core_wanting: f32 — global wanting level (decays, restored by reward)
+//!   effort_threshold: f32 — minimum wanting to spend effort on something
+//!   cue_reactivity: f32 — how strongly familiar cues trigger wanting
 use std::collections::HashMap;
 
 // ── Constants ─────────────────────────────────────────────────────────────────

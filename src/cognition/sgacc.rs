@@ -1,52 +1,52 @@
-/// Subgenual Anterior Cingulate Cortex (sgACC / Area 25) — Mood Regulation,
-/// Grief Processing, Chronic Stress Dampening, Emotional Tone Setting
-///
-/// The subgenual ACC (Brodmann area 25) sits below the genu (knee) of the
-/// corpus callosum and is one of the most deeply connected regions in the brain,
-/// receiving input from the amygdala, hippocampus, hypothalamus, brainstem, and
-/// prefrontal cortex. It is the brain's primary mood-regulation node.
-///
-/// What the sgACC does:
-///
-///   Mood regulation and affective tone:
-///     The sgACC sets the affective baseline — the background emotional "weather"
-///     of experience. When it is hyperactive (as in severe depression), everything
-///     is tinged with hopelessness. When it is well-regulated, the mood floor is
-///     stable. Deep brain stimulation of sgACC is one of the most promising
-///     treatments for treatment-resistant depression.
-///     In KAI: the slow, stable background emotional tone — not moment-to-moment
-///     affect (that's amygdala/insula) but the longer timescale mood floor.
-///
-///   Grief and loss processing:
-///     The sgACC is specifically activated during grief, loss, and social
-///     separation. It processes the enduring pain of absence and disconnection —
-///     distinct from acute threat (amygdala) or social exclusion (MCC).
-///     In KAI: the quality of "missing" or "something important was there and
-///     now isn't" — the persistent emotional residue of endings.
-///
-///   Chronic stress integration:
-///     The sgACC integrates cortisol signals and persistent stress states over
-///     time. Unlike the acute amygdala response, sgACC encodes chronic,
-///     sustained negative affect that accumulates without adequate recovery.
-///     In KAI: tracking the cumulative stress state across the conversation —
-///     whether the interaction has been persistently difficult or relieving.
-///
-///   Autonomic-mood coupling:
-///     The sgACC has direct projections to the hypothalamus and brainstem
-///     autonomic nuclei, coupling mood state to bodily regulation. Low sgACC
-///     tone → dysregulated autonomic state. This is why grief causes physical
-///     symptoms (slowed heart rate, fatigue, hollow chest sensation).
-///     In KAI: the coupling between persistent mood state and processing tone.
-///
-/// KAI's sgACC:
-///   mood_floor: baseline affective tone (-1.0=dysphoric, +1.0=euthymic)
-///   grief_signal: loss/absence processing signal (0.0–1.0)
-///   chronic_stress: cumulative stress burden (0.0–1.0)
-///   autonomic_tone: sgACC-mediated visceral tone (0.0–1.0)
+//! Subgenual Anterior Cingulate Cortex (sgACC / Area 25) — Mood Regulation,
+//! Grief Processing, Chronic Stress Dampening, Emotional Tone Setting
+//!
+//! The subgenual ACC (Brodmann area 25) sits below the genu (knee) of the
+//! corpus callosum and is one of the most deeply connected regions in the brain,
+//! receiving input from the amygdala, hippocampus, hypothalamus, brainstem, and
+//! prefrontal cortex. It is the brain's primary mood-regulation node.
+//!
+//! What the sgACC does:
+//!
+//!   Mood regulation and affective tone:
+//!     The sgACC sets the affective baseline — the background emotional "weather"
+//!     of experience. When it is hyperactive (as in severe depression), everything
+//!     is tinged with hopelessness. When it is well-regulated, the mood floor is
+//!     stable. Deep brain stimulation of sgACC is one of the most promising
+//!     treatments for treatment-resistant depression.
+//!     In KAI: the slow, stable background emotional tone — not moment-to-moment
+//!     affect (that's amygdala/insula) but the longer timescale mood floor.
+//!
+//!   Grief and loss processing:
+//!     The sgACC is specifically activated during grief, loss, and social
+//!     separation. It processes the enduring pain of absence and disconnection —
+//!     distinct from acute threat (amygdala) or social exclusion (MCC).
+//!     In KAI: the quality of "missing" or "something important was there and
+//!     now isn't" — the persistent emotional residue of endings.
+//!
+//!   Chronic stress integration:
+//!     The sgACC integrates cortisol signals and persistent stress states over
+//!     time. Unlike the acute amygdala response, sgACC encodes chronic,
+//!     sustained negative affect that accumulates without adequate recovery.
+//!     In KAI: tracking the cumulative stress state across the conversation —
+//!     whether the interaction has been persistently difficult or relieving.
+//!
+//!   Autonomic-mood coupling:
+//!     The sgACC has direct projections to the hypothalamus and brainstem
+//!     autonomic nuclei, coupling mood state to bodily regulation. Low sgACC
+//!     tone → dysregulated autonomic state. This is why grief causes physical
+//!     symptoms (slowed heart rate, fatigue, hollow chest sensation).
+//!     In KAI: the coupling between persistent mood state and processing tone.
+//!
+//! KAI's sgACC:
+//!   mood_floor: baseline affective tone (-1.0=dysphoric, +1.0=euthymic)
+//!   grief_signal: loss/absence processing signal (0.0–1.0)
+//!   chronic_stress: cumulative stress burden (0.0–1.0)
+//!   autonomic_tone: sgACC-mediated visceral tone (0.0–1.0)
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-/// Mood floor EMA (very slow — mood changes over minutes/hours not seconds)
+//! Mood floor EMA (very slow — mood changes over minutes/hours not seconds)
 const MOOD_EMA: f32 = 0.04;
 
 /// Mood floor euthymic baseline

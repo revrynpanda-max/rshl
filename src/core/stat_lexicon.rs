@@ -372,7 +372,7 @@ pub struct StatLexicon {
     /// tokenized corpus as `vectors`. Used by
     /// `incremental_generate_with` when `DecodeParams::bigram_weight
     /// > 0.0`. Empty when the lexicon was loaded from a pre-bigram
-    /// on-disk file (no-op in that case).
+    /// > on-disk file (no-op in that case).
     bigram: BigramPrior,
 }
 

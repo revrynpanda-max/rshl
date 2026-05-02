@@ -1,17 +1,17 @@
-/// Token Normalization Pipeline â€” The semantic bridge for RSHL.
-///
-/// Ported from rshl-core.js. This is the layer that makes
-/// "where does he work?" match "Ryan's occupation is engineer."
-///
-/// Three passes:
-///   1. Stopword removal â€” drops function words (the, is, are, etc.)
-///   2. Pre-stem synonym map â€” collapses domain synonyms to canonical tokens
-///      (job/occupation/employer â†’ "work", city/town/home â†’ "live")
-///   3. Suffix stemmer â€” collapses remaining inflections (livesâ†’live, workingâ†’work)
-///   4. Category anchor injection â€” adds semantic cluster tokens (#loc, #job, etc.)
-///
-/// Both stored text and queries go through the same pipeline,
-/// so normalization is consistent and resonance is maximized.
+//! Token Normalization Pipeline â€” The semantic bridge for RSHL.
+//!
+//! Ported from rshl-core.js. This is the layer that makes
+//! "where does he work?" match "Ryan's occupation is engineer."
+//!
+//! Three passes:
+//!   1. Stopword removal â€” drops function words (the, is, are, etc.)
+//!   2. Pre-stem synonym map â€” collapses domain synonyms to canonical tokens
+//!      (job/occupation/employer â†’ "work", city/town/home â†’ "live")
+//!   3. Suffix stemmer â€” collapses remaining inflections (livesâ†’live, workingâ†’work)
+//!   4. Category anchor injection â€” adds semantic cluster tokens (#loc, #job, etc.)
+//!
+//! Both stored text and queries go through the same pipeline,
+//! so normalization is consistent and resonance is maximized.
 use std::collections::{HashMap, HashSet};
 
 /// Shorten a string to a maximum length, appending an ellipsis if truncated.
@@ -1059,10 +1059,9 @@ fn stem(word: &str) -> String {
         return word.to_string();
     }
     for &(suffix, replacement) in STEM_RULES {
-        if word.ends_with(suffix) {
+        if let Some(base) = word.strip_suffix(suffix) {
             let new_len = word.len() - suffix.len() + replacement.len();
             if new_len >= MIN_STEM_LENGTH {
-                let base = &word[..word.len() - suffix.len()];
                 return format!("{}{}", base, replacement);
             }
         }
@@ -1089,7 +1088,7 @@ impl Normalizer {
 
     /// Normalize a single token.
     /// Returns None if the token should be dropped (stopword, too short).
-    fn normalize_token<'a>(&'a self, token: &str) -> Option<String> {
+    fn normalize_token(&self, token: &str) -> Option<String> {
         if token.len() < 2 {
             return None;
         }

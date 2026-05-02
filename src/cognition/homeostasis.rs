@@ -1,8 +1,8 @@
-/// Homeostasis — Slow weakening / pruning (LTD analog).
-///
-/// Connections that are never re-activated, reinforced, or replayed
-/// gradually weaken. Below a floor threshold they are removed,
-/// keeping the field sparse and preventing saturation.
+//! Homeostasis — Slow weakening / pruning (LTD analog).
+//!
+//! Connections that are never re-activated, reinforced, or replayed
+//! gradually weaken. Below a floor threshold they are removed,
+//! keeping the field sparse and preventing saturation.
 use crate::core::Universe;
 
 pub struct HomeostasisConfig {

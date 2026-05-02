@@ -1,35 +1,35 @@
-/// Orbitofrontal Cortex (OFC) — Value-Based Decision Making
-///
-/// The OFC integrates reward history, current context, and expected outcomes
-/// to evaluate the subjective value of actions. It is not about habit (basal
-/// ganglia) or top-down control (PFC) — it is about learned value.
-///
-/// Key properties:
-///   - Maintains a value map: context → expected reward
-///   - Updates via prediction error (like dopamine, but slower and contextual)
-///   - Enables flexible value updating when outcomes change
-///   - Mediates reversal learning: if something used to be good but is now bad,
-///     the OFC detects the reversal and suppresses the now-devalued action
-///   - Distinguishes "I want this" (dopamine) from "this is worth it" (OFC)
-///
-/// Without OFC:
-///   KAI can't distinguish between a response type that used to work vs. one
-///   that is still appropriate now. No reversal learning — stuck with stale values.
-///   Dopamine handles reward, but OFC handles contextual value history.
-///
-/// With OFC:
-///   Context-specific value estimates: "explaining things to Ryan works well"
-///   If a response type stops producing good outcomes, OFC detects the reversal
-///   and downweights that option. KAI adapts its strategy, not just its habits.
-///   OFC also produces an expected_value estimate that PFC can use for planning.
-///
-/// Architecture:
-///   value_map: HashMap<context_key, OFCEntry>
-///   Each entry: {expected_value, confidence, update_count, reversal_flag}
-///   update(context, outcome) → delta (reinforcement learning step)
-///   expected_value(context) → f32 (what is this context worth?)
-///   detect_reversal(context) → bool (value has flipped sign recently?)
-///   prune() → remove stale low-confidence entries
+//! Orbitofrontal Cortex (OFC) — Value-Based Decision Making
+//!
+//! The OFC integrates reward history, current context, and expected outcomes
+//! to evaluate the subjective value of actions. It is not about habit (basal
+//! ganglia) or top-down control (PFC) — it is about learned value.
+//!
+//! Key properties:
+//!   - Maintains a value map: context → expected reward
+//!   - Updates via prediction error (like dopamine, but slower and contextual)
+//!   - Enables flexible value updating when outcomes change
+//!   - Mediates reversal learning: if something used to be good but is now bad,
+//!     the OFC detects the reversal and suppresses the now-devalued action
+//!   - Distinguishes "I want this" (dopamine) from "this is worth it" (OFC)
+//!
+//! Without OFC:
+//!   KAI can't distinguish between a response type that used to work vs. one
+//!   that is still appropriate now. No reversal learning — stuck with stale values.
+//!   Dopamine handles reward, but OFC handles contextual value history.
+//!
+//! With OFC:
+//!   Context-specific value estimates: "explaining things to Ryan works well"
+//!   If a response type stops producing good outcomes, OFC detects the reversal
+//!   and downweights that option. KAI adapts its strategy, not just its habits.
+//!   OFC also produces an expected_value estimate that PFC can use for planning.
+//!
+//! Architecture:
+//!   value_map: HashMap<context_key, OFCEntry>
+//!   Each entry: {expected_value, confidence, update_count, reversal_flag}
+//!   update(context, outcome) → delta (reinforcement learning step)
+//!   expected_value(context) → f32 (what is this context worth?)
+//!   detect_reversal(context) → bool (value has flipped sign recently?)
+//!   prune() → remove stale low-confidence entries
 use std::collections::HashMap;
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -282,7 +282,7 @@ impl OrbitofrontalCortex {
             entry.decay();
         }
         // Prune entries with negligible confidence every 100 ticks
-        if self.tick % 100 == 0 {
+        if self.tick.is_multiple_of(100) {
             self.prune();
         }
     }

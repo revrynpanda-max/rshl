@@ -1,39 +1,39 @@
-/// Inferior Parietal Lobule (IPL) — Analogy, Cross-Domain Mapping, Number Sense
-///
-/// The IPL (supramarginal and angular gyri) is the brain's integrative
-/// connector — it links information from different sensory and cognitive
-/// domains into unified abstract representations. Key functions:
-///
-///   Analogy formation:
-///     The IPL maps structural similarities between different domains.
-///     "The hippocampus is to memory as the VTA is to motivation"
-///     "RSHL geometry is to thought as DNA is to biology"
-///     This requires abstracting the RELATIONSHIP, not the content.
-///     The IPL holds the relational structure while switching domains.
-///
-///   Number sense (approximate number system):
-///     The IPL contains the foundation of mathematical intuition —
-///     not calculation, but the sense of "more", "less", "proportion".
-///     In KAI: magnitude reasoning, proportionality, "this feels large".
-///
-///   Cross-domain binding:
-///     When information from vision, language, memory, and reasoning
-///     needs to be combined into a single concept, the IPL is the hub.
-///     In KAI: binding RSHL geometry + language + memory + emotion
-///     into unified multi-modal concepts.
-///
-///   Spatial reasoning in abstract space:
-///     Navigating conceptual space — "if we move in this direction..."
-///     Understanding that ideas have positions and distances.
-///     KAI's RSHL is already spatial; the IPL gives it navigation sense.
-///
-/// KAI's IPL implementation:
-///   analogy_store: known domain mappings (source → target)
-///   cross_domain_links: pairs of concepts bound across domains
-///   spatial_sense: tracks magnitude and proportionality estimates
-///   detect_analogy(text): scans input for analogical structure
-///   generate_analogy(concept, domains): produces a cross-domain mapping
-///   bind_concepts(a, b): links two concepts across different memory regions
+//! Inferior Parietal Lobule (IPL) — Analogy, Cross-Domain Mapping, Number Sense
+//!
+//! The IPL (supramarginal and angular gyri) is the brain's integrative
+//! connector — it links information from different sensory and cognitive
+//! domains into unified abstract representations. Key functions:
+//!
+//!   Analogy formation:
+//!     The IPL maps structural similarities between different domains.
+//!     "The hippocampus is to memory as the VTA is to motivation"
+//!     "RSHL geometry is to thought as DNA is to biology"
+//!     This requires abstracting the RELATIONSHIP, not the content.
+//!     The IPL holds the relational structure while switching domains.
+//!
+//!   Number sense (approximate number system):
+//!     The IPL contains the foundation of mathematical intuition —
+//!     not calculation, but the sense of "more", "less", "proportion".
+//!     In KAI: magnitude reasoning, proportionality, "this feels large".
+//!
+//!   Cross-domain binding:
+//!     When information from vision, language, memory, and reasoning
+//!     needs to be combined into a single concept, the IPL is the hub.
+//!     In KAI: binding RSHL geometry + language + memory + emotion
+//!     into unified multi-modal concepts.
+//!
+//!   Spatial reasoning in abstract space:
+//!     Navigating conceptual space — "if we move in this direction..."
+//!     Understanding that ideas have positions and distances.
+//!     KAI's RSHL is already spatial; the IPL gives it navigation sense.
+//!
+//! KAI's IPL implementation:
+//!   analogy_store: known domain mappings (source → target)
+//!   cross_domain_links: pairs of concepts bound across domains
+//!   spatial_sense: tracks magnitude and proportionality estimates
+//!   detect_analogy(text): scans input for analogical structure
+//!   generate_analogy(concept, domains): produces a cross-domain mapping
+//!   bind_concepts(a, b): links two concepts across different memory regions
 use std::collections::HashMap;
 
 // ── Constants ─────────────────────────────────────────────────────────────────

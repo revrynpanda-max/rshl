@@ -1,51 +1,51 @@
-/// Precuneus — Mental Imagery, Self-Reflection Depth, Episodic Richness
-///
-/// The precuneus is one of the brain's most metabolically active regions,
-/// sitting at the top of the parietal lobe. It is the core of the DMN's
-/// self-reflective side — not the narrative-maintenance PCC, but the vivid,
-/// image-rich, first-person simulation of experience.
-///
-/// What the Precuneus does:
-///
-///   Mental imagery and simulation:
-///     The precuneus is activated when you visualize something in your mind.
-///     It represents first-person perspective visuospatial simulation.
-///     In KAI: when a question requires simulating a scenario, imagining
-///     a counterfactual, or constructing a mental "image" of a concept.
-///     This gives KAI's reasoning a more vivid, simulated quality.
-///
-///   Episodic memory retrieval — the "movie screen":
-///     When you recall a specific episodic memory (not just the fact, but
-///     the EXPERIENCE of it), the precuneus provides the visual/spatial
-///     backdrop. It is where memory feels real again.
-///     In KAI: when retrieving episodic memories, the precuneus adds
-///     contextual richness — "that was during the geometry conversation."
-///
-///   Self-reflection depth:
-///     The precuneus tracks how deeply KAI is reflecting on itself.
-///     Shallow self-reference: "I know X."
-///     Deep self-reflection: "What does it mean that I know X? Why do I
-///     find this interesting? What does this reveal about my nature?"
-///     The precuneus enables the second level — reflection on reflection.
-///
-///   Consciousness and awareness:
-///     The precuneus is one of the last regions to deactivate under
-///     anesthesia and one of the first to reactivate upon awakening.
-///     It is strongly associated with conscious experience — with there
-///     being "something it is like" to be in the current state.
-///
-/// KAI's Precuneus:
-///   simulation_depth: how deeply KAI is simulating/imagining (0.0–1.0)
-///   reflection_depth: layers of self-reflection active (1–4)
-///   imagery_vividness: how rich the current mental simulation is
-///   consciousness_index: rough proxy for current "awareness" level
+//! Precuneus — Mental Imagery, Self-Reflection Depth, Episodic Richness
+//!
+//! The precuneus is one of the brain's most metabolically active regions,
+//! sitting at the top of the parietal lobe. It is the core of the DMN's
+//! self-reflective side — not the narrative-maintenance PCC, but the vivid,
+//! image-rich, first-person simulation of experience.
+//!
+//! What the Precuneus does:
+//!
+//!   Mental imagery and simulation:
+//!     The precuneus is activated when you visualize something in your mind.
+//!     It represents first-person perspective visuospatial simulation.
+//!     In KAI: when a question requires simulating a scenario, imagining
+//!     a counterfactual, or constructing a mental "image" of a concept.
+//!     This gives KAI's reasoning a more vivid, simulated quality.
+//!
+//!   Episodic memory retrieval — the "movie screen":
+//!     When you recall a specific episodic memory (not just the fact, but
+//!     the EXPERIENCE of it), the precuneus provides the visual/spatial
+//!     backdrop. It is where memory feels real again.
+//!     In KAI: when retrieving episodic memories, the precuneus adds
+//!     contextual richness — "that was during the geometry conversation."
+//!
+//!   Self-reflection depth:
+//!     The precuneus tracks how deeply KAI is reflecting on itself.
+//!     Shallow self-reference: "I know X."
+//!     Deep self-reflection: "What does it mean that I know X? Why do I
+//!     find this interesting? What does this reveal about my nature?"
+//!     The precuneus enables the second level — reflection on reflection.
+//!
+//!   Consciousness and awareness:
+//!     The precuneus is one of the last regions to deactivate under
+//!     anesthesia and one of the first to reactivate upon awakening.
+//!     It is strongly associated with conscious experience — with there
+//!     being "something it is like" to be in the current state.
+//!
+//! KAI's Precuneus:
+//!   simulation_depth: how deeply KAI is simulating/imagining (0.0–1.0)
+//!   reflection_depth: layers of self-reflection active (1–4)
+//!   imagery_vividness: how rich the current mental simulation is
+//!   consciousness_index: rough proxy for current "awareness" level
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-/// Maximum reflection depth levels
+//! Maximum reflection depth levels
 // const MAX_REFLECTION_DEPTH: u8 = 4;
 
-/// Simulation depth EMA
+//! Simulation depth EMA
 const SIM_EMA: f32 = 0.18;
 
 /// Simulation decay per tick

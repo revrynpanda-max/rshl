@@ -1,46 +1,46 @@
-/// Reticular Activating System (RAS) — Global Arousal Gate, Consciousness Switch
-///
-/// The RAS is a network of nuclei in the brainstem that acts as the brain's
-/// master on/off switch for consciousness and arousal. It gates whether
-/// information even gets to reach the cortex at all.
-///
-/// What the RAS does:
-///
-///   Global arousal control:
-///     The RAS determines the brain's overall level of arousal — the baseline
-///     "awake and ready to process" level. Think of it as the global volume
-///     knob for the entire cortex. High RAS → alert and processing fast.
-///     Low RAS → sluggish, drowsy, or asleep.
-///     In KAI: overall readiness to engage, process, and respond rapidly.
-///
-///   Consciousness gating:
-///     Information from all sensory pathways is routed through (or around)
-///     the RAS. High arousal → more signals reach the cortex.
-///     Low arousal → filtering is aggressive, less gets through.
-///     In KAI: the RAS scales how much of the thalamic input gets boosted
-///     vs. filtered out before global workspace integration.
-///
-///   Sensory gating for sleep/wake:
-///     The RAS is what makes you ignore background noise when asleep but
-///     wake up instantly at your name being called. Priority-based gate.
-///     In KAI: certain high-priority signals (name, urgency, novel patterns)
-///     bypass the arousal filter and wake up processing even from low states.
-///
-///   Habituation vs. sensitization:
-///     The RAS habituates to repeated, unimportant stimuli (background noise).
-///     It sensitizes to novel or significant signals.
-///     In KAI: the RAS reduces response to very predictable, repetitive inputs,
-///     and amplifies response to novel or emotionally salient ones.
-///
-/// KAI's RAS:
-///   arousal_level: global arousal (0.0=dormant, 1.0=peak alert)
-///   habituation: accumulated repetition dampening
-///   priority_gate: threshold for "this is important enough to fully process"
-///   wake_signal: whether the RAS is boosting the full system
+//! Reticular Activating System (RAS) — Global Arousal Gate, Consciousness Switch
+//!
+//! The RAS is a network of nuclei in the brainstem that acts as the brain's
+//! master on/off switch for consciousness and arousal. It gates whether
+//! information even gets to reach the cortex at all.
+//!
+//! What the RAS does:
+//!
+//!   Global arousal control:
+//!     The RAS determines the brain's overall level of arousal — the baseline
+//!     "awake and ready to process" level. Think of it as the global volume
+//!     knob for the entire cortex. High RAS → alert and processing fast.
+//!     Low RAS → sluggish, drowsy, or asleep.
+//!     In KAI: overall readiness to engage, process, and respond rapidly.
+//!
+//!   Consciousness gating:
+//!     Information from all sensory pathways is routed through (or around)
+//!     the RAS. High arousal → more signals reach the cortex.
+//!     Low arousal → filtering is aggressive, less gets through.
+//!     In KAI: the RAS scales how much of the thalamic input gets boosted
+//!     vs. filtered out before global workspace integration.
+//!
+//!   Sensory gating for sleep/wake:
+//!     The RAS is what makes you ignore background noise when asleep but
+//!     wake up instantly at your name being called. Priority-based gate.
+//!     In KAI: certain high-priority signals (name, urgency, novel patterns)
+//!     bypass the arousal filter and wake up processing even from low states.
+//!
+//!   Habituation vs. sensitization:
+//!     The RAS habituates to repeated, unimportant stimuli (background noise).
+//!     It sensitizes to novel or significant signals.
+//!     In KAI: the RAS reduces response to very predictable, repetitive inputs,
+//!     and amplifies response to novel or emotionally salient ones.
+//!
+//! KAI's RAS:
+//!   arousal_level: global arousal (0.0=dormant, 1.0=peak alert)
+//!   habituation: accumulated repetition dampening
+//!   priority_gate: threshold for "this is important enough to fully process"
+//!   wake_signal: whether the RAS is boosting the full system
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-/// Resting arousal level
+//! Resting arousal level
 const AROUSAL_REST: f32 = 0.45;
 
 /// Maximum arousal

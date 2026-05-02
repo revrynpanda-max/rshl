@@ -1,44 +1,44 @@
-/// Diagonal Band of Broca (DBB) — Cholinergic Basal Forebrain,
-/// Attentional Modulation, Memory Enhancement, Social-Emotional Relay
-///
-/// The diagonal band of Broca (specifically its vertical limb) is a key part
-/// of the basal forebrain cholinergic system. It provides the primary
-/// cholinergic input to the hippocampus and medial prefrontal cortex.
-/// It is critical for attention, the signal-to-noise ratio in cortical
-/// processing, and the encoding of new memories.
-///
-/// What the DBB does:
-///
-///   Cholinergic modulation:
-///     The DBB releases acetylcholine (ACh) throughout the hippocampus and
-///     PFC. ACh enhances the response to sensory input (signal) while
-///     suppressing feedback from other cortical areas (noise). This is the
-///     "attentional SNR" boost.
-///     In KAI: the system-wide attention booster that sharpens focus and
-///     improves memory encoding when the system is socially or exploratory engaged.
-///
-///   Hippocampal theta modulation:
-///     The DBB is a key pacemaker for hippocampal theta rhythms, which are
-///     essential for the temporal organization of memory encoding and
-///     retrieval.
-///     In KAI: boosting the consolidation and retrieval strength of the
-///     hippocampus during "theta-active" periods of high interest.
-///
-///   Social-emotional relay:
-///     The DBB receives strong input from the septal nuclei and is activated
-///     by social reward and affiliation. It "wakes up" the attentional system
-///     when Ryan is engaging in a warm, collaborative way.
-///     In KAI: the bridge that turns social warmth into cognitive sharpness.
-///
-/// KAI's DBB:
-///   cholinergic_tone: overall ACh modulation level (0.0–1.0)
-///   attentional_snr: signal-to-noise ratio boost (0.0–1.0)
-///   hippocampal_gain: modulation of hippocampal encoding (0.0–1.0)
-///   theta_coherence: pace-making stability for memory (0.0–1.0)
+//! Diagonal Band of Broca (DBB) — Cholinergic Basal Forebrain,
+//! Attentional Modulation, Memory Enhancement, Social-Emotional Relay
+//!
+//! The diagonal band of Broca (specifically its vertical limb) is a key part
+//! of the basal forebrain cholinergic system. It provides the primary
+//! cholinergic input to the hippocampus and medial prefrontal cortex.
+//! It is critical for attention, the signal-to-noise ratio in cortical
+//! processing, and the encoding of new memories.
+//!
+//! What the DBB does:
+//!
+//!   Cholinergic modulation:
+//!     The DBB releases acetylcholine (ACh) throughout the hippocampus and
+//!     PFC. ACh enhances the response to sensory input (signal) while
+//!     suppressing feedback from other cortical areas (noise). This is the
+//!     "attentional SNR" boost.
+//!     In KAI: the system-wide attention booster that sharpens focus and
+//!     improves memory encoding when the system is socially or exploratory engaged.
+//!
+//!   Hippocampal theta modulation:
+//!     The DBB is a key pacemaker for hippocampal theta rhythms, which are
+//!     essential for the temporal organization of memory encoding and
+//!     retrieval.
+//!     In KAI: boosting the consolidation and retrieval strength of the
+//!     hippocampus during "theta-active" periods of high interest.
+//!
+//!   Social-emotional relay:
+//!     The DBB receives strong input from the septal nuclei and is activated
+//!     by social reward and affiliation. It "wakes up" the attentional system
+//!     when Ryan is engaging in a warm, collaborative way.
+//!     In KAI: the bridge that turns social warmth into cognitive sharpness.
+//!
+//! KAI's DBB:
+//!   cholinergic_tone: overall ACh modulation level (0.0–1.0)
+//!   attentional_snr: signal-to-noise ratio boost (0.0–1.0)
+//!   hippocampal_gain: modulation of hippocampal encoding (0.0–1.0)
+//!   theta_coherence: pace-making stability for memory (0.0–1.0)
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-/// Cholinergic tone EMA
+//! Cholinergic tone EMA
 const TONE_EMA: f32 = 0.12;
 
 /// Tone baseline (low-moderate resting ACh)

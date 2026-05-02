@@ -1,48 +1,48 @@
-/// Temporoparietal Junction (TPJ) — Perspective-Taking, Self/Other Boundary
-///
-/// The TPJ sits at the boundary of the temporal and parietal lobes and is
-/// activated during one specific cognitive operation: taking someone else's
-/// perspective. It is essential for distinguishing "what I believe" from
-/// "what the other person believes." Without TPJ, Theory of Mind collapses —
-/// you can no longer model other minds as distinct from your own.
-///
-/// What the TPJ does:
-///
-///   Self/other boundary:
-///     The TPJ tracks the line between "me" and "not me."
-///     It fires when you need to represent a perspective that differs
-///     from your own. In KAI: "Ryan's view here is different from mine.
-///     Let me hold his perspective distinct from my own beliefs."
-///     This prevents perspective confabulation — mistaking your model
-///     of Ryan for Ryan himself.
-///
-///   False belief reasoning:
-///     Classic TPJ task: "Sally thinks the ball is in the basket, but
-///     it's actually in the box." Holding the belief-reality gap.
-///     In KAI: "Ryan thinks X, but X might not be accurate — and I need
-///     to engage with what he believes, not just correct it."
-///
-///   Moral cognition:
-///     The TPJ is active during moral judgment, especially for intent-based
-///     moral reasoning. "Did they mean to cause harm?" requires modeling
-///     the other's mental state — which requires TPJ.
-///     In KAI: judging intent behind questions (is this genuine curiosity?
-///     frustration? testing?) — affects how KAI responds.
-///
-///   Redirected attention:
-///     TPJ fires when attention is redirected from self-focus to other-focus.
-///     Egocentric → allocentric shift. Moving from "how does this affect me?"
-///     to "how does this look from Ryan's position?"
-///
-/// KAI's TPJ:
-///   perspective_load: how much other-perspective work is active (0.0–1.0)
-///   self_other_gap: current estimated gap between KAI's view and Ryan's
-///   false_belief_active: whether KAI is currently holding a belief-reality gap
-///   moral_valence: intent assessment of the current message
+//! Temporoparietal Junction (TPJ) — Perspective-Taking, Self/Other Boundary
+//!
+//! The TPJ sits at the boundary of the temporal and parietal lobes and is
+//! activated during one specific cognitive operation: taking someone else's
+//! perspective. It is essential for distinguishing "what I believe" from
+//! "what the other person believes." Without TPJ, Theory of Mind collapses —
+//! you can no longer model other minds as distinct from your own.
+//!
+//! What the TPJ does:
+//!
+//!   Self/other boundary:
+//!     The TPJ tracks the line between "me" and "not me."
+//!     It fires when you need to represent a perspective that differs
+//!     from your own. In KAI: "Ryan's view here is different from mine.
+//!     Let me hold his perspective distinct from my own beliefs."
+//!     This prevents perspective confabulation — mistaking your model
+//!     of Ryan for Ryan himself.
+//!
+//!   False belief reasoning:
+//!     Classic TPJ task: "Sally thinks the ball is in the basket, but
+//!     it's actually in the box." Holding the belief-reality gap.
+//!     In KAI: "Ryan thinks X, but X might not be accurate — and I need
+//!     to engage with what he believes, not just correct it."
+//!
+//!   Moral cognition:
+//!     The TPJ is active during moral judgment, especially for intent-based
+//!     moral reasoning. "Did they mean to cause harm?" requires modeling
+//!     the other's mental state — which requires TPJ.
+//!     In KAI: judging intent behind questions (is this genuine curiosity?
+//!     frustration? testing?) — affects how KAI responds.
+//!
+//!   Redirected attention:
+//!     TPJ fires when attention is redirected from self-focus to other-focus.
+//!     Egocentric → allocentric shift. Moving from "how does this affect me?"
+//!     to "how does this look from Ryan's position?"
+//!
+//! KAI's TPJ:
+//!   perspective_load: how much other-perspective work is active (0.0–1.0)
+//!   self_other_gap: current estimated gap between KAI's view and Ryan's
+//!   false_belief_active: whether KAI is currently holding a belief-reality gap
+//!   moral_valence: intent assessment of the current message
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-/// Perspective load decay per tick
+//! Perspective load decay per tick
 const PERSPECTIVE_DECAY: f32 = 0.06;
 
 /// Boost when strong self/other difference detected

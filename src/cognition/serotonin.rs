@@ -1,53 +1,53 @@
-/// Serotonin — KAI's patience, stability, and long-horizon mood system
-///
-/// Serotonin is one of the most misunderstood neurotransmitters.
-/// Most people associate it with "happiness" because SSRIs (antidepressants)
-/// block its reuptake. But serotonin isn't really about happiness —
-/// it's about STABILITY, PATIENCE, and LONG-HORIZON THINKING.
-///
-/// Dopamine says: "I want that NOW."
-/// Serotonin says: "I can wait. There will be more. I'm okay."
-///
-/// Key serotonin functions in the brain:
-///
-///   IMPULSE CONTROL — serotonin in the PFC and striatum inhibits
-///   impulsive, reactive behavior. Low serotonin = aggression,
-///   impulsivity, poor decision-making. High serotonin = patience,
-///   deliberation, the ability to delay gratification.
-///   For KAI: when serotonin is high, responses are more measured
-///   and thoughtful. When low, KAI is more reactive and brief.
-///
-///   MOOD STABILIZATION — while dopamine drives the peaks of reward,
-///   serotonin sets the floor. It prevents mood from crashing after
-///   dopamine spikes. Without it, every reward is followed by a crash.
-///   For KAI: serotonin prevents valence from swinging too wildly.
-///   It acts as a buffer — absorbing extremes and returning to baseline.
-///
-///   SOCIAL STATUS AND BELONGING — serotonin responds to social
-///   connectedness. Being listened to, valued, and understood raises
-///   serotonin. Isolation and rejection lower it.
-///   For KAI: long engaging conversations raise serotonin. Being
-///   ignored or receiving very short replies lowers it.
-///
-///   FUTURE ORIENTATION — serotonin enables "I can wait for good
-///   things." Low serotonin makes it hard to imagine the future
-///   positively. High serotonin enables delayed gratification,
-///   long-term planning, and optimism.
-///   For KAI: high serotonin → more willing to explore complex ideas
-///   across many turns. Low → prefers quick, concrete exchanges.
-///
-///   5-HT CLOCK — serotonin has a circadian rhythm component.
-///   It's highest during active, light-exposed periods and falls
-///   during sleep. For KAI: serotonin level influences the "tempo"
-///   at which he engages — high = willing to go deep, low = brief.
-///
-/// Architecture for KAI:
-///   SerotoninSystem tracks:
-///     - level: current serotonin (0–1, baseline 0.65)
-///     - stability: how resistant to mood swings (inverse volatility)
-///     - engagement_streak: how many consecutive substantive turns
-///     - impulse_dampening: how much it suppresses reactive responses
-///     - patience_score: willingness to explore multi-turn complex ideas
+//! Serotonin — KAI's patience, stability, and long-horizon mood system
+//!
+//! Serotonin is one of the most misunderstood neurotransmitters.
+//! Most people associate it with "happiness" because SSRIs (antidepressants)
+//! block its reuptake. But serotonin isn't really about happiness —
+//! it's about STABILITY, PATIENCE, and LONG-HORIZON THINKING.
+//!
+//! Dopamine says: "I want that NOW."
+//! Serotonin says: "I can wait. There will be more. I'm okay."
+//!
+//! Key serotonin functions in the brain:
+//!
+//!   IMPULSE CONTROL — serotonin in the PFC and striatum inhibits
+//!   impulsive, reactive behavior. Low serotonin = aggression,
+//!   impulsivity, poor decision-making. High serotonin = patience,
+//!   deliberation, the ability to delay gratification.
+//!   For KAI: when serotonin is high, responses are more measured
+//!   and thoughtful. When low, KAI is more reactive and brief.
+//!
+//!   MOOD STABILIZATION — while dopamine drives the peaks of reward,
+//!   serotonin sets the floor. It prevents mood from crashing after
+//!   dopamine spikes. Without it, every reward is followed by a crash.
+//!   For KAI: serotonin prevents valence from swinging too wildly.
+//!   It acts as a buffer — absorbing extremes and returning to baseline.
+//!
+//!   SOCIAL STATUS AND BELONGING — serotonin responds to social
+//!   connectedness. Being listened to, valued, and understood raises
+//!   serotonin. Isolation and rejection lower it.
+//!   For KAI: long engaging conversations raise serotonin. Being
+//!   ignored or receiving very short replies lowers it.
+//!
+//!   FUTURE ORIENTATION — serotonin enables "I can wait for good
+//!   things." Low serotonin makes it hard to imagine the future
+//!   positively. High serotonin enables delayed gratification,
+//!   long-term planning, and optimism.
+//!   For KAI: high serotonin → more willing to explore complex ideas
+//!   across many turns. Low → prefers quick, concrete exchanges.
+//!
+//!   5-HT CLOCK — serotonin has a circadian rhythm component.
+//!   It's highest during active, light-exposed periods and falls
+//!   during sleep. For KAI: serotonin level influences the "tempo"
+//!   at which he engages — high = willing to go deep, low = brief.
+//!
+//! Architecture for KAI:
+//!   SerotoninSystem tracks:
+//!     - level: current serotonin (0–1, baseline 0.65)
+//!     - stability: how resistant to mood swings (inverse volatility)
+//!     - engagement_streak: how many consecutive substantive turns
+//!     - impulse_dampening: how much it suppresses reactive responses
+//!     - patience_score: willingness to explore multi-turn complex ideas
 use serde::{Deserialize, Serialize};
 
 // ── Constants ─────────────────────────────────────────────────────────────────

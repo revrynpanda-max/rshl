@@ -4,7 +4,7 @@ All notable changes are documented here. Versions follow semantic versioning.
 
 ---
 
-## v6.1.0 — Oracle-KAI Fusion & Stability (May 1, 2026)
+## v6.1.1 — Oracle-KAI Fusion & Stability (May 1, 2026)
 
 ### Highlights
 This release completes the deep integration of the **OpenJarvis agentic framework** into Oracle and resolves a series of Windows-environment stability issues. The system is now production-ready for autonomous Discord operation.
@@ -35,7 +35,7 @@ This release completes the deep integration of the **OpenJarvis agentic framewor
 
 ---
 
-## v6.0.0 — Epistemic Machine (April 28–30, 2026)
+## v6.1.1 — Epistemic Machine (April 28–30, 2026)
 
 ### Highlights
 The transition from a text-resonance engine to a structured epistemic system. KAI's memories are now formal **Claims** with evidence, confidence, and contradiction detection.

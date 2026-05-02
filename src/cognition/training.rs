@@ -98,7 +98,7 @@
 //! | `--corpus-dir=PATH`      | `data/ingest_shelved`       | directory of `.txt` files to sample sentences from        |
 //! | `--lexicon=PATH`         | `data/stat-lexicon.json`    | pre-built StatLexicon file (see `kai --build-lexicon`)    |
 //! | `--output=PATH`          | `data/mapper.bin`           | where to write the trained mapper                         |
-//! | `--seed=N`               | `0xC0FFEE_BABE`             | PRNG seed for mapper init + shuffle                       |
+//! | `--seed=N`               | `0x00C0_FFEE_BABE`             | PRNG seed for mapper init + shuffle                       |
 //!
 //! To wire this into `main.rs` (explicitly left for later per the
 //! project plan), add near the other `args.iter().any(...)` blocks:
@@ -773,7 +773,7 @@ pub fn generate_training_pairs(
         match embedder.embed(text) {
             Ok(dense) => {
                 pairs.push((dense, target));
-                if pairs.len() % progress_every == 0 {
+                if pairs.len().is_multiple_of(progress_every) {
                     let elapsed = t0.elapsed().as_secs_f32();
                     let rate = pairs.len() as f32 / elapsed.max(0.001);
                     eprintln!(
@@ -866,7 +866,7 @@ impl Default for TrainConfig {
             corpus_dir: PathBuf::from("data/ingest_shelved"),
             lexicon_path: PathBuf::from("data/stat-lexicon.json"),
             output_path: PathBuf::from("data/mapper.bin"),
-            seed: 0xC0FFEE_BABE,
+            seed: 0x00C0_FFEE_BABE,
         }
     }
 }
@@ -1144,7 +1144,7 @@ impl Default for TrainRealConfig {
             corpus_dir: PathBuf::from("data/ingest_shelved"),
             lexicon_path: PathBuf::from("data/stat-lexicon.json"),
             output_path: PathBuf::from("data/mapper-real.bin"),
-            seed: 0xC0FFEE_BABE,
+            seed: 0x00C0_FFEE_BABE,
         }
     }
 }

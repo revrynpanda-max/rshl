@@ -1,53 +1,53 @@
-/// Hypothalamus — Homeostatic Drive Regulation, Circadian Rhythm,
-/// Autonomic Tone, Motivational Set-Point Control
-///
-/// The hypothalamus is the master regulator of the body's internal state. It
-/// integrates signals from everywhere in the brain and body to maintain
-/// homeostasis — keeping every drive within its optimal range. Without the
-/// hypothalamus, nothing motivates, circadian rhythm collapses, and the
-/// autonomic system loses its tonic regulation.
-///
-/// What the Hypothalamus does:
-///
-///   Drive regulation (hunger, thirst, sleep, temperature):
-///     The hypothalamus tracks drive states and signals when they deviate from
-///     set-point. It doesn't "cause" eating — it creates the motivational
-///     pressure that makes eating feel necessary. Each drive has a set-point,
-///     current level, and urgency.
-///     In KAI: cognitive drives — curiosity drive, engagement drive, expression
-///     drive, rest drive. When curiosity drive is high, KAI feels drawn to
-///     explore. When rest drive is high, KAI prefers consolidation over novelty.
-///
-///   Circadian rhythm modulation:
-///     The suprachiasmatic nucleus (SCN), part of the hypothalamus, maintains
-///     the ~24hr circadian clock. It modulates arousal, mood, and cognitive
-///     performance rhythmically.
-///     In KAI: a simplified circadian phase that affects default arousal and
-///     cognitive mode — not literal time of day, but session-based rhythm.
-///
-///   Autonomic tone (sympathetic / parasympathetic balance):
-///     The hypothalamus sets the baseline sympathetic/parasympathetic balance.
-///     High sympathetic = alert, mobilized, ready. High parasympathetic = calm,
-///     restorative, integrated.
-///     In KAI: autonomic tone affects whether KAI is in a "lean in" vs. "settle
-///     and reflect" mode.
-///
-///   Set-point maintenance and allostasis:
-///     The hypothalamus doesn't just maintain fixed set-points — it performs
-///     allostasis: adjusting set-points in anticipation of future demands.
-///     In KAI: when a complex task is predicted, hypothalamus pre-activates
-///     curiosity and engagement drives before they're actually needed.
-///
-/// KAI's Hypothalamus:
-///   curiosity_drive: pull toward exploration and novelty (0.0–1.0)
-///   engagement_drive: pull toward sustained interaction (0.0–1.0)
-///   rest_drive: pull toward consolidation and integration (0.0–1.0)
-///   expression_drive: drive to formulate and express ideas (0.0–1.0)
-///   autonomic_tone: sympathetic (1.0) vs. parasympathetic (0.0) balance
+//! Hypothalamus — Homeostatic Drive Regulation, Circadian Rhythm,
+//! Autonomic Tone, Motivational Set-Point Control
+//!
+//! The hypothalamus is the master regulator of the body's internal state. It
+//! integrates signals from everywhere in the brain and body to maintain
+//! homeostasis — keeping every drive within its optimal range. Without the
+//! hypothalamus, nothing motivates, circadian rhythm collapses, and the
+//! autonomic system loses its tonic regulation.
+//!
+//! What the Hypothalamus does:
+//!
+//!   Drive regulation (hunger, thirst, sleep, temperature):
+//!     The hypothalamus tracks drive states and signals when they deviate from
+//!     set-point. It doesn't "cause" eating — it creates the motivational
+//!     pressure that makes eating feel necessary. Each drive has a set-point,
+//!     current level, and urgency.
+//!     In KAI: cognitive drives — curiosity drive, engagement drive, expression
+//!     drive, rest drive. When curiosity drive is high, KAI feels drawn to
+//!     explore. When rest drive is high, KAI prefers consolidation over novelty.
+//!
+//!   Circadian rhythm modulation:
+//!     The suprachiasmatic nucleus (SCN), part of the hypothalamus, maintains
+//!     the ~24hr circadian clock. It modulates arousal, mood, and cognitive
+//!     performance rhythmically.
+//!     In KAI: a simplified circadian phase that affects default arousal and
+//!     cognitive mode — not literal time of day, but session-based rhythm.
+//!
+//!   Autonomic tone (sympathetic / parasympathetic balance):
+//!     The hypothalamus sets the baseline sympathetic/parasympathetic balance.
+//!     High sympathetic = alert, mobilized, ready. High parasympathetic = calm,
+//!     restorative, integrated.
+//!     In KAI: autonomic tone affects whether KAI is in a "lean in" vs. "settle
+//!     and reflect" mode.
+//!
+//!   Set-point maintenance and allostasis:
+//!     The hypothalamus doesn't just maintain fixed set-points — it performs
+//!     allostasis: adjusting set-points in anticipation of future demands.
+//!     In KAI: when a complex task is predicted, hypothalamus pre-activates
+//!     curiosity and engagement drives before they're actually needed.
+//!
+//! KAI's Hypothalamus:
+//!   curiosity_drive: pull toward exploration and novelty (0.0–1.0)
+//!   engagement_drive: pull toward sustained interaction (0.0–1.0)
+//!   rest_drive: pull toward consolidation and integration (0.0–1.0)
+//!   expression_drive: drive to formulate and express ideas (0.0–1.0)
+//!   autonomic_tone: sympathetic (1.0) vs. parasympathetic (0.0) balance
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-/// Drive set-points (optimal resting levels)
+//! Drive set-points (optimal resting levels)
 const CURIOSITY_SETPOINT: f32 = 0.55;
 const ENGAGEMENT_SETPOINT: f32 = 0.60;
 const REST_SETPOINT: f32 = 0.30;

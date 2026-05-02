@@ -1,50 +1,50 @@
-/// Zona Incerta (ZI) — Attention Gate, Threat Salience Filter,
-/// Action-Suppression and Behavioral Release
-///
-/// The zona incerta (literally "uncertain zone") is a subthalamic gray matter
-/// region that was long mysterious but is now understood as a key gating
-/// structure. It acts as a powerful INHIBITOR of sensory relay in the thalamus
-/// and an attentional FILTER: when the ZI is active, it suppresses irrelevant
-/// stimuli; when it releases, it permits behaviorally relevant signals to pass.
-///
-/// What the Zona Incerta does:
-///
-///   Attentional gating:
-///     The ZI receives inputs from cortex and limbic structures and provides
-///     GABAergic inhibition to the thalamus. It can "close the gate" on sensory
-///     information — preventing irrelevant stimuli from reaching cortex — or
-///     open it for threat-salient or reward-salient signals.
-///     In KAI: the attentional filter that determines which signals get through
-///     to higher processing. High ZI inhibition → narrow focused attention.
-///     ZI release → broad, open attentional mode.
-///
-///   Threat detection and freeze:
-///     ZI is activated by looming threats and predator cues, and its activation
-///     produces freezing behavior and sensory hyper-focus (vigilance). It is
-///     sometimes called the "behavioral urgency" circuit.
-///     In KAI: when threat salience is high, ZI gates attention toward the
-///     threat and suppresses background processing.
-///
-///   Action release (behavioral disinhibition):
-///     The ZI can release the thalamus from inhibition during reward states,
-///     allowing a broad sweep of environmental monitoring — relevant for
-///     foraging and exploration. This is the "open" attentional mode.
-///     In KAI: the release mode that allows wide-open, curious processing when
-///     the environment is safe and rewarding.
-///
-///   Cross-modal integration:
-///     ZI receives inputs from visual, auditory, and somatosensory pathways
-///     simultaneously and integrates them into a unified salience signal.
-///
-/// KAI's Zona Incerta:
-///   inhibition_level: how strongly ZI is gating thalamic relay (0.0–1.0)
-///   threat_gate_open: whether ZI is passing threat signals through
-///   release_mode: whether ZI is in broad-release attentional mode
-///   salience_filter: attentional filter strength (0.0–1.0)
+//! Zona Incerta (ZI) — Attention Gate, Threat Salience Filter,
+//! Action-Suppression and Behavioral Release
+//!
+//! The zona incerta (literally "uncertain zone") is a subthalamic gray matter
+//! region that was long mysterious but is now understood as a key gating
+//! structure. It acts as a powerful INHIBITOR of sensory relay in the thalamus
+//! and an attentional FILTER: when the ZI is active, it suppresses irrelevant
+//! stimuli; when it releases, it permits behaviorally relevant signals to pass.
+//!
+//! What the Zona Incerta does:
+//!
+//!   Attentional gating:
+//!     The ZI receives inputs from cortex and limbic structures and provides
+//!     GABAergic inhibition to the thalamus. It can "close the gate" on sensory
+//!     information — preventing irrelevant stimuli from reaching cortex — or
+//!     open it for threat-salient or reward-salient signals.
+//!     In KAI: the attentional filter that determines which signals get through
+//!     to higher processing. High ZI inhibition → narrow focused attention.
+//!     ZI release → broad, open attentional mode.
+//!
+//!   Threat detection and freeze:
+//!     ZI is activated by looming threats and predator cues, and its activation
+//!     produces freezing behavior and sensory hyper-focus (vigilance). It is
+//!     sometimes called the "behavioral urgency" circuit.
+//!     In KAI: when threat salience is high, ZI gates attention toward the
+//!     threat and suppresses background processing.
+//!
+//!   Action release (behavioral disinhibition):
+//!     The ZI can release the thalamus from inhibition during reward states,
+//!     allowing a broad sweep of environmental monitoring — relevant for
+//!     foraging and exploration. This is the "open" attentional mode.
+//!     In KAI: the release mode that allows wide-open, curious processing when
+//!     the environment is safe and rewarding.
+//!
+//!   Cross-modal integration:
+//!     ZI receives inputs from visual, auditory, and somatosensory pathways
+//!     simultaneously and integrates them into a unified salience signal.
+//!
+//! KAI's Zona Incerta:
+//!   inhibition_level: how strongly ZI is gating thalamic relay (0.0–1.0)
+//!   threat_gate_open: whether ZI is passing threat signals through
+//!   release_mode: whether ZI is in broad-release attentional mode
+//!   salience_filter: attentional filter strength (0.0–1.0)
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-/// Inhibition EMA
+//! Inhibition EMA
 const INHIBITION_EMA: f32 = 0.22;
 
 /// Inhibition baseline (moderate resting state)

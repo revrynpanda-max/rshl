@@ -14,7 +14,7 @@
 use std::f64::consts::TAU as TAU_F64;
 
 /// The golden ratio φ.
-pub const PHI_GOLDEN: f32 = 1.618_033_988;
+pub const PHI_GOLDEN: f32 = 1.618_034;
 
 /// Spiral growth exponent: ln(φ) / (π/2) ≈ 0.306349.
 /// Hardcoded because f32::ln is not a const fn. Derived as:

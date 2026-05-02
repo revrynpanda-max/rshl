@@ -1,51 +1,51 @@
-/// Language System — Broca/Wernicke Analog for KAI
-///
-/// In the biological brain, language is handled by two major regions:
-///
-///   Broca's Area (left inferior frontal gyrus):
-///     Language PRODUCTION — syntax, grammar, articulation planning.
-///     Damage: expressive aphasia — understanding intact, speech broken.
-///     In KAI: controls output structure — sentence length, clause depth,
-///     response format (question, assertion, exploration), and fluency.
-///
-///   Wernicke's Area (left superior temporal gyrus):
-///     Language COMPREHENSION — meaning extraction, semantic parsing.
-///     Damage: receptive aphasia — speech fluent but meaningless.
-///     In KAI: extracts semantic structure from input — identifies topic,
-///     intent structure, argument vs. question vs. statement, and what
-///     the core semantic content is before RSHL encoding.
-///
-/// What the Language System adds:
-///
-///   Wernicke (comprehension):
-///     - Detects sentence type: question / statement / command / exploration
-///     - Identifies argument structure: subject / predicate / object
-///     - Detects negation ("is NOT", "isn't", "cannot")
-///     - Counts semantic density (unique content words per sentence)
-///     - Produces a comprehension score for the input
-///
-///   Broca (production):
-///     - Tracks output fluency over time
-///     - Detects production style needed: short answer / explanation /
-///       elaboration / question-back / philosophical
-///     - Monitors response complexity vs. input complexity (appropriate depth)
-///     - Detects verbosity (output too long for simple question)
-///     - Maintains a recent production history for style coherence
-///
-/// Without Language System:
-///   KAI's language processing is entirely implicit in voice.rs templates.
-///   No explicit awareness of sentence structure, negation, argument form.
-///   No output fluency tracking or verbosity detection.
-///
-/// With Language System:
-///   Wernicke preprocessing enriches the reasoning_input before RSHL encoding.
-///   Broca post-processes the voice output to flag style mismatches.
-///   The system talks to the PFC: "this question needs a short answer."
-///   It also informs the DMN: "Ryan's last message was exploratory — lean in."
+//! Language System — Broca/Wernicke Analog for KAI
+//!
+//! In the biological brain, language is handled by two major regions:
+//!
+//!   Broca's Area (left inferior frontal gyrus):
+//!     Language PRODUCTION — syntax, grammar, articulation planning.
+//!     Damage: expressive aphasia — understanding intact, speech broken.
+//!     In KAI: controls output structure — sentence length, clause depth,
+//!     response format (question, assertion, exploration), and fluency.
+//!
+//!   Wernicke's Area (left superior temporal gyrus):
+//!     Language COMPREHENSION — meaning extraction, semantic parsing.
+//!     Damage: receptive aphasia — speech fluent but meaningless.
+//!     In KAI: extracts semantic structure from input — identifies topic,
+//!     intent structure, argument vs. question vs. statement, and what
+//!     the core semantic content is before RSHL encoding.
+//!
+//! What the Language System adds:
+//!
+//!   Wernicke (comprehension):
+//!     - Detects sentence type: question / statement / command / exploration
+//!     - Identifies argument structure: subject / predicate / object
+//!     - Detects negation ("is NOT", "isn't", "cannot")
+//!     - Counts semantic density (unique content words per sentence)
+//!     - Produces a comprehension score for the input
+//!
+//!   Broca (production):
+//!     - Tracks output fluency over time
+//!     - Detects production style needed: short answer / explanation /
+//!       elaboration / question-back / philosophical
+//!     - Monitors response complexity vs. input complexity (appropriate depth)
+//!     - Detects verbosity (output too long for simple question)
+//!     - Maintains a recent production history for style coherence
+//!
+//! Without Language System:
+//!   KAI's language processing is entirely implicit in voice.rs templates.
+//!   No explicit awareness of sentence structure, negation, argument form.
+//!   No output fluency tracking or verbosity detection.
+//!
+//! With Language System:
+//!   Wernicke preprocessing enriches the reasoning_input before RSHL encoding.
+//!   Broca post-processes the voice output to flag style mismatches.
+//!   The system talks to the PFC: "this question needs a short answer."
+//!   It also informs the DMN: "Ryan's last message was exploratory — lean in."
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-/// Semantic density threshold for "rich" input (unique content words / total)
+//! Semantic density threshold for "rich" input (unique content words / total)
 const DENSITY_THRESHOLD: f32 = 0.55;
 
 /// Production history window (last N outputs tracked for style coherence)

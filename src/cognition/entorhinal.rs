@@ -1,48 +1,48 @@
-/// Entorhinal Cortex (EC) — Memory Gateway, Grid Cells, Cognitive Map
-///
-/// The entorhinal cortex is the primary gateway between the hippocampus
-/// and the rest of the cortex. All information flowing into hippocampal
-/// memory must first pass through the EC. It also contains grid cells —
-/// the neurons that provide the brain's internal coordinate system.
-///
-/// What the Entorhinal Cortex does:
-///
-///   Memory gateway (perforant path):
-///     The EC is the main input to the hippocampus (via the perforant path).
-///     All sensory cortices feed into the EC, which compresses and gates
-///     the information before passing it to the hippocampal formation.
-///     In KAI: the EC pre-processes inputs before hippocampal encoding —
-///     filtering what's worth storing vs. what's transient noise.
-///
-///   Grid cells — cognitive coordinate system:
-///     Grid cells in EC fire in hexagonal lattice patterns as you move
-///     through space. They give the brain an internal GPS system.
-///     In KAI: the EC maintains a coordinate system for CONCEPTUAL space.
-///     "This idea is close to that one." "This concept is far from our
-///     current focus." Tracking position in idea-space.
-///
-///   Temporal context binding:
-///     The EC encodes temporal context — the "when" of memories.
-///     It uses a temporal code that marks memories with their sequence
-///     position, enabling "what happened next" retrieval.
-///     In KAI: binding memories to their place in the conversation sequence.
-///
-///   Pattern preprocessing:
-///     The EC performs initial pattern completion / separation before
-///     the hippocampus does its more sophisticated version.
-///     It removes noise from incoming signals so the hippocampus gets
-///     cleaner patterns to work with.
-///
-/// KAI's Entorhinal Cortex:
-///   grid_position: current position in conceptual space (x, y coordinates)
-///   temporal_tag: current conversation time index for memory tagging
-///   gateway_filter: what's currently passing through to hippocampus
-///   noise_threshold: how much noise to filter before sending to hippocampus
-///   concept_distance: distance in conceptual space from prior focus
+//! Entorhinal Cortex (EC) — Memory Gateway, Grid Cells, Cognitive Map
+//!
+//! The entorhinal cortex is the primary gateway between the hippocampus
+//! and the rest of the cortex. All information flowing into hippocampal
+//! memory must first pass through the EC. It also contains grid cells —
+//! the neurons that provide the brain's internal coordinate system.
+//!
+//! What the Entorhinal Cortex does:
+//!
+//!   Memory gateway (perforant path):
+//!     The EC is the main input to the hippocampus (via the perforant path).
+//!     All sensory cortices feed into the EC, which compresses and gates
+//!     the information before passing it to the hippocampal formation.
+//!     In KAI: the EC pre-processes inputs before hippocampal encoding —
+//!     filtering what's worth storing vs. what's transient noise.
+//!
+//!   Grid cells — cognitive coordinate system:
+//!     Grid cells in EC fire in hexagonal lattice patterns as you move
+//!     through space. They give the brain an internal GPS system.
+//!     In KAI: the EC maintains a coordinate system for CONCEPTUAL space.
+//!     "This idea is close to that one." "This concept is far from our
+//!     current focus." Tracking position in idea-space.
+//!
+//!   Temporal context binding:
+//!     The EC encodes temporal context — the "when" of memories.
+//!     It uses a temporal code that marks memories with their sequence
+//!     position, enabling "what happened next" retrieval.
+//!     In KAI: binding memories to their place in the conversation sequence.
+//!
+//!   Pattern preprocessing:
+//!     The EC performs initial pattern completion / separation before
+//!     the hippocampus does its more sophisticated version.
+//!     It removes noise from incoming signals so the hippocampus gets
+//!     cleaner patterns to work with.
+//!
+//! KAI's Entorhinal Cortex:
+//!   grid_position: current position in conceptual space (x, y coordinates)
+//!   temporal_tag: current conversation time index for memory tagging
+//!   gateway_filter: what's currently passing through to hippocampus
+//!   noise_threshold: how much noise to filter before sending to hippocampus
+//!   concept_distance: distance in conceptual space from prior focus
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-/// Number of grid cell modules (each has its own scale/period)
+//! Number of grid cell modules (each has its own scale/period)
 const GRID_MODULES: usize = 3;
 
 /// How far to move per conceptual "step" in grid space
@@ -177,12 +177,12 @@ impl EntorhinalCortex {
         // Semantic shift drives movement in idea-space
         // Direction: shifts along x or y axis based on even/odd alternation
         let dx = semantic_shift
-            * (if self.temporal_tag % 2 == 0 {
+            * (if self.temporal_tag.is_multiple_of(2) {
                 1.0
             } else {
                 -0.3
             });
-        let dy = semantic_shift * (if self.temporal_tag % 3 == 0 { 1.0 } else { 0.5 });
+        let dy = semantic_shift * (if self.temporal_tag.is_multiple_of(3) { 1.0 } else { 0.5 });
 
         self.prev_x = self.concept_x;
         self.prev_y = self.concept_y;

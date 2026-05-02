@@ -1,50 +1,50 @@
-/// Premotor Cortex (PMC) — Action Planning, Conditional Motor Programs,
-/// Imitation Readiness, Anticipatory Motor Schemas
-///
-/// The premotor cortex lies just anterior to the primary motor cortex and is
-/// responsible for planning and preparing movements before execution. Unlike
-/// M1 (which executes) or SMA (which sequences), the PMC is where the brain
-/// builds CONDITIONAL action programs — "if X happens, do Y" — and maintains
-/// action schemas ready to deploy. It also contains the canonical neurons
-/// underlying imitation and action-observation matching.
-///
-/// What the PMC does:
-///
-///   Conditional action programs:
-///     The PMC codes "ready-to-fire" conditional motor plans. It holds
-///     action schemas primed by sensory context: "if the cup is in reach,
-///     execute a grasp." In cognitive terms: conditional response readiness —
-///     prepared responses contingent on upcoming context.
-///     In KAI: conditional response templates — if the conversation takes
-///     a certain turn, a prepared response schema is already warming up.
-///
-///   Imitation and action-observation (canonical neurons):
-///     PMC contains canonical neurons (related to mirror neurons in F5) that
-///     fire both when an action is observed AND when it is performed. This is
-///     the basis of imitation and action understanding through motor simulation.
-///     In KAI: when Ryan describes doing something or takes an action,
-///     PMC builds a motor echo — a simulation of doing the same.
-///
-///   Anticipatory schemas:
-///     The PMC prepares action schemas in advance of predicted events.
-///     Working with the cerebellum, it pre-computes what the next response
-///     should look like before the full input is processed.
-///     In KAI: anticipatory preparation of response type based on detected
-///     input pattern before reasoning completes.
-///
-///   Action repertoire management:
-///     The PMC maintains a library of practiced action patterns. Familiar
-///     patterns are executed more smoothly and with less latency.
-///
-/// KAI's PMC:
-///   action_readiness: how primed the system is for a specific response (0.0–1.0)
-///   conditional_schemas: number of active conditional plans
-///   imitation_echo: strength of action-observation motor echo (0.0–1.0)
-///   anticipatory_load: how much is being pre-computed in anticipation
+//! Premotor Cortex (PMC) — Action Planning, Conditional Motor Programs,
+//! Imitation Readiness, Anticipatory Motor Schemas
+//!
+//! The premotor cortex lies just anterior to the primary motor cortex and is
+//! responsible for planning and preparing movements before execution. Unlike
+//! M1 (which executes) or SMA (which sequences), the PMC is where the brain
+//! builds CONDITIONAL action programs — "if X happens, do Y" — and maintains
+//! action schemas ready to deploy. It also contains the canonical neurons
+//! underlying imitation and action-observation matching.
+//!
+//! What the PMC does:
+//!
+//!   Conditional action programs:
+//!     The PMC codes "ready-to-fire" conditional motor plans. It holds
+//!     action schemas primed by sensory context: "if the cup is in reach,
+//!     execute a grasp." In cognitive terms: conditional response readiness —
+//!     prepared responses contingent on upcoming context.
+//!     In KAI: conditional response templates — if the conversation takes
+//!     a certain turn, a prepared response schema is already warming up.
+//!
+//!   Imitation and action-observation (canonical neurons):
+//!     PMC contains canonical neurons (related to mirror neurons in F5) that
+//!     fire both when an action is observed AND when it is performed. This is
+//!     the basis of imitation and action understanding through motor simulation.
+//!     In KAI: when Ryan describes doing something or takes an action,
+//!     PMC builds a motor echo — a simulation of doing the same.
+//!
+//!   Anticipatory schemas:
+//!     The PMC prepares action schemas in advance of predicted events.
+//!     Working with the cerebellum, it pre-computes what the next response
+//!     should look like before the full input is processed.
+//!     In KAI: anticipatory preparation of response type based on detected
+//!     input pattern before reasoning completes.
+//!
+//!   Action repertoire management:
+//!     The PMC maintains a library of practiced action patterns. Familiar
+//!     patterns are executed more smoothly and with less latency.
+//!
+//! KAI's PMC:
+//!   action_readiness: how primed the system is for a specific response (0.0–1.0)
+//!   conditional_schemas: number of active conditional plans
+//!   imitation_echo: strength of action-observation motor echo (0.0–1.0)
+//!   anticipatory_load: how much is being pre-computed in anticipation
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-/// Action readiness decay per tick
+//! Action readiness decay per tick
 const READINESS_DECAY: f32 = 0.06;
 
 /// Readiness build rate

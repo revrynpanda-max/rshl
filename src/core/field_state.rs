@@ -1,47 +1,47 @@
-/// Field State — Full RSHL Emergence Metrics
-///
-/// Ported from field-state.js. Pure computation, no side effects.
-/// Given a set of source cells and a synthetic vector, computes
-/// all 17 field metrics that drive dream quality, promotion, and valence.
-///
-/// Metrics:
-///   ρ    — field density (active/total)
-///   R    — mean coherence (agreement between concepts)
-///   s    — stability (1 / (1 + stddev(coherence samples)))
-///   g    — goal alignment (resonance with evolving goal vector)
-///   χ    — contradiction pressure (disagreement between sources)
-///   τ    — temporal recurrence (how often this winner recurs in history)
-///   r    — recency weight (exponential decay by age)
-///   u    — average strength (normalized)
-///   q    — novelty (1 - R)
-///   Φ    — raw emergence (ρ × R² × s)
-///   Φc   — contradiction-adjusted (Φ × (1-χ))
-///   Φg   — goal-aligned emergence (Φc × g) — THE KEY METRIC
-///   M    — momentum (Φg - previous Φg)
-/// Field State — Full RSHL Emergence Metrics
-///
-/// Ported from field-state.js. Pure computation, no side effects.
-/// Given a set of source cells and a synthetic vector, computes
-/// all 17 field metrics that drive dream quality, promotion, and valence.
-///
-/// Metrics:
-///   ρ    — field density (active/total)
-///   R    — mean coherence (agreement between concepts)
-///   s    — stability (1 / (1 + stddev(coherence samples)))
-///   g    — goal alignment (resonance with evolving goal vector)
-///   χ    — contradiction pressure (disagreement between sources)
-///   τ    — temporal recurrence (how often this winner recurs in history)
-///   r    — recency weight (exponential decay by age)
-///   u    — average strength (normalized)
-///   q    — novelty (1 - R)
-///   Φ    — raw emergence (ρ × R² × s)
-///   Φc   — contradiction-adjusted (Φ × (1-χ))
-///   Φg   — goal-aligned emergence (Φc × g) — THE KEY METRIC
-///   M    — momentum (Φg - previous Φg)
-///   X    — contradiction × novelty pressure
-///   C    — commit readiness (Φg × (1-χ) × τ)
-///   Wm   — memory reinforcement weight (Φg × r)
-///   Pr   — replay priority ((1-Φg + χ + q) / 3)
+//! Field State — Full RSHL Emergence Metrics
+//!
+//! Ported from field-state.js. Pure computation, no side effects.
+//! Given a set of source cells and a synthetic vector, computes
+//! all 17 field metrics that drive dream quality, promotion, and valence.
+//!
+//! Metrics:
+//!   ρ    — field density (active/total)
+//!   R    — mean coherence (agreement between concepts)
+//!   s    — stability (1 / (1 + stddev(coherence samples)))
+//!   g    — goal alignment (resonance with evolving goal vector)
+//!   χ    — contradiction pressure (disagreement between sources)
+//!   τ    — temporal recurrence (how often this winner recurs in history)
+//!   r    — recency weight (exponential decay by age)
+//!   u    — average strength (normalized)
+//!   q    — novelty (1 - R)
+//!   Φ    — raw emergence (ρ × R² × s)
+//!   Φc   — contradiction-adjusted (Φ × (1-χ))
+//!   Φg   — goal-aligned emergence (Φc × g) — THE KEY METRIC
+//!   M    — momentum (Φg - previous Φg)
+//! Field State — Full RSHL Emergence Metrics
+//!
+//! Ported from field-state.js. Pure computation, no side effects.
+//! Given a set of source cells and a synthetic vector, computes
+//! all 17 field metrics that drive dream quality, promotion, and valence.
+//!
+//! Metrics:
+//!   ρ    — field density (active/total)
+//!   R    — mean coherence (agreement between concepts)
+//!   s    — stability (1 / (1 + stddev(coherence samples)))
+//!   g    — goal alignment (resonance with evolving goal vector)
+//!   χ    — contradiction pressure (disagreement between sources)
+//!   τ    — temporal recurrence (how often this winner recurs in history)
+//!   r    — recency weight (exponential decay by age)
+//!   u    — average strength (normalized)
+//!   q    — novelty (1 - R)
+//!   Φ    — raw emergence (ρ × R² × s)
+//!   Φc   — contradiction-adjusted (Φ × (1-χ))
+//!   Φg   — goal-aligned emergence (Φc × g) — THE KEY METRIC
+//!   M    — momentum (Φg - previous Φg)
+//!   X    — contradiction × novelty pressure
+//!   C    — commit readiness (Φg × (1-χ) × τ)
+//!   Wm   — memory reinforcement weight (Φg × r)
+//!   Pr   — replay priority ((1-Φg + χ + q) / 3)
 use super::{SparseVec, Universe};
 use crate::core::regions::{
     compute_region_core, phi_left, phi_right, Region,

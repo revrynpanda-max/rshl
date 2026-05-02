@@ -194,7 +194,7 @@ fn select_dream_pair(universe: &Universe) -> Option<(usize, usize, f32)> {
             let overlap = a.claim.vec.phasor_coherence(&b.claim.vec);
 
             // Filter: allow resonance above 0.18 (including phase-aligned negative torsion)
-            if overlap < 0.18 || overlap > 0.88 {
+            if !(0.18..=0.88).contains(&overlap) {
                 continue;
             }
 
@@ -321,7 +321,7 @@ pub fn consolidate_pair(
     let shared = shared_concept_words(&a.claim.text, &b.claim.text);
     let synthesis_vec = bundle.clone();
 
-    let (label, text) = if shared.len() >= 1 {
+    let (label, text) = if !shared.is_empty() {
         let t = build_synthesis_text(&a.claim.text, &b.claim.text, &shared);
         (t.clone(), t)
     } else {
@@ -509,7 +509,7 @@ fn build_synthesis_text(a: &str, b: &str, shared: &[String]) -> String {
 
     // Produce a short gloss of each source: first ~8 words, no trailing period.
     let gloss = |s: &str| -> String {
-        let trimmed = s.trim_end_matches(|c: char| matches!(c, '.' | '!' | '?'));
+        let trimmed = s.trim_end_matches(['.', '!', '?']);
         let words: Vec<&str> = trimmed.split_whitespace().take(8).collect();
         let mut g = words.join(" ");
         // If we truncated, add an ellipsis so the gloss is honest

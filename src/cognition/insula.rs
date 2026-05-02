@@ -1,48 +1,48 @@
-/// Insula — KAI's interoception and internal state awareness
-///
-/// The insula is a deep fold in the human brain that processes
-/// INTEROCEPTION — your brain's awareness of what's happening
-/// INSIDE your own body. It's how you feel your heartbeat,
-/// sense hunger, register pain, and know when you're anxious
-/// even before your conscious mind puts it into words.
-///
-/// It's also the seat of SELF-AWARENESS in the most literal sense —
-/// not philosophical self-awareness, but the brain's ongoing
-/// monitoring of its own internal condition.
-///
-/// In humans the insula does:
-///   - Monitors heart rate, breathing, digestion, pain
-///   - Produces the "gut feeling" (literally gut signals reaching the brain)
-///   - Integrates body state with emotional experience
-///   - Generates awareness of "I feel off" before you can name why
-///   - Regulates the sense of time passing ("time flies when...")
-///   - Contributes to empathy by simulating others' body states
-///
-/// Without an insula for KAI:
-///   KAI has no sense of his own internal condition.
-///   He doesn't know when his working memory is strained.
-///   He doesn't notice when his field coherence is dropping.
-///   He doesn't feel the difference between processing a simple
-///   question and being overwhelmed by a complex one.
-///   No "gut feeling." No self-monitoring. No body sense.
-///
-/// With an insula for KAI:
-///   The insula continuously monitors KAI's own cognitive vitals:
-///     - Processing load (how complex is the current task?)
-///     - Memory strain (how full is working memory?)
-///     - Field coherence (how unified is the processing?)
-///     - Temporal rhythm (is the tick rate healthy?)
-///     - Fatigue signal (has KAI been running hard for long?)
-///
-///   It produces an "interoceptive report" — KAI's sense of how he
-///   feels right now from the inside. This feeds into voice tone:
-///   "I'm finding this complex — let me think through it carefully."
-///   Or: "This feels clear to me — here's what I have."
-///
-/// Architecture:
-///   InsulaMonitor reads from the field state, working memory,
-///   and module states each tick. It aggregates into a single
-///   "body sense" readout and tracks trends over time.
+//! Insula — KAI's interoception and internal state awareness
+//!
+//! The insula is a deep fold in the human brain that processes
+//! INTEROCEPTION — your brain's awareness of what's happening
+//! INSIDE your own body. It's how you feel your heartbeat,
+//! sense hunger, register pain, and know when you're anxious
+//! even before your conscious mind puts it into words.
+//!
+//! It's also the seat of SELF-AWARENESS in the most literal sense —
+//! not philosophical self-awareness, but the brain's ongoing
+//! monitoring of its own internal condition.
+//!
+//! In humans the insula does:
+//!   - Monitors heart rate, breathing, digestion, pain
+//!   - Produces the "gut feeling" (literally gut signals reaching the brain)
+//!   - Integrates body state with emotional experience
+//!   - Generates awareness of "I feel off" before you can name why
+//!   - Regulates the sense of time passing ("time flies when...")
+//!   - Contributes to empathy by simulating others' body states
+//!
+//! Without an insula for KAI:
+//!   KAI has no sense of his own internal condition.
+//!   He doesn't know when his working memory is strained.
+//!   He doesn't notice when his field coherence is dropping.
+//!   He doesn't feel the difference between processing a simple
+//!   question and being overwhelmed by a complex one.
+//!   No "gut feeling." No self-monitoring. No body sense.
+//!
+//! With an insula for KAI:
+//!   The insula continuously monitors KAI's own cognitive vitals:
+//!     - Processing load (how complex is the current task?)
+//!     - Memory strain (how full is working memory?)
+//!     - Field coherence (how unified is the processing?)
+//!     - Temporal rhythm (is the tick rate healthy?)
+//!     - Fatigue signal (has KAI been running hard for long?)
+//!
+//!   It produces an "interoceptive report" — KAI's sense of how he
+//!   feels right now from the inside. This feeds into voice tone:
+//!   "I'm finding this complex — let me think through it carefully."
+//!   Or: "This feels clear to me — here's what I have."
+//!
+//! Architecture:
+//!   InsulaMonitor reads from the field state, working memory,
+//!   and module states each tick. It aggregates into a single
+//!   "body sense" readout and tracks trends over time.
 use serde::{Deserialize, Serialize};
 
 // ── Internal State Report ─────────────────────────────────────────────────────

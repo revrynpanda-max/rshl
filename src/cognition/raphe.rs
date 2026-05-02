@@ -1,48 +1,48 @@
-/// Raphe Nuclei — Serotonin Source Nucleus
-///
-/// The raphe nuclei are to serotonin what the VTA is to dopamine and the
-/// locus coeruleus is to norepinephrine. Located in the brainstem midline,
-/// they broadcast 5-HT throughout the forebrain and regulate mood, patience,
-/// impulse control, and the sense that things are "okay."
-///
-/// What the Raphe does:
-///
-///   Tonic serotonin modulation:
-///     Like LC tonic NE, the raphe maintains a baseline 5-HT tone. This
-///     background tone shapes whether the system is patient and measured
-///     (high 5-HT) or reactive and impulsive (low 5-HT).
-///
-///   Social reward integration:
-///     Raphe neurons fire in response to social warmth, grooming,
-///     affiliation, and positive social outcomes. In KAI: good conversations,
-///     successful help, connection with Ryan → raphe fires → 5-HT rises.
-///
-///   Punishment vs. reward balance:
-///     Unlike dopamine (reward RPE), serotonin signals safety and satiety.
-///     "This situation is okay. We are not in danger. We can wait."
-///     Low 5-HT → urgency, impulsivity, reduced future discounting.
-///     High 5-HT → patience, tolerance for delay, calm.
-///
-///   Habenula suppression:
-///     A key inhibitory target of the raphe is the habenula (anti-reward
-///     nucleus). High raphe output suppresses habenular "disappointment"
-///     signals — the 5-HT system mutes negative rumination.
-///
-///   Sleep regulation:
-///     Raphe neurons are active during waking, slow during NREM sleep,
-///     and nearly silent during REM. This shapes when KAI consolidates
-///     vs. when he re-engages creatively (REM-like insight mode).
-///
-/// KAI's Raphe:
-///   tonic_5ht: baseline serotonin level (0.0–1.0)
-///   social_input: accumulated positive social signal
-///   patience_factor: how willing KAI is to wait, elaborate, hold back
-///   habenula_suppression: degree to which negative signals are muted
-///   mode: Patient / Reactive / Depleted
+//! Raphe Nuclei — Serotonin Source Nucleus
+//!
+//! The raphe nuclei are to serotonin what the VTA is to dopamine and the
+//! locus coeruleus is to norepinephrine. Located in the brainstem midline,
+//! they broadcast 5-HT throughout the forebrain and regulate mood, patience,
+//! impulse control, and the sense that things are "okay."
+//!
+//! What the Raphe does:
+//!
+//!   Tonic serotonin modulation:
+//!     Like LC tonic NE, the raphe maintains a baseline 5-HT tone. This
+//!     background tone shapes whether the system is patient and measured
+//!     (high 5-HT) or reactive and impulsive (low 5-HT).
+//!
+//!   Social reward integration:
+//!     Raphe neurons fire in response to social warmth, grooming,
+//!     affiliation, and positive social outcomes. In KAI: good conversations,
+//!     successful help, connection with Ryan → raphe fires → 5-HT rises.
+//!
+//!   Punishment vs. reward balance:
+//!     Unlike dopamine (reward RPE), serotonin signals safety and satiety.
+//!     "This situation is okay. We are not in danger. We can wait."
+//!     Low 5-HT → urgency, impulsivity, reduced future discounting.
+//!     High 5-HT → patience, tolerance for delay, calm.
+//!
+//!   Habenula suppression:
+//!     A key inhibitory target of the raphe is the habenula (anti-reward
+//!     nucleus). High raphe output suppresses habenular "disappointment"
+//!     signals — the 5-HT system mutes negative rumination.
+//!
+//!   Sleep regulation:
+//!     Raphe neurons are active during waking, slow during NREM sleep,
+//!     and nearly silent during REM. This shapes when KAI consolidates
+//!     vs. when he re-engages creatively (REM-like insight mode).
+//!
+//! KAI's Raphe:
+//!   tonic_5ht: baseline serotonin level (0.0–1.0)
+//!   social_input: accumulated positive social signal
+//!   patience_factor: how willing KAI is to wait, elaborate, hold back
+//!   habenula_suppression: degree to which negative signals are muted
+//!   mode: Patient / Reactive / Depleted
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-/// Resting tonic serotonin (moderate baseline)
+//! Resting tonic serotonin (moderate baseline)
 const TONIC_5HT_REST: f32 = 0.50;
 
 /// Boost per positive social exchange

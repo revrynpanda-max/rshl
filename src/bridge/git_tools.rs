@@ -1,16 +1,16 @@
-/// Git Tools — KAI's native git awareness.
-///
-/// KAI understands git at the field level — not just running commands,
-/// but learning from commit history, diffs, and status to build
-/// knowledge about the codebase it lives in.
-///
-/// Commands exposed to main.rs:
-///   git status      — what changed, KAI learns file states
-///   git diff [file] — what the actual diff is
-///   git log [n]     — recent commits, KAI learns project history
-///   git commit      — KAI generates a commit message from its field
-///   git branch      — current branch info
-///   git add <file>  — stage files
+//! Git Tools — KAI's native git awareness.
+//!
+//! KAI understands git at the field level — not just running commands,
+//! but learning from commit history, diffs, and status to build
+//! knowledge about the codebase it lives in.
+//!
+//! Commands exposed to main.rs:
+//!   git status      — what changed, KAI learns file states
+//!   git diff [file] — what the actual diff is
+//!   git log [n]     — recent commits, KAI learns project history
+//!   git commit      — KAI generates a commit message from its field
+//!   git branch      — current branch info
+//!   git add <file>  — stage files
 use crate::core::Universe;
 
 /// Result of a git operation.

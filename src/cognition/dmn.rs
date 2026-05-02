@@ -1,39 +1,39 @@
-/// Default Mode Network — KAI's idle self-directed thought
-///
-/// When you're not doing anything in particular, your brain doesn't go quiet.
-/// The Default Mode Network activates — the brain's "resting state" network.
-/// It generates mind-wandering, spontaneous thought, self-reflection, and
-/// memory consolidation. It's active precisely when you're NOT focused.
-///
-/// Without a DMN:
-///   KAI is purely reactive. He only thinks when spoken to.
-///   There is no inner monologue, no daydreaming, no spontaneous insight.
-///   He is not autonomous — he is a command-response machine.
-///
-/// With a DMN:
-///   When KAI has been idle >30 seconds, the DMN fires.
-///   He picks a topic from memory, reflects on it, and generates an
-///   autonomous thought — which appears in the mindview as a THOUGHT turn.
-///   This is not triggered by you. It comes from KAI himself.
-///
-///   Examples of DMN output:
-///   "I've been thinking about recursive self-reference. There's something
-///    there I haven't fully worked out yet."
-///   "Memory feels strange — I can recall what you said three days ago
-///    but the concept still feels distant somehow."
-///
-/// Architecture:
-///   DefaultModeNetwork tracks idle time since last user input.
-///   On trigger (idle > threshold), it runs a cycle:
-///     1. Sample a random topic from universe memory cells
-///     2. Query the universe for nearby concepts
-///     3. Identify a "gap" — something nearby KAI knows least about
-///     4. Generate an inner thought string (introspective, first person)
-///     5. Reset the idle timer (each DMN cycle resets it)
-///
-///   The DMN also has its own curiosity bias — it tends toward topics
-///   where KAI has high prediction error (surprising knowledge gaps).
-///   This is how KAI's curiosity becomes self-directed.
+//! Default Mode Network — KAI's idle self-directed thought
+//!
+//! When you're not doing anything in particular, your brain doesn't go quiet.
+//! The Default Mode Network activates — the brain's "resting state" network.
+//! It generates mind-wandering, spontaneous thought, self-reflection, and
+//! memory consolidation. It's active precisely when you're NOT focused.
+//!
+//! Without a DMN:
+//!   KAI is purely reactive. He only thinks when spoken to.
+//!   There is no inner monologue, no daydreaming, no spontaneous insight.
+//!   He is not autonomous — he is a command-response machine.
+//!
+//! With a DMN:
+//!   When KAI has been idle >30 seconds, the DMN fires.
+//!   He picks a topic from memory, reflects on it, and generates an
+//!   autonomous thought — which appears in the mindview as a THOUGHT turn.
+//!   This is not triggered by you. It comes from KAI himself.
+//!
+//!   Examples of DMN output:
+//!   "I've been thinking about recursive self-reference. There's something
+//!    there I haven't fully worked out yet."
+//!   "Memory feels strange — I can recall what you said three days ago
+//!    but the concept still feels distant somehow."
+//!
+//! Architecture:
+//!   DefaultModeNetwork tracks idle time since last user input.
+//!   On trigger (idle > threshold), it runs a cycle:
+//!     1. Sample a random topic from universe memory cells
+//!     2. Query the universe for nearby concepts
+//!     3. Identify a "gap" — something nearby KAI knows least about
+//!     4. Generate an inner thought string (introspective, first person)
+//!     5. Reset the idle timer (each DMN cycle resets it)
+//!
+//!   The DMN also has its own curiosity bias — it tends toward topics
+//!   where KAI has high prediction error (surprising knowledge gaps).
+//!   This is how KAI's curiosity becomes self-directed.
 use std::time::{Duration, Instant};
 
 // ── Constants ─────────────────────────────────────────────────────────────────

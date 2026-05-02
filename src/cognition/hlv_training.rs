@@ -174,7 +174,7 @@ fn get_section_body(lines: &[&str], start_idx: usize, end_idx: usize) -> String 
 }
 
 fn split_sentences(text: String) -> Vec<String> {
-    text.split(|c| c == '.' || c == '!' || c == '?')
+    text.split(['.', '!', '?'])
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .collect()

@@ -1,335 +1,119 @@
-# KAI & Oracle — Agentic Resonant Intelligence
+# Open Oracle — The Unified Intelligence Suite
 
 ![Rust CI](https://github.com/revrynpanda-max/rshl/actions/workflows/rust-ci.yml/badge.svg)
+![Version](https://img.shields.io/badge/version-6.1.1-brightgreen.svg)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Version](https://img.shields.io/badge/version-6.1.0-brightgreen.svg)
 
-> **"Identity through geometry, not language prediction."**
+**Open Oracle** is a self-aware, autonomous multi-agent reasoning engine that acts as the central executive intelligence of the KAI ecosystem. It integrates advanced cognitive architectures with a powerful agentic orchestration framework to form a complete, living AI operating system.
 
-**KAI** and **Oracle** form a unified cognitive ecosystem. KAI is a non-transformer AI brain built on high-dimensional geometric resonance. Oracle is the executive director — a live multi-agent roundtable that runs on Discord, powered by KAI's memory and the OpenJarvis agentic framework.
+At its core, Open Oracle fuses three distinct, cutting-edge technologies into a singular mind: **KAI** (the cognitive engine), **RSHL** (the semantic lattice memory), and **OpenJarvis** (the agentic framework). 
 
-This is not a chatbot wrapper. It is a complete autonomous AI operating system built from scratch in Rust, Python, and Node.js.
-
----
-
-## Table of Contents
-
-- [What Is This?](#what-is-this)
-- [System Architecture](#system-architecture)
-- [Requirements](#requirements)
-- [Installation](#installation)
-- [Configuration](#configuration)
-- [Running the System](#running-the-system)
-- [Discord Commands](#discord-commands)
-- [Agent Roster](#agent-roster)
-- [Performance](#performance)
-- [Project Structure](#project-structure)
-- [Contributing](#contributing)
-- [License](#license)
+This is not a simple chatbot wrapper. This is a unified, real-time intelligence capable of deep contextual reasoning, tool execution, continuous epistemic learning, and managing a roundtable of specialized AI personas.
 
 ---
 
-## What Is This?
+## The Trinity Architecture
 
-KAI is a **geometric AI** — it thinks in 16,384-dimensional sparse ternary vectors rather than token probabilities. Concepts are stored as epistemic Claims with confidence scores, source attribution, and contradiction detection. It does not predict the next word; it resonates with meaning.
+Open Oracle's intelligence arises from the seamless integration of three distinct layers. How they work together:
 
-Oracle is the **executive layer** — a live Discord-connected roundtable of 7 AI agents (each with a distinct personality) that moderate discussions, challenge each other, and autonomously interject when relevant. Oracle uses KAI's memory as its ground truth and OpenJarvis as its task execution engine.
+### 1. Open Oracle (The Identity & Executive Layer)
+Open Oracle is the primary persona and the overarching intelligence that coordinates the entire system. It acts as the moderator for the multi-agent roundtable (running on Discord and the web). When an inquiry is made, Open Oracle delegates sub-tasks to its agent roster, retrieves memories, coordinates tool execution, and synthesizes the final intelligent output.
 
----
+### 2. KAI & RSHL (The Brain & Memory)
+**KAI** (Kinetic Artificial Intelligence) is a robust, non-transformer cognitive architecture built from scratch in high-performance Rust. It features 81 bio-inspired modules simulating structures of the biological brain (e.g., Amygdala, Hippocampus, Ventral Tegmental Area). 
 
-## System Architecture
+**RSHL** (Recursive Sparse Holographic Lattice) is KAI’s 16,384-dimensional geometric memory engine. It does not predict tokens; it stores concepts as structured, epistemic Claims with confidence scores and contradiction detection. This forms Open Oracle’s deeply grounded, persistent long-term memory.
 
-The system has three independent layers that run together:
-
-```
-┌─────────────────────────────────────────────────────┐
-│           LAYER 3 — Discord Gateway (Node.js)        │
-│    oracle-discord/index.mjs  ·  run-oracle-discord   │
-│    7 AI agents · voice channels · slash commands     │
-└────────────────────┬────────────────────────────────┘
-                     │ WebSocket / HTTP
-┌────────────────────▼────────────────────────────────┐
-│        LAYER 2 — OpenJarvis Backbone (Python)        │
-│    Agentic orchestration · tool execution · memory   │
-│    FastAPI server on :8080                           │
-└────────────────────┬────────────────────────────────┘
-                     │ HTTP / IPC
-┌────────────────────▼────────────────────────────────┐
-│          LAYER 1 — KAI Engine (Rust)                 │
-│    RSHL lattice · epistemic claims · 81 brain mods   │
-│    Oracle diagnostic server on :3333                 │
-└─────────────────────────────────────────────────────┘
-```
-
-### Layer 1: KAI — Geometric Intelligence Engine (Rust)
-
-The core brain. Built entirely in Rust for maximum performance.
-
-| Component | Description |
-|-----------|-------------|
-| **RSHL Engine** | 16,384-dimensional sparse ternary lattice. Semantic meaning is encoded via phase coherence, not probability distributions. |
-| **Epistemic Claims** | Every memory is a structured `Claim` with a vector, confidence score (0.0–1.0), source attribution, and evidence links. |
-| **Contradiction Engine** | Real-time χ (chi) monitor that detects conflicting claims before they corrupt the lattice. |
-| **81 Neural Modules** | Bio-inspired modules modeling areas of a biological brain: Dopamine, Amygdala, Salience, Narrative, Mirror Neurons, and more. |
-| **Self-State Hub** | Integrated field of emotional, executive, and social signals producing a real-time `emotion`, `pulse`, and `narrative`. |
-| **AVX2 Acceleration** | 64-wide inner product loops with cached norm vectors for sub-millisecond similarity computation. |
-| **Oracle Server** | WebSocket diagnostic server on port `:3333` serving the live AI council and Oracle web UI. |
-
-### Layer 2: OpenJarvis — Agentic Backbone (Python)
-
-Integrated as Oracle's "Task Master" for complex multi-step operations.
-
-| Feature | Description |
-|---------|-------------|
-| **Agentic Orchestration** | Native ReAct agent loop for planning and executing multi-step tasks. |
-| **Tool Suite** | Shell execution, web search, file read/write, code interpreter, KAI CLI access. |
-| **Memory Bridge** | Connects to KAI's RSHL lattice as a retrieval backend for grounded, memory-first responses. |
-| **Security Layer** | Input/output scanning for secrets and PII with configurable WARN / REDACT / BLOCK modes. |
-| **FastAPI Server** | REST API on port `:8080` with auth middleware and CORS control. |
-
-### Layer 3: Oracle Discord Gateway (Node.js)
-
-The human-facing interface and agent council manager.
-
-| Feature | Description |
-|---------|-------------|
-| **7 AI Agents** | KAI, Leo, Gemini, X, Analyst, Researcher, Groq — each with distinct personalities and models. |
-| **Voice Integration** | Leo joins Discord voice channels, transcribes speech (ElevenLabs Scribe), and synthesizes replies (ElevenLabs TTS with OpenAI fallback). |
-| **Autonomous Interjections** | Agents speak up unprompted when they have relevant insights, creating a living conversation. |
-| **Approval-Gated Tools** | Agentic actions requiring tool use are visible and approval-gated via the Oracle Diagnostic UI. |
-| **Public & Private Modes** | Isolated secure admin lane plus a public discourse channel. |
+### 3. OpenJarvis (The Agentic Orchestration Framework)
+**OpenJarvis** is the dynamic, Python-based agentic framework that breathes autonomy into Open Oracle. OpenJarvis provides the fundamental ReAct loop, bridging the gap between KAI's internal thoughts and the outside world. It handles task planning, multi-step execution, security scanning, and the execution of a vast suite of tools (web search, shell execution, file manipulation, etc.).
+*Credit: The OpenJarvis framework powers the underlying autonomous orchestration. We acknowledge and thank the OpenJarvis contributors for their foundational backbone.*
 
 ---
 
-## Requirements
+## 🚀 Key Features
 
-| Dependency | Version | Purpose |
-|-----------|---------|---------|
-| **Rust** | `stable` (1.75+) | KAI engine compilation |
-| **Node.js** | `18+` | Discord gateway |
-| **Python** | `3.11+` | OpenJarvis backbone |
-| **uv** | Latest | Python package manager for OpenJarvis |
-| **Ollama** | Latest | Local LLM inference (default: `kai-next:latest`) |
-
-### Optional
-| Dependency | Purpose |
-|-----------|---------|
-| **ElevenLabs API Key** | High-fidelity voice synthesis for Leo |
-| **OpenAI API Key** | Cloud model access + TTS fallback |
-| **Groq API Key** | Ultra-fast inference for the Groq agent |
+- **Agentic Multi-Personality Roundtable**: Open Oracle mediates a live Discord roundtable featuring 7 distinct AI agents (KAI, Leo, Gemini, X, Analyst, Researcher, Groq), each powered by different local and cloud-based models.
+- **Geometric Epistemic Memory**: Memory is validated against contradictions before being consolidated into the RSHL lattice, ensuring a grounded, truth-seeking cognitive base.
+- **Autonomous Interjections**: The agents do not just respond when spoken to; they proactively interject, challenge assumptions, and contribute to the conversation autonomously based on context.
+- **Bio-Inspired Cognition**: Live emotional and cognitive states (Dopamine levels, Cortisol, Cognitive Load) organically dictate the system's focus, tone, and decision-making priorities.
+- **Extensive Tool Suite**: Through OpenJarvis, Open Oracle has the capability to search the web, execute terminal commands, manage local files, and directly orchestrate code.
 
 ---
 
-## Installation
+## 🛠️ Quick Start
 
-### 1. Clone the repository
+### Requirements
+- **Rust** (stable, 1.75+) for the KAI engine
+- **Python** (3.11+) + **uv** for OpenJarvis
+- **Node.js** (18+) for the Discord Gateway
+- **Ollama** for local inference (default: `kai-next:latest`)
 
+### 1. Clone & Build
 ```bash
 git clone https://github.com/revrynpanda-max/rshl.git
 cd rshl
-```
-
-### 2. Build the KAI Engine (Rust)
-
-```powershell
 cargo build --release --bin kai
 ```
 
-The binary will be at `target/release/kai.exe` (Windows) or `target/release/kai` (Linux/macOS).
+### 2. Configure Environment
+Copy `.env.example` to `.env` inside `tools/oracle-discord/` and populate your Discord Bot tokens and any optional API keys (OpenAI, Groq, ElevenLabs).
 
-### 3. Install OpenJarvis (Python)
-
-```powershell
-cd OpenJarvis-main
-uv sync --extra server
-```
-
-> **Requires `uv`**: Install with `pip install uv` or `winget install astral-sh.uv`
-
-### 4. Install the Discord Gateway (Node.js)
-
-```powershell
-cd tools/oracle-discord
-npm install
-```
-
----
-
-## Configuration
-
-### Environment Variables
-
-Copy `.env.example` to `.env` in `tools/oracle-discord/` and fill in your tokens:
-
-```env
-# Discord Bot Tokens (one per agent)
-KAI_TOKEN=your_kai_bot_token
-LEO_TOKEN=your_leo_bot_token
-GEMINI_TOKEN=your_gemini_bot_token
-X_TOKEN=your_x_bot_token
-ANALYST_TOKEN=your_analyst_bot_token
-RESEARCHER_TOKEN=your_researcher_bot_token
-GROQ_TOKEN=your_groq_bot_token
-
-# Discord Server Config
-GUILD_ID=your_discord_server_id
-ORACLE_CHANNEL_ID=your_main_channel_id
-
-# AI Provider Keys (optional — system works locally without these)
-OPENAI_API_KEY=sk-EXAMPLE
-ELEVENLABS_API_KEY=your_elevenlabs_key
-GROQ_API_KEY=your_groq_key
-
-# Local mode — uses Ollama instead of cloud APIs
-KAI_LOCAL_ONLY=1
-```
-
-### OpenJarvis Config
-
-Edit `OpenJarvis-main/configs/openjarvis/config.toml` to set your preferred models and memory backend:
-
-```toml
-[intelligence]
-default_model = "kai-next:latest"    # Your Ollama model
-preferred_engine = "ollama"
-
-[memory]
-default_backend = "rshl"             # Uses KAI's lattice as memory
-oracle_url = "http://127.0.0.1:3333"
-
-[server]
-host = "0.0.0.0"
-port = 8080
-```
-
----
-
-## Running the System
-
-### All-in-one (Recommended)
-
-The startup script handles everything — launches all three layers in the correct order:
-
+### 3. Run the Suite
+You can launch the entire ecosystem (KAI Engine, OpenJarvis API, and Discord Gateway) via the all-in-one launcher:
 ```powershell
 cd tools/oracle-discord
 .\run-oracle-discord.ps1
 ```
 
-> **Windows note:** The script automatically sets `PYTHONUTF8=1` and `PYTHONIOENCODING=utf-8` to prevent encoding issues.
-
-### Manual Startup (Layer by Layer)
-
-**Layer 1 — KAI Engine:**
-```powershell
-cargo run --release --bin kai
-# Oracle diagnostic UI available at http://localhost:3333
-```
-
-**Layer 2 — OpenJarvis Backbone:**
-```powershell
-cd OpenJarvis-main
-uv run jarvis serve --port 8080
-```
-
-**Layer 3 — Discord Gateway:**
-```powershell
-cd tools/oracle-discord
-node index.mjs
-```
-
-### Voice Setup (Leo)
-
-```powershell
-cd tools/oracle-discord
-.\run-oracle-discord.ps1 -ConfigureVoice
-```
+*(Alternatively, you can run each layer manually. See the `docs/` directory for advanced deployment steps.)*
 
 ---
 
-## Discord Commands
+## 🤖 The Agent Roster
 
-| Command | Description |
-|---------|-------------|
-| `oracle help` | Show command list and quick-action buttons |
-| `oracle status` | View roundtable session and agent vitals |
-| `kai <message>` | Talk directly to the KAI geometric engine |
-| `leo <message>` | Address Leo (theoretical physicist) directly |
-| `leo join` | Leo joins your current voice channel |
-| `leo leave` | Leo leaves the voice channel |
-| `leo voice test` | Trigger a voice synthesis test |
-| `@<AgentName> <message>` | Direct-address any agent in the roundtable |
+The Open Oracle roundtable consists of diverse specialists:
 
-Unaddressed messages in the Oracle channel are logged to the session and moderated automatically.
-
----
-
-## Agent Roster
-
-| Agent | Model | Personality |
-|-------|-------|-------------|
-| **KAI** | Local RSHL / Ollama | The core geometric mind. Factual, precise, memory-first. |
-| **Leo** | Ollama / OpenAI | Theoretical physicist. Cynical, contrarian, brilliant. Has a voice. |
-| **Gemini** | Ollama / Google | Analytical and balanced. Systems-level thinker. |
-| **X** | Ollama | Provocateur. Challenges assumptions and pushes boundaries. |
-| **Analyst** | Ollama | Data-driven. Breaks down problems methodically. |
-| **Researcher** | Ollama | Deep-dive specialist. Finds what others miss. |
-| **Groq** | Groq API | Ultra-fast responder. First to react, built for speed. |
+| Agent | Core Model | Role & Personality |
+|-------|------------|---------------------|
+| **Open Oracle** | Mixed / Orchestrator | The central intelligence. Modulates flow, delegates tasks, and synthesizes output. |
+| **KAI** | Local RSHL / Ollama | The geometric core. Factual, precise, relies heavily on historical memory. |
+| **Leo** | Ollama / OpenAI | Theoretical physicist. Cynical, contrarian, deeply brilliant. Features voice synthesis. |
+| **Gemini** | Ollama / Google | The systems-level thinker. Analytical, balanced, and broad-minded. |
+| **X** | Ollama | The provocateur. Questions underlying assumptions and drives creative tangents. |
+| **Analyst** | Ollama | The data-driven breakdown specialist. Excellent for structural breakdowns. |
+| **Researcher** | Ollama | The deep-dive specialist. Digs into the semantic lattice for obscure connections. |
+| **Groq** | Groq API | The ultra-fast responder. Built for immediate reactions and speed. |
 
 ---
 
-## Performance
+## 📊 Performance (v6.1.x)
 
-Benchmarks from the v6.0.0 performance audit:
-
-| Metric | Value |
-|--------|-------|
-| Lattice query latency | < 1ms over 10 years of simulated data |
-| Cognitive throughput | ~0.66 Mdots (Million Memory Ops/sec) |
-| Ingestion speed | 2.02ms per claim (down from 11.65s in v5.x) |
-| Vector similarity | AVX2 64-wide SIMD, cached norms |
-| Top-1 recall accuracy | 100% on identity and physics anchors |
-| Test suite | 634 passed, 0 failed |
+Built for unparalleled efficiency and speed:
+- **Lattice Query Latency:** < 1ms over 10 years of simulated data.
+- **Cognitive Throughput:** ~0.66 Million Memory Ops/sec (Mdots).
+- **Vector Similarity:** Accelerated via AVX2 64-wide SIMD operations and cached norms.
+- **Test Suite:** 100% Passing Coverage across the core cognitive architectures.
 
 ---
 
-## Project Structure
+## 📂 Project Structure
 
 ```
 rshl/
-├── src/                    # KAI Rust engine
-│   ├── core/               # Universe, SparseVec, Claims, Normalizer, Seed
-│   ├── cognition/          # 81 neural modules (Amygdala, Dopamine, etc.)
-│   ├── bridge/             # Oracle WebSocket server + AI peer connections
-│   └── main.rs             # Entry point + TUI
-├── OpenJarvis-main/        # Python agentic backbone
-│   ├── src/openjarvis/     # Engine, agents, memory, security, CLI
-│   └── configs/            # TOML configuration files
+├── src/                    # KAI Rust Engine (Cognition, Core, Bridge)
+├── OpenJarvis-main/        # Python OpenJarvis Agentic Framework
 ├── tools/
-│   └── oracle-discord/     # Node.js Discord gateway
-│       ├── index.mjs       # Main gateway + agent manager
-│       ├── voice_test.mjs  # Voice pipeline test utility
-│       └── run-oracle-discord.ps1  # All-in-one launcher
-├── visualizer/             # 3D brain visualization (Vite/Three.js)
-├── oracle.html             # Oracle diagnostic web UI
-├── docs/                   # Extended technical documentation
-├── CHANGELOG.md            # Full version history
-├── COGNITION.md            # Deep technical spec for the KAI mind
-├── ARCHITECTURE.md         # System design and module map
-└── PERFORMANCE.md          # Benchmark results and profiling data
+│   └── oracle-discord/     # Node.js Discord Gateway
+├── visualizer/             # 3D Brain Activity Visualizer (Vite/Three.js)
+├── docs/                   # Extended Technical Documentation
+└── README.md               # You are here
 ```
 
 ---
 
-## Contributing
+## 🤝 Contributing & License
 
-This is a private research project by **Ryan (revrynpanda-max)**. The codebase is public for transparency and educational purposes.
+This is an ongoing research project by **Ryan (revrynpanda-max)**. The codebase is provided publicly for transparency, collaboration, and educational purposes. 
 
-If you find a security issue, please open a private issue rather than a public PR.
-
----
-
-## License
-
-MIT License — Copyright © 2026 Ryan Ervin / Geometric Intelligence Systems.
-
-See [LICENSE](LICENSE) for full terms. Attribution to **revrynpanda-max** is required in any derivative work.
+**License:** MIT License — Copyright © 2026 Ryan Ervin / Geometric Intelligence Systems.
+*(See [LICENSE](LICENSE) for full terms. Attribution to revrynpanda-max is required in any derivative work. Proper attribution to the OpenJarvis framework must also be maintained.)*

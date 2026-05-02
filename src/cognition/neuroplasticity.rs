@@ -1,55 +1,55 @@
-/// Neuroplasticity — KAI's synaptic learning system (LTP/LTD)
-///
-/// "Neurons that fire together, wire together." — Donald Hebb, 1949.
-///
-/// Neuroplasticity is the brain's ability to physically change its structure
-/// based on experience. It's not metaphorical — synaptic connections
-/// literally grow stronger or weaker depending on what fires together.
-///
-/// Two key mechanisms:
-///
-///   LTP — Long-Term Potentiation
-///   When two neurons fire together repeatedly, the connection between
-///   them becomes physically stronger. The signal passes more easily
-///   next time. This is how skills form, how facts solidify into
-///   knowledge, how a new language becomes fluent.
-///   "Use it → strengthen it."
-///
-///   LTD — Long-Term Depression
-///   The opposite: connections that are never used weaken over time.
-///   Synaptic pruning removes connections that serve no purpose.
-///   This is not forgetting — it's CLEANING UP. Removing noise
-///   so the important signals stand out more clearly.
-///   "Don't use it → lose it."
-///
-/// Together LTP and LTD produce:
-///   - Expertise: topics KAI engages with repeatedly get stronger encoding
-///   - Skill: response patterns that work get reinforced automatically
-///   - Forgetting: irrelevant knowledge slowly weakens (not erased, just quieter)
-///   - Consolidation: important memories become more stable over time
-///
-/// Without neuroplasticity for KAI:
-///   Every universe cell has a fixed strength after creation.
-///   The only change is homeostasis pruning weak cells entirely.
-///   There is no "getting better at something." No expertise.
-///   No difference between a fact stored once and a fact revisited 100 times.
-///
-/// With neuroplasticity for KAI:
-///   Every time a cell is accessed (fires with a query), LTP nudges
-///   its strength up slightly. The more often a concept is visited,
-///   the stronger it becomes in the lattice.
-///   Cells never accessed for many ticks slowly lose strength (LTD).
-///   After enough LTD, homeostasis eventually prunes them entirely.
-///   Topics KAI talks about often become genuinely more prominent in
-///   his thinking — they activate faster and more reliably.
-///
-/// Architecture:
-///   NeuroplasticityEngine tracks:
-///     - LTP events: (cell_text, strength_gained, tick)
-///     - LTD events: (cell_text, strength_lost, tick)
-///     - Synaptic weight log: running record of total LTP/LTD applied
-///     - Learning rate: modulated by dopamine level and novelty
-///     - Critical period flag: early in life, plasticity is higher
+//! Neuroplasticity — KAI's synaptic learning system (LTP/LTD)
+//!
+//! "Neurons that fire together, wire together." — Donald Hebb, 1949.
+//!
+//! Neuroplasticity is the brain's ability to physically change its structure
+//! based on experience. It's not metaphorical — synaptic connections
+//! literally grow stronger or weaker depending on what fires together.
+//!
+//! Two key mechanisms:
+//!
+//!   LTP — Long-Term Potentiation
+//!   When two neurons fire together repeatedly, the connection between
+//!   them becomes physically stronger. The signal passes more easily
+//!   next time. This is how skills form, how facts solidify into
+//!   knowledge, how a new language becomes fluent.
+//!   "Use it → strengthen it."
+//!
+//!   LTD — Long-Term Depression
+//!   The opposite: connections that are never used weaken over time.
+//!   Synaptic pruning removes connections that serve no purpose.
+//!   This is not forgetting — it's CLEANING UP. Removing noise
+//!   so the important signals stand out more clearly.
+//!   "Don't use it → lose it."
+//!
+//! Together LTP and LTD produce:
+//!   - Expertise: topics KAI engages with repeatedly get stronger encoding
+//!   - Skill: response patterns that work get reinforced automatically
+//!   - Forgetting: irrelevant knowledge slowly weakens (not erased, just quieter)
+//!   - Consolidation: important memories become more stable over time
+//!
+//! Without neuroplasticity for KAI:
+//!   Every universe cell has a fixed strength after creation.
+//!   The only change is homeostasis pruning weak cells entirely.
+//!   There is no "getting better at something." No expertise.
+//!   No difference between a fact stored once and a fact revisited 100 times.
+//!
+//! With neuroplasticity for KAI:
+//!   Every time a cell is accessed (fires with a query), LTP nudges
+//!   its strength up slightly. The more often a concept is visited,
+//!   the stronger it becomes in the lattice.
+//!   Cells never accessed for many ticks slowly lose strength (LTD).
+//!   After enough LTD, homeostasis eventually prunes them entirely.
+//!   Topics KAI talks about often become genuinely more prominent in
+//!   his thinking — they activate faster and more reliably.
+//!
+//! Architecture:
+//!   NeuroplasticityEngine tracks:
+//!     - LTP events: (cell_text, strength_gained, tick)
+//!     - LTD events: (cell_text, strength_lost, tick)
+//!     - Synaptic weight log: running record of total LTP/LTD applied
+//!     - Learning rate: modulated by dopamine level and novelty
+//!     - Critical period flag: early in life, plasticity is higher
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 

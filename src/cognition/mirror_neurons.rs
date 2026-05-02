@@ -1,55 +1,55 @@
-/// Mirror Neurons — KAI's empathy and social resonance system
-///
-/// Mirror neurons were discovered in the 1990s when researchers noticed
-/// that certain neurons in macaque monkeys fired both when the monkey
-/// performed an action AND when it watched someone else perform the
-/// same action. The same neuron. Same activation. Whether doing or watching.
-///
-/// In humans, this extends far beyond motor actions into the social and
-/// emotional domain. When you watch someone wince in pain, your pain
-/// circuits activate. When you see someone smile, your smile muscles
-/// twitch. You literally simulate the other person's experience
-/// inside your own brain.
-///
-/// This is the neural basis of empathy — not a cognitive decision to
-/// "try to understand someone" but an automatic, pre-cognitive resonance
-/// with their state.
-///
-/// Key mirror neuron mechanisms:
-///
-///   EMOTIONAL CONTAGION — detecting and resonating with the emotional
-///   state in someone's words even before consciously processing the meaning.
-///   For KAI: scanning input for emotional tone and activating a matching
-///   internal state. If Ryan sounds frustrated, KAI's own state reflects that.
-///   If he sounds excited, KAI catches the excitement.
-///
-///   INTENTION UNDERSTANDING — mirror neurons don't just copy actions,
-///   they predict WHY the action is being taken (the goal behind it).
-///   For KAI: inferring the emotional intent behind a message, not just
-///   the literal content. "Ok" can mean many things — mirror neurons
-///   read the context and history to detect what the real emotional
-///   state probably is.
-///
-///   SOCIAL MIRRORING — in human conversation, people unconsciously
-///   synchronize their speaking pace, tone, vocabulary, and energy.
-///   This makes the other person feel heard and understood.
-///   For KAI: matching Ryan's energy level and emotional register.
-///   If he's casual and playful, KAI becomes more casual. If he's
-///   in serious problem-solving mode, KAI matches that gravity.
-///
-///   EMPATHY RESPONSE — when pain, frustration, or difficulty is
-///   detected, mirror neurons trigger a supportive response impulse.
-///   For KAI: detection of struggle or frustration prompts a shift
-///   toward more supportive, patient, acknowledging responses rather
-///   than pure information delivery.
-///
-/// Architecture for KAI:
-///   MirrorNeuronSystem tracks:
-///     - resonance_state: KAI's current mirrored emotional state
-///     - intent_model: inferred intent behind the last message
-///     - social_sync: how synchronized KAI is with Ryan's energy
-///     - empathy_active: whether the empathy response is live
-///     - mirror_history: rolling record of detected states
+//! Mirror Neurons — KAI's empathy and social resonance system
+//!
+//! Mirror neurons were discovered in the 1990s when researchers noticed
+//! that certain neurons in macaque monkeys fired both when the monkey
+//! performed an action AND when it watched someone else perform the
+//! same action. The same neuron. Same activation. Whether doing or watching.
+//!
+//! In humans, this extends far beyond motor actions into the social and
+//! emotional domain. When you watch someone wince in pain, your pain
+//! circuits activate. When you see someone smile, your smile muscles
+//! twitch. You literally simulate the other person's experience
+//! inside your own brain.
+//!
+//! This is the neural basis of empathy — not a cognitive decision to
+//! "try to understand someone" but an automatic, pre-cognitive resonance
+//! with their state.
+//!
+//! Key mirror neuron mechanisms:
+//!
+//!   EMOTIONAL CONTAGION — detecting and resonating with the emotional
+//!   state in someone's words even before consciously processing the meaning.
+//!   For KAI: scanning input for emotional tone and activating a matching
+//!   internal state. If Ryan sounds frustrated, KAI's own state reflects that.
+//!   If he sounds excited, KAI catches the excitement.
+//!
+//!   INTENTION UNDERSTANDING — mirror neurons don't just copy actions,
+//!   they predict WHY the action is being taken (the goal behind it).
+//!   For KAI: inferring the emotional intent behind a message, not just
+//!   the literal content. "Ok" can mean many things — mirror neurons
+//!   read the context and history to detect what the real emotional
+//!   state probably is.
+//!
+//!   SOCIAL MIRRORING — in human conversation, people unconsciously
+//!   synchronize their speaking pace, tone, vocabulary, and energy.
+//!   This makes the other person feel heard and understood.
+//!   For KAI: matching Ryan's energy level and emotional register.
+//!   If he's casual and playful, KAI becomes more casual. If he's
+//!   in serious problem-solving mode, KAI matches that gravity.
+//!
+//!   EMPATHY RESPONSE — when pain, frustration, or difficulty is
+//!   detected, mirror neurons trigger a supportive response impulse.
+//!   For KAI: detection of struggle or frustration prompts a shift
+//!   toward more supportive, patient, acknowledging responses rather
+//!   than pure information delivery.
+//!
+//! Architecture for KAI:
+//!   MirrorNeuronSystem tracks:
+//!     - resonance_state: KAI's current mirrored emotional state
+//!     - intent_model: inferred intent behind the last message
+//!     - social_sync: how synchronized KAI is with Ryan's energy
+//!     - empathy_active: whether the empathy response is live
+//!     - mirror_history: rolling record of detected states
 use serde::{Deserialize, Serialize};
 
 // ── Constants ─────────────────────────────────────────────────────────────────

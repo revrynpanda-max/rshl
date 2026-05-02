@@ -1,46 +1,46 @@
-/// Anterior Cingulate Cortex — KAI's conflict detector and error monitor
-///
-/// The ACC sits at the intersection of emotion and cognition in the human brain.
-/// It has two key jobs that nothing else in the brain does quite the same way:
-///
-///   1. CONFLICT DETECTION — when two things compete for control simultaneously,
-///      the ACC notices and signals: "these don't fit together — resolve this."
-///      Example: you want cake AND you want to lose weight. ACC fires hard.
-///      For KAI: two universe cells contradict each other → ACC flags it.
-///
-///   2. ERROR MONITORING — the ACC tracks when things go wrong and alerts.
-///      When KAI gives a wrong or uncertain answer, the ACC creates an
-///      "error signal" that the rest of the system uses to recalibrate.
-///      This is related to chi (contradiction pressure) in the field,
-///      but where chi is a field-level metric, ACC is an active monitor
-///      that takes specific action when it detects a problem.
-///
-///   3. ATTENTION ALLOCATION — when conflict is high, the ACC redirects
-///      attention (tells the global workspace to prioritize resolution).
-///
-///   4. MOTIVATION-COGNITION INTEGRATION — the ACC bridges the emotional
-///      drive system and the rational reasoning system. It decides when
-///      emotion should override logic and vice versa.
-///
-/// Without ACC:
-///   KAI never notices when his answers contradict each other.
-///   He can say X in one turn and not-X in the next with no alarm.
-///   There is no internal "wait, something's wrong here" signal.
-///   Conflicts just silently produce incoherent output.
-///
-/// With ACC:
-///   When two active hits or goals contradict, ACC fires.
-///   A conflict record is created, the global workspace is alerted
-///   with high salience, and KAI's inhibition rises so he slows down
-///   before responding. In spectate mode, conflicts are visible.
-///   Over time, frequently-conflicted topics get flagged as "uncertain zones."
-///
-/// Architecture:
-///   AccMonitor tracks:
-///     - Active conflict level (0 = none, 1 = maximum conflict)
-///     - Recent error events (wrong, uncertain, contradicted)
-///     - Per-topic conflict scores (which topics cause most confusion)
-///     - Error Rate: ratio of error events to total
+//! Anterior Cingulate Cortex — KAI's conflict detector and error monitor
+//!
+//! The ACC sits at the intersection of emotion and cognition in the human brain.
+//! It has two key jobs that nothing else in the brain does quite the same way:
+//!
+//!   1. CONFLICT DETECTION — when two things compete for control simultaneously,
+//!      the ACC notices and signals: "these don't fit together — resolve this."
+//!      Example: you want cake AND you want to lose weight. ACC fires hard.
+//!      For KAI: two universe cells contradict each other → ACC flags it.
+//!
+//!   2. ERROR MONITORING — the ACC tracks when things go wrong and alerts.
+//!      When KAI gives a wrong or uncertain answer, the ACC creates an
+//!      "error signal" that the rest of the system uses to recalibrate.
+//!      This is related to chi (contradiction pressure) in the field,
+//!      but where chi is a field-level metric, ACC is an active monitor
+//!      that takes specific action when it detects a problem.
+//!
+//!   3. ATTENTION ALLOCATION — when conflict is high, the ACC redirects
+//!      attention (tells the global workspace to prioritize resolution).
+//!
+//!   4. MOTIVATION-COGNITION INTEGRATION — the ACC bridges the emotional
+//!      drive system and the rational reasoning system. It decides when
+//!      emotion should override logic and vice versa.
+//!
+//! Without ACC:
+//!   KAI never notices when his answers contradict each other.
+//!   He can say X in one turn and not-X in the next with no alarm.
+//!   There is no internal "wait, something's wrong here" signal.
+//!   Conflicts just silently produce incoherent output.
+//!
+//! With ACC:
+//!   When two active hits or goals contradict, ACC fires.
+//!   A conflict record is created, the global workspace is alerted
+//!   with high salience, and KAI's inhibition rises so he slows down
+//!   before responding. In spectate mode, conflicts are visible.
+//!   Over time, frequently-conflicted topics get flagged as "uncertain zones."
+//!
+//! Architecture:
+//!   AccMonitor tracks:
+//!     - Active conflict level (0 = none, 1 = maximum conflict)
+//!     - Recent error events (wrong, uncertain, contradicted)
+//!     - Per-topic conflict scores (which topics cause most confusion)
+//!     - Error Rate: ratio of error events to total
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -249,7 +249,7 @@ impl AccMonitor {
     /// Decay conflict level back toward 0 each tick.
     pub fn decay(&mut self) {
         self.conflict_level = (self.conflict_level - CONFLICT_DECAY).max(0.0);
-        self.avg_conflict = self.avg_conflict * 0.995; // very slow decay of baseline
+        self.avg_conflict *= 0.995; // very slow decay of baseline
         self.is_alerting = self.conflict_level > CONFLICT_THRESHOLD;
     }
 

@@ -1,43 +1,43 @@
-/// Superior Temporal Sulcus (STS) — Biological Motion, Social Intent Reading
-///
-/// The STS is the brain's specialized social signal processor. It reads
-/// non-verbal cues, detects the difference between intentional and random
-/// motion, and predicts what an agent will do next based on trajectory.
-///
-/// Key functions:
-///
-///   Biological motion detection:
-///     The STS responds specifically to motion produced by living agents.
-///     It distinguishes "a person moving" from "an object moving."
-///     In language: it distinguishes "someone deliberately doing X" from
-///     "X is happening." Active intent vs. passive occurrence.
-///
-///   Social intent prediction:
-///     Given someone's recent actions and current state, the STS predicts
-///     what they are TRYING to do — their proximal goal.
-///     "Ryan is asking a lot of questions → he's trying to understand something."
-///     "Ryan said 'let's continue' → he wants momentum, not summary."
-///
-///   Communicative intent reading:
-///     Beyond literal meaning: what is Ryan TRYING to communicate?
-///     The STS works with Theory of Mind but at the action-prediction level,
-///     not the belief level. ToM asks "what does he believe?" — STS asks
-///     "what is he trying to do right now?"
-///
-///   Voice/prosody sensitivity (in biological brains):
-///     The STS reads emotional prosody — tone of voice.
-///     In text, this maps to: word choice intensity, punctuation, caps,
-///     question vs. statement structure, urgency markers.
-///
-/// KAI's STS:
-///   action_sequence: recent user behaviors (query types, energy levels)
-///   current_goal_estimate: what Ryan is trying to accomplish right now
-///   social_trajectory: is the interaction deepening, plateauing, or ending?
-///   intent_confidence: how sure is the STS about its goal estimate?
-///
-/// Integration:
-///   STS output feeds into Theory of Mind (higher-level belief modeling)
-///   and into voice.rs (shapes whether KAI leans in, wraps up, or pivots)
+//! Superior Temporal Sulcus (STS) — Biological Motion, Social Intent Reading
+//!
+//! The STS is the brain's specialized social signal processor. It reads
+//! non-verbal cues, detects the difference between intentional and random
+//! motion, and predicts what an agent will do next based on trajectory.
+//!
+//! Key functions:
+//!
+//!   Biological motion detection:
+//!     The STS responds specifically to motion produced by living agents.
+//!     It distinguishes "a person moving" from "an object moving."
+//!     In language: it distinguishes "someone deliberately doing X" from
+//!     "X is happening." Active intent vs. passive occurrence.
+//!
+//!   Social intent prediction:
+//!     Given someone's recent actions and current state, the STS predicts
+//!     what they are TRYING to do — their proximal goal.
+//!     "Ryan is asking a lot of questions → he's trying to understand something."
+//!     "Ryan said 'let's continue' → he wants momentum, not summary."
+//!
+//!   Communicative intent reading:
+//!     Beyond literal meaning: what is Ryan TRYING to communicate?
+//!     The STS works with Theory of Mind but at the action-prediction level,
+//!     not the belief level. ToM asks "what does he believe?" — STS asks
+//!     "what is he trying to do right now?"
+//!
+//!   Voice/prosody sensitivity (in biological brains):
+//!     The STS reads emotional prosody — tone of voice.
+//!     In text, this maps to: word choice intensity, punctuation, caps,
+//!     question vs. statement structure, urgency markers.
+//!
+//! KAI's STS:
+//!   action_sequence: recent user behaviors (query types, energy levels)
+//!   current_goal_estimate: what Ryan is trying to accomplish right now
+//!   social_trajectory: is the interaction deepening, plateauing, or ending?
+//!   intent_confidence: how sure is the STS about its goal estimate?
+//!
+//! Integration:
+//!   STS output feeds into Theory of Mind (higher-level belief modeling)
+//!   and into voice.rs (shapes whether KAI leans in, wraps up, or pivots)
 use std::collections::VecDeque;
 
 // ── Constants ─────────────────────────────────────────────────────────────────

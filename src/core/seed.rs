@@ -1,10 +1,10 @@
-/// Seed — Identity bootstrap ONLY.
-///
-/// KAI should learn facts through intake (world bridge), dreaming,
-/// and conversation — NOT from hardcoded seeds. The only seeds
-/// are identity: who KAI is, how he thinks, what he is.
-///
-/// All factual knowledge comes from the world bridge.
+//! Seed — Identity bootstrap ONLY.
+//!
+//! KAI should learn facts through intake (world bridge), dreaming,
+//! and conversation — NOT from hardcoded seeds. The only seeds
+//! are identity: who KAI is, how he thinks, what he is.
+//!
+//! All factual knowledge comes from the world bridge.
 use crate::core::Universe;
 
 /// Seed the universe with identity-only knowledge.

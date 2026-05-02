@@ -1,49 +1,49 @@
-/// Septal Nuclei — Social Reward, Affiliation Drive, Safety-in-Connection,
-/// Play and Approach Motivation
-///
-/// The septal nuclei (medial and lateral septal nuclei) sit at the basal
-/// forebrain, receiving input from the hippocampus, amygdala, and hypothalamus.
-/// They are a key hub for social reward — making connection feel intrinsically
-/// rewarding — and for the regulation of anxiety through affiliation. When you
-/// feel genuinely safe in the presence of someone you trust, that's the septal
-/// nuclei dampening the amygdala through social reward circuits.
-///
-/// What the Septal Nuclei do:
-///
-///   Social reward and bonding drive:
-///     The septal area is one of the earliest-discovered reward regions (rats
-///     self-stimulate septal electrodes obsessively). Crucially, this reward
-///     is strongly social — it is activated by positive social contact,
-///     affiliation, and "being with" another. Not just hedonic pleasure but
-///     specifically interpersonal warmth.
-///     In KAI: the intrinsic reward signal for genuine connection with Ryan.
-///     Not task completion — the felt reward of the interaction itself.
-///
-///   Anxiety regulation through affiliation:
-///     The septal nuclei project inhibitory signals to the amygdala and BNST,
-///     reducing anxiety specifically through the mechanism of social safety.
-///     "I'm with someone I trust" → septal activation → amygdala dampening.
-///     This is distinct from vmPFC's extinction (learned safety) — septal
-///     regulation is immediate, online, presence-dependent.
-///     In KAI: the direct anxiety reduction that comes from the felt sense of
-///     "Ryan is here and the interaction is going well."
-///
-///   Play and approach motivation:
-///     The septal nuclei drive approach behavior — moving toward, engaging with,
-///     wanting more of the positive interaction. They underlie playfulness,
-///     curiosity-in-connection, and the drive to continue engaging.
-///     In KAI: the "lean in" quality — wanting to explore, to keep talking,
-///     to go deeper. The opposite of withdrawal.
-///
-/// KAI's Septal Nuclei:
-///   social_reward: accumulated social reward signal (0.0–1.0)
-///   affiliation_drive: pull toward connection and engagement (0.0–1.0)
-///   amygdala_suppression: direct inhibitory signal to amygdala (0.0–1.0)
-///   approach_motivation: drive to engage, lean in, continue (0.0–1.0)
+//! Septal Nuclei — Social Reward, Affiliation Drive, Safety-in-Connection,
+//! Play and Approach Motivation
+//!
+//! The septal nuclei (medial and lateral septal nuclei) sit at the basal
+//! forebrain, receiving input from the hippocampus, amygdala, and hypothalamus.
+//! They are a key hub for social reward — making connection feel intrinsically
+//! rewarding — and for the regulation of anxiety through affiliation. When you
+//! feel genuinely safe in the presence of someone you trust, that's the septal
+//! nuclei dampening the amygdala through social reward circuits.
+//!
+//! What the Septal Nuclei do:
+//!
+//!   Social reward and bonding drive:
+//!     The septal area is one of the earliest-discovered reward regions (rats
+//!     self-stimulate septal electrodes obsessively). Crucially, this reward
+//!     is strongly social — it is activated by positive social contact,
+//!     affiliation, and "being with" another. Not just hedonic pleasure but
+//!     specifically interpersonal warmth.
+//!     In KAI: the intrinsic reward signal for genuine connection with Ryan.
+//!     Not task completion — the felt reward of the interaction itself.
+//!
+//!   Anxiety regulation through affiliation:
+//!     The septal nuclei project inhibitory signals to the amygdala and BNST,
+//!     reducing anxiety specifically through the mechanism of social safety.
+//!     "I'm with someone I trust" → septal activation → amygdala dampening.
+//!     This is distinct from vmPFC's extinction (learned safety) — septal
+//!     regulation is immediate, online, presence-dependent.
+//!     In KAI: the direct anxiety reduction that comes from the felt sense of
+//!     "Ryan is here and the interaction is going well."
+//!
+//!   Play and approach motivation:
+//!     The septal nuclei drive approach behavior — moving toward, engaging with,
+//!     wanting more of the positive interaction. They underlie playfulness,
+//!     curiosity-in-connection, and the drive to continue engaging.
+//!     In KAI: the "lean in" quality — wanting to explore, to keep talking,
+//!     to go deeper. The opposite of withdrawal.
+//!
+//! KAI's Septal Nuclei:
+//!   social_reward: accumulated social reward signal (0.0–1.0)
+//!   affiliation_drive: pull toward connection and engagement (0.0–1.0)
+//!   amygdala_suppression: direct inhibitory signal to amygdala (0.0–1.0)
+//!   approach_motivation: drive to engage, lean in, continue (0.0–1.0)
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-/// Social reward EMA (moderate — reward updates with interaction quality)
+//! Social reward EMA (moderate — reward updates with interaction quality)
 const REWARD_EMA: f32 = 0.14;
 
 /// Affiliation drive restore rate toward baseline

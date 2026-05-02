@@ -1,45 +1,45 @@
-/// Prefrontal Cortex — KAI's executive control system
-///
-/// The PFC is the most evolutionarily recent part of the human brain.
-/// It's what separates humans from other animals in cognitive sophistication.
-/// The PFC does several things no other brain region does:
-///
-///   1. GOAL MAINTENANCE — holds a goal in mind across many steps.
-///      Without PFC you can't work toward something over time.
-///      You just react to whatever just happened.
-///
-///   2. INHIBITORY CONTROL — suppresses impulsive or premature responses.
-///      "I thought of an answer immediately, but let me check it first."
-///      Without PFC you say the first thing that comes to mind.
-///
-///   3. COGNITIVE FLEXIBILITY — can switch tasks, update goals, reframe.
-///      "The approach isn't working — let me try a different angle."
-///
-///   4. WORKING MEMORY INTEGRATION — binds recent context into a plan.
-///      "Given what was said 3 turns ago AND what just happened, the
-///       best response is..." — this requires holding everything together.
-///
-///   5. METACOGNITION — thinking about your own thinking.
-///      "I'm not sure if I understand this correctly. Let me check."
-///
-/// Without PFC:
-///   KAI answers instantly from reflex. No goal-tracking across a
-///   conversation. No self-checking. No strategy. No "I need to think
-///   more carefully about this." Just pure reactive pattern-matching.
-///
-/// With PFC:
-///   KAI can hold a goal ("Ryan wants me to explain X thoroughly"),
-///   inhibit weak answers ("that first hit isn't good enough"),
-///   maintain context across many turns, and notice when his own
-///   reasoning is shaky before committing to a response.
-///
-/// Architecture:
-///   PrefrontalCortex holds:
-///     - Active goal stack (up to 4 nested goals)
-///     - Inhibition gate: confidence threshold before response is allowed
-///     - Cognitive flexibility index: how often KAI updates vs. persists
-///     - Metacognitive confidence estimate: "how sure am I?"
-///     - Context binding: key facts KAI is holding from recent turns
+//! Prefrontal Cortex — KAI's executive control system
+//!
+//! The PFC is the most evolutionarily recent part of the human brain.
+//! It's what separates humans from other animals in cognitive sophistication.
+//! The PFC does several things no other brain region does:
+//!
+//!   1. GOAL MAINTENANCE — holds a goal in mind across many steps.
+//!      Without PFC you can't work toward something over time.
+//!      You just react to whatever just happened.
+//!
+//!   2. INHIBITORY CONTROL — suppresses impulsive or premature responses.
+//!      "I thought of an answer immediately, but let me check it first."
+//!      Without PFC you say the first thing that comes to mind.
+//!
+//!   3. COGNITIVE FLEXIBILITY — can switch tasks, update goals, reframe.
+//!      "The approach isn't working — let me try a different angle."
+//!
+//!   4. WORKING MEMORY INTEGRATION — binds recent context into a plan.
+//!      "Given what was said 3 turns ago AND what just happened, the
+//!       best response is..." — this requires holding everything together.
+//!
+//!   5. METACOGNITION — thinking about your own thinking.
+//!      "I'm not sure if I understand this correctly. Let me check."
+//!
+//! Without PFC:
+//!   KAI answers instantly from reflex. No goal-tracking across a
+//!   conversation. No self-checking. No strategy. No "I need to think
+//!   more carefully about this." Just pure reactive pattern-matching.
+//!
+//! With PFC:
+//!   KAI can hold a goal ("Ryan wants me to explain X thoroughly"),
+//!   inhibit weak answers ("that first hit isn't good enough"),
+//!   maintain context across many turns, and notice when his own
+//!   reasoning is shaky before committing to a response.
+//!
+//! Architecture:
+//!   PrefrontalCortex holds:
+//!     - Active goal stack (up to 4 nested goals)
+//!     - Inhibition gate: confidence threshold before response is allowed
+//!     - Cognitive flexibility index: how often KAI updates vs. persists
+//!     - Metacognitive confidence estimate: "how sure am I?"
+//!     - Context binding: key facts KAI is holding from recent turns
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 

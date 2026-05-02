@@ -1,21 +1,21 @@
-/// Predictive RSHL — sequence-aware retrieval built on pure sparse ternary VSA.
-///
-/// Maps to the 2025 research on VSA-transformer equivalence
-/// (Dhayalkar 2025, arXiv:2512.14709 — "Attention as Binding"):
-///   - queries/keys = role-space projections via `permute(seed)`
-///   - attention weights = soft unbinding via cosine
-///   - superposition = `bundle`
-///   - iterative layers = repeated refinement passes in `predictive_query`
-///   - next-state binding = `Cell.continuation` accumulation
-///
-/// Final score for each cell:
-///     0.20 * similarity(refined_state, cell.vec)
-///   + 0.55 * predictive_match(trace, cell.continuation)
-///   + 0.15 * multi_head_consensus(refined_state, cell.vec)
-///   - 0.20 * recency_penalty(cell.last_fired)
-/// Continuation binding dominates raw similarity so retrieval prefers
-/// cells that actually fit the conversation flow, not cells that merely
-/// look like the input.
+//! Predictive RSHL — sequence-aware retrieval built on pure sparse ternary VSA.
+//!
+//! Maps to the 2025 research on VSA-transformer equivalence
+//! (Dhayalkar 2025, arXiv:2512.14709 — "Attention as Binding"):
+//!   - queries/keys = role-space projections via `permute(seed)`
+//!   - attention weights = soft unbinding via cosine
+//!   - superposition = `bundle`
+//!   - iterative layers = repeated refinement passes in `predictive_query`
+//!   - next-state binding = `Cell.continuation` accumulation
+//!
+//! Final score for each cell:
+//!     0.20 * similarity(refined_state, cell.vec)
+//!   + 0.55 * predictive_match(trace, cell.continuation)
+//!   + 0.15 * multi_head_consensus(refined_state, cell.vec)
+//!   - 0.20 * recency_penalty(cell.last_fired)
+//! Continuation binding dominates raw similarity so retrieval prefers
+//! cells that actually fit the conversation flow, not cells that merely
+//! look like the input.
 use super::SparseVec;
 
 /// Number of parallel permutation "heads" used by multi-head consensus.

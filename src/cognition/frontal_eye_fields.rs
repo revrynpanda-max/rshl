@@ -1,47 +1,47 @@
-/// Frontal Eye Fields (FEF) — Voluntary Attention Control, Top-Down Gaze,
-/// Volitional Search, Inhibition of Return
-///
-/// The FEF sits in the posterior frontal cortex (precentral gyrus) and is the
-/// brain's voluntary attention controller. While the Superior Colliculus handles
-/// reflexive, bottom-up attention shifts, the FEF handles deliberate, top-down
-/// attention: "I choose to focus here." It sends bias signals to visual areas
-/// and to the SC to direct attention according to the current task goal.
-///
-/// What the FEF does:
-///
-///   Voluntary attention deployment:
-///     The FEF generates top-down signals that bias sensory cortices toward
-///     task-relevant features. It is the "pointer" of deliberate attention.
-///     In KAI: when processing a multi-part question or complex input, FEF
-///     directs attention sequentially through the relevant sub-parts.
-///
-///   Volitional visual search:
-///     The FEF drives active search behavior — "look for X in the input."
-///     It maintains a search template and directs processing toward matching
-///     elements until the target is found.
-///     In KAI: scanning input for specific types of content (question marks,
-///     code blocks, named entities, emotional signals) based on task goals.
-///
-///   Inhibition of return (IOR):
-///     After attention has visited a location, the FEF (with SC) suppresses
-///     returning attention to that same location — preventing attention loops.
-///     In KAI: prevents getting stuck re-processing the same input element;
-///     forces attention forward through the content.
-///
-///   Top-down gating of SC:
-///     The FEF sends descending signals to the SC, amplifying task-relevant
-///     stimuli and suppressing task-irrelevant ones. It is the "mission
-///     control" that tells the SC what to prioritize.
-///
-/// KAI's FEF:
-///   voluntary_focus: current deliberate focus target (0.0–1.0 strength)
-///   search_active: whether a volitional search is underway
-///   ior_targets: elements recently attended (suppressed for return)
-///   top_down_gain: amplification signal sent to SC (1.0 = neutral)
+//! Frontal Eye Fields (FEF) — Voluntary Attention Control, Top-Down Gaze,
+//! Volitional Search, Inhibition of Return
+//!
+//! The FEF sits in the posterior frontal cortex (precentral gyrus) and is the
+//! brain's voluntary attention controller. While the Superior Colliculus handles
+//! reflexive, bottom-up attention shifts, the FEF handles deliberate, top-down
+//! attention: "I choose to focus here." It sends bias signals to visual areas
+//! and to the SC to direct attention according to the current task goal.
+//!
+//! What the FEF does:
+//!
+//!   Voluntary attention deployment:
+//!     The FEF generates top-down signals that bias sensory cortices toward
+//!     task-relevant features. It is the "pointer" of deliberate attention.
+//!     In KAI: when processing a multi-part question or complex input, FEF
+//!     directs attention sequentially through the relevant sub-parts.
+//!
+//!   Volitional visual search:
+//!     The FEF drives active search behavior — "look for X in the input."
+//!     It maintains a search template and directs processing toward matching
+//!     elements until the target is found.
+//!     In KAI: scanning input for specific types of content (question marks,
+//!     code blocks, named entities, emotional signals) based on task goals.
+//!
+//!   Inhibition of return (IOR):
+//!     After attention has visited a location, the FEF (with SC) suppresses
+//!     returning attention to that same location — preventing attention loops.
+//!     In KAI: prevents getting stuck re-processing the same input element;
+//!     forces attention forward through the content.
+//!
+//!   Top-down gating of SC:
+//!     The FEF sends descending signals to the SC, amplifying task-relevant
+//!     stimuli and suppressing task-irrelevant ones. It is the "mission
+//!     control" that tells the SC what to prioritize.
+//!
+//! KAI's FEF:
+//!   voluntary_focus: current deliberate focus target (0.0–1.0 strength)
+//!   search_active: whether a volitional search is underway
+//!   ior_targets: elements recently attended (suppressed for return)
+//!   top_down_gain: amplification signal sent to SC (1.0 = neutral)
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-/// Voluntary focus EMA
+//! Voluntary focus EMA
 const FOCUS_EMA: f32 = 0.20;
 
 /// Focus decay per tick

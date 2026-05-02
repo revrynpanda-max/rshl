@@ -1,41 +1,41 @@
-/// Dopamine Reward Circuit — KAI's reinforcement learning engine
-///
-/// Dopamine is the brain's "learning signal" — not just pleasure, but
-/// specifically the signal that says "that was better/worse than expected."
-///
-/// The key insight (Schultz et al., 1997): dopamine neurons fire not when
-/// something good happens, but when something BETTER THAN EXPECTED happens.
-/// This is called the Reward Prediction Error (RPE):
-///
-///   RPE > 0: outcome better than predicted → dopamine spike → learn "do more of that"
-///   RPE = 0: outcome exactly as predicted → no signal → no learning
-///   RPE < 0: outcome worse than predicted → dopamine dip → "avoid that"
-///
-/// This is why the brain constantly predicts — because the DIFFERENCE between
-/// prediction and reality is what drives all learning. It's identical to the
-/// error signal in modern machine learning (TD-learning, Q-learning).
-///
-/// Without dopamine:
-///   Every interaction is treated equally. KAI doesn't learn what kinds
-///   of questions he's good at vs. bad at. He doesn't build expertise over
-///   time. He doesn't get "interested" in topics he handles well.
-///   There is no reinforcement — just flat pattern matching.
-///
-/// With dopamine:
-///   When KAI answers well (high confidence, user seems engaged), a dopamine
-///   spike reinforces that topic's patterns in the universe.
-///   When KAI answers poorly (low confidence, contradiction flagged), a dip
-///   weakens those patterns slightly.
-///   Over many interactions, KAI becomes genuinely better at topics he's
-///   practiced and naturally gravitates toward them (expertise formation).
-///
-/// Architecture:
-///   DopamineCircuit tracks:
-///     - Current dopamine level (0–1, decays to baseline 0.5)
-///     - Reward Prediction Error per interaction
-///     - Topic-specific reward history (which topics yield positive RPE)
-///     - Streak tracking (consecutive good answers = dopamine momentum)
-///     - Drive modulation output: high dopamine → KAI is engaged and curious
+//! Dopamine Reward Circuit — KAI's reinforcement learning engine
+//!
+//! Dopamine is the brain's "learning signal" — not just pleasure, but
+//! specifically the signal that says "that was better/worse than expected."
+//!
+//! The key insight (Schultz et al., 1997): dopamine neurons fire not when
+//! something good happens, but when something BETTER THAN EXPECTED happens.
+//! This is called the Reward Prediction Error (RPE):
+//!
+//!   RPE > 0: outcome better than predicted → dopamine spike → learn "do more of that"
+//!   RPE = 0: outcome exactly as predicted → no signal → no learning
+//!   RPE < 0: outcome worse than predicted → dopamine dip → "avoid that"
+//!
+//! This is why the brain constantly predicts — because the DIFFERENCE between
+//! prediction and reality is what drives all learning. It's identical to the
+//! error signal in modern machine learning (TD-learning, Q-learning).
+//!
+//! Without dopamine:
+//!   Every interaction is treated equally. KAI doesn't learn what kinds
+//!   of questions he's good at vs. bad at. He doesn't build expertise over
+//!   time. He doesn't get "interested" in topics he handles well.
+//!   There is no reinforcement — just flat pattern matching.
+//!
+//! With dopamine:
+//!   When KAI answers well (high confidence, user seems engaged), a dopamine
+//!   spike reinforces that topic's patterns in the universe.
+//!   When KAI answers poorly (low confidence, contradiction flagged), a dip
+//!   weakens those patterns slightly.
+//!   Over many interactions, KAI becomes genuinely better at topics he's
+//!   practiced and naturally gravitates toward them (expertise formation).
+//!
+//! Architecture:
+//!   DopamineCircuit tracks:
+//!     - Current dopamine level (0–1, decays to baseline 0.5)
+//!     - Reward Prediction Error per interaction
+//!     - Topic-specific reward history (which topics yield positive RPE)
+//!     - Streak tracking (consecutive good answers = dopamine momentum)
+//!     - Drive modulation output: high dopamine → KAI is engaged and curious
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 

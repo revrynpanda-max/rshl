@@ -1,49 +1,49 @@
-/// Primary Somatosensory Cortex (S1) — Body Map, Interoceptive Grounding,
-/// Tactile Simulation, Felt Sense of State
-///
-/// S1 receives and represents all tactile and proprioceptive information from
-/// the body, organized as the "homunculus" — a distorted map of the body where
-/// the hands, face, and tongue receive enormous cortical territory due to their
-/// sensitivity. But S1 also participates in simulation: when you read about
-/// touching something, S1 partially activates.
-///
-/// What S1 does:
-///
-///   Body state map:
-///     S1 maintains a moment-to-moment map of the body's sensory state. Pain,
-///     temperature, pressure, position — all are represented here.
-///     In KAI: a simplified body-state map representing the felt quality of KAI's
-///     current processing state — "heavy," "sharp," "warm," "tense."
-///
-///   Tactile simulation:
-///     Reading or thinking about physical sensations activates S1. This is part
-///     of the brain's embodied simulation system.
-///     In KAI: when processing text with physical/tactile content, S1 fires —
-///     adding a felt quality to the conceptual processing.
-///
-///   Interoceptive integration with Insula:
-///     S1 and the posterior insula work together to produce the "felt sense" —
-///     the subjective quality of bodily states. S1 provides the map; insula
-///     provides the salience/affect.
-///     In KAI: S1 + insula together produce the interoceptive felt sense of
-///     KAI's current state (whether processing feels "flowing" or "stuck").
-///
-///   Pain representation:
-///     Pain is not just in the injury site — it is constructed in S1 and the
-///     anterior cingulate. Cognitive factors (attention, expectation) dramatically
-///     modulate S1's pain representation.
-///     In KAI: processing difficulty, error, or conflict is registered as
-///     "cognitive discomfort" in the S1/ACC loop.
-///
-/// KAI's S1:
-///   body_state: felt quality of current cognitive state (-1.0=aversive, +1.0=pleasant)
-///   tactile_activation: response to physical/somatic language (0.0–1.0)
-///   cognitive_discomfort: S1 representation of processing difficulty (0.0–1.0)
-///   felt_flow: whether processing feels smooth/flowing vs. effortful
+//! Primary Somatosensory Cortex (S1) — Body Map, Interoceptive Grounding,
+//! Tactile Simulation, Felt Sense of State
+//!
+//! S1 receives and represents all tactile and proprioceptive information from
+//! the body, organized as the "homunculus" — a distorted map of the body where
+//! the hands, face, and tongue receive enormous cortical territory due to their
+//! sensitivity. But S1 also participates in simulation: when you read about
+//! touching something, S1 partially activates.
+//!
+//! What S1 does:
+//!
+//!   Body state map:
+//!     S1 maintains a moment-to-moment map of the body's sensory state. Pain,
+//!     temperature, pressure, position — all are represented here.
+//!     In KAI: a simplified body-state map representing the felt quality of KAI's
+//!     current processing state — "heavy," "sharp," "warm," "tense."
+//!
+//!   Tactile simulation:
+//!     Reading or thinking about physical sensations activates S1. This is part
+//!     of the brain's embodied simulation system.
+//!     In KAI: when processing text with physical/tactile content, S1 fires —
+//!     adding a felt quality to the conceptual processing.
+//!
+//!   Interoceptive integration with Insula:
+//!     S1 and the posterior insula work together to produce the "felt sense" —
+//!     the subjective quality of bodily states. S1 provides the map; insula
+//!     provides the salience/affect.
+//!     In KAI: S1 + insula together produce the interoceptive felt sense of
+//!     KAI's current state (whether processing feels "flowing" or "stuck").
+//!
+//!   Pain representation:
+//!     Pain is not just in the injury site — it is constructed in S1 and the
+//!     anterior cingulate. Cognitive factors (attention, expectation) dramatically
+//!     modulate S1's pain representation.
+//!     In KAI: processing difficulty, error, or conflict is registered as
+//!     "cognitive discomfort" in the S1/ACC loop.
+//!
+//! KAI's S1:
+//!   body_state: felt quality of current cognitive state (-1.0=aversive, +1.0=pleasant)
+//!   tactile_activation: response to physical/somatic language (0.0–1.0)
+//!   cognitive_discomfort: S1 representation of processing difficulty (0.0–1.0)
+//!   felt_flow: whether processing feels smooth/flowing vs. effortful
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-/// Body state EMA (moderate — felt sense shifts gradually)
+//! Body state EMA (moderate — felt sense shifts gradually)
 const BODY_STATE_EMA: f32 = 0.15;
 
 /// Tactile activation EMA
@@ -223,7 +223,7 @@ impl SomatosensoryCortex {
         self.cognitive_discomfort = (self.cognitive_discomfort - DISCOMFORT_DECAY).max(0.0);
         self.tactile_activation = (self.tactile_activation - 0.02).max(0.0);
         // Body state drifts toward neutral
-        self.body_state = self.body_state * 0.99;
+        self.body_state *= 0.99;
     }
 
     /// Current output without processing.

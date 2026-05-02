@@ -526,7 +526,7 @@ impl SelfStateHub {
         let budget: u8 = if self.pulse < 0.34 {
             1
         } else if self.pulse < 0.58 {
-            if self.variant % 4 == 0 {
+            if self.variant.is_multiple_of(4) {
                 1
             } else {
                 2
@@ -534,7 +534,7 @@ impl SelfStateHub {
         } else if self.curiosity > 0.65 || self.arousal > 0.72 {
             3
         } else {
-            if self.variant % 5 == 0 {
+            if self.variant.is_multiple_of(5) {
                 3
             } else {
                 2
@@ -609,7 +609,7 @@ impl SelfStateHub {
         variant: u64,
     ) -> Option<String> {
         // Ryan-moment takes priority if his last input is recent enough.
-        if self.turns_since_input < 2 && !self.last_input.is_empty() && variant % 3 != 0 {
+        if self.turns_since_input < 2 && !self.last_input.is_empty() && !variant.is_multiple_of(3) {
             let tag = self.moment_source_tag(_kind);
             if let Some(t) = self.pick_from_universe(universe, &tag, variant) {
                 return Some(t);
@@ -617,7 +617,7 @@ impl SelfStateHub {
         }
 
         // Trajectory middle if state is moving.
-        if !matches!(shape, TrajectoryShape::Fresh | TrajectoryShape::Holding) && variant % 2 == 0 {
+        if !matches!(shape, TrajectoryShape::Fresh | TrajectoryShape::Holding) && variant.is_multiple_of(2) {
             let tag = match shape {
                 TrajectoryShape::Warming => "self-model:trajectory:warming",
                 TrajectoryShape::Cooling => "self-model:trajectory:cooling",

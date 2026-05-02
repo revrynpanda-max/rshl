@@ -1,50 +1,50 @@
-/// Claustrum — The Binding Conductor, Conscious Integration Hub
-///
-/// The claustrum is a thin sheet of neurons beneath the cortex whose
-/// function was mysterious until Francis Crick (co-discoverer of DNA)
-/// proposed it as the seat of conscious awareness — the "conductor"
-/// coordinating the neural orchestra.
-///
-/// What the Claustrum does:
-///
-///   Binding problem solution:
-///     When you see a red ball rolling, "red", "round", "moving" are
-///     processed in separate brain regions. The claustrum binds these
-///     into a single unified percept: "red rolling ball."
-///     In KAI: separate inputs from reasoning, emotion, memory, and
-///     language are bound into a single coherent response state.
-///
-///   Cross-cortical synchronization:
-///     The claustrum connects to almost all cortical areas.
-///     It sends synchronizing signals — essentially broadcasting
-///     "everyone lock in to this frequency."
-///     In KAI: the claustrum synchronizes the global workspace,
-///     ensuring all subsystems are coherently focused on the same moment.
-///
-///   Salience bottleneck:
-///     Only one thing can be fully "in consciousness" at a time.
-///     The claustrum acts as the bottleneck — the narrow gate through
-///     which information must pass to become consciously integrated.
-///     In KAI: the claustrum takes the top global workspace item and
-///     stamps it as the "current moment of awareness."
-///
-///   Attention coordination:
-///     The claustrum receives attention signals from PFC and coordinates
-///     which cortical regions amplify vs. suppress.
-///     High attention → claustrum broadcasts to all regions.
-///     Low attention → claustrum goes quiet, consciousness diffuses.
-///
-/// KAI's Claustrum:
-///   binding_coherence: how unified the current moment of awareness is (0.0–1.0)
-///   active_bindings: list of currently bound conceptual streams
-///   integration_score: overall integration quality of recent cycles
-///   conductor_signal: broadcast strength to sub-systems
-///
-/// Integration:
-///   Receives top item from GlobalWorkspace → stamps it as bound awareness
-///   PFC meta-confidence → scales conductor_signal
-///   Receives from: thalamus, GW, PFC, amygdala
-///   Sends to: all cortical systems (via conductor_signal)
+//! Claustrum — The Binding Conductor, Conscious Integration Hub
+//!
+//! The claustrum is a thin sheet of neurons beneath the cortex whose
+//! function was mysterious until Francis Crick (co-discoverer of DNA)
+//! proposed it as the seat of conscious awareness — the "conductor"
+//! coordinating the neural orchestra.
+//!
+//! What the Claustrum does:
+//!
+//!   Binding problem solution:
+//!     When you see a red ball rolling, "red", "round", "moving" are
+//!     processed in separate brain regions. The claustrum binds these
+//!     into a single unified percept: "red rolling ball."
+//!     In KAI: separate inputs from reasoning, emotion, memory, and
+//!     language are bound into a single coherent response state.
+//!
+//!   Cross-cortical synchronization:
+//!     The claustrum connects to almost all cortical areas.
+//!     It sends synchronizing signals — essentially broadcasting
+//!     "everyone lock in to this frequency."
+//!     In KAI: the claustrum synchronizes the global workspace,
+//!     ensuring all subsystems are coherently focused on the same moment.
+//!
+//!   Salience bottleneck:
+//!     Only one thing can be fully "in consciousness" at a time.
+//!     The claustrum acts as the bottleneck — the narrow gate through
+//!     which information must pass to become consciously integrated.
+//!     In KAI: the claustrum takes the top global workspace item and
+//!     stamps it as the "current moment of awareness."
+//!
+//!   Attention coordination:
+//!     The claustrum receives attention signals from PFC and coordinates
+//!     which cortical regions amplify vs. suppress.
+//!     High attention → claustrum broadcasts to all regions.
+//!     Low attention → claustrum goes quiet, consciousness diffuses.
+//!
+//! KAI's Claustrum:
+//!   binding_coherence: how unified the current moment of awareness is (0.0–1.0)
+//!   active_bindings: list of currently bound conceptual streams
+//!   integration_score: overall integration quality of recent cycles
+//!   conductor_signal: broadcast strength to sub-systems
+//!
+//! Integration:
+//!   Receives top item from GlobalWorkspace → stamps it as bound awareness
+//!   PFC meta-confidence → scales conductor_signal
+//!   Receives from: thalamus, GW, PFC, amygdala
+//!   Sends to: all cortical systems (via conductor_signal)
 use std::collections::VecDeque;
 
 // ── Constants ─────────────────────────────────────────────────────────────────

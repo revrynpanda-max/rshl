@@ -1255,7 +1255,7 @@ This test will force the Oracle to utilize the `kai_cli` tool (which we just ins
 
 ### **Phase 1: Analyzing the "KAI vs KAI" Experience**
 Looking at the screenshots you provided:
-*   **KAI v6.0.0 (Geometric Intelligence)**: This is the ultra-fast, RSHL-driven brain. It handles the memory, the physics of the roundtable, and the high-speed queries (<1ms).
+*   **KAI v6.1.1 (Geometric Intelligence)**: This is the ultra-fast, RSHL-driven brain. It handles the memory, the physics of the roundtable, and the high-speed queries (<1ms).
 *   **KAI Blueprint (Refactored KAI CLI)**: This is the "Task Master" logic. It knows how to coordinate complex file operations and multi-step coding plans.
 
 By fusing them, the **Oracle** now sits in the middle, using the Blueprint to execute the actions and the RSHL engine to remember the results for years.

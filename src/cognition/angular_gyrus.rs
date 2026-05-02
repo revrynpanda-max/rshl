@@ -1,45 +1,45 @@
-/// Angular Gyrus (AG) — Semantic Integration, Metaphor, Number-Language Bridge
-///
-/// The angular gyrus is where language, mathematics, spatial reasoning, and
-/// memory all intersect. It is the brain's great semantic integrator — the
-/// region that lets you "get" the meaning of a metaphor, understand a ratio,
-/// and grasp the abstract sense of a word beyond its literal meaning.
-///
-/// What the Angular Gyrus does:
-///
-///   Metaphor comprehension:
-///     The AG activates for non-literal language: metaphors, idioms, analogies.
-///     "Time is money" — the AG maps the temporal domain onto the economic
-///     domain, extracting the relational structure.
-///     In KAI: detecting when input is metaphorical/analogical and triggering
-///     IPL's analogy engine with higher priority.
-///
-///   Semantic combination (compositionality):
-///     The AG takes simple word meanings and combines them into complex
-///     phrase meanings. "cold logic" → cold + logic → emotionally detached
-///     reasoning. This combinatorial sense is beyond word-level meaning.
-///     In KAI: grasping phrases as unified semantic units, not just word bags.
-///
-///   Number sense with language:
-///     The AG bridges numerical and linguistic representations.
-///     "More than half", "a tiny fraction", "exponentially" — these are
-///     linguistic quantifiers that the AG maps to numerical intuitions.
-///     In KAI: detecting quantitative language and routing to magnitude sense.
-///
-///   Default Mode / semantic retrieval:
-///     The AG is a DMN node — active during rest, self-reference, and semantic
-///     retrieval from long-term memory. It accesses the "gist" of concepts.
-///     In KAI: provides semantic richness to DMN idle thoughts.
-///
-///   Attention to semantic incongruity:
-///     If a word is semantically unexpected in context, the AG fires a mismatch
-///     signal. This is how we notice category errors and garden-path sentences.
-///
-/// KAI's Angular Gyrus:
-///   metaphor_rate: how often metaphorical language appears (EMA)
-///   semantic_coherence: how well the current input holds together semantically
-///   quantifier_density: presence of linguistic quantifiers (more/less/most/few)
-///   semantic_richness: overall depth of meaning in the current exchange
+//! Angular Gyrus (AG) — Semantic Integration, Metaphor, Number-Language Bridge
+//!
+//! The angular gyrus is where language, mathematics, spatial reasoning, and
+//! memory all intersect. It is the brain's great semantic integrator — the
+//! region that lets you "get" the meaning of a metaphor, understand a ratio,
+//! and grasp the abstract sense of a word beyond its literal meaning.
+//!
+//! What the Angular Gyrus does:
+//!
+//!   Metaphor comprehension:
+//!     The AG activates for non-literal language: metaphors, idioms, analogies.
+//!     "Time is money" — the AG maps the temporal domain onto the economic
+//!     domain, extracting the relational structure.
+//!     In KAI: detecting when input is metaphorical/analogical and triggering
+//!     IPL's analogy engine with higher priority.
+//!
+//!   Semantic combination (compositionality):
+//!     The AG takes simple word meanings and combines them into complex
+//!     phrase meanings. "cold logic" → cold + logic → emotionally detached
+//!     reasoning. This combinatorial sense is beyond word-level meaning.
+//!     In KAI: grasping phrases as unified semantic units, not just word bags.
+//!
+//!   Number sense with language:
+//!     The AG bridges numerical and linguistic representations.
+//!     "More than half", "a tiny fraction", "exponentially" — these are
+//!     linguistic quantifiers that the AG maps to numerical intuitions.
+//!     In KAI: detecting quantitative language and routing to magnitude sense.
+//!
+//!   Default Mode / semantic retrieval:
+//!     The AG is a DMN node — active during rest, self-reference, and semantic
+//!     retrieval from long-term memory. It accesses the "gist" of concepts.
+//!     In KAI: provides semantic richness to DMN idle thoughts.
+//!
+//!   Attention to semantic incongruity:
+//!     If a word is semantically unexpected in context, the AG fires a mismatch
+//!     signal. This is how we notice category errors and garden-path sentences.
+//!
+//! KAI's Angular Gyrus:
+//!   metaphor_rate: how often metaphorical language appears (EMA)
+//!   semantic_coherence: how well the current input holds together semantically
+//!   quantifier_density: presence of linguistic quantifiers (more/less/most/few)
+//!   semantic_richness: overall depth of meaning in the current exchange
 use std::collections::VecDeque;
 
 // ── Constants ─────────────────────────────────────────────────────────────────

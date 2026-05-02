@@ -234,7 +234,7 @@ pub fn peer_exchange(
     let region = "from-peer".to_string();
 
     // Split response into sentences and store each non-trivial one
-    for sentence in response.text.split(|c| c == '.' || c == '!' || c == '?') {
+    for sentence in response.text.split(['.', '!', '?']) {
         let s = sentence.trim();
         if s.len() < 20 {
             continue;

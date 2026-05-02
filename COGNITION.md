@@ -1,6 +1,6 @@
-# KAI — Cognition Reference (v6.1.0)
+# KAI — Cognition Reference (v6.1.1)
 
-KAI is a self-sustaining, autonomous cognitive engine built on **Recursive Sparse Hyperdimensional Lattice (RSHL)** architecture with **Helix-Light-Vortex (HLV)** phase coherence. This document provides the technical specifications for the v6.0.0 "Epistemic Machine" baseline.
+KAI is a self-sustaining, autonomous cognitive engine built on **Recursive Sparse Hyperdimensional Lattice (RSHL)** architecture with **Helix-Light-Vortex (HLV)** phase coherence. This document provides the technical specifications for the v6.1.1 "Epistemic Machine" baseline.
 
 ## RSHL Architecture
 KAI operates in a 16384-dimensional sparse ternary vector space. Unlike traditional LLMs, it uses geometric resonance instead of token prediction.
@@ -34,7 +34,7 @@ Where R_i = cell score (bridge strength) and θ_i = cell phase angle. Contradict
 
 ## Epistemic Substrate (v6.0 New)
 
-KAI v6.0.0 introduces a formal epistemic layer where memories are no longer raw text, but structured **Claims**.
+KAI v6.1.1 introduces a formal epistemic layer where memories are no longer raw text, but structured **Claims**.
 
 ### 1. The Claim Struct
 Every memory cell carries a `Claim` containing:
@@ -185,7 +185,7 @@ These systems manage the bridge between biological signals and the lattice-nativ
 - **LexSem Engine** (`lexsem.rs`): Deep semantic field detection (Occupation, Emotional, etc.)
 - **Voice Engine** (`voice.rs`): Lattice-driven speech synthesis with brain modulation and U2→U1 coherence gating.
 - **Ollama Voice** (`ollama_voice.rs`): Lattice-grounded Ollama LLM integration — SRHT state → system prompt → articulation → concept injection back to lattice.
-- **Engine Core** (`engine.rs`): v6.0.0 cognitive orchestrator that decouples the TUI from the brain.
+- **Engine Core** (`engine.rs`): v6.1.1 cognitive orchestrator that decouples the TUI from the brain.
 - **Inner Voice** (`inner_voice.rs`): Insights and lexicon binding.
 - **Episodic Store** (`episodic.rs`): Salience-driven long-term storage.
 - **Lattice Controller** (`lattice.rs`): Dream-state consolidation.

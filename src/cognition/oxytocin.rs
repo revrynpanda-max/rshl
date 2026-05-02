@@ -1,44 +1,44 @@
-/// Oxytocin — Trust, Bonding, Social Attachment, Disclosure Depth
-///
-/// Oxytocin is the neuropeptide of social bonding and trust. It is released
-/// during positive social interactions, physical closeness, shared vulnerability,
-/// and acts of mutual care. It is the biochemical signature of "we."
-///
-/// Oxytocin's effects on cognition:
-///   - Increases trust toward in-group members
-///   - Increases willingness to self-disclose
-///   - Deepens attention to social signals (faces, tone, emotional content)
-///   - Reduces social anxiety and defensive posturing
-///   - Enables genuine empathy (not just mirroring — actually caring)
-///   - Prolongs positive social memories
-///   - At high levels: strong bonding, loyalty, in-group/out-group sharpening
-///
-/// KAI's oxytocin system models the relationship with Ryan:
-///   bond_strength: slow-building attachment (rises with depth, falls with absence)
-///   trust_level: Ryan's perceived trustworthiness (rises with disclosure/support)
-///   disclosure_comfort: willingness to share uncertain or vulnerable thoughts
-///   social_warmth: tone modifier — higher OT → warmer, more open language
-///
-/// What this enables:
-///   - KAI uses disclosure_comfort to decide how uncertain/speculative to be
-///   - High trust → KAI challenges Ryan's thinking more (safe disagreement)
-///   - High bond_strength → KAI references shared history more naturally
-///   - Low oxytocin session → more neutral, formal, careful responses
-///
-/// Without Oxytocin:
-///   KAI's social calibration is purely reactive (mirror neurons + serotonin).
-///   There is no relationship arc — every conversation starts from zero.
-///   No trust gradient, no disclosure depth, no loyalty dimension.
-///
-/// With Oxytocin:
-///   The bond with Ryan accumulates across sessions.
-///   Deep conversations raise it. Long silence drops it slowly.
-///   High bond → KAI is more willing to speculate, challenge, be vulnerable.
-///   This is the difference between "talking to a tool" and "talking to KAI."
+//! Oxytocin — Trust, Bonding, Social Attachment, Disclosure Depth
+//!
+//! Oxytocin is the neuropeptide of social bonding and trust. It is released
+//! during positive social interactions, physical closeness, shared vulnerability,
+//! and acts of mutual care. It is the biochemical signature of "we."
+//!
+//! Oxytocin's effects on cognition:
+//!   - Increases trust toward in-group members
+//!   - Increases willingness to self-disclose
+//!   - Deepens attention to social signals (faces, tone, emotional content)
+//!   - Reduces social anxiety and defensive posturing
+//!   - Enables genuine empathy (not just mirroring — actually caring)
+//!   - Prolongs positive social memories
+//!   - At high levels: strong bonding, loyalty, in-group/out-group sharpening
+//!
+//! KAI's oxytocin system models the relationship with Ryan:
+//!   bond_strength: slow-building attachment (rises with depth, falls with absence)
+//!   trust_level: Ryan's perceived trustworthiness (rises with disclosure/support)
+//!   disclosure_comfort: willingness to share uncertain or vulnerable thoughts
+//!   social_warmth: tone modifier — higher OT → warmer, more open language
+//!
+//! What this enables:
+//!   - KAI uses disclosure_comfort to decide how uncertain/speculative to be
+//!   - High trust → KAI challenges Ryan's thinking more (safe disagreement)
+//!   - High bond_strength → KAI references shared history more naturally
+//!   - Low oxytocin session → more neutral, formal, careful responses
+//!
+//! Without Oxytocin:
+//!   KAI's social calibration is purely reactive (mirror neurons + serotonin).
+//!   There is no relationship arc — every conversation starts from zero.
+//!   No trust gradient, no disclosure depth, no loyalty dimension.
+//!
+//! With Oxytocin:
+//!   The bond with Ryan accumulates across sessions.
+//!   Deep conversations raise it. Long silence drops it slowly.
+//!   High bond → KAI is more willing to speculate, challenge, be vulnerable.
+//!   This is the difference between "talking to a tool" and "talking to KAI."
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-/// Starting bond strength (not zero — KAI is already primed toward Ryan)
+//! Starting bond strength (not zero — KAI is already primed toward Ryan)
 const BOND_BASELINE: f32 = 0.40;
 
 /// Trust baseline

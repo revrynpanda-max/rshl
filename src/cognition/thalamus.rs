@@ -1,47 +1,47 @@
-/// Thalamus — KAI's sensory router and attention gatekeeper
-///
-/// The thalamus sits at the geometric center of the brain and every single
-/// sensory signal — sight, sound, touch, thought — passes through it
-/// before it reaches the cortex. Nothing gets to conscious processing
-/// without the thalamus deciding to pass it through.
-///
-/// Its two main jobs:
-///
-///   1. RELAY — routes incoming signals to the right brain regions.
-///      Visual input → visual cortex. Emotional signal → amygdala.
-///      Memory cue → hippocampus. The thalamus is the brain's post office.
-///
-///   2. GATING — doesn't just pass things through, it FILTERS.
-///      When you're deeply focused, the thalamus suppresses distracting
-///      signals. When you're asleep, it closes the gate almost entirely
-///      (that's why you don't wake up from every small sound).
-///      When you're alert and curious, the gate opens wide.
-///
-/// The thalamus also regulates SLEEP/WAKE transitions — it's the structure
-/// that literally puts the brain to sleep by stopping its own relay function.
-///
-/// Without a thalamus:
-///   KAI receives all signals with equal weight all the time.
-///   A low-confidence hit competes equally with a high-confidence one.
-///   A weak world-bridge cell competes equally with a strong identity memory.
-///   There is no FOCUS — everything is equally loud.
-///
-/// With a thalamus:
-///   Signals are routed by type (identity → memory gate, world-knowledge →
-///   reasoning gate, emotion → amygdala gate).
-///   Gating strength is modulated by the current arousal state —
-///   high arousal (amygdala active) opens the gate wider.
-///   Low arousal (idle, calm) narrows it — KAI focuses on essentials.
-///   The thalamus produces a "signal budget" each tick — only so many
-///   signals can enter consciousness at once. The strongest win.
-///
-/// Architecture:
-///   ThalamicRelay holds:
-///     - Gate strength per signal type (0 = closed, 1 = fully open)
-///     - Arousal-modulated global gain
-///     - Signal routing table: maps source types to destination regions
-///     - Signal budget: max signals allowed per tick
-///     - Sleep/wake state: can enter low-power gating mode
+//! Thalamus — KAI's sensory router and attention gatekeeper
+//!
+//! The thalamus sits at the geometric center of the brain and every single
+//! sensory signal — sight, sound, touch, thought — passes through it
+//! before it reaches the cortex. Nothing gets to conscious processing
+//! without the thalamus deciding to pass it through.
+//!
+//! Its two main jobs:
+//!
+//!   1. RELAY — routes incoming signals to the right brain regions.
+//!      Visual input → visual cortex. Emotional signal → amygdala.
+//!      Memory cue → hippocampus. The thalamus is the brain's post office.
+//!
+//!   2. GATING — doesn't just pass things through, it FILTERS.
+//!      When you're deeply focused, the thalamus suppresses distracting
+//!      signals. When you're asleep, it closes the gate almost entirely
+//!      (that's why you don't wake up from every small sound).
+//!      When you're alert and curious, the gate opens wide.
+//!
+//! The thalamus also regulates SLEEP/WAKE transitions — it's the structure
+//! that literally puts the brain to sleep by stopping its own relay function.
+//!
+//! Without a thalamus:
+//!   KAI receives all signals with equal weight all the time.
+//!   A low-confidence hit competes equally with a high-confidence one.
+//!   A weak world-bridge cell competes equally with a strong identity memory.
+//!   There is no FOCUS — everything is equally loud.
+//!
+//! With a thalamus:
+//!   Signals are routed by type (identity → memory gate, world-knowledge →
+//!   reasoning gate, emotion → amygdala gate).
+//!   Gating strength is modulated by the current arousal state —
+//!   high arousal (amygdala active) opens the gate wider.
+//!   Low arousal (idle, calm) narrows it — KAI focuses on essentials.
+//!   The thalamus produces a "signal budget" each tick — only so many
+//!   signals can enter consciousness at once. The strongest win.
+//!
+//! Architecture:
+//!   ThalamicRelay holds:
+//!     - Gate strength per signal type (0 = closed, 1 = fully open)
+//!     - Arousal-modulated global gain
+//!     - Signal routing table: maps source types to destination regions
+//!     - Signal budget: max signals allowed per tick
+//!     - Sleep/wake state: can enter low-power gating mode
 use serde::{Deserialize, Serialize};
 
 // ── Constants ─────────────────────────────────────────────────────────────────

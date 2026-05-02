@@ -183,11 +183,10 @@ pub fn ingest_topic(universe: &mut Universe, topic: &str) -> usize {
 
         // Check for duplicates via simple text match
         let exists = universe.cells().iter().any(|c| c.label == text);
-        if !exists {
-            if universe.ingest_and_verify(&text, "reasoning", "world-bridge", 1.5) {
+        if !exists
+            && universe.ingest_and_verify(&text, "reasoning", "world-bridge", 1.5) {
                 stored += 1;
             }
-        }
     }
 
     // Store related topics as reasoning cells — they are factual knowledge,
@@ -205,11 +204,10 @@ pub fn ingest_topic(universe: &mut Universe, topic: &str) -> usize {
         };
 
         let exists = universe.cells().iter().any(|c| c.label == text);
-        if !exists {
-            if universe.ingest_and_verify(&text, "reasoning", "world-bridge", 1.0) {
+        if !exists
+            && universe.ingest_and_verify(&text, "reasoning", "world-bridge", 1.0) {
                 stored += 1;
             }
-        }
     }
 
     stored

@@ -89,31 +89,28 @@ pub fn save(
     match serde_json::to_string(&snapshot) {
         Ok(json) => {
             let tmp_path = format!("{}.tmp", state_path);
-            match fs::write(&tmp_path, &json) {
-                Ok(_) => {
-                    match fs::rename(&tmp_path, &state_path) {
-                        Ok(_) => {
-                            return SaveResult {
-                                ok: true,
-                                cells: universe.cell_count(),
-                                candidates: candidates.entries.len(),
-                                bytes: json.len(),
-                            };
-                        }
-                        Err(_e) => {
-                            // Rename failed — try copy+delete fallback (cross-device)
-                            let _ = fs::copy(&tmp_path, &state_path);
-                            let _ = fs::remove_file(&tmp_path);
-                            return SaveResult {
-                                ok: true,
-                                cells: universe.cell_count(),
-                                candidates: candidates.entries.len(),
-                                bytes: json.len(),
-                            };
-                        }
+            if fs::write(&tmp_path, &json).is_ok() {
+                match fs::rename(&tmp_path, &state_path) {
+                    Ok(_) => {
+                        return SaveResult {
+                            ok: true,
+                            cells: universe.cell_count(),
+                            candidates: candidates.entries.len(),
+                            bytes: json.len(),
+                        };
+                    }
+                    Err(_e) => {
+                        // Rename failed — try copy+delete fallback (cross-device)
+                        let _ = fs::copy(&tmp_path, &state_path);
+                        let _ = fs::remove_file(&tmp_path);
+                        return SaveResult {
+                            ok: true,
+                            cells: universe.cell_count(),
+                            candidates: candidates.entries.len(),
+                            bytes: json.len(),
+                        };
                     }
                 }
-                Err(_) => {}
             }
             SaveResult {
                 ok: false,

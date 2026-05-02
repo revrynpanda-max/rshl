@@ -1,16 +1,16 @@
-/// Universe Ã¢â‚¬" The cell store for KAI's memory.
-///
-/// Each cell is a belief: text + vector + region + strength + metadata.
-/// ALL queries use rayon parallel cosine across all 12 CPU threads.
-///
-/// Scoring uses a hybrid of:
-///   1. Cosine similarity on the 16384-dim sparse ternary vector (semantic layer)
-///   2. Keyword overlap Ã¢â‚¬" shared significant words between query and cell (exact match layer)
-///
-/// This is the same dual-layer approach that makes Google search fast and precise:
-/// semantic embeddings catch conceptual resonance, keyword overlap catches exact term hits.
-/// "What is RSHL?" finds the RSHL cell because "rshl" appears in both Ã¢â‚¬" even if the
-/// full-phrase cosine similarity is diluted by surrounding words.
+//! Universe Ã¢â‚¬" The cell store for KAI's memory.
+//!
+//! Each cell is a belief: text + vector + region + strength + metadata.
+//! ALL queries use rayon parallel cosine across all 12 CPU threads.
+//!
+//! Scoring uses a hybrid of:
+//!   1. Cosine similarity on the 16384-dim sparse ternary vector (semantic layer)
+//!   2. Keyword overlap Ã¢â‚¬" shared significant words between query and cell (exact match layer)
+//!
+//! This is the same dual-layer approach that makes Google search fast and precise:
+//! semantic embeddings catch conceptual resonance, keyword overlap catches exact term hits.
+//! "What is RSHL?" finds the RSHL cell because "rshl" appears in both Ã¢â‚¬" even if the
+//! full-phrase cosine similarity is diluted by surrounding words.
 use rayon::prelude::*;
 
 use super::claim::Claim;
@@ -532,6 +532,12 @@ pub struct PredictiveScoreBreakdown {
     pub last_fired: u64,
     pub continuation_nnz: usize,
 }
+impl Default for Universe {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Universe {
     pub fn new() -> Self {
         Self { cells: Vec::new() }
@@ -1026,7 +1032,7 @@ impl Universe {
     /// Uses the Golden Angle (â‰ˆ 137.5Â°) for phyllotaxis-style ring packing.
     pub fn reorganize_with_spiral(&mut self, spiral_radius: f32) {
         use std::f32::consts::TAU;
-        const GOLDEN_ANGLE: f32 = 2.399_963_23_f32;
+        const GOLDEN_ANGLE: f32 = 2.399_963_1_f32;
 
         if spiral_radius < 0.3 {
             return;

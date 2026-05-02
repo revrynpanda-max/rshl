@@ -1,4 +1,4 @@
-/// Evidence Source — Tracks where information came from.
+//! Evidence Source — Tracks where information came from.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum EvidenceSource {
     PhysicsCore,

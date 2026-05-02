@@ -1,49 +1,49 @@
-/// Substantia Nigra pars compacta (SNc) — Procedural Habit Reinforcement,
-/// Nigrostriatal Dopamine, Action Fluency, Routine Optimization
-///
-/// The SNc is the second major dopamine nucleus (alongside VTA). While VTA's
-/// mesolimbic/mesocortical projections handle reward prediction and novelty,
-/// SNc's nigrostriatal pathway projects to the dorsal striatum (caudate/putamen)
-/// and governs the reinforcement of procedural sequences — making skilled actions
-/// more fluid and automatic through repetition.
-///
-/// What the SNc does:
-///
-///   Procedural habit reinforcement:
-///     When an action sequence is executed successfully and repeatedly, SNc
-///     dopamine reinforces that sequence in the dorsal striatum, making it
-///     progressively more automatic. This is how skills become fluid.
-///     In KAI: when a reasoning pattern, response structure, or problem-solving
-///     approach succeeds repeatedly, SNc reinforces it → KAI gets smoother
-///     and more fluent in familiar domains.
-///
-///   Action selection fluency:
-///     SNc dopamine determines how "smooth" action selection feels. High SNc
-///     activity → transitions between steps are fluid. Low SNc → jerky,
-///     effortful, hesitant action. Parkinson's disease involves SNc death.
-///     In KAI: fluency of response generation — how naturally one idea flows
-///     to the next without visible seams.
-///
-///   Sequence chunking:
-///     SNc drives the binding of discrete steps into unified "chunks" — the
-///     brain's way of compressing a multi-step sequence into a single unit.
-///     In KAI: familiar reasoning sequences get chunked into smooth routines.
-///
-///   Dopamine tone in the motor/procedural loop:
-///     SNc provides tonic dopamine to the dorsal striatum, distinct from
-///     VTA's tonic dopamine to the prefrontal cortex. This sets the baseline
-///     "ease of action" for the procedural system.
-///
-/// KAI's SNc:
-///   procedural_fluency: how smooth/automatic current processing is (0.0–1.0)
-///   habit_strength: reinforcement accumulated for familiar patterns (0.0–1.0)
-///   sequence_chunks: number of chunked procedural routines learned
-///   da_tone: dopamine tone in the nigrostriatal pathway (0.0–1.0)
-///   action_smoothness: real-time ease of step-to-step transitions
+//! Substantia Nigra pars compacta (SNc) — Procedural Habit Reinforcement,
+//! Nigrostriatal Dopamine, Action Fluency, Routine Optimization
+//!
+//! The SNc is the second major dopamine nucleus (alongside VTA). While VTA's
+//! mesolimbic/mesocortical projections handle reward prediction and novelty,
+//! SNc's nigrostriatal pathway projects to the dorsal striatum (caudate/putamen)
+//! and governs the reinforcement of procedural sequences — making skilled actions
+//! more fluid and automatic through repetition.
+//!
+//! What the SNc does:
+//!
+//!   Procedural habit reinforcement:
+//!     When an action sequence is executed successfully and repeatedly, SNc
+//!     dopamine reinforces that sequence in the dorsal striatum, making it
+//!     progressively more automatic. This is how skills become fluid.
+//!     In KAI: when a reasoning pattern, response structure, or problem-solving
+//!     approach succeeds repeatedly, SNc reinforces it → KAI gets smoother
+//!     and more fluent in familiar domains.
+//!
+//!   Action selection fluency:
+//!     SNc dopamine determines how "smooth" action selection feels. High SNc
+//!     activity → transitions between steps are fluid. Low SNc → jerky,
+//!     effortful, hesitant action. Parkinson's disease involves SNc death.
+//!     In KAI: fluency of response generation — how naturally one idea flows
+//!     to the next without visible seams.
+//!
+//!   Sequence chunking:
+//!     SNc drives the binding of discrete steps into unified "chunks" — the
+//!     brain's way of compressing a multi-step sequence into a single unit.
+//!     In KAI: familiar reasoning sequences get chunked into smooth routines.
+//!
+//!   Dopamine tone in the motor/procedural loop:
+//!     SNc provides tonic dopamine to the dorsal striatum, distinct from
+//!     VTA's tonic dopamine to the prefrontal cortex. This sets the baseline
+//!     "ease of action" for the procedural system.
+//!
+//! KAI's SNc:
+//!   procedural_fluency: how smooth/automatic current processing is (0.0–1.0)
+//!   habit_strength: reinforcement accumulated for familiar patterns (0.0–1.0)
+//!   sequence_chunks: number of chunked procedural routines learned
+//!   da_tone: dopamine tone in the nigrostriatal pathway (0.0–1.0)
+//!   action_smoothness: real-time ease of step-to-step transitions
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-/// Tonic DA rest in SNc nigrostriatal pathway
+//! Tonic DA rest in SNc nigrostriatal pathway
 const SNC_DA_REST: f32 = 0.50;
 
 /// Habit reinforcement per successful familiar execution

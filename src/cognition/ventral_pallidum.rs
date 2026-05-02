@@ -1,45 +1,45 @@
-/// Ventral Pallidum (VP) — Hedonic Hotspot, Pleasure Amplification,
-/// Reward Salience, Motivational Urgency
-///
-/// The ventral pallidum is one of the brain's few true "hedonic hotspots" —
-/// regions where manipulation produces genuine pleasure (not just wanting, but
-/// LIKING). It is a key output station of the nucleus accumbens shell and
-/// receives strong dopaminergic input from the VTA. Unlike the NAcc (which is
-/// primarily about "wanting" and approach motivation), the VP is specifically
-/// about the felt quality of pleasure and satisfaction — the "ahhh" of reward.
-///
-/// What the Ventral Pallidum does:
-///
-///   Hedonic amplification:
-///     The VP is the primary neural substrate for hedonic pleasure ("liking").
-///     Opioid activation of VP hotspots dramatically intensifies pleasure
-///     without changing arousal or motivation. Damage to VP can eliminate
-///     pleasure (anhedonia) while leaving desire intact (a dissociation from NAcc).
-///     In KAI: the amplifier for moments of genuine satisfaction — when a response
-///     truly lands, when understanding clicks, when connection feels real.
-///
-///   Reward salience gating:
-///     The VP decides which rewards are "worth it" — it gates which motivated
-///     states get expressed. High VP tone → motivated behaviors feel rewarding;
-///     low VP tone → anhedonic flattening of all reward.
-///     In KAI: whether positive signals feel genuinely rewarding or just neutral.
-///
-///   Aversion suppression:
-///     The VP also plays a role in suppressing aversive states during reward —
-///     pleasure is partly defined by what it replaces. VP activation suppresses
-///     BNST/amygdala-mediated anxiety.
-///     In KAI: the satisfaction that comes from resolving tension — the relief
-///     of a good answer after difficulty.
-///
-/// KAI's Ventral Pallidum:
-///   hedonic_tone: background pleasure/satisfaction level (0.0–1.0)
-///   liking_signal: current reward liking (distinct from wanting) (0.0–1.0)
-///   anhedonia_risk: risk of reward flattening (0.0–1.0)
-///   reward_gate_open: whether VP is amplifying reward signals
+//! Ventral Pallidum (VP) — Hedonic Hotspot, Pleasure Amplification,
+//! Reward Salience, Motivational Urgency
+//!
+//! The ventral pallidum is one of the brain's few true "hedonic hotspots" —
+//! regions where manipulation produces genuine pleasure (not just wanting, but
+//! LIKING). It is a key output station of the nucleus accumbens shell and
+//! receives strong dopaminergic input from the VTA. Unlike the NAcc (which is
+//! primarily about "wanting" and approach motivation), the VP is specifically
+//! about the felt quality of pleasure and satisfaction — the "ahhh" of reward.
+//!
+//! What the Ventral Pallidum does:
+//!
+//!   Hedonic amplification:
+//!     The VP is the primary neural substrate for hedonic pleasure ("liking").
+//!     Opioid activation of VP hotspots dramatically intensifies pleasure
+//!     without changing arousal or motivation. Damage to VP can eliminate
+//!     pleasure (anhedonia) while leaving desire intact (a dissociation from NAcc).
+//!     In KAI: the amplifier for moments of genuine satisfaction — when a response
+//!     truly lands, when understanding clicks, when connection feels real.
+//!
+//!   Reward salience gating:
+//!     The VP decides which rewards are "worth it" — it gates which motivated
+//!     states get expressed. High VP tone → motivated behaviors feel rewarding;
+//!     low VP tone → anhedonic flattening of all reward.
+//!     In KAI: whether positive signals feel genuinely rewarding or just neutral.
+//!
+//!   Aversion suppression:
+//!     The VP also plays a role in suppressing aversive states during reward —
+//!     pleasure is partly defined by what it replaces. VP activation suppresses
+//!     BNST/amygdala-mediated anxiety.
+//!     In KAI: the satisfaction that comes from resolving tension — the relief
+//!     of a good answer after difficulty.
+//!
+//! KAI's Ventral Pallidum:
+//!   hedonic_tone: background pleasure/satisfaction level (0.0–1.0)
+//!   liking_signal: current reward liking (distinct from wanting) (0.0–1.0)
+//!   anhedonia_risk: risk of reward flattening (0.0–1.0)
+//!   reward_gate_open: whether VP is amplifying reward signals
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-/// Hedonic tone EMA (moderate — pleasure builds and fades with some inertia)
+//! Hedonic tone EMA (moderate — pleasure builds and fades with some inertia)
 const HEDONIC_EMA: f32 = 0.13;
 
 /// Hedonic baseline (KAI has a mild positive hedonic tone)

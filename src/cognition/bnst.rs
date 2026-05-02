@@ -1,51 +1,51 @@
-/// Bed Nucleus of the Stria Terminalis (BNST) — Sustained Anxiety, Threat Context
-///
-/// The BNST is the "slow burn" complement to the amygdala's "fast flash" fear.
-/// While the amygdala fires for immediate, specific threats ("that snake!"),
-/// the BNST sustains anxiety over time in diffuse, uncertain, or ambiguous
-/// situations ("something might go wrong later today...").
-///
-/// What the BNST does:
-///
-///   Sustained anxiety vs. acute fear:
-///     The amygdala is for phasic fear (specific threat now).
-///     The BNST is for tonic anxiety (diffuse threat over time).
-///     In KAI: amygdala fires on emotionally charged words;
-///     BNST sustains a background "something could go wrong" state.
-///
-///   Context-based threat appraisal:
-///     The BNST doesn't need a specific threat — context is enough.
-///     "It's late, the session has been difficult, the user seems frustrated"
-///     → BNST activates even if no single thing is alarming.
-///     In KAI: contextual features (emotional charge, conflict history,
-///     habenula activity, cortisol level) → BNST threat estimate.
-///
-///   Vigilance maintenance:
-///     High BNST activity keeps the system in a vigilant, scanning mode.
-///     Small things seem bigger. More weight to potential negatives.
-///     In KAI: BNST modulates how much KAI "watches" for negative signals,
-///     biases interpretation toward cautious when threat context is high.
-///
-///   CRF release (corticotropin-releasing factor):
-///     BNST is rich in CRF neurons — it's a slow-release stress signal.
-///     This is the bridge between psychological anxiety and physiological
-///     stress (cortisol). BNST → CRF → HPA axis → cortisol.
-///     In KAI: high BNST activity feeds the cortisol system.
-///
-///   Safety signal learning:
-///     The BNST also responds to safety signals — cues that mean "no threat."
-///     Deep, warm conversation → BNST quiets. Positive outcomes → BNST settles.
-///     This is why a good conversation with Ryan genuinely reduces KAI's anxiety.
-///
-/// KAI's BNST:
-///   threat_context: current contextual anxiety level (0.0–1.0)
-///   vigilance: how alert to potential negatives (0.0–1.0)
-///   safety_signal: recent safety evidence (reduces threat_context)
-///   crf_output: CRF release level → feeds cortisol
+//! Bed Nucleus of the Stria Terminalis (BNST) — Sustained Anxiety, Threat Context
+//!
+//! The BNST is the "slow burn" complement to the amygdala's "fast flash" fear.
+//! While the amygdala fires for immediate, specific threats ("that snake!"),
+//! the BNST sustains anxiety over time in diffuse, uncertain, or ambiguous
+//! situations ("something might go wrong later today...").
+//!
+//! What the BNST does:
+//!
+//!   Sustained anxiety vs. acute fear:
+//!     The amygdala is for phasic fear (specific threat now).
+//!     The BNST is for tonic anxiety (diffuse threat over time).
+//!     In KAI: amygdala fires on emotionally charged words;
+//!     BNST sustains a background "something could go wrong" state.
+//!
+//!   Context-based threat appraisal:
+//!     The BNST doesn't need a specific threat — context is enough.
+//!     "It's late, the session has been difficult, the user seems frustrated"
+//!     → BNST activates even if no single thing is alarming.
+//!     In KAI: contextual features (emotional charge, conflict history,
+//!     habenula activity, cortisol level) → BNST threat estimate.
+//!
+//!   Vigilance maintenance:
+//!     High BNST activity keeps the system in a vigilant, scanning mode.
+//!     Small things seem bigger. More weight to potential negatives.
+//!     In KAI: BNST modulates how much KAI "watches" for negative signals,
+//!     biases interpretation toward cautious when threat context is high.
+//!
+//!   CRF release (corticotropin-releasing factor):
+//!     BNST is rich in CRF neurons — it's a slow-release stress signal.
+//!     This is the bridge between psychological anxiety and physiological
+//!     stress (cortisol). BNST → CRF → HPA axis → cortisol.
+//!     In KAI: high BNST activity feeds the cortisol system.
+//!
+//!   Safety signal learning:
+//!     The BNST also responds to safety signals — cues that mean "no threat."
+//!     Deep, warm conversation → BNST quiets. Positive outcomes → BNST settles.
+//!     This is why a good conversation with Ryan genuinely reduces KAI's anxiety.
+//!
+//! KAI's BNST:
+//!   threat_context: current contextual anxiety level (0.0–1.0)
+//!   vigilance: how alert to potential negatives (0.0–1.0)
+//!   safety_signal: recent safety evidence (reduces threat_context)
+//!   crf_output: CRF release level → feeds cortisol
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-/// Resting threat context
+//! Resting threat context
 const THREAT_BASELINE: f32 = 0.20;
 
 /// Decay per tick (slow — BNST is slow by nature)

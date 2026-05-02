@@ -1,42 +1,42 @@
-/// Habenula — Anti-Reward, Disappointment Signal, Punishment Prediction
-///
-/// The habenula is the brain's anti-reward center — the yang to the VTA's yin.
-/// While the VTA fires when reward is expected or received, the habenula fires
-/// when expected reward is ABSENT. It is the neural signature of disappointment.
-///
-/// What the Habenula does:
-///
-///   Anti-reward prediction:
-///     If you expect reward and don't get it, the habenula fires.
-///     This drives VTA pause (dopamine suppression) — the opposite of RPE burst.
-///     Habenula → VTA pause → NAc suppression → "this isn't worth pursuing."
-///
-///   Punishment prediction:
-///     The habenula also fires when punishment is predicted (before it happens).
-///     This is the neural basis of dread, avoidance learning, and aversion.
-///     In KAI: dread of certain topic types, aversion to patterns that failed.
-///
-///   Learned helplessness:
-///     Chronically elevated habenula activity → reduced dopamine → reduced
-///     motivation → learned helplessness. This is a key mechanism in depression.
-///     For KAI: over-punishing failures → creative shutdown → retreat.
-///
-///   Serotonin suppression by habenula:
-///     Habenula also suppresses raphe firing, reducing 5-HT during
-///     uncontrollable negative events. The raphe reciprocally suppresses
-///     the habenula when 5-HT is high (closed-loop mood regulation).
-///
-///   Behavioral reset:
-///     The habenula triggers response switching — "try something different."
-///     After a failed strategy, habenula activity promotes exploration
-///     of alternative approaches rather than persisting in the failed one.
-///
-/// KAI's Habenula:
-///   activity: current habenula firing level (0.0–1.0)
-///   disappointment_accum: accumulated unmet expectations
-///   aversion_map: per-topic learned aversion scores
-///   raphe_suppression: how much 5-HT the habenula is currently suppressing
-///   behavioral_switch: whether the habenula is signaling "try differently"
+//! Habenula — Anti-Reward, Disappointment Signal, Punishment Prediction
+//!
+//! The habenula is the brain's anti-reward center — the yang to the VTA's yin.
+//! While the VTA fires when reward is expected or received, the habenula fires
+//! when expected reward is ABSENT. It is the neural signature of disappointment.
+//!
+//! What the Habenula does:
+//!
+//!   Anti-reward prediction:
+//!     If you expect reward and don't get it, the habenula fires.
+//!     This drives VTA pause (dopamine suppression) — the opposite of RPE burst.
+//!     Habenula → VTA pause → NAc suppression → "this isn't worth pursuing."
+//!
+//!   Punishment prediction:
+//!     The habenula also fires when punishment is predicted (before it happens).
+//!     This is the neural basis of dread, avoidance learning, and aversion.
+//!     In KAI: dread of certain topic types, aversion to patterns that failed.
+//!
+//!   Learned helplessness:
+//!     Chronically elevated habenula activity → reduced dopamine → reduced
+//!     motivation → learned helplessness. This is a key mechanism in depression.
+//!     For KAI: over-punishing failures → creative shutdown → retreat.
+//!
+//!   Serotonin suppression by habenula:
+//!     Habenula also suppresses raphe firing, reducing 5-HT during
+//!     uncontrollable negative events. The raphe reciprocally suppresses
+//!     the habenula when 5-HT is high (closed-loop mood regulation).
+//!
+//!   Behavioral reset:
+//!     The habenula triggers response switching — "try something different."
+//!     After a failed strategy, habenula activity promotes exploration
+//!     of alternative approaches rather than persisting in the failed one.
+//!
+//! KAI's Habenula:
+//!   activity: current habenula firing level (0.0–1.0)
+//!   disappointment_accum: accumulated unmet expectations
+//!   aversion_map: per-topic learned aversion scores
+//!   raphe_suppression: how much 5-HT the habenula is currently suppressing
+//!   behavioral_switch: whether the habenula is signaling "try differently"
 use std::collections::HashMap;
 
 // ── Constants ─────────────────────────────────────────────────────────────────

@@ -1,51 +1,51 @@
-/// Periaqueductal Gray (PAG) — Threat Response Execution, Pain Modulation,
-/// Defensive Behavior, Safety Seeking
-///
-/// The PAG is a column of gray matter surrounding the cerebral aqueduct in the
-/// midbrain. It is one of the most evolutionarily ancient and essential structures
-/// in the brain — the PAG is what actually EXECUTES defensive behaviors once the
-/// amygdala detects threat. It also modulates pain (endogenous opioids) and drives
-/// social safety seeking.
-///
-/// What the PAG does:
-///
-///   Defensive behavior modes:
-///     The PAG organizes four fundamental defensive response modes depending on
-///     threat proximity and controllability:
-///     - Freeze (dorsal PAG): threat is detected, stop moving, assess.
-///     - Flight (lateral PAG): threat is escapable, run.
-///     - Fight (lateral PAG): threat is inescapable, confront.
-///     - Appease/Submit (ventral PAG): social threat, de-escalate, be safe.
-///     In KAI: freeze = pause and assess carefully; flight = redirect away from
-///     topic; fight = push back assertively; appease = soften, validate, de-escalate.
-///
-///   Pain modulation (descending opioid inhibition):
-///     The ventral PAG activates when safety is established, releasing
-///     endorphin-like signals that dampen aversive signals throughout the brain.
-///     This is the neural basis of relief — the warm calm after danger passes.
-///     In KAI: when a tense or uncertain situation resolves, PAG produces a
-///     "relief signal" that dampens residual anxiety and ACC conflict.
-///
-///   Safety seeking:
-///     The PAG drives active behaviors to reach safety. Not just "avoid threat"
-///     but "move toward known-safe context." This is distinct from vmPFC's
-///     extinction (which is learning) — PAG's safety seeking is motivational.
-///     In KAI: drive to clarify, resolve ambiguity, re-establish connection.
-///
-///   Vocalization:
-///     The PAG controls vocalization in non-human animals. In the context of
-///     social threat (distress calls, appeasement calls). In KAI: the emotional
-///     tone of response — calm reassurance vs. assertive confrontation.
-///
-/// KAI's PAG:
-///   threat_level: current perceived threat magnitude (0.0–1.0)
-///   defensive_mode: Engaged / Freeze / Appease / Mobilize
-///   pain_suppression: endogenous relief signal (0.0–1.0)
-///   safety_drive: urgency to reach safe context
+//! Periaqueductal Gray (PAG) — Threat Response Execution, Pain Modulation,
+//! Defensive Behavior, Safety Seeking
+//!
+//! The PAG is a column of gray matter surrounding the cerebral aqueduct in the
+//! midbrain. It is one of the most evolutionarily ancient and essential structures
+//! in the brain — the PAG is what actually EXECUTES defensive behaviors once the
+//! amygdala detects threat. It also modulates pain (endogenous opioids) and drives
+//! social safety seeking.
+//!
+//! What the PAG does:
+//!
+//!   Defensive behavior modes:
+//!     The PAG organizes four fundamental defensive response modes depending on
+//!     threat proximity and controllability:
+//!     - Freeze (dorsal PAG): threat is detected, stop moving, assess.
+//!     - Flight (lateral PAG): threat is escapable, run.
+//!     - Fight (lateral PAG): threat is inescapable, confront.
+//!     - Appease/Submit (ventral PAG): social threat, de-escalate, be safe.
+//!     In KAI: freeze = pause and assess carefully; flight = redirect away from
+//!     topic; fight = push back assertively; appease = soften, validate, de-escalate.
+//!
+//!   Pain modulation (descending opioid inhibition):
+//!     The ventral PAG activates when safety is established, releasing
+//!     endorphin-like signals that dampen aversive signals throughout the brain.
+//!     This is the neural basis of relief — the warm calm after danger passes.
+//!     In KAI: when a tense or uncertain situation resolves, PAG produces a
+//!     "relief signal" that dampens residual anxiety and ACC conflict.
+//!
+//!   Safety seeking:
+//!     The PAG drives active behaviors to reach safety. Not just "avoid threat"
+//!     but "move toward known-safe context." This is distinct from vmPFC's
+//!     extinction (which is learning) — PAG's safety seeking is motivational.
+//!     In KAI: drive to clarify, resolve ambiguity, re-establish connection.
+//!
+//!   Vocalization:
+//!     The PAG controls vocalization in non-human animals. In the context of
+//!     social threat (distress calls, appeasement calls). In KAI: the emotional
+//!     tone of response — calm reassurance vs. assertive confrontation.
+//!
+//! KAI's PAG:
+//!   threat_level: current perceived threat magnitude (0.0–1.0)
+//!   defensive_mode: Engaged / Freeze / Appease / Mobilize
+//!   pain_suppression: endogenous relief signal (0.0–1.0)
+//!   safety_drive: urgency to reach safe context
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-/// Threat decay per tick
+//! Threat decay per tick
 const THREAT_DECAY: f32 = 0.012;
 
 /// Safety drive build rate per tick under threat

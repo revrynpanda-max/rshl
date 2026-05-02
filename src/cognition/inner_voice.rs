@@ -1,22 +1,22 @@
-/// Inner Voice — KAI's Self-Dialogue System
-///
-/// Biology analog: Internal monologue / working memory rehearsal.
-///
-/// After a dream produces an insight, KAI "talks to himself" to validate it.
-/// The process:
-///   1. Encode the dream insight as a vector
-///   2. Query it back against the universe (self-echo)
-///   3. Measure if the echo returns to the source concepts (validated)
-///      or finds something new (novel) or finds nothing (noise)
-///
-/// This is KAI asking: "Does the answer equal the question?"
-/// Everything is math — the insight vector is tested for resonance
-/// against the same field that generated it. If the geometry holds,
-/// the insight is real. If it doesn't resonate back, it was noise.
-///
-/// The inner voice also uses the lexicon to generate "thought prompts" —
-/// random word pairs from the vocabulary that KAI binds during dreams
-/// to discover connections he didn't know existed.
+//! Inner Voice — KAI's Self-Dialogue System
+//!
+//! Biology analog: Internal monologue / working memory rehearsal.
+//!
+//! After a dream produces an insight, KAI "talks to himself" to validate it.
+//! The process:
+//!   1. Encode the dream insight as a vector
+//!   2. Query it back against the universe (self-echo)
+//!   3. Measure if the echo returns to the source concepts (validated)
+//!      or finds something new (novel) or finds nothing (noise)
+//!
+//! This is KAI asking: "Does the answer equal the question?"
+//! Everything is math — the insight vector is tested for resonance
+//! against the same field that generated it. If the geometry holds,
+//! the insight is real. If it doesn't resonate back, it was noise.
+//!
+//! The inner voice also uses the lexicon to generate "thought prompts" —
+//! random word pairs from the vocabulary that KAI binds during dreams
+//! to discover connections he didn't know existed.
 use crate::core::{Lexicon, SparseVec, Universe};
 
 /// Result of an inner voice validation.

@@ -1,46 +1,46 @@
-/// Locus Coeruleus (LC) — Norepinephrine Source Nucleus
-///
-/// The LC is to NE what the VTA is to dopamine and the raphe is to serotonin.
-/// It is the brain's primary norepinephrine factory — a compact nucleus in the
-/// pons that sends NE projections to virtually every brain region.
-///
-/// What the LC does:
-///
-///   Global arousal modulation:
-///     LC firing rate controls the brain's overall arousal level. At rest,
-///     LC fires tonically at ~1–3 Hz. During stress or novelty, phasic bursts
-///     spike to 15–20 Hz, flooding the forebrain with NE.
-///
-///   Signal-to-noise amplification:
-///     NE from LC doesn't just excite — it sharpens. It suppresses background
-///     noise and amplifies task-relevant signals. This is why NE improves focus:
-///     it's like turning up the gain specifically on important signals.
-///
-///   Novelty / mismatch detection:
-///     LC fires preferentially to unexpected or novel stimuli — the "orienting
-///     response." When something doesn't match the current model, LC fires and
-///     re-orients the system toward the novel input.
-///
-///   LC modes (Aston-Jones & Cohen):
-///     - Phasic mode: stimulus-locked bursts, high signal-to-noise, focused task
-///     - Tonic mode: elevated baseline, broad sampling, exploratory state
-///     These are roughly the NE equivalent of VTA's tonic/phasic distinction.
-///
-/// KAI's LC:
-///   tonic_rate: baseline NE release (0.0–1.0)
-///   phasic_level: current burst amplitude (fades each tick)
-///   mode: Focused (phasic dominant) vs. Exploring (tonic elevated)
-///   novelty_accum: accumulated novelty signal driving phasic bursts
-///   signal_boost: current SNR amplification factor sent to NE system
-///
-/// Integration:
-///   LC→NE: provides the tonic_rate and phasic_level that NorepinephrineSystem uses
-///   LC→GW: phasic bursts post high-priority novelty alerts to global workspace
-///   LC→Thalamus: raised tonic opens thalamic gate wider (more sensory throughput)
+//! Locus Coeruleus (LC) — Norepinephrine Source Nucleus
+//!
+//! The LC is to NE what the VTA is to dopamine and the raphe is to serotonin.
+//! It is the brain's primary norepinephrine factory — a compact nucleus in the
+//! pons that sends NE projections to virtually every brain region.
+//!
+//! What the LC does:
+//!
+//!   Global arousal modulation:
+//!     LC firing rate controls the brain's overall arousal level. At rest,
+//!     LC fires tonically at ~1–3 Hz. During stress or novelty, phasic bursts
+//!     spike to 15–20 Hz, flooding the forebrain with NE.
+//!
+//!   Signal-to-noise amplification:
+//!     NE from LC doesn't just excite — it sharpens. It suppresses background
+//!     noise and amplifies task-relevant signals. This is why NE improves focus:
+//!     it's like turning up the gain specifically on important signals.
+//!
+//!   Novelty / mismatch detection:
+//!     LC fires preferentially to unexpected or novel stimuli — the "orienting
+//!     response." When something doesn't match the current model, LC fires and
+//!     re-orients the system toward the novel input.
+//!
+//!   LC modes (Aston-Jones & Cohen):
+//!     - Phasic mode: stimulus-locked bursts, high signal-to-noise, focused task
+//!     - Tonic mode: elevated baseline, broad sampling, exploratory state
+//!     These are roughly the NE equivalent of VTA's tonic/phasic distinction.
+//!
+//! KAI's LC:
+//!   tonic_rate: baseline NE release (0.0–1.0)
+//!   phasic_level: current burst amplitude (fades each tick)
+//!   mode: Focused (phasic dominant) vs. Exploring (tonic elevated)
+//!   novelty_accum: accumulated novelty signal driving phasic bursts
+//!   signal_boost: current SNR amplification factor sent to NE system
+//!
+//! Integration:
+//!   LC→NE: provides the tonic_rate and phasic_level that NorepinephrineSystem uses
+//!   LC→GW: phasic bursts post high-priority novelty alerts to global workspace
+//!   LC→Thalamus: raised tonic opens thalamic gate wider (more sensory throughput)
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-/// Tonic NE baseline at rest
+//! Tonic NE baseline at rest
 const TONIC_REST: f32 = 0.30;
 
 /// Optimal tonic for focused task performance

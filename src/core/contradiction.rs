@@ -3,6 +3,12 @@ use crate::core::Universe;
 /// Contradiction Detector — Identifies conflicts between claims.
 pub struct ContradictionDetector;
 
+impl Default for ContradictionDetector {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ContradictionDetector {
     pub fn new() -> Self {
         Self

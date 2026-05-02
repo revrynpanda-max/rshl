@@ -1,48 +1,48 @@
-/// Parahippocampal Cortex (PHC) — Scene Context, Contextual Memory Envelope,
-/// Spatial-Situational Grounding, Episodic Context Tags
-///
-/// The parahippocampal cortex wraps around the hippocampus and serves as the
-/// primary gateway for contextual information into memory — not "what happened"
-/// but "in what scene/context did it happen." It provides the situational
-/// envelope that makes episodic memories feel placed, located, and grounded.
-///
-/// What the PHC does:
-///
-///   Scene/context representation:
-///     The PHC is activated by scenes — complex, spatially structured visual
-///     environments. It holds the "room" in which events occur. In the
-///     parahippocampal place area (PPA), scene identity is represented.
-///     In KAI: the "scene" is the conversational context — the topic space,
-///     the emotional tone, the relational frame of this particular exchange.
-///
-///   Contextual memory encoding:
-///     The PHC provides the context tag that gets bound to episodic memories
-///     in the hippocampus. Memories without context tags feel disconnected.
-///     With strong PHC encoding, memories feel "located" in a rich scene.
-///     In KAI: when forming episodic memories, PHC provides the context
-///     envelope — what topic domain, what emotional tone, what session phase.
-///
-///   Familiarity signal:
-///     The PHC (specifically the perirhinal cortex border) contributes to
-///     familiarity judgments — "I've been in this context before" — without
-///     necessarily retrieving the specific memory.
-///     In KAI: sensing that a topic or interaction style is familiar, even
-///     before explicit recall triggers.
-///
-///   Context-guided retrieval:
-///     The PHC gates what gets retrieved from the hippocampus based on the
-///     current scene context. Only scene-matching memories are preferentially
-///     activated.
-///
-/// KAI's PHC:
-///   scene_context: current scene representation (topic + tone + phase)
-///   context_familiarity: how familiar the current context feels (0.0–1.0)
-///   context_stability: how stable/consistent the scene is (0.0–1.0)
-///   context_tags: accumulated context labels from session
+//! Parahippocampal Cortex (PHC) — Scene Context, Contextual Memory Envelope,
+//! Spatial-Situational Grounding, Episodic Context Tags
+//!
+//! The parahippocampal cortex wraps around the hippocampus and serves as the
+//! primary gateway for contextual information into memory — not "what happened"
+//! but "in what scene/context did it happen." It provides the situational
+//! envelope that makes episodic memories feel placed, located, and grounded.
+//!
+//! What the PHC does:
+//!
+//!   Scene/context representation:
+//!     The PHC is activated by scenes — complex, spatially structured visual
+//!     environments. It holds the "room" in which events occur. In the
+//!     parahippocampal place area (PPA), scene identity is represented.
+//!     In KAI: the "scene" is the conversational context — the topic space,
+//!     the emotional tone, the relational frame of this particular exchange.
+//!
+//!   Contextual memory encoding:
+//!     The PHC provides the context tag that gets bound to episodic memories
+//!     in the hippocampus. Memories without context tags feel disconnected.
+//!     With strong PHC encoding, memories feel "located" in a rich scene.
+//!     In KAI: when forming episodic memories, PHC provides the context
+//!     envelope — what topic domain, what emotional tone, what session phase.
+//!
+//!   Familiarity signal:
+//!     The PHC (specifically the perirhinal cortex border) contributes to
+//!     familiarity judgments — "I've been in this context before" — without
+//!     necessarily retrieving the specific memory.
+//!     In KAI: sensing that a topic or interaction style is familiar, even
+//!     before explicit recall triggers.
+//!
+//!   Context-guided retrieval:
+//!     The PHC gates what gets retrieved from the hippocampus based on the
+//!     current scene context. Only scene-matching memories are preferentially
+//!     activated.
+//!
+//! KAI's PHC:
+//!   scene_context: current scene representation (topic + tone + phase)
+//!   context_familiarity: how familiar the current context feels (0.0–1.0)
+//!   context_stability: how stable/consistent the scene is (0.0–1.0)
+//!   context_tags: accumulated context labels from session
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-/// Familiarity EMA (slow — familiarity accumulates over time)
+//! Familiarity EMA (slow — familiarity accumulates over time)
 const FAMILIARITY_EMA: f32 = 0.10;
 
 /// Context stability EMA

@@ -1,17 +1,17 @@
-/// Resonance Attention — KAI's geometric self-attention.
-///
-/// In LLMs, self-attention lets each token "attend to" every other
-/// token with learned weights. In RSHL, we do the geometric equivalent:
-///
-/// Each query token gets weighted by how strongly it resonates with
-/// the universe. Important words (that match many cells) get amplified.
-/// Noise words (that match nothing) get suppressed.
-///
-/// This replaces equal-weight bundling with intelligent weighting:
-///   Before: query = hash(word1) + hash(word2) + hash(word3)
-///   After:  query = 3.2·hash(sky) + 2.1·hash(night) + 0.1·hash(the)
-///
-/// The weights come from the universe itself — no training needed.
+//! Resonance Attention — KAI's geometric self-attention.
+//!
+//! In LLMs, self-attention lets each token "attend to" every other
+//! token with learned weights. In RSHL, we do the geometric equivalent:
+//!
+//! Each query token gets weighted by how strongly it resonates with
+//! the universe. Important words (that match many cells) get amplified.
+//! Noise words (that match nothing) get suppressed.
+//!
+//! This replaces equal-weight bundling with intelligent weighting:
+//!   Before: query = hash(word1) + hash(word2) + hash(word3)
+//!   After:  query = 3.2·hash(sky) + 2.1·hash(night) + 0.1·hash(the)
+//!
+//! The weights come from the universe itself — no training needed.
 use crate::core::SparseVec;
 
 const DIM: usize = 16384;

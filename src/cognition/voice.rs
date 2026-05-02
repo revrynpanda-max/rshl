@@ -1,16 +1,16 @@
-/// Voice — KAI's Language Output Engine.
-///
-/// Philosophy (Ryan's directive):
-///   KAI generates language from its own knowledge cells — not from hardcoded
-///   phrases or template menus. The retrieved cell text IS the response.
-///   Brain signals shape tone with at most 2-3 words. No scripts.
-///
-/// Architecture:
-///   1. QUERY TYPE DETECTION — what kind of input is this?
-///   2. CELL RETRIEVAL — already done by main.rs, passed in as `hits`
-///   3. FIRST-PERSON SYNTHESIS — convert cell text to KAI's voice
-///   4. BRAIN-STATE TONE — 0-3 word prefix/suffix from live neural state
-///   5. IDENTITY SAFETY — KAI never claims Ryan's name as its own
+//! Voice — KAI's Language Output Engine.
+//!
+//! Philosophy (Ryan's directive):
+//!   KAI generates language from its own knowledge cells — not from hardcoded
+//!   phrases or template menus. The retrieved cell text IS the response.
+//!   Brain signals shape tone with at most 2-3 words. No scripts.
+//!
+//! Architecture:
+//!   1. QUERY TYPE DETECTION — what kind of input is this?
+//!   2. CELL RETRIEVAL — already done by main.rs, passed in as `hits`
+//!   3. FIRST-PERSON SYNTHESIS — convert cell text to KAI's voice
+//!   4. BRAIN-STATE TONE — 0-3 word prefix/suffix from live neural state
+//!   5. IDENTITY SAFETY — KAI never claims Ryan's name as its own
 use crate::core::{predictive, ConversationTrace, QueryHit, Universe};
 
 // ── UTF-8 safe slice ──────────────────────────────────────────────────────────
@@ -1168,8 +1168,8 @@ pub fn generate_response_predictive(
     }
 
     // ── General statement with low score ─────────────────────────────────────
-    if matches!(query_type, QueryType::Statement) && !is_about_self {
-        if primary.score < 0.40 {
+    if matches!(query_type, QueryType::Statement) && !is_about_self
+        && primary.score < 0.40 {
             let stmt_hits = universe.predictive_query(
                 crate::core::SparseVec::encode(trimmed),
                 trace,
@@ -1186,7 +1186,6 @@ pub fn generate_response_predictive(
             }
             return String::new();
         }
-    }
 
     // ── Main cell synthesis ───────────────────────────────────────────────────
     let knowledge_primary = hits
@@ -1719,8 +1718,8 @@ fn extract_direct_answer(question: &str, cell_text: &str) -> Option<String> {
             return Some(ensure_punct(cell));
         }
     }
-    if q.contains("my name") || q.contains("what is my name") {
-        if cell_lower.starts_with("my name is ") {
+    if (q.contains("my name") || q.contains("what is my name"))
+        && cell_lower.starts_with("my name is ") {
             let name_part = cell[11..].trim_end_matches('.').trim().to_string();
             // If KAI's own identity cell is the hit, we can't answer Ryan's name from it
             if name_part.to_lowercase() == "kai" {
@@ -1728,23 +1727,20 @@ fn extract_direct_answer(question: &str, cell_text: &str) -> Option<String> {
             }
             return Some(format!("Your name is {}.", name_part));
         }
-    }
-    if q.starts_with("who am i") {
-        if cell_lower.starts_with("i am ") || cell_lower.starts_with("i'm ") {
+    if q.starts_with("who am i")
+        && (cell_lower.starts_with("i am ") || cell_lower.starts_with("i'm ")) {
             let flipped = cell
                 .replacen("I am ", "You are ", 1)
                 .replacen("I'm ", "You're ", 1);
             return Some(flipped);
         }
-    }
-    if q.contains("where do i") || q.contains("where am i") {
-        if cell_lower.starts_with("i live ") || cell_lower.starts_with("i work ") {
+    if (q.contains("where do i") || q.contains("where am i"))
+        && (cell_lower.starts_with("i live ") || cell_lower.starts_with("i work ")) {
             let flipped =
                 cell.replacen("I live ", "You live ", 1)
                     .replacen("I work ", "You work ", 1);
             return Some(flipped);
         }
-    }
     // Work/job/occupation queries
     if q.contains("what do i do")
         || q.contains("do i do for")
@@ -1786,14 +1782,13 @@ fn identity_safety_filter(response: String, query_type: QueryType) -> String {
     if matches!(
         query_type,
         QueryType::SelfQuestion | QueryType::IdentityQuestion
-    ) {
-        if lower.contains("my name is ryan")
+    )
+        && (lower.contains("my name is ryan")
             || lower.contains("i am ryan")
-            || lower.contains("i'm ryan")
+            || lower.contains("i'm ryan"))
         {
             return "My name is KAI.".to_string();
         }
-    }
     if lower.starts_with("my name is ryan")
         || lower.starts_with("i am ryan")
         || lower.starts_with("i'm ryan")

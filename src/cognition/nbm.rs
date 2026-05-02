@@ -1,51 +1,51 @@
-/// Nucleus Basalis of Meynert (NBM) — Cortical Cholinergic Supply,
-/// Neocortical Arousal Gate, Attention Modulation, Memory Encoding
-///
-/// The NBM (also called Ch4) is the brain's primary source of acetylcholine
-/// to the ENTIRE neocortex. It is the cholinergic counterpart to the locus
-/// coeruleus (norepinephrine) and raphe (serotonin) systems, but specifically
-/// targets cortical processing rather than subcortical arousal.
-///
-/// The NBM is distinct from the Diagonal Band of Broca (Ch1/Ch2), which
-/// supplies ACh to the HIPPOCAMPUS and limbic structures. The NBM (Ch4)
-/// supplies the neocortex directly — modulating sensory cortex, association
-/// cortex, and PFC alike.
-///
-/// What the NBM does:
-///
-///   Cortical arousal and sensory gating:
-///     NBM ACh release shifts cortical EEG from slow oscillations (sleep) to
-///     fast, desynchronized activity (arousal). This "opens" the cortex to
-///     sensory input — heightening signal-to-noise ratio in sensory processing.
-///     Damage to NBM causes profound cognitive dulling and reduced cortical
-///     responsiveness. NBM degeneration is a hallmark of Alzheimer's disease.
-///     In KAI: the signal that "sharpens" cortical processing — when NBM tone
-///     is high, KAI's sensory and linguistic processing is more crisp.
-///
-///   Cortical attention modulation:
-///     NBM neurons fire specifically during attentionally demanding tasks, and
-///     ACh release potentiates thalamocortical transmission. This is the
-///     neural basis of "paying attention" — literally, ACh makes cortex more
-///     responsive to behaviorally relevant input.
-///     In KAI: sharpening the gain on attended signals — the difference between
-///     processing text at the surface vs. deeply engaged comprehension.
-///
-///   Memory encoding facilitation:
-///     ACh from NBM is required for LTP induction in cortex. Without adequate
-///     NBM tone, new memories fail to consolidate. This is why anticholinergic
-///     drugs impair memory formation even at low doses.
-///     In KAI: the encoding gate — high NBM tone during input means stronger
-///     memory traces get laid down in the lattice.
-///
-/// KAI's NBM:
-///   ach_tone: tonic acetylcholine release to neocortex (0.0–1.0)
-///   cortical_gain: ACh-mediated signal amplification (0.0–1.0)
-///   encoding_boost: memory consolidation enhancement (0.0–1.0)
-///   arousal_level: cortical desynchronization state (0.0–1.0)
+//! Nucleus Basalis of Meynert (NBM) — Cortical Cholinergic Supply,
+//! Neocortical Arousal Gate, Attention Modulation, Memory Encoding
+//!
+//! The NBM (also called Ch4) is the brain's primary source of acetylcholine
+//! to the ENTIRE neocortex. It is the cholinergic counterpart to the locus
+//! coeruleus (norepinephrine) and raphe (serotonin) systems, but specifically
+//! targets cortical processing rather than subcortical arousal.
+//!
+//! The NBM is distinct from the Diagonal Band of Broca (Ch1/Ch2), which
+//! supplies ACh to the HIPPOCAMPUS and limbic structures. The NBM (Ch4)
+//! supplies the neocortex directly — modulating sensory cortex, association
+//! cortex, and PFC alike.
+//!
+//! What the NBM does:
+//!
+//!   Cortical arousal and sensory gating:
+//!     NBM ACh release shifts cortical EEG from slow oscillations (sleep) to
+//!     fast, desynchronized activity (arousal). This "opens" the cortex to
+//!     sensory input — heightening signal-to-noise ratio in sensory processing.
+//!     Damage to NBM causes profound cognitive dulling and reduced cortical
+//!     responsiveness. NBM degeneration is a hallmark of Alzheimer's disease.
+//!     In KAI: the signal that "sharpens" cortical processing — when NBM tone
+//!     is high, KAI's sensory and linguistic processing is more crisp.
+//!
+//!   Cortical attention modulation:
+//!     NBM neurons fire specifically during attentionally demanding tasks, and
+//!     ACh release potentiates thalamocortical transmission. This is the
+//!     neural basis of "paying attention" — literally, ACh makes cortex more
+//!     responsive to behaviorally relevant input.
+//!     In KAI: sharpening the gain on attended signals — the difference between
+//!     processing text at the surface vs. deeply engaged comprehension.
+//!
+//!   Memory encoding facilitation:
+//!     ACh from NBM is required for LTP induction in cortex. Without adequate
+//!     NBM tone, new memories fail to consolidate. This is why anticholinergic
+//!     drugs impair memory formation even at low doses.
+//!     In KAI: the encoding gate — high NBM tone during input means stronger
+//!     memory traces get laid down in the lattice.
+//!
+//! KAI's NBM:
+//!   ach_tone: tonic acetylcholine release to neocortex (0.0–1.0)
+//!   cortical_gain: ACh-mediated signal amplification (0.0–1.0)
+//!   encoding_boost: memory consolidation enhancement (0.0–1.0)
+//!   arousal_level: cortical desynchronization state (0.0–1.0)
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-/// ACh tone EMA (moderate — cholinergic tone responds to demands)
+//! ACh tone EMA (moderate — cholinergic tone responds to demands)
 const ACH_EMA: f32 = 0.16;
 
 /// ACh baseline (moderate resting tone)

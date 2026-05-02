@@ -328,12 +328,10 @@ mod tests {
     #[test]
     fn test_predict_returns_top_hit() {
         let engine = PredictiveEngine::new();
-        let hits = vec![
-            (
+        let hits = [(
                 "consciousness is recursive self-reference".to_string(),
                 0.85_f32,
-            ),
-        ];
+            )];
         assert!(!hits.is_empty());
         let _ = engine;
     }

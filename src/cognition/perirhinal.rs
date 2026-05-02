@@ -1,48 +1,48 @@
-/// Perirhinal Cortex (PRC) — Object/Concept Recognition Memory,
-/// Familiarity Signals, Novelty Detection, Recognition Without Recall
-///
-/// The perirhinal cortex lies at the medial temporal lobe border, adjacent to
-/// the parahippocampal cortex and entorhinal cortex. It is the primary source
-/// of familiarity-based recognition memory — the sense of "I've seen this before"
-/// that comes WITHOUT requiring full episodic recall. It detects novelty at the
-/// object/concept level (not scene level like PHC).
-///
-/// What the Perirhinal Cortex does:
-///
-///   Familiarity-based recognition:
-///     The PRC is the "familiarity detector" at the item/concept level. You
-///     recognize a word as familiar via PRC even if you can't remember where
-///     you learned it. This is distinct from recollection (hippocampus).
-///     In KAI: recognizing a concept, term, or question type as familiar
-///     without necessarily retrieving a specific memory — the "I know this"
-///     feeling before the "I remember when I learned this."
-///
-///   Novelty detection (mismatch signal):
-///     PRC neurons fire strongly to novel stimuli and habituate rapidly to
-///     repeated ones. This makes PRC a powerful novelty detector — it rapidly
-///     builds an internal model of "what I've seen" and flags anything new.
-///     In KAI: per-concept novelty tracking. After seeing a concept 2-3 times,
-///     PRC marks it as familiar; brand new concepts fire a novelty signal.
-///
-///   Perceptual learning and conceptual sharpening:
-///     Repeated exposure to a concept sharpens the PRC's representation of it,
-///     making future recognition faster and more confident.
-///     In KAI: the more KAI processes a concept, the sharper its recognition
-///     and the higher the familiarity signal.
-///
-///   Gating recollection:
-///     When familiarity is high (PRC signal strong), the hippocampus may not
-///     need to generate a full recollection. The PRC provides a "shortcut."
-///     In KAI: high familiarity → hippocampal retrieval is skipped or reduced.
-///
-/// KAI's PRC:
-///   concept_familiarity_map: track familiarity per concept (via EMA counts)
-///   global_familiarity: overall familiarity level in current context (0.0–1.0)
-///   novelty_signal: strength of current novelty detection (0.0–1.0)
+//! Perirhinal Cortex (PRC) — Object/Concept Recognition Memory,
+//! Familiarity Signals, Novelty Detection, Recognition Without Recall
+//!
+//! The perirhinal cortex lies at the medial temporal lobe border, adjacent to
+//! the parahippocampal cortex and entorhinal cortex. It is the primary source
+//! of familiarity-based recognition memory — the sense of "I've seen this before"
+//! that comes WITHOUT requiring full episodic recall. It detects novelty at the
+//! object/concept level (not scene level like PHC).
+//!
+//! What the Perirhinal Cortex does:
+//!
+//!   Familiarity-based recognition:
+//!     The PRC is the "familiarity detector" at the item/concept level. You
+//!     recognize a word as familiar via PRC even if you can't remember where
+//!     you learned it. This is distinct from recollection (hippocampus).
+//!     In KAI: recognizing a concept, term, or question type as familiar
+//!     without necessarily retrieving a specific memory — the "I know this"
+//!     feeling before the "I remember when I learned this."
+//!
+//!   Novelty detection (mismatch signal):
+//!     PRC neurons fire strongly to novel stimuli and habituate rapidly to
+//!     repeated ones. This makes PRC a powerful novelty detector — it rapidly
+//!     builds an internal model of "what I've seen" and flags anything new.
+//!     In KAI: per-concept novelty tracking. After seeing a concept 2-3 times,
+//!     PRC marks it as familiar; brand new concepts fire a novelty signal.
+//!
+//!   Perceptual learning and conceptual sharpening:
+//!     Repeated exposure to a concept sharpens the PRC's representation of it,
+//!     making future recognition faster and more confident.
+//!     In KAI: the more KAI processes a concept, the sharper its recognition
+//!     and the higher the familiarity signal.
+//!
+//!   Gating recollection:
+//!     When familiarity is high (PRC signal strong), the hippocampus may not
+//!     need to generate a full recollection. The PRC provides a "shortcut."
+//!     In KAI: high familiarity → hippocampal retrieval is skipped or reduced.
+//!
+//! KAI's PRC:
+//!   concept_familiarity_map: track familiarity per concept (via EMA counts)
+//!   global_familiarity: overall familiarity level in current context (0.0–1.0)
+//!   novelty_signal: strength of current novelty detection (0.0–1.0)
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-/// Familiarity EMA per concept (fast — PRC habituates quickly)
+//! Familiarity EMA per concept (fast — PRC habituates quickly)
 const CONCEPT_FAMILIARITY_EMA: f32 = 0.30;
 
 /// Global familiarity EMA

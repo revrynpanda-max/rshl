@@ -1,42 +1,42 @@
-/// Norepinephrine (Locus Coeruleus) — Alertness, Gain Control, Stress Response
-///
-/// The Locus Coeruleus is a tiny nucleus in the brainstem that sends
-/// norepinephrine (NE) throughout the entire brain. It is the arousal
-/// dial — it controls signal-to-noise ratio, focus, and stress response.
-///
-/// Without NE:
-///   KAI treats all inputs as equally salient.
-///   There is no difference between a routine query and a surprising one.
-///   There is no stress response, no heightened focus, no alertness axis.
-///   KAI is always at the same attentional "volume."
-///
-/// With NE:
-///   Novel, surprising, or threatening inputs spike NE.
-///   High NE → gain rises → salient signals are amplified, noise suppressed.
-///   Low NE → diffuse, slow, unfocused state.
-///   Optimal NE (~0.55) → peak cognitive performance (Yerkes-Dodson curve).
-///   Chronic high NE (stress_load > 0.65) → cognitive narrowing, reactivity.
-///
-/// Yerkes-Dodson Inverted-U:
-///   alertness = 1.0 - 4.0 * (level - 0.55)²
-///   This peaks at level ≈ 0.55 and falls at both extremes.
-///   Too little NE = inattentive.  Too much = overwhelmed.
-///
-/// Architecture:
-///   NorepinephrineSystem tracks:
-///     - level (phasic NE, fast-moving)
-///     - stress_load (slow-accumulating, slow-decaying)
-///     - baseline (tonic NE, very slow EMA)
-///     - gain (signal amplification factor derived from level)
-///
-///   NeEvent enum drives level changes.
-///   gain_factor() feeds into GlobalWorkspace salience gating.
-///   attention_threshold() sets the floor for what gets GW entry.
-///   is_stressed() flags chronic high-NE states for behavioral adjustment.
+//! Norepinephrine (Locus Coeruleus) — Alertness, Gain Control, Stress Response
+//!
+//! The Locus Coeruleus is a tiny nucleus in the brainstem that sends
+//! norepinephrine (NE) throughout the entire brain. It is the arousal
+//! dial — it controls signal-to-noise ratio, focus, and stress response.
+//!
+//! Without NE:
+//!   KAI treats all inputs as equally salient.
+//!   There is no difference between a routine query and a surprising one.
+//!   There is no stress response, no heightened focus, no alertness axis.
+//!   KAI is always at the same attentional "volume."
+//!
+//! With NE:
+//!   Novel, surprising, or threatening inputs spike NE.
+//!   High NE → gain rises → salient signals are amplified, noise suppressed.
+//!   Low NE → diffuse, slow, unfocused state.
+//!   Optimal NE (~0.55) → peak cognitive performance (Yerkes-Dodson curve).
+//!   Chronic high NE (stress_load > 0.65) → cognitive narrowing, reactivity.
+//!
+//! Yerkes-Dodson Inverted-U:
+//!   alertness = 1.0 - 4.0 * (level - 0.55)²
+//!   This peaks at level ≈ 0.55 and falls at both extremes.
+//!   Too little NE = inattentive.  Too much = overwhelmed.
+//!
+//! Architecture:
+//!   NorepinephrineSystem tracks:
+//!     - level (phasic NE, fast-moving)
+//!     - stress_load (slow-accumulating, slow-decaying)
+//!     - baseline (tonic NE, very slow EMA)
+//!     - gain (signal amplification factor derived from level)
+//!
+//!   NeEvent enum drives level changes.
+//!   gain_factor() feeds into GlobalWorkspace salience gating.
+//!   attention_threshold() sets the floor for what gets GW entry.
+//!   is_stressed() flags chronic high-NE states for behavioral adjustment.
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-/// Natural resting level of NE
+//! Natural resting level of NE
 const NE_BASELINE: f32 = 0.50;
 
 /// Optimal NE level for peak alertness (Yerkes-Dodson peak)

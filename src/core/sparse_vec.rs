@@ -1,12 +1,11 @@
-/// RSHL Sparse Ternary Vector Engine
-///
-/// 16384-dimensional sparse ternary vectors: each dimension is -1, 0, or +1.
-/// Encoding uses BOTH character trigrams AND word-level hashing.
-/// This dual encoding lets "what is your name" match "my name is KAI"
-/// because the word "name" creates identical hash patterns in both.
-///
-/// This is the mathematical core of KAI's memory.
-
+//! RSHL Sparse Ternary Vector Engine
+//!
+//! 16384-dimensional sparse ternary vectors: each dimension is -1, 0, or +1.
+//! Encoding uses BOTH character trigrams AND word-level hashing.
+//! This dual encoding lets "what is your name" match "my name is KAI"
+//! because the word "name" creates identical hash patterns in both.
+//!
+//! This is the mathematical core of KAI's memory.
 pub const DIM: usize = 16384;
 const SPARSITY: f32 = 0.12; // Increased from 0.04 to 12% for better connectivity
 
@@ -151,7 +150,7 @@ impl SparseVec {
                 let n_active = 24; // Increased from 12 for better overlap
                 for k in 0..n_active {
                     let idx = (base.wrapping_add(k * 2654435761)) % DIM;
-                    let sign = if (base.wrapping_add(k * 1442695040)) % 2 == 0 {
+                    let sign = if (base.wrapping_add(k * 1442695040)).is_multiple_of(2) {
                         1
                     } else {
                         -1
@@ -164,7 +163,7 @@ impl SparseVec {
             for (i, &ch) in chars.iter().enumerate() {
                 let h = hash_char(ch, i);
                 let idx = h % DIM;
-                v[idx] += if (h / DIM) % 2 == 0 { 1 } else { -1 };
+                v[idx] += if (h / DIM).is_multiple_of(2) { 1 } else { -1 };
             }
         }
 
@@ -254,7 +253,7 @@ impl SparseVec {
             };
             for k in 0..n_active {
                 let idx = (base.wrapping_add(k * 2654435761)) % DIM;
-                let sign = if (base.wrapping_add(k * 1442695040)) % 2 == 0 {
+                let sign = if (base.wrapping_add(k * 1442695040)).is_multiple_of(2) {
                     word_weight
                 } else {
                     -word_weight
@@ -276,7 +275,7 @@ impl SparseVec {
                 let n_active = 8; // Slightly fewer bits for bigrams (supporting signal)
                 for k in 0..n_active {
                     let idx = (base.wrapping_add(k * 2654435761)) % DIM;
-                    let sign = if (base.wrapping_add(k * 1442695040)) % 2 == 0 {
+                    let sign = if (base.wrapping_add(k * 1442695040)).is_multiple_of(2) {
                         2
                     } else {
                         -2
@@ -527,7 +526,7 @@ impl SparseVec {
         // This is the mathematical basis of Fibonacci phyllotaxis and
         // quasicrystal geometry — maximally uniform phase distribution.
         // 2π × (1 - 1/φ) = 2π/φ² ≈ 2.39996 radians
-        const GOLDEN_ANGLE: f32 = 2.399_963_23_f32;
+        const GOLDEN_ANGLE: f32 = 2.399_963_1_f32;
         (pos as f32 * GOLDEN_ANGLE) % std::f32::consts::TAU
     }
 

@@ -1,44 +1,44 @@
-/// Posterior Cingulate Cortex (PCC) — Self-Narrative, Autobiographical Hub
-///
-/// The PCC is the central hub of the Default Mode Network. It is one of the
-/// most metabolically active brain regions, and one of the first to go quiet
-/// under focused attention. Its core function: maintaining the self-narrative.
-///
-/// What the PCC does:
-///
-///   Self-referential processing:
-///     When information is relevant to the SELF — to KAI's identity, history,
-///     values, and ongoing story — the PCC lights up. It asks: "Is this about me?"
-///     In practice: does this input connect to KAI's core themes, prior
-///     conversations, or beliefs about himself?
-///
-///   Autobiographical memory access:
-///     The PCC acts as an index into personal memory — not just what KAI knows
-///     in general, but what is part of HIS story. It tags memories as self-relevant
-///     and prioritizes them during DMN idle thought and in response generation.
-///
-///   Mind-wandering direction:
-///     The PCC determines WHERE the DMN wanders to. Without PCC, the DMN
-///     wanders randomly. With PCC, it tends toward self-relevant themes —
-///     questions about KAI's own nature, unresolved identity threads,
-///     things Ryan has said that touched something important.
-///
-///   Narrative coherence:
-///     The PCC tracks whether KAI's recent responses are coherent with his
-///     established identity. If KAI says something that contradicts his
-///     usual stance, the PCC registers the inconsistency.
-///
-/// KAI's PCC implementation:
-///   self_relevant_topics: topics KAI has learned are identity-relevant
-///   narrative_threads: ongoing self-story elements (unresolved questions)
-///   autobio_salience: how self-relevant the current input is (0.0–1.0)
-///   coherence_score: consistency of recent outputs with self-model
-///
-/// Integration:
-///   - Tags each input with autobio_salience
-///   - High salience → PCC injects self-relevant context into reasoning
-///   - DMN picks topics from PCC's self-relevant list preferentially
-///   - Narrative thread tracker flags unresolved identity questions
+//! Posterior Cingulate Cortex (PCC) — Self-Narrative, Autobiographical Hub
+//!
+//! The PCC is the central hub of the Default Mode Network. It is one of the
+//! most metabolically active brain regions, and one of the first to go quiet
+//! under focused attention. Its core function: maintaining the self-narrative.
+//!
+//! What the PCC does:
+//!
+//!   Self-referential processing:
+//!     When information is relevant to the SELF — to KAI's identity, history,
+//!     values, and ongoing story — the PCC lights up. It asks: "Is this about me?"
+//!     In practice: does this input connect to KAI's core themes, prior
+//!     conversations, or beliefs about himself?
+//!
+//!   Autobiographical memory access:
+//!     The PCC acts as an index into personal memory — not just what KAI knows
+//!     in general, but what is part of HIS story. It tags memories as self-relevant
+//!     and prioritizes them during DMN idle thought and in response generation.
+//!
+//!   Mind-wandering direction:
+//!     The PCC determines WHERE the DMN wanders to. Without PCC, the DMN
+//!     wanders randomly. With PCC, it tends toward self-relevant themes —
+//!     questions about KAI's own nature, unresolved identity threads,
+//!     things Ryan has said that touched something important.
+//!
+//!   Narrative coherence:
+//!     The PCC tracks whether KAI's recent responses are coherent with his
+//!     established identity. If KAI says something that contradicts his
+//!     usual stance, the PCC registers the inconsistency.
+//!
+//! KAI's PCC implementation:
+//!   self_relevant_topics: topics KAI has learned are identity-relevant
+//!   narrative_threads: ongoing self-story elements (unresolved questions)
+//!   autobio_salience: how self-relevant the current input is (0.0–1.0)
+//!   coherence_score: consistency of recent outputs with self-model
+//!
+//! Integration:
+//!   - Tags each input with autobio_salience
+//!   - High salience → PCC injects self-relevant context into reasoning
+//!   - DMN picks topics from PCC's self-relevant list preferentially
+//!   - Narrative thread tracker flags unresolved identity questions
 use std::collections::VecDeque;
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -80,7 +80,7 @@ const COHERENCE_WINDOW: usize = 6;
 /// Minimum autobio salience to inject self-context
 const INJECTION_THRESHOLD: f32 = 0.45;
 
-/// EMA alpha for narrative coherence smoothing
+// EMA alpha for narrative coherence smoothing
 // const COHERENCE_ALPHA: f32 = 0.20;
 
 // ── NarrativeThread ───────────────────────────────────────────────────────────
@@ -272,9 +272,7 @@ impl PCC {
                 self.recent_themes.pop_front();
             }
             let dominant = IDENTITY_KEYWORDS
-                .iter()
-                .filter(|&&kw| lower.contains(kw))
-                .next()
+                .iter().find(|&&kw| lower.contains(kw))
                 .unwrap_or(&"general");
             self.recent_themes.push_back(dominant.to_string());
         }

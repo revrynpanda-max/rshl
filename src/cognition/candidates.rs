@@ -1,8 +1,8 @@
-/// Candidate Buffer — Dream candidate accumulation layer.
-///
-/// Biology analog: Pre-synaptic holding zone before long-term potentiation.
-/// A pattern must recur repeatedly with stable field quality before it earns
-/// promotion into durable memory.
+//! Candidate Buffer — Dream candidate accumulation layer.
+//!
+//! Biology analog: Pre-synaptic holding zone before long-term potentiation.
+//! A pattern must recur repeatedly with stable field quality before it earns
+//! promotion into durable memory.
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 

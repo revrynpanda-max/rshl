@@ -1,21 +1,21 @@
-/// RSHL Reasoner — Iterative Resonance Chain-of-Thought
-///
-/// This is how KAI does LLM-level reasoning without being an LLM.
-///
-/// Instead of a single cosine lookup, the reasoner:
-///   1. Encodes the query as a sparse ternary vector
-///   2. Resonates against the universe to find the strongest match
-///   3. Binds query ⊗ match → creates a "derived thought" vector
-///   4. Bundles the derived thought with context → "next thought"
-///   5. Repeats until Φg peaks or max depth reached
-///   6. Decodes the best thought vector back to text
-///
-/// Each step is a full geometric operation — no transformer math,
-/// no attention heads, no softmax. Pure HDC algebra.
-///
-/// The key insight: binding two vectors creates a NEW vector that
-/// captures the RELATIONSHIP between them. Bundling accumulates
-/// evidence. The chain naturally gravitates toward coherent thought.
+//! RSHL Reasoner — Iterative Resonance Chain-of-Thought
+//!
+//! This is how KAI does LLM-level reasoning without being an LLM.
+//!
+//! Instead of a single cosine lookup, the reasoner:
+//!   1. Encodes the query as a sparse ternary vector
+//!   2. Resonates against the universe to find the strongest match
+//!   3. Binds query ⊗ match → creates a "derived thought" vector
+//!   4. Bundles the derived thought with context → "next thought"
+//!   5. Repeats until Φg peaks or max depth reached
+//!   6. Decodes the best thought vector back to text
+//!
+//! Each step is a full geometric operation — no transformer math,
+//! no attention heads, no softmax. Pure HDC algebra.
+//!
+//! The key insight: binding two vectors creates a NEW vector that
+//! captures the RELATIONSHIP between them. Bundling accumulates
+//! evidence. The chain naturally gravitates toward coherent thought.
 use crate::core::{SparseVec, Universe};
 
 /// A context slot from working memory — injected into reasoning.
@@ -69,6 +69,12 @@ impl Default for ReasonerConfig {
 
 pub struct Reasoner {
     config: ReasonerConfig,
+}
+
+impl Default for Reasoner {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Reasoner {
@@ -217,8 +223,7 @@ impl Reasoner {
                     // More recent = more weight (we clone and add multiple times)
                     let age = context_vecs.len() - 1 - i;
                     let copies = ((self.config.decay_factor.powi(age as i32)) * 3.0) as usize;
-                    std::iter::repeat(v.clone())
-                        .take(copies.max(1))
+                    std::iter::repeat_n(v.clone(), copies.max(1))
                         .collect::<Vec<_>>()
                 })
                 .flatten()

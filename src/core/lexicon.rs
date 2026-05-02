@@ -1,19 +1,19 @@
-/// Lexicon — KAI's Vocabulary Backbone
-///
-/// Loads 10,000 common English words from the google-10000-english-usa.txt file.
-/// Provides:
-///   - Word recognition: O(1) lookup to check if a word is known
-///   - Spelling correction: Edit-distance based fuzzy matching
-///   - Frequency awareness: Words ranked by commonality (rank 0 = "the", most common)
-///   - Dream seeding: Random word selection for dream-state exploration
-///
-/// The lexicon is KAI's "tongue" — it lets him understand what the user
-/// MEANT to say, not just what they typed. A misspelled word gets pulled
-/// to the nearest known form by mathematical distance, weighted by how
-/// common that word is in English.
-///
-/// This is pure math: edit distance is the resonance between character
-/// sequences, and frequency rank is the gravitational pull of common usage.
+//! Lexicon — KAI's Vocabulary Backbone
+//!
+//! Loads 10,000 common English words from the google-10000-english-usa.txt file.
+//! Provides:
+//!   - Word recognition: O(1) lookup to check if a word is known
+//!   - Spelling correction: Edit-distance based fuzzy matching
+//!   - Frequency awareness: Words ranked by commonality (rank 0 = "the", most common)
+//!   - Dream seeding: Random word selection for dream-state exploration
+//!
+//! The lexicon is KAI's "tongue" — it lets him understand what the user
+//! MEANT to say, not just what they typed. A misspelled word gets pulled
+//! to the nearest known form by mathematical distance, weighted by how
+//! common that word is in English.
+//!
+//! This is pure math: edit distance is the resonance between character
+//! sequences, and frequency rank is the gravitational pull of common usage.
 use std::collections::HashMap;
 
 /// The raw word list, embedded at compile time.
@@ -350,11 +350,7 @@ fn damerau_levenshtein(a: &str, b: &str) -> usize {
     }
 
     // Quick check: if length difference exceeds max distance, skip full computation
-    let len_diff = if a_len > b_len {
-        a_len - b_len
-    } else {
-        b_len - a_len
-    };
+    let len_diff = a_len.abs_diff(b_len);
     if len_diff > MAX_EDIT_DISTANCE {
         return len_diff;
     }
