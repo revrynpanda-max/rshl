@@ -286,7 +286,7 @@ mod tests {
 
     #[test]
     fn test_prediction_failure_raises_cortisol() {
-        let _cort = CortisolSystem::new();
+        let mut cort = CortisolSystem::new();
         let before = cort.level;
         cort.process(CortisolEvent::PredictionFailure);
         assert!(
@@ -297,7 +297,7 @@ mod tests {
 
     #[test]
     fn test_repeated_failures_elevate() {
-        let _cort = CortisolSystem::new();
+        let mut cort = CortisolSystem::new();
         for _ in 0..5 {
             cort.process(CortisolEvent::PredictionFailure);
         }
@@ -309,7 +309,7 @@ mod tests {
 
     #[test]
     fn test_resolution_reduces_cortisol() {
-        let _cort = CortisolSystem::new();
+        let mut cort = CortisolSystem::new();
         for _ in 0..5 {
             cort.process(CortisolEvent::PredictionFailure);
         }
@@ -320,7 +320,7 @@ mod tests {
 
     #[test]
     fn test_sleep_recovery_major_drop() {
-        let _cort = CortisolSystem::new();
+        let mut cort = CortisolSystem::new();
         for _ in 0..10 {
             cort.process(CortisolEvent::UnresolvedConflict);
         }
@@ -336,7 +336,7 @@ mod tests {
 
     #[test]
     fn test_allostatic_load_builds_slowly() {
-        let _cort = CortisolSystem::new();
+        let mut cort = CortisolSystem::new();
         for _ in 0..20 {
             cort.process(CortisolEvent::SustainedArousal);
         }
@@ -348,7 +348,7 @@ mod tests {
 
     #[test]
     fn test_allostatic_load_persists_after_recovery() {
-        let _cort = CortisolSystem::new();
+        let mut cort = CortisolSystem::new();
         for _ in 0..20 {
             cort.process(CortisolEvent::UnresolvedConflict);
         }
@@ -368,7 +368,7 @@ mod tests {
 
     #[test]
     fn test_memory_penalty_above_threshold() {
-        let _cort = CortisolSystem::new();
+        let mut cort = CortisolSystem::new();
         // Push to high stress
         for _ in 0..8 {
             cort.process(CortisolEvent::PredictionFailure);

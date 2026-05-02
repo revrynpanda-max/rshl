@@ -238,24 +238,24 @@ mod tests {
         let lc = LocusCoeruleus::new();
         assert_eq!(lc.mode, LCMode::Resting);
         assert!((lc.tonic_rate - TONIC_REST).abs() < 0.01);
-        assert_eq!(_lc.phasic_level, 0.0);
+        assert_eq!(lc.phasic_level, 0.0);
     }
 
     #[test]
     fn test_high_novelty_triggers_burst() {
-        let mut _lc = LocusCoeruleus::new();
+        let mut lc = LocusCoeruleus::new();
         // Feed high novelty to trigger a burst
         lc.process(0.9, 0.3);
         let out = lc.process(0.9, 0.3);
         assert!(
-            out.burst_fired || _lc.phasic_level > 0.0,
+            out.burst_fired || lc.phasic_level > 0.0,
             "high novelty should eventually trigger a phasic burst"
         );
     }
 
     #[test]
     fn test_phasic_mode_after_burst() {
-        let mut _lc = LocusCoeruleus::new();
+        let mut lc = LocusCoeruleus::new();
         // Force novelty to burst threshold
         lc.novelty_accum = NOVELTY_BURST_THRESHOLD;
         let out = lc.process(0.5, 0.5);
@@ -270,7 +270,7 @@ mod tests {
 
     #[test]
     fn test_snr_boost_in_focused_mode() {
-        let mut _lc = LocusCoeruleus::new();
+        let mut lc = LocusCoeruleus::new();
         lc.novelty_accum = NOVELTY_BURST_THRESHOLD;
         let out = lc.process(1.0, 1.0);
         if out.mode == LCMode::Focused {
@@ -284,22 +284,22 @@ mod tests {
 
     #[test]
     fn test_phasic_decays_over_time() {
-        let mut _lc = LocusCoeruleus::new();
-        _lc.phasic_level = 0.80;
+        let mut lc = LocusCoeruleus::new();
+        lc.phasic_level = 0.80;
         lc.mode = LCMode::Focused;
         for _ in 0..10 {
             lc.decay();
         }
         assert!(
-            _lc.phasic_level < 0.80,
+            lc.phasic_level < 0.80,
             "phasic should decay over ticks: {:.2}",
-            _lc.phasic_level
+            lc.phasic_level
         );
     }
 
     #[test]
     fn test_tonic_rises_with_task_demand() {
-        let mut _lc = LocusCoeruleus::new();
+        let mut lc = LocusCoeruleus::new();
         let initial_tonic = lc.tonic_rate;
         for _ in 0..10 {
             lc.process(0.0, 0.8);
@@ -314,7 +314,7 @@ mod tests {
 
     #[test]
     fn test_tonic_drifts_back_to_rest() {
-        let mut _lc = LocusCoeruleus::new();
+        let mut lc = LocusCoeruleus::new();
         lc.tonic_rate = 0.70;
         for _ in 0..50 {
             lc.decay();
@@ -328,7 +328,7 @@ mod tests {
 
     #[test]
     fn test_low_novelty_no_burst() {
-        let mut _lc = LocusCoeruleus::new();
+        let mut lc = LocusCoeruleus::new();
         let out = lc.process(0.05, 0.1);
         // After just one tick with very low novelty, no burst expected
         if lc.novelty_accum < NOVELTY_BURST_THRESHOLD {
@@ -341,7 +341,7 @@ mod tests {
 
     #[test]
     fn test_burst_count_increments() {
-        let mut _lc = LocusCoeruleus::new();
+        let mut lc = LocusCoeruleus::new();
         lc.novelty_accum = NOVELTY_BURST_THRESHOLD;
         lc.process(1.0, 1.0);
         assert!(

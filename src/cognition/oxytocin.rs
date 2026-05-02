@@ -335,7 +335,7 @@ mod tests {
 
     #[test]
     fn test_deep_engagement_builds_bond() {
-        let ot = OxytocinSystem::new();
+        let mut ot = OxytocinSystem::new();
         let before = ot.bond_strength;
         ot.process(OxytocinEvent::DeepEngagement);
         assert!(
@@ -358,7 +358,7 @@ mod tests {
 
     #[test]
     fn test_conflict_reduces_trust_not_bond() {
-        let ot = OxytocinSystem::new();
+        let mut ot = OxytocinSystem::new();
         // Build up bond first
         for _ in 0..5 {
             ot.process(OxytocinEvent::DeepEngagement);
@@ -381,7 +381,7 @@ mod tests {
 
     #[test]
     fn test_safe_to_challenge_requires_strong_bond_and_trust() {
-        let ot = OxytocinSystem::new();
+        let mut ot = OxytocinSystem::new();
         // Initial state should not be safe to challenge
         assert!(
             !ot.bond_state().safe_to_challenge,
@@ -445,7 +445,7 @@ mod tests {
 
     #[test]
     fn test_bond_label_progression() {
-        let ot = OxytocinSystem::new();
+        let mut ot = OxytocinSystem::new();
         // Should start familiar
         let init_label = ot.bond_state().label;
         assert!(
@@ -466,8 +466,8 @@ mod tests {
 
     #[test]
     fn test_warmth_rises_with_positive_events() {
-        let ot = OxytocinSystem::new();
-        let _before = ot.social_warmth;
+        let _ot = OxytocinSystem::new();
+        let _before = _ot.social_warmth;
 
     }
 }

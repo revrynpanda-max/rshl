@@ -802,7 +802,7 @@ mod tests {
 
     #[test]
     fn extract_concepts_picks_rare_words() {
-        let _concepts = extract_significant_concepts(
+        let concepts = extract_significant_concepts(
             "Photosynthesis converts carbon dioxide and water into glucose using sunlight.",
             3,
         );

@@ -248,7 +248,7 @@ mod tests {
     #[test]
     fn test_reward_omission_raises_activity() {
         let mut h = Habenula::new();
-        let _out = h.process(HabenulaSignal::RewardOmission { expected: 0.80 });
+        let out = h.process(HabenulaSignal::RewardOmission { expected: 0.80 });
         assert!(
             out.activity > 0.0,
             "reward omission should raise habenula activity: {:.2}",
@@ -259,7 +259,7 @@ mod tests {
     #[test]
     fn test_punishment_prediction_raises_activity() {
         let mut h = Habenula::new();
-        let _out = h.process(HabenulaSignal::PunishmentPredicted { severity: 0.70 });
+        let out = h.process(HabenulaSignal::PunishmentPredicted { severity: 0.70 });
         assert!(
             out.activity > 0.0,
             "punishment prediction should raise activity: {:.2}",
@@ -271,7 +271,7 @@ mod tests {
     fn test_high_activity_suppresses_vta() {
         let mut h = Habenula::new();
         h.activity = 0.60;
-        let _out = h.process(HabenulaSignal::ConflictDetected { intensity: 0.0 });
+        let out = h.process(HabenulaSignal::ConflictDetected { intensity: 0.0 });
         assert!(
             out.suppress_vta,
             "high habenula activity should suppress VTA: activity={:.2}",
@@ -284,7 +284,7 @@ mod tests {
     fn test_behavioral_switch_at_threshold() {
         let mut h = Habenula::new();
         h.activity = SWITCH_THRESHOLD + 0.05;
-        let _out = h.process(HabenulaSignal::ConflictDetected { intensity: 0.0 });
+        let out = h.process(HabenulaSignal::ConflictDetected { intensity: 0.0 });
         assert!(
             out.behavioral_switch,
             "activity above threshold should signal behavioral switch"
