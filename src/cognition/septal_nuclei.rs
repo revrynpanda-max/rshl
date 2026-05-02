@@ -350,7 +350,9 @@ mod tests {
             s.affiliation_drive
         );
         assert!(
-            s.affiliation_
+            s.affiliation_drive >= 0.0,
+            "affiliation_drive should not go negative: {:.3}",
+            s.affiliation_drive
         );
     }
 }

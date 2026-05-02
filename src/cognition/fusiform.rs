@@ -430,7 +430,10 @@ mod tests {
             fg.decay();
         }
         assert!(
-            fg.current_f
+            fg.current_familiarity < before,
+            "familiarity should decay: before={:.3} after={:.3}",
+            before,
+            fg.current_familiarity
         );
     }
 }

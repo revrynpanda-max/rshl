@@ -373,7 +373,9 @@ mod tests {
             });
         }
         assert!(
-            s.chunks.len
+            s.chunks.len() <= MAX_CHUNKS,
+            "chunks should not exceed MAX_CHUNKS: {}",
+            s.chunks.len()
         );
     }
 }

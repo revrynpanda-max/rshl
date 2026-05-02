@@ -253,7 +253,10 @@ mod tests {
         }
         let decayed = osc.amplitudes[2];
         assert!(
-            decayed < b
+            decayed < boosted,
+            "amplitude should decay after stimulation: boosted={} decayed={}",
+            boosted,
+            decayed
         );
     }
 }

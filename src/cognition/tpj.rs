@@ -410,7 +410,10 @@ mod tests {
         let mut t2 = TPJ::new();
         let out_unfamiliar = t2.process("how does this work?", 0.10, 0.60);
         assert!(
-            out_familiar
+            out_familiar.self_other_gap <= out_unfamiliar.self_other_gap,
+            "high familiarity should reduce perspective gap: familiar={:.3} unfamiliar={:.3}",
+            out_familiar.self_other_gap,
+            out_unfamiliar.self_other_gap
         );
     }
 }
