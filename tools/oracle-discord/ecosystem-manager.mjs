@@ -79,6 +79,12 @@ for (const [name, child] of processes) {
     if (msg.type === 'UPDATE_ENV') {
       updateEnvFile(msg.target);
     }
+    if (msg.type === 'LATTICE_FEED') {
+      const kai = processes.get("KAI");
+      if (kai && kai.connected) {
+        kai.send({ type: 'INJECT_CLAIM', payload: msg.payload });
+      }
+    }
   });
 }
 
@@ -168,18 +174,27 @@ async function runHotfix() {
 
 
 // --- The Heartbeat (World Clock) ---
-// 1 real 5-second pulse = 1 digital "Moment" or Planck Time
+// High-Frequency Real-Time metabolism (4Hz)
+let tickCount = 0;
 setInterval(() => {
-  clock.tick();
-  const state = clock.getState();
+  tickCount++;
   
-  // Broadcast the "Moment" to all living entities
-  for (const [name, child] of processes) {
-    if (child.connected) {
-      child.send({ type: 'WORLD_TICK', worldState: state });
+  // High-priority: Quick reactivity checks (Every 250ms)
+  // (Detecting instant state changes)
+
+  // Standard-priority: Simulation & Broadcast (Every 1s / 4 ticks)
+  if (tickCount % 4 === 0) {
+    clock.tick();
+    const state = clock.getState();
+    
+    // Broadcast the "Moment" to all living entities
+    for (const [name, child] of processes) {
+      if (child.connected) {
+        child.send({ type: 'WORLD_TICK', worldState: state });
+      }
     }
   }
-}, 5000); 
+}, 250); 
 
 console.log("\n=======================================================");
 console.log(" Oracle Ecosystem Manager Online (Living Universe Mode)");

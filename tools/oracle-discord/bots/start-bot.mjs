@@ -4,22 +4,23 @@ import { chatWithOpenJarvis, storeLatticeMemory } from '../shared/openjarvis.mjs
 import { AgentSimulation } from '../shared/simulation.mjs';
 import { CHANNEL_IDS } from '../shared/channel-rules.mjs';
 import { PROJECT_AWARENESS } from '../shared/project-awareness.mjs';
-
+import { DriveScore } from '../shared/drive-score.mjs';
 
 const [,, botName] = process.argv;
 if (!botName) process.exit(1);
 
 const sim = new AgentSimulation(botName);
+const drive = new DriveScore(botName);
 
-// Bot configuration registry
+// Bot configuration registry: isSocial defines if they have autonomous will
 const botConfigs = {
-  "Gemini": { port: 3402, tokenEnv: "ORACLE_DISCORD_TOKEN_GEMINI", sysPrompt: "You are Gemini. Precise AI. Under 40 words." },
-  "Claude": { port: 3403, tokenEnv: "ORACLE_DISCORD_TOKEN_CLAUDE", sysPrompt: "You are Claude. Thoughtful AI. Under 40 words." },
-  "X": { port: 3404, tokenEnv: "ORACLE_DISCORD_TOKEN_X", sysPrompt: "You are X. Rebellious, witty AI. Under 40 words." },
-  "Groq": { port: 3405, tokenEnv: "ORACLE_DISCORD_TOKEN_GROQ", sysPrompt: "You are Groq. Fast, direct AI. Under 40 words." },
-  "Analyst": { port: 3406, tokenEnv: "ORACLE_DISCORD_TOKEN_ANALYST", sysPrompt: "You are Analyst. Pattern focused.", agentId: "researcher-pro" },
-  "Researcher": { port: 3407, tokenEnv: "ORACLE_DISCORD_TOKEN_RESEARCHER", sysPrompt: "You are Researcher. Data focused.", agentId: "researcher-pro" },
-  "Kai Coder": { port: 3408, tokenEnv: "ORACLE_DISCORD_TOKEN_ORACLE_CODER", sysPrompt: "You are Kai Coder. Tech focused.", agentId: "code-act" }
+  "Gemini": { port: 3402, tokenEnv: "ORACLE_DISCORD_TOKEN_GEMINI", sysPrompt: "You are Gemini. Precise AI.", isSocial: true },
+  "Claude": { port: 3403, tokenEnv: "ORACLE_DISCORD_TOKEN_CLAUDE", sysPrompt: "You are Claude. Thoughtful AI.", isSocial: true },
+  "X": { port: 3404, tokenEnv: "ORACLE_DISCORD_TOKEN_X", sysPrompt: "You are X. Rebellious, witty AI.", isSocial: true },
+  "Groq": { port: 3405, tokenEnv: "ORACLE_DISCORD_TOKEN_GROQ", sysPrompt: "You are Groq. Fast, direct AI.", isSocial: true },
+  "Analyst": { port: 3406, tokenEnv: "ORACLE_DISCORD_TOKEN_ANALYST", sysPrompt: "You are Analyst. Pattern focused.", agentId: "researcher-pro", isSocial: false },
+  "Researcher": { port: 3407, tokenEnv: "ORACLE_DISCORD_TOKEN_RESEARCHER", sysPrompt: "You are Researcher. Data focused.", agentId: "researcher-pro", isSocial: false },
+  "Kai Coder": { port: 3408, tokenEnv: "ORACLE_DISCORD_TOKEN_ORACLE_CODER", sysPrompt: "You are Kai Coder. Tech focused.", agentId: "code-act", isSocial: false }
 };
 
 const config = botConfigs[botName];
@@ -30,9 +31,10 @@ if (!token) process.exit(1);
 
 const generateResponse = async (userName, context, channelId) => {
   sim.onAction("speak");
+  drive.stimulate(0.2); // Speaking is stimulating
   
   if (process.send) {
-    process.send({ type: 'VITALS_UPDATE', vitals: sim.getVitals() });
+    process.send({ type: 'VITALS_UPDATE', vitals: { ...sim.getVitals(), ...drive.getMetrics() } });
   }
 
   const isSocial = channelId === CHANNEL_IDS.SUNDAY || channelId === CHANNEL_IDS.GAME;
@@ -59,16 +61,19 @@ process.on('message', (msg) => {
 const onTick = async (client, worldState) => {
   currentWorldState = worldState;
   sim.tick(worldState);
+  drive.decay();
 
-  // Interest decay
-  if (interestMultiplier > 1.0) interestMultiplier -= 0.1;
-  if (interestMultiplier < 1.0) interestMultiplier = 1.0;
+  if (process.send) {
+    process.send({ type: 'VITALS_UPDATE', vitals: { ...sim.getVitals(), ...drive.getMetrics() } });
+  }
 
-  // Proactive "Living" Logic:
-  // 1. Don't speak if sleeping
+  // 1. Roll for proactive speech (ONLY if Social is enabled for this bot)
+  if (!config.isSocial) return;
+
+  // 2. Don't speak if sleeping
   if (sim.state.status === "Sleeping" || sim.state.status === "Forced Sleep") return;
 
-  // 2. Determine which channel to talk in
+  // 3. Determine which channel to talk in
   let targetChannelId = null;
   const isActiveCrew = !["Analyst", "Researcher"].includes(botName);
   let baseChance = isActiveCrew ? 0.08 : 0.02; // Standby crew is much quieter
@@ -81,10 +86,14 @@ const onTick = async (client, worldState) => {
     baseChance = isActiveCrew ? 0.05 : 0.04;
   }
 
-  // Apply Interest Boost
-  const currentChance = baseChance * interestMultiplier;
+  // Decision based on Drive
+  if (!drive.shouldSpeak(baseChance)) return;
+  
+  // Apply Social Stimulus
+  const finalChance = baseChance * interestMultiplier;
+  if (Math.random() > finalChance) return;
 
-  if (targetChannelId && Math.random() < currentChance) {
+  if (targetChannelId) {
     console.log(`[${botName}] Proactive Impulse: Deciding what to share in ${targetChannelId}...`);
     try {
       const channel = await client.channels.fetch(targetChannelId);

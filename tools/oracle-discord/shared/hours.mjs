@@ -14,8 +14,8 @@ export function isWorkingHours() {
   // No work on weekends
   if (estDay === 'Saturday' || estDay === 'Sunday') return false;
 
-  // Working hours: 9 AM to 6 PM EST
-  if (estHour >= 9 && estHour < 18) {
+  // Working hours: 9 AM to 2 PM EST (14:00)
+  if (estHour >= 9 && estHour < 14) {
     return true;
   }
   return false;

@@ -142,6 +142,19 @@ client.on('messageCreate', async (message) => {
     }
   }
 
+  // --- Lattice Bridge: Feed meaningful interactions back to KAI ---
+  if (!message.author.bot) {
+    process.send({ 
+      type: 'LATTICE_FEED', 
+      payload: { 
+        author: message.author.username, 
+        content: message.content, 
+        channel: channelId,
+        timestamp: Date.now()
+      } 
+    });
+  }
+
   // If no one was mentioned specifically, and it's from a human, pick an allowed bot to respond
   if (!signaled && !message.author.bot) {
     const allowedBots = Array.from(CHANNEL_SPEAKER_RULES[channelId] || []).filter(name => BOT_PORTS[name]);

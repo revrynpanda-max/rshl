@@ -39,6 +39,11 @@ process.on('message', (msg) => {
     botVitals.set(msg.vitals.name, msg.vitals);
     console.log(`[${BOT_NAME}/Observer] Syncing Digitological Vitals for ${msg.vitals.name}: Phi=${msg.vitals.phi.toFixed(2)}`);
   }
+  if (msg.type === 'INJECT_CLAIM') {
+    const { author, content, channel } = msg.payload;
+    console.log(`[${BOT_NAME}/Lattice] Digesting Claim from ${author}: "${content.slice(0, 50)}..."`);
+    storeLatticeMemory(author, content, "Digested into Lattice Core", "KAI_OBSERVER", channel).catch(console.error);
+  }
 });
 
 /**
