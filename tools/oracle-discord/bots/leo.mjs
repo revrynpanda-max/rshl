@@ -36,8 +36,9 @@ const BOT_NAME = "Leo";
 const sim = new AgentSimulation(BOT_NAME, "Theoretical Physicist");
 
 // --- Voice Configuration ---
+const LEO_VOICE_ID = "1489796367466500127";
 const RYAN_ID = "1111106883135217665";
-const LEO_VOICE_SLOTS = CHANNEL_IDS.LEO_VOICE_SLOTS;
+const LEO_TRANSCRIPT_SLOTS = CHANNEL_IDS.LEO_VOICE_SLOTS;
 const ELEVEN_LABS_KEY = process.env.ELEVENLABS_API_KEY;
 const OPENAI_KEY = process.env.OPENAI_API_KEY;
 
@@ -83,6 +84,13 @@ async function shouldLeoJoin(text, userName, history) {
 function getSlotForUser(userId) {
   if (userToSlot.has(userId)) return userToSlot.get(userId);
   
+  // Special case: Ryan is always Slot 0 (Transcript 1)
+  if (userId === RYAN_ID) {
+    slotToUser[0] = userId;
+    userToSlot.set(userId, 0);
+    return 0;
+  }
+
   // Find empty public slot (1-5)
   for (let i = 1; i < 6; i++) {
     if (slotToUser[i] === null) {
@@ -98,6 +106,8 @@ function getSlotForUser(userId) {
 
 client.once('clientReady', () => {
   console.log(`[Leo Bot] Online as ${client.user.tag}`);
+  // Pre-register Ryan
+  getSlotForUser(RYAN_ID);
 });
 
 // IPC Heartbeat: World Clock
@@ -189,12 +199,36 @@ client.on('messageCreate', async (message) => {
 client.on('voiceStateUpdate', async (oldState, newState) => {
   if (newState.id === client.user.id) return;
   
-  const joinedChannelId = newState.channelId;
-  const isLeoSlot = LEO_VOICE_SLOTS.includes(joinedChannelId);
+  // 1. Join Logic
+  if (newState.channelId === LEO_VOICE_ID && oldState.channelId !== LEO_VOICE_ID) {
+    console.log(`[Leo/Voice] User ${newState.member?.user.username} joined. Ensuring connection...`);
+    await ensureVoiceConnection(LEO_VOICE_ID);
+  }
 
-  if (isLeoSlot && oldState.channelId !== joinedChannelId) {
-    console.log(`[Leo/Voice] User ${newState.member?.user.username} joined Leo Slot: ${joinedChannelId}. Moving to assist...`);
-    await ensureVoiceConnection(joinedChannelId);
+  // 2. Leave Logic / Slot Cleanup
+  if (oldState.channelId === LEO_VOICE_ID && newState.channelId !== LEO_VOICE_ID) {
+    const userId = oldState.id;
+    
+    // Release public slots (1-5), Keep Slot 0 (Ryan)
+    if (userToSlot.has(userId) && userId !== RYAN_ID) {
+      const idx = userToSlot.get(userId);
+      console.log(`[Leo/Voice] Releasing Slot ${idx+1} for user ${userId}`);
+      slotToUser[idx] = null;
+      userToSlot.delete(userId);
+    }
+
+    // 3. Auto-Leave if alone
+    const channel = oldState.channel;
+    if (channel) {
+      const humans = channel.members.filter(m => !m.user.bot).size;
+      if (humans === 0) {
+        console.log(`[Leo/Voice] No humans left in ${channel.name}. Leaving...`);
+        if (voiceConnection) {
+          voiceConnection.destroy();
+          voiceConnection = null;
+        }
+      }
+    }
   }
 });
 
@@ -243,7 +277,9 @@ async function handleUserVoice(userId) {
   try {
     const slotIdx = getSlotForUser(userId);
     if (slotIdx === -1) {
-      console.warn(`[Leo/Voice] No available slots for user ${userId}`);
+      console.warn(`[Leo/Voice] Capacity full. DMing user ${userId}`);
+      const user = await client.users.fetch(userId);
+      await user.send("Sorry, my cognitive slots are currently full! I can only talk to 6 people at a time in voice.").catch(() => {});
       return;
     }
 
@@ -255,7 +291,7 @@ async function handleUserVoice(userId) {
     if (!transcript || transcript.length < 2) return;
 
     const user = await client.users.fetch(userId);
-    const transcriptChannelId = CHANNEL_IDS.LEO_VOICE_SLOTS[slotIdx];
+    const transcriptChannelId = LEO_TRANSCRIPT_SLOTS[slotIdx];
     const transcriptChannel = await client.channels.fetch(transcriptChannelId);
 
     if (transcriptChannel) {
