@@ -69,6 +69,10 @@ for (const [name, child] of processes) {
         kai.send({ type: 'OBSERVE_VITALS', vitals: msg.vitals });
       }
     }
+    if (msg.type === 'SOCIAL_STIMULUS') {
+      // One bot spoke, wake up the others!
+      broadcast({ type: 'INTEREST_BOOST', multiplier: 2.0, duration: 30000 });
+    }
     if (msg.type === 'COMMAND_REQUEST') {
       executeCommand(msg.command);
     }

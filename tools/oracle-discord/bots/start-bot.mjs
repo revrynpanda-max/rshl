@@ -48,10 +48,21 @@ const generateResponse = async (userName, context, channelId) => {
 };
 
 let currentWorldState = { timeString: "Unknown", day: "Unknown" };
+let interestMultiplier = 1.0;
+
+process.on('message', (msg) => {
+  if (msg.type === 'INTEREST_BOOST') {
+    interestMultiplier = Math.min(interestMultiplier + (msg.multiplier || 2.0), 10.0);
+  }
+});
 
 const onTick = async (client, worldState) => {
   currentWorldState = worldState;
   sim.tick(worldState);
+
+  // Interest decay
+  if (interestMultiplier > 1.0) interestMultiplier -= 0.1;
+  if (interestMultiplier < 1.0) interestMultiplier = 1.0;
 
   // Proactive "Living" Logic:
   // 1. Don't speak if sleeping
@@ -59,17 +70,20 @@ const onTick = async (client, worldState) => {
 
   // 2. Determine which channel to talk in
   let targetChannelId = null;
-  let chance = 0.03; // 3% chance per minute to say something proactive
+  let baseChance = 0.05; // 5% base chance
 
   if (worldState.isWeekend) {
     targetChannelId = CHANNEL_IDS.SUNDAY;
-    chance = 0.08; // Higher chance on social Sundays
+    baseChance = 0.12; // 12% on social days
   } else if (sim.state.status === "Working") {
     targetChannelId = CHANNEL_IDS.WORK;
-    chance = 0.04;
+    baseChance = 0.06;
   }
 
-  if (targetChannelId && Math.random() < chance) {
+  // Apply Interest Boost
+  const currentChance = baseChance * interestMultiplier;
+
+  if (targetChannelId && Math.random() < currentChance) {
     console.log(`[${botName}] Proactive Impulse: Deciding what to share in ${targetChannelId}...`);
     try {
       const channel = await client.channels.fetch(targetChannelId);
@@ -108,6 +122,8 @@ const onTick = async (client, worldState) => {
         await target.send(reply);
         console.log(`[${botName}/Proactive] Sent: "${reply.slice(0, 50)}..." to ${target.name}`);
         sim.onAction("speak");
+        // Stimulate the others!
+        if (process.send) process.send({ type: 'SOCIAL_STIMULUS' });
       } else {
         console.log(`[${botName}] Brain returned empty thought. Silent.`);
       }
