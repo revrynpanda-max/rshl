@@ -15,6 +15,7 @@ Major version promotion marking the transition to a fully sovereign, self-managi
 - **Digital Planck Time (5s Ticks)**: Increased temporal resolution by 1200%. The `Ecosystem Manager` now pulses every 5 seconds, ensuring a continuous sense of "living" for all AI nodes.
 - **AI-Driven Hotfixes**: Oracle is now equipped with the `manage_ecosystem` tool. It can autonomously investigate the codebase, propose fixes, and execute full `git pull` + `cargo build` + `restart` cycles.
 - **Unified Key Sync**: The Rust Core and Node.js bridge now share a single `.env` source of truth. Remote updates to the `.env` are automatically reflected in the lattice reasoning engine.
+- **Post-Squash Stability Tuning**: Resolved variable collisions in `bots/kai.mjs`, restored missing `LatticeStore` exports for the reflection engine, and implemented the `tick()`/`getState()` methods for the `WorldClock` heartbeat.
 
 ### Technical Improvements
 - **Project Awareness Headers**: Injected high-level architectural knowledge into the system prompts of all generic bots (Gemini, Claude, X, Analyst, etc.).
