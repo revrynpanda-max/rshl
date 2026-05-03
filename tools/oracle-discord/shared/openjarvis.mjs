@@ -4,6 +4,30 @@ const OPENJARVIS_URL = process.env.OPENJARVIS_URL || "http://127.0.0.1:8080";
 const LEO_LATTICE = process.env.KAI_API_URL || "http://127.0.0.1:3333";
 
 /**
+ * Direct Groq call (Leo Protocol) - Bypasses Managed Agent layers for high speed.
+ */
+export async function callGroqDirect(userName, transcript, systemPrompt, model = "llama-3.1-8b-instant") {
+  const groqKey = process.env.GROQ_API_KEY;
+  if (!groqKey) return null;
+  try {
+    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${groqKey}` },
+      body: JSON.stringify({
+        model: model,
+        messages: [{ role: "system", content: systemPrompt }, { role: "user", content: `${userName}: ${transcript}` }],
+        temperature: 0.7, max_tokens: 150
+      }),
+    });
+    const data = await res.json();
+    return data.choices?.[0]?.message?.content?.trim() || null;
+  } catch (e) {
+    console.error("[GroqDirect] Failed:", e.message);
+    return null;
+  }
+}
+
+/**
  * Send a chat message through OpenJarvis.
  * Supports both generic completions and specialized Managed Agents.
  */

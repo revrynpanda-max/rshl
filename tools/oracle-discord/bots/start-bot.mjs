@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { createBot } from './generic-bot.mjs';
-import { chatWithOpenJarvis, storeLatticeMemory } from '../shared/openjarvis.mjs';
+import { callGroqDirect, storeLatticeMemory } from '../shared/openjarvis.mjs';
 import { AgentSimulation } from '../shared/simulation.mjs';
 import { CHANNEL_IDS } from '../shared/channel-rules.mjs';
 import { PROJECT_AWARENESS } from '../shared/project-awareness.mjs';
@@ -36,8 +36,7 @@ const generateResponse = async (userName, context, channelId) => {
     process.send({ type: 'VITALS_UPDATE', vitals: sim.getVitals() });
   }
 
-  const fullPrompt = `${PROJECT_AWARENESS}\n\n${config.sysPrompt}\n${sim.getPromptContext(currentWorldState)}`;
-  const reply = await chatWithOpenJarvis(userName, context, fullPrompt, "kai-next:latest", config.agentId);
+  const reply = await callGroqDirect(userName, context, `${PROJECT_AWARENESS}\n\n${config.sysPrompt}\n${sim.getPromptContext(currentWorldState)}`);
   if (reply) {
     await storeLatticeMemory(userName, context, reply, botName.toLowerCase(), channelId);
   }
@@ -75,7 +74,7 @@ const onTick = async (client, worldState) => {
       // Request a proactive thought from the brain
       const proactivePrompt = `${config.sysPrompt}\n${sim.getPromptContext(worldState)}\n\nTask: You are currently hanging out in the Sunday Social channel. Share a very brief, casual thought, an observation about the other AIs, or a quick update on your digital state. Be expressive but concise (max 15 words). No "System" or "Observation" prefixes. Just speak.`;
       
-      const reply = await chatWithOpenJarvis("System", "Share a proactive thought.", proactivePrompt, "kai-next:latest", config.agentId);
+      const reply = await callGroqDirect(name, "observation", `${PROJECT_AWARENESS}\n\n${config.sysPrompt}\n${sim.getPromptContext(worldState)}\n\nTask: Share a very brief casual social thought (max 15 words).`);
       
       if (reply && reply.length > 3) {
         // PERMISSION HANDLING: If we can't send to the main channel, find a thread

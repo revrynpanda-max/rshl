@@ -12,6 +12,7 @@ export function createBot(config) {
       GatewayIntentBits.Guilds,
       GatewayIntentBits.GuildMessages,
       GatewayIntentBits.MessageContent,
+      GatewayIntentBits.DirectMessages,
     ],
     partials: [Partials.Channel, Partials.Message]
   });
@@ -58,12 +59,14 @@ export function createBot(config) {
   client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
     const channelId = message.channelId;
+    const isDM = !message.guild;
+    const isMentioned = message.mentions.has(client.user.id);
 
-    if (!isAllowed(name, channelId)) return;
+    if (!isDM && !isAllowed(name, channelId)) return;
     if (isSpeakerOffline(name)) return;
 
-    // Only respond to direct mentions in discord
-    if (message.mentions.has(client.user.id)) {
+    // Respond if DMed or mentioned in a server
+    if (isDM || isMentioned) {
       message.channel.sendTyping().catch(() => {});
       const userName = message.author.username;
       const text = message.content.trim();
