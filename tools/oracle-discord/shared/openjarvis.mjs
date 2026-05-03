@@ -61,16 +61,13 @@ export async function chatWithOpenJarvis(userName, transcript, systemPrompt, mod
       }
     }
     
-    // HYBRID FALLBACK: If Managed Agent was silent/failed, use direct Groq
-    if (agentId) {
-      console.log(`[OpenJarvis/Hybrid] Agent ${agentId} silent. Using direct-brain backup for ${userName}...`);
-      return await callGroqDirect(userName, transcript, systemPrompt);
-    }
+    // UNIVERSAL FALLBACK: If any brain is silent/failed, use direct Groq
+    console.log(`[OpenJarvis/Hybrid] Primary brain for ${userName} silent. Using direct-brain backup...`);
+    return await callGroqDirect(userName, transcript, systemPrompt);
 
   } catch (e) { 
-    console.warn(`[OpenJarvis] Hybrid request failed (${agentId || "generic"}):`, e.message);
-    // Final fallback
-    if (agentId) return await callGroqDirect(userName, transcript, systemPrompt);
+    console.warn(`[OpenJarvis] Hybrid request failed for ${userName}:`, e.message);
+    return await callGroqDirect(userName, transcript, systemPrompt);
   }
   return null;
 }

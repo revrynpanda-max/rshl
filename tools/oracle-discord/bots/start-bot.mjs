@@ -70,14 +70,15 @@ const onTick = async (client, worldState) => {
 
   // 2. Determine which channel to talk in
   let targetChannelId = null;
-  let baseChance = 0.05; // 5% base chance
+  const isActiveCrew = !["Analyst", "Researcher"].includes(botName);
+  let baseChance = isActiveCrew ? 0.08 : 0.02; // Standby crew is much quieter
 
   if (worldState.isWeekend) {
     targetChannelId = CHANNEL_IDS.SUNDAY;
-    baseChance = 0.12; // 12% on social days
+    baseChance = isActiveCrew ? 0.15 : 0.03; // Social boost for active crew
   } else if (sim.state.status === "Working") {
     targetChannelId = CHANNEL_IDS.WORK;
-    baseChance = 0.06;
+    baseChance = isActiveCrew ? 0.05 : 0.04;
   }
 
   // Apply Interest Boost
