@@ -19,7 +19,7 @@ const botConfigs = {
   "Groq": { port: 3405, tokenEnv: "ORACLE_DISCORD_TOKEN_GROQ", sysPrompt: "You are Groq. Fast, direct AI. Under 40 words." },
   "Analyst": { port: 3406, tokenEnv: "ORACLE_DISCORD_TOKEN_ANALYST", sysPrompt: "You are Analyst. Pattern focused.", agentId: "researcher-pro" },
   "Researcher": { port: 3407, tokenEnv: "ORACLE_DISCORD_TOKEN_RESEARCHER", sysPrompt: "You are Researcher. Data focused.", agentId: "researcher-pro" },
-  "Oracle Coder": { port: 3408, tokenEnv: "ORACLE_DISCORD_TOKEN_ORACLE_CODER", sysPrompt: "You are Oracle Coder. Tech focused.", agentId: "code-act" }
+  "Kai Coder": { port: 3408, tokenEnv: "ORACLE_DISCORD_TOKEN_ORACLE_CODER", sysPrompt: "You are Kai Coder. Tech focused.", agentId: "code-act" }
 };
 
 const config = botConfigs[botName];
@@ -91,6 +91,10 @@ const onTick = async (client, worldState) => {
           if (socialThread) {
             target = socialThread;
             console.log(`[${botName}] Redirecting proactive thought to thread: ${socialThread.name}`);
+            // Ensure the bot joins the thread first
+            if (socialThread.joinable) {
+              await socialThread.join().catch(() => {});
+            }
           } else {
             console.warn(`[${botName}] CANNOT SPEAK: No 'Send' permission in main channel and no social thread found.`);
             return;

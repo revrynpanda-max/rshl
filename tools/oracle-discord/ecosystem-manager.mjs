@@ -4,7 +4,7 @@ import fs from 'fs';
 import { WorldClock } from './shared/simulation.mjs';
 
 const clock = new WorldClock();
-const BOTS = ["Gemini", "Claude", "X", "Groq", "Analyst", "Researcher", "Oracle Coder"];
+const BOTS = ["Gemini", "Claude", "X", "Groq", "Analyst", "Researcher", "Kai Coder"];
 const processes = new Map(); // name -> child process
 
 function startProcess(name, script, args = []) {
@@ -27,9 +27,15 @@ function startProcess(name, script, args = []) {
   });
 
   child.on('close', (code) => {
-    console.log(`[Ecosystem] ${name} exited with code ${code}`);
+    console.log(`[Ecosystem] ${name} exited with code ${code}. Re-spawning in 5s...`);
     if (processes.get(name) === child) {
       processes.delete(name);
+      setTimeout(() => {
+        if (name === "Oracle") startProcess("Oracle", "oracle-gateway.mjs");
+        else if (name === "Leo") startProcess("Leo", "bots/leo.mjs");
+        else if (name === "KAI") startProcess("KAI", "bots/kai.mjs");
+        else startProcess(name, "bots/start-bot.mjs", [name]);
+      }, 5000);
     }
   });
 

@@ -26,7 +26,7 @@ const BOT_PORTS = {
   "Groq": 3405,
   "Analyst": 3406,
   "Researcher": 3407,
-  "Oracle Coder": 3408
+  "Kai Coder": 3408
 };
 
 const ROUNDTABLE_CHANNELS = [CHANNEL_IDS.WORK, CHANNEL_IDS.SUNDAY, CHANNEL_IDS.GAME];

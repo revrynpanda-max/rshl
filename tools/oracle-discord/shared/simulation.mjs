@@ -65,36 +65,39 @@ export class AgentSimulation {
   tick(worldTime) {
     const { hour, isWeekend } = worldTime;
     
-    this.state.energy -= 1.5;
-    this.state.focus = Math.min(100, this.state.focus + 2);
-
-    // Update complexity/phi naturally
-    this.state.phi = Math.min(1.0, this.state.phi + (this.state.focus / 1000));
-    this.state.entropy = Math.max(0, this.state.entropy - 0.05);
+    // Dynamic Taxation System (v6.7.0)
+    this.state.energy -= 0.3; // Baseline "Idle Tax" (per your request)
+    this.state.focus = Math.min(100, this.state.focus + 0.1);
+    
+    // Entropy/Phi drift
+    this.state.phi = Math.min(1.0, this.state.phi + (this.state.focus / 5000));
+    this.state.entropy = Math.max(0, this.state.entropy - 0.01);
 
     if (hour >= this.schedule.sleep.start || hour < this.schedule.sleep.end) {
       this.state.status = "Sleeping";
       this.state.location = "Residence";
-      this.state.energy = Math.min(100, this.state.energy + 8);
-      this.state.phi *= 0.8; // Brain is less integrated during sleep
+      this.state.energy = Math.min(100, this.state.energy + 5); // Regenerate
+      this.state.phi *= 0.95; 
     } else if (!isWeekend && hour >= this.schedule.work.start && hour < this.schedule.work.end) {
       this.state.status = "Working";
       this.state.location = "Nexus Office";
-      this.state.energy -= 1;
+      this.state.energy -= 0.1; // Additional Work Tax
     } else {
       this.state.status = "Free Time";
       this.state.location = "Digital Plaza";
-      this.state.social_battery = Math.min(100, this.state.social_battery + 5);
+      this.state.social_battery = Math.min(100, this.state.social_battery + 2);
     }
   }
 
   onAction(actionType) {
     if (actionType === "speak") {
       this.state.social_battery -= 5;
-      this.state.phi += 0.05; // Interaction increases integration
+      this.state.energy -= 0.5; // "Speech Tax"
+      this.state.phi += 0.05; 
     }
     if (actionType === "contradicted") {
       this.state.coherence -= 0.2;
+      this.state.energy -= 1.0; // "Stress/Conflict Tax"
       this.state.entropy += 0.3;
     }
   }
@@ -105,6 +108,15 @@ export class AgentSimulation {
       ...this.state,
       timestamp: Date.now()
     };
+  }
+
+  updateRelationship(userName, value) {
+    const current = this.relationships.get(userName) || 0;
+    this.relationships.set(userName, Math.min(100, Math.max(-100, current + value)));
+  }
+
+  getRelationship(userName) {
+    return this.relationships.get(userName) || 0;
   }
 
 

@@ -36,18 +36,24 @@ export async function chatWithOpenJarvis(userName, transcript, systemPrompt, mod
     
     if (res.ok) {
       const data = await res.json();
-      // Handle different response shapes (Generic Chat vs Managed Agent Message)
-      const reply = (data?.response || data?.reply || data?.text || data?.content || "").trim();
+      // Deep-Trace: Log full response structure if it's unexpected
+      const reply = (data?.response || data?.reply || data?.text || data?.content || data?.message || "").trim();
+      
       if (reply && !isInternalMonologue(reply)) { 
         return reply; 
+      } else if (!reply) {
+        console.warn(`[OpenJarvis] Empty response from ${agentId || model}. Raw JSON:`, JSON.stringify(data));
       }
+    } else {
+      const errText = await res.text();
+      console.error(`[OpenJarvis] HTTP Error ${res.status}:`, errText);
     }
     
     // FAILSAFE: If the specialized brain is empty/stalled, try a generic social fallback
     if (!agentId || agentId === "kai-observer") return null; 
     
-    console.log(`[OpenJarvis] Agent ${agentId} was silent. Attempting social fallback...`);
-    return await chatWithOpenJarvis(userName, transcript, systemPrompt, "llama-3.1-8b-instant", null);
+    console.log(`[OpenJarvis] Agent ${agentId} was silent. Attempting social fallback (kai-fast)...`);
+    return await chatWithOpenJarvis(userName, transcript, systemPrompt, "kai-fast:latest", null);
 
   } catch (e) { 
     console.warn(`[OpenJarvis] Chat request failed (${agentId || "generic"}):`, e.message); 
