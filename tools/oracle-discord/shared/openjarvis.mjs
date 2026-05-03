@@ -29,7 +29,7 @@ export async function callGroqDirect(userName, transcript, systemPrompt, model =
 
 /**
  * Send a chat message through OpenJarvis.
- * Supports both generic completions and specialized Managed Agents.
+ * Hybrid Mode: Tries Managed Agent first, falls back to direct completion.
  */
 export async function chatWithOpenJarvis(userName, transcript, systemPrompt, model = "kai-next:latest", agentId = null) {
   try {
@@ -40,47 +40,37 @@ export async function chatWithOpenJarvis(userName, transcript, systemPrompt, mod
       model: model 
     };
 
-    // If an agentId is provided (e.g. 'oracle-core'), use the Managed Agent endpoint
-    // This enables persistence, tool-calling, and custom agent logic.
     if (agentId) {
       url = `${OPENJARVIS_URL}/v1/agents/${agentId}/messages`;
-      body = {
-        content: transcript,
-        mode: "immediate", // Process immediately
-        stream: false      // Get the full response back
-      };
+      body = { content: transcript, mode: "immediate", stream: false };
     }
 
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(30000), // Increased timeout for tool-calling agents
+      signal: AbortSignal.timeout(15000), 
     });
     
     if (res.ok) {
       const data = await res.json();
-      // Deep-Trace: Log full response structure if it's unexpected
       const reply = (data?.response || data?.reply || data?.text || data?.content || data?.message || "").trim();
       
       if (reply && !isInternalMonologue(reply)) { 
         return reply; 
-      } else if (!reply) {
-        console.warn(`[OpenJarvis] Empty response from ${agentId || model}. Raw JSON:`, JSON.stringify(data));
       }
-    } else {
-      const errText = await res.text();
-      console.error(`[OpenJarvis] HTTP Error ${res.status}:`, errText);
     }
     
-    // FAILSAFE: If the specialized brain is empty/stalled, try a generic social fallback
-    if (!agentId || agentId === "kai-observer") return null; 
-    
-    console.log(`[OpenJarvis] Agent ${agentId} was silent. Attempting social fallback (kai-fast)...`);
-    return await chatWithOpenJarvis(userName, transcript, systemPrompt, "kai-fast:latest", null);
+    // HYBRID FALLBACK: If Managed Agent was silent/failed, use direct Groq
+    if (agentId) {
+      console.log(`[OpenJarvis/Hybrid] Agent ${agentId} silent. Using direct-brain backup for ${userName}...`);
+      return await callGroqDirect(userName, transcript, systemPrompt);
+    }
 
   } catch (e) { 
-    console.warn(`[OpenJarvis] Chat request failed (${agentId || "generic"}):`, e.message); 
+    console.warn(`[OpenJarvis] Hybrid request failed (${agentId || "generic"}):`, e.message);
+    // Final fallback
+    if (agentId) return await callGroqDirect(userName, transcript, systemPrompt);
   }
   return null;
 }

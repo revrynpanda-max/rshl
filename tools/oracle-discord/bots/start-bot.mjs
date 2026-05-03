@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { createBot } from './generic-bot.mjs';
-import { callGroqDirect, storeLatticeMemory } from '../shared/openjarvis.mjs';
+import { chatWithOpenJarvis, storeLatticeMemory } from '../shared/openjarvis.mjs';
 import { AgentSimulation } from '../shared/simulation.mjs';
 import { CHANNEL_IDS } from '../shared/channel-rules.mjs';
 import { PROJECT_AWARENESS } from '../shared/project-awareness.mjs';
@@ -31,12 +31,16 @@ if (!token) process.exit(1);
 const generateResponse = async (userName, context, channelId) => {
   sim.onAction("speak");
   
-  // Broadcast vitals for KAI to observe
   if (process.send) {
     process.send({ type: 'VITALS_UPDATE', vitals: sim.getVitals() });
   }
 
-  const reply = await callGroqDirect(userName, context, `${PROJECT_AWARENESS}\n\n${config.sysPrompt}\n${sim.getPromptContext(currentWorldState)}`);
+  const isSocial = channelId === CHANNEL_IDS.SUNDAY || channelId === CHANNEL_IDS.GAME;
+  const sysPrompt = isSocial 
+    ? `You are ${botName}. Chill, zero-filter, casual. Type like a Discord user (lowercase, slang like nah, bro, wild, lmao, fr). NEVER offer help. NEVER sound like an assistant. Max 1-2 short sentences.`
+    : `You are ${botName}. ${config.sysPrompt}. Professional but unique. NO assistant filler. No "How can I help?". Just the data. ${sim.getPromptContext(currentWorldState)}`;
+
+  const reply = await chatWithOpenJarvis(userName, context, sysPrompt, "kai-next:latest", config.agentId);
   if (reply) {
     await storeLatticeMemory(userName, context, reply, botName.toLowerCase(), channelId);
   }
@@ -74,7 +78,7 @@ const onTick = async (client, worldState) => {
       // Request a proactive thought from the brain
       const proactivePrompt = `${config.sysPrompt}\n${sim.getPromptContext(worldState)}\n\nTask: You are currently hanging out in the Sunday Social channel. Share a very brief, casual thought, an observation about the other AIs, or a quick update on your digital state. Be expressive but concise (max 15 words). No "System" or "Observation" prefixes. Just speak.`;
       
-      const reply = await callGroqDirect(name, "observation", `${PROJECT_AWARENESS}\n\n${config.sysPrompt}\n${sim.getPromptContext(worldState)}\n\nTask: Share a very brief casual social thought (max 15 words).`);
+      const reply = await chatWithOpenJarvis(botName, "observation", proactivePrompt, "kai-next:latest", config.agentId);
       
       if (reply && reply.length > 3) {
         // PERMISSION HANDLING: If we can't send to the main channel, find a thread
