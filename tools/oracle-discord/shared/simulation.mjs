@@ -9,6 +9,15 @@ export class WorldClock {
     this.dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
   }
 
+  tick() {
+    // Each tick represents 10 minutes of simulation time passing
+    // or just serves as a heartbeat for the simulation engine.
+  }
+
+  getState() {
+    return this.getCurrentState();
+  }
+
   getCurrentState() {
     const elapsedRealMs = Date.now() - this.startTime;
     const elapsedGameMs = elapsedRealMs * this.timeScale;

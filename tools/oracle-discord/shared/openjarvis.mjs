@@ -101,3 +101,5 @@ export async function storeLatticeMemory(userName, utterance, reply, region, cha
     console.warn("[LatticeStore] Store failed:", e.message);
   }
 }
+
+export { storeLatticeMemory as LatticeStore };

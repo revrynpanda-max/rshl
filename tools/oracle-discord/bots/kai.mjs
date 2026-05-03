@@ -9,9 +9,6 @@ import { AgentSimulation } from '../shared/simulation.mjs';
 const BOT_NAME = "KAI";
 const PORT = 3401;
 
-const BOT_NAME = "KAI";
-const PORT = 3401;
-
 // KAI is the Super Observer / God Mode
 const sim = new AgentSimulation(BOT_NAME, "God/Universe Controller");
 sim.state.energy = 1000; 
