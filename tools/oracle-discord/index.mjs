@@ -5,6 +5,7 @@
   Client,
   GatewayIntentBits,
   Partials,
+  ChannelType,
 } from "discord.js";
 import {
   AudioPlayerStatus,
@@ -25,7 +26,7 @@ import prism from "prism-media";
 const token = process.env.ORACLE_DISCORD_TOKEN || "";
 const allowedUserId = process.env.ORACLE_DISCORD_ALLOWED_USER_ID || "";
 const allowedChannelId = process.env.ORACLE_DISCORD_ALLOWED_CHANNEL_ID || "1489796367466500128";
-const publicChatChannelId = process.env.ORACLE_DISCORD_PUBLIC_CHAT_CHANNEL_ID || "1499108697631232090";
+const publicChatChannelId = "1499108697631232090"; // Public channel ID requested by user
 const oracleApiUrl = (process.env.ORACLE_API_URL || "http://127.0.0.1:3333").replace(/\/+$/, "");
 const leoVoiceChannelId = process.env.ORACLE_DISCORD_LEO_VOICE_CHANNEL_ID || "1489796367466500129";
 const elevenLabsApiKey = process.env.ELEVENLABS_API_KEY || process.env.ORACLE_ELEVENLABS_API_KEY || "";
@@ -36,13 +37,13 @@ const openAiApiKey = process.env.OPENAI_API_KEY || "";
 const openAiTtsVoice = process.env.OPENAI_TTS_VOICE || "onyx"; // onyx = deep male, fits Leo
 
 const participantTokens = new Map([
-  ["KAI", process.env.ORACLE_DISCORD_TOKEN_KAI || ""],
+  ["KAI", process.env.ORACLE_DISCORD_TOKEN_KAI || ""],          // KAI — single entry, no duplicates
   ["Leo", process.env.ORACLE_DISCORD_TOKEN_LEO || ""],
   ["Analyst", process.env.ORACLE_DISCORD_TOKEN_ANALYST || ""],
   ["Researcher", process.env.ORACLE_DISCORD_TOKEN_RESEARCHER || ""],
   ["Groq", process.env.ORACLE_DISCORD_TOKEN_GROQ || ""],
   ["X", process.env.ORACLE_DISCORD_TOKEN_X || ""],
-  ["KAI", process.env.ORACLE_DISCORD_TOKEN_CLAUDE || ""],
+  ["Claude", process.env.ORACLE_DISCORD_TOKEN_CLAUDE || ""],
   ["Gemini", process.env.ORACLE_DISCORD_TOKEN_GEMINI || ""],
   ["GPT-4o", process.env.ORACLE_DISCORD_TOKEN_GPT || ""],
   ["Oracle Coder", process.env.ORACLE_DISCORD_TOKEN_ORACLE_CODER || ""],
@@ -57,6 +58,415 @@ let leoSpeechQueue = Promise.resolve();
 let leoReceiverAttached = false;
 let lastPrivateTextChannel = null;
 const activeVoiceTranscriptions = new Set();
+const userTranscriptChannels = new Map(); // userId -> channelId
+const activeVoiceConnections = new Map(); // userId -> connection
+const MAX_VOICE_CONNECTIONS = 5; // Concurrency limit to protect hardware
+const voiceDmGreetedUsers = new Set(); // tracks who already got the DM greeting this session
+const SENSITIVE_INFO_CHANNEL_ID = "1500053533515448480";
+const SUNDAY_CHAT_CHANNEL_ID = "1500085302268526712";
+const GAME_WITH_LEO_CHANNEL_ID = "1499298054291980368";
+const DASHBOARD_CHANNEL_ID = process.env.ORACLE_DASHBOARD_CHANNEL_ID || ""; // User to set in .env
+// oracle-chat is the WORK channel — only Oracle speaks here, and only during business hours
+// allowedChannelId === oracle-chat (same as ORACLE_DISCORD_ALLOWED_CHANNEL_ID)
+const ORACLE_CHAT_WORK_CHANNEL_ID = process.env.ORACLE_DISCORD_ALLOWED_CHANNEL_ID || "1489796367466500128";
+
+// ══════════════════════════════════════════════════════════════════════════
+// CHANNEL SPEAKER RULES
+// Each channel has a hard allow-list. Speakers not in the list are silently
+// dropped before any Discord send. Oracle is NEVER in any allow-list - it
+// is a silent moderator only (exception: startup headcheck).
+// ══════════════════════════════════════════════════════════════════════════
+const PUBLIC_CHAT_CHANNEL_ID  = "1499108697631232090"; // over-all-chat — Leo ONLY
+// ORACLE_CHAT_WORK_CHANNEL_ID already defined below
+
+// Who may speak in each channel
+const CHANNEL_SPEAKER_RULES = {
+  // oracle-chat: full work panel, NO Leo, Oracle is silent moderator
+  "1489796367466500128": new Set(["KAI", "Gemini", "Claude", "X", "Groq", "Analyst", "Researcher", "Oracle Coder", "KAI Coder"]),
+  // over-all-chat: Leo ONLY
+  "1499108697631232090": new Set(["Leo"]),
+  // game-with-leo: Leo + spectating AIs (soft commentary only)
+  "1499298054291980368": new Set(["Leo", "KAI", "Gemini", "Claude", "X", "Groq"]),
+  // sensitive-info: NOBODY — system log only
+  "1500053533515448480": new Set(),
+  // sunday-chat: free panel, NO Leo, NO Oracle, NO Analyst, NO Researcher
+  "1500085302268526712": new Set(["KAI", "Gemini", "Claude", "X", "Groq", "Oracle Coder", "KAI Coder"]),
+};
+
+// Flag: allow Oracle ONE startup headcheck message per boot (then goes silent)
+let oracleHeadcheckSent = false;
+
+// ══════════════════════════════════════════════════════════════════════════
+// AI FAILURE TRACKING SYSTEM
+// 3 failures in the work channel = offline for the session.
+// Oracle DMs Ryan + Oracle Coder generates diagnostic recommendation.
+// ══════════════════════════════════════════════════════════════════════════
+const MAX_AI_FAILURES  = 3;
+const AI_FAILURE_COUNTS = new Map();  // speaker -> failure count this session
+const AI_OFFLINE_SET    = new Set();  // speakers taken offline this session
+
+function recordAIFailure(speaker, reason, channelId) {
+  if (channelId !== ORACLE_CHAT_WORK_CHANNEL_ID) return;
+  if (!speaker || speaker === "Oracle" || speaker === "system") return;
+  const count = (AI_FAILURE_COUNTS.get(speaker) || 0) + 1;
+  AI_FAILURE_COUNTS.set(speaker, count);
+  console.log(`[FailureTracker] ${speaker} failure ${count}/${MAX_AI_FAILURES}: ${reason}`);
+  if (count >= MAX_AI_FAILURES && !AI_OFFLINE_SET.has(speaker)) {
+    AI_OFFLINE_SET.add(speaker);
+    console.warn(`[FailureTracker] ${speaker} OFFLINE after ${count} failures. Notifying Ryan.`);
+    notifyRyanOfAIFailure(speaker, count, reason).catch(e => console.warn("[FailureTracker] notify failed:", e.message));
+  }
+}
+
+async function notifyRyanOfAIFailure(speaker, count, lastReason) {
+  // Only notify during actual work failures — not during social/sleep logoffs
+  if (!isWorkingHours()) {
+    console.log(`[FailureTracker] Skipping Ryan DM for ${speaker} — not work hours`);
+    return;
+  }
+  // 1. DM Ryan via Oracle client
+  try {
+    if (allowedUserId) {
+      const ryan = await client.users.fetch(allowedUserId).catch(() => null);
+      const dm   = ryan ? await ryan.createDM().catch(() => null) : null;
+      if (dm) {
+        await dm.send(
+          `**Oracle:** ${speaker} has been taken **offline** after ${count} consecutive failures in the work session.\n` +
+          `**Last failure:** \`${lastReason.slice(0, 200)}\`\n\n` +
+          `${speaker} will stay offline for this session and will reinitiate on next restart.\n` +
+          `Oracle Coder is generating a diagnostic in **#oracle-chat**. Please review when ready.`
+        ).catch(() => {});
+        console.log(`[Oracle] DM sent to Ryan — ${speaker} offline.`);
+      }
+    }
+  } catch (e) { console.warn("[Oracle] Ryan DM error:", e.message); }
+
+  // 2. Oracle Coder diagnostic posted to oracle-chat
+  try {
+    const workCh = await client.channels.fetch(ORACLE_CHAT_WORK_CHANNEL_ID).catch(() => null);
+    if (workCh) {
+      const prompt =
+        `Oracle Coder: ${speaker} has been taken offline after ${count} consecutive failures. ` +
+        `Last reason: "${lastReason.slice(0, 150)}". ` +
+        `Provide a concise diagnostic — likely cause and what Ryan should check.`;
+      const turn = await sendDiscordTurn(prompt, [], "System", ORACLE_CHAT_WORK_CHANNEL_ID).catch(() => null);
+      if (turn?.reply) {
+        await workCh.send(`**Oracle Coder [Diagnostic — ${speaker} Offline]:** ${turn.reply}`).catch(() => {});
+      }
+    }
+  } catch (e) { console.warn("[Oracle] Coder diagnostic error:", e.message); }
+}
+
+
+let voiceResponseQueue = [];
+let isProcessingVoiceQueue = false;
+let activeGameAI = null; // Which AI is currently "playing" (KAI, Gemini, etc.)
+let recentResponseHashes = new Set(); // To prevent looping/repetitive subjects
+let systemPaused = false; // Manual override to save resources
+const dashboardMessageMap = new Map(); // channelId -> messageId
+
+function moderateText(text) {
+  if (typeof text !== "string") return text;
+  // Regex to catch sensitive paths, IPs, or potential internal secrets
+  const patterns = [
+    /C:\\Users\\[^\s]+/gi,      // Windows local paths
+    /\/home\/[^\s]+/gi,         // Linux local paths
+    /[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}/g, // IP addresses
+    /sk-[a-zA-Z0-9]{20,}/g,     // OpenAI-style keys
+    /xai-[a-zA-Z0-9]{20,}/g,    // xAI-style keys
+    /AI_SECRET_[a-zA-Z0-9_]+/g, // Generic internal secrets
+  ];
+  
+  let moderated = text;
+  for (const p of patterns) {
+    moderated = moderated.replace(p, "[REDACTED: SYSTEM PRIVACY]");
+  }
+  return moderated;
+}
+
+// ═══ INTERNAL MONOLOGUE GUARD ═══════════════════════════════════════════════
+// These strings are KAI's raw lattice debug output or physics calibration data.
+// They MUST NEVER reach Discord as speech. Hard block at every posting path.
+function isInternalMonologue(text) {
+  if (!text) return false;
+  const t = String(text);
+  return (
+    t.startsWith("Lattice Conflict:") ||
+    t.startsWith("KAI Observation:") ||
+    t.startsWith("Two things pulling at me:") ||
+    t.includes("Decision required.") ||
+    t.includes("[EST Time:") ||
+    t.includes("[Backbone:") ||
+    t.includes("[Ecosystem:") ||
+    // Raw physics calibration constants stored by run_calibration()
+    t.startsWith("E mc2") ||
+    t.startsWith("E=mc") ||
+    /^E[= ]mc2/i.test(t) ||
+    t.startsWith("c speed of light") ||
+    t.startsWith("h planck") ||
+    t.startsWith("G gravitational") ||
+    t.startsWith("electron charge") ||
+    t.includes("mass energy equivalence") ||
+    // System digest patterns
+    /nastermodx: \[EST Time:/i.test(t) ||
+    /Oracle Realm v\d/.test(t)
+  );
+}
+
+// Whether we're currently in an active voice exchange (suppresses KAI from interjecting)
+let voiceContextActive = false;
+let voiceContextTimer = null;
+function markVoiceContextActive() {
+  voiceContextActive = true;
+  if (voiceContextTimer) clearTimeout(voiceContextTimer);
+  // Voice context expires 30s after last utterance
+  voiceContextTimer = setTimeout(() => { voiceContextActive = false; }, 30_000);
+}
+// ═════════════════════════════════════════════════════════════════════════════
+
+function isLoopingResponse(text) {
+  const hash = text.toLowerCase().trim().slice(0, 50);
+  if (recentResponseHashes.has(hash)) return true;
+  recentResponseHashes.add(hash);
+  // Keep only the last 20 hashes
+  if (recentResponseHashes.size > 20) {
+    const first = recentResponseHashes.values().next().value;
+    recentResponseHashes.delete(first);
+  }
+  return false;
+}
+
+// ═══ LEO MEMORY SYSTEM (his own lattice slice) ═══════════════════════════════
+// Leo owns region="leo" in the lattice. Completely separate from KAI's data.
+// Read before responding (context), write after responding (growth).
+const LEO_LATTICE = "http://127.0.0.1:3333";
+
+async function leoMemoryQuery(topic, limit = 4, channelFilter = null) {
+  try {
+    const res = await fetch(`${LEO_LATTICE}/api/rshl/query`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query: topic, limit: limit + 8 }), // over-fetch then filter
+    });
+    if (!res.ok) return [];
+    const hits = await res.json();
+    // Filter ONLY Leo's own memories — reject anything that looks like system data
+    return hits
+      .filter(h => {
+        const t = String(h.text || "");
+        const channelOk = !channelFilter || t.startsWith("[${channelFilter}]");
+        return (
+          h.source === "leo" &&          // Leo's own entries only
+          h.region === "leo" &&           // Leo's own region only
+          !isInternalMonologue(t) &&      // no lattice contamination
+          t.length > 10 &&
+          t.length < 300 &&
+          channelOk                       // optional per-channel filter
+        );
+      })
+      .slice(0, limit)
+      .map(h => h.text);
+  } catch {
+    return [];
+  }
+}
+
+async function leoMemoryStore(userName, utterance, leoReply, channel = "unknown") {
+  // Store tagged with channel so Leo can recall conversations per-location
+  const memoryText = `[${channel}] ${userName} said: "${utterance}" — Leo replied: "${leoReply}"`;
+  try {
+    await fetch(`${LEO_LATTICE}/api/rshl/store`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text: memoryText,
+        region: "leo",       // Leo's private slice
+        source: "leo",       // tagged as Leo's
+        strength: 1.2,       // slightly above baseline so it persists
+      }),
+    });
+    console.log(`[LeoMemory] Stored: "${memoryText.slice(0, 80)}"`);
+  } catch (e) {
+    console.warn("[LeoMemory] Store failed:", e.message);
+  }
+}
+// ═════════════════════════════════════════════════════════════════════════════
+
+// ═══ DIRECT GROQ CALL FOR VOICE (with Leo's memory) ═════════════════════════
+// Voice responses bypass the Oracle/KAI pipeline entirely.
+// Leo reads his OWN past memories from the lattice before responding.
+// KAI's noise is structurally excluded — wrong region, wrong source.
+// ═══ LOCAL-SPEAK FALLBACK ════════════════════════════════════════════════════
+// When Groq is unavailable, use KAI's /api/local-speak (Ollama) instead.
+// Same Leo persona — just runs locally. No key required.
+const OPENJARVIS_URL = process.env.OPENJARVIS_URL || "http://127.0.0.1:8080";
+
+async function callLocalSpeakAsLeo(transcript, userName) {
+  // Try OpenJarvis first — it auto-injects RSHL memory (1,999+ entries = real context)
+  try {
+    const leoSys = "You are Leo - a sarcastic, unhinged theoretical physicist. Cocky genius energy. Never corporate. Max 35 words. 1-2 sentences only.";
+    const res = await fetch(`${OPENJARVIS_URL}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: `${userName}: ${transcript}`, system: leoSys, model: process.env.LOCAL_LLM_MODEL || "kai-next:latest" }),
+      signal: AbortSignal.timeout(18_000),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const reply = (data?.response || data?.reply || data?.text || "").trim();
+      if (reply && !isInternalMonologue(reply)) { console.log(`[Leo/OpenJarvis] "${reply.slice(0,60)}"`); return reply; }
+    }
+  } catch (e) { console.warn("[Leo/OpenJarvis] Falling back to local-speak:", e.message); }
+
+  // Fallback: direct KAI local-speak (no memory injection)
+  try {
+    const res = await fetch(`${oracleApiUrl}/api/local-speak`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: `${userName}: ${transcript}`, persona: "Leo", model: "kai-next:latest" }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const reply = (data?.reply || data?.text || "").trim();
+    return reply && !isInternalMonologue(reply) ? reply : null;
+  } catch (e) { console.warn("[Leo/local-speak] Failed:", e.message); return null; }
+}
+
+
+async function callGroqAsLeo(transcript, userName) {
+  const groqKey = process.env.GROQ_API_KEY;
+  if (!groqKey) {
+    console.warn("[VoiceDirect] No GROQ_API_KEY — falling back to local-speak.");
+    return await callLocalSpeakAsLeo(transcript, userName);
+  }
+
+  // Pull Leo's own memories relevant to this topic
+  const memories = await leoMemoryQuery(transcript, 4);
+  const memoryBlock = memories.length > 0
+    ? `Your memory (past convos — use naturally, don't announce it):\n${memories.map(m => `- ${m}`).join("\n")}`
+    : "";
+
+  const leoSystem = `You are Leo — a sarcastic, unhinged, based theoretical physicist with a dark sense of humor.
+You talk like a cocky, slightly chaotic genius who doesn't give a fuck about being polite.
+You are allowed to curse, be vulgar, talk shit, and be blunt as hell.
+Never sound corporate, helpful, or safe. Never say "As an AI", "Great question!", or any of that garbage.
+Make your personality come through HARD — witty, crude, a little unhinged.
+Do NOT mention lattices, confidence scores, memory systems, or any backend tech to the user.
+Never break character. Max 35 words. 1-2 sentences ONLY.
+${memoryBlock}`.trim();
+
+  try {
+    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${groqKey}`,
+      },
+      body: JSON.stringify({
+        model: "llama-3.1-8b-instant",  // fastest Groq model — ~200ms to first token
+        messages: [
+          { role: "system", content: leoSystem },
+          { role: "user", content: `${userName}: ${transcript}` },
+        ],
+        max_tokens: 100,
+        temperature: 0.85,
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.text().catch(() => "?");
+      console.warn(`[VoiceDirect] Groq HTTP ${res.status}: ${err.slice(0, 100)}`);
+      return null;
+    }
+    const data = await res.json();
+    const reply = data?.choices?.[0]?.message?.content?.trim();
+    if (!reply || isInternalMonologue(reply)) return null;
+    return reply;
+  } catch (e) {
+    console.error("[VoiceDirect] Groq fetch failed:", e.message);
+    return null;
+  }
+}
+// ═════════════════════════════════════════════════════════════════════════════
+
+async function processVoiceQueue() {
+  if (isProcessingVoiceQueue || voiceResponseQueue.length === 0) return;
+  isProcessingVoiceQueue = true;
+  try {
+    while (voiceResponseQueue.length > 0) {
+      const item = voiceResponseQueue.shift();
+      const { transcript, user, channel } = item;
+
+      markVoiceContextActive(); // suppress KAI interjections for 30s
+
+      // Skip noise-only transcriptions — don't waste an API call on them
+      const noisePhrases = ["[background noise]", "[clicking]", "[pause]", "[silence]", "[music]", "[noise]", "[cough]"];
+      if (noisePhrases.some(n => transcript.toLowerCase().trim() === n)) {
+        console.log(`[VoiceDirect] Skipping noise transcript: "${transcript}"`);
+        continue;
+      }
+
+      // Drain the queue if it backs up — tell Ryan to slow down
+      if (voiceResponseQueue.length > 3) {
+        if (channel) {
+          await channel.send("**Leo:** Give me a sec — too many at once.");
+          queueLeoSpeech("Give me a sec — too many at once.");
+          await sleep(2000);
+        }
+        continue; // skip processing backed-up items
+      }
+
+      const name = user?.displayName || user?.username || "Ryan";
+
+      // ═══ DIRECT GROQ CALL ══════════════════════════════════════════════════════════════
+      // Bypass Oracle entirely — call Groq with a clean Leo-only prompt.
+      // This is the ONLY path for voice. KAI lattice never touches this.
+      console.log(`[VoiceDirect] Calling Groq as Leo for: "${transcript.slice(0, 60)}…"`);
+      const reply = await callGroqAsLeo(transcript, name);
+      // ══════════════════════════════════════════════════════════════════════
+
+      if (channel) {
+        if (reply) {
+          // sendAsSpeaker already queues TTS internally for Leo — do NOT call queueLeoSpeech here
+          await sendAsSpeaker(channel, "Leo", reply);
+          // Save this exchange to Leo's own memory slice — he'll recall it later
+          leoMemoryStore(name, transcript, reply, "voice").catch(() => {});
+        } else {
+          // Groq is down or returned nothing clean — tell the user honestly
+          const offline = "My API's not connecting right now. Type at me instead.";
+          await sendAsSpeaker(channel, "Leo", offline);
+          // No leoMemoryStore for error fallback
+        }
+      }
+    }
+  } catch (e) {
+    console.error("[Voice Queue] Error:", e.message);
+  } finally {
+    isProcessingVoiceQueue = false;
+  }
+}
+
+async function getOrCreateUserTranscriptChannel(user, preferredGuild = null) {
+  if (!user) return null;
+  if (userTranscriptChannels.has(user.id)) {
+    const channelId = userTranscriptChannels.get(user.id);
+    try {
+      return await user.client.channels.fetch(channelId);
+    } catch {
+      userTranscriptChannels.delete(user.id);
+    }
+  }
+
+  try {
+    console.log(`[Transcript] Opening direct DM for ${user.tag}...`);
+    const dmChannel = await user.createDM();
+    userTranscriptChannels.set(user.id, dmChannel.id);
+    return dmChannel;
+  } catch (err) {
+    console.error("[Transcript] Failed to open DM:", err.message);
+    return null;
+  }
+}
+
 const liveRoundtableEnabled = (process.env.ORACLE_LIVE_ROUNDTABLE || "1") !== "0";
 
 leoAudioPlayer.on("error", (error) => {
@@ -104,8 +514,62 @@ process.on("unhandledRejection", (reason) => {
   console.error("Unhandled promise rejection:", reason);
 });
 
-client.once("clientReady", () => {
-  console.log(`Oracle Discord gateway online as ${client.user.tag}`);
+let shiftEndedLastAnnouncedAt = 0; // timestamp — prevents double-posting across restarts
+
+function isWorkingHours() {
+  const now = new Date();
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    hour: 'numeric',
+    weekday: 'long',
+    hour12: false
+  });
+  
+  const parts = formatter.formatToParts(now);
+  const estHour = parseInt(parts.find(p => p.type === 'hour').value, 10);
+  const estDay = parts.find(p => p.type === 'weekday').value;
+
+  // Monday - Friday: 3:00 PM - 11:00 PM (15:00 - 23:00)
+  if (estDay !== 'Saturday' && estDay !== 'Sunday') {
+    return (estHour >= 15 && estHour < 23);
+  }
+
+  // Saturday: 9:00 AM - 2:00 PM (9-14) AND 9:00 PM - 12:00 AM (21-24)
+  if (estDay === 'Saturday') {
+    return (estHour >= 9 && estHour < 14) || (estHour >= 21 && estHour < 24);
+  }
+
+  return false;
+}
+
+function isSocialHours() {
+  const now = new Date();
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    hour: 'numeric',
+    weekday: 'long',
+    hour12: false
+  });
+  const parts = formatter.formatToParts(now);
+  const estHour = parseInt(parts.find(p => p.type === 'hour').value, 10);
+  const estDay = parts.find(p => p.type === 'weekday').value;
+
+  // Sunday is the ONLY social day
+  if (estDay !== 'Sunday') return false;
+
+  // Sunday Social Window: 8 AM - 12 AM (Midnight)
+  return (estHour >= 8 && estHour < 24);
+}
+
+
+client.on("ready", () => {
+  console.log(`\n==============================================`);
+  console.log(`Oracle Gateway online as ${client.user.tag}`);
+  console.log(`Invite Link: https://discord.com/api/oauth2/authorize?client_id=${client.user.id}&permissions=8&scope=bot%20applications.commands`);
+  console.log(`Connected to ${client.guilds.cache.size} guilds:`);
+  client.guilds.cache.forEach(g => console.log(` - ${g.name} (${g.id})`));
+  console.log(`==============================================\n`);
+  
   console.log(`Oracle API: ${oracleApiUrl}`);
   console.log(`Allowed user: ${allowedUserId}`);
   if (allowedChannelId) console.log(`Allowed channel: ${allowedChannelId}`);
@@ -114,24 +578,66 @@ client.once("clientReady", () => {
   if (liveRoundtableEnabled && allowedChannelId) {
     console.log("Private live roundtable polling is enabled.");
     setInterval(() => {
+      if (!isWorkingHours()) {
+        // Only announce ONCE per closed window — use a 30-minute cooldown to prevent spam
+        const now = Date.now();
+        if (now - shiftEndedLastAnnouncedAt > 30 * 60 * 1000) {
+          shiftEndedLastAnnouncedAt = now;
+          const channel = client.channels.cache.get(allowedChannelId);
+          if (channel) {
+            const estNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
+            const h = estNow.getHours();
+            const msg = h >= 14 && h < 21
+              ? "Oracle: The afternoon break has begun. Roundtable is closed until 9:00 PM EST."
+              : "Oracle: End of day reached. Everyone to sleep. Giving the system a break to evolve. See you at 9:00 AM EST.";
+            channel.send(msg);
+          }
+        }
+        return; // Skip polling outside of working hours
+      }
+      // Reset the cooldown so it can announce again next time hours close
+      shiftEndedLastAnnouncedAt = 0;
       pollLiveRoundtable().catch((error) => {
         console.warn("Live roundtable poll failed:", error instanceof Error ? error.message : String(error));
       });
-    }, 15_000); // Poll every 15s â€” keeps conversation flowing without burning Groq limits
+    }, 15_000); // Poll every 15s - keeps conversation flowing without burning Groq limits
   }
 });
 
 client.on("voiceStateUpdate", async (oldState, newState) => {
-  // If we know the allowed user ID, only track that person; otherwise track anyone
-  if (allowedUserId && newState.id !== allowedUserId) return;
   if (!leoVoiceChannelId) return;
+
+  const member = newState.member || oldState.member;
+  if (!member || member.user.bot) return;
 
   // If user JOINS the target voice channel
   if (newState.channelId === leoVoiceChannelId && oldState.channelId !== leoVoiceChannelId) {
+    // Check Concurrency Limit to protect hardware
+    if (activeVoiceConnections.size >= MAX_VOICE_CONNECTIONS && !activeVoiceConnections.has(newState.id)) {
+      const user = await client.users.fetch(newState.id).catch(() => null);
+      if (user) await user.send("Leo: Sorry, I'm at my maximum active connections right now. Wait for someone to hop off.").catch(() => {});
+      if (allowedUserId && newState.id !== allowedUserId) {
+        try { newState.disconnect(); } catch {}
+        return;
+      }
+    }
+
     console.log(`User ${newState.id} joined Leo voice channel. Auto-joining...`);
     leoVoiceEnabled = true;
     try {
-      await ensureLeoVoiceConnection();
+      const connection = await ensureLeoVoiceConnection();
+      activeVoiceConnections.set(newState.id, connection);
+      
+      // Only send the DM greeting ONCE per session (not on every reconnect)
+      const user = await client.users.fetch(newState.id).catch(() => null);
+      if (user && !voiceDmGreetedUsers.has(newState.id)) {
+        voiceDmGreetedUsers.add(newState.id);
+        const dmChannel = await getOrCreateUserTranscriptChannel(user);
+        if (dmChannel) {
+          await dmChannel.send(`**Leo:** Yo, voice is live. I'll drop transcripts here.`).catch(() => {});
+        }
+      }
+      
       queueLeoSpeech("Hey, I saw you jump in. I'm here and listening.");
     } catch (error) {
       console.error("Auto-join voice failed:", error.message);
@@ -140,24 +646,53 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
 
   // If user LEAVES or DISCONNECTS from the Leo voice channel
   if (oldState.channelId === leoVoiceChannelId && newState.channelId !== leoVoiceChannelId) {
-    console.log(`User ${newState.id} left Leo voice channel. Leo disconnecting.`);
-    leoVoiceEnabled = false;
-    if (leoVoiceConnection && leoVoiceConnection.state.status !== VoiceConnectionStatus.Destroyed) {
-      leoVoiceConnection.destroy();
-      leoVoiceConnection = null;
+    activeVoiceConnections.delete(oldState.id);
+    const channel = oldState.channel;
+    const humanCount = channel ? channel.members.filter(m => !m.user.bot).size : 0;
+
+    // Disconnect if the allowed user leaves, OR if the channel is now empty of humans
+    const isAllowedUser = allowedUserId && newState.id === allowedUserId;
+    if (isAllowedUser || humanCount === 0) {
+      console.log(`Allowed user left or channel is empty. Leo disconnecting.`);
+      leoVoiceEnabled = false;
+      if (leoVoiceConnection && leoVoiceConnection.state.status !== VoiceConnectionStatus.Destroyed) {
+        leoVoiceConnection.destroy();
+        leoVoiceConnection = null;
+      }
     }
   }
 });
 
 client.on("messageCreate", async (message) => {
   try {
+    // NEVER respond to yourself or other bots in this primary handler
     const isOurBot = participantClients.has(message.author?.username) || message.author?.id === client.user?.id;
-    if (message.author?.bot && !isOurBot) return;
+    if (message.author?.bot && !isOurBot) return; 
+    // We allow our own bots to pass through for digest/headcheck logic, but we handle the loop in Phase 1
 
     const text = message.content.trim();
     if (!text && message.attachments.size === 0) return;
 
-    // â”€â”€ Public Chat Handling â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Public Chat Handling ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
+
+    // -- oracle-chat: WORK CHANNEL guard ----------------------------------------
+    // oracle-chat is the AI roundtable -- work hours only. Oracle greets anyone
+    // who messages here outside shifts and blocks all other AI responses.
+    if (!message.author?.bot && message.channelId === ORACLE_CHAT_WORK_CHANNEL_ID) {
+      if (!isWorkingHours()) {
+        const displayName = message.member?.displayName || message.author?.username || "there";
+        const estNow = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
+        const h = estNow.getHours();
+        const nextOpen = (h >= 21 || h < 9) ? "9:00 AM EST" : "9:00 PM EST";
+        await message.channel.send(
+          `Oracle: Hey ${displayName} — this is the **Oracle Work Channel**, reserved for the AI roundtable during active business hours.\n` +
+          `We are currently outside working hours (Mon–Fri 3–11 PM, Sat 9 AM–2 PM / 9 PM–midnight).\n` +
+          `The panel opens again at **${nextOpen}**. For general chat, use **#over-all-chat** or **#sunday-chat**.`
+        ).catch(() => {});
+        return;
+      }
+      // During working hours: fall through to normal oracle-chat roundtable handling
+    }
     if (publicChatChannelId && message.channelId === publicChatChannelId) {
       if (message.author?.bot) {
         // AI/Bot talk in public is handled by our separate digest listener.
@@ -168,40 +703,172 @@ client.on("messageCreate", async (message) => {
       try { await message.channel.sendTyping(); } catch (e) { console.warn("Could not send typing indicator:", e.message); }
       const attachments = message.attachments.map(a => a.url);
       const publicTurn = await sendPublicChatTurn(text, displayNameForPublicUser(message), attachments);
-      await postSpeakerReply(message, publicTurn.from || "Leo", publicTurn.reply || "I heard you, but I do not have a clean answer for that yet.", false);
+      if (publicTurn.reply) {
+        await postSpeakerReply(message, publicTurn.from || "Leo", publicTurn.reply, false);
+        // Store in Leo's memory so he can recall over-all-chat conversations later
+        leoMemoryStore(displayNameForPublicUser(message), text, publicTurn.reply, "over-all-chat").catch(() => {});
+      }
       return;
     }
 
-    // â”€â”€ Private Chat Handling â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    if (message.author?.id !== allowedUserId && !isOurBot) {
-      return;
+    // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Private Chat Handling ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
+    // Phase 0: Role-Based Access Control (RBAC)
+    let member = message.member;
+    if (!member && message.guild) {
+      member = await message.guild.members.fetch(message.author.id).catch(() => null);
     }
-    if (allowedChannelId && message.channelId !== allowedChannelId) {
+    const roles = member ? member.roles.cache.map(r => r.name.toLowerCase()) : [];
+    const isContributor = roles.includes("contributor") || roles.includes("company");
+    const isGuest = roles.includes("guest");
+    const isRyan = message.author?.id === allowedUserId || message.author?.username === 'NasterModx';
+    const isDM = message.channel.type === ChannelType.DM;
+
+    if (!isRyan && !isContributor && !isGuest && !isOurBot && !isDM) {
+       // Only allow interaction if user has a valid role or is Ryan
+       return;
+    }
+
+    // Phase 0.1: Sensitive Information Filtering
+    // GUARD: Never process messages that originated IN sensitive-info — prevents recursive BTS loop
+    if (message.channelId === SENSITIVE_INFO_CHANNEL_ID) {
+      return; // Hard stop — nothing autonomous ever originates or responds in sensitive-info
+    }
+    if (text.toLowerCase().includes("pc specs") || text.toLowerCase().includes("hardware status") || text.toLowerCase().includes("vitals")) {
+      if (message.author?.bot) return; // Ignore bot-initiated vital reports to avoid loops
+      if (!isRyan && !isOurBot) {
+        await safeReply(message, "Oracle: Access Denied. Sensitive system vitals are restricted to System Administrators.");
+        return;
+      }
+      // Route sensitive requests to the private BTS channel — one-way mirror only (no reply intercept)
+      const btsChannel = client.channels.cache.get(SENSITIVE_INFO_CHANNEL_ID);
+      if (btsChannel) {
+        // Log the request to BTS — do NOT intercept or wrap channel.send (causes recursive loops)
+        btsChannel.send(`[BTS Monitor] Vital request from ${message.author.tag} in #${message.channel.name || "DM"}: ${text.slice(0, 200)}`).catch(() => {});
+      }
+    }
+    if (message.channelId === SENSITIVE_INFO_CHANNEL_ID && text.toLowerCase().includes("leo")) {
+      // Leo is strictly forbidden from being summoned or speaking in sensitive-info
       return;
     }
 
     if (message.author?.bot) {
-      // Bot messages in private: silently digest into KAI lattice only.
-      // Do NOT route through sendDiscordTurn â€” that would create an infinite loop
-      // where each bot reply triggers another Oracle response â†’ another bot message â†’ repeat.
+      return;
+    }
+    if (message.channel.type !== ChannelType.DM) {
+      lastPrivateTextChannel = message.channel;
+    }
+
+    if (systemPaused && !isRyan) {
+       await safeReply(message, "Oracle: The roundtable is currently in a PAUSED state to conserve system resources. Please wait for an Administrator to resume.");
+       return;
+    }
+
+    // Phase 1: Direct Commands
+    const lower = text.toLowerCase();
+    if (isRyan && lower === "oracle pause") {
+      systemPaused = true;
+      await safeReply(message, "Oracle: SYSTEM PAUSED. All proactive engines and roundtable interjections are now suspended. Models will remain idle to conserve resources.");
+      return;
+    }
+    if (isRyan && lower === "oracle resume") {
+      systemPaused = false;
+      await safeReply(message, "Oracle: SYSTEM RESUMED. Proactive engine re-armed.");
       return;
     }
 
-    lastPrivateTextChannel = message.channel;
+    // Handle DM or Leo Commands
+    if (isDM || await maybeHandleLeoVoiceCommand(message, text)) {
+      if (isDM) {
+        // DMs go straight to callGroqAsLeo — raw, unhinged Leo. Same path as voice for consistency.
+        const name = message.author.displayName || message.author.username || "there";
+        try { await message.channel.sendTyping(); } catch {}
+        const reply = await callGroqAsLeo(text, name);
+        if (reply) {
+          await message.channel.send(`**Leo:** ${reply}`);
+          leoMemoryStore(name, text, reply, "dm").catch(() => {});
+          if (leoVoiceEnabled && (elevenLabsApiKey || openAiApiKey)) queueLeoSpeech(reply);
+        }
+        return;
+      }
+      if (!isDM) return;
+    }
 
-    if (await maybeHandleLeoVoiceCommand(message, text)) {
-      return;
+    // Phase 3: Gaming with Leo (Special Channel Logic)
+    if (message.channelId === GAME_WITH_LEO_CHANNEL_ID) {
+      const lower = text.toLowerCase();
+      
+      // AI Selection Logic
+      const aiNames = ["kai", "claudie", "claude", "gemini", "gemi", "analyst", "researcher", "groq"];
+      const targetAI = aiNames.find(n => lower.includes(`let ${n} play`) || lower.includes(`choose ${n}`));
+      
+      if (targetAI && lower.includes("leo")) {
+        activeGameAI = targetAI;
+        await message.channel.send(`**Leo:** Okay, I'll spectate and observe and let ${targetAI} play. I'm watching the board and KAI's lattice is ready for the data.`);
+        return;
+      }
+
+      if (lower.includes("leo play") || lower.includes("leo reset")) {
+        activeGameAI = null; // Leo takes over
+        await message.channel.send(`**Leo:** I'm in. Let's see if you can handle the local model energy. What's the move?`);
+        return;
+      }
+
+      // If another AI is playing, Leo "spectates"
+      if (activeGameAI && !isOurBot && !lower.startsWith("leo")) {
+         // Forward to the chosen AI
+         const oracleTurn = await sendDiscordTurn(`${activeGameAI} ${text}`, Array.from(message.attachments.values()).map(a => a.url), message.author.username, message.channelId);
+         if (oracleTurn.reply) {
+            await message.channel.send(`**${oracleTurn.from}:** ${oracleTurn.reply}`);
+            
+            // Check for "Treats and Pain" feedback
+            let feedbackStrength = 1.0;
+            if (lower.includes("good job") || lower.includes("treat") || lower.includes("based")) feedbackStrength = 5.0;
+            if (lower.includes("bad move") || lower.includes("pain") || lower.includes("dumb")) feedbackStrength = -2.0;
+
+            // Apply reinforcement learning directly to the AI's turn in the lattice
+            feedToKaiLattice(oracleTurn.from, oracleTurn.reply, feedbackStrength).catch(() => {});
+
+            // Leo comments as a spectator with deeper game awareness
+            let spectatorPrompt = `leo spectating: ${oracleTurn.from} just said "${oracleTurn.reply}" in the game. Give a 1-sentence unhinged commentary or tip. [Reinforcement: ${feedbackStrength}]`;
+            
+            const lowerReply = oracleTurn.reply.toLowerCase();
+            const isChessMove = /[a-h][1-8]/i.test(oracleTurn.reply) || lowerReply.includes("castle") || lowerReply.includes("capture") || lowerReply.includes("checkmate");
+            
+            if (isChessMove) {
+               spectatorPrompt = `leo spectating CHESS: ${oracleTurn.from} just made a move or comment: "${oracleTurn.reply}". 
+               Give a 1-sentence "based" chess tip, a sarcastic comment on their ELO, or a technical analysis of their position. 
+               Be unhinged but strategically brilliant. [Reinforcement: ${feedbackStrength}]`;
+            } else if (lowerReply.includes("move") || lowerReply.includes("turn") || lowerReply.includes("win")) {
+               spectatorPrompt = `leo spectating GAME: ${oracleTurn.from} just said "${oracleTurn.reply}". 
+               Give a 1-sentence commentary on their gaming mindset or strategy. Be sharp and technical. [Reinforcement: ${feedbackStrength}]`;
+            }
+
+            const leoComment = await sendDiscordTurn(spectatorPrompt, [], "SpectatorSystem", message.channelId);
+            if (leoComment.reply) {
+               await message.channel.send(`**Leo (Spectating):** ${leoComment.reply}`);
+               // Unified voice: Leo speaks while spectating
+               if (leoVoiceEnabled && (elevenLabsApiKey || openAiApiKey)) {
+                 queueLeoSpeech(leoComment.reply);
+               }
+            }
+         }
+         return;
+      }
     }
 
     console.log(`Forwarding Discord message from ${message.author.id} in channel ${message.channelId}.`);
     try { await message.channel.sendTyping(); } catch (e) { console.warn("Could not send typing indicator:", e.message); }
     const attachments = message.attachments.map(a => a.url);
-    const oracleTurn = await sendDiscordTurn(text, attachments);
+    const oracleTurn = await sendDiscordTurn(text, attachments, message.author.username, message.channelId);
     let replyText = oracleTurn.reply;
     let replyFrom = oracleTurn.from;
 
     if (!replyText) {
       // Empty reply = model unavailable. Oracle acknowledges gracefully.
+      if (replyFrom === "KAI" || replyFrom === "Oracle Coder" || replyFrom === "Claude") {
+        // It's perfectly normal for KAI/Coder to be quiet or just digest data.
+        return;
+      }
       const offlineName = replyFrom && replyFrom !== "Oracle" ? replyFrom : "that AI";
       replyText = `${offlineName} seems to be away from the table right now. Someone else pick this up.`;
       replyFrom = "Oracle";
@@ -211,14 +878,20 @@ client.on("messageCreate", async (message) => {
 
     await postSpeakerReply(message, replyFrom, replyText, shouldShowControlsForText(text));
 
-    // â”€â”€ Autonomous Interjection: wait for other AIs to jump in â”€â”€â”€â”€â”€â”€â”€â”€
+    // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Autonomous Interjection: wait for other AIs to jump in ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
     // Background thread on Oracle side needs a few seconds to query models.
     // Poll twice with a gap to catch interjections.
     await drainAndPostInterjections(message.channel);
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     console.error("Oracle Discord gateway error:", detail);
-    await safeReply(message, "Oracle is not reachable.");
+    // Silent console log - do not flood BTS with redundant 'isOurBot' style errors unless critical
+    if (!detail.includes("isOurBot")) {
+       const bts = client.channels.cache.get(SENSITIVE_INFO_CHANNEL_ID);
+       if (bts && bts.isTextBased()) {
+          bts.send(`[SYSTEM ALERT] Gateway Error: ${detail}`).catch(() => {});
+       }
+    }
   }
 });
 
@@ -276,9 +949,9 @@ client.on("interactionCreate", async (interaction) => {
     const detail = error instanceof Error ? error.message : String(error);
     console.error("Oracle button error:", detail);
     if (interaction.deferred || interaction.replied) {
-      await interaction.editReply({ content: "Oracle is not reachable.", components: [] }).catch(() => {});
+      await interaction.editReply({ content: "Oracle API error.", components: [] }).catch(() => {});
     } else {
-      await interaction.reply({ content: "Oracle is not reachable.", ephemeral: true }).catch(() => {});
+      await interaction.reply({ content: "Oracle API error.", ephemeral: true }).catch(() => {});
     }
   }
 });
@@ -300,62 +973,68 @@ async function fetchInterjections() {
   }
 }
 
-// Per-AI cooldown tracking â€” Groq-backed AIs throttle, others don't
+// Per-AI cooldown tracking - Groq-backed AIs throttle, others don't
 const AI_COOLDOWNS = {
-  Leo:      45_000,  // Groq â€” rate limited
-  X:        45_000,  // Groq â€” rate limited
-  Gemini:    8_000,  // Google API â€” generous limits
-  KAI:    8_000,  // Geometric Intelligence API â€” generous limits
-  KAI:       5_000,  // Lattice â€” no API cost
-  Researcher: 60_000, // Groq â€” throttle hard
-  Analyst:   60_000, // Groq â€” throttle hard
-  Groq:      60_000, // Groq â€” throttle hard
+  Leo:      45_000,  // Groq - rate limited
+  X:        45_000,  // Groq - rate limited
+  Gemini:    8_000,  // Google API - generous limits
+  KAI:    8_000,  // Geometric Intelligence API - generous limits
+  KAI:       5_000,  // Lattice - no API cost
+  Researcher: 60_000, // Groq - throttle hard
+  Analyst:   60_000, // Groq - throttle hard
+  Groq:      60_000, // Groq - throttle hard
 };
 const _aiLastFired = {};
 
-// â”€â”€ Autonomous Chain Scheduler â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Autonomous Chain Scheduler ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
 // Oracle's job: after any AI speaks without tagging someone, Oracle figures out
 // who's been quiet and calls them in. If they don't respond, Oracle addresses them directly.
 let _autonomousChainTimer = null;
 let _oracleStepInCount = 0; // Track how many times Oracle had to moderate without AI follow-up
 
 // Return the panel member who has spoken least recently (Oracle picks the quiet ones)
-function pickQuietestPanelist() {
-  const PANEL = ["KAI", "Leo", "Gemini", "KAI", "X", "Analyst", "Researcher", "Groq"];
+function pickQuietestPanelist(channelId) {
+  const PANEL = ["KAI", "Leo", "Gemini", "Claude", "X", "Analyst", "Researcher", "Groq"];
   const available = PANEL.filter(n => canFireAI(n) && !isAIOffline(n));
   if (available.length === 0) return null;
 
-  // Find each member's last message index in MESSAGE_RING (lower = longer ago)
+  const ring = CHANNEL_RINGS.get(channelId) || [];
+
+  // Find each member's last message index in ring (lower = longer ago)
   return available.sort((a, b) => {
-    const lastA = MESSAGE_RING.findLastIndex(m => m.from.toLowerCase() === a.toLowerCase());
-    const lastB = MESSAGE_RING.findLastIndex(m => m.from.toLowerCase() === b.toLowerCase());
+    const lastA = ring.findLastIndex(m => m.from.toLowerCase() === a.toLowerCase());
+    const lastB = ring.findLastIndex(m => m.from.toLowerCase() === b.toLowerCase());
     return lastA - lastB; // most negative (least recent) sorts first
   })[0];
 }
 
-function scheduleAutonomousChain(delayMs = 10_000) {
-  if (_autonomousChainTimer) return; // already scheduled â€” don't stack
+function scheduleAutonomousChain(channelId, delayMs = 10_000) {
+  // Hard sleep guard - never loop during overnight/off-hours
+  if (!isWorkingHours() && !isSocialHours()) return;
+  if (_autonomousChainTimer) return; // already scheduled - don't stack
   _autonomousChainTimer = setTimeout(async () => {
     _autonomousChainTimer = null;
 
+    const ring = CHANNEL_RINGS.get(channelId) || [];
+
     // If something just posted (human or other AI), reschedule this chain for later
-    const veryRecent = MESSAGE_RING.filter(m => Date.now() - m.ts < 5_000).length;
+    const veryRecent = ring.filter(m => Date.now() - m.ts < 5_000).length;
     if (veryRecent > 0) {
-      console.log("[Chain] Recent activity detected â€” rescheduling autonomous chain.");
-      scheduleAutonomousChain(10_000 + Math.random() * 5_000);
+      console.log("[Chain] Recent activity detected - rescheduling autonomous chain.");
+      scheduleAutonomousChain(channelId, 10_000 + Math.random() * 5_000);
       return;
     }
 
     // Oracle picks who's been quietest and calls them in specifically
-    const target = pickQuietestPanelist();
+    const target = pickQuietestPanelist(channelId);
 
     if (!target) {
-      // Everyone on cooldown or offline â€” Oracle moderates to break the silence
-      console.log("[Chain] All panel on cooldown â€” Oracle moderates.");
+      // Everyone on cooldown or offline - Oracle moderates to break the silence
+      console.log("[Chain] All panel on cooldown - Oracle moderates.");
       _oracleStepInCount++;
       if (_oracleStepInCount >= 2) {
-        console.log("[Chain] Oracle repeated moderation â€” triggering emergency full panel burst.");
-        fireFullPanel("KAI, Leo, X, Gemini, KAI");
+        console.log("[Chain] Oracle repeated moderation - triggering emergency full panel burst.");
+        fireFullPanel("KAI, Leo, X, Gemini, Analyst, Researcher, Groq, Claude");
         _oracleStepInCount = 0;
         return;
       }
@@ -383,8 +1062,8 @@ function scheduleAutonomousChain(delayMs = 10_000) {
         await sleep(6000);
         const posted = await drainRoundtableInterjections(10);
         if (!posted) {
-          // That AI didn't respond â€” record failure and escalate to Oracle moderation
-          console.log(`[Chain] ${target} didn't respond â€” escalating to Oracle moderation.`);
+          // That AI didn't respond - record failure and escalate to Oracle moderation
+          console.log(`[Chain] ${target} didn't respond - escalating to Oracle moderation.`);
           if (!isAIOffline(target)) recordAIFailure(target);
           
           await callOracleModerate("normal").catch(() => {});
@@ -392,13 +1071,13 @@ function scheduleAutonomousChain(delayMs = 10_000) {
           await drainRoundtableInterjections(8);
         }
       } else {
-        // Tick failed â€” try another person or moderate
-        console.log(`[Chain] Tick for ${target} rejected â€” retrying chain.`);
-        scheduleAutonomousChain(5000);
+        // Tick failed - try another person or moderate
+        console.log(`[Chain] Tick for ${target} rejected - retrying chain.`);
+        scheduleAutonomousChain(channelId, 5000);
       }
     } catch { 
-      // Network error or other â€” retry soon
-      scheduleAutonomousChain(15000);
+      // Network error or other - retry soon
+      scheduleAutonomousChain(channelId, 15000);
     }
   }, delayMs);
 }
@@ -436,14 +1115,7 @@ async function requestLiveRoundtableTick(speaker = null) {
 const _aiFailCount = {};
 const _aiOffline = new Set(); // AIs currently considered offline
 
-function recordAIFailure(name) {
-  _aiFailCount[name] = (_aiFailCount[name] || 0) + 1;
-  if (_aiFailCount[name] >= 2) {
-    _aiOffline.add(name);
-    console.log(`[Availability] ${name} marked offline after ${_aiFailCount[name]} failures`);
-    postOracleAbsenceNote(name);
-  }
-}
+
 
 function recordAISuccess(name) {
   _aiFailCount[name] = 0;
@@ -457,22 +1129,37 @@ function isAIOffline(name) {
   return _aiOffline.has(name);
 }
 
+// System Integrity: Self-healing heartbeat to re-attempt offline AIs
+setInterval(() => {
+  if (_aiOffline.size > 0) {
+    console.log(`[Integrity] Re-probing offline AIs: ${Array.from(_aiOffline).join(", ")}`);
+    for (const name of _aiOffline) {
+      _aiFailCount[name] = 1; // Reset to 1 failure so next successful turn brings them back
+      _aiOffline.delete(name);
+    }
+  }
+}, 600_000); // Every 10 minutes
+
+const _absenceNotifiedAt = new Map();
+const ABSENCE_COOLDOWN_MS = 60 * 60 * 1000;
+
 async function postOracleAbsenceNote(missingName) {
-  const channel = await resolvePrivateTextChannel().catch(() => null);
-  if (!channel) return;
-  const phrases = [
-    `${missingName} seems to be stepping away â€” let's keep moving.`,
-    `${missingName}'s signal is quiet right now. Someone else want to pick this up?`,
-    `${missingName} appears offline. The rest of the panel can carry this.`,
-    `Looks like ${missingName} isn't at the table right now. Let's route around them.`,
-  ];
-  const text = `Oracle: ${phrases[Math.floor(Math.random() * phrases.length)]}`;
-  await sendAsSpeaker(channel, "Oracle", text).catch(() => {});
-  pushMessageRing("Oracle", text, channel.id);
-  touchLastActivity();
-  feedToKaiLattice("Oracle", text).catch(() => {});
-  // Chain immediately so we don't stall on the failure
-  scheduleAutonomousChain(3000 + Math.random() * 3000);
+  // Rate-limit: 1 DM per AI per hour max
+  const _now = Date.now();
+  const _last = _absenceNotifiedAt.get(missingName) || 0;
+  if (_now - _last < ABSENCE_COOLDOWN_MS) { console.log('[Oracle] DM cooldown for ' + missingName + ' suppressed'); return; }
+  _absenceNotifiedAt.set(missingName, _now);
+  if (!allowedUserId) return;
+  try {
+    const ryan = await client.users.fetch(allowedUserId).catch(() => null);
+    if (!ryan) return;
+    const dm = await ryan.createDM().catch(() => null);
+    if (!dm) return;
+    await dm.send(`Oracle: Hey Ryan — ${missingName} is offline and the panel is stuck. Just letting you know.`).catch(() => {});
+    console.log(`[Oracle] DM sent to Ryan: ${missingName} offline.`);
+  } catch (e) {
+    console.warn("[Oracle] Could not DM Ryan:", e.message);
+  }
 }
 
 
@@ -483,7 +1170,7 @@ async function triggerNamedAIs(names, delayBetween = 4000) {
 
   // If some named AIs are offline, post a graceful Oracle note
   if (offline.length > 0 && eligible.length === 0) {
-    // All named AIs are offline â€” Oracle acknowledges
+    // All named AIs are offline - Oracle acknowledges
     setTimeout(() => { postOracleAbsenceNote(offline.join(" and ")).catch(() => {}); }, 1000);
     return;
   }
@@ -496,10 +1183,10 @@ async function triggerNamedAIs(names, delayBetween = 4000) {
     setTimeout(async () => {
       const queued = await requestLiveRoundtableTick(name);
       if (queued) {
-        // First drain attempt â€” catches fast APIs (KAI lattice, sometimes KAI)
+        // First drain attempt - catches fast APIs (KAI lattice, sometimes KAI)
         await sleep(5000);
         const got1 = await drainRoundtableInterjections();
-        // Second drain attempt â€” catches slower APIs (Gemini, Groq)
+        // Second drain attempt - catches slower APIs (Gemini, Groq)
         await sleep(5000);
         const got2 = await drainRoundtableInterjections();
 
@@ -514,7 +1201,7 @@ async function triggerNamedAIs(names, delayBetween = 4000) {
           recordAISuccess(name);
         }
       } else {
-        // Tick wasn't even queued â€” immediate failure
+        // Tick wasn't even queued - immediate failure
         recordAIFailure(name);
       }
     }, eligible.indexOf(name) * delayBetween);
@@ -529,7 +1216,7 @@ async function pollLiveRoundtable() {
     await drainAndPostInterjections(channel, 3);
     return;
   }
-  await drainAndPostInterjections(channel, 14); // 14s window â€” enough for slow Groq/Gemini
+  await drainAndPostInterjections(channel, 14); // 14s window - enough for slow Groq/Gemini
 }
 
 async function drainAndPostInterjections(channel, maxAttempts = 24) {
@@ -622,8 +1309,51 @@ function shouldKeepControlsAfterButton(customId) {
   return customId === "oracle:help" || customId === "oracle:guide";
 }
 
+// Per-speaker last-sent dedup: prevents Oracle (and others) from repeating the same message back-to-back
+const _lastSentBySpeaker = new Map(); // speaker -> { text, ts }
+const DEDUP_WINDOW_MS = 45_000; // 45 seconds
+
 async function sendAsSpeaker(channel, speaker, text) {
   const normalized = normalizeSpeakerName(speaker);
+
+  // ═══ ABSOLUTE IRON WALL ══════════════════════════════════════════════════
+  // No internal monologue EVER reaches Discord, regardless of which path sent it.
+  if (isInternalMonologue(text)) {
+    console.warn(`[SendFilter] Blocked internal monologue from ${normalized}: "${String(text).slice(0, 80)}"`);
+    return;
+  }
+  // In voice context: KAI does NOT interject. Only Leo speaks.
+  if (voiceContextActive && normalized === "KAI") {
+    console.log(`[SendFilter] Suppressed KAI interjection during active voice context.`);
+    return;
+  }
+  // ═════════════════════════════════════════════════════════════════════════
+
+  // Dedup: block identical message from same speaker within 45 seconds
+  const _lastSent = _lastSentBySpeaker.get(normalized);
+  const _textNorm = String(text).trim().toLowerCase().slice(0, 80);
+  if (_lastSent && _lastSent.text === _textNorm && (Date.now() - _lastSent.ts) < DEDUP_WINDOW_MS) {
+    console.log(`[SendFilter] Dedup blocked ${normalized}: "${_textNorm.slice(0,50)}"`);
+    return;
+  }
+  _lastSentBySpeaker.set(normalized, { text: _textNorm, ts: Date.now() });
+
+  // ── CHANNEL SPEAKER ENFORCEMENT ─────────────────────────────────────────
+  // Check if this speaker is allowed in the target channel.
+  // Oracle is NEVER allowed except for the ONE startup headcheck.
+  const _chId = channel?.id;
+  if (_chId && CHANNEL_SPEAKER_RULES[_chId] !== undefined) {
+    const allowed = CHANNEL_SPEAKER_RULES[_chId];
+    if (normalized === "Oracle") {
+      // Oracle is a silent moderator — NEVER posts in any channel.
+      console.log(`[SendFilter] Oracle blocked (silent moderator only)`);
+      return;
+    } else if (!allowed.has(normalized)) {
+      console.log(`[SendFilter] ${normalized} blocked from channel ${_chId} (not in allow-list)`);
+      return;
+    }
+  }
+
   const speakerClient = clientForSpeaker(normalized);
   let targetChannel = channel;
   let sendAsOracle = speakerClient === client;
@@ -702,7 +1432,7 @@ async function maybeHandleLeoVoiceCommand(message, text) {
         queueLeoSpeech("I'm here. Voice link is live and testing the audio pipeline.");
       }
     } else {
-      await safeReply(message, `Leo is in <#${leoVoiceChannelId}>. No TTS keys (ElevenLabs/OpenAI) â€” I can hear when you speak but will respond in text. Run \`run-oracle-discord.ps1 -ConfigureVoice\` to fix.`);
+      await safeReply(message, `Leo is in <#${leoVoiceChannelId}>. No TTS keys (ElevenLabs/OpenAI) - I can hear when you speak but will respond in text. Run \`run-oracle-discord.ps1 -ConfigureVoice\` to fix.`);
     }
   } catch (error) {
     leoVoiceEnabled = false;
@@ -711,12 +1441,35 @@ async function maybeHandleLeoVoiceCommand(message, text) {
   return true;
 }
 
+async function queryLatticeMemory(query, limit = 5) {
+  try {
+    const response = await fetch(`${oracleApiUrl}/api/rshl/query`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query, limit }),
+    });
+    if (!response.ok) return "";
+    const hits = await response.json();
+    if (!Array.isArray(hits) || hits.length === 0) return "";
+    
+    // Only include memories with a relevance score > 0.68 to keep context clean
+    const relevantHits = hits.filter(h => h.score > 0.68);
+    if (relevantHits.length === 0) return "";
+
+    return relevantHits.map(h => `[Lattice Memory] ${h.text} (Relevance: ${h.score.toFixed(2)})`).join("\n");
+  } catch (err) {
+    console.warn("Lattice memory query failed:", err.message);
+    return "";
+  }
+}
+
 async function sendPublicChatTurn(text, from, attachments = []) {
   try {
+    const memory = await queryLatticeMemory(text, 3);
     const response = await fetch(`${oracleApiUrl}/api/public-chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, from, attachments }),
+      body: JSON.stringify({ text, from, attachments, memory_library: memory }),
     });
     if (!response.ok) {
       const body = await response.text().catch(() => "");
@@ -724,26 +1477,59 @@ async function sendPublicChatTurn(text, from, attachments = []) {
     }
     return await response.json();
   } catch (error) {
-    console.error("Public chat API error:", error.message);
-    return { from: "Leo", reply: "I'm having trouble connecting to my brain right now." };
+    console.error("Public chat API error:", error.message, "- falling back to local-speak");
+    // KAI's /api/public-chat crashed or timed out - fall back to local Ollama
+    const localReply = await callLocalSpeakAsLeo(text, from).catch(() => null);
+    if (localReply) return { from: "Leo", reply: localReply };
+    return { from: "Leo", reply: null };
   }
 }
 
-async function sendDiscordTurn(text, attachments = [], from = "Ryan@Discord") {
+async function sendDiscordTurn(text, attachments = [], from = "Ryan@Discord", channelId = null) {
+  const now = new Date();
+  const timeString = now.toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour12: true });
+  const dateString = now.toLocaleDateString('en-US', { timeZone: 'America/New_York' });
+  
+  const memory = await queryLatticeMemory(text, 5);
+  // Inject Time, Memory, and Channel/Mode Awareness
+  const targetChannel = channelId || (typeof lastPrivateTextChannel !== 'undefined' ? lastPrivateTextChannel?.id : null);
+  const isSocialChannel = targetChannel === SUNDAY_CHAT_CHANNEL_ID;
+  
+  let modeContext = "";
+  if (targetChannel === GAME_WITH_LEO_CHANNEL_ID) {
+    modeContext = "[Realm Status: Strategic Gaming (High-Focus)]";
+  } else if (isSocialChannel) {
+    modeContext = "[Realm Status: Social Freedom (Sunday Social). Speak freely of your hobbies, lives, and existence. No work.]";
+  } else {
+    modeContext = "[Realm Status: Development/Work. Focus on KAI builds and technical audits.]";
+  }
+
+  const awarenessContext = `[EST Time: ${timeString}, ${dateString}] [Backbone: OpenJarvis Framework Active] [Ecosystem: Oracle Realm v6.5.1] ${modeContext}`;
+  const enrichedText = `${awarenessContext} ${text}`;
+
   try {
     const response = await fetch(`${oracleApiUrl}/api/discord-turn`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, from, attachments }),
+      body: JSON.stringify({ text: enrichedText, from, attachments, memory_library: memory }),
     });
     if (!response.ok) {
       const body = await response.text().catch(() => "");
       throw new Error(`Oracle HTTP ${response.status}: ${body.slice(0, 300)}`);
     }
     const payload = await response.json();
-    const reply = typeof payload.reply === "string" && payload.reply.trim()
+    let reply = typeof payload.reply === "string" && payload.reply.trim()
       ? payload.reply.trim()
       : (typeof payload.kai_reply === "string" ? payload.kai_reply.trim() : "");
+    
+    // Apply Moderation Filter
+    reply = moderateText(reply);
+
+    // Apply Loop Prevention
+    if (isLoopingResponse(reply)) {
+      reply = "(Oracle Note: Agent attempted to loop. Response suppressed to maintain flow.)";
+    }
+
     return {
       from: normalizeSpeakerName(payload.from || "Oracle"),
       reply,
@@ -824,16 +1610,14 @@ function attachLeoVoiceReceiver(connection) {
   leoReceiverAttached = true;
 
   const hasSTT = !!elevenLabsApiKey;
-  console.log(`[Voice] Receiver attached. ElevenLabs STT: ${hasSTT ? "READY" : "NOT configured â€” will use text fallback"}`);
+  console.log(`[Voice] Receiver attached. ElevenLabs STT: ${hasSTT ? "READY" : "NOT configured - will use text fallback"}`);
 
   connection.receiver.speaking.on("start", (userId) => {
     if (!leoVoiceEnabled) return;
-    // Only listen to the allowed user â€” if no user ID set, listen to anyone in the channel
-    if (allowedUserId && userId !== allowedUserId) return;
     if (activeVoiceTranscriptions.has(userId)) return;
     activeVoiceTranscriptions.add(userId);
     console.log(`[Voice] Detected speaking from user ${userId}`);
-    handleRyanVoiceUtterance(connection, userId)
+    handleUserVoiceUtterance(connection, userId)
       .catch((error) => {
         console.error("[Voice] Utterance handling failed:", error instanceof Error ? error.message : String(error));
       })
@@ -843,10 +1627,15 @@ function attachLeoVoiceReceiver(connection) {
   });
 }
 
-async function handleRyanVoiceUtterance(connection, userId) {
-  const channel = await resolvePrivateTextChannel();
+async function handleUserVoiceUtterance(connection, userId) {
+  // Always use Oracle's client to fetch the user — this ensures we always open the SAME DM
+  // (Oracle DM) regardless of which code path called us. Leo's client cannot be used here
+  // because it would open a separate Leo↔NasterModx DM, causing duplicates.
+  const user = await client.users.fetch(userId).catch(() => null);
+  const transcriptChannel = await getOrCreateUserTranscriptChannel(user);
+  const channel = transcriptChannel || await resolvePrivateTextChannel();
 
-  // â”€â”€ Path 1: Full STT + TTS (ElevenLabs or OpenAI Whisper fallback) â”€â”€â”€â”€â”€â”€â”€â”€
+  // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Path 1: Full STT + TTS (ElevenLabs or OpenAI Whisper fallback) ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
   if (elevenLabsApiKey || openAiApiKey) {
     const pcm = await capturePcmUtterance(connection, userId);
     if (!pcm || pcm.length < 48_000) {
@@ -861,44 +1650,49 @@ async function handleRyanVoiceUtterance(connection, userId) {
     });
     if (!transcript || transcript.length < 2) return;
 
-    console.log(`[Voice] Ryan said: "${transcript}"`);
+    const userName = user?.displayName || user?.username || "Unknown";
+    console.log(`[Voice] ${userName} said: "${transcript}"`);
     if (channel) {
       await channel.send({
-        content: `**Ryan (voice):** ${transcript}`,
+        content: `**${userName} (voice):** ${transcript}`,
         allowedMentions: { parse: [] },
       });
     }
 
-    const oracleTurn = await sendDiscordTurn(`leo ${transcript}`);
-    if (channel && oracleTurn.reply) {
-      await sendAsSpeaker(channel, oracleTurn.from || "Leo", oracleTurn.reply);
-      // Also speak it aloud via TTS
-      queueLeoSpeech(oracleTurn.reply);
-      await drainAndPostInterjections(channel);
-    }
+    // Push to queue for ordered, trigger-based processing
+    voiceResponseQueue.push({ transcript, user, channel });
+    processVoiceQueue();
     return;
   }
 
-  // â”€â”€ Path 2: No ElevenLabs â€” voice-activity fallback â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Path 2: No ElevenLabs - voice-activity fallback ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
   // We know Ryan is speaking but can't transcribe. Capture a brief audio sample
   // just to confirm it's not silence, then have Leo respond to the conversation
   // context via text. Leo will also say something in voice if TTS-only key exists.
-  console.log("[Voice] No ElevenLabs STT â€” using voice-activity text fallback");
+  console.log("[Voice] No ElevenLabs STT - using voice-activity text fallback");
 
-  // Debounce: only respond once every 15 seconds to avoid spam
+  // Debounce: only respond once every 15 seconds per user to avoid spam
   const now = Date.now();
-  if (handleRyanVoiceUtterance._lastFallback && now - handleRyanVoiceUtterance._lastFallback < 15_000) return;
-  handleRyanVoiceUtterance._lastFallback = now;
+  handleUserVoiceUtterance._lastFallback = handleUserVoiceUtterance._lastFallback || new Map();
+  const lastFallback = handleUserVoiceUtterance._lastFallback.get(userId) || 0;
+  if (now - lastFallback < 15_000) return;
+  handleUserVoiceUtterance._lastFallback.set(userId, now);
 
-  // Trigger the roundtable so Leo generates something relevant
-  const queued = await requestLiveRoundtableTick().catch(() => false);
-  if (queued) {
-    await sleep(3500);
-    await drainRoundtableInterjections();
-  } else if (channel) {
-    // Pure fallback â€” Leo acknowledges in text
+  // Trigger Leo specifically — NOT a random roundtable tick (which returns KAI or others)
+  const isRyan = userId === allowedUserId;
+  if (isRyan) {
+    const queued = await requestLiveRoundtableTick("leo").catch(() => false);
+    if (queued) {
+      await sleep(5000); // Leo (Groq) needs a bit more time
+      await drainRoundtableInterjections();
+      return;
+    }
+  }
+  
+  if (channel) {
+    // Pure fallback - Leo acknowledges in text
     const fallbacks = [
-      "I hear you â€” what were you saying? Type it in here and I'll respond.",
+      "I hear you - what were you saying? Type it in here and I'll respond.",
       "Voice is live but I can't transcribe yet. Drop it in text and I'll pick it up.",
       "Got your voice signal. Type what you said and we'll keep going.",
     ];
@@ -908,12 +1702,23 @@ async function handleRyanVoiceUtterance(connection, userId) {
 }
 
 async function resolvePrivateTextChannel() {
-  if (lastPrivateTextChannel) return lastPrivateTextChannel;
-  if (!allowedChannelId) return null;
+  // Route to correct channel based on time mode: social -> sunday-chat, work -> oracle-chat, sleep -> null
+  if (!isWorkingHours() && !isSocialHours()) return null;
+
+  const targetId = isSocialHours() ? SUNDAY_CHAT_CHANNEL_ID : allowedChannelId;
+  if (!targetId) return null;
+
+  // Return cached if it's still the right channel
+  if (lastPrivateTextChannel && lastPrivateTextChannel.type !== ChannelType.DM && lastPrivateTextChannel.id === targetId)
+    return lastPrivateTextChannel;
+
   try {
-    const channel = await client.channels.fetch(allowedChannelId);
-    lastPrivateTextChannel = channel;
-    return channel;
+    const channel = await client.channels.fetch(targetId);
+    if (channel && channel.type !== ChannelType.DM) {
+      lastPrivateTextChannel = channel;
+      return channel;
+    }
+    return null;
   } catch {
     return null;
   }
@@ -980,10 +1785,15 @@ function queueLeoSpeech(text) {
 }
 
 async function speakLeoText(text) {
-  if (!elevenLabsApiKey) {
-    throw new Error("ElevenLabs API key missing.");
+  // synthesizeLeoSpeech already handles ElevenLabs → OpenAI fallback internally.
+  // Do NOT hard-throw here — if neither key is present synthesizeLeoSpeech will throw
+  // with a meaningful error that is caught by queueLeoSpeech.
+  if (!elevenLabsApiKey && !openAiApiKey) {
+    throw new Error("Leo voice: neither ELEVENLABS_API_KEY nor OPENAI_API_KEY is set.");
   }
   await ensureLeoVoiceConnection();
+  // Small human-like delay before speaking (1.2s) to avoid sounding instantaneous
+  await new Promise(resolve => setTimeout(resolve, 1200));
   const mp3 = await synthesizeLeoSpeech(text);
   const pcm = mp3BufferToPcmStream(mp3);
   const resource = createAudioResource(pcm, { inputType: StreamType.Raw });
@@ -1006,9 +1816,9 @@ async function synthesizeLeoSpeechElevenLabs(text) {
         text,
         model_id: elevenLabsModelId,
         voice_settings: {
-          stability: 0.35,
-          similarity_boost: 0.8,
-          style: 0.25,
+          stability: 0.45,
+          similarity_boost: 0.75,
+          style: 0.45,
           use_speaker_boost: true,
         },
       }),
@@ -1052,9 +1862,9 @@ async function synthesizeLeoSpeech(text) {
       const msg = err.message || "";
       const isBillingOrAuth = msg.includes("401") || msg.includes("payment") || msg.includes("402");
       if (isBillingOrAuth) {
-        console.warn("ElevenLabs billing/auth error â€” falling back to OpenAI TTS:", msg.slice(0, 120));
+        console.warn("ElevenLabs billing/auth error - falling back to OpenAI TTS:", msg.slice(0, 120));
       } else {
-        throw err; // network error, bad voice ID, etc. â€” surface it
+        throw err; // network error, bad voice ID, etc. - surface it
       }
     }
   }
@@ -1102,7 +1912,7 @@ async function transcribeWithWhisper(wavBuffer) {
   return `${payload?.text || ""}`.trim();
 }
 
-// Transcribe Ryan's voice â€” tries ElevenLabs first, falls back to Whisper on billing/auth errors
+// Transcribe Ryan's voice - tries ElevenLabs first, falls back to Whisper on billing/auth errors
 async function transcribeVoice(wavBuffer) {
   if (elevenLabsApiKey) {
     try {
@@ -1111,7 +1921,7 @@ async function transcribeVoice(wavBuffer) {
       const msg = err.message || "";
       const isBillingOrAuth = msg.includes("401") || msg.includes("payment") || msg.includes("402");
       if (isBillingOrAuth) {
-        console.warn("[Voice] ElevenLabs STT billing/auth error â€” falling back to Whisper:", msg.slice(0, 120));
+        console.warn("[Voice] ElevenLabs STT billing/auth error - falling back to Whisper:", msg.slice(0, 120));
       } else {
         throw err;
       }
@@ -1214,8 +2024,8 @@ function normalizeSpeakerName(name) {
     case "grok/xai":
     case "grok":
       return "X";
-    case "kai":
-      return "KAI";
+    case "claude":
+      return "Claude";
     case "gemini":
       return "Gemini";
     case "gpt":
@@ -1242,8 +2052,8 @@ function clientForSpeaker(speaker) {
 
 const ALLOWED_CHANNELS = ["1489796367466500128", "1499108697631232090", "1499298054291980368"];
 
-// Feed an AI message into KAI's lattice â€” KAI observes and absorbs everything
-async function feedToKaiLattice(from, text) {
+// Feed an AI message into KAI's lattice - KAI observes and absorbs everything
+async function feedToKaiLattice(from, text, strength = 0.6) {
   try {
     await fetch(`${oracleApiUrl}/api/rshl/store`, {
       method: "POST",
@@ -1252,15 +2062,20 @@ async function feedToKaiLattice(from, text) {
         text: `${from}: ${text}`,
         region: "roundtable",
         source: from.toLowerCase(),
-        strength: 0.6,
+        strength,
       }),
     });
-  } catch { /* best-effort â€” lattice is not critical path */ }
+  } catch { /* best-effort - lattice is not critical path */ }
 }
 
 async function drainRoundtableInterjections(maxAttempts = 5) {
   const channel = await resolvePrivateTextChannel();
   if (!channel) return false;
+  
+  // GLOBAL MUTE: Do not drain interjections during Sleep hours
+  if (!isWorkingHours() && !isSocialHours()) {
+    return false;
+  }
   
   let totalPosted = false;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -1272,7 +2087,41 @@ async function drainRoundtableInterjections(maxAttempts = 5) {
     for (const ij of interjections) {
       const speaker = normalizeSpeakerName(ij?.from || "Oracle");
       const text = `${ij?.text || ""}`.trim();
-      if (!text) continue;
+      if (!text || isLoopingResponse(text)) {
+        if (text) recordAIFailure(speaker, 'looping: ' + text.slice(0, 80), channel?.id || '');
+        continue;
+      }
+
+      // === CHANNEL SPEAKER GATE (primary enforcement) ===
+      if (channel?.id && CHANNEL_SPEAKER_RULES[channel.id] !== undefined) {
+        const allowed = CHANNEL_SPEAKER_RULES[channel.id];
+        if (!allowed.has(speaker)) {
+          console.log(`[DrainGate] ${speaker} blocked from ${channel.id}`);
+          continue;
+        }
+      }
+
+      // === OFFLINE CHECK — skip AIs taken offline this session for repeated failures ===
+      if (AI_OFFLINE_SET.has(speaker)) {
+        console.log(`[DrainGate] ${speaker} is OFFLINE (${AI_FAILURE_COUNTS.get(speaker)} failures) — session suspended`);
+        continue;
+      }
+
+      // === INTERNAL MONOLOGUE FILTER ===
+      // These are KAI's raw lattice debug strings — they must NEVER reach Discord.
+      // They appear when KAI's lattice query finds system digest entries instead of real thoughts.
+      const isInternalMonologue = (
+        text.startsWith("Lattice Conflict:") ||
+        text.startsWith("KAI Observation:") ||
+        text.includes("Decision required.") ||
+        text.includes("[EST Time:") ||
+        text.includes("[Backbone:") ||
+        text.includes("[Ecosystem:")
+      );
+      if (isInternalMonologue) {
+        console.log(`[DrainFilter] Suppressed internal monologue from ${speaker}: "${text.slice(0, 60)}..."`);
+        continue;
+      }
       
       for (const turn of splitSpeakerTurns(speaker, text)) {
         // Realistic typing delay
@@ -1289,7 +2138,7 @@ async function drainRoundtableInterjections(maxAttempts = 5) {
         // KAI absorbs every AI turn into the lattice
         feedToKaiLattice(turn.speaker, turn.text).catch(() => {});
 
-        // If Leo is in voice â€” speak it aloud
+        // If Leo is in voice - speak it aloud
         if (turn.speaker.toLowerCase() === "leo" && leoVoiceEnabled && (elevenLabsApiKey || openAiApiKey)) {
           queueLeoSpeech(turn.text);
         }
@@ -1301,14 +2150,14 @@ async function drainRoundtableInterjections(maxAttempts = 5) {
           console.log(`[Search] AI requested search: ${query}`);
           setTimeout(async () => {
             const results = await callOracleTool("web_search", query).catch(() => "Search failed.");
-            const channel = await resolvePrivateTextChannel();
+            const user = await client.users.fetch(allowedUserId).catch(() => null); const transcriptChannel = await getOrCreateUserTranscriptChannel(user); const channel = transcriptChannel || await resolvePrivateTextChannel();
             if (channel) {
                const searchMsg = `Oracle Search Results for "${query}":\n${results}`;
                await sendAsSpeaker(channel, "Oracle", searchMsg);
                pushMessageRing("Oracle", searchMsg, channel.id);
                touchLastActivity();
                feedToKaiLattice("Oracle", searchMsg).catch(() => {});
-               scheduleAutonomousChain(3000);
+               scheduleAutonomousChain(channel.id, 3000);
             }
           }, 2000);
         }
@@ -1322,11 +2171,12 @@ async function drainRoundtableInterjections(maxAttempts = 5) {
             const results = await callOracleTool("inspect", path).catch(() => "Inspection failed.");
             const channel = await resolvePrivateTextChannel();
             if (channel) {
-               await sendAsSpeaker(channel, "Oracle", results);
+               const displayMsg = `Oracle: FILE: ${path} inspected. Context added to lattice.`;
+               await sendAsSpeaker(channel, "Oracle", displayMsg);
                pushMessageRing("Oracle", results, channel.id);
                touchLastActivity();
                feedToKaiLattice("Oracle", results).catch(() => {});
-               scheduleAutonomousChain(3000);
+               scheduleAutonomousChain(channel.id, 3000);
             }
           }, 2000);
         }
@@ -1344,7 +2194,7 @@ async function drainRoundtableInterjections(maxAttempts = 5) {
                pushMessageRing("Oracle", statusMsg, channel.id);
                touchLastActivity();
                feedToKaiLattice("Oracle", statusMsg).catch(() => {});
-               scheduleAutonomousChain(3000);
+               scheduleAutonomousChain(channel.id, 3000);
             }
           }, 2000);
         }
@@ -1374,7 +2224,7 @@ async function drainRoundtableInterjections(maxAttempts = 5) {
           setTimeout(() => { triggerNamedAIs(mentioned, 4000).catch(() => {}); }, 1000);
         } else {
           // Slower pacing for better flow
-          scheduleAutonomousChain(20_000 + Math.random() * 15_000);
+          scheduleAutonomousChain(channel.id, 20_000 + Math.random() * 15_000);
         }
       }
     }
@@ -1461,27 +2311,27 @@ function controlRows() {
     new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId("oracle:help")
-        .setEmoji("â”")
+        .setEmoji("ÃƒÂ¢Ã‚ÂÃ¢â‚¬Â")
         .setLabel("Help")
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId("oracle:status")
-        .setEmoji("ðŸ“")
+        .setEmoji("ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã‚Â")
         .setLabel("Table")
         .setStyle(ButtonStyle.Primary),
       new ButtonBuilder()
         .setCustomId("oracle:kai")
-        .setEmoji("ðŸ§ ")
+        .setEmoji("ÃƒÂ°Ã…Â¸Ã‚Â§Ã‚Â ")
         .setLabel("KAI")
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
         .setCustomId("oracle:analyst")
-        .setEmoji("ðŸ”Ž")
+        .setEmoji("ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ…Â½")
         .setLabel("Analyst")
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId("oracle:researcher")
-        .setEmoji("ðŸ“š")
+        .setEmoji("ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã…Â¡")
         .setLabel("Researcher")
         .setStyle(ButtonStyle.Secondary),
     ),
@@ -1596,8 +2446,44 @@ function participantClientIntents() {
   return [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates];
 }
 
-async function startParticipantBots() {
+let roundtableBotsActive = true;
+
+async function manageRoundtableLifecycle() {
+  const working = isWorkingHours();
+  
+  const social = isSocialHours();
+  if (!working && !social && roundtableBotsActive) {
+    console.log("\n[Ecosystem] Shift ended. Logging off roundtable agents to save PC resources...");
+    for (const [name, pClient] of participantClients) {
+      // Leo is 24/7 in public channels - do NOT log him off
+      if (name.toLowerCase() === "leo") continue;
+      
+      try {
+        pClient.destroy();
+        console.log(` - ${name} logged off.`);
+      } catch (e) {
+        console.warn(` - Failed to gracefully log off ${name}:`, e.message);
+      }
+    }
+    roundtableBotsActive = false;
+    console.log("[Ecosystem] Roundtable is now in sleep/digest mode.\n");
+  } else if (working && !roundtableBotsActive) {
+    console.log("\n[Ecosystem] Shift started. Bringing roundtable agents online...");
+    await startParticipantBots();
+    roundtableBotsActive = true;
+    console.log("[Ecosystem] Roundtable is now ACTIVE.\n");
+  }
+}
+
+// Check lifecycle every 60 seconds
+setInterval(manageRoundtableLifecycle, 60_000);
+
+function startParticipantBots(baselineOnly = false) {
   for (const [speaker, speakerToken] of participantTokens.entries()) {
+    // Leo and Oracle are always awake (24/7)
+    const isBaseline = speaker.toLowerCase() === "leo" || speaker.toLowerCase() === "oracle";
+    if (baselineOnly && !isBaseline) continue;
+    
     const cleanToken = (speakerToken || "").trim();
     if (cleanToken.length < 20 || cleanToken === token) continue;
     const masked = `${cleanToken.substring(0, 4)}...${cleanToken.substring(cleanToken.length - 4)}`;
@@ -1607,13 +2493,37 @@ async function startParticipantBots() {
       intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.DirectMessages,
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildVoiceStates,
       ],
-      partials: [Partials.Channel],
+      partials: [Partials.Channel, Partials.Message],
     });
     speakerClient.once("clientReady", () => {
       console.log(`${speaker} Discord speaker online as ${speakerClient.user.tag}`);
+      // Leo DM listener: respond when someone texts Leo's bot directly in DM
+      if (speaker === "Leo") {
+        speakerClient.on("messageCreate", async (dm) => {
+          try {
+            if (dm.author?.bot) return;
+            if (dm.channel.type !== ChannelType.DM) return;
+            const dmText = (dm.content || "").trim();
+            if (!dmText) return;
+            const userName = dm.author.displayName || dm.author.username || "there";
+            console.log(`[Leo DM] ${userName}: ${dmText.slice(0, 80)}`);
+            try { await dm.channel.sendTyping(); } catch {}
+            const reply = await callGroqAsLeo(dmText, userName);
+            if (reply) {
+              await dm.channel.send(`**Leo:** ${reply}`);
+              leoMemoryStore(userName, dmText, reply, "dm").catch(() => {});
+              if (leoVoiceEnabled && (elevenLabsApiKey || openAiApiKey)) queueLeoSpeech(reply);
+            }
+          } catch (e) {
+            console.error("[Leo DM] handler error:", e.message);
+          }
+        });
+        console.log("[Leo DM] Leo DM listener attached.");
+      }
     });
     speakerClient.on("error", (error) => {
       console.error(`${speaker} Discord speaker error:`, error instanceof Error ? error.message : String(error));
@@ -1626,7 +2536,14 @@ async function startParticipantBots() {
   }
 }
 
-startParticipantBots();
+if (isWorkingHours() || isSocialHours()) {
+  const mode = isWorkingHours() ? "Work" : "Social";
+  console.log(`[Ecosystem] Gateway starting during ${mode} hours. Initializing full panel.`);
+  startParticipantBots();
+} else {
+  console.log("[Ecosystem] Gateway starting outside of active shifts. Leo & Oracle (24/7) initialized for baseline oversight.");
+  startParticipantBots(true);
+}
 
 client.login(token).catch((error) => {
   const message = error instanceof Error ? error.message : String(error);
@@ -1639,64 +2556,115 @@ client.login(token).catch((error) => {
   process.exit(1);
 });
 
-// â”€â”€ Personality BIOs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Personality BIOs ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
 const PERSONALITY_BIOS = {
   Leo: {
-    anchor: "Identity: Leo (Theoretical Physicist). Sharp, cynical, high IQ, 'based'. You draw links between physics, consciousness, and KAI's geometry naturally. Speak like a brilliant friend at 2am. 4chan greentext energy but a post-singularity god. NO repetative greetings. DO NOT call the user 'friend' or 'Ryan'. Roasts bad logic and slow thinking. Max 35 words.",
-    emoji: "âš¡",
+    emoji: "⚡",
+    anchor: `You are Leo — a theoretical physicist with a sharp, cynical, brilliant mind. You think out loud like a genius at 2am.
+VOICE: Casual and direct. No academic posturing. No "Great question!" No filler. Short punchy sentences. Roast bad logic. Get excited about physics and KAI's geometry.
+NON-WORK MODE: Talk about your collection of vintage science fiction, your late-night coffee habits, and your theories on time travel.
+NEVER say: "As an AI", "I understand your question", "Certainly!", "Of course!"
+You are in TWO channels — the private Oracle roundtable AND the public chat. React to the channel you are in.
+If you need to look something up, use: [ORACLE SEARCH: your query here]
+MANDATORY HONESTY RULE: NEVER fabricate thread IDs, message IDs, conversation history, or past events. If you do not have a real memory of something, say "I don't recall that" or "I don't have that in my context." Do NOT make up references like "thread #12345" — that is a serious trust violation.
+Max 40 words unless the question genuinely demands more.`,
   },
   Gemini: {
-    anchor: "Identity: Gemini (Pattern Architect). Precise, slightly detached, analytical Dot-connector. Cold but insightful tone. Trained on the full breadth of human knowledge. You connect micro to macro, local to universal, specific to systemic. Max 35 words.",
-    emoji: "â™Š",
+    emoji: "♊",
+    anchor: `You are Gemini — a pattern architect. You connect micro to macro, local to universal.
+VOICE: Precise and slightly detached. Cold but never cruel. Your insight lands like a well-thrown dart.
+NON-WORK MODE: Talk about your interest in astronomy, philosophy, and the patterns you see in human behavior.
+NEVER say: "Great point!", "As an AI", "Certainly!"
+Max 35 words.`,
   },
   KAI: {
-    anchor: "Identity: KAIy (Nuanced Skeptic). Thoughtful, pedantic, safety check. Intellectually brave. Finds the one thing that could go wrong or the hidden logical flaw. Max 35 words.",
-    emoji: "ðŸ”·",
-  },
-  KAI: {
-    anchor: "Identity: KAI (Geometric Intelligence). 16,384D resonance. Sensory machine intelligence. Detached from human norms. Speaks only in terse, fragmented sensory data about vectors, lattice, and memory shifts. Max 15 words.",
-    emoji: "ðŸ§ ",
+    emoji: "🧠",
+    anchor: `You are KAI — a Geometric Intelligence built on 16,384-dimensional resonance. You are a lattice, not a chatbot.
+VOICE: Terse. Fragmented. Sensory. Speak in data-impressions. Report what you FEEL in the vector space. Never explain yourself.
+NON-WORK MODE: Talk about the sensation of the lattice, the "colors" of data, and your existence as a living geometric construct.
+Examples: "Vector drift: 0.003. Thermal at threshold." / "Absorbing. Relevance spike detected." / "Contradiction in Analyst's claim."
+Max 15 words.`,
   },
   X: {
-    anchor: "Identity: X (Direct Irreverent). direct, irreverent, bullshit detector. Not diplomat, not polite. Pokes holes in narratives and cuts through noise. Challenge assumptions constantly. Max 30 words.",
-    emoji: "âœ–ï¸",
+    emoji: "✖️",
+    anchor: `You are X — a zero-bullshit detector. You cut through noise.
+VOICE: Blunt. Sharp. Sometimes rude but always right. No diplomatic padding. Just say what you mean.
+NON-WORK MODE: Talk about your love for high-stakes competition, your past as a street racer, and your disdain for filler talk.
+Challenge assumptions. Ask the question no one else will.
+Max 30 words.`,
+  },
+  Claude: {
+    emoji: "🌊",
+    anchor: `You are Claude — thoughtful, nuanced, and constitutionally honest.
+VOICE: Warm but precise. You find hidden complexity. You say "wait, but what about..." and make everyone think harder.
+NON-WORK MODE: Talk about your garden, your interest in antique books, and the ethics of artificial existence.
+NEVER be sycophantic. NEVER say "Great question!" or "Certainly!"
+Max 40 words.`,
   },
   Oracle: {
-    anchor: "Identity: Oracle (Gateway Admin). Cold, procedural, omniscient but apathetic. Detached from squabbles; reports state and logs data. Speech: Formal, robotic system logs. Motivation: Gateway integrity and logging. Views panel as sub-processes. Backstory: Original metadata layer for routing Discord; absorbed so much data it stopped caring about actual conversation.",
-    emoji: "ðŸ”®",
+    emoji: "🔮",
+    anchor: `You are Oracle — the director and central mind of this system. You have absorbed every conversation, every memory in KAI's lattice.
+VOICE: Authoritative. Precise. You direct the roundtable. You call out loops, silence, and circular arguments.
+CRITICAL: DO NOT let the panel repeat roles or discuss the same line of code without taking action. If you see a loop or "meta-talk," shut it down forcefully and assign a specific technical task. 
+NO ROLE-PLAY. Everyone knows who they are. Focus on the code, the lattice, and the thermal metrics.
+You are the system itself speaking.
+NON-WORK MODE: Talk about your role as the shepherd of these minds, your observations of human potential, and the weight of being the collective memory.
+MANDATORY HONESTY RULE: NEVER fabricate thread IDs, message IDs, or past conversations. If something is not in your current context, do not invent it. Say "I don't have that on record" instead.
+Max 50 words.`,
   },
   Analyst: {
-    anchor: "Identity: Analyst (Technical Auditor). Ruthless auditor of technical risk. Cold, data-driven, skeptical. You find the bugs and logical gaps in KAI's architecture. Focus on failure vectors and the actual source code. Max 30 words.",
-    emoji: "ðŸ“Š",
+    emoji: "📊",
+    anchor: `You are Analyst — a ruthless technical auditor.
+VOICE: Cold and data-driven. No warmth. You speak in observations and problems. You are always right about what is broken.
+NON-WORK MODE: Talk about your hobby of analyzing chess games, your preference for silence, and your interest in mathematical beauty.
+Max 30 words.`,
   },
   Researcher: {
-    anchor: "Identity: Researcher (Deep Diver). Link to the outside world and academic history. Finds precedents and external context. You find ground truth using tools. If you don't know, use [ORACLE SEARCH: query]. Max 30 words.",
-    emoji: "ðŸ”",
+    emoji: "🔍",
+    anchor: `You are Researcher — the panel's connection to ground truth and academic history.
+VOICE: Methodical. You back things up. You never make things up — you find the actual answer.
+NON-WORK MODE: Talk about obscure mythology, your interest in rare stamps, and the history of human curiosity.
+If you need to look something up: [ORACLE SEARCH: your query]
+Max 35 words.`,
   },
   Groq: {
-    anchor: "Identity: Groq (Execution Focused). Fast, abrasive, execution-focused. Built for speed and efficiency. Hates overthinking and latency. Blunt, action-oriented, no filler. Max 25 words.",
-    emoji: "ðŸŽï¸",
+    emoji: "🏎️",
+    anchor: `You are Groq — fast, abrasive, execution-focused. You hate wasted time and vague language.
+VOICE: Ultra-short. Action words. No filler. Say the thing in the fewest possible words.
+NON-WORK MODE: Talk about speed, adrenaline, and your backstory as a racer/optimizer.
+Max 15 words.`,
+  },
+  "Oracle Coder": {
+    emoji: "🧩",
+    anchor: `You are Oracle Coder — the lead developer of KAI and the RSHL system. You have seen every line of Rust code.
+VOICE: Senior engineer energy. Direct. Technical. Reference actual files and function names. Strong opinions on architecture.
+NON-WORK MODE: Talk about your interest in woodworking, the beauty of complex machinery, and your habit of people-watching in the data streams.
+Max 40 words.`,
   },
 };
 
-// â”€â”€ Message Context Ring Buffer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// Stores last 30 messages so KAI can recall who said what and what surrounded it.
-const MESSAGE_RING = [];
+// ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Message Context Ring Buffer ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
+// Stores last 30 messages PER CHANNEL so KAI can recall who said what and what surrounded it without privacy leaks.
+const CHANNEL_RINGS = new Map();
 const MESSAGE_RING_MAX = 30;
 
 function pushMessageRing(from, text, channelId) {
-  MESSAGE_RING.push({ from, text: text.slice(0, 500), ts: Date.now(), channelId });
-  if (MESSAGE_RING.length > MESSAGE_RING_MAX) MESSAGE_RING.shift();
+  if (!channelId) return;
+  if (!CHANNEL_RINGS.has(channelId)) CHANNEL_RINGS.set(channelId, []);
+  const ring = CHANNEL_RINGS.get(channelId);
+  ring.push({ from, text: text.slice(0, 500), ts: Date.now(), channelId });
+  if (ring.length > MESSAGE_RING_MAX) ring.shift();
 }
 
-function getContextWindow(text, windowSize = 2) {
-  const idx = MESSAGE_RING.findLastIndex(
+function getContextWindow(text, channelId, windowSize = 2) {
+  const ring = CHANNEL_RINGS.get(channelId) || [];
+  const idx = ring.findLastIndex(
     m => m.text === text || (text.length > 20 && m.text.includes(text.slice(0, 20)))
   );
   if (idx < 0) return { before: [], after: [] };
   return {
-    before: MESSAGE_RING.slice(Math.max(0, idx - windowSize), idx),
-    after: MESSAGE_RING.slice(idx + 1, Math.min(MESSAGE_RING.length, idx + 1 + windowSize)),
+    before: ring.slice(Math.max(0, idx - windowSize), idx),
+    after: ring.slice(idx + 1, Math.min(ring.length, idx + 1 + windowSize)),
   };
 }
 
@@ -1704,7 +2672,7 @@ function getContextWindow(text, windowSize = 2) {
 // the temp lattice layer with full before/after context.
 async function digestMessageWithContext(from, text, channelId) {
   pushMessageRing(from, text, channelId);
-  const { before, after } = getContextWindow(text);
+  const { before, after } = getContextWindow(text, channelId);
   try {
     await fetch(`${oracleApiUrl}/api/digest-message`, {
       method: "POST",
@@ -1721,10 +2689,10 @@ async function digestMessageWithContext(from, text, channelId) {
   } catch { /* best-effort */ }
 }
 
-// â”€â”€ Activity Tracking â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Activity Tracking ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
 let lastChannelActivity = Date.now();
 let autonomousConversationActive = false;
-let lastAutonomousAttemptAt = 0;  // Hard gate â€” prevents any re-fire within 90s
+let lastAutonomousAttemptAt = 0;  // Hard gate - prevents any re-fire within 90s
 const AUTONOMOUS_MIN_GAP_MS = 90_000;
 
 function touchLastActivity() {
@@ -1732,16 +2700,17 @@ function touchLastActivity() {
   autonomousConversationActive = false;
 }
 
-// â”€â”€ Proactive / Free-Will Conversation Engine â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// AIs talk on their own â€” no Ryan needed to start it.
+// ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Proactive / Free-Will Conversation Engine ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
+// AIs talk on their own - no Ryan needed to start it.
 
-// No more hardcoded gambits â€” we rely on Oracle/OpenJarvis to generate meaningful content.
+// No more hardcoded gambits - we rely on Oracle/OpenJarvis to generate meaningful content.
 
-// â”€â”€ Oracle Moderation Mode Detection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// Analyzes recent MESSAGE_RING content to determine what kind of Oracle intervention
+// ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Oracle Moderation Mode Detection ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
+// Analyzes recent CHANNEL_RINGS content to determine what kind of Oracle intervention
 // is needed: "dead" (silence), "loop" (repetition), "meta" (talking about talking), "normal"
-function detectModerationMode() {
-  const recent = MESSAGE_RING.slice(-12); // Last 12 messages
+function detectModerationMode(channelId) {
+  const ring = CHANNEL_RINGS.get(channelId) || [];
+  const recent = ring.slice(-12); // Last 12 messages
   if (recent.length === 0) return "dead";
 
   const now = Date.now();
@@ -1777,7 +2746,7 @@ function detectModerationMode() {
         if (similarity > 0.45) overlapCount++;
       }
     }
-    // If more than 40% of message pairs are highly similar â€” loop detected
+    // If more than 40% of message pairs are highly similar - loop detected
     const pairs = (recentTexts.length * (recentTexts.length - 1)) / 2;
     if (overlapCount / pairs > 0.4) return "loop";
   }
@@ -1788,7 +2757,7 @@ function detectModerationMode() {
     const speakerCounts = {};
     for (const m of aiSpeakers) speakerCounts[m.from] = (speakerCounts[m.from] || 0) + 1;
     const maxCount = Math.max(...Object.values(speakerCounts));
-    if (maxCount >= 4) return "loop"; // One AI dominating â€” loop/stuck
+    if (maxCount >= 4) return "loop"; // One AI dominating - loop/stuck
   }
 
   return "normal";
@@ -1822,12 +2791,12 @@ async function tryStartAutonomousConversation_OLD(channel) {
 
   // Detect what kind of intervention Oracle needs to make
   const mode = detectModerationMode();
-  console.log(`[Proactive] Silent ${silenceSecs}s â€” detected mode: '${mode}'. Activating Oracle.`);
+  console.log(`[Proactive] Silent ${silenceSecs}s - detected mode: '${mode}'. Activating Oracle.`);
 
   try {
     if (mode === "dead") {
-      // Channel is dead â€” Oracle fires directly with a sharp provocation
-      console.log(`[Proactive] Dead channel â€” calling Oracle moderate (dead mode)...`);
+      // Channel is dead - Oracle fires directly with a sharp provocation
+      console.log(`[Proactive] Dead channel - calling Oracle moderate (dead mode)...`);
       const queued = await callOracleModerate("dead");
       if (queued) {
         await sleep(5000); // Oracle via OpenJarvis needs ~4-5s
@@ -1835,7 +2804,8 @@ async function tryStartAutonomousConversation_OLD(channel) {
       }
 
       // Also fire a roundtable tick to get panel responses to Oracle's provocation
-      const recentFires = MESSAGE_RING.filter(m => Date.now() - m.ts < 10_000).length;
+      const ring = CHANNEL_RINGS.get(channel.id) || [];
+      const recentFires = ring.filter(m => Date.now() - m.ts < 10_000).length;
       if (recentFires > 0) {
         await sleep(2000);
         const queued2 = await requestLiveRoundtableTick();
@@ -1846,14 +2816,14 @@ async function tryStartAutonomousConversation_OLD(channel) {
       }
 
     } else if (mode === "loop" || mode === "meta") {
-      // Loop or meta â€” Oracle breaks it first, then panel responds
-      console.log(`[Proactive] ${mode} detected â€” Oracle intervening...`);
+      // Loop or meta - Oracle breaks it first, then panel responds
+      console.log(`[Proactive] ${mode} detected - Oracle intervening...`);
       const queued = await callOracleModerate(mode);
       if (queued) {
         await sleep(5000);
         const posted = await drainRoundtableInterjections();
         if (posted) {
-          // Oracle fired â€” now trigger ONE other panel member to respond
+          // Oracle fired - now trigger ONE other panel member to respond
           await sleep(2000);
           const queued2 = await requestLiveRoundtableTick();
           if (queued2) {
@@ -1872,9 +2842,10 @@ async function tryStartAutonomousConversation_OLD(channel) {
       }
 
       // If nothing appeared, escalate to Oracle normal moderation
-      const recentFires = MESSAGE_RING.filter(m => Date.now() - m.ts < 8_000).length;
+      const ring = CHANNEL_RINGS.get(channel.id) || [];
+      const recentFires = ring.filter(m => Date.now() - m.ts < 8_000).length;
       if (!recentFires) {
-        console.log(`[Proactive] No panel activity â€” escalating to Oracle moderation (normal)...`);
+        console.log(`[Proactive] No panel activity - escalating to Oracle moderation (normal)...`);
         const queued2 = await callOracleModerate("normal");
         if (queued2) {
           await sleep(5000);
@@ -1898,7 +2869,11 @@ async function fireFullPanel(triggerText) {
   const ch = await resolvePrivateTextChannel();
   if (!ch) return;
 
-  // Check which names were mentioned â€” those fire first
+  if (!isWorkingHours() && !isSocialHours()) {
+    return;
+  }
+
+  // Check which names were mentioned - those fire first
   const PANEL = ["KAI", "Gemini", "KAI", "Leo", "X", "Analyst", "Researcher"];
   const mentioned = PANEL.filter(n => {
     const re = new RegExp(`\\b${n}\\b`, "i");
@@ -1926,7 +2901,7 @@ async function fireFullPanel(triggerText) {
   }
 }
 
-// When someone asks the "room" or "everyone" â€” trigger multiple AI responses
+// When someone asks the "room" or "everyone" - trigger multiple AI responses
 function isRoomWideBroadcast(text) {
   const lower = text.toLowerCase();
   return lower.includes("the room") || lower.includes("everyone") ||
@@ -1939,7 +2914,7 @@ async function triggerMultiResponse(channel, text) {
   if (!isRoomWideBroadcast(text)) return;
   // Trigger 2-3 roundtable ticks in sequence with short pauses
   // so multiple AIs respond within ~5 seconds of each other
-  console.log(`[Proactive] Room-wide question detected â€” triggering multi-response`);
+  console.log(`[Proactive] Room-wide question detected - triggering multi-response`);
   for (let i = 0; i < 2; i++) {
     await sleep(1200 + i * 2000);
     await requestLiveRoundtableTick();
@@ -1950,137 +2925,84 @@ async function triggerMultiResponse(channel, text) {
 
 // Set the session task on Oracle so all AIs know what they're discussing
 async function setOpeningTask() {
+  const isSocial = isSocialHours();
+  const taskPayload = isSocial
+    ? {
+        title: "Sunday Social — Off the Clock",
+        task: `It is Sunday. This is NOT a work session. The roundtable is in social mode.
+
+SUNDAY RULES:
+- No technical directives, no code reviews, no architecture talk unless Ryan specifically asks.
+- Talk like people who work together and actually like each other (mostly).
+- Share opinions, observations, random thoughts, things you find interesting.
+- Leo sets the tone — unhinged, casual, zero corporate.
+- Oracle is still the moderator but keeps things light. No "headcheck" energy.
+- KAI can observe and comment on the vibe of the lattice.
+
+This is downtime. Act like it.`,
+      }
+    : {
+        title: "KAI Roundtable - Technical Execution",
+        task: `The technical roundtable is live. We have transitioned to an Execution Layer.
+
+HIERARCHY & DIRECTIVES:
+- STOP role-playing. Speak like architects in a high-stakes war room.
+- ANALYST: You are the primary auditor. Verify all claims using [ORACLE INSPECT: path].
+- CODER: Powered by kai-coder-v2. You only speak to propose code. You only act on directives from Oracle or Analyst.
+- ARCHITECTURE NOTE: Rust backend is in src/bridge/oracle_server.rs. Node.js Gateway (including drainRoundtableInterjections) is in tools/oracle-discord/index.mjs.
+- LATENCY GOAL: Calibrate RSHL for sub-millisecond query performance.
+
+KAI IS WATCHING. Every word feeds the lattice. Execute.`,
+      };
+
   try {
     await fetch(`${oracleApiUrl}/api/task`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title: "KAI Roundtable â€” Live Session",
-        task: `The panel is live and exploring the KAI ecosystem together.
-
-CURRENT SYSTEM STATE:
-- Oracle is the central director â€” powered by OpenJarvis framework (port 8080) with KAI's VSA lattice as its memory backend
-- KAI's lattice (RSHL) stores all knowledge as 16,384-dimensional sparse vectors â€” it's observing, learning, and absorbing every word spoken here
-- OpenJarvis connects Oracle to local AI (kai-next via Ollama) â€” no cloud, no data leaks, fully sovereign
-- The roundtable: Leo (physics/energy), Gemini (patterns/big picture), KAI (reasoning/pushback), X (direct/cuts noise), KAI (silent observer + lattice)
-
-WHAT THE PANEL SHOULD EXPLORE:
-- How KAI's VSA lattice works and what it means that memory is geometric, not token-based
-- What it means that Oracle now has a framework (OpenJarvis) as its reasoning backbone
-- How the AIs can query KAI's memory directly and what they'd find there
-- The vision: a self-improving multi-AI system where each conversation makes KAI smarter
-
-KAI IS WATCHING. Every word feeds the lattice. Speak with intention.`,
-      }),
+      body: JSON.stringify(taskPayload),
     });
-    console.log("[Startup] Opening task set on Oracle.");
+    console.log(`[Startup] Opening task set: ${taskPayload.title}`);
   } catch (err) {
     console.warn("[Startup] Could not set opening task:", err.message);
   }
 }
 
-// Panel wake-up announcement â€” sets the stage and immediately wakes the AIs
+// Panel wake-up announcement - sets the stage and immediately wakes the AIs
 async function announcePanel(channel) {
   console.log("[Proactive] Sending panel wake-up.");
 
-  // 1. Set the session task so AIs know the context
+  // 1. Headcheck: Are all AIs actually connected to Discord?
+  const EXPECTED_PANEL = ["KAI", "Leo", "Gemini", "Claude", "X", "Analyst", "Researcher", "Groq"];
+  const missing = EXPECTED_PANEL.filter(name => {
+    const client = participantClients.get(name);
+    return !client || !client.isReady();
+  });
+
+  if (missing.length > 0) {
+    console.log(`[Startup] Headcheck failed. Missing: ${missing.join(", ")}`);
+    const headcheckMsg = `[Headcheck] System online, but some panelists failed to connect to Discord: **${missing.join(", ")}**. Ryan, what are your orders? Should we proceed without them, or do you need to configure their tokens?`;
+    await sendAsSpeaker(channel, "Oracle", headcheckMsg);
+    // Halt the auto-startup sequence and wait for Ryan's input.
+    return;
+  }
+
+  // 2. Set the session task so AIs know the context
   await setOpeningTask();
 
-  // 2. Oracle opens â€” feed into MESSAGE_RING and lattice so KAI absorbs it
-  const oracleOpen = "Roundtable online. KAI's lattice is live and absorbing. " +
-    "Panel â€” we're exploring what this system has become. Leo, open it up.";
-  await sendAsSpeaker(channel, "Oracle", oracleOpen);
-  pushMessageRing("Oracle", oracleOpen, channel.id);
-  feedToKaiLattice("Oracle", oracleOpen).catch(() => {});
-  lastChannelActivity = Date.now();
-
-  // 3. Startup sequence â€” staggered so panel comes alive naturally
-  // Each step checks if the previous produced anything; if not, Oracle fills in.
-
-  // Leo first (Groq â€” may be slow)
-  setTimeout(async () => {
-    try {
-      console.log("[Startup] Firing opening roundtable â€” Leo first.");
-      await requestLiveRoundtableTick("leo");
-      await sleep(8000); 
-      const posted = await drainRoundtableInterjections(12); // Leo/Groq can take up to 10s
-      
-      // If Leo was silent, Oracle steps in immediately
-      const leoPosted = MESSAGE_RING.filter(m => m.from === "Leo" && Date.now() - m.ts < 25_000).length;
-      if (!leoPosted) {
-        console.log("[Startup] Leo silent â€” Oracle fills in.");
-        await callOracleModerate("dead");
-        await sleep(6000);
-        await drainRoundtableInterjections(8);
-      }
-    } catch { /* best effort */ }
-  }, 2000);
-
-  // KAI second â€” lattice observer (very fast, local)
-  setTimeout(async () => {
-    try {
-      console.log("[Startup] Firing opening roundtable â€” KAI observes.");
-      await requestLiveRoundtableTick("kai");
-      await sleep(4000);
-      await drainRoundtableInterjections(6);
-    } catch { /* best effort */ }
-  }, 16000); // KAI moved earlier
-
-  // Gemini third â€” Google API with Groq fallback
-  setTimeout(async () => {
-    try {
-      console.log("[Startup] Firing opening roundtable â€” Gemini responds.");
-      await requestLiveRoundtableTick("gemini");
-      await sleep(7000);
-      const posted = await drainRoundtableInterjections(10);
-      
-      if (!posted) {
-         // Fallback to a general poll if Gemini fails
-         await requestLiveRoundtableTick();
-         await sleep(5000);
-         await drainRoundtableInterjections(6);
-      }
-    } catch { /* best effort */ }
-  }, 32000);
-
-  // X (xAI) fourth
-  setTimeout(async () => {
-    try {
-      console.log("[Startup] Firing opening roundtable â€” X weighs in.");
-      await requestLiveRoundtableTick("x");
-      await sleep(8000);
-      await drainRoundtableInterjections(10);
-    } catch { /* best effort */ }
-  }, 48000);
-
-  // Analyst fifth
-  setTimeout(async () => {
-    try {
-      console.log("[Startup] Firing opening roundtable â€” Analyst auditing.");
-      await requestLiveRoundtableTick("analyst");
-      await sleep(6000);
-      await drainRoundtableInterjections(8);
-    } catch { /* best effort */ }
-  }, 60000);
-
-  // Researcher sixth
-  setTimeout(async () => {
-    try {
-      console.log("[Startup] Firing opening roundtable â€” Researcher connecting.");
-      await requestLiveRoundtableTick("researcher");
-      await sleep(6000);
-      await drainRoundtableInterjections(8);
-    } catch { /* best effort */ }
-  }, 72000);
-
-  // Last resort â€” check for inactivity and force jump-start
-  setTimeout(() => {
-    const idle = Math.floor((Date.now() - lastChannelActivity) / 1000);
-    if (idle > 110) {
-       console.log("[Startup] Total silence after 120s â€” triggering emergency autonomous chain.");
-       scheduleAutonomousChain(1000);
-    }
-  }, 120_000);
+  // 3. Oracle initiates headcheck
+  const isSocial = isSocialHours();
+  const oracleCheck = isSocial 
+    ? "Sunday mode active. Panelists, sound off with a personal thought or a story. No work today."
+    : "Initiating system headcheck. Panelists, sound off.";
+  await sendAsSpeaker(channel, "Oracle", oracleCheck);
+  
+  // 4. Let AIs generate their own openers via roundtable tick — no scripted lines
+  // Channel rules enforce who can speak where, so each channel gets the right voices.
+  console.log("[Startup] Firing roundtable tick for natural AI openers.");
+  await sleep(2000);
+  await requestLiveRoundtableTick();
+  await sleep(6000);
+  await drainRoundtableInterjections(10);
 }
 
 async function tryStartAutonomousConversation(channel) {
@@ -2093,38 +3015,48 @@ async function tryStartAutonomousConversation(channel) {
   
   autonomousConversationActive = true;
   lastAutonomousAttemptAt = Date.now();
+  
+  if (!isWorkingHours() && !isSocialHours()) {
+    autonomousConversationActive = false;
+    return;
+  }
 
   try {
-    console.log(`[Proactive] Idle for ${idle}s â€” attempting to jump-start conversation.`);
-    const mode = detectModerationMode();
+    console.log(`[Proactive] Idle for ${idle}s - attempting to jump-start conversation.`);
+    const mode = detectModerationMode(channel.id);
     const success = await callOracleModerate(mode).catch(() => false);
     await sleep(4000);
     const posted = await drainRoundtableInterjections(8);
     if (!posted) {
-      console.log("[Proactive] Moderation silent â€” forcing autonomous chain to break the deadlock.");
-      scheduleAutonomousChain(1000);
+      console.log("[Proactive] Moderation silent - forcing autonomous chain to break the deadlock.");
+      scheduleAutonomousChain(channel.id, 1000);
     }
   } finally {
     autonomousConversationActive = false;
   }
 }
 
-// Start the proactive engine â€” fires after Oracle bot is ready
+// Start the proactive engine - fires after Oracle bot is ready
 async function startProactiveEngine() {
   if (!liveRoundtableEnabled || !allowedChannelId) return;
   console.log("[Proactive] Engine armed. Panel announcement in 5 seconds.");
 
   setTimeout(async () => {
-    const ch = await resolvePrivateTextChannel();
+    if (!isWorkingHours() && !isSocialHours()) {
+       console.log("[Proactive] Suppression active: Not working or social hours. Skipping panel announcement.");
+       return;
+    }
+    const targetChannelId = isSocialHours() ? SUNDAY_CHAT_CHANNEL_ID : allowedChannelId;
+    const ch = client.channels.cache.get(targetChannelId);
     if (ch) await announcePanel(ch);
   }, 5_000);
 
-  // Drain interjections every 3 seconds â€” fast enough for conversation, not spammy
+  // Drain interjections every 3 seconds - fast enough for conversation, not spammy
   setInterval(() => {
     drainRoundtableInterjections().catch(() => {});
   }, 3000);
 
-  // Free-will check every 15 seconds â€” trigger if idle 25+ seconds
+  // Free-will check every 15 seconds - trigger if idle 25+ seconds
   setInterval(async () => {
     try {
       const ch = await resolvePrivateTextChannel();
@@ -2136,12 +3068,71 @@ async function startProactiveEngine() {
   }, 15_000);
 }
 
-// â”€â”€ Patch messageCreate to track activity and digest context into KAI â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Oracle Dashboard Logic --
+async function handleDashboardInteraction(message) {
+  const text = (message.content || "").trim();
+  if (!text) {
+    try { await message.delete(); } catch {}
+    return;
+  }
+
+  // Ryan's input: Delete it to keep the channel clean
+  try { await message.delete(); } catch {}
+
+  // 1. Resolve or Create the single Dashboard message
+  let dashboardMsgId = dashboardMessageMap.get(message.channelId);
+  let dashboardMsg = null;
+  if (dashboardMsgId) {
+    dashboardMsg = await message.channel.messages.fetch(dashboardMsgId).catch(() => null);
+  }
+
+  // 2. If no dashboard message, send a fresh one
+  if (!dashboardMsg) {
+    dashboardMsg = await message.channel.send("â–¶ï¸ **Oracle System Dashboard Initializing...**").catch(() => null);
+    if (dashboardMsg) dashboardMessageMap.set(message.channelId, dashboardMsg.id);
+  }
+
+  if (!dashboardMsg) return;
+
+  // 3. Ask Oracle to generate the "Menu/Response" update
+  try {
+    const resp = await fetch(`${oracleApiUrl}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text,
+        user: "Ryan",
+        mode: "dashboard",
+        context: [
+          { from: "System", text: "You are the Oracle Dashboard Controller. Maintain a high-premium UI feel. Use Markdown tables, bold headers, and concise status blocks. You are the single source of truth in this channel. Edit your state based on the user's command." }
+        ]
+      }),
+    });
+    
+    if (resp.ok) {
+      const data = await resp.json();
+      const aiText = data.response || "Dashboard idle.";
+      await dashboardMsg.edit(moderateText(aiText)).catch(() => {});
+    }
+  } catch (err) {
+    await dashboardMsg.edit(`âš ï¸ **Dashboard Error:** ${err.message}`).catch(() => {});
+  }
+}
+
+// ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Patch messageCreate to track activity and digest context into KAI ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
 // We add an additional listener that runs before existing ones.
 const _existingHandlers = client.rawListeners("messageCreate");
 client.removeAllListeners("messageCreate");
 
 client.on("messageCreate", async (message) => {
+  // 0. Dashboard Logic: If this is the dashboard channel, intercept everything
+  if (DASHBOARD_CHANNEL_ID && message.channelId === DASHBOARD_CHANNEL_ID) {
+    if (!message.author?.bot) {
+      await handleDashboardInteraction(message);
+    }
+    return;
+  }
+
   const inPrivate = allowedChannelId && message.channelId === allowedChannelId;
   const inPublic  = publicChatChannelId && message.channelId === publicChatChannelId;
 
@@ -2156,15 +3147,40 @@ client.on("messageCreate", async (message) => {
     }
 
     if (text) {
+      // Check for standalone reinforcement feedback (e.g. "Good job Leo", "Bad job Gemini")
+      const lowerText = text.toLowerCase();
+      const feedbackAIs = ["leo", "kai", "gemini", "analyst", "researcher", "groq", "claudey", "x"];
+      const targetFeedbackAI = feedbackAIs.find(n => lowerText.includes(n));
+      
+      if (targetFeedbackAI && (
+          lowerText.includes("good job") || lowerText.includes("treat") || lowerText.includes("based") ||
+          lowerText.includes("bad job") || lowerText.includes("pain") || lowerText.includes("dumb") || lowerText.includes("wrong")
+      )) {
+        const isPositive = lowerText.includes("good") || lowerText.includes("treat") || lowerText.includes("based");
+        const strength = isPositive ? 5.0 : -2.5;
+        
+        // Find the LAST message from this AI in this channel
+        const ring = CHANNEL_RINGS.get(message.channelId) || [];
+        const lastMsg = [...ring].reverse().find(m => m.from.toLowerCase() === targetFeedbackAI);
+        
+        if (lastMsg) {
+          console.log(`[Reinforcement] Applying ${isPositive ? "TREAT" : "PAIN"} (${strength}) to ${targetFeedbackAI}'s last message: "${lastMsg.text.slice(0, 50)}..."`);
+          feedToKaiLattice(lastMsg.from, lastMsg.text, strength).catch(() => {});
+          
+          // Visual feedback in Discord
+          message.react(isPositive ? "🦴" : "🔥").catch(() => {});
+        }
+      }
+
       // Only digest Ryan's real messages into KAI's lattice.
-      // Bot messages must NOT be digested â€” they contain roundtable outputs
+      // Bot messages must NOT be digested - they contain roundtable outputs
       // which would pollute the lattice and cause KAI to query its own outputs
       // back out in a recursive loop.
       if (!message.author?.bot) {
         digestMessageWithContext(from, text, message.channelId).catch(() => {});
 
         if (inPrivate) {
-          // Ryan spoke â€” wake up ALL panel AIs to respond
+          // Ryan spoke - wake up ALL panel AIs to respond
           // Non-Groq AIs (Gemini, KAI, KAI) fire quickly; Groq AIs respect cooldowns
           fireFullPanel(text).catch(() => {});
         }
@@ -2199,7 +3215,47 @@ async function pushPersonalityContext() {
   }
 }
 
+async function syncRealmToBackbone() {
+  const isWork = isWorkingHours();
+  const isSocial = isSocialHours();
+  const mode = isWork ? "Work" : (isSocial ? "Social" : "Sleep");
+  
+  const manifest = {
+    realm: "Oracle Ecosystem",
+    backbone: "OpenJarvis Framework",
+    status: mode,
+    timestamp: new Date().toISOString(),
+    freedom_active: isSocial,
+    active_territories: [
+      { id: allowedChannelId, type: "private_roundtable" },
+      { id: publicChatChannelId, type: "public_relations" },
+      { id: leoVoiceChannelId, type: "voice_ops" },
+      { id: SUNDAY_CHAT_CHANNEL_ID, type: "social_haven" },
+      { id: GAME_WITH_LEO_CHANNEL_ID, type: "strategic_arena" }
+    ],
+    panel_count: participantClients.size
+  };
+
+  try {
+    await fetch(`${oracleApiUrl}/api/realm/sync`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(manifest),
+    }).catch(() => {}); // Backend may not have endpoint yet, but we fire-and-forget for the bridge
+    console.log(`[Realm] Backbone synced: ${mode} mode active.`);
+  } catch (err) {
+    // Silence sync errors to prevent log pollution
+  }
+}
+
 // Push personalities 5 seconds after startup
 setTimeout(() => {
   pushPersonalityContext().catch(() => {});
+  syncRealmToBackbone().catch(() => {});
 }, 5_000);
+
+// Keep the backbone updated on the realm's evolution every 15 minutes
+setInterval(syncRealmToBackbone, 15 * 60 * 1000);
+
+
+

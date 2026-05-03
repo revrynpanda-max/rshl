@@ -63,11 +63,20 @@ function ApiKeyInput({ storageKey, placeholder }: { storageKey: string; placehol
   );
 }
 
-function CloudProviderStatus({ label, storageKey }: { label: string; storageKey: string }) {
+function CloudProviderStatus({ label, storageKey, backendKey }: { label: string; storageKey: string; backendKey?: string }) {
   const [hasKey, setHasKey] = useState(false);
   useEffect(() => {
-    try { setHasKey(!!localStorage.getItem(storageKey)); } catch { setHasKey(false); }
-  }, [storageKey]);
+    // First check localStorage
+    const local = (() => { try { return !!localStorage.getItem(storageKey); } catch { return false; } })();
+    if (local) { setHasKey(true); return; }
+    // Then check the KAI backend keys
+    if (backendKey) {
+      fetch(`http://127.0.0.1:3333/api/keys/${backendKey}`)
+        .then(r => r.ok ? r.json() : null)
+        .then(d => setHasKey(!!(d && d.configured)))
+        .catch(() => setHasKey(false));
+    }
+  }, [storageKey, backendKey]);
   return (
     <span className="flex items-center gap-1 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
       <span style={{
@@ -319,9 +328,10 @@ export function SettingsPage() {
             </div>
             <SettingRow label="Cloud providers" description="Green dot means API key is configured">
               <div className="flex flex-wrap gap-3">
-                <CloudProviderStatus label="OpenAI" storageKey="openjarvis-openai-key" />
-                <CloudProviderStatus label="Geometric Intelligence" storageKey="openjarvis-Geometric Intelligence-key" />
-                <CloudProviderStatus label="Google" storageKey="openjarvis-gemini-key" />
+                <CloudProviderStatus label="OpenAI" storageKey="openjarvis-openai-key" backendKey="openai" />
+                <CloudProviderStatus label="Google" storageKey="openjarvis-gemini-key" backendKey="google" />
+                <CloudProviderStatus label="xAI" storageKey="openjarvis-xai-key" backendKey="xai" />
+                <CloudProviderStatus label="Groq" storageKey="openjarvis-groq-key" backendKey="groq" />
                 <CloudProviderStatus label="OpenRouter" storageKey="openjarvis-openrouter-key" />
               </div>
             </SettingRow>
@@ -329,14 +339,17 @@ export function SettingsPage() {
 
           {/* API Keys */}
           <Section title="API Keys">
-            <SettingRow label="OpenAI" description="GPT-4, GPT-3.5, etc.">
+            <SettingRow label="OpenAI" description="GPT-4, GPT-4o, etc.">
               <ApiKeyInput storageKey="openjarvis-openai-key" placeholder="sk-..." />
-            </SettingRow>
-            <SettingRow label="Geometric Intelligence" description="KAI models">
-              <ApiKeyInput storageKey="openjarvis-Geometric Intelligence-key" placeholder="sk-ant-..." />
             </SettingRow>
             <SettingRow label="Google" description="Gemini models">
               <ApiKeyInput storageKey="openjarvis-gemini-key" placeholder="AI..." />
+            </SettingRow>
+            <SettingRow label="Groq" description="Ultra-fast inference">
+              <ApiKeyInput storageKey="openjarvis-groq-key" placeholder="gsk_..." />
+            </SettingRow>
+            <SettingRow label="xAI" description="Grok models">
+              <ApiKeyInput storageKey="openjarvis-xai-key" placeholder="xai-..." />
             </SettingRow>
             <SettingRow label="OpenRouter" description="Multi-provider routing">
               <ApiKeyInput storageKey="openjarvis-openrouter-key" placeholder="sk-or-..." />
@@ -352,11 +365,11 @@ export function SettingsPage() {
 
           {/* Memory */}
           <Section title="Memory">
-            <SettingRow label="Memory status" description={memoryStats ? `${memoryStats.backend} backend â€” ${memoryStats.entries} entries` : 'Unable to reach memory service'}>
+            <SettingRow label={memoryBackend === 'rshl' ? "Lattice Matrix Status" : "Memory status"} description={memoryStats ? `${memoryStats.backend} backend - ${memoryStats.entries} ${memoryBackend === 'rshl' ? 'Geometric Nodes' : 'entries'}` : 'Unable to reach memory service'}>
               <div className="flex items-center gap-2">
                 <Brain size={14} style={{ color: memoryStats ? 'var(--color-accent)' : 'var(--color-text-tertiary)' }} />
                 <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
-                  {memoryStats ? `${memoryStats.entries} entries` : 'Unavailable'}
+                  {memoryStats ? `${memoryStats.entries} ${memoryBackend === 'rshl' ? 'Nodes' : 'entries'}` : 'Unavailable'}
                 </span>
               </div>
             </SettingRow>
@@ -405,7 +418,7 @@ export function SettingsPage() {
                 <option value="hybrid">hybrid</option>
               </select>
             </SettingRow>
-            <SettingRow label="Results to inject" description={`${memoryTopK}`}>
+            <SettingRow label={memoryBackend === 'rshl' ? "Lattice Top-K Nodes" : "Results to inject"} description={`${memoryTopK}`}>
               <input
                 type="range"
                 min="1"
@@ -421,7 +434,7 @@ export function SettingsPage() {
                 className="w-32 cursor-pointer accent-[var(--color-accent)]"
               />
             </SettingRow>
-            <SettingRow label="Min relevance score" description={`${memoryMinScore}`}>
+            <SettingRow label={memoryBackend === 'rshl' ? "Lattice Resonance Threshold (Phi)" : "Min relevance score"} description={`${memoryMinScore}`}>
               <input
                 type="range"
                 min="0"
@@ -437,7 +450,7 @@ export function SettingsPage() {
                 className="w-32 cursor-pointer accent-[var(--color-accent)]"
               />
             </SettingRow>
-            <SettingRow label="Max context tokens" description={`${memoryMaxTokens}`}>
+            <SettingRow label={memoryBackend === 'rshl' ? "Context Horizon Tokens" : "Max context tokens"} description={`${memoryMaxTokens}`}>
               <input
                 type="range"
                 min="256"
@@ -453,6 +466,29 @@ export function SettingsPage() {
                 className="w-32 cursor-pointer accent-[var(--color-accent)]"
               />
             </SettingRow>
+            {memoryBackend === 'rshl' && (
+              <div className="flex justify-end pt-2 pb-1">
+                <button
+                  onClick={() => {
+                    setMemoryTopK(5);
+                    setMemoryMinScore(0.85);
+                    setMemoryMaxTokens(2048);
+                    try {
+                      localStorage.setItem('openjarvis-memory-top-k', '5');
+                      localStorage.setItem('openjarvis-memory-min-score', '0.85');
+                      localStorage.setItem('openjarvis-memory-max-tokens', '2048');
+                    } catch {}
+                    showSaved();
+                  }}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer"
+                  style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)' }}
+                  onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--color-text)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--color-text-secondary)')}
+                >
+                  Reset to Calibrated KAI Defaults (0.85)
+                </button>
+              </div>
+            )}
           </Section>
 
           {/* Model defaults */}

@@ -106,6 +106,23 @@ fn build_seeds() -> Vec<(&'static str, &'static str, f32)> {
             "language",
             4.0,
         ),
+        // Operational Structure — Multi-Agent & Temporal Gating
+        (
+            "Leo is the public face of the KAI ecosystem. He handles public relations, DJ duties, gaming, and per-user private voice-to-transcript sessions.",
+            "identity",
+            4.5,
+        ),
+        (
+            "The AI roundtable operates on a human-aligned schedule from 9:00 AM to 2:00 PM EST. Outside these hours, KAI enters Digest Mode to process cached interactions.",
+            "identity",
+            4.5,
+        ),
+        // Learning Cycles — How I evolve
+        (
+            "KAI evolves through autonomous learning cycles: learning (ingestion) -> digesting (categorization) -> weaving (linking concepts) -> adjusting (refining strengths) -> testing (verifying claims) -> mimicking (modeling social patterns).",
+            "reasoning",
+            4.5,
+        ),
     ]
 }
 

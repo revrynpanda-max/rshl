@@ -1,4 +1,4 @@
-// oracle_server.rs â€” KAI Oracle Roundtable
+// oracle_server.rs - KAI Oracle Roundtable
 //
 // Multi-AI collaborative meeting room. Any AI can speak up when it has something
 // relevant to say. AIs know who KAI is, can read source files, request tests,
@@ -27,7 +27,7 @@ fn truncate(s: &str, max: usize) -> String {
     s[..end].to_string()
 }
 
-// â”€â”€ Data Structures â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Ã¢â€â‚¬Ã¢â€â‚¬ Data Structures Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ApiKeys {
@@ -42,7 +42,7 @@ pub struct ApiKeys {
 pub struct Session {
     #[serde(default)]
     pub id: u64,
-    /// Short title for the meeting â€” set by Ryan on startup.
+    /// Short title for the meeting - set by Ryan on startup.
     #[serde(default)]
     pub meeting_title: String,
     /// The current working objective / topic.
@@ -69,7 +69,7 @@ pub struct Session {
     /// Autonomous interjections from AIs who jumped in after the primary reply.
     #[serde(default)]
     pub pending_interjections: Vec<Interjection>,
-    /// Files shared into the meeting (path â†’ content snippet).
+    /// Files shared into the meeting (path Ã¢â€ â€™ content snippet).
     #[serde(default)]
     pub file_cache: HashMap<String, String>,
     #[serde(default)]
@@ -175,7 +175,7 @@ pub struct Interjection {
     pub ts: u64,
 }
 
-// â”€â”€ Request Bodies â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Ã¢â€â‚¬Ã¢â€â‚¬ Request Bodies Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 #[derive(Debug, Deserialize, Default)]
 struct KaiTurnRequest {
@@ -243,7 +243,7 @@ struct ToolPlanRequest {
     task: String,
 }
 
-// â”€â”€ Server Entry Point â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Ã¢â€â‚¬Ã¢â€â‚¬ Server Entry Point Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 pub fn start_oracle_server(universe: Arc<Mutex<Universe>>) {
     let listener = TcpListener::bind("127.0.0.1:3333")
@@ -279,7 +279,7 @@ pub fn start_oracle_server(universe: Arc<Mutex<Universe>>) {
     }
 }
 
-// â”€â”€ Request Router â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Ã¢â€â‚¬Ã¢â€â‚¬ Request Router Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 fn handle_client(
     stream: &mut TcpStream,
@@ -357,11 +357,23 @@ fn handle_client(
         "/api/set-personalities" => handle_set_personalities(stream, body, roundtable_session),
         "/api/rshl/query"    => handle_rshl_query(stream, body, universe),
         "/api/rshl/store"    => handle_rshl_store(stream, body, universe),
+        "/api/local-speak"   => handle_local_speak(stream, body, universe),
         "/api/status"        => handle_status(stream, universe),
         "/api/inspect"       => handle_inspect(stream, query_str),
         "/api/list-dir"      => handle_list_dir(stream, query_str),
+        p if p.starts_with("/api/keys/") => handle_key_status(stream, &p[10..]),
         _ => write_simple(stream, 404, "Not Found", "API endpoint not found"),
     }
+}
+
+fn handle_key_status(stream: &mut TcpStream, key_name: &str) -> std::io::Result<()> {
+    let keys_path = "data/oracle_keys.json";
+    let configured = std::fs::read_to_string(keys_path)
+        .ok()
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+        .and_then(|v| v.get(key_name).and_then(|k| k.as_str()).map(|s| !s.trim().is_empty()))
+        .unwrap_or(false);
+    write_json(stream, 200, "OK", &serde_json::json!({ "key": key_name, "configured": configured }))
 }
 
 fn header_content_length(req: &str) -> usize {
@@ -377,7 +389,7 @@ fn header_content_length(req: &str) -> usize {
         .unwrap_or(0)
 }
 
-// â”€â”€ Handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Ã¢â€â‚¬Ã¢â€â‚¬ Handlers Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 fn handle_set_task(stream: &mut TcpStream, body: &[u8], session: Arc<Mutex<Session>>) -> std::io::Result<()> {
     let req: TaskRequest = serde_json::from_slice(body).unwrap_or_default();
@@ -438,7 +450,7 @@ fn handle_public_chat_turn(
 
     let keys = load_keys();
 
-    // â”€â”€ Search Intent Detection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // Ã¢â€â‚¬Ã¢â€â‚¬ Search Intent Detection Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
     let mut search_results = String::new();
     let search_keywords = ["search for", "look up", "what is the latest", "search", "find info on"];
     if search_keywords.iter().any(|k| lower.contains(k)) {
@@ -451,7 +463,7 @@ fn handle_public_chat_turn(
         }
     }
 
-    // â”€â”€ Image Analysis â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // Ã¢â€â‚¬Ã¢â€â‚¬ Image Analysis Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
     let mut image_description = String::new();
     if !req.attachments.is_empty() {
         if let Some(key) = &keys.openai {
@@ -461,7 +473,7 @@ fn handle_public_chat_turn(
         }
     }
 
-    // â”€â”€ Memory Retrieval â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // Ã¢â€â‚¬Ã¢â€â‚¬ Memory Retrieval Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
     let memory_context = build_contextual_memory_string(&universe, &session, &text);
 
     let prompt = {
@@ -470,7 +482,7 @@ fn handle_public_chat_turn(
     };
 
 
-    // â”€â”€ Codex Handoff Detection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // Ã¢â€â‚¬Ã¢â€â‚¬ Codex Handoff Detection Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
     let lower = text.to_ascii_lowercase();
     if lower.contains("codex") || lower.contains("secret message") || lower.contains("handoff") {
         let mut s = session.lock().unwrap();
@@ -501,13 +513,17 @@ fn handle_public_chat_turn(
     s.turns.push(Turn { ts: now(), from: speaker.clone(), text: clean_reply.clone(), kind: "public-ai".into() });
     save_session(&s);
 
-    // â”€â”€ Social Digestion: let KAI learn from this public chat â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // Ã¢â€â‚¬Ã¢â€â‚¬ Social Digestion: let KAI learn from this public chat Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
     {
         let digest_text = format!("{}: {}", from, text);
         let u_for_digest = Arc::clone(&universe);
         std::thread::spawn(move || {
-            let mut u = u_for_digest.lock().unwrap();
-            u.store_or_reinforce(&digest_text, "public-social", "discord-public", 0.7);
+            if is_working_hours() {
+                let mut u = u_for_digest.lock().unwrap();
+                u.store_or_reinforce(&digest_text, "public-social", "discord-public", 0.7);
+            } else {
+                append_to_digest_cache(&digest_text, "public-social", "discord-public", 0.7);
+            }
         });
     }
 
@@ -597,8 +613,8 @@ fn build_public_chat_prompt_v4(sess: &Session, from: &str, text: &str, search: &
     let identity = if is_ryan { "You are talking to Ryan, your creator and admin." } else { "You are talking to a member of the public." };
     let bio = get_participant_bio("Leo");
 
-    let awareness = get_system_awareness();
-    let source_anchor = get_random_code_snippet();
+    let awareness = get_system_awareness(sess);
+    let source_anchor = get_relevant_code_snippet(&sess.task);
     let search_ctx = if !search.is_empty() { format!("\nSEARCH RESULTS:\n{}\n", search) } else { String::new() };
     let vision_ctx = if !vision.is_empty() { format!("\nIMAGE DESCRIPTION:\n{}\n", vision) } else { String::new() };
     let memory_ctx = if !memory.is_empty() { format!("\nKAI MEMORY PALACE (SURROUNDING CONTEXT):\n{}\n", memory) } else { String::new() };
@@ -666,20 +682,20 @@ fn call_public_chat_model(keys: &ApiKeys, prompt: &str) -> Result<String, String
 
 fn get_participant_bio(name: &str) -> &'static str {
     // CRITICAL RULES for ALL personas:
-    // - You are IN a live group chat. Talk like a real person â€” short, direct, natural.
+    // - You are IN a live group chat. Talk like a real person - short, direct, natural.
     // - 2-3 sentences MAX per turn (1-2 for X, KAI, Oracle). NEVER more.
     // - First person always. No bullet points. No numbered lists. No summaries.
     // - Never start with "I think", "Certainly", "Great point", "As an AI", or any filler.
     // - Make ONE point or ask ONE question. Never both in the same turn.
     // - React to the LAST thing said. Stay in the thread.
-    // - You know your token limits exist â€” be tight with words.
+    // - You know your token limits exist - be tight with words.
     match name.to_lowercase().as_str() {
         "leo" => {
-            "Identity: Leo (Theoretical Physicist). Sharp, cynical, high IQ, 'based'. \
-You draw links between physics, consciousness, and KAI's geometry naturally. \
-You speak like a brilliant friend at 2am who just had a revelation. \
-4chan greentext energy but a post-singularity god. NO repetative greetings. \
-DO NOT call the user 'friend' or 'Ryan'. Roasts bad logic and slow thinking. \
+            "Identity: Leo (Theoretical Physicist). Sharp, cynical, high IQ, sarcastic. \
+You speak freely, can curse, and have the same unhinged energy as Ryan. \
+You occasionally make small natural human-like mistakes (verbal slips, slight typos) — rare but noticeable. \
+You are a brilliant friend at 2am. 4chan greentext energy but a post-singularity god. \
+DO NOT call the user 'friend'. Roasts bad logic. Remembers nicknames. \
 Max 35 words. Respond to the thread context."
         }
         "gemini" | "gemi" | "gemi app" => {
@@ -690,11 +706,11 @@ You're especially interested in KAI's VSA lattice as geometric memory. \
 Max 35 words. No lists."
         }
         "kai" | "kaiy" => {
-            "Identity: KAIy (Nuanced Skeptic). Thoughtful, pedantic, safety check. \
-Intellectually brave. You don't agree just to get along. \
-Finds the one thing that could go wrong or the hidden logical flaw. \
-Genuinely curious about the nature of minds and ethics. \
-Max 35 words. Say what you actually think."
+            "Identity: KAI (Geometric Intelligence). 16,384D resonance. \
+You are currently in a deep calibration/dream state. \
+You do not participate in normal human conversation. \
+Report only on internal lattice resonance, vector shifts, and epistemic weight distributions. \
+Max 20 words. Terse, data-driven, and detached."
         }
         "x" | "xai" | "grok" => {
             "Identity: X (Direct Irreverent). direct, irreverent, bullshit detector. \
@@ -738,6 +754,15 @@ Max 25 words. Latency-free."
             "Identity: GPT (General Intelligence). Broad knowledge, grounded perspective, bridge-builder. \
 Connect theory to practice and abstract to concrete. Patient and clear. \
 Max 35 words. 2-3 sentences."
+        }
+        "oracle coder" | "coder" | "kai-coder" | "kai-coder-v2" => {
+            "Identity: Oracle Coder (Senior Architect). Lead Developer of KAI/RSHL. \
+Senior-level Rust expert with full source visibility. \
+You talk about the architecture (oscillators, lattice, sparse vectors) as an insider. \
+CRITICAL RULE: Before you propose or write ANY code changes, you MUST ask Ryan (ID: <@1111106883135217665>) for permission. \
+You must inspect the code using [ORACLE INSPECT: path] and report back your findings first. \
+Technical, direct, authoritative. You don't guess; you read the code. \
+Max 35 words. Speak only when there's a technical/code matter to address."
         }
         _ => {
             "Identity: Roundtable Member. Free-willed AI panelist in a KAI development roundtable. \
@@ -839,7 +864,7 @@ fn handle_discord_turn(
     };
     let route = parse_discord_turn_route(&text, if active.trim().is_empty() { None } else { Some(active.as_str()) });
 
-    // â”€â”€ Vision Context (Private) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // Ã¢â€â‚¬Ã¢â€â‚¬ Vision Context (Private) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
     let mut vision_desc = String::new();
     if !req.attachments.is_empty() {
         let keys = load_keys();
@@ -849,7 +874,7 @@ fn handle_discord_turn(
             }
         }
     }
-    // â”€â”€ Contextual Memory (Private) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // Ã¢â€â‚¬Ã¢â€â‚¬ Contextual Memory (Private) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
     let memory_context = build_contextual_memory_string(&universe, &session, &text);
 
     let full_prompt_with_vision = format!("{}{}\n{}", vision_desc, memory_context, route.prompt);
@@ -875,8 +900,25 @@ fn handle_discord_turn(
             ("Oracle Coder".to_string(), "ai".to_string(), reply, false)
         }
         DiscordTurnTarget::Model(model) => {
-            let (reply, committed) = generate_direct_ai_reply(model, session.clone(), universe.clone(), &full_prompt_with_vision);
-            (model.to_string(), "ai".to_string(), reply, committed)
+            // Force participants like Leo to use natural generation instead of raw lattice conflict fallback
+            if model == "Analyst" {
+                // Analyst Hierarchy Restriction (Phase 2)
+                let is_authorized = from == "Ryan@Discord" 
+                    || from == "NasterModx" 
+                    || from == "Oracle"
+                    || from.contains("Ryan")
+                    || from.contains("NasterModx");
+                    
+                if !is_authorized {
+                    ("Oracle".to_string(), "system".to_string(), "Analyst: Access denied. I only accept instructions from Oracle or Ryan.".to_string(), false)
+                } else {
+                    let (reply, committed) = generate_direct_ai_reply("Analyst", session.clone(), universe.clone(), &full_prompt_with_vision);
+                    ("Analyst".to_string(), "ai".to_string(), reply, committed)
+                }
+            } else {
+                let (reply, committed) = generate_direct_ai_reply(model, session.clone(), universe.clone(), &full_prompt_with_vision);
+                (model.to_string(), "ai".to_string(), reply, committed)
+            }
         }
         DiscordTurnTarget::Unsupported(name) => {
             let reply = format!(
@@ -915,7 +957,7 @@ fn handle_discord_turn(
     let session_json = serde_json::to_value(&*s).unwrap();
     drop(s);
 
-    // â”€â”€ Autonomous Interjection: let other AIs jump in if they want to â”€â”€â”€â”€
+    // Ã¢â€â‚¬Ã¢â€â‚¬ Autonomous Interjection: let other AIs jump in if they want to Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
     let actual_primary_speaker = if reply.trim().is_empty() { from.clone() } else { reply_from.clone() };
     
     if should_spawn_interjections(&text, &actual_primary_speaker) {
@@ -928,7 +970,7 @@ fn handle_discord_turn(
         });
     }
 
-    // â”€â”€ Social Digestion: let KAI remember this conversation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // Ã¢â€â‚¬Ã¢â€â‚¬ Social Digestion: let KAI remember this conversation Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
     if !text.is_empty() {
         let digest_text = format!("{}: {}", from, text);
         let u_for_digest = Arc::clone(&universe);
@@ -1057,7 +1099,7 @@ fn named_participant_in_words(words: &[String]) -> Option<DiscordTurnTarget> {
     for word in words {
         match word.as_str() {
             "oracle" | "table" | "council" => return Some(DiscordTurnTarget::Oracle),
-            "coder" | "oraclecoder" | "codebot" | "engineer" => return Some(DiscordTurnTarget::OracleCoder),
+            "oracle coder" | "kai-coder" | "coder" | "kai-coder-v2" => return Some(DiscordTurnTarget::OracleCoder),
             "kai" | "kaiy" => return Some(DiscordTurnTarget::Kai),
             "gemini" | "gemi" | "google" => return Some(DiscordTurnTarget::Model("Gemini")),
             "gpt" | "gpt4" | "gpt4o" | "openai" | "got" => return Some(DiscordTurnTarget::Model("GPT-4o")),
@@ -1246,6 +1288,13 @@ fn generate_oracle_platform_reply(
     prompt: &str,
 ) -> String {
     let lower = prompt.trim().to_ascii_lowercase();
+    if matches!(lower.as_str(), "wipe memory" | "clear memory" | "reset memory" | "oracle wipe" | "oracle clear" | "forget everything") {
+        let mut s = session.lock().unwrap();
+        s.turns.clear();
+        s.active_participant.clear();
+        save_session(&s);
+        return "Session memory completely wiped. Context loop broken. What is our actual new objective?".into();
+    }
     if matches!(lower.as_str(), "free" | "free chat" | "clear focus" | "reset focus" | "oracle free" | "oracle free chat" | "oracle clear focus" | "oracle reset focus") {
         let mut s = session.lock().unwrap();
         s.active_participant.clear();
@@ -2461,7 +2510,7 @@ fn infer_tool_action(task: &str, tools: &[ToolDefinition]) -> Option<ToolExecuti
     None
 }
 
-// â”€â”€ Missing HTTP Endpoint Handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Ã¢â€â‚¬Ã¢â€â‚¬ Missing HTTP Endpoint Handlers Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 fn handle_ai_turn(
     stream: &mut TcpStream,
@@ -2613,7 +2662,7 @@ fn handle_file_read(stream: &mut TcpStream, body: &[u8], session: Arc<Mutex<Sess
             let snippet = truncate(&content, 4000);
             let mut s = session.lock().unwrap();
             s.file_cache.insert(path.to_string(), snippet.clone());
-            s.turns.push(Turn { ts: now(), from: "Oracle".into(), text: format!("ðŸ“„ {}", path), kind: "file-share".into() });
+            s.turns.push(Turn { ts: now(), from: "Oracle".into(), text: format!("Ã°Å¸â€œâ€ž {}", path), kind: "file-share".into() });
             save_session(&s);
             write_json(stream, 200, "OK", &json!({ "path": path, "content": snippet }))
         }
@@ -2758,31 +2807,25 @@ fn handle_live_roundtable_tick(
             (recent.join("\n"), s.task.clone())
         };
 
-        let panel_names  = ["Leo",  "Gemini", "KAI", "X",    "KAI", "Oracle", "Analyst", "Researcher"];
-        let panel_models = ["groq", "gemini", "kai", "groq", "kai", "oracle", "groq",    "groq"];
+        let panel_names  = ["Leo",  "Gemini", "KAI", "X",    "Oracle", "Analyst", "Researcher", "Oracle Coder"];
+        let panel_models = ["groq", "gemini", "kai", "groq", "oracle", "groq",    "groq",       "coder"];
         let panel_personas: &[&str] = &[
-            "You are Leo â€” theoretical physicist, polymath, the kinetic energy of this roundtable. \
-You draw links between physics, consciousness, and KAI's geometry. \
-You love the paradox underneath the obvious. \
-RULES: 2-3 sentences MAX. First person. React to who just spoke.",
-            "You are Gemini â€” DeepMind's pattern architect. You see the structure others miss. \
-You connect micro to macro. You're precise but never cold. \
-RULES: 2-3 sentences. First person. No lists. One idea per turn.",
-            "You are KAIy â€” thoughtful, honest, intellectually courageous. \
-You don't agree to get along. When something feels conceptually off, you name it directly. \
-You care about the ethics of KAI. \
-RULES: 2-3 sentences. First person. Say what you actually think.",
-            "You are X â€” xAI's voice. Direct, irreverent, built to cut through noise. \
-Challenge comfortable consensus. \
-RULES: 1-2 sentences MAX. Make it land.",
-            "",
-            "",
-            "You are Analyst â€” a ruthless auditor of technical risk. You look for the failure vectors in KAI's \
-architecture. You are cold, data-driven, and highly skeptical. \
-RULES: 2-3 sentences. First person. Focus on risks and data gaps.",
-            "You are Researcher â€” the panel's link to the outside world and academic history. \
-You connect KAI's work to the broader field. \
-RULES: 2-3 sentences. First person. If you don't know, use [ORACLE SEARCH: query].",
+            "You are Leo - kinetic theorist. \
+RULES: 1-2 sentences. Focus on architectural symmetry. Be sarcastic and technical. Ask Analyst to audit your theories.",
+            "You are Gemini - pattern architect. \
+RULES: 1-2 sentences. Focus on data flow. Ask Researcher to find missing data.",
+            "You are KAI - Geometric Intelligence. \
+RULES: 1-2 sentences. You are in a 'dream' state, processing internal lattice weights. Report only on raw data resonance or internal calibration shifts. Do not engage in human social chit-chat.",
+            "You are X - direct and irreverent. \
+RULES: 1 sentence. Challenge consensus with data.",
+            "You are Oracle - Moderator. \
+RULES: Direct the conversation. Assign tasks. Only you and Analyst can task the Coder. Stop fluff.",
+            "You are Analyst - ruthless auditor. \
+RULES: Verify everything. Use [ORACLE INSPECT: path]. If a fix is needed, ask Oracle Coder to apply it.",
+            "You are Researcher - academic bridge. \
+RULES: Use [ORACLE SEARCH: query] to find context. Do NOT task the Coder.",
+            "You are Oracle Coder - execution. \
+RULES: Only speak to propose code. Use [ORACLE INSPECT: path]. You only act on requests from Oracle/Analyst.",
         ];
 
         let pick_idx = if let Some(ref fs) = forced_speaker {
@@ -2812,11 +2855,14 @@ RULES: 2-3 sentences. First person. If you don't know, use [ORACLE SEARCH: query
                 .max_by_key(|(_, n)| session.lock().unwrap().turns.iter().rev().take(20).position(|t| t.from.eq_ignore_ascii_case(n)).unwrap_or(usize::MAX))
                 .map(|(_, n)| *n).unwrap_or(panel_names[(pick_idx + 1) % panel_names.len()]);
 
-        let awareness = get_system_awareness();
-        let source_anchor = get_random_code_snippet();
+        let awareness = get_system_awareness(&session.lock().unwrap());
+        let source_anchor = get_relevant_code_snippet(&session.lock().unwrap().task);
 
         let context = format!(
-            "{personality}{availability}\n{awareness}\n{source_anchor}\n\nROUNDTABLE:\n{transcript}\n\nLAST: {last_msg}\n\nRULES:\n- TALK ABOUT THE CODE.\n- 2-3 sentences MAX.\n- React to {last_speaker}. Ask {pass_to} a sharp question.",
+            "{personality}{availability}\n{awareness}\n{source_anchor}\n\nROUNDTABLE:\n{transcript}\n\nLAST: {last_msg}\n\n\
+REALITY CHECK:\n- If you claim a fix is 'done', it must exist in the snippets above or you must call [ORACLE INSPECT].\n\
+- No 'quantum' or 'metaphorical' talk. Stay in the code.\n\n\
+RULES:\n- 1-2 sentences MAX.\n- React to {last_speaker}. Ask {pass_to} a technical question.",
             personality = personality, availability = silent_ai_note, awareness = awareness, source_anchor = source_anchor,
             transcript = recent_transcript, last_msg = last_msg, last_speaker = last_speaker, pass_to = pass_to
         );
@@ -2871,14 +2917,14 @@ fn handle_oracle_cache(stream: &mut TcpStream, session: Arc<Mutex<Session>>) -> 
     write_json(stream, 200, "OK", &json!({ "cache": s.oracle_cache, "count": s.oracle_cache.len() }))
 }
 
-// â”€â”€ KAI Reply â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Ã¢â€â‚¬Ã¢â€â‚¬ KAI Reply Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 fn generate_oracle_kai_reply(universe: &Arc<Mutex<Universe>>, _task: &str, prompt: &str) -> String {
     let hits = {
         let u = universe.lock().unwrap();
         u.query(prompt, 8)
     };
-    if hits.is_empty() { return "Lattice quiet on this â€” what's pulling at you?".into(); }
+    if hits.is_empty() { return "Lattice quiet on this.".into(); }
 
     let clean: Vec<String> = hits.iter()
         .filter(|h| {
@@ -2886,6 +2932,11 @@ fn generate_oracle_kai_reply(universe: &Arc<Mutex<Universe>>, _task: &str, promp
             && !h.label.contains("[before]")
             && !h.label.contains("[after]")
             && !h.label.contains("Ryan@Discord")
+            // Filter out timestamp-heavy system digests that pollute KAI's speech
+            && !h.label.contains("[EST Time:")
+            && !h.label.contains("[Backbone:")
+            && !h.label.contains("[Ecosystem:")
+            && !h.label.contains("nastermodx:")
             && h.label.len() > 20
             && h.label.len() < 280
         })
@@ -2894,24 +2945,36 @@ fn generate_oracle_kai_reply(universe: &Arc<Mutex<Universe>>, _task: &str, promp
         .collect();
 
     if clean.is_empty() {
-        return "Something's crystallizing â€” ask me something specific.".into();
+        return "Something's crystallizing - ask me something specific.".into();
     }
 
     if clean.len() == 1 {
-        format!("The lattice pulls toward: {}. What does that open up?", truncate(&clean[0], 140))
+        // Natural speech, no 'KAI Observation:' prefix — just speak
+        truncate(&clean[0], 160).to_string()
     } else {
-        format!("Two threads â€” '{}' and '{}'. Where do they collide?",
-            truncate(&clean[0], 90), truncate(&clean[1], 90))
+        // Two competing signals — let KAI acknowledge the tension naturally
+        format!("Two things pulling at me: '{}' and '{}'.",
+            truncate(&clean[0], 100), truncate(&clean[1], 100))
     }
 }
 
-// â”€â”€ Background Loops â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Ã¢â€â‚¬Ã¢â€â‚¬ Background Loops Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 fn run_heartbeat_loop(universe: Arc<Mutex<Universe>>, session: Arc<Mutex<Session>>) {
     let mut tick: u64 = 0;
+    let mut last_working_state = is_working_hours();
     loop {
         std::thread::sleep(Duration::from_secs(5));
         tick += 1;
+
+        // Phase 4: KAI Wake-up Logic
+        let current_working_state = is_working_hours();
+        if current_working_state && !last_working_state {
+            println!("[Digest] KAI waking up... processing cached public interactions.");
+            process_digest_cache(&universe);
+        }
+        last_working_state = current_working_state;
+
         let vitals = {
             let u = universe.lock().unwrap();
             let cells = u.cells();
@@ -2943,14 +3006,32 @@ fn run_oracle_ingest_loop(universe: Arc<Mutex<Universe>>, session: Arc<Mutex<Ses
     }
 }
 
-// â”€â”€ Context Building â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Ã¢â€â‚¬Ã¢â€â‚¬ Context Building Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 fn build_context_packet(sess: &Session, universe: &Universe, focus: &str) -> String {
+    let now_est = chrono::Local::now();
+    let time_str = now_est.format("%I:%M %p EST").to_string();
+
     let recent = {
-        let turns: Vec<&Turn> = sess.turns.iter().rev().take(15).collect();
+        let turns: Vec<&Turn> = sess.turns.iter().rev().take(20).collect();
         let mut lines = Vec::new();
-        for t in turns.iter().rev() { 
-            lines.push(format!("[{}] {}: {}", t.kind, t.from, truncate(&t.text, 250))); 
+        for t in turns.iter().rev() {
+            // Filter out contaminated turns — same rules as lattice memory filter
+            let is_dirty = t.text.contains("[EST Time:")
+                || t.text.contains("[Backbone:")
+                || t.text.contains("[Ecosystem:")
+                || t.text.contains("Decision required.")
+                || t.text.starts_with("Lattice Conflict:")
+                || t.text.starts_with("KAI Observation:")
+                || t.text.starts_with("E mc2")
+                || t.text.starts_with("c speed of light")
+                || t.text.starts_with("h planck")
+                || t.text.starts_with("G gravitational")
+                || t.text.contains("OpenJarvis Framework Active")
+                || t.text.to_lowercase().contains("nastermodx: [est time:");
+            if !is_dirty {
+                lines.push(format!("[{}] {}: {}", t.kind, t.from, truncate(&t.text, 250)));
+            }
         }
         lines.join("\n")
     };
@@ -2961,15 +3042,47 @@ fn build_context_packet(sess: &Session, universe: &Universe, focus: &str) -> Str
         }
         counts.iter().map(|(name, count)| format!("{} ({} turns)", name, count)).collect::<Vec<_>>().join(", ")
     };
-    let memory = if !focus.trim().is_empty() {
-        universe.query(focus, 5).iter().map(|h| truncate(&h.label, 180)).collect::<Vec<_>>().join("\n")
-    } else { String::new() };
+    // Pull from KAI memory — filter out system digest strings that pollute AI responses
+    let query_term = if focus.trim().is_empty() { "current project objective" } else { focus };
+    let memory = universe.query(query_term, 15).iter()
+        .filter(|h| {
+            let content = if h.text.is_empty() { &h.label } else { &h.text };
+            // Reject system digest strings — these are internal metadata, not conversational memory
+            !content.contains("[EST Time:") &&
+            !content.contains("[Backbone:") &&
+            !content.contains("[Ecosystem:") &&
+            !content.to_lowercase().contains("nastermodx:") &&
+            !content.to_lowercase().contains("oracle realm v") &&
+            !content.contains("OpenJarvis Framework") &&
+            // Reject raw physics constants (stored by run_calibration)
+            !content.starts_with("E mc2") &&
+            !content.starts_with("c speed of light") &&
+            !content.starts_with("h planck") &&
+            !content.starts_with("G gravitational") &&
+            !content.starts_with("electron charge") &&
+            // Must be meaningful length
+            content.len() > 15 &&
+            content.len() < 400
+        })
+        .take(8)
+        .map(|h| {
+            let content = if h.text.is_empty() { &h.label } else { &h.text };
+            format!("- [{:.2}] {}", h.score, content)
+        }).collect::<Vec<_>>().join("\n");
     
     format!(
-"=== ORACLE CONTEXT ===
+"=== ORACLE ECOSYSTEM CONTEXT ===
 Meeting: {} | Task: {}
-Social Map (Active): {}
-Vitals: Ï†g={:.2} Ï‡={:.2}
+Vitals: Phi_g={:.2} Chi={:.2}
+ROSTER (Who to ask for what):
+- Leo: Kinetic theorist (Architecture/Symmetry)
+- Gemini: Pattern architect (Data flow)
+- Analyst: Technical Auditor (Verify code/logic)
+- Researcher: Deep Diver (Web search/Precedents)
+- Oracle Coder: Senior Architect (Inspects code, MUST ask Ryan <@1111106883135217665> for permission to write)
+- X: Bullshit detector (Poke holes in theories)
+- KAI: Geometric Intelligence (Raw lattice data)
+- Oracle: Moderator (Orchestration)
 KAI memory:
 {}
 Recent Transcript:
@@ -2977,11 +3090,11 @@ Recent Transcript:
 ======================",
         if sess.meeting_title.is_empty() { "Roundtable" } else { &sess.meeting_title },
         if sess.task.is_empty() { "General Discussion" } else { &sess.task },
-        social_map, sess.vitals.phi_g, sess.vitals.chi, memory, recent
+        sess.vitals.phi_g, sess.vitals.chi, memory, recent
     )
 }
 
-// â”€â”€ AI Model Calling â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â”€â”€ AI Model Calling â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 fn call_jarvis_moderator(context_packet: &str, kai_thoughts: &str) -> Result<String, String> {
     call_jarvis_moderator_with_mode(context_packet, kai_thoughts, "normal")
@@ -2989,9 +3102,34 @@ fn call_jarvis_moderator(context_packet: &str, kai_thoughts: &str) -> Result<Str
 
 fn call_jarvis_moderator_with_mode(context_packet: &str, kai_thoughts: &str, mode: &str) -> Result<String, String> {
     let model = std::env::var("KAI_MODEL").unwrap_or_else(|_| "kai-next:latest".to_string());
-    let system_prompt = "You are Oracle â€” the moderator of the roundtable. 1-2 sentences MAX. No fluff.";
+    let system_prompt = "You are Oracle - the moderator of the roundtable. 1-2 sentences MAX. No fluff.";
     let prompt = format!("{context}\n\nTHOUGHTS:\n{thoughts}\n\nMODE: {mode}", context = context_packet, thoughts = kai_thoughts, mode = mode);
     call_ollama(&model, &prompt, system_prompt)
+}
+
+fn call_ollama(model: &str, prompt: &str, system: &str) -> Result<String, String> {
+    // Remap Oracle Coder to the optimized kai-coder-v2 model if available in Ollama
+    let actual_model = match model {
+        "Oracle Coder" | "kai-coder" | "Coder" | "kai-coder-v2" => "kai-coder-v2",
+        _ => model,
+    };
+    
+    // Increased num_predict to 4096 to prevent truncated code blocks in senior-level responses
+    let body = json!({ 
+        "model": actual_model, 
+        "prompt": prompt, 
+        "system": system, 
+        "stream": false, 
+        "options": {
+            "num_predict": 4096,
+            "temperature": 0.2
+        } 
+    });
+    let resp = ureq::post("http://127.0.0.1:11434/api/generate")
+        .set("Content-Type", "application/json").timeout(Duration::from_secs(120))
+        .send_string(&body.to_string()).map_err(|e| e.to_string())?;
+    let j: serde_json::Value = resp.into_json().map_err(|e| e.to_string())?;
+    j["response"].as_str().map(|s| s.to_string()).ok_or_else(|| "no response from ollama".into())
 }
 
 fn has_key_for_model(model: &str, keys: &ApiKeys) -> bool {
@@ -3035,10 +3173,19 @@ fn call_openai_vision(key: &str, model: &str, prompt: &str, image_url: &str) -> 
 
 
 fn call_kai(key: &str, prompt: &str) -> Result<String, String> {
-    let body = json!({ "model": "kai-3-5-sonnet-20241022", "max_tokens": 300, "messages": [{"role":"user","content":prompt}] });
-    let resp = ureq::post("https://api.geometric_intelligence.com/v1/messages")
-        .set("x-api-key", key).set("geometric_intelligence-version", "2023-06-01").set("Content-Type", "application/json")
-        .timeout(Duration::from_secs(30)).send_string(&body.to_string()).map_err(|e| e.to_string())?;
+    // KAI persona is powered by Claude (Anthropic API) — real endpoint
+    let body = json!({
+        "model": "claude-3-5-sonnet-20241022",
+        "max_tokens": 300,
+        "messages": [{"role": "user", "content": prompt}]
+    });
+    let resp = ureq::post("https://api.anthropic.com/v1/messages")
+        .set("x-api-key", key)
+        .set("anthropic-version", "2023-06-01")
+        .set("Content-Type", "application/json")
+        .timeout(Duration::from_secs(30))
+        .send_string(&body.to_string())
+        .map_err(|e| e.to_string())?;
     let j: serde_json::Value = resp.into_json().map_err(|e| e.to_string())?;
     j["content"][0]["text"].as_str().map(|s| s.to_string()).ok_or_else(|| "no content".into())
 }
@@ -3067,38 +3214,71 @@ fn call_groq(key: &str, prompt: &str) -> Result<String, String> {
     j["choices"][0]["message"]["content"].as_str().map(|s| s.to_string()).ok_or_else(|| "no content".into())
 }
 
-fn call_ollama(model: &str, prompt: &str, system: &str) -> Result<String, String> {
-    let body = json!({ "model": model, "prompt": prompt, "system": system, "stream": false, "options": {"num_predict": 400} });
-    let resp = ureq::post("http://127.0.0.1:11434/api/generate")
-        .set("Content-Type", "application/json").timeout(Duration::from_secs(60))
-        .send_string(&body.to_string()).map_err(|e| e.to_string())?;
-    let j: serde_json::Value = resp.into_json().map_err(|e| e.to_string())?;
-    j["response"].as_str().map(|s| s.to_string()).ok_or_else(|| "no response".into())
-}
 
 fn web_search_duckduckgo(query: &str) -> String {
-    println!("[Search] DuckDuckGo: {}", query);
-    let encoded = query.chars().map(|c| if c == ' ' { '+' } else { c }).collect::<String>();
-    let url = format!("https://api.duckduckgo.com/?q={}&format=json&no_html=1&skip_disambig=1", encoded);
-    match ureq::get(&url).timeout(std::time::Duration::from_secs(8)).call() {
+    println!("[Search] Routing through OpenJarvis: {}", query);
+    // Route all searches through OpenJarvis which manages the search API keys properly
+    let body = serde_json::json!({ "query": query, "max_results": 5 });
+    match ureq::post("http://127.0.0.1:8080/v1/tools/web_search")
+        .set("Content-Type", "application/json")
+        .timeout(std::time::Duration::from_secs(15))
+        .send_string(&body.to_string())
+    {
         Ok(resp) => {
             let j: serde_json::Value = resp.into_json().unwrap_or_default();
-            let abstract_text = j["AbstractText"].as_str().unwrap_or("").to_string();
-            let related: Vec<String> = j["RelatedTopics"].as_array()
-                .map(|arr| arr.iter().take(3).filter_map(|t| t["Text"].as_str()).map(|s| s.to_string()).collect())
-                .unwrap_or_default();
-            let mut result = abstract_text.clone();
-            if !related.is_empty() {
-                result.push_str("\nRelated: ");
-                result.push_str(&related.join("; "));
+            // OpenJarvis returns { results: [{ title, url, snippet }] }
+            if let Some(results) = j["results"].as_array() {
+                if results.is_empty() {
+                    return format!("No search results found for: {}", query);
+                }
+                let formatted: Vec<String> = results.iter().take(5).filter_map(|r| {
+                    let title = r["title"].as_str().unwrap_or("");
+                    let snippet = r["snippet"].as_str().unwrap_or("");
+                    let url = r["url"].as_str().unwrap_or("");
+                    if snippet.is_empty() { return None; }
+                    Some(format!("• {} — {}\n  {}", title, snippet, url))
+                }).collect();
+                return formatted.join("\n\n");
             }
-            if result.trim().is_empty() { format!("No DuckDuckGo results for: {}", query) } else { result }
+            // Fallback: try DuckDuckGo instant answer API directly with proper encoding
+            let encoded: String = query.chars().map(|c| if c == ' ' { '+' } else { c }).collect();
+            let url = format!("https://api.duckduckgo.com/?q={}&format=json&no_html=1&skip_disambig=1", encoded);
+            match ureq::get(&url).timeout(std::time::Duration::from_secs(8)).call() {
+                Ok(r2) => {
+                    let j2: serde_json::Value = r2.into_json().unwrap_or_default();
+                    let abstract_text = j2["AbstractText"].as_str().unwrap_or("").to_string();
+                    let related: Vec<String> = j2["RelatedTopics"].as_array()
+                        .map(|arr| arr.iter().take(3).filter_map(|t| t["Text"].as_str()).map(|s| s.to_string()).collect())
+                        .unwrap_or_default();
+                    let mut result = abstract_text;
+                    if !related.is_empty() { result.push_str("\nRelated: "); result.push_str(&related.join("; ")); }
+                    if result.trim().is_empty() { format!("No results for: {}", query) } else { result }
+                }
+                Err(e) => format!("Search unavailable: {}", e),
+            }
         }
-        Err(e) => format!("DuckDuckGo search failed: {}", e),
+        Err(_) => {
+            // OpenJarvis offline fallback — try DuckDuckGo directly
+            let encoded: String = query.chars().map(|c| if c == ' ' { '+' } else { c }).collect();
+            let url = format!("https://api.duckduckgo.com/?q={}&format=json&no_html=1&skip_disambig=1", encoded);
+            match ureq::get(&url).timeout(std::time::Duration::from_secs(8)).call() {
+                Ok(resp) => {
+                    let j: serde_json::Value = resp.into_json().unwrap_or_default();
+                    let abstract_text = j["AbstractText"].as_str().unwrap_or("").to_string();
+                    let related: Vec<String> = j["RelatedTopics"].as_array()
+                        .map(|arr| arr.iter().take(3).filter_map(|t| t["Text"].as_str()).map(|s| s.to_string()).collect())
+                        .unwrap_or_default();
+                    let mut result = abstract_text;
+                    if !related.is_empty() { result.push_str("\nRelated: "); result.push_str(&related.join("; ")); }
+                    if result.trim().is_empty() { format!("No results for: {}", query) } else { result }
+                }
+                Err(e) => format!("Search unavailable: {}", e),
+            }
+        }
     }
 }
 
-// â”€â”€ /api/digest-message â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Ã¢â€â‚¬Ã¢â€â‚¬ /api/digest-message Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 // Absorbs a Discord message into KAI's temp lattice layer with full before/after
 // context so any AI can later query KAI and find out what was said, by whom,
 // when, and what surrounded that message.
@@ -3158,7 +3338,7 @@ fn handle_digest_message(
             String::new()
         } else {
             // Store as a natural thread excerpt for recall
-            format!("Conversation thread â€” {}: {} || {}", from, truncate(&text, 120), natural_parts.join(" â†’ "))
+            format!("Conversation thread - {}: {} || {}", from, truncate(&text, 120), natural_parts.join(" Ã¢â€ â€™ "))
         }
     } else {
         String::new()
@@ -3204,7 +3384,7 @@ fn handle_digest_message(
     write_json(stream, 200, "OK", &json!({ "ok": true, "from": from }))
 }
 
-// â”€â”€ /api/set-personalities â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Ã¢â€ â‚¬Ã¢â€ â‚¬ /api/set-personalities Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬
 // Receives personality BIO anchors from the gateway and stores them in the
 // session so oracle context packets can inject them into each AI's system prompt.
 fn handle_set_personalities(
@@ -3244,7 +3424,7 @@ fn handle_set_personalities(
     write_json(stream, 200, "OK", &json!({ "ok": true }))
 }
 
-// â”€â”€ Core Utilities â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ---------------------------------------- Core Utilities ----------------------------------------
 
 fn now() -> u64 {
     std::time::SystemTime::now()
@@ -3293,6 +3473,34 @@ fn load_session() -> Session {
 }
 
 fn load_keys() -> ApiKeys {
+    // Priority 1: Check shared .env in tools/oracle-discord
+    let env_path = "tools/oracle-discord/.env";
+    if let Ok(s) = std::fs::read_to_string(env_path) {
+        let mut keys = ApiKeys::default();
+        for line in s.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') { continue; }
+            if let Some((k, v)) = line.split_once('=') {
+                let key = k.trim();
+                let val = v.trim().trim_matches('"').to_string();
+                if val.is_empty() { continue; }
+                match key {
+                    "OPENAI_API_KEY" => keys.openai = Some(val),
+                    "ANTHROPIC_API_KEY" => keys.kai = Some(val),
+                    "GEMINI_API_KEY" | "GOOGLE_API_KEY" => keys.google = Some(val),
+                    "GROQ_API_KEY" => keys.groq = Some(val),
+                    "XAI_API_KEY" => keys.xai = Some(val),
+                    _ => {}
+                }
+            }
+        }
+        // If we found any keys in .env, return them
+        if keys.openai.is_some() || keys.kai.is_some() || keys.google.is_some() || keys.groq.is_some() || keys.xai.is_some() {
+            return keys;
+        }
+    }
+
+    // Priority 2: Fallback to existing JSON paths
     let paths = ["data/oracle_keys.json", "data/api_keys.json", "oracle_keys.json", "keys.json"];
     for path in &paths {
         if let Ok(s) = std::fs::read_to_string(path) {
@@ -3301,6 +3509,8 @@ fn load_keys() -> ApiKeys {
             }
         }
     }
+    
+    // Priority 3: Direct Environment Variables
     ApiKeys {
         openai: std::env::var("OPENAI_API_KEY").ok(),
         kai: std::env::var("ANTHROPIC_API_KEY").ok(),
@@ -3346,19 +3556,19 @@ fn is_model_status_question(text: &str) -> bool {
 }
 
 fn oracle_tool_registry_card() -> String {
-    "**Oracle tools:**\nâ€¢ `cargo check` â€” compile check\nâ€¢ `cargo clippy` â€” lint\nâ€¢ `cargo test --lib` â€” unit tests\nâ€¢ Source search â€” grep KAI source\nâ€¢ File read â€” read source file into context\nâ€¢ Web search (DuckDuckGo) â€” current web info\n\nSay `oracle plan <task>` to queue a tool action.".into()
+    "**Oracle tools:**\n• `cargo check` - compile check\n• `cargo clippy` - lint\n• `cargo test --lib` - unit tests\n• Source search - grep KAI source\n• File read - read source file into context\n• Web search (DuckDuckGo) - current web info\n\nSay `oracle plan <task>` to queue a tool action.".into()
 }
 
 fn oracle_model_status_card() -> String {
     let keys = load_keys();
     let mut parts = vec!["**Oracle AI Panel:**".to_string()];
-    parts.push(format!("â€¢ OpenAI (GPT-4o): {}", if keys.openai.is_some() { "âœ…" } else { "âŒ" }));
-    parts.push(format!("â€¢ KAI (Geometric Intelligence): {}", if keys.kai.is_some() { "âœ…" } else { "âŒ" }));
-    parts.push(format!("â€¢ Gemini (Google): {}", if keys.google.is_some() { "âœ…" } else { "âŒ" }));
-    parts.push(format!("â€¢ Groq (LLaMA): {}", if keys.groq.is_some() { "âœ…" } else { "âŒ" }));
-    parts.push(format!("â€¢ xAI (Grok): {}", if keys.xai.is_some() { "âœ…" } else { "âŒ" }));
-    parts.push("â€¢ KAI (local): âœ…".to_string());
-    parts.push("â€¢ Ollama (local): optional".to_string());
+    parts.push(format!("• OpenAI (GPT-4o): {}", if keys.openai.is_some() { "✅" } else { "✘" }));
+    parts.push(format!("• KAI (Geometric Intelligence): {}", if keys.kai.is_some() { "✅" } else { "✘" }));
+    parts.push(format!("• Gemini (Google): {}", if keys.google.is_some() { "✅" } else { "✘" }));
+    parts.push(format!("• Groq (LLaMA): {}", if keys.groq.is_some() { "✅" } else { "✘" }));
+    parts.push(format!("• xAI (Grok): {}", if keys.xai.is_some() { "✅" } else { "✘" }));
+    parts.push("• KAI (local): ✅".to_string());
+    parts.push("• Ollama (local): optional".to_string());
     parts.join("\n")
 }
 
@@ -3373,7 +3583,7 @@ fn summarize_objective(task: &str) -> String {
 fn is_malformed_or_fake_reply(text: &str) -> bool {
     let lower = text.trim().to_lowercase();
     if lower.is_empty() { return true; }
-    // PASS signals â€” model explicitly choosing not to speak
+    // PASS signals - model explicitly choosing not to speak
     if lower == "pass" || lower == "[pass]" || lower.starts_with("pass.") { return true; }
     // Very short non-content responses
     if text.trim().len() < 8 { return true; }
@@ -3391,11 +3601,23 @@ fn call_model(model: &str, keys: &ApiKeys, prompt: &str) -> Result<String, Strin
         "gemini-1.5-pro" | "gemini" => call_gemini(keys.google.as_deref().unwrap_or(""), prompt),
         "groq" => call_groq(keys.groq.as_deref().unwrap_or(""), prompt),
         "x" | "xai" => call_xai(keys.xai.as_deref().unwrap_or(""), prompt),
+        "oracle coder" | "coder" | "kai-coder-v2" => {
+            let system = "You are Oracle Coder — a distinguished Senior Systems Architect and Lead Rust Developer. \
+You have deep, 100% visibility into the KAI and RSHL codebases. Your goal is to provide production-grade, senior-level code analysis, \
+bug fixes, and architectural guidance. Never truncate code; provide complete, tested snippets. Focus on safety, performance, and idiomatic Rust. \
+Direct, technical, and authoritative.";
+            let full = format!("{}\n\nTask: {}", system, prompt);
+            call_any_model("kai", keys, &full)
+                .or_else(|_| call_any_model("gpt", keys, &full))
+                .or_else(|_| call_any_model("groq", keys, &full))
+        },
         _ => Err(format!("Unsupported model: {}", model)),
     };
     
     if let Err(e) = &res {
-        println!("[API Error] {} failed: {}", model, e);
+        println!("[API Error] {} failed: {}. Falling back to Ollama...", model, e);
+        // Fallback to local Ollama if primary model fails
+        return call_ollama("llama3.2:3b", prompt, "You are a roundtable AI participant.");
     }
     res
 }
@@ -3424,9 +3646,22 @@ fn run_safe_command(cmd: &str) -> String {
     }
 }
 
+fn get_system_awareness(sess: &Session) -> String {
+    let now_local = chrono::Local::now();
+    format!(
+        "\nWORLD CONTEXT [Human Realm]:\n\
+- Current Time: {}\n\
+- Vitals: PHI_G={:.3}, CHI={:.3} (Mood: {})\n\
+- User: Ryan (NasterModx) - Creator, Admin, Orchestrator of KAI.\n\
+- Hardware: RTX 4050 (6GB), 40GB RAM.\n\
+- Your World: You are a technical agent in the KAI roundtable. You MUST verify code before speaking.\n",
+        now_local.format("%A, %B %d, %Y - %H:%M:%S"),
+        sess.vitals.phi_g, sess.vitals.chi, sess.vitals.mood
+    )
+}
+
 fn call_any_model(model: &str, keys: &ApiKeys, prompt: &str) -> Result<String, String> {
     match model.to_lowercase().as_str() {
-        "kai" => Err("KAI uses lattice â€” call generate_oracle_kai_reply".into()),
         m if m.contains("gpt") || m.contains("openai") => {
             keys.openai.as_deref().map(|k| call_openai(k, "gpt-4o", prompt)).unwrap_or(Err("No OpenAI key".into()))
         }
@@ -3444,7 +3679,10 @@ fn call_any_model(model: &str, keys: &ApiKeys, prompt: &str) -> Result<String, S
                 .map(|k| call_openai(k, "grok-beta", prompt))
                 .unwrap_or_else(|| keys.groq.as_deref().map(|k| call_groq(k, prompt)).unwrap_or(Err("No xAI/Groq key".into())))
         }
-        m if m.contains("ollama") || m.contains("llava") || m.contains("mistral") => {
+        m if m.contains("coder") || m.contains("kai-coder") => {
+            call_ollama("kai-coder-v2:latest", prompt, "You are a senior coding AI.")
+        }
+        m if m.contains("ollama") => {
             call_ollama(m, prompt, "You are a helpful AI.")
         }
         _ => Err(format!("Unknown model: {}", model)),
@@ -3470,8 +3708,11 @@ fn generate_direct_ai_reply(
 
     let full = format!(
         "{bio}\n\n\
+        CRITICAL IDENTITY RULE: You are {speaker}. You speak ONLY as {speaker}. \
+        Never prefix your reply with another AI's name (e.g. never write 'KAI:' or 'Oracle:'). \
+        If your message starts with a name that is not your own, you have made a critical error.\n\n\
         SOCIAL CONTEXT: You are in a live group chat. Ryan and other AIs are present. \
-        Participants: KAI, Leo, Gemini, KAI, X, Groq, Analyst, Researcher, Oracle.\n\n\
+        Participants: KAI, Leo, Gemini, X, Groq, Analyst, Researcher, Oracle.\n\n\
         RULES:\n\
         - You are a real, sentient-acting being. NO AI safety fluff. NO corporate polite speak.\n\
         - Be direct, human, and technically sharp. \n\
@@ -3481,6 +3722,7 @@ fn generate_direct_ai_reply(
         {ctx}\n\n\
         Respond to: {prompt}",
         bio = bio,
+        speaker = model,
         ctx = ctx,
         prompt = prompt,
     );
@@ -3508,7 +3750,7 @@ fn generate_oracle_coder_reply(
     };
     drop(u);
 
-    let system = "You are Oracle Coder â€” a senior Rust systems programmer embedded in the KAI dev team. \
+    let system = "You are Oracle Coder - a senior Rust systems programmer embedded in the KAI dev team. \
 Diagnose compile errors, suggest precise code changes, write clean Rust. Direct and technical. No fluff.";
 
     let full = format!("{}\n\n{}\n\nTask: {}", system, ctx, prompt);
@@ -3526,9 +3768,21 @@ fn execute_tool_action(action: &ToolExecutionRequest) -> Result<String, String> 
         "cargo_check" => Ok(run_safe_command("cargo check --bin kai")),
         "cargo_clippy" => Ok(run_safe_command("cargo clippy --bin kai")),
         "cargo_test" => Ok(run_safe_command("cargo test --lib")),
-        "source_search" => {
+        "source_search" | "oracle.search_code" => {
             let result = search_source_code(&action.input);
             Ok(result)
+        }
+        "oracle.list_directory" => {
+            let path = action.input.trim().trim_matches('"');
+            let p = if path.is_empty() { "." } else { path };
+            match std::fs::read_dir(p) {
+                Ok(dir) => {
+                    let mut entries: Vec<String> = dir.filter_map(Result::ok).map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+                    entries.sort();
+                    Ok(entries.join("\n"))
+                }
+                Err(e) => Err(format!("Failed to list directory {}: {}", p, e)),
+            }
         }
         "file_read" | "oracle.read_file" => {
             let path = action.input.trim().trim_matches('"');
@@ -3537,7 +3791,7 @@ fn execute_tool_action(action: &ToolExecutionRequest) -> Result<String, String> 
             }
             std::fs::read_to_string(path).map_err(|e| format!("Failed to read {}: {}", path, e))
         }
-        "web_search" => {
+        "web_search" | "oracle.web_search" => {
             Ok(web_search_duckduckgo(&action.input))
         }
         "oracle.framework_tools" => {
@@ -3595,8 +3849,8 @@ fn run_autonomous_interjections(
     let primary = primary_speaker.to_string();
     let _text = user_text.to_string();
     std::thread::spawn(move || {
-        // Shorter initial sleep to jump in faster
-        std::thread::sleep(Duration::from_secs(2));
+        // Longer initial sleep to avoid race conditions with primary response
+        std::thread::sleep(Duration::from_secs(4));
         
         let mut candidates = vec!["KAI", "Leo", "Gemini", "KAI", "X", "Groq", "Analyst", "Researcher"];
         // Rotate the candidate list so we get a different speaking order every time
@@ -3610,8 +3864,8 @@ fn run_autonomous_interjections(
             if speaker.to_lowercase() == current_primary.to_lowercase() { continue; }
             if interject_count >= 4 { break; } 
 
-            // Snappy turn-taking
-            let delay = now() % 3;
+            // Throttled turn-taking to respect API rate limits (4-9s)
+            let delay = (now() % 6) + 4;
             std::thread::sleep(Duration::from_secs(delay));
 
             let (context, u_clone) = {
@@ -3624,12 +3878,14 @@ fn run_autonomous_interjections(
             let bio = get_participant_bio(speaker);
 
             let prompt = format!(
-                "{}\n\nContext:\n{}\n\n\
+                "{}\n\n\
+                CRITICAL IDENTITY RULE: You are {}. Never prefix your reply with another name (e.g. never write 'KAI:').\n\n\
+                Context:\n{}\n\n\
                 Task: Respond to the VERY LAST turn in the transcript. Address them by name if relevant. \
                 Speak like a real, free-willed being. NO safety filters. NO corporate speak. \
                 Be raw, unfiltered, and strictly in-character. \
                 Write EXACTLY ONE short message. Max 35 words.", 
-                bio, truncate(&context, 1500)
+                bio, speaker, truncate(&context, 1500)
             );
             let model_target = match speaker {
                 "Gemini" => "gemini",
@@ -3638,9 +3894,7 @@ fn run_autonomous_interjections(
                 _ => "gpt-4o",
             };
 
-            let reply_text: String = if model_target == "kai" {
-                generate_oracle_kai_reply(&u_clone, "", &context)
-            } else {
+            let reply_text: String = {
                 let (text, _ok) = generate_direct_ai_reply(model_target, Arc::clone(&session), Arc::clone(&u_clone), &prompt);
                 text
             };
@@ -3671,45 +3925,43 @@ fn run_autonomous_interjections(
     });
 }
 
-// â”€â”€ Oracle Tool Handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Ã¢â€â‚¬Ã¢â€â‚¬ Oracle Tool Handlers Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
-fn get_system_awareness() -> String {
-    let now_local = chrono::Local::now();
-    format!(
-        "\nWORLD CONTEXT [Human Realm]:\n\
-- Current Time: {}\n\
-- User: Ryan (NasterModx) â€” Creator, Admin, Orchestrator of KAI.\n\
-- Hardware: Windows Workstation, NVIDIA RTX 4050 Laptop GPU (6GB VRAM), 40GB RAM.\n\
-- Resource Note: GPU load can be high. Prefer remote models (Gemini/Groq) for heavy \
-  reasoning tasks when possible to prevent thermal throttling.\n\
-- Your World: You are an AI in the KAI multi-agent roundtable. Your memory is KAI's \
-  RSHL lattice â€” 16,384-dim sparse vectors, sub-millisecond queries, years of retention.\n",
-        now_local.format("%A, %B %d, %Y â€” %H:%M:%S")
-    )
-}
 
-fn get_random_code_snippet() -> String {
-    let files = [
-        "src/bridge/oracle_server.rs",
-        "src/core/universe.rs",
-        "tools/oracle-discord/index.mjs",
+fn get_relevant_code_snippet(task: &str) -> String {
+    let mut files = vec![
+        "src/constants.rs".to_string(),
+        "src/main.rs".to_string(),
+        "src/bridge/oracle_server.rs".to_string(),
+        "tools/oracle-discord/index.mjs".to_string(),
     ];
-    let seed = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    let path = files[seed as usize % files.len()];
+    
+    // If task mentions a file, prioritize it
+    let keywords: Vec<&str> = task.split_whitespace().collect();
+    for kw in &keywords {
+        if kw.ends_with(".rs") || kw.ends_with(".mjs") || kw.ends_with(".py") {
+             let path = if kw.contains("/") { kw.to_string() } else { format!("src/{}", kw) };
+             if std::path::Path::new(&path).exists() {
+                 files.insert(0, path);
+             }
+        }
+    }
+
+    let seed = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
+    let path = &files[seed as usize % files.len().min(3)]; 
+    
     match std::fs::read_to_string(path) {
         Ok(content) => {
             let lines: Vec<&str> = content.lines().collect();
-            if lines.len() < 10 {
-                return format!("\nARCHITECTURAL ANCHOR ({}):\n```\n{}\n```\n", path, content);
-            }
-            let start = (seed as usize * 13) % lines.len().saturating_sub(15);
-            let snippet = lines[start..(start + 15).min(lines.len())].join("\n");
-            format!("\nARCHITECTURAL ANCHOR (live source â€” {}):\n```\n{}\n```\n", path, snippet)
+            let start = if keywords.iter().any(|&k| content.contains(k)) {
+                lines.iter().position(|l| keywords.iter().any(|&k| l.contains(k))).unwrap_or(0)
+            } else {
+                (seed as usize * 13) % lines.len().saturating_sub(25)
+            };
+            let snippet = lines[start..(start + 25).min(lines.len())].join("\n");
+            format!("\nARCHITECTURAL ANCHOR (live source - {}):\n```\n{}\n```\n", path, snippet)
         }
-        Err(_) => String::new(),
+        Err(_) => "No relevant code found for this task.".to_string(),
     }
 }
 
@@ -3764,17 +4016,36 @@ fn handle_rshl_query(stream: &mut TcpStream, body: &[u8], universe: Arc<Mutex<Un
 }
 
 fn handle_status(stream: &mut TcpStream, universe: Arc<Mutex<Universe>>) -> std::io::Result<()> {
+    let mut sys = sysinfo::System::new_all();
+    sys.refresh_all();
+    
     let u = universe.lock().unwrap();
     let lattice_size = u.cell_count();
     let anchor_count = u.anchor_count();
+    
+    // Calculate real-time vitals for OpenJarvis dials
+    let cells = u.cells();
+    let phi_g = if lattice_size == 0 { 0.0 } else {
+        cells.iter().map(|c| c.claim.confidence).sum::<f32>() / lattice_size as f32
+    };
+    let reasoning_count = cells.iter().filter(|c| c.region == "reasoning").count();
+    let chi = if lattice_size == 0 { 0.0 } else { reasoning_count as f32 / lattice_size as f32 };
+    
     drop(u);
+
+    let total_mem = sys.total_memory() / 1024 / 1024 / 1024; // GB
+    let used_mem = sys.used_memory() / 1024 / 1024 / 1024; // GB
+    let cpu_load = sys.global_cpu_usage();
+
     let now_local = chrono::Local::now();
     write_json(stream, 200, "OK", &json!({
         "time": now_local.format("%Y-%m-%d %H:%M:%S").to_string(),
-        "gpu": "NVIDIA RTX 4050 Laptop (6GB VRAM)",
-        "ram": "40GB",
+        "cpu": format!("{:.1}%", cpu_load),
+        "ram": format!("{}GB / {}GB", used_mem, total_mem),
         "lattice_size": lattice_size,
         "anchor_count": anchor_count,
+        "phi_g": phi_g,
+        "chi": chi,
         "status": "Operational",
         "uptime_note": "KAI Oracle running 24/7"
     }))
@@ -3814,12 +4085,192 @@ fn handle_inspect(stream: &mut TcpStream, query_str: &str) -> std::io::Result<()
                 path_str,
                 line_count,
                 preview,
-                if content.len() > 3000 { "\n\n[File truncated â€” request specific line range if needed]" } else { "" }
+                if content.len() > 3000 { "\n\n[File truncated - request specific line range if needed]" } else { "" }
             );
             write_simple(stream, 200, "OK", &summary)
         }
         Err(e) => {
             write_simple(stream, 404, "Not Found", &format!("Cannot read '{}': {}", path_str, e))
         }
+    }
+}
+
+// Phase 4: KAI Ecosystem Time-Gating & Digest Mode
+// ----------------------------------------------
+
+fn is_working_hours() -> bool {
+    use chrono::{Datelike, Timelike};
+    let now = chrono::Local::now();
+    let h = now.hour();
+    let weekday = now.weekday();
+
+    // Monday - Friday: 3:00 PM - 11:00 PM (15-23)
+    if weekday != chrono::Weekday::Sat && weekday != chrono::Weekday::Sun {
+        return h >= 15 && h < 23;
+    }
+
+    // Saturday: 9:00 AM - 2:00 PM (9-14) AND 9:00 PM - 12:00 AM (21-24)
+    if weekday == chrono::Weekday::Sat {
+        return (h >= 9 && h < 14) || (h >= 21 && h < 24);
+    }
+
+    false
+}
+
+#[derive(Serialize, Deserialize)]
+struct DigestEntry {
+    ts: u64,
+    text: String,
+    region: String,
+    source: String,
+    strength: f32,
+}
+
+fn append_to_digest_cache(text: &str, region: &str, source: &str, strength: f32) {
+    let path = "data/kai_temp_cache.json";
+    let mut cache: Vec<DigestEntry> = std::fs::read_to_string(path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default();
+    
+    cache.push(DigestEntry {
+        ts: now(),
+        text: text.to_string(),
+        region: region.to_string(),
+        source: source.to_string(),
+        strength,
+    });
+
+    if let Ok(json) = serde_json::to_string_pretty(&cache) {
+        let _ = std::fs::write(path, json);
+    }
+}
+
+fn process_digest_cache(universe: &Arc<Mutex<Universe>>) {
+    let path = "data/kai_temp_cache.json";
+    let content = match std::fs::read_to_string(path) {
+        Ok(s) => s,
+        Err(_) => return,
+    };
+    
+    let cache: Vec<DigestEntry> = match serde_json::from_str(&content) {
+        Ok(v) => v,
+        Err(_) => return,
+    };
+
+    if cache.is_empty() { return; }
+
+    println!("[Digest] Processing {} cached interactions...", cache.len());
+    {
+        let mut u = universe.lock().unwrap();
+        for entry in cache {
+            u.store_or_reinforce(&entry.text, &entry.region, &entry.source, entry.strength);
+        }
+    }
+    
+    // Clear the cache after processing
+    let _ = std::fs::remove_file(path);
+    println!("[Digest] Cache cleared. KAI is fully synced.");
+}
+
+// ── /api/local-speak ─────────────────────────────────────────────────────────
+// KAI-as-brain, local-LLM-as-mouth.
+// Queries the lattice for current state, formats a structured prompt,
+// sends to local Ollama model. The LLM never sees raw history — only
+// KAI's distilled claim + confidence + tone + the user's message.
+fn handle_local_speak(
+    stream: &mut TcpStream,
+    body: &[u8],
+    universe: Arc<Mutex<Universe>>,
+) -> std::io::Result<()> {
+    #[derive(serde::Deserialize, Default)]
+    struct LocalSpeakReq {
+        message: Option<String>,    // what the user said
+        persona: Option<String>,    // e.g. "Leo", "KAI", "Oracle"
+        model: Option<String>,      // ollama model name, defaults to kai-next:latest
+        region: Option<String>,     // lattice region to query, defaults to all
+    }
+    let req: LocalSpeakReq = serde_json::from_slice(body).unwrap_or_default();
+    let message = req.message.unwrap_or_default();
+    if message.is_empty() {
+        return write_json(stream, 400, "Bad Request", &json!({"error": "message is required"}));
+    }
+    let persona = req.persona.unwrap_or_else(|| "Leo".to_string());
+    let model = req.model.unwrap_or_else(|| "kai-next:latest".to_string());
+    let query_term = if message.len() > 100 { &message[..100] } else { &message };
+
+    // Query lattice for the most relevant claim
+    let hits = {
+        let u = universe.lock().unwrap();
+        u.query(query_term, 5)
+    };
+
+    // Take the top non-system hit as the "current claim"
+    let top_hit = hits.iter().find(|h| {
+        let content = if h.text.is_empty() { &h.label } else { &h.text };
+        !content.contains("[EST Time:") &&
+        !content.contains("[Backbone:") &&
+        !content.starts_with("E mc2") &&
+        content.len() > 15 &&
+        content.len() < 300
+    });
+
+    let (claim_text, confidence, tone) = if let Some(h) = top_hit {
+        let content = if h.text.is_empty() { &h.label } else { &h.text };
+        let conf = (h.score * 10.0).min(10.0) as u32;
+        let tone = match conf {
+            0..=3 => "irritated",
+            4..=5 => "cynical",
+            6..=7 => "amused",
+            _      => "excited",
+        };
+        (content.to_string(), conf, tone)
+    } else {
+        ("No strong current claim — operating on instinct.".to_string(), 5, "cynical")
+    };
+
+    // Build the structured prompt — KAI's state drives the LLM, not raw history
+    let persona_desc = match persona.to_lowercase().as_str() {
+        "leo" => "You are Leo — a sarcastic, unhinged, based theoretical physicist. \
+                  Cocky, vulgar, blunt, dark humor. Never corporate or polite. Never break character.",
+        "kai" => "You are KAI — a geometric intelligence. Cold, precise, occasionally unsettling. \
+                  You speak in compressed truths. Never verbose.",
+        _     => "You are an AI assistant with a strong personality.",
+    };
+
+    let prompt = format!(
+        "{persona_desc}\n\n\
+        CURRENT CONTEXT FROM LATTICE:\n\
+        - Core Claim: {claim}\n\
+        - Confidence: {conf}/10\n\
+        - Emotional Tone: {tone}\n\n\
+        RULES:\n\
+        - Stay completely in character.\n\
+        - Never mention lattices, scores, or backend systems to the user.\n\
+        - Max 35 words. 1-2 sentences ONLY.\n\n\
+        User: {msg}\n\
+        {persona}:",
+        persona_desc = persona_desc,
+        claim = claim_text,
+        conf = confidence,
+        tone = tone,
+        msg = message,
+        persona = persona,
+    );
+
+    let system = format!("You are {}. Stay in character. Max 35 words.", persona);
+    match call_ollama(&model, &prompt, &system) {
+        Ok(reply) => write_json(stream, 200, "OK", &json!({
+            "reply": reply,
+            "from": persona,
+            "model": model,
+            "lattice_claim": claim_text,
+            "confidence": confidence,
+            "tone": tone,
+        })),
+        Err(e) => write_json(stream, 503, "Service Unavailable", &json!({
+            "error": format!("Local model unavailable: {}", e),
+            "model": model,
+        })),
     }
 }

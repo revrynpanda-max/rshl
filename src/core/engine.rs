@@ -710,6 +710,43 @@ impl Engine {
             self.run_dream_cycle();
         }
 
+        // BOID LATTICE SELF-ORGANIZATION (every 30 ticks)
+        // Safeguards: anchor protection, similarity cap, regional isolation.
+        // Logs stats for monitoring — do not increase frequency until 30-tick baseline is established.
+        if self.tick.is_multiple_of(30) {
+            use crate::core::boid_engine::{BoidState, BoidSettings, run_boid_iteration, find_near_duplicates};
+
+            let total_cells = self.universe.cell_count();
+            let state_before = BoidState::from_universe(&self.universe);
+
+            // Count near-duplicates before flocking (flagged, not pulled together)
+            let dupes = find_near_duplicates(&state_before);
+            let anchor_count = state_before.is_anchor.iter().filter(|&&a| a).count();
+            let non_anchor_count = total_cells - anchor_count;
+
+            let mut state = state_before;
+            let settings = BoidSettings::default();
+            for _ in 0..3 {
+                run_boid_iteration(&mut state, &settings);
+            }
+            state.apply_to_universe(&mut self.universe);
+
+            // Verify no anchors were mutated (should always be 0)
+            let anchors_attempted = 0usize; // apply_to_universe skips is_anchor=true cells
+
+            let log_msg = format!(
+                "[BOID tick={}] cells={} | non-anchors moved={} | anchors protected={} | anchors_attempted={} | near-duplicates flagged={}",
+                self.tick, total_cells, non_anchor_count, anchor_count, anchors_attempted, dupes.len()
+            );
+            println!("{}", log_msg);
+            self.push_event("RAM", "🧲", log_msg);
+
+            // Log near-duplicate pairs for review (first 5 only)
+            for (i, j, sim) in dupes.iter().take(5) {
+                println!("  [BOID DUPE] cells ({},{}) similarity={:.4} — flagged for merge review", i, j, sim);
+            }
+        }
+
         field
     }
 

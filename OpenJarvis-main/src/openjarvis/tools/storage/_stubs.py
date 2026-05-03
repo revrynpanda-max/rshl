@@ -1,4 +1,4 @@
-﻿"""ABC for memory / retrieval backends.
+"""ABC for memory / retrieval backends.
 
 Phase 2 will provide concrete implementations (SQLite/FTS5, FAISS,
 ColBERTv2, BM25, Hybrid).
@@ -57,6 +57,10 @@ class MemoryBackend(ABC):
     @abstractmethod
     def clear(self) -> None:
         """Remove all stored documents."""
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Return backend-specific statistics."""
+        return {}
 
 
 __all__ = ["MemoryBackend", "RetrievalResult"]

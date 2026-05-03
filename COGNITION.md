@@ -1,6 +1,6 @@
-# KAI — Cognition Reference (v6.1.1)
+# KAI — Cognition Reference (v6.5.0)
 
-KAI is a self-sustaining, autonomous cognitive engine built on **Recursive Sparse Hyperdimensional Lattice (RSHL)** architecture with **Helix-Light-Vortex (HLV)** phase coherence. This document provides the technical specifications for the v6.1.1 "Epistemic Machine" baseline.
+KAI is a self-sustaining, autonomous cognitive engine built on **Recursive Sparse Hyperdimensional Lattice (RSHL)** architecture with **Helix-Light-Vortex (HLV)** phase coherence. This document provides the technical specifications for the v6.5.0 "Hardened Autonomy" baseline.
 
 ## RSHL Architecture
 KAI operates in a 16384-dimensional sparse ternary vector space. Unlike traditional LLMs, it uses geometric resonance instead of token prediction.
@@ -18,17 +18,26 @@ The `sparse_vec.rs` engine encodes text into vectors using a multi-layered weigh
 - **Sparsity**: Target density is **4%** (approximately 655 non-zero dimensions per vector).
 - **Similarity**: Measured via high-performance cosine similarity utilizing **AVX2-optimized** 64-wide inner product loops and **cached norm vectors**.
 
-### Ternary Phase Geometry (HLV-aligned)
-Each sparse vector carries a **phase angle** derived from its ternary balance — the ratio of convergent (+1) to divergent (−1) dimensions. This maps to the Fibonacci torsion angle from HLV theory.
+### Boid-Engine Lattice Dynamics (v6.3 New)
+Introduced in v6.3, the `boid_engine.rs` module implements autonomous self-organization for high-dimensional lattice clusters.
+- **Separation**: Prevents semantic "over-crowding" by ensuring nodes maintain a minimum geometric distance.
+- **Alignment**: Encourages nodes within the same semantic region (e.g., `identity`) to share a similar trajectory in the 16,384-dimensional space.
+- **Cohesion**: Facilitates the formation of stable attractors by gently pulling related nodes toward their semantic centroid.
 
-- `ternary_balance()` — counts +1 vs −1 non-zero dimensions
-- `phase_angle()` — maps balance ratio to angular coordinate in [0, 2π)
+---
 
-Global field coherence is computed as a **phasor sum**:
-```
-Φ_C = |Σ R_i · e^(jθ_i)| / Σ R_i
-```
-Where R_i = cell score (bridge strength) and θ_i = cell phase angle. Contradictory cells destructively interfere; coherent cells constructively reinforce.
+## Temporal Ecosystem (v6.3 New)
+KAI now operates on a biological-simulated rhythm to maintain long-term stability and cognitive freshness.
+
+### 1. Working Hours (9:00 AM – 2:00 PM EST)
+- **Active Reasoning**: The full council (Analyst, Researcher, Groq, etc.) is active.
+- **Real-time Ingest**: Public interactions are processed immediately into the lattice.
+- **Voice Response**: High-fidelity TTS/STT is enabled for live voice council.
+
+### 2. Digest Mode (Off-shift)
+- **Latent Processing**: The main reasoning loop slows down to preserve state.
+- **Interaction Cache**: Discord turns are diverted to `data/kai_temp_cache.json` instead of immediate lattice injection.
+- **Morning Digestion**: At 9:00 AM, the `process_digest_cache` routine autonomously integrates the previous night's experiences, maintaining continuity without off-hours drift.
 
 ---
 
@@ -48,6 +57,11 @@ The `contradiction.rs` module performs real-time detection of semantic conflicts
 - **Rejection**: Blocking the ingest if confidence is too low.
 - **Correction**: Updating the existing lattice bridge to resolve the conflict.
 - **Hedge**: Flagging the memory for future calibration.
+
+### 3. Lattice Reinforcement ("Treats & Pain")
+Added in v6.5.0, the system now supports direct human reinforcement of cognitive attractors.
+- **Praise (Treat)**: Applies a **+5.0** strength anchor to a thought, physically cementing it into the high-confidence region of the lattice.
+- **Pain (Pruning)**: Applies a **-2.5** penalty to a thought, actively weakening its semantic resonance and eventually leading to automated pruning in the next digest cycle.
 
 ---
 

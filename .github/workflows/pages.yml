@@ -278,7 +278,7 @@ jobs:
               <p class="sub">"Identity through geometry, not language prediction."</p>
               <div class="badges">
                 <img src="https://github.com/revrynpanda-max/rshl/actions/workflows/rust-ci.yml/badge.svg" alt="Rust CI">
-                <img src="https://img.shields.io/badge/version-6.1.0-brightgreen.svg" alt="v6.1.0">
+                <img src="https://img.shields.io/badge/version-6.7.0-brightgreen.svg" alt="v6.7.0">
                 <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT">
               </div>
 

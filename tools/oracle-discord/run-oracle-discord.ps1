@@ -1,4 +1,4 @@
-﻿param(
+param(
     [switch]$CheckOnly,
     [switch]$NoStartKai,
     [Parameter(Mandatory=$false)]
@@ -8,18 +8,23 @@
     [switch]$ConfigureVoice
 )
 
+# Force UTF-8 so Unicode characters display correctly in PowerShell
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
 $ErrorActionPreference = "Stop"
 $ConfigPath = Join-Path $PSScriptRoot ".oracle-discord.local.xml"
 $ParticipantTokenNames = @(
-    @{ Name = "KAI"; Env = "ORACLE_DISCORD_TOKEN_KAI" },
-    @{ Name = "Leo"; Env = "ORACLE_DISCORD_TOKEN_LEO" },
-    @{ Name = "Analyst"; Env = "ORACLE_DISCORD_TOKEN_ANALYST" },
-    @{ Name = "Researcher"; Env = "ORACLE_DISCORD_TOKEN_RESEARCHER" },
-    @{ Name = "Groq"; Env = "ORACLE_DISCORD_TOKEN_GROQ" },
-    @{ Name = "X"; Env = "ORACLE_DISCORD_TOKEN_X" },
-    @{ Name = "KAI"; Env = "ORACLE_DISCORD_TOKEN_CLAUDE" },
-    @{ Name = "Gemini"; Env = "ORACLE_DISCORD_TOKEN_GEMINI" },
-    @{ Name = "GPT"; Env = "ORACLE_DISCORD_TOKEN_GPT" }
+    @{ Name = "KAI";          Env = "ORACLE_DISCORD_TOKEN_KAI" },
+    @{ Name = "Leo";          Env = "ORACLE_DISCORD_TOKEN_LEO" },
+    @{ Name = "Analyst";      Env = "ORACLE_DISCORD_TOKEN_ANALYST" },
+    @{ Name = "Researcher";   Env = "ORACLE_DISCORD_TOKEN_RESEARCHER" },
+    @{ Name = "Groq";         Env = "ORACLE_DISCORD_TOKEN_GROQ" },
+    @{ Name = "X";            Env = "ORACLE_DISCORD_TOKEN_X" },
+    @{ Name = "Claude";       Env = "ORACLE_DISCORD_TOKEN_CLAUDE" },
+    @{ Name = "Gemini";       Env = "ORACLE_DISCORD_TOKEN_GEMINI" },
+    @{ Name = "GPT";          Env = "ORACLE_DISCORD_TOKEN_GPT" },
+    @{ Name = "Oracle Coder"; Env = "ORACLE_DISCORD_TOKEN_ORACLE_CODER" }
 )
 
 function ConvertFrom-SecureStringPlain {
@@ -70,6 +75,12 @@ function Import-DiscordConfig {
         if ($config.ParticipantTokens) {
             foreach ($participant in $ParticipantTokenNames) {
                 $envName = $participant.Env
+                # .env values take priority - only use saved XML if env var is not already set
+                $alreadySet = (Get-Item "Env:$envName" -ErrorAction SilentlyContinue).Value
+                if ($alreadySet) {
+                    Write-Host "  $envName already set from .env - skipping saved config."
+                    continue
+                }
                 $secure = $config.ParticipantTokens.$envName
                 if ($secure) {
                     $val = (ConvertFrom-SecureStringPlain $secure).Trim()
@@ -268,54 +279,47 @@ function Start-OpenJarvis {
     param([string]$JarvisDir)
 
     if (-not (Test-Path $JarvisDir)) {
-        Write-Warning "OpenJarvis directory not found at $JarvisDir. Skipping."
+        Write-Host "[OpenJarvis] Directory not found at $JarvisDir - skipping."
         return
     }
 
-    # Check if already running on 8080
-    $alreadyUp = $false
+    # Already running — nothing to do
     try {
         Invoke-RestMethod -Uri "http://127.0.0.1:8080/" -Method Get -TimeoutSec 2 | Out-Null
-        $alreadyUp = $true
+        Write-Host "[OpenJarvis] Already running at http://127.0.0.1:8080"
+        return
     } catch {}
 
-    if ($alreadyUp) {
-        Write-Host "OpenJarvis workspace already running at http://127.0.0.1:8080"
-        return
-    }
-
-    Write-Host "Starting OpenJarvis workspace (Oracle backbone)..."
+    Write-Host "[OpenJarvis] Launching in background (non-blocking)..."
 
     $scratch = Join-Path (Split-Path $JarvisDir -Parent) "scratch"
     New-Item -ItemType Directory -Force -Path $scratch | Out-Null
     $logOut = Join-Path $scratch "openjarvis.out.log"
     $logErr = Join-Path $scratch "openjarvis.err.log"
 
-    # Set Oracle config so OpenJarvis loads our custom setup
     $env:OPENJARVIS_CONFIG = Join-Path $JarvisDir "configs\openjarvis\config.toml"
-
-    # Resolve full path to uv so it works from a background process
     $uvPath = (Get-Command uv -ErrorAction SilentlyContinue).Source
     if (-not $uvPath) { $uvPath = "$env:USERPROFILE\.local\bin\uv.exe" }
     if (-not (Test-Path $uvPath)) { $uvPath = "C:\Users\$env:USERNAME\.local\bin\uv.exe" }
 
-    Write-Host "  uv path: $uvPath"
-    Write-Host "  config:  $env:OPENJARVIS_CONFIG"
-
-    # Copy our config to the default location so OpenJarvis always finds it
-    # even if OPENJARVIS_CONFIG env var doesn't propagate through uv
     $defaultConfigDir = Join-Path $env:USERPROFILE ".openjarvis"
     New-Item -ItemType Directory -Force -Path $defaultConfigDir | Out-Null
     Copy-Item -Path $env:OPENJARVIS_CONFIG -Destination (Join-Path $defaultConfigDir "config.toml") -Force
-    Write-Host "  config synced to: $defaultConfigDir\config.toml"
 
-    # KAI_LOCAL_ONLY=1 -- prevents OpenJarvis from wrapping Ollama with cloud
-    # engines just because OPENAI_API_KEY/GOOGLE_API_KEY are present in env
-    # (those keys are for Discord TTS/Gemini, not for OpenJarvis inference)
     $env:KAI_LOCAL_ONLY = "1"
-    $env:KAI_MODEL = if ($env:KAI_MODEL) { $env:KAI_MODEL } else { "kai-next:latest" }
+    # Load oracle_keys.json and pass them as env vars to OpenJarvis so it uses them natively
+    $oracleKeys = Get-Content (Join-Path $repoRoot "data\oracle_keys.json") -Raw | ConvertFrom-Json
+    
+    $env:OPENJARVIS_API_KEY = ""
+    $env:OPENJARVIS_CONFIG = $env:OPENJARVIS_CONFIG
+    $env:KAI_LOCAL_ONLY = "1"
+    if (-not $env:KAI_MODEL) { $env:KAI_MODEL = "kai-next:latest" }
+    
+    if ($oracleKeys.groq)   { $env:GROQ_API_KEY   = $oracleKeys.groq }
+    if ($oracleKeys.google) { $env:GOOGLE_API_KEY = $oracleKeys.google }
+    if ($oracleKeys.openai) { $env:OPENAI_API_KEY = $oracleKeys.openai }
+    if ($oracleKeys.xai)    { $env:XAI_API_KEY    = $oracleKeys.xai }
 
-    # Launch uv run jarvis serve in background, hidden window
     Start-Process -FilePath $uvPath `
         -ArgumentList "run", "jarvis", "serve", "--port", "8080", "--engine", "ollama" `
         -WorkingDirectory $JarvisDir `
@@ -323,16 +327,17 @@ function Start-OpenJarvis {
         -RedirectStandardOutput $logOut `
         -RedirectStandardError $logErr
 
-    # Wait up to 60s for it to come up
+    Write-Host "[OpenJarvis] Process launched. Waiting for it to become available at http://127.0.0.1:8080..."
+    
     for ($i = 0; $i -lt 120; $i++) {
-        try {
-            Invoke-RestMethod -Uri "http://127.0.0.1:8080/" -Method Get -TimeoutSec 1 | Out-Null
-            Write-Host "OpenJarvis workspace online at http://127.0.0.1:8080"
+        if (Test-JarvisReachable) {
+            Write-Host "[OpenJarvis] Online and ready!"
             return
-        } catch {}
+        }
         Start-Sleep -Milliseconds 500
     }
-    Write-Warning "OpenJarvis started but taking long to respond - check $logErr. Continuing..."
+    
+    Write-Host "[OpenJarvis] Warning: Did not become reachable in time. Check $logErr"
 }
 
 function Stop-ExistingDiscordGateways {
@@ -352,10 +357,20 @@ function Stop-ExistingDiscordGateways {
 Push-Location $PSScriptRoot
 try {
     $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..\..")
+
+    # ── Step 1: Load environment ──────────────────────────────────────────
+    $envFile = Join-Path $PSScriptRoot ".env"
+    if (Test-Path $envFile) {
+        Write-Host "[Init] Loading .env..."
+        Get-Content $envFile | Where-Object { $_ -match '^\s*[A-Za-z0-9_]+\s*=' } | ForEach-Object {
+            $name, $value = $_.Split('=', 2)
+            Set-Item "Env:$($name.Trim())" $value.Trim()
+        }
+    }
     Ensure-DiscordConfig
 
     if (-not (Test-Path (Join-Path $PSScriptRoot "node_modules"))) {
-        Write-Host "Installing Discord gateway dependencies..."
+        Write-Host "[Init] Installing Discord gateway dependencies..."
         npm install
     }
 
@@ -365,22 +380,33 @@ try {
         return
     }
 
+    # ── Step 2: Kill existing gateway processes ───────────────────────────
     Stop-ExistingDiscordGateways
 
+    # ── Step 3: Launch KAI + OpenJarvis in PARALLEL ───────────────────────
+    # OpenJarvis is fire-and-forget. KAI is required — we wait for it.
+    $jarvisDir = Join-Path $repoRoot "OpenJarvis-main"
+    Write-Host ""
+    Write-Host "[Startup] Phase 1 - Launching backends in parallel..."
+
+    # Fire OpenJarvis immediately (non-blocking)
+    Start-OpenJarvis -JarvisDir $jarvisDir
+
+    # Now start KAI and wait for it (required for Discord gateway)
     if (-not $NoStartKai) {
         if (-not (Test-OracleReachable)) {
             Start-KaiOracle -RepoRoot $repoRoot
         } else {
-            Write-Host "Oracle is already reachable at http://127.0.0.1:3333"
+            Write-Host "[KAI] Already reachable at http://127.0.0.1:3333"
         }
     }
 
-    # Start OpenJarvis workspace (Oracle's agentic backbone)
-    $jarvisDir = Join-Path $repoRoot "OpenJarvis-main"
-    Start-OpenJarvis -JarvisDir $jarvisDir
-
-    Write-Host "Starting Oracle Discord gateway..."
-    node index.mjs
+    # ── Step 4: Start Discord gateway ─────────────────────────────────────
+    Write-Host ""
+    Write-Host "[Startup] Phase 2 - Backends online. Starting microservices ecosystem..."
+    Write-Host "[Startup] You will see individual console windows for each bot."
+    Write-Host ""
+    .\run-ecosystem.ps1
 } finally {
     Pop-Location
 }

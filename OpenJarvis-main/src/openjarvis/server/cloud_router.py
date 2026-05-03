@@ -1,4 +1,4 @@
-﻿"""Direct cloud API router â€” bypasses the engine system entirely.
+"""Direct cloud API router â€” bypasses the engine system entirely.
 
 Reads API keys from ~/.openjarvis/cloud-keys.env at request time so
 it works even when the server was started without cloud keys in its
@@ -396,4 +396,4 @@ async def stream_cloud(
             yield token
 
     else:
-        
+        raise ValueError(f"Unknown cloud provider for model: {model}")

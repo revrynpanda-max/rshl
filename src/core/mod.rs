@@ -1,4 +1,5 @@
 pub mod attention;
+pub mod boid_engine;
 pub mod calibration;
 pub mod claim;
 pub mod claimstore;

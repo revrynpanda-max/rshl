@@ -1,4 +1,4 @@
-﻿# OpenJarvis configuration -- Oracle/KAI Integrated System
+# OpenJarvis configuration -- Oracle/KAI Integrated System
 
 # =Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â
 # PILLAR 1: Intelligence -- The Model
@@ -100,12 +100,12 @@ enabled = true
 db_path = "~/.openjarvis/traces.db"
 
 [server]
-host = "0.0.0.0"
+host = "127.0.0.1"
 port = 8080
 agent = "native_react"
 
 [server.auth]
-api_key = "oj_sk_dev_key_12345"
+# api_key = "oj_sk_dev_key_12345"
 
 
 

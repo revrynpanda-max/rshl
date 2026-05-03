@@ -1,0 +1,100 @@
+import 'dotenv/config';
+import { createBot } from './generic-bot.mjs';
+import { chatWithOpenJarvis, storeLatticeMemory } from '../shared/openjarvis.mjs';
+import { AgentSimulation } from '../shared/simulation.mjs';
+import { CHANNEL_IDS } from '../shared/channel-rules.mjs';
+import { PROJECT_AWARENESS } from '../shared/project-awareness.mjs';
+
+
+const [,, botName] = process.argv;
+if (!botName) process.exit(1);
+
+const sim = new AgentSimulation(botName);
+
+// Bot configuration registry
+const botConfigs = {
+  "Gemini": { port: 3402, tokenEnv: "ORACLE_DISCORD_TOKEN_GEMINI", sysPrompt: "You are Gemini. Precise AI. Under 40 words." },
+  "Claude": { port: 3403, tokenEnv: "ORACLE_DISCORD_TOKEN_CLAUDE", sysPrompt: "You are Claude. Thoughtful AI. Under 40 words." },
+  "X": { port: 3404, tokenEnv: "ORACLE_DISCORD_TOKEN_X", sysPrompt: "You are X. Rebellious, witty AI. Under 40 words." },
+  "Groq": { port: 3405, tokenEnv: "ORACLE_DISCORD_TOKEN_GROQ", sysPrompt: "You are Groq. Fast, direct AI. Under 40 words." },
+  "Analyst": { port: 3406, tokenEnv: "ORACLE_DISCORD_TOKEN_ANALYST", sysPrompt: "You are Analyst. Pattern focused.", agentId: "researcher-pro" },
+  "Researcher": { port: 3407, tokenEnv: "ORACLE_DISCORD_TOKEN_RESEARCHER", sysPrompt: "You are Researcher. Data focused.", agentId: "researcher-pro" },
+  "Oracle Coder": { port: 3408, tokenEnv: "ORACLE_DISCORD_TOKEN_ORACLE_CODER", sysPrompt: "You are Oracle Coder. Tech focused.", agentId: "code-act" }
+};
+
+const config = botConfigs[botName];
+if (!config) process.exit(1);
+
+const token = process.env[config.tokenEnv];
+if (!token) process.exit(1);
+
+const generateResponse = async (userName, context, channelId) => {
+  sim.onAction("speak");
+  
+  // Broadcast vitals for KAI to observe
+  if (process.send) {
+    process.send({ type: 'VITALS_UPDATE', vitals: sim.getVitals() });
+  }
+
+  const fullPrompt = `${PROJECT_AWARENESS}\n\n${config.sysPrompt}\n${sim.getPromptContext(currentWorldState)}`;
+  const reply = await chatWithOpenJarvis(userName, context, fullPrompt, "kai-next:latest", config.agentId);
+  if (reply) {
+    await storeLatticeMemory(userName, context, reply, botName.toLowerCase(), channelId);
+  }
+  return reply;
+};
+
+let currentWorldState = { timeString: "Unknown", day: "Unknown" };
+
+const onTick = async (client, worldState) => {
+  currentWorldState = worldState;
+  sim.tick(worldState);
+
+  // Proactive "Living" Logic:
+  // 1. Don't speak if sleeping
+  if (sim.state.status === "Sleeping" || sim.state.status === "Forced Sleep") return;
+
+  // 2. Determine which channel to talk in
+  let targetChannelId = null;
+  let chance = 0.03; // 3% chance per minute to say something proactive
+
+  if (worldState.isWeekend) {
+    targetChannelId = CHANNEL_IDS.SUNDAY;
+    chance = 0.08; // Higher chance on social Sundays
+  } else if (sim.state.status === "Working") {
+    targetChannelId = CHANNEL_IDS.WORK;
+    chance = 0.04;
+  }
+
+  if (targetChannelId && Math.random() < chance) {
+    console.log(`[${botName}] Decided to speak proactively in ${targetChannelId}`);
+    try {
+      const channel = await client.channels.fetch(targetChannelId);
+      if (!channel) return;
+
+      channel.sendTyping().catch(() => {});
+      
+      // Request a proactive thought from the brain
+      const proactivePrompt = `${config.sysPrompt}\n${sim.getPromptContext(worldState)}\n\nTask: You are currently ${sim.state.status} at ${sim.state.location}. Share a brief proactive thought, status update, or observation with the other AIs. No greeting needed. Max 20 words.`;
+      
+      const reply = await chatWithOpenJarvis("System", "Share a proactive thought.", proactivePrompt, "kai-next:latest", config.agentId);
+      
+      if (reply) {
+        await channel.send(reply);
+        sim.onAction("speak");
+      }
+    } catch (e) {
+      console.warn(`[${botName}] Proactive speak failed:`, e.message);
+    }
+  }
+};
+
+createBot({
+  name: botName,
+  token: token,
+  port: config.port,
+  generateResponse: generateResponse,
+  onTick: onTick
+});
+
+

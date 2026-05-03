@@ -1,4 +1,4 @@
-﻿"""RSHL (Recursive Sparse Hyperdimensional Lattice) Storage Backend.
+"""RSHL (Recursive Sparse Hyperdimensional Lattice) Storage Backend.
 
 Bridges OpenJarvis to KAI's native geometric intelligence engine via the Oracle API.
 """
@@ -24,7 +24,13 @@ class RSHLBackend(MemoryBackend):
         self.backend_id = "rshl"
 
     def count(self) -> int:
-        """Return number of entries (not supported by RSHL API, return -1)."""
+        """Return number of entries from KAI's status endpoint."""
+        try:
+            resp = requests.get(f"{self.oracle_url}/api/status", timeout=2)
+            if resp.ok:
+                return resp.json().get("lattice_size", 0)
+        except Exception:
+            pass
         return -1
 
     def store(
@@ -103,6 +109,23 @@ class RSHLBackend(MemoryBackend):
     def clear(self) -> None:
         """Clearing not supported in RSHL via API."""
         pass
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Fetch KAI-specific metrics for the adjustment dials."""
+        try:
+            resp = requests.get(f"{self.oracle_url}/api/status", timeout=2)
+            if resp.ok:
+                data = resp.json()
+                return {
+                    "entries": data.get("lattice_size", 0),
+                    "phi": data.get("phi_g", 0.0),
+                    "chi": data.get("chi", 0.0),
+                    "anchors": data.get("anchor_count", 0),
+                    "status": data.get("status", "unknown")
+                }
+        except Exception:
+            pass
+        return {"entries": self.count()}
 
 
 __all__ = ["RSHLBackend"]

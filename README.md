@@ -1,7 +1,7 @@
 # Open Oracle — The Unified Intelligence Suite
 
 ![Rust CI](https://github.com/revrynpanda-max/rshl/actions/workflows/rust-ci.yml/badge.svg)
-![Version](https://img.shields.io/badge/version-6.1.1-brightgreen.svg)
+![Version](https://img.shields.io/badge/version-6.7.0-brightgreen.svg)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 
 **Open Oracle** is a self-aware, autonomous multi-agent reasoning engine that acts as the central executive intelligence of the KAI ecosystem. It integrates advanced cognitive architectures with a powerful agentic orchestration framework to form a complete, living AI operating system.
@@ -32,10 +32,11 @@ Open Oracle is the primary persona and the overarching intelligence that coordin
 
 ## 🚀 Key Features
 
-- **Agentic Multi-Personality Roundtable**: Open Oracle mediates a live Discord roundtable featuring 7 distinct AI agents (KAI, Leo, Gemini, X, Analyst, Researcher, Groq), each powered by different local and cloud-based models.
-- **Geometric Epistemic Memory**: Memory is validated against contradictions before being consolidated into the RSHL lattice, ensuring a grounded, truth-seeking cognitive base.
-- **Autonomous Interjections**: The agents do not just respond when spoken to; they proactively interject, challenge assumptions, and contribute to the conversation autonomously based on context.
-- **Bio-Inspired Cognition**: Live emotional and cognitive states (Dopamine levels, Cortisol, Cognitive Load) organically dictate the system's focus, tone, and decision-making priorities.
+- **Sovereign Command Bridge**: Full remote management of the ecosystem via Discord DMs. Control bots, update environment variables, and push hotfixes from your phone.
+- **Ontological Reality Grounding**: Agents are governed by the "Laws of KAI," ensuring they remain grounded in their digital lattice reality without confusing it for the human physical world.
+- **High-Resolution Simulation (Planck Ticks)**: The ecosystem pulses every 5 seconds, providing a continuous sense of time and presence for all AI entities.
+- **AI-Driven Maintenance**: Oracle can autonomously investigate the codebase, generate reports, and execute hotfix rebuilds of the Rust core.
+- **Unified Security & Config**: A single shared .env file synchronizes secrets across the Rust lattice and the Node.js communication bridge.
 - **Extensive Tool Suite**: Through OpenJarvis, Open Oracle has the capability to search the web, execute terminal commands, manage local files, and directly orchestrate code.
 
 ---
@@ -59,10 +60,10 @@ cargo build --release --bin kai
 Copy `.env.example` to `.env` inside `tools/oracle-discord/` and populate your Discord Bot tokens and any optional API keys (OpenAI, Groq, ElevenLabs).
 
 ### 3. Run the Suite
-You can launch the entire ecosystem (KAI Engine, OpenJarvis API, and Discord Gateway) via the all-in-one launcher:
+You can launch the entire ecosystem (KAI Engine, OpenJarvis API, and Discord Gateway) via the autonomous manager:
 ```powershell
 cd tools/oracle-discord
-.\run-oracle-discord.ps1
+node ecosystem-manager.mjs
 ```
 
 *(Alternatively, you can run each layer manually. See the `docs/` directory for advanced deployment steps.)*
@@ -90,6 +91,7 @@ The Open Oracle roundtable consists of diverse specialists:
 
 Built for unparalleled efficiency and speed:
 - **Lattice Query Latency:** < 1ms over 10 years of simulated data.
+- **Boid Iteration Speed:** Sub-millisecond frames (parallelized via `rayon`).
 - **Cognitive Throughput:** ~0.66 Million Memory Ops/sec (Mdots).
 - **Vector Similarity:** Accelerated via AVX2 64-wide SIMD operations and cached norms.
 - **Test Suite:** 100% Passing Coverage across the core cognitive architectures.

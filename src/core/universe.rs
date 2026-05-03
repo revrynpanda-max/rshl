@@ -543,6 +543,30 @@ impl Universe {
         Self { cells: Vec::new() }
     }
 
+    /// Read-only access to all cells (used by Boid engine and diagnostics).
+    pub fn get_cells(&self) -> &[Cell] {
+        &self.cells
+    }
+
+    /// Mutable access to all cells (used by Boid engine).
+    pub fn get_cells_mut(&mut self) -> &mut Vec<Cell> {
+        &mut self.cells
+    }
+
+    /// Run one Boid flocking pass over the lattice.
+    /// Separation keeps duplicate beliefs apart; Alignment steers same-region cells together;
+    /// Cohesion pulls them toward their regional center of mass.
+    pub fn flock_lattice(&mut self) {
+        use super::boid_engine::{BoidState, BoidSettings, run_boid_iteration};
+        if self.cells.len() < 2 { return; }
+        let mut state = BoidState::from_universe(self);
+        let settings = BoidSettings::default();
+        for _ in 0..3 {
+            run_boid_iteration(&mut state, &settings);
+        }
+        state.apply_to_universe(self);
+    }
+
     /// Number of cells in the universe.
     pub fn cell_count(&self) -> usize {
         self.cells.len()

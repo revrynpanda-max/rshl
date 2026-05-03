@@ -1,4 +1,4 @@
-﻿"""Extended API routes for agents, workflows, memory, traces, etc."""
+"""Extended API routes for agents, workflows, memory, traces, etc."""
 
 from __future__ import annotations
 
@@ -207,12 +207,15 @@ async def memory_stats(request: Request):
     if backend is None:
         return {"entries": 0, "backend": "none", "status": "not_configured", "available": False}
     try:
-        return {
+        stats = {
             "entries": backend.count(),
             "backend": getattr(backend, "backend_id", "unknown"),
             "available": True,
             "status": "ok",
         }
+        if hasattr(backend, "get_stats"):
+            stats["details"] = backend.get_stats()
+        return stats
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
