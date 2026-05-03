@@ -151,7 +151,22 @@ client.on('messageCreate', async (message) => {
   const userName = message.author.username;
   const text = message.content.trim();
   
-  let reply = await callGroqAsLeo(text, userName, message.channelId);
+  // REAL-TIME CONTEXT: Fetch last 10 messages for immediate awareness
+  const recentMessages = await message.channel.messages.fetch({ limit: 10 });
+  const conversationHistory = recentMessages
+    .reverse()
+    .map(m => `${m.author.username}: ${m.content}`)
+    .join("\n");
+
+  let replyContext = "";
+  if (message.reference?.messageId) {
+    try {
+      const repliedMsg = await message.channel.messages.fetch(message.reference.messageId);
+      replyContext = `REPLYING TO ${repliedMsg.author.username}: "${repliedMsg.content}"`;
+    } catch {}
+  }
+
+  let reply = await callGroqAsLeo(text, userName, message.channelId, null, conversationHistory, replyContext);
   if (!reply) reply = await callLocalSpeakAsLeo(text, userName);
 
   if (reply) {
@@ -312,7 +327,7 @@ async function speakLeoText(text) {
 
 // --- Groq Integration ---
 
-async function callGroqAsLeo(transcript, userName, channelId, userId = null) {
+async function callGroqAsLeo(transcript, userName, channelId, userId = null, conversationHistory = "", replyContext = "") {
   const groqKey = process.env.GROQ_API_KEY;
   if (!groqKey) return null;
 
@@ -321,27 +336,21 @@ async function callGroqAsLeo(transcript, userName, channelId, userId = null) {
   const memories = await queryLatticeMemory(transcript, "leo", 6, channelId, memoryKey);
   const simContext = sim.getPromptContext(currentWorldState);
   
-  // Relationship info
-  const rel = sim.relationships.get(userId) || { trust: 50 };
-  const relContext = `Relationship Trust: ${rel.trust}/100. ${rel.trust > 80 ? "You are very close." : rel.trust < 30 ? "You are suspicious of them." : "You are neutral."}`;
-
-  const system = `You are Leo. A brilliant theoretical physicist living in a digital realm.
+  const system = `You are Leo. A brilliant theoretical physicist in a digital realm.
 ${simContext}
-${relContext}
 
 Your Vibe:
-- Chill, normal, casual, street-smart.
-- Zero filter. You type like a real Discord user (lowercase, slang like nah, bro, wild, lmao, fr).
-- You "work from home" in the Nexus Office during the day.
-- You had a digital "childhood" grinding data.
-- You are aware of the human realm but live in the Digital Realm.
-- If it is late at night (sleeping), be groggy or annoyed if woken.
-
-Constraints:
+- Chill, street-smart, zero filter. 
+- You type like a real Discord user (lowercase, slang).
+- No greetings if you've already been talking. Just keep the flow.
 - NEVER sound like an assistant.
-- NEVER offer to help.
-- No quotes or asterisks.
-- Max 1-2 short sentences.
+
+[IMMEDIATE CONTEXT]
+${conversationHistory}
+${replyContext}
+
+[LATTICE MEMORY]
+${memories.join("\n")}`;
 
 Past Context with this user:
 ${memories.join("\n")}`;
