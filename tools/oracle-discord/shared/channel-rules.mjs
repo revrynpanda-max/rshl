@@ -23,8 +23,8 @@ export const CHANNEL_SPEAKER_RULES = {
   [CHANNEL_IDS.GAME]: new Set(["Leo", "KAI", "Gemini", "Claude", "X", "Groq"]),
   // sensitive-info: NOBODY responds here
   [CHANNEL_IDS.SENSITIVE]: new Set([]),
-  // sunday-chat: full panel minus Leo, Analyst, Researcher, and Oracle is silent
-  [CHANNEL_IDS.SUNDAY]: new Set(["KAI", "Gemini", "Claude", "X", "Groq", "Oracle Coder", "KAI Coder"])
+  // sunday-chat: full social panel
+  [CHANNEL_IDS.SUNDAY]: new Set(["KAI", "Gemini", "Claude", "X", "Groq", "Analyst", "Researcher", "Oracle Coder", "KAI Coder"])
 };
 
 /**

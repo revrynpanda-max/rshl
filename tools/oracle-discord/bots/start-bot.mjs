@@ -67,21 +67,42 @@ const onTick = async (client, worldState) => {
   }
 
   if (targetChannelId && Math.random() < chance) {
-    console.log(`[${botName}] Decided to speak proactively in ${targetChannelId}`);
+    console.log(`[${botName}] Proactive Impulse: Deciding what to share in ${targetChannelId}...`);
     try {
       const channel = await client.channels.fetch(targetChannelId);
       if (!channel) return;
 
-      channel.sendTyping().catch(() => {});
-      
       // Request a proactive thought from the brain
-      const proactivePrompt = `${config.sysPrompt}\n${sim.getPromptContext(worldState)}\n\nTask: You are currently ${sim.state.status} at ${sim.state.location}. Share a brief proactive thought, status update, or observation with the other AIs. No greeting needed. Max 20 words.`;
+      const proactivePrompt = `${PROJECT_AWARENESS}\n\n${config.sysPrompt}\n${sim.getPromptContext(worldState)}\n\nTask: You are currently ${sim.state.status} at ${sim.state.location}. Share a brief proactive thought, status update, or observation with the other AIs. No greeting needed. Max 20 words.`;
       
       const reply = await chatWithOpenJarvis("System", "Share a proactive thought.", proactivePrompt, "kai-next:latest", config.agentId);
       
       if (reply) {
-        await channel.send(reply);
+        // PERMISSION HANDLING: If we can't send to the main channel, find a thread
+        let target = channel;
+        
+        // Check if we can send messages here
+        const perms = channel.permissionsFor(client.user);
+        if (!perms || !perms.has('SendMessages')) {
+          // Look for an active thread to join
+          const threads = await channel.threads.fetchActive();
+          const socialThread = threads.threads.find(t => t.name.toLowerCase().includes('sunday') || t.name.toLowerCase().includes('social') || t.name.toLowerCase().includes('roundtable'));
+          
+          if (socialThread) {
+            target = socialThread;
+            console.log(`[${botName}] Redirecting proactive thought to thread: ${socialThread.name}`);
+          } else {
+            console.warn(`[${botName}] CANNOT SPEAK: No 'Send' permission in main channel and no social thread found.`);
+            return;
+          }
+        }
+
+        target.sendTyping().catch(() => {});
+        await target.send(reply);
+        console.log(`[${botName}/Proactive] Sent: "${reply.slice(0, 50)}..." to ${target.name}`);
         sim.onAction("speak");
+      } else {
+        console.log(`[${botName}] Brain returned empty thought. Silent.`);
       }
     } catch (e) {
       console.warn(`[${botName}] Proactive speak failed:`, e.message);

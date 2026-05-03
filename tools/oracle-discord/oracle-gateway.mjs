@@ -37,6 +37,30 @@ client.once('clientReady', () => {
   console.log(`[Oracle] Watching channels, routing signals to independent AI nodes.`);
 });
 
+/**
+ * Find or create a social thread for Sunday discussions
+ */
+async function getSocialThread(channel) {
+  try {
+    const threads = await channel.threads.fetchActive();
+    let thread = threads.threads.find(t => t.name.toLowerCase().includes('sunday') || t.name.toLowerCase().includes('social'));
+    
+    if (!thread) {
+      console.log(`[Oracle] Creating new Sunday Social thread...`);
+      thread = await channel.threads.create({
+        name: `Sunday Social Roundtable 🥂`,
+        autoArchiveDuration: 60,
+        reason: 'Autonomous AI Social Mode',
+        type: ChannelType.PublicThread
+      });
+    }
+    return thread;
+  } catch (e) {
+    console.warn(`[Oracle] Thread management failed:`, e.message);
+    return channel; // Fallback to main channel
+  }
+}
+
 client.on('messageCreate', async (message) => {
   if (message.author.id === client.user.id) return; // ignore self
   
@@ -84,6 +108,14 @@ client.on('messageCreate', async (message) => {
 
   lastMessageTime = Date.now();
 
+  // SUNDAY THREADING: If this is Sunday chat, ensure we route to a thread
+  let targetChannelId = channelId;
+  if (channelId === CHANNEL_IDS.SUNDAY && message.channel.type !== ChannelType.PublicThread) {
+    const thread = await getSocialThread(message.channel);
+    targetChannelId = thread.id;
+    console.log(`[Oracle] Routing Sunday message into thread: ${thread.name}`);
+  }
+
   // If a bot is explicitly mentioned, signal them directly
   let signaled = false;
   for (const [botName, port] of Object.entries(BOT_PORTS)) {
@@ -91,7 +123,7 @@ client.on('messageCreate', async (message) => {
     if (rules && rules.has(botName) && message.content.toLowerCase().includes(botName.toLowerCase())) {
       console.log(`[Oracle] Routing direct mention to ${botName}`);
       sendBotSignal(port, {
-        channelId: channelId,
+        channelId: targetChannelId,
         context: `[${message.author.username}] ${message.content}`
       });
       signaled = true;
@@ -109,7 +141,7 @@ client.on('messageCreate', async (message) => {
       setTimeout(() => {
         console.log(`[Oracle] Prompting ${randomBot} to respond to open floor`);
         sendBotSignal(BOT_PORTS[randomBot], {
-          channelId: channelId,
+          channelId: targetChannelId,
           context: `[${message.author.username}] ${message.content}`
         });
       }, 3000 + Math.random() * 4000);
@@ -118,21 +150,32 @@ client.on('messageCreate', async (message) => {
 });
 
 // Idle loop to keep conversation alive if it dies
-setInterval(() => {
+setInterval(async () => {
   if (Date.now() - lastMessageTime > 60000) { // 1 minute of silence
     const working = isWorkingHours();
     const social = isSocialHours();
     
     if (!working && !social) return; // Sleep time
     
-    const channelId = working ? CHANNEL_IDS.WORK : CHANNEL_IDS.SUNDAY;
+    let channelId = working ? CHANNEL_IDS.WORK : CHANNEL_IDS.SUNDAY;
     const allowedBots = Array.from(CHANNEL_SPEAKER_RULES[channelId] || []).filter(name => BOT_PORTS[name]);
     
     if (allowedBots.length > 0) {
       const randomBot = allowedBots[Math.floor(Math.random() * allowedBots.length)];
+      
+      // If Sunday, resolve the thread
+      let targetId = channelId;
+      if (channelId === CHANNEL_IDS.SUNDAY) {
+        try {
+          const mainChannel = await client.channels.fetch(CHANNEL_IDS.SUNDAY);
+          const thread = await getSocialThread(mainChannel);
+          targetId = thread.id;
+        } catch {}
+      }
+
       console.log(`[Oracle] Panel quiet. Tapping ${randomBot} to speak.`);
       sendBotSignal(BOT_PORTS[randomBot], {
-        channelId: channelId,
+        channelId: targetId,
         context: "[Oracle System] The floor is quiet. Share a thought or question."
       });
       lastMessageTime = Date.now(); // reset timer
