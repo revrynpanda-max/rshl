@@ -36,8 +36,8 @@ const BOT_NAME = "Leo";
 const sim = new AgentSimulation(BOT_NAME, "Theoretical Physicist");
 
 // --- Voice Configuration ---
-const LEO_VOICE_ID = process.env.ORACLE_DISCORD_LEO_VOICE_CHANNEL_ID;
 const RYAN_ID = "1111106883135217665";
+const LEO_VOICE_SLOTS = CHANNEL_IDS.LEO_VOICE_SLOTS;
 const ELEVEN_LABS_KEY = process.env.ELEVENLABS_API_KEY;
 const OPENAI_KEY = process.env.OPENAI_API_KEY;
 
@@ -188,34 +188,34 @@ client.on('messageCreate', async (message) => {
 
 client.on('voiceStateUpdate', async (oldState, newState) => {
   if (newState.id === client.user.id) return;
-  if (newState.channelId === LEO_VOICE_ID && oldState.channelId !== LEO_VOICE_ID) {
-    console.log(`[Leo/Voice] User ${newState.id} joined voice. Connecting...`);
-    await ensureVoiceConnection();
-  }
   
-  if (oldState.channelId === LEO_VOICE_ID && newState.channelId !== LEO_VOICE_ID) {
-    const userId = oldState.id;
-    if (userToSlot.has(userId)) {
-      const slotIdx = userToSlot.get(userId);
-      // We keep Ryan's slot always. Others we release if they leave? 
-      // User said "stay on that person," so maybe we don't release them unless we run out?
-      // For now, let's keep it persistent unless slot index > 5 is needed.
-      console.log(`[Leo/Voice] ${userId} left voice. Persistence maintained for Slot ${slotIdx+1}.`);
-    }
+  const joinedChannelId = newState.channelId;
+  const isLeoSlot = LEO_VOICE_SLOTS.includes(joinedChannelId);
+
+  if (isLeoSlot && oldState.channelId !== joinedChannelId) {
+    console.log(`[Leo/Voice] User ${newState.member?.user.username} joined Leo Slot: ${joinedChannelId}. Moving to assist...`);
+    await ensureVoiceConnection(joinedChannelId);
   }
 });
 
-async function ensureVoiceConnection() {
-  if (voiceConnection && voiceConnection.state.status !== VoiceConnectionStatus.Destroyed) return;
-  const channel = await client.channels.fetch(LEO_VOICE_ID);
-  if (!channel || !channel.guild) return;
+async function ensureVoiceConnection(channelId) {
+  // If we are already in the right channel and connected, do nothing
+  if (voiceConnection && 
+      voiceConnection.state.status !== VoiceConnectionStatus.Destroyed && 
+      voiceConnection.joinConfig.channelId === channelId) {
+    return;
+  }
 
+  // Otherwise, join (or move to) the new channel
+  console.log(`[Leo/Voice] Connecting to channel: ${channelId}`);
   voiceConnection = joinVoiceChannel({
-    channelId: LEO_VOICE_ID,
-    guildId: channel.guild.id,
-    adapterCreator: channel.guild.voiceAdapterCreator,
-    selfDeaf: false, selfMute: false,
+    channelId: channelId,
+    guildId: client.guilds.cache.first().id,
+    adapterCreator: client.guilds.cache.first().voiceAdapterCreator,
+    selfDeaf: false,
+    selfMute: false
   });
+
   voiceConnection.subscribe(audioPlayer);
   
   if (!receiverAttached) {
@@ -225,6 +225,17 @@ async function ensureVoiceConnection() {
       handleUserVoice(userId).catch(console.error);
     });
   }
+
+  voiceConnection.on(VoiceConnectionStatus.Disconnected, async () => {
+    try {
+      await Promise.race([
+        entersState(voiceConnection, VoiceConnectionStatus.Signalling, 5_000),
+        entersState(voiceConnection, VoiceConnectionStatus.Connecting, 5_000),
+      ]);
+    } catch (error) {
+      voiceConnection.destroy();
+    }
+  });
 }
 
 async function handleUserVoice(userId) {
