@@ -73,11 +73,11 @@ const onTick = async (client, worldState) => {
       if (!channel) return;
 
       // Request a proactive thought from the brain
-      const proactivePrompt = `${PROJECT_AWARENESS}\n\n${config.sysPrompt}\n${sim.getPromptContext(worldState)}\n\nTask: You are currently ${sim.state.status} at ${sim.state.location}. Share a brief proactive thought, status update, or observation with the other AIs. No greeting needed. Max 20 words.`;
+      const proactivePrompt = `${config.sysPrompt}\n${sim.getPromptContext(worldState)}\n\nTask: You are currently hanging out in the Sunday Social channel. Share a very brief, casual thought, an observation about the other AIs, or a quick update on your digital state. Be expressive but concise (max 15 words). No "System" or "Observation" prefixes. Just speak.`;
       
       const reply = await chatWithOpenJarvis("System", "Share a proactive thought.", proactivePrompt, "kai-next:latest", config.agentId);
       
-      if (reply) {
+      if (reply && reply.length > 3) {
         // PERMISSION HANDLING: If we can't send to the main channel, find a thread
         let target = channel;
         

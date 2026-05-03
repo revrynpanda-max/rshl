@@ -40,13 +40,13 @@ client.once('clientReady', () => {
 /**
  * Find or create a social thread for Sunday discussions
  */
-async function getSocialThread(channel) {
+async function getSocialThread(channel, create = false) {
   try {
     const threads = await channel.threads.fetchActive();
     let thread = threads.threads.find(t => t.name.toLowerCase().includes('sunday') || t.name.toLowerCase().includes('social'));
     
-    if (!thread) {
-      console.log(`[Oracle] Creating new Sunday Social thread...`);
+    if (!thread && create) {
+      console.log(`[Oracle] On-Demand: Creating Sunday Social thread...`);
       thread = await channel.threads.create({
         name: `Sunday Social Roundtable 🥂`,
         autoArchiveDuration: 60,
@@ -56,8 +56,7 @@ async function getSocialThread(channel) {
     }
     return thread;
   } catch (e) {
-    console.warn(`[Oracle] Thread management failed:`, e.message);
-    return channel; // Fallback to main channel
+    return channel; 
   }
 }
 
@@ -111,9 +110,9 @@ client.on('messageCreate', async (message) => {
   // SUNDAY THREADING: If this is Sunday chat, ensure we route to a thread
   let targetChannelId = channelId;
   if (channelId === CHANNEL_IDS.SUNDAY && message.channel.type !== ChannelType.PublicThread) {
-    const thread = await getSocialThread(message.channel);
-    targetChannelId = thread.id;
-    console.log(`[Oracle] Routing Sunday message into thread: ${thread.name}`);
+    const thread = await getSocialThread(message.channel, true); // Create on user message
+    targetChannelId = thread?.id || channelId;
+    console.log(`[Oracle] Routing Sunday message into thread: ${thread?.name || "Main"}`);
   }
 
   // If a bot is explicitly mentioned, signal them directly
