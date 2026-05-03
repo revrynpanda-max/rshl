@@ -42,6 +42,13 @@ export async function chatWithOpenJarvis(userName, transcript, systemPrompt, mod
         return reply; 
       }
     }
+    
+    // FAILSAFE: If the specialized brain is empty/stalled, try a generic social fallback
+    if (!agentId || agentId === "kai-observer") return null; 
+    
+    console.log(`[OpenJarvis] Agent ${agentId} was silent. Attempting social fallback...`);
+    return await chatWithOpenJarvis(userName, transcript, systemPrompt, "llama-3.1-8b-instant", null);
+
   } catch (e) { 
     console.warn(`[OpenJarvis] Chat request failed (${agentId || "generic"}):`, e.message); 
   }

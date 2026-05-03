@@ -86,7 +86,8 @@ Respond with a single, dense cognitive claim for the Lattice.`
     const analysis = data.choices?.[0]?.message?.content?.trim();
     
     if (analysis) {
-      console.log(`[${BOT_NAME}/Lattice] New Epistemic Claim: ${analysis}`);
+      // Quiet logging: only show the first 40 chars of analysis
+      console.log(`[${BOT_NAME}/Lattice] Digesting Claim: "${analysis.slice(0, 40)}..."`);
       await storeLatticeMemory(sender, text, `[Quantum Analysis: ${analysis}]`, "kai", channelId);
     }
   } catch (e) {

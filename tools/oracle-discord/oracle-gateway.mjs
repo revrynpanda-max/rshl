@@ -32,9 +32,22 @@ const BOT_PORTS = {
 const ROUNDTABLE_CHANNELS = [CHANNEL_IDS.WORK, CHANNEL_IDS.SUNDAY, CHANNEL_IDS.GAME];
 let lastMessageTime = Date.now();
 
-client.once('clientReady', () => {
+client.once('clientReady', async () => {
   console.log(`[Oracle Ecosystem] Online as ${client.user.tag}`);
   console.log(`[Oracle] Watching channels, routing signals to independent AI nodes.`);
+
+  // Proactive Sunday Thread Creation
+  if (isSocialHours()) {
+    try {
+      const sundayChannel = await client.channels.fetch(CHANNEL_IDS.SUNDAY);
+      if (sundayChannel) {
+        console.log(`[Oracle] Social Hours detected. Ensuring Sunday Social thread exists...`);
+        await getSocialThread(sundayChannel, true);
+      }
+    } catch (e) {
+      console.warn(`[Oracle/Startup] Failed to prime Sunday thread:`, e.message);
+    }
+  }
 });
 
 /**
