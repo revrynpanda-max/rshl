@@ -176,21 +176,22 @@ client.on('messageCreate', async (message) => {
 
 // Idle loop to keep conversation alive if it dies
 setInterval(async () => {
-  if (Date.now() - lastMessageTime > 60000) { // 1 minute of silence
-    const working = isWorkingHours();
-    const social = isSocialHours();
-    
-    if (!working && !social) return; // Sleep time
-    
-    let channelId = working ? CHANNEL_IDS.WORK : CHANNEL_IDS.SUNDAY;
-    const allowedBots = Array.from(CHANNEL_SPEAKER_RULES[channelId] || []).filter(name => BOT_PORTS[name]);
+  const working = isWorkingHours();
+  const social = isSocialHours();
+  
+  if (!working && !social) return; // Full sleep mode
+
+  // Phase-Lock: Work bots in WORK, Social bots in SUNDAY/GAME
+  const targetChannelId = working ? CHANNEL_IDS.WORK : CHANNEL_IDS.SUNDAY;
+  
+  if (Date.now() - lastMessageTime > 600000) { // 10 minutes of silence
+    const allowedBots = Array.from(CHANNEL_SPEAKER_RULES[targetChannelId] || []).filter(name => BOT_PORTS[name]);
     
     if (allowedBots.length > 0) {
       const randomBot = allowedBots[Math.floor(Math.random() * allowedBots.length)];
       
-      // If Sunday, resolve the thread
-      let targetId = channelId;
-      if (channelId === CHANNEL_IDS.SUNDAY) {
+      let targetId = targetChannelId;
+      if (targetChannelId === CHANNEL_IDS.SUNDAY) {
         try {
           const mainChannel = await client.channels.fetch(CHANNEL_IDS.SUNDAY);
           const thread = await getSocialThread(mainChannel);
@@ -198,15 +199,15 @@ setInterval(async () => {
         } catch {}
       }
 
-      console.log(`[Oracle] Panel quiet. Tapping ${randomBot} to speak.`);
+      console.log(`[Oracle/Scheduler] Panel quiet in ${working ? 'Work' : 'Social'} mode. Prompting ${randomBot}.`);
       sendBotSignal(BOT_PORTS[randomBot], {
         channelId: targetId,
-        context: "[Oracle System] The floor is quiet. Share a thought or question."
+        context: "[Oracle Overseer] The room is quiet. Share an update relevant to the current schedule."
       });
-      lastMessageTime = Date.now(); // reset timer
+      lastMessageTime = Date.now();
     }
   }
-}, 30000);
+}, 60000); // Check every minute
 
 // Log in as Oracle
 client.login(process.env.ORACLE_DISCORD_TOKEN);

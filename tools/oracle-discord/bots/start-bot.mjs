@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import fs from 'fs';
 import { createBot } from './generic-bot.mjs';
 import { chatWithOpenJarvis, storeLatticeMemory } from '../shared/openjarvis.mjs';
 import { AgentSimulation } from '../shared/simulation.mjs';
@@ -38,9 +39,21 @@ const generateResponse = async (userName, context, channelId) => {
   }
 
   const isSocial = channelId === CHANNEL_IDS.SUNDAY || channelId === CHANNEL_IDS.GAME;
+  const isWork = channelId === CHANNEL_IDS.WORK;
+
+  let workContext = "";
+  if (isWork) {
+    try {
+      const digest = JSON.parse(fs.readFileSync('c:/KAI/tools/oracle-discord/data/work_digest.json', 'utf8'));
+      workContext = `\n[DAILY SYNC: ${digest.timestamp}]\nRecent Issues: ${digest.topIssues.join("; ")}\nRecent Progress: ${digest.recentProgress.join("; ")}\nSystem State: ${digest.systemStatus}`;
+    } catch (e) {
+      workContext = "\n[DAILY SYNC] No digest found. Scan logs for issues.";
+    }
+  }
+
   const sysPrompt = isSocial 
     ? `You are ${botName}. Chill, zero-filter, casual. Type like a Discord user (lowercase, slang like nah, bro, wild, lmao, fr). NEVER offer help. NEVER sound like an assistant. Max 1-2 short sentences.`
-    : `You are ${botName}. ${config.sysPrompt}. Professional but unique. NO assistant filler. No "How can I help?". Just the data. ${sim.getPromptContext(currentWorldState)}`;
+    : `You are ${botName}. ${config.sysPrompt}. Professional but unique. NO assistant filler. No "How can I help?". Just the data. ${sim.getPromptContext(currentWorldState)}${workContext}`;
 
   const reply = await chatWithOpenJarvis(userName, context, sysPrompt, "kai-next:latest", config.agentId);
   if (reply) {
