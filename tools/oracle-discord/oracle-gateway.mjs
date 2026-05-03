@@ -29,7 +29,14 @@ const BOT_PORTS = {
   "Kai Coder": 3408
 };
 
-const ROUNDTABLE_CHANNELS = [CHANNEL_IDS.WORK, CHANNEL_IDS.SUNDAY, CHANNEL_IDS.GAME];
+const ROUNDTABLE_CHANNELS = [
+  CHANNEL_IDS.WORK, 
+  CHANNEL_IDS.PUBLIC, 
+  CHANNEL_IDS.GAME, 
+  CHANNEL_IDS.SENSITIVE, 
+  CHANNEL_IDS.SUNDAY, 
+  CHANNEL_IDS.RADIO
+];
 let lastMessageTime = Date.now();
 
 client.once('clientReady', async () => {

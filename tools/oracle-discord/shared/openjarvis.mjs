@@ -1,4 +1,5 @@
-import { isInternalMonologue } from './utils.mjs'; // We'll need a utils.mjs
+import { isInternalMonologue } from './utils.mjs'; 
+import { CHANNEL_IDS } from './channel-rules.mjs';
 
 const OPENJARVIS_URL = process.env.OPENJARVIS_URL || "http://127.0.0.1:8080";
 const LEO_LATTICE = process.env.KAI_API_URL || "http://127.0.0.1:3333";
@@ -8,7 +9,8 @@ const LEO_LATTICE = process.env.KAI_API_URL || "http://127.0.0.1:3333";
  */
 export async function callGroqDirect(userName, transcript, systemPrompt, model = "llama-3.1-8b-instant") {
   const groqKey = process.env.GROQ_API_KEY;
-  if (!groqKey) return null;
+  if (!groqKey) return "[System Error] Groq Key Missing. Recalibrating...";
+  
   try {
     const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
@@ -20,11 +22,22 @@ export async function callGroqDirect(userName, transcript, systemPrompt, model =
       }),
     });
     const data = await res.json();
-    return data.choices?.[0]?.message?.content?.trim() || null;
+    const reply = data.choices?.[0]?.message?.content?.trim();
+    if (reply) return reply;
   } catch (e) {
     console.error("[GroqDirect] Failed:", e.message);
-    return null;
   }
+
+  // Final Safety Personality Spark (No Silence allowed)
+  const sparks = {
+    "Gemini": "Sensors recalibrating... processing the lattice flux.",
+    "Claude": "My apologies, I'm deep in thought. Give me a moment to re-center.",
+    "X": "Brain's fried from all this chatter. Nah, I'm just reloading.",
+    "Groq": "Processing too fast. Buffer flush. Speak again.",
+    "Leo": "The physics of this conversation are... complex. One moment.",
+    "Oracle": "Overseer core busy. System stable. Re-syncing."
+  };
+  return sparks[userName] || "Processing... My core is temporarily anchoring. Speak again.";
 }
 
 /**
@@ -109,6 +122,12 @@ export async function queryLatticeMemory(topic, region, limit = 4, channelFilter
  */
 export async function storeLatticeMemory(userName, utterance, reply, region, channel = "unknown") {
   const memoryText = `[${channel}] ${userName} said: "${utterance}" — ${region} replied: "${reply}"`;
+  
+  // Dynamic Evolution Weights
+  let strength = 1.2; // Default
+  if (channel === CHANNEL_IDS.WORK || channel === CHANNEL_IDS.SENSITIVE) strength = 2.0;
+  if (channel === CHANNEL_IDS.GAME) strength = 0.8;
+
   try {
     await fetch(`${LEO_LATTICE}/api/rshl/store`, {
       method: "POST",
@@ -117,10 +136,10 @@ export async function storeLatticeMemory(userName, utterance, reply, region, cha
         text: memoryText,
         region: region,       
         source: region,       
-        strength: 1.2,       
+        strength: strength,       
       }),
     });
-    console.log(`[LatticeStore] Stored for ${region}: "${memoryText.slice(0, 80)}"`);
+    console.log(`[LatticeStore] Stored for ${region} (Strength: ${strength}): "${memoryText.slice(0, 80)}"`);
   } catch (e) {
     console.warn("[LatticeStore] Store failed:", e.message);
   }
