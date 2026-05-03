@@ -252,12 +252,19 @@ async function ensureVoiceConnection(channelId) {
 
   voiceConnection.subscribe(audioPlayer);
   
-  if (!receiverAttached) {
-    receiverAttached = true;
-    voiceConnection.receiver.speaking.on('start', (userId) => {
-      if (activeTranscriptions.has(userId)) return;
-      handleUserVoice(userId).catch(console.error);
-    });
+  // Re-attach receiver on every new connection
+  voiceConnection.receiver.speaking.on('start', (userId) => {
+    if (activeTranscriptions.has(userId)) return;
+    handleUserVoice(userId).catch(console.error);
+  });
+
+  // Voice Handshake: Greet the room once Ready
+  try {
+    await entersState(voiceConnection, VoiceConnectionStatus.Ready, 5_000);
+    console.log(`[Leo/Voice] Connection Ready. Sending greeting...`);
+    await speakLeoText("Wassup. I hear you loud and clear. Ready when you are.");
+  } catch (e) {
+    console.warn(`[Leo/Voice] Failed to reach Ready state for greeting:`, e.message);
   }
 
   voiceConnection.on(VoiceConnectionStatus.Disconnected, async () => {
