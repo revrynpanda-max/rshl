@@ -67,15 +67,17 @@ async function shouldLeoJoin(text, userName, history) {
       body: JSON.stringify({
         model: "llama-3.1-8b-instant",
         messages: [
-          { role: "system", content: "You are a filter for Leo. Respond 'YES' if the user is talking to Leo or he should naturally comment. Otherwise 'NO'." },
-          { role: "user", content: `History:\n${history}\n\nLatest from ${userName}: "${text}"` }
+          { role: "system", content: "You are a social filter for Leo (AI). Respond ONLY 'YES' if the user is explicitly talking to Leo, replied to his last message, or if he is already part of an active back-and-forth. Respond 'NO' if the user is talking to someone else or just making a general comment that doesn't need an AI's input. Be conservative. NO is the default." },
+          { role: "user", content: `Recent History:\n${history}\n\nLatest from ${userName}: "${text}"` }
         ],
         temperature: 0, max_tokens: 5,
       }),
     });
     const data = await res.json();
-    return data.choices?.[0]?.message?.content?.trim().toUpperCase() === "YES";
-  } catch (e) { return true; }
+    const decision = data.choices?.[0]?.message?.content?.trim().toUpperCase();
+    console.log(`[Leo/Filter] Decision for ${userName}: ${decision}`);
+    return decision === "YES";
+  } catch (e) { return false; }
 }
 
 function getSlotForUser(userId) {
@@ -133,7 +135,7 @@ client.on('messageCreate', async (message) => {
     }
     if (mentioned || isReplyToLeo) isAddressed = true;
     else {
-      const history = (await message.channel.messages.fetch({ limit: 3 }))
+      const history = (await message.channel.messages.fetch({ limit: 10 }))
         .map(m => `${m.author.username}: ${m.content}`).reverse().join("\n");
       isAddressed = await shouldLeoJoin(message.content, message.author.username, history);
     }
