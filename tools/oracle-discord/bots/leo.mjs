@@ -354,9 +354,6 @@ ${replyContext}
 [LATTICE MEMORY]
 ${memories.join("\n")}`;
 
-Past Context with this user:
-${memories.join("\n")}`;
-
   try {
     const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
