@@ -37,7 +37,7 @@ try {
 }
 
 import { isAllowed, CHANNEL_IDS } from '../shared/channel-rules.mjs';
-import { chatWithOpenJarvis, callOpenAI, callGroqDirect } from '../shared/openjarvis.mjs';
+import { chatWithOpenJarvis, callOpenAI, callGroqDirect, callGemini } from '../shared/openjarvis.mjs';
 import { recordAIFailure, isSpeakerOffline, isProviderReady, recordProviderFailure } from '../shared/failure-tracker.mjs';
 import { isLoopingResponse } from '../shared/utils.mjs';
 import { AgentSimulation } from '../shared/simulation.mjs';
@@ -700,52 +700,75 @@ ${cleanHistory}`;
 
     console.log(`[Leo/Neural] Thinking via Groq (${model})...`);
     
-    let res = null;
+    const providers = [];
+    
     if (isProviderReady("Groq")) {
-      res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${groqKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: model,
-          messages: [{ role: "system", content: system }, { role: "user", content: cleanTranscript }],
-          temperature: 0.8, max_tokens: 150
-        }),
-        signal: AbortSignal.timeout(6000) // TIGHTER TIMEOUT
-      }).catch(e => {
-        console.warn(`[Leo/Neural] Groq fetch failed: ${e.message}`);
+      providers.push((async () => {
+        const r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${groqKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: model,
+            messages: [{ role: "system", content: system }, { role: "user", content: cleanTranscript }],
+            temperature: 0.8, max_tokens: 150
+          }),
+          signal: AbortSignal.timeout(4000)
+        }).catch(() => null);
+        if (r && r.status === 429) recordProviderFailure("Groq", 429);
+        if (r && r.ok) {
+          const d = await r.json();
+          return d.choices?.[0]?.message?.content?.trim();
+        }
+        throw new Error("Groq Fail");
+      })());
+    }
+
+    if (isProviderReady("OpenAI")) {
+      providers.push((async () => {
+        const reply = await callOpenAI(userName, cleanTranscript, system, 5000).catch(e => {
+          if (e.message.includes("429")) recordProviderFailure("OpenAI", 429);
+          return null;
+        });
+        if (reply) return reply;
+        throw new Error("OpenAI Fail");
+      })());
+    }
+
+    if (isProviderReady("Claude")) {
+      providers.push((async () => {
+        const reply = await callAnthropic(userName, cleanTranscript, system, 5000).catch(e => {
+          if (e.message.includes("429")) recordProviderFailure("Claude", 429);
+          return null;
+        });
+        if (reply) return reply;
+        throw new Error("Claude Fail");
+      })());
+    }
+
+    // --- EXECUTE THE RACE ---
+    try {
+      if (providers.length > 0) {
+        // Wait for FIRST success, ignore errors until all fail
+        const fastResponse = await Promise.any(providers);
+        if (fastResponse) return fastResponse;
+      }
+    } catch (e) {
+      console.warn(`[Leo/Neural] Cloud Race failed or timed out. Failing to Gemini/Local...`);
+    }
+
+    // --- SECONDARY / LOCAL FALLBACK ---
+    if (isProviderReady("Gemini")) {
+      const gReply = await callGemini(userName, cleanTranscript, system, 5000).catch(e => {
+        if (e.message.includes("404")) recordProviderFailure("Gemini", 404);
         return null;
       });
+      if (gReply) return gReply;
     }
 
-    // FAILOVER LADDER
-    if (res && res.status === 429) recordProviderFailure("Groq", 429);
-
-    if (isProviderReady("Groq") && (!res || !res.ok)) {
-      // (Optional second Groq attempt or skip)
-    }
-
-    if (!res || !res.ok) {
-      if (isProviderReady("OpenAI")) {
-        console.warn(`[Leo/Neural] Groq offline. Trying OpenAI...`);
-        try {
-          const openaiReply = await callOpenAI(userName, cleanTranscript, system);
-          if (openaiReply) return openaiReply;
-        } catch (e) {
-          if (e.message.includes("429") || e.message.includes("401")) recordProviderFailure("OpenAI", 429);
-          console.warn(`[Leo/Neural] OpenAI failover failed: ${e.message}`);
-        }
-      }
-      
-      console.warn(`[Leo/Neural] Cloud route blocked. Engaging Local-Sonic (Ollama)...`);
-      const localReply = await chatWithOllama(cleanTranscript, system, "kai-next:latest");
-      if (localReply) return localReply;
-      throw new Error(`Neural Chain Failure.`);
-    }
-
-    const data = await res.json();
-    return data.choices?.[0]?.message?.content?.trim();
+    console.warn(`[Leo/Neural] Engaging Local-Sonic (Ollama)...`);
+    return await chatWithOllama(cleanTranscript, system, "kai-next:latest");
   } catch (err) {
-    console.error(`[Leo/Neural] Failover chain exhausted:`, err.message);
+    console.error(`[Leo/Neural] Neural Race exhausted:`, err.message);
     return null;
   } finally {
     isThinking = false; 

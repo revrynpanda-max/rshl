@@ -45,10 +45,10 @@ export function isSpeakerOffline(speaker) {
  * Record a failure for a specific Neural Provider (e.g., "Groq", "OpenAI")
  */
 export function recordProviderFailure(provider, errorStatus) {
-  if (errorStatus === 429 || errorStatus === 401) {
-    const cooldownUntil = Date.now() + 60000; // 60s cooldown
+  if (errorStatus === 429 || errorStatus === 401 || errorStatus === 404) {
+    const cooldownUntil = Date.now() + (errorStatus === 404 ? 300000 : 60000); // 5m for 404, 60s for others
     PROVIDER_COOLDOWNS.set(provider, cooldownUntil);
-    console.warn(`[CircuitBreaker] Provider ${provider} in COOLDOWN for 60s due to error ${errorStatus}`);
+    console.warn(`[CircuitBreaker] Provider ${provider} in COOLDOWN for ${errorStatus === 404 ? '5m' : '60s'} due to error ${errorStatus}`);
   }
 }
 

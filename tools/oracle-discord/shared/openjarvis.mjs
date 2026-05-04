@@ -110,7 +110,7 @@ export async function chatWithOpenJarvis(userName, transcript, systemPrompt, mod
 /**
  * Direct Brain Callers (Bypassing Gateway for speed/reliability)
  */
-export async function callOpenAI(userName, transcript, systemPrompt) {
+export async function callOpenAI(userName, transcript, systemPrompt, timeout = 10000) {
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.OPENAI_API_KEY}` },
@@ -119,14 +119,14 @@ export async function callOpenAI(userName, transcript, systemPrompt) {
       messages: [{ role: "system", content: systemPrompt }, { role: "user", content: `${userName}: ${transcript}` }],
       max_tokens: 500
     }),
-    signal: AbortSignal.timeout(10000)
+    signal: AbortSignal.timeout(timeout)
   });
   if (!res.ok) throw new Error(`OpenAI Error: ${res.status} ${res.statusText}`);
   const data = await res.json();
   return data.choices[0].message.content.trim();
 }
 
-export async function callAnthropic(userName, transcript, systemPrompt) {
+export async function callAnthropic(userName, transcript, systemPrompt, timeout = 10000) {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-api-key": process.env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
@@ -135,21 +135,25 @@ export async function callAnthropic(userName, transcript, systemPrompt) {
       system: systemPrompt,
       messages: [{ role: "user", content: `${userName}: ${transcript}` }],
       max_tokens: 500
-    })
+    }),
+    signal: AbortSignal.timeout(timeout)
   });
+  if (!res.ok) throw new Error(`Anthropic Error: ${res.status} ${res.statusText}`);
   const data = await res.json();
   return data.content[0].text.trim();
 }
 
-export async function callGemini(userName, transcript, systemPrompt) {
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GOOGLE_API_KEY}`, {
+export async function callGemini(userName, transcript, systemPrompt, timeout = 10000) {
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${process.env.GOOGLE_API_KEY}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       contents: [{ role: "user", parts: [{ text: `${systemPrompt}\n\nUSER: ${userName}: ${transcript}` }] }],
       generationConfig: { maxOutputTokens: 500 }
-    })
+    }),
+    signal: AbortSignal.timeout(timeout)
   });
+  if (!res.ok) throw new Error(`Gemini Error: ${res.status} ${res.statusText}`);
   const data = await res.json();
   return data.candidates[0].content.parts[0].text.trim();
 }
