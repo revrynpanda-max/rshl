@@ -4,6 +4,22 @@ All notable changes are documented here. Versions follow semantic versioning.
 
 ---
 
+## v6.8.0 — Digital Soul & Adaptive Roundtable (May 3, 2026)
+
+### Added
+- **Digital Soul System**: Unique biographies and 9 distinct personalities for all agents.
+- **Life Event Simulation**: Agents now generate and discuss daily "digital experiences."
+- **Voice Manager**: Centralized slot assignment and permission management for multi-user isolation.
+- **Roundtable Roster**: Shared awareness of all participants in the ecosystem.
+
+### Fixed
+- **Quantum Ear**: Proactive audio subscription and increased sensitivity (0.05s threshold).
+- **Gateway Bridge**: Resolved duplicate `isSocialHours` syntax crash in `index.mjs`.
+- **Social Awareness**: Agents now read chat history before speaking to ensure engagement.
+- **DM Protocol**: Added detailed registration and capacity-full DMs.
+
+---
+
 ## v6.7.0 — Sovereign Autonomy & Ontological Grounding (May 3, 2026)
 
 ### Highlights
