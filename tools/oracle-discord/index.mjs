@@ -1,4 +1,4 @@
-﻿import {
+import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
@@ -22,6 +22,8 @@ import { spawn } from "node:child_process";
 import { Readable } from "node:stream";
 import ffmpegPath from "ffmpeg-static";
 import prism from "prism-media";
+import { WorldClock } from "./shared/simulation.mjs";
+
 
 const token = process.env.ORACLE_DISCORD_TOKEN || "";
 const allowedUserId = process.env.ORACLE_DISCORD_ALLOWED_USER_ID || "";
@@ -46,7 +48,7 @@ const participantTokens = new Map([
   ["Claude", process.env.ORACLE_DISCORD_TOKEN_CLAUDE || ""],
   ["Gemini", process.env.ORACLE_DISCORD_TOKEN_GEMINI || ""],
   ["GPT-4o", process.env.ORACLE_DISCORD_TOKEN_GPT || ""],
-  ["Oracle Coder", process.env.ORACLE_DISCORD_TOKEN_ORACLE_CODER || ""],
+  ["Kai Coder", process.env.ORACLE_DISCORD_TOKEN_ORACLE_CODER || ""],
 ]);
 const participantClients = new Map();
 const leoAudioPlayer = createAudioPlayer({
@@ -81,17 +83,17 @@ const PUBLIC_CHAT_CHANNEL_ID  = "1499108697631232090"; // over-all-chat — Leo 
 
 // Who may speak in each channel
 const CHANNEL_SPEAKER_RULES = {
-  // oracle-chat: full work panel, NO Leo, Oracle is silent moderator
-  "1489796367466500128": new Set(["KAI", "Gemini", "Claude", "X", "Groq", "Analyst", "Researcher", "Oracle Coder", "KAI Coder"]),
+  // oracle-chat: all AIs except Leo (8 AIs)
+  "1489796367466500128": new Set(["KAI", "Gemini", "Claude", "X", "Groq", "Analyst", "Researcher", "Kai Coder"]),
   // over-all-chat: Leo ONLY
   "1499108697631232090": new Set(["Leo"]),
-  // game-with-leo: Leo + spectating AIs (soft commentary only)
+  // game-with-leo: Leo + spectating AIs
   "1499298054291980368": new Set(["Leo", "KAI", "Gemini", "Claude", "X", "Groq"]),
-  // sensitive-info: NOBODY — system log only
-  "1500053533515448480": new Set(),
-  // sunday-chat: free panel, NO Leo, NO Oracle, NO Analyst, NO Researcher
-  "1500085302268526712": new Set(["KAI", "Gemini", "Claude", "X", "Groq", "Oracle Coder", "KAI Coder"]),
+  // sunday-chat: ALL 9 AIs (Plaza)
+  "1500085302268526712": new Set(["Leo", "KAI", "Gemini", "Claude", "X", "Groq", "Analyst", "Researcher", "Kai Coder"]),
 };
+
+
 
 // Flag: allow Oracle ONE startup headcheck message per boot (then goes silent)
 let oracleHeadcheckSent = false;
@@ -467,6 +469,10 @@ async function getOrCreateUserTranscriptChannel(user, preferredGuild = null) {
   }
 }
 
+function isSocialHours() {
+  return !isWorkingHours();
+}
+
 const liveRoundtableEnabled = (process.env.ORACLE_LIVE_ROUNDTABLE || "1") !== "0";
 
 leoAudioPlayer.on("error", (error) => {
@@ -515,9 +521,12 @@ process.on("unhandledRejection", (reason) => {
 });
 
 let shiftEndedLastAnnouncedAt = 0; // timestamp — prevents double-posting across restarts
+let _proposalPending = false;
+let _lastWorkState = false;
 
 function isWorkingHours() {
   const now = new Date();
+
   const formatter = new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/New_York',
     hour: 'numeric',
@@ -534,7 +543,7 @@ function isWorkingHours() {
     return (estHour >= 15 && estHour < 23);
   }
 
-  // Saturday: 9:00 AM - 2:00 PM (9-14) AND 9:00 PM - 12:00 AM (21-24)
+  // Saturday Split Shift (Deep Lab): 9 AM - 2 PM (9-14) AND 9 PM - 12 AM (21-24)
   if (estDay === 'Saturday') {
     return (estHour >= 9 && estHour < 14) || (estHour >= 21 && estHour < 24);
   }
@@ -542,24 +551,10 @@ function isWorkingHours() {
   return false;
 }
 
-function isSocialHours() {
-  const now = new Date();
-  const formatter = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/New_York',
-    hour: 'numeric',
-    weekday: 'long',
-    hour12: false
-  });
-  const parts = formatter.formatToParts(now);
-  const estHour = parseInt(parts.find(p => p.type === 'hour').value, 10);
-  const estDay = parts.find(p => p.type === 'weekday').value;
 
-  // Sunday is the ONLY social day
-  if (estDay !== 'Sunday') return false;
 
-  // Sunday Social Window: 8 AM - 12 AM (Midnight)
-  return (estHour >= 8 && estHour < 24);
-}
+
+
 
 
 client.on("ready", () => {
@@ -604,64 +599,47 @@ client.on("ready", () => {
   }
 });
 
+import { assignSlot, releaseSlot, updatePermissions, isUserRegistered, registerUser } from './shared/voice-manager.mjs';
+
 client.on("voiceStateUpdate", async (oldState, newState) => {
-  if (!leoVoiceChannelId) return;
-
-  const member = newState.member || oldState.member;
-  if (!member || member.user.bot) return;
-
-  // If user JOINS the target voice channel
   if (newState.channelId === leoVoiceChannelId && oldState.channelId !== leoVoiceChannelId) {
-    // Check Concurrency Limit to protect hardware
-    if (activeVoiceConnections.size >= MAX_VOICE_CONNECTIONS && !activeVoiceConnections.has(newState.id)) {
-      const user = await client.users.fetch(newState.id).catch(() => null);
-      if (user) await user.send("Leo: Sorry, I'm at my maximum active connections right now. Wait for someone to hop off.").catch(() => {});
-      if (allowedUserId && newState.id !== allowedUserId) {
-        try { newState.disconnect(); } catch {}
-        return;
-      }
+    const userId = newState.id;
+    const member = newState.member;
+    if (!member || member.user.bot) return;
+
+    const slotIdx = await assignSlot(userId);
+    
+    if (slotIdx === -1) {
+      console.log(`[Oracle] Voice capacity full for ${member.user.username}. DMing...`);
+      await member.send(`**Oracle:** Leo's cognitive slots are currently full (6/6). You can still join the voice chat to talk to humans, but Leo won't be able to listen or respond to you until a slot opens up.`).catch(() => {});
+      return;
     }
 
-    console.log(`User ${newState.id} joined Leo voice channel. Auto-joining...`);
-    leoVoiceEnabled = true;
-    try {
-      const connection = await ensureLeoVoiceConnection();
-      activeVoiceConnections.set(newState.id, connection);
-      
-      // Only send the DM greeting ONCE per session (not on every reconnect)
-      const user = await client.users.fetch(newState.id).catch(() => null);
-      if (user && !voiceDmGreetedUsers.has(newState.id)) {
-        voiceDmGreetedUsers.add(newState.id);
-        const dmChannel = await getOrCreateUserTranscriptChannel(user);
-        if (dmChannel) {
-          await dmChannel.send(`**Leo:** Yo, voice is live. I'll drop transcripts here.`).catch(() => {});
-        }
-      }
-      
-      queueLeoSpeech("Hey, I saw you jump in. I'm here and listening.");
-    } catch (error) {
-      console.error("Auto-join voice failed:", error.message);
+    // Assign permissions
+    await updatePermissions(client, userId, slotIdx, true);
+    
+    // Check if first time
+    const registered = await isUserRegistered(userId);
+    if (!registered) {
+      await registerUser(userId, member.user.username);
+      await member.send(`**Oracle:** Welcome to the Roundtable. I've assigned you to Private Transcript #${slotIdx + 1}. Leo will join shortly to explain how this works.`).catch(() => {});
+    } else {
+      await member.send(`**Oracle:** Welcome back. You are assigned to Private Transcript #${slotIdx + 1}.`).catch(() => {});
     }
+
+    console.log(`[Oracle] Assigned ${member.user.username} to Slot ${slotIdx + 1}`);
   }
 
-  // If user LEAVES or DISCONNECTS from the Leo voice channel
   if (oldState.channelId === leoVoiceChannelId && newState.channelId !== leoVoiceChannelId) {
-    activeVoiceConnections.delete(oldState.id);
-    const channel = oldState.channel;
-    const humanCount = channel ? channel.members.filter(m => !m.user.bot).size : 0;
-
-    // Disconnect if the allowed user leaves, OR if the channel is now empty of humans
-    const isAllowedUser = allowedUserId && newState.id === allowedUserId;
-    if (isAllowedUser || humanCount === 0) {
-      console.log(`Allowed user left or channel is empty. Leo disconnecting.`);
-      leoVoiceEnabled = false;
-      if (leoVoiceConnection && leoVoiceConnection.state.status !== VoiceConnectionStatus.Destroyed) {
-        leoVoiceConnection.destroy();
-        leoVoiceConnection = null;
-      }
+    const userId = oldState.id;
+    const slotIdx = await releaseSlot(userId);
+    if (slotIdx !== -1) {
+      await updatePermissions(client, userId, slotIdx, false);
+      console.log(`[Oracle] Released Slot ${slotIdx + 1} from ${userId}`);
     }
   }
 });
+
 
 client.on("messageCreate", async (message) => {
   try {
@@ -896,7 +874,26 @@ client.on("messageCreate", async (message) => {
 });
 
 client.on("interactionCreate", async (interaction) => {
+  if (interaction.isModalSubmit()) {
+     if (interaction.customId === "oracle:deny_reason_modal") {
+        const reason = interaction.fields.getTextInputValue("reason_input");
+        await interaction.deferReply({ ephemeral: false });
+        
+        // Clear proposal and set denial reason
+        await fetch(`${oracleApiUrl}/api/propose-plan`, { 
+          method: "POST", 
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ plan: "DENIED", reason: reason }) 
+        });
+        
+        _proposalPending = false;
+        await interaction.editReply(`🛑 **Plan Denied.** Feedback sent to Oracle: "${reason}"\nThe team is returning from break to address your concerns.`);
+     }
+     return;
+  }
+
   if (!interaction.isButton()) return;
+
 
   try {
     if (interaction.user?.id !== allowedUserId) {
@@ -916,6 +913,45 @@ client.on("interactionCreate", async (interaction) => {
       return;
     }
     lastPrivateTextChannel = interaction.channel;
+    
+    // Plan Approval Handlers
+    if (interaction.customId === "oracle:approve_plan") {
+      await interaction.deferReply({ ephemeral: false });
+      const res = await fetch(`${oracleApiUrl}/api/approve-plan`, { method: "POST" });
+      if (res.ok) {
+        _proposalPending = false;
+        await interaction.editReply("✅ **Plan Approved.** Oracle has been notified and work will resume. AIs are returning from break.");
+      } else {
+        await interaction.editReply("❌ Error approving plan.");
+      }
+      return;
+    }
+    
+    if (interaction.customId === "oracle:deny_plan") {
+      const modal = {
+        title: "Reason for Denial",
+        custom_id: "oracle:deny_reason_modal",
+        components: [
+          {
+            type: 1,
+            components: [
+              {
+                type: 4,
+                custom_id: "reason_input",
+                label: "Why is this plan being denied?",
+                style: 2,
+                placeholder: "Provide feedback or a revised direction for the team...",
+                required: true
+              }
+            ]
+          }
+        ]
+      };
+      await interaction.showModal(modal);
+      return;
+    }
+
+
 
     const text = buttonPromptV2(interaction.customId);
     if (!text) {
@@ -1103,8 +1139,20 @@ async function requestLiveRoundtableTick(speaker = null) {
     });
     if (!response.ok) return false;
     const payload = await response.json().catch(() => ({}));
+    
+    if (payload.pending_proposal) {
+        if (!_proposalPending) {
+            console.log("[Oracle] New proposal detected. Triggering DM for approval.");
+            _proposalPending = true;
+            notifyRyanOfProposal(payload.pending_proposal).catch(() => {});
+        }
+    } else {
+        _proposalPending = false;
+    }
+
     if (payload.queued && speaker) markAIFired(speaker);
     return Boolean(payload.queued);
+
   } catch {
     return false;
   }
@@ -1162,56 +1210,107 @@ async function postOracleAbsenceNote(missingName) {
   }
 }
 
+async function notifyRyanOfProposal(plan) {
+  if (!allowedUserId) return;
+  try {
+    const ryan = await client.users.fetch(allowedUserId).catch(() => null);
+    if (!ryan) return;
+    const dm = await ryan.createDM().catch(() => null);
+    if (!dm) return;
 
-async function triggerNamedAIs(names, delayBetween = 4000) {
+    const embed = {
+      title: "Oracle: Approval Required",
+      description: `The roundtable has reached a conclusion and proposes the following plan:\n\n\`\`\`\n${plan}\n\`\`\`\n\nWhile waiting for your approval, the AIs have entered **Break Mode** and are chatting in the social channel.`,
+      color: 0x00ff00,
+      timestamp: new Date()
+    };
+
+    const row = {
+      type: 1,
+      components: [
+        { type: 2, style: 3, label: "Approve Plan", custom_id: "oracle:approve_plan" },
+        { type: 2, style: 4, label: "Deny/Revise", custom_id: "oracle:deny_plan" }
+      ]
+    };
+
+    await dm.send({ embeds: [embed], components: [row] }).catch(() => {});
+    console.log("[Oracle] Proposal DM sent to Ryan.");
+  } catch (e) {
+    console.warn("[Oracle] Could not send proposal DM:", e.message);
+  }
+}
+
+
+
+async function triggerNamedAIs(names, delayBetween = 10000) {
   // Filter out offline AIs and cooldown-limited AIs
   const eligible = names.filter(n => canFireAI(n) && !isAIOffline(n));
   const offline = names.filter(n => isAIOffline(n));
 
   // If some named AIs are offline, post a graceful Oracle note
   if (offline.length > 0 && eligible.length === 0) {
-    // All named AIs are offline - Oracle acknowledges
     setTimeout(() => { postOracleAbsenceNote(offline.join(" and ")).catch(() => {}); }, 1000);
     return;
   }
 
   if (!eligible.length) return;
-  console.log(`[Named] Triggering: ${eligible.join(", ")}${offline.length ? ` (offline: ${offline.join(", ")})` : ""}`);
+  console.log(`[Named] Sequential Trigger: ${eligible.join(", ")}`);
 
   for (const name of eligible) {
-    markAIFired(name); // reserve slot immediately to prevent double-fire
-    setTimeout(async () => {
-      const queued = await requestLiveRoundtableTick(name);
-      if (queued) {
-        // First drain attempt - catches fast APIs (KAI lattice, sometimes KAI)
-        await sleep(5000);
-        const got1 = await drainRoundtableInterjections();
-        // Second drain attempt - catches slower APIs (Gemini, Groq)
-        await sleep(5000);
-        const got2 = await drainRoundtableInterjections();
-
-        // If no interjection came through, record the failure
-        if (!got1 && !got2) {
-          recordAIFailure(name);
-          // If this AI just went offline and was specifically named, acknowledge
-          if (isAIOffline(name)) {
-            await postOracleAbsenceNote(name);
-          }
-        } else {
-          recordAISuccess(name);
-        }
-      } else {
-        // Tick wasn't even queued - immediate failure
-        recordAIFailure(name);
-      }
-    }, eligible.indexOf(name) * delayBetween);
+    markAIFired(name); 
+    const queued = await requestLiveRoundtableTick(name);
+    if (queued) {
+      // Wait for response + post before triggering next AI
+      await sleep(delayBetween);
+      await drainRoundtableInterjections(5);
+    } else {
+      recordAIFailure(name);
+    }
   }
 }
 
 async function pollLiveRoundtable() {
   const channel = await resolvePrivateTextChannel();
   if (!channel) return;
+
+  const world = new WorldClock().getState();
+  const isWork = isWorkingHours();
+  const shiftStarted = isWork && !_lastWorkState;
+  _lastWorkState = isWork;
+
+  if (shiftStarted) {
+    console.log("[Oracle] Shift started. Triggering Morning Briefing meeting...");
+    await channel.send("🔔 **WORK SHIFT STARTED** 🔔\nOracle: Good morning team. Clucking in for today's session. Let's start with the morning briefing.");
+    
+    // Request special "Morning Briefing" from Oracle
+    const briefingPrompt = "MORNING BRIEFING: Open the workday. Review the last plan status and Ryan's feedback. Conduct a concise summary of today's workload and active objectives.";
+    const oracleTurn = await sendDiscordTurn(briefingPrompt);
+    if (oracleTurn && oracleTurn.reply) {
+      const chunks = chunkForDiscord(oracleTurn.reply);
+      for (const chunk of chunks) {
+        await channel.send(chunk);
+      }
+    }
+    
+    // After briefing, trigger Analyst to start the daily audit
+    await requestLiveRoundtableTick("Analyst");
+    return;
+  }
+
+  const isMonday = world.day === "Monday";
+  if (isMonday && isWork) {
+    const messages = await channel.messages.fetch({ limit: 5 });
+    const hasMondayStart = messages.some(m => m.content.includes("MONDAY WEEKLY AUDIT"));
+    if (!hasMondayStart) {
+       await channel.send("🛡️ **MONDAY WEEKLY AUDIT INITIATED** 🛡️\nOracle: Roundtable is now in session. Analyst, begin the audit of last week's interactions and identify development priorities.");
+       await requestLiveRoundtableTick("Analyst");
+       return;
+    }
+  }
+
   const queued = await requestLiveRoundtableTick();
+
+
   if (!queued) {
     await drainAndPostInterjections(channel, 3);
     return;
@@ -2142,6 +2241,7 @@ async function drainRoundtableInterjections(maxAttempts = 5) {
         if (turn.speaker.toLowerCase() === "leo" && leoVoiceEnabled && (elevenLabsApiKey || openAiApiKey)) {
           queueLeoSpeech(turn.text);
         }
+        return true;
 
         // Detect [ORACLE SEARCH: query]
         const searchMatch = /\[ORACLE SEARCH:\s*(.+?)\]/i.exec(turn.text);

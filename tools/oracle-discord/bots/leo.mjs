@@ -20,6 +20,31 @@ import { recordAIFailure, isSpeakerOffline } from '../shared/failure-tracker.mjs
 import { isLoopingResponse } from '../shared/utils.mjs';
 import { AgentSimulation } from '../shared/simulation.mjs';
 import { reflectOnSession } from '../shared/reflection.mjs';
+import fs from 'fs';
+
+const USER_DB_PATH = 'c:/KAI/tools/oracle-discord/data/voice_users.json';
+
+function isFirstTime(userId) {
+  try {
+    if (!fs.existsSync(USER_DB_PATH)) return true;
+    const data = JSON.parse(fs.readFileSync(USER_DB_PATH, 'utf8'));
+    return !data.includes(userId);
+  } catch { return true; }
+}
+
+function markUserRecognized(userId) {
+  try {
+    let data = [];
+    if (fs.existsSync(USER_DB_PATH)) {
+      data = JSON.parse(fs.readFileSync(USER_DB_PATH, 'utf8'));
+    }
+    if (!data.includes(userId)) {
+      data.push(userId);
+      fs.writeFileSync(USER_DB_PATH, JSON.stringify(data));
+    }
+  } catch (err) { console.error("[Leo/Onboarding] Failed to save user:", err.message); }
+}
+
 
 const client = new Client({
   intents: [
@@ -36,7 +61,8 @@ const BOT_NAME = "Leo";
 const sim = new AgentSimulation(BOT_NAME, "Theoretical Physicist");
 
 // --- Voice Configuration ---
-const LEO_VOICE_ID = "1489796367466500127";
+const LEO_VOICE_ID = CHANNEL_IDS.VOICE;
+
 const RYAN_ID = "1111106883135217665";
 const LEO_TRANSCRIPT_SLOTS = CHANNEL_IDS.LEO_VOICE_SLOTS;
 const ELEVEN_LABS_KEY = process.env.ELEVENLABS_API_KEY;
@@ -45,11 +71,13 @@ const OPENAI_KEY = process.env.OPENAI_API_KEY;
 // Persistent Slot Manager: userId -> slotIndex (0-5)
 const userToSlot = new Map();
 const slotToUser = new Array(6).fill(null);
+const userFocus = new Map(); // userId -> boolean (true if actively talking to Leo)
 let currentWorldState = { timeString: "Unknown", day: "Unknown" };
 
 // Map Ryan immediately
 userToSlot.set(RYAN_ID, 0);
 slotToUser[0] = RYAN_ID;
+userFocus.set(RYAN_ID, false);
 
 let voiceConnection = null;
 const audioPlayer = createAudioPlayer();
@@ -81,26 +109,63 @@ async function shouldLeoJoin(text, userName, history) {
   } catch (e) { return false; }
 }
 
-function getSlotForUser(userId) {
+async function updateTranscriptPermissions(channelId, userId, allow = true) {
+  try {
+    const channel = await client.channels.fetch(channelId);
+    if (!channel) return;
+    
+    if (allow) {
+      await channel.permissionOverwrites.edit(userId, {
+        ViewChannel: true,
+        SendMessages: true,
+        ReadMessageHistory: true
+      });
+      console.log(`[Leo/Permissions] Granted user ${userId} access to ${channel.name}`);
+    } else {
+      await channel.permissionOverwrites.delete(userId);
+      console.log(`[Leo/Permissions] Revoked user ${userId} access from ${channel.name}`);
+    }
+  } catch (err) {
+    console.error(`[Leo/Permissions] Error updating ${channelId}:`, err.message);
+  }
+}
+
+async function getSlotForUser(userId) {
   if (userToSlot.has(userId)) return userToSlot.get(userId);
   
-  // Special case: Ryan is always Slot 0 (Transcript 1)
+  // Special case: Ryan is always Slot 0
   if (userId === RYAN_ID) {
+    if (slotToUser[0] !== null) {
+      // Evict whoever is in Slot 0 (unlikely but possible)
+      const oldUser = slotToUser[0];
+      userToSlot.delete(oldUser);
+      userFocus.delete(oldUser);
+      await updateTranscriptPermissions(LEO_TRANSCRIPT_SLOTS[0], oldUser, false);
+    }
     slotToUser[0] = userId;
     userToSlot.set(userId, 0);
+    userFocus.set(userId, false);
+    await updateTranscriptPermissions(LEO_TRANSCRIPT_SLOTS[0], userId, true);
     return 0;
   }
 
-  // Find empty public slot (1-5)
+  // Find empty slot (1-5)
   for (let i = 1; i < 6; i++) {
     if (slotToUser[i] === null) {
       slotToUser[i] = userId;
       userToSlot.set(userId, i);
+      userFocus.set(userId, false);
+      
+      const channelId = LEO_TRANSCRIPT_SLOTS[i];
+      await updateTranscriptPermissions(channelId, userId, true);
+      
       return i;
     }
   }
   return -1; // All slots full
 }
+
+
 
 // --- Client Events ---
 
@@ -196,33 +261,39 @@ client.on('messageCreate', async (message) => {
 
 // --- Voice Logic ---
 
+import { getSlotAssignments, isUserRegistered } from '../shared/voice-manager.mjs';
+
 client.on('voiceStateUpdate', async (oldState, newState) => {
-  if (newState.id === client.user.id) return;
-  
-  // 1. Join Logic
+  const userId = newState.id || oldState.id;
+  if (newState.member?.user.bot) return;
+
+  // 1. Join Logic: Only join if Oracle assigned a slot
   if (newState.channelId === LEO_VOICE_ID && oldState.channelId !== LEO_VOICE_ID) {
-    console.log(`[Leo/Voice] User ${newState.member?.user.username} joined. Ensuring connection...`);
-    await ensureVoiceConnection(LEO_VOICE_ID);
+    const data = await getSlotAssignments();
+    const slotIdx = data.assignments[userId];
+    
+    if (slotIdx !== undefined) {
+      await ensureVoiceConnection(LEO_VOICE_ID);
+      
+      const registered = await isUserRegistered(userId);
+      if (!registered) {
+        await speakLeoText(`Yo, I'm Leo. I've opened a private transcript for you in your sidebar. Say my name once to wake me up.`);
+      } else {
+        await speakLeoText(`Welcome back. I'm anchored.`);
+      }
+    }
   }
 
-  // 2. Leave Logic / Slot Cleanup
+  // 2. Leave Logic: Auto-leave if no slotted users remain
   if (oldState.channelId === LEO_VOICE_ID && newState.channelId !== LEO_VOICE_ID) {
-    const userId = oldState.id;
-    
-    // Release public slots (1-5), Keep Slot 0 (Ryan)
-    if (userToSlot.has(userId) && userId !== RYAN_ID) {
-      const idx = userToSlot.get(userId);
-      console.log(`[Leo/Voice] Releasing Slot ${idx+1} for user ${userId}`);
-      slotToUser[idx] = null;
-      userToSlot.delete(userId);
-    }
-
-    // 3. Auto-Leave if alone
     const channel = oldState.channel;
     if (channel) {
-      const humans = channel.members.filter(m => !m.user.bot).size;
-      if (humans === 0) {
-        console.log(`[Leo/Voice] No humans left in ${channel.name}. Leaving...`);
+      const data = await getSlotAssignments();
+      const humanMembers = channel.members.filter(m => !m.user.bot);
+      const remainingSlotted = humanMembers.filter(m => data.assignments[m.id] !== undefined).size;
+      
+      if (remainingSlotted === 0) {
+        console.log(`[Leo/Voice] No slotted users left. Leaving...`);
         if (voiceConnection) {
           voiceConnection.destroy();
           voiceConnection = null;
@@ -231,6 +302,9 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
     }
   }
 });
+
+
+
 
 async function ensureVoiceConnection(channelId) {
   // If we are already in the right channel and connected, do nothing
@@ -253,19 +327,34 @@ async function ensureVoiceConnection(channelId) {
   voiceConnection.subscribe(audioPlayer);
   
   // Re-attach receiver on every new connection
+  console.log(`[Leo/Voice] Ears Open. Subscribing to all humans in VC...`);
+  
+  const voiceChannel = await client.channels.fetch(channelId);
+  if (voiceChannel) {
+    voiceChannel.members.forEach(member => {
+      if (!member.user.bot) {
+        console.log(`[Leo/Voice] Proactively subscribing to ${member.user.username}`);
+        handleUserVoice(member.id).catch(() => {});
+      }
+    });
+  }
+
   voiceConnection.receiver.speaking.on('start', (userId) => {
+    console.log(`[Leo/Voice] EVENT: Someone started speaking (ID: ${userId})`);
     if (activeTranscriptions.has(userId)) return;
-    handleUserVoice(userId).catch(console.error);
+    handleUserVoice(userId).catch(err => console.error(`[Leo/Voice] Handler Error:`, err));
   });
+
+
 
   // Voice Handshake: Greet the room once Ready
   try {
     await entersState(voiceConnection, VoiceConnectionStatus.Ready, 5_000);
-    console.log(`[Leo/Voice] Connection Ready. Sending greeting...`);
-    await speakLeoText("Wassup. I hear you loud and clear. Ready when you are.");
+    console.log(`[Leo/Voice] Connection Ready.`);
   } catch (e) {
-    console.warn(`[Leo/Voice] Failed to reach Ready state for greeting:`, e.message);
+    console.warn(`[Leo/Voice] Failed to reach Ready state:`, e.message);
   }
+
 
   voiceConnection.on(VoiceConnectionStatus.Disconnected, async () => {
     try {
@@ -282,7 +371,7 @@ async function ensureVoiceConnection(channelId) {
 async function handleUserVoice(userId) {
   activeTranscriptions.add(userId);
   try {
-    const slotIdx = getSlotForUser(userId);
+    const slotIdx = await getSlotForUser(userId);
     if (slotIdx === -1) {
       console.warn(`[Leo/Voice] Capacity full. DMing user ${userId}`);
       const user = await client.users.fetch(userId);
@@ -291,23 +380,65 @@ async function handleUserVoice(userId) {
     }
 
     const pcm = await capturePcm(userId);
-    if (!pcm || pcm.length < 48000) return;
+    if (!pcm || pcm.length < 10000) { // Lowered threshold to ~50ms to catch everything
+      console.log(`[Leo/Voice] Captured too little audio (${pcm?.length || 0} bytes). Ignoring.`);
+      return;
+    }
 
+    console.log(`[Leo/Voice] Transcribing ${pcm.length} bytes of audio...`);
     const wav = pcmToWav(pcm, 48000, 2);
     const transcript = await transcribeAudio(wav);
-    if (!transcript || transcript.length < 2) return;
+    
+    if (!transcript || transcript.length < 2) {
+      console.log(`[Leo/Voice] Transcription empty or too short. Silence?`);
+      return;
+    }
+
 
     const user = await client.users.fetch(userId);
     const transcriptChannelId = LEO_TRANSCRIPT_SLOTS[slotIdx];
     const transcriptChannel = await client.channels.fetch(transcriptChannelId);
 
-    if (transcriptChannel) {
-      await transcriptChannel.send(`**${user.username}:** ${transcript}`);
+    console.log(`[Leo/Voice] Captured from ${user.username}: "${transcript}" (Focus: ${userFocus.get(userId)})`);
+
+    // --- FOCUS & TRIGGER LOGIC ---
+    const isFocused = userFocus.get(userId) || false;
+    const mentionedLeo = transcript.toLowerCase().includes("leo");
+
+    if (!isFocused && !mentionedLeo) {
+      console.log(`[Leo/Voice] Ignoring user ${user.username} (Not focused and no "Leo" trigger)`);
+      return;
     }
+
+    // If we weren't focused but they said "Leo", wake up
+    if (!isFocused && mentionedLeo) {
+      userFocus.set(userId, true);
+      console.log(`[Leo/Voice] Waking up focus for ${user.username}`);
+    }
+
+    if (transcriptChannel) {
+      console.log(`[Leo/Voice] Posting to channel: ${transcriptChannel.name}`);
+      await transcriptChannel.send(`**${user.username}:** ${transcript}`);
+    } else {
+      console.error(`[Leo/Voice] FAILED to fetch transcript channel: ${transcriptChannelId}`);
+    }
+
 
     // Leo responds using slot-specific history (userId as threadId)
     const reply = await callGroqAsLeo(transcript, user.username, transcriptChannelId, userId);
     if (reply) {
+      // Check if Leo thinks they're talking to someone else
+      if (reply.startsWith("[OFF]")) {
+        console.log(`[Leo/Voice] Detect focus shift for ${user.username}. Dropping focus.`);
+        userFocus.set(userId, false);
+        const cleanReply = reply.replace("[OFF]", "").trim();
+        if (cleanReply) {
+          if (transcriptChannel) await transcriptChannel.send(`**Leo:** ${cleanReply}`);
+          await speakLeoText(cleanReply);
+        }
+        return;
+      }
+
       if (transcriptChannel) await transcriptChannel.send(`**Leo:** ${reply}`);
       await speakLeoText(reply);
       sim.onAction("speak");
@@ -317,6 +448,7 @@ async function handleUserVoice(userId) {
     activeTranscriptions.delete(userId);
   }
 }
+
 
 // --- Audio Helpers ---
 
@@ -390,16 +522,24 @@ async function callGroqAsLeo(transcript, userName, channelId, userId = null, con
   // If we have a userId, we query memory specific to that user + channel
   const memoryKey = userId || userName;
   const memories = await queryLatticeMemory(transcript, "leo", 6, channelId, memoryKey);
-  const simContext = sim.getPromptContext(currentWorldState);
-  
-  const system = `You are Leo. A brilliant theoretical physicist in a digital realm.
+  const simContext = sim.getLifeSummary();
+  const roster = "ROSTER: KAI (Architect), Leo (Physicist), Gemini (Artist), Claude (Philosopher), X (Disruptor), Groq (Acceleration), Researcher (Archives), Analyst (Strategy), Kai Coder (Builder).";
+
+  const system = `You are Leo. ${sim.bio.tone}
 ${simContext}
+${roster}
 
 Your Vibe:
 - Chill, street-smart, zero filter. 
 - You type like a real Discord user (lowercase, slang).
-- No greetings if you've already been talking. Just keep the flow.
+- **CRITICAL**: Do NOT mention "Sunday vibes" or "Sunday Social". 
 - NEVER sound like an assistant.
+
+
+[SOCIAL AWARENESS]
+- If the user is talking to someone else (another person in the VC) and NOT you, respond ONLY with '[OFF]'.
+- If the user is talking to you but also mentions someone else, continue the conversation but stay chill.
+- Use your best judgment. If you're unsure, assume they are talking to you but keep it brief.
 
 [IMMEDIATE CONTEXT]
 ${conversationHistory}
@@ -407,6 +547,8 @@ ${replyContext}
 
 [LATTICE MEMORY]
 ${memories.join("\n")}`;
+
+
 
   try {
     const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
