@@ -43,7 +43,7 @@ const botToPort = {
 
 const botToModel = {
   "Analyst": "llama-3.3-70b-versatile",
-  "Researcher": "gpt-4o-mini",
+  "Researcher": "llama-3.3-70b-versatile",  // Moved from OpenAI → Groq (72x more daily quota)
   "Groq": "llama-3.1-8b-instant",
   "X": "gpt-4o-mini",
   "Claude": "claude-3-5-sonnet-latest",
@@ -62,6 +62,10 @@ if (!botToken) {
 
 const SUNDAY_CHAT_CHANNEL_ID = "1500085302268526712";
 const targetChannelId = SUNDAY_CHAT_CHANNEL_ID;
+
+// SOCIAL WHITELIST: Only these bots run proactive social loops in ai-social-chat.
+// Work-only bots (Analyst, Researcher, Kai Coder) stay silent outside oracle-chat.
+const SOCIAL_BOTS = new Set(["Claude", "Gemini", "Groq", "X"]);
 
 // Simulation State
 const sim = new AgentSimulation(botName);
@@ -87,16 +91,15 @@ const client = new Client({
 });
 
 client.once('clientReady', async () => {
-  console.log(`Social Persona Online.`);
-  
-  if (targetChannelId) {
-    console.log(`Proactive social loop initialized.`);
-    
-    // RANDOM INITIAL DELAY: Prevent all bots from speaking at once on startup
+  if (SOCIAL_BOTS.has(botName)) {
+    console.log(`Social Persona Online.`);
     const startDelay = Math.random() * 60000;
     setTimeout(() => {
       startSocialLoop();
+      console.log(`Proactive social loop initialized.`);
     }, startDelay);
+  } else {
+    console.log(`Work Persona Online. [${botName}] is silent outside work sessions.`);
   }
 });
 
