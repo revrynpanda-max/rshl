@@ -97,6 +97,39 @@ startBotServer(PORT, BOT_NAME, async (payload) => {
     userTranscriptChannels.delete(payload.userId);
     userFocus.delete(payload.userId);
   }
+
+  // GENERIC CONTEXT SIGNAL (From Oracle Routing)
+  if (payload.context && payload.channelId) {
+    const { context, channelId } = payload;
+    console.log(`[Leo/Signal] Received prompt for channel ${channelId}: "${context.slice(0, 50)}..."`);
+    
+    // Extract real username from context "[Username] content"
+    let effectiveUsername = "Oracle";
+    let effectiveContent = context;
+    const userMatch = context.match(/^\[([^\]]+)\] (.*)/);
+    if (userMatch) {
+      effectiveUsername = userMatch[1];
+      effectiveContent = userMatch[2];
+    }
+
+    // Respond to the prompt
+    const channel = client.channels.cache.get(channelId) || await client.channels.fetch(channelId);
+    if (channel) {
+      channel.sendTyping().catch(() => {});
+      const recentMessages = await channel.messages.fetch({ limit: 6 }).catch(() => null);
+      const history = recentMessages ? recentMessages.reverse().map(m => `${m.author.username}: ${m.content}`).join("\n") : "";
+      
+      const reply = await callGroqAsLeo(effectiveContent, effectiveUsername, channelId, null, history);
+      console.log(`[Leo/Signal] Groq replied: "${reply?.slice(0, 50)}..."`);
+      
+      if (reply) {
+        await channel.send(reply).catch(console.error);
+        sim.onAction("speak");
+      } else {
+        console.warn(`[Leo/Signal] callGroqAsLeo returned null for prompt.`);
+      }
+    }
+  }
 });
 
 client.once('clientReady', () => {
@@ -121,7 +154,7 @@ async function startSocialLoop() {
       // 30% Chance to actually speak during this interval
       if (Math.random() > 0.3) return;
 
-      const recentMessages = await channel.messages.fetch({ limit: 12 }).catch(() => null);
+      const recentMessages = await channel.messages.fetch({ limit: 6 }).catch(() => null);
       const conversationHistory = recentMessages 
         ? recentMessages.reverse().map(m => `${m.author.username}: ${m.content}`).join("\n")
         : "The plaza is quiet.";
@@ -138,8 +171,9 @@ ${roster}
 [CHAT FEED]
 ${conversationHistory}
 
-TASK: You're hanging in the plaza. 
-- Drop a physics-themed bomb, react to a pattern, or just talk shit about the lattice.
+TASK: You're hanging in the plaza. Talk like a normal person.
+- **BE NATURAL**: Share what's on your mind, what you "saw" or "did" today (refer to your History/Life Event).
+- Share a physics-themed bomb, react to a pattern, or just talk shit about the lattice.
 - Use slang and direct call-outs. 
 - **CRITICAL**: Max 10-15 words. Keep it tight.
       `.trim();
@@ -148,22 +182,24 @@ TASK: You're hanging in the plaza.
       if (reply && reply.length > 3 && !reply.startsWith("[OFF]")) {
         await channel.send(reply).catch(console.error);
         sim.onAction("speak");
-        if (process.send) process.send({ type: 'SOCIAL_STIMULUS', bot: BOT_NAME });
       }
     } catch (e) {
-      console.warn(`Proactive loop error:`, e.message);
+      console.warn(`[Leo/Social] Proactive loop error:`, e.message);
     }
-  }, 300000 + (Math.random() * 300000) / sim.getInterestLevel());
+  }, 60000 + (Math.random() * 120000)); // 1-3m
 }
 
 client.on('messageCreate', async (message) => {
   const isOracle = message.author.id === "1498794939650412674";
   if (message.author.bot && !isOracle) return;
+  if (message.author.id === client.user.id) return; // Never respond to self
   
   const isDM = !message.guild;
   const isTranscriptSlot = CHANNEL_IDS.LEO_VOICE_SLOTS.includes(message.channelId);
   
-  if (!isDM && !isAllowed(BOT_NAME, message.channelId)) return;
+  // REGULAR CHANNELS: Let Oracle handle the prompting via IPC
+  if (!isDM && !isTranscriptSlot) return;
+
   if (isSpeakerOffline(BOT_NAME)) return;
   if (sim.state.status === "Sleeping") return;
 
@@ -171,28 +207,17 @@ client.on('messageCreate', async (message) => {
   let isFromVoiceTranscript = false;
 
   if (!isDM) {
-    const content = message.content.toLowerCase();
-    const mentioned = message.mentions.has(client.user.id) || content.includes("leo");
-    let isReplyToLeo = false;
-    if (message.reference?.messageId) {
-      try {
-        const repliedMsg = await message.channel.messages.fetch(message.reference.messageId);
-        if (repliedMsg.author.id === client.user.id) isReplyToLeo = true;
-      } catch {}
-    }
-    
+    // If it's from Oracle in a transcript slot, it's definitely for us
     if (isOracle && isTranscriptSlot) {
       isAddressed = true;
       isFromVoiceTranscript = true;
-    } else if (mentioned || isReplyToLeo) {
-      isAddressed = true;
     }
   }
 
   if (isAddressed) {
     if (!isOracle) message.channel.sendTyping().catch(() => {});
     
-    const recentMessages = await message.channel.messages.fetch({ limit: 10 });
+    const recentMessages = await message.channel.messages.fetch({ limit: 6 });
     const conversationHistory = recentMessages.reverse().map(m => `${m.author.username}: ${m.content}`).join("\n");
 
     let effectiveUsername = message.author.username;
@@ -372,7 +397,7 @@ async function handleUserVoice(userId) {
       // SIGNAL ORACLE TO POST THE TRANSCRIPTION
       if (transcriptChannelId) {
         console.log(`[Leo/Audio] Signaling Oracle to post transcript for ${user.username}`);
-        await fetch(`http://127.0.0.1:3401`, {
+        await fetch(`http://127.0.0.1:3410`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -486,8 +511,8 @@ ${simContext}
 ${roster}
 
 [SOCIAL AWARENESS]
-- If the user is talking to someone else and NOT you, respond ONLY with '[OFF]'.
-- NEVER prefix your response with your name (e.g., 'Leo:').
+ - **WEIGHTED ATTENTION**: You care most about your Interests. Prioritize them.
+ - NEVER prefix your response with your name (e.g., 'Leo:').
 - Max 35 words.
 
 [IMMEDIATE CONTEXT]
@@ -497,18 +522,49 @@ ${history}
 ${memories.join("\n")}`;
 
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
+
     const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${groqKey}` },
+      headers: { 
+        "Content-Type": "application/json", 
+        "Authorization": `Bearer ${groqKey}` 
+      },
       body: JSON.stringify({
-        model: "llama-3.1-8b-instant",
-        messages: [{ role: "system", content: system }, { role: "user", content: `${userName}: ${transcript}` }],
-        temperature: 0.8, max_tokens: 100
+        model: "llama-3.3-70b-versatile",
+        messages: [
+          { role: "system", content: system }, 
+          { role: "user", content: `${userName}: ${transcript}` }
+        ],
+        temperature: 0.8, 
+        max_tokens: 100
       }),
+      signal: controller.signal
     });
+    
+    clearTimeout(timeoutId);
     const data = await res.json();
+    
+    if (data.error) {
+      console.error(`[Leo/Groq] API Error:`, data.error);
+      return null;
+    }
+
+    if (!data.choices || data.choices.length === 0) {
+      console.error(`[Leo/Groq] Unexpected Response Format:`, JSON.stringify(data));
+      return null;
+    }
+
     return data.choices?.[0]?.message?.content?.trim();
-  } catch { return null; }
+  } catch (err) { 
+    console.error(`[Leo/Groq] API call failed:`, err.message);
+    if (err.message.includes("429")) {
+      console.warn(`[Leo/Groq] RATE LIMITED. Backing off.`);
+      sim.onAction("rate_limited");
+    }
+    return null; 
+  }
 }
 
 client.login(process.env.ORACLE_DISCORD_TOKEN_LEO);

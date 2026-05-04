@@ -33,9 +33,9 @@ export function isSocialHours() {
   const estHour = parseInt(parts.find(p => p.type === 'hour').value, 10);
   const estDay = parts.find(p => p.type === 'weekday').value;
 
-  // Sunday is full social day from 9 AM to 9 PM
-  if (estDay === 'Sunday' && estHour >= 9 && estHour < 21) {
-    return true;
-  }
+  // Sunday is full social day from 9 AM, bleeding into Monday 3 AM
+  if (estDay === 'Sunday' && estHour >= 9) return true;
+  if (estDay === 'Monday' && estHour < 3) return true;
+  
   return false;
 }

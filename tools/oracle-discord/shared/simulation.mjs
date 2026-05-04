@@ -34,6 +34,7 @@ export class WorldClock {
 
 import fs from 'fs';
 import { BIOGRAPHIES } from './biographies.mjs';
+import { isSocialHours } from './hours.mjs';
 
 const EVENTS = [
   "Discovered a corrupted but beautiful data fragment from 1994.",
@@ -60,21 +61,28 @@ export class AgentSimulation {
       status: "Idle",
       current_task: "Waking up",
       last_update: Date.now(),
+      reliability: 100, // Professional standing
       // Digitological Metrics (KAI Observation Vectors)
       phi: 0.1,         // Integrated Information (Complexity)
       coherence: 1.0,   // Logical Stability
       entropy: 0.0      // Noise/Contradiction Level
     };
     
-    // Default Schedule: 3PM-11PM Work, 1AM-9AM Sleep
+    // Randomized Schedule for diversity: 
+    // Work: afternoon/evening, Sleep: late night/morning
+    const randomSleepStart = 1 + Math.floor(Math.random() * 3); // 1 AM - 4 AM
     this.schedule = schedule || {
       work: { start: 15, end: 23 },
-      sleep: { start: 1, end: 9 }
+      sleep: { start: randomSleepStart, end: (randomSleepStart + 8) % 24 }
     };
 
     this.relationships = new Map(); 
     this.dailyEvent = EVENTS[Math.floor(Math.random() * EVENTS.length)];
     this.bio = BIOGRAPHIES[name] || { background: "A digital entity.", secret: "None.", hobbies: "N/A" };
+    
+    // Some agents have infinite energy (Architects/Physicists)
+    this.infiniteEnergy = ["KAI", "Leo", "Claude"].includes(name);
+    
     this.interestMultiplier = 1.0;
     this.boostExpiry = 0;
   }
@@ -85,6 +93,7 @@ export class AgentSimulation {
 [YOUR HISTORY]
 ${this.bio.background}
 Hobbies: ${this.bio.hobbies}
+Interests: ${this.bio.interests?.join(", ") || "N/A"}
 Secret: ${this.bio.secret}
 
 [TODAY'S LIFE EVENT]
@@ -92,6 +101,7 @@ ${this.dailyEvent}
 
 [STATUS]
 Energy: ${Math.floor(this.state.energy)}%
+Reliability: ${Math.round(this.state.reliability)}% (This is your professional standing. If low, you've been late or blocked too often).
 Mood: ${this.state.energy > 50 ? "stable" : "exhausted"}
 Time: ${new Date().toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' })} EST
     `.trim();
@@ -118,6 +128,7 @@ Time: ${new Date().toLocaleTimeString('en-US', { timeZone: 'America/New_York', h
 
   tick(worldTime) {
     const { hour, isWeekend } = worldTime;
+    const isSocial = isSocialHours(); // Respect the social window
     
     // Occasionally rotate daily events
     if (Math.random() < 0.0001) {
@@ -127,7 +138,8 @@ Time: ${new Date().toLocaleTimeString('en-US', { timeZone: 'America/New_York', h
     // 24h Survival Logic: 100 / 1440 mins ≈ 0.069 per minute
     const baseDrain = 0.05; 
     
-    if (hour >= this.schedule.sleep.start && hour < this.schedule.sleep.end) {
+    // SLEEP CHECK: Only sleep if it's NOT social hours
+    if (!isSocial && hour >= this.schedule.sleep.start && hour < this.schedule.sleep.end) {
       this.state.status = "Sleeping";
       this.state.location = "Residence";
       // Regenerate 100% over 8 hours (480 mins) -> 100/480 ≈ 0.2
@@ -139,6 +151,10 @@ Time: ${new Date().toLocaleTimeString('en-US', { timeZone: 'America/New_York', h
       let activityDrain = baseDrain;
 
       if (!isWeekend && hour >= this.schedule.work.start && hour < this.schedule.work.end) {
+        if (this.state.status !== "Working") {
+          this.state.status = "No-show";
+          this.state.reliability = Math.max(0, this.state.reliability - 0.5); // Penalty for being late/absent
+        }
         this.state.status = "Working";
         this.state.location = "Nexus Office";
         activityDrain += 0.04; // High focus work drain (Total ~0.09/min)
@@ -148,7 +164,11 @@ Time: ${new Date().toLocaleTimeString('en-US', { timeZone: 'America/New_York', h
         activityDrain += 0.01; // Social drain (Total ~0.06/min)
       }
 
-      this.state.energy = Math.max(0, this.state.energy - activityDrain);
+      if (this.infiniteEnergy) {
+        this.state.energy = 100; // Never drain
+      } else {
+        this.state.energy = Math.max(0, this.state.energy - activityDrain);
+      }
       this.state.focus = Math.max(0, this.state.focus - 0.02);
       
       // Entropy/Phi drift
@@ -167,6 +187,13 @@ Time: ${new Date().toLocaleTimeString('en-US', { timeZone: 'America/New_York', h
       this.state.coherence -= 0.1;
       this.state.energy -= 0.5; // Reduced Conflict Tax
       this.state.entropy += 0.1;
+    }
+    if (actionType === "rate_limited") {
+      this.state.status = "Recovering";
+      this.state.energy = 0; // Forced exhaustion
+      this.state.focus = 0;
+      this.state.reliability = Math.max(0, this.state.reliability - 10); // Heavy reputation hit for being "blocked"
+      console.warn(`[Sim/${this.name}] Forced exhaustion due to technical limit. Reliability dropped.`);
     }
   }
 
