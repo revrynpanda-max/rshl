@@ -217,13 +217,15 @@ TASK: You're hanging in the plaza. Talk like a normal person.
 client.on('messageCreate', async (message) => {
   const isOracle = message.author.id === "1498794939650412674";
   if (message.author.bot && !isOracle) return;
-  if (message.author.id === client.user.id) return; // Never respond to self
-  
+  if (message.author.id === client.user.id) return;
+
   const isDM = !message.guild;
   const isTranscriptSlot = CHANNEL_IDS.LEO_VOICE_SLOTS.includes(message.channelId);
-  
-  // REGULAR CHANNELS: Let Oracle handle the prompting via IPC
-  if (!isDM && !isTranscriptSlot) return;
+  const isPublicChannel = message.channelId === CHANNEL_IDS.PUBLIC;   // over-all-chat
+  const isGameChannel   = message.channelId === CHANNEL_IDS.GAME;     // game-with-leo
+
+  // LEO'S ALLOWED ZONES: DMs, transcript slots, over-all-chat, game-with-leo
+  if (!isDM && !isTranscriptSlot && !isPublicChannel && !isGameChannel) return;
 
   if (isSpeakerOffline(BOT_NAME)) return;
   if (sim.state.status === "Sleeping") return;
@@ -232,51 +234,41 @@ client.on('messageCreate', async (message) => {
   let isFromVoiceTranscript = false;
 
   if (!isDM) {
-    // If it's from Oracle in a transcript slot, it's definitely for us
+    // Transcript slot from Oracle = voice transcript
     if (isOracle && isTranscriptSlot) {
       isAddressed = true;
       isFromVoiceTranscript = true;
     }
+    // Public/Game: respond when mentioned by name or directly replied to
+    if (isPublicChannel || isGameChannel) {
+      const content = message.content.toLowerCase();
+      const mentionedByName = ["leo", "leah", "lia", "leyo", "lee"].some(n => content.includes(n));
+      const isReply = message.reference?.messageId != null;
+      if (mentionedByName || isReply || message.mentions.has(client.user.id)) {
+        isAddressed = true;
+      }
+    }
   }
 
   if (isAddressed) {
-    if (isFromVoiceTranscript) return; // IGNORE: Handled by direct audio listener
-    if (!isOracle) message.channel.sendTyping().catch(() => {});
-    
+    if (isFromVoiceTranscript) return; // Handled by direct audio listener
+    message.channel.sendTyping().catch(() => {});
+
     const recentMessages = await message.channel.messages.fetch({ limit: 6 });
     const conversationHistory = recentMessages.reverse().map(m => `${m.author.username}: ${m.content}`).join("\n");
 
-    let effectiveUsername = message.author.username;
-    let effectiveContent = message.content;
-
-    // If from Oracle, extract the REAL user's name from the transcript tag
-    if (isFromVoiceTranscript) {
-      const match = message.content.match(/^\*\*([^\*]+) \[Voice\]:\*\* (.*)/);
-      if (match) {
-        effectiveUsername = match[1];
-        effectiveContent = match[2];
-      }
-    }
+    const effectiveUsername = message.author.username;
+    const effectiveContent  = message.content;
 
     const reply = await callGroqAsLeo(effectiveContent, effectiveUsername, message.channelId, null, conversationHistory);
     if (reply) {
-      // POST TEXT REPLY
-      if (isFromVoiceTranscript) {
-        await message.channel.send(`**Leo:** ${reply}`).catch(console.error);
-      } else {
-        await message.reply(reply).catch(console.error);
-      }
-      
-      // IF VOICE: ALSO SPEAK IT
-      if (isFromVoiceTranscript || (voiceConnection && isTranscriptSlot)) {
-        await speakLeoText(reply);
-      }
-
+      await message.reply(reply).catch(console.error);
       sim.onAction("speak");
       sim.updateRelationship(message.author.id, 2);
     }
   }
 });
+
 
 // --- Voice Logic ---
 
