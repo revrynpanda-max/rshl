@@ -1,5 +1,5 @@
 import fs from 'fs';
-import { CHANNEL_IDS, LEO_TRANSCRIPT_SLOTS } from './channel-rules.mjs';
+import { CHANNEL_IDS } from './channel-rules.mjs';
 
 const SLOTS_FILE = 'c:/KAI/tools/oracle-discord/data/voice_slots.json';
 
@@ -57,7 +57,7 @@ export async function releaseSlot(userId) {
 
 export async function updatePermissions(client, userId, slotIdx, hasAccess) {
   try {
-    const channelId = LEO_TRANSCRIPT_SLOTS[slotIdx];
+    const channelId = CHANNEL_IDS.LEO_VOICE_SLOTS[slotIdx];
     const channel = await client.channels.fetch(channelId);
     if (!channel) return;
 

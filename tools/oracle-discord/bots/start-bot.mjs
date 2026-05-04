@@ -5,8 +5,8 @@ import { CHANNEL_IDS } from '../shared/channel-rules.mjs';
 
 const botName = process.env.BOT_NAME || "AI";
 const botToken = process.env.BOT_TOKEN || "";
-const targetChannelId = SUNDAY_CHAT_CHANNEL_ID;
 const SUNDAY_CHAT_CHANNEL_ID = "1500085302268526712";
+const targetChannelId = SUNDAY_CHAT_CHANNEL_ID;
 
 // Simulation State
 const sim = new AgentSimulation(botName);
