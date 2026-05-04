@@ -543,8 +543,8 @@ async function handleUserVoice(userId) {
 
 async function capturePcm(userId) {
   return new Promise((resolve) => {
-    // NEURAL-SONIC: Set to 2300ms (2.3 seconds) for the optimal performance-conversational sweet spot
-    const stream = voiceConnection.receiver.subscribe(userId, { end: { behavior: EndBehaviorType.AfterSilence, duration: 2300 } });
+    // SONIC-HAIR-TRIGGER: Set to 1000ms (1.0 second) for absolute peak responsiveness
+    const stream = voiceConnection.receiver.subscribe(userId, { end: { behavior: EndBehaviorType.AfterSilence, duration: 1000 } });
     const decoder = new prism.opus.Decoder({ frameSize: 960, channels: 2, rate: 48000 });
     const chunks = [];
     stream.pipe(decoder);

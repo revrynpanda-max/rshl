@@ -39,7 +39,7 @@ All agents now utilize the **Direct-Sonic Bypass** for sub-200ms inference.
 ---
 
 ## 🛠️ Performance Metrics
-- **Conversational Pace**: 2.3s Silence Window (Performance-Conversational).
+- **Conversational Pace**: 1.0s Silence Window (Sonic-Hair-Trigger).
 - **Audio Injection**: Optimized FFmpeg probesize/analyzeduration for instant playback.
 - **Inference Arbitrage**: Local RSHL logic prioritized; Cloud direct-fallback active.
 
