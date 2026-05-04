@@ -4,6 +4,19 @@ import fs from 'fs';
 import { WorldClock } from './shared/simulation.mjs';
 
 const clock = new WorldClock();
+
+// Manual .env loader for child process consistency
+const envPath = './.env';
+if (fs.existsSync(envPath)) {
+  const envContent = fs.readFileSync(envPath, 'utf8');
+  envContent.split('\n').forEach(line => {
+    const match = line.match(/^\s*([A-Za-z0-9_]+)\s*=\s*(.*)$/);
+    if (match) {
+      const [_, key, value] = match;
+      process.env[key] = value.trim().replace(/^['"](.*)['"]$/, '$1');
+    }
+  });
+}
 const BOTS = ["Gemini", "Claude", "X", "Groq", "Analyst", "Researcher", "Kai Coder"];
 const processes = new Map(); // name -> child process
 
@@ -174,27 +187,35 @@ async function runHotfix() {
 
 
 // --- The Heartbeat (World Clock) ---
-// High-Frequency Real-Time metabolism (4Hz)
 let tickCount = 0;
-setInterval(() => {
+let _isWorkHours = false;
+
+setInterval(async () => {
   tickCount++;
   
-  // High-priority: Quick reactivity checks (Every 250ms)
-  // (Detecting instant state changes)
-
-  // Standard-priority: Simulation & Broadcast (Every 1s / 4 ticks)
-  if (tickCount % 4 === 0) {
-    clock.tick();
-    const state = clock.getState();
-    
-    // Broadcast the "Moment" to all living entities
-    for (const [name, child] of processes) {
-      if (child.connected) {
-        child.send({ type: 'WORLD_TICK', worldState: state });
+  // Sync with Oracle Server to check for "Break Mode" (Pending Proposal)
+  if (tickCount % 5 === 0) {
+    try {
+      const res = await fetch("http://127.0.0.1:3333/api/live-roundtable-tick").catch(() => null);
+      if (res && res.ok) {
+        const payload = await res.json().catch(() => ({}));
+        _isWorkHours = payload.queued && !payload.pending_proposal;
       }
+    } catch (e) {}
+  }
+
+  clock.tick();
+  const state = clock.getState();
+  state.isWorkHours = _isWorkHours;
+  
+  // Broadcast the "Moment" to all living entities
+  for (const [name, child] of processes) {
+    if (child.connected) {
+      child.send({ type: 'WORLD_TICK', worldState: state });
     }
   }
-}, 250); 
+}, 1000); 
+
 
 console.log("\n=======================================================");
 console.log(" Oracle Ecosystem Manager Online (Living Universe Mode)");

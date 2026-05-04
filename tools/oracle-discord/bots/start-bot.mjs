@@ -1,10 +1,35 @@
 import { Client, GatewayIntentBits, Partials } from 'discord.js';
+import fs from 'fs';
 import { chatWithOpenJarvis } from '../shared/openjarvis.mjs';
+
+// Manual .env loader for sub-process stability
+const envPath = './.env';
+if (fs.existsSync(envPath)) {
+  const envContent = fs.readFileSync(envPath, 'utf8');
+  envContent.split('\n').forEach(line => {
+    const match = line.match(/^\s*([A-Za-z0-9_]+)\s*=\s*(.*)$/);
+    if (match) {
+      const [_, key, value] = match;
+      process.env[key] = value.trim().replace(/^['"](.*)['"]$/, '$1');
+    }
+  });
+}
 import { AgentSimulation } from '../shared/simulation.mjs';
 import { CHANNEL_IDS } from '../shared/channel-rules.mjs';
 
-const botName = process.env.BOT_NAME || "AI";
-const botToken = process.env.BOT_TOKEN || "";
+let botName = process.argv[2] || process.env.BOT_NAME || "AI";
+// Special case mapping for tokens
+let tokenName = botName;
+if (botName === "Kai Coder") tokenName = "Oracle Coder";
+
+const tokenEnvKey = `ORACLE_DISCORD_TOKEN_${tokenName.toUpperCase().replace(/\s+/g, '_')}`;
+const botToken = process.env[tokenEnvKey] || process.env.BOT_TOKEN || "";
+
+if (!botToken) {
+  console.error(`[${botName}] ERROR: No token found for key ${tokenEnvKey}. Check your .env file.`);
+} else {
+  console.log(`[${botName}] Token found for ${tokenEnvKey} (${botToken.slice(0, 5)}...)`);
+}
 const SUNDAY_CHAT_CHANNEL_ID = "1500085302268526712";
 const targetChannelId = SUNDAY_CHAT_CHANNEL_ID;
 
