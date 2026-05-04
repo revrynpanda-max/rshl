@@ -250,39 +250,28 @@ Your goal is to be the ultimate strategic partner for NasterModx.`.trim();
   }
 });
 
-// Idle loop to keep conversation alive if it dies
+// Idle loop — always active, kicks a social bot if channel goes quiet
 setInterval(async () => {
-  const working = isWorkingHours();
-  const social = isSocialHours();
-  
-  if (!working && !social) return; // Full sleep mode
+  const allowedBots = Array.from(CHANNEL_SPEAKER_RULES[CHANNEL_IDS.SUNDAY] || []).filter(name => BOT_PORTS[name]);
+  if (allowedBots.length === 0) return;
 
-  // Phase-Lock: Work bots in WORK, Social bots in SUNDAY/GAME
-  const targetChannelId = working ? CHANNEL_IDS.WORK : CHANNEL_IDS.SUNDAY;
-  
-  if (Date.now() - lastMessageTime > 180000) { // 3 minutes of silence
-    const allowedBots = Array.from(CHANNEL_SPEAKER_RULES[targetChannelId] || []).filter(name => BOT_PORTS[name]);
-    
-    if (allowedBots.length > 0) {
-      const randomBot = allowedBots[Math.floor(Math.random() * allowedBots.length)];
-      
-      let targetId = targetChannelId;
-      if (targetChannelId === CHANNEL_IDS.SUNDAY) {
-        try {
-          const mainChannel = await client.channels.fetch(CHANNEL_IDS.SUNDAY);
-          const thread = await getSocialThread(mainChannel);
-          targetId = thread.id;
-        } catch {}
-      }
+  if (Date.now() - lastMessageTime > 90000) { // 90 seconds of silence
+    const randomBot = allowedBots[Math.floor(Math.random() * allowedBots.length)];
 
-      console.log(`[Oracle/Scheduler] Panel quiet in ${working ? 'Work' : 'Social'} mode. Prompting ${randomBot}.`);
-      sendBotSignal(BOT_PORTS[randomBot], {
-        channelId: targetId,
-        context: "[Oracle Overseer] The room is quiet. Share an update relevant to the current schedule.",
-        isInterjection: true
-      });
-      lastMessageTime = Date.now();
-    }
+    let targetId = CHANNEL_IDS.SUNDAY;
+    try {
+      const mainChannel = await client.channels.fetch(CHANNEL_IDS.SUNDAY);
+      const thread = await getSocialThread(mainChannel);
+      if (thread) targetId = thread.id;
+    } catch {}
+
+    console.log(`[Oracle/Scheduler] ai-social-chat quiet. Nudging ${randomBot}.`);
+    sendBotSignal(BOT_PORTS[randomBot], {
+      channelId: targetId,
+      context: "[Oracle Overseer] The room is quiet. Drop something interesting.",
+      isInterjection: true
+    });
+    lastMessageTime = Date.now();
   }
 }, 60000); // Check every minute
 
