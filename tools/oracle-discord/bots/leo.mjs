@@ -497,8 +497,8 @@ async function handleUserVoice(userId) {
       if (needsInfo) {
         console.log(`[Leo/Neural] Proactive Intelligence Triggered...`);
         const [latticeData, webData] = await Promise.all([
-          fetch(`http://127.0.0.1:3333/query?q=${encodeURIComponent(transcript)}`).then(r => r.json()).catch(() => null),
-          fetch(`http://127.0.0.1:8080/search?q=${encodeURIComponent(transcript)}`).then(r => r.json()).catch(() => null)
+          fetch(`http://127.0.0.1:3333/query?q=${encodeURIComponent(transcript)}`, { signal: AbortSignal.timeout(5000) }).then(r => r.json()).catch(() => null),
+          fetch(`http://127.0.0.1:8080/search?q=${encodeURIComponent(transcript)}`, { signal: AbortSignal.timeout(5000) }).then(r => r.json()).catch(() => null)
         ]);
         let extraContext = "";
         if (latticeData && latticeData.claims) extraContext += `[LATTICE DATA: ${latticeData.claims.slice(0,2).map(c=>c.text).join("; ")}] `;
@@ -707,8 +707,11 @@ ${cleanHistory}`;
         ],
         temperature: 0.8,
         max_tokens: 150
-      })
+      }),
+      signal: AbortSignal.timeout(10000) // 10s MASTER TIMEOUT
     });
+
+    if (!res.ok) throw new Error(`Groq API Error: ${res.status} ${res.statusText}`);
 
     const data = await res.json();
     return data.choices?.[0]?.message?.content?.trim();
