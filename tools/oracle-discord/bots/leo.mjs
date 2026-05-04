@@ -37,7 +37,7 @@ try {
 }
 
 import { isAllowed, CHANNEL_IDS } from '../shared/channel-rules.mjs';
-import { chatWithOpenJarvis } from '../shared/openjarvis.mjs';
+import { chatWithOpenJarvis, callOpenAI, callGroqDirect } from '../shared/openjarvis.mjs';
 import { recordAIFailure, isSpeakerOffline } from '../shared/failure-tracker.mjs';
 import { isLoopingResponse } from '../shared/utils.mjs';
 import { AgentSimulation } from '../shared/simulation.mjs';
@@ -727,7 +727,14 @@ ${cleanHistory}`;
     }
 
     if (!res.ok) {
-      console.warn(`[Leo/Neural] Groq failed (${res.status}). Falling back to local Ollama...`);
+      console.warn(`[Leo/Neural] Groq failed (${res.status}). Failing over to OpenAI (GPT-4o-mini)...`);
+      try {
+        const openaiReply = await callOpenAI(userName, cleanTranscript, system);
+        if (openaiReply) return openaiReply;
+      } catch (e) {
+        console.warn(`[Leo/Neural] OpenAI failover failed: ${e.message}. Falling back to local Ollama...`);
+      }
+      
       const localReply = await chatWithOllama(cleanTranscript, system, "kai-next:latest");
       if (localReply) return localReply;
       throw new Error(`Neural Chain Failure: ${res.status} ${res.statusText}`);

@@ -118,8 +118,10 @@ export async function callOpenAI(userName, transcript, systemPrompt) {
       model: "gpt-4o-mini",
       messages: [{ role: "system", content: systemPrompt }, { role: "user", content: `${userName}: ${transcript}` }],
       max_tokens: 500
-    })
+    }),
+    signal: AbortSignal.timeout(10000)
   });
+  if (!res.ok) throw new Error(`OpenAI Error: ${res.status} ${res.statusText}`);
   const data = await res.json();
   return data.choices[0].message.content.trim();
 }
