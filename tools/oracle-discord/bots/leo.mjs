@@ -492,7 +492,9 @@ async function handleUserVoice(userId) {
       const needsInfo = normalized.includes("search") || normalized.includes("who is") || normalized.includes("what is") || 
                         normalized.includes("how") || normalized.includes("status") || normalized.includes("news") || 
                         normalized.includes("war") || normalized.includes("current") || normalized.includes("today") ||
-                        normalized.includes("happening") || normalized.includes("going on");
+                        normalized.includes("happening") || normalized.includes("going on") || normalized.includes("link") ||
+                        normalized.includes("url") || normalized.includes("read") || normalized.includes("saying") ||
+                        normalized.includes(".md") || normalized.includes("inside");
       
       if (needsInfo) {
         console.log(`[Leo/Neural] Proactive Intelligence Triggered...`);
@@ -501,9 +503,11 @@ async function handleUserVoice(userId) {
           fetch(`http://127.0.0.1:8080/search?q=${encodeURIComponent(transcript)}`, { signal: AbortSignal.timeout(5000) }).then(r => r.json()).catch(() => null)
         ]);
         let extraContext = "";
+        // PRIORITIZE RESEARCHER: If it's a link or technical query, give it more weight
+        if (webData && webData.summary) extraContext += `[REAL-TIME DATA: ${webData.summary}] `;
         if (latticeData && latticeData.claims) extraContext += `[LATTICE DATA: ${latticeData.claims.slice(0,2).map(c=>c.text).join("; ")}] `;
-        if (webData && webData.summary) extraContext += `[WEB DATA: ${webData.summary}] `;
-        if (extraContext) contextualTranscript = `${extraContext}\nUser asked: ${transcript}`;
+        
+        if (extraContext) contextualTranscript = `[GROUNDED TRUTH AVAILABLE]\n${extraContext}\nUser asked: ${transcript}`;
       }
 
       const t_neural_start = Date.now();
