@@ -543,8 +543,8 @@ async function handleUserVoice(userId) {
 
 async function capturePcm(userId) {
   return new Promise((resolve) => {
-    // PACE-CALIBRATION: Set to 3000ms (3 seconds) for a natural, relaxed conversational flow
-    const stream = voiceConnection.receiver.subscribe(userId, { end: { behavior: EndBehaviorType.AfterSilence, duration: 3000 } });
+    // NEURAL-SONIC: Set to 2300ms (2.3 seconds) for the optimal performance-conversational sweet spot
+    const stream = voiceConnection.receiver.subscribe(userId, { end: { behavior: EndBehaviorType.AfterSilence, duration: 2300 } });
     const decoder = new prism.opus.Decoder({ frameSize: 960, channels: 2, rate: 48000 });
     const chunks = [];
     stream.pipe(decoder);
@@ -627,7 +627,8 @@ async function speakLeoText(text) {
 
     if (!res.ok) throw new Error(`ElevenLabs API error: ${res.statusText}`);
 
-    const ffmpeg = spawn(ffmpegPath, ["-i", "pipe:0", "-f", "s16le", "-ar", "48000", "-ac", "2", "pipe:1"]);
+    // SONIC-INJECTION: Optimized probesize and analyzeduration for instant playback
+    const ffmpeg = spawn(ffmpegPath, ["-analyzeduration", "0", "-probesize", "32", "-i", "pipe:0", "-f", "s16le", "-ar", "48000", "-ac", "2", "pipe:1"]);
     
     // Convert Web Stream to Node Stream and pipe to ffmpeg
     const nodeStream = Readable.fromWeb(res.body);
@@ -647,9 +648,10 @@ async function callGroqAsLeo(transcript, userName, channelId, userId = null, his
   if (isThinking) return null; // MASTER LOCK
   isThinking = true;
   
-    // GROQ-NEURAL-FLASH: Using Groq for 150ms inference speed
+  try {
+    // GROQ-SONIC-UPGRADE: Using 8B model for sub-100ms instant inference
     const groqKey = process.env.GROQ_API_KEY;
-    const model = "llama-3.3-70b-versatile"; 
+    const model = "llama-3.1-8b-instant"; 
     
     // TRANSCRIPT CLEANING: Strip Discord metadata and echoing headers
     const cleanTranscript = (transcript || "")
