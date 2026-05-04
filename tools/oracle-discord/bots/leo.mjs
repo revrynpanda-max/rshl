@@ -701,8 +701,8 @@ ${cleanHistory}`;
     // ─── LOCAL-SONIC FIRST ─────────────────────────────────────────────────────
     // Ollama is primary: zero rate limits, zero external latency, unlimited calls.
     // Cloud is the emergency backup only if local inference fails.
-    console.log(`[Leo/Neural] Local-Sonic PRIMARY (kai-next:latest)...`);
-    const localReply = await chatWithOllama(cleanTranscript, system, "kai-next:latest");
+    console.log(`[Leo/Neural] Local-Sonic PRIMARY (kai-fast:latest)...`);
+    const localReply = await chatWithOllama(cleanTranscript, system, "kai-fast:latest");
     if (localReply) return localReply;
 
     // ─── CLOUD BACKUP RACE (only if Ollama is down) ────────────────────────────
