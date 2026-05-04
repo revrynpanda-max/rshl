@@ -47,10 +47,18 @@ export async function chatWithOpenJarvis(userName, transcript, systemPrompt, mod
   // --- 2. Brain Selection (Turbo-Boost) ---
   let targetModel = model;
   
-  // GROQ-BYPASS: Force the Groq persona to use direct API calls for maximum speed
+  // GLOBAL-SONIC-BYPASS: Force all primary agents to use direct API calls for maximum speed and reliability
   if (userName === "Groq" || (isSocial && !model.includes(":") && !model.includes("gpt") && !model.includes("claude"))) {
     return await callGroqDirect(userName, transcript, systemPrompt, "llama-3.1-8b-instant");
   }
+  
+  if (userName === "Claude") return await callAnthropic(userName, transcript, systemPrompt);
+  if (userName === "Gemini") return await callGemini(userName, transcript, systemPrompt);
+  if (userName === "X") return await callXAI(userName, transcript, systemPrompt);
+  if (userName === "Analyst") return await callGroqDirect(userName, transcript, systemPrompt, "llama-3.3-70b-versatile");
+  if (userName === "Researcher") return await callOpenAI(userName, transcript, systemPrompt);
+  if (userName === "Kai Coder") return await callOpenAI(userName, transcript, systemPrompt);
+  if (userName === "Oracle_Overseer") return await callOpenAI(userName, transcript, systemPrompt);
 
   try {
     // Wait for memory recall
