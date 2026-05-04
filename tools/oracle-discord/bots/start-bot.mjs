@@ -18,6 +18,8 @@ if (fs.existsSync(envPath)) {
 
 import { AgentSimulation } from '../shared/simulation.mjs';
 import { CHANNEL_IDS } from '../shared/channel-rules.mjs';
+import { isWorkingHours, isSocialHours } from '../shared/hours.mjs';
+import { BIOGRAPHIES } from '../shared/biographies.mjs';
 
 let botName = process.argv[2] || process.env.BOT_NAME || "AI";
 // Special case mapping for tokens
@@ -278,7 +280,8 @@ TASK: Respond naturally as ${botName}. Be concise and authentic.
 
           const reply = await chatWithOpenJarvis(botName, effectiveContent, prompt, BOT_MODEL, null, {
             author: effectiveUsername,
-            channel: channel.name || "Unknown"
+            channel: channel.name || "Unknown",
+            isInterjection: payload.isInterjection || false
           }).catch(err => {
             if (err.message.includes("API_LIMIT")) sim.onAction("rate_limited");
             return null;
