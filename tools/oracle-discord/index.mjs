@@ -41,7 +41,7 @@ const openAiTtsVoice = process.env.OPENAI_TTS_VOICE || "onyx"; // onyx = deep ma
 
 const participantTokens = new Map([
   ["KAI", process.env.ORACLE_DISCORD_TOKEN_KAI || ""],          // KAI — single entry, no duplicates
-  ["Leo", process.env.ORACLE_DISCORD_TOKEN_LEO || ""],
+  // ["Leo", process.env.ORACLE_DISCORD_TOKEN_LEO || ""], // DEACTIVATED: Leo handles himself in leo.mjs
   ["Analyst", process.env.ORACLE_DISCORD_TOKEN_ANALYST || ""],
   ["Researcher", process.env.ORACLE_DISCORD_TOKEN_RESEARCHER || ""],
   ["Groq", process.env.ORACLE_DISCORD_TOKEN_GROQ || ""],
@@ -392,60 +392,11 @@ ${memoryBlock}`.trim();
 // ═════════════════════════════════════════════════════════════════════════════
 
 async function processVoiceQueue() {
-  if (isProcessingVoiceQueue || voiceResponseQueue.length === 0) return;
-  isProcessingVoiceQueue = true;
-  try {
-    while (voiceResponseQueue.length > 0) {
-      const item = voiceResponseQueue.shift();
-      const { transcript, user, channel } = item;
-
-      markVoiceContextActive(); // suppress KAI interjections for 30s
-
-      // Skip noise-only transcriptions — don't waste an API call on them
-      const noisePhrases = ["[background noise]", "[clicking]", "[pause]", "[silence]", "[music]", "[noise]", "[cough]"];
-      if (noisePhrases.some(n => transcript.toLowerCase().trim() === n)) {
-        console.log(`[VoiceDirect] Skipping noise transcript: "${transcript}"`);
-        continue;
-      }
-
-      // Drain the queue if it backs up — tell Ryan to slow down
-      if (voiceResponseQueue.length > 3) {
-        if (channel) {
-          await channel.send("**Leo:** Give me a sec — too many at once.");
-          queueLeoSpeech("Give me a sec — too many at once.");
-          await sleep(2000);
-        }
-        continue; // skip processing backed-up items
-      }
-
-      const name = user?.displayName || user?.username || "Ryan";
-
-      // ═══ DIRECT GROQ CALL ══════════════════════════════════════════════════════════════
-      // Bypass Oracle entirely — call Groq with a clean Leo-only prompt.
-      // This is the ONLY path for voice. KAI lattice never touches this.
-      console.log(`[VoiceDirect] Calling Groq as Leo for: "${transcript.slice(0, 60)}…"`);
-      const reply = await callGroqAsLeo(transcript, name);
-      // ══════════════════════════════════════════════════════════════════════
-
-      if (channel) {
-        if (reply) {
-          // sendAsSpeaker already queues TTS internally for Leo — do NOT call queueLeoSpeech here
-          await sendAsSpeaker(channel, "Leo", reply);
-          // Save this exchange to Leo's own memory slice — he'll recall it later
-          leoMemoryStore(name, transcript, reply, "voice").catch(() => {});
-        } else {
-          // Groq is down or returned nothing clean — tell the user honestly
-          const offline = "My API's not connecting right now. Type at me instead.";
-          await sendAsSpeaker(channel, "Leo", offline);
-          // No leoMemoryStore for error fallback
-        }
-      }
-    }
-  } catch (e) {
-    console.error("[Voice Queue] Error:", e.message);
-  } finally {
-    isProcessingVoiceQueue = false;
-  }
+  // DEACTIVATED: Leo now handles his own voice brain in leo.mjs.
+  // This prevents the Oracle orchestrator from double-posting as Leo.
+  isProcessingVoiceQueue = false;
+  voiceResponseQueue = [];
+  return;
 }
 
 async function getOrCreateUserTranscriptChannel(user, preferredGuild = null) {
