@@ -700,7 +700,7 @@ ${cleanHistory}`;
 
     // ─── CEREBRAS PRIMARY (wafer-scale silicon, ~450ms for 70B) ──────────────────
     if (process.env.CEREBRAS_API_KEY) {
-      console.log(`[Leo/Neural] Cerebras PRIMARY (llama-3.3-70b)...`);
+      console.log(`[Leo/Neural] Cerebras PRIMARY (llama3.1-8b)...`);
       try {
         const cbReply = await callCerebras(userName, cleanTranscript, system, 6000);
         if (cbReply) return cbReply;
