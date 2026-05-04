@@ -70,7 +70,15 @@ export async function chatWithOpenJarvis(userName, transcript, systemPrompt, mod
     }
     return await callGroqDirect(userName, transcript, systemPrompt, "llama-3.3-70b-versatile");
   }
-  if (userName === "X") return await callXAI(userName, transcript, systemPrompt);
+  if (userName === "X") {
+    try {
+      const reply = await callXAI(userName, transcript, systemPrompt);
+      if (reply) return reply;
+    } catch (e) {
+      console.warn(`[X/Neural] xAI failed: ${e.message}. Falling back to Groq...`);
+    }
+    return await callGroqDirect(userName, transcript, systemPrompt, "llama-3.3-70b-versatile");
+  }
   if (userName === "Analyst") return await callGroqDirect(userName, transcript, systemPrompt, "llama-3.3-70b-versatile");
   if (userName === "Researcher") return await callOpenAI(userName, transcript, systemPrompt);
   if (userName === "Kai Coder") return await callOpenAI(userName, transcript, systemPrompt);
@@ -195,7 +203,7 @@ export async function callXAI(userName, transcript, systemPrompt) {
     method: "POST",
     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.XAI_API_KEY}` },
     body: JSON.stringify({
-      model: "grok-beta",
+      model: "grok-3",
       messages: [{ role: "system", content: systemPrompt }, { role: "user", content: `${userName}: ${transcript}` }],
       max_tokens: 500
     })
