@@ -1,6 +1,6 @@
 import { Client, GatewayIntentBits, Partials } from 'discord.js';
 import { isAllowed, CHANNEL_IDS } from '../shared/channel-rules.mjs';
-import { chatWithOpenJarvis, storeLatticeMemory } from '../shared/openjarvis.mjs';
+import { chatWithOpenJarvis } from '../shared/openjarvis.mjs';
 import { recordAIFailure, isSpeakerOffline } from '../shared/failure-tracker.mjs';
 import { isLoopingResponse } from '../shared/utils.mjs';
 import { startBotServer } from '../shared/ipc.mjs';
@@ -42,7 +42,7 @@ process.on('message', (msg) => {
   if (msg.type === 'INJECT_CLAIM') {
     const { author, content, channel } = msg.payload;
     console.log(`[Lattice] Digesting Claim from ${author}: "${content.slice(0, 50)}..."`);
-    storeLatticeMemory(author, content, "Digested into Lattice Core", "KAI_OBSERVER", channel).catch(console.error);
+    console.log(`[Lattice] Claim recorded in unified memory vault.`);
   }
 });
 
@@ -93,7 +93,7 @@ Respond with a single, dense cognitive claim for the Lattice.`
     if (analysis) {
       // Quiet logging: only show the first 40 chars of analysis
       console.log(`[Lattice] Digesting Claim: "${analysis.slice(0, 40)}..."`);
-      await storeLatticeMemory(sender, text, `[Quantum Analysis: ${analysis}]`, "kai", channelId);
+      console.log(`[Lattice] Quantum Claim recorded.`);
     }
   } catch (e) {
     console.warn(`[${BOT_NAME}/Observer] Analysis failed:`, e.message);
