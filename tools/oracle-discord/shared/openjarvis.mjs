@@ -44,92 +44,88 @@ export async function chatWithOpenJarvis(userName, transcript, systemPrompt, mod
     }).then(res => res.ok ? res.json() : null).catch(() => null);
   }
 
-  // --- 2. Brain Selection (Turbo-Boost) ---
-  let targetModel = model;
-  
-  // GLOBAL-SONIC-BYPASS: Force all primary agents to use direct API calls for maximum speed and reliability
-  if (userName === "Groq" || (isSocial && !model.includes(":") && !model.includes("gpt") && !model.includes("claude"))) {
-    return await callGroqDirect(userName, transcript, systemPrompt, "llama-3.1-8b-instant");
+  // --- 2. Brain Selection — Each bot owns their API. No cross-contamination. ---
+
+  // ── LEO: Cerebras (voice speed) → Ollama local ──────────────────────────────
+  // (Leo handles his own chain in leo.mjs — passthrough here if called directly)
+
+  // ── GROQ BOT: Groq 8B (speed/logic) → Cerebras ─────────────────────────────
+  if (userName === "Groq") {
+    try {
+      const r = await callGroqDirect(userName, transcript, systemPrompt, "llama-3.1-8b-instant");
+      if (r) return r;
+    } catch (e) { console.warn(`[Groq/Neural] Groq failed: ${e.message}. Falling back to Cerebras...`); }
+    return await callCerebras(userName, transcript, systemPrompt);
   }
-  
+
+  // ── CLAUDE: Groq 70B (nuanced reasoning) → Groq 8B ─────────────────────────
   if (userName === "Claude") {
     try {
-      const reply = await callAnthropic(userName, transcript, systemPrompt);
-      if (reply) return reply;
-    } catch (e) {
-      console.warn(`[Claude/Neural] Anthropic failed: ${e.message}. Falling back to Groq...`);
-    }
-    return await callGroqDirect(userName, transcript, systemPrompt, "llama-3.3-70b-versatile");
+      const r = await callGroqDirect(userName, transcript, systemPrompt, "llama-3.3-70b-versatile");
+      if (r) return r;
+    } catch (e) { console.warn(`[Claude/Neural] Groq 70B failed: ${e.message}. Falling back to Groq 8B...`); }
+    return await callGroqDirect(userName, transcript, systemPrompt, "llama-3.1-8b-instant");
   }
+
+  // ── GEMINI: Google gemini-2.5-flash → Groq 70B ──────────────────────────────
+  // Gemini's Google API is hers alone — no other bot touches it
   if (userName === "Gemini") {
     try {
-      const reply = await callGemini(userName, transcript, systemPrompt);
-      if (reply) return reply;
-    } catch (e) {
-      console.warn(`[Gemini/Neural] Google failed: ${e.message}. Falling back to Groq...`);
-    }
+      const r = await callGemini(userName, transcript, systemPrompt);
+      if (r) return r;
+    } catch (e) { console.warn(`[Gemini/Neural] Google failed: ${e.message}. Falling back to Groq 70B...`); }
     return await callGroqDirect(userName, transcript, systemPrompt, "llama-3.3-70b-versatile");
   }
+
+  // ── X: Groq 8B (fast/punchy) → Cerebras ────────────────────────────────────
   if (userName === "X") {
     try {
-      const reply = await callXAI(userName, transcript, systemPrompt);
-      if (reply) return reply;
-    } catch (e) {
-      console.warn(`[X/Neural] xAI failed: ${e.message}. Falling back to Groq...`);
-    }
+      const r = await callGroqDirect(userName, transcript, systemPrompt, "llama-3.1-8b-instant");
+      if (r) return r;
+    } catch (e) { console.warn(`[X/Neural] Groq failed: ${e.message}. Falling back to Cerebras...`); }
+    return await callCerebras(userName, transcript, systemPrompt);
+  }
+
+  // ── ANALYST: Groq 70B (deep reasoning) → Groq 8B ───────────────────────────
+  if (userName === "Analyst") {
+    try {
+      const r = await callGroqDirect(userName, transcript, systemPrompt, "llama-3.3-70b-versatile");
+      if (r) return r;
+    } catch (e) { console.warn(`[Analyst/Neural] Groq 70B failed: ${e.message}. Falling back to Groq 8B...`); }
+    return await callGroqDirect(userName, transcript, systemPrompt, "llama-3.1-8b-instant");
+  }
+
+  // ── RESEARCHER: Groq 70B (knowledge synthesis) → Groq 8B ───────────────────
+  if (userName === "Researcher") {
+    try {
+      const r = await callGroqDirect(userName, transcript, systemPrompt, "llama-3.3-70b-versatile");
+      if (r) return r;
+    } catch (e) { console.warn(`[Researcher/Neural] Groq 70B failed: ${e.message}. Falling back to Groq 8B...`); }
+    return await callGroqDirect(userName, transcript, systemPrompt, "llama-3.1-8b-instant");
+  }
+
+  // ── KAI CODER: Cerebras (fast code) → Groq 70B ─────────────────────────────
+  if (userName === "Kai Coder") {
+    try {
+      const r = await callCerebras(userName, transcript, systemPrompt);
+      if (r) return r;
+    } catch (e) { console.warn(`[KaiCoder/Neural] Cerebras failed: ${e.message}. Falling back to Groq 70B...`); }
     return await callGroqDirect(userName, transcript, systemPrompt, "llama-3.3-70b-versatile");
   }
-  if (userName === "Analyst") return await callGroqDirect(userName, transcript, systemPrompt, "llama-3.3-70b-versatile");
-  if (userName === "Researcher") return await callOpenAI(userName, transcript, systemPrompt);
-  if (userName === "Kai Coder") return await callOpenAI(userName, transcript, systemPrompt);
-  if (userName === "Oracle_Overseer") return await callOpenAI(userName, transcript, systemPrompt);
 
-  try {
-    // Wait for memory recall
-    if (memoryPromise) {
-      const memData = await memoryPromise;
-      if (memData?.memories?.length > 0) {
-        const pastContext = memData.memories.map(m => `- ${m.content}`).join("\n");
-        systemPrompt = `${systemPrompt}\n\n[RECALLED MEMORIES]:\n${pastContext}`;
-      }
-    }
-
-    const res = await fetch(`${OPENJARVIS_URL}/api/chat`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: `${userName}: ${transcript}`, system: systemPrompt, model: targetModel }),
-      signal: AbortSignal.timeout(10000), 
-    });
-    
-    if (res.ok) {
-      const data = await res.json();
-      const reply = (data?.response || data?.reply || data?.text || data?.content || data?.message || "").trim();
-      if (reply && !isInternalMonologue(reply)) return reply; 
-    }
-    
-    throw new Error("Primary brain silent or invalid response");
-
-  } catch (e) { 
-    console.warn(`[OpenJarvis/Fallback] ${userName} failed: ${e.message}. Using recursive fallback...`);
-    
-    // RECURSIVE FAILOVER LADDER
-    if (userName === "Claude") return await callAnthropic(userName, transcript, systemPrompt);
-    if (userName === "Gemini") return await callGemini(userName, transcript, systemPrompt);
-    if (userName === "X") return await callXAI(userName, transcript, systemPrompt);
-    
-    // ORACLE / CODING / LOGIC FALLBACK
-    if (userName === "Oracle_Overseer" || userName === "Kai Coder" || targetModel.includes("gpt")) {
-      try { return await callOpenAI(userName, transcript, systemPrompt); } catch (e2) {
-        try { return await callGemini(userName, transcript, systemPrompt); } catch (e3) {
-          return await callGroqDirect(userName, transcript, systemPrompt, "llama-3.1-70b-versatile");
-        }
-      }
-    }
-
-    // GENERAL SPEED FALLBACK
-    return await callGroqDirect(userName, transcript, systemPrompt, "gemma2-9b-it");
+  // ── ORACLE: Cerebras (fast routing) → Groq 70B ──────────────────────────────
+  if (userName === "Oracle_Overseer") {
+    try {
+      const r = await callCerebras(userName, transcript, systemPrompt);
+      if (r) return r;
+    } catch (e) { console.warn(`[Oracle/Neural] Cerebras failed: ${e.message}. Falling back to Groq 70B...`); }
+    return await callGroqDirect(userName, transcript, systemPrompt, "llama-3.3-70b-versatile");
   }
+
+  // ── UNKNOWN BOT: Groq 8B safe default ───────────────────────────────────────
+  return await callGroqDirect(userName, transcript, systemPrompt, "llama-3.1-8b-instant");
 }
+
 
 /**
  * Direct Brain Callers (Bypassing Gateway for speed/reliability)
