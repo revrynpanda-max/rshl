@@ -161,7 +161,7 @@ TASK: You're hanging in the plaza. Talk like a normal person.
     } catch (e) {
       console.warn(`[${botName}] Proactive loop error:`, e.message);
     }
-  }, 60000 + (Math.random() * 120000)); // 1-3m
+  }, 90000 + (Math.random() * 210000)); // 1.5-5 min avg — reduces daily API usage, keeps Gemini under 250 RPD
 }
 
 client.on('messageCreate', async (message) => {

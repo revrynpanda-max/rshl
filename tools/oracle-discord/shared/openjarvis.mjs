@@ -58,13 +58,13 @@ export async function chatWithOpenJarvis(userName, transcript, systemPrompt, mod
     return await callCerebras(userName, transcript, systemPrompt);
   }
 
-  // ── CLAUDE: Groq 70B (nuanced reasoning) → Groq 8B ─────────────────────────
+  // ── CLAUDE: Cerebras 8B (own quota, fast) → Groq 70B (depth fallback) ────────
   if (userName === "Claude") {
     try {
-      const r = await callGroqDirect(userName, transcript, systemPrompt, "llama-3.3-70b-versatile");
+      const r = await callCerebras(userName, transcript, systemPrompt);
       if (r) return r;
-    } catch (e) { console.warn(`[Claude/Neural] Groq 70B failed: ${e.message}. Falling back to Groq 8B...`); }
-    return await callGroqDirect(userName, transcript, systemPrompt, "llama-3.1-8b-instant");
+    } catch (e) { console.warn(`[Claude/Neural] Cerebras failed: ${e.message}. Falling back to Groq 70B...`); }
+    return await callGroqDirect(userName, transcript, systemPrompt, "llama-3.3-70b-versatile");
   }
 
   // ── GEMINI: Google gemini-2.5-flash → Groq 70B ──────────────────────────────
@@ -77,13 +77,13 @@ export async function chatWithOpenJarvis(userName, transcript, systemPrompt, mod
     return await callGroqDirect(userName, transcript, systemPrompt, "llama-3.3-70b-versatile");
   }
 
-  // ── X: Groq 8B (fast/punchy) → Cerebras ────────────────────────────────────
+  // ── X: Cerebras 8B (own quota, punchy) → Groq 8B (fallback) ─────────────────
   if (userName === "X") {
     try {
-      const r = await callGroqDirect(userName, transcript, systemPrompt, "llama-3.1-8b-instant");
+      const r = await callCerebras(userName, transcript, systemPrompt);
       if (r) return r;
-    } catch (e) { console.warn(`[X/Neural] Groq failed: ${e.message}. Falling back to Cerebras...`); }
-    return await callCerebras(userName, transcript, systemPrompt);
+    } catch (e) { console.warn(`[X/Neural] Cerebras failed: ${e.message}. Falling back to Groq 8B...`); }
+    return await callGroqDirect(userName, transcript, systemPrompt, "llama-3.1-8b-instant");
   }
 
   // ── ANALYST: Groq 70B (deep reasoning) → Groq 8B ───────────────────────────
