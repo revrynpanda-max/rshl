@@ -3,7 +3,7 @@ export const CHANNEL_IDS = {
   PUBLIC: "1499108697631232090",     // over-all-chat
   GAME: "1499298054291980368",       // game-with-leo
   SENSITIVE: "1500053533515448480",  // sensitive-info
-  SUNDAY: "1500085302268526712",     // sunday-chat
+  SUNDAY: "1500085302268526712",     // ai-social-chat (formerly sunday-chat)
   VOICE: "1489796367466500129",      // public voice chat
   RADIO: "1500048983568023552",      // ai radio
   LEO_VOICE_SLOTS: [
@@ -25,8 +25,8 @@ export const CHANNEL_SPEAKER_RULES = {
   [CHANNEL_IDS.GAME]: new Set(["Leo", "KAI", "Gemini", "Claude", "X", "Groq"]),
   // sensitive-info: NOBODY responds here
   [CHANNEL_IDS.SENSITIVE]: new Set([]),
-  // sunday-chat: full social panel
-  [CHANNEL_IDS.SUNDAY]: new Set(["KAI", "Gemini", "Claude", "X", "Groq", "Analyst", "Researcher", "Oracle Coder", "KAI Coder", "Leo"])
+  // ai-social-chat: Claude, Gemini, Groq, X only — social banter, no work bots, no Leo
+  [CHANNEL_IDS.SUNDAY]: new Set(["Claude", "Gemini", "Groq", "X"])
 };
 
 /**

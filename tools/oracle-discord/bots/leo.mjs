@@ -166,7 +166,9 @@ client.once('clientReady', () => {
 });
 
 async function startSocialLoop() {
-  const targetChannelId = CHANNEL_IDS.SUNDAY;
+  // Leo is VOICE-ONLY. He does not post in ai-social-chat.
+  // Social chat is for: Claude, Gemini, Groq, X only.
+  return;
   
   setInterval(async () => {
     try {
@@ -613,7 +615,7 @@ async function transcribeAudio(wavBuffer) {
 async function speakLeoText(text) {
   if (!ELEVEN_LABS_KEY) return;
   try {
-    const voiceId = "xSmqe1eQaZYqA3V5Kk9V";
+    const voiceId = "hswfOuM90P82BLQSXwqU";
     const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream?output_format=mp3_44100_128&optimize_streaming_latency=4`, {
       method: "POST",
       headers: { "xi-api-key": ELEVEN_LABS_KEY, "Content-Type": "application/json" },
