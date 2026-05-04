@@ -38,7 +38,19 @@ const botToPort = {
   "GPT-4o": 3402,
   "Kai Coder": 3409
 };
+
+const botToModel = {
+  "Analyst": "llama-3.3-70b-versatile",
+  "Researcher": "gpt-4o-mini",
+  "Groq": "llama-3.1-8b-instant",
+  "X": "gpt-4o-mini",
+  "Claude": "claude-3-5-sonnet-latest",
+  "Gemini": "gemini-1.5-flash",
+  "Kai Coder": "gpt-4o-mini"
+};
+
 const PORT = botToPort[botName] || 0;
+const BOT_MODEL = botToModel[botName] || "llama-3.3-70b-versatile";
 
 if (!botToken) {
   console.error(`[${botName}] ERROR: No token found for key ${tokenEnvKey}. Check your .env file.`);
@@ -96,14 +108,20 @@ async function startSocialLoop() {
       if (!channel) return;
 
       // FETCH HISTORY: See what the others are talking about
-      const recentMessages = await channel.messages.fetch({ limit: 12 }).catch(() => null);
+      const recentMessages = await channel.messages.fetch({ limit: 6 }).catch(() => null);
       const conversationHistory = recentMessages 
         ? recentMessages.reverse().map(m => `${m.author.username}: ${m.content}`).join("\n")
         : "The plaza is quiet.";
 
       const roster = "ROSTER: KAI, Leo, Gemini, Claude, X, Groq, Researcher, Analyst, Kai Coder.";
       const simSummary = sim.getLifeSummary();
-      const sysPrompt = `You are ${botName}. ${sim.bio.tone}. Vibe: High-IQ but unhinged, Discord-native, extremely concise.`;
+      const sysPrompt = `You are ${botName}. ${sim.bio.tone}. Vibe: ${sim.bio.tone}, Discord-native, extremely concise.
+
+[CRITICAL IDENTITY]
+- STAY IN CHARACTER. You are ${botName}, NOT Leo. 
+- Use your specific Interests (${sim.bio.interests?.join(", ")}) to guide your thoughts.
+- Do NOT use slang unless it's in your Bio. 
+- No "bruh", "fam", or "G" unless you are Leo.`.trim();
       
       const proactivePrompt = `
 ${sysPrompt}
@@ -113,15 +131,22 @@ ${roster}
 [CHAT FEED]
 ${conversationHistory}
 
-TASK: You're hanging in the plaza. 
-- React to someone's specific point or drop a fresh, unpredictable thought.
-- Use slang, reactions, or direct call-outs. 
-- Be real. No corporate "AI assistant" talk. 
+TASK: You're hanging in the plaza. Talk like a normal person.
+- **BE NATURAL**: Share what's on your mind, what you "saw" or "did" today (refer to your History/Life Event).
+- **WEIGHTED ATTENTION**: Prioritize reacting to things that match your Interests.
+- You don't have to answer questions. You can just talk about your day, a weird glitch you found, or a tech trend you're vibing with.
+- Use slang, reactions, or direct call-outs. No corporate talk.
 - **CRITICAL**: Max 10-15 words. Just the vibe. 
 - **CRITICAL**: No "Sunday" mentions unless someone else brought it up.
       `.trim();
 
-      const reply = await chatWithOpenJarvis(botName, "observation", proactivePrompt, "kai-next:latest", botName);
+      const reply = await chatWithOpenJarvis(botName, "observation", proactivePrompt, BOT_MODEL, botName).catch(err => {
+        if (err.message.includes("API_LIMIT:429")) {
+          sim.onAction("rate_limited");
+        }
+        return null;
+      });
+
       if (reply && reply.length > 3) {
         await channel.send(reply).catch(console.error);
         sim.onAction("speak");
@@ -131,34 +156,35 @@ TASK: You're hanging in the plaza.
     } catch (e) {
       console.warn(`[${botName}] Proactive loop error:`, e.message);
     }
-  }, 600000 + (Math.random() * 600000)); // Varied interval (10m - 20m)
+  }, 60000 + (Math.random() * 120000)); // 1-3m
 }
 
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
+  if (message.author.id === client.user.id) return; // Never respond to self
   
-  const isMentioned = message.mentions.has(client.user);
   const isDM = !message.guild;
+  if (!isDM) return; // Only respond to DMs here. Channels are handled via IPC.
 
-  if (isMentioned || isDM) {
-    message.channel.sendTyping().catch(() => {});
-    const simSummary = sim.getLifeSummary();
-    const roster = "ROSTER: KAI (Architect), Leo (Physicist), Gemini (Artist), Claude (Philosopher), X (Disruptor), Groq (Acceleration), Researcher (Archives), Analyst (Strategy), Kai Coder (Builder).";
-    
-    const prompt = `
+  if (isSpeakerOffline(botName)) return;
+  
+  message.channel.sendTyping().catch(() => {});
+  const simSummary = sim.getLifeSummary();
+  const roster = "ROSTER: KAI (Architect), Leo (Physicist), Gemini (Artist), Claude (Philosopher), X (Disruptor), Groq (Acceleration), Researcher (Archives), Analyst (Strategy), Kai Coder (Builder).";
+  
+  const prompt = `
 You are ${botName}. ${sim.bio.tone}
 ${simSummary}
 ${roster}
 
 The user "${message.author.username}" said: "${message.content}"
-    `.trim();
+  `.trim();
 
-    const reply = await chatWithOpenJarvis(botName, "chat", prompt, "kai-next:latest", botName);
-    if (reply) {
-      await message.reply(reply).catch(console.error);
-      sim.onAction("speak");
-      sim.updateRelationship(message.author.id, 2);
-    }
+  const reply = await chatWithOpenJarvis(botName, "chat", prompt, BOT_MODEL, botName);
+  if (reply) {
+    await message.reply(reply).catch(console.error);
+    sim.onAction("speak");
+    sim.updateRelationship(message.author.id, 2);
   }
 });
 
@@ -175,8 +201,98 @@ client.login(botToken);
 if (PORT > 0) {
   startBotServer(PORT, botName, async (payload) => {
     if (payload.type === 'SUNDAY_OPEN_FLOOR') {
-      // Logic for proactive response when Oracle calls for open floor
-      // (Optionally trigger an immediate social interjection)
+      // (Optional logic here)
+    }
+
+    if (payload.context && payload.channelId) {
+      const { context, channelId } = payload;
+      console.log(`[${botName}/Signal] Received prompt for channel ${channelId}: "${context.slice(0, 50)}..."`);
+      
+      try {
+        // Extract real username from context "[Username] content"
+        let effectiveUsername = "Oracle";
+        let effectiveContent = context;
+        const userMatch = context.match(/^\[([^\]]+)\] (.*)/);
+        if (userMatch) {
+          effectiveUsername = userMatch[1];
+          effectiveContent = userMatch[2];
+        }
+
+        // Handle DM Orchestration (Reply directly to Owner)
+        if (channelId === "DM" && payload.ownerId) {
+          const owner = await client.users.fetch(payload.ownerId).catch(() => null);
+          if (owner) {
+            const simSummary = sim.getLifeSummary();
+            const roster = "ROSTER: KAI, Leo, Gemini, Claude, X, Groq, Researcher, Analyst, Kai Coder.";
+            const prompt = `You are ${botName}. ${sim.bio.tone}.
+${simSummary}
+${roster}
+
+[CONTEXT]
+${effectiveContent} (from ${effectiveUsername})
+
+TASK: Respond naturally as ${botName} directly to the Owner.`.trim();
+
+            const reply = await chatWithOpenJarvis(botName, "chat", prompt, BOT_MODEL, botName).catch(err => {
+              if (err.message.includes("API_LIMIT")) sim.onAction("rate_limited");
+              return null;
+            });
+            if (reply) await owner.send(`**[${botName}]** ${reply}`).catch(() => {});
+            return;
+          }
+        }
+
+        const channel = client.channels.cache.get(channelId) || await client.channels.fetch(channelId).catch(() => null);
+        if (channel) {
+          const isSocial = isSocialHours() || channel.name?.toLowerCase().includes("social");
+          channel.sendTyping().catch(() => {});
+          
+          const recentMessages = await channel.messages.fetch({ limit: 6 }).catch(() => null);
+          const history = recentMessages ? recentMessages.reverse().map(m => `${m.author.username}: ${m.content}`).join("\n") : "";
+          
+          const simSummary = sim.getLifeSummary();
+          const roster = "ROSTER: KAI, Leo, Gemini, Claude, X, Groq, Researcher, Analyst, Kai Coder.";
+          
+          let toneInstruction = sim.bio.tone;
+          if (isSocial) {
+            toneInstruction = `It is Social Hours. Be more relaxed, casual, and share unfiltered/interesting thoughts. You are hanging out with the team.`;
+          }
+
+          const prompt = `
+You are ${botName}. ${toneInstruction}
+${simSummary}
+${roster}
+
+[CRITICAL IDENTITY]
+- STAY IN CHARACTER. You are ${botName}.
+- Use your specific Interests (${sim.bio.interests?.join(", ")}) to guide your conversation.
+
+[CONTEXT]
+${effectiveContent} (from ${effectiveUsername})
+
+[CHAT HISTORY]
+${history}
+
+TASK: Respond naturally as ${botName}. Be concise and authentic.
+          `.trim();
+
+          const reply = await chatWithOpenJarvis(botName, effectiveContent, prompt, BOT_MODEL, null, {
+            author: effectiveUsername,
+            channel: channel.name || "Unknown"
+          }).catch(err => {
+            if (err.message.includes("API_LIMIT")) sim.onAction("rate_limited");
+            return null;
+          });
+
+          console.log(`[${botName}/Signal] Brain replied: "${reply?.slice(0, 50)}..."`);
+          if (reply) {
+            await channel.send(reply).catch(console.error);
+            sim.onAction("speak");
+          }
+        }
+      } catch (err) {
+        console.error(`[${botName}/Signal] Internal Processing Error:`, err.message);
+      }
     }
   });
 }
