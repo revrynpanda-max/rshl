@@ -22,6 +22,7 @@ import { spawn } from "node:child_process";
 import { Readable } from "node:stream";
 import ffmpegPath from "ffmpeg-static";
 import prism from "prism-media";
+import http from "http";
 import { WorldClock } from "./shared/simulation.mjs";
 
 
@@ -557,7 +558,7 @@ function isWorkingHours() {
 
 
 
-client.on("ready", () => {
+client.on("clientReady", () => {
   console.log(`\n==============================================`);
   console.log(`Oracle Gateway online as ${client.user.tag}`);
   console.log(`Invite Link: https://discord.com/api/oauth2/authorize?client_id=${client.user.id}&permissions=8&scope=bot%20applications.commands`);
@@ -628,6 +629,15 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
     }
 
     console.log(`[Oracle] Assigned ${member.user.username} to Slot ${slotIdx + 1}`);
+
+    // SIGNAL LEO TO JOIN
+    await signalBot(leoIpcPort, { 
+      type: "VOICE_ASSIGN", 
+      userId, 
+      slot: slotIdx + 1, 
+      channelId: userTranscriptChannels.get(userId),
+      guildId: newState.guild.id
+    }).catch(e => console.error(`[Oracle] ERROR: Failed to signal Leo on port ${leoIpcPort}:`, e.message));
   }
 
   if (oldState.channelId === leoVoiceChannelId && newState.channelId !== leoVoiceChannelId) {
@@ -636,6 +646,9 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
     if (slotIdx !== -1) {
       await updatePermissions(client, userId, slotIdx, false);
       console.log(`[Oracle] Released Slot ${slotIdx + 1} from ${userId}`);
+      
+      // SIGNAL LEO TO RELEASE
+      await signalBot(leoIpcPort, { type: "VOICE_RELEASE", userId }).catch(() => {});
     }
   }
 });
@@ -3359,3 +3372,36 @@ setInterval(syncRealmToBackbone, 15 * 60 * 1000);
 
 
 
+
+// ══════════════════════════════════════════════════════════════════════════
+// TRANSCRIPTION BRIDGE (Listen for agents to post STT)
+// ══════════════════════════════════════════════════════════════════════════
+const ORACLE_PORT = 3401;
+http.createServer((req, res) => {
+  if (req.method === "POST") {
+    let body = "";
+    req.on("data", chunk => body += chunk);
+    req.on("end", async () => {
+      try {
+        const payload = JSON.parse(body);
+        if (payload.type === "POST_TRANSCRIPT") {
+          const { channelId, username, text } = payload;
+          const channel = client.channels.cache.get(channelId) || await client.channels.fetch(channelId);
+          if (channel) {
+            await channel.send(`**${username} [Voice]:** ${text}`).catch(() => {});
+          }
+          res.writeHead(200);
+          res.end(JSON.stringify({ status: "ok" }));
+        } else {
+          res.writeHead(404);
+          res.end();
+        }
+      } catch (e) {
+        res.writeHead(400);
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+  }
+}).listen(ORACLE_PORT, "127.0.0.1", () => {
+  console.log(`[Oracle] Transcription bridge listening on ${ORACLE_PORT}`);
+});

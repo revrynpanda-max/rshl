@@ -5,7 +5,7 @@ import http from 'http';
  */
 export function startBotServer(port, name, onTrigger) {
   const server = http.createServer((req, res) => {
-    if (req.method === 'POST' && req.url === '/trigger') {
+    if (req.method === 'POST' && (req.url === '/trigger' || req.url === '/signal')) {
       let body = '';
       req.on('data', chunk => body += chunk);
       req.on('end', () => {

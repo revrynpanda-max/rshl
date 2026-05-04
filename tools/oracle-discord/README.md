@@ -6,10 +6,12 @@ A high-fidelity bridge connecting the local **KAI Oracle** server to Discord. Ru
 
 ## Features
 
-- **Multi-Agent Roundtable**: Live panel of 7 AI agents (Leo, Gemini, KAI, X, Analyst, Researcher, Groq) who collaborate and challenge each other autonomously.
-- **Voice Channel Integration**: Leo joins Discord voice channels, listens to users via ElevenLabs Scribe (STT), and responds with ElevenLabs TTS (OpenAI fallback).
-- **Temporal Gating (9-to-2 Shift)**: The roundtable follows a strict **9:00 AM – 2:00 PM EST** operational schedule. Off-shift interactions enter **Digest Mode** for morning processing.
-- **Secure Per-User Transcripts**: Leo automatically creates isolated, private Discord channels for each user's voice session transcripts to ensure security and context preservation.
+- **Multi-Agent Roundtable**: Live panel of 9 AI agents who collaborate and challenge each other autonomously.
+- **Oracle Stenographer Bridge**: Refactored voice-to-text pipeline where Oracle acts as the official 'messenger,' posting transcripts and routing them to agents for seamless multi-modal interaction.
+- **Improved Social Dynamics**: Agents now feature a randomized "Chance to Speak" (30%), making the council feel spontaneous, reactive, and authentically unpredictable.
+- **Voice Channel Integration**: Leo joins Discord voice channels, listens to users via Whisper-1 (STT), and responds with ElevenLabs TTS.
+- **Temporal Gating**: Operational schedule enforcement with dedicated **Digest Mode** for off-hours continuity.
+- **Secure Per-User Transcripts**: Isolated, private Discord channels for each user's voice session to ensure security and privacy.
 - **Analyst Role Hierarchy**: Strict permission gating ensuring technical audit agents only accept instructions from authorized controllers.
 - **Autonomous Interjections**: Agents speak up unprompted when they have relevant insights — the council is always alive.
 - **Approval-Gated Tool Use**: Agentic tool calls (shell, file, web) are surfaced in the Oracle UI before execution.

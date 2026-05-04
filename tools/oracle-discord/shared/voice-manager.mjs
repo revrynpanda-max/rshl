@@ -13,9 +13,15 @@ if (!fs.existsSync(SLOTS_FILE)) {
 
 export async function getSlotAssignments() {
   try {
-    return JSON.parse(fs.readFileSync(SLOTS_FILE, 'utf8'));
+    const data = JSON.parse(fs.readFileSync(SLOTS_FILE, 'utf8'));
+    // Ensure Ryan always has a slot for immediate recognition
+    const RYAN_ID = "1111106883135217665";
+    if (data.assignments[RYAN_ID] === undefined) {
+      data.assignments[RYAN_ID] = 0;
+    }
+    return data;
   } catch (e) {
-    return { assignments: {}, history: {} };
+    return { assignments: { "1111106883135217665": 0 }, history: {} };
   }
 }
 

@@ -26,7 +26,7 @@ export const CHANNEL_SPEAKER_RULES = {
   // sensitive-info: NOBODY responds here
   [CHANNEL_IDS.SENSITIVE]: new Set([]),
   // sunday-chat: full social panel
-  [CHANNEL_IDS.SUNDAY]: new Set(["KAI", "Gemini", "Claude", "X", "Groq", "Analyst", "Researcher", "Oracle Coder", "KAI Coder"])
+  [CHANNEL_IDS.SUNDAY]: new Set(["KAI", "Gemini", "Claude", "X", "Groq", "Analyst", "Researcher", "Oracle Coder", "KAI Coder", "Leo"])
 };
 
 /**
@@ -40,6 +40,10 @@ export function isAllowed(speaker, channelId) {
   if (speaker.toLowerCase() === "oracle") return false;
 
   const allowed = CHANNEL_SPEAKER_RULES[channelId];
+  
+  // SPECIAL CASE: Leo is always allowed in his transcript slots
+  if (speaker === "Leo" && CHANNEL_IDS.LEO_VOICE_SLOTS.includes(channelId)) return true;
+
   if (!allowed) return false; // Default deny if channel not explicitly mapped
   return allowed.has(speaker);
 }

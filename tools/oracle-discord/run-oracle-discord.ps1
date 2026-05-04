@@ -259,6 +259,7 @@ function Start-KaiOracle {
 
     Write-Host "Oracle is not reachable. Starting KAI in the background..."
     Start-Process -FilePath $kaiExe `
+        -ArgumentList "--oracle" `
         -WorkingDirectory $RepoRoot `
         -WindowStyle Hidden `
         -RedirectStandardOutput $stdout `

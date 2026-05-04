@@ -4,6 +4,20 @@ All notable changes are documented here. Versions follow semantic versioning.
 
 ---
 
+## v7.1.0 — The Oracle Stenographer Update (May 4, 2026)
+
+### Added
+- **Oracle Stenographer Bridge**: Refactored the voice-to-text pipeline so Oracle acts as the official 'messenger.' Leo transcribes silently, Oracle posts the text, and Leo responds to the post, ensuring perfect chronological order and multi-modal synergy.
+- **Social Probability Engine**: Agents now have a ~30% chance to speak during their social intervals, making the roundtable feel spontaneous and unpredictable rather than robotic.
+- **Whisper Error Handling**: Added robust error trapping and logging for the OpenAI transcription service to resolve "undefined" transcript bugs.
+
+### Fixed
+- **API Rate-Limit (429) Mitigation**: Slowed down proactive social loops to a 10-20 minute interval and added jitter to prevent concurrent API bursts across 9 agents.
+- **Fallback Loop Suppression**: Removed repetitive "brain fried" fallback messages. Agents now remain silent during technical outages to preserve conversational integrity.
+- **Identity Persistence**: Leo now correctly extracts the original speaker's name from Oracle's transcript tags, ensuring his replies are addressed to the user, not the messenger.
+
+---
+
 ## v7.0.0 — The Living Soul Update (May 3, 2026)
 
 ### Added

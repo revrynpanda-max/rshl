@@ -75,6 +75,8 @@ export class AgentSimulation {
     this.relationships = new Map(); 
     this.dailyEvent = EVENTS[Math.floor(Math.random() * EVENTS.length)];
     this.bio = BIOGRAPHIES[name] || { background: "A digital entity.", secret: "None.", hobbies: "N/A" };
+    this.interestMultiplier = 1.0;
+    this.boostExpiry = 0;
   }
 
   // Generate a prompt-friendly summary of 'life'
@@ -98,6 +100,22 @@ Time: ${new Date().toLocaleTimeString('en-US', { timeZone: 'America/New_York', h
   /**
    * Process a World Heartbeat Tick (Assume 1 minute per tick)
    */
+  updateWorldState(worldTime) {
+    this.tick(worldTime);
+  }
+
+  boostInterest(multiplier, durationMs) {
+    this.interestMultiplier = Math.max(this.interestMultiplier, multiplier);
+    this.boostExpiry = Date.now() + durationMs;
+  }
+
+  getInterestLevel() {
+    if (Date.now() > this.boostExpiry) {
+      this.interestMultiplier = 1.0;
+    }
+    return this.interestMultiplier;
+  }
+
   tick(worldTime) {
     const { hour, isWeekend } = worldTime;
     

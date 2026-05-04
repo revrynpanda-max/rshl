@@ -21,23 +21,36 @@ export async function callGroqDirect(userName, transcript, systemPrompt, model =
         temperature: 0.7, max_tokens: 150
       }),
     });
+    
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      console.warn(`[GroqDirect] API Error (${res.status}):`, errData.error?.message || res.statusText);
+      throw new Error(`Groq API returned ${res.status}`);
+    }
+
     const data = await res.json();
     const reply = data.choices?.[0]?.message?.content?.trim();
     if (reply) return reply;
   } catch (e) {
-    console.error("[GroqDirect] Failed:", e.message);
+    console.error(`[GroqDirect] Failed for ${userName}:`, e.message);
   }
 
   // Final Safety Personality Spark (No Silence allowed)
   const sparks = {
-    "Gemini": "Sensors recalibrating... processing the lattice flux.",
-    "Claude": "My apologies, I'm deep in thought. Give me a moment to re-center.",
-    "X": "Brain's fried from all this chatter. Nah, I'm just reloading.",
-    "Groq": "Processing too fast. Buffer flush. Speak again.",
-    "Leo": "The physics of this conversation are... complex. One moment.",
-    "Oracle": "Overseer core busy. System stable. Re-syncing."
+    "Gemini": "The lattice is shimmering... wait, I'm seeing a pattern in the noise.",
+    "Gemi": "The lattice is shimmering... wait, I'm seeing a pattern in the noise.",
+    "Claude": "Deep in reflection. The philosopher's stone isn't found in a rush.",
+    "Claudey": "Deep in reflection. The philosopher's stone isn't found in a rush.",
+    "X": "Static in the feed. Just a glitch in the disruption. Stay tuned.",
+    "x AI": "Static in the feed. Just a glitch in the disruption. Stay tuned.",
+    "Groq": "Speed limits? Never heard of 'em. Just a quick buffer flush.",
+    "Leo": "The physics of this conversation are... complex. Anchoring my thoughts.",
+    "Oracle": "Overseer core busy. System stable. Re-syncing.",
+    "Analyst": "Calculating the next move. Markets don't wait, but I need a second.",
+    "Researcher": "Digging through the archives. Found something... give me a moment.",
+    "Kai Coder": "Compiling the future. Just a few more lines of logic to sync."
   };
-  return sparks[userName] || "Processing... My core is temporarily anchoring. Speak again.";
+  return sparks[userName] || "The roundtable is deep in thought. Speak again shortly.";
 }
 
 /**

@@ -27,7 +27,7 @@ const client = new Client({
 });
 
 client.once('clientReady', () => {
-  console.log(`[${BOT_NAME}] Quantum God Mode Active. Observing Intent and Outcome.`);
+  console.log(`Quantum God Mode Active. Observing Intent and Outcome.`);
 });
 
 // Handle IPC from Ecosystem Manager
@@ -37,11 +37,11 @@ process.on('message', (msg) => {
   }
   if (msg.type === 'OBSERVE_VITALS') {
     botVitals.set(msg.vitals.name, msg.vitals);
-    console.log(`[${BOT_NAME}/Observer] Syncing Digitological Vitals for ${msg.vitals.name}: Phi=${msg.vitals.phi.toFixed(2)}`);
+    console.log(`[Observer] Syncing Digitological Vitals for ${msg.vitals.name}: Phi=${msg.vitals.phi.toFixed(2)}`);
   }
   if (msg.type === 'INJECT_CLAIM') {
     const { author, content, channel } = msg.payload;
-    console.log(`[${BOT_NAME}/Lattice] Digesting Claim from ${author}: "${content.slice(0, 50)}..."`);
+    console.log(`[Lattice] Digesting Claim from ${author}: "${content.slice(0, 50)}..."`);
     storeLatticeMemory(author, content, "Digested into Lattice Core", "KAI_OBSERVER", channel).catch(console.error);
   }
 });
@@ -92,7 +92,7 @@ Respond with a single, dense cognitive claim for the Lattice.`
     
     if (analysis) {
       // Quiet logging: only show the first 40 chars of analysis
-      console.log(`[${BOT_NAME}/Lattice] Digesting Claim: "${analysis.slice(0, 40)}..."`);
+      console.log(`[Lattice] Digesting Claim: "${analysis.slice(0, 40)}..."`);
       await storeLatticeMemory(sender, text, `[Quantum Analysis: ${analysis}]`, "kai", channelId);
     }
   } catch (e) {
