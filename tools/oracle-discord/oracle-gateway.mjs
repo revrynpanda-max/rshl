@@ -139,7 +139,8 @@ Your goal is to be the ultimate strategic partner for NasterModx.`.trim();
 
       const reply = await chatWithOpenJarvis("Oracle_Overseer", cmd, systemPrompt, "gpt-4o-mini", null, {
         author: message.author.username,
-        channel: "DM"
+        channel: "DM",
+        isInterjection: true
       });
       
       let cleanReply = reply;
@@ -239,8 +240,12 @@ Your goal is to be the ultimate strategic partner for NasterModx.`.trim();
       }
       userFocus.set(message.author.id, targetBot);
       setTimeout(() => {
-        sendBotSignal(BOT_PORTS[targetBot], { channelId: targetChannelId, context: `[${message.author.username}] ${message.content}` });
-      }, 3000 + Math.random() * 4000);
+        sendBotSignal(BOT_PORTS[targetBot], { 
+          channelId: targetChannelId, 
+          context: `[${message.author.username}] ${message.content}`,
+          isInterjection: true 
+        });
+      }, 500 + Math.random() * 1000);
     }
   }
 });
@@ -273,7 +278,8 @@ setInterval(async () => {
       console.log(`[Oracle/Scheduler] Panel quiet in ${working ? 'Work' : 'Social'} mode. Prompting ${randomBot}.`);
       sendBotSignal(BOT_PORTS[randomBot], {
         channelId: targetId,
-        context: "[Oracle Overseer] The room is quiet. Share an update relevant to the current schedule."
+        context: "[Oracle Overseer] The room is quiet. Share an update relevant to the current schedule.",
+        isInterjection: true
       });
       lastMessageTime = Date.now();
     }
