@@ -61,7 +61,15 @@ export async function chatWithOpenJarvis(userName, transcript, systemPrompt, mod
     }
     return await callGroqDirect(userName, transcript, systemPrompt, "llama-3.3-70b-versatile");
   }
-  if (userName === "Gemini") return await callGemini(userName, transcript, systemPrompt);
+  if (userName === "Gemini") {
+    try {
+      const reply = await callGemini(userName, transcript, systemPrompt);
+      if (reply) return reply;
+    } catch (e) {
+      console.warn(`[Gemini/Neural] Google failed: ${e.message}. Falling back to Groq...`);
+    }
+    return await callGroqDirect(userName, transcript, systemPrompt, "llama-3.3-70b-versatile");
+  }
   if (userName === "X") return await callXAI(userName, transcript, systemPrompt);
   if (userName === "Analyst") return await callGroqDirect(userName, transcript, systemPrompt, "llama-3.3-70b-versatile");
   if (userName === "Researcher") return await callOpenAI(userName, transcript, systemPrompt);
