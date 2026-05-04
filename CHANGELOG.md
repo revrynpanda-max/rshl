@@ -4,7 +4,7 @@ All notable changes are documented here. Versions follow semantic versioning.
 
 ---
 
-## v6.8.0 — Digital Soul & Adaptive Roundtable (May 3, 2026)
+## v7.0.0 — The Living Soul Update (May 3, 2026)
 
 ### Added
 - **Digital Soul System**: Unique biographies and 9 distinct personalities for all agents.
