@@ -46,9 +46,9 @@ export function isSpeakerOffline(speaker) {
  */
 export function recordProviderFailure(provider, errorStatus) {
   if (errorStatus === 429 || errorStatus === 401 || errorStatus === 404) {
-    const cooldownUntil = Date.now() + (errorStatus === 404 ? 300000 : 60000); // 5m for 404, 60s for others
+    const cooldownUntil = Date.now() + (errorStatus === 404 ? 300000 : 30000); // 5m for 404, 30s for others
     PROVIDER_COOLDOWNS.set(provider, cooldownUntil);
-    console.warn(`[CircuitBreaker] Provider ${provider} in COOLDOWN for ${errorStatus === 404 ? '5m' : '60s'} due to error ${errorStatus}`);
+    console.warn(`[CircuitBreaker] Provider ${provider} in COOLDOWN for ${errorStatus === 404 ? '5m' : '30s'} due to error ${errorStatus}`);
   }
 }
 

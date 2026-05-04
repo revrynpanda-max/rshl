@@ -37,7 +37,7 @@ try {
 }
 
 import { isAllowed, CHANNEL_IDS } from '../shared/channel-rules.mjs';
-import { chatWithOpenJarvis, callOpenAI, callGroqDirect, callGemini } from '../shared/openjarvis.mjs';
+import { chatWithOpenJarvis, callOpenAI, callGroqDirect, callGemini, callAnthropic } from '../shared/openjarvis.mjs';
 import { recordAIFailure, isSpeakerOffline, isProviderReady, recordProviderFailure } from '../shared/failure-tracker.mjs';
 import { isLoopingResponse } from '../shared/utils.mjs';
 import { AgentSimulation } from '../shared/simulation.mjs';
@@ -698,10 +698,18 @@ async function callGroqAsLeo(transcript, userName, channelId, userId = null, his
  - CURRENT SPEAKER: ${userName} (If this is nastermodx, it IS Ryan).
 ${cleanHistory}`;
 
-    console.log(`[Leo/Neural] Thinking via Groq (${model})...`);
-    
+    // ─── LOCAL-SONIC FIRST ─────────────────────────────────────────────────────
+    // Ollama is primary: zero rate limits, zero external latency, unlimited calls.
+    // Cloud is the emergency backup only if local inference fails.
+    console.log(`[Leo/Neural] Local-Sonic PRIMARY (kai-next:latest)...`);
+    const localReply = await chatWithOllama(cleanTranscript, system, "kai-next:latest");
+    if (localReply) return localReply;
+
+    // ─── CLOUD BACKUP RACE (only if Ollama is down) ────────────────────────────
+    console.warn(`[Leo/Neural] Local-Sonic unavailable. Initiating Cloud Emergency Race...`);
+
     const providers = [];
-    
+
     if (isProviderReady("Groq")) {
       providers.push((async () => {
         const r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
@@ -745,28 +753,28 @@ ${cleanHistory}`;
       })());
     }
 
-    // --- EXECUTE THE RACE ---
+    if (isProviderReady("Gemini")) {
+      providers.push((async () => {
+        const reply = await callGemini(userName, cleanTranscript, system, 5000).catch(e => {
+          const code = e.message.includes("404") ? 404 : e.message.includes("429") ? 429 : 0;
+          if (code) recordProviderFailure("Gemini", code);
+          return null;
+        });
+        if (reply) return reply;
+        throw new Error("Gemini Fail");
+      })());
+    }
+
     try {
       if (providers.length > 0) {
-        // Wait for FIRST success, ignore errors until all fail
         const fastResponse = await Promise.any(providers);
         if (fastResponse) return fastResponse;
       }
     } catch (e) {
-      console.warn(`[Leo/Neural] Cloud Race failed or timed out. Failing to Gemini/Local...`);
+      console.warn(`[Leo/Neural] All cloud providers failed.`);
     }
 
-    // --- SECONDARY / LOCAL FALLBACK ---
-    if (isProviderReady("Gemini")) {
-      const gReply = await callGemini(userName, cleanTranscript, system, 5000).catch(e => {
-        if (e.message.includes("404")) recordProviderFailure("Gemini", 404);
-        return null;
-      });
-      if (gReply) return gReply;
-    }
-
-    console.warn(`[Leo/Neural] Engaging Local-Sonic (Ollama)...`);
-    return await chatWithOllama(cleanTranscript, system, "kai-next:latest");
+    return null;
   } catch (err) {
     console.error(`[Leo/Neural] Neural Race exhausted:`, err.message);
     return null;
