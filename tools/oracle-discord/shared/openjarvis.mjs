@@ -46,9 +46,10 @@ export async function chatWithOpenJarvis(userName, transcript, systemPrompt, mod
 
   // --- 2. Brain Selection (Turbo-Boost) ---
   let targetModel = model;
-  // ONLY override with Groq if we're not already trying to use a specific local model or OpenAI/Claude
-  if (isSocial && !model.includes(":") && !model.includes("gpt") && !model.includes("claude")) {
-    targetModel = "groq:gemma2-9b-it";
+  
+  // GROQ-BYPASS: Force the Groq persona to use direct API calls for maximum speed
+  if (userName === "Groq" || (isSocial && !model.includes(":") && !model.includes("gpt") && !model.includes("claude"))) {
+    return await callGroqDirect(userName, transcript, systemPrompt, "llama-3.1-8b-instant");
   }
 
   try {
