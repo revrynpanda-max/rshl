@@ -712,7 +712,11 @@ ${cleanHistory}`;
     }
 
     // ─── CLOUD BACKUP RACE (if Cerebras is down) ──────────────────────────────
-    console.warn(`[Leo/Neural] Local-Sonic unavailable. Initiating Cloud Emergency Race...`);
+    if (!process.env.CEREBRAS_API_KEY) {
+      console.warn(`[Leo/Neural] No CEREBRAS_API_KEY — add it to .env for sub-500ms responses. Falling to cloud race...`);
+    } else {
+      console.warn(`[Leo/Neural] Cerebras down. Initiating Cloud Emergency Race...`);
+    }
 
     const providers = [];
 
