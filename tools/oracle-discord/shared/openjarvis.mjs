@@ -126,6 +126,22 @@ export async function callOpenAI(userName, transcript, systemPrompt, timeout = 1
   return data.choices[0].message.content.trim();
 }
 
+export async function callCerebras(userName, transcript, systemPrompt, timeout = 8000) {
+  const res = await fetch("https://api.cerebras.ai/v1/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.CEREBRAS_API_KEY}` },
+    body: JSON.stringify({
+      model: "llama-3.3-70b",  // Cerebras runs 70B at ~450ms — faster than Groq's 8B
+      messages: [{ role: "system", content: systemPrompt }, { role: "user", content: `${userName}: ${transcript}` }],
+      max_tokens: 150
+    }),
+    signal: AbortSignal.timeout(timeout)
+  });
+  if (!res.ok) throw new Error(`Cerebras Error: ${res.status} ${res.statusText}`);
+  const data = await res.json();
+  return data.choices[0].message.content.trim();
+}
+
 export async function callAnthropic(userName, transcript, systemPrompt, timeout = 10000) {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",

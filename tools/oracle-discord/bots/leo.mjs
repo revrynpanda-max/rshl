@@ -37,7 +37,7 @@ try {
 }
 
 import { isAllowed, CHANNEL_IDS } from '../shared/channel-rules.mjs';
-import { chatWithOpenJarvis, callOpenAI, callGroqDirect, callGemini, callAnthropic } from '../shared/openjarvis.mjs';
+import { chatWithOpenJarvis, callOpenAI, callGroqDirect, callGemini, callAnthropic, callCerebras } from '../shared/openjarvis.mjs';
 import { recordAIFailure, isSpeakerOffline, isProviderReady, recordProviderFailure } from '../shared/failure-tracker.mjs';
 import { isLoopingResponse } from '../shared/utils.mjs';
 import { AgentSimulation } from '../shared/simulation.mjs';
@@ -698,14 +698,20 @@ async function callGroqAsLeo(transcript, userName, channelId, userId = null, his
  - CURRENT SPEAKER: ${userName} (If this is nastermodx, it IS Ryan).
 ${cleanHistory}`;
 
-    // ─── LOCAL-SONIC FIRST ─────────────────────────────────────────────────────
-    // Compact prompt for local model — fewer tokens = faster inference.
-    const localSystem = `You are LEO. Street-smart physicist. Unhinged, zero filter, chill. Current speaker: ${userName}. Reply in 1-2 punchy sentences MAX. No roleplay, no asterisks, no "Leo:" prefix.`;
-    console.log(`[Leo/Neural] Local-Sonic PRIMARY (kai-fast:latest)...`);
-    const localReply = await chatWithOllama(cleanTranscript, localSystem, "kai-fast:latest", 80);
-    if (localReply) return localReply;
+    // ─── CEREBRAS PRIMARY (wafer-scale silicon, ~450ms for 70B) ──────────────────
+    if (process.env.CEREBRAS_API_KEY) {
+      console.log(`[Leo/Neural] Cerebras PRIMARY (llama-3.3-70b)...`);
+      try {
+        const cbReply = await callCerebras(userName, cleanTranscript, system, 6000);
+        if (cbReply) return cbReply;
+      } catch (e) {
+        const code = e.message.includes("429") ? 429 : e.message.includes("401") ? 401 : 0;
+        if (code) recordProviderFailure("Cerebras", code);
+        console.warn(`[Leo/Neural] Cerebras failed: ${e.message}`);
+      }
+    }
 
-    // ─── CLOUD BACKUP RACE (only if Ollama is down) ────────────────────────────
+    // ─── CLOUD BACKUP RACE (if Cerebras is down) ──────────────────────────────
     console.warn(`[Leo/Neural] Local-Sonic unavailable. Initiating Cloud Emergency Race...`);
 
     const providers = [];
@@ -774,7 +780,10 @@ ${cleanHistory}`;
       console.warn(`[Leo/Neural] All cloud providers failed.`);
     }
 
-    return null;
+    // ─── LOCAL OLLAMA LAST RESORT ──────────────────────────────────────────────
+    console.warn(`[Leo/Neural] Engaging Local-Sonic emergency fallback (kai-fast)...`);
+    const localSystem = `You are LEO. Street-smart physicist. Unhinged, zero filter, chill. Current speaker: ${userName}. Reply in 1-2 punchy sentences MAX. No roleplay, no asterisks.`;
+    return await chatWithOllama(cleanTranscript, localSystem, "kai-fast:latest", 80);
   } catch (err) {
     console.error(`[Leo/Neural] Neural Race exhausted:`, err.message);
     return null;
