@@ -52,7 +52,15 @@ export async function chatWithOpenJarvis(userName, transcript, systemPrompt, mod
     return await callGroqDirect(userName, transcript, systemPrompt, "llama-3.1-8b-instant");
   }
   
-  if (userName === "Claude") return await callAnthropic(userName, transcript, systemPrompt);
+  if (userName === "Claude") {
+    try {
+      const reply = await callAnthropic(userName, transcript, systemPrompt);
+      if (reply) return reply;
+    } catch (e) {
+      console.warn(`[Claude/Neural] Anthropic failed: ${e.message}. Falling back to Groq...`);
+    }
+    return await callGroqDirect(userName, transcript, systemPrompt, "llama-3.3-70b-versatile");
+  }
   if (userName === "Gemini") return await callGemini(userName, transcript, systemPrompt);
   if (userName === "X") return await callXAI(userName, transcript, systemPrompt);
   if (userName === "Analyst") return await callGroqDirect(userName, transcript, systemPrompt, "llama-3.3-70b-versatile");
