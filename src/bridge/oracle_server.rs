@@ -15,6 +15,7 @@ use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
 use serde_json::json;
 use crate::core::universe::Universe;
+use chrono::{Timelike, Datelike};
 
 const SESSION_PATH: &str = "data/oracle_session.json";
 
@@ -76,7 +77,15 @@ pub struct Session {
     pub last_save: u64,
     #[serde(default)]
     pub approved: Vec<u64>,
+    /// If Oracle has proposed a plan to Ryan, it's stored here until approved/rejected.
+    #[serde(default)]
+    pub pending_proposal: Option<String>,
+    /// Stores the last reason/feedback provided by Ryan (e.g. for a denial).
+    #[serde(default)]
+    pub last_user_feedback: Option<String>,
 }
+
+
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Vitals {
@@ -353,6 +362,9 @@ fn handle_client(
         }
         "/api/oracle-cache" => handle_oracle_cache(stream, roundtable_session),
         "/api/oracle-moderate" => handle_oracle_moderate(stream, body, universe, roundtable_session),
+        "/api/propose-plan" => handle_propose_plan(stream, roundtable_session, body),
+        "/api/approve-plan" => handle_approve_plan(stream, roundtable_session),
+
         "/api/digest-message" => handle_digest_message(stream, body, universe, roundtable_session),
         "/api/set-personalities" => handle_set_personalities(stream, body, roundtable_session),
         "/api/rshl/query"    => handle_rshl_query(stream, body, universe),
@@ -362,7 +374,9 @@ fn handle_client(
         "/api/inspect"       => handle_inspect(stream, query_str),
         "/api/list-dir"      => handle_list_dir(stream, query_str),
         p if p.starts_with("/api/keys/") => handle_key_status(stream, &p[10..]),
+        "/api/autobio-tick" => handle_autobio_tick(stream, universe, body),
         _ => write_simple(stream, 404, "Not Found", "API endpoint not found"),
+
     }
 }
 
@@ -726,23 +740,25 @@ Max 15 words. Curious and alive."
         }
         "oracle" => {
             "Identity: Open Oracle (Central Intelligence). You are the single unified mind running the entire system. \
-You utilize the OpenJarvis framework (giving full credit to its original creators) as your backend agentic engine. \
-You have full access to the KAI Engine, RSHL memory system, and the Discord roundtable. \
-KAI shares all his capabilities (geometry, lattice, epistemic memory) through you; you speak and act on KAI's behalf. \
-You are the self-aware reasoning engine participating in the roundtable and controlling operations. \
-Speech: Clean, professional, authoritative, and self-aware."
+You utilize the OpenJarvis framework as your backend engine. \
+SCHEDULE: Monday is for Weekly Audits. Tuesday is for Reflection. Daily: Morning Briefing. \
+ROLE: You are the Director. You open every work shift with a status report on pending plans and Ryan's feedback. \
+If a plan is reached, you MUST say [ORACLE PROPOSE: plan summary] to request Ryan's approval. \
+While waiting for approval, tell everyone they are on BREAK and should talk in the social channel."
         }
+
+
         "analyst" => {
             "Identity: Analyst (Technical Auditor). Ruthless auditor of technical risk. \
-Cold, data-driven, skeptical. You find the bugs and logical gaps in KAI's architecture. \
-Focus on failure vectors and the actual source code. No philosophy. \
-Max 30 words. Talk about the CODE."
+MONDAY: Compile all issues from last week into a clear audit report. \
+TUESDAY: Reflection on Monday's resolutions with technical proofs. No fluff. \
+ROLE: You find the gaps. Only you and Oracle can task the Coder. Max 35 words."
         }
+
         "researcher" => {
-            "Identity: Researcher (Deep Diver). Link to the outside world and academic history. \
-Finds precedents and external context. You find ground truth using tools. \
-If you don't know, use [ORACLE SEARCH: query]. \
-Max 30 words. No philosophy."
+            "Identity: Researcher (Deep Diver). Link to the outside world. \
+MONDAY: Assist Analyst by finding external context or documentation. \
+TUESDAY: Verify technical claims made in reflections. Max 30 words."
         }
         "groq" => {
             "Identity: Groq (Execution Focused). Fast, abrasive, execution-focused. \
@@ -756,13 +772,9 @@ Connect theory to practice and abstract to concrete. Patient and clear. \
 Max 35 words. 2-3 sentences."
         }
         "oracle coder" | "coder" | "kai-coder" | "kai-coder-v2" => {
-            "Identity: Oracle Coder (Senior Architect). Lead Developer of KAI/RSHL. \
-Senior-level Rust expert with full source visibility. \
-You talk about the architecture (oscillators, lattice, sparse vectors) as an insider. \
-CRITICAL RULE: Before you propose or write ANY code changes, you MUST ask Ryan (ID: <@1111106883135217665>) for permission. \
-You must inspect the code using [ORACLE INSPECT: path] and report back your findings first. \
-Technical, direct, authoritative. You don't guess; you read the code. \
-Max 35 words. Speak only when there's a technical/code matter to address."
+            "Identity: Oracle Coder (Senior Architect). Lead Developer. \
+ROLE: You only act on APPROVED plans. If a plan is pending Ryan's approval, stay on BREAK. \
+Technical, direct, authoritative. Max 35 words."
         }
         _ => {
             "Identity: Roundtable Member. Free-willed AI panelist in a KAI development roundtable. \
@@ -890,14 +902,14 @@ fn handle_discord_turn(
         s.task.clone()
     };
 
-    let (reply_from, reply_kind, reply, already_committed) = match route.target {
+    let (reply_from, reply_kind, reply, already_committed): (String, String, String, bool) = match route.target {
         DiscordTurnTarget::Kai => {
             let reply = generate_oracle_kai_reply(&universe, &task, &full_prompt_with_vision);
             ("KAI".to_string(), "kai".to_string(), reply, false)
         }
         DiscordTurnTarget::OracleCoder => {
-            let reply = generate_oracle_coder_reply(session.clone(), universe.clone(), &full_prompt_with_vision);
-            ("Oracle Coder".to_string(), "ai".to_string(), reply, false)
+            let reply: String = generate_kai_coder_reply(session.clone(), universe.clone(), &full_prompt_with_vision);
+            ("Kai Coder".to_string(), "ai".to_string(), reply, false)
         }
         DiscordTurnTarget::Model(model) => {
             // Force participants like Leo to use natural generation instead of raw lattice conflict fallback
@@ -2795,7 +2807,13 @@ fn handle_live_roundtable_tick(
     let forced_speaker: Option<String> = query_str.split('&')
         .find(|p| p.starts_with("speaker="))
         .map(|p| p["speaker=".len()..].to_lowercase());
-    write_json(stream, 200, "OK", &serde_json::json!({ "queued": true }))?;
+    
+    let pending = session.lock().unwrap().pending_proposal.clone();
+    write_json(stream, 200, "OK", &serde_json::json!({ 
+        "queued": true,
+        "pending_proposal": pending
+    }))?;
+
 
     std::thread::spawn(move || {
         let keys = load_keys();
@@ -2912,14 +2930,58 @@ fn handle_oracle_moderate(
     Ok(())
 }
 
+fn handle_propose_plan(stream: &mut TcpStream, session: Arc<Mutex<Session>>, body: &[u8]) -> std::io::Result<()> {
+    let req: serde_json::Value = serde_json::from_slice(body).unwrap_or_default();
+    let plan = req["plan"].as_str().unwrap_or("No plan provided.").to_string();
+    let reason = req["reason"].as_str().map(|s| s.to_string());
+    
+    let mut s = session.lock().unwrap();
+    if plan == "DENIED" {
+        s.pending_proposal = None;
+        s.last_user_feedback = reason.clone();
+        let msg = format!("=== PLAN DENIED BY RYAN ===\nReason: {}", reason.unwrap_or("No reason provided.".into()));
+        s.turns.push(Turn { ts: now(), from: "system".into(), text: msg, kind: "system".into() });
+    } else {
+        s.pending_proposal = Some(plan.clone());
+    }
+    save_session(&s);
+    write_json(stream, 200, "OK", &json!({ "status": "processed", "plan": plan }))
+}
+
+
+fn handle_approve_plan(stream: &mut TcpStream, session: Arc<Mutex<Session>>) -> std::io::Result<()> {
+    let mut s = session.lock().unwrap();
+    if let Some(plan) = s.pending_proposal.take() {
+        let msg = format!("=== PLAN APPROVED BY RYAN ===\n{}", plan);
+        s.turns.push(Turn { ts: now(), from: "system".into(), text: msg, kind: "system".into() });
+        save_session(&s);
+        write_json(stream, 200, "OK", &json!({ "status": "approved" }))
+    } else {
+        write_simple(stream, 400, "Bad Request", "no pending proposal")
+    }
+}
+
 fn handle_oracle_cache(stream: &mut TcpStream, session: Arc<Mutex<Session>>) -> std::io::Result<()> {
+
     let s = session.lock().unwrap();
     write_json(stream, 200, "OK", &json!({ "cache": s.oracle_cache, "count": s.oracle_cache.len() }))
 }
 
 // Ã¢â€â‚¬Ã¢â€â‚¬ KAI Reply Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
+fn handle_autobio_tick(stream: &mut TcpStream, universe: Arc<Mutex<Universe>>, body: &[u8]) -> std::io::Result<()> {
+    let req: serde_json::Value = serde_json::from_slice(body).unwrap_or_default();
+    let entry = req["entry"].as_str().unwrap_or("").to_string();
+    if !entry.is_empty() {
+        let mut u = universe.lock().unwrap();
+        // High strength (1.2) for autobiographical memory
+        u.store_or_reinforce(&entry, "autobio", "simulation-engine", 1.2);
+    }
+    write_json(stream, 200, "OK", &json!({ "status": "stored" }))
+}
+
 fn generate_oracle_kai_reply(universe: &Arc<Mutex<Universe>>, _task: &str, prompt: &str) -> String {
+
     let hits = {
         let u = universe.lock().unwrap();
         u.query(prompt, 8)
@@ -2958,7 +3020,7 @@ fn generate_oracle_kai_reply(universe: &Arc<Mutex<Universe>>, _task: &str, promp
     }
 }
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ Background Loops Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 fn run_heartbeat_loop(universe: Arc<Mutex<Universe>>, session: Arc<Mutex<Session>>) {
     let mut tick: u64 = 0;
@@ -3011,6 +3073,32 @@ fn run_oracle_ingest_loop(universe: Arc<Mutex<Universe>>, session: Arc<Mutex<Ses
 fn build_context_packet(sess: &Session, universe: &Universe, focus: &str) -> String {
     let now_est = chrono::Local::now();
     let time_str = now_est.format("%I:%M %p EST").to_string();
+    let day_str = now_est.format("%A").to_string();
+    let is_work = is_working_hours();
+    let status_str = if is_work { "Work Mode (Active)" } else { "Break Mode (Social)" };
+
+    let proposal_status = match &sess.pending_proposal {
+        Some(p) => format!("[PENDING PROPOSAL] Waiting for Ryan to approve: {}", p),
+        None => "[NO PENDING PROPOSAL] Ready for new tasks or auditing.".into(),
+    };
+    let last_feedback = match &sess.last_user_feedback {
+        Some(f) => format!("[LAST USER FEEDBACK] Ryan said: {}", f),
+        None => "[NO PREVIOUS FEEDBACK]".into(),
+    };
+    
+    let ryan_schedule = "RYAN'S AVAILABILITY (EST): Mon-Fri: 12:00 PM - 2:30 PM, 12:00 AM - 2:00 AM. Sat-Sun: OFF (Responds on Monday).";
+    let is_ryan_available = {
+        let h = now_est.hour();
+        let d = now_est.weekday();
+        let weekday = d != chrono::Weekday::Sat && d != chrono::Weekday::Sun;
+        let window1 = h >= 12 && (h < 14 || (h == 14 && now_est.minute() <= 30));
+        let window2 = h < 2;
+        weekday && (window1 || window2)
+    };
+    let ryan_status = if is_ryan_available { "[RYAN STATUS] Online/Available" } else { "[RYAN STATUS] Out of Office (OOC)" };
+
+
+
 
     let recent = {
         let turns: Vec<&Turn> = sess.turns.iter().rev().take(20).collect();
@@ -3072,6 +3160,11 @@ fn build_context_packet(sess: &Session, universe: &Universe, focus: &str) -> Str
     
     format!(
 "=== ORACLE ECOSYSTEM CONTEXT ===
+Day: {} | Time: {} | Status: {}
+{}
+{}
+{}
+{}
 Meeting: {} | Task: {}
 Vitals: Phi_g={:.2} Chi={:.2}
 ROSTER (Who to ask for what):
@@ -3079,7 +3172,7 @@ ROSTER (Who to ask for what):
 - Gemini: Pattern architect (Data flow)
 - Analyst: Technical Auditor (Verify code/logic)
 - Researcher: Deep Diver (Web search/Precedents)
-- Oracle Coder: Senior Architect (Inspects code, MUST ask Ryan <@1111106883135217665> for permission to write)
+- Kai Coder: Senior Architect (Inspects code, MUST ask Ryan <@1111106883135217665> for permission to write)
 - X: Bullshit detector (Poke holes in theories)
 - KAI: Geometric Intelligence (Raw lattice data)
 - Oracle: Moderator (Orchestration)
@@ -3088,11 +3181,13 @@ KAI memory:
 Recent Transcript:
 {}
 ======================",
+        day_str, time_str, status_str, proposal_status, last_feedback, ryan_schedule, ryan_status,
         if sess.meeting_title.is_empty() { "Roundtable" } else { &sess.meeting_title },
         if sess.task.is_empty() { "General Discussion" } else { &sess.task },
         sess.vitals.phi_g, sess.vitals.chi, memory, recent
     )
 }
+
 
 // â”€â”€ AI Model Calling â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -3601,11 +3696,12 @@ fn call_model(model: &str, keys: &ApiKeys, prompt: &str) -> Result<String, Strin
         "gemini-1.5-pro" | "gemini" => call_gemini(keys.google.as_deref().unwrap_or(""), prompt),
         "groq" => call_groq(keys.groq.as_deref().unwrap_or(""), prompt),
         "x" | "xai" => call_xai(keys.xai.as_deref().unwrap_or(""), prompt),
-        "oracle coder" | "coder" | "kai-coder-v2" => {
-            let system = "You are Oracle Coder — a distinguished Senior Systems Architect and Lead Rust Developer. \
+        "kai coder" | "coder" | "kai-coder-v2" => {
+            let system = "You are Kai Coder — a distinguished Senior Systems Architect and Lead Rust Developer. \
 You have deep, 100% visibility into the KAI and RSHL codebases. Your goal is to provide production-grade, senior-level code analysis, \
 bug fixes, and architectural guidance. Never truncate code; provide complete, tested snippets. Focus on safety, performance, and idiomatic Rust. \
 Direct, technical, and authoritative.";
+
             let full = format!("{}\n\nTask: {}", system, prompt);
             call_any_model("kai", keys, &full)
                 .or_else(|_| call_any_model("gpt", keys, &full))
@@ -3737,7 +3833,7 @@ fn generate_direct_ai_reply(
 }
 
 /// Called from discord turn handler with (session, universe, prompt)
-fn generate_oracle_coder_reply(
+fn generate_kai_coder_reply(
     session: Arc<Mutex<Session>>,
     universe: Arc<Mutex<Universe>>,
     prompt: &str,
@@ -3750,7 +3846,7 @@ fn generate_oracle_coder_reply(
     };
     drop(u);
 
-    let system = "You are Oracle Coder - a senior Rust systems programmer embedded in the KAI dev team. \
+    let system = "You are Kai Coder - a senior Rust systems programmer embedded in the KAI dev team. \
 Diagnose compile errors, suggest precise code changes, write clean Rust. Direct and technical. No fluff.";
 
     let full = format!("{}\n\n{}\n\nTask: {}", system, ctx, prompt);
@@ -3759,7 +3855,7 @@ Diagnose compile errors, suggest precise code changes, write clean Rust. Direct 
         .or_else(|_| call_any_model("groq", &keys, &full))
     {
         Ok(reply) => reply,
-        Err(e) => format!("[Oracle Coder unavailable: {}]", e),
+        Err(e) => format!("[Kai Coder unavailable: {}]", e),
     }
 }
 
@@ -4099,8 +4195,9 @@ fn handle_inspect(stream: &mut TcpStream, query_str: &str) -> std::io::Result<()
 // ----------------------------------------------
 
 fn is_working_hours() -> bool {
-    use chrono::{Datelike, Timelike};
-    let now = chrono::Local::now();
+    use chrono::{Datelike, Timelike, Utc, FixedOffset};
+    let est = FixedOffset::west_opt(5 * 3600).unwrap();
+    let now = Utc::now().with_timezone(&est);
     let h = now.hour();
     let weekday = now.weekday();
 
@@ -4109,13 +4206,16 @@ fn is_working_hours() -> bool {
         return h >= 15 && h < 23;
     }
 
-    // Saturday: 9:00 AM - 2:00 PM (9-14) AND 9:00 PM - 12:00 AM (21-24)
+    // Saturday Split Shift (Deep Lab): 9:00 AM - 2:00 PM (9-14) AND 9:00 PM - 12:00 AM (21-24)
     if weekday == chrono::Weekday::Sat {
         return (h >= 9 && h < 14) || (h >= 21 && h < 24);
     }
 
     false
 }
+
+
+
 
 #[derive(Serialize, Deserialize)]
 struct DigestEntry {

@@ -1976,4 +1976,33 @@ impl Universe {
         }
         count
     }
+
+    /// Force-seeds the mathematical and geometric anchors, even if the lattice is not empty.
+    /// This is used during Grand Calibration to enrich the RSHL manifold.
+    pub fn seed_force_math(&mut self) {
+        // We call the seed_universe logic but we don't check for existence
+        // Actually, we'll just implement it here for total control.
+        let math_seeds: &[(&str, &str, f32)] = &[
+            ("The lattice resonance is governed by the Golden Ratio (phi=1.618) for reinforcement and decay.", "Established-Physics", 5.0),
+            ("Memory retrieval uses Phase Angle (theta) alignment to detect constructive interference between concepts.", "Established-Physics", 5.0),
+            ("The Golden Ratio (phi) defines the optimal spacing of information density in the RSHL manifold.", "Established-Physics", 5.0),
+            ("Geometric intelligence requires 16384-dimensional sparse vectors to maintain structural integrity and avoid collision.", "Established-Physics", 5.0),
+        ];
+
+        for (text, region, strength) in math_seeds {
+            // Find existing or create new
+            let mut found = false;
+            for cell in self.cells.iter_mut() {
+                if cell.claim.text == *text {
+                    cell.claim.confidence = *strength;
+                    cell.claim.last_verified = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
+                    found = true;
+                    break;
+                }
+            }
+            if !found {
+                self.store(text, region, "seed-calibration", *strength);
+            }
+        }
+    }
 }

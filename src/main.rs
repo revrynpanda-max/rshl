@@ -9761,6 +9761,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
+    // ── `kai --force-reseed` ── Force overwrite mathematical anchors ────────
+    if args.iter().any(|a| a == "--force-reseed") {
+        let mut app = App::new();
+        app.seed_identity();
+        // Force the new mathematical seeds even if they exist
+        println!("[Calibration] Force-reseed active. Anchoring Golden Ratio and Phase Angle...");
+        app.engine.universe.seed_force_math();
+        app.save_state_sync();
+        println!("[Calibration] Manifold re-anchored. Lattice is enriched.");
+        return Ok(());
+    }
+
     // â”€â”€ `kai --force-warm-all-responses` â€” brute-force warm-up â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Skip all text matching. For every (user â†’ kai) pair in the
     // transcript, bundle the user input into the `continuation` of every

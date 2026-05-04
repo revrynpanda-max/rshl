@@ -123,6 +123,27 @@ fn build_seeds() -> Vec<(&'static str, &'static str, f32)> {
             "reasoning",
             4.5,
         ),
+        // Mathematical & Geometric Primitives (Enrichment)
+        (
+            "The lattice resonance is governed by the Golden Ratio (phi=1.618) for reinforcement and decay.",
+            "Established-Physics",
+            5.0,
+        ),
+        (
+            "Memory retrieval uses Phase Angle (theta) alignment to detect constructive interference between concepts.",
+            "Established-Physics",
+            5.0,
+        ),
+        (
+            "The Golden Ratio (phi) defines the optimal spacing of information density in the RSHL manifold.",
+            "Established-Physics",
+            5.0,
+        ),
+        (
+            "Geometric intelligence requires 16384-dimensional sparse vectors to maintain structural integrity and avoid collision.",
+            "Established-Physics",
+            5.0,
+        ),
     ]
 }
 
