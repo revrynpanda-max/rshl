@@ -38,7 +38,7 @@ try {
 
 import { isAllowed, CHANNEL_IDS } from '../shared/channel-rules.mjs';
 import { chatWithOpenJarvis, callOpenAI, callGroqDirect } from '../shared/openjarvis.mjs';
-import { recordAIFailure, isSpeakerOffline } from '../shared/failure-tracker.mjs';
+import { recordAIFailure, isSpeakerOffline, isProviderReady, recordProviderFailure } from '../shared/failure-tracker.mjs';
 import { isLoopingResponse } from '../shared/utils.mjs';
 import { AgentSimulation } from '../shared/simulation.mjs';
 import { startBotServer } from '../shared/ipc.mjs';
@@ -700,44 +700,46 @@ ${cleanHistory}`;
 
     console.log(`[Leo/Neural] Thinking via Groq (${model})...`);
     
-    let res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: { "Authorization": `Bearer ${groqKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: model,
-        messages: [{ role: "system", content: system }, { role: "user", content: cleanTranscript }],
-        temperature: 0.8, max_tokens: 150
-      }),
-      signal: AbortSignal.timeout(10000)
-    });
-
-    // FAILOVER LADDER: If 8B-Instant hits rate limits, try 70B-Versatile, then local
-    if (res.status === 429) {
-      console.warn(`[Leo/Neural] Rate limit (429) on 8B. Failing over to 70B-Versatile...`);
+    let res = null;
+    if (isProviderReady("Groq")) {
       res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
         headers: { "Authorization": `Bearer ${groqKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "llama-3.3-70b-versatile",
+          model: model,
           messages: [{ role: "system", content: system }, { role: "user", content: cleanTranscript }],
-          temperature: 0.7, max_tokens: 150
+          temperature: 0.8, max_tokens: 150
         }),
-        signal: AbortSignal.timeout(12000)
+        signal: AbortSignal.timeout(6000) // TIGHTER TIMEOUT
+      }).catch(e => {
+        console.warn(`[Leo/Neural] Groq fetch failed: ${e.message}`);
+        return null;
       });
     }
 
-    if (!res.ok) {
-      console.warn(`[Leo/Neural] Groq failed (${res.status}). Failing over to OpenAI (GPT-4o-mini)...`);
-      try {
-        const openaiReply = await callOpenAI(userName, cleanTranscript, system);
-        if (openaiReply) return openaiReply;
-      } catch (e) {
-        console.warn(`[Leo/Neural] OpenAI failover failed: ${e.message}. Falling back to local Ollama...`);
+    // FAILOVER LADDER
+    if (res && res.status === 429) recordProviderFailure("Groq", 429);
+
+    if (isProviderReady("Groq") && (!res || !res.ok)) {
+      // (Optional second Groq attempt or skip)
+    }
+
+    if (!res || !res.ok) {
+      if (isProviderReady("OpenAI")) {
+        console.warn(`[Leo/Neural] Groq offline. Trying OpenAI...`);
+        try {
+          const openaiReply = await callOpenAI(userName, cleanTranscript, system);
+          if (openaiReply) return openaiReply;
+        } catch (e) {
+          if (e.message.includes("429") || e.message.includes("401")) recordProviderFailure("OpenAI", 429);
+          console.warn(`[Leo/Neural] OpenAI failover failed: ${e.message}`);
+        }
       }
       
+      console.warn(`[Leo/Neural] Cloud route blocked. Engaging Local-Sonic (Ollama)...`);
       const localReply = await chatWithOllama(cleanTranscript, system, "kai-next:latest");
       if (localReply) return localReply;
-      throw new Error(`Neural Chain Failure: ${res.status} ${res.statusText}`);
+      throw new Error(`Neural Chain Failure.`);
     }
 
     const data = await res.json();
