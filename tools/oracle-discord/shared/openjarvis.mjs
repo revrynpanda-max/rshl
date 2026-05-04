@@ -131,7 +131,7 @@ export async function callCerebras(userName, transcript, systemPrompt, timeout =
     method: "POST",
     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.CEREBRAS_API_KEY}` },
     body: JSON.stringify({
-      model: "llama-3.3-70b",  // Cerebras runs 70B at ~450ms — faster than Groq's 8B
+      model: "llama3.3-70b",  // Cerebras runs 70B at ~450ms — faster than Groq's 8B
       messages: [{ role: "system", content: systemPrompt }, { role: "user", content: `${userName}: ${transcript}` }],
       max_tokens: 150
     }),
