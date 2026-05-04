@@ -696,30 +696,46 @@ ${cleanHistory}`;
 
     console.log(`[Leo/Neural] Thinking via Groq (${model})...`);
     
-    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    let res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: { "Authorization": `Bearer ${groqKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         model: model,
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: cleanTranscript }
-        ],
-        temperature: 0.8,
-        max_tokens: 150
+        messages: [{ role: "system", content: system }, { role: "user", content: cleanTranscript }],
+        temperature: 0.8, max_tokens: 150
       }),
-      signal: AbortSignal.timeout(10000) // 10s MASTER TIMEOUT
+      signal: AbortSignal.timeout(10000)
     });
 
-    if (!res.ok) throw new Error(`Groq API Error: ${res.status} ${res.statusText}`);
+    // FAILOVER LADDER: If 8B-Instant hits rate limits, try 70B-Versatile, then local
+    if (res.status === 429) {
+      console.warn(`[Leo/Neural] Rate limit (429) on 8B. Failing over to 70B-Versatile...`);
+      res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${groqKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "llama-3.3-70b-versatile",
+          messages: [{ role: "system", content: system }, { role: "user", content: cleanTranscript }],
+          temperature: 0.7, max_tokens: 150
+        }),
+        signal: AbortSignal.timeout(12000)
+      });
+    }
+
+    if (!res.ok) {
+      console.warn(`[Leo/Neural] Groq failed (${res.status}). Falling back to local Ollama...`);
+      const localReply = await chatWithOllama(cleanTranscript, system, "kai-next:latest");
+      if (localReply) return localReply;
+      throw new Error(`Neural Chain Failure: ${res.status} ${res.statusText}`);
+    }
 
     const data = await res.json();
     return data.choices?.[0]?.message?.content?.trim();
   } catch (err) {
-    console.error(`[Leo/Neural] Local brain failed:`, err.message);
+    console.error(`[Leo/Neural] Failover chain exhausted:`, err.message);
     return null;
   } finally {
-    isThinking = false; // RELEASE MASTER LOCK
+    isThinking = false; 
   }
 }
 
