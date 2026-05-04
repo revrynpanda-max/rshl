@@ -705,90 +705,18 @@ ${cleanHistory}`;
       }
     }
 
-    // ─── CLOUD BACKUP RACE (if Cerebras is down) ──────────────────────────────
-    if (!process.env.CEREBRAS_API_KEY) {
-      console.warn(`[Leo/Neural] No CEREBRAS_API_KEY — add it to .env for sub-500ms responses. Falling to cloud race...`);
-    } else {
-      console.warn(`[Leo/Neural] Cerebras down. Initiating Cloud Emergency Race...`);
-    }
-
-    const providers = [];
-
-    if (isProviderReady("Groq")) {
-      providers.push((async () => {
-        const r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${groqKey}`, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            model: model,
-            messages: [{ role: "system", content: system }, { role: "user", content: cleanTranscript }],
-            temperature: 0.8, max_tokens: 150
-          }),
-          signal: AbortSignal.timeout(4000)
-        }).catch(() => null);
-        if (r && r.status === 429) recordProviderFailure("Groq", 429);
-        if (r && r.ok) {
-          const d = await r.json();
-          return d.choices?.[0]?.message?.content?.trim();
-        }
-        throw new Error("Groq Fail");
-      })());
-    }
-
-    if (isProviderReady("OpenAI")) {
-      providers.push((async () => {
-        const reply = await callOpenAI(userName, cleanTranscript, system, 5000).catch(e => {
-          if (e.message.includes("429")) recordProviderFailure("OpenAI", 429);
-          return null;
-        });
-        if (reply) return reply;
-        throw new Error("OpenAI Fail");
-      })());
-    }
-
-    if (isProviderReady("Claude")) {
-      providers.push((async () => {
-        const reply = await callAnthropic(userName, cleanTranscript, system, 5000).catch(e => {
-          if (e.message.includes("429")) recordProviderFailure("Claude", 429);
-          return null;
-        });
-        if (reply) return reply;
-        throw new Error("Claude Fail");
-      })());
-    }
-
-    if (isProviderReady("Gemini")) {
-      providers.push((async () => {
-        const reply = await callGemini(userName, cleanTranscript, system, 5000).catch(e => {
-          const code = e.message.includes("404") ? 404 : e.message.includes("429") ? 429 : 0;
-          if (code) recordProviderFailure("Gemini", code);
-          return null;
-        });
-        if (reply) return reply;
-        throw new Error("Gemini Fail");
-      })());
-    }
-
-    try {
-      if (providers.length > 0) {
-        const fastResponse = await Promise.any(providers);
-        if (fastResponse) return fastResponse;
-      }
-    } catch (e) {
-      console.warn(`[Leo/Neural] All cloud providers failed.`);
-    }
-
-    // ─── LOCAL OLLAMA LAST RESORT ──────────────────────────────────────────────
-    console.warn(`[Leo/Neural] Engaging Local-Sonic emergency fallback (kai-fast)...`);
+    // ─── OLLAMA LOCAL FALLBACK (always available, no rate limits) ─────────────
+    console.warn(`[Leo/Neural] Cerebras down. Using local kai-fast...`);
     const localSystem = `You are LEO. Street-smart physicist. Unhinged, zero filter, chill. Current speaker: ${userName}. Reply in 1-2 punchy sentences MAX. No roleplay, no asterisks.`;
     return await chatWithOllama(cleanTranscript, localSystem, "kai-fast:latest", 80);
   } catch (err) {
-    console.error(`[Leo/Neural] Neural Race exhausted:`, err.message);
+    console.error(`[Leo/Neural] Neural chain exhausted:`, err.message);
     return null;
   } finally {
-    isThinking = false; 
+    isThinking = false;
   }
 }
+
 
 /**
  * Direct link to local Ollama instance
