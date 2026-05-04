@@ -699,10 +699,10 @@ async function callGroqAsLeo(transcript, userName, channelId, userId = null, his
 ${cleanHistory}`;
 
     // ─── LOCAL-SONIC FIRST ─────────────────────────────────────────────────────
-    // Ollama is primary: zero rate limits, zero external latency, unlimited calls.
-    // Cloud is the emergency backup only if local inference fails.
+    // Compact prompt for local model — fewer tokens = faster inference.
+    const localSystem = `You are LEO. Street-smart physicist. Unhinged, zero filter, chill. Current speaker: ${userName}. Reply in 1-2 punchy sentences MAX. No roleplay, no asterisks, no "Leo:" prefix.`;
     console.log(`[Leo/Neural] Local-Sonic PRIMARY (kai-fast:latest)...`);
-    const localReply = await chatWithOllama(cleanTranscript, system, "kai-fast:latest");
+    const localReply = await chatWithOllama(cleanTranscript, localSystem, "kai-fast:latest", 80);
     if (localReply) return localReply;
 
     // ─── CLOUD BACKUP RACE (only if Ollama is down) ────────────────────────────
@@ -786,7 +786,7 @@ ${cleanHistory}`;
 /**
  * Direct link to local Ollama instance
  */
-async function chatWithOllama(prompt, system, model) {
+async function chatWithOllama(prompt, system, model, numPredict = 120) {
   try {
     const res = await fetch("http://127.0.0.1:11434/api/generate", {
       method: "POST",
@@ -795,8 +795,15 @@ async function chatWithOllama(prompt, system, model) {
         model: model,
         prompt: prompt,
         system: system,
-        stream: false
-      })
+        stream: false,
+        options: {
+          num_predict: numPredict,   // hard cap on output tokens
+          temperature: 0.8,
+          top_p: 0.9,
+          repeat_penalty: 1.1
+        }
+      }),
+      signal: AbortSignal.timeout(15000)
     });
     if (res.ok) {
       const data = await res.json();
