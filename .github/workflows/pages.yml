@@ -29,13 +29,17 @@ jobs:
           mkdir -p _site
 
           # Copy existing HTML files
-          cp oracle.html _site/oracle.html
-          cp docs/dashboard.html _site/dashboard.html
-          cp docs/index.html _site/report.html
+          cp oracle/index.html _site/oracle.html
+          cp kai-systematic-audit.html _site/report.html
+
+          # Ensure asset directories exist
+          mkdir -p _site/css _site/js _site/assets _site/img
 
           # Copy any assets referenced by the HTML files
-          cp -r kai-icon.png _site/ 2>/dev/null || true
-          cp -r kai-icon.ico _site/ 2>/dev/null || true
+          cp -r oracle/assets/* _site/assets/ 2>/dev/null || true
+          cp -r oracle/css/* _site/css/ 2>/dev/null || true
+          cp -r oracle/js/* _site/js/ 2>/dev/null || true
+          cp -r oracle/img/* _site/img/ 2>/dev/null || true
 
           # Generate the landing page (index.html)
           cat > _site/index.html << 'HTMLEOF'
