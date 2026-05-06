@@ -28,7 +28,8 @@ const BOT_PORTS = {
   "Groq": 3405,
   "Analyst": 3406,
   "Researcher": 3407,
-  "Kai Coder": 3408
+  "Kai Coder": 3408,
+  "GPT-4o": 3409
 };
 
 const ROUNDTABLE_CHANNELS = [

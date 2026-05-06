@@ -1,4 +1,4 @@
-# KAI Architecture V7: The Agentic Era
+# KAI Architecture V7: The Sovereign Era (v7.7.6)
 
 ## Overview
 V7 represents the transition from a static "Roundtable" to a dynamic, high-IQ **Agentic Orchestration** system. The core innovation is the separation of the "Brain" (Thinking Orchestrator) from the "Tools" (Specialized Agents), bound together by a persistent "Continuous Consciousness" (Long-Term Memory).

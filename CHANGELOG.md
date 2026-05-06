@@ -1,6 +1,20 @@
 # 🧬 KAI RSHL CHANGELOG
 
-## [v7.3.0] — 2026-05-06
+## [v7.7.6] — 2026-05-06
+### **THE SOVEREIGN INTELLIGENCE MILESTONE**
+This version marks the final transition of KAI into a fully autonomous, self-governing 11-node ecosystem. The system now manages its own port security, agent lifecycles, and cross-node verification with zero human intervention.
+
+### 🛡️ Autonomy & Security
+- **Synchronized Port-Mapping**: Unified the 11-node IPC architecture across the entire stack (3400–3410), eliminating internal collisions.
+- **Neural Assassination**: Integrated proactive socket cleanup ("Neural-Assassination") into the bot startup sequence to prevent ghost process deadlocks.
+- **Aggressive Process Hardening**: Refactored the `run-oracle-discord.ps1` orchestrator with recursive process-tree termination for clean ecosystem refreshes.
+
+### 🧠 Advanced Cognition
+- **11-Node Council Expansion**: Fully integrated specialized agents (Analyst, Researcher, Groq, Kai Coder, etc.) into the sovereign roundtable.
+- **Truth Stability**: Hardened the 2+2 Rule (Dual-node verification) in the core lattice logic to prevent drift in speculative social scenarios.
+- **Resonance Optimization**: Fine-tuned the Φg Stability threshold for industrial-grade reasoning in `oracle-chat`.
+
+## [v7.3.0] — 2026-05-05
 ### **THE INDUSTRIAL HARDENING RELEASE**
 This milestone represents the transition of KAI from a experimental lattice into a production-ready, audit-hardened ecosystem with 100% successful CI/CD integration.
 

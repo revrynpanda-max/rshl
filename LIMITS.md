@@ -22,7 +22,7 @@ While the KAI roundtable is highly autonomous, it is not omniscient.
 
 ## 🕸️ The Epistemic Lattice (RSHL)
 - **Claim Density**: As the lattice grows into the billions of claims, retrieval speed remains high, but "Truth Conflict" resolution may require more computational cycles during the ingestion phase.
-- **Pruning**: The "Heartbeat" pruning logic is designed to remove "noise," but in rare cases, a low-strength architectural anchor may be pruned if it is not reinforced. (Solved in v7.3.0 with "Store-or-Reinforce" logic).
+- **Pruning**: The "Heartbeat" pruning logic is designed to remove "noise," but in rare cases, a low-strength architectural anchor may be pruned if it is not reinforced. (Solved in v7.7.6 with "Store-or-Reinforce" logic).
 
 ---
 

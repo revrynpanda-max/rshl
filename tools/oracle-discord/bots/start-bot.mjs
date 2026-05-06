@@ -31,14 +31,14 @@ const botToken = process.env[tokenEnvKey] || process.env.BOT_TOKEN || "";
 
 // IPC Port Mapping
 const botToPort = {
-  "Analyst": 3408,
+  "Analyst": 3406,
   "Researcher": 3407,
   "Groq": 3405,
-  "X": 3406,
+  "X": 3404,
   "Claude": 3403,
-  "Gemini": 3404,
-  "GPT-4o": 3402,
-  "Kai Coder": 3409
+  "Gemini": 3402,
+  "GPT-4o": 3409,
+  "Kai Coder": 3408
 };
 
 const botToModel = {

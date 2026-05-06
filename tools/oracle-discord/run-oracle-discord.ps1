@@ -343,14 +343,15 @@ function Start-OpenJarvis {
 
 function Stop-ExistingDiscordGateways {
     $currentPid = $PID
+    $pRoot = $PSScriptRoot.Replace('\', '\\')
     $existing = Get-CimInstance Win32_Process |
         Where-Object {
             $_.ProcessId -ne $currentPid -and
-            ($_.Name -match '^node(\.exe)?$') -and
-            ($_.CommandLine -match 'oracle-discord|index\.mjs|run-oracle-discord')
+            (($_.Name -match '^node(\.exe)?$') -or ($_.Name -match '^pwsh(\.exe)?$')) -and
+            (($_.CommandLine -match 'oracle-discord|index\.mjs|run-oracle-discord|ecosystem-manager|start-bot|bots/') -or ($_.CommandLine -match $pRoot))
         }
     foreach ($process in $existing) {
-        Write-Host "Stopping existing Oracle Discord gateway process $($process.ProcessId)."
+        Write-Host "Stopping existing Oracle Discord gateway process $($process.ProcessId) ($($process.Name))."
         Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue
     }
 }

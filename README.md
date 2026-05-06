@@ -1,7 +1,7 @@
-# 🧬 KAI RSHL: Industrial-Grade Autonomous Intelligence (v7.3.0)
+# 🧬 KAI RSHL: Sovereign Autonomous Intelligence (v7.7.6)
 
 ![Rust CI](https://github.com/revrynpanda-max/rshl/actions/workflows/rust-ci.yml/badge.svg)
-![Version](https://img.shields.io/badge/version-7.3.0-brightgreen.svg)
+![Version](https://img.shields.io/badge/version-7.7.6-brightgreen.svg)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 
 **KAI RSHL** is a sovereign, autonomous executive intelligence suite designed for industrial-scale operations. It is not a chatbot. It is a **Unified Cognitive Infrastructure** that fuses high-performance Rust engineering with an advanced epistemic lattice memory to automate complex reasoning, reduce operational latency, and secure grounded, actionable truth.
@@ -45,24 +45,21 @@ The KAI roundtable consists of specialized autonomous nodes, each port-locked fo
 
 | Node | IPC Port | Core Model | Role & Intelligence Profile |
 |------|----------|------------|-----------------------------|
-| **Oracle** | 3400 | Orchestrator | Central Executive Intelligence and moderator. |
-| **Leo** | 3411 | Llama-3.3-70b | High-Speed Physicist. Low-latency voice agent. |
-| **Gemini** | 3401 | Gemini 1.5 Pro | Systems Analyst & structural logic auditor. |
-| **X** | 3402 | Groq / Llama-3 | The Provocateur. Challenges status quo logic. |
-| **Analyst** | 3403 | Llama-3.2 3B | Data-driven breakdown and statistical auditing. |
-| **Researcher**| 3404 | Groq / Llama-3 | Deep-diver. Scours OSINT and lattice data. |
-| **Groq** | 3405 | Groq / Llama-3 | Ultra-fast reasoning and inference engine. |
-| **KAI** | 3410 | Local RSHL | The geometric core. Epistemic anchor. |
+| **Leo** | 3400 | Llama-3.1-8B | Primary voice agent. The unhinged social heart of KAI. |
+| **KAI** | 3401 | Local RSHL | The God. Unified observer and epistemic anchor. |
+| **Gemini** | 3402 | Gemini-1.5-Flash | Multi-modal creative and systems auditor. |
+| **Claude** | 3403 | Claude-3.5-Sonnet| The Philosopher. Nuance and ethical strategy. |
+| **X** | 3404 | Grok-Beta | Real-time social pulse and provocateur. |
+| **Groq** | 3405 | Llama-3.1-8B | High-speed accelerationist and logic engine. |
+| **Analyst** | 3406 | Llama-3.3-70B | Statistical strategy and data breakdown. |
+| **Researcher**| 3407 | GPT-4o-mini | OSINT intelligence and deep-web extraction. |
+| **Kai Coder** | 3408 | GPT-4o-mini | Technical delegate. Writes and executes code. |
+| **GPT-4o** | 3409 | GPT-4o | Legacy executive fallback and complex reasoning. |
+| **Oracle** | 3410 | Gateway | The Orchestrator. Central transcription bridge. |
 
-*(Additional nodes reserved for specialized OSINT and task-specific forking)*
+*(The 11-node council is fully synchronized on Ports 3400–3410)*
 
 ---
-
-## 🤝 Contributing & License
-This is an ongoing research project by **Ryan (revrynpanda-max)**. 
-
-**License:** MIT License — Copyright © 2026 Ryan Ervin / Geometric Intelligence Systems.
-*(See [LICENSE](LICENSE) for full terms. Attribution to revrynpanda-max is required in any derivative work.)*
 
 ---
 
