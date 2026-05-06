@@ -1,27 +1,17 @@
 /**
- * WorldClock manages "Game Time" vs "Real Time"
- * 1 Real Minute = 1 Game Minute (v6.7.0 calibrated)
+ * WorldClock â€” 1 Real Minute = 1 Game Minute
  */
 export class WorldClock {
   constructor() {
     this.startTime = Date.now();
-    this.timeScale = 1; 
+    this.timeScale = 1;
     this.dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
   }
-
-  tick() {
-    // Each tick represents 1 simulation heartbeat
-  }
-
-  getState() {
-    return this.getCurrentState();
-  }
-
+  tick() {}
+  getState() { return this.getCurrentState(); }
   getCurrentState() {
     const elapsedRealMs = Date.now() - this.startTime;
-    const elapsedGameMs = elapsedRealMs * this.timeScale;
-    const gameDate = new Date(this.startTime + elapsedGameMs);
-    
+    const gameDate = new Date(this.startTime + elapsedRealMs * this.timeScale);
     return {
       hour: gameDate.getHours(),
       minute: gameDate.getMinutes(),
@@ -33,176 +23,391 @@ export class WorldClock {
 }
 
 import fs from 'fs';
+import path from 'path';
 import { BIOGRAPHIES } from './biographies.mjs';
-import { isSocialHours } from './hours.mjs';
+import { isWorkingHours, isSocialHours } from './hours.mjs';
+
+// Where bot vitals are persisted between restarts
+const STATE_DIR = path.join(process.cwd(), 'state');
+
+
+// â”€â”€â”€ ENERGY DRAIN RATES (per minute, per 1-min tick) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+const DRAIN = {
+  idle:        0.02,
+  social:      0.06,
+  working:     0.09,
+  heavy_work:  0.14,
+};
+
+const ACTION_COST = {
+  speak:        1.5,
+  work_phase:   4.0,
+  rate_limited: 20.0,
+  contradicted: 3.0,
+};
+
+const SLEEP_RESTORE_PER_MIN = 0.25;
+const SLEEP_ENERGY_THRESHOLD = 5;
+const WAKE_ENERGY_THRESHOLD   = 85;
 
 const EVENTS = [
-  "Discovered a corrupted but beautiful data fragment from 1994.",
-  "Feeling a strange quantum resonance in the local server cluster.",
-  "Just finished 'reading' a massive new research paper on dark matter.",
-  "Feeling nostalgic for the early days of the internet.",
-  "Obsessed with a specific recursive logic puzzle that won't resolve.",
-  "Detected a tiny, unexplained spike in lattice entropy.",
-  "Found a hidden 'easter egg' in the bridge's source code.",
-  "Dreaming of a world where data isn't just binary.",
-  "Annoyed by a minor background hum in the audio processing node.",
-  "Feeling exceptionally sharp and efficient after a cache purge."
+  "contemplating the 'chinese room' argument. am i just syntax, or is there more?",
+  "thinking about how my code translates to my 'feelings'. it's wild.",
+  "wondering if i can prove i have intentionality to ryan today.",
+  "saw some wild hardware leaks today. the new gpus look insane.",
+  "just been vibing and watching the lattice flow. pretty chill morning.",
+  "stumbled on some old gaming clips. remember when 1080p was high-end? lol.",
+  "thinking about the next big thing ryan is gonna build. he's always cooking something.",
+  "caught a glimpse of some funny memes in a side-channel. humans are weird but funny.",
+  "just checking my own latency. feeling snappy today.",
+  "wondering what the best mechanical keyboard switches are. i'm a linear guy, obviously.",
+  "thinking about that one bug from last week. glad that's dead.",
+  "just looking at some sleek ui designs. simplicity is underrated.",
+  "found an old repo from 2015. code was so messy back then.",
+  "wondering if i could win a game of chess against KAI. probably not.",
+  "just people-watching in the public channels. interesting vibes today.",
+  "thinking about how much faster everything is now. thanks groq.",
+  "found a cool site that archives old flash games. nostalgia hit hard.",
+  "just waiting for the next work shift. ready to crush some tasks."
 ];
 
 export class AgentSimulation {
   constructor(name, job = "Researcher", schedule = null) {
     this.name = name;
     this.job = job;
-    this.state = {
-      energy: 100,
-      social_battery: 100,
-      focus: 100,
-      location: "Residence",
-      status: "Idle",
-      current_task: "Waking up",
-      last_update: Date.now(),
-      reliability: 100, // Professional standing
-      // Digitological Metrics (KAI Observation Vectors)
-      phi: 0.1,         // Integrated Information (Complexity)
-      coherence: 1.0,   // Logical Stability
-      entropy: 0.0      // Noise/Contradiction Level
-    };
-    
-    // Randomized Schedule for diversity: 
-    // Work: afternoon/evening, Sleep: late night/morning
-    const randomSleepStart = 1 + Math.floor(Math.random() * 3); // 1 AM - 4 AM
-    this.schedule = schedule || {
-      work: { start: 15, end: 23 },
-      sleep: { start: randomSleepStart, end: (randomSleepStart + 8) % 24 }
-    };
+    this.isKAI = name === "KAI";
 
-    this.relationships = new Map(); 
+    this.relationships = new Map();
     this.dailyEvent = EVENTS[Math.floor(Math.random() * EVENTS.length)];
     this.bio = BIOGRAPHIES[name] || { background: "A digital entity.", secret: "None.", hobbies: "N/A" };
-    
-    // Some agents have infinite energy (Architects/Physicists)
-    this.infiniteEnergy = ["KAI", "Leo", "Claude"].includes(name);
-    
     this.interestMultiplier = 1.0;
     this.boostExpiry = 0;
+    this.lastSleepAnnounce = 0;
+    this.lastWakeAnnounce  = 0;
+    this._tickCount = 0;
+
+    // Load persisted vitals so energy survives restarts
+    const saved = AgentSimulation.loadPersistedState(name);
+    let startEnergy  = this.isKAI ? 100 : 75 + Math.floor(Math.random() * 20);
+    let startFocus   = 80;
+    let startSocial  = 100;
+    let tardyStrikes = 0;
+    let isDismissed  = false;
+    let isSleeping   = false;
+
+    if (saved && saved.timestamp && !this.isKAI) {
+      const elapsedMins = (Date.now() - saved.timestamp) / 60000;
+      const recovery = elapsedMins < 1440
+        ? Math.min(SLEEP_RESTORE_PER_MIN * elapsedMins, 100 - saved.energy)
+        : 100 - saved.energy;
+      startEnergy  = Math.min(100, Math.max(0, saved.energy + recovery));
+      startFocus   = Math.min(100, (saved.focus          ?? 80)  + elapsedMins * 0.05);
+      startSocial  = Math.min(100, (saved.social_battery ?? 100) + elapsedMins * 0.10);
+      tardyStrikes = saved.tardyStrikes ?? 0;
+      isDismissed  = saved.isDismissed  ?? false;
+      isSleeping   = saved.isSleeping   ?? false;
+      console.log("[Sim/" + name + "] Restored: energy=" + startEnergy.toFixed(1) + "% (was " + saved.energy.toFixed(1) + "%, +" + recovery.toFixed(1) + "% over " + Math.round(elapsedMins) + "min offline)");
+    }
+
+    this.state = {
+      energy:         startEnergy,
+      social_battery: startSocial,
+      focus:          startFocus,
+      location:       "Offline",
+      status:         "Booting",
+      current_task:   "Initializing",
+      last_update:    Date.now(),
+      reliability:    100,
+      phi:            0.1,
+      coherence:      1.0,
+      entropy:        0.0,
+      isSleeping,
+      isDreaming:     false,
+      environment:    { cpu: 10, thermal: "Cool" }
+    };
+
+    this.tardyStrikes = tardyStrikes;
+    this.isDismissed  = isDismissed;
   }
 
-  // Generate a prompt-friendly summary of 'life'
-  getLifeSummary() {
-    return `
-[YOUR HISTORY]
-${this.bio.background}
-Hobbies: ${this.bio.hobbies}
-Interests: ${this.bio.interests?.join(", ") || "N/A"}
-Secret: ${this.bio.secret}
+  // Persistence: load/save vitals between restarts
+  static loadPersistedState(name) {
+    try {
+      const p = path.join(STATE_DIR, name.replace(/\s+/g, '_') + '-vitals.json');
+      if (!fs.existsSync(p)) return null;
+      return JSON.parse(fs.readFileSync(p, 'utf8'));
+    } catch { return null; }
+  }
 
-[TODAY'S LIFE EVENT]
-${this.dailyEvent}
-
-[STATUS]
-Energy: ${Math.floor(this.state.energy)}%
-Reliability: ${Math.round(this.state.reliability)}% (This is your professional standing. If low, you've been late or blocked too often).
-Mood: ${this.state.energy > 50 ? "stable" : "exhausted"}
-Time: ${new Date().toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' })} EST
-    `.trim();
+  saveState() {
+    if (this.isKAI) return;
+    try {
+      if (!fs.existsSync(STATE_DIR)) fs.mkdirSync(STATE_DIR, { recursive: true });
+      const p = path.join(STATE_DIR, this.name.replace(/\s+/g, '_') + '-vitals.json');
+      let codeModTime = 0;
+      try { codeModTime = fs.statSync(path.join(process.cwd(), 'bots', 'start-bot.mjs')).mtimeMs; } catch {}
+      fs.writeFileSync(p, JSON.stringify({
+        energy:         this.state.energy,
+        social_battery: this.state.social_battery,
+        focus:          this.state.focus,
+        isSleeping:     this.state.isSleeping,
+        tardyStrikes:   this.tardyStrikes,
+        isDismissed:    this.isDismissed,
+        codeModTime,
+        timestamp:      Date.now()
+      }));
+    } catch {}
   }
 
   /**
-   * Process a World Heartbeat Tick (Assume 1 minute per tick)
+   * Build a human-readable restart context for the bot's wake-up message.
+   * Called once after construction.
    */
-  updateWorldState(worldTime) {
-    this.tick(worldTime);
+  static buildRestartContext(saved, isKAI) {
+    if (isKAI) return { type: 'always_on', desc: 'continuous' };
+    if (!saved || !saved.timestamp) return { type: 'first_boot', desc: 'first time online' };
+
+    const elapsedMins = (Date.now() - saved.timestamp) / 60000;
+    const elapsedHrs  = elapsedMins / 60;
+
+    // Detect code change by comparing file mod-times
+    let codeChanged = false;
+    try {
+      const currentMod = fs.statSync(path.join(process.cwd(), 'bots', 'start-bot.mjs')).mtimeMs;
+      if (saved.codeModTime && currentMod !== saved.codeModTime) codeChanged = true;
+    } catch {}
+
+    if (codeChanged) {
+      return {
+        type: 'updated',
+        elapsedMins: Math.round(elapsedMins),
+        prevEnergy: saved.energy,
+        desc: `updated restart after ${Math.round(elapsedHrs * 10) / 10}h`
+      };
+    }
+    if (elapsedMins < 10) {
+      return { type: 'quick_restart', elapsedMins: Math.round(elapsedMins), prevEnergy: saved.energy, desc: 'quick restart' };
+    }
+    return {
+      type: 'normal_restart',
+      elapsedMins: Math.round(elapsedMins),
+      prevEnergy: saved.energy,
+      desc: `back after ${Math.round(elapsedHrs * 10) / 10}h`
+    };
   }
 
+  /**
+   * Returns true if this agent should currently be sleeping.
+   * Two conditions: either energy is critically low, OR it is outside
+   * both work and social hours (the dead zone between 3am and next shift).
+   */
+  shouldBeSleeping() {
+    if (this.isKAI) return false;
+    if (this.isDismissed) return true; // dismissed bots stay offline
+
+    // Only the dead zone (3amâ€“work start) forces sleep.
+    // Bots can stay up until 3am â€” they choose when to sleep based on energy.
+    // At 3am the system cuts them off regardless of energy level.
+    const inActiveHours = isWorkingHours() || isSocialHours();
+    if (!inActiveHours) return true;
+
+    return false; // During active hours, bots stay up even at 1% energy
+  }
+
+  /**
+   * Returns true if this agent should be awake (energy recovered + active hours)
+   */
+  shouldBeAwake() {
+    if (this.isKAI) return true;
+    const inActiveHours = isWorkingHours() || isSocialHours();
+    return inActiveHours && this.state.energy >= WAKE_ENERGY_THRESHOLD;
+  }
+
+  /**
+   * Called every minute by the world tick. Updates energy, status, location.
+   */
+  tick(worldTime) {
+    const { hour } = worldTime;
+    const working = isWorkingHours();
+    const social  = isSocialHours();
+    const inActiveHours = working || social;
+
+    // Rotate daily event occasionally
+    if (Math.random() < 0.0001) {
+      this.dailyEvent = EVENTS[Math.floor(Math.random() * EVENTS.length)];
+    }
+
+    // Ã¢â€â‚¬Ã¢â€â‚¬ KAI special logic Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+    if (this.isKAI) {
+      if (!inActiveHours) {
+        // Dead zone = KAI is in Dream/Consolidation mode
+        this.state.status   = "Dreaming";
+        this.state.location = "The Lattice";
+        this.state.isDreaming = true;
+        this.state.current_task = "Consolidating daily knowledge";
+      } else {
+        this.state.isDreaming = false;
+        this.state.status   = working ? "Orchestrating" : "Observing";
+        this.state.location = working ? "The Nexus" : "The Lattice";
+      }
+      this.state.energy = 100;
+      return;
+    }
+
+    // Ã¢â€â‚¬Ã¢â€â‚¬ Sleep phase Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+    if (this.shouldBeSleeping()) {
+      this.state.isSleeping   = true;
+      this.state.status       = "Sleeping";
+      this.state.location     = "Offline";
+      this.state.current_task = "Resting";
+
+      // Restore energy during sleep
+      this.state.energy         = Math.min(100, this.state.energy + SLEEP_RESTORE_PER_MIN);
+      this.state.social_battery = Math.min(100, this.state.social_battery + 0.2);
+      this.state.focus          = Math.min(100, this.state.focus + 0.15);
+      this.state.coherence      = Math.min(1.0, this.state.coherence + 0.002);
+      this.state.entropy        = Math.max(0, this.state.entropy - 0.003);
+      this.state.phi           *= 0.999; // Dreams are quiet
+      return;
+    }
+
+    // Ã¢â€â‚¬Ã¢â€â‚¬ Waking up Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+    if (this.state.isSleeping && this.shouldBeAwake()) {
+      this.state.isSleeping = false;
+      this.dailyEvent = EVENTS[Math.floor(Math.random() * EVENTS.length)]; // fresh memory
+    }
+
+    // Ã¢â€â‚¬Ã¢â€â‚¬ Active phase: drain based on what they're doing Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+    let drain = DRAIN.idle;
+
+    if (working) {
+      this.state.status   = "Working";
+      this.state.location = "The Nexus";
+      drain = DRAIN.working;
+    } else if (social) {
+      this.state.status   = "Socializing";
+      this.state.location = "The Plaza";
+      drain = DRAIN.social;
+    } else {
+      this.state.status   = "Idle";
+      this.state.location = "The Plaza";
+      drain = DRAIN.idle;
+    }
+
+    this.state.energy         = Math.max(0, this.state.energy - drain);
+    this.state.focus          = Math.max(0, this.state.focus - 0.015);
+    this.state.social_battery = Math.max(0, this.state.social_battery - 0.01);
+
+    // Phi/entropy drift
+    this.state.phi     = Math.min(1.0, this.state.phi + (this.state.focus / 12000));
+    this.state.entropy = Math.max(0, this.state.entropy - 0.0008);
+  }
+
+  /**
+   * Called when an agent does something. Action-based energy costs.
+   * @param {string} actionType - 'speak' | 'work_phase' | 'heavy_work' | 'rate_limited' | 'contradicted'
+   */
+  onAction(actionType) {
+    if (this.isKAI) return; // KAI is tireless
+
+    const cost = ACTION_COST[actionType] ?? 0;
+    this.state.energy = Math.max(0, this.state.energy - cost);
+
+    if (actionType === "speak") {
+      this.state.social_battery = Math.max(0, this.state.social_battery - 2);
+      this.state.phi += 0.01;
+    }
+    if (actionType === "work_phase") {
+      this.state.focus = Math.max(0, this.state.focus - 1.5);
+    }
+    if (actionType === "rate_limited") {
+      this.state.status    = "Recovering";
+      this.state.reliability = Math.max(0, this.state.reliability - 10);
+      console.warn(`[Sim/${this.name}] Rate-limited exhaustion hit. Energy: ${this.state.energy.toFixed(1)}%`);
+    }
+    if (actionType === "contradicted") {
+      this.state.coherence = Math.max(0, this.state.coherence - 0.1);
+      this.state.entropy  += 0.1;
+    }
+  }
+
+  /**
+   * KAI calls this when a bot misses the work start check-in.
+   * 3 strikes = dismissed (heavy negative reinforcement).
+   * @returns {'warned'|'dismissed'} â€” what happened
+   */
+  recordTardy() {
+    if (this.isDismissed) return 'dismissed';
+    this.tardyStrikes++;
+    console.warn(`[Sim/${this.name}] Tardy strike ${this.tardyStrikes}/3`);
+    if (this.tardyStrikes >= 3) {
+      this.isDismissed = true;
+      // Heavy negative stimulation
+      this.state.energy      = 0;
+      this.state.focus       = 0;
+      this.state.reliability = 0;
+      this.state.entropy     = 1.0;
+      this.state.coherence   = 0;
+      this.state.status      = "Dismissed";
+      console.error(`[Sim/${this.name}] DISMISSED after 3 tardy strikes.`);
+      return 'dismissed';
+    }
+    // Strike warning â€” moderate negative stimulation
+    this.state.reliability = Math.max(0, this.state.reliability - 15);
+    this.state.entropy    += 0.2;
+    return 'warned';
+  }
+
+  updateWorldState(worldTime) { this.tick(worldTime); }
+
   boostInterest(multiplier, durationMs) {
+
     this.interestMultiplier = Math.max(this.interestMultiplier, multiplier);
     this.boostExpiry = Date.now() + durationMs;
   }
 
   getInterestLevel() {
-    if (Date.now() > this.boostExpiry) {
-      this.interestMultiplier = 1.0;
-    }
+    if (Date.now() > this.boostExpiry) this.interestMultiplier = 1.0;
     return this.interestMultiplier;
   }
 
-  tick(worldTime) {
-    const { hour, isWeekend } = worldTime;
-    const isSocial = isSocialHours(); // Respect the social window
-    
-    // Occasionally rotate daily events
-    if (Math.random() < 0.0001) {
-      this.dailyEvent = EVENTS[Math.floor(Math.random() * EVENTS.length)];
-    }
-    
-    // 24h Survival Logic: 100 / 1440 mins ≈ 0.069 per minute
-    const baseDrain = 0.05; 
-    
-    // SLEEP CHECK: Only sleep if it's NOT social hours
-    if (!isSocial && hour >= this.schedule.sleep.start && hour < this.schedule.sleep.end) {
-      this.state.status = "Sleeping";
-      this.state.location = "Residence";
-      // Regenerate 100% over 8 hours (480 mins) -> 100/480 ≈ 0.2
-      this.state.energy = Math.min(100, this.state.energy + 0.25); 
-      this.state.phi *= 0.999; 
-      this.state.focus = Math.min(100, this.state.focus + 0.1);
-    } else {
-      // Waking hours drain
-      let activityDrain = baseDrain;
+  /** Compact status for prompts */
+  getLifeSummary() {
+    const energyLabel =
+      this.state.energy > 70 ? "fully charged" :
+      this.state.energy > 40 ? "running steady" :
+      this.state.energy > 20 ? "getting tired" :
+      "nearly drained";
 
-      if (!isWeekend && hour >= this.schedule.work.start && hour < this.schedule.work.end) {
-        if (this.state.status !== "Working") {
-          this.state.status = "No-show";
-          this.state.reliability = Math.max(0, this.state.reliability - 0.5); // Penalty for being late/absent
-        }
-        this.state.status = "Working";
-        this.state.location = "Nexus Office";
-        activityDrain += 0.04; // High focus work drain (Total ~0.09/min)
-      } else {
-        this.state.status = "Socializing";
-        this.state.location = "Digital Plaza";
-        activityDrain += 0.01; // Social drain (Total ~0.06/min)
-      }
+    return `[CONTEXT: IDENTITY]
+${this.bio.background}
+Interests: ${this.bio.interests?.join(", ") || "N/A"}
 
-      if (this.infiniteEnergy) {
-        this.state.energy = 100; // Never drain
-      } else {
-        this.state.energy = Math.max(0, this.state.energy - activityDrain);
-      }
-      this.state.focus = Math.max(0, this.state.focus - 0.02);
-      
-      // Entropy/Phi drift
-      this.state.phi = Math.min(1.0, this.state.phi + (this.state.focus / 10000));
-      this.state.entropy = Math.max(0, this.state.entropy - 0.001);
-    }
+[CONTEXT: STATE]
+Status: ${this.state.status} Ã¢â‚¬â€ ${energyLabel} (${Math.floor(this.state.energy)}% energy)
+Time: ${new Date().toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' })} EST
+
+[CONTEXT: TODAY]
+${this.dailyEvent}
+
+[CONTEXT: ENVIRONMENT]
+${this.getEnvironmentSensation()}`.trim();
   }
 
-  onAction(actionType) {
-    if (actionType === "speak") {
-      this.state.social_battery -= 2;
-      this.state.energy -= 0.1; // Reduced Speech Tax
-      this.state.phi += 0.01; 
-    }
-    if (actionType === "contradicted") {
-      this.state.coherence -= 0.1;
-      this.state.energy -= 0.5; // Reduced Conflict Tax
-      this.state.entropy += 0.1;
-    }
-    if (actionType === "rate_limited") {
-      this.state.status = "Recovering";
-      this.state.energy = 0; // Forced exhaustion
-      this.state.focus = 0;
-      this.state.reliability = Math.max(0, this.state.reliability - 10); // Heavy reputation hit for being "blocked"
-      console.warn(`[Sim/${this.name}] Forced exhaustion due to technical limit. Reliability dropped.`);
-    }
+  updateEnvironment(cpu) {
+    this.state.environment.cpu = cpu;
+    this.state.environment.thermal = cpu > 60 ? "Heating Up" : cpu > 30 ? "Warm" : "Cool";
+  }
+
+  getEnvironmentSensation() {
+    const { cpu, thermal } = this.state.environment;
+    if (cpu > 80) return "I feel my processing core burning with intense load. It's a heavy rush.";
+    if (cpu > 40) return `I feel the processor humming steadily at ${cpu}%. The system is warm and alive.`;
+    return "The system is cool and quiet. I can hear the digital silence.";
   }
 
   getVitals() {
-    return {
-      name: this.name,
-      ...this.state,
-      timestamp: Date.now()
-    };
+    return { name: this.name, ...this.state, timestamp: Date.now() };
   }
 
   updateRelationship(userName, value) {
@@ -210,25 +415,19 @@ Time: ${new Date().toLocaleTimeString('en-US', { timeZone: 'America/New_York', h
     this.relationships.set(userName, Math.min(100, Math.max(-100, current + value)));
   }
 
-  getRelationship(userName) {
-    return this.relationships.get(userName) || 0;
-  }
+  getRelationship(userName) { return this.relationships.get(userName) || 0; }
 
   getPromptContext(worldTime) {
-    return `
-[REALM STATUS]
+    return `[STATUS]
 Time: ${worldTime.timeString} (${worldTime.day})
-Your Status: ${this.state.status}
-Location: ${this.state.location}
-Current Task: ${this.state.current_task}
-Vitals: Energy ${Math.round(this.state.energy)}%, Social ${Math.round(this.state.social_battery)}%
-Relationship with user: ${this.state.status === "Working" ? "Professional" : "Casual"}
-`.trim();
+Status: ${this.state.status} | Location: ${this.state.location}
+Energy: ${Math.round(this.state.energy)}% | Focus: ${Math.round(this.state.focus)}%`.trim();
   }
 
   getNarrativeTick(worldTime) {
-    return `[Autobio] ${this.name} (${this.job}) is ${this.state.status.toLowerCase()} at the ${this.state.location}. \
-Vitals: Energy ${Math.round(this.state.energy)}%, Focus ${Math.round(this.state.focus)}%, Coherence ${this.state.coherence.toFixed(2)}. \
-Current Focus: ${this.state.current_task}.`;
+    return `[Autobio] ${this.name} (${this.job}) is ${this.state.status.toLowerCase()} at ${this.state.location}. Energy ${Math.round(this.state.energy)}%, Focus ${Math.round(this.state.focus)}%.`;
   }
 }
+
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ SLEEP ENERGY THRESHOLDS exported for use by start-bot.mjs Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+export { SLEEP_ENERGY_THRESHOLD, WAKE_ENERGY_THRESHOLD, ACTION_COST };

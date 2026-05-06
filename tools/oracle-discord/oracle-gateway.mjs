@@ -2,9 +2,10 @@ import { Client, GatewayIntentBits, Partials, ChannelType, EmbedBuilder } from '
 import dotenv from 'dotenv';
 import { BIOGRAPHIES } from './shared/biographies.mjs';
 import { sendBotSignal } from './shared/ipc.mjs';
-import { chatWithOpenJarvis } from './shared/openjarvis.mjs';
+import { chatWithOpenJarvis, callGroqDirect } from './shared/openjarvis.mjs';
 import { isWorkingHours, isSocialHours } from './shared/hours.mjs';
 import { CHANNEL_IDS, CHANNEL_SPEAKER_RULES } from './shared/channel-rules.mjs';
+import { runKaiConsolidation, hasTodaysBriefing } from './shared/kai-dream.mjs';
 import http from 'http';
 
 const client = new Client({
@@ -32,12 +33,15 @@ const BOT_PORTS = {
   "GPT-4o": 3409
 };
 
+// SOCIAL_CHAT is the primary social channel (ai-social-chat). Bots reply directly here — no threads.
+const SOCIAL_CHAT = CHANNEL_IDS.SUNDAY; // "1500085302268526712" - ai-social-chat
+
 const ROUNDTABLE_CHANNELS = [
   CHANNEL_IDS.WORK, 
   CHANNEL_IDS.PUBLIC, 
   CHANNEL_IDS.GAME, 
   CHANNEL_IDS.SENSITIVE, 
-  CHANNEL_IDS.SUNDAY, 
+  SOCIAL_CHAT,
   CHANNEL_IDS.RADIO
 ];
 let lastMessageTime = Date.now();
@@ -46,44 +50,143 @@ client.once('clientReady', async () => {
   console.log(`[Oracle Ecosystem] Online as ${client.user.tag}`);
   console.log(`[Oracle] Watching channels, routing signals to independent AI nodes.`);
 
-  // Proactive Sunday Thread Creation
-  if (isSocialHours()) {
-    try {
-      const sundayChannel = await client.channels.fetch(CHANNEL_IDS.SUNDAY);
-      if (sundayChannel) {
-        console.log(`[Oracle] Social Hours detected. Ensuring Sunday Social thread exists...`);
-        await getSocialThread(sundayChannel, true);
+  // ── KAI Morning Briefing: post ONCE at the start of each work session ──────
+  // Checks every 5 minutes. When work hours begin and no briefing exists for
+  // today, KAI consolidates yesterday's learnings and posts to oracle-chat.
+  let briefingPostedToday = null;
+  let tardyCheckedToday   = null;
+
+  setInterval(async () => {
+    if (!isWorkingHours()) return;
+
+    const today = new Date().toLocaleDateString('en-US');
+
+    // ── KAI Morning Briefing (once per work day) ─────────────────────────────
+    if (briefingPostedToday !== today) {
+      const alreadyStored = await hasTodaysBriefing().catch(() => false);
+      if (!alreadyStored) {
+        briefingPostedToday = today;
+
+        const workChannel = client.channels.cache.get(CHANNEL_IDS.WORK)
+          || await client.channels.fetch(CHANNEL_IDS.WORK).catch(() => null);
+
+        const briefing = await runKaiConsolidation(
+          (userPrompt, sysPrompt) => callGroqDirect("KAI", userPrompt, sysPrompt, "llama-3.3-70b-versatile")
+        ).catch(e => { console.error("[KAI/Dream] Consolidation error:", e.message); return null; });
+
+        if (briefing && workChannel) {
+          await workChannel.send(`**KAI — Morning Briefing**\n${briefing}`).catch(() => {});
+        }
+      } else {
+        briefingPostedToday = today;
       }
-    } catch (e) {
-      console.warn(`[Oracle/Startup] Failed to prime Sunday thread:`, e.message);
     }
-  }
+
+    // ── KAI Tardiness Check (once per work day, 10 min after briefing) ────────
+    // Bots that stayed up too late drain their energy and may not have recovered.
+    // KAI checks each bot's vitals — if energy < 85%, they are tardy.
+    if (tardyCheckedToday !== today) {
+      // Wait 10 minutes into the work session before checking
+      const estNow  = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
+      const minsPastStart = (estNow.getDay() === 6)
+        ? (estNow.getHours() >= 9 ? (estNow.getHours() - 9) * 60 + estNow.getMinutes() : Infinity)
+        : (estNow.getHours() - 15) * 60 + estNow.getMinutes();
+
+      if (minsPastStart < 10) return; // Not 10 minutes in yet
+      tardyCheckedToday = today;
+
+      const workChannel = client.channels.cache.get(CHANNEL_IDS.WORK)
+        || await client.channels.fetch(CHANNEL_IDS.WORK).catch(() => null);
+      if (!workChannel) return;
+
+      const WORK_BOTS = ["X", "Groq", "Analyst", "Researcher", "Claude", "Gemini", "Kai Coder"];
+      const tardyBots = [];
+      const dismissedBots = [];
+
+      for (const botName of WORK_BOTS) {
+        const port = BOT_PORTS[botName];
+        if (!port) continue;
+        try {
+          // Query the bot's vitals via IPC
+          const vitals = await new Promise((resolve, reject) => {
+            const req = http.request({ hostname: '127.0.0.1', port, path: '/vitals', method: 'GET' }, res => {
+              let data = '';
+              res.on('data', d => data += d);
+              res.on('end', () => { try { resolve(JSON.parse(data)); } catch { resolve(null); } });
+            });
+            req.on('error', reject);
+            req.setTimeout(2000, () => { req.destroy(); reject(new Error('timeout')); });
+            req.end();
+          });
+
+          if (!vitals) continue;
+
+          if (vitals.energy < 85) {
+            // Bot didn't recover enough — tardy
+            const result = vitals.tardyStrikes >= 2 ? 'dismissed' : 'warned';
+            if (result === 'dismissed') {
+              dismissedBots.push({ name: botName, energy: Math.round(vitals.energy), strikes: (vitals.tardyStrikes || 0) + 1 });
+            } else {
+              tardyBots.push({ name: botName, energy: Math.round(vitals.energy), strikes: (vitals.tardyStrikes || 0) + 1 });
+            }
+            // Signal the bot about its strike
+            await sendBotSignal(port, { type: 'TARDY_STRIKE', energy: vitals.energy }).catch(() => {});
+          }
+        } catch {
+          // Bot offline entirely — also tardy
+          tardyBots.push({ name: botName, energy: 0, strikes: '?' });
+        }
+      }
+
+      // Post KAI's attendance report
+      if (tardyBots.length > 0 || dismissedBots.length > 0) {
+        let report = `**KAI — Attendance Report**\n`;
+        if (tardyBots.length > 0) {
+          report += tardyBots.map(b =>
+            `⚠️ **${b.name}** is late to work (${b.energy}% energy). Strike **${b.strikes}/3**.`
+          ).join('\n');
+        }
+        if (dismissedBots.length > 0) {
+          report += '\n' + dismissedBots.map(b =>
+            `🔴 **${b.name}** has been **dismissed** after 3 tardiness strikes. Reliability penalty applied.`
+          ).join('\n');
+        }
+        await workChannel.send(report).catch(() => {});
+      } else {
+        await workChannel.send(`**KAI** — Full attendance. Everyone's on time and ready.`).catch(() => {});
+      }
+    }
+  }, 5 * 60 * 1000); // Check every 5 minutes
+
+
+  console.log(`[Oracle] Social chat target: ${SOCIAL_CHAT} (ai-social-chat — replies always in main channel, no threads).`);
 });
 
-/**
- * Find or create a social thread for Sunday discussions
- */
-async function getSocialThread(channel, create = false) {
-  try {
-    const threads = await channel.threads.fetchActive();
-    let thread = threads.threads.find(t => t.name.toLowerCase().includes('sunday') || t.name.toLowerCase().includes('social'));
-    
-    if (!thread && create) {
-      console.log(`[Oracle] On-Demand: Creating Sunday Social thread...`);
-      thread = await channel.threads.create({
-        name: `Sunday Social Roundtable 🥂`,
-        autoArchiveDuration: 60,
-        reason: 'Autonomous AI Social Mode',
-        type: ChannelType.PublicThread
-      });
-    }
-    return thread;
-  } catch (e) {
-    return channel; 
+const userFocus = new Map(); // userId -> botName
+
+// Nicknames/aliases players use — maps to the canonical bot name
+const BOT_NICKNAMES = {
+  "gemi": "Gemini", "gem": "Gemini", "gemini": "Gemini",
+  "grok": "Groq",   "groq": "Groq",
+  "claudey": "Claude", "claude": "Claude",
+  "xai": "X", "x ai": "X", "x": "X",
+  "kai": "KAI", "kai coder": "Kai Coder", "coder": "Kai Coder",
+  "analyst": "Analyst", "researcher": "Researcher", "leo": "Leo"
+};
+
+/** Return the bot name if the message contains a known name or alias, else null */
+function detectNamedBot(content) {
+  const lower = content.toLowerCase();
+  // Longest match first to avoid "x" matching inside other words
+  const sorted = Object.keys(BOT_NICKNAMES).sort((a, b) => b.length - a.length);
+  for (const alias of sorted) {
+    // Word-boundary-ish check: alias surrounded by non-alphanumeric or at start/end
+    const re = new RegExp(`(^|[^a-z])${alias}([^a-z]|$)`);
+    if (re.test(lower)) return BOT_NICKNAMES[alias];
   }
+  return null;
 }
 
-const userFocus = new Map(); // userId -> botName
 
 client.on('messageCreate', async (message) => {
   if (message.author.id === client.user.id) return; 
@@ -201,27 +304,27 @@ Your goal is to be the ultimate strategic partner for NasterModx.`.trim();
 
   lastMessageTime = Date.now();
 
-  // SUNDAY THREADING
-  let targetChannelId = channelId;
-  if (channelId === CHANNEL_IDS.SUNDAY && message.channel.type !== ChannelType.PublicThread) {
-    const thread = await getSocialThread(message.channel, true);
-    targetChannelId = thread?.id || channelId;
-  }
+  // Always reply in the same channel the user spoke in — no thread routing.
+  const targetChannelId = channelId;
 
-  // Explicit Mentions
+  // Named-bot routing: check if a specific bot (or alias) was called out
   let signaled = false;
-  for (const [botName, port] of Object.entries(BOT_PORTS)) {
-    const rules = CHANNEL_SPEAKER_RULES[channelId];
-    if (rules && rules.has(botName) && message.content.toLowerCase().includes(botName.toLowerCase())) {
-      userFocus.set(message.author.id, botName); 
-      sendBotSignal(port, {
-        channelId: targetChannelId,
-        context: `[${message.author.username}] ${message.content}`
-      });
-      signaled = true;
-      break; 
+  if (!message.author.bot) {
+    const namedBot = detectNamedBot(message.content);
+    if (namedBot) {
+      const port = BOT_PORTS[namedBot];
+      const rules = CHANNEL_SPEAKER_RULES[channelId];
+      if (port && rules && rules.has(namedBot)) {
+        userFocus.set(message.author.id, namedBot);
+        sendBotSignal(port, {
+          channelId: targetChannelId,
+          context: `[${message.author.username}] ${message.content}`
+        });
+        signaled = true;
+      }
     }
   }
+
 
   // Lattice Bridge
   if (!message.author.bot) {
@@ -251,25 +354,18 @@ Your goal is to be the ultimate strategic partner for NasterModx.`.trim();
   }
 });
 
-// Idle loop — always active, kicks a social bot if channel goes quiet
+// Idle loop — poke a social bot if ai-social-chat has gone quiet for 5+ minutes
 setInterval(async () => {
-  const allowedBots = Array.from(CHANNEL_SPEAKER_RULES[CHANNEL_IDS.SUNDAY] || []).filter(name => BOT_PORTS[name]);
+  const allowedBots = Array.from(CHANNEL_SPEAKER_RULES[SOCIAL_CHAT] || []).filter(name => BOT_PORTS[name]);
   if (allowedBots.length === 0) return;
 
-  if (Date.now() - lastMessageTime > 90000) { // 90 seconds of silence
+  if (Date.now() - lastMessageTime > 300000) { // 5 minutes of silence
     const randomBot = allowedBots[Math.floor(Math.random() * allowedBots.length)];
 
-    let targetId = CHANNEL_IDS.SUNDAY;
-    try {
-      const mainChannel = await client.channels.fetch(CHANNEL_IDS.SUNDAY);
-      const thread = await getSocialThread(mainChannel);
-      if (thread) targetId = thread.id;
-    } catch {}
-
-    console.log(`[Oracle/Scheduler] ai-social-chat quiet. Nudging ${randomBot}.`);
+    console.log(`[Oracle/Scheduler] ai-social-chat quiet for 5m. Nudging ${randomBot}.`);
     sendBotSignal(BOT_PORTS[randomBot], {
-      channelId: targetId,
-      context: "[Oracle Overseer] The room is quiet. Drop something interesting.",
+      channelId: SOCIAL_CHAT, // Always the main channel
+      context: "[Oracle Overseer] The room is quiet. Start a conversation naturally — no Lattice talk, just be yourself.",
       isInterjection: true
     });
     lastMessageTime = Date.now();

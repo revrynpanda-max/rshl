@@ -506,9 +506,6 @@ function isWorkingHours() {
 
 
 
-
-
-
 client.on("clientReady", () => {
   console.log(`\n==============================================`);
   console.log(`Oracle Gateway online as ${client.user.tag}`);
