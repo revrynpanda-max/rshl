@@ -1,8 +1,23 @@
-# KAI Ecosystem Changelog
+# 🧬 KAI RSHL CHANGELOG
 
-All notable changes to the KAI AI Roundtable and Oracle Orchestrator will be documented in this file.
+## [v7.3.0] — 2026-05-06
+### **THE INDUSTRIAL HARDENING RELEASE**
+This milestone represents the transition of KAI from a experimental lattice into a production-ready, audit-hardened ecosystem with 100% successful CI/CD integration.
 
-## [7.3.0] - 2026-05-04
+### 🏛️ Infrastructure & CI/CD
+- **GitHub Actions Stabilization**: Fixed critical deployment failures in the Pages pipeline by refactoring the `build` workflow and hardening the `index.html` generation.
+- **Atomic Repository Migration**: Purged 1.6 GB of legacy debris and converted OSINT submodules (`sherlock`, `spiderfoot`) into regular project directories to resolve checkout deadlocks.
+- **Rust CI Calibration**: Increased the unit test seed count threshold (20 → 30) to accommodate the new MindFrame and ClaimStore architectural anchors.
+- **Port-Locked Identity**: Isolated the 11-node IPC map (Ports 3400–3411) to eliminate port collisions between Oracle, Leo, and the local KAI core.
+
+### 🧠 Cognitive & Simulated Life
+- **Simulated Life Cycles**: Implemented autonomous Energy levels, Sleep cycles, and Social vs. Work dynamics for all roundtable agents.
+- **Epistemic Laws**: Enforced the **2+2 Rule** (Dual-node verification) and **Unpacking Mode** across the discovery lattice.
+- **Sovereign Dashboard**: Deployed the v2.0 Oracle Roundtable UI with real-time Φg Resonance and χ Friction monitoring.
+
+---
+
+## [7.3.0-Beta] - 2026-05-04
 ### Added
 - **Architectural Blueprint**: Created `ARCHITECTURE_V7.md` detailing the Thinking Orchestrator and Memory Vault logic.
 - **Performance Audit**: Generated `PERFORMANCE_AUDIT.md` comparing v6.x vs v7.3 with 1000-agent stress test metrics.
