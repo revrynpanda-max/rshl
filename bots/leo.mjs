@@ -624,6 +624,9 @@ async function triggerVoiceLockOnboarding(user, profileName) {
   }, 2000);
 }
 
+let vocalQueue = [];
+let isSpeaking = false;
+
 async function killSpeech() {
   vocalQueue = [];
   isSpeaking = false;
