@@ -37,7 +37,6 @@ const botToModel = {
   "Kai Coder": "claude-3-5-sonnet-latest"
 };
 
-const PORT = botToPort[botName] || 0;
 const BOT_MODEL = botToModel[botName] || "llama-3.3-70b-versatile";
 
 if (!botToken) {
