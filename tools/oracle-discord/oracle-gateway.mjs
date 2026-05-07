@@ -2,7 +2,7 @@ import { Client, GatewayIntentBits, MessageFlags, Partials } from 'discord.js';
 import dotenv from 'dotenv';
 import { BOT_PORTS, CHANNEL_IDS, ROUNDTABLE_CHANNELS, CHANNEL_SPEAKER_RULES, detectNamedBot } from './shared/channel-rules.mjs';
 import { sendBotSignal } from './shared/ipc.mjs';
-import { isWorkingHours } from './shared/hours.mjs';
+import { isWorkingHours, isSocialHours } from './shared/hours.mjs';
 import { runKaiConsolidation, hasTodaysBriefing } from './shared/kai-dream.mjs';
 import { chatWithOpenJarvis } from './shared/openjarvis.mjs';
 import http from 'http';
