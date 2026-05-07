@@ -169,16 +169,16 @@ RULES:
   // 3. DEDICATED NEURAL PIPELINES (Sovereign Assignment)
   const BOT_PIPELINES = {
     "Leo":             ["Cerebras-70b",   "Groq-8b"],
-    "Oracle":          ["Groq-70b",       "OpenAI-mini"],
-    "KAI":             ["OpenAI-mini",    "Anthropic-Sonnet"],
+    "Oracle":          ["Groq-70b",       "OpenAI-4o"],
+    "KAI":             ["OpenAI-mini",    "Anthropic-Haiku"],
     "Researcher":      ["Google-Pro",     "Groq-Mixtral"],
-    "Analyst":         ["Local-Fast",     "Groq-Gemma"],
-    "Claude":          ["Anthropic-Sonnet", "Google-Flash"],
-    "Gemini":          ["Google-Flash",   "Google-Pro"],
-    "X":               ["Groq-8b",        "Cerebras-8b"],
-    "Groq":            ["Groq-Mixtral",   "Local-Fast"],
-    "Kai Coder":       ["Cerebras-8b",    "Groq-70b"],
-    "Oracle_Overseer": ["Groq-Gemma",     "Cerebras-70b"]
+    "Analyst":         ["Local-Llama31",  "Google-Flash-8b"],
+    "Claude":          ["Anthropic-Sonnet", "Google-2.0-Flash"],
+    "Gemini":          ["Google-Flash",   "Cerebras-8b"],
+    "X":               ["Groq-Llama32-3b", "Local-Phi3"],
+    "Groq":            ["Groq-Gemma",     "Groq-Llama32-1b"],
+    "Kai Coder":       ["OpenAI-o1-mini", "Local-Llama32"],
+    "Oracle_Overseer": ["Local-Gemma2",   "Google-Pro-1.0"]
   };
 
   const globalProviders = [
@@ -188,11 +188,22 @@ RULES:
     { name: "Groq-8b",        model: "llama-3.1-8b-instant" },
     { name: "Groq-Mixtral",   model: "mixtral-8x7b-32768" },
     { name: "Groq-Gemma",     model: "gemma2-9b-it" },
+    { name: "Groq-Llama32-3b", model: "llama-3.2-3b-preview" },
+    { name: "Groq-Llama32-1b", model: "llama-3.2-1b-preview" },
     { name: "OpenAI-mini",    model: "gpt-4o-mini" },
+    { name: "OpenAI-4o",      model: "gpt-4o" },
+    { name: "OpenAI-o1-mini", model: "o1-mini" },
     { name: "Anthropic-Sonnet", model: "claude-3-5-sonnet-20240620" },
+    { name: "Anthropic-Haiku",  model: "claude-3-haiku-20240307" },
     { name: "Google-Flash",   model: "gemini-1.5-flash" },
+    { name: "Google-Flash-8b", model: "gemini-1.5-flash-8b" },
     { name: "Google-Pro",     model: "gemini-1.5-pro" },
-    { name: "Local-Fast",     model: "kai-fast" }
+    { name: "Google-Pro-1.0", model: "gemini-1.0-pro" },
+    { name: "Google-2.0-Flash", model: "gemini-2.0-flash-exp" },
+    { name: "Local-Llama31",  model: "llama3.1:8b" },
+    { name: "Local-Llama32",  model: "llama3.2:3b" },
+    { name: "Local-Phi3",     model: "phi3:latest" },
+    { name: "Local-Gemma2",   model: "gemma2:2b" }
   ];
 
   // Build bot-specific ladder
