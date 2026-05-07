@@ -32,8 +32,7 @@ export const CHANNEL_SPEAKER_RULES = {
   [CHANNEL_IDS.SUNDAY]: new Set(["Claude", "Gemini", "Groq", "X"])
 };
 
-export const HUMAN_IDS = new Set(Object.values(HUMAN_REGISTRY).map(h => h.id));
-export const AI_IDS = new Set(Object.values(AI_REGISTRY).map(a => a.id));
+import { HUMAN_IDS, AI_IDS } from './identities.mjs';
 
 export const BOT_PORTS = {
   "Leo": 3400,

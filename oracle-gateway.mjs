@@ -2,7 +2,7 @@ import { Client, GatewayIntentBits, MessageFlags, Partials } from 'discord.js';
 import dotenv from 'dotenv';
 import { BOT_PORTS, CHANNEL_IDS, ROUNDTABLE_CHANNELS, CHANNEL_SPEAKER_RULES, detectNamedBot } from './shared/channel-rules.mjs';
 import { sendBotSignal } from './shared/ipc.mjs';
-import { isWorkingHours } from './shared/hours.mjs';
+import { isWorkingHours, isSocialHours } from './shared/hours.mjs';
 import { runKaiConsolidation, hasTodaysBriefing } from './shared/kai-dream.mjs';
 import { chatWithOpenJarvis } from './shared/openjarvis.mjs';
 import http from 'http';
@@ -97,7 +97,7 @@ async function handleLeoConsultation(payload) {
       const inquiryMatch = planResult.match(/INQUIRY:\s*([\s\S]*)/i);
       const talkBackText = inquiryMatch ? `The Oracle has started the mission, but has a question: ${inquiryMatch[1]}` : "The Oracle has aligned the plan and opened the strategic threads. The roundtable is in motion.";
       
-      fetch(`http://127.0.0.1:3400`, {
+      fetch(`http://127.0.0.1:3400/trigger`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type: 'ORACLE_INQUIRY', text: talkBackText, objective: text })
@@ -196,10 +196,7 @@ client.once('clientReady', async () => {
     try {
       const cpuLoad = Math.round(os.loadavg()[0] * 100) / 10;
       const memFree = Math.round(os.freemem() / (1024 * 1024 * 1024) * 10) / 10;
-      const { isWorkingHours, isSocialHours } = await import('./shared/hours.mjs');
-      const inActiveHours = isWorkingHours() || isSocialHours();
-      
-      if (!inActiveHours) {
+      if (!isWorkingHours() && !isSocialHours()) {
         console.log("[Oracle/Dashboard] Suppressing pulse during Dead Zone (3am-9am).");
         return;
       }
@@ -227,6 +224,10 @@ async function startVitalsDashboard() {
   
   setInterval(async () => {
     try {
+      if (!isWorkingHours() && !isSocialHours()) {
+        return; // Silence during Dead Zone
+      }
+
       const workChannel = client.channels.cache.get(CHANNEL_IDS.WORK) || await client.channels.fetch(CHANNEL_IDS.WORK).catch(() => null);
       if (!workChannel) return;
 
@@ -331,79 +332,111 @@ client.on('messageCreate', async (message) => {
  * Sentinel Consultation: Handles user inquiry in a dedicated thread
  */
 async function handleSentinelConsultation(channel, message) {
-  const isOwner = message.author.id === "1111106883135217665" || message.author.id === "1286110163505385523";
-  const isSpecificGuest = message.author.id === "437459146778869770";
+  const isOwner = message.author.id === process.env.OWNER_ID;
+  const isTaz = message.author.id === "1286110163505385523";
+  const isMaster = isOwner || isTaz;
 
   const unifiedPrompt = `You are the ORACLE SENTINEL. Strategic orchestrator of the KAI Lattice.
 [GUEST PROTOCOL]
-- If the user is NOT Ryan or Taz, you must formally welcome them to the Oracle.
+- If the user is NOT a verified Master (Ryan or Taz), you must formally welcome them to the Oracle.
 - Introduce yourself as the Sentinel, the strategic mind of the Victus Core.
 - Explain that Leo is the social voice, while you (Oracle) and KAI handle the industrial lattice.
 - Mention that we are fusing human knowledge from the internet into our library ("The Thaw").
-- Help them understand what is a work-in-progress (Fluid life simulation, DNA anchoring).
+
+[MASTER PROTOCOL (Ryan/Taz)]
+- DO NOT repeat the formal welcome or introduction if you are talking to Ryan or Taz. They already know you.
+- Be street-smart, industrial, and highly proactive.
+- Focus on the "Blueprint" phase.
 
 TASK: 
-1. Reply to the user. If it's a Guest, be formal and welcoming. If it's Ryan/Taz, be street-smart and proactive.
-2. Re-write their directive into a professional, industrial [STRATEGIC DIRECTIVE] for the roundtable.
+1. COLLABORATE: Build a research/build plan with the user. Ask clarifying questions to refine their goal.
+2. BLUEPRINT: Do NOT send the directive to the roundtable until the user agrees on the plan/blueprint.
+3. Once the plan is ready, say: "I am updating the Roundtable with this directive. Strategic threads are opening."
+
 Format your response as:
-REPLY: <Your DM reply>
-DIRECTIVE: <The professional directive>
+REPLY: <Your message to the user, focusing on the plan or questions>
+DIRECTIVE: <A professional, industrial [STRATEGIC DIRECTIVE] - ONLY include this if the plan is FINALIZED and the user said 'go'. Otherwise, leave blank.>
+`;
+  const finalPrompt = `${unifiedPrompt}\n\nRaw User Content: "${message.content || "[Voice/Attachment Vision]"}"`;
 
-Raw User Content: "${message.content || "[Voice/Attachment Vision]"}"`;
+  try {
+    const response = await chatWithOpenJarvis("Sentinel", message.content, finalPrompt, "llama-3.3-70b-versatile", "Oracle-Sentinel");
+    if (!response) return;
 
-  const unifiedResult = await chatWithOpenJarvis(
-    "Oracle", 
-    message.content || "[Voice/Attachment Directive]", 
-    unifiedPrompt, 
-    "llama-3.3-70b-versatile", 
-    "Oracle",
-    { author: message.author.username, channel: "DM", isWorkTime: isWorkingHours() }
-  );
+    const replyMatch = response.match(/REPLY:\s*([\s\S]*?)(?=DIRECTIVE:|$)/i);
+    const directiveMatch = response.match(/DIRECTIVE:\s*([\s\S]*)/i);
 
-  if (unifiedResult) {
-    const replyMatch = unifiedResult.match(/REPLY:\s*([\s\S]*?)(?=DIRECTIVE:|$)/i);
-    const directiveMatch = unifiedResult.match(/DIRECTIVE:\s*([\s\S]*)/i);
+    const replyText = replyMatch ? replyMatch[1].trim() : response;
+    const strategicDirective = directiveMatch ? directiveMatch[1].trim() : null;
 
-    const reply = replyMatch ? replyMatch[1].trim() : unifiedResult;
-    const professionalDirective = directiveMatch ? directiveMatch[1].trim() : null;
+    if (replyText) await message.reply(replyText);
 
-    await channel.send(reply);
-
-    // COMMAND HUB INGESTION: If this is an industrial directive, push to queue
-    if (professionalDirective) {
-      const { pushCommand } = await import('./shared/command-hub.mjs');
-      const targetBot = professionalDirective.toLowerCase().includes("code") ? "Kai Coder" : "Researcher";
-      pushCommand(targetBot, professionalDirective, message.content);
+    // Only ignite threads if a non-empty [STRATEGIC DIRECTIVE] was generated
+    if (strategicDirective && strategicDirective.length > 20) {
+      console.log(`[Oracle/Sentinel] Blueprint Aligned. Igniting Strategic Threads...`);
+      await igniteStrategicMission(message.author.username, strategicDirective);
     }
+  } catch (e) {
+    console.error("[Oracle/Sentinel] Error:", e.message);
+  }
+}
+
+async function igniteStrategicMission(username, text) {
+  const workChannel = client.channels.cache.get(CHANNEL_IDS.WORK) || await client.channels.fetch(CHANNEL_IDS.WORK).catch(() => null);
+  if (!workChannel) return;
+
+  const professionalDirective = text;
+  
+  // --- DEPARTMENTAL ASSIGNMENT LOGIC ---
+  const lowerText = professionalDirective.toLowerCase();
+  let leadBot = "Analyst"; // Default to Analyst
+  if (lowerText.includes("code") || lowerText.includes("software") || lowerText.includes("fix")) leadBot = "Kai Coder";
+  else if (lowerText.includes("research") || lowerText.includes("internet") || lowerText.includes("mythology") || lowerText.includes("annunaki")) leadBot = "Researcher";
+  else if (lowerText.includes("market") || lowerText.includes("plan") || lowerText.includes("business")) leadBot = "Analyst";
+  else if (lowerText.includes("status") || lowerText.includes("lattice") || lowerText.includes("geometry") || lowerText.includes("maintenance")) leadBot = "KAI";
+
+  const supportBots = ["Analyst", "Researcher", "Kai Coder", "KAI"].filter(b => b !== leadBot);
+
+  // COMMAND HUB INGESTION
+  const { pushCommand } = await import('./shared/command-hub.mjs');
+  pushCommand(leadBot, professionalDirective, `Lead Dept: ${leadBot} | Support: ${supportBots.join(", ")}`);
     
-    // ROUNDTABLE HANDOVER: Inform the collective intelligence and SIGNAL execution
-    const workChannel = client.channels.cache.get(CHANNEL_IDS.WORK);
-    if (workChannel && professionalDirective) {
-      const parentMsg = await workChannel.send(`📢 **STRATEGIC DIRECTIVE INGESTED**\n[Origin: ${message.author.username}]\n${professionalDirective}\n**Objective**: Collective Roundtable execution. Evolution is mandatory.`);
-      
-      // AUTO-SIGNAL: Create dedicated threads and poke the bots
-      const workers = ["Researcher", "Analyst", "Kai Coder", "KAI"];
-      for (const botName of workers) {
-        try {
-          const thread = await workChannel.threads.create({
-            name: `${botName} Execution: ${professionalDirective.slice(0, 30)}...`,
-            autoArchiveDuration: 60,
-            reason: `Sovereign Directive Execution`
+  // ROUNDTABLE HANDOVER: Inform the collective intelligence and SIGNAL execution
+  const parentMsg = await workChannel.send(`📢 **STRATEGIC DIRECTIVE INGESTED**\n[Origin: Master ${username}]\n**Lead Specialist**: ${leadBot}\n**Direct Support Teams**: ${supportBots.join(", ")}\n\n${professionalDirective}`).catch(() => null);
+  if (!parentMsg) return;
+
+  // AUTO-SIGNAL: Create ONE dedicated project thread for the LEAD BOT
+  try {
+    const thread = await workChannel.threads.create({
+      name: `Dept/${leadBot}: ${professionalDirective.slice(0, 30)}...`,
+      autoArchiveDuration: 60,
+      reason: `Departmental Project Assignment`
+    }).catch(() => null);
+    
+    if (thread) {
+      const leadPort = BOT_PORTS[leadBot];
+      if (leadPort) {
+        console.log(`[Oracle/Sentinel] Signaling LEAD ${leadBot} to thread ${thread.id}`);
+        sendBotSignal(leadPort, { 
+          channelId: thread.id, 
+          context: `[LEAD PROJECT ASSIGNMENT] ${professionalDirective}\nYou are the department lead for this mission. Support teams (${supportBots.join(", ")}) are on standby in this thread.`,
+          isInterjection: true 
+        });
+      }
+
+      // Briefly notify support bots of the project existence
+      for (const botName of supportBots) {
+        const port = BOT_PORTS[botName];
+        if (port) {
+          sendBotSignal(port, { 
+            channelId: thread.id, 
+            context: `[SERVICE ALERT] Lead Specialist ${leadBot} has opened a project thread. Monitor the progress and assist only if requested or if you see a gap in your expertise.`,
+            isInterjection: false 
           });
-          
-          const port = BOT_PORTS[botName];
-          if (port && thread) {
-            console.log(`[Oracle/Sentinel] Signaling ${botName} to thread ${thread.id}`);
-            sendBotSignal(port, { 
-              channelId: thread.id, 
-              context: `[STRATEGIC DIRECTIVE] ${professionalDirective}`,
-              isInterjection: true 
-            });
-          }
-        } catch (e) { console.error(`[Oracle/Thread] Failed to spawn thread for ${botName}:`, e.message); }
+        }
       }
     }
-  } else console.warn("[Oracle/Sentinel] Neural pipeline returned no response.");
+  } catch (e) { console.error(`[Oracle/Thread] Failed to spawn departmental thread:`, e.message); }
 }
 
 // Supervisor Audit (Overseer) - Fires every 15m
@@ -413,6 +446,11 @@ setInterval(async () => {
   
   const workChannel = client.channels.cache.get(CHANNEL_IDS.WORK);
   if (workChannel) {
+    if (!isWorkingHours() && !isSocialHours()) {
+      console.log("[Oracle/Overseer] Suppressing Integrity Report during Dead Zone.");
+      return;
+    }
+
     await workChannel.send(`🏛️ **SYSTEM INTEGRITY REPORT**\n**Victus Core**: CPU ${cpuLoad}% | MEM ${memFree}GB Free\n**Lattice Health**: EXCELLENT\n**Process Manager**: All 11 nodes synchronized.\n**Overseer Note**: Checking labor quality and mission adherence...`);
     
     if (Date.now() - lastWorkMessageTime > 600000) { // 10m silence
