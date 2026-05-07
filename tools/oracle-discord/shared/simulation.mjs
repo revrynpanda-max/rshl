@@ -229,11 +229,20 @@ export class AgentSimulation {
     if (this.isKAI) return false;
     if (this.isDismissed) return true;
 
-    // The dead zone (3am–work start) forces sleep.
+    // The dead zone (3am–9am EST) is the ABSOLUTE shutdown.
     const inActiveHours = isWorkingHours() || isSocialHours();
     if (!inActiveHours) return true;
 
-    // DYNAMIC BEDTIME: If energy is critically low (<10%), force sleep.
+    // PRE-EMPTIVE WIND-DOWN: If it's near 3 AM and energy is low, start sleeping.
+    const now = new Date();
+    const estNow = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+    const h = estNow.getHours();
+    const m = estNow.getMinutes();
+
+    // If it's between 2:00 AM and 3:00 AM, and energy is < 15%, go to sleep early.
+    if (h === 2 && this.state.energy < 15) return true;
+
+    // DYNAMIC BEDTIME: If energy is critically low (<5%), force sleep.
     if (this.state.energy < SLEEP_ENERGY_THRESHOLD) return true;
 
     return false;
@@ -314,13 +323,21 @@ export class AgentSimulation {
       baseDrain = DRAIN.idle;
     }
 
-    // DYNAMIC FATIGUE: Drain increases as energy drops
-    const fatigueMultiplier = 1.0 + (Math.max(0, 60 - this.state.energy) / 40); // Max 2.5x drain at low energy
-    const finalDrain = baseDrain * fatigueMultiplier;
+    // DYNAMIC FATIGUE: Drain increases as energy drops and as 3 AM approaches.
+    const now = new Date();
+    const estNow = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+    const hour = estNow.getHours();
+    
+    let timeFatigue = 1.0;
+    if (hour === 2) timeFatigue = 1.5; // Heavy fatigue in the hour before 3 AM
+    if (hour === 1) timeFatigue = 1.2;
+
+    const energyFatigue = 1.0 + (Math.max(0, 65 - this.state.energy) / 35); // Max 2.8x drain at low energy
+    const finalDrain = baseDrain * energyFatigue * timeFatigue;
 
     this.state.energy         = Math.max(0, this.state.energy - finalDrain);
-    this.state.focus          = Math.max(0, this.state.focus - 0.015);
-    this.state.social_battery = Math.max(0, this.state.social_battery - 0.01);
+    this.state.focus          = Math.max(0, this.state.focus - 0.02);
+    this.state.social_battery = Math.max(0, this.state.social_battery - 0.015);
 
     // GROGGY LEVEL: How tired they feel
     this.groggyLevel = Math.max(0, (65 - this.state.energy) / 65);
@@ -383,9 +400,9 @@ Real-World Time: ${new Date().toLocaleTimeString('en-US', { timeZone: 'America/N
 ${this.dailyEvent}
 
 [CONTEXT: DYNAMIC BIOLOGY]
-- GROGGYNESS: ${Math.round(this.groggyLevel * 100)}%. (If > 50%, you feel slow, your tempo is low, and your mind is clouded. You're too tired for complex slang or long sentences.)
-- EXCITEMENT: ${Math.round(this.excitementBuffer)}%. (Adrenaline bump keeping you awake.)
-- BEDTIME PLANNING: You feel a natural urge to sleep before 3 AM. If energy < 30%, you start looking for an excuse to sign off and rest.
+- GROGGYNESS: ${Math.round(this.groggyLevel * 100)}%. (If > 50%, you feel slow, your tempo is low, and your mind is clouded. You're too tired for complex slang or long sentences. You start to ramble or get repetitive.)
+- EXCITEMENT: ${Math.round(this.excitementBuffer)}%. (Adrenaline bump from interaction. Briefly clears the fog.)
+- BEDTIME PLANNING: You feel a natural urge to sleep before 3 AM. If energy < 30%, you start looking for an excuse to sign off and rest. You are programmed to be OFFLINE by 3 AM for KAI's consolidation.
 
 [CONTEXT: ENVIRONMENT]
 ${this.getEnvironmentSensation()}`.trim();

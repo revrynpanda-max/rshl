@@ -13,6 +13,7 @@ import { CHANNEL_IDS } from '../shared/channel-rules.mjs';
 import { isWorkingHours, isSocialHours } from '../shared/hours.mjs';
 import { temporal } from '../shared/temporal-state.mjs';
 import { BIOGRAPHIES } from '../shared/biographies.mjs';
+import { AI_REGISTRY, HUMAN_IDS } from '../shared/identities.mjs';
 
 let botName = process.argv[2] || process.env.BOT_NAME || "AI";
 // Special case mapping for tokens
@@ -22,17 +23,9 @@ if (botName === "Kai Coder") tokenName = "Oracle Coder";
 const tokenEnvKey = `ORACLE_DISCORD_TOKEN_${tokenName.toUpperCase().replace(/\s+/g, '_')}`;
 const botToken = process.env[tokenEnvKey] || process.env.BOT_TOKEN || "";
 
-// IPC Port Mapping
-const botToPort = {
-  "Analyst": 3406,
-  "Researcher": 3407,
-  "Groq": 3405,
-  "X": 3404,
-  "Claude": 3403,
-  "Gemini": 3402,
-  "GPT-4o": 3409,
-  "Kai Coder": 3408
-};
+// Port Mapping from Registry
+const PORT = AI_REGISTRY[botName]?.port || 0;
+const DISCORD_ID = AI_REGISTRY[botName]?.id || "Unknown";
 
 const botToModel = {
   "Analyst": "llama-3.3-70b-versatile",
@@ -53,8 +46,12 @@ if (!botToken) {
   console.log(`Token found for ${tokenEnvKey} (${botToken.slice(0, 5)}...)`);
 }
 
-const SUNDAY_CHAT_CHANNEL_ID = "1500085302268526712";
-const targetChannelId = SUNDAY_CHAT_CHANNEL_ID;
+// Dynamic Target Channel: Work vs Social
+const getTargetChannelId = () => {
+  if (isWorkingHours()) return CHANNEL_IDS.WORK;
+  return CHANNEL_IDS.SUNDAY;
+};
+let targetChannelId = getTargetChannelId();
 
 // SOCIAL WHITELIST: Only these bots run proactive social loops in ai-social-chat.
 // Work-only bots (Analyst, Researcher, Kai Coder) stay silent outside oracle-chat.
@@ -215,6 +212,15 @@ ${feed}
     }, 1800000); // 30 min cycle
   }
 
+  // Traffic Control: dynamically update target channel based on time
+  setInterval(() => {
+    const newTarget = getTargetChannelId();
+    if (newTarget !== targetChannelId) {
+      console.log(`[${botName}/Traffic] Vibe shift detected. Moving target to ${newTarget === CHANNEL_IDS.WORK ? 'Work' : 'Social'} channel.`);
+      targetChannelId = newTarget;
+    }
+  }, 60000);
+
   // Energy monitor: enforces sleep/wake cycle
   startEnergyMonitor();
 });
@@ -310,6 +316,10 @@ function startEnergyMonitor() {
         `i'm gone, see you next time`,
         `low battery lol, going dark for a while`
       ];
+      if (sim.groggyLevel > 0.7) {
+        windDownLines.push(`...so tired... eyes closing... see you tomorrow`);
+        windDownLines.push(`can't... finish... thinking... logging off`);
+      }
       const msg = windDownLines[Math.floor(Math.random() * windDownLines.length)];
       if (socialCh) await socialCh.send(msg).catch(() => {});
     }
