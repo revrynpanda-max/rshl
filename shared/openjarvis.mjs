@@ -317,7 +317,7 @@ export async function callGroqDirect(botName, transcript, systemPrompt, model = 
       temperature: temperature,
       max_tokens: 1000
     }),
-    signal: AbortSignal.timeout(10000)
+    signal: AbortSignal.timeout(5000)
   });
   
   if (res.ok) {
@@ -347,7 +347,7 @@ export async function callOpenAI(botName, transcript, systemPrompt, model = "gpt
       temperature: temperature,
       max_tokens: 1000
     }),
-    signal: AbortSignal.timeout(12000)
+    signal: AbortSignal.timeout(5000)
   });
 
   if (res.ok) {
@@ -377,7 +377,7 @@ export async function callCerebras(botName, transcript, systemPrompt, model = "l
       temperature: 0.7,
       max_tokens: 1000
     }),
-    signal: AbortSignal.timeout(timeout)
+    signal: AbortSignal.timeout(5000)
   });
 
   if (res.ok) {
@@ -399,7 +399,7 @@ export async function callGemini(botName, transcript, systemPrompt, model = "gem
       contents: [{ parts: [{ text: `SYSTEM: ${systemPrompt}\n\nUSER: ${transcript}` }] }],
       generationConfig: { maxOutputTokens: 1000, temperature: temperature }
     }),
-    signal: AbortSignal.timeout(timeout)
+    signal: AbortSignal.timeout(5000)
   });
   if (res.ok) {
     const data = await res.json();
@@ -426,7 +426,7 @@ export async function callAnthropic(botName, transcript, systemPrompt, timeout =
       max_tokens: 1000,
       temperature: temperature
     }),
-    signal: AbortSignal.timeout(timeout)
+    signal: AbortSignal.timeout(5000)
   });
   
   if (res.ok) {
