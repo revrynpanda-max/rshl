@@ -873,17 +873,19 @@ async function handleUserVoice(userId) {
         }).catch(() => {});
       }
       
-      // BROADCAST TO LATTICE: Universal Intelligence Ingestion
+      // BROADCAST TO LATTICE: Universal Intelligence Ingestion (Non-blocking)
       if (process.send) {
-        process.send({ 
-          type: 'LATTICE_FEED', 
-          payload: { 
-            author: user.username, 
-            content: `[VOICE] ${transcript}`, 
-            channel: "VOICE", 
-            timestamp: Date.now(),
-            phi: 0.2
-          } 
+        setImmediate(() => {
+          process.send({ 
+            type: 'LATTICE_FEED', 
+            payload: { 
+              author: user.username, 
+              content: `[VOICE] ${transcript}`, 
+              channel: "VOICE", 
+              timestamp: Date.now(),
+              phi: 0.2
+            } 
+          });
         });
       }
 
@@ -1102,10 +1104,10 @@ async function speakLeoText(text) {
     if (!res.ok) throw new Error(`TTS API error: ${res.statusText}`);
 
     // SONIC-INJECTION: Double volume (gain=2.0) for clarity in Discord voice
-    // RELAXED PROBING: Optimized for speed
+    // STABILIZED PROBING: Balanced for speed and muxer safety
     const ffmpeg = spawn(ffmpegPath, [
-      "-analyzeduration", "200000", 
-      "-probesize", "200000", 
+      "-analyzeduration", "500000", 
+      "-probesize", "500000", 
       "-i", "pipe:0", 
       "-af", "volume=2.0", 
       "-f", "s16le", 
@@ -1203,7 +1205,11 @@ ${pulseContext}
   - NEVER treat them like bots or fellow AIs.
 
 [IDENTITY ANCHOR]
+  - YOU ARE LEO.
+  - THE SPEAKER IS ${displayName.toUpperCase()}.
+  - If they ask "What is my name?" you MUST say "${displayName}".
   - Talk to Ryan like a brother. Talk to Taz like a co-lead.
+  - NEVER treat them like bots or fellow AIs.
 ${biometrics.isEnrolling ? `\n[CALIBRATION OVERRIDE: Learning voice patterns. Keep it smooth.]` : ""}
 
 [CONTEXT]

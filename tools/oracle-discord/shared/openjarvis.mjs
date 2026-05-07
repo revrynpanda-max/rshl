@@ -34,8 +34,8 @@ async function acquireNeuralLock(botName) {
       state.history = (state.history || []).filter(t => now - t < 60000);
       
       const isStuck = state.activeBot && (now - state.timestamp > 15000);
-      const canOvertake = isPriority && state.activeBot && (now - state.timestamp > 5000);
-      const isFleetBusy = state.history.length >= 6; // Ultra-stable 6 RPM
+      const canOvertake = isPriority && state.activeBot && (now - state.timestamp > 3000); // Shorter overtake
+      const isFleetBusy = state.history.length >= 8; // Higher fleet volume before throttling
 
       if (!state.activeBot || isStuck || canOvertake) {
         if (isFleetBusy && !isPriority) {
@@ -54,7 +54,7 @@ async function acquireNeuralLock(botName) {
       if (e.code !== 'ENOENT') console.warn(`[Neural/Lock] Sync error for ${botName}:`, e.message);
     }
     
-    const jitter = isPriority ? 500 + Math.random() * 1000 : 3000 + Math.floor(Math.random() * 4000);
+    const jitter = isPriority ? 200 + Math.random() * 500 : 3000 + Math.floor(Math.random() * 4000);
     await new Promise(r => setTimeout(r, jitter));
   }
   return false;
