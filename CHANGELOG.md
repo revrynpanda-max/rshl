@@ -4,6 +4,17 @@ All notable changes to the Victus Core and RSHL Lattice Bridge will be documente
 
 ---
 
+## [32.0.0] — 2026-05-07 (Neural Hard-Cap)
+### Added
+- **Global 5s Neural Hard-Cap**: All cloud providers (Cerebras/Groq/OpenAI/Gemini/Anthropic) are now force-terminated if they exceed 5 seconds.
+- **65% Biometric Tolerance**: Lowered the similarity requirement to 0.65 for instant Master recognition (fixes "Unauthorized" stutter).
+
+### Fixed
+- **48s Latency Spikes**: Resolved the extreme hangs during cloud instability by forcing instant local failover.
+- **Vocal Stability**: Guaranteed that the "Time to Response" never exceeds 6 seconds, even during total cloud outages.
+
+---
+
 ## [31.0.0] — 2026-05-07 (Vocal Recovery)
 ### Fixed
 - **TTS API Error**: Resolved the 'Not Found' error by correcting the ElevenLabs Voice ID and endpoint.
