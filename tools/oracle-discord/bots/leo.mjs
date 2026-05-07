@@ -1104,10 +1104,10 @@ async function speakLeoText(text) {
     if (!res.ok) throw new Error(`TTS API error: ${res.statusText}`);
 
     // SONIC-INJECTION: Double volume (gain=2.0) for clarity in Discord voice
-    // STABILIZED PROBING: Balanced for speed and muxer safety
+    // STABILIZED PROBING: Fine-tuned for 70B intelligence streams
     const ffmpeg = spawn(ffmpegPath, [
-      "-analyzeduration", "500000", 
-      "-probesize", "500000", 
+      "-analyzeduration", "800000", 
+      "-probesize", "800000", 
       "-i", "pipe:0", 
       "-af", "volume=2.0", 
       "-f", "s16le", 
@@ -1219,8 +1219,13 @@ ${detectedIdentity}
 [TRANSCRIPT MEMORY FOR ${displayName}]
 ${cleanHistory}`;
 
-    // ─── NEURAL ORCHESTRATION (SONIC MODE: GROQ-FAST PRIMARY) ─────
-    console.log(`[Leo/Neural] Initiating Groq-Sonic-Mode (llama-3.1-8b-instant)...`);
+    // ─── NEURAL ORCHESTRATION (INTELLIGENCE FUSION: CEREBRAS 70B PRIMARY) ─────
+    console.log(`[Leo/Neural] Initiating Cerebras-Intelligence-Fusion (llama-3.1-70b)...`);
+    const smartReply = await chatWithOpenJarvis(BOT_NAME, cleanTranscript, system, "Cerebras", BOT_NAME, { author: displayName }, sim.getVitals());
+    if (smartReply) return smartReply;
+
+    // Fallback: Groq-Fast
+    console.log(`[Leo/Neural] Cerebras failed. Falling back to Groq-Sonic-Mode...`);
     const fastReply = await chatWithOpenJarvis(BOT_NAME, cleanTranscript, system, "llama-3.1-8b-instant", BOT_NAME, { author: displayName }, sim.getVitals());
     if (fastReply) return fastReply;
 

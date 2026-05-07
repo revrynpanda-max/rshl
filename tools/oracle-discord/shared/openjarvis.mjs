@@ -315,7 +315,7 @@ export async function callCerebras(botName, transcript, systemPrompt, timeout = 
       "Authorization": `Bearer ${CEREBRAS_KEY}`
     },
     body: JSON.stringify({
-      model: "llama3.1-8b",
+      model: "llama3.1-70b",
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: transcript }
