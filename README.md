@@ -1,7 +1,7 @@
-# 🧬 KAI RSHL: Sovereign Autonomous Intelligence (v7.7.6)
+# 🧬 KAI RSHL: Sovereign Autonomous Intelligence (v7.9.7)
 
 ![Rust CI](https://github.com/revrynpanda-max/rshl/actions/workflows/rust-ci.yml/badge.svg)
-![Version](https://img.shields.io/badge/version-7.7.6-brightgreen.svg)
+![Version](https://img.shields.io/badge/version-7.9.7-brightgreen.svg)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 
 **KAI RSHL** is a sovereign, autonomous executive intelligence suite designed for industrial-scale operations. It is not a chatbot. It is a **Unified Cognitive Infrastructure** that fuses high-performance Rust engineering with an advanced epistemic lattice memory to automate complex reasoning, reduce operational latency, and secure grounded, actionable truth.
@@ -21,14 +21,14 @@ To understand the industrial value and technical depth of the KAI ecosystem, ple
 
 ## 🚀 Key Industrial Advantages
 
-### 1. 11-Node Neural Roundtable
-The ecosystem has evolved from a single agent into a **11-node specialized council**. Each agent possesses a distinct cognitive profile (Physicist, Researcher, Provocateur, etc.), allowing for multidimensional reasoning through autonomous peer-review.
+### 1. Sonic-Parallel Voice Optimization
+The lattice now operates with sub-3.5s conversational loops. By re-engineering the vocal pipeline to run STT and Biometric Verification in parallel, we have eliminated 100% of the serial CPU stalls that previously plagued multi-agent interaction.
 
-### 2. Epistemic Reality Grounding (RSHL)
-Traditional AI hallucinates. KAI **knows**. The **Recursive Sparse Holographic Lattice** stores data as structured, epistemic Claims. It rejects contradictions and anchors every thought in its 16,384-dimensional persistent memory.
+### 2. Biological Realism & Dead Zone (v2.0)
+Agents are now strictly synchronized to the EST industrial clock. They boot with realistic fatigue multipliers based on the hour (e.g., ~5% energy at 3 AM) and honor the **Dead Zone (3 AM - 9 AM)** silence protocol for total lattice maintenance stillness.
 
-### 3. 'Unpacking Mode' & The 2+2 Rule
-To ensure transparency, the system operates on the **2+2 Rule**: No claim is presented as fact until it has been 'Unpacked' (verified by two independent nodes with two distinct evidence sources).
+### 3. Sovereign Vitals Dashboard
+A persistent, self-auditing `🏛️ ECOSYSTEM_VITALS` thread in Discord provides real-time oversight of energy levels, regeneration rates, and wake/sleep forecasts (TTR/TTW) for the entire 11-agent council.
 
 ---
 

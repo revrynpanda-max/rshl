@@ -28,10 +28,11 @@ The KAI architecture is built on a "Truth-First" principle, where every layer is
 - **Concurrency**: Manages 10+ autonomous agents in parallel with distinct port-locked memory spaces.
 
 ### 4. The Neural-Flash Pipeline (The Vocal Plane)
-- **Inference**: Groq Llama-3.3-70b (sub-200ms TTFT).
+- **Inference**: Groq Llama-3.3-70b / 3.1-8b (Sonic-Parallel Engine).
 - **Transcription**: Groq Whisper-v3-large.
+- **Recognition**: Asynchronous Biometric Verification (Parallel local bridge).
 - **Synthesis**: ElevenLabs Turbo-v2.5 (Level-4 Latency optimization).
-- **Latency**: Total end-to-end conversational delay (from user silence to agent speech) optimized to 2-4 seconds.
+- **Latency**: Total end-to-end conversational delay (from user silence to agent speech) optimized to **sub-3.5 seconds** via parallelized STT + Recognition.
 
 ---
 

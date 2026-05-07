@@ -63,4 +63,12 @@ Once your IDs are mapped and the bots are in their channels:
 2. **Install**: Run `npm install` in `tools/oracle-discord`.
 3. **Launch**: Run `./run-oracle-discord.ps1`.
 
-**Your lattice is now active. Speak to Leo in the voice channel to verify the "Neural-Sonic-V12" speed.**
+**Your lattice is now active. Speak to Leo in the voice channel to verify the "Sonic-Parallel" pipeline speed (sub-3.5s latency).**
+
+---
+
+### 🏛️ Operational Oversight
+Once the ecosystem is online, the Oracle will automatically create a `🏛️ ECOSYSTEM_VITALS` thread in your main #oracle-chat channel. Use this to monitor:
+1. **Biological Sync**: Verify that agents have energy levels matching the EST industrial clock.
+2. **Dead Zone Protocol**: Ensure total lattice stillness between 3 AM and 9 AM.
+3. **Neural Heartbeat**: Monitor port-locked IPC health for all 11 agents.

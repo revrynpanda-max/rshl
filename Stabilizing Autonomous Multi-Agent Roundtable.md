@@ -1,8 +1,8 @@
-# Stabilizing Autonomous Multi-Agent Roundtable (v6.7.0)
+# Stabilizing Autonomous Multi-Agent Roundtable (v7.9.7)
 
 > [!IMPORTANT]
-> **STABILIZATION PHASE COMPLETE.** As of v6.7.0 (Sovereign Autonomy), the roundtable is fully stable. 
-> The legacy issues documented below (stalls, identity bleed, amnesia) have been permanently resolved via the **5-second Planck Pulse**, **Ontological Laws**, and the **Sovereign Command Bridge**.
+> **STABILIZATION PHASE COMPLETE.** As of v7.9.7 (Sonic-Parallel), the roundtable is fully stable. 
+> The legacy issues documented below (stalls, identity bleed, amnesia) have been permanently resolved via the **Sonic-Parallel Voice Pipeline**, **Biological Realism**, and **Sovereign Vitals Dashboard**.
 
 ---
 

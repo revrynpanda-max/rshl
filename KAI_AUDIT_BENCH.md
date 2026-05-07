@@ -1,11 +1,11 @@
-# KAI v5.9.4 — Full System Audit & Bench Test Specification
+# KAI v7.9.7 — Full System Audit & Bench Test Specification
 ## Antigravity Execution Document — Multi-Hour Comprehensive Inspection
 
 ---
 
 > **ANTI-DRIFT ANCHOR — READ THIS FIRST AND RE-READ IT EVERY 30 MINUTES**
 >
-> You are running a full system audit of KAI v5.9.4 — a Rust-based cognitive AI using RSHL (Recursive
+> You are running a full system audit of KAI v7.9.7 — a Rust-based cognitive AI using RSHL (Recursive
 > Sparse Hyperdimensional Lattice). Your mission is to inspect, test, measure, experiment, and report
 > on EVERYTHING: correctness, performance, architecture, algorithms, data quality, output quality,
 > edge cases, and system health. You must NOT fabricate results. If a test fails or a command errors,

@@ -1,4 +1,4 @@
-# Oracle Discord Gateway — KAI Roundtable Bridge
+# Oracle Discord Gateway — KAI Roundtable Bridge (v7.9.7)
 
 A high-fidelity bridge connecting the local **KAI Oracle** server to Discord. Runs 7 AI agents simultaneously, each with a distinct personality, model, and voice identity.
 

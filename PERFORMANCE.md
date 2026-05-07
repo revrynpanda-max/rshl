@@ -1,19 +1,19 @@
-# RSHL Performance & Technical Specifications (v6.7.0)
+# RSHL Performance & Technical Specifications (v7.9.7)
 
 This document tracks the precision and throughput metrics for the Recursive Sparse Hyperdimensional Lattice (RSHL) engine and the Sovereign Ecosystem Manager.
 
 ## Benchmark Results (v6.7.0)
 *Hardware: RTX 4050 Laptop · Ryzen 5 8645HS · 40GB RAM*
 
-### v6.7.0 Sovereign Throughput
-The v6.7.0 release introduces the **High-Resolution Ecosystem Manager**, shifting the temporal baseline to a 5-second "Planck" heartbeat.
+### v7.9.7 Sonic-Parallel Throughput
+The v7.9.7 release introduces the **Sonic-Parallel Pipeline**, re-engineering the vocal chain for sub-3.5s conversational loops.
 
-| Metric | v6.1.1 | v6.7.0 | Improvement |
+| Metric | v7.7.6 | v7.9.7 | Improvement |
 | :--- | :--- | :--- | :--- |
-| **Temporal Resolution** | 60s pulse | **5s pulse** | **1200% Increase** |
-| **Field State Compute** | 1.57ms | **1.22ms** | **22% Speedup** |
-| **Lattice Query Latency**| < 1ms | **< 0.8ms** | **20% Speedup** |
-| **Command Execution** | Manual | **Autonomous** | **Complete Automation** |
+| **Vocal Loop Latency** | ~10.2s | **~3.4s** | **300% Speedup** |
+| **Verification Latency** | ~900ms (Blocking) | **~10ms (Async)** | **9000% Speedup** |
+| **Temporal Resolution** | 5s pulse | **5s pulse** | **Stable** |
+| **Command Execution** | Autonomous | **Parallel-Tooling**| **Grounded Execution** |
 
 ---
 

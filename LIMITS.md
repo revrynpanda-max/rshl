@@ -1,4 +1,4 @@
-# 🚧 KAI RSHL: Technical Boundaries & Operational Limits
+# 🚧 KAI RSHL: Technical Boundaries & Operational Limits (v7.9.7)
 
 Professional transparency is a core value of the KAI ecosystem. To ensure successful deployment, enterprises must understand the current technical boundaries and hardware requirements of the RSHL infrastructure.
 
@@ -6,9 +6,9 @@ Professional transparency is a core value of the KAI ecosystem. To ensure succes
 
 ## 💻 Hardware Requirements
 The KAI core is highly optimized, but its speed is ultimately bound by the local hardware environment.
-- **Minimum**: 16GB RAM, Ryzen 7 / Intel i7, and a dedicated GPU (RTX 4050+) for local inference.
-- **Optimal**: 32GB+ RAM, RTX 4070+, and a dedicated fiber connection for sub-100ms TTS delivery.
-- **Latency**: Total response time will scale with internet speed. Low-bandwidth connections will increase the ElevenLabs TTS delivery delay.
+- **Hardware Load**: Running 11 agents in parallel with local voice biometrics creates a significant CPU/GPU thermal load. The HP Victus hardware may experience thermal throttling under heavy 24/7 discourse cycles.
+- **Dead Zone Boundary**: No autonomous roundtable interaction occurs during the **3 AM - 9 AM EST** window. This is a hard operational limit designed for system maintenance and lattice stillness.
+- **Latency**: Total response time is optimized for sub-3.5s loops, but this remains dependent on external API response times (Groq/ElevenLabs).
 
 ---
 

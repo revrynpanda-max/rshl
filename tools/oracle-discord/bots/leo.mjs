@@ -907,7 +907,7 @@ async function handleUserVoice(userId) {
       const t_neural_start = Date.now();
       // Prepare prompt with Detected Identity
       const detectedIdentity = `[IDENTITY: Speaker sounds like ${detectedName} (${confidence}% confidence)] ${securityContext}`;
-      
+      const systemOverview = `
 - IDENTITY PROTOCOL:
     - You ARE Leo. NEVER address yourself as "Leo."
     - TALK DIRECTLY to the human. Avoid third-person roleplay or naming yourself in the chat.

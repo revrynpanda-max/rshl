@@ -1,4 +1,4 @@
-# KAI Refactoring Plan: Decoupling the God Function
+# KAI Refactoring Plan: Decoupling the God Function (v7.9.7)
 
 ## 1. Objective
 Refactor `App::process_input` in `src/main.rs` to improve maintainability, reduce cognitive load for developers, and prepare for multi-threaded cognitive processing.
@@ -56,3 +56,8 @@ Move module-specific logic (e.g., the complex RPE math) into the modules themsel
 ## 5. Performance Gains
 - By decoupling command handling, we avoid initializing the entire cognitive stack for simple file reads.
 - Preparing for a `CognitiveStack` struct that can be processed in parallel with the UI thread.
+## 6. v7.9.7 Specific: Vocal Pipeline Decoupling
+- **Objective**: Isolate the `Sonic-Parallel` logic into a dedicated `VocalConductor` class in `leo.mjs`.
+- **Parallelization**: Move STT and Biometrics into a `Promise.all` wrapper to maintain the sub-3.5s latency benchmark.
+- **Cleanup**: Remove legacy synchronous `execSync` remnants from `voice-biometrics.mjs` to prevent event-loop blocking.
+- **Verification**: Ensure the `IDENTITY PROTOCOL` is consistently injected during parallel neural synthesis.
