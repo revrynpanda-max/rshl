@@ -4,6 +4,18 @@ All notable changes to the Victus Core and RSHL Lattice Bridge will be documente
 
 ---
 
+## [24.0.0] — 2026-05-07 (Protocol Silence)
+### Added
+- **AI Loop Suppression**: Oracle now strictly ignores all messages from other AI nodes.
+- **Human-Only Ingestion**: Audit timers and work-trackers are now 100% anchored to Human activity.
+- **Overseer Calibration**: Increased silence threshold to 6 hours and report interval to 4 hours.
+
+### Fixed
+- **Audit Panic**: Resolved the repetitive 'Plaza is silent' thread-creation loop.
+- **Status Flooding**: Reduced Integrity Report frequency to prevent channel noise.
+
+---
+
 ## [23.0.0] — 2026-05-07 (Temporal Sovereignty)
 ### Added
 - **Circadian Energy Model**: Precise energy debt calculation based on 9 AM Industrial Wake-up.
