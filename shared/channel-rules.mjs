@@ -1,15 +1,18 @@
+import { HUMAN_REGISTRY, AI_REGISTRY } from './identities.mjs';
+
 export const CHANNEL_IDS = {
   WORK: "1489796367466500128",       // oracle-chat
   PUBLIC: "1499108697631232090",     // over-all-chat
   GAME: "1499298054291980368",       // game-with-leo
   SENSITIVE: "1500053533515448480",  // sensitive-info
-  SUNDAY: "1500085302268526712",     // ai-social-chat (formerly sunday-chat)
+  SUNDAY: "1500085302268526712",     // ai-social-chat
   VOICE: "1489796367466500129",      // public voice chat
   RADIO: "1500048983568023552",      // ai radio
+  UNREGISTERED_SLOT: "1500958679669674086", // For onboarding instructions
   LEO_VOICE_SLOTS: [
     "1500527640107417783", // Ryan (Slot 1)
-    "1500529928184008885", // Public 2
-    "1500529995087610027", // Public 3
+    "1500529928184008885", // Taz (Slot 2)
+    "1500529995087610027", // Guest (Slot 3)
     "1500530046111318116", // Public 4
     "1500530070081503343", // Public 5
     "1500530095368962098"  // Public 6
@@ -29,6 +32,9 @@ export const CHANNEL_SPEAKER_RULES = {
   [CHANNEL_IDS.SUNDAY]: new Set(["Claude", "Gemini", "Groq", "X"])
 };
 
+export const HUMAN_IDS = new Set(Object.values(HUMAN_REGISTRY).map(h => h.id));
+export const AI_IDS = new Set(Object.values(AI_REGISTRY).map(a => a.id));
+
 export const BOT_PORTS = {
   "Leo": 3400,
   "KAI": 3401,
@@ -43,12 +49,20 @@ export const BOT_PORTS = {
 };
 
 /**
- * Checks if a specific AI speaker is allowed to speak in a specific channel.
- * @param {string} speaker - The name of the AI (e.g., "KAI", "Leo")
+ * Checks if a specific speaker (Name or Discord ID) is allowed to speak in a specific channel.
+ * @param {string} identifier - The name or Discord ID of the speaker
  * @param {string} channelId - The Discord channel ID
  * @returns {boolean} True if allowed, false otherwise
  */
-export function isAllowed(speaker, channelId) {
+export function isAllowed(identifier, channelId) {
+  // Humans are always allowed everywhere
+  if (HUMAN_IDS.has(identifier)) return true;
+
+  // Resolve ID to Name if needed
+  let speaker = identifier;
+  const ai = Object.entries(AI_REGISTRY).find(([name, data]) => data.id === identifier);
+  if (ai) speaker = ai[0];
+
   // Oracle never speaks in ANY channel
   if (speaker.toLowerCase() === "oracle") return false;
 

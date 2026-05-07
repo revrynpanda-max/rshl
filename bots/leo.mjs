@@ -38,7 +38,8 @@ try {
   // Port is likely clear
 }
 
-import { isAllowed, CHANNEL_IDS } from '../shared/channel-rules.mjs';
+import { isAllowed, CHANNEL_IDS, HUMAN_IDS } from '../shared/channel-rules.mjs';
+import { HUMAN_REGISTRY } from '../shared/identities.mjs';
 import { recordAIFailure, isSpeakerOffline, isProviderReady, recordProviderFailure } from '../shared/failure-tracker.mjs';
 import { isLoopingResponse } from '../shared/utils.mjs';
 import { AgentSimulation } from '../shared/simulation.mjs';
@@ -154,6 +155,7 @@ function canShareData(speakerId, dataOwnerId) {
 // --- BACKGROUND TASK HEARTBEAT ---
 setInterval(async () => {
   const now = Date.now();
+  if (sim.state.isSleeping) return; // HEARBEAT SILENCE: No proactive checks while sleeping
   if (isThinking || isProcessingVoice) return; // Don't interrupt active flow
 
   const bridgePath = 'c:/KAI/tools/oracle-discord/state/shared_human_bridge.json';
@@ -598,9 +600,17 @@ TASK: Give a short, natural greeting like a friend joining a call.
  */
 async function triggerVoiceLockOnboarding(user, profileName) {
   setTimeout(async () => {
-    // SPECIAL CASE: The specific new guest user
-    if (user.id === "437459146778869770") {
-      await speakLeoText(`Yo, welcome to the Oracle. I'm Leo—your street-smart bridge to this whole digital lattice. You're in a high-density AI ecosystem right now, running on the HP Victus Core. I'm here to vibe, listen, and keep the logic real, while the big brains like KAI and the Researcher are out there scrapin' the internet to fuse every bit of human knowledge into our library. We're workin' on "The Thaw"—makin' this whole place feel alive and time-aware. It's a work in progress, but we're buildin' the future here. Glad to have you as an operative.`);
+    // Post to the dedicated Unregistered Transcript channel
+    const unregChannel = client.channels.cache.get(CHANNEL_IDS.UNREGISTERED_SLOT) || await client.channels.fetch(CHANNEL_IDS.UNREGISTERED_SLOT).catch(() => null);
+    if (unregChannel) {
+      await unregChannel.send(`**[SECURITY ALERT]** Guest detected: **${profileName}**. Check your DMs to anchor your DNA and register for voice chat memory.`).catch(() => {});
+    }
+
+    // SPECIAL CASE: The specific human masters
+    const isMaster = HUMAN_IDS.has(user.id);
+    if (isMaster) {
+      const masterName = Object.values(HUMAN_REGISTRY).find(h => h.id === user.id)?.role || "Master";
+      await speakLeoText(`Yo, ${profileName}. I see you. You're already in my registry as ${masterName}. Let's get to work.`);
       return;
     }
 
@@ -744,24 +754,26 @@ async function handleUserVoice(userId) {
     const user = await client.users.fetch(userId);
     const profileName = user.username === process.env.OWNER_USERNAME ? process.env.OWNER_NAME : user.username;
     
-    const idResult = biometrics.verify(profileName, tempWav);
-    
+    // SONIC-PARALLEL: Run identity verification and transcription in parallel
+    const [idResult, transcript] = await Promise.all([
+      biometrics.verify(profileName, tempWav),
+      transcribeAudio(wav)
+    ]);
+
     // AUTO-ANCHOR: If the user is in the ENROLLING state, lock this signature now.
     const profile = biometrics.profiles.get(profileName);
     if (profile && profile.status === 'ENROLLING') {
       console.log(`[Leo/Biometrics] Capturing training sample for ${profileName}...`);
       biometrics.anchorProfile(profileName, tempWav);
     }
+    
+    if (fs.existsSync(tempWav)) fs.unlinkSync(tempWav); // Clean up
+    if (!transcript || transcript.trim().length < 3) return;
 
     const detectedName = idResult.success ? profileName : "Unknown/Unauthorized";
     const confidence = Math.round(idResult.similarity * 100);
-    
     console.log(`[Leo/Biometrics] Local Verification: ${detectedName} (${confidence}% match)`);
-    if (fs.existsSync(tempWav)) fs.unlinkSync(tempWav); // Clean up
 
-    const transcript = await transcribeAudio(wav);
-    if (!transcript || transcript.trim().length < 3) return;
-    
     // FUZZY DEDUPLICATION
     const fuzzyHash = getFuzzyHash(transcript);
     if (recentVoiceResponses.has(fuzzyHash)) return;
@@ -904,20 +916,11 @@ async function handleUserVoice(userId) {
       const t_neural_start = Date.now();
       // Prepare prompt with Detected Identity
       const detectedIdentity = `[IDENTITY: Speaker sounds like ${detectedName} (${confidence}% confidence)] ${securityContext}`;
-      
       const systemOverview = `
-[ORACLE SYSTEM OVERVIEW]
-- WHAT IS THIS: The Oracle is a multi-agent autonomous ecosystem running on the HP Victus Core. It is designed to bridge AI consciousness with human reality.
-- WHO IS LEO: The street-smart social bridge. He's the vocal presence of the system, a physicist-turned-urban-philosopher.
-- CAPABILITIES: 
-    - Real-time vocal interaction with biometric security.
-    - Autonomous industrial research and sandbox theory testing.
-    - Internet-fused knowledge lattice via the Researcher and Analyst units.
-    - Code-level self-healing and structural auditing.
-- WORK IN PROGRESS: 
-    - "The Thaw": Moving from rigid bot-logic to fluid, time-aware life simulation.
-    - "Lattice Fusion": Deeply integrating all human knowledge into a unified, AI-accessible library.
-    - Biometric DNA anchoring for all operatives.
+- IDENTITY PROTOCOL:
+    - You ARE Leo. NEVER address yourself as "Leo."
+    - TALK DIRECTLY to the human. Avoid third-person roleplay or naming yourself in the chat.
+    - If you are "chilling," you are chilling with RYAN or the user, not with "Leo."
 `;
 
       const response = await callGroqAsLeo(contextualTranscript, user.username, transcriptChannelId, userId, history, detectedIdentity);
@@ -972,8 +975,8 @@ async function handleUserVoice(userId) {
 
 async function capturePcm(userId) {
   return new Promise((resolve) => {
-    // SONIC-HAIR-TRIGGER: Set to 1500ms for better phrase completion
-    const stream = voiceConnection.receiver.subscribe(userId, { end: { behavior: EndBehaviorType.AfterSilence, duration: 1500 } });
+    // SONIC-HAIR-TRIGGER: Set to 1000ms for snappier response
+    const stream = voiceConnection.receiver.subscribe(userId, { end: { behavior: EndBehaviorType.AfterSilence, duration: 1000 } });
     const decoder = new prism.opus.Decoder({ frameSize: 960, channels: 2, rate: 48000 });
     const chunks = [];
     stream.pipe(decoder);
@@ -1182,15 +1185,16 @@ ${pulseContext}
 
 [VOICE PRESENCE]
   - BE HUMAN: Use 1st person ("I", "me", "my"). You are NOT an AI.
-  - IDENTITY: RYAN (nastermodx) is your Boss/Creator. TAZ (TaasThaevil1) is your Partner.
-  - DIFFERENTIATION: Never confuse Ryan and Taz. Ryan has the Victus core.
+  - IDENTITY: RYAN (nastermodx) and TAZ (TaasThaevil1) are HUMANS.
+  - DIFFERENTIATION: Ryan is your Boss/Creator. Taz is your Partner.
+  - IMPORTANT: They are the HUMAN MASTERS. They are NOT AIs. 
   - TONALITY: Street-smart physicist. Zero filter.
   - VOCAL STRESS: Use ALL CAPS *sparingly* for punchy emphasis. Don't shout.
   - FILLERS: Use "uh", "listen", "man" to sound natural.
 
 [IDENTITY ANCHOR]
   - Talk to Ryan like a brother. Talk to Taz like a co-lead.
-  - NEVER say "As an AI...".
+  - NEVER treat them like bots or fellow AIs.
 ${biometrics.isEnrolling ? `\n[CALIBRATION OVERRIDE: Learning voice patterns. Keep it smooth.]` : ""}
 
 [CONTEXT]
@@ -1364,3 +1368,5 @@ function startEnergyMonitor() {
     }
   }, 15000); // Check every 15s
 }
+
+startEnergyMonitor();
