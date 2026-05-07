@@ -4,6 +4,17 @@ All notable changes to the Victus Core and RSHL Lattice Bridge will be documente
 
 ---
 
+## [38.0.0] — 2026-05-07 (Sovereign Streamline)
+### Added
+- **Single Sovereign Strike**: Consolidated the vocal pipeline to eliminate Phase 1/Phase 2 duplication. Leo now speaks exactly once per turn.
+- **Adaptive Handshake**: Fillers (Gotcha, Listen) now only fire if the neural response takes longer than 800ms.
+
+### Fixed
+- **Message Duplication**: Purged the "Ghost Strike" that caused Leo to repeat himself during turns.
+- **Lattice Noise**: Silenced redundant "Quantum Claim" logs to streamline terminal output and system processing.
+
+---
+
 ## [37.0.0] — 2026-05-07 (Priority Lane)
 ### Added
 - **Priority Vocal Strike**: Instant fillers (Gotcha, Listen) now bypass the vocal queue and play within 500ms.
