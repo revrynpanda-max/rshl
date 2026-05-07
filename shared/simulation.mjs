@@ -33,10 +33,10 @@ const STATE_DIR = path.join(process.cwd(), 'state');
 
 // ─── ENERGY DRAIN RATES (per minute, per 1-min tick) ─────────────────────────
 const DRAIN = {
-  idle:        0.02,
-  social:      0.06,
-  working:     0.09,
-  heavy_work:  0.14,
+  idle:        0.08, // ~20 hours for full drain
+  social:      0.25, // ~6 hours of intense social
+  working:     0.45, // ~3.7 hours of deep industrial focus
+  heavy_work:  0.75, // ~2.2 hours of extreme computation
 };
 
 const ACTION_COST = {
