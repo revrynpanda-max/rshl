@@ -68,26 +68,62 @@ export async function getEcosystemSnapshot() {
 
   const now = Date.now();
 
-  for (const file of files) {
+  const ROSTER = ["KAI", "Oracle", "Leo", "Gemini", "Claude", "X", "Groq", "Analyst", "Researcher", "Kai Coder", "GPT-4o"];
+  
+  for (const botName of ROSTER) {
     try {
-      const botName = file.replace('_', ' ').replace('-vitals.json', '');
-      const vitals = JSON.parse(fs.readFileSync(path.join(STATE_DIR, file), 'utf8'));
+      const fileName = botName.replace(' ', '_') + '-vitals.json';
+      const filePath = path.join(STATE_DIR, fileName);
       
-      // Calculate real-time depletion based on activity
-      let depletionRate = 0.02; // Default Idle
-      if (vitals.status === "Working") depletionRate = 0.09;
-      if (vitals.status === "Socializing") depletionRate = 0.06;
+      let vitals;
+      if (fs.existsSync(filePath)) {
+        vitals = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+      } else {
+        // Mock vitals for bots that haven't saved yet (like Oracle or KAI)
+        vitals = { 
+          energy: 100, 
+          status: botName === "KAI" ? "Orchestrating" : "Observing", 
+          isSleeping: false, 
+          groggyLevel: 0 
+        };
+        if (botName === "KAI") vitals.status = "Deep Learning";
+      }
       
-      // Apply Fatigue Multiplier (approximate from simulation.mjs)
-      if (vitals.energy < 50) depletionRate *= (1.0 + (50 - vitals.energy) / 40);
+      const isSleeping = vitals.isSleeping || vitals.status === "Sleeping";
+      
+      let rateLabel = "Drain";
+      let rateValue = 0.08; // Default Idle
+      let timeLabel = "TTR"; // Time to Rest
+      
+      if (isSleeping) {
+        rateLabel = "Regen";
+        rateValue = 0.35; // Standard Sleep Restore
+        timeLabel = "TTW"; // Time to Wake
+      } else {
+        if (vitals.status === "Working") rateValue = 0.45;
+        if (vitals.status === "Socializing") rateValue = 0.25;
+        if (vitals.energy < 60) rateValue *= (1.0 + (60 - vitals.energy) / 40);
+      }
 
-      const minsRemaining = depletionRate > 0 ? (vitals.energy / depletionRate) : 999;
-      const etr = new Date(now + minsRemaining * 60000).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'America/New_York' });
+      // Calculation: If sleeping, calculate time until 90% (Wake threshold). If awake, until 5%.
+      const targetEnergy = isSleeping ? 90 : 5;
+      const energyDiff = Math.abs(vitals.energy - targetEnergy);
+      const minsRemaining = rateValue > 0 ? (energyDiff / rateValue) : 0;
+      
+      const hours = Math.floor(minsRemaining / 60);
+      const mins = Math.floor(minsRemaining % 60);
+      const duration = `${hours}h ${mins}m`;
+      
+      const etDate = new Date(now + minsRemaining * 60000);
+      const etString = etDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'America/New_York' });
 
-      const statusEmoji = vitals.isSleeping ? "💤" : (vitals.energy < 20 ? "⚠️" : "🔋");
-      const groggyBar = "▓".repeat(Math.ceil((vitals.groggyLevel || 0) * 5)) + "░".repeat(5 - Math.ceil((vitals.groggyLevel || 0) * 5));
+      const statusEmoji = isSleeping ? "💤" : (vitals.energy < 20 ? "⚠️" : "🔋");
+      const barFull = Math.ceil(vitals.energy / 10);
+      const energyBar = "█".repeat(barFull) + "░".repeat(10 - barFull);
+      const barEmoji = vitals.energy > 60 ? "🟩" : (vitals.energy > 30 ? "🟨" : "🟥");
 
-      snapshot += `${statusEmoji} **${botName}**: ${Math.floor(vitals.energy)}% | Drain: -${depletionRate.toFixed(2)}%/m | Groggy: [${groggyBar}] | ETR: ${etr} EST\n`;
+      snapshot += `${statusEmoji} **${botName}** ${barEmoji} [${energyBar}] ${Math.floor(vitals.energy)}%\n`;
+      snapshot += `> ${timeLabel}: **${duration}** | ${rateLabel}: ${isSleeping ? "+" : "-"}${rateValue.toFixed(2)}%/m | ${isSleeping ? "EST Wake" : "EST Sleep"}: ${etString}\n\n`;
     } catch (e) {}
   }
 
