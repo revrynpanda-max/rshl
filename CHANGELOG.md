@@ -4,6 +4,17 @@ All notable changes to the Victus Core and RSHL Lattice Bridge will be documente
 
 ---
 
+## [33.0.0] — 2026-05-07 (Sonic Activation)
+### Added
+- **Phase 1 Activation**: Hard-wired the Snap-Burst into the `handleUserVoice` loop for instant feedback.
+- **Audit Silence**: Suppressed redundant `NEURAL_ATTEMPT` logs during vocal interactions to clean the console.
+
+### Fixed
+- **Stopping Friction**: Eliminated the perceived 'stop' between voice capture and neural response by providing immediate vocal acknowledgement.
+- **Console Clutter**: Reduced the volume of audit logs generated during high-speed voice cycles.
+
+---
+
 ## [32.0.0] — 2026-05-07 (Neural Hard-Cap)
 ### Added
 - **Global 5s Neural Hard-Cap**: All cloud providers (Cerebras/Groq/OpenAI/Gemini/Anthropic) are now force-terminated if they exceed 5 seconds.
