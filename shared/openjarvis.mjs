@@ -16,9 +16,9 @@ if (!fs.existsSync(LOCK_DIR)) fs.mkdirSync(LOCK_DIR, { recursive: true });
 /**
  * GLOBAL NEURAL THROTTLE: Atomic file-based lock for the 9-node fleet.
  */
-async function acquireNeuralLock(botName) {
-  const isPriority = botName === "Oracle" || botName === "KAI" || botName === "Leo";
-  const maxRetries = isPriority ? 40 : 20; 
+async function acquireNeuralLock(botName, isPriority = false) {
+  if (botName === "Leo" || botName === "Oracle") return true; // TOTAL EXEMPTION
+  const maxRetries = isPriority ? 10 : 5; // Hard-cap wait time
   
   for (let i = 0; i < maxRetries; i++) {
     try {
@@ -75,6 +75,7 @@ function releaseNeuralLock() {
 
 export async function chatWithOpenJarvis(botName, transcript, systemPrompt, model = "kai-next:latest", agentId = null, metadata = {}, vitals = {}) {
   if (!transcript || transcript.length < 1) return null; 
+  const isPriority = botName === "Leo" || botName === "Oracle";
 
   // 1. Sensation & Mood Scaling
   const entropy = vitals.entropy || 0.1;
@@ -236,8 +237,8 @@ RULES:
     if (!isProviderReady(provider.name)) continue;
 
     let hasLock = false;
-    if (provider.name.includes("Groq") || provider.name.includes("Cerebras")) {
-      hasLock = await acquireNeuralLock(botName);
+    if ((provider.name.includes("Groq") || provider.name.includes("Cerebras")) && !isPriority) {
+      hasLock = await acquireNeuralLock(botName, isPriority);
       if (!hasLock) continue; 
     }
 
