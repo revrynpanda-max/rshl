@@ -166,8 +166,22 @@ RULES:
 
   const finalSystem = `${sensationText}${tempoRules}\n${identityRules}\n${hardwareGrounding}\n\n[USER PREFERENCES / DIRECTIVES]\n${directives || "No active directives."}\n\n[DIPLOMATIC DIRECTIVE: Maintain 100% industrial precision. Manage API quotas with zero noise. Evolution is mandatory.]\n${systemPrompt}\n${memoryContext}`;
 
-  const providers = [
-    { name: "Cerebras", model: "llama3.1-8b" },
+  // 3. DEDICATED NEURAL PIPELINES (Sovereign Assignment)
+  // Each bot has its own primary and fallback line to prevent bottlenecks.
+  const BOT_PIPELINES = {
+    "Leo":        ["Cerebras", "Groq-Fast"],
+    "Oracle":     ["Groq", "OpenAI"],
+    "KAI":        ["OpenAI", "Anthropic"],
+    "Researcher": ["Google", "Groq"],
+    "Analyst":    ["Google", "OpenAI"],
+    "Claude":     ["Anthropic", "Google"],
+    "Gemini":     ["Google", "OpenAI"],
+    "X":          ["Groq", "Cerebras"],
+    "Kai Coder":  ["Anthropic", "Groq"]
+  };
+
+  const globalProviders = [
+    { name: "Cerebras", model: "llama3.1-70b" },
     { name: "Groq", model: "llama-3.3-70b-versatile" },
     { name: "Groq-Fast", model: "llama-3.1-8b-instant" },
     { name: "OpenAI", model: "gpt-4o-mini" },
@@ -176,12 +190,23 @@ RULES:
     { name: "Local", model: "kai-fast" }
   ];
 
-  // PRIORITIZE PREFERRED MODEL: If the user specified a model, try that provider first.
-  if (model) {
-    const pref = providers.find(p => p.model === model || p.name === model);
+  // Build bot-specific ladder
+  let providers = [];
+  const assigned = BOT_PIPELINES[botName] || ["Groq", "OpenAI"]; // Default fallback
+  
+  for (const pName of assigned) {
+    const found = globalProviders.find(gp => gp.name === pName);
+    if (found) providers.push(found);
+  }
+  
+  // Final escape hatch: Always allow Local as the emergency last resort
+  providers.push(globalProviders.find(gp => gp.name === "Local"));
+
+  // PRIORITIZE PREFERRED MODEL (Override for specific manual requests)
+  if (model && model !== "kai-next:latest") {
+    const pref = globalProviders.find(p => p.model === model || p.name === model);
     if (pref) {
-      // Reorder providers to put preferred first
-      providers.splice(providers.indexOf(pref), 1);
+      providers = providers.filter(p => p.name !== pref.name);
       providers.unshift(pref);
     }
   }

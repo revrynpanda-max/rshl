@@ -1219,18 +1219,13 @@ ${detectedIdentity}
 [TRANSCRIPT MEMORY FOR ${displayName}]
 ${cleanHistory}`;
 
-    // ─── NEURAL ORCHESTRATION (INTELLIGENCE FUSION: CEREBRAS 70B PRIMARY) ─────
-    console.log(`[Leo/Neural] Initiating Cerebras-Intelligence-Fusion (llama-3.1-70b)...`);
-    const smartReply = await chatWithOpenJarvis(BOT_NAME, cleanTranscript, system, "Cerebras", BOT_NAME, { author: displayName }, sim.getVitals());
-    if (smartReply) return smartReply;
+    // ─── NEURAL ORCHESTRATION (DEDICATED PIPELINE: CEREBRAS 70B + GROQ FALLBACK) ─────
+    console.log(`[Leo/Neural] Engaging dedicated pipeline (Cerebras 70B)...`);
+    const reply = await chatWithOpenJarvis(BOT_NAME, cleanTranscript, system, "Cerebras", BOT_NAME, { author: displayName }, sim.getVitals());
+    if (reply) return reply;
 
-    // Fallback: Groq-Fast
-    console.log(`[Leo/Neural] Cerebras failed. Falling back to Groq-Sonic-Mode...`);
-    const fastReply = await chatWithOpenJarvis(BOT_NAME, cleanTranscript, system, "llama-3.1-8b-instant", BOT_NAME, { author: displayName }, sim.getVitals());
-    if (fastReply) return fastReply;
-
-    // Fallback: Local link via Ollama
-    console.log(`[Leo/Neural] Sonic Mode failed. Falling back to local Ollama (kai-fast)...`);
+    // Last resort: Direct local failover
+    console.log(`[Leo/Neural] Pipeline exhausted. Final local failover (kai-fast)...`);
     return await chatWithOllama(cleanTranscript, system, "kai-fast:latest");
   } catch (err) {
     console.error(`[Leo/Neural] Neural chain exhausted:`, err.message);
