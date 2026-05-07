@@ -5,13 +5,14 @@ export const CHANNEL_IDS = {
   PUBLIC: "1499108697631232090",     // over-all-chat
   GAME: "1499298054291980368",       // game-with-leo
   SENSITIVE: "1500053533515448480",  // sensitive-info
-  SUNDAY: "1500085302268526712",     // ai-social-chat (formerly sunday-chat)
+  SUNDAY: "1500085302268526712",     // ai-social-chat
   VOICE: "1489796367466500129",      // public voice chat
   RADIO: "1500048983568023552",      // ai radio
+  UNREGISTERED_SLOT: "1500958679669674086", // For onboarding instructions
   LEO_VOICE_SLOTS: [
     "1500527640107417783", // Ryan (Slot 1)
-    "1500529928184008885", // Public 2
-    "1500529995087610027", // Public 3
+    "1500529928184008885", // Taz (Slot 2)
+    "1500529995087610027", // Guest (Slot 3)
     "1500530046111318116", // Public 4
     "1500530070081503343", // Public 5
     "1500530095368962098"  // Public 6

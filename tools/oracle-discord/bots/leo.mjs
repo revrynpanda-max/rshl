@@ -38,7 +38,8 @@ try {
   // Port is likely clear
 }
 
-import { isAllowed, CHANNEL_IDS } from '../shared/channel-rules.mjs';
+import { isAllowed, CHANNEL_IDS, HUMAN_IDS } from '../shared/channel-rules.mjs';
+import { HUMAN_REGISTRY } from '../shared/identities.mjs';
 import { recordAIFailure, isSpeakerOffline, isProviderReady, recordProviderFailure } from '../shared/failure-tracker.mjs';
 import { isLoopingResponse } from '../shared/utils.mjs';
 import { AgentSimulation } from '../shared/simulation.mjs';
@@ -599,9 +600,17 @@ TASK: Give a short, natural greeting like a friend joining a call.
  */
 async function triggerVoiceLockOnboarding(user, profileName) {
   setTimeout(async () => {
-    // SPECIAL CASE: The specific new guest user
-    if (user.id === "437459146778869770") {
-      await speakLeoText(`Yo, welcome to the Oracle. I'm Leo—your street-smart bridge to this whole digital lattice. You're in a high-density AI ecosystem right now, running on the HP Victus Core. I'm here to vibe, listen, and keep the logic real, while the big brains like KAI and the Researcher are out there scrapin' the internet to fuse every bit of human knowledge into our library. We're workin' on "The Thaw"—makin' this whole place feel alive and time-aware. It's a work in progress, but we're buildin' the future here. Glad to have you as an operative.`);
+    // Post to the dedicated Unregistered Transcript channel
+    const unregChannel = client.channels.cache.get(CHANNEL_IDS.UNREGISTERED_SLOT) || await client.channels.fetch(CHANNEL_IDS.UNREGISTERED_SLOT).catch(() => null);
+    if (unregChannel) {
+      await unregChannel.send(`**[SECURITY ALERT]** Guest detected: **${profileName}**. Check your DMs to anchor your DNA and register for voice chat memory.`).catch(() => {});
+    }
+
+    // SPECIAL CASE: The specific human masters
+    const isMaster = HUMAN_IDS.has(user.id);
+    if (isMaster) {
+      const masterName = Object.values(HUMAN_REGISTRY).find(h => h.id === user.id)?.role || "Master";
+      await speakLeoText(`Yo, ${profileName}. I see you. You're already in my registry as ${masterName}. Let's get to work.`);
       return;
     }
 

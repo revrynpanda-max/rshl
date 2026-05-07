@@ -14,10 +14,10 @@ export const HUMAN_REGISTRY = {
     role: "Co-lead/Partner",
     username: "TaasThaevil1"
   },
-  "Guest": {
+  "Grimshaggy": {
     id: "437459146778869770",
     role: "Operative",
-    username: "guest"
+    username: "grimshaggy420"
   }
 };
 
