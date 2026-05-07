@@ -4,6 +4,16 @@ All notable changes to the Victus Core and RSHL Lattice Bridge will be documente
 
 ---
 
+## [25.0.0] — 2026-05-07 (Administrative Bridge)
+### Added
+- **Sensitive Channel Routing**: All hourly System Integrity Reports are now funneled into the administrative channel (`1500053533515448480`).
+- **Hourly Audit Cadence**: Calibrated the Overseer heartbeat to fire exactly every 60 minutes.
+
+### Fixed
+- **Public Flooding**: Successfully re-routed high-frequency health reports away from `#oracle-chat` to maintain workspace focus.
+
+---
+
 ## [24.0.0] — 2026-05-07 (Protocol Silence)
 ### Added
 - **AI Loop Suppression**: Oracle now strictly ignores all messages from other AI nodes.
