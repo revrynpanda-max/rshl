@@ -4,6 +4,13 @@ All notable changes to the Victus Core and RSHL Lattice Bridge will be documente
 
 ---
 
+## [36.2.0] — 2026-05-07 (Emergency Repair)
+### Fixed
+- **ReferenceError Restoration**: Restored missing `vocalQueue` and `isSpeaking` declarations in `leo.mjs`.
+- **System Stability**: Resolved critical crash occurring during voice-to-speech synthesis.
+
+---
+
 ## [36.0.0] — 2026-05-07 (NPU Overdrive)
 ### Added
 - **NPU Priority**: Set Local-Llama31 (Ollama/NPU) as the primary neural provider for Leo and Oracle to maximize Victus hardware utilization.
