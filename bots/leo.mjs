@@ -1251,8 +1251,10 @@ ${cleanHistory}`;
     // ─── NEURAL ORCHESTRATION (FAST-PATH: CEREBRAS 8B) ─────
     console.log(`[Leo/Neural] Engaging high-speed pipeline (Cerebras 8B)...`);
     
-    // PRESENCE GUARD: Check if user is still in voice before hitting the API
-    const member = message.guild.members.cache.get(userId);
+    // PRESENCE GUARD: Use client to verify user voice state
+    const guild = client.guilds.cache.first();
+    const member = guild?.members.cache.get(userId);
+    
     if (!member || !member.voice.channelId) {
       console.log(`[Leo/Neural] User ${displayName} left. Aborting response.`);
       return null;

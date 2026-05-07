@@ -41,7 +41,7 @@ process.on('message', (msg) => {
   }
   if (msg.type === 'INJECT_CLAIM') {
     const { author, content, channel } = msg.payload;
-    console.log(`[Lattice] Digesting Claim from ${author}: "${content.slice(0, 50)}..."`);
+    // Silent Ingestion
     console.log(`[Lattice] Claim recorded in unified memory vault.`);
   }
 });
@@ -98,7 +98,7 @@ Respond with a single, dense cognitive claim for the Lattice.`
     
     if (analysis) {
       // Quiet logging: only show the first 40 chars of analysis
-      console.log(`[Lattice] Digesting Claim: "${analysis.slice(0, 40)}..."`);
+      // Silent Handshake
       console.log(`[Lattice] Quantum Claim recorded.`);
     }
   } catch (e) {

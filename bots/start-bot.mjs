@@ -105,7 +105,7 @@ client.once('clientReady', async () => {
         console.log(`[${botName}] Social Persona Active. Initiating proactive loop...`);
         startSocialLoop();
       } else {
-        console.log(`[${botName}] Work Shift active. Reactive mode ONLY.`);
+        // Silent Work Shift
       }
     }, startDelay);
 
@@ -184,12 +184,12 @@ ${feed}
     // ── Proactive DM loop ────────────────────────────────────────────────────
     startProactiveDMLoop();
   } else {
-    console.log(`[${botName}] Work Persona Online.`);
+    // Silent Work Online
   }
 
   // Work session loop: all bots with a learning track
   if (LEARNING_TRACKS[botName]) {
-    console.log(`[${botName}] Daily learning track: ${LEARNING_TRACKS[botName].domain}`);
+    // Silent Learning
     startWorkSessionLoop();
   }
 
@@ -433,7 +433,7 @@ async function startWorkSessionLoop() {
 
   // MASS-STAGGERED IGNITION: Spreading the 9-node fleet over 1-10 minutes for TPM stability
   const startupJitter = 60000 + Math.floor(Math.random() * 540000); 
-  console.log(`[WorkSession/${botName}] Staggered Ignition scheduled in ${Math.round(startupJitter/60000)}m ${Math.round((startupJitter%60000)/1000)}s.`);
+  // Silent Ignition
   await new Promise(r => setTimeout(r, startupJitter));
 
   while (true) {
