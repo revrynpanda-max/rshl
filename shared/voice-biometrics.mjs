@@ -68,7 +68,7 @@ class VocalBiometrics {
         const similarity = match ? parseFloat(match[1]) : 0;
         
         resolve({
-          success: similarity > 0.85, 
+          success: similarity > 0.75, // Lowered for better master recognition
           similarity: similarity
         });
       });

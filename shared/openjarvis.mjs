@@ -33,8 +33,8 @@ async function acquireNeuralLock(botName) {
       // Keep only last 60 seconds of history
       state.history = (state.history || []).filter(t => now - t < 60000);
       
-      const isStuck = state.activeBot && (now - state.timestamp > 15000);
-      const canOvertake = isPriority && state.activeBot && (now - state.timestamp > 3000); // Shorter overtake
+      const isStuck = state.activeBot && (now - state.timestamp > 10000);
+      const canOvertake = isPriority && state.activeBot && (now - state.timestamp > 500); // Leo/Oracle overtake in 500ms
       const isFleetBusy = state.history.length >= 8; // Higher fleet volume before throttling
 
       if (!state.activeBot || isStuck || canOvertake) {
