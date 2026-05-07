@@ -168,70 +168,73 @@ RULES:
 
   // 3. DEDICATED NEURAL PIPELINES (Sovereign Assignment)
   const BOT_PIPELINES = {
-    "Leo":             ["Cerebras-70b",   "Groq-8b"],
+    "Leo":             ["Cerebras-8b",    "Groq-8b"],
     "Oracle":          ["Groq-70b",       "OpenAI-4o"],
-    "KAI":             ["OpenAI-mini",    "Anthropic-Haiku"],
-    "Researcher":      ["Google-Pro",     "Groq-Mixtral"],
-    "Analyst":         ["Local-Llama31",  "Google-Flash-8b"],
-    "Claude":          ["Anthropic-Sonnet", "Google-2.0-Flash"],
-    "Gemini":          ["Google-Flash",   "Cerebras-8b"],
-    "X":               ["Groq-Llama32-3b", "Local-Phi3"],
-    "Groq":            ["Groq-Gemma",     "Groq-Llama32-1b"],
-    "Kai Coder":       ["OpenAI-o1-mini", "Local-Llama32"],
-    "Oracle_Overseer": ["Local-Gemma2",   "Google-Pro-1.0"]
+    "KAI":             ["OpenAI-mini",    "Anthropic-Sonnet"],
+    "Researcher":      ["Groq-Mixtral",   "Google-Pro"],
+    "Analyst":         ["Groq-8b",        "Local-Llama31"],
+    "Claude":          ["Anthropic-Haiku", "Google-2.0-Flash"],
+    "Gemini":          ["Google-Flash-8b", "Local-Llama32-3b"],
+    "X":               ["Groq-3.2-3b",    "Local-Phi3"],
+    "Groq":            ["Groq-Gemma",     "Local-Hermes"],
+    "Kai Coder":       ["Local-Llama32-1b", "OpenAI-o1-mini"],
+    "Oracle_Overseer": ["Local-Phi3-mini", "Google-Pro-1.0"]
   };
 
   const globalProviders = [
-    { name: "Cerebras-70b",   model: "llama3.1-70b" },
-    { name: "Cerebras-8b",    model: "llama3.1-8b" },
-    { name: "Groq-70b",       model: "llama-3.3-70b-versatile" },
-    { name: "Groq-8b",        model: "llama-3.1-8b-instant" },
-    { name: "Groq-Mixtral",   model: "mixtral-8x7b-32768" },
-    { name: "Groq-Gemma",     model: "gemma2-9b-it" },
-    { name: "Groq-Llama32-3b", model: "llama-3.2-3b-preview" },
-    { name: "Groq-Llama32-1b", model: "llama-3.2-1b-preview" },
-    { name: "OpenAI-mini",    model: "gpt-4o-mini" },
-    { name: "OpenAI-4o",      model: "gpt-4o" },
-    { name: "OpenAI-o1-mini", model: "o1-mini" },
+    { name: "Cerebras-8b",      model: "llama3.1-8b" },
+    { name: "Groq-70b",         model: "llama-3.3-70b-versatile" },
+    { name: "Groq-8b",          model: "llama-3.1-8b-instant" },
+    { name: "Groq-Mixtral",     model: "mixtral-8x7b-32768" },
+    { name: "Groq-Gemma",       model: "gemma2-9b-it" },
+    { name: "Groq-3.2-3b",      model: "llama-3.2-3b-preview" },
+    { name: "OpenAI-mini",      model: "gpt-4o-mini" },
+    { name: "OpenAI-4o",        model: "gpt-4o" },
+    { name: "OpenAI-o1-mini",   model: "o1-mini" },
     { name: "Anthropic-Sonnet", model: "claude-3-5-sonnet-20240620" },
     { name: "Anthropic-Haiku",  model: "claude-3-haiku-20240307" },
-    { name: "Google-Flash",   model: "gemini-1.5-flash" },
-    { name: "Google-Flash-8b", model: "gemini-1.5-flash-8b" },
-    { name: "Google-Pro",     model: "gemini-1.5-pro" },
-    { name: "Google-Pro-1.0", model: "gemini-1.0-pro" },
+    { name: "Google-Flash-8b",  model: "gemini-1.5-flash-8b" },
+    { name: "Google-Pro",       model: "gemini-1.5-pro" },
+    { name: "Google-Pro-1.0",   model: "gemini-1.0-pro" },
     { name: "Google-2.0-Flash", model: "gemini-2.0-flash-exp" },
-    { name: "Local-Llama31",  model: "llama3.1:8b" },
-    { name: "Local-Llama32",  model: "llama3.2:3b" },
-    { name: "Local-Phi3",     model: "phi3:latest" },
-    { name: "Local-Gemma2",   model: "gemma2:2b" }
+    { name: "Local-Llama31",    model: "llama3.1:8b" },
+    { name: "Local-Llama32-3b", model: "llama3.2:3b" },
+    { name: "Local-Llama32-1b", model: "llama3.2:1b" },
+    { name: "Local-Phi3",       model: "phi3:latest" },
+    { name: "Local-Phi3-mini",  model: "phi3:mini" },
+    { name: "Local-Hermes",     model: "hermes" }
   ];
 
   // Build bot-specific ladder
   let providers = [];
-  const assigned = BOT_PIPELINES[botName] || ["Groq", "OpenAI"]; // Default fallback
+  const assigned = BOT_PIPELINES[botName] || ["Groq-70b", "OpenAI-mini"]; // Default fallback
   
   for (const pName of assigned) {
     const found = globalProviders.find(gp => gp.name === pName);
     if (found) providers.push(found);
   }
-  
+
   // Final escape hatch: Always allow Local as the emergency last resort
-  providers.push(globalProviders.find(gp => gp.name === "Local"));
+  const localLine = globalProviders.find(gp => gp.name === "Local-Llama31");
+  if (localLine) providers.push(localLine);
 
   // PRIORITIZE PREFERRED MODEL (Override for specific manual requests)
   if (model && model !== "kai-next:latest") {
     const pref = globalProviders.find(p => p.model === model || p.name === model);
     if (pref) {
-      providers = providers.filter(p => p.name !== pref.name);
+      providers = providers.filter(p => p && p.name !== pref.name);
       providers.unshift(pref);
     }
   }
+
+  // Final cleanup: Remove any accidental nulls/undefined
+  providers = providers.filter(p => !!p);
 
   for (const provider of providers) {
     if (!isProviderReady(provider.name)) continue;
 
     let hasLock = false;
-    if (provider.name.includes("Groq") || provider.name === "Cerebras") {
+    if (provider.name.includes("Groq") || provider.name.includes("Cerebras")) {
       hasLock = await acquireNeuralLock(botName);
       if (!hasLock) continue; 
     }
@@ -250,7 +253,7 @@ RULES:
         reply = await callAnthropic(botName, transcript, finalSystem, 12000, temperature);
       } else if (provider.name.startsWith("Google")) {
         reply = await callGemini(botName, transcript, finalSystem, provider.model, 10000, temperature);
-      } else if (provider.name === "Local-Fast") {
+      } else if (provider.name.startsWith("Local")) {
         const res = await fetch("http://127.0.0.1:11434/api/generate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
