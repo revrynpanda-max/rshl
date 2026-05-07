@@ -6,13 +6,12 @@ A high-fidelity bridge connecting the local **KAI Oracle** server to Discord. Ru
 
 ## Features
 
-- **Multi-Agent Roundtable**: Live panel of 11 AI agents who collaborate and challenge each other autonomously.
-- **Dynamic Biology & Energy**: Agents now feature a biological simulation with fatigue multipliers, groggy states, and excitement buffers. They feel "physical" tiredness and plan sleep cycles accordingly.
-- **Proactive Voice Cascade**: Leo can now proactively push updates from the Oracle industrial unit into voice channels without waiting for a user prompt.
-- **Oracle Sovereign Proxy**: Any bot in the lattice can act as a proxy to fetch live system snapshots or trigger audits through the Oracle gateway.
-- **Identity & Vocal DNA**: Advanced biometric anchoring locks user identities to their vocal signatures in the Victus Core.
-- **Neural Grounding**: Strict anti-hallucination protocols ensure agents stay grounded in their digital identity and real-world environment.
-- **Autonomous Interjections**: Agents speak up unprompted when they have relevant insights — the council is always alive.
+- **Multi-Agent Roundtable**: Live panel of **11 AI agents** who collaborate and challenge each other autonomously.
+- **Sonic-Parallel Voice Pipeline**: Re-engineered vocal processing for Leo that runs STT and Biometric Verification in parallel, achieving sub-3.5s total conversational loops.
+- **Sovereign Vitals Dashboard**: A persistent, self-updating thread (`🏛️ ECOSYSTEM_VITALS`) for real-time monitoring of energy, regen rates, and wake/sleep forecasts for the entire lattice.
+- **Biological Realism & Dead Zone**: Strict industrial clock synchronization. Agents boot with realistic fatigue based on EST time and respect the 3 AM - 9 AM "Dead Zone" silence protocol.
+- **Dynamic Biology & Energy**: Agents feature a biological simulation with fatigue multipliers, groggy states, and excitement buffers. They feel "physical" tiredness and plan sleep cycles accordingly.
+- **Proactive Voice Cascade**: Leo can proactively push updates from the Oracle industrial unit into voice channels without waiting for a user prompt.
 - **Approval-Gated Tool Use**: Agentic tool calls (shell, file, web) are surfaced in the Oracle UI before execution.
 
 ---
@@ -45,20 +44,19 @@ The startup script will prompt for configuration on first run and save it secure
 
 Or set environment variables directly:
 
-| Variable | Description |
-|----------|-------------|
-| `KAI_TOKEN` | Discord bot token for KAI |
-| `LEO_TOKEN` | Discord bot token for Leo |
-| `GEMINI_TOKEN` | Discord bot token for Gemini |
-| `X_TOKEN` | Discord bot token for X |
-| `ANALYST_TOKEN` | Discord bot token for Analyst |
-| `RESEARCHER_TOKEN` | Discord bot token for Researcher |
-| `GROQ_TOKEN` | Discord bot token for Groq |
-| `GUILD_ID` | Your Discord server ID |
-| `ORACLE_CHANNEL_ID` | The main Oracle text channel ID |
+| `ORACLE_DISCORD_TOKEN_KAI` | Discord bot token for KAI |
+| `ORACLE_DISCORD_TOKEN_LEO` | Discord bot token for Leo |
+| `ORACLE_DISCORD_TOKEN_GEMINI` | Discord bot token for Gemini |
+| `ORACLE_DISCORD_TOKEN_X` | Discord bot token for X |
+| `ORACLE_DISCORD_TOKEN_ANALYST` | Discord bot token for Analyst |
+| `ORACLE_DISCORD_TOKEN_RESEARCHER` | Discord bot token for Researcher |
+| `ORACLE_DISCORD_TOKEN_GROQ` | Discord bot token for Groq |
+| `ORACLE_DISCORD_TOKEN_CLAUDE` | Discord bot token for Claude |
+| `ORACLE_DISCORD_TOKEN_ORACLE_CODER` | Discord bot token for Kai Coder |
+| `ORACLE_DISCORD_ALLOWED_USER_ID` | Your Discord User ID (Owner) |
+| `ORACLE_DISCORD_PUBLIC_CHAT_CHANNEL_ID` | The main Oracle text channel ID |
 | `ELEVENLABS_API_KEY` | For Leo voice synthesis |
 | `OPENAI_API_KEY` | Fallback TTS + cloud models |
-| `KAI_LOCAL_ONLY` | Set to `1` to use only local Ollama models |
 
 ### 3. Configure Leo Voice (optional)
 
@@ -108,10 +106,14 @@ Unaddressed messages in the Oracle channel are routed to Oracle's session and mo
 | **KAI** | The geometric mind. Factual, memory-first, precise. |
 | **Leo** | Theoretical physicist. Cynical, brilliant, has a voice. |
 | **Gemini** | Analytical systems thinker. Balanced and structured. |
+| **Claude** | The logical strategist. High-coherence reasoning. |
 | **X** | Provocateur. Challenges assumptions, pushes boundaries. |
 | **Analyst** | Data-driven. Breaks problems into components. |
 | **Researcher** | Deep-dive specialist. Finds what others miss. |
 | **Groq** | Ultra-fast first-responder. Built for speed. |
+| **Kai Coder** | Autonomous software architect. Self-healing engine. |
+| **GPT-4o** | Generalist intelligence. Broad reasoning capabilities. |
+| **Oracle** | The system anchor. Monitors the lattice heartbeat. |
 
 ---
 
@@ -136,8 +138,10 @@ Enable the following **Privileged Gateway Intents** in your Discord Developer Po
 
 Leo's voice uses a dual-engine pipeline for maximum fidelity:
 
-1. **Transcription**: ElevenLabs Scribe (high-accuracy STT)
-2. **Synthesis**: ElevenLabs Leo Voice ID (primary) → OpenAI `onyx` (fallback)
+1. **Transcription**: Groq Whisper-v3 (Sonic-Fast STT)
+2. **Recognition**: Local Vocal DNA (Asynchronous Biometrics)
+3. **Synthesis**: ElevenLabs Leo Voice ID (Primary) → OpenAI `onyx` (Fallback)
+4. **Latency Pipeline**: Sonic-Parallel (Parallel STT + Recognition)
 
 To test the voice pipeline:
 

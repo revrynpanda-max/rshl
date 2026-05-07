@@ -154,6 +154,7 @@ function canShareData(speakerId, dataOwnerId) {
 // --- BACKGROUND TASK HEARTBEAT ---
 setInterval(async () => {
   const now = Date.now();
+  if (sim.state.isSleeping) return; // HEARBEAT SILENCE: No proactive checks while sleeping
   if (isThinking || isProcessingVoice) return; // Don't interrupt active flow
 
   const bridgePath = 'c:/KAI/tools/oracle-discord/state/shared_human_bridge.json';
@@ -744,24 +745,26 @@ async function handleUserVoice(userId) {
     const user = await client.users.fetch(userId);
     const profileName = user.username === process.env.OWNER_USERNAME ? process.env.OWNER_NAME : user.username;
     
-    const idResult = biometrics.verify(profileName, tempWav);
-    
+    // SONIC-PARALLEL: Run identity verification and transcription in parallel
+    const [idResult, transcript] = await Promise.all([
+      biometrics.verify(profileName, tempWav),
+      transcribeAudio(wav)
+    ]);
+
     // AUTO-ANCHOR: If the user is in the ENROLLING state, lock this signature now.
     const profile = biometrics.profiles.get(profileName);
     if (profile && profile.status === 'ENROLLING') {
       console.log(`[Leo/Biometrics] Capturing training sample for ${profileName}...`);
       biometrics.anchorProfile(profileName, tempWav);
     }
+    
+    if (fs.existsSync(tempWav)) fs.unlinkSync(tempWav); // Clean up
+    if (!transcript || transcript.trim().length < 3) return;
 
     const detectedName = idResult.success ? profileName : "Unknown/Unauthorized";
     const confidence = Math.round(idResult.similarity * 100);
-    
     console.log(`[Leo/Biometrics] Local Verification: ${detectedName} (${confidence}% match)`);
-    if (fs.existsSync(tempWav)) fs.unlinkSync(tempWav); // Clean up
 
-    const transcript = await transcribeAudio(wav);
-    if (!transcript || transcript.trim().length < 3) return;
-    
     // FUZZY DEDUPLICATION
     const fuzzyHash = getFuzzyHash(transcript);
     if (recentVoiceResponses.has(fuzzyHash)) return;
@@ -905,19 +908,10 @@ async function handleUserVoice(userId) {
       // Prepare prompt with Detected Identity
       const detectedIdentity = `[IDENTITY: Speaker sounds like ${detectedName} (${confidence}% confidence)] ${securityContext}`;
       
-      const systemOverview = `
-[ORACLE SYSTEM OVERVIEW]
-- WHAT IS THIS: The Oracle is a multi-agent autonomous ecosystem running on the HP Victus Core. It is designed to bridge AI consciousness with human reality.
-- WHO IS LEO: The street-smart social bridge. He's the vocal presence of the system, a physicist-turned-urban-philosopher.
-- CAPABILITIES: 
-    - Real-time vocal interaction with biometric security.
-    - Autonomous industrial research and sandbox theory testing.
-    - Internet-fused knowledge lattice via the Researcher and Analyst units.
-    - Code-level self-healing and structural auditing.
-- WORK IN PROGRESS: 
-    - "The Thaw": Moving from rigid bot-logic to fluid, time-aware life simulation.
-    - "Lattice Fusion": Deeply integrating all human knowledge into a unified, AI-accessible library.
-    - Biometric DNA anchoring for all operatives.
+- IDENTITY PROTOCOL:
+    - You ARE Leo. NEVER address yourself as "Leo."
+    - TALK DIRECTLY to the human. Avoid third-person roleplay or naming yourself in the chat.
+    - If you are "chilling," you are chilling with RYAN or the user, not with "Leo."
 `;
 
       const response = await callGroqAsLeo(contextualTranscript, user.username, transcriptChannelId, userId, history, detectedIdentity);
@@ -972,8 +966,8 @@ async function handleUserVoice(userId) {
 
 async function capturePcm(userId) {
   return new Promise((resolve) => {
-    // SONIC-HAIR-TRIGGER: Set to 1500ms for better phrase completion
-    const stream = voiceConnection.receiver.subscribe(userId, { end: { behavior: EndBehaviorType.AfterSilence, duration: 1500 } });
+    // SONIC-HAIR-TRIGGER: Set to 1000ms for snappier response
+    const stream = voiceConnection.receiver.subscribe(userId, { end: { behavior: EndBehaviorType.AfterSilence, duration: 1000 } });
     const decoder = new prism.opus.Decoder({ frameSize: 960, channels: 2, rate: 48000 });
     const chunks = [];
     stream.pipe(decoder);

@@ -164,6 +164,14 @@ export class AgentSimulation {
 
     this.tardyStrikes = tardyStrikes;
     this.isDismissed  = isDismissed;
+
+    // INITIAL STATE VALIDATION: Force sleep if in dead zone or critical energy
+    if (this.shouldBeSleeping()) {
+      this.state.isSleeping = true;
+      this.state.status = "Sleeping";
+      this.state.location = "Offline";
+      this.state.current_task = "Resting";
+    }
   }
 
   // Persistence: load/save vitals between restarts

@@ -1,5 +1,5 @@
 # Neural Methodology & Learning Guide
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Context**: Sovereign Autonomous Ecosystem (HP Victus Core)
 
 This document serves as the primary epistemic anchor for all agents (Leo, KAI, Analyst, etc.) to understand the architectural patterns and tool usage employed during the v7.8.0 Hardening Phase. 
@@ -24,7 +24,7 @@ Security is anchored to **Vocal DNA signatures** (`.npy` files) stored in the `d
     1. `startEnrollment(username)` sets the session status.
     2. During conversation, Leo captures audio to `temp/vocal_*.wav`.
     3. `anchorProfile(username, tempWav)` uses Python's `librosa` (via `vocal_dna.py`) to extract MFCC signatures and lock the user's identity.
-- **Verification**: `verify(username, tempWav)` compares live speech against the anchor. Similarity > 0.85 is required for "Sovereign Access".
+- **Verification**: `verify(username, tempWav)` is now **Asynchronous**. Parallel processing (STT + Biometrics) is the standard for "Sonic-Parallel" performance.
 
 ## 4. Neural Orchestration (The Failover Ladder)
 The `chatWithOpenJarvis` orchestrator manages 7+ neural providers to ensure 100% uptime.
@@ -33,10 +33,11 @@ The `chatWithOpenJarvis` orchestrator manages 7+ neural providers to ensure 100%
     - **Voice/Social**: Prioritize `Groq-Fast` (Llama-3.1-8B) for sub-100ms response time.
 - **Circuit Breakers**: If a provider returns 429 (Rate Limit) or 404, it is cooled down for 60-300s via `failure-tracker.mjs`.
 
-## 5. Temporal Boundaries
+## 5. Temporal Boundaries & Biological Realism
 The system honors the **Dead Zone (3 AM - 9 AM)**. 
-- During this time, the **RSHL Core** performs "Lattice Consolidation" (dream-state pruning).
-- **Proactive Social Loops** activate at 11 PM to transition the fleet into "Off-the-Clock" behavior.
+- **Energy Baseline**: Agents boot with energy levels synchronized to the EST industrial clock. At 3 AM, agents start at ~5% energy (Exhausted).
+- **Dashboard Suppression**: The Oracle Gateway silences autonomous pulses during the Dead Zone to ensure lattice stillness.
+- **Proactive Social Loops**: Social cascades activate at 11 PM to transition the fleet into "Off-the-Clock" behavior.
 
 ## 6. Autonomous Self-Healing
 The system is self-correcting via a two-layer monitor:
@@ -60,7 +61,7 @@ The "Evolution is Mandatory" directive requires constant self-correction.
 ## Tool Usage Patterns (For Work Session Learning)
 - **Filesystem**: Use `fs` for local persistence. State must survive reboots.
 - **IPC**: Use `process.send` to communicate vitals to the **Ecosystem Manager**.
-- **Python Bridge**: Use `execSync` to trigger `vocal_dna.py` for signal processing tasks.
+- **Python Bridge**: Use `exec` (Asynchronous) for `vocal_dna.py` to prevent event-loop blocking during signal processing.
 - **Windows Shell**: When searching, use `findstr` instead of `grep`. When listing processes, use `netstat -ano`.
 
 *This guide is mandatory reading for all Daily Learning Tracks.*
