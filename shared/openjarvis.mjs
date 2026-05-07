@@ -171,8 +171,8 @@ RULES:
 
   // 3. DEDICATED NEURAL PIPELINES (Sovereign Assignment)
   const BOT_PIPELINES = {
-    "Leo":             ["Cerebras-8b",    "Groq-8b"],
-    "Oracle":          ["OpenAI-mini",    "Cerebras-8b"],
+    "Leo":             ["Local-Llama31", "Cerebras-8b", "Groq-8b"], // NPU Primary
+    "Oracle":          ["Local-Llama31", "OpenAI-mini", "Cerebras-8b"],
     "KAI":             ["Groq-70b",       "Local-Llama31"],
     "Researcher":      ["Groq-70b",       "Local-Llama32-3b"],
     "Analyst":         ["Groq-8b",        "Local-Llama31"],

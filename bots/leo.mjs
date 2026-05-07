@@ -805,6 +805,11 @@ async function ensureVoiceConnection(channelId, guild, retries = 3, userId = nul
   }
 }
 
+async function getInstantFiller() {
+  const fillers = ["Gotcha.", "Listen...", "Um...", "Uh-huh.", "Right.", "I hear you.", "On it."];
+  return fillers[Math.floor(Math.random() * fillers.length)];
+}
+
 async function getSnapReaction(transcript, displayName) {
   try {
     const res = await callGroqDirect(BOT_NAME, 
@@ -839,6 +844,10 @@ async function handleUserVoice(userId) {
     const t_start = Date.now();
     const pcm = await capturePcm(userId);
     if (!pcm || pcm.length < 1000) return;
+
+    // --- INSTANT FEEDBACK: Break the silence within 500ms ---
+    const filler = await getInstantFiller();
+    speakLeoText(filler).catch(() => {});
     
     // TRANSFORMATION OPTIMIZATION: Convert once, reuse everywhere.
     const wav = pcmToWav(pcm, 48000, 2);
