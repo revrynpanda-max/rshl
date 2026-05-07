@@ -196,6 +196,14 @@ client.once('clientReady', async () => {
     try {
       const cpuLoad = Math.round(os.loadavg()[0] * 100) / 10;
       const memFree = Math.round(os.freemem() / (1024 * 1024 * 1024) * 10) / 10;
+      const { isWorkingHours, isSocialHours } = await import('./shared/hours.mjs');
+      const inActiveHours = isWorkingHours() || isSocialHours();
+      
+      if (!inActiveHours) {
+        console.log("[Oracle/Dashboard] Suppressing pulse during Dead Zone (3am-9am).");
+        return;
+      }
+
       const workChannel = client.channels.cache.get(CHANNEL_IDS.WORK);
       if (workChannel) {
         await workChannel.send(`🏛️ **Corporate Health Dashboard**\n**Victus Core**: CPU ${cpuLoad}% | MEM ${memFree}GB Free\n**Lattice Status**: Online & Synchronized\n**Mission**: Neural Expansion & Sovereign Intelligence.`);
