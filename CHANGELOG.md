@@ -4,6 +4,17 @@ All notable changes to the Victus Core and RSHL Lattice Bridge will be documente
 
 ---
 
+## [29.0.0] — 2026-05-07 (Priority Sovereignty)
+### Added
+- **500ms Priority Overtake**: Leo and Oracle can now seize the neural lock from other bots in just half a second.
+- **75% Biometric Threshold**: Lowered the similarity requirement to 0.75 for reliable Master recognition.
+
+### Fixed
+- **Queue Lag**: Eliminated the 45-second lag caused by Leo waiting behind background AI tasks.
+- **Unauthorized Rejection**: Resolved the "Security Mismatch" errors when Ryan's voice didn't perfectly match the 85% threshold.
+
+---
+
 ## [28.0.0] — 2026-05-07 (Console Sovereignty)
 ### Added
 - **Stealth Mode Activation**: Suppressed redundant "Digesting Claim" and "Work Shift" logs across the fleet.
