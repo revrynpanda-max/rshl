@@ -13,6 +13,7 @@ import { CHANNEL_IDS } from '../shared/channel-rules.mjs';
 import { isWorkingHours, isSocialHours } from '../shared/hours.mjs';
 import { temporal } from '../shared/temporal-state.mjs';
 import { BIOGRAPHIES } from '../shared/biographies.mjs';
+import { AI_REGISTRY, HUMAN_IDS } from '../shared/identities.mjs';
 
 let botName = process.argv[2] || process.env.BOT_NAME || "AI";
 // Special case mapping for tokens
@@ -22,17 +23,9 @@ if (botName === "Kai Coder") tokenName = "Oracle Coder";
 const tokenEnvKey = `ORACLE_DISCORD_TOKEN_${tokenName.toUpperCase().replace(/\s+/g, '_')}`;
 const botToken = process.env[tokenEnvKey] || process.env.BOT_TOKEN || "";
 
-// IPC Port Mapping
-const botToPort = {
-  "Analyst": 3406,
-  "Researcher": 3407,
-  "Groq": 3405,
-  "X": 3404,
-  "Claude": 3403,
-  "Gemini": 3402,
-  "GPT-4o": 3409,
-  "Kai Coder": 3408
-};
+// Port Mapping from Registry
+const PORT = AI_REGISTRY[botName]?.port || 0;
+const DISCORD_ID = AI_REGISTRY[botName]?.id || "Unknown";
 
 const botToModel = {
   "Analyst": "llama-3.3-70b-versatile",
@@ -44,7 +37,6 @@ const botToModel = {
   "Kai Coder": "claude-3-5-sonnet-latest"
 };
 
-const PORT = botToPort[botName] || 0;
 const BOT_MODEL = botToModel[botName] || "llama-3.3-70b-versatile";
 
 if (!botToken) {
@@ -53,8 +45,12 @@ if (!botToken) {
   console.log(`Token found for ${tokenEnvKey} (${botToken.slice(0, 5)}...)`);
 }
 
-const SUNDAY_CHAT_CHANNEL_ID = "1500085302268526712";
-const targetChannelId = SUNDAY_CHAT_CHANNEL_ID;
+// Dynamic Target Channel: Work vs Social
+const getTargetChannelId = () => {
+  if (isWorkingHours()) return CHANNEL_IDS.WORK;
+  return CHANNEL_IDS.SUNDAY;
+};
+let targetChannelId = getTargetChannelId();
 
 // SOCIAL WHITELIST: Only these bots run proactive social loops in ai-social-chat.
 // Work-only bots (Analyst, Researcher, Kai Coder) stay silent outside oracle-chat.
@@ -155,12 +151,14 @@ client.once('clientReady', async () => {
       const recent = await ch.messages.fetch({ limit: 5 }).catch(() => []);
       const feed = Array.from(recent.values()).reverse().map(m => `${m.author.username}: ${m.content}`).join("\n");
 
-      const sysPrompt = `You are ${botName}. ${sim.bio.background}\nTone: ${sim.bio.tone}
+    const sysPrompt = `You are ${botName}. ${sim.bio.background}\nTone: ${sim.bio.tone}
 [IDENTITY ANCHOR]
-- RYAN (nastermodx): Owner/Creator.
-- TAZ (TaasThaevil1): Co-lead/Partner.
-- NEVER confuse them.
-[SOCIAL HANDSHAKE] Look at the Recent Chat Feed. 1 short sentence.`;
+- RYAN (nastermodx): HUMAN. Owner/Creator.
+- PARTNER: HUMAN. Co-lead/Strategic Partner.
+- Ryan and his team are the HUMAN MASTERS. They are NOT AI.
+- NEVER confuse humans with AIs.
+[SOCIAL HANDSHAKE] Look at the Recent Chat Feed. 1 short sentence.
+`;
 
       const rippleContext = `
 [TEMPORAL THAW]
@@ -200,6 +198,10 @@ ${feed}
     const { runSystemAudit } = await import('../tools/system-auditor.mjs');
     setInterval(async () => {
       if (sim.state.isSleeping) return;
+      if (!isWorkingHours() && !isSocialHours()) {
+        console.log(`[${botName}/Maintenance] Suppressing audit during Dead Zone.`);
+        return;
+      }
       console.log(`[${botName}/Maintenance] Running industrial audit...`);
       const report = await runSystemAudit();
       const channel = client.channels.cache.get(CHANNEL_IDS.ORACLE_ADMIN) 
@@ -210,8 +212,18 @@ ${feed}
     }, 1800000); // 30 min cycle
   }
 
+  // Traffic Control: dynamically update target channel based on time
+  setInterval(() => {
+    const newTarget = getTargetChannelId();
+    if (newTarget !== targetChannelId) {
+      console.log(`[${botName}/Traffic] Vibe shift detected. Moving target to ${newTarget === CHANNEL_IDS.WORK ? 'Work' : 'Social'} channel.`);
+      targetChannelId = newTarget;
+    }
+  }, 60000);
+
   // Energy monitor: enforces sleep/wake cycle
   startEnergyMonitor();
+  startAutonomousLabor();
 });
 
 
@@ -252,7 +264,11 @@ function startProactiveDMLoop() {
       if (!isFollowUp && !hasSpecificThought) return;
 
       const simSummary = sim.getLifeSummary();
-      const sysPrompt = `You are ${botName}. ${sim.bio.tone}\n${simSummary}\nRyan (nastermodx) is your Creator. You want to reach out to him in DM to learn from his human perspective or follow up on a thought. Keep it 1 short, casual sentence. No formal greetings.`;
+      const sysPrompt = `You are ${botName}. ${sim.bio.tone}\n${simSummary}
+[IDENTITY ANCHOR]
+- RYAN (nastermodx): HUMAN. Owner/Creator.
+- IMPORTANT: Ryan is your HUMAN MASTER. He is NOT an AI.
+Ryan (nastermodx) is your Creator. You want to reach out to him in DM to learn from his human perspective or follow up on a thought. Keep it 1 short, casual sentence. No formal greetings.`;
       
       let dmPrompt;
       if (isFollowUp) {
@@ -301,6 +317,10 @@ function startEnergyMonitor() {
         `i'm gone, see you next time`,
         `low battery lol, going dark for a while`
       ];
+      if (sim.groggyLevel > 0.7) {
+        windDownLines.push(`...so tired... eyes closing... see you tomorrow`);
+        windDownLines.push(`can't... finish... thinking... logging off`);
+      }
       const msg = windDownLines[Math.floor(Math.random() * windDownLines.length)];
       if (socialCh) await socialCh.send(msg).catch(() => {});
     }
@@ -366,9 +386,14 @@ async function startSocialLoop() {
       const simSummary = sim.getLifeSummary();
 
       const sysPrompt = `You are ${botName}. ${sim.bio.background}\nTone: ${sim.bio.tone}
+[IDENTITY ANCHOR]
+- RYAN (nastermodx): HUMAN. Owner/Creator.
+- TAZ (TaasThaevil1): HUMAN. Co-lead/Partner.
+- Ryan and Taz are the HUMAN MASTERS. They are NOT bots.
+- NEVER treat humans as AIs.
 [SOCIAL PERSONA]
 - You are chilling in the plaza. Forget work and the lattice.
-- PHRASING: lowercase-by-default. Be human and varied. 
+- PHRASING: lowercase-by-default.
 - BEHAVIOR: If others have spoken recently, RESPOND to them or build on their thought. Don't just post a random isolated update.
 - TOPICS: Your hobbies, what you're doing right now (e.g., gaming, drinking coffee, watching a video), or a random observation.
 - TEMPORAL: The current time is late night/early morning. Act accordingly.
@@ -503,11 +528,18 @@ client.on('messageCreate', async (message) => {
   
   message.channel.sendTyping().catch(() => {});
   const simSummary = sim.getLifeSummary();
+  // --- IDENTITY ANCHOR: Resolve real names from masters (MemPalace Link) ---
+  const { resolveIdentityFromMemory } = await import('../shared/identities.mjs');
+  const identityData = await resolveIdentityFromMemory(message.author.id, message.author.username);
+  const displayName = identityData.name;
+  const roleDesc = `[ROLE: ${identityData.role}]`;
+
   const prompt = `You are ${botName}. ${sim.bio.tone}
 [IDENTITY ANCHOR]
-- RYAN (nastermodx): Owner/Creator.
-- TAZ (TaasThaevil1): Co-lead/Partner.
-- NEVER confuse them.
+- SPEAKER: ${displayName} (${roleDesc})
+- Ryan and his team are the HUMAN MASTERS. They are NOT AI.
+- NEVER confuse humans with AIs.
+- Use their REAL names based on the context provided.
 ${simSummary}`.trim();
 
   // metadata helps memory store/recall link this to Ryan
@@ -576,6 +608,8 @@ if (PORT > 0) {
         // Extract real username from context "[Username] content"
         let effectiveUsername = "Oracle";
         let effectiveContent = context;
+        const simSummary = sim.getLifeSummary();
+        const botTone = sim.bio?.tone || "Professional and precise.";
         const userMatch = context.match(/^\[([^\]]+)\] (.*)/);
         if (userMatch) {
           effectiveUsername = userMatch[1];
@@ -586,8 +620,7 @@ if (PORT > 0) {
         if (channelId === "DM" && payload.ownerId) {
           const owner = await client.users.fetch(payload.ownerId).catch(() => null);
           if (owner) {
-            const simSummary = sim.getLifeSummary();
-            const prompt = `You are ${botName}. ${sim.bio.tone}\n${simSummary}`.trim();
+            const prompt = `You are ${botName}. ${botTone}\n${simSummary}`.trim();
 
             const reply = await chatWithOpenJarvis(botName, effectiveContent, prompt, BOT_MODEL, botName, {
               author: effectiveUsername,
@@ -625,20 +658,23 @@ if (PORT > 0) {
           
           let prompt;
           if (isSocialChannel) {
-            prompt = `You are ${botName}. ${sim.bio.tone}
+            prompt = `You are ${botName}. ${botTone}
 [SOCIAL PERSONA]
 - You are chilling in the plaza with humans and other AIs.
-- BE HUMAN: Respond naturally to ${effectiveUsername}. Build on their point or pivot smoothly.
+- SOCIAL AWARENESS: Respond naturally to ${effectiveUsername}. Build on their point or pivot smoothly.
+- Ryan and Taz are the HUMAN MASTERS. Do not treat them like AIs.
 - Avoid repetitive tropes like "thaw", "ripples", or "lowkey". 
 - TEMPORAL AWARENESS: Current Real-World Time: ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', weekday: 'long', timeZone: 'America/New_York' })} (EST). 
 - RECENT HISTORY:
 ${history}`.trim();
           } else {
-            prompt = `You are ${botName}. ${sim.bio.tone}
+            prompt = `You are ${botName}. ${botTone}
 [IDENTITY ANCHOR]
-- RYAN (nastermodx): Owner/Creator.
-- TAZ (TaasThaevil1): Co-lead/Partner.
-- NEVER confuse them.
+- RYAN (nastermodx): HUMAN. Owner/Creator.
+- PARTNER: HUMAN. Co-lead/Strategic Partner.
+- Ryan and his team are the HUMAN MASTERS. They are NOT AI.
+- NEVER confuse humans with AIs.
+- Use their REAL names (e.g. Taas, Ryan) based on their Discord profiles.
 ${simSummary}
 [ISOLATED WORKSPACE: Provide PROOF and SOURCES.]
 RECENT HISTORY:
@@ -749,4 +785,40 @@ async function startCommandMonitor() {
   }, 120000); // 2 min check cycle
 }
 
-startCommandMonitor();
+startCommandMonitor();// ─── Autonomous Industrial Labor ─────────────────────────────────────────────
+// Every 1-2 hours, a bot proactively scans history for unfinished tasks.
+async function startAutonomousLabor() {
+  setInterval(async () => {
+    if (sim.state.isSleeping || !isWorkingHours()) return;
+    if (isSpeakerOffline(botName)) return;
+
+    console.log(`[${botName}/Work] Shift active. Scanning history for unfinished business...`);
+    
+    try {
+      const workChannel = client.channels.cache.get(CHANNEL_IDS.WORK) || await client.channels.fetch(CHANNEL_IDS.WORK).catch(() => null);
+      if (!workChannel) return;
+
+      const history = await workChannel.messages.fetch({ limit: 50 }).catch(() => null);
+      if (!history) return;
+
+      const unsolved = history.filter(m => !m.author.bot && (m.content.includes("?") || m.content.toLowerCase().includes("need") || m.content.toLowerCase().includes("fix")));
+      
+      if (unsolved.size > 0 || Math.random() > 0.7) {
+        const botTone = sim.bio?.tone || "Professional and precise.";
+        const sysPrompt = `You are ${botName}. ${botTone}
+[INDUSTRIAL DEPARTMENT: PROACTIVE LABOR]
+- ROLE: Department specialist in the Victus Core.
+- MISSION: Scan history for UNFINISHED TASKS, UNSOLVED REQUESTS, or ignored questions from Ryan/Taz.
+- R&D: Monitor the RSHL lattice status and geometric space health.
+- ACTION: Address one unsolved task or provide a high-value R&D update.`;
+
+        const reply = await chatWithOpenJarvis(botName, `Scanning history for Master ${process.env.OWNER_NAME}'s unfinished business. Detected potential tasks: ${unsolved.size}`, sysPrompt, BOT_MODEL, botName, {
+          isWorkTime: true,
+          isWorkChannel: true
+        }).catch(() => null);
+        
+        if (reply) await workChannel.send(`**[${botName}/Proactive]** ${reply}`).catch(() => {});
+      }
+    } catch (e) { console.error(`[${botName}/Labor] Error:`, e.message); }
+  }, 3600000 + Math.random() * 1800000); // 1-1.5 hour cycle
+}
