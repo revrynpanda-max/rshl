@@ -4,6 +4,17 @@ All notable changes to the Victus Core and RSHL Lattice Bridge will be documente
 
 ---
 
+## [37.0.0] — 2026-05-07 (Priority Lane)
+### Added
+- **Priority Vocal Strike**: Instant fillers (Gotcha, Listen) now bypass the vocal queue and play within 500ms.
+- **5s STT Hard-Cap**: Cloud transcription (Groq-Whisper) is now force-terminated if it exceeds 5 seconds.
+
+### Fixed
+- **18s Transcription Hangs**: Resolved the massive delays caused by cloud STT instability by implementing strict timeouts.
+- **Vocal Delay**: Guaranteed that Leo's "Vocal Presence" is the first thing the user hears, ending the dead silence between turns.
+
+---
+
 ## [36.2.0] — 2026-05-07 (Emergency Repair)
 ### Fixed
 - **ReferenceError Restoration**: Restored missing `vocalQueue` and `isSpeaking` declarations in `leo.mjs`.
