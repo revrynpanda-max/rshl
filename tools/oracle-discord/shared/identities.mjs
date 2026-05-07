@@ -34,6 +34,9 @@ export const AI_REGISTRY = {
   "X":         { id: "1499022834536808458", port: 3404 }
 };
 
+export const HUMAN_IDS = new Set(Object.values(HUMAN_REGISTRY).map(h => h.id));
+export const AI_IDS = new Set(Object.values(AI_REGISTRY).map(a => a.id));
+
 /**
  * Returns the identity data for a given Discord User ID.
  */
