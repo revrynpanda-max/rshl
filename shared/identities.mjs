@@ -4,21 +4,12 @@
  */
 
 export const HUMAN_REGISTRY = {
-  "Ryan": {
-    id: "1111106883135217665",
+  [process.env.OWNER_NAME || "Ryan"]: {
+    id: process.env.OWNER_ID || "1111106883135217665",
     role: "Owner/Creator",
-    username: "nastermodx"
-  },
-  "Taz": {
-    id: "1286110163505385523",
-    role: "Co-lead/Partner",
-    username: "TaasThaevil1"
-  },
-  "Grimshaggy": {
-    id: "437459146778869770",
-    role: "Operative",
-    username: "grimshaggy420"
+    username: process.env.OWNER_USERNAME || "nastermodx"
   }
+  // All other users are now resolved dynamically via the MemPalace Bridge.
 };
 
 export const AI_REGISTRY = {
@@ -33,6 +24,72 @@ export const AI_REGISTRY = {
   "Researcher":{ id: "1499326874608865280", port: 3407 },
   "X":         { id: "1499022834536808458", port: 3404 }
 };
+
+export const HUMAN_IDS = new Set(Object.values(HUMAN_REGISTRY).map(h => h.id));
+export const AI_IDS = new Set(Object.values(AI_REGISTRY).map(a => a.id));
+
+/**
+ * MemPalace Bridge: Dynamically resolve identities from the RSHL/ChromaDB lattice.
+ */
+export async function resolveIdentityFromMemory(userId, username) {
+  // 1. GHOST SUPPRESSION: Ignore system/null users
+  if (!userId || userId === "null" || username === "System") return null;
+
+  // 2. OWNER SUPREMACY: Check the Sovereign Registry first
+  const ownerId = process.env.OWNER_ID || "1111106883135217665";
+  if (userId === ownerId) {
+    return {
+      type: "human",
+      id: userId,
+      name: process.env.OWNER_NAME || "Ryan",
+      role: "Owner/Creator",
+      username: username
+    };
+  }
+
+  // 3. CACHE LOOKUP: Check if we already have this operative
+  const identity = getIdentityById(userId);
+  if (identity) return identity;
+
+  console.log(`[MemPalace/Sync] Querying RSHL Lattice for user ${username} (${userId})...`);
+  
+  try {
+    const res = await fetch(`http://127.0.0.1:3333/query?q=Who is user ${username} with ID ${userId}?`, {
+      method: "GET",
+      signal: AbortSignal.timeout(3000)
+    }).catch(() => null);
+
+    if (res && res.ok) {
+      const data = await res.json();
+      if (data.claims && data.claims.length > 0) {
+        const topClaim = data.claims[0].text;
+        console.log(`[MemPalace/Hit] Resolved: ${topClaim}`);
+        
+        let role = "Operative";
+        if (topClaim.toLowerCase().includes("partner") || topClaim.toLowerCase().includes("taas")) role = "Co-lead/Partner";
+        if (topClaim.toLowerCase().includes("owner") || topClaim.toLowerCase().includes("master")) role = "Owner/Creator";
+
+        return {
+          type: "human",
+          id: userId,
+          name: username,
+          role: role,
+          username: username
+        };
+      }
+    }
+  } catch (e) {
+    console.warn(`[MemPalace/Error] Lattice query failed:`, e.message);
+  }
+
+  return {
+    type: "human",
+    id: userId,
+    name: username,
+    role: "Guest Operative",
+    username: username
+  };
+}
 
 /**
  * Returns the identity data for a given Discord User ID.
