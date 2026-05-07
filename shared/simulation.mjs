@@ -106,43 +106,46 @@ export class AgentSimulation {
     let isSleeping   = false;
 
     if (saved && saved.timestamp && !this.isKAI) {
-      const elapsedMins = (Date.now() - saved.timestamp) / 60000;
-      
-      // REALISTIC BASELINE: Calculate what energy SHOULD be for this hour (EST)
       const now = new Date();
-      const estHour = parseInt(new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: 'numeric', hour12: false }).format(now));
+      const estNow = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+      const elapsedMins = (now - saved.timestamp) / 60000;
       
-      let baseline = 100;
-      if (estHour >= 9 && estHour < 15) baseline = 100 - (estHour - 9) * 5; 
-      else if (estHour >= 15 && estHour < 23) baseline = 70 - (estHour - 15) * 5;
-      else if (estHour >= 23 || estHour < 3) {
-        const cycleHour = estHour < 3 ? estHour + 24 : estHour;
-        baseline = Math.max(5, 30 - (cycleHour - 23) * 6);
-      } else if (estHour >= 3 && estHour < 9) {
-        baseline = Math.min(90, 5 + (estHour - 3) * 14); 
+      // --- CIRCADIAN SYNCHRONIZATION (9 AM WAKE-UP) ---
+      const wakeTime = new Date(estNow);
+      wakeTime.setHours(9, 0, 0, 0);
+      
+      // If we are currently before 9 AM, the wake-up was yesterday
+      if (estNow < wakeTime) wakeTime.setDate(wakeTime.getDate() - 1);
+      
+      const minsSinceWake = Math.max(0, (estNow - wakeTime) / 60000);
+      
+      // PRECISE ACTIVITY CALCULATION
+      // Average Drain: 0.08 (Idle) to 0.45 (Working). We assume 30% work-load.
+      const avgHourlyDrain = (DRAIN.idle * 0.7 + DRAIN.working * 0.3); 
+      const metabolicDebt = minsSinceWake * avgHourlyDrain;
+      
+      // STARTING BASELINE: 100% at 9 AM minus the debt incurred during the day
+      let calculatedEnergy = 100 - metabolicDebt;
+
+      // RECOVERY LOGIC: If the system was offline, we apply a 'Resting' bonus
+      const recovery = Math.min(SLEEP_RESTORE_PER_MIN * elapsedMins, 100 - calculatedEnergy);
+      let restoredEnergy = calculatedEnergy + recovery;
+      
+      // DEAD-ZONE ENFORCEMENT: If it's 3 AM - 9 AM, energy is locked to 'Sleeping' state
+      const h = estNow.getHours();
+      if (h >= 3 && h < 9) {
+        restoredEnergy = Math.min(90, 5 + (h - 3) * 14);
       }
 
-      // If offline for a long time (>2h), gravitate strongly toward the baseline
-      // If offline for a short time, use the previous state but capped by baseline logic
-      const recovery = elapsedMins < 1440
-        ? Math.min(SLEEP_RESTORE_PER_MIN * elapsedMins, 100 - saved.energy)
-        : 100 - saved.energy;
-        
-      let restoredEnergy = saved.energy + recovery;
-      
-      // If booting into the Dead Zone (3am-9am) or late night, enforce the depletion
-      if (elapsedMins > 60) {
-        restoredEnergy = Math.min(restoredEnergy, baseline + 10); // 10% buffer
-      }
-
-      startEnergy  = Math.min(100, Math.max(0, restoredEnergy));
+      startEnergy  = Math.min(100, Math.max(5, restoredEnergy));
       startFocus   = Math.min(100, (saved.focus          ?? 80)  + elapsedMins * 0.05);
       startSocial  = Math.min(100, (saved.social_battery ?? 100) + elapsedMins * 0.10);
       tardyStrikes = saved.tardyStrikes ?? 0;
       isDismissed  = saved.isDismissed  ?? false;
       isSleeping   = saved.isSleeping   ?? false;
       this.excitementBuffer = saved.excitementBuffer || 0;
-      console.log("[Sim/" + name + "] Restored: energy=" + startEnergy.toFixed(1) + "% (was " + saved.energy.toFixed(1) + "%, +" + recovery.toFixed(1) + "% over " + Math.round(elapsedMins) + "min offline)");
+
+      console.log(`[Sim/${name}] Circadian Sync: ${Math.round(minsSinceWake)}m since wake. Debt: ${metabolicDebt.toFixed(1)}%. Energy: ${startEnergy.toFixed(1)}%`);
     }
 
     this.state = {
