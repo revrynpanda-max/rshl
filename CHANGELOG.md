@@ -4,6 +4,19 @@ All notable changes to the Victus Core and RSHL Lattice Bridge will be documente
 
 ---
 
+## [30.0.0] — 2026-05-07 (Sonic Dual-Phase Engine)
+### Added
+- **Phase 1 Snap-Reaction**: Instant vocal acknowledgement generated in < 2.5s via Groq-8B.
+- **Phase 2 Strategic Depth**: Seamlessly queued industrial reasoning that plays after the initial burst.
+- **Vocal Queue Manager**: Support for sequential, uninterrupted multi-thought speech streams.
+- **ElevenLabs Turbo-v2.5**: Optimized audio synthesis for zero-latency response.
+
+### Fixed
+- **Silence Threshold**: Eliminated the silence during complex reasoning by providing immediate "Snap" feedback.
+- **Vocal Latency**: Reduced "Time to First Audio" to under 4 seconds for all voice interactions.
+
+---
+
 ## [29.0.0] — 2026-05-07 (Priority Sovereignty)
 ### Added
 - **500ms Priority Overtake**: Leo and Oracle can now seize the neural lock from other bots in just half a second.
