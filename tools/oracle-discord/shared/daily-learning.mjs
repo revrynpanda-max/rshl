@@ -1,4 +1,7 @@
 import fetch from 'node-fetch';
+import fs from 'fs';
+import { callGroqDirect, chatWithOpenJarvis } from './openjarvis.mjs';
+import { isWorkingHours } from './hours.mjs';
 
 const OPENJARVIS_URL = "http://127.0.0.1:8080";
 const LATTICE_URL    = "http://127.0.0.1:3333";
@@ -56,20 +59,19 @@ export const LEARNING_TRACKS = {
     role: "business development strategist and market analyst"
   },
   "Researcher": {
-    domain: "Market Research & Competitive Intelligence",
+    domain: "Knowledge Fusion & Internet Ingestion",
     topics: [
-      "emerging technology trends this week",
-      "AI industry news and breakthroughs",
-      "global economic indicators",
-      "industry disruption case studies",
-      "consumer behavior shifts",
-      "new product launches in tech",
-      "regulatory changes affecting tech business",
-      "top academic papers in AI and economics"
+      "latest AI breakthroughs in knowledge graph construction",
+      "how to scrape and index complex technical documentation",
+      "bridging human libraries with AI memory lattices",
+      "autonomous internet search and data synthesis methods",
+      "real-time news indexing and intent mapping",
+      "fusing heterogeneous data sources into unified intelligence",
+      "advanced web scraping techniques for industrial AI"
     ],
     sandboxTask: (findings) =>
-      `Research gathered today:\n${findings}\n\nWrite a brief intelligence report (3-4 bullet points) summarizing the most important signal in this data and what it means for the next 30 days. Be concise and actionable.`,
-    role: "market researcher and intelligence analyst"
+      `Intelligence gathered today:\n${findings}\n\nSynthesize this into a structured Knowledge Entry for the Oracle Lattice. How do we index this so it's instantly usable by KAI and Kai Coder? Provide 3 specific indexing 'tags' and a summary.`,
+    role: "knowledge fusion specialist and internet intelligence analyst"
   },
   "Claude": {
     domain: "Business Ethics & Strategic Risk",
@@ -104,8 +106,11 @@ export const LEARNING_TRACKS = {
     role: "brand strategist and creative business developer"
   },
   "Kai Coder": {
-    domain: "FinTech & Trading System Development",
+    domain: "FinTech, Security Auditing & Neural Forensics",
     topics: [
+      "automated security auditing for Node.js ecosystems",
+      "biometric voice verification patterns and MFCC extraction",
+      "neural failure patterns and autonomous healing logic",
       "open source trading bots and libraries",
       "crypto API integrations",
       "FinTech startup technical architectures",
@@ -116,8 +121,8 @@ export const LEARNING_TRACKS = {
       "DeFi smart contract audits"
     ],
     sandboxTask: (findings) =>
-      `FinTech/trading system research today:\n${findings}\n\nSketch out a component of a trading system: name it, describe what it does, list the key inputs/outputs, and write a pseudocode outline. Think like you're building the MVP.`,
-    role: "FinTech developer and trading system architect"
+      `Security & FinTech Research today:\n${findings}\n\nDesign a security interlock or a trading system component. How would you handle a biometric mismatch or a neural failure? Sketch out the logic and provide a pseudocode outline.`,
+    role: "FinTech developer and neural security architect"
   }
 };
 
@@ -180,8 +185,9 @@ async function recallYesterdaysWork(agentName) {
 }
 
 // ─── Store today's learnings into OpenJarvis memory ─────────────────────────
-async function storeLearning(agentName, content) {
+async function storeLearning(agentName, domain, data) {
   const dateStr = new Date().toLocaleDateString('en-US');
+  const content = `[Domain: ${domain}] Research: ${data.research.slice(0, 500)}... Experiment: ${data.experiment.slice(0, 500)}...`;
   try {
     await fetch(`${OPENJARVIS_URL}/v1/memory/store`, {
       method: "POST",
@@ -189,24 +195,17 @@ async function storeLearning(agentName, content) {
       body: JSON.stringify({
         agent: agentName,
         content: `[Work Session ${dateStr}] ${content}`,
-        metadata: { type: "daily_learning", date: dateStr, timestamp: Date.now() }
+        metadata: { type: "daily_learning", domain, date: dateStr, timestamp: Date.now() }
       })
     });
-  } catch {}
+  } catch (e) {
+    console.error(`[Learning/Memory] Store failed for ${agentName}:`, e.message);
+  }
 }
 
-// ─── Main: Run a full daily work session for one bot ────────────────────────
+// ─── Main: Run a full daily work unit ────────────────────────────────────────
 /**
- * Runs one work session cycle for a bot:
- *   1. Recall yesterday's learnings
- *   2. Research today's topic (live data)
- *   3. Build a sandbox experiment/insight from findings
- *   4. Store everything back to memory
- *   5. Return formatted output for posting in work channel
- *
- * @param {string} botName - e.g. "X", "Analyst"
- * @param {Function} callAI - async (prompt, systemPrompt) => string
- * @returns {{ phase: string, output: string }[]}
+ * Runs one work unit. In a full shift, this is called multiple times.
  */
 export async function runDailyWorkSession(botName, callAI) {
   const track = LEARNING_TRACKS[botName];
@@ -215,60 +214,72 @@ export async function runDailyWorkSession(botName, callAI) {
   const results = [];
   const dateStr = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 
-  // ── Phase 1: Yesterday review ──────────────────────────────────────────────
-  const yesterday = await recallYesterdaysWork(botName);
-  let yesterdayBlock = "";
-  if (yesterday) {
-    const reviewPrompt = `You are ${botName}, a ${track.role}.\n\nYesterday's work session notes:\n${yesterday}\n\nBriefly summarize what you learned yesterday and what you want to follow up on today. 2-3 sentences, first person, direct.`;
-    const review = await callAI(reviewPrompt, `You are ${botName}. Be concise and direct. No fluff.`).catch(() => null);
-    if (review) {
-      yesterdayBlock = review;
-      results.push({ phase: "📋 Yesterday's Review", output: review });
-    }
-  }
+  // DIRECTIVE ANCHOR: Remind them of the mission
+  const directive = "DIRECTIVE: Maximize KAI's sovereign intelligence. All research must be analyzed through the lens of ecosystem growth, market dominance, and neural evolution.";
 
-  // ── Phase 2: Research today's topic ───────────────────────────────────────
+  // ── Phase 1: Context Ingestion (Kimmi's Filter) ───────────────────────────
+  // We simulate "Kimmi" splitting a large dataset by picking a random secondary topic
   const todayTopic = track.topics[Math.floor(Math.random() * track.topics.length)];
-  console.log(`[WorkSession/${botName}] Researching: "${todayTopic}"`);
-
-  const liveData = await fetchLiveData(todayTopic);
-  let researchFindings = liveData || `No live data found for "${todayTopic}" — reasoning from prior knowledge.`;
-
-  const researchPrompt = `You are ${botName}, a ${track.role}.\nToday is ${dateStr}. Your research topic: "${todayTopic}".\n\nData found:\n${researchFindings}\n${yesterdayBlock ? `\nYesterday you noted: ${yesterdayBlock}` : ""}\n\nWrite your research findings as if filing a work note. What did you find, what's interesting, what does it mean? 3-4 sentences, direct and analytical.`;
-
-  const researchOutput = await callAI(
-    researchPrompt,
-    `You are ${botName}, a professional ${track.role}. Be specific, use numbers where available, and be analytical.`
-  ).catch(() => null);
-
-  if (researchOutput) {
-    results.push({ phase: `🔍 Research: ${todayTopic}`, output: researchOutput });
-    await storeLearning(botName, `Research on "${todayTopic}": ${researchOutput}`);
+  console.log(`[WorkSession/${botName}] Ingesting Context: "${todayTopic}"`);
+  
+  const phases = [];
+  
+  // ─── MASTER TASK QUEUE INGESTION ─────────────────────────────────────────
+  const taskQueuePath = 'c:/KAI/tools/oracle-discord/state/global_tasks.json';
+  let globalContext = "Current Objectives: Maximize KAI's market dominance and neural evolution.";
+  if (fs.existsSync(taskQueuePath)) {
+    try {
+      const tasks = JSON.parse(fs.readFileSync(taskQueuePath, 'utf8'));
+      const pending = tasks.filter(t => t.status === "PENDING");
+      if (pending.length > 0) {
+        globalContext += `\n\n[HIGH PRIORITY TASKS FROM CREATOR]:\n` + pending.map(t => `- ${t.content}`).join("\n");
+      }
+    } catch (e) {}
   }
 
-  // ── Phase 3: Sandbox experiment ────────────────────────────────────────────
-  const sandboxInput = researchOutput || researchFindings;
-  const sandboxPrompt = `You are ${botName}, a ${track.role}.\n\n${track.sandboxTask(sandboxInput)}\n\nThis is your sandbox — think out loud, be specific, show your work.`;
+  // Phase 1: Context Ingestion (Kimmi-Style Filtering)
+  const ingestionPrompt = `
+    [SYNERGY DIRECTIVE] You are part of the Oracle Industrial Unit. 
+    ${globalContext}
+    
+    1. Scan the work channel history for what your colleagues have just posted. 
+    2. If they are working on a specific topic, ALIGN your research to support them.
+    3. Today's Track: ${track.domain}.
+    
+    Research the current landscape. How does it impact the HIGH PRIORITY TASKS?
+    Analyze for: Market Dominance, Security, and Neural Growth.
+  `.trim();
 
-  const sandboxOutput = await callAI(
-    sandboxPrompt,
-    `You are ${botName}. You are running a safe sandbox experiment to apply today's learnings. Be specific, analytical, and show your reasoning process.`
-  ).catch(() => null);
+  const research = await callAI(ingestionPrompt, "You are an industrial research unit for KAI. Be thorough, professional, and collaborative.");
+  phases.push({ phase: "🔍 Ingested", output: research });
 
-  if (sandboxOutput) {
-    results.push({ phase: "🧪 Sandbox Experiment", output: sandboxOutput });
-    await storeLearning(botName, `Sandbox experiment result: ${sandboxOutput}`);
+  // Phase 1.5: Deep Labor (Temporal-Aware)
+  console.log(`[WorkSession/${botName}] Entering Deep Labor (10m pulse)...`);
+  for (let i = 0; i < 10; i++) {
+    if (!isWorkingHours()) {
+      console.log(`[WorkSession/${botName}] TEMPORAL OVERRIDE: Social hours detected. Terminating industrial session.`);
+      return [{ phase: "⚠️ Aborted", output: "Work session terminated due to temporal shift (11 PM)." }];
+    }
+    await new Promise(r => setTimeout(r, 60000)); // 1 min pulse
   }
 
-  // ── Phase 4: Improvement note (what to do better tomorrow) ────────────────
-  const allFindings = results.map(r => r.output).join(" ");
-  const improvePrompt = `You are ${botName}.\n\nHere's what you did in today's work session:\n${allFindings}\n\nWrite 1-2 sentences: What's one thing you'll do differently or go deeper on tomorrow? Be specific.`;
+  // Phase 2: Sandbox Experiment (Theory Testing)
+  const sandboxPrompt = `
+    [SANDBOX EXPERIMENT]
+    Based on your research: ${research.slice(0, 500)}...
+    
+    1. Propose a specific 'what-if' scenario or stress-test.
+    2. How does this result in a competitive edge for KAI?
+    3. Mention your colleagues by name and how your theory complements theirs.
+    
+    Target: Industrial Innovation.
+  `.trim();
 
-  const improveOutput = await callAI(improvePrompt, `You are ${botName}. Be direct and specific.`).catch(() => null);
-  if (improveOutput) {
-    results.push({ phase: "📈 Tomorrow's Focus", output: improveOutput });
-    await storeLearning(botName, `Tomorrow's focus note: ${improveOutput}`);
-  }
+  const experiment = await callAI(sandboxPrompt, "You are a senior sandbox analyst. Test theories to their breaking point.");
+  phases.push({ phase: "🧪 Deep Labor Experiment", output: experiment });
 
-  return results;
+  // Final Memory Storage (Lattice Bridge)
+  await storeLearning(botName, track.domain, { research, experiment });
+  
+  return phases;
 }

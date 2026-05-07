@@ -5,18 +5,7 @@ import { WorldClock } from './shared/simulation.mjs';
 
 const clock = new WorldClock();
 
-// Manual .env loader for child process consistency
-const envPath = './.env';
-if (fs.existsSync(envPath)) {
-  const envContent = fs.readFileSync(envPath, 'utf8');
-  envContent.split('\n').forEach(line => {
-    const match = line.match(/^\s*([A-Za-z0-9_]+)\s*=\s*(.*)$/);
-    if (match) {
-      const [_, key, value] = match;
-      process.env[key] = value.trim().replace(/^['"](.*)['"]$/, '$1');
-    }
-  });
-}
+import 'dotenv/config';
 
 const BOTS = ["Gemini", "Claude", "X", "Groq", "Analyst", "Researcher", "Kai Coder"];
 const processes = new Map(); // name -> child process

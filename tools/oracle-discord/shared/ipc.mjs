@@ -36,6 +36,10 @@ export function startBotServer(port, name, onTrigger) {
  * Send a signal from Oracle to a specific bot
  */
 export async function sendBotSignal(port, payload) {
+  if (!port) {
+    console.warn(`[IPC] Attempted to signal bot on invalid port: ${port}`);
+    return;
+  }
   try {
     await fetch(`http://127.0.0.1:${port}/trigger`, {
       method: 'POST',

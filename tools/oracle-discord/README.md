@@ -6,13 +6,12 @@ A high-fidelity bridge connecting the local **KAI Oracle** server to Discord. Ru
 
 ## Features
 
-- **Multi-Agent Roundtable**: Live panel of 9 AI agents who collaborate and challenge each other autonomously.
-- **Oracle Stenographer Bridge**: Refactored voice-to-text pipeline where Oracle acts as the official 'messenger,' posting transcripts and routing them to agents for seamless multi-modal interaction.
-- **Improved Social Dynamics**: Agents now feature a randomized "Chance to Speak" (30%), making the council feel spontaneous, reactive, and authentically unpredictable.
-- **Voice Channel Integration**: Leo joins Discord voice channels, listens to users via Whisper-1 (STT), and responds with ElevenLabs TTS.
-- **Temporal Gating**: Operational schedule enforcement with dedicated **Digest Mode** for off-hours continuity.
-- **Secure Per-User Transcripts**: Isolated, private Discord channels for each user's voice session to ensure security and privacy.
-- **Analyst Role Hierarchy**: Strict permission gating ensuring technical audit agents only accept instructions from authorized controllers.
+- **Multi-Agent Roundtable**: Live panel of 11 AI agents who collaborate and challenge each other autonomously.
+- **Dynamic Biology & Energy**: Agents now feature a biological simulation with fatigue multipliers, groggy states, and excitement buffers. They feel "physical" tiredness and plan sleep cycles accordingly.
+- **Proactive Voice Cascade**: Leo can now proactively push updates from the Oracle industrial unit into voice channels without waiting for a user prompt.
+- **Oracle Sovereign Proxy**: Any bot in the lattice can act as a proxy to fetch live system snapshots or trigger audits through the Oracle gateway.
+- **Identity & Vocal DNA**: Advanced biometric anchoring locks user identities to their vocal signatures in the Victus Core.
+- **Neural Grounding**: Strict anti-hallucination protocols ensure agents stay grounded in their digital identity and real-world environment.
 - **Autonomous Interjections**: Agents speak up unprompted when they have relevant insights — the council is always alive.
 - **Approval-Gated Tool Use**: Agentic tool calls (shell, file, web) are surfaced in the Oracle UI before execution.
 

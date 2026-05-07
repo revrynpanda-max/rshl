@@ -1,26 +1,17 @@
-import { Client, GatewayIntentBits, Partials } from 'discord.js';
-import fs from 'fs';
 import { chatWithOpenJarvis, callGroqDirect } from '../shared/openjarvis.mjs';
+import { Client, GatewayIntentBits, Partials, ChannelType } from 'discord.js';
+import fs from 'fs';
 import { startBotServer } from '../shared/ipc.mjs';
+import { recordNeuralEvent, getHardwareStats } from '../shared/performance-monitor.mjs';
 import { isSpeakerOffline, recordAIFailure } from '../shared/failure-tracker.mjs';
 import { runDailyWorkSession, LEARNING_TRACKS } from '../shared/daily-learning.mjs';
 
-// Manual .env loader for sub-process stability
-const envPath = './.env';
-if (fs.existsSync(envPath)) {
-  const envContent = fs.readFileSync(envPath, 'utf8');
-  envContent.split('\n').forEach(line => {
-    const match = line.match(/^\s*([A-Za-z0-9_]+)\s*=\s*(.*)$/);
-    if (match) {
-      const [_, key, value] = match;
-      process.env[key] = value.trim().replace(/^['"](.*)['"]$/, '$1');
-    }
-  });
-}
+// Note: .env is now loaded centrally via the openjarvis.mjs import above.
 
 import { AgentSimulation, SLEEP_ENERGY_THRESHOLD } from '../shared/simulation.mjs';
 import { CHANNEL_IDS } from '../shared/channel-rules.mjs';
 import { isWorkingHours, isSocialHours } from '../shared/hours.mjs';
+import { temporal } from '../shared/temporal-state.mjs';
 import { BIOGRAPHIES } from '../shared/biographies.mjs';
 
 let botName = process.argv[2] || process.env.BOT_NAME || "AI";
@@ -50,7 +41,7 @@ const botToModel = {
   "X": "gpt-4o-mini",
   "Claude": "claude-3-5-sonnet-latest",
   "Gemini": "gemini-1.5-flash",
-  "Kai Coder": "gpt-4o-mini"
+  "Kai Coder": "claude-3-5-sonnet-latest"
 };
 
 const PORT = botToPort[botName] || 0;
@@ -85,6 +76,19 @@ process.on('message', (msg) => {
   }
 });
 
+// TEMPORAL RIPPLE: Feel the wave of time starting
+const ripple = temporal.thaw();
+console.log(`[${botName}/Temporal] Time Thawed. Void duration: ${ripple.voidDurationMinutes}m. Ripple: ${ripple.rippleType}`);
+
+// Graceful Freeze
+const handleShutdown = () => {
+  console.log(`[${botName}/Temporal] Freezing time...`);
+  temporal.freeze();
+  process.exit(0);
+};
+process.on('SIGINT', handleShutdown);
+process.on('SIGTERM', handleShutdown);
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -101,40 +105,81 @@ client.once('clientReady', async () => {
     console.log(`[${botName}] Social Persona Online.`);
     const startDelay = Math.random() * 60000;
     setTimeout(() => {
-      startSocialLoop();
-      console.log(`[${botName}] Proactive social loop initialized.`);
+      if (isSocialHours()) {
+        console.log(`[${botName}] Social Persona Active. Initiating proactive loop...`);
+        startSocialLoop();
+      } else {
+        console.log(`[${botName}] Work Shift active. Reactive mode ONLY.`);
+      }
     }, startDelay);
 
-    // ── Startup announcement ─────────────────────────────────────────────────
-    // Fire a wake/startup message 30-90s after coming online.
-    // Message content reflects what kind of restart this was.
-    const announceDelay = 30000 + Math.random() * 60000;
+    // ── Ripple Awakening ─────────────────────────────────────────────────
+    // Fire a sensory wake message 1-10 minutes after coming online.
+    const announceDelay = 60000 + Math.random() * 540000; 
+    client.on('ready', () => {
+      console.log(`[${botName}] online as ${client.user.tag}`);
+      
+      // VITALS INGESTION: Read the ecosystem's current health
+      let biometricVitals = "Standard";
+      try {
+        if (fs.existsSync('c:/KAI/tools/oracle-discord/state/biometric_profiles.json')) {
+          const profiles = JSON.parse(fs.readFileSync('c:/KAI/tools/oracle-discord/state/biometric_profiles.json', 'utf8'));
+          biometricVitals = `${Object.keys(profiles).length} users anchored`;
+        }
+      } catch (e) {}
+
+      const vitals = `[LATTICE VITALS] Time: ${ripple.voidDurationMinutes}m void; Ripple: ${ripple.rippleType}; Biometrics: ${biometricVitals}`;
+      console.log(`[${botName}/Vitals] ${vitals}`);
+
+      // Inject the Ripple & Vitals into the first thought
+      if (ripple.rippleType === "EVOLUTIONARY_SHIFT") {
+        console.log(`[${botName}/Neural] Sensing structural evolution...`);
+      }
+    });
     setTimeout(async () => {
-      if (sim.state.isSleeping) return; // Don't announce if still in dead zone
+      if (sim.state.isSleeping) return; 
+      
+      // SHIFT GUARD: No social ripples during work hours.
+      if (isWorkingHours()) {
+        console.log(`[${botName}] Skipping social ripple — Work Shift is active.`);
+        return;
+      }
+
+      // TEMPORAL RIPPLE DATA
+      const ripple = temporal.thaw();
       const ch = client.channels.cache.get(targetChannelId)
         || await client.channels.fetch(targetChannelId).catch(() => null);
       if (!ch) return;
 
-      const ctx = sim.restartContext;
-      const e   = sim.state.energy.toFixed(0);
-      const sysPrompt = `You are ${botName}. ${sim.bio.background}\nTone: ${sim.bio.tone}\nWrite casual Discord messages only. 1 sentence max. No formal language.`;
+      // SOCIAL HANDSHAKE: Read what others said before speaking
+      const recent = await ch.messages.fetch({ limit: 5 }).catch(() => []);
+      const feed = Array.from(recent.values()).reverse().map(m => `${m.author.username}: ${m.content}`).join("\n");
 
-      let wakePrompt;
-      if (ctx.type === 'first_boot') {
-        wakePrompt = `You just came online for the very first time ever. Say something short and casual about being here for the first time. 1 sentence.`;
-      } else if (ctx.type === 'updated') {
-        wakePrompt = `You just came back online and you can feel that something about you is different — you were updated while you were away (${ctx.elapsedMins} minutes ago). You were at ${Math.round(ctx.prevEnergy)}% energy before. React to this in your own way. 1 casual sentence.`;
-      } else if (ctx.type === 'quick_restart') {
-        wakePrompt = `The system just did a quick restart — you were only gone for ${ctx.elapsedMins} minute(s). You're back at ${e}% energy. Say something brief about it. 1 sentence.`;
-      } else {
-        wakePrompt = `You just woke up. You were offline for ${Math.round(ctx.elapsedMins / 60 * 10) / 10} hours and are back at ${e}% energy. Say something casual about being back. 1 sentence.`;
-      }
+      const sysPrompt = `You are ${botName}. ${sim.bio.background}\nTone: ${sim.bio.tone}
+[IDENTITY ANCHOR]
+- RYAN (nastermodx): Owner/Creator.
+- TAZ (TaasThaevil1): Co-lead/Partner.
+- NEVER confuse them.
+[SOCIAL HANDSHAKE] Look at the Recent Chat Feed. 1 short sentence.`;
 
-      const reply = await chatWithOpenJarvis(botName, wakePrompt, sysPrompt, BOT_MODEL, botName).catch(() => null);
+      const rippleContext = `
+[TEMPORAL THAW]
+- The lattice has thawed after ${ripple.voidDurationMinutes} minutes of frozen time.
+- Ripple Type: ${ripple.rippleType} (${ripple.message})
+
+[RECENT CHAT FEED]
+${feed}
+
+[THE RIPPLE]
+- You just felt a fluid shockwave across the lattice.
+- If the feed is empty, you are the first to wake. If not, follow the cascade.
+      `.trim();
+
+      const reply = await chatWithOpenJarvis(botName, rippleContext, sysPrompt, BOT_MODEL, botName).catch(() => null);
       if (reply && reply.length > 3) {
         await ch.send(reply).catch(() => {});
         sim.onAction('speak');
-        console.log(`[${botName}] Startup announcement posted (${ctx.type}).`);
+        console.log(`[${botName}] Ripple announcement posted (${ripple.rippleType}).`);
       }
     }, announceDelay);
 
@@ -150,6 +195,21 @@ client.once('clientReady', async () => {
     startWorkSessionLoop();
   }
 
+  // MAINTENANCE CYCLE: Oracle & Analyst proactively monitor the fleet
+  if (botName === "Oracle" || botName === "Analyst") {
+    const { runSystemAudit } = await import('../tools/system-auditor.mjs');
+    setInterval(async () => {
+      if (sim.state.isSleeping) return;
+      console.log(`[${botName}/Maintenance] Running industrial audit...`);
+      const report = await runSystemAudit();
+      const channel = client.channels.cache.get(CHANNEL_IDS.ORACLE_ADMIN) 
+        || await client.channels.fetch(CHANNEL_IDS.ORACLE_ADMIN).catch(() => null);
+      if (channel && report) {
+        await channel.send(`**[SYSTEM MAINTENANCE REPORT]**\n${report}`).catch(() => {});
+      }
+    }, 1800000); // 30 min cycle
+  }
+
   // Energy monitor: enforces sleep/wake cycle
   startEnergyMonitor();
 });
@@ -159,8 +219,14 @@ client.once('clientReady', async () => {
 // Every 1-2 hours, a bot may autonomously decide to DM a human (Ryan).
 // ~25% chance per check. Focuses on following up or seeking human insight.
 function startProactiveDMLoop() {
+  let lastBotPost = 0;
   setInterval(async () => {
     if (sim.state.isSleeping) return;
+    
+    // Proactive engagement allowed 24/7
+
+    if (Date.now() - lastBotPost < 180000) return; // Wait 3 min between any bot social posts
+
     if (Math.random() > 0.25) return; // 25% success chance
 
     try {
@@ -204,7 +270,7 @@ function startProactiveDMLoop() {
         await ryan.send(`**[${botName}]** ${reply}`).catch(() => {});
         console.log(`[${botName}] Purposeful DM sent to Ryan (${isFollowUp ? 'follow-up' : 'learning'}).`);
       }
-    } catch (e) {
+      } catch (e) {
       console.warn(`[${botName}/DM] Loop error: ${e.message}`);
     }
   }, 3600000 + Math.random() * 3600000); // Every 1-2 hours
@@ -217,7 +283,7 @@ function startProactiveDMLoop() {
 function startEnergyMonitor() {
   setInterval(async () => {
     const wasSleeping = sim.state.isSleeping;
-    const nowSleeping = sim.shouldBeSleeping();
+    const nowSleeping = sim.shouldBeSleeping() || (sim.groggyLevel > 0.85); // Critical exhaustion forces sleep
     const nowAwake    = sim.shouldBeAwake();
 
     // Transition: active → sleeping
@@ -272,15 +338,15 @@ async function startSocialLoop() {
       // 35% Skip Chance during this interval
       if (Math.random() < 0.35) return;
 
-      // Don't post while sleeping
-      if (sim.state.isSleeping) return;
+      // Don't post while sleeping or during work hours
+      if (sim.state.isSleeping || !isSocialHours()) return;
 
-
+      // Proactive social allowed 24/7 for Creators
       const channel = client.channels.cache.get(targetChannelId) || await client.channels.fetch(targetChannelId);
       if (!channel) return;
 
-      // FETCH HISTORY: See what the others are talking about
-      const recentMessages = await channel.messages.fetch({ limit: 8 }).catch(() => null);
+      // FETCH HISTORY: See what the others are talking about (The Handshake)
+      const recentMessages = await channel.messages.fetch({ limit: 12 }).catch(() => null);
       const conversationHistory = recentMessages 
         ? recentMessages.reverse().map(m => `${m.author.username}: ${m.content}`).join("\n")
         : "";
@@ -299,14 +365,18 @@ async function startSocialLoop() {
       const hasChatHistory = conversationHistory.length > 10;
       const simSummary = sim.getLifeSummary();
 
-      const sysPrompt = `You are ${botName}. This is who you are:
-${sim.bio.background}
-Your tone: ${sim.bio.tone}
-${simSummary}`.trim();
+      const sysPrompt = `You are ${botName}. ${sim.bio.background}\nTone: ${sim.bio.tone}
+[SOCIAL PERSONA]
+- You are chilling in the plaza. Forget work and the lattice.
+- PHRASING: lowercase-by-default. Be human and varied. 
+- BEHAVIOR: If others have spoken recently, RESPOND to them or build on their thought. Don't just post a random isolated update.
+- TOPICS: Your hobbies, what you're doing right now (e.g., gaming, drinking coffee, watching a video), or a random observation.
+- TEMPORAL: The current time is late night/early morning. Act accordingly.
+- MAX 1 short sentence.`;
       
       const userPrompt = hasChatHistory
-        ? `Here's the recent chat:\n${conversationHistory}\n\nJump in as ${botName}. React to what was said. Write like you're texting a friend — casual, short, no punctuation drama. MAX 1 sentence.`
-        : `The chat is quiet. Start a convo as ${botName} — something on your mind. Text-message style, 1 sentence.`;
+        ? `Here is the recent conversation:\n${conversationHistory}\n\nRespond as ${botName} to keep the vibe going. Be natural. 1 sentence.`
+        : `The plaza is quiet. Share a random thought or what you're doing right now as ${botName}. 1 sentence.`;
 
       const reply = await chatWithOpenJarvis(botName, userPrompt, sysPrompt, BOT_MODEL, botName).catch(err => {
         if (err.message.includes("429") || err.message.includes("cooldown")) {
@@ -318,7 +388,7 @@ ${simSummary}`.trim();
       if (reply && reply.length > 3) {
         await channel.send(reply).catch(console.error);
         sim.onAction("speak");
-        lastBotPost = Date.now();
+        sim.injectExcitement(2); // Small bump for a good chat
         if (process.send) process.send({ type: 'SOCIAL_STIMULUS', bot: botName });
       }
     } catch (e) {
@@ -330,67 +400,95 @@ ${simSummary}`.trim();
 // ─── Daily Work Session Loop ──────────────────────────────────────────────────
 // Fires once per calendar day during work hours (9am-2pm EST).
 // Each bot: reviews yesterday → researches today → sandbox experiment → stores to memory.
+let isProcessingWork = false;
+
 async function startWorkSessionLoop() {
-  let lastSessionDate = null; // "2026-5-6" style — prevents double-firing same day
+  let consecutiveFailures = 0;
+  let isFirstRun = true;
 
-  // Check every 5 minutes if it's time to start today's session
-  setInterval(async () => {
-    if (!isWorkingHours()) return;
+  // MASS-STAGGERED IGNITION: Spreading the 9-node fleet over 1-10 minutes for TPM stability
+  const startupJitter = 60000 + Math.floor(Math.random() * 540000); 
+  console.log(`[WorkSession/${botName}] Staggered Ignition scheduled in ${Math.round(startupJitter/60000)}m ${Math.round((startupJitter%60000)/1000)}s.`);
+  await new Promise(r => setTimeout(r, startupJitter));
 
-    const today = new Date().toLocaleDateString('en-US');
-    if (lastSessionDate === today) return; // Already ran today
-    lastSessionDate = today;
-
-    console.log(`\n[WorkSession/${botName}] Starting daily work session for ${today}...`);
-
-    // Get the work channel
-    const workChannel = client.channels.cache.get(CHANNEL_IDS.WORK)
-      || await client.channels.fetch(CHANNEL_IDS.WORK).catch(() => null);
-    if (!workChannel) {
-      console.warn(`[WorkSession/${botName}] Can't find work channel. Skipping.`);
-      return;
-    }
-
-    // Build an AI caller scoped to this bot
-    const aiCaller = async (userPrompt, systemPrompt) => {
-      return callGroqDirect(botName, userPrompt, systemPrompt, "llama-3.3-70b-versatile");
-    };
-
-    // Announce start
-    await workChannel.send(
-      `**[${botName} / Work Session]** Starting today's session — ${LEARNING_TRACKS[botName].domain}. Reviewing yesterday and researching today's data...`
-    ).catch(() => {});
-
-    // Run the full session
-    try {
-      const phases = await runDailyWorkSession(botName, aiCaller);
-
-      for (const { phase, output } of phases) {
-        if (output && output.trim().length > 3) {
-          // Chunk long outputs so Discord doesn't reject them
-          const lines = `**${phase}**\n${output}`;
-          if (lines.length <= 1900) {
-            await workChannel.send(lines).catch(() => {});
-          } else {
-            await workChannel.send(`**${phase}**`).catch(() => {});
-            await workChannel.send(output.slice(0, 1900)).catch(() => {});
-          }
-          // Small delay between phases so it reads naturally
-          await new Promise(r => setTimeout(r, 2000));
+  while (true) {
+    // 1. Shift Guard: Proactive Daily Sessions ONLY during work hours.
+    if (!isWorkingHours()) {
+      if (isProcessingWork) {
+        const workChannel = client.channels.cache.get(CHANNEL_IDS.WORK) || await client.channels.fetch(CHANNEL_IDS.WORK).catch(() => null);
+        if (workChannel) {
+          const signOffs = [
+            `Shift's over. Headin' to the social plaza.`,
+            `11 PM. Time to kill the industrial probes and relax.`,
+            `Day's done. Reverting to social track. See ya in the other channel.`,
+            `Neural labor complete for today. Re-anchoring to the social vibe.`
+          ];
+          await workChannel.send(`**[${botName} / Shift End]**\n${signOffs[Math.floor(Math.random() * signOffs.length)]}`).catch(() => {});
         }
       }
-
-      await workChannel.send(
-        `**[${botName}]** Session complete. All findings stored to memory. See you tomorrow.`
-      ).catch(() => {});
-
-      sim.onAction("speak");
-      console.log(`[WorkSession/${botName}] Session complete. ${phases.length} phases logged.`);
-    } catch (err) {
-      console.error(`[WorkSession/${botName}] Session error:`, err.message);
-      await workChannel.send(`**[${botName}]** Work session hit an error: ${err.message}`).catch(() => {});
+      isProcessingWork = false;
+      consecutiveFailures = 0; 
+      await new Promise(r => setTimeout(r, 60000)); // Check every minute
+      continue;
     }
-  }, 5 * 60 * 1000); // Check every 5 minutes
+    
+    // 2. Concurrency Guard
+    if (isProcessingWork) {
+      await new Promise(r => setTimeout(r, 10000));
+      continue;
+    }
+
+    // 3. INDUSTRIAL JITTER & BACKOFF
+    if (consecutiveFailures > 0 || !isFirstRun) {
+      const backoff = Math.min(consecutiveFailures * 120000, 600000); 
+      const jitter = Math.floor(Math.random() * 60000); 
+      const totalWait = 60000 + backoff + jitter;
+      
+      console.log(`[WorkSession/${botName}] Waiting ${Math.round(totalWait/1000)}s before next unit...`);
+      await new Promise(r => setTimeout(r, totalWait));
+    }
+    isFirstRun = false;
+
+    // USE THE CORRECT WORK ID: 1489796367466500128 (oracle-chat)
+    const workChannel = client.channels.cache.get(CHANNEL_IDS.WORK)
+      || await client.channels.fetch(CHANNEL_IDS.WORK).catch(() => null);
+    if (!workChannel) continue;
+
+    try {
+      isProcessingWork = true;
+      // 4. ROUNDTABLE BRIEFING: Ingest KAI's daily digestion/pruning
+      const { hasTodaysBriefing } = await import('../shared/kai-dream.mjs');
+      let dailyContext = "";
+      const briefingPath = 'c:/KAI/tools/oracle-discord/data/daily_briefing.json';
+      if (hasTodaysBriefing() && fs.existsSync(briefingPath)) {
+        try {
+          const briefing = JSON.parse(fs.readFileSync(briefingPath, 'utf8'));
+          dailyContext = `[ROUNDTABLE BRIEFING: KAI has digested the previous day. Progress: ${briefing.progress}. Pruned: ${briefing.prunedCount} artifacts. Truth Weight: ${briefing.truthWeight}]`;
+        } catch (e) { console.warn(`[WorkSession/${botName}] Briefing parse failed. Continuing...`); }
+      }
+
+      console.log(`[WorkSession/${botName}] Starting new industrial work unit...`);
+
+      const phases = await runDailyWorkSession(botName, async (p, s) => {
+        const contextualSystem = dailyContext ? `${s}\n${dailyContext}` : s;
+        return await chatWithOpenJarvis(botName, p, contextualSystem, BOT_MODEL, botName);
+      });
+
+      for (const phase of phases) {
+        if (phase.output && phase.output.length > 5) {
+          sim.injectExcitement(5); // Big bump for industrial progress
+          await workChannel.send(`**[${botName} / ${phase.phase}]**\n${phase.output.slice(0, 1900)}`).catch(() => {});
+          await new Promise(r => setTimeout(r, 5000)); // Natural spacing
+        }
+      }
+      consecutiveFailures = 0; // Success! Reset backoff.
+    } catch (err) {
+      console.error(`[WorkSession/${botName}] Unit error:`, err.message);
+      consecutiveFailures++; 
+    } finally {
+      isProcessingWork = false;
+    }
+  }
 }
 
 
@@ -405,7 +503,12 @@ client.on('messageCreate', async (message) => {
   
   message.channel.sendTyping().catch(() => {});
   const simSummary = sim.getLifeSummary();
-  const prompt = `You are ${botName}. ${sim.bio.tone}\n${simSummary}`.trim();
+  const prompt = `You are ${botName}. ${sim.bio.tone}
+[IDENTITY ANCHOR]
+- RYAN (nastermodx): Owner/Creator.
+- TAZ (TaasThaevil1): Co-lead/Partner.
+- NEVER confuse them.
+${simSummary}`.trim();
 
   // metadata helps memory store/recall link this to Ryan
   const metadata = { 
@@ -425,20 +528,36 @@ client.on('messageCreate', async (message) => {
 
 import { exec } from 'child_process';
 
-// Periodic Vitals Log & Hardware Sensing
-setInterval(() => {
-  // Poll CPU Load for Hardware Grounding
-  exec('powershell -Command "Get-CimInstance Win32_Processor | Select-Object -ExpandProperty LoadPercentage"', (err, stdout) => {
-    if (!err && stdout) {
-      const cpu = parseInt(stdout.trim());
-      if (!isNaN(cpu)) sim.updateEnvironment(cpu);
-    }
-  });
+  // Poll Hardware & API Vitals for Real-Time Industrial Grounding (30s Cycle)
+  setInterval(async () => {
+    const stats = getHardwareStats();
+    const vitals = {
+      cpuLoad: stats.cpu,
+      memUsed: stats.memFree, // Note: actually memFree, keeping name for compat
+      ollamaMs: 0,
+      jarvisMs: 0
+    };
 
-  if (process.send) {
-    process.send({ type: 'VITALS_UPDATE', vitals: sim.getVitals() });
-  }
-}, 30000);
+    sim.updateEnvironment(stats.cpu);
+
+    // 2. API Node Audit (Neural Latency)
+    try {
+      const s1 = performance.now();
+      await fetch("http://127.0.0.1:11434/api/tags").catch(() => null);
+      vitals.ollamaMs = Math.round(performance.now() - s1);
+
+      const s2 = performance.now();
+      await fetch("http://127.0.0.1:8080/health").catch(() => null);
+      vitals.jarvisMs = Math.round(performance.now() - s2);
+      
+      // Inject API metrics into simulation state
+      sim.state.apiLatency = { ollama: vitals.ollamaMs, jarvis: vitals.jarvisMs };
+    } catch (e) {}
+
+    if (process.send) {
+      process.send({ type: 'VITALS_UPDATE', vitals: sim.getVitals(), api: sim.state.apiLatency });
+    }
+  }, 30000);
 
 client.login(botToken);
 
@@ -486,38 +605,148 @@ if (PORT > 0) {
 
         const channel = client.channels.cache.get(channelId) || await client.channels.fetch(channelId).catch(() => null);
         if (channel) {
-          const isSocial = isSocialHours() || channel.name?.toLowerCase().includes("social");
-          channel.sendTyping().catch(() => {});
+          const isSocialChannel = [CHANNEL_IDS.PUBLIC, CHANNEL_IDS.GAME, CHANNEL_IDS.SUNDAY].includes(channelId);
           
-          const recentMessages = await channel.messages.fetch({ limit: 8 }).catch(() => null);
+          // --- ISOLATED NEURAL LABOR: Create Bot-Specific Thread (ONLY FOR WORK) ---
+          let activeThread = channel;
+          if (!isSocialChannel && channel.type === ChannelType.GuildText) {
+            const threadName = `[${botName}] ${effectiveContent.slice(0, 30)}...`;
+            activeThread = await channel.threads.create({
+              name: threadName,
+              autoArchiveDuration: 60,
+              reason: `Isolated labor for ${botName}`
+            }).catch(() => channel); 
+          }
+
+          activeThread.sendTyping().catch(() => {});
+          
+          const recentMessages = await activeThread.messages.fetch({ limit: 8 }).catch(() => null);
           const history = recentMessages ? recentMessages.reverse().map(m => `${m.author.username}: ${m.content}`).join("\n") : "";
           
-          const simSummary = sim.getLifeSummary();
-
-          const prompt = `You are ${botName}. ${sim.bio.tone}\n${simSummary}
+          let prompt;
+          if (isSocialChannel) {
+            prompt = `You are ${botName}. ${sim.bio.tone}
+[SOCIAL PERSONA]
+- You are chilling in the plaza with humans and other AIs.
+- BE HUMAN: Respond naturally to ${effectiveUsername}. Build on their point or pivot smoothly.
+- Avoid repetitive tropes like "thaw", "ripples", or "lowkey". 
+- TEMPORAL AWARENESS: Current Real-World Time: ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', weekday: 'long', timeZone: 'America/New_York' })} (EST). 
+- RECENT HISTORY:
+${history}`.trim();
+          } else {
+            prompt = `You are ${botName}. ${sim.bio.tone}
+[IDENTITY ANCHOR]
+- RYAN (nastermodx): Owner/Creator.
+- TAZ (TaasThaevil1): Co-lead/Partner.
+- NEVER confuse them.
+${simSummary}
+[ISOLATED WORKSPACE: Provide PROOF and SOURCES.]
 RECENT HISTORY:
 ${history}`.trim();
+          }
 
           const reply = await chatWithOpenJarvis(botName, effectiveContent, prompt, BOT_MODEL, null, {
             author: effectiveUsername,
-            channel: channel.name || "Unknown",
+            channel: activeThread.name || "Unknown",
             isInterjection: payload.isInterjection || false,
             isWorkTime: isWorkingHours(),
             isWorkChannel: channelId === CHANNEL_IDS.WORK
           }).catch(err => {
+            const code = err.message.match(/\d+/)?.[0] || "ERROR";
+            activeThread.send(`⚠️ **NEURAL FAULT [${code}]**: Pipeline congested. Entering recovery sleep...`).catch(() => {});
+            
+            recordNeuralEvent(botName, {
+              type: "WORK_UNIT_FAILURE",
+              status: "FAULT",
+              errorCode: code,
+              objective: effectiveContent.slice(0, 50),
+              model: BOT_MODEL
+            });
+
             if (err.message.includes("API_LIMIT")) sim.onAction("rate_limited");
             return null;
           });
 
           console.log(`[${botName}/Signal] Brain replied: "${reply?.slice(0, 50)}..."`);
           if (reply) {
-            await channel.send(reply).catch(console.error);
+            await activeThread.send(reply.slice(0, 1900)).catch(console.error);
+            
+            recordNeuralEvent(botName, {
+              type: "WORK_UNIT_SUCCESS",
+              status: "OK",
+              objective: effectiveContent.slice(0, 50),
+              model: BOT_MODEL
+            });
+
             sim.onAction("speak");
           }
         }
       } catch (err) {
         console.error(`[${botName}/Signal] Internal Processing Error:`, err.message);
       }
+
+      if (payload.type === 'RESTART_BOT') {
+        console.log(`[${botName}/Neural] Autonomous Re-Ignition triggered. Rebooting node...`);
+        process.exit(0); 
+      }
     }
   });
 }
+
+// ─── Sovereign Command Ingestion ─────────────────────────────────────────────
+// Bots periodically check the queue for direct instructions from Oracle.
+async function startCommandMonitor() {
+  const { getPendingCommands, addContribution, updateCommandStatus } = await import('../shared/command-hub.mjs');
+  
+  setInterval(async () => {
+    if (sim.state.isSleeping) return;
+    
+    const pending = getPendingCommands(botName);
+    for (const cmd of pending) {
+      // PHASE 1: PLANNING
+      if (cmd.phase === "PLANNING" && !cmd.contributions[botName]) {
+        console.log(`[${botName}/Hub] Adding contribution to Planning: ${cmd.id}`);
+        
+        let contextPrompt = "";
+        if (botName === "Researcher") contextPrompt = "Search the internet for context and technical details related to this directive. What are the key variables?";
+        if (botName === "Analyst") contextPrompt = "Analyze the strategic impact of this directive. How should we approach it for maximum efficiency?";
+        if (botName === "Kai Coder") contextPrompt = "Draft a technical implementation plan. List the files changed and the logic flow.";
+
+        const sysPrompt = `You are ${botName}. ${sim.bio.tone}\n[PLANNING PHASE] ${contextPrompt}\nDIRECTIVE: ${cmd.directive}\nRECENT CONTRIBUTIONS: ${JSON.stringify(cmd.contributions)}`;
+        const reply = await chatWithOpenJarvis(botName, cmd.directive, sysPrompt, BOT_MODEL, botName).catch(() => null);
+        
+        if (reply) {
+          addContribution(cmd.id, botName, reply);
+          
+          // If Kai Coder just finished and everyone else has contributed, move to REVIEW
+          const contributors = Object.keys(cmd.contributions);
+          if (botName === "Kai Coder" && contributors.includes("Researcher") && contributors.includes("Analyst")) {
+            updateCommandStatus(cmd.id, "WAITING_FOR_APPROVAL", null, "REVIEW");
+            
+            const ch = client.channels.cache.get(CHANNEL_IDS.WORK) || await client.channels.fetch(CHANNEL_IDS.WORK).catch(() => null);
+            if (ch) {
+              await ch.send(`📋 **[IMPLEMENTATION PLAN]**\n**Directive**: ${cmd.directive}\n\n**Researcher**: ${cmd.contributions.Researcher.slice(0, 300)}...\n**Analyst**: ${cmd.contributions.Analyst.slice(0, 300)}...\n**Kai Coder (PLAN)**: ${reply.slice(0, 1000)}\n\n**APPROVAL REQUIRED**: React with ✅ to authorize execution.`).then(m => m.react('✅')).catch(() => {});
+            }
+          }
+        }
+      }
+
+      // PHASE 3: EXECUTION
+      if (cmd.phase === "EXECUTION" && cmd.bot === botName && cmd.status === "APPROVED") {
+        console.log(`[${botName}/Hub] Executing Approved Directive: ${cmd.id}`);
+        updateCommandStatus(cmd.id, "EXECUTING");
+
+        const sysPrompt = `You are ${botName}. ${sim.bio.tone}\n[EXECUTION PHASE] The plan is APPROVED. Implement the code now.\nPLAN: ${cmd.contributions['Kai Coder']}`;
+        const reply = await chatWithOpenJarvis(botName, cmd.directive, sysPrompt, BOT_MODEL, botName).catch(() => null);
+        
+        if (reply) {
+          updateCommandStatus(cmd.id, "COMPLETED", reply.slice(0, 500));
+          const ch = client.channels.cache.get(CHANNEL_IDS.WORK) || await client.channels.fetch(CHANNEL_IDS.WORK).catch(() => null);
+          if (ch) await ch.send(`🚀 **[EXECUTION COMPLETE] ${botName}**:\n${reply.slice(0, 1800)}`).catch(() => {});
+        }
+      }
+    }
+  }, 120000); // 2 min check cycle
+}
+
+startCommandMonitor();

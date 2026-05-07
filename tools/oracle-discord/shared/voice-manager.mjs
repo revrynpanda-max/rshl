@@ -14,10 +14,16 @@ if (!fs.existsSync(SLOTS_FILE)) {
 export async function getSlotAssignments() {
   try {
     const data = JSON.parse(fs.readFileSync(SLOTS_FILE, 'utf8'));
-    // Ensure Ryan always has a slot for immediate recognition
     const RYAN_ID = "1111106883135217665";
-    if (data.assignments[RYAN_ID] === undefined) {
+    
+    // SOVEREIGN OVERRIDE: Ensure Ryan is ALWAYS Slot 0 and no one else is.
+    if (data.assignments[RYAN_ID] !== 0) {
+      // Find who has slot 0 and eject them
+      for (const [uid, slot] of Object.entries(data.assignments)) {
+        if (slot === 0 && uid !== RYAN_ID) delete data.assignments[uid];
+      }
       data.assignments[RYAN_ID] = 0;
+      saveSlotAssignments(data);
     }
     return data;
   } catch (e) {

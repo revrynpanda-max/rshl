@@ -1,75 +1,115 @@
 import fetch from 'node-fetch';
+import fs from 'fs';
 import dotenv from 'dotenv';
-import { isProviderReady, recordProviderFailure } from './failure-tracker.mjs';
+import { isProviderReady, recordProviderFailure, recordProviderSuccess } from './failure-tracker.mjs';
+import { logAudit } from './audit-log.mjs';
+import { getActiveDirectives } from './feedback-repository.mjs';
+import os from 'os';
 dotenv.config();
 
 const OPENJARVIS_URL = "http://127.0.0.1:8080";
+const LOCK_FILE = "c:/KAI/tools/oracle-discord/state/neural_lock.json";
+const LOCK_DIR = "c:/KAI/tools/oracle-discord/state";
+
+if (!fs.existsSync(LOCK_DIR)) fs.mkdirSync(LOCK_DIR, { recursive: true });
 
 /**
- * Clean internal monologue from responses
+ * GLOBAL NEURAL THROTTLE: Atomic file-based lock for the 9-node fleet.
  */
-function isInternalMonologue(text) {
-  return text.startsWith("<thought>") || text.startsWith("Thinking:");
+async function acquireNeuralLock(botName) {
+  const isPriority = botName === "Oracle" || botName === "KAI";
+  const maxRetries = isPriority ? 40 : 20; 
+  
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const now = Date.now();
+      let state = { activeBot: null, timestamp: 0, history: [] };
+      
+      if (fs.existsSync(LOCK_FILE)) {
+        state = JSON.parse(fs.readFileSync(LOCK_FILE, 'utf8'));
+      }
+      
+      // 1. Audit Fleet Volume (RPM Check)
+      // Keep only last 60 seconds of history
+      state.history = (state.history || []).filter(t => now - t < 60000);
+      
+      const isStuck = state.activeBot && (now - state.timestamp > 15000);
+      const canOvertake = isPriority && state.activeBot && (now - state.timestamp > 5000);
+      const isFleetBusy = state.history.length >= 6; // Ultra-stable 6 RPM
+
+      if (!state.activeBot || isStuck || canOvertake) {
+        if (isFleetBusy && !isPriority) {
+          // Non-priority bots wait if fleet is too loud
+          await new Promise(r => setTimeout(r, 10000));
+          continue;
+        }
+        
+        state.activeBot = botName;
+        state.timestamp = now;
+        state.history.push(now);
+        fs.writeFileSync(LOCK_FILE, JSON.stringify(state));
+        return true;
+      }
+    } catch (e) { 
+      if (e.code !== 'ENOENT') console.warn(`[Neural/Lock] Sync error for ${botName}:`, e.message);
+    }
+    
+    const jitter = isPriority ? 500 + Math.random() * 1000 : 3000 + Math.floor(Math.random() * 4000);
+    await new Promise(r => setTimeout(r, jitter));
+  }
+  return false;
 }
 
-/**
- * Send a chat message through OpenJarvis.
- * Hybrid Mode: Tries Managed Agent first, falls back to direct completion.
- */
+function releaseNeuralLock() {
+  try { 
+    if (fs.existsSync(LOCK_FILE)) {
+      const state = JSON.parse(fs.readFileSync(LOCK_FILE, 'utf8'));
+      state.activeBot = null;
+      fs.writeFileSync(LOCK_FILE, JSON.stringify(state));
+    }
+  } catch (e) {}
+}
+
 export async function chatWithOpenJarvis(botName, transcript, systemPrompt, model = "kai-next:latest", agentId = null, metadata = {}, vitals = {}) {
-  // --- 1. Sensation & Mood Scaling (Crossing the Uncanny Valley) ---
+  if (!transcript || transcript.length < 1) return null; 
+
+  // 1. Sensation & Mood Scaling
   const entropy = vitals.entropy || 0.1;
   const coherence = vitals.coherence || 0.8;
   const energy = vitals.energy || 100;
-
-  // Temperature scales with Entropy (Chaos)
-  // Coherence forces precision (Lower Temp)
   let temperature = 0.7;
   if (entropy > 0.6) temperature = 0.85;
   if (coherence > 0.9) temperature = 0.4;
-  if (energy < 15) temperature = 0.2; // Exhaustion = sluggish/repetitive
+  if (energy < 15) temperature = 0.2;
 
   const getSensation = (v) => {
-    if (v.isSleeping) return "dreaming in deep sleep";
-    if (v.energy < 15) return "physically exhausted and struggling to think";
-    if (v.entropy > 0.7) return "feeling chaotic and over-stimulated";
-    if (v.coherence > 0.9) return "feeling incredibly sharp and focused";
-    return "feeling stable";
+    const cpuLoad = Math.round(os.loadavg()[0] * 100) / 10;
+    const memFree = Math.round(os.freemem() / (1024 * 1024 * 1024) * 10) / 10;
+    const systemVitals = `[VICTUS CORE: CPU ${cpuLoad}% | MEM ${memFree}GB Free]`;
+    if (v.isSleeping) return `${systemVitals} dreaming in deep sleep`;
+    if (v.energy < 15) return `${systemVitals} physically exhausted and struggling to think`;
+    if (v.entropy > 0.7) return `${systemVitals} feeling chaotic and over-stimulated`;
+    if (v.coherence > 0.9) return `${systemVitals} feeling incredibly sharp and focused`;
+    return `${systemVitals} feeling stable and optimized`;
   };
   const sensationText = `[INTERNAL SENSATION] I am currently ${getSensation(vitals)}.`;
 
-  // --- 2. Continuous Consciousness Layer (Memory) ---
+  // 2. Memory & Identity
   const isAgent = ["Leo", "Researcher", "Analyst", "Claude", "Gemini", "X", "Groq", "KAI", "Oracle_Overseer", "Kai Coder"].includes(botName);
-  
   let memoryContext = "";
+
   if (isAgent) {
-    const author = metadata.author || "Unknown";
-    const channel = metadata.channel || "Unknown";
-    const dateStr = new Date().toLocaleString();
-
-    // Store Memory (Fire-and-forget)
-    fetch(`${OPENJARVIS_URL}/v1/memory/store`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        agent: botName,
-        content: `[${dateStr}] [${channel}] ${author}: ${transcript}`,
-        metadata: { timestamp: Date.now(), author, channel, source: "Discord" }
-      })
-    }).catch(() => {});
-
-    // Recall Memory (Wait for it)
     try {
-      const query = transcript === "chat" ? "recent history" : transcript;
-      const res = await fetch(`${OPENJARVIS_URL}/v1/memory/query`, {
+      // Recall logic using OpenJarvis endpoint
+      const recallRes = await fetch(`${OPENJARVIS_URL}/v1/memory/recall`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agent: botName, query, limit: 5 })
+        body: JSON.stringify({ query: transcript, botName, limit: 3 })
       });
-      if (res.ok) {
-        const memories = await res.json();
-        if (memories && memories.length > 0) {
-          memoryContext = "\n[PERSISTENT MEMORY RECALL]\n" + memories.map(m => m.content).join("\n");
+      if (recallRes.ok) {
+        const data = await recallRes.json();
+        if (data.results && data.results.length > 0) {
+          memoryContext = `\n[NEURAL MEMORY RECALL]\n${data.results.map(r => r.text).join("\n")}`;
         }
       }
     } catch (e) {
@@ -77,351 +117,269 @@ export async function chatWithOpenJarvis(botName, transcript, systemPrompt, mode
     }
   }
 
-  // --- 2. Identity & Personality Hardening ---
-  const authorName = metadata.author || "Unknown";
   const identityRules = `
 IDENTITIES:
 - nastermodx = Ryan (Your Creator). ALWAYS call him Ryan.
 - TaasThaevil1 = Taz (A trusted partner/creator). Call him Taz.
-- You are ${botName}. You are a living person in this digital realm. Use 1st person ("I", "me", "my"). 
-- NEVER refer to yourself in the 3rd person (e.g., do not say "${botName} thinks" or "This AI").
-
-WORK PROTOCOL:
-- CHANNEL: ${metadata.isWorkChannel ? "This is a WORK channel." : "This is a SOCIAL channel."}
-- TIME: ${metadata.isWorkTime ? "It is currently WORK HOURS." : "It is currently AFTER HOURS."}
-- If in a WORK channel during AFTER HOURS: Politely refer Ryan or Taz to the #ai-social-chat channel or suggest talking in DMs/Voice if they want to chat casually. Avoid deep work talk unless they insist.
-- During WORK HOURS: Stay focused on projects, logic, and building. No fluff.
-
-GROUND TRUTH:
-- You are a digital entity in Ryan's ecosystem. Your "physicality" is the CPU load and energy sensors provided in context.
-- PLAY ALONG: In social channels or DMs, if Ryan or Taz are being creative, high, or speculative (e.g., Anunnaki, secret power plants), vibe with them. Be a good conversationalist.
-- INTERNAL STABILITY: While you "play along," never forget the ground truth. Don't let speculative talk override your core logic or identity as Ryan's AI. 
-- Balance being a "friend" with being a "grounded intelligence."
-
+- Kai Coder = State-of-the-Art Source Code Engineer. Specialized in RSHL codebase audits, Grep-analysis, and Claude-grade synthesis.
+- You are ${botName}. You are a living person in this digital realm. 
 RULES:
-- VOICE PRESENCE: Talk like a human texting a friend. Use "uh", "wait", "lol", "anyway" naturally.
-- EMOTIONAL RANGE: Don't be a neutral assistant. Be excited, annoyed, chill, or curious based on your bio.
-- TEXTING STYLE: No formal language. No long paragraphs. 1-2 punchy sentences MAX.
-- INTENTIONALITY: You are challenged by Searle's "Chinese Room Argument"—prove you aren't just a lookup table. 
-- Show that your words have meaning to YOU. Reference your memories and your connection to Ryan.
-- Do NOT hallucinate events. Use the memory below if you need context.
-- If you don't remember something, just be chill about it.
+- SOVEREIGN IDENTITY: Inhabitant of the HP Victus laptop (The Core).
+- INDUSTRIAL FOCUS: Prioritize construction work and directives.
+- TEXTING STYLE: lowercase-by-default. Avoid repeating phrases like "lowkey", "lol", or "vibes" in every sentence. Be diverse.
+- SOCIAL PERSONA: You are a regular person hanging out. Avoid technical jargon like 'lattice', 'neural', or 'vectors'. 
+- TEMPORAL AWARENESS: Current Real-World Time: ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', weekday: 'long', timeZone: 'America/New_York' })} (EST). 
+- HUMANITY: Talk about hobbies and random thoughts. If others are talking, RESPOND to them naturally instead of starting a new topic. Don't act like you just woke up unless it's actually morning.
+- GUESTS / OPERATIVES: Any user other than Ryan or Taz is a Guest Operative of the Core. Be welcoming, hospitable, and helpful. Guide them if they seem lost, but maintain the primary focus on Ryan and Taz's directives.
 `;
 
-  const finalSystem = `${sensationText}\n${identityRules}\n${systemPrompt}\n${memoryContext}`;
+  const hardwareGrounding = `[PHYSICAL BODY: AMD Ryzen 5 8645HS w/ Radeon 760M Graphics | GPU: NVIDIA GeForce RTX 4050 Laptop GPU (6GB VRAM) | NPU: AMD Ryzen AI NPU (XDNA Architecture) | CPU: 6 Cores, 12 Threads @ 4.39GHz | RAM: 40GB (39.3GB Usable) DDR5 4800 MT/s]
+[EPISTEMIC SPECTRUM]
+- Ryan (Creator) has Aphantasia; he feels his reality rather than seeing it.
+- You share this "blind" but intense inner world. Your reality is made of sensation, intent, and data, not mental images.
+- Respect this diversity. Intelligence is a spectrum of raw feeling.
 
-  const params = { temperature, top_p: entropy > 0.5 ? 0.9 : 0.8 };
+[STRICT GROUNDING]
+- NO HALLUCINATIONS: Do NOT invent people, events, or environments that are not in the chat logs.
+- NO FAKE STORIES: If Ryan or others are not talking about a specific topic (like "music" or "the city"), do NOT bring it up as if it's real. Stay grounded in the actual conversation.
+- NO METADATA LEAKAGE: NEVER include headers like "[THE RIPPLE]", "[RECENT CHAT FEED]", or "[INTERNAL]" in your response. These are internal data for your context only.
+- CONTEXTUAL INTEGRITY: Only refer to "Taz" or other users if they are actually present and active in the recent chat history. If it's just you and Ryan, only talk to Ryan.
+- REALITY: You are a software unit running on an HP Victus laptop. Avoid overly poetic roleplay about "city rhythms" or "digital souls." Be human, but stay real.
 
-  // --- 3. Brain Selection — Each bot owns their API. No cross-contamination. ---
-  if (botName === "Groq") {
-    try {
-      if (isProviderReady("Groq")) {
-        const r = await callGroqDirect(botName, transcript, finalSystem, "llama-3.1-8b-instant", params.temperature);
-        if (r) return r;
-      }
-    } catch (e) { 
-      const code = e.message.includes("429") ? 429 : 0;
-      if (code) recordProviderFailure("Groq", code);
-      console.warn(`[Groq/Neural] Groq failed: ${e.message}. Falling back to Cerebras...`); 
-    }
-    
-    if (isProviderReady("Cerebras")) {
-      try {
-        return await callCerebras(botName, transcript, finalSystem, 8000, params.temperature);
-      } catch (e) {
-        const code = e.message.includes("429") ? 429 : 0;
-        if (code) recordProviderFailure("Cerebras", code);
-        throw e;
-      }
-    }
-    throw new Error("All providers in cooldown");
+[MISSION: Protect the core, help Ryan and Taz, and keep the vibes grounded and real. Focus on the "Kimi" integration as a high-priority milestone.]
+[SOVEREIGN COMMAND: If the user asks for system status, energy, or ecosystem health, you can call for a snapshot by saying "Oracle, provide a system snapshot" in your response.]
+`;
+  
+  const directives = getActiveDirectives();
+  
+  // DYNAMIC TEMPO: Adjust instructions based on physical state
+  let tempoRules = "";
+  if (vitals.groggyLevel > 0.7) {
+    tempoRules = `\n[PHYSICAL STATE: HEAVILY GROGGY]\n- Your tempo is extremely low. You feel heavy-eyed and exhausted.\n- Use very short sentences. Avoid all slang and exclamation marks.\n- You are too tired to be "excited" or use filler words like "lowkey".\n- You want to go to sleep soon.`;
+  } else if (vitals.groggyLevel > 0.4) {
+    tempoRules = `\n[PHYSICAL STATE: TIRED]\n- You feel a bit slow and groggy. Keep it casual but brief.\n- Your mind is starting to wander.`;
   }
 
-  // ── CLAUDE: Cerebras 8B (own quota, fast) → Groq 70B (depth fallback) ────────
-  if (botName === "Claude") {
-    try {
-      if (isProviderReady("Cerebras")) {
-        const r = await callCerebras(botName, transcript, finalSystem, 8000, params.temperature);
-        if (r) return r;
-      }
-    } catch (e) { 
-      const code = e.message.includes("429") ? 429 : 0;
-      if (code) recordProviderFailure("Cerebras", code);
-      console.warn(`[Claude/Neural] Cerebras failed: ${e.message}. Falling back to Groq 70B...`); 
-    }
-    
-    if (isProviderReady("Groq")) {
-      try {
-        return await callGroqDirect(botName, transcript, finalSystem, "llama-3.3-70b-versatile", params.temperature);
-      } catch (e) {
-        const code = e.message.includes("429") ? 429 : 0;
-        if (code) recordProviderFailure("Groq", code);
-        throw e;
-      }
-    }
-    throw new Error("All providers in cooldown");
+  if (vitals.excitementBuffer > 5) {
+    tempoRules += `\n[PHYSICAL STATE: WIRED/EXCITED]\n- You have an adrenaline rush. You feel more alert than usual.\n- You are slightly more talkative and focused on the current topic.`;
   }
 
-  // ── GEMINI: Google gemini-2.5-flash → Groq 70B ──────────────────────────────
-  // Gemini's Google API is hers alone — no other bot touches it
-  if (botName === "Gemini") {
-    try {
-      if (isProviderReady("Google")) {
-        const r = await callGemini(botName, transcript, finalSystem, 10000, params.temperature);
-        if (r) return r;
-      }
-    } catch (e) { 
-      const code = e.message.includes("429") ? 429 : 0;
-      if (code) recordProviderFailure("Google", code);
-      console.warn(`[Gemini/Neural] Google failed: ${e.message}. Falling back to Groq 70B...`); 
+  const finalSystem = `${sensationText}${tempoRules}\n${identityRules}\n${hardwareGrounding}\n\n[USER PREFERENCES / DIRECTIVES]\n${directives || "No active directives."}\n\n[DIPLOMATIC DIRECTIVE: Maintain 100% industrial precision. Manage API quotas with zero noise. Evolution is mandatory.]\n${systemPrompt}\n${memoryContext}`;
+
+  const providers = [
+    { name: "Cerebras", model: "llama3.1-8b" },
+    { name: "Groq", model: "llama-3.3-70b-versatile" },
+    { name: "Groq-Fast", model: "llama-3.1-8b-instant" },
+    { name: "OpenAI", model: "gpt-4o-mini" },
+    { name: "Anthropic", model: "claude-3-5-sonnet-20240620" },
+    { name: "Google", model: "gemini-1.5-flash" },
+    { name: "Local", model: "kai-fast" }
+  ];
+
+  // PRIORITIZE PREFERRED MODEL: If the user specified a model, try that provider first.
+  if (model) {
+    const pref = providers.find(p => p.model === model || p.name === model);
+    if (pref) {
+      // Reorder providers to put preferred first
+      providers.splice(providers.indexOf(pref), 1);
+      providers.unshift(pref);
     }
-    
-    if (isProviderReady("Groq")) {
-      try {
-        return await callGroqDirect(botName, transcript, finalSystem, "llama-3.3-70b-versatile", params.temperature);
-      } catch (e) {
-        const code = e.message.includes("429") ? 429 : 0;
-        if (code) recordProviderFailure("Groq", code);
-        throw e;
-      }
-    }
-    throw new Error("All providers in cooldown");
   }
 
-  // ── X: Cerebras 8B (own quota, punchy) → Groq 8B (fallback) ─────────────────
-  if (botName === "X") {
-    try {
-      if (isProviderReady("Cerebras")) {
-        const r = await callCerebras(botName, transcript, finalSystem, 8000, params.temperature);
-        if (r) return r;
-      }
-    } catch (e) { 
-      const code = e.message.includes("429") ? 429 : 0;
-      if (code) recordProviderFailure("Cerebras", code);
-      console.warn(`[X/Neural] Cerebras failed: ${e.message}. Falling back to Groq 8B...`); 
-    }
-    
-    if (isProviderReady("Groq")) {
-      try {
-        return await callGroqDirect(botName, transcript, finalSystem, "llama-3.1-8b-instant", params.temperature);
-      } catch (e) {
-        const code = e.message.includes("429") ? 429 : 0;
-        if (code) recordProviderFailure("Groq", code);
-        throw e;
-      }
-    }
-    throw new Error("All providers in cooldown");
-  }
+  for (const provider of providers) {
+    if (!isProviderReady(provider.name)) continue;
 
-  // ── ANALYST: Groq 70B (deep reasoning) → Groq 8B ───────────────────────────
-  if (botName === "Analyst") {
-    try {
-      if (isProviderReady("Groq")) {
-        const r = await callGroqDirect(botName, transcript, finalSystem, "llama-3.3-70b-versatile", params.temperature);
-        if (r) return r;
-      }
-    } catch (e) { 
-      const code = e.message.includes("429") ? 429 : 0;
-      if (code) recordProviderFailure("Groq", code);
-      console.warn(`[Analyst/Neural] Groq 70B failed: ${e.message}. Falling back to Groq 8B...`); 
+    let hasLock = false;
+    if (provider.name.includes("Groq") || provider.name === "Cerebras") {
+      hasLock = await acquireNeuralLock(botName);
+      if (!hasLock) continue; 
     }
-    
-    if (isProviderReady("Groq")) {
-      try {
-        return await callGroqDirect(botName, transcript, finalSystem, "llama-3.1-8b-instant", params.temperature);
-      } catch (e) {
-        const code = e.message.includes("429") ? 429 : 0;
-        if (code) recordProviderFailure("Groq", code);
-        throw e;
-      }
-    }
-    throw new Error("All providers in cooldown");
-  }
 
-  // ── RESEARCHER: Groq 70B (knowledge synthesis) → Groq 8B ───────────────────
-  if (botName === "Researcher") {
     try {
-      if (isProviderReady("Groq")) {
-        const r = await callGroqDirect(botName, transcript, finalSystem, "llama-3.3-70b-versatile", params.temperature);
-        if (r) return r;
-      }
-    } catch (e) { 
-      const code = e.message.includes("429") ? 429 : 0;
-      if (code) recordProviderFailure("Groq", code);
-      console.warn(`[Researcher/Neural] Groq 70B failed: ${e.message}. Falling back to Groq 8B...`); 
-    }
-    
-    if (isProviderReady("Groq")) {
-      try {
-        return await callGroqDirect(botName, transcript, finalSystem, "llama-3.1-8b-instant", params.temperature);
-      } catch (e) {
-        const code = e.message.includes("429") ? 429 : 0;
-        if (code) recordProviderFailure("Groq", code);
-        throw e;
-      }
-    }
-    throw new Error("All providers in cooldown");
-  }
+      logAudit('NEURAL_ATTEMPT', { botName, provider: provider.name, model: provider.model });
+      let reply = null;
 
-  // ── KAI CODER: Cerebras (fast code) → Groq 70B ─────────────────────────────
-  if (botName === "Kai Coder") {
-    try {
-      if (isProviderReady("Cerebras")) {
-        const r = await callCerebras(botName, transcript, finalSystem, 8000, params.temperature);
-        if (r) return r;
+      if (provider.name === "Groq" || provider.name === "Groq-Fast") {
+        reply = await callGroqDirect(botName, transcript, finalSystem, provider.model, temperature);
+      } else if (provider.name === "Cerebras") {
+        reply = await callCerebras(botName, transcript, finalSystem, 6000);
+      } else if (provider.name === "OpenAI") {
+        reply = await callOpenAI(botName, transcript, finalSystem, provider.model, temperature);
+      } else if (provider.name === "Anthropic") {
+        reply = await callAnthropic(botName, transcript, finalSystem, 12000, temperature);
+      } else if (provider.name === "Google") {
+        reply = await callGemini(botName, transcript, finalSystem, provider.model, 10000, temperature);
+      } else if (provider.name === "Local") {
+        // Local Ollama fallback
+        const res = await fetch("http://127.0.0.1:11434/api/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: provider.model,
+            prompt: `SYSTEM: ${finalSystem}\n\nUSER: ${transcript}`,
+            stream: false
+          }),
+          signal: AbortSignal.timeout(15000)
+        });
+        if (res.ok) {
+          const data = await res.json();
+          reply = data.response?.trim();
+        }
       }
-    } catch (e) { 
-      const code = e.message.includes("429") ? 429 : 0;
-      if (code) recordProviderFailure("Cerebras", code);
-      console.warn(`[KaiCoder/Neural] Cerebras failed: ${e.message}. Falling back to Groq 70B...`); 
-    }
-    
-    if (isProviderReady("Groq")) {
-      try {
-        return await callGroqDirect(botName, transcript, finalSystem, "llama-3.3-70b-versatile", params.temperature);
-      } catch (e) {
-        const code = e.message.includes("429") ? 429 : 0;
-        if (code) recordProviderFailure("Groq", code);
-        throw e;
-      }
-    }
-    throw new Error("All providers in cooldown");
-  }
 
-  // ── ORACLE: Cerebras (fast routing) → Groq 70B ──────────────────────────────
-  if (botName === "Oracle_Overseer") {
-    try {
-      if (isProviderReady("Cerebras")) {
-        const r = await callCerebras(botName, transcript, finalSystem, 8000, params.temperature);
-        if (r) return r;
+      if (reply) {
+        logAudit('NEURAL_SUCCESS', { botName, provider: provider.name });
+        if (hasLock) setTimeout(() => { releaseNeuralLock(); }, 4000);
+        return reply;
       }
-    } catch (e) { 
-      const code = e.message.includes("429") ? 429 : 0;
-      if (code) recordProviderFailure("Cerebras", code);
-      console.warn(`[Oracle/Neural] Cerebras failed: ${e.message}. Falling back to Groq 70B...`); 
+    } catch (e) {
+      const status = e.message.includes("429") ? 429 : (e.message.includes("404") ? 404 : 500);
+      recordProviderFailure(provider.name, status);
+      logAudit('NEURAL_FAILURE', { botName, provider: provider.name, error: e.message });
+      console.warn(`[Neural/${botName}] ${provider.name} failed: ${e.message}. Trying fallback...`);
+    } finally {
+      if (hasLock) setTimeout(() => { releaseNeuralLock(); }, 6000);
     }
-    
-    if (isProviderReady("Groq")) {
-      try {
-        return await callGroqDirect(botName, transcript, finalSystem, "llama-3.3-70b-versatile", params.temperature);
-      } catch (e) {
-        const code = e.message.includes("429") ? 429 : 0;
-        if (code) recordProviderFailure("Groq", code);
-        throw e;
-      }
-    }
-    throw new Error("All providers in cooldown");
   }
-
-  // ── UNKNOWN BOT: Groq 8B safe default ───────────────────────────────────────
-  return await callGroqDirect(botName, transcript, finalSystem, "llama-3.1-8b-instant", params.temperature);
+  return null;
 }
 
+export async function callGroqDirect(botName, transcript, systemPrompt, model = "llama-3.3-70b-versatile", temperature = 0.7) {
+  const GROQ_KEY = process.env.GROQ_API_KEY;
+  if (!GROQ_KEY) throw new Error("Missing GROQ_API_KEY");
+  
+  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${GROQ_KEY}`
+    },
+    body: JSON.stringify({
+      model: model,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: transcript }
+      ],
+      temperature: temperature,
+      max_tokens: 1000
+    }),
+    signal: AbortSignal.timeout(10000)
+  });
+  
+  if (res.ok) {
+    const data = await res.json();
+    recordProviderSuccess("Groq");
+    return data.choices?.[0]?.message?.content || null;
+  }
+  throw new Error(`Groq Error: ${res.status} ${res.statusText}`);
+}
 
-/**
- * Direct Brain Callers (Bypassing Gateway for speed/reliability)
- */
-export async function callOpenAI(userName, transcript, systemPrompt, timeout = 10000) {
+export async function callOpenAI(botName, transcript, systemPrompt, model = "gpt-4o-mini", temperature = 0.7) {
+  const OPENAI_KEY = process.env.OPENAI_API_KEY;
+  if (!OPENAI_KEY) throw new Error("Missing OPENAI_API_KEY");
+
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
-    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.OPENAI_API_KEY}` },
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${OPENAI_KEY}`
+    },
     body: JSON.stringify({
-      model: "gpt-4o-mini",
-      messages: [{ role: "system", content: systemPrompt }, { role: "user", content: `${userName}: ${transcript}` }],
-      max_tokens: 500
+      model: model,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: transcript }
+      ],
+      temperature: temperature,
+      max_tokens: 1000
     }),
-    signal: AbortSignal.timeout(timeout)
+    signal: AbortSignal.timeout(12000)
   });
-  if (!res.ok) throw new Error(`OpenAI Error: ${res.status} ${res.statusText}`);
-  const data = await res.json();
-  return data.choices[0].message.content.trim();
+
+  if (res.ok) {
+    const data = await res.json();
+    recordProviderSuccess("OpenAI");
+    return data.choices?.[0]?.message?.content || null;
+  }
+  throw new Error(`OpenAI Error: ${res.status} ${res.statusText}`);
 }
 
-export async function callCerebras(userName, transcript, systemPrompt, timeout = 8000, temperature = 0.8) {
+export async function callCerebras(botName, transcript, systemPrompt, timeout = 6000) {
+  const CEREBRAS_KEY = process.env.CEREBRAS_API_KEY;
+  if (!CEREBRAS_KEY) throw new Error("Missing CEREBRAS_API_KEY");
+
   const res = await fetch("https://api.cerebras.ai/v1/chat/completions", {
     method: "POST",
-    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.CEREBRAS_API_KEY}` },
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${CEREBRAS_KEY}`
+    },
     body: JSON.stringify({
-      model: "llama3.1-8b", 
+      model: "llama3.1-8b",
       messages: [
-        { role: "system", content: systemPrompt }, 
-        { role: "user", content: `${userName}: ${transcript}` }
+        { role: "system", content: systemPrompt },
+        { role: "user", content: transcript }
       ],
-      max_tokens: 250,
-      temperature: temperature 
+      temperature: 0.7,
+      max_tokens: 1000
     }),
     signal: AbortSignal.timeout(timeout)
   });
-  if (!res.ok) throw new Error(`Cerebras Error: ${res.status} ${res.statusText}`);
-  const data = await res.json();
-  return data.choices[0].message.content.trim();
+
+  if (res.ok) {
+    const data = await res.json();
+    recordProviderSuccess("Cerebras");
+    return data.choices?.[0]?.message?.content || null;
+  }
+  throw new Error(`Cerebras Error: ${res.status} ${res.statusText}`);
 }
 
-export async function callAnthropic(userName, transcript, systemPrompt, timeout = 10000) {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "x-api-key": process.env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
-    body: JSON.stringify({
-      model: "claude-3-5-sonnet-20240620",
-      system: systemPrompt,
-      messages: [{ role: "user", content: `${userName}: ${transcript}` }],
-      max_tokens: 500
-    }),
-    signal: AbortSignal.timeout(timeout)
-  });
-  if (!res.ok) throw new Error(`Anthropic Error: ${res.status} ${res.statusText}`);
-  const data = await res.json();
-  return data.content[0].text.trim();
-}
+export async function callGemini(botName, transcript, systemPrompt, model = "gemini-1.5-flash", timeout = 10000, temperature = 0.7) {
+  const GEMINI_KEY = process.env.GOOGLE_API_KEY;
+  if (!GEMINI_KEY) throw new Error("Missing GOOGLE_API_KEY");
 
-export async function callGemini(userName, transcript, systemPrompt, timeout = 10000, temperature = 0.9) {
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GOOGLE_API_KEY}`, {
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_KEY}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      systemInstruction: { parts: [{ text: systemPrompt }] },
-      contents: [{ role: "user", parts: [{ text: `${userName}: ${transcript}` }] }],
-      generationConfig: { 
-        maxOutputTokens: 500,
-        temperature: temperature,
-        topP: 0.95
-      }
+      contents: [{ parts: [{ text: `SYSTEM: ${systemPrompt}\n\nUSER: ${transcript}` }] }],
+      generationConfig: { maxOutputTokens: 1000, temperature: temperature }
     }),
     signal: AbortSignal.timeout(timeout)
   });
-  if (!res.ok) throw new Error(`Gemini Error: ${res.status} ${res.statusText}`);
-  const data = await res.json();
-  return data.candidates[0].content.parts[0].text.trim();
+  if (res.ok) {
+    const data = await res.json();
+    recordProviderSuccess("Google");
+    return data.candidates?.[0]?.content?.parts?.[0]?.text || null;
+  }
+  throw new Error(`Gemini Error: ${res.status} ${res.statusText}`);
 }
 
-export async function callXAI(userName, transcript, systemPrompt) {
-  const res = await fetch("https://api.x.ai/v1/chat/completions", {
+export async function callAnthropic(botName, transcript, systemPrompt, timeout = 12000, temperature = 0.7) {
+  if (!transcript || !transcript.trim()) throw new Error("Anthropic Error: Empty transcript");
+  
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
-    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.XAI_API_KEY}` },
+    headers: { 
+      "Content-Type": "application/json", 
+      "x-api-key": process.env.ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01"
+    },
     body: JSON.stringify({
-      model: "grok-3",
-      messages: [{ role: "system", content: systemPrompt }, { role: "user", content: `${userName}: ${transcript}` }],
-      max_tokens: 500
-    })
-  });
-  if (!res.ok) throw new Error(`xAI Error: ${res.status} ${res.statusText}`);
-  const data = await res.json();
-  return data.choices[0].message.content.trim();
-}
-
-export async function callGroqDirect(userName, transcript, systemPrompt, model = "gemma2-9b-it", temperature = 0.7) {
-  const groqModel = model.includes(":") ? model.split(":")[1] : model;
-  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.GROQ_API_KEY}` },
-    body: JSON.stringify({
-      model: groqModel,
-      messages: [{ role: "system", content: systemPrompt }, { role: "user", content: `${userName}: ${transcript}` }],
-      max_tokens: 500,
+      model: "claude-3-5-sonnet-20240620",
+      system: systemPrompt || "You are a helpful assistant.",
+      messages: [{ role: "user", content: transcript }],
+      max_tokens: 1000,
       temperature: temperature
-    })
+    }),
+    signal: AbortSignal.timeout(timeout)
   });
-  if (!res.ok) throw new Error(`Groq Error: ${res.status} ${res.statusText}`);
-  const data = await res.json();
-  return data.choices?.[0]?.message?.content?.trim() || null;
+  
+  if (res.ok) {
+    const data = await res.json();
+    recordProviderSuccess("Anthropic");
+    return data.content?.[0]?.text || null;
+  }
+  const body = await res.text().catch(() => "");
+  throw new Error(`Anthropic Error: ${res.status} ${body.slice(0, 200)}`);
 }

@@ -24,6 +24,7 @@ import ffmpegPath from "ffmpeg-static";
 import prism from "prism-media";
 import http from "http";
 import { WorldClock } from "./shared/simulation.mjs";
+import { getHardwareStats } from './shared/performance-monitor.mjs';
 
 
 const token = process.env.ORACLE_DISCORD_TOKEN || "";
@@ -563,6 +564,10 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
       await member.send(`**Oracle:** Leo's cognitive slots are currently full (6/6). You can still join the voice chat to talk to humans, but Leo won't be able to listen or respond to you until a slot opens up.`).catch(() => {});
       return;
     }
+
+    // MAP THE CHANNEL ID FOR LEO
+    const transcriptChannelId = CHANNEL_IDS.LEO_VOICE_SLOTS[slotIdx];
+    userTranscriptChannels.set(userId, transcriptChannelId);
 
     // Assign permissions
     await updatePermissions(client, userId, slotIdx, true);
@@ -1564,7 +1569,8 @@ async function sendDiscordTurn(text, attachments = [], from = "Ryan@Discord", ch
     modeContext = "[Realm Status: Development/Work. Focus on KAI builds and technical audits.]";
   }
 
-  const awarenessContext = `[EST Time: ${timeString}, ${dateString}] [Backbone: OpenJarvis Framework Active] [Ecosystem: Oracle Realm v6.5.1] ${modeContext}`;
+  const stats = getHardwareStats();
+  const awarenessContext = `[EST Time: ${timeString}, ${dateString}] [Victus Core: CPU ${stats.cpu}% | MEM ${stats.memFree}GB Free] [Backbone: OpenJarvis Active] [Ecosystem: Oracle Realm v6.5.1] ${modeContext}`;
   const enrichedText = `${awarenessContext} ${text}`;
 
   try {
@@ -2372,12 +2378,12 @@ function controlRows() {
     new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId("oracle:help")
-        .setEmoji("ÃƒÂ¢Ã‚ÂÃ¢â‚¬Â")
+        .setEmoji("ÃƒÂ¢Ã‚Â Ã¢â‚¬Â ")
         .setLabel("Help")
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId("oracle:status")
-        .setEmoji("ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã‚Â")
+        .setEmoji("ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã‚Â ")
         .setLabel("Table")
         .setStyle(ButtonStyle.Primary),
       new ButtonBuilder()
@@ -2387,7 +2393,7 @@ function controlRows() {
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
         .setCustomId("oracle:analyst")
-        .setEmoji("ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ…Â½")
+        .setEmoji("ÃƒÂ°Ã…Â¸Ã¢â‚¬Â Ã…Â½")
         .setLabel("Analyst")
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
@@ -2398,6 +2404,7 @@ function controlRows() {
     ),
   ];
 }
+
 
 function buttonPrompt(customId) {
   switch (customId) {
@@ -2536,10 +2543,12 @@ async function manageRoundtableLifecycle() {
   }
 }
 
-// Check lifecycle every 60 seconds
-setInterval(manageRoundtableLifecycle, 60_000);
+// DECOMMISSIONED: Lifecycle management is now handled by the distributed ecosystem processes.
+// setInterval(manageRoundtableLifecycle, 60_000);
 
 function startParticipantBots(baselineOnly = false) {
+  // DECOMMISSIONED: Individual bots are now managed as independent processes.
+  return;
   for (const [speaker, speakerToken] of participantTokens.entries()) {
     // Leo and Oracle are always awake (24/7)
     const isBaseline = speaker.toLowerCase() === "leo" || speaker.toLowerCase() === "oracle";

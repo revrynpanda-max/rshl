@@ -29,6 +29,19 @@ export const CHANNEL_SPEAKER_RULES = {
   [CHANNEL_IDS.SUNDAY]: new Set(["Claude", "Gemini", "Groq", "X"])
 };
 
+export const BOT_PORTS = {
+  "Leo": 3400,
+  "KAI": 3401,
+  "Gemini": 3402,
+  "Claude": 3403,
+  "X": 3404,
+  "Groq": 3405,
+  "Analyst": 3406,
+  "Researcher": 3407,
+  "Kai Coder": 3408,
+  "Oracle Coder": 3408 // Alias
+};
+
 /**
  * Checks if a specific AI speaker is allowed to speak in a specific channel.
  * @param {string} speaker - The name of the AI (e.g., "KAI", "Leo")
@@ -47,3 +60,27 @@ export function isAllowed(speaker, channelId) {
   if (!allowed) return false; // Default deny if channel not explicitly mapped
   return allowed.has(speaker);
 }
+
+/**
+ * Detects if a bot is named in the content
+ */
+export function detectNamedBot(content) {
+  const c = content.toLowerCase();
+  if (/\b(leo|leah|lia|leyo|lee)\b/.test(c)) return "Leo";
+  if (/\b(kai)\b/.test(c) && !c.includes("coder")) return "KAI";
+  if (c.includes("gemini")) return "Gemini";
+  if (c.includes("claude")) return "Claude";
+  if (c.includes("groq")) return "Groq";
+  if (c.includes("analyst")) return "Analyst";
+  if (c.includes("researcher")) return "Researcher";
+  if (c.includes("kai coder") || c.includes("kai_coder") || c.includes("coder")) return "Kai Coder";
+  if (/\b(x|xai|x ai)\b/.test(c)) return "X";
+  return null;
+}
+
+export const ROUNDTABLE_CHANNELS = [
+  CHANNEL_IDS.WORK,
+  CHANNEL_IDS.PUBLIC,
+  CHANNEL_IDS.GAME,
+  CHANNEL_IDS.SUNDAY
+];

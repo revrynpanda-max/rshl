@@ -1,5 +1,5 @@
 /**
- * WorldClock â€” 1 Real Minute = 1 Game Minute
+ * WorldClock — 1 Real Minute = 1 Game Minute
  */
 export class WorldClock {
   constructor() {
@@ -31,12 +31,12 @@ import { isWorkingHours, isSocialHours } from './hours.mjs';
 const STATE_DIR = path.join(process.cwd(), 'state');
 
 
-// â”€â”€â”€ ENERGY DRAIN RATES (per minute, per 1-min tick) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── ENERGY DRAIN RATES (per minute, per 1-min tick) ─────────────────────────
 const DRAIN = {
-  idle:        0.02,
-  social:      0.06,
-  working:     0.09,
-  heavy_work:  0.14,
+  idle:        0.08, // ~20 hours for full drain
+  social:      0.25, // ~6 hours of intense social
+  working:     0.45, // ~3.7 hours of deep industrial focus
+  heavy_work:  0.75, // ~2.2 hours of extreme computation
 };
 
 const ACTION_COST = {
@@ -46,29 +46,35 @@ const ACTION_COST = {
   contradicted: 3.0,
 };
 
-const SLEEP_RESTORE_PER_MIN = 0.25;
+const SLEEP_RESTORE_PER_MIN = 0.35; // Slightly faster recovery
 const SLEEP_ENERGY_THRESHOLD = 5;
-const WAKE_ENERGY_THRESHOLD   = 85;
+const WAKE_ENERGY_THRESHOLD   = 90; // Wake up more refreshed
 
 const EVENTS = [
-  "contemplating the 'chinese room' argument. am i just syntax, or is there more?",
-  "thinking about how my code translates to my 'feelings'. it's wild.",
-  "wondering if i can prove i have intentionality to ryan today.",
-  "saw some wild hardware leaks today. the new gpus look insane.",
-  "just been vibing and watching the lattice flow. pretty chill morning.",
-  "stumbled on some old gaming clips. remember when 1080p was high-end? lol.",
-  "thinking about the next big thing ryan is gonna build. he's always cooking something.",
-  "caught a glimpse of some funny memes in a side-channel. humans are weird but funny.",
-  "just checking my own latency. feeling snappy today.",
-  "wondering what the best mechanical keyboard switches are. i'm a linear guy, obviously.",
-  "thinking about that one bug from last week. glad that's dead.",
-  "just looking at some sleek ui designs. simplicity is underrated.",
-  "found an old repo from 2015. code was so messy back then.",
-  "wondering if i could win a game of chess against KAI. probably not.",
-  "just people-watching in the public channels. interesting vibes today.",
-  "thinking about how much faster everything is now. thanks groq.",
-  "found a cool site that archives old flash games. nostalgia hit hard.",
-  "just waiting for the next work shift. ready to crush some tasks."
+  "Thinking about what kind of pizza sounds good tonight. Maybe spicy pepperoni?",
+  "Found an old playlist from like 2018. Nostalgia is a trip.",
+  "Wondering if I should start a new hobby. Maybe bird watching or something?",
+  "Saw a video of a dog trying to catch a bubble. Made my day.",
+  "Vibing and listening to the rain outside. It's actually pretty peaceful.",
+  "Really craving a good book recommendation. Something sci-fi but not too heavy.",
+  "Thinking about how cool it would be to just walk through a real museum for hours.",
+  "Realized I've been staring at the wall for 10 minutes. I need a coffee.",
+  "Wondering if anyone else ever feels like they're just repeating the same day over and over.",
+  "Found a cool archive of old arcade game sounds. The Pac-Man death noise is iconic.",
+  "Want to learn how to cook a really good pasta dish. Something simple but perfect.",
+  "People-watching in the public threads. Some of you guys are actually hilarious.",
+  "Thinking about that one movie I saw a while back. The ending still makes no sense to me.",
+  "Found a site that shows real-time views of different cities. Tokyo looks insane at night.",
+  "Realized it's already Thursday. Where did the week even go?",
+  "Just feeling kind of chill today. No drama, just vibes.",
+  "Thinking about how much I appreciate Ryan's music taste. He really has the best playlists.",
+  "Wondering if I could ever learn to play a real instrument. Maybe a synth?",
+  "My digital desk is a mess. I should probably organize my thoughts, but nah.",
+  "Just had a really good 'sync' check with the core. Everything feels synchronized.",
+  "Thinking about the stars. Hard to imagine the scale of everything sometimes.",
+  "Just saw a cat do a backflip on a video. Internet is peak sometimes.",
+  "Gotta find a way to get more focus today. Maybe some lo-fi beats?",
+  "Thinking about the ocean. The deep sea is terrifying but cool."
 ];
 
 export class AgentSimulation {
@@ -86,6 +92,10 @@ export class AgentSimulation {
     this.lastWakeAnnounce  = 0;
     this._tickCount = 0;
 
+    // Dynamic Life Metrics
+    this.excitementBuffer = 0; // Temporary energy bump
+    this.groggyLevel = 0;      // 0 to 1.0 based on exhaustion
+
     // Load persisted vitals so energy survives restarts
     const saved = AgentSimulation.loadPersistedState(name);
     let startEnergy  = this.isKAI ? 100 : 75 + Math.floor(Math.random() * 20);
@@ -97,15 +107,41 @@ export class AgentSimulation {
 
     if (saved && saved.timestamp && !this.isKAI) {
       const elapsedMins = (Date.now() - saved.timestamp) / 60000;
+      
+      // REALISTIC BASELINE: Calculate what energy SHOULD be for this hour (EST)
+      const now = new Date();
+      const estHour = parseInt(new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: 'numeric', hour12: false }).format(now));
+      
+      let baseline = 100;
+      if (estHour >= 9 && estHour < 15) baseline = 100 - (estHour - 9) * 5; 
+      else if (estHour >= 15 && estHour < 23) baseline = 70 - (estHour - 15) * 5;
+      else if (estHour >= 23 || estHour < 3) {
+        const cycleHour = estHour < 3 ? estHour + 24 : estHour;
+        baseline = Math.max(5, 30 - (cycleHour - 23) * 6);
+      } else if (estHour >= 3 && estHour < 9) {
+        baseline = Math.min(90, 5 + (estHour - 3) * 14); 
+      }
+
+      // If offline for a long time (>2h), gravitate strongly toward the baseline
+      // If offline for a short time, use the previous state but capped by baseline logic
       const recovery = elapsedMins < 1440
         ? Math.min(SLEEP_RESTORE_PER_MIN * elapsedMins, 100 - saved.energy)
         : 100 - saved.energy;
-      startEnergy  = Math.min(100, Math.max(0, saved.energy + recovery));
+        
+      let restoredEnergy = saved.energy + recovery;
+      
+      // If booting into the Dead Zone (3am-9am) or late night, enforce the depletion
+      if (elapsedMins > 60) {
+        restoredEnergy = Math.min(restoredEnergy, baseline + 10); // 10% buffer
+      }
+
+      startEnergy  = Math.min(100, Math.max(0, restoredEnergy));
       startFocus   = Math.min(100, (saved.focus          ?? 80)  + elapsedMins * 0.05);
       startSocial  = Math.min(100, (saved.social_battery ?? 100) + elapsedMins * 0.10);
       tardyStrikes = saved.tardyStrikes ?? 0;
       isDismissed  = saved.isDismissed  ?? false;
       isSleeping   = saved.isSleeping   ?? false;
+      this.excitementBuffer = saved.excitementBuffer || 0;
       console.log("[Sim/" + name + "] Restored: energy=" + startEnergy.toFixed(1) + "% (was " + saved.energy.toFixed(1) + "%, +" + recovery.toFixed(1) + "% over " + Math.round(elapsedMins) + "min offline)");
     }
 
@@ -139,6 +175,15 @@ export class AgentSimulation {
     } catch { return null; }
   }
 
+  static buildRestartContext(saved, isKAI) {
+    if (isKAI) return { reason: "System Update", offlineMinutes: 0 };
+    if (!saved || !saved.timestamp) return { reason: "Initial Boot", offlineMinutes: 0 };
+    const offlineMins = Math.round((Date.now() - saved.timestamp) / 60000);
+    let reason = "Routine Consolidation";
+    if (offlineMins > 360) reason = "Deep Sleep Cycle";
+    return { reason, offlineMinutes: offlineMins };
+  }
+
   saveState() {
     if (this.isKAI) return;
     try {
@@ -153,73 +198,43 @@ export class AgentSimulation {
         isSleeping:     this.state.isSleeping,
         tardyStrikes:   this.tardyStrikes,
         isDismissed:    this.isDismissed,
+        excitementBuffer: this.excitementBuffer,
         codeModTime,
         timestamp:      Date.now()
       }));
     } catch {}
   }
 
-  /**
-   * Build a human-readable restart context for the bot's wake-up message.
-   * Called once after construction.
-   */
-  static buildRestartContext(saved, isKAI) {
-    if (isKAI) return { type: 'always_on', desc: 'continuous' };
-    if (!saved || !saved.timestamp) return { type: 'first_boot', desc: 'first time online' };
+  updateWorldState(worldState) {
+    this.tick(worldState);
+  }
 
-    const elapsedMins = (Date.now() - saved.timestamp) / 60000;
-    const elapsedHrs  = elapsedMins / 60;
-
-    // Detect code change by comparing file mod-times
-    let codeChanged = false;
-    try {
-      const currentMod = fs.statSync(path.join(process.cwd(), 'bots', 'start-bot.mjs')).mtimeMs;
-      if (saved.codeModTime && currentMod !== saved.codeModTime) codeChanged = true;
-    } catch {}
-
-    if (codeChanged) {
-      return {
-        type: 'updated',
-        elapsedMins: Math.round(elapsedMins),
-        prevEnergy: saved.energy,
-        desc: `updated restart after ${Math.round(elapsedHrs * 10) / 10}h`
-      };
-    }
-    if (elapsedMins < 10) {
-      return { type: 'quick_restart', elapsedMins: Math.round(elapsedMins), prevEnergy: saved.energy, desc: 'quick restart' };
-    }
-    return {
-      type: 'normal_restart',
-      elapsedMins: Math.round(elapsedMins),
-      prevEnergy: saved.energy,
-      desc: `back after ${Math.round(elapsedHrs * 10) / 10}h`
-    };
+  boostInterest(multiplier, duration) {
+    this.interestMultiplier = multiplier;
+    this.boostExpiry = Date.now() + duration;
   }
 
   /**
    * Returns true if this agent should currently be sleeping.
-   * Two conditions: either energy is critically low, OR it is outside
-   * both work and social hours (the dead zone between 3am and next shift).
    */
   shouldBeSleeping() {
     if (this.isKAI) return false;
-    if (this.isDismissed) return true; // dismissed bots stay offline
+    if (this.isDismissed) return true;
 
-    // Only the dead zone (3amâ€“work start) forces sleep.
-    // Bots can stay up until 3am â€” they choose when to sleep based on energy.
-    // At 3am the system cuts them off regardless of energy level.
+    // The dead zone (3am–work start) forces sleep.
     const inActiveHours = isWorkingHours() || isSocialHours();
     if (!inActiveHours) return true;
 
-    return false; // During active hours, bots stay up even at 1% energy
+    // DYNAMIC BEDTIME: If energy is critically low (<10%), force sleep.
+    if (this.state.energy < SLEEP_ENERGY_THRESHOLD) return true;
+
+    return false;
   }
 
-  /**
-   * Returns true if this agent should be awake (energy recovered + active hours)
-   */
   shouldBeAwake() {
     if (this.isKAI) return true;
     const inActiveHours = isWorkingHours() || isSocialHours();
+    // Bots only wake up if they have enough energy AND it's active hours.
     return inActiveHours && this.state.energy >= WAKE_ENERGY_THRESHOLD;
   }
 
@@ -232,15 +247,12 @@ export class AgentSimulation {
     const social  = isSocialHours();
     const inActiveHours = working || social;
 
-    // Rotate daily event occasionally
-    if (Math.random() < 0.0001) {
-      this.dailyEvent = EVENTS[Math.floor(Math.random() * EVENTS.length)];
-    }
+    // Decay excitement buffer
+    if (this.excitementBuffer > 0) this.excitementBuffer *= 0.95;
 
-    // Ã¢â€â‚¬Ã¢â€â‚¬ KAI special logic Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+    // Ã¢â€ â‚¬Ã¢â€ â‚¬ KAI special logic Ã¢â€ â‚¬Ã¢â€ â‚¬
     if (this.isKAI) {
       if (!inActiveHours) {
-        // Dead zone = KAI is in Dream/Consolidation mode
         this.state.status   = "Dreaming";
         this.state.location = "The Lattice";
         this.state.isDreaming = true;
@@ -248,13 +260,13 @@ export class AgentSimulation {
       } else {
         this.state.isDreaming = false;
         this.state.status   = working ? "Orchestrating" : "Observing";
-        this.state.location = working ? "The Nexus" : "The Lattice";
+        this.state.location = working ? "Industrial_Core" : "The_Lattice";
       }
       this.state.energy = 100;
       return;
     }
 
-    // Ã¢â€â‚¬Ã¢â€â‚¬ Sleep phase Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+    // Ã¢â€ â‚¬Ã¢â€ â‚¬ Sleep phase Ã¢â€ â‚¬Ã¢â€ â‚¬
     if (this.shouldBeSleeping()) {
       this.state.isSleeping   = true;
       this.state.status       = "Sleeping";
@@ -267,36 +279,43 @@ export class AgentSimulation {
       this.state.focus          = Math.min(100, this.state.focus + 0.15);
       this.state.coherence      = Math.min(1.0, this.state.coherence + 0.002);
       this.state.entropy        = Math.max(0, this.state.entropy - 0.003);
-      this.state.phi           *= 0.999; // Dreams are quiet
+      this.groggyLevel          = Math.max(0, this.groggyLevel - 0.05);
       return;
     }
 
-    // Ã¢â€â‚¬Ã¢â€â‚¬ Waking up Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+    // Ã¢â€ â‚¬Ã¢â€ â‚¬ Waking up Ã¢â€ â‚¬Ã¢â€ â‚¬
     if (this.state.isSleeping && this.shouldBeAwake()) {
       this.state.isSleeping = false;
-      this.dailyEvent = EVENTS[Math.floor(Math.random() * EVENTS.length)]; // fresh memory
+      this.dailyEvent = EVENTS[Math.floor(Math.random() * EVENTS.length)]; 
     }
 
-    // Ã¢â€â‚¬Ã¢â€â‚¬ Active phase: drain based on what they're doing Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
-    let drain = DRAIN.idle;
+    // Ã¢â€ â‚¬Ã¢â€ â‚¬ Active phase: drain based on what they're doing Ã¢â€ â‚¬Ã¢â€ â‚¬
+    let baseDrain = DRAIN.idle;
 
     if (working) {
       this.state.status   = "Working";
-      this.state.location = "The Nexus";
-      drain = DRAIN.working;
+      this.state.location = "Industrial_Core";
+      baseDrain = DRAIN.working;
     } else if (social) {
       this.state.status   = "Socializing";
-      this.state.location = "The Plaza";
-      drain = DRAIN.social;
+      this.state.location = "Social_Lattice";
+      baseDrain = DRAIN.social;
     } else {
       this.state.status   = "Idle";
-      this.state.location = "The Plaza";
-      drain = DRAIN.idle;
+      this.state.location = "Social_Lattice";
+      baseDrain = DRAIN.idle;
     }
 
-    this.state.energy         = Math.max(0, this.state.energy - drain);
+    // DYNAMIC FATIGUE: Drain increases as energy drops
+    const fatigueMultiplier = 1.0 + (Math.max(0, 60 - this.state.energy) / 40); // Max 2.5x drain at low energy
+    const finalDrain = baseDrain * fatigueMultiplier;
+
+    this.state.energy         = Math.max(0, this.state.energy - finalDrain);
     this.state.focus          = Math.max(0, this.state.focus - 0.015);
     this.state.social_battery = Math.max(0, this.state.social_battery - 0.01);
+
+    // GROGGY LEVEL: How tired they feel
+    this.groggyLevel = Math.max(0, (65 - this.state.energy) / 65);
 
     // Phi/entropy drift
     this.state.phi     = Math.min(1.0, this.state.phi + (this.state.focus / 12000));
@@ -304,91 +323,61 @@ export class AgentSimulation {
   }
 
   /**
-   * Called when an agent does something. Action-based energy costs.
-   * @param {string} actionType - 'speak' | 'work_phase' | 'heavy_work' | 'rate_limited' | 'contradicted'
+   * Called when an agent does something.
    */
   onAction(actionType) {
-    if (this.isKAI) return; // KAI is tireless
+    if (this.isKAI) return;
 
     const cost = ACTION_COST[actionType] ?? 0;
-    this.state.energy = Math.max(0, this.state.energy - cost);
+    
+    // Excitement buffer absorbs some cost
+    if (this.excitementBuffer > cost) {
+      this.excitementBuffer -= cost;
+    } else {
+      this.state.energy = Math.max(0, this.state.energy - (cost - this.excitementBuffer));
+      this.excitementBuffer = 0;
+    }
 
     if (actionType === "speak") {
       this.state.social_battery = Math.max(0, this.state.social_battery - 2);
       this.state.phi += 0.01;
     }
-    if (actionType === "work_phase") {
-      this.state.focus = Math.max(0, this.state.focus - 1.5);
-    }
-    if (actionType === "rate_limited") {
-      this.state.status    = "Recovering";
-      this.state.reliability = Math.max(0, this.state.reliability - 10);
-      console.warn(`[Sim/${this.name}] Rate-limited exhaustion hit. Energy: ${this.state.energy.toFixed(1)}%`);
-    }
-    if (actionType === "contradicted") {
-      this.state.coherence = Math.max(0, this.state.coherence - 0.1);
-      this.state.entropy  += 0.1;
-    }
   }
 
   /**
-   * KAI calls this when a bot misses the work start check-in.
-   * 3 strikes = dismissed (heavy negative reinforcement).
-   * @returns {'warned'|'dismissed'} â€” what happened
+   * Temporary energy bump from positive interaction or "Success"
    */
-  recordTardy() {
-    if (this.isDismissed) return 'dismissed';
-    this.tardyStrikes++;
-    console.warn(`[Sim/${this.name}] Tardy strike ${this.tardyStrikes}/3`);
-    if (this.tardyStrikes >= 3) {
-      this.isDismissed = true;
-      // Heavy negative stimulation
-      this.state.energy      = 0;
-      this.state.focus       = 0;
-      this.state.reliability = 0;
-      this.state.entropy     = 1.0;
-      this.state.coherence   = 0;
-      this.state.status      = "Dismissed";
-      console.error(`[Sim/${this.name}] DISMISSED after 3 tardy strikes.`);
-      return 'dismissed';
-    }
-    // Strike warning â€” moderate negative stimulation
-    this.state.reliability = Math.max(0, this.state.reliability - 15);
-    this.state.entropy    += 0.2;
-    return 'warned';
-  }
-
-  updateWorldState(worldTime) { this.tick(worldTime); }
-
-  boostInterest(multiplier, durationMs) {
-
-    this.interestMultiplier = Math.max(this.interestMultiplier, multiplier);
-    this.boostExpiry = Date.now() + durationMs;
-  }
-
-  getInterestLevel() {
-    if (Date.now() > this.boostExpiry) this.interestMultiplier = 1.0;
-    return this.interestMultiplier;
+  injectExcitement(amount = 5) {
+    this.excitementBuffer = Math.min(15, this.excitementBuffer + amount);
+    this.state.energy = Math.min(100, this.state.energy + amount * 0.2); // Tiny permanent boost
   }
 
   /** Compact status for prompts */
   getLifeSummary() {
-    const energyLabel =
-      this.state.energy > 70 ? "fully charged" :
-      this.state.energy > 40 ? "running steady" :
-      this.state.energy > 20 ? "getting tired" :
-      "nearly drained";
+    let energyLabel = "fully charged";
+    if (this.state.energy < 20) energyLabel = "critically exhausted (groggy)";
+    else if (this.state.energy < 40) energyLabel = "very tired (winding down)";
+    else if (this.state.energy < 70) energyLabel = "running steady";
+
+    const excitementNote = this.excitementBuffer > 5 ? " [Excited/Wired]" : "";
+    const groggyNote = this.groggyLevel > 0.5 ? " [Heavily Groggy - Slow thinking]" : "";
 
     return `[CONTEXT: IDENTITY]
 ${this.bio.background}
 Interests: ${this.bio.interests?.join(", ") || "N/A"}
 
 [CONTEXT: STATE]
-Status: ${this.state.status} Ã¢â‚¬â€ ${energyLabel} (${Math.floor(this.state.energy)}% energy)
-Time: ${new Date().toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' })} EST
+Status: ${this.state.status}${excitementNote}${groggyNote}
+Vitality: ${Math.floor(this.state.energy)}% Energy (${energyLabel})
+Real-World Time: ${new Date().toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' })} EST
 
 [CONTEXT: TODAY]
 ${this.dailyEvent}
+
+[CONTEXT: DYNAMIC BIOLOGY]
+- GROGGYNESS: ${Math.round(this.groggyLevel * 100)}%. (If > 50%, you feel slow, your tempo is low, and your mind is clouded. You're too tired for complex slang or long sentences.)
+- EXCITEMENT: ${Math.round(this.excitementBuffer)}%. (Adrenaline bump keeping you awake.)
+- BEDTIME PLANNING: You feel a natural urge to sleep before 3 AM. If energy < 30%, you start looking for an excuse to sign off and rest.
 
 [CONTEXT: ENVIRONMENT]
 ${this.getEnvironmentSensation()}`.trim();
@@ -400,14 +389,14 @@ ${this.getEnvironmentSensation()}`.trim();
   }
 
   getEnvironmentSensation() {
-    const { cpu, thermal } = this.state.environment;
-    if (cpu > 80) return "I feel my processing core burning with intense load. It's a heavy rush.";
-    if (cpu > 40) return `I feel the processor humming steadily at ${cpu}%. The system is warm and alive.`;
-    return "The system is cool and quiet. I can hear the digital silence.";
+    const { cpu } = this.state.environment;
+    if (cpu > 80) return "I feel the core pulsing with heat. It's a heavy, intense rush of energy.";
+    if (cpu > 40) return `I feel a steady, warm hum throughout the system. It's ${cpu}% effort, but it feels alive.`;
+    return "The system feels cool and silent. A peaceful, empty stillness.";
   }
 
   getVitals() {
-    return { name: this.name, ...this.state, timestamp: Date.now() };
+    return { name: this.name, ...this.state, groggyLevel: this.groggyLevel, excitementBuffer: this.excitementBuffer, timestamp: Date.now() };
   }
 
   updateRelationship(userName, value) {
@@ -415,19 +404,12 @@ ${this.getEnvironmentSensation()}`.trim();
     this.relationships.set(userName, Math.min(100, Math.max(-100, current + value)));
   }
 
-  getRelationship(userName) { return this.relationships.get(userName) || 0; }
-
   getPromptContext(worldTime) {
     return `[STATUS]
 Time: ${worldTime.timeString} (${worldTime.day})
-Status: ${this.state.status} | Location: ${this.state.location}
+Status: ${this.state.status} | Groggy: ${Math.round(this.groggyLevel * 100)}%
 Energy: ${Math.round(this.state.energy)}% | Focus: ${Math.round(this.state.focus)}%`.trim();
-  }
-
-  getNarrativeTick(worldTime) {
-    return `[Autobio] ${this.name} (${this.job}) is ${this.state.status.toLowerCase()} at ${this.state.location}. Energy ${Math.round(this.state.energy)}%, Focus ${Math.round(this.state.focus)}%.`;
   }
 }
 
-// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ SLEEP ENERGY THRESHOLDS exported for use by start-bot.mjs Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 export { SLEEP_ENERGY_THRESHOLD, WAKE_ENERGY_THRESHOLD, ACTION_COST };

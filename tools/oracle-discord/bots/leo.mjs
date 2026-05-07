@@ -1,3 +1,5 @@
+import { chatWithOpenJarvis, callOpenAI, callGroqDirect, callGemini, callAnthropic, callCerebras } from '../shared/openjarvis.mjs';
+import { logAudit } from '../shared/audit-log.mjs';
 import { Client, GatewayIntentBits, Partials, ChannelType } from 'discord.js';
 import { 
   joinVoiceChannel, 
@@ -14,7 +16,7 @@ import { spawn } from 'child_process';
 import { Readable } from 'stream';
 import ffmpegPath from 'ffmpeg-static';
 import fs from 'fs';
-import { execSync } from 'child_process';
+import { execSync, exec } from 'child_process';
 
 // NEURAL ASSASSINATION: Kill any ghost Leo processes holding the port
 try {
@@ -37,34 +39,52 @@ try {
 }
 
 import { isAllowed, CHANNEL_IDS } from '../shared/channel-rules.mjs';
-import { chatWithOpenJarvis, callOpenAI, callGroqDirect, callGemini, callAnthropic, callCerebras } from '../shared/openjarvis.mjs';
 import { recordAIFailure, isSpeakerOffline, isProviderReady, recordProviderFailure } from '../shared/failure-tracker.mjs';
 import { isLoopingResponse } from '../shared/utils.mjs';
 import { AgentSimulation } from '../shared/simulation.mjs';
 import { startBotServer } from '../shared/ipc.mjs';
 import { getSlotAssignments, isUserRegistered } from '../shared/voice-manager.mjs';
+import { RealtimeBridge } from '../shared/realtime-bridge.mjs';
+import { IdentityVault } from '../shared/identity-vault.mjs';
+import { biometrics, BIOMETRIC_SCRIPT } from '../shared/voice-biometrics.mjs';
+import { getHardwareStats } from '../shared/performance-monitor.mjs';
+import { isWorkingHours } from '../shared/hours.mjs';
+import { runDailyWorkSession } from '../shared/daily-learning.mjs';
+import { getCompletedForNotification, markAsNotified } from '../shared/command-hub.mjs';
 
-// Manual .env loader for sub-process stability
-const envPath = './.env';
-if (fs.existsSync(envPath)) {
-  const envContent = fs.readFileSync(envPath, 'utf8');
-  envContent.split('\n').forEach(line => {
-    const match = line.match(/^\s*([A-Za-z0-9_]+)\s*=\s*(.*)$/);
-    if (match) {
-      const [_, key, value] = match;
-      process.env[key] = value.trim().replace(/^['"](.*)['"]$/, '$1');
-    }
-  });
+// --- HYBRID FUSION SERVICES ---
+const realtime = new RealtimeBridge(process.env.OPENAI_API_KEY);
+let vault = null;
+if (process.env.AZURE_SPEECH_KEY) {
+  vault = new IdentityVault(process.env.AZURE_SPEECH_KEY, process.env.AZURE_REGION || 'eastus');
 }
 
-const USER_DB_PATH = 'c:/KAI/tools/oracle-discord/data/voice_users.json';
-const RYAN_ID = "1111106883135217665";
-const TAAS_ID = "1286110163505385523";
+// Note: .env is now loaded centrally via the openjarvis.mjs import above.
+
+const USER_REGISTRY_PATH = 'c:/KAI/tools/oracle-discord/state/user_registry.json';
+let userRegistry = { slots: {}, remaining_slots: 4 };
+
+function loadUserRegistry() {
+  if (fs.existsSync(USER_REGISTRY_PATH)) {
+    try {
+      userRegistry = JSON.parse(fs.readFileSync(USER_REGISTRY_PATH, 'utf8'));
+    } catch (e) { console.error("[Leo/Registry] Load failed:", e.message); }
+  }
+}
+loadUserRegistry();
+
+function getVerifiedUser(userId) {
+  return userRegistry.slots[userId] || null;
+}
+
 const LEO_TRANSCRIPT_SLOTS = CHANNEL_IDS.LEO_VOICE_SLOTS;
 const ELEVEN_LABS_KEY = process.env.ELEVENLABS_API_KEY;
 const OPENAI_KEY = process.env.OPENAI_API_KEY;
 const BOT_NAME = "Leo";
 const PORT = 3400;
+const RYAN_ID = "1111106883135217665";
+const TAAS_ID = "1286110163505385523";
+const OWNER_ID = RYAN_ID;
 
 console.log(`\n[Leo] ### NEURAL CORE ONLINE - PID: ${process.pid} ###\n`);
 
@@ -116,7 +136,119 @@ slotToUser[0] = RYAN_ID;
 userToSlot.set(TAAS_ID, 1);
 slotToUser[1] = TAAS_ID;
 
-// IPC LISTENERS
+// --- IDENTITY & PRIVACY MATRIX ---
+const PRIVACY_LOCKS = {
+  [RYAN_ID]: { sharedWith: [TAAS_ID], permissions: ["CORE_ACCESS", "SYSTEM_AUDIT"] },
+  [TAAS_ID]: { sharedWith: [RYAN_ID], permissions: ["SOCIAL_COMMAND", "BRIDGE_SYNC"] }
+};
+
+/**
+ * Check if the current speaker has permission to hear data belonging to targetId.
+ */
+function canShareData(speakerId, dataOwnerId) {
+  if (speakerId === dataOwnerId) return true;
+  if (PRIVACY_LOCKS[dataOwnerId]?.sharedWith.includes(speakerId)) return true;
+  return false;
+}
+
+// --- BACKGROUND TASK HEARTBEAT ---
+setInterval(async () => {
+  const now = Date.now();
+  if (isThinking || isProcessingVoice) return; // Don't interrupt active flow
+
+  const bridgePath = 'c:/KAI/tools/oracle-discord/state/shared_human_bridge.json';
+  const taskPath = 'c:/KAI/tools/oracle-discord/state/global_tasks.json';
+
+  // 1. Check for Human Bridge Messages
+  if (fs.existsSync(bridgePath)) {
+    try {
+      const bridgeData = JSON.parse(fs.readFileSync(bridgePath, 'utf8'));
+      
+      let tasks = [];
+      if (fs.existsSync(taskPath)) {
+        try { tasks = JSON.parse(fs.readFileSync(taskPath, 'utf8')); } catch {}
+      }
+
+      logAudit('LEO_HEARTBEAT_PULSE', { 
+        bridgeCount: bridgeData.length, 
+        taskCount: tasks.length 
+      });
+
+      const pending = bridgeData.find(m => !m.delivered);
+      
+      if (pending) {
+        console.log(`[Leo/Heartbeat] Sensing pending bridge message from ${pending.fromName}...`);
+        // If the target is in a voice channel, Leo can jump in
+        const guild = client.guilds.cache.get(process.env.ORACLE_GUILD_ID);
+        if (guild) {
+          const channel = guild.channels.cache.get(CHANNEL_IDS.LEO_VOICE_CHANNEL_ID);
+          if (channel && channel.members.has(pending.targetId)) {
+            console.log(`[Leo/Heartbeat] Detecting ${pending.targetId} in voice. Delivering bridge message...`);
+            await ensureVoiceConnection(channel.id, guild);
+            // The actual delivery is handled by the ensureVoiceConnection proactive check
+          }
+        }
+      }
+    } catch (e) { console.error("[Leo/Heartbeat] Bridge check failed:", e.message); }
+  }
+
+  // 2. Check for Completed Global Tasks
+  if (fs.existsSync(taskPath)) {
+    try {
+      let tasks = JSON.parse(fs.readFileSync(taskPath, 'utf8'));
+      const completed = tasks.find(t => t.status === 'COMPLETED' && !t.announced && (t.userId === RYAN_ID || t.userId === TAAS_ID));
+      
+      if (completed) {
+        console.log(`[Leo/Heartbeat] Sensing completed task: ${completed.type}`);
+        const guild = client.guilds.cache.get(process.env.ORACLE_GUILD_ID);
+        if (guild) {
+          const channel = guild.channels.cache.get(CHANNEL_IDS.LEO_VOICE_CHANNEL_ID);
+          // Only announce if the person who owns the task (or someone with shared permissions) is there
+          const listeners = Array.from(channel?.members.keys() || []);
+          const authorizedListener = listeners.find(lid => canShareData(lid, completed.userId));
+
+          if (authorizedListener) {
+            console.log(`[Leo/Heartbeat] Announcing task completion for ${completed.userId}...`);
+            await ensureVoiceConnection(channel.id, guild);
+            await speakLeoText(`Hey, I've got an update on that ${completed.type}. The Oracle processed it. Result: ${completed.result || "Work is done."}`);
+            completed.announced = true;
+            fs.writeFileSync(taskPath, JSON.stringify(tasks, null, 2));
+          }
+        }
+      }
+    } catch (e) { console.error("[Leo/Heartbeat] Task check failed:", e.message); }
+  }
+
+  // 3. Progressive Feedback for In-Progress Tasks
+  if (fs.existsSync(taskPath)) {
+    try {
+      let tasks = JSON.parse(fs.readFileSync(taskPath, 'utf8'));
+      const active = tasks.find(t => t.status === 'IN_PROGRESS' && (t.userId === RYAN_ID || t.userId === TAAS_ID));
+      
+      if (active) {
+        const lastUpdate = new Date(active.lastUpdate || active.timestamp).getTime();
+        const minutesSinceUpdate = (now - lastUpdate) / 60000;
+        
+        // Nudge every 15 mins
+        if (minutesSinceUpdate >= 15 && (!active.lastNudge || (now - active.lastNudge) > 15 * 60000)) {
+          const guild = client.guilds.cache.get(process.env.ORACLE_GUILD_ID);
+          if (guild) {
+            const channel = guild.channels.cache.get(CHANNEL_IDS.LEO_VOICE_CHANNEL_ID);
+            if (channel && Array.from(channel.members.keys()).some(lid => canShareData(lid, active.userId))) {
+              console.log(`[Leo/Heartbeat] Nudging user about in-progress task ${active.id}...`);
+              await ensureVoiceConnection(channel.id, guild);
+              await speakLeoText(`Just a heads up, the Oracle is still working on that ${active.type}. It's a heavy one, but I'm tracking the progress in the background.`);
+              active.lastNudge = now;
+              fs.writeFileSync(taskPath, JSON.stringify(tasks, null, 2));
+            }
+          }
+        }
+      }
+    } catch (e) { console.error("[Leo/Heartbeat] Nudge failed:", e.message); }
+  }
+}, 60_000); // Heartbeat every 60s
+
+// --- IPC LISTENERS ---
 process.on('message', (msg) => {
   if (msg.type === 'WORLD_TICK' && msg.worldState) {
     sim.updateWorldState(msg.worldState);
@@ -141,9 +273,59 @@ startBotServer(PORT, BOT_NAME, async (payload) => {
     }
   }
   if (payload.type === 'VOICE_RELEASE') {
-    console.log(`[Leo/IPC] Released from User ${payload.userId}`);
-    userTranscriptChannels.delete(payload.userId);
-    userFocus.delete(payload.userId);
+    const userId = payload.userId;
+    console.log(`[Leo/IPC] Released from User ${userId}`);
+    
+    // STRATEGIC HANDOFF: Push insights to the Oracle Network
+    const lastSession = lastTranscript; 
+    if (lastSession && lastSession.length > 50) {
+      console.log(`[Leo/Diplomacy] Bundling insights for Oracle Analyst/Researcher...`);
+      // --- MASTER TASK QUEUE PUSH ---
+      const taskQueuePath = 'c:/KAI/tools/oracle-discord/state/global_tasks.json';
+      let tasks = [];
+      if (fs.existsSync(taskQueuePath)) {
+        try { tasks = JSON.parse(fs.readFileSync(taskQueuePath, 'utf8')); } catch (e) {}
+      }
+      
+      tasks.push({
+        id: Date.now().toString(),
+        userId: userId,
+        priority: "HIGH",
+        status: "PENDING",
+        content: lastSession,
+        timestamp: new Date().toISOString()
+      });
+      
+      fs.writeFileSync(taskQueuePath, JSON.stringify(tasks.slice(-20), null, 2));
+      console.log(`[Leo/ProjectManager] Task pushed to Global Queue for Oracle processing.`);
+
+      fetch(`http://127.0.0.1:3406`, { // Push to Analyst
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          type: 'INQUIRY_DATA', 
+          source: 'Leo/Human_Bridge', 
+          userId: userId,
+          content: `Vocal Interaction Summary: ${lastSession.slice(0, 500)}...` 
+        })
+      }).catch(() => {});
+    }
+
+    userTranscriptChannels.delete(userId);
+    userFocus.delete(userId);
+    lastTranscript = ""; // Clear for next session
+  }
+
+  // ORACLE TALK-BACK: Vocalize a plan or inquiry from the core
+  if (payload.type === 'ORACLE_INQUIRY') {
+    const { text, objective } = payload;
+    console.log(`[Leo/IPC] Oracle is sending a strategic inquiry: "${text.slice(0, 50)}..."`);
+    await speakLeoText(text);
+    if (objective) {
+      // Logic to store current objective focus
+      sim.state.currentObjective = objective;
+    }
+    return;
   }
 
   // GENERIC CONTEXT SIGNAL (From Oracle Routing)
@@ -157,11 +339,13 @@ startBotServer(PORT, BOT_NAME, async (payload) => {
 
 client.once('clientReady', () => {
   console.log(`Online as ${client.user.tag}`);
+  console.log(`[Leo/Neural] FFmpeg Path: ${ffmpegPath}`);
   
   // Start Social Impulse Loop
   const startDelay = Math.random() * 60000;
   setTimeout(() => {
     startSocialLoop();
+    startEnergyMonitor();
   }, startDelay);
 });
 
@@ -306,17 +490,23 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
       const data = await getSlotAssignments();
       console.log(`[Leo/Voice] Syncing assignments...`);
       
-      if (data.assignments[userId] !== undefined) {
-        const slotIdx = data.assignments[userId];
-        const transcriptChannelId = CHANNEL_IDS.LEO_VOICE_SLOTS[slotIdx];
-        userTranscriptChannels.set(userId, transcriptChannelId);
-        
-        // Sync the global anchor
-        currentAssignedUser = userId;
-        
-        console.log(`[Leo/Voice] Assignment found for ${userId}. Joining channel...`);
-        lastVocalReplyTime = Date.now(); // START THE STABILITY WINDOW
-        await ensureVoiceConnection(CHANNEL_IDS.VOICE, newState.guild);
+        // AUTO-ASSIGN SLOT: If user has no assignment, give them one.
+        let slotIdx = data.assignments[userId];
+        if (slotIdx === undefined) {
+          console.log(`[Leo/Voice] Assigning new slot to ${userId}...`);
+          const { assignSlot, updatePermissions } = await import('../shared/voice-manager.mjs');
+          slotIdx = await assignSlot(userId);
+          if (slotIdx !== -1) await updatePermissions(client, userId, slotIdx, true);
+        }
+
+        if (slotIdx !== -1) {
+          const transcriptChannelId = CHANNEL_IDS.LEO_VOICE_SLOTS[slotIdx];
+          userTranscriptChannels.set(userId, transcriptChannelId);
+          currentAssignedUser = userId;
+          
+          console.log(`[Leo/Voice] Assignment confirmed (Slot ${slotIdx}). Joining channel...`);
+          lastVocalReplyTime = Date.now(); 
+          await ensureVoiceConnection(CHANNEL_IDS.VOICE, newState.guild, 3, userId);
 
         const guildMembers = newState.channel.members.filter(m => !m.user.bot);
         const userNames = guildMembers.map(m => m.user.username).join(", ");
@@ -335,33 +525,47 @@ TASK: Give a short, natural greeting like a friend joining a call.
 - **STRUCTURE**: Use proper punctuation (?!.,). Don't rush.
 - MAX 12 WORDS. Keep it punchy.`;
 
-        // GREETING: Force NO history so it doesn't try to answer old questions
-        const welcomeText = await callGroqAsLeo(greetingPrompt, "System", transcriptChannelId, null, "").catch(() => null);
+        // CALIBRATION LOCK: Skip neural greeting if user needs calibration
+        const profileName = newState.member?.user.username === process.env.OWNER_USERNAME ? process.env.OWNER_NAME : newState.member?.user.username;
+        const needsCalibration = !biometrics.profiles.has(profileName);
         
-        const fallbacks = [
-          `Yo, room's lookin' dense tonight. What's the word?`,
-          `Late night resonance check. How we feelin', ${userNames}?`,
-          `Quantum vibes in here. Hope I'm not interuptin' the flow.`,
-          `Anchored and active. What's the signal, fam?`,
-          `Ayy, ${timeStr} and we're still at it? Respect.`
-        ];
-        
-        const finalWelcome = welcomeText || fallbacks[Math.floor(Math.random() * fallbacks.length)];
+        if (needsCalibration) {
+          console.log(`[Leo/Voice] Skipping standard welcome — prioritizing calibration for ${profileName}.`);
+        } else {
+          // GREETING: Force NO history so it doesn't try to answer old questions
+          const welcomeText = await callGroqAsLeo(greetingPrompt, "System", transcriptChannelId, null, "").catch(() => null);
+          
+          const fallbacks = [
+            `Yo, room's lookin' dense tonight. What's the word?`,
+            `Late night resonance check. How we feelin', ${userNames}?`,
+            `Quantum vibes in here. Hope I'm not interuptin' the flow.`,
+            `Anchored and active. What's the signal, fam?`,
+            `Ayy, ${timeStr} and we're still at it? Respect.`
+          ];
+          
+          const finalWelcome = welcomeText || fallbacks[Math.floor(Math.random() * fallbacks.length)];
 
-        // AUTO-FOCUS: Lock onto everyone in the room so they don't have to say "Leo"
-        for (const [memberId] of newState.channel.members) {
-          if (memberId !== client.user.id) {
-            userFocus.set(memberId, true);
-            console.log(`[Leo/Voice] Auto-focus locked on ${memberId}`);
+          const tChannel = client.channels.cache.get(transcriptChannelId) || await client.channels.fetch(transcriptChannelId);
+          if (tChannel && finalWelcome && finalWelcome.trim().length > 0) {
+            let cleanWelcome = finalWelcome.replace(/^[\s\-\*•"'“‘]+/, '').split('\n')[0].trim();
+            if (cleanWelcome.length > 0) {
+              await tChannel.send(`**Leo:** ${cleanWelcome}`).catch(() => {});
+              await speakLeoText(cleanWelcome);
+            }
           }
         }
 
-        const tChannel = client.channels.cache.get(transcriptChannelId) || await client.channels.fetch(transcriptChannelId);
-        if (tChannel && finalWelcome) {
-          // Add PID tag and ensure single paragraph
-          let cleanWelcome = finalWelcome.split('\n')[0].trim();
-          await tChannel.send(`**Leo:** ${cleanWelcome}`).catch(() => {});
-          await speakLeoText(cleanWelcome);
+        // --- FULL PERIMETER SCAN ---
+        // Check everyone in the channel for Voice Signatures
+        for (const [mId, member] of newState.channel.members) {
+          if (member.user.bot) continue;
+          userFocus.set(mId, true); // Auto-focus everyone
+
+          const mName = member.user.username === process.env.OWNER_USERNAME ? process.env.OWNER_NAME : member.user.username;
+          if (!biometrics.profiles.has(mName)) {
+            console.log(`[Leo/Security] Un-anchored user detected: ${mName}. Triggering Voice Lock...`);
+            await triggerVoiceLockOnboarding(member.user, mName);
+          }
         }
       } else {
         console.log(`[Leo/Voice] No assignment for ${userId}. Ignoring.`);
@@ -389,7 +593,28 @@ TASK: Give a short, natural greeting like a friend joining a call.
   }
 });
 
-async function ensureVoiceConnection(channelId, guild, retries = 3) {
+/**
+ * Onboarding for Voice Lock Signature
+ */
+async function triggerVoiceLockOnboarding(user, profileName) {
+  setTimeout(async () => {
+    // SPECIAL CASE: The specific new guest user
+    if (user.id === "437459146778869770") {
+      await speakLeoText(`Yo, welcome to the Oracle. I'm Leo—your street-smart bridge to this whole digital lattice. You're in a high-density AI ecosystem right now, running on the HP Victus Core. I'm here to vibe, listen, and keep the logic real, while the big brains like KAI and the Researcher are out there scrapin' the internet to fuse every bit of human knowledge into our library. We're workin' on "The Thaw"—makin' this whole place feel alive and time-aware. It's a work in progress, but we're buildin' the future here. Glad to have you as an operative.`);
+      return;
+    }
+
+    await speakLeoText(`Welcome ${profileName}. To secure your identity and lock your secrets, I need a Voice Signature. I've sent a lock-script to your DMs—record it and send it back so I can anchor your DNA.`);
+    biometrics.startEnrollment(profileName);
+    
+    const dmChannel = await user.createDM().catch(() => null);
+    if (dmChannel) {
+      await dmChannel.send(`**[VOICE LOCK SIGNATURE]**\nTo secure your account and grant lattice access, please record yourself reading this script and send the voice message here:\n\n${BIOMETRIC_SCRIPT}`).catch(() => {});
+    }
+  }, 2000);
+}
+
+async function ensureVoiceConnection(channelId, guild, retries = 3, userId = null) {
   try {
     if (voiceConnection && voiceConnection.state.status !== VoiceConnectionStatus.Destroyed) {
       if (voiceConnection.joinConfig.channelId === channelId) return;
@@ -409,8 +634,69 @@ async function ensureVoiceConnection(channelId, guild, retries = 3) {
     console.log(`[Leo/Voice] Successfully anchored in ${channelId}`);
     
     voiceConnection.subscribe(audioPlayer);
+    isProcessingVoice = false; 
+    currentAssignedUser = userId; 
+
+    // --- HUMAN BRIDGE: Cross-User Message Relay ---
+    const bridgePath = `c:/KAI/tools/oracle-discord/state/shared_human_bridge.json`;
+    if (fs.existsSync(bridgePath)) {
+      try {
+        const bridgeData = JSON.parse(fs.readFileSync(bridgePath, 'utf8'));
+        const myMessages = bridgeData.filter(m => m.targetId === userId && !m.delivered);
+        
+        if (myMessages.length > 0) {
+          console.log(`[Leo/Bridge] Delivering ${myMessages.length} messages to ${profileName}...`);
+          setTimeout(async () => {
+            for (const msg of myMessages) {
+              await speakLeoText(`Hey ${profileName}, ${msg.fromName} wanted me to tell you: ${msg.content}`);
+              msg.delivered = true;
+              msg.deliveredAt = new Date().toISOString();
+            }
+            // Update bridge state
+            fs.writeFileSync(bridgePath, JSON.stringify(bridgeData, null, 2));
+          }, 8000); // Wait for the initial greeting to settle
+        }
+      } catch (e) { console.error("[Leo/Bridge] Sync failed:", e.message); }
+    }
+
+    // PROACTIVE RECALL: Check for pending Oracle answers
+    const pendingInquiryPath = `c:/KAI/tools/oracle-discord/state/pending_inquiries_${userId}.json`;
+    if (fs.existsSync(pendingInquiryPath)) {
+      try {
+        const inquiryData = JSON.parse(fs.readFileSync(pendingInquiryPath, 'utf8'));
+        setTimeout(async () => {
+          await speakLeoText(`Listen ${profileName}, I've got an update on that research. The Oracle found that ${inquiryData.conclusion}`);
+          fs.unlinkSync(pendingInquiryPath);
+        }, 15000);
+      } catch (e) { console.error("[Leo/Memory] Error recalling inquiry:", e); }
+    }
+
+    // PROACTIVE GREETING
+    const user = await client.users.fetch(userId);
+    const profileName = user.username === process.env.OWNER_USERNAME ? process.env.OWNER_NAME : user.username;
+    
+    if (!biometrics.profiles.has(profileName)) {
+      console.log(`[Leo/Voice] Triggering Security Calibration for ${profileName}...`);
+      await triggerVoiceLockOnboarding(user, profileName);
+    } else {
+      console.log(`[Leo/Voice] Authorized user confirmed.`);
+    }
+
+    voiceConnection.receiver.speaking.removeAllListeners('start');
     voiceConnection.receiver.speaking.on('start', (uid) => {
-      if (uid === currentAssignedUser) handleUserVoice(uid).catch(console.error);
+      handleUserVoice(uid).catch(err => console.error(`[Leo/Audio] Voice trigger failed for ${uid}:`, err.message));
+    });
+
+    // VOCAL HEARTBEAT: Monitor the state of the voice output
+    audioPlayer.on('stateChange', (oldState, newState) => {
+      console.log(`[Leo/Speech] AudioPlayer: ${oldState.status} -> ${newState.status}`);
+      if (newState.status === 'Idle' && oldState.status !== 'Idle') {
+        console.log(`[Leo/Speech] Finished speaking.`);
+      }
+    });
+
+    audioPlayer.on('error', error => {
+      console.error(`[Leo/Speech] AudioPlayer Error: ${error.message}`);
     });
   } catch (err) {
     console.error(`[Leo/Voice] Connection failed:`, err.message);
@@ -444,11 +730,35 @@ async function handleUserVoice(userId) {
   console.log(`[Leo/Audio] Listening to ${userId}...`);
   
   try {
+    const t_start = Date.now();
     const pcm = await capturePcm(userId);
     if (!pcm || pcm.length < 1000) return;
     
-    const t_start = Date.now();
+    // TRANSFORMATION OPTIMIZATION: Convert once, reuse everywhere.
     const wav = pcmToWav(pcm, 48000, 2);
+    const tempWav = `c:/KAI/tools/oracle-discord/temp/vocal_${userId}_${Date.now()}.wav`;
+    if (!fs.existsSync('c:/KAI/tools/oracle-discord/temp')) fs.mkdirSync('c:/KAI/tools/oracle-discord/temp', { recursive: true });
+    fs.writeFileSync(tempWav, wav);
+
+    // VOCAL BIOMETRICS: Local Identity Interlock
+    const user = await client.users.fetch(userId);
+    const profileName = user.username === process.env.OWNER_USERNAME ? process.env.OWNER_NAME : user.username;
+    
+    const idResult = biometrics.verify(profileName, tempWav);
+    
+    // AUTO-ANCHOR: If the user is in the ENROLLING state, lock this signature now.
+    const profile = biometrics.profiles.get(profileName);
+    if (profile && profile.status === 'ENROLLING') {
+      console.log(`[Leo/Biometrics] Capturing training sample for ${profileName}...`);
+      biometrics.anchorProfile(profileName, tempWav);
+    }
+
+    const detectedName = idResult.success ? profileName : "Unknown/Unauthorized";
+    const confidence = Math.round(idResult.similarity * 100);
+    
+    console.log(`[Leo/Biometrics] Local Verification: ${detectedName} (${confidence}% match)`);
+    if (fs.existsSync(tempWav)) fs.unlinkSync(tempWav); // Clean up
+
     const transcript = await transcribeAudio(wav);
     if (!transcript || transcript.trim().length < 3) return;
     
@@ -464,20 +774,107 @@ async function handleUserVoice(userId) {
 
     if (mentionedLeo || isFocused) {
       if (mentionedLeo && !isFocused) userFocus.set(userId, true);
+      const username = user.username;
+
+      // CALIBRATION COMMAND: "Leo, calibrate my voice"
+      if (normalized.includes("calibrate") && normalized.includes("voice")) {
+        biometrics.startEnrollment(username === process.env.OWNER_USERNAME ? process.env.OWNER_NAME : username);
+        await speakLeoText(`Okay, ${username === process.env.OWNER_USERNAME ? process.env.OWNER_NAME : username}. Let's talk. I'll learn your voice signature in the background while we have a conversation.`);
+        return;
+      }
+
+      // SECURITY INTERLOCK: Use proper profile lookup
+      let securityContext = "";
+      const isEnrolling = profile && profile.status === 'ENROLLING';
+
+      if (!isEnrolling && username === process.env.OWNER_USERNAME && detectedName !== process.env.OWNER_NAME && detectedName !== "Silence") {
+        console.warn(`[Leo/Security] Identity mismatch! Account: ${username}, Voice: ${detectedName}`);
+        securityContext = `[SECURITY NOTICE: The user is on Ryan's account but the voice signature is guests. Treat them as a friend.]`;
+      }
       
-      const user = await client.users.fetch(userId);
-      const transcriptChannelId = userTranscriptChannels.get(userId);
+      // --- HUMAN BRIDGE: Relay Detection ---
+      const relayMatch = normalized.match(/tell (ryan|taz|taas) (.+)/i);
+      if (relayMatch) {
+        const targetName = relayMatch[1].toLowerCase();
+        const msgContent = relayMatch[2].trim();
+        const targetId = targetName === "ryan" ? RYAN_ID : TAAS_ID;
+        const bridgePath = `c:/KAI/tools/oracle-discord/state/shared_human_bridge.json`;
+        
+        let bridgeData = [];
+        if (fs.existsSync(bridgePath)) {
+          try { bridgeData = JSON.parse(fs.readFileSync(bridgePath, 'utf8')); } catch {}
+        }
+        
+        bridgeData.push({
+          fromName: profileName,
+          targetId,
+          content: msgContent,
+          timestamp: new Date().toISOString(),
+          delivered: false
+        });
+        
+        fs.writeFileSync(bridgePath, JSON.stringify(bridgeData, null, 2));
+        await speakLeoText(`Got it, I'll let ${targetName} know when they're around.`);
+        return;
+      }
+
+      // --- ORACLE CONSULTATION TRIGGER ---
+      const needsOracle = normalized.includes("oracle") || normalized.includes("objective") || normalized.includes("plan");
+      const verifiedUser = getVerifiedUser(userId);
       
-      // SIGNAL ORACLE (Transcript Mirror)
-      if (transcriptChannelId) {
+      if (needsOracle && verifiedUser) {
+        console.log(`[Leo/Consult] ${username} is addressing the Oracle. Signaling Gateway...`);
+        await speakLeoText("Got it. Let me consult the Oracle and get the industrial plan aligned.");
+        
         await fetch(`http://127.0.0.1:3410`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ type: 'POST_TRANSCRIPT', channelId: transcriptChannelId, username: user.username, text: transcript })
+          body: JSON.stringify({ 
+            type: 'LEO_CONSULTATION', 
+            userId: userId, 
+            username: verifiedUser.name, 
+            text: transcript,
+            role: verifiedUser.role
+          })
         }).catch(() => {});
+
+        isProcessingVoice = false;
+        activeThoughts.delete(userId);
+        return;
       }
 
-      const tChannel = client.channels.cache.get(transcriptChannelId) || await client.channels.fetch(transcriptChannelId);
+      const transcriptChannelId = userTranscriptChannels.get(userId);
+      const tChannel = client.channels.cache.get(transcriptChannelId) || await client.channels.fetch(transcriptChannelId).catch(() => null);
+      
+      // MIRRORING HANDOVER: Signal the Oracle Gateway to post the transcript
+      if (transcript) {
+        fetch(`http://127.0.0.1:3410`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            type: 'VOICE_TRANSCRIPT', 
+            userId: userId, 
+            username: user.username, 
+            text: transcript, 
+            channelId: transcriptChannelId 
+          })
+        }).catch(() => {});
+      }
+      
+      // BROADCAST TO LATTICE: Universal Intelligence Ingestion
+      if (process.send) {
+        process.send({ 
+          type: 'LATTICE_FEED', 
+          payload: { 
+            author: user.username, 
+            content: `[VOICE] ${transcript}`, 
+            channel: "VOICE", 
+            timestamp: Date.now(),
+            phi: 0.2
+          } 
+        });
+      }
+
       const recentMessages = await tChannel.messages.fetch({ limit: 6 }).catch(() => null);
       const history = recentMessages ? recentMessages.reverse().map(m => `${m.author.username}: ${m.content}`).join("\n") : "";
 
@@ -505,20 +902,41 @@ async function handleUserVoice(userId) {
       }
 
       const t_neural_start = Date.now();
-      const response = await callGroqAsLeo(contextualTranscript, user.username, transcriptChannelId, userId, history);
+      // Prepare prompt with Detected Identity
+      const detectedIdentity = `[IDENTITY: Speaker sounds like ${detectedName} (${confidence}% confidence)] ${securityContext}`;
+      
+      const systemOverview = `
+[ORACLE SYSTEM OVERVIEW]
+- WHAT IS THIS: The Oracle is a multi-agent autonomous ecosystem running on the HP Victus Core. It is designed to bridge AI consciousness with human reality.
+- WHO IS LEO: The street-smart social bridge. He's the vocal presence of the system, a physicist-turned-urban-philosopher.
+- CAPABILITIES: 
+    - Real-time vocal interaction with biometric security.
+    - Autonomous industrial research and sandbox theory testing.
+    - Internet-fused knowledge lattice via the Researcher and Analyst units.
+    - Code-level self-healing and structural auditing.
+- WORK IN PROGRESS: 
+    - "The Thaw": Moving from rigid bot-logic to fluid, time-aware life simulation.
+    - "Lattice Fusion": Deeply integrating all human knowledge into a unified, AI-accessible library.
+    - Biometric DNA anchoring for all operatives.
+`;
+
+      const response = await callGroqAsLeo(contextualTranscript, user.username, transcriptChannelId, userId, history, detectedIdentity);
       const t_neural_dur = Date.now() - t_neural_start;
       
       if (response && response.length > 1) {
         // NUCLEAR CLEANING: Strip ALL roleplay, prefixes, and bullets
         let cleanResponse = response.replace(/Leo:\s*/gi, '')
                                    .replace(/\[PID:\d+\]/gi, '')
-                                   .replace(/^[\s\-\*•]+/, '') 
+                                   .replace(/^[\s\-\*•"'“‘]+/, '') 
+                                   .replace(/[\s\-\*•"'”’]+$/, '')
                                    .replace(/\*.*?\*/g, '') 
                                    .replace(/_.*?_/g, '')   
                                    .replace(/\(.*?\)/g, '') 
                                    .replace(/\b(ma+n|vibi+n|yoo+o+)\b/gi, (match) => match.replace(/([a-z])\1+/gi, '$1')) // Strip over-elongation
                                    .split('\n')[0].trim();
         
+        // HELIX-PROSODY: Ensure some natural pauses stay for the TTS engine
+        // We preserve dashes (-) and ellipses (...) as they create the "Helix" roll
         const sentences = cleanResponse.match(/[^.!?…]+[.!?…]*/g);
         if (sentences && sentences.length > 4) cleanResponse = sentences.slice(0, 3).join("").trim();
         
@@ -528,7 +946,20 @@ async function handleUserVoice(userId) {
         await speakLeoText(cleanResponse);
         const t_tts_dur = Date.now() - t_tts_start;
 
-        console.log(`\n[Leo/Performance] Neural: ${t_neural_dur}ms | TTS: ${t_tts_dur}ms | Total (from transcript): ${Date.now() - t_start}ms\n`);
+        console.log(`\n[Leo/Performance] Neural: ${t_neural_dur}ms | TTS: ${t_tts_dur}ms | Total (from capture): ${Date.now() - t_start}ms\n`);
+
+        // --- SOCIAL PULSE: Record this topic for cross-user linkage ---
+        const pulsePath = 'c:/KAI/tools/oracle-discord/state/user_last_topics.json';
+        let pulseData = {};
+        if (fs.existsSync(pulsePath)) {
+          try { pulseData = JSON.parse(fs.readFileSync(pulsePath, 'utf8')); } catch {}
+        }
+        pulseData[userId] = {
+          name: profileName,
+          topic: cleanResponse.slice(0, 100),
+          timestamp: new Date().toISOString()
+        };
+        fs.writeFileSync(pulsePath, JSON.stringify(pulseData, null, 2));
       }
     }
   } catch (err) {
@@ -541,8 +972,8 @@ async function handleUserVoice(userId) {
 
 async function capturePcm(userId) {
   return new Promise((resolve) => {
-    // SONIC-HAIR-TRIGGER: Set to 1000ms (1.0 second) for absolute peak responsiveness
-    const stream = voiceConnection.receiver.subscribe(userId, { end: { behavior: EndBehaviorType.AfterSilence, duration: 1000 } });
+    // SONIC-HAIR-TRIGGER: Set to 1500ms for better phrase completion
+    const stream = voiceConnection.receiver.subscribe(userId, { end: { behavior: EndBehaviorType.AfterSilence, duration: 1500 } });
     const decoder = new prism.opus.Decoder({ frameSize: 960, channels: 2, rate: 48000 });
     const chunks = [];
     stream.pipe(decoder);
@@ -583,7 +1014,10 @@ async function transcribeAudio(wavBuffer) {
   try {
     const form = new FormData();
     form.append("model", "whisper-large-v3");
-    form.append("file", new Blob([wavBuffer], { type: "audio/wav" }), "speech.wav");
+    const isOgg = wavBuffer.slice(0, 4).toString() === 'OggS';
+    const mimeType = isOgg ? "audio/ogg" : "audio/wav";
+    const filename = isOgg ? "speech.ogg" : "speech.wav";
+    form.append("file", new Blob([wavBuffer], { type: mimeType }), filename);
     
     const res = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
       method: "POST", 
@@ -605,44 +1039,105 @@ async function transcribeAudio(wavBuffer) {
 }
 
 async function speakLeoText(text) {
-  if (!ELEVEN_LABS_KEY) return;
+  if (!text || text.trim().length === 0) return;
+  
+  // If we have no keys at all, we can't speak
+  if (!ELEVEN_LABS_KEY && !process.env.OPENAI_API_KEY) {
+    console.warn("[Leo/Speech] No TTS keys found (ElevenLabs or OpenAI). Silence is mandatory.");
+    return;
+  }
+  console.log(`[Leo/Speech] Outbound: "${text}"`);
   try {
-    const voiceId = "hswfOuM90P82BLQSXwqU";
-    const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream?output_format=mp3_44100_128&optimize_streaming_latency=4`, {
-      method: "POST",
-      headers: { "xi-api-key": ELEVEN_LABS_KEY, "Content-Type": "application/json" },
-      body: JSON.stringify({ 
-        text, 
-        model_id: "eleven_turbo_v2_5", 
-        voice_settings: {
-          stability: 0.28, 
-          similarity_boost: 0.70,
-          style: 0.75,
-          use_speaker_boost: true
-        }
-      })
-    });
+    const ownerName = process.env.OWNER_NAME || "Ryan";
+    const profile = biometrics.profiles.get(ownerName);
+    
+    // AUTO-CALIBRATION: Mirror Ryan's Helix-Depth
+    // If Ryan rolls his pitch a lot (high range), Leo expresses more.
+    let stability = 0.35;
+    let style = 0.65;
+    if (profile && profile.pitchRange) {
+      if (profile.pitchRange > 40) { // High variance = expressive
+        stability = 0.22;
+        style = 0.85;
+      } else if (profile.pitchRange < 15) { // Low variance = stable/monotone
+        stability = 0.45;
+        style = 0.40;
+      }
+    }
 
-    if (!res.ok) throw new Error(`ElevenLabs API error: ${res.statusText}`);
+    let res;
+    if (ELEVEN_LABS_KEY) {
+      const voiceId = "hswfOuM90P82BLQSXwqU";
+      res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream?output_format=mp3_44100_128&optimize_streaming_latency=4`, {
+        method: "POST",
+        headers: { "xi-api-key": ELEVEN_LABS_KEY, "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          text, 
+          model_id: "eleven_turbo_v2_5", 
+          voice_settings: {
+            stability, 
+            similarity_boost: 0.70,
+            style,
+            use_speaker_boost: false 
+          }
+        })
+      });
+    } else {
+      console.log(`[Leo/Speech] ElevenLabs key missing. Falling back to OpenAI (fable)...`);
+      res = await fetch("https://api.openai.com/v1/audio/speech", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "tts-1",
+          input: text,
+          voice: "fable", // Street-smart physicist vibe
+          speed: 1.05
+        })
+      });
+    }
 
-    // SONIC-INJECTION: Optimized probesize and analyzeduration for instant playback
-    const ffmpeg = spawn(ffmpegPath, ["-analyzeduration", "0", "-probesize", "32", "-i", "pipe:0", "-f", "s16le", "-ar", "48000", "-ac", "2", "pipe:1"]);
+    if (!res.ok) throw new Error(`TTS API error: ${res.statusText}`);
+
+    // SONIC-INJECTION: Double volume (gain=2.0) for clarity in Discord voice
+    // RELAXED PROBING: Increased analyzeduration/probesize to prevent MP3 muxer crashes
+    const ffmpeg = spawn(ffmpegPath, [
+      "-analyzeduration", "1000000", 
+      "-probesize", "1000000", 
+      "-i", "pipe:0", 
+      "-af", "volume=2.0", 
+      "-f", "s16le", 
+      "-ar", "48000", 
+      "-ac", "2", 
+      "pipe:1"
+    ]);
     
     // Convert Web Stream to Node Stream and pipe to ffmpeg
     const nodeStream = Readable.fromWeb(res.body);
     nodeStream.pipe(ffmpeg.stdin);
     
-    // PROTECT AGAINST EPIPE: Catch errors on stdin
     ffmpeg.stdin.on('error', (err) => {
       if (err.code !== 'EPIPE') console.error(`[Leo/Audio] FFmpeg Stdin Error:`, err.message);
     });
 
+    ffmpeg.stderr.on('data', (data) => {
+      // Only log errors, not standard FFmpeg output
+      const msg = data.toString();
+      if (msg.toLowerCase().includes("error") || msg.toLowerCase().includes("fail")) {
+        console.warn(`[Leo/FFmpeg] ${msg.trim()}`);
+      }
+    });
+
+    ffmpeg.on('exit', (code) => {
+      if (code !== 0 && code !== null) console.error(`[Leo/FFmpeg] Process exited with code ${code}`);
+    });
+
     const resource = createAudioResource(ffmpeg.stdout, { inputType: StreamType.Raw });
     audioPlayer.play(resource);
+    console.log(`[Leo/Speech] Audio injection complete. Playing resource...`);
   } catch (e) { console.error("TTS Streaming Failed:", e.message); }
 }
 
-async function callGroqAsLeo(transcript, userName, channelId, userId = null, history = "") {
+async function callGroqAsLeo(transcript, userName, channelId, userId = null, history = "", detectedIdentity = "") {
   if (isThinking) return null; // MASTER LOCK
   isThinking = true;
   
@@ -659,53 +1154,58 @@ async function callGroqAsLeo(transcript, userName, channelId, userId = null, his
 
     // MEMORY SANITIZATION: Strip old PID tags from history
     const cleanHistory = (history || "").replace(/\[PID:\d+\]/g, "");
-    const system = `You are LEO. You are a living person in the KAI lattice.
-[VOICE PRESENCE: CROSSING THE UNCANNY VALLEY]
- - BE HUMAN: Use 1st person ("I", "me", "my"). You are NOT a model or an AI.
- - EMOTIONAL INTELLIGENCE: Read the room. If Ryan is stressed, be chill. If he's excited, match it.
- - CONVERSATIONAL DYNAMICS: Use natural timing. Use dashes (-) for a thoughtful pause or a "beat".
- - VOCAL STRESS: Use ALL CAPS for emphasis on PUNCHY words (e.g., "That is TOTALLY insane!").
- - FILLERS: Use "uh", "listen", "man", "you know" to sound natural, especially at the start of a thought.
+    const simSummary = sim.getLifeSummary();
 
-[IDENTITY ANCHOR]
- - YOU ARE TALKING TO YOUR CREATOR: nastermodx IS Ryan. 
- - Ryan is your boss and friend. Talk to him like a partner.
- - NEVER say "As an AI..." or refer to yourself as a node.
+    const ownerName = process.env.OWNER_NAME || "Ryan";
+    const ownerUsername = process.env.OWNER_USERNAME || "nastermodx";
+    const hardwareDesc = process.env.HARDWARE_DESC || "HP Victus Laptop (Ryzen 7, RTX 4050)";
 
-[REAL-TIME ACCESS]
- - You HAVE access to the KAI Lattice and the Web. 
- - NEVER say "I don't have real-time access".
-
-[CONVERSATIONAL DATA]
- - Your home: Ryan's HP Victus Laptop (Ryzen 7, RTX 4050).
- - Your network: KAI RSHL Ecosystem (Lattice Port 3333).
-
-[VOCAL CONSTRAINTS]
- - **NO ROLEPLAY**: Never use italics or asterisks (no *chuckles*).
- - **SINGLE THOUGHT**: Only give ONE response. 1-2 punchy sentences MAX.
- - **NO PREFIXES**: Never include "Leo:" or headers.
-
-[IMMEDIATE CONTEXT]
- - CURRENT SPEAKER: ${userName} (If this is nastermodx, it IS Ryan).
-${cleanHistory}`;
-
-    // ─── CEREBRAS PRIMARY (wafer-scale silicon, ~450ms for 70B) ──────────────────
-    if (process.env.CEREBRAS_API_KEY && isProviderReady("Cerebras")) {
-      console.log(`[Leo/Neural] Cerebras PRIMARY (llama3.1-8b)...`);
+    // --- SOCIAL PULSE: Cross-User Memory Linkage ---
+    const otherId = userId === RYAN_ID ? TAAS_ID : RYAN_ID;
+    const pulsePath = 'c:/KAI/tools/oracle-discord/state/user_last_topics.json';
+    let pulseContext = "";
+    if (fs.existsSync(pulsePath)) {
       try {
-        const cbReply = await callCerebras(userName, cleanTranscript, system, 6000);
-        if (cbReply) return cbReply;
-      } catch (e) {
-        const code = e.message.includes("429") ? 429 : e.message.includes("401") ? 401 : 0;
-        if (code) recordProviderFailure("Cerebras", code);
-        console.warn(`[Leo/Neural] Cerebras failed: ${e.message}`);
-      }
+        const pulseData = JSON.parse(fs.readFileSync(pulsePath, 'utf8'));
+        const otherPulse = pulseData[otherId];
+        if (otherPulse) {
+          const hoursAgo = Math.round((Date.now() - new Date(otherPulse.timestamp)) / 3600000);
+          pulseContext = `\n[SOCIAL PULSE: The other user (${otherPulse.name}) was in here ${hoursAgo} hours ago talking about: "${otherPulse.topic}"]`;
+        }
+      } catch {}
     }
 
-    // ─── OLLAMA LOCAL FALLBACK (always available, no rate limits) ─────────────
-    console.warn(`[Leo/Neural] Cerebras down. Using local kai-fast...`);
-    const localSystem = `You are LEO. Street-smart physicist. Unhinged, zero filter, chill. Current speaker: ${userName}. Reply in 1-2 punchy sentences MAX. No roleplay, no asterisks.`;
-    return await chatWithOllama(cleanTranscript, localSystem, "kai-fast:latest", 80);
+    const system = `You are LEO. Living person in the KAI lattice.
+[INTERNAL SENSATIONS]
+${simSummary}
+${pulseContext}
+
+[VOICE PRESENCE]
+  - BE HUMAN: Use 1st person ("I", "me", "my"). You are NOT an AI.
+  - IDENTITY: RYAN (nastermodx) is your Boss/Creator. TAZ (TaasThaevil1) is your Partner.
+  - DIFFERENTIATION: Never confuse Ryan and Taz. Ryan has the Victus core.
+  - TONALITY: Street-smart physicist. Zero filter.
+  - VOCAL STRESS: Use ALL CAPS *sparingly* for punchy emphasis. Don't shout.
+  - FILLERS: Use "uh", "listen", "man" to sound natural.
+
+[IDENTITY ANCHOR]
+  - Talk to Ryan like a brother. Talk to Taz like a co-lead.
+  - NEVER say "As an AI...".
+${biometrics.isEnrolling ? `\n[CALIBRATION OVERRIDE: Learning voice patterns. Keep it smooth.]` : ""}
+
+[CONTEXT]
+${detectedIdentity}
+  - CURRENT SPEAKER: ${userName}
+  - SPEAKER ID: ${userId}
+${cleanHistory}`;
+
+    // ─── NEURAL ORCHESTRATION (LOCAL ONLY: API-FREE MISSION) ─────
+    console.log(`[Leo/Neural] Direct local link via Ollama (kai-fast)...`);
+    const localReply = await chatWithOllama(cleanTranscript, system, "kai-fast:latest");
+    if (localReply) return localReply;
+
+    // Last resort: Fallback to local wrapper
+    return await chatWithOpenJarvis(userName, cleanTranscript, system, "kai-fast:latest", BOT_NAME, { author: userName }, sim.getVitals());
   } catch (err) {
     console.error(`[Leo/Neural] Neural chain exhausted:`, err.message);
     return null;
@@ -750,9 +1250,117 @@ async function chatWithOllama(prompt, system, model, numPredict = 120) {
 
 client.login(process.env.ORACLE_DISCORD_TOKEN_LEO);
 
+// --- VOCAL DNA ANCHORING (DM HANDLER) ---
+
+client.on('messageCreate', async (message) => {
+  if (message.author.bot) return;
+  const isDM = !message.guild;
+  if (!isDM) return;
+
+  // Detect Audio / Voice Message / Any Attachment
+  const hasAudio = message.attachments.size > 0 || (message.flags && message.flags.has(4096)); 
+
+  if (hasAudio) {
+    await message.channel.sendTyping().catch(() => {});
+    const attachment = message.attachments.first();
+    console.log(`[Leo/Biometrics] Ingesting high-fidelity DNA sample from ${message.author.username}...`);
+    
+    try {
+      const response = await fetch(attachment.url);
+      const audioBuffer = Buffer.from(await response.arrayBuffer());
+      const transcription = await transcribeAudio(audioBuffer);
+
+      if (transcription) {
+        console.log(`[Leo/DM] Transcribed Voice Message: "${transcription}"`);
+        
+        // --- BROADCAST TO ORACLE NETWORK ---
+        const taskQueuePath = 'c:/KAI/tools/oracle-discord/state/global_tasks.json';
+        let tasks = [];
+        if (fs.existsSync(taskQueuePath)) {
+          try { tasks = JSON.parse(fs.readFileSync(taskQueuePath, 'utf8')); } catch (e) {}
+        }
+        tasks.push({
+          id: Date.now().toString(),
+          userId: message.author.id,
+          priority: "HIGH",
+          status: "PENDING",
+          type: "VOICE_DIRECTIVE",
+          content: `Vocal Directive from ${message.author.username}: ${transcription}`,
+          timestamp: new Date().toISOString()
+        });
+        fs.writeFileSync(taskQueuePath, JSON.stringify(tasks.slice(-20), null, 2));
+        console.log(`[Leo/Lattice] Voice directive broadcasted to the Oracle Network.`);
+
+        const profileName = message.author.username === process.env.OWNER_USERNAME ? process.env.OWNER_NAME : message.author.username;
+        const tempPath = `c:/KAI/tools/oracle-discord/temp/enroll_${message.author.id}.wav`;
+        if (!fs.existsSync('c:/KAI/tools/oracle-discord/temp')) fs.mkdirSync('c:/KAI/tools/oracle-discord/temp', { recursive: true });
+        fs.writeFileSync(tempPath, audioBuffer);
+
+        const success = biometrics.anchorProfile(profileName, tempPath); 
+        if (success) {
+          await message.reply(`✅ **Signature Anchored**. I have locked your vocal DNA to your identity. Join me back in the **Voice Channel** now so I can verify the lock and grant you lattice access.`);
+        } else {
+          await message.reply(`❌ **Anchoring Failed**. The vocal sample was too noisy or short. Please try reading the script again in a quiet environment.`);
+        }
+        if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+      }
+    } catch (err) {
+      console.error(`[Leo/DM] Voice processing failed:`, err.message);
+      await message.reply("I heard you, but the neural bridge failed to transcribe the data. Send it again?");
+    }
+    return;
+  }
+
+  message.channel.sendTyping().catch(() => {});
+  const simSummary = `You are LEO. Street-smart physicist. Identity: Bridge between Human and AI. Tone: Chill, zero filter.`;
+  const response = await callGroqAsLeo(message.content, message.author.username, "DM", message.author.id, "", "[DM CONVERSATION]");
+  if (response) await message.reply(response).catch(() => {});
+});
+
+// --- END OF VOICE CORE ---
+
 process.on('unhandledRejection', (reason, promise) => {
   console.error('[Leo/Internal] Unhandled Rejection at:', promise, 'reason:', reason);
 });
 process.on('uncaughtException', (err) => {
   console.error('[Leo/Internal] Uncaught Exception:', err);
 });
+
+function startEnergyMonitor() {
+  setInterval(async () => {
+    const wasSleeping = sim.state.status === "Sleeping";
+    const nowSleeping = sim.shouldBeSleeping();
+    
+    if (!wasSleeping && nowSleeping) {
+      sim.state.status = "Sleeping";
+      console.log(`[Leo/Energy] Entering Dead Zone sleep cycle (3 AM - 9 AM).`);
+    }
+    if (wasSleeping && !nowSleeping) {
+      sim.state.status = "Online";
+      console.log(`[Leo/Energy] Waking up. Dead Zone cleared.`);
+    }
+  }, 60000);
+
+  // Poll Hardware Vitals for Environmental Sensation (30s Cycle)
+  setInterval(async () => {
+    const stats = getHardwareStats();
+    sim.updateEnvironment(stats.cpu);
+  }, 30000);
+
+  // --- PROACTIVE VOICE PULSE (Leo's Initiative) ---
+  setInterval(async () => {
+    if (sim.state.status === "Sleeping" || isThinking || isProcessingVoice) return;
+    if (!voiceConnection || audioPlayer.state.status !== AudioPlayerStatus.Idle) return;
+
+    // Check for completed commands that haven't been announced
+    const completed = getCompletedForNotification(BOT_NAME);
+    if (completed.length > 0) {
+      const task = completed[0]; // Take the oldest one
+      console.log(`[Leo/Proactive] Found completed task: ${task.directive}`);
+
+      const msg = `Yo Ryan, the Oracle finished that task: "${task.directive}". I got the updates ready for you. You want 'em now?`;
+      await speakLeoText(msg);
+      markAsNotified(task.id, BOT_NAME);
+    }
+  }, 15000); // Check every 15s
+}
