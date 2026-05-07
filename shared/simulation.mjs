@@ -107,10 +107,35 @@ export class AgentSimulation {
 
     if (saved && saved.timestamp && !this.isKAI) {
       const elapsedMins = (Date.now() - saved.timestamp) / 60000;
+      
+      // REALISTIC BASELINE: Calculate what energy SHOULD be for this hour (EST)
+      const now = new Date();
+      const estHour = parseInt(new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: 'numeric', hour12: false }).format(now));
+      
+      let baseline = 100;
+      if (estHour >= 9 && estHour < 15) baseline = 100 - (estHour - 9) * 5; 
+      else if (estHour >= 15 && estHour < 23) baseline = 70 - (estHour - 15) * 5;
+      else if (estHour >= 23 || estHour < 3) {
+        const cycleHour = estHour < 3 ? estHour + 24 : estHour;
+        baseline = Math.max(5, 30 - (cycleHour - 23) * 6);
+      } else if (estHour >= 3 && estHour < 9) {
+        baseline = Math.min(90, 5 + (estHour - 3) * 14); 
+      }
+
+      // If offline for a long time (>2h), gravitate strongly toward the baseline
+      // If offline for a short time, use the previous state but capped by baseline logic
       const recovery = elapsedMins < 1440
         ? Math.min(SLEEP_RESTORE_PER_MIN * elapsedMins, 100 - saved.energy)
         : 100 - saved.energy;
-      startEnergy  = Math.min(100, Math.max(0, saved.energy + recovery));
+        
+      let restoredEnergy = saved.energy + recovery;
+      
+      // If booting into the Dead Zone (3am-9am) or late night, enforce the depletion
+      if (elapsedMins > 60) {
+        restoredEnergy = Math.min(restoredEnergy, baseline + 10); // 10% buffer
+      }
+
+      startEnergy  = Math.min(100, Math.max(0, restoredEnergy));
       startFocus   = Math.min(100, (saved.focus          ?? 80)  + elapsedMins * 0.05);
       startSocial  = Math.min(100, (saved.social_battery ?? 100) + elapsedMins * 0.10);
       tardyStrikes = saved.tardyStrikes ?? 0;
