@@ -624,9 +624,12 @@ async function triggerVoiceLockOnboarding(user, profileName) {
   }, 2000);
 }
 
-let vocalQueue = [];
-let isSpeaking = false;
-let currentAudioPlayer = null;
+async function killSpeech() {
+  vocalQueue = [];
+  isSpeaking = false;
+  if (audioPlayer) audioPlayer.stop();
+  console.log(`[Leo/Speech] Audio pre-empted by Master.`);
+}
 
 async function processVocalQueue() {
   if (isSpeaking || vocalQueue.length === 0) return;
@@ -815,8 +818,10 @@ async function getSnapReaction(transcript, displayName) {
 
 async function handleUserVoice(userId) {
   const now = Date.now();
-  if (now - lastVocalReplyTime < 3000) return;
+  if (now - lastVocalReplyTime < 500) return; // Reduced for rapid turns
   if (activeThoughts.has(userId) || isProcessingVoice || isThinking) return;
+  
+  await killSpeech(); // INTERRUPT: Stop talking if the master starts talking
   
   const lastTime = userCooldowns.get(userId) || 0;
   if (now - lastTime < 5000) return; // Cooldown for stability
