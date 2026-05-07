@@ -1,0 +1,12 @@
+node_modules/
+.env
+.env.*
+state/
+logs/
+temp/
+*.log
+.DS_Store
+dist/
+build/
+scratch/
+!scratch/probe_test.mjs
