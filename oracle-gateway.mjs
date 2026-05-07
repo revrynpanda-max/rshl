@@ -444,14 +444,14 @@ setInterval(async () => {
   const cpuLoad = Math.round(os.loadavg()[0] * 100) / 10;
   const memFree = Math.round(os.freemem() / (1024 * 1024 * 1024) * 10) / 10;
   
-  const workChannel = client.channels.cache.get(CHANNEL_IDS.WORK);
-  if (workChannel) {
+  const sensitiveChannel = client.channels.cache.get(CHANNEL_IDS.SENSITIVE);
+  if (sensitiveChannel) {
     if (!isWorkingHours() && !isSocialHours()) {
       console.log("[Oracle/Overseer] Suppressing Integrity Report during Dead Zone.");
       return;
     }
 
-    await workChannel.send(`🏛️ **SYSTEM INTEGRITY REPORT**\n**Victus Core**: CPU ${cpuLoad}% | MEM ${memFree}GB Free\n**Lattice Health**: EXCELLENT\n**Process Manager**: All 11 nodes synchronized.\n**Overseer Note**: Checking labor quality and mission adherence...`);
+    await sensitiveChannel.send(`🏛️ **SYSTEM INTEGRITY REPORT**\n**Victus Core**: CPU ${cpuLoad}% | MEM ${memFree}GB Free\n**Lattice Health**: EXCELLENT\n**Process Manager**: All 11 nodes synchronized.\n**Overseer Note**: Checking labor quality and mission adherence...`);
     
     if (Date.now() - lastWorkMessageTime > 21600000) { // 6-Hour Silence Threshold
       console.log(`[Oracle/Overseer] Labor idle. Auditing worker quality...`);
@@ -480,6 +480,6 @@ setInterval(async () => {
       } catch (e) { console.error(`[Oracle/Healer] Audit scan failed:`, e.message); }
     }
   }
-}, 14400000);
+}, 3600000); // Hourly Cadence
 
 client.login(process.env.ORACLE_DISCORD_TOKEN);
