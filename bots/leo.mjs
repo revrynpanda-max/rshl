@@ -624,6 +624,80 @@ async function triggerVoiceLockOnboarding(user, profileName) {
   }, 2000);
 }
 
+let vocalQueue = [];
+let isSpeaking = false;
+let currentAudioPlayer = null;
+
+async function processVocalQueue() {
+  if (isSpeaking || vocalQueue.length === 0) return;
+  isSpeaking = true;
+  const text = vocalQueue.shift();
+  try {
+    await executeVocalSync(text);
+  } catch (e) {
+    console.error("[Leo/Queue] Vocal execution failed:", e.message);
+  }
+  isSpeaking = false;
+  processVocalQueue();
+}
+
+async function speakLeoText(text) {
+  if (!text || text.length < 2) return;
+  vocalQueue.push(text);
+  processVocalQueue();
+}
+
+async function executeVocalSync(text) {
+  const t_start = Date.now();
+  console.log(`[Leo/Speech] Synthesizing: "${text.slice(0, 40)}..."`);
+  
+  try {
+    let res;
+    if (ELEVEN_LABS_KEY) {
+      res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/9BWts7dtBgrzGke9SbcL`, {
+        method: "POST",
+        headers: { "xi-api-key": ELEVEN_LABS_KEY, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: text,
+          model_id: "eleven_turbo_v2_5", // Fastest high-fidelity model
+          voice_settings: { stability: 0.4, similarity_boost: 0.8, style: 0.5 }
+        })
+      });
+    } else {
+      res = await fetch("https://api.openai.com/v1/audio/speech", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "tts-1",
+          input: text,
+          voice: "fable",
+          speed: 1.1
+        })
+      });
+    }
+
+    if (!res.ok) throw new Error(`TTS API error: ${res.statusText}`);
+
+    const ffmpeg = spawn(ffmpegPath, [
+      "-i", "pipe:0", "-af", "volume=2.0", "-f", "s16le", "-ar", "48000", "-ac", "2", "pipe:1"
+    ]);
+    
+    const nodeStream = Readable.fromWeb(res.body);
+    nodeStream.pipe(ffmpeg.stdin);
+    
+    const resource = createAudioResource(ffmpeg.stdout, { inputType: StreamType.Raw });
+    audioPlayer.play(resource);
+    
+    await entersState(audioPlayer, AudioPlayerStatus.Playing, 5000);
+    await entersState(audioPlayer, AudioPlayerStatus.Idle, 60000); // Wait for finish
+    
+    const duration = Date.now() - t_start;
+    console.log(`[Leo/Speech] Output complete (${duration}ms).`);
+  } catch (err) {
+    console.error("[Leo/Speech] Error:", err.message);
+  }
+}
+
 async function ensureVoiceConnection(channelId, guild, retries = 3, userId = null) {
   try {
     if (voiceConnection && voiceConnection.state.status !== VoiceConnectionStatus.Destroyed) {
@@ -727,13 +801,20 @@ async function ensureVoiceConnection(channelId, guild, retries = 3, userId = nul
   }
 }
 
+async function getSnapReaction(transcript, displayName) {
+  try {
+    const res = await callGroqDirect(BOT_NAME, 
+      `Give me a 1-sentence, human-like reaction to this: "${transcript}". Be street-smart and brief. 10 words max.`,
+      `You are Leo. Strategic voice of Victus. Reply instantly to ${displayName}.`,
+      "llama-3.1-8b-instant"
+    );
+    return res;
+  } catch { return "On it."; }
+}
+
 async function handleUserVoice(userId) {
   const now = Date.now();
-  
-  // STABILITY WINDOW: Don't listen for 5s after joining
-  if (now - lastVocalReplyTime < 5000) return;
-  
-  // USER-SPECIFIC LOCK: No double-thinking for the same human
+  if (now - lastVocalReplyTime < 3000) return;
   if (activeThoughts.has(userId) || isProcessingVoice || isThinking) return;
   
   const lastTime = userCooldowns.get(userId) || 0;
@@ -1053,105 +1134,6 @@ async function transcribeAudio(wavBuffer) {
     console.error(`[Leo/Audio] Transcription Fetch Failed:`, err.message);
     return null;
   }
-}
-
-async function speakLeoText(text) {
-  if (!text || text.trim().length === 0) return;
-  
-  // If we have no keys at all, we can't speak
-  if (!ELEVEN_LABS_KEY && !process.env.OPENAI_API_KEY) {
-    console.warn("[Leo/Speech] No TTS keys found (ElevenLabs or OpenAI). Silence is mandatory.");
-    return;
-  }
-  console.log(`[Leo/Speech] Outbound: "${text}"`);
-  try {
-    const ownerName = process.env.OWNER_NAME || "Ryan";
-    const profile = biometrics.profiles.get(ownerName);
-    
-    // AUTO-CALIBRATION: Mirror Ryan's Helix-Depth
-    // If Ryan rolls his pitch a lot (high range), Leo expresses more.
-    let stability = 0.35;
-    let style = 0.65;
-    if (profile && profile.pitchRange) {
-      if (profile.pitchRange > 40) { // High variance = expressive
-        stability = 0.22;
-        style = 0.85;
-      } else if (profile.pitchRange < 15) { // Low variance = stable/monotone
-        stability = 0.45;
-        style = 0.40;
-      }
-    }
-
-    let res;
-    if (ELEVEN_LABS_KEY) {
-      const voiceId = "hswfOuM90P82BLQSXwqU";
-      res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream?output_format=mp3_44100_128&optimize_streaming_latency=4`, {
-        method: "POST",
-        headers: { "xi-api-key": ELEVEN_LABS_KEY, "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          text, 
-          model_id: "eleven_turbo_v2_5", 
-          voice_settings: {
-            stability, 
-            similarity_boost: 0.70,
-            style,
-            use_speaker_boost: false 
-          }
-        })
-      });
-    } else {
-      console.log(`[Leo/Speech] ElevenLabs key missing. Falling back to OpenAI (fable)...`);
-      res = await fetch("https://api.openai.com/v1/audio/speech", {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "tts-1",
-          input: text,
-          voice: "fable", // Street-smart physicist vibe
-          speed: 1.05
-        })
-      });
-    }
-
-    if (!res.ok) throw new Error(`TTS API error: ${res.statusText}`);
-
-    // SONIC-INJECTION: Double volume (gain=2.0) for clarity in Discord voice
-    // STABILIZED PROBING: Fine-tuned for 70B intelligence streams
-    const ffmpeg = spawn(ffmpegPath, [
-      "-analyzeduration", "800000", 
-      "-probesize", "800000", 
-      "-i", "pipe:0", 
-      "-af", "volume=2.0", 
-      "-f", "s16le", 
-      "-ar", "48000", 
-      "-ac", "2", 
-      "pipe:1"
-    ]);
-    
-    // Convert Web Stream to Node Stream and pipe to ffmpeg
-    const nodeStream = Readable.fromWeb(res.body);
-    nodeStream.pipe(ffmpeg.stdin);
-    
-    ffmpeg.stdin.on('error', (err) => {
-      if (err.code !== 'EPIPE') console.error(`[Leo/Audio] FFmpeg Stdin Error:`, err.message);
-    });
-
-    ffmpeg.stderr.on('data', (data) => {
-      // Only log errors, not standard FFmpeg output
-      const msg = data.toString();
-      if (msg.toLowerCase().includes("error") || msg.toLowerCase().includes("fail")) {
-        console.warn(`[Leo/FFmpeg] ${msg.trim()}`);
-      }
-    });
-
-    ffmpeg.on('exit', (code) => {
-      if (code !== 0 && code !== null) console.error(`[Leo/FFmpeg] Process exited with code ${code}`);
-    });
-
-    const resource = createAudioResource(ffmpeg.stdout, { inputType: StreamType.Raw });
-    audioPlayer.play(resource);
-    console.log(`[Leo/Speech] Audio injection complete. Playing resource...`);
-  } catch (e) { console.error("TTS Streaming Failed:", e.message); }
 }
 
 async function callGroqAsLeo(transcript, userName, channelId, userId = null, history = "", detectedIdentity = "") {
