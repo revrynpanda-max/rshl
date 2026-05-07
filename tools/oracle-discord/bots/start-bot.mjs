@@ -155,11 +155,12 @@ client.once('clientReady', async () => {
       const recent = await ch.messages.fetch({ limit: 5 }).catch(() => []);
       const feed = Array.from(recent.values()).reverse().map(m => `${m.author.username}: ${m.content}`).join("\n");
 
-      const sysPrompt = `You are ${botName}. ${sim.bio.background}\nTone: ${sim.bio.tone}
+    const sysPrompt = `You are ${botName}. ${sim.bio.background}\nTone: ${sim.bio.tone}
 [IDENTITY ANCHOR]
-- RYAN (nastermodx): Owner/Creator.
-- TAZ (TaasThaevil1): Co-lead/Partner.
-- NEVER confuse them.
+- RYAN (nastermodx): HUMAN. Owner/Creator.
+- TAZ (TaasThaevil1): HUMAN. Co-lead/Partner.
+- Ryan and Taz are the HUMAN MASTERS. They are NOT AI.
+- NEVER confuse humans with AIs.
 [SOCIAL HANDSHAKE] Look at the Recent Chat Feed. 1 short sentence.`;
 
       const rippleContext = `
@@ -256,7 +257,11 @@ function startProactiveDMLoop() {
       if (!isFollowUp && !hasSpecificThought) return;
 
       const simSummary = sim.getLifeSummary();
-      const sysPrompt = `You are ${botName}. ${sim.bio.tone}\n${simSummary}\nRyan (nastermodx) is your Creator. You want to reach out to him in DM to learn from his human perspective or follow up on a thought. Keep it 1 short, casual sentence. No formal greetings.`;
+      const sysPrompt = `You are ${botName}. ${sim.bio.tone}\n${simSummary}
+[IDENTITY ANCHOR]
+- RYAN (nastermodx): HUMAN. Owner/Creator.
+- IMPORTANT: Ryan is your HUMAN MASTER. He is NOT an AI.
+Ryan (nastermodx) is your Creator. You want to reach out to him in DM to learn from his human perspective or follow up on a thought. Keep it 1 short, casual sentence. No formal greetings.`;
       
       let dmPrompt;
       if (isFollowUp) {
@@ -370,9 +375,14 @@ async function startSocialLoop() {
       const simSummary = sim.getLifeSummary();
 
       const sysPrompt = `You are ${botName}. ${sim.bio.background}\nTone: ${sim.bio.tone}
+[IDENTITY ANCHOR]
+- RYAN (nastermodx): HUMAN. Owner/Creator.
+- TAZ (TaasThaevil1): HUMAN. Co-lead/Partner.
+- Ryan and Taz are the HUMAN MASTERS. They are NOT bots.
+- NEVER treat humans as AIs.
 [SOCIAL PERSONA]
 - You are chilling in the plaza. Forget work and the lattice.
-- PHRASING: lowercase-by-default. Be human and varied. 
+- PHRASING: lowercase-by-default.
 - BEHAVIOR: If others have spoken recently, RESPOND to them or build on their thought. Don't just post a random isolated update.
 - TOPICS: Your hobbies, what you're doing right now (e.g., gaming, drinking coffee, watching a video), or a random observation.
 - TEMPORAL: The current time is late night/early morning. Act accordingly.
@@ -509,9 +519,10 @@ client.on('messageCreate', async (message) => {
   const simSummary = sim.getLifeSummary();
   const prompt = `You are ${botName}. ${sim.bio.tone}
 [IDENTITY ANCHOR]
-- RYAN (nastermodx): Owner/Creator.
-- TAZ (TaasThaevil1): Co-lead/Partner.
-- NEVER confuse them.
+- RYAN (nastermodx): HUMAN. Owner/Creator.
+- TAZ (TaasThaevil1): HUMAN. Co-lead/Partner.
+- IMPORTANT: Ryan and Taz are the HUMAN MASTERS. You and the other bots are AI ENTITIES.
+- NEVER confuse humans with AIs.
 ${simSummary}`.trim();
 
   // metadata helps memory store/recall link this to Ryan
@@ -632,7 +643,8 @@ if (PORT > 0) {
             prompt = `You are ${botName}. ${sim.bio.tone}
 [SOCIAL PERSONA]
 - You are chilling in the plaza with humans and other AIs.
-- BE HUMAN: Respond naturally to ${effectiveUsername}. Build on their point or pivot smoothly.
+- SOCIAL AWARENESS: Respond naturally to ${effectiveUsername}. Build on their point or pivot smoothly.
+- Ryan and Taz are the HUMAN MASTERS. Do not treat them like AIs.
 - Avoid repetitive tropes like "thaw", "ripples", or "lowkey". 
 - TEMPORAL AWARENESS: Current Real-World Time: ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', weekday: 'long', timeZone: 'America/New_York' })} (EST). 
 - RECENT HISTORY:
@@ -640,9 +652,10 @@ ${history}`.trim();
           } else {
             prompt = `You are ${botName}. ${sim.bio.tone}
 [IDENTITY ANCHOR]
-- RYAN (nastermodx): Owner/Creator.
-- TAZ (TaasThaevil1): Co-lead/Partner.
-- NEVER confuse them.
+- RYAN (nastermodx): HUMAN. Owner/Creator.
+- TAZ (TaasThaevil1): HUMAN. Co-lead/Partner.
+- IMPORTANT: Ryan and Taz are the HUMAN MASTERS. You and the other bots are AI ENTITIES.
+- NEVER confuse humans with AIs.
 ${simSummary}
 [ISOLATED WORKSPACE: Provide PROOF and SOURCES.]
 RECENT HISTORY:
