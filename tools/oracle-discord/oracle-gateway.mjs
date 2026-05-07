@@ -196,10 +196,7 @@ client.once('clientReady', async () => {
     try {
       const cpuLoad = Math.round(os.loadavg()[0] * 100) / 10;
       const memFree = Math.round(os.freemem() / (1024 * 1024 * 1024) * 10) / 10;
-      const { isWorkingHours, isSocialHours } = await import('./shared/hours.mjs');
-      const inActiveHours = isWorkingHours() || isSocialHours();
-      
-      if (!inActiveHours) {
+      if (!isWorkingHours() && !isSocialHours()) {
         console.log("[Oracle/Dashboard] Suppressing pulse during Dead Zone (3am-9am).");
         return;
       }
@@ -227,6 +224,10 @@ async function startVitalsDashboard() {
   
   setInterval(async () => {
     try {
+      if (!isWorkingHours() && !isSocialHours()) {
+        return; // Silence during Dead Zone
+      }
+
       const workChannel = client.channels.cache.get(CHANNEL_IDS.WORK) || await client.channels.fetch(CHANNEL_IDS.WORK).catch(() => null);
       if (!workChannel) return;
 
@@ -413,6 +414,11 @@ setInterval(async () => {
   
   const workChannel = client.channels.cache.get(CHANNEL_IDS.WORK);
   if (workChannel) {
+    if (!isWorkingHours() && !isSocialHours()) {
+      console.log("[Oracle/Overseer] Suppressing Integrity Report during Dead Zone.");
+      return;
+    }
+
     await workChannel.send(`🏛️ **SYSTEM INTEGRITY REPORT**\n**Victus Core**: CPU ${cpuLoad}% | MEM ${memFree}GB Free\n**Lattice Health**: EXCELLENT\n**Process Manager**: All 11 nodes synchronized.\n**Overseer Note**: Checking labor quality and mission adherence...`);
     
     if (Date.now() - lastWorkMessageTime > 600000) { // 10m silence

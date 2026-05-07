@@ -200,6 +200,10 @@ ${feed}
     const { runSystemAudit } = await import('../tools/system-auditor.mjs');
     setInterval(async () => {
       if (sim.state.isSleeping) return;
+      if (!isWorkingHours() && !isSocialHours()) {
+        console.log(`[${botName}/Maintenance] Suppressing audit during Dead Zone.`);
+        return;
+      }
       console.log(`[${botName}/Maintenance] Running industrial audit...`);
       const report = await runSystemAudit();
       const channel = client.channels.cache.get(CHANNEL_IDS.ORACLE_ADMIN) 
