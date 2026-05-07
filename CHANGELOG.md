@@ -4,6 +4,18 @@ All notable changes to the Victus Core and RSHL Lattice Bridge will be documente
 
 ---
 
+## [23.0.0] — 2026-05-07 (Temporal Sovereignty)
+### Added
+- **Circadian Energy Model**: Precise energy debt calculation based on 9 AM Industrial Wake-up.
+- **Dead Zone Synchronization**: All ecosystem snapshots now cap EST Sleep forecasts at 3 AM.
+- **Metabolic Drain Curves**: Activity-based energy depletion (Working vs. Social vs. Idle).
+
+### Fixed
+- **Energy Stalling**: Removed the buffer that allowed bots to keep 100% energy after quick restarts.
+- **Timezone Drift**: Standardized all temporal logic to `America/New_York` using `Intl.DateTimeFormat`.
+
+---
+
 ## [21.0.0] — 2026-05-07 (Sovereign Lattice)
 ### Added
 - **MemPalace Bridge**: Real-time identity resolution via RSHL Lattice (Port 3333).
