@@ -975,8 +975,8 @@ async function handleUserVoice(userId) {
 
 async function capturePcm(userId) {
   return new Promise((resolve) => {
-    // SONIC-HAIR-TRIGGER: Set to 1000ms for snappier response
-    const stream = voiceConnection.receiver.subscribe(userId, { end: { behavior: EndBehaviorType.AfterSilence, duration: 1000 } });
+    // SONIC-HAIR-TRIGGER: Set to 500ms for snappier response
+    const stream = voiceConnection.receiver.subscribe(userId, { end: { behavior: EndBehaviorType.AfterSilence, duration: 500 } });
     const decoder = new prism.opus.Decoder({ frameSize: 960, channels: 2, rate: 48000 });
     const chunks = [];
     stream.pipe(decoder);
@@ -1016,7 +1016,7 @@ async function transcribeAudio(wavBuffer) {
   }
   try {
     const form = new FormData();
-    form.append("model", "whisper-large-v3");
+    form.append("model", "whisper-large-v3-turbo");
     const isOgg = wavBuffer.slice(0, 4).toString() === 'OggS';
     const mimeType = isOgg ? "audio/ogg" : "audio/wav";
     const filename = isOgg ? "speech.ogg" : "speech.wav";
@@ -1102,10 +1102,10 @@ async function speakLeoText(text) {
     if (!res.ok) throw new Error(`TTS API error: ${res.statusText}`);
 
     // SONIC-INJECTION: Double volume (gain=2.0) for clarity in Discord voice
-    // RELAXED PROBING: Increased analyzeduration/probesize to prevent MP3 muxer crashes
+    // RELAXED PROBING: Optimized for speed
     const ffmpeg = spawn(ffmpegPath, [
-      "-analyzeduration", "1000000", 
-      "-probesize", "1000000", 
+      "-analyzeduration", "200000", 
+      "-probesize", "200000", 
       "-i", "pipe:0", 
       "-af", "volume=2.0", 
       "-f", "s16le", 

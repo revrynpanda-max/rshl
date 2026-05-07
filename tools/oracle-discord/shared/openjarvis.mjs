@@ -17,7 +17,7 @@ if (!fs.existsSync(LOCK_DIR)) fs.mkdirSync(LOCK_DIR, { recursive: true });
  * GLOBAL NEURAL THROTTLE: Atomic file-based lock for the 9-node fleet.
  */
 async function acquireNeuralLock(botName) {
-  const isPriority = botName === "Oracle" || botName === "KAI";
+  const isPriority = botName === "Oracle" || botName === "KAI" || botName === "Leo";
   const maxRetries = isPriority ? 40 : 20; 
   
   for (let i = 0; i < maxRetries; i++) {
