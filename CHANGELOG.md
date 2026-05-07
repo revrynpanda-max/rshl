@@ -4,6 +4,17 @@ All notable changes to the Victus Core and RSHL Lattice Bridge will be documente
 
 ---
 
+## [36.0.0] — 2026-05-07 (NPU Overdrive)
+### Added
+- **NPU Priority**: Set Local-Llama31 (Ollama/NPU) as the primary neural provider for Leo and Oracle to maximize Victus hardware utilization.
+- **Instant Vocal Fillers**: Implemented a 500ms "Vocal Presence" trigger that fires a short acknowledgement (e.g., "Gotcha") immediately after voice capture to eliminate silence.
+
+### Fixed
+- **Hardware Underutilization**: Shifted the neural load from the cloud to the local Ryzen AI NPU and RTX 4050 GPU.
+- **Crisscross Interaction**: Resolved the issue where users talk over the silence by providing an instant vocal "Sonic Handshake."
+
+---
+
 ## [35.0.0] — 2026-05-07 (Conversational Sovereignty)
 ### Added
 - **Vocal Pre-emption**: Leo now instantly stops speaking when he detects the human master starting a new voice command.
