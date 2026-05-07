@@ -730,6 +730,7 @@ async function handleUserVoice(userId) {
   console.log(`[Leo/Audio] Listening to ${userId}...`);
   
   try {
+    const t_start = Date.now();
     const pcm = await capturePcm(userId);
     if (!pcm || pcm.length < 1000) return;
     
@@ -945,8 +946,7 @@ async function handleUserVoice(userId) {
         await speakLeoText(cleanResponse);
         const t_tts_dur = Date.now() - t_tts_start;
 
-        console.log(`[Leo/Speech] "${cleanResponse}"`);
-        console.log(`\n[Leo/Performance] Neural: ${t_neural_dur}ms | TTS: ${t_tts_dur}ms | Total (from transcript): ${Date.now() - t_start}ms\n`);
+        console.log(`\n[Leo/Performance] Neural: ${t_neural_dur}ms | TTS: ${t_tts_dur}ms | Total (from capture): ${Date.now() - t_start}ms\n`);
 
         // --- SOCIAL PULSE: Record this topic for cross-user linkage ---
         const pulsePath = 'c:/KAI/tools/oracle-discord/state/user_last_topics.json';
@@ -1359,7 +1359,7 @@ function startEnergyMonitor() {
       console.log(`[Leo/Proactive] Found completed task: ${task.directive}`);
 
       const msg = `Yo Ryan, the Oracle finished that task: "${task.directive}". I got the updates ready for you. You want 'em now?`;
-      await speak(msg);
+      await speakLeoText(msg);
       markAsNotified(task.id, BOT_NAME);
     }
   }, 15000); // Check every 15s

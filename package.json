@@ -1,6 +1,6 @@
 {
   "name": "oracle-discord-gateway",
-  "version": "7.9.5",
+  "version": "7.9.6",
   "private": true,
   "type": "module",
   "description": "Minimal Ryan-only Discord gateway for the local KAI Oracle API.",
