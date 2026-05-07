@@ -4,6 +4,17 @@ All notable changes to the Victus Core and RSHL Lattice Bridge will be documente
 
 ---
 
+## [35.0.0] — 2026-05-07 (Conversational Sovereignty)
+### Added
+- **Vocal Pre-emption**: Leo now instantly stops speaking when he detects the human master starting a new voice command.
+- **500ms Turn Cooldown**: Reduced the wait time between vocal responses to allow for rapid-fire "turn after turn" interactions.
+
+### Fixed
+- **Conversational Friction**: Eliminated the overlapping audio issues by implementing a global `killSpeech()` trigger at the start of every voice capture cycle.
+- **Response Pacing**: Optimized the turn pacing to match natural human speech patterns in high-tempo environments.
+
+---
+
 ## [34.0.0] — 2026-05-07 (Sovereign Bypass)
 ### Added
 - **Total Lock Exemption**: Leo and Oracle now skip the neural locking system entirely for zero-latency API access.
