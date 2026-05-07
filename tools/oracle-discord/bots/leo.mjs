@@ -38,8 +38,8 @@ try {
   // Port is likely clear
 }
 
-import { isAllowed, CHANNEL_IDS, HUMAN_IDS } from '../shared/channel-rules.mjs';
-import { HUMAN_REGISTRY } from '../shared/identities.mjs';
+import { isAllowed, CHANNEL_IDS } from '../shared/channel-rules.mjs';
+import { HUMAN_REGISTRY, HUMAN_IDS } from '../shared/identities.mjs';
 import { recordAIFailure, isSpeakerOffline, isProviderReady, recordProviderFailure } from '../shared/failure-tracker.mjs';
 import { isLoopingResponse } from '../shared/utils.mjs';
 import { AgentSimulation } from '../shared/simulation.mjs';
