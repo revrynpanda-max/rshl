@@ -865,6 +865,11 @@ async function handleUserVoice(userId) {
     const confidence = Math.round(idResult.similarity * 100);
     console.log(`[Leo/Biometrics] Local Verification: ${detectedName} (${confidence}% match)`);
 
+    // --- SONIC DUAL-PHASE STRIKE ---
+    // Fire Phase 1 (Snap) instantly
+    const snapPromise = getSnapReaction(transcript, profileName);
+    snapPromise.then(snap => { if (snap) speakLeoText(snap); });
+
     // FUZZY DEDUPLICATION: Anti-Echo Logic
     const fuzzyHash = getFuzzyHash(transcript);
     if (recentVoiceResponses.has(fuzzyHash)) {

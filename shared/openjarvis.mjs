@@ -242,7 +242,7 @@ RULES:
     }
 
     try {
-      logAudit('NEURAL_ATTEMPT', { botName, provider: provider.name, model: provider.model });
+      // logAudit('NEURAL_ATTEMPT', { botName, provider: provider.name, model: provider.model });
       let reply = null;
 
       if (provider.name.startsWith("Groq")) {
@@ -273,7 +273,7 @@ RULES:
       }
 
       if (reply) {
-        logAudit('NEURAL_SUCCESS', { botName, provider: provider.name });
+        // logAudit('NEURAL_SUCCESS', { botName, provider: provider.name });
         if (hasLock) setTimeout(() => { releaseNeuralLock(); }, 4000);
         return reply;
       }
