@@ -4,6 +4,14 @@ All notable changes to the Victus Core and RSHL Lattice Bridge will be documente
 
 ---
 
+## [31.0.0] — 2026-05-07 (Vocal Recovery)
+### Fixed
+- **TTS API Error**: Resolved the 'Not Found' error by correcting the ElevenLabs Voice ID and endpoint.
+- **Vocal Signature**: Restored the verified "Street-Smart Physicist" signature (hswfOuM...).
+- **Streaming Latency**: Re-activated the streaming endpoint for sub-second audio synthesis.
+
+---
+
 ## [30.0.0] — 2026-05-07 (Sonic Dual-Phase Engine)
 ### Added
 - **Phase 1 Snap-Reaction**: Instant vocal acknowledgement generated in < 2.5s via Groq-8B.
