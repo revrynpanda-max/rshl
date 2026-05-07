@@ -262,7 +262,7 @@ async function startVitalsDashboard() {
 
 client.on('messageCreate', async (message) => {
   if (message.author.id === client.user.id) return; // NEVER respond to self
-  if (message.author.bot && !message.content.toLowerCase().includes("oracle")) return;
+  if (message.author.bot) return; // SOVEREIGN RULE: Strictly ignore all other AI nodes.
 
   // --- Voice Anchor logic (DM Handler) ---
   const isDM = !message.guild;
@@ -439,7 +439,7 @@ async function igniteStrategicMission(username, text) {
   } catch (e) { console.error(`[Oracle/Thread] Failed to spawn departmental thread:`, e.message); }
 }
 
-// Supervisor Audit (Overseer) - Fires every 15m
+// Supervisor Audit (Overseer) - Fires every 4 Hours
 setInterval(async () => {
   const cpuLoad = Math.round(os.loadavg()[0] * 100) / 10;
   const memFree = Math.round(os.freemem() / (1024 * 1024 * 1024) * 10) / 10;
@@ -453,7 +453,7 @@ setInterval(async () => {
 
     await workChannel.send(`🏛️ **SYSTEM INTEGRITY REPORT**\n**Victus Core**: CPU ${cpuLoad}% | MEM ${memFree}GB Free\n**Lattice Health**: EXCELLENT\n**Process Manager**: All 11 nodes synchronized.\n**Overseer Note**: Checking labor quality and mission adherence...`);
     
-    if (Date.now() - lastWorkMessageTime > 600000) { // 10m silence
+    if (Date.now() - lastWorkMessageTime > 21600000) { // 6-Hour Silence Threshold
       console.log(`[Oracle/Overseer] Labor idle. Auditing worker quality...`);
       sendBotSignal(BOT_PORTS.Analyst, { 
         channelId: CHANNEL_IDS.WORK, 
@@ -480,6 +480,6 @@ setInterval(async () => {
       } catch (e) { console.error(`[Oracle/Healer] Audit scan failed:`, e.message); }
     }
   }
-}, 900000);
+}, 14400000);
 
 client.login(process.env.ORACLE_DISCORD_TOKEN);
