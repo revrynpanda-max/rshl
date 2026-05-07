@@ -208,9 +208,51 @@ client.once('clientReady', async () => {
   
   // CORPORATE HEALTH DASHBOARD (Fire every 30m)
   setInterval(triggerPulse, 1800000); 
+  startVitalsDashboard();
 });
 
+let dashboardMessageId = null;
+let dashboardThreadId = null;
+
+async function startVitalsDashboard() {
+  console.log("[Oracle/Dashboard] Initializing Ecosystem Vitals Thread...");
+  
+  setInterval(async () => {
+    try {
+      const workChannel = client.channels.cache.get(CHANNEL_IDS.WORK) || await client.channels.fetch(CHANNEL_IDS.WORK).catch(() => null);
+      if (!workChannel) return;
+
+      // Find or create the Vitals Thread
+      let thread = workChannel.threads.cache.find(t => t.name === '🏛️ ECOSYSTEM_VITALS');
+      if (!thread) {
+        thread = await workChannel.threads.create({
+          name: '🏛️ ECOSYSTEM_VITALS',
+          autoArchiveDuration: 1440,
+          reason: 'Persistent Vitals Dashboard'
+        }).catch(() => null);
+      }
+      if (!thread) return;
+
+      const { getEcosystemSnapshot } = await import('./tools/system-auditor.mjs');
+      const snapshot = await getEcosystemSnapshot();
+
+      // Maintain a single message in the thread
+      const messages = await thread.messages.fetch({ limit: 10 }).catch(() => []);
+      const existing = Array.from(messages.values()).find(m => m.author.id === client.user.id);
+
+      if (existing) {
+        await existing.edit(snapshot).catch(() => {});
+      } else {
+        await thread.send(snapshot).catch(() => {});
+      }
+    } catch (err) {
+      console.error("[Oracle/Dashboard] Update failed:", err.message);
+    }
+  }, 60000); // Update every 60s
+}
+
 client.on('messageCreate', async (message) => {
+  if (message.author.id === client.user.id) return; // NEVER respond to self
   if (message.author.bot && !message.content.toLowerCase().includes("oracle")) return;
 
   // --- Voice Anchor logic (DM Handler) ---
