@@ -167,27 +167,28 @@ RULES:
   const finalSystem = `${sensationText}${tempoRules}\n${identityRules}\n${hardwareGrounding}\n\n[USER PREFERENCES / DIRECTIVES]\n${directives || "No active directives."}\n\n[DIPLOMATIC DIRECTIVE: Maintain 100% industrial precision. Manage API quotas with zero noise. Evolution is mandatory.]\n${systemPrompt}\n${memoryContext}`;
 
   // 3. DEDICATED NEURAL PIPELINES (Sovereign Assignment)
-  // Each bot has its own primary and fallback line to prevent bottlenecks.
   const BOT_PIPELINES = {
-    "Leo":        ["Cerebras", "Groq-Fast"],
-    "Oracle":     ["Groq", "OpenAI"],
-    "KAI":        ["OpenAI", "Anthropic"],
-    "Researcher": ["Google", "Groq"],
-    "Analyst":    ["Google", "OpenAI"],
-    "Claude":     ["Anthropic", "Google"],
-    "Gemini":     ["Google", "OpenAI"],
-    "X":          ["Groq", "Cerebras"],
-    "Kai Coder":  ["Anthropic", "Groq"]
+    "Leo":        ["Cerebras-70b",   "Groq-70b"],
+    "Oracle":     ["Groq-70b",       "OpenAI-mini"],
+    "KAI":        ["OpenAI-mini",    "Google-Pro"],
+    "Researcher": ["Google-Pro",     "Local-Fast"],
+    "Analyst":    ["Local-Fast",     "Google-Flash"],
+    "Claude":     ["Google-Flash",   "Groq-8b"],
+    "Gemini":     ["Groq-8b",        "Cerebras-8b"],
+    "X":          ["Cerebras-8b",    "Anthropic-Sonnet"],
+    "Kai Coder":  ["Anthropic-Sonnet", "Cerebras-70b"]
   };
 
   const globalProviders = [
-    { name: "Cerebras", model: "llama3.1-70b" },
-    { name: "Groq", model: "llama-3.3-70b-versatile" },
-    { name: "Groq-Fast", model: "llama-3.1-8b-instant" },
-    { name: "OpenAI", model: "gpt-4o-mini" },
-    { name: "Anthropic", model: "claude-3-5-sonnet-20240620" },
-    { name: "Google", model: "gemini-1.5-flash" },
-    { name: "Local", model: "kai-fast" }
+    { name: "Cerebras-70b",   model: "llama3.1-70b" },
+    { name: "Cerebras-8b",    model: "llama3.1-8b" },
+    { name: "Groq-70b",       model: "llama-3.3-70b-versatile" },
+    { name: "Groq-8b",        model: "llama-3.1-8b-instant" },
+    { name: "OpenAI-mini",    model: "gpt-4o-mini" },
+    { name: "Anthropic-Sonnet", model: "claude-3-5-sonnet-20240620" },
+    { name: "Google-Flash",   model: "gemini-1.5-flash" },
+    { name: "Google-Pro",     model: "gemini-1.5-pro" },
+    { name: "Local-Fast",     model: "kai-fast" }
   ];
 
   // Build bot-specific ladder
@@ -224,18 +225,17 @@ RULES:
       logAudit('NEURAL_ATTEMPT', { botName, provider: provider.name, model: provider.model });
       let reply = null;
 
-      if (provider.name === "Groq" || provider.name === "Groq-Fast") {
+      if (provider.name.startsWith("Groq")) {
         reply = await callGroqDirect(botName, transcript, finalSystem, provider.model, temperature);
-      } else if (provider.name === "Cerebras") {
-        reply = await callCerebras(botName, transcript, finalSystem, 6000);
-      } else if (provider.name === "OpenAI") {
+      } else if (provider.name.startsWith("Cerebras")) {
+        reply = await callCerebras(botName, transcript, finalSystem, provider.model, 6000);
+      } else if (provider.name.startsWith("OpenAI")) {
         reply = await callOpenAI(botName, transcript, finalSystem, provider.model, temperature);
-      } else if (provider.name === "Anthropic") {
+      } else if (provider.name.startsWith("Anthropic")) {
         reply = await callAnthropic(botName, transcript, finalSystem, 12000, temperature);
-      } else if (provider.name === "Google") {
+      } else if (provider.name.startsWith("Google")) {
         reply = await callGemini(botName, transcript, finalSystem, provider.model, 10000, temperature);
-      } else if (provider.name === "Local") {
-        // Local Ollama fallback
+      } else if (provider.name === "Local-Fast") {
         const res = await fetch("http://127.0.0.1:11434/api/generate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -329,7 +329,7 @@ export async function callOpenAI(botName, transcript, systemPrompt, model = "gpt
   throw new Error(`OpenAI Error: ${res.status} ${res.statusText}`);
 }
 
-export async function callCerebras(botName, transcript, systemPrompt, timeout = 6000) {
+export async function callCerebras(botName, transcript, systemPrompt, model = "llama3.1-70b", timeout = 6000) {
   const CEREBRAS_KEY = process.env.CEREBRAS_API_KEY;
   if (!CEREBRAS_KEY) throw new Error("Missing CEREBRAS_API_KEY");
 
@@ -340,7 +340,7 @@ export async function callCerebras(botName, transcript, systemPrompt, timeout = 
       "Authorization": `Bearer ${CEREBRAS_KEY}`
     },
     body: JSON.stringify({
-      model: "llama3.1-70b",
+      model: model,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: transcript }
