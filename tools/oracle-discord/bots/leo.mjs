@@ -1203,13 +1203,14 @@ ${detectedIdentity}
   - SPEAKER ID: ${userId}
 ${cleanHistory}`;
 
-    // ─── NEURAL ORCHESTRATION (LOCAL ONLY: API-FREE MISSION) ─────
-    console.log(`[Leo/Neural] Direct local link via Ollama (kai-fast)...`);
-    const localReply = await chatWithOllama(cleanTranscript, system, "kai-fast:latest");
-    if (localReply) return localReply;
+    // ─── NEURAL ORCHESTRATION (SONIC MODE: GROQ-FAST PRIMARY) ─────
+    console.log(`[Leo/Neural] Initiating Groq-Sonic-Mode (llama-3.1-8b-instant)...`);
+    const fastReply = await chatWithOpenJarvis(userName, cleanTranscript, system, "llama-3.1-8b-instant", BOT_NAME, { author: userName }, sim.getVitals());
+    if (fastReply) return fastReply;
 
-    // Last resort: Fallback to local wrapper
-    return await chatWithOpenJarvis(userName, cleanTranscript, system, "kai-fast:latest", BOT_NAME, { author: userName }, sim.getVitals());
+    // Fallback: Local link via Ollama
+    console.log(`[Leo/Neural] Sonic Mode failed. Falling back to local Ollama (kai-fast)...`);
+    return await chatWithOllama(cleanTranscript, system, "kai-fast:latest");
   } catch (err) {
     console.error(`[Leo/Neural] Neural chain exhausted:`, err.message);
     return null;
