@@ -4,6 +4,18 @@ All notable changes to the Victus Core and RSHL Lattice Bridge will be documente
 
 ---
 
+## [26.0.0] — 2026-05-07 (Neural Sovereignty)
+### Added
+- **Sonic Memory Anchoring**: Parallel RSHL Lattice queries for identity and context (shaves 1.5s latency).
+- **Zero-Backoff Failover**: Priority bots (Leo/Oracle) now skip the 2.5s rate-limit delay for instant fallback.
+- **MemPalace Identity Rules**: All bots are now strictly anchored to RSHL Cognitive Claims.
+
+### Fixed
+- **Neural Drift**: Leo now treats MemPalace claims as "Absolute Truth," preventing long-term memory loss.
+- **Latency Spikes**: Resolved the "forever to respond" issue by shortening the Neural Lock overtake for priority nodes.
+
+---
+
 ## [25.0.0] — 2026-05-07 (Administrative Bridge)
 ### Added
 - **Sensitive Channel Routing**: All hourly System Integrity Reports are now funneled into the administrative channel (`1500053533515448480`).
