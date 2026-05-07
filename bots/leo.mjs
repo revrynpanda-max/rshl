@@ -647,9 +647,14 @@ async function processVocalQueue() {
   processVocalQueue();
 }
 
-async function speakLeoText(text) {
+async function speakLeoText(text, isPriority = false) {
   if (!text || text.length < 2) return;
-  vocalQueue.push(text);
+  if (isPriority) {
+    vocalQueue.unshift(text);
+    if (isSpeaking && audioPlayer) audioPlayer.stop(); // Pre-empt current speech for priority
+  } else {
+    vocalQueue.push(text);
+  }
   processVocalQueue();
 }
 
@@ -850,7 +855,7 @@ async function handleUserVoice(userId) {
 
     // --- INSTANT FEEDBACK: Break the silence within 500ms ---
     const filler = await getInstantFiller();
-    speakLeoText(filler).catch(() => {});
+    speakLeoText(filler, true).catch(() => {}); // PRIORITY STRIKE
     
     // TRANSFORMATION OPTIMIZATION: Convert once, reuse everywhere.
     const wav = pcmToWav(pcm, 48000, 2);
@@ -1143,7 +1148,8 @@ async function transcribeAudio(wavBuffer) {
     const res = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
       method: "POST", 
       headers: { "Authorization": `Bearer ${groqKey}` }, 
-      body: form
+      body: form,
+      signal: AbortSignal.timeout(5000) // 5s HARD-CAP on STT
     });
     
     const data = await res.json();
