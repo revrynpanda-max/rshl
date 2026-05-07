@@ -1358,3 +1358,5 @@ function startEnergyMonitor() {
     }
   }, 15000); // Check every 15s
 }
+
+startEnergyMonitor();
