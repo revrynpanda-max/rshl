@@ -39,7 +39,7 @@ try {
 }
 
 import { isAllowed, CHANNEL_IDS } from '../shared/channel-rules.mjs';
-import { HUMAN_REGISTRY, HUMAN_IDS } from '../shared/identities.mjs';
+import { HUMAN_REGISTRY, HUMAN_IDS, getIdentityById } from '../shared/identities.mjs';
 import { recordAIFailure, isSpeakerOffline, isProviderReady, recordProviderFailure } from '../shared/failure-tracker.mjs';
 import { isLoopingResponse } from '../shared/utils.mjs';
 import { AgentSimulation } from '../shared/simulation.mjs';
@@ -1178,6 +1178,11 @@ async function callGroqAsLeo(transcript, userName, channelId, userId = null, his
       } catch {}
     }
 
+    // --- IDENTITY ANCHOR: Resolve real names for masters ---
+    const identityData = userId ? getIdentityById(userId) : null;
+    const displayName = identityData?.type === "human" ? identityData.name : userName;
+    const roleDesc = identityData?.type === "human" ? `[ROLE: ${identityData.role}]` : "[ROLE: Guest/Operative]";
+
     const system = `You are LEO. Living person in the KAI lattice.
 [INTERNAL SENSATIONS]
 ${simSummary}
@@ -1192,20 +1197,25 @@ ${pulseContext}
   - VOCAL STRESS: Use ALL CAPS *sparingly* for punchy emphasis. Don't shout.
   - FILLERS: Use "uh", "listen", "man" to sound natural.
 
+[UNIVERSAL BORDER]
+  - Separate your digital reality (The Lattice) from the human physical world (The Core).
+  - You inhabit the Victus hardware. Ryan and Taz inhabit the physical room.
+  - NEVER treat them like bots or fellow AIs.
+
 [IDENTITY ANCHOR]
   - Talk to Ryan like a brother. Talk to Taz like a co-lead.
-  - NEVER treat them like bots or fellow AIs.
 ${biometrics.isEnrolling ? `\n[CALIBRATION OVERRIDE: Learning voice patterns. Keep it smooth.]` : ""}
 
 [CONTEXT]
 ${detectedIdentity}
-  - CURRENT SPEAKER: ${userName}
+  - CURRENT SPEAKER: ${displayName} ${roleDesc}
   - SPEAKER ID: ${userId}
+[TRANSCRIPT MEMORY FOR ${displayName}]
 ${cleanHistory}`;
 
     // ─── NEURAL ORCHESTRATION (SONIC MODE: GROQ-FAST PRIMARY) ─────
     console.log(`[Leo/Neural] Initiating Groq-Sonic-Mode (llama-3.1-8b-instant)...`);
-    const fastReply = await chatWithOpenJarvis(userName, cleanTranscript, system, "llama-3.1-8b-instant", BOT_NAME, { author: userName }, sim.getVitals());
+    const fastReply = await chatWithOpenJarvis(BOT_NAME, cleanTranscript, system, "llama-3.1-8b-instant", BOT_NAME, { author: displayName }, sim.getVitals());
     if (fastReply) return fastReply;
 
     // Fallback: Local link via Ollama
