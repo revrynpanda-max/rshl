@@ -4,6 +4,17 @@ All notable changes to the Victus Core and RSHL Lattice Bridge will be documente
 
 ---
 
+## [34.0.0] — 2026-05-07 (Sovereign Bypass)
+### Added
+- **Total Lock Exemption**: Leo and Oracle now skip the neural locking system entirely for zero-latency API access.
+- **Retry Hard-Cap**: Reduced neural lock retries to 5-10 attempts (max 5s wait) to prevent long-tail latency spikes.
+
+### Fixed
+- **41s Neural Lag**: Resolved the massive delays caused by bots waiting for locks held by crashed or slow processes.
+- **isPriority Crash**: Fixed the "isPriority is not defined" error in the neural pipeline.
+
+---
+
 ## [33.0.0] — 2026-05-07 (Sonic Activation)
 ### Added
 - **Phase 1 Activation**: Hard-wired the Snap-Burst into the `handleUserVoice` loop for instant feedback.
