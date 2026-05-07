@@ -326,11 +326,11 @@ export class AgentSimulation {
     // DYNAMIC FATIGUE: Drain increases as energy drops and as 3 AM approaches.
     const now = new Date();
     const estNow = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
-    const hour = estNow.getHours();
+    const estHour = estNow.getHours();
     
     let timeFatigue = 1.0;
-    if (hour === 2) timeFatigue = 1.5; // Heavy fatigue in the hour before 3 AM
-    if (hour === 1) timeFatigue = 1.2;
+    if (estHour === 2) timeFatigue = 1.5; // Heavy fatigue in the hour before 3 AM
+    if (estHour === 1) timeFatigue = 1.2;
 
     const energyFatigue = 1.0 + (Math.max(0, 65 - this.state.energy) / 35); // Max 2.8x drain at low energy
     const finalDrain = baseDrain * energyFatigue * timeFatigue;
