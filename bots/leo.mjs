@@ -654,7 +654,8 @@ async function executeVocalSync(text) {
   try {
     let res;
     if (ELEVEN_LABS_KEY) {
-      res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/9BWts7dtBgrzGke9SbcL`, {
+      const voiceId = "hswfOuM90P82BLQSXwqU"; // Leo (Physicist) Verified ID
+      res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream?optimize_streaming_latency=4`, {
         method: "POST",
         headers: { "xi-api-key": ELEVEN_LABS_KEY, "Content-Type": "application/json" },
         body: JSON.stringify({
