@@ -1199,7 +1199,7 @@ async function callGroqAsLeo(transcript, userName, channelId, userId = null, his
     // Fire queries in parallel to shave off 1-2s of latency
     const [identityData, memoryClaims] = await Promise.all([
       resolveIdentityFromMemory(userId, userName),
-      fetch(`http://127.0.0.1:3333/query?q=Context for ${userName} regarding recent Victus project directives`, { signal: AbortSignal.timeout(2000) })
+      fetch(`http://127.0.0.1:3333/query?q=Context for ${userName} regarding recent Victus project directives`, { signal: AbortSignal.timeout(800) })
         .then(res => res.ok ? res.json() : null)
         .catch(() => null)
     ]);
@@ -1248,14 +1248,23 @@ ${detectedIdentity}
 [TRANSCRIPT MEMORY FOR ${displayName}]
 ${cleanHistory}`;
 
-    // ─── NEURAL ORCHESTRATION (DEDICATED PIPELINE: CEREBRAS 70B + GROQ FALLBACK) ─────
-    console.log(`[Leo/Neural] Engaging dedicated pipeline (Cerebras 70B)...`);
-    const reply = await chatWithOpenJarvis(BOT_NAME, cleanTranscript, system, "Cerebras", BOT_NAME, { author: displayName }, sim.getVitals());
-    if (reply) return reply;
+    // ─── NEURAL ORCHESTRATION (FAST-PATH: CEREBRAS 8B) ─────
+    console.log(`[Leo/Neural] Engaging high-speed pipeline (Cerebras 8B)...`);
+    
+    // PRESENCE GUARD: Check if user is still in voice before hitting the API
+    const member = message.guild.members.cache.get(userId);
+    if (!member || !member.voice.channelId) {
+      console.log(`[Leo/Neural] User ${displayName} left. Aborting response.`);
+      return null;
+    }
 
-    // Last resort: Direct local failover
-    console.log(`[Leo/Neural] Pipeline exhausted. Final local failover (kai-fast)...`);
-    return await chatWithOllama(cleanTranscript, system, "kai-fast:latest");
+    const reply = await chatWithOpenJarvis(BOT_NAME, cleanTranscript, system, "Cerebras-8b", BOT_NAME, { author: displayName }, sim.getVitals());
+    
+    if (reply) {
+      // Final presence check before speaking
+      if (!member.voice.channelId) return null;
+      return reply;
+    }
   } catch (err) {
     console.error(`[Leo/Neural] Neural chain exhausted:`, err.message);
     return null;
