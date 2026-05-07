@@ -4,6 +4,17 @@ All notable changes to the Victus Core and RSHL Lattice Bridge will be documente
 
 ---
 
+## [28.0.0] — 2026-05-07 (Console Sovereignty)
+### Added
+- **Stealth Mode Activation**: Suppressed redundant "Digesting Claim" and "Work Shift" logs across the fleet.
+- **Professional Silence Protocol**: Console now only logs critical interactions and strategic results.
+
+### Fixed
+- **Neural Crash**: Repaired the "message is not defined" error in Leo's Presence Guard.
+- **Console Clutter**: Purged "Staggered Ignition" and "Learning Track" announcements.
+
+---
+
 ## [27.0.0] — 2026-05-07 (Sonic Sovereignty)
 ### Added
 - **8B Fast-Path**: Hard-wired Leo to Cerebras-8b for sub-second vocal inference (purged 70B lag).
