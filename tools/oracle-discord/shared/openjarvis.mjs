@@ -168,15 +168,17 @@ RULES:
 
   // 3. DEDICATED NEURAL PIPELINES (Sovereign Assignment)
   const BOT_PIPELINES = {
-    "Leo":        ["Cerebras-70b",   "Groq-70b"],
-    "Oracle":     ["Groq-70b",       "OpenAI-mini"],
-    "KAI":        ["OpenAI-mini",    "Google-Pro"],
-    "Researcher": ["Google-Pro",     "Local-Fast"],
-    "Analyst":    ["Local-Fast",     "Google-Flash"],
-    "Claude":     ["Google-Flash",   "Groq-8b"],
-    "Gemini":     ["Groq-8b",        "Cerebras-8b"],
-    "X":          ["Cerebras-8b",    "Anthropic-Sonnet"],
-    "Kai Coder":  ["Anthropic-Sonnet", "Cerebras-70b"]
+    "Leo":             ["Cerebras-70b",   "Groq-8b"],
+    "Oracle":          ["Groq-70b",       "OpenAI-mini"],
+    "KAI":             ["OpenAI-mini",    "Anthropic-Sonnet"],
+    "Researcher":      ["Google-Pro",     "Groq-Mixtral"],
+    "Analyst":         ["Local-Fast",     "Groq-Gemma"],
+    "Claude":          ["Anthropic-Sonnet", "Google-Flash"],
+    "Gemini":          ["Google-Flash",   "Google-Pro"],
+    "X":               ["Groq-8b",        "Cerebras-8b"],
+    "Groq":            ["Groq-Mixtral",   "Local-Fast"],
+    "Kai Coder":       ["Cerebras-8b",    "Groq-70b"],
+    "Oracle_Overseer": ["Groq-Gemma",     "Cerebras-70b"]
   };
 
   const globalProviders = [
@@ -184,6 +186,8 @@ RULES:
     { name: "Cerebras-8b",    model: "llama3.1-8b" },
     { name: "Groq-70b",       model: "llama-3.3-70b-versatile" },
     { name: "Groq-8b",        model: "llama-3.1-8b-instant" },
+    { name: "Groq-Mixtral",   model: "mixtral-8x7b-32768" },
+    { name: "Groq-Gemma",     model: "gemma2-9b-it" },
     { name: "OpenAI-mini",    model: "gpt-4o-mini" },
     { name: "Anthropic-Sonnet", model: "claude-3-5-sonnet-20240620" },
     { name: "Google-Flash",   model: "gemini-1.5-flash" },
