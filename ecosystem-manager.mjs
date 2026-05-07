@@ -76,8 +76,13 @@ startProcess("Oracle", "oracle-gateway.mjs");
 startProcess("Leo", "bots/leo.mjs");
 startProcess("KAI", "bots/kai.mjs");
 
+// Staggered Startup to avoid API congestion
+let delay = 0;
 for (const bot of BOTS) {
-  startProcess(bot, "bots/start-bot.mjs", [bot]);
+  setTimeout(() => {
+    startProcess(bot, "bots/start-bot.mjs", [bot]);
+  }, delay);
+  delay += 1500; // 1.5s gap between each bot
 }
 
 // Global World Clock Heartbeat

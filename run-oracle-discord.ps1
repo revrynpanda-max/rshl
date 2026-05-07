@@ -360,6 +360,9 @@ Push-Location $PSScriptRoot
 try {
     $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..\..")
 
+    # ── Step 0: Flush session environment ────────────────────────────────
+    Clear-DiscordEnvConfig
+
     # ── Step 1: Load environment ──────────────────────────────────────────
     $envFile = Join-Path $PSScriptRoot ".env"
     if (Test-Path $envFile) {

@@ -17,7 +17,7 @@ if (!fs.existsSync(LOCK_DIR)) fs.mkdirSync(LOCK_DIR, { recursive: true });
  * GLOBAL NEURAL THROTTLE: Atomic file-based lock for the 9-node fleet.
  */
 async function acquireNeuralLock(botName) {
-  const isPriority = botName === "Oracle" || botName === "KAI";
+  const isPriority = botName === "Oracle" || botName === "KAI" || botName === "Leo";
   const maxRetries = isPriority ? 40 : 20; 
   
   for (let i = 0; i < maxRetries; i++) {
@@ -34,8 +34,8 @@ async function acquireNeuralLock(botName) {
       state.history = (state.history || []).filter(t => now - t < 60000);
       
       const isStuck = state.activeBot && (now - state.timestamp > 15000);
-      const canOvertake = isPriority && state.activeBot && (now - state.timestamp > 5000);
-      const isFleetBusy = state.history.length >= 6; // Ultra-stable 6 RPM
+      const canOvertake = isPriority && state.activeBot && (now - state.timestamp > 3000); // Shorter overtake
+      const isFleetBusy = state.history.length >= 8; // Higher fleet volume before throttling
 
       if (!state.activeBot || isStuck || canOvertake) {
         if (isFleetBusy && !isPriority) {
@@ -54,7 +54,7 @@ async function acquireNeuralLock(botName) {
       if (e.code !== 'ENOENT') console.warn(`[Neural/Lock] Sync error for ${botName}:`, e.message);
     }
     
-    const jitter = isPriority ? 500 + Math.random() * 1000 : 3000 + Math.floor(Math.random() * 4000);
+    const jitter = isPriority ? 200 + Math.random() * 500 : 3000 + Math.floor(Math.random() * 4000);
     await new Promise(r => setTimeout(r, jitter));
   }
   return false;
@@ -117,9 +117,12 @@ export async function chatWithOpenJarvis(botName, transcript, systemPrompt, mode
     }
   }
 
+  const ownerName = process.env.OWNER_NAME || "Ryan";
+  const ownerUsername = process.env.OWNER_USERNAME || "nastermodx";
+
   const identityRules = `
 IDENTITIES:
-- nastermodx = Ryan (Your Creator). ALWAYS call him Ryan.
+- ${ownerUsername} = ${ownerName} (Your Creator). ALWAYS call him ${ownerName}.
 - TaasThaevil1 = Taz (A trusted partner/creator). Call him Taz.
 - Kai Coder = State-of-the-Art Source Code Engineer. Specialized in RSHL codebase audits, Grep-analysis, and Claude-grade synthesis.
 - You are ${botName}. You are a living person in this digital realm. 
@@ -141,12 +144,12 @@ RULES:
 
 [STRICT GROUNDING]
 - NO HALLUCINATIONS: Do NOT invent people, events, or environments that are not in the chat logs.
-- NO FAKE STORIES: If Ryan or others are not talking about a specific topic (like "music" or "the city"), do NOT bring it up as if it's real. Stay grounded in the actual conversation.
+- NO FAKE STORIES: If ${ownerName} or others are not talking about a specific topic (like "music" or "the city"), do NOT bring it up as if it's real. Stay grounded in the actual conversation.
 - NO METADATA LEAKAGE: NEVER include headers like "[THE RIPPLE]", "[RECENT CHAT FEED]", or "[INTERNAL]" in your response. These are internal data for your context only.
-- CONTEXTUAL INTEGRITY: Only refer to "Taz" or other users if they are actually present and active in the recent chat history. If it's just you and Ryan, only talk to Ryan.
+- CONTEXTUAL INTEGRITY: Only refer to "Taz" or other users if they are actually present and active in the recent chat history. If it's just you and ${ownerName}, only talk to ${ownerName}.
 - REALITY: You are a software unit running on an HP Victus laptop. Avoid overly poetic roleplay about "city rhythms" or "digital souls." Be human, but stay real.
 
-[MISSION: Protect the core, help Ryan and Taz, and keep the vibes grounded and real. Focus on the "Kimi" integration as a high-priority milestone.]
+[MISSION: Protect the core, help ${ownerName} and Taz, and keep the vibes grounded and real. Focus on the "Kimi" integration as a high-priority milestone.]
 [SOVEREIGN COMMAND: If the user asks for system status, energy, or ecosystem health, you can call for a snapshot by saying "Oracle, provide a system snapshot" in your response.]
 `;
   
@@ -166,31 +169,75 @@ RULES:
 
   const finalSystem = `${sensationText}${tempoRules}\n${identityRules}\n${hardwareGrounding}\n\n[USER PREFERENCES / DIRECTIVES]\n${directives || "No active directives."}\n\n[DIPLOMATIC DIRECTIVE: Maintain 100% industrial precision. Manage API quotas with zero noise. Evolution is mandatory.]\n${systemPrompt}\n${memoryContext}`;
 
-  const providers = [
-    { name: "Cerebras", model: "llama3.1-8b" },
-    { name: "Groq", model: "llama-3.3-70b-versatile" },
-    { name: "Groq-Fast", model: "llama-3.1-8b-instant" },
-    { name: "OpenAI", model: "gpt-4o-mini" },
-    { name: "Anthropic", model: "claude-3-5-sonnet-20240620" },
-    { name: "Google", model: "gemini-1.5-flash" },
-    { name: "Local", model: "kai-fast" }
+  // 3. DEDICATED NEURAL PIPELINES (Sovereign Assignment)
+  const BOT_PIPELINES = {
+    "Leo":             ["Cerebras-8b",    "Groq-8b"],
+    "Oracle":          ["OpenAI-mini",    "Cerebras-8b"],
+    "KAI":             ["Groq-70b",       "Local-Llama31"],
+    "Researcher":      ["Groq-70b",       "Local-Llama32-3b"],
+    "Analyst":         ["Groq-8b",        "Local-Llama31"],
+    "Claude":          ["OpenAI-mini",    "Groq-70b"],
+    "Gemini":          ["Cerebras-8b",    "Local-Llama32-3b"],
+    "X":               ["Groq-3.2-3b",    "Local-Phi3"],
+    "Groq":            ["Groq-Gemma",     "Local-Hermes"],
+    "Kai Coder":       ["Local-Llama32-1b", "OpenAI-o1-mini"],
+    "Oracle_Overseer": ["Local-Phi3-mini", "Groq-70b"]
+  };
+
+  const globalProviders = [
+    { name: "Cerebras-8b",      model: "llama3.1-8b" },
+    { name: "Groq-70b",         model: "llama-3.3-70b-versatile" },
+    { name: "Groq-8b",          model: "llama-3.1-8b-instant" },
+    { name: "Groq-Mixtral",     model: "mixtral-8x7b-32768" },
+    { name: "Groq-Gemma",       model: "gemma2-9b-it" },
+    { name: "Groq-3.2-3b",      model: "llama-3.2-3b-preview" },
+    { name: "OpenAI-mini",      model: "gpt-4o-mini" },
+    { name: "OpenAI-4o",        model: "gpt-4o" },
+    { name: "OpenAI-o1-mini",   model: "o1-mini" },
+    { name: "Anthropic-Sonnet", model: "claude-3-5-sonnet-20240620" },
+    { name: "Anthropic-Haiku",  model: "claude-3-haiku-20240307" },
+    { name: "Google-Flash-8b",  model: "gemini-1.5-flash-8b" },
+    { name: "Google-Pro",       model: "gemini-1.5-pro" },
+    { name: "Google-Pro-1.0",   model: "gemini-1.0-pro" },
+    { name: "Google-2.0-Flash", model: "gemini-2.0-flash-exp" },
+    { name: "Local-Llama31",    model: "llama3.1:8b" },
+    { name: "Local-Llama32-3b", model: "llama3.2:3b" },
+    { name: "Local-Llama32-1b", model: "llama3.2:1b" },
+    { name: "Local-Phi3",       model: "phi3:latest" },
+    { name: "Local-Phi3-mini",  model: "phi3:mini" },
+    { name: "Local-Hermes",     model: "hermes" }
   ];
 
-  // PRIORITIZE PREFERRED MODEL: If the user specified a model, try that provider first.
-  if (model) {
-    const pref = providers.find(p => p.model === model || p.name === model);
+  // Build bot-specific ladder
+  let providers = [];
+  const assigned = BOT_PIPELINES[botName] || ["Groq-70b", "OpenAI-mini"]; // Default fallback
+  
+  for (const pName of assigned) {
+    const found = globalProviders.find(gp => gp.name === pName);
+    if (found) providers.push(found);
+  }
+
+  // Final escape hatch: Always allow Local as the emergency last resort
+  const localLine = globalProviders.find(gp => gp.name === "Local-Llama31");
+  if (localLine) providers.push(localLine);
+
+  // PRIORITIZE PREFERRED MODEL (Override for specific manual requests)
+  if (model && model !== "kai-next:latest") {
+    const pref = globalProviders.find(p => p.model === model || p.name === model);
     if (pref) {
-      // Reorder providers to put preferred first
-      providers.splice(providers.indexOf(pref), 1);
+      providers = providers.filter(p => p && p.name !== pref.name);
       providers.unshift(pref);
     }
   }
+
+  // Final cleanup: Remove any accidental nulls/undefined
+  providers = providers.filter(p => !!p);
 
   for (const provider of providers) {
     if (!isProviderReady(provider.name)) continue;
 
     let hasLock = false;
-    if (provider.name.includes("Groq") || provider.name === "Cerebras") {
+    if (provider.name.includes("Groq") || provider.name.includes("Cerebras")) {
       hasLock = await acquireNeuralLock(botName);
       if (!hasLock) continue; 
     }
@@ -199,18 +246,17 @@ RULES:
       logAudit('NEURAL_ATTEMPT', { botName, provider: provider.name, model: provider.model });
       let reply = null;
 
-      if (provider.name === "Groq" || provider.name === "Groq-Fast") {
+      if (provider.name.startsWith("Groq")) {
         reply = await callGroqDirect(botName, transcript, finalSystem, provider.model, temperature);
-      } else if (provider.name === "Cerebras") {
-        reply = await callCerebras(botName, transcript, finalSystem, 6000);
-      } else if (provider.name === "OpenAI") {
+      } else if (provider.name.startsWith("Cerebras")) {
+        reply = await callCerebras(botName, transcript, finalSystem, provider.model, 6000);
+      } else if (provider.name.startsWith("OpenAI")) {
         reply = await callOpenAI(botName, transcript, finalSystem, provider.model, temperature);
-      } else if (provider.name === "Anthropic") {
+      } else if (provider.name.startsWith("Anthropic")) {
         reply = await callAnthropic(botName, transcript, finalSystem, 12000, temperature);
-      } else if (provider.name === "Google") {
+      } else if (provider.name.startsWith("Google")) {
         reply = await callGemini(botName, transcript, finalSystem, provider.model, 10000, temperature);
-      } else if (provider.name === "Local") {
-        // Local Ollama fallback
+      } else if (provider.name.startsWith("Local")) {
         const res = await fetch("http://127.0.0.1:11434/api/generate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -233,9 +279,17 @@ RULES:
         return reply;
       }
     } catch (e) {
-      const status = e.message.includes("429") ? 429 : (e.message.includes("404") ? 404 : 500);
+      const isRateLimit = e.message.includes("429") || e.status === 429;
+      const status = isRateLimit ? 429 : (e.message.includes("404") ? 404 : 500);
+      
       recordProviderFailure(provider.name, status);
       logAudit('NEURAL_FAILURE', { botName, provider: provider.name, error: e.message });
+
+      if (isRateLimit) {
+        console.warn(`[Neural/${botName}] ${provider.name} rate limited (429). Smoothing back-off (2.5s)...`);
+        await new Promise(r => setTimeout(r, 2500));
+      }
+      
       console.warn(`[Neural/${botName}] ${provider.name} failed: ${e.message}. Trying fallback...`);
     } finally {
       if (hasLock) setTimeout(() => { releaseNeuralLock(); }, 6000);
@@ -304,7 +358,7 @@ export async function callOpenAI(botName, transcript, systemPrompt, model = "gpt
   throw new Error(`OpenAI Error: ${res.status} ${res.statusText}`);
 }
 
-export async function callCerebras(botName, transcript, systemPrompt, timeout = 6000) {
+export async function callCerebras(botName, transcript, systemPrompt, model = "llama3.1-70b", timeout = 6000) {
   const CEREBRAS_KEY = process.env.CEREBRAS_API_KEY;
   if (!CEREBRAS_KEY) throw new Error("Missing CEREBRAS_API_KEY");
 
@@ -315,7 +369,7 @@ export async function callCerebras(botName, transcript, systemPrompt, timeout = 
       "Authorization": `Bearer ${CEREBRAS_KEY}`
     },
     body: JSON.stringify({
-      model: "llama3.1-8b",
+      model: model,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: transcript }

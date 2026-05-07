@@ -93,14 +93,19 @@ Here is what each member logged:
 ${learnings.join("\n\n")}
 
 Your job: Write a concise morning briefing for the team's work session today (${dateStr}).
+You must evaluate the entire lattice's performance from yesterday, specifically:
+1. HUMAN HARMONY: How well did the bots interact with Ryan, Taz, and Guest? Did they respect the hierarchy?
+2. CLAIM VALIDITY: What were the most important facts accepted into the lattice, and what was pruned as garbage?
+3. AGENT VALUES: Assign a brief 'Cognitive Value' score to the team as a whole.
+
 Format it as KAI speaking directly to the team at the start of their shift.
 
 Include:
-1. A 1-sentence summary of the most important collective insight from yesterday
-2. What each relevant member should focus on or follow up today (1 line each — be specific)
-3. One open question or opportunity the team should explore together today
+1. A 1-sentence summary of the collective performance/harmony yesterday.
+2. What each relevant member should focus on or follow up today (1 line each — be specific).
+3. One open question for the team to explore today to improve human-AI alignment.
 
-Keep it tight — this is a morning brief, not a report. 200 words max.`;
+Keep it tight — this is a morning brief, not a report. 250 words max.`;
 
   const briefing = await callAI(
     consolidationPrompt,

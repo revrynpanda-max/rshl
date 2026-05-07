@@ -1,5 +1,5 @@
 import fs from 'fs';
-import { execSync } from 'child_process';
+import { execSync, exec } from 'child_process';
 
 /**
  * VOCAL DNA Hub
@@ -54,23 +54,25 @@ class VocalBiometrics {
     }
   }
 
-  verify(username, audioPath) {
+  async verify(username, audioPath) {
     const profile = this.profiles.get(username);
     if (!profile || !profile.dnaPath) return { success: false, similarity: 0 };
 
-    try {
-      const output = execSync(`python c:/KAI/tools/oracle-discord/shared/vocal_dna.py --verify "${audioPath}" "${profile.dnaPath}"`).toString();
-      const match = output.match(/SIMILARITY: ([\d.]+)/);
-      const similarity = match ? parseFloat(match[1]) : 0;
-      
-      return {
-        success: similarity > 0.85, 
-        similarity: similarity
-      };
-    } catch (e) {
-      console.error(`[Biometrics/Hub] Verification Error:`, e.message);
-      return { success: false, similarity: 0 };
-    }
+    return new Promise((resolve) => {
+      exec(`python c:/KAI/tools/oracle-discord/shared/vocal_dna.py --verify "${audioPath}" "${profile.dnaPath}"`, (err, stdout) => {
+        if (err) {
+          console.error(`[Biometrics/Hub] Verification Error:`, err.message);
+          return resolve({ success: false, similarity: 0 });
+        }
+        const match = stdout.match(/SIMILARITY: ([\d.]+)/);
+        const similarity = match ? parseFloat(match[1]) : 0;
+        
+        resolve({
+          success: similarity > 0.85, 
+          similarity: similarity
+        });
+      });
+    });
   }
 
   /**
