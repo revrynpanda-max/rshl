@@ -4,6 +4,18 @@ All notable changes to the Victus Core and RSHL Lattice Bridge will be documente
 
 ---
 
+## [27.0.0] — 2026-05-07 (Sonic Sovereignty)
+### Added
+- **8B Fast-Path**: Hard-wired Leo to Cerebras-8b for sub-second vocal inference (purged 70B lag).
+- **Presence Guard**: Leo now aborts neural calls and speech if the user leaves the voice channel.
+- **Handshake Optimization**: Reduced RSHL context query timeout to 800ms.
+
+### Fixed
+- **45s Latency Spikes**: Resolved the extreme lag caused by forcing 70B models.
+- **Ghost Responses**: Prevented Leo from speaking to users who have already disconnected.
+
+---
+
 ## [26.0.0] — 2026-05-07 (Neural Sovereignty)
 ### Added
 - **Sonic Memory Anchoring**: Parallel RSHL Lattice queries for identity and context (shaves 1.5s latency).
