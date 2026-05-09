@@ -1,15 +1,15 @@
-//! Universe Ã¢â‚¬" The cell store for KAI's memory.
+//! Universe — The cell store for KAI's memory.
 //!
 //! Each cell is a belief: text + vector + region + strength + metadata.
 //! ALL queries use rayon parallel cosine across all 12 CPU threads.
 //!
 //! Scoring uses a hybrid of:
 //!   1. Cosine similarity on the 16384-dim sparse ternary vector (semantic layer)
-//!   2. Keyword overlap Ã¢â‚¬" shared significant words between query and cell (exact match layer)
+//!   2. Keyword overlap — shared significant words between query and cell (exact match layer)
 //!
 //! This is the same dual-layer approach that makes Google search fast and precise:
 //! semantic embeddings catch conceptual resonance, keyword overlap catches exact term hits.
-//! "What is RSHL?" finds the RSHL cell because "rshl" appears in both Ã¢â‚¬" even if the
+//! "What is RSHL?" finds the RSHL cell because "rshl" appears in both — even if the
 //! full-phrase cosine similarity is diluted by surrounding words.
 use rayon::prelude::*;
 
@@ -55,6 +55,18 @@ fn log_rejected_claim(text: &str, region: &str, source: &str, confidence: f32, r
     }
 }
 
+/// Generate a deterministic seed for a user ID.
+fn user_seed(user_id: &str) -> u32 {
+    if user_id.is_empty() {
+        return 0;
+    }
+    let mut h = 5381u32;
+    for b in user_id.bytes() {
+        h = h.wrapping_mul(33).wrapping_add(b as u32);
+    }
+    h
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct Cell {
     #[serde(default)]
@@ -69,6 +81,8 @@ pub struct Cell {
     pub convergence_score: f32,
     #[serde(default)]
     pub nnz: u32,
+    #[serde(default)]
+    pub pos_vec: SparseVec,
 }
 
 impl<'de> Deserialize<'de> for Cell {
@@ -102,6 +116,8 @@ impl<'de> Deserialize<'de> for Cell {
             convergence_score: f32,
             #[serde(default)]
             nnz: u32,
+            #[serde(default)]
+            pos_vec: SparseVec,
         }
 
         fn default_strength() -> f32 {
@@ -151,6 +167,7 @@ impl<'de> Deserialize<'de> for Cell {
             last_fired: raw.last_fired,
             convergence_score: raw.convergence_score,
             nnz,
+            pos_vec: raw.pos_vec,
         })
     }
 }
@@ -170,13 +187,54 @@ pub struct QueryHit {
     pub source: String,
 }
 
-/// The Universe holds all of KAI's memory cells.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Universe {
-    cells: Vec<Cell>,
+impl QueryHit {
+    pub fn from_cell(cell: &Cell, score: f32) -> Self {
+        Self {
+            label: cell.label.clone(),
+            text: cell.claim.text.clone(),
+            vec: cell.claim.vec.clone(),
+            region: cell.region.clone(),
+            score,
+            strength: cell.claim.confidence,
+            source: cell.claim.source.clone(),
+        }
+    }
 }
 
-// â”€â”€ Epistemic Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+/// The Universe holds all of KAI's memory cells.
+#[derive(Serialize, Deserialize)]
+pub struct Universe {
+    cells: Vec<Cell>,
+    #[serde(default)]
+    pub lexicon: super::index::LatticeLexicon,
+    #[serde(skip)]
+    pub hnsw: Option<hnsw_rs::prelude::Hnsw<'static, SparseVec, super::index::TernaryDistance>>,
+    #[serde(default)]
+    pub user_equations: HashMap<String, SparseVec>,
+}
+
+impl Clone for Universe {
+    fn clone(&self) -> Self {
+        Self {
+            cells: self.cells.clone(),
+            lexicon: self.lexicon.clone(),
+            hnsw: None,
+            user_equations: self.user_equations.clone(),
+        }
+    }
+}
+
+impl std::fmt::Debug for Universe {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Universe")
+            .field("cells_count", &self.cells.len())
+            .field("lexicon", &self.lexicon)
+            .field("hnsw_active", &self.hnsw.is_some())
+            .finish()
+    }
+}
+
+// ── Epistemic Constants ──────────────────────────────────────────────────
 pub const TRUTH_ANCHORS: &[(&str, f32)] = &[
     (
         "E equals mc squared mass energy equivalence Einstein special relativity confirmed",
@@ -212,12 +270,12 @@ pub const TRUTH_ANCHORS: &[(&str, f32)] = &[
     ),
 ];
 
-/// Self-knowledge anchors â€” what KAI knows about his own architecture.
-/// Seeded into the "identity" region at 4.5â€“5.0 strength so questions
+/// Self-knowledge anchors — what KAI knows about his own architecture.
+/// Seeded into the "identity" region at 4.5–5.0 strength so questions
 /// about KAI's own structure produce confident, immediate answers instead
 /// of "lattice is quiet" or leaking into physics cells.
 pub const SELF_KNOWLEDGE_ANCHORS: &[(&str, f32)] = &[
-    // â”€â”€ What KAI is â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── What KAI is ───────────────────────────────────────────────────────
     (
         "KAI is a custom Rust AI using Vector Symbolic Architecture VSA sparse ternary vectors \
          16384 dimensions no pre-trained weights learns only through conversation",
@@ -233,7 +291,7 @@ pub const SELF_KNOWLEDGE_ANCHORS: &[(&str, f32)] = &[
          model KAI composes responses from lattice resonance sparse vector cosine similarity",
         5.0,
     ),
-    // â”€â”€ Memory regions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Memory regions ────────────────────────────────────────────────────
     (
         "KAI memory regions are: memory identity reasoning established-physics contested \
          each region organizes cells by type and trust level",
@@ -259,7 +317,7 @@ pub const SELF_KNOWLEDGE_ANCHORS: &[(&str, f32)] = &[
          cells that failed epistemic verification drift outward during reorganization",
         4.0,
     ),
-    // â”€â”€ Architecture components â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Architecture components ───────────────────────────────────────────
     (
         "MindFrame is KAI central cognitive authority manages attention routing \
          orchestrates which brain modules activate decides response strategy",
@@ -290,7 +348,7 @@ pub const SELF_KNOWLEDGE_ANCHORS: &[(&str, f32)] = &[
          radius tau_r drive sleep cycle breathing loop phyllotaxis ring reorganization",
         4.0,
     ),
-    // â”€â”€ Epistemic immune system â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Epistemic immune system ───────────────────────────────────────────
     (
         "KAI epistemic immune system four components: dynamic calibration monoculture scan \
          ingest_and_verify lattice reorganization protect lattice from bad data",
@@ -306,7 +364,7 @@ pub const SELF_KNOWLEDGE_ANCHORS: &[(&str, f32)] = &[
          physics resonance floor 0.55 coherence floor 0.40 verified contested rejected",
         4.0,
     ),
-    // â”€â”€ KAI's creator and context â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── KAI's creator and context ─────────────────────────────────────────
     (
         "Ryan is KAI creator admin owner Ryan built KAI in Rust Ryan is the only human \
          KAI learns from through conversation",
@@ -329,9 +387,9 @@ pub const MONOCULTURE_MIN_SIZE: usize = 5;
 pub const PHYSICS_RESONANCE_FLOOR: f32 = 0.55;
 pub const COHERENCE_FLOOR: f32 = 0.40;
 
-// â”€â”€ Keyword overlap helpers (BM25-style exact match layer) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Keyword overlap helpers (BM25-style exact match layer) ───────────────────
 
-/// Extract significant keywords from a query Ã¢â‚¬" stopwords removed, Ã¢â€°Â¥3 chars.
+/// Extract significant keywords from a query — stopwords removed, ≥3 chars.
 /// These are the terms we expect to literally appear in a matching cell.
 fn extract_query_keywords(text: &str) -> Vec<String> {
     const STOPWORDS: &[&str] = &[
@@ -428,7 +486,7 @@ fn extract_query_keywords(text: &str) -> Vec<String> {
         "which",
         "its",
         "whose",
-        // Casual fillers that add noise Ã¢â‚¬" semantically empty in queries
+        // Casual fillers that add noise — semantically empty in queries
         "again",
         "actually",
         "basically",
@@ -451,7 +509,7 @@ fn extract_query_keywords(text: &str) -> Vec<String> {
         "always",
         "sometimes",
         "often",
-        // Conversational openers / hedge words Ã¢â‚¬" carry no topic signal
+        // Conversational openers / hedge words — carry no topic signal
         "wait",
         "like",
         "mean",
@@ -488,8 +546,8 @@ fn extract_query_keywords(text: &str) -> Vec<String> {
         .collect()
 }
 
-/// Score how many query keywords appear in cell text (0.0Ã¢â‚¬"1.0).
-/// Uses morphological prefix matching for words Ã¢â€°Â¥4 chars so "dream" matches "dreaming",
+/// Score how many query keywords appear in cell text (0.0—1.0).
+/// Uses morphological prefix matching for words ≥4 chars so "dream" matches "dreaming",
 /// "feel" matches "feelings", "work" matches "working", etc.
 fn keyword_overlap_score(query_words: &[String], cell_text: &str) -> f32 {
     if query_words.is_empty() {
@@ -540,7 +598,85 @@ impl Default for Universe {
 
 impl Universe {
     pub fn new() -> Self {
-        Self { cells: Vec::new() }
+        Self { 
+            cells: Vec::new(),
+            lexicon: super::index::LatticeLexicon::new(),
+            hnsw: None,
+            user_equations: HashMap::new(),
+        }
+    }
+
+    /// Rebuild the Hybrid Index (HNSW + Lexicon) from scratch using current cells.
+    /// Used after loading from disk or when the index becomes fragmented.
+    pub fn rebuild_index(&mut self, mem_pressure: f32) {
+        use hnsw_rs::prelude::*;
+        
+        // 1. Rebuild Lexicon
+        self.lexicon = super::index::LatticeLexicon::new();
+        for (id, cell) in self.cells.iter().enumerate() {
+            self.lexicon.index_cell(id as u32, &cell.claim.text, &[cell.region.clone(), format!("source:{}", cell.claim.source)]);
+        }
+
+        // 2. Rebuild HNSW
+        let max_nb = 16;
+        let max_elements = self.cells.len().max(1000);
+        let max_layer = 16;
+        let ef_construction = 200;
+        
+        let mut hnsw = Hnsw::new(max_nb, max_elements, max_layer, ef_construction, super::index::TernaryDistance::default());
+        
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
+        
+        // Dynamic Thresholds based on memory pressure
+        // Higher pressure -> shorter window and higher confidence required
+        let hot_window = if mem_pressure > 0.8 { 3600 * 4 } else { 3600 * 24 };
+        let conf_min = if mem_pressure > 0.8 { 4.2 } else { 3.5 };
+        
+        let mut hot_count = 0;
+        for (id, cell) in self.cells.iter().enumerate() {
+            let is_hot = (now - cell.last_fired < hot_window) || cell.claim.confidence > conf_min;
+            
+            if is_hot {
+                hnsw.insert((&[cell.claim.vec.clone()], id));
+                hot_count += 1;
+            }
+        }
+        
+        println!("[HNSW] Rebuilt with {} hot cells (Pressure: {:.2}, Total: {})", hot_count, mem_pressure, self.cells.len());
+        self.hnsw = Some(hnsw);
+    }
+
+    /// Aggressively prune contested or low-quality beliefs to free up memory.
+    pub fn prune_contested(&mut self) -> usize {
+        let before = self.cells.len();
+        
+        // Remove cells with very high contradiction (low convergence) or very low strength
+        // but never touch truth anchors (confidence >= 5.0)
+        self.cells.retain(|c| {
+            let is_anchor = c.claim.confidence >= 5.0;
+            let is_high_quality = c.claim.confidence > 1.2 && c.convergence_score > 0.15;
+            is_anchor || is_high_quality
+        });
+        
+        let pruned = before - self.cells.len();
+        if pruned > 0 {
+            println!("[Pruning] Removed {} contested cells.", pruned);
+            self.rebuild_index(0.9); // Force index rebuild after pruning
+        }
+        pruned
+    }
+
+    /// Recycle dead claims (vitality == 0).
+    /// Claims that have lost their biological vitality are decomposed and removed.
+    pub fn recycle_dead_claims(&mut self) -> usize {
+        let before = self.cells.len();
+        self.cells.retain(|c| c.claim.vitality > 0.0);
+        let recycled = before - self.cells.len();
+        if recycled > 0 {
+            println!("[Recycling] Decomposed {} dead claims (vitality == 0).", recycled);
+            self.rebuild_index(0.8);
+        }
+        recycled
     }
 
     /// Read-only access to all cells (used by Boid engine and diagnostics).
@@ -556,13 +692,13 @@ impl Universe {
     /// Run one Boid flocking pass over the lattice.
     /// Separation keeps duplicate beliefs apart; Alignment steers same-region cells together;
     /// Cohesion pulls them toward their regional center of mass.
-    pub fn flock_lattice(&mut self) {
+    pub fn flock_lattice(&mut self, field: &super::field_state::FieldState) {
         use super::boid_engine::{BoidState, BoidSettings, run_boid_iteration};
         if self.cells.len() < 2 { return; }
         let mut state = BoidState::from_universe(self);
         let settings = BoidSettings::default();
         for _ in 0..3 {
-            run_boid_iteration(&mut state, &settings);
+            run_boid_iteration(&mut state, &settings, field);
         }
         state.apply_to_universe(self);
     }
@@ -598,6 +734,30 @@ impl Universe {
         vec: SparseVec,
         conv_score: Option<f32>,
     ) {
+        self.store_with_vec_user(text, region, source, strength, vec, conv_score, "")
+    }
+
+    fn update_life_equation(&mut self, user_id: &str, new_vec: &SparseVec) {
+        if user_id.is_empty() { return; }
+        let current_eq = self.user_equations.entry(user_id.to_string())
+            .or_insert_with(SparseVec::zero);
+        
+        let mut weighted = Vec::new();
+        weighted.push((&*current_eq, 0.95f32)); // High momentum for the summary
+        weighted.push((new_vec, 0.05f32));      // Gentle integration of new claims
+        *current_eq = SparseVec::weighted_superpose(&weighted, 0.04);
+    }
+
+    pub fn store_with_vec_user(
+        &mut self,
+        text: &str,
+        region: &str,
+        source: &str,
+        strength: f32,
+        vec: SparseVec,
+        conv_score: Option<f32>,
+        user_id: &str,
+    ) {
         let convergence_score = conv_score.unwrap_or_else(|| {
             let phi_g = strength.clamp(0.0, 1.0) * 0.5;
             let angles = [phi_g, 0.5_f32, 0.0_f32, 0.3_f32, 0.5_f32];
@@ -613,15 +773,41 @@ impl Universe {
 
         let nnz = vec.nnz() as u32;
 
+        let id = self.cells.len() as u32;
+        self.lexicon.index_cell(id, text, &[region.to_string(), format!("source:{}", source), format!("user:{}", user_id)]);
+        
+        let pos_vec = SparseVec::project_vogel_spiral(id as usize, user_seed(user_id));
+        
+        // Developmental Hierarchy Layers:
+        // Layer 0: Quantum (Substrate) - Not used for persistent storage yet
+        // Layer 1: Global Syncytium (Shared Knowledge)
+        // Layer 2: User Cellularization (Isolated Memory)
+        // Layer 3: Agent/Departmental Organs
+        // Layer 4: Global Kaiverse Body
+        let initial_layer = match region {
+            "identity" | "memory" => super::claim::LAYER_CELLULAR,
+            "Established-Physics" | "Architecture" => super::claim::LAYER_SYNCYTIUM,
+            "agent" | "organ" => super::claim::LAYER_ORGAN,
+            _ => super::claim::LAYER_SYNCYTIUM,
+        };
+        
+        let mut claim = Claim::new(text, source, strength, vec.clone());
+        claim.layer = initial_layer;
+        claim.user_id = user_id.to_string();
+
         self.cells.push(Cell {
             label: text.to_string(),
             region: region.to_string(),
-            claim: Claim::new(text, source, strength, vec),
+            claim,
             continuation: SparseVec::zero(),
             last_fired: 0,
             convergence_score,
             nnz,
+            pos_vec,
         });
+
+        // --- Life Equation Accumulator ---
+        self.update_life_equation(user_id, &vec);
     }
 
     /// Store a new belief.
@@ -639,6 +825,13 @@ impl Universe {
             claim.evidence.push(claim.source.clone());
         }
         let nnz = claim.vec.nnz() as u32;
+        let id = self.cells.len() as u32;
+        self.lexicon.index_cell(id, &claim.text, &[region.to_string(), format!("source:{}", claim.source), format!("user:{}", claim.user_id)]);
+        
+        let pos_vec = SparseVec::project_vogel_spiral(id as usize, user_seed(&claim.user_id));
+
+        self.update_life_equation(&claim.user_id, &claim.vec);
+        
         self.cells.push(Cell {
             label: claim.text.clone(),
             region: region.to_string(),
@@ -647,11 +840,13 @@ impl Universe {
             last_fired: 0,
             convergence_score: 0.0,
             nnz,
+            pos_vec,
         });
     }
 
+
     /// Query for the top-N most similar cells.
-    /// Uses rayon parallel iteration Ã¢â‚¬" all 12 CPU threads compute cosine simultaneously.
+    /// Uses rayon parallel iteration — all 12 CPU threads compute cosine simultaneously.
     /// Scoring = 60% cosine similarity (semantic) + 40% keyword overlap (exact match).
     /// The keyword layer is the "inverted index" signal: "what is RSHL?" finds the RSHL
     /// cell because "rshl" appears in both, even if the phrase-level cosine is diluted.
@@ -660,15 +855,92 @@ impl Universe {
     /// Those cells exist to record Ryan's raw input for context/continuity; they
     /// must never be surfaced as KAI's own speech output. Without this filter,
     /// a freshly-stored echo cell outranks every other match on the exact input
-    /// Ryan just typed Ã¢â‚¬" and KAI parrots Ryan's own words back at him. That was
+    /// Ryan just typed — and KAI parrots Ryan's own words back at him. That was
     /// the "you sound scripted" humiliation; closing the hole here.
     pub fn query(&self, text: &str, n: usize) -> Vec<QueryHit> {
-        self.query_in_regions(text, n, &[])
+        self.query_in_regions(text, n, &[], "")
+    }
+
+    pub fn query_user(&self, text: &str, n: usize, user_id: &str) -> Vec<QueryHit> {
+        self.query_in_regions(text, n, &[], user_id)
     }
 
     /// Query for cells, but only within specific MindFrame regions (e.g. "SelfState", "World").
     /// If regions is empty, searches everything.
-    pub fn query_in_regions(&self, text: &str, n: usize, regions: &[&str]) -> Vec<QueryHit> {
+    pub fn hybrid_query(&self, text: &str, n: usize, regions: &[&str]) -> Vec<QueryHit> {
+        let q_vec = SparseVec::encode(text);
+        let mut filter_tags: Vec<String> = regions.iter().map(|&r| r.to_string()).collect();
+        
+        // 1. Lexical Retrieval (Keyword + Metadata)
+        let lex_hits = self.lexicon.get_matches(text, &filter_tags);
+        
+        // 2. Semantic Retrieval (HNSW or Scan)
+        let mut semantic_hits: HashMap<u32, f32> = HashMap::new();
+        
+        if let Some(ref hnsw) = self.hnsw {
+            let results = hnsw.search(&[q_vec], n.max(50), 200);
+            for hit in results {
+                semantic_hits.insert(hit.d_id as u32, 1.0 - hit.distance);
+            }
+        } else {
+            // Fallback to parallel scan if HNSW isn't built
+            let scans = self.query_in_regions(text, n.max(50), regions, "");
+            for hit in scans {
+                // Find ID by matching text (slow, but this is a fallback)
+                if let Some(id) = self.cells.iter().position(|c| c.claim.text == hit.text) {
+                    semantic_hits.insert(id as u32, hit.score);
+                }
+            }
+        }
+
+        // 3. Fusion & Reranking (Reciprocal Rank Fusion)
+        // Score(d) = sum( 1 / (60 + rank(d)) )
+        let mut fused_scores: HashMap<u32, f32> = HashMap::new();
+        
+        // Rank lexicon hits (assume flat rank for now since lexicon is boolean)
+        for id in lex_hits.iter() {
+            let score = 1.0 / 60.0; 
+            *fused_scores.entry(id).or_insert(0.0) += score;
+        }
+        
+        // Rank semantic hits
+        let mut sem_sorted: Vec<(&u32, &f32)> = semantic_hits.iter().collect();
+        sem_sorted.sort_by(|a, b| b.1.partial_cmp(a.1).unwrap_or(std::cmp::Ordering::Equal));
+        
+        for (rank, (&id, _)) in sem_sorted.iter().enumerate() {
+            let score = 1.0 / (60.0 + rank as f32);
+            *fused_scores.entry(id).or_insert(0.0) += score;
+        }
+
+        // 4. Convert to QueryHits
+        let mut hits: Vec<QueryHit> = fused_scores.into_iter()
+            .map(|(id, fused_score)| {
+                let cell = &self.cells[id as usize];
+                QueryHit {
+                    label: cell.label.clone(),
+                    text: cell.claim.text.clone(),
+                    vec: cell.claim.vec.clone(),
+                    region: cell.region.clone(),
+                    score: fused_score * 100.0, // Scale for visibility
+                    strength: cell.claim.confidence,
+                    source: cell.claim.source.clone(),
+                }
+            })
+            .collect();
+            
+        hits.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        hits.truncate(n);
+        
+        // If we found nothing via hybrid (e.g. very short query), fallback to scan
+        if hits.is_empty() {
+            return self.query_in_regions(text, n, regions, "");
+        }
+        
+        hits
+    }
+
+    /// Query for the top-N most similar cells with optional user isolation.
+    pub fn query_in_regions(&self, text: &str, n: usize, regions: &[&str], user_id: &str) -> Vec<QueryHit> {
         let q = SparseVec::encode(text);
         let query_words = extract_query_keywords(text);
         let mag_q = q.nnz() as f32;
@@ -687,6 +959,16 @@ impl Universe {
                 if !regions.is_empty() && !regions.contains(&cell.region.as_str()) {
                     return false;
                 }
+                
+                // --- USER CELLULARIZATION (ISOLATION) ---
+                // Layer 2 (Cellular) claims are strictly isolated by user_id.
+                // Syncytium (Layer 1) and Global Body (Layer 4) are accessible to all.
+                if cell.claim.layer == super::claim::LAYER_CELLULAR {
+                    if cell.claim.user_id != user_id {
+                        return false; // Isolated bubble
+                    }
+                }
+                
                 true
             })
             .map(|(i, cell)| {
@@ -736,10 +1018,14 @@ impl Universe {
     }
 
     /// Query using a pre-computed SparseVec instead of raw text.
-    /// Returns Vec<(Cell, f32)> tuples â€” (cell, score) â€” matching the
+    /// Returns Vec<(Cell, f32)> tuples — (cell, score) — matching the
     /// calling convention used by hippocampus, inner_voice, reasoner,
     /// lattice, and field_state.
     pub fn query_vec(&self, q: &SparseVec, n: usize) -> Vec<(Cell, f32)> {
+        self.query_vec_user(q, n, "")
+    }
+
+    pub fn query_vec_user(&self, q: &SparseVec, n: usize, user_id: &str) -> Vec<(Cell, f32)> {
         let mag_q = q.nnz() as f32;
         let mag_q_sqrt = mag_q.sqrt();
 
@@ -748,7 +1034,16 @@ impl Universe {
             .par_iter()
             .enumerate()
             .filter(|(_, cell)| {
-                cell.claim.source != "user-echo" && cell.claim.source != "conversation"
+                if cell.claim.source == "user-echo" || cell.claim.source == "conversation" {
+                    return false;
+                }
+                
+                if cell.claim.layer == super::claim::LAYER_CELLULAR {
+                    if cell.claim.user_id != user_id {
+                        return false;
+                    }
+                }
+                true
             })
             .map(|(i, cell)| {
                 let dot = q.dot(&cell.claim.vec);
@@ -778,7 +1073,7 @@ impl Universe {
             .collect()
     }
 
-    /// Query only within a specific region â€” used for self/identity questions
+    /// Query only within a specific region — used for self/identity questions
     /// to prevent world-bridge reasoning cells from bleeding into personal answers.
     /// Also uses hybrid cosine + keyword scoring for consistent exact-term retrieval.
     pub fn query_region(&self, text: &str, region: &str, n: usize) -> Vec<QueryHit> {
@@ -840,7 +1135,7 @@ impl Universe {
             .collect()
     }
 
-    /// Get all cells with a specific source tag â€” bypasses score filtering.
+    /// Get all cells with a specific source tag — bypasses score filtering.
     pub fn get_by_source(&self, source: &str) -> Vec<QueryHit> {
         self.cells
             .iter()
@@ -850,7 +1145,7 @@ impl Universe {
                 text: c.claim.text.clone(),
                 vec: c.claim.vec.clone(),
                 region: c.region.clone(),
-                score: 1.0, // score is irrelevant â€” selection is by source
+                score: 1.0, // score is irrelevant — selection is by source
                 strength: c.claim.confidence,
                 source: c.claim.source.clone(),
             })
@@ -859,7 +1154,7 @@ impl Universe {
 
     /// Query the live strength of a named conversation state cell.
     /// State cells live in region="tone", source="state".
-    /// Used by voice.rs for lattice-native routing Ã¢â‚¬" no word-list context scanning.
+    /// Used by voice.rs for lattice-native routing — no word-list context scanning.
     /// Returns 0.0 if no matching state cell exists or has decayed below threshold.
     /// The lattice IS the state machine: store when detected, decay naturally.
     pub fn state_strength(&self, key: &str) -> f32 {
@@ -881,6 +1176,10 @@ impl Universe {
     /// Get all cells.
     pub fn cells(&self) -> &[Cell] {
         &self.cells
+    }
+
+    pub fn get_cell_by_label(&self, label: &str) -> Option<&Cell> {
+        self.cells.iter().find(|c| c.label == label)
     }
 
     /// Get mutable cells (for homeostasis).
@@ -919,7 +1218,7 @@ impl Universe {
             let is_bridge =
                 cell.claim.source == "dream-discovery" || cell.claim.source == "hlv-bridge";
 
-            // Survival bonus: bridges with Î¦g > 1.0 decay MUCH slower (70% reduction in decay)
+            // Survival bonus: bridges with Φg > 1.0 decay MUCH slower (70% reduction in decay)
             let effective_factor = if is_bridge && cell.convergence_score > 1.0 {
                 1.0 - (1.0 - factor) * 0.3
             } else if is_bridge {
@@ -937,7 +1236,7 @@ impl Universe {
     }
 
     /// Prune cells below minimum strength.
-    /// Also kills "noisy" cells (high-chi / low-Î¦g) even if they have moderate strength.
+    /// Also kills "noisy" cells (high-chi / low-Φg) even if they have moderate strength.
     pub fn prune(&mut self, min_strength: f32) -> usize {
         let before = self.cells.len();
         self.cells.retain(|c| {
@@ -949,11 +1248,11 @@ impl Universe {
             }
 
             if is_bridge {
-                // Protect any bridge connected to a cell with Î¦g > 2.0
+                // Protect any bridge connected to a cell with Φg > 2.0
                 if c.convergence_score > 2.0 {
                     return true;
                 }
-                // Only prune bridges that have BOTH low strength AND low Î¦g
+                // Only prune bridges that have BOTH low strength AND low Φg
                 if c.claim.confidence < min_strength && c.convergence_score < 1.0 {
                     return false;
                 }
@@ -965,7 +1264,7 @@ impl Universe {
             if c.claim.confidence < min_strength {
                 return false;
             }
-            // 2. High-chi pruning: if strength is mediocre (< 1.5) and Î¦g is low (< 1.2), it's noise.
+            // 2. High-chi pruning: if strength is mediocre (< 1.5) and Φg is low (< 1.2), it's noise.
             if c.claim.confidence < 1.5 && c.convergence_score < 1.2 {
                 return false;
             }
@@ -1014,7 +1313,7 @@ impl Universe {
         before - self.cells.len()
     }
 
-    // â”€â”€ Epistemic Methods (Parallel Rebuild) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Epistemic Methods (Parallel Rebuild) ───────────────────────────────
 
     /// Re-injects physics truth anchors and penalizes low-coherence physics claims.
     pub fn dynamic_calibrate(&mut self) {
@@ -1023,7 +1322,7 @@ impl Universe {
             self.store_or_reinforce(anchor, "established-physics", "truth-anchor", *strength);
         }
 
-        // 2. Reinforce self-knowledge anchors â€” KAI must know who he is
+        // 2. Reinforce self-knowledge anchors — KAI must know who he is
         self.seed_self_knowledge();
 
         // 3. Parallel penalty for low-coherence physics cells
@@ -1053,7 +1352,7 @@ impl Universe {
     }
 
     /// Parallel Lattice Reorganisation.
-    /// Uses the Golden Angle (â‰ˆ 137.5Â°) for phyllotaxis-style ring packing.
+    /// Uses the Golden Angle (≈ 137.5°) for phyllotaxis-style ring packing.
     pub fn reorganize_with_spiral(&mut self, spiral_radius: f32) {
         use std::f32::consts::TAU;
         const GOLDEN_ANGLE: f32 = 2.399_963_1_f32;
@@ -1191,7 +1490,7 @@ impl Universe {
         Some((&self.cells[i], &self.cells[j]))
     }
 
-    /// Reinforce a cell by exact text match (Hebbian: fire together Ã¢â€ â€™ wire together).
+    /// Reinforce a cell by exact text match (Hebbian: fire together → wire together).
     /// Bumps strength by `delta`, capped at 2.5.
     pub fn reinforce_by_text(&mut self, text: &str, delta: f32) {
         for cell in &mut self.cells {
@@ -1423,7 +1722,7 @@ impl Universe {
         source: &str,
         strength: f32,
     ) -> bool {
-        self.store_or_reinforce_with_vec(text, region, source, strength, None, None)
+        self.store_or_reinforce_with_vec(text, region, source, strength, None, None, "")
     }
 
     /// Full-featured storage with optional pre-computed vector (e.g. for dreams).
@@ -1435,8 +1734,9 @@ impl Universe {
         strength: f32,
         vec: Option<SparseVec>,
         conv_score: Option<f32>,
+        user_id: &str,
     ) -> bool {
-        // Phase 1: exact string match (fast path â€” O(n) string compare)
+        // Phase 1: exact string match (fast path — O(n) string compare)
         // Optimization: In a future pass we can use a label map, but for 2k cells, 
         // string comparison is already nanoseconds. We'll use par_iter here to be safe.
         if let Some(cell) = self.cells.par_iter_mut().find_any(|c| c.label == text) {
@@ -1473,7 +1773,7 @@ impl Universe {
                 .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
                 .unwrap_or((0, 0.0));
             if best_score > 0.85 && best_idx < self.cells.len() {
-                // Semantic duplicate â€” update existing cell with new text/vec
+                // Semantic duplicate — update existing cell with new text/vec
                 // if it's high-strength (trusted training) or from ryan.
                 if strength >= 0.8 || source == "ryan" {
                     self.cells[best_idx].label = text.to_string();
@@ -1483,7 +1783,7 @@ impl Universe {
                     self.cells[best_idx].claim.confidence =
                         (self.cells[best_idx].claim.confidence + 0.20).min(5.0);
                 } else {
-                    // Regular ingestion â€” just reinforce
+                    // Regular ingestion — just reinforce
                     self.cells[best_idx].claim.confidence =
                         (self.cells[best_idx].claim.confidence + 0.10).min(5.0);
                 }
@@ -1491,11 +1791,11 @@ impl Universe {
             }
         }
         // Genuinely new cell
-        self.store_with_vec_full(text, region, source, strength, candidate_vec, conv_score);
+        self.store_with_vec_user(text, region, source, strength, candidate_vec, conv_score, user_id);
         true
     }
 
-    // â”€â”€ Predictive RSHL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Predictive RSHL ─────────────────────────────────────────────────
     //
     // Iterative predictive retrieval. 8-step (minimum) refinement loop
     // inside, followed by a single scored pass with the paper-backed
@@ -1505,13 +1805,13 @@ impl Universe {
     ///
     /// 1. Runs `steps.max(8)` passes of a light context mixer that
     ///    nudges the query state toward the conversation trace
-    ///    (6Â·state + 5Â·trace, ternary-clamped).
+    ///    (6·state + 5·trace, ternary-clamped).
     /// 2. Scores every eligible cell with:
     ///        0.20 * similarity(state, cell.vec)
     ///      + 0.55 * predictive_match(trace, cell.continuation)
     ///      + 0.15 * multi_head_consensus(state, cell.vec)
     ///      - 0.20 * recency_penalty(cell.last_fired)
-    ///    Continuation binding dominates static similarity Ã¢â‚¬" the whole
+    ///    Continuation binding dominates static similarity — the whole
     ///    point of the upgrade.
     /// 3. Returns the top-5 hits.
     pub fn predictive_query(
@@ -1520,10 +1820,20 @@ impl Universe {
         trace: &ConversationTrace,
         steps: usize,
     ) -> Vec<QueryHit> {
-        self.predictive_query_filtered(input, trace, steps, |_| true)
+        self.predictive_query_filtered(input, trace, steps, |_| true, "")
     }
 
-    /// Source-scoped variant for the voice path (greeting / empathy / Ã¢â‚¬Â¦).
+    pub fn predictive_query_user(
+        &self,
+        input: SparseVec,
+        trace: &ConversationTrace,
+        steps: usize,
+        user_id: &str,
+    ) -> Vec<QueryHit> {
+        self.predictive_query_filtered(input, trace, steps, |_| true, user_id)
+    }
+
+    /// Source-scoped variant for the voice path (greeting / empathy / …).
     /// Same pipeline, just filters eligible cells to a single source tag.
     pub fn predictive_query_by_source(
         &self,
@@ -1533,7 +1843,19 @@ impl Universe {
         steps: usize,
     ) -> Vec<QueryHit> {
         let want = source.to_string();
-        self.predictive_query_filtered(input, trace, steps, move |c| c.claim.source == want)
+        self.predictive_query_filtered(input, trace, steps, move |c| c.claim.source == want, "")
+    }
+
+    pub fn predictive_query_by_source_user(
+        &self,
+        input: SparseVec,
+        source: &str,
+        trace: &ConversationTrace,
+        steps: usize,
+        user_id: &str,
+    ) -> Vec<QueryHit> {
+        let want = source.to_string();
+        self.predictive_query_filtered(input, trace, steps, move |c| c.claim.source == want, user_id)
     }
 
     /// Diagnostic variant of `predictive_query` that returns the full
@@ -1548,11 +1870,28 @@ impl Universe {
         steps: usize,
         top_k: usize,
     ) -> Vec<PredictiveScoreBreakdown> {
+        self.diagnose_predictive_user(input, trace, steps, top_k, "")
+    }
+
+    pub fn diagnose_predictive_user(
+        &self,
+        input: SparseVec,
+        trace: &ConversationTrace,
+        steps: usize,
+        top_k: usize,
+        user_id: &str,
+    ) -> Vec<PredictiveScoreBreakdown> {
         let eligible: Vec<usize> = self
             .cells
             .iter()
             .enumerate()
             .filter(|(_, c)| c.claim.source != "user-echo" && c.claim.source != "conversation")
+            .filter(|(_, c)| {
+                if c.claim.layer == super::claim::LAYER_CELLULAR {
+                    return c.claim.user_id == user_id;
+                }
+                true
+            })
             .map(|(i, _)| i)
             .collect();
         if eligible.is_empty() {
@@ -1632,11 +1971,29 @@ impl Universe {
         steps: usize,
         top_k: usize,
     ) -> Vec<PredictiveScoreBreakdown> {
+        self.diagnose_predictive_by_source_user(input, source, trace, steps, top_k, "")
+    }
+
+    pub fn diagnose_predictive_by_source_user(
+        &self,
+        input: SparseVec,
+        source: &str,
+        trace: &ConversationTrace,
+        steps: usize,
+        top_k: usize,
+        user_id: &str,
+    ) -> Vec<PredictiveScoreBreakdown> {
         let eligible: Vec<usize> = self
             .cells
             .iter()
             .enumerate()
             .filter(|(_, c)| c.claim.source == source)
+            .filter(|(_, c)| {
+                if c.claim.layer == super::claim::LAYER_CELLULAR {
+                    return c.claim.user_id == user_id;
+                }
+                true
+            })
             .map(|(i, _)| i)
             .collect();
         if eligible.is_empty() {
@@ -1710,6 +2067,7 @@ impl Universe {
         trace: &ConversationTrace,
         steps: usize,
         extra_filter: F,
+        user_id: &str,
     ) -> Vec<QueryHit>
     where
         F: Fn(&Cell) -> bool + Sync + Send,
@@ -1719,6 +2077,12 @@ impl Universe {
             .iter()
             .enumerate()
             .filter(|(_, c)| c.claim.source != "user-echo" && c.claim.source != "conversation")
+            .filter(|(_, c)| {
+                if c.claim.layer == super::claim::LAYER_CELLULAR {
+                    return c.claim.user_id == user_id;
+                }
+                true
+            })
             .filter(|(_, c)| extra_filter(c))
             .map(|(i, _)| i)
             .collect();
@@ -1726,7 +2090,7 @@ impl Universe {
             return Vec::new();
         }
 
-        // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Iterative context mixer (conjunctive gating) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ─────────────── Iterative context mixer (conjunctive gating) ───────────────
         // Transformer-style attention gate: the `state * trace` term is
         // a multiplicative mask that only passes signal where the query
         // and the conversation history resonate (same sign). Where they
@@ -1757,7 +2121,7 @@ impl Universe {
             state = SparseVec::from_raw(data);
         }
 
-        // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Final scoring with look-ahead prediction anchor â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ─────────────── Final scoring with look-ahead prediction anchor ─────────────
         // Cells were bound with permute(1) applied to the input, so
         // their `continuation` lives in the "next-slot" role-space. To
         // retrieve them we project the current trace forward into that
@@ -1807,14 +2171,14 @@ impl Universe {
 
     /// Predictive query that returns *cell references* with scores
     /// instead of display-only `QueryHit`s. Same scoring pipeline as
-    /// `predictive_query` (iterative conjunctive mixer Ã¢â€ â€™ look-ahead
-    /// anchor Ã¢â€ â€™ similarity + predict_match + multi-head Ã¢Ë†â€™ recency),
+    /// `predictive_query` (iterative conjunctive mixer → look-ahead
+    /// anchor → similarity + predict_match + multi-head − recency),
     /// but the caller keeps direct access to `Cell::vec` and
-    /// `Cell::continuation` Ã¢â‚¬" exactly what the generative encoder
+    /// `Cell::continuation` — exactly what the generative encoder
     /// needs to fold memory into the latent state.
     ///
     /// `top_k` is configurable so the generative path can pull the
-    /// 6Ã¢â‚¬"8 most relevant cells (the retrieval path that powers the
+    /// 6—8 most relevant cells (the retrieval path that powers the
     /// TUI still uses the fixed top-5 via `predictive_query`).
     pub fn predictive_query_vecs(
         &self,
@@ -1822,6 +2186,17 @@ impl Universe {
         trace: &ConversationTrace,
         steps: usize,
         top_k: usize,
+    ) -> Vec<(&Cell, f32)> {
+        self.predictive_query_vecs_user(input, trace, steps, top_k, "")
+    }
+
+    pub fn predictive_query_vecs_user(
+        &self,
+        input: SparseVec,
+        trace: &ConversationTrace,
+        steps: usize,
+        top_k: usize,
+        user_id: &str,
     ) -> Vec<(&Cell, f32)> {
         if top_k == 0 {
             return Vec::new();
@@ -1831,13 +2206,19 @@ impl Universe {
             .iter()
             .enumerate()
             .filter(|(_, c)| c.claim.source != "user-echo" && c.claim.source != "conversation")
+            .filter(|(_, c)| {
+                if c.claim.layer == super::claim::LAYER_CELLULAR {
+                    return c.claim.user_id == user_id;
+                }
+                true
+            })
             .map(|(i, _)| i)
             .collect();
         if eligible.is_empty() {
             return Vec::new();
         }
 
-        // Iterative conjunctive mixer Ã¢â‚¬" mirrors predictive_query_filtered.
+        // Iterative conjunctive mixer — mirrors predictive_query_filtered.
         let iter_steps = steps.max(predictive::DEFAULT_ITER_STEPS);
         let mut state = input.clone();
         let dim = state.data.len();
@@ -1902,11 +2283,12 @@ impl Universe {
         lex: &crate::core::StatLexicon,
         trace: &ConversationTrace,
         field: &crate::core::FieldState,
+        user_id: &str,
     ) -> SparseVec {
-        crate::cognition::generative::build_generative_state(self, lex, prompt, trace, field)
+        crate::cognition::generative::build_generative_state(self, lex, prompt, trace, field, user_id)
     }
 
-    /// Sequence binding Ã¢â‚¬" teach the lattice that `response_text` fired
+    /// Sequence binding — teach the lattice that `response_text` fired
     /// after `input_text`. Each call:
     ///   1. Bundles the current input vector into the response cell's
     ///      `continuation` hypervector (majority-vote over history).
@@ -1914,7 +2296,7 @@ impl Universe {
     ///
     /// If multiple cells share `response_text` only the first is updated
     /// (there should only ever be one, but the guard is cheap). A missing
-    /// text is silently ignored Ã¢â‚¬" a response composed from several cells
+    /// text is silently ignored — a response composed from several cells
     /// doesn't have a single owner.
     pub fn bind_sequence(
         &mut self,
@@ -2003,6 +2385,16 @@ impl Universe {
             if !found {
                 self.store(text, region, "seed-calibration", *strength);
             }
+        }
+    }
+
+    pub fn get_agent(&self, id: &str) -> Option<super::index::AgentSpec> {
+        // Load from data/agents/ID.json
+        let path = std::path::Path::new("data").join("agents").join(format!("{}.json", id.to_lowercase()));
+        if let Ok(data) = std::fs::read_to_string(path) {
+            serde_json::from_str(&data).ok()
+        } else {
+            None
         }
     }
 }

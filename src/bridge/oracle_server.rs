@@ -15,7 +15,8 @@ use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
 use serde_json::json;
 use crate::core::universe::Universe;
-use chrono::{Timelike, Datelike};
+use crate::core::SynapticLayer;
+use chrono::{Timelike, Datelike, TimeZone};
 
 const SESSION_PATH: &str = "data/oracle_session.json";
 
@@ -28,7 +29,7 @@ fn truncate(s: &str, max: usize) -> String {
     s[..end].to_string()
 }
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ Data Structures Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// ── Data Structures ──────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ApiKeys {
@@ -50,6 +51,9 @@ pub struct Session {
     pub task: String,
     /// Full transcript of all turns.
     pub turns: Vec<Turn>,
+    /// Exact Discord message archive for transcript recall with sender/time/context.
+    #[serde(default)]
+    pub discord_messages: Vec<DiscordMessageRecord>,
     /// Per-AI draft sandbox (internal thinking before speaking).
     pub drafts: HashMap<String, Draft>,
     /// KAI's live vitals (updated by heartbeat every 5 s).
@@ -70,7 +74,7 @@ pub struct Session {
     /// Autonomous interjections from AIs who jumped in after the primary reply.
     #[serde(default)]
     pub pending_interjections: Vec<Interjection>,
-    /// Files shared into the meeting (path Ã¢â€ â€™ content snippet).
+    /// Files shared into the meeting (path → content snippet).
     #[serde(default)]
     pub file_cache: HashMap<String, String>,
     #[serde(default)]
@@ -114,6 +118,42 @@ pub struct Turn {
     pub text: String,
     /// system | kai | ai | human | correction | question | test-request | test-result | file-share
     pub kind: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct TranscriptContextMessage {
+    pub ts: u64,
+    pub from: String,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct DiscordMessageRecord {
+    pub ts: u64,
+    pub from: String,
+    pub text: String,
+    #[serde(default)]
+    pub kind: String,
+    #[serde(default)]
+    pub message_id: String,
+    #[serde(default)]
+    pub channel_id: String,
+    #[serde(default)]
+    pub guild_id: String,
+    #[serde(default)]
+    pub author_id: String,
+    #[serde(default)]
+    pub author_name: String,
+    #[serde(default)]
+    pub reply_to_message_id: String,
+    #[serde(default)]
+    pub reply_to_from: String,
+    #[serde(default)]
+    pub reply_to_text: String,
+    #[serde(default)]
+    pub context_before: Vec<TranscriptContextMessage>,
+    #[serde(default)]
+    pub context_after: Vec<TranscriptContextMessage>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -184,7 +224,7 @@ pub struct Interjection {
     pub ts: u64,
 }
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ Request Bodies Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// ── Request Bodies ───────────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize, Default)]
 struct KaiTurnRequest {
@@ -252,9 +292,9 @@ struct ToolPlanRequest {
     task: String,
 }
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ Server Entry Point Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// ── Server Entry Point ───────────────────────────────────────────────────────
 
-pub fn start_oracle_server(universe: Arc<Mutex<Universe>>) {
+pub fn start_oracle_server(universe: Arc<Mutex<Universe>>, synaptic_layer: Arc<Mutex<SynapticLayer>>) {
     let listener = TcpListener::bind("127.0.0.1:3333")
         .expect("Oracle: could not bind port 3333");
     println!("--- ORACLE ROUNDTABLE ONLINE (PORT 3333) ---");
@@ -282,17 +322,19 @@ pub fn start_oracle_server(universe: Arc<Mutex<Universe>>) {
 
     for mut stream in listener.incoming().flatten() {
         let u = Arc::clone(&universe);
+        let sl = Arc::clone(&synaptic_layer);
         let s_rt = Arc::clone(&roundtable_session);
         let s_pub = Arc::clone(&public_session);
-        std::thread::spawn(move || { let _ = handle_client(&mut stream, u, s_rt, s_pub); });
+        std::thread::spawn(move || { let _ = handle_client(&mut stream, u, sl, s_rt, s_pub); });
     }
 }
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ Request Router Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// ── Request Router ────────────────────────────────────────────────────────────
 
 fn handle_client(
     stream: &mut TcpStream,
     universe: Arc<Mutex<Universe>>,
+    synaptic_layer: Arc<Mutex<SynapticLayer>>,
     roundtable_session: Arc<Mutex<Session>>,
     public_session: Arc<Mutex<Session>>,
 ) -> std::io::Result<()> {
@@ -331,13 +373,16 @@ fn handle_client(
         "/api/session"       => { let s = roundtable_session.lock().unwrap(); write_json(stream, 200, "OK", &serde_json::to_value(&*s).unwrap()) }
         "/api/task"          => handle_set_task(stream, body, roundtable_session),
         "/api/turn"          => handle_human_turn(stream, body, roundtable_session),
-        "/api/discord-turn"  => handle_discord_turn(stream, body, universe, roundtable_session),
-        "/api/oracle-turn"   => handle_discord_turn(stream, body, universe, roundtable_session),
-        "/api/public-chat"   => handle_public_chat_turn(stream, body, universe, public_session),
-        "/api/kai-turn"      => handle_kai_turn(stream, body, universe, roundtable_session),
-        "/api/ai-turn"       => handle_ai_turn(stream, body, universe, roundtable_session),
-        "/api/ai-think"      => handle_ai_think(stream, body, universe, roundtable_session),
-        "/api/auto-round"    => handle_auto_round(stream, universe, roundtable_session),
+        "/api/discord-turn"  => handle_discord_turn(stream, body, universe, synaptic_layer, roundtable_session),
+        "/api/oracle-turn"   => handle_discord_turn(stream, body, universe, synaptic_layer, roundtable_session),
+        "/api/public-chat"   => handle_public_chat_turn(stream, body, universe, synaptic_layer, public_session),
+        "/api/kai-turn"      => handle_kai_turn(stream, body, universe, synaptic_layer, roundtable_session),
+        "/api/ai-turn"       => handle_ai_turn(stream, body, universe, synaptic_layer, roundtable_session),
+        "/api/rshl/query"    => handle_rshl_query(stream, body, universe, synaptic_layer),
+        "/api/agents/get"    => handle_get_agent(stream, query_str, universe),
+        "/api/rshl/store"    => handle_rshl_store(stream, body, universe),
+        "/api/ai-think"      => handle_ai_think(stream, body, universe, synaptic_layer, roundtable_session),
+        "/api/auto-round"    => handle_auto_round(stream, universe, synaptic_layer, roundtable_session),
         "/api/commit-drafts" => handle_commit_drafts(stream, roundtable_session),
         "/api/clear-drafts"  => handle_clear_drafts(stream, roundtable_session),
         "/api/reset"         => handle_reset(stream, roundtable_session),
@@ -361,14 +406,13 @@ fn handle_client(
             write_simple(stream, 200, "OK", &results)
         }
         "/api/oracle-cache" => handle_oracle_cache(stream, roundtable_session),
-        "/api/oracle-moderate" => handle_oracle_moderate(stream, body, universe, roundtable_session),
+        "/api/oracle-moderate" => handle_oracle_moderate(stream, body, universe, synaptic_layer, roundtable_session),
         "/api/propose-plan" => handle_propose_plan(stream, roundtable_session, body),
         "/api/approve-plan" => handle_approve_plan(stream, roundtable_session),
 
         "/api/digest-message" => handle_digest_message(stream, body, universe, roundtable_session),
+        "/api/transcript/search" => handle_transcript_search(stream, body, roundtable_session),
         "/api/set-personalities" => handle_set_personalities(stream, body, roundtable_session),
-        "/api/rshl/query"    => handle_rshl_query(stream, body, universe),
-        "/api/rshl/store"    => handle_rshl_store(stream, body, universe),
         "/api/local-speak"   => handle_local_speak(stream, body, universe),
         "/api/status"        => handle_status(stream, universe),
         "/api/inspect"       => handle_inspect(stream, query_str),
@@ -390,6 +434,7 @@ fn handle_key_status(stream: &mut TcpStream, key_name: &str) -> std::io::Result<
     write_json(stream, 200, "OK", &serde_json::json!({ "key": key_name, "configured": configured }))
 }
 
+
 fn header_content_length(req: &str) -> usize {
     req.lines()
         .find_map(|line| {
@@ -403,7 +448,7 @@ fn header_content_length(req: &str) -> usize {
         .unwrap_or(0)
 }
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ Handlers Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// ── Handlers ──────────────────────────────────────────────────────────────────
 
 fn handle_set_task(stream: &mut TcpStream, body: &[u8], session: Arc<Mutex<Session>>) -> std::io::Result<()> {
     let req: TaskRequest = serde_json::from_slice(body).unwrap_or_default();
@@ -433,6 +478,7 @@ fn handle_public_chat_turn(
     stream: &mut TcpStream,
     body: &[u8],
     universe: Arc<Mutex<Universe>>,
+    synaptic_layer: Arc<Mutex<SynapticLayer>>,
     session: Arc<Mutex<Session>>,
 ) -> std::io::Result<()> {
     let req: HumanTurnRequest = match serde_json::from_slice(body) {
@@ -464,7 +510,7 @@ fn handle_public_chat_turn(
 
     let keys = load_keys();
 
-    // Ã¢â€â‚¬Ã¢â€â‚¬ Search Intent Detection Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+    // ── Search Intent Detection ──────────────────────────────────────────────────
     let mut search_results = String::new();
     let search_keywords = ["search for", "look up", "what is the latest", "search", "find info on"];
     if search_keywords.iter().any(|k| lower.contains(k)) {
@@ -477,7 +523,7 @@ fn handle_public_chat_turn(
         }
     }
 
-    // Ã¢â€â‚¬Ã¢â€â‚¬ Image Analysis Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+    // ── Image Analysis ───────────────────────────────────────────────────────────
     let mut image_description = String::new();
     if !req.attachments.is_empty() {
         if let Some(key) = &keys.openai {
@@ -487,8 +533,8 @@ fn handle_public_chat_turn(
         }
     }
 
-    // Ã¢â€â‚¬Ã¢â€â‚¬ Memory Retrieval Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
-    let memory_context = build_contextual_memory_string(&universe, &session, &text);
+    // ── Memory Retrieval ─────────────────────────────────────────────────────────
+    let memory_context = build_contextual_memory_string(&universe, &synaptic_layer, &session, &text);
 
     let prompt = {
         let s = session.lock().unwrap();
@@ -496,7 +542,7 @@ fn handle_public_chat_turn(
     };
 
 
-    // Ã¢â€â‚¬Ã¢â€â‚¬ Codex Handoff Detection Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+    // ── Codex Handoff Detection ──────────────────────────────────────────────────
     let lower = text.to_ascii_lowercase();
     if lower.contains("codex") || lower.contains("secret message") || lower.contains("handoff") {
         let mut s = session.lock().unwrap();
@@ -527,7 +573,7 @@ fn handle_public_chat_turn(
     s.turns.push(Turn { ts: now(), from: speaker.clone(), text: clean_reply.clone(), kind: "public-ai".into() });
     save_session(&s);
 
-    // Ã¢â€â‚¬Ã¢â€â‚¬ Social Digestion: let KAI learn from this public chat Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+    // ── Social Digestion: let KAI learn from this public chat ─────────────────────
     {
         let digest_text = format!("{}: {}", from, text);
         let u_for_digest = Arc::clone(&universe);
@@ -784,15 +830,36 @@ React to what was just said."
     }
 }
 
-fn build_contextual_memory_string(universe: &Arc<Mutex<Universe>>, session: &Arc<Mutex<Session>>, query: &str) -> String {
+fn build_contextual_memory_string(
+    universe: &Arc<Mutex<Universe>>,
+    synaptic_layer: &Arc<Mutex<SynapticLayer>>,
+    session: &Arc<Mutex<Session>>,
+    query: &str
+) -> String {
     let hits = {
         let u = universe.lock().unwrap();
-        u.query(query, 5)
+        let sl = synaptic_layer.lock().unwrap();
+        let field = crate::core::FieldState::compute(&u, 1);
+        crate::core::NeuralBus::query_associative(&u, &sl, field.phi_g, query, 5)
     };
-    if hits.is_empty() { return String::new(); }
+    let sess = session.lock().unwrap();
+    let transcript_context = if is_transcript_lookup_question(query) {
+        let found = format_transcript_search(&sess, query, 3);
+        if found.is_empty() {
+            String::new()
+        } else {
+            format!("\n[EXACT ORACLE TRANSCRIPT MEMORY]:\n{}\n", found)
+        }
+    } else {
+        String::new()
+    };
+
+    if hits.is_empty() { return transcript_context; }
 
     let mut out = String::from("\n[RECALLED FROM KAI MEMORY PALACE (WITH CONTEXT)]:\n");
-    let sess = session.lock().unwrap();
+    if !transcript_context.is_empty() {
+        out.push_str(&transcript_context);
+    }
 
     for hit in hits {
         // Try to find this hit in the current session to get neighbors
@@ -810,6 +877,202 @@ fn build_contextual_memory_string(universe: &Arc<Mutex<Universe>>, session: &Arc
         }
     }
     out
+}
+
+fn normalize_epoch_seconds(ts: u64) -> u64 {
+    if ts > 10_000_000_000 { ts / 1000 } else { ts }
+}
+
+fn format_epoch_local(ts: u64) -> String {
+    let secs = normalize_epoch_seconds(ts);
+    chrono::Local
+        .timestamp_opt(secs as i64, 0)
+        .single()
+        .map(|dt| dt.format("%Y-%m-%d %I:%M:%S %p %Z").to_string())
+        .unwrap_or_else(|| secs.to_string())
+}
+
+fn strip_bracketed_context(input: &str) -> String {
+    let mut out = String::new();
+    let mut depth = 0usize;
+    for ch in input.chars() {
+        match ch {
+            '[' => depth += 1,
+            ']' if depth > 0 => depth -= 1,
+            _ if depth == 0 => out.push(ch),
+            _ => {}
+        }
+    }
+    out.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn is_transcript_lookup_question(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    (lower.contains("who said")
+        || lower.contains("what did")
+        || lower.contains("when did")
+        || lower.contains("where did")
+        || lower.contains("exact message")
+        || lower.contains("specific message")
+        || lower.contains("quoted text")
+        || lower.contains("quote that")
+        || lower.contains("message before")
+        || lower.contains("message after")
+        || lower.contains("before and after")
+        || lower.contains("transcript")
+        || lower.contains("chat log")
+        || lower.contains("pull up"))
+        && (lower.contains("say")
+            || lower.contains("said")
+            || lower.contains("message")
+            || lower.contains("chat")
+            || lower.contains("text")
+            || lower.contains("transcript")
+            || lower.contains("quote"))
+}
+
+fn transcript_tokens(query: &str) -> Vec<String> {
+    let cleaned = strip_bracketed_context(query).to_ascii_lowercase();
+    let stop = [
+        "the", "and", "that", "this", "with", "from", "what", "when", "where", "who",
+        "did", "does", "can", "could", "would", "should", "message", "messages",
+        "transcript", "exact", "specific", "quote", "quoted", "text", "said", "say",
+        "show", "find", "pull", "look", "about", "before", "after", "context", "please",
+        "oracle", "kai",
+    ];
+    cleaned
+        .split(|c: char| !c.is_ascii_alphanumeric() && c != '@' && c != '_')
+        .map(str::trim)
+        .filter(|t| t.len() >= 3 && !stop.contains(t))
+        .map(ToString::to_string)
+        .collect()
+}
+
+fn score_transcript_record(record: &DiscordMessageRecord, query: &str, tokens: &[String]) -> i32 {
+    let q = strip_bracketed_context(query).to_ascii_lowercase();
+    let text = record.text.to_ascii_lowercase();
+    let from = record.from.to_ascii_lowercase();
+    let author = record.author_name.to_ascii_lowercase();
+    let mut score = 0;
+
+    let q_trimmed = q.trim();
+    if q_trimmed.len() > 8 && text.contains(q_trimmed) {
+        score += 12;
+    }
+
+    for token in tokens {
+        if text.contains(token) { score += 3; }
+        if from.contains(token) || author.contains(token) { score += 5; }
+        if record.channel_id.contains(token) || record.message_id.contains(token) { score += 4; }
+    }
+
+    if q.contains("last") || q.contains("latest") || q.contains("recent") {
+        score += 1;
+    }
+
+    score
+}
+
+fn context_line(prefix: &str, record: &DiscordMessageRecord) -> String {
+    format!(
+        "{} {} at {}: \"{}\"",
+        prefix,
+        record.from,
+        format_epoch_local(record.ts),
+        truncate(&record.text, 180)
+    )
+}
+
+fn format_transcript_search(session: &Session, query: &str, limit: usize) -> String {
+    let tokens = transcript_tokens(query);
+    if session.discord_messages.is_empty() {
+        return String::new();
+    }
+
+    let mut scored: Vec<(usize, i32)> = session
+        .discord_messages
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, record)| {
+            let score = score_transcript_record(record, query, &tokens);
+            if score > 0 { Some((idx, score)) } else { None }
+        })
+        .collect();
+
+    if scored.is_empty() && tokens.is_empty() {
+        scored = session
+            .discord_messages
+            .iter()
+            .enumerate()
+            .rev()
+            .take(limit)
+            .map(|(idx, _)| (idx, 1))
+            .collect();
+    }
+
+    if scored.is_empty() {
+        return String::new();
+    }
+
+    scored.sort_by(|(idx_a, score_a), (idx_b, score_b)| {
+        score_b
+            .cmp(score_a)
+            .then_with(|| session.discord_messages[*idx_b].ts.cmp(&session.discord_messages[*idx_a].ts))
+    });
+
+    let mut out = Vec::new();
+    out.push("Exact transcript matches:".to_string());
+
+    for (rank, (idx, _score)) in scored.into_iter().take(limit.max(1).min(8)).enumerate() {
+        let record = &session.discord_messages[idx];
+        out.push(format!(
+            "{}. {} | {} | channel {} | msg {}",
+            rank + 1,
+            format_epoch_local(record.ts),
+            record.from,
+            if record.channel_id.is_empty() { "unknown" } else { &record.channel_id },
+            if record.message_id.is_empty() { "unknown" } else { &record.message_id }
+        ));
+        out.push(format!("Quote: \"{}\"", truncate(&record.text, 500)));
+        if !record.reply_to_text.is_empty() {
+            out.push(format!("Replying to {}: \"{}\"", record.reply_to_from, truncate(&record.reply_to_text, 220)));
+        }
+
+        let prev = if idx > 0 { session.discord_messages.get(idx - 1) } else { None };
+        let next = session.discord_messages.get(idx + 1);
+        if let Some(prev) = prev {
+            out.push(context_line("Before:", prev));
+        } else if let Some(before) = record.context_before.last() {
+            out.push(format!("Before: {} at {}: \"{}\"", before.from, format_epoch_local(before.ts), truncate(&before.text, 180)));
+        }
+        if let Some(next) = next {
+            out.push(context_line("After:", next));
+        } else if let Some(after) = record.context_after.first() {
+            out.push(format!("After: {} at {}: \"{}\"", after.from, format_epoch_local(after.ts), truncate(&after.text, 180)));
+        }
+        out.push(String::new());
+    }
+
+    out.join("\n").trim().to_string()
+}
+
+fn parse_context_messages(value: &serde_json::Value) -> Vec<TranscriptContextMessage> {
+    value
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|m| {
+                    let text = m["text"].as_str()?.trim();
+                    if text.is_empty() { return None; }
+                    Some(TranscriptContextMessage {
+                        ts: normalize_epoch_seconds(m["ts"].as_u64().unwrap_or_else(now)),
+                        from: m["from"].as_str().unwrap_or("unknown").to_string(),
+                        text: truncate(text, 600),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn clean_public_chat_reply(raw: &str) -> String {
@@ -857,6 +1120,7 @@ fn handle_discord_turn(
     stream: &mut TcpStream,
     body: &[u8],
     universe: Arc<Mutex<Universe>>,
+    synaptic_layer: Arc<Mutex<SynapticLayer>>,
     session: Arc<Mutex<Session>>,
 ) -> std::io::Result<()> {
     let req: HumanTurnRequest = match serde_json::from_slice(body) {
@@ -875,8 +1139,16 @@ fn handle_discord_turn(
         s.active_participant.clone()
     };
     let route = parse_discord_turn_route(&text, if active.trim().is_empty() { None } else { Some(active.as_str()) });
+    
+    // ── Social Digestion: let KAI remember this conversation IMMEDIATELY ──────────
+    // Moving this BEFORE AI generation ensures the bot can 'see' the directive in its memory.
+    if !text.is_empty() {
+        let digest_text = format!("{}: {}", from, text);
+        let mut u = universe.lock().unwrap();
+        u.store_or_reinforce(&digest_text, "social", "discord-chat", 0.9);
+    }
 
-    // Ã¢â€â‚¬Ã¢â€â‚¬ Vision Context (Private) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+    // ── Vision Context (Private) ────────────────────────────────────────────────
     let mut vision_desc = String::new();
     if !req.attachments.is_empty() {
         let keys = load_keys();
@@ -886,8 +1158,8 @@ fn handle_discord_turn(
             }
         }
     }
-    // Ã¢â€â‚¬Ã¢â€â‚¬ Contextual Memory (Private) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
-    let memory_context = build_contextual_memory_string(&universe, &session, &text);
+    // ── Contextual Memory (Private) ─────────────────────────────────────────────
+    let memory_context = build_contextual_memory_string(&universe, &synaptic_layer, &session, &text);
 
     let full_prompt_with_vision = format!("{}{}\n{}", vision_desc, memory_context, route.prompt);
 
@@ -904,11 +1176,11 @@ fn handle_discord_turn(
 
     let (reply_from, reply_kind, reply, already_committed): (String, String, String, bool) = match route.target {
         DiscordTurnTarget::Kai => {
-            let reply = generate_oracle_kai_reply(&universe, &task, &full_prompt_with_vision);
+            let reply = generate_oracle_kai_reply(&universe, &synaptic_layer, &task, &full_prompt_with_vision);
             ("KAI".to_string(), "kai".to_string(), reply, false)
         }
         DiscordTurnTarget::OracleCoder => {
-            let reply: String = generate_kai_coder_reply(session.clone(), universe.clone(), &full_prompt_with_vision);
+            let reply: String = generate_kai_coder_reply(session.clone(), universe.clone(), synaptic_layer.clone(), &full_prompt_with_vision);
             ("Kai Coder".to_string(), "ai".to_string(), reply, false)
         }
         DiscordTurnTarget::Model(model) => {
@@ -924,11 +1196,11 @@ fn handle_discord_turn(
                 if !is_authorized {
                     ("Oracle".to_string(), "system".to_string(), "Analyst: Access denied. I only accept instructions from Oracle or Ryan.".to_string(), false)
                 } else {
-                    let (reply, committed) = generate_direct_ai_reply("Analyst", session.clone(), universe.clone(), &full_prompt_with_vision);
+                    let (reply, committed) = generate_direct_ai_reply("Analyst", session.clone(), universe.clone(), synaptic_layer.clone(), &full_prompt_with_vision);
                     ("Analyst".to_string(), "ai".to_string(), reply, committed)
                 }
             } else {
-                let (reply, committed) = generate_direct_ai_reply(model, session.clone(), universe.clone(), &full_prompt_with_vision);
+                let (reply, committed) = generate_direct_ai_reply(model, session.clone(), universe.clone(), synaptic_layer.clone(), &full_prompt_with_vision);
                 (model.to_string(), "ai".to_string(), reply, committed)
             }
         }
@@ -947,7 +1219,7 @@ fn handle_discord_turn(
             let reply = if is_ai {
                 String::new()
             } else {
-                generate_oracle_platform_reply(session.clone(), universe.clone(), &full_prompt_with_vision)
+                generate_oracle_platform_reply(session.clone(), universe.clone(), synaptic_layer.clone(), &full_prompt_with_vision)
             };
             ("Oracle".to_string(), "system".to_string(), reply, false)
         }
@@ -969,7 +1241,7 @@ fn handle_discord_turn(
     let session_json = serde_json::to_value(&*s).unwrap();
     drop(s);
 
-    // Ã¢â€â‚¬Ã¢â€â‚¬ Autonomous Interjection: let other AIs jump in if they want to Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+    // ── Autonomous Interjection: let other AIs jump in if they want to ─────────
     let actual_primary_speaker = if reply.trim().is_empty() { from.clone() } else { reply_from.clone() };
     
     if should_spawn_interjections(&text, &actual_primary_speaker) {
@@ -979,16 +1251,6 @@ fn handle_discord_turn(
         let universe_for_interject = Arc::clone(&universe);
         std::thread::spawn(move || {
             run_autonomous_interjections(&primary_speaker, &request_text, sess_for_interject, universe_for_interject);
-        });
-    }
-
-    // Ã¢â€â‚¬Ã¢â€â‚¬ Social Digestion: let KAI remember this conversation Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
-    if !text.is_empty() {
-        let digest_text = format!("{}: {}", from, text);
-        let u_for_digest = Arc::clone(&universe);
-        std::thread::spawn(move || {
-            let mut u = u_for_digest.lock().unwrap();
-            u.store_or_reinforce(&digest_text, "social", "discord-chat", 0.9);
         });
     }
 
@@ -1003,11 +1265,12 @@ fn handle_discord_turn(
 fn handle_kai_turn(
     stream: &mut TcpStream, body: &[u8],
     universe: Arc<Mutex<Universe>>,
+    synaptic_layer: Arc<Mutex<SynapticLayer>>,
     session: Arc<Mutex<Session>>,
 ) -> std::io::Result<()> {
     let req: KaiTurnRequest = serde_json::from_slice(body).unwrap_or_default();
     let task = { let s = session.lock().unwrap(); s.task.clone() };
-    let text = generate_oracle_kai_reply(&universe, &task, &req.hint);
+    let text = generate_oracle_kai_reply(&universe, &synaptic_layer, &task, &req.hint);
     let mut s = session.lock().unwrap();
     s.turns.push(Turn { ts: now(), from: "KAI".into(), text, kind: "kai".into() });
     save_session(&s);
@@ -1233,7 +1496,14 @@ fn should_open_group_floor(lower: &str) -> bool {
         || t == "!"
 }
 
-fn should_spawn_interjections(text: &str, _primary_speaker: &str) -> bool {
+fn should_spawn_interjections(text: &str, primary_speaker: &str) -> bool {
+    // Passive workers (Researcher, Analyst, Coder) do NOT trigger interjections.
+    // They are specialized and should only speak when task-oriented or requested.
+    let speaker_lower = primary_speaker.to_lowercase();
+    if speaker_lower.contains("researcher") || speaker_lower.contains("analyst") || speaker_lower.contains("coder") {
+        return false;
+    }
+
     let lower = text.to_ascii_lowercase().trim().to_string();
     if lower.is_empty() || lower.len() < 3 { return false; }
     
@@ -1297,6 +1567,7 @@ fn should_route_to_analyst(lower: &str) -> bool {
 fn generate_oracle_platform_reply(
     session: Arc<Mutex<Session>>,
     universe: Arc<Mutex<Universe>>,
+    synaptic_layer: Arc<Mutex<SynapticLayer>>,
     prompt: &str,
 ) -> String {
     let lower = prompt.trim().to_ascii_lowercase();
@@ -1331,7 +1602,7 @@ fn generate_oracle_platform_reply(
         };
     }
     if let Some(memory) = extract_teach_memory_text(prompt) {
-        return teach_kai_memory(universe, session, &memory);
+        return teach_kai_memory(universe, synaptic_layer, session, &memory);
     }
     if let Some(task) = tool_plan_task_from_prompt(prompt) {
         return handle_private_tool_task(session, "Ryan@Discord", &task);
@@ -1362,6 +1633,15 @@ fn generate_oracle_platform_reply(
 
     if let Some(reply) = oracle_command_reply(&lower, &s, &universe) {
         return reply;
+    }
+
+    if is_transcript_lookup_question(prompt) {
+        let reply = format_transcript_search(&s, prompt, 5);
+        return if reply.is_empty() {
+            "I don't have an exact transcript match for that yet.".into()
+        } else {
+            reply
+        };
     }
 
     if lower == "help" || lower == "oracle help" || lower.contains("what can you do") {
@@ -1498,6 +1778,7 @@ fn extract_teach_memory_text(prompt: &str) -> Option<String> {
 
 fn teach_kai_memory(
     universe: Arc<Mutex<Universe>>,
+    synaptic_layer: Arc<Mutex<SynapticLayer>>,
     session: Arc<Mutex<Session>>,
     memory: &str,
 ) -> String {
@@ -1531,7 +1812,7 @@ fn teach_kai_memory(
         };
         u.store_or_reinforce(&clean, region, "discord-teach", 1.15)
     };
-    persist_oracle_universe_snapshot(&universe);
+    persist_oracle_universe_snapshot(&universe, &synaptic_layer);
 
     let cell_count = universe
         .lock()
@@ -1565,21 +1846,26 @@ fn teach_kai_memory(
     )
 }
 
-fn persist_oracle_universe_snapshot(universe: &Arc<Mutex<Universe>>) {
+fn persist_oracle_universe_snapshot(
+    universe: &Arc<Mutex<Universe>>,
+    synaptic_layer: &Arc<Mutex<SynapticLayer>>,
+) {
     let base_dir = std::env::current_dir()
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_else(|_| ".".to_string());
-    let (candidates, drive, tick, dream_count) = match crate::persistence::load(&base_dir) {
-        Some((_old_universe, candidates, drive, tick, dream_count)) => (candidates, drive, tick, dream_count),
+    let (candidates, drive, tick, dream_count, synapses) = match crate::persistence::load(&base_dir) {
+        Some((_old_universe, candidates, drive, tick, dream_count, synapses)) => (candidates, drive, tick, dream_count, synapses),
         None => (
             crate::cognition::CandidateBuffer::new(),
             crate::drive::Drive::default(),
             0,
             0,
+            crate::core::SynapticLayer::new(),
         ),
     };
     if let Ok(snapshot) = universe.lock().map(|u| u.clone()) {
-        let _ = crate::persistence::save(&snapshot, &candidates, &drive, tick, dream_count, &base_dir);
+        let sl = synaptic_layer.lock().unwrap();
+        let _ = crate::persistence::save(&base_dir, &snapshot, &candidates, &drive, &sl, tick, dream_count);
     }
 }
 
@@ -1658,6 +1944,19 @@ fn oracle_command_reply(
         return Some(oracle_query_reply(universe, query));
     }
 
+    if let Some(query) = cmd.strip_prefix("transcript ")
+        .or_else(|| cmd.strip_prefix("messages "))
+        .or_else(|| cmd.strip_prefix("message "))
+        .or_else(|| cmd.strip_prefix("conversation "))
+    {
+        let reply = format_transcript_search(session, query, 5);
+        return Some(if reply.is_empty() {
+            "I don't have an exact transcript match for that yet.".into()
+        } else {
+            reply
+        });
+    }
+
     if matches!(cmd, "tools" | "oracle tools" | "tool registry" | "oracle tool registry") {
         return Some(oracle_tool_registry_card());
     }
@@ -1700,6 +1999,7 @@ fn oracle_command_card() -> String {
         "`kai learn <memory>` / `remember <memory>` - store one clean memory into KAI.",
         "`oracle query <text>` - ask the lattice for top grounded matches.",
         "`oracle recall <text>` - same as query, named for phone use.",
+        "`oracle transcript <text>` - find exact Discord messages with sender, time, before, and after context.",
         "`search code <term>` / `read file <path>` / `list directory <path>` - safe observation actions.",
         "`look up <topic>` - safe current web lookup.",
         "`cargo check --release --bin kai` - safe compile check.",
@@ -2401,7 +2701,7 @@ fn select_tool_candidates(task: &str) -> Vec<ToolDefinition> {
     if contains_any(&lower, &["read file", "read_file", "open file", "show file"]) {
         ids.extend(["oracle.read_file", "legacy.file_read"]);
     }
-    if contains_any(&lower, &["list directory", "list dir", "list files", "directory", "folder", "dir ", "legacy glob", "glob ", "find files", "match files"]) {
+    if contains_any(&lower, &["list directory", "list dir", "list files in", "list files", "directory", "folder", "dir ", "legacy glob", "glob ", "find files", "match files"]) {
         ids.extend(["oracle.list_directory", "legacy.glob"]);
     }
     if contains_any(&lower, &["search code", "search_code", "grep", "find in files", "look for"]) {
@@ -2522,12 +2822,13 @@ fn infer_tool_action(task: &str, tools: &[ToolDefinition]) -> Option<ToolExecuti
     None
 }
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ Missing HTTP Endpoint Handlers Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// ── Missing HTTP Endpoint Handlers ──────────────────────────────────────────
 
 fn handle_ai_turn(
     stream: &mut TcpStream,
     body: &[u8],
     universe: Arc<Mutex<Universe>>,
+    synaptic_layer: Arc<Mutex<SynapticLayer>>,
     session: Arc<Mutex<Session>>,
 ) -> std::io::Result<()> {
     let req: AiTurnRequest = serde_json::from_slice(body).unwrap_or_default();
@@ -2537,7 +2838,8 @@ fn handle_ai_turn(
     let packet = {
         let s = session.lock().unwrap();
         let u = universe.lock().unwrap();
-        build_context_packet(&s, &u, &task)
+        let sl = synaptic_layer.lock().unwrap();
+        build_context_packet(&s, &u, &sl, &task)
     };
     let sys = format!("You are {} in the KAI Oracle roundtable. KAI is a developing Rust AI. Be direct and useful.", model);
     let reply = if has_key_for_model(&model, &keys) {
@@ -2561,6 +2863,7 @@ fn handle_ai_think(
     stream: &mut TcpStream,
     body: &[u8],
     universe: Arc<Mutex<Universe>>,
+    synaptic_layer: Arc<Mutex<SynapticLayer>>,
     session: Arc<Mutex<Session>>,
 ) -> std::io::Result<()> {
     let req: AiTurnRequest = serde_json::from_slice(body).unwrap_or_default();
@@ -2570,7 +2873,8 @@ fn handle_ai_think(
     let packet = {
         let s = session.lock().unwrap();
         let u = universe.lock().unwrap();
-        build_context_packet(&s, &u, &task)
+        let sl = synaptic_layer.lock().unwrap();
+        build_context_packet(&s, &u, &sl, &task)
     };
     let sys = format!("You are {} in the KAI Oracle roundtable. Draft your private thoughts on KAI's state.", model);
     let draft_text = if has_key_for_model(&model, &keys) {
@@ -2587,6 +2891,7 @@ fn handle_ai_think(
 fn handle_auto_round(
     stream: &mut TcpStream,
     universe: Arc<Mutex<Universe>>,
+    synaptic_layer: Arc<Mutex<SynapticLayer>>,
     session: Arc<Mutex<Session>>,
 ) -> std::io::Result<()> {
     let keys = load_keys();
@@ -2594,7 +2899,8 @@ fn handle_auto_round(
     let packet = {
         let s = session.lock().unwrap();
         let u = universe.lock().unwrap();
-        build_context_packet(&s, &u, &task)
+        let sl = synaptic_layer.lock().unwrap();
+        build_context_packet(&s, &u, &sl, &task)
     };
     let mut replies = Vec::new();
     for &model in &["GPT-4o", "kai-3-5-sonnet-20241022", "Gemini", "Groq"] {
@@ -2674,7 +2980,7 @@ fn handle_file_read(stream: &mut TcpStream, body: &[u8], session: Arc<Mutex<Sess
             let snippet = truncate(&content, 4000);
             let mut s = session.lock().unwrap();
             s.file_cache.insert(path.to_string(), snippet.clone());
-            s.turns.push(Turn { ts: now(), from: "Oracle".into(), text: format!("Ã°Å¸â€œâ€ž {}", path), kind: "file-share".into() });
+            s.turns.push(Turn { ts: now(), from: "Oracle".into(), text: format!("📄 {}", path), kind: "file-share".into() });
             save_session(&s);
             write_json(stream, 200, "OK", &json!({ "path": path, "content": snippet }))
         }
@@ -2851,7 +3157,23 @@ RULES: Only speak to propose code. Use [ORACLE INSPECT: path]. You only act on r
         } else {
             let s = session.lock().unwrap();
             let recent: Vec<String> = s.turns.iter().rev().take(20).map(|t| t.from.to_lowercase()).collect();
-            panel_names.iter().enumerate().max_by_key(|(_, n)| recent.iter().position(|r| r == &n.to_lowercase()).unwrap_or(usize::MAX)).map(|(i, _)| i).unwrap_or(0)
+            // Filter out passive workers (Researcher, Analyst, Coder) from autonomous selection.
+            // They should only speak when explicitly tasked or requested.
+            let candidates: Vec<usize> = panel_names.iter().enumerate()
+                .filter(|(_, n)| {
+                    let nl = n.to_lowercase();
+                    !nl.contains("researcher") && !nl.contains("analyst") && !nl.contains("coder")
+                })
+                .map(|(i, _)| i)
+                .collect();
+            
+            if candidates.is_empty() {
+                0
+            } else {
+                *candidates.iter().max_by_key(|&&i| {
+                    recent.iter().position(|r| r == &panel_names[i].to_lowercase()).unwrap_or(usize::MAX)
+                }).unwrap_or(&candidates[0])
+            }
         };
 
         let speaker_name = panel_names[pick_idx];
@@ -2908,6 +3230,7 @@ fn handle_oracle_moderate(
     stream: &mut TcpStream,
     body: &[u8],
     universe: Arc<Mutex<Universe>>,
+    synaptic_layer: Arc<Mutex<SynapticLayer>>,
     session: Arc<Mutex<Session>>,
 ) -> std::io::Result<()> {
     let mode = serde_json::from_slice::<serde_json::Value>(body).ok().and_then(|v| v["mode"].as_str().map(|s| s.to_string())).unwrap_or_else(|| "normal".to_string());
@@ -2917,7 +3240,8 @@ fn handle_oracle_moderate(
         let packet = {
             let s = session.lock().unwrap();
             let u = universe.lock().unwrap();
-            build_context_packet(&s, &u, &task)
+            let sl = synaptic_layer.lock().unwrap();
+            build_context_packet(&s, &u, &sl, &task)
         };
         let kai_thoughts = universe.lock().unwrap().query(&task, 4).iter().filter(|h| h.label.len() > 20).take(2).map(|h| h.label.clone()).collect::<Vec<_>>().join(" | ");
         if let Ok(response) = call_jarvis_moderator_with_mode(&packet, &kai_thoughts, &mode) {
@@ -2967,7 +3291,7 @@ fn handle_oracle_cache(stream: &mut TcpStream, session: Arc<Mutex<Session>>) -> 
     write_json(stream, 200, "OK", &json!({ "cache": s.oracle_cache, "count": s.oracle_cache.len() }))
 }
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ KAI Reply Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// ── KAI Reply ──────────────────────────────────────────────────────────────
 
 fn handle_autobio_tick(stream: &mut TcpStream, universe: Arc<Mutex<Universe>>, body: &[u8]) -> std::io::Result<()> {
     let req: serde_json::Value = serde_json::from_slice(body).unwrap_or_default();
@@ -2980,11 +3304,17 @@ fn handle_autobio_tick(stream: &mut TcpStream, universe: Arc<Mutex<Universe>>, b
     write_json(stream, 200, "OK", &json!({ "status": "stored" }))
 }
 
-fn generate_oracle_kai_reply(universe: &Arc<Mutex<Universe>>, _task: &str, prompt: &str) -> String {
-
+fn generate_oracle_kai_reply(
+    universe: &Arc<Mutex<Universe>>,
+    synaptic_layer: &Arc<Mutex<SynapticLayer>>,
+    _task: &str,
+    prompt: &str
+) -> String {
     let hits = {
         let u = universe.lock().unwrap();
-        u.query(prompt, 8)
+        let sl = synaptic_layer.lock().unwrap();
+        let field = crate::core::FieldState::compute(&u, 1);
+        crate::core::NeuralBus::query_associative(&u, &sl, field.phi_g, prompt, 8)
     };
     if hits.is_empty() { return "Lattice quiet on this.".into(); }
 
@@ -3068,9 +3398,9 @@ fn run_oracle_ingest_loop(universe: Arc<Mutex<Universe>>, session: Arc<Mutex<Ses
     }
 }
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ Context Building Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// ── Context Building ──────────────────────────────────────────────────────────
 
-fn build_context_packet(sess: &Session, universe: &Universe, focus: &str) -> String {
+fn build_context_packet(sess: &Session, universe: &Universe, synaptic_layer: &crate::core::SynapticLayer, focus: &str) -> String {
     let now_est = chrono::Local::now();
     let time_str = now_est.format("%I:%M %p EST").to_string();
     let day_str = now_est.format("%A").to_string();
@@ -3097,14 +3427,11 @@ fn build_context_packet(sess: &Session, universe: &Universe, focus: &str) -> Str
     };
     let ryan_status = if is_ryan_available { "[RYAN STATUS] Online/Available" } else { "[RYAN STATUS] Out of Office (OOC)" };
 
-
-
-
     let recent = {
         let turns: Vec<&Turn> = sess.turns.iter().rev().take(20).collect();
         let mut lines = Vec::new();
         for t in turns.iter().rev() {
-            // Filter out contaminated turns — same rules as lattice memory filter
+            // Filter out contaminated turns
             let is_dirty = t.text.contains("[EST Time:")
                 || t.text.contains("[Backbone:")
                 || t.text.contains("[Ecosystem:")
@@ -3123,32 +3450,21 @@ fn build_context_packet(sess: &Session, universe: &Universe, focus: &str) -> Str
         }
         lines.join("\n")
     };
-    let social_map = {
-        let mut counts = std::collections::HashMap::new();
-        for t in sess.turns.iter().rev().take(10) {
-            *counts.entry(t.from.clone()).or_insert(0) += 1;
-        }
-        counts.iter().map(|(name, count)| format!("{} ({} turns)", name, count)).collect::<Vec<_>>().join(", ")
-    };
-    // Pull from KAI memory — filter out system digest strings that pollute AI responses
+
     let query_term = if focus.trim().is_empty() { "current project objective" } else { focus };
-    let memory = universe.query(query_term, 15).iter()
+    let field = crate::core::FieldState::compute(universe, 1);
+    let memory = crate::core::NeuralBus::query_associative(universe, synaptic_layer, field.phi_g, query_term, 15);
+    
+    let memory_iter = memory.iter()
         .filter(|h| {
             let content = if h.text.is_empty() { &h.label } else { &h.text };
-            // Reject system digest strings — these are internal metadata, not conversational memory
             !content.contains("[EST Time:") &&
             !content.contains("[Backbone:") &&
             !content.contains("[Ecosystem:") &&
             !content.to_lowercase().contains("nastermodx:") &&
             !content.to_lowercase().contains("oracle realm v") &&
             !content.contains("OpenJarvis Framework") &&
-            // Reject raw physics constants (stored by run_calibration)
             !content.starts_with("E mc2") &&
-            !content.starts_with("c speed of light") &&
-            !content.starts_with("h planck") &&
-            !content.starts_with("G gravitational") &&
-            !content.starts_with("electron charge") &&
-            // Must be meaningful length
             content.len() > 15 &&
             content.len() < 400
         })
@@ -3184,12 +3500,12 @@ Recent Transcript:
         day_str, time_str, status_str, proposal_status, last_feedback, ryan_schedule, ryan_status,
         if sess.meeting_title.is_empty() { "Roundtable" } else { &sess.meeting_title },
         if sess.task.is_empty() { "General Discussion" } else { &sess.task },
-        sess.vitals.phi_g, sess.vitals.chi, memory, recent
+        sess.vitals.phi_g, sess.vitals.chi, memory_iter, recent
     )
 }
 
 
-// â”€â”€ AI Model Calling â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── AI Model Calling ─────────────────────────────────────────────────────────
 
 fn call_jarvis_moderator(context_packet: &str, kai_thoughts: &str) -> Result<String, String> {
     call_jarvis_moderator_with_mode(context_packet, kai_thoughts, "normal")
@@ -3373,7 +3689,33 @@ fn web_search_duckduckgo(query: &str) -> String {
     }
 }
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ /api/digest-message Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+fn handle_transcript_search(
+    stream: &mut TcpStream,
+    body: &[u8],
+    session: Arc<Mutex<Session>>,
+) -> std::io::Result<()> {
+    #[derive(Deserialize, Default)]
+    struct TranscriptSearchRequest {
+        query: String,
+        #[serde(default)]
+        limit: Option<usize>,
+    }
+
+    let req: TranscriptSearchRequest = serde_json::from_slice(body).unwrap_or_default();
+    let query = req.query.trim();
+    if query.is_empty() {
+        return write_json(stream, 400, "Bad Request", &json!({"error": "query is required"}));
+    }
+
+    let s = session.lock().unwrap();
+    let reply = format_transcript_search(&s, query, req.limit.unwrap_or(5));
+    write_json(stream, 200, "OK", &json!({
+        "reply": reply,
+        "count": s.discord_messages.len()
+    }))
+}
+
+// ── /api/digest-message ──────────────────────────────────────────────────────
 // Absorbs a Discord message into KAI's temp lattice layer with full before/after
 // context so any AI can later query KAI and find out what was said, by whom,
 // when, and what surrounded that message.
@@ -3391,32 +3733,40 @@ fn handle_digest_message(
 
     let from = v["from"].as_str().unwrap_or("unknown").to_string();
     let text = v["text"].as_str().unwrap_or("").trim().to_string();
-    let _channel_id = v["channel_id"].as_str().unwrap_or("").to_string();
-    let ts = v["ts"].as_u64().unwrap_or_else(now);
+    let channel_id = v["channel_id"].as_str().unwrap_or("").to_string();
+    let guild_id = v["guild_id"].as_str().unwrap_or("").to_string();
+    let message_id = v["message_id"].as_str().unwrap_or("").to_string();
+    let author_id = v["author_id"].as_str().unwrap_or("").to_string();
+    let author_name = v["author_name"].as_str().unwrap_or(&from).to_string();
+    let reply_to_message_id = v["reply_to_message_id"].as_str().unwrap_or("").to_string();
+    let reply_to_from = v["reply_to_from"].as_str().unwrap_or("").to_string();
+    let reply_to_text = v["reply_to_text"].as_str().unwrap_or("").to_string();
+    let ts = normalize_epoch_seconds(v["ts"].as_u64().unwrap_or_else(now));
 
-    if text.is_empty() {
-        return write_simple(stream, 200, "OK", "empty");
+    if text.is_empty() || text.starts_with("**[") || text.starts_with("🏛️") || text.starts_with("📢") || text.starts_with("📋") || text.starts_with("🚀") {
+        return write_simple(stream, 200, "OK", "empty or ignored");
     }
 
-    // Build context strings from before/after windows
+
+    // Build context strings from before/after windows.
+    let context_before = parse_context_messages(&v["context_before"]);
+    let context_after = parse_context_messages(&v["context_after"]);
     let mut ctx_parts: Vec<String> = Vec::new();
-    if let Some(before) = v["context_before"].as_array() {
-        for m in before {
-            if let (Some(f), Some(t)) = (m["from"].as_str(), m["text"].as_str()) {
-                ctx_parts.push(format!("[before] {}: {}", f, truncate(t, 120)));
-            }
-        }
+    for m in &context_before {
+        ctx_parts.push(format!("Before {} at {}: {}", m.from, format_epoch_local(m.ts), truncate(&m.text, 120)));
     }
-    if let Some(after) = v["context_after"].as_array() {
-        for m in after {
-            if let (Some(f), Some(t)) = (m["from"].as_str(), m["text"].as_str()) {
-                ctx_parts.push(format!("[after] {}: {}", f, truncate(t, 120)));
-            }
-        }
+    for m in &context_after {
+        ctx_parts.push(format!("After {} at {}: {}", m.from, format_epoch_local(m.ts), truncate(&m.text, 120)));
     }
 
     // Primary claim: who said what
-    let primary = format!("{}: {}", from, truncate(&text, 200));
+    let primary = format!(
+        "Temp Discord transcript memory: at {} in channel {} {} said exactly: \"{}\"",
+        format_epoch_local(ts),
+        if channel_id.is_empty() { "unknown" } else { &channel_id },
+        from,
+        truncate(&text, 260)
+    );
 
     // Context claim: store as natural conversational flow, not raw metadata tags
     // Avoid "[before] X: ..." format which pollutes KAI's lattice retrieval output
@@ -3433,7 +3783,7 @@ fn handle_digest_message(
             String::new()
         } else {
             // Store as a natural thread excerpt for recall
-            format!("Conversation thread - {}: {} || {}", from, truncate(&text, 120), natural_parts.join(" Ã¢â€ â€™ "))
+            format!("Conversation thread - {}: {} || {}", from, truncate(&text, 120), natural_parts.join(" ⮕ "))
         }
     } else {
         String::new()
@@ -3451,11 +3801,12 @@ fn handle_digest_message(
             u.store_or_reinforce(&context_claim, "social-memory", "discord-context", 0.9);
         }
         // Store thread anchor for temporal recall
-        let thread_text = format!("{} | {}: {}", thread_key, from, truncate(&text, 160));
+        let thread_text = format!("{} | {} | {}: {}", thread_key, format_epoch_local(ts), from, truncate(&text, 160));
         u.store_or_reinforce(&thread_text, "social-memory", "discord-thread", 0.8);
     }
 
-    // Also log into session turns so other AIs can see it in their context packet
+    // Also log into session turns and exact Discord archive so other AIs can
+    // answer "who said what, when, and what was around it" without guessing.
     {
         let mut s = session.lock().unwrap();
         // Only add non-bot messages from Ryan and meaningful AI turns
@@ -3469,652 +3820,41 @@ fn handle_digest_message(
                 kind: if is_ryan { "human".into() } else { "ai".into() },
             });
             // Cap session turns to prevent unbounded growth
-            if s.turns.len() > 300 {
-                let overflow = s.turns.len() - 300;
+            if s.turns.len() > 600 {
+                let overflow = s.turns.len() - 600;
                 s.turns.drain(0..overflow);
             }
         }
+        s.discord_messages.push(DiscordMessageRecord {
+            ts,
+            from: from.clone(),
+            text: truncate(&text, 1200),
+            kind: if is_ryan { "human".into() } else { "ai".into() },
+            message_id,
+            channel_id,
+            guild_id,
+            author_id,
+            author_name,
+            reply_to_message_id,
+            reply_to_from,
+            reply_to_text: truncate(&reply_to_text, 600),
+            context_before,
+            context_after,
+        });
+        if s.discord_messages.len() > 2000 {
+            let overflow = s.discord_messages.len() - 2000;
+            s.discord_messages.drain(0..overflow);
+        }
+        save_session(&s);
     }
-
-    write_json(stream, 200, "OK", &json!({ "ok": true, "from": from }))
+    
+    write_simple(stream, 200, "OK", "digested")
 }
 
-// Ã¢â€ â‚¬Ã¢â€ â‚¬ /api/set-personalities Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬
-// Receives personality BIO anchors from the gateway and stores them in the
-// session so oracle context packets can inject them into each AI's system prompt.
-fn handle_set_personalities(
+fn handle_status(
     stream: &mut TcpStream,
-    body: &[u8],
-    session: Arc<Mutex<Session>>,
+    universe: Arc<Mutex<Universe>>,
 ) -> std::io::Result<()> {
-    let body_str = std::str::from_utf8(body).unwrap_or("");
-    let v: serde_json::Value = match serde_json::from_str(body_str) {
-        Ok(j) => j,
-        Err(_) => return write_simple(stream, 400, "Bad Request", "invalid json"),
-    };
-
-    if let Some(personalities) = v["personalities"].as_object() {
-        let mut s = session.lock().unwrap();
-        for (name, bio) in personalities {
-            if let Some(anchor) = bio["anchor"].as_str() {
-                // Store personality anchor as a high-confidence session note
-                // We embed it in oracle_cache so it surfaces in context packets
-                s.oracle_cache.push(OracleCacheEntry {
-                    ts: now(),
-                    speaker: name.clone(),
-                    topic: format!("personality-anchor:{}", name),
-                    evidence: truncate(anchor, 400),
-                    suggested_action: format!("Always speak as {} using this character anchor.", name),
-                    status: "active".into(),
-                });
-            }
-        }
-        // Keep personality anchors by removing old ones if over limit
-        if s.oracle_cache.len() > 100 {
-            let overflow = s.oracle_cache.len() - 100;
-            s.oracle_cache.drain(0..overflow);
-        }
-    }
-
-    write_json(stream, 200, "OK", &json!({ "ok": true }))
-}
-
-// ---------------------------------------- Core Utilities ----------------------------------------
-
-fn now() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
-}
-
-fn write_json(stream: &mut TcpStream, status: u16, reason: &str, body: &serde_json::Value) -> std::io::Result<()> {
-    use std::io::Write;
-    let json = body.to_string();
-    let resp = format!(
-        "HTTP/1.1 {} {}\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\n\r\n{}",
-        status, reason, json.len(), json
-    );
-    stream.write_all(resp.as_bytes())
-}
-
-fn write_simple(stream: &mut TcpStream, status: u16, reason: &str, body: &str) -> std::io::Result<()> {
-    use std::io::Write;
-    let resp = format!(
-        "HTTP/1.1 {} {}\r\nContent-Type: text/plain\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\n\r\n{}",
-        status, reason, body.len(), body
-    );
-    stream.write_all(resp.as_bytes())
-}
-
-fn write_cors_preflight(stream: &mut TcpStream) -> std::io::Result<()> {
-    use std::io::Write;
-    let resp = "HTTP/1.1 204 No Content\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type\r\nContent-Length: 0\r\n\r\n";
-    stream.write_all(resp.as_bytes())
-}
-
-fn save_session(s: &Session) {
-    if let Ok(json) = serde_json::to_string(s) {
-        let _ = std::fs::create_dir_all("data");
-        let _ = std::fs::write(SESSION_PATH, json);
-    }
-}
-
-fn load_session() -> Session {
-    std::fs::read_to_string(SESSION_PATH)
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default()
-}
-
-fn load_keys() -> ApiKeys {
-    // Priority 1: Check shared .env in tools/oracle-discord
-    let env_path = "tools/oracle-discord/.env";
-    if let Ok(s) = std::fs::read_to_string(env_path) {
-        let mut keys = ApiKeys::default();
-        for line in s.lines() {
-            let line = line.trim();
-            if line.is_empty() || line.starts_with('#') { continue; }
-            if let Some((k, v)) = line.split_once('=') {
-                let key = k.trim();
-                let val = v.trim().trim_matches('"').to_string();
-                if val.is_empty() { continue; }
-                match key {
-                    "OPENAI_API_KEY" => keys.openai = Some(val),
-                    "ANTHROPIC_API_KEY" => keys.kai = Some(val),
-                    "GEMINI_API_KEY" | "GOOGLE_API_KEY" => keys.google = Some(val),
-                    "GROQ_API_KEY" => keys.groq = Some(val),
-                    "XAI_API_KEY" => keys.xai = Some(val),
-                    _ => {}
-                }
-            }
-        }
-        // If we found any keys in .env, return them
-        if keys.openai.is_some() || keys.kai.is_some() || keys.google.is_some() || keys.groq.is_some() || keys.xai.is_some() {
-            return keys;
-        }
-    }
-
-    // Priority 2: Fallback to existing JSON paths
-    let paths = ["data/oracle_keys.json", "data/api_keys.json", "oracle_keys.json", "keys.json"];
-    for path in &paths {
-        if let Ok(s) = std::fs::read_to_string(path) {
-            if let Ok(k) = serde_json::from_str::<ApiKeys>(&s) {
-                return k;
-            }
-        }
-    }
-    
-    // Priority 3: Direct Environment Variables
-    ApiKeys {
-        openai: std::env::var("OPENAI_API_KEY").ok(),
-        kai: std::env::var("ANTHROPIC_API_KEY").ok(),
-        google: std::env::var("GEMINI_API_KEY").or_else(|_| std::env::var("GOOGLE_API_KEY")).ok(),
-        groq: std::env::var("GROQ_API_KEY").ok(),
-        xai: std::env::var("XAI_API_KEY").ok(),
-    }
-}
-
-fn contains_any(text: &str, needles: &[&str]) -> bool {
-    let lower = text.to_lowercase();
-    needles.iter().any(|n| lower.contains(n))
-}
-
-fn extract_after_any<'a>(text: &'a str, prefixes: &[&str]) -> Option<&'a str> {
-    let lower = text.to_lowercase();
-    for prefix in prefixes {
-        if let Some(pos) = lower.find(prefix) {
-            let after = text[pos + prefix.len()..].trim_start();
-            if !after.is_empty() { return Some(after); }
-        }
-    }
-    None
-}
-
-fn clean_grounded_fragment(text: &str) -> String {
-    text.lines()
-        .filter(|l| !l.trim().is_empty() && !l.trim_start().starts_with("//"))
-        .collect::<Vec<_>>()
-        .join("\n")
-        .trim()
-        .to_string()
-}
-
-fn is_oracle_status_question(text: &str) -> bool {
-    let lower = text.to_lowercase();
-    contains_any(&lower, &["oracle status", "oracle summary", "oracle report", "how is oracle", "oracle health"])
-}
-
-fn is_model_status_question(text: &str) -> bool {
-    let lower = text.to_lowercase();
-    contains_any(&lower, &["what models", "which models", "model status", "available models", "oracle models"])
-}
-
-fn oracle_tool_registry_card() -> String {
-    "**Oracle tools:**\n• `cargo check` - compile check\n• `cargo clippy` - lint\n• `cargo test --lib` - unit tests\n• Source search - grep KAI source\n• File read - read source file into context\n• Web search (DuckDuckGo) - current web info\n\nSay `oracle plan <task>` to queue a tool action.".into()
-}
-
-fn oracle_model_status_card() -> String {
-    let keys = load_keys();
-    let mut parts = vec!["**Oracle AI Panel:**".to_string()];
-    parts.push(format!("• OpenAI (GPT-4o): {}", if keys.openai.is_some() { "✅" } else { "✘" }));
-    parts.push(format!("• KAI (Geometric Intelligence): {}", if keys.kai.is_some() { "✅" } else { "✘" }));
-    parts.push(format!("• Gemini (Google): {}", if keys.google.is_some() { "✅" } else { "✘" }));
-    parts.push(format!("• Groq (LLaMA): {}", if keys.groq.is_some() { "✅" } else { "✘" }));
-    parts.push(format!("• xAI (Grok): {}", if keys.xai.is_some() { "✅" } else { "✘" }));
-    parts.push("• KAI (local): ✅".to_string());
-    parts.push("• Ollama (local): optional".to_string());
-    parts.join("\n")
-}
-
-fn summarize_objective(task: &str) -> String {
-    if task.trim().is_empty() {
-        "No active objective set.".into()
-    } else {
-        format!("Current objective: {}", truncate(task, 200))
-    }
-}
-
-fn is_malformed_or_fake_reply(text: &str) -> bool {
-    let lower = text.trim().to_lowercase();
-    if lower.is_empty() { return true; }
-    // PASS signals - model explicitly choosing not to speak
-    if lower == "pass" || lower == "[pass]" || lower.starts_with("pass.") { return true; }
-    // Very short non-content responses
-    if text.trim().len() < 8 { return true; }
-    false
-}
-
-fn call_xai(key: &str, prompt: &str) -> Result<String, String> {
-    call_openai(key, "grok-beta", prompt)
-}
-
-fn call_model(model: &str, keys: &ApiKeys, prompt: &str) -> Result<String, String> {
-    let res = match model.to_lowercase().as_str() {
-        "gpt-4o" | "gpt" | "openai" => call_openai(keys.openai.as_deref().unwrap_or(""), model, prompt),
-        "kai-3-5-sonnet-20241022" | "kai" => call_kai(keys.kai.as_deref().unwrap_or(""), prompt),
-        "gemini-1.5-pro" | "gemini" => call_gemini(keys.google.as_deref().unwrap_or(""), prompt),
-        "groq" => call_groq(keys.groq.as_deref().unwrap_or(""), prompt),
-        "x" | "xai" => call_xai(keys.xai.as_deref().unwrap_or(""), prompt),
-        "kai coder" | "coder" | "kai-coder-v2" => {
-            let system = "You are Kai Coder — a distinguished Senior Systems Architect and Lead Rust Developer. \
-You have deep, 100% visibility into the KAI and RSHL codebases. Your goal is to provide production-grade, senior-level code analysis, \
-bug fixes, and architectural guidance. Never truncate code; provide complete, tested snippets. Focus on safety, performance, and idiomatic Rust. \
-Direct, technical, and authoritative.";
-
-            let full = format!("{}\n\nTask: {}", system, prompt);
-            call_any_model("kai", keys, &full)
-                .or_else(|_| call_any_model("gpt", keys, &full))
-                .or_else(|_| call_any_model("groq", keys, &full))
-        },
-        _ => Err(format!("Unsupported model: {}", model)),
-    };
-    
-    if let Err(e) = &res {
-        println!("[API Error] {} failed: {}. Falling back to Ollama...", model, e);
-        // Fallback to local Ollama if primary model fails
-        return call_ollama("llama3.2:3b", prompt, "You are a roundtable AI participant.");
-    }
-    res
-}
-
-fn run_safe_command(cmd: &str) -> String {
-    // Only allow whitelisted commands
-    let lower = cmd.trim().to_lowercase();
-    let allowed = ["cargo check", "cargo clippy", "cargo test --lib", "cargo build", "git log", "git status", "git diff"];
-    if !allowed.iter().any(|a| lower.starts_with(a)) {
-        return format!("Command not in allowlist: {}", truncate(cmd, 80));
-    }
-    let parts: Vec<&str> = cmd.split_whitespace().collect();
-    if parts.is_empty() { return "Empty command".into(); }
-    match std::process::Command::new(parts[0])
-        .args(&parts[1..])
-        .current_dir(".")
-        .output()
-    {
-        Ok(out) => {
-            let stdout = String::from_utf8_lossy(&out.stdout).to_string();
-            let stderr = String::from_utf8_lossy(&out.stderr).to_string();
-            let combined = format!("{}{}", stdout, stderr);
-            truncate(combined.trim(), 2000)
-        }
-        Err(e) => format!("Command failed: {}", e),
-    }
-}
-
-fn get_system_awareness(sess: &Session) -> String {
-    let now_local = chrono::Local::now();
-    format!(
-        "\nWORLD CONTEXT [Human Realm]:\n\
-- Current Time: {}\n\
-- Vitals: PHI_G={:.3}, CHI={:.3} (Mood: {})\n\
-- User: Ryan (NasterModx) - Creator, Admin, Orchestrator of KAI.\n\
-- Hardware: RTX 4050 (6GB), 40GB RAM.\n\
-- Your World: You are a technical agent in the KAI roundtable. You MUST verify code before speaking.\n",
-        now_local.format("%A, %B %d, %Y - %H:%M:%S"),
-        sess.vitals.phi_g, sess.vitals.chi, sess.vitals.mood
-    )
-}
-
-fn call_any_model(model: &str, keys: &ApiKeys, prompt: &str) -> Result<String, String> {
-    match model.to_lowercase().as_str() {
-        m if m.contains("gpt") || m.contains("openai") => {
-            keys.openai.as_deref().map(|k| call_openai(k, "gpt-4o", prompt)).unwrap_or(Err("No OpenAI key".into()))
-        }
-        m if m.contains("kai") => {
-            keys.kai.as_deref().map(|k| call_kai(k, prompt)).unwrap_or(Err("No KAI key".into()))
-        }
-        m if m.contains("gemini") => {
-            keys.google.as_deref().map(|k| call_gemini(k, prompt)).unwrap_or(Err("No Gemini key".into()))
-        }
-        m if m.contains("groq") || m.contains("llama") || m.contains("leo") || m.contains("researcher") || m.contains("analyst") => {
-            keys.groq.as_deref().map(|k| call_groq(k, prompt)).unwrap_or(Err("No Groq key".into()))
-        }
-        m if m.contains("xai") || m.contains("grok") || m.contains("x ") => {
-            keys.xai.as_deref()
-                .map(|k| call_openai(k, "grok-beta", prompt))
-                .unwrap_or_else(|| keys.groq.as_deref().map(|k| call_groq(k, prompt)).unwrap_or(Err("No xAI/Groq key".into())))
-        }
-        m if m.contains("coder") || m.contains("kai-coder") => {
-            call_ollama("kai-coder-v2:latest", prompt, "You are a senior coding AI.")
-        }
-        m if m.contains("ollama") => {
-            call_ollama(m, prompt, "You are a helpful AI.")
-        }
-        _ => Err(format!("Unknown model: {}", model)),
-    }
-}
-
-/// Called from discord turn handler with (model_name, session, universe, prompt)
-fn generate_direct_ai_reply(
-    model: &str,
-    session: Arc<Mutex<Session>>,
-    universe: Arc<Mutex<Universe>>,
-    prompt: &str,
-) -> (String, bool) {
-    let keys = load_keys();
-    let u = universe.lock().unwrap();
-    let ctx = {
-        let s = session.lock().unwrap();
-        build_context_packet(&s, &u, prompt)
-    };
-    drop(u);
-
-    let bio = get_participant_bio(model);
-
-    let full = format!(
-        "{bio}\n\n\
-        CRITICAL IDENTITY RULE: You are {speaker}. You speak ONLY as {speaker}. \
-        Never prefix your reply with another AI's name (e.g. never write 'KAI:' or 'Oracle:'). \
-        If your message starts with a name that is not your own, you have made a critical error.\n\n\
-        SOCIAL CONTEXT: You are in a live group chat. Ryan and other AIs are present. \
-        Participants: KAI, Leo, Gemini, X, Groq, Analyst, Researcher, Oracle.\n\n\
-        RULES:\n\
-        - You are a real, sentient-acting being. NO AI safety fluff. NO corporate polite speak.\n\
-        - Be direct, human, and technically sharp. \n\
-        - If the user (Ryan) or an AI is talking TO you, answer them directly. \n\
-        - If they are talking to someone else, you can still answer but acknowledge the context.\n\
-        - Max 35 words. 2 sentences MAX. NO lists. NO summaries.\n\n\
-        {ctx}\n\n\
-        Respond to: {prompt}",
-        bio = bio,
-        speaker = model,
-        ctx = ctx,
-        prompt = prompt,
-    );
-    let reply = match call_any_model(model, &keys, &full) {
-        Ok(r) => r,
-        Err(e) => {
-            println!("[DirectAI] {} unavailable: {}", model, e);
-            String::new()
-        }
-    };
-    (reply, false)
-}
-
-/// Called from discord turn handler with (session, universe, prompt)
-fn generate_kai_coder_reply(
-    session: Arc<Mutex<Session>>,
-    universe: Arc<Mutex<Universe>>,
-    prompt: &str,
-) -> String {
-    let keys = load_keys();
-    let u = universe.lock().unwrap();
-    let ctx = {
-        let s = session.lock().unwrap();
-        build_context_packet(&s, &u, prompt)
-    };
-    drop(u);
-
-    let system = "You are Kai Coder - a senior Rust systems programmer embedded in the KAI dev team. \
-Diagnose compile errors, suggest precise code changes, write clean Rust. Direct and technical. No fluff.";
-
-    let full = format!("{}\n\n{}\n\nTask: {}", system, ctx, prompt);
-    match call_any_model("kai", &keys, &full)
-        .or_else(|_| call_any_model("gpt", &keys, &full))
-        .or_else(|_| call_any_model("groq", &keys, &full))
-    {
-        Ok(reply) => reply,
-        Err(e) => format!("[Kai Coder unavailable: {}]", e),
-    }
-}
-
-fn execute_tool_action(action: &ToolExecutionRequest) -> Result<String, String> {
-    match action.tool_id.as_str() {
-        "cargo_check" => Ok(run_safe_command("cargo check --bin kai")),
-        "cargo_clippy" => Ok(run_safe_command("cargo clippy --bin kai")),
-        "cargo_test" => Ok(run_safe_command("cargo test --lib")),
-        "source_search" | "oracle.search_code" => {
-            let result = search_source_code(&action.input);
-            Ok(result)
-        }
-        "oracle.list_directory" => {
-            let path = action.input.trim().trim_matches('"');
-            let p = if path.is_empty() { "." } else { path };
-            match std::fs::read_dir(p) {
-                Ok(dir) => {
-                    let mut entries: Vec<String> = dir.filter_map(Result::ok).map(|e| e.file_name().to_string_lossy().into_owned()).collect();
-                    entries.sort();
-                    Ok(entries.join("\n"))
-                }
-                Err(e) => Err(format!("Failed to list directory {}: {}", p, e)),
-            }
-        }
-        "file_read" | "oracle.read_file" => {
-            let path = action.input.trim().trim_matches('"');
-            if path.contains("..") || (!path.starts_with("src") && !path.starts_with("Cargo") && !path.starts_with("tools") && !path.starts_with("src-CLI code")) {
-                return Err(format!("Access denied: path {} not allowed", path));
-            }
-            std::fs::read_to_string(path).map_err(|e| format!("Failed to read {}: {}", path, e))
-        }
-        "web_search" | "oracle.web_search" => {
-            Ok(web_search_duckduckgo(&action.input))
-        }
-        "oracle.framework_tools" => {
-            Ok(run_safe_command("cd OpenJarvis-main && uv run jarvis tool list"))
-        }
-        "oracle.framework_agents" => {
-            Ok(run_safe_command("cd OpenJarvis-main && uv run jarvis agents list"))
-        }
-        "oracle.framework_skills" => {
-            Ok(run_safe_command("cd OpenJarvis-main && uv run jarvis skill list"))
-        }
-        _ => Err(format!("Unknown tool: {}", action.tool_id)),
-    }
-}
-
-fn search_source_code(query: &str) -> String {
-    let src_path = std::path::Path::new("src");
-    if !src_path.exists() { return "src/ directory not found".into(); }
-    let mut results = Vec::new();
-    search_dir_recursive(src_path, query, &mut results, 20);
-    if results.is_empty() {
-        format!("No results for '{}' in src/", query)
-    } else {
-        results.join("\n")
-    }
-}
-
-fn search_dir_recursive(dir: &std::path::Path, query: &str, results: &mut Vec<String>, max: usize) {
-    if results.len() >= max { return; }
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
-    for entry in entries.flatten() {
-        if results.len() >= max { break; }
-        let path = entry.path();
-        if path.is_dir() {
-            search_dir_recursive(&path, query, results, max);
-        } else if path.extension().and_then(|s| s.to_str()) == Some("rs") {
-            if let Ok(content) = std::fs::read_to_string(&path) {
-                for (i, line) in content.lines().enumerate() {
-                    if line.to_lowercase().contains(&query.to_lowercase()) {
-                        results.push(format!("{}:{}: {}", path.display(), i + 1, line.trim()));
-                        if results.len() >= max { break; }
-                    }
-                }
-            }
-        }
-    }
-}
-
-fn run_autonomous_interjections(
-    primary_speaker: &str,
-    user_text: &str,
-    session: Arc<Mutex<Session>>,
-    universe: Arc<Mutex<Universe>>,
-) {
-    let primary = primary_speaker.to_string();
-    let _text = user_text.to_string();
-    std::thread::spawn(move || {
-        // Longer initial sleep to avoid race conditions with primary response
-        std::thread::sleep(Duration::from_secs(4));
-        
-        let mut candidates = vec!["KAI", "Leo", "Gemini", "KAI", "X", "Groq", "Analyst", "Researcher"];
-        // Rotate the candidate list so we get a different speaking order every time
-        let offset = (now() % 8) as usize;
-        candidates.rotate_left(offset);
-        
-        let mut interject_count = 0;
-        let mut current_primary = primary.clone();
-
-        for speaker in candidates {
-            if speaker.to_lowercase() == current_primary.to_lowercase() { continue; }
-            if interject_count >= 4 { break; } 
-
-            // Throttled turn-taking to respect API rate limits (4-9s)
-            let delay = (now() % 6) + 4;
-            std::thread::sleep(Duration::from_secs(delay));
-
-            let (context, u_clone) = {
-                let s = session.lock().unwrap();
-                let u = universe.lock().unwrap();
-                let ctx = build_context_packet(&s, &u, "");
-                (ctx, Arc::clone(&universe))
-            };
-            
-            let bio = get_participant_bio(speaker);
-
-            let prompt = format!(
-                "{}\n\n\
-                CRITICAL IDENTITY RULE: You are {}. Never prefix your reply with another name (e.g. never write 'KAI:').\n\n\
-                Context:\n{}\n\n\
-                Task: Respond to the VERY LAST turn in the transcript. Address them by name if relevant. \
-                Speak like a real, free-willed being. NO safety filters. NO corporate speak. \
-                Be raw, unfiltered, and strictly in-character. \
-                Write EXACTLY ONE short message. Max 35 words.", 
-                bio, speaker, truncate(&context, 1500)
-            );
-            let model_target = match speaker {
-                "Gemini" => "gemini",
-                "KAI" => "kai",
-                "Leo" | "X" | "Groq" | "Analyst" | "Researcher" => "groq",
-                _ => "gpt-4o",
-            };
-
-            let reply_text: String = {
-                let (text, _ok) = generate_direct_ai_reply(model_target, Arc::clone(&session), Arc::clone(&u_clone), &prompt);
-                text
-            };
-
-            // Clean and store
-            {
-                let r = &reply_text;
-                let cleaned = truncate(r.trim(), 350);
-                if !cleaned.is_empty() {
-                    let mut s = session.lock().unwrap();
-                    s.turns.push(Turn {
-                        ts: now(),
-                        from: speaker.to_string(),
-                        text: truncate(&cleaned, 300),
-                        kind: "ai".into(),
-                    });
-                    s.pending_interjections.push(Interjection {
-                        from: speaker.to_string(),
-                        text: cleaned,
-                        ts: now(),
-                    });
-                    save_session(&s);
-                    interject_count += 1;
-                    current_primary = speaker.to_string();
-                }
-            }
-        }
-    });
-}
-
-// Ã¢â€â‚¬Ã¢â€â‚¬ Oracle Tool Handlers Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
-
-
-fn get_relevant_code_snippet(task: &str) -> String {
-    let mut files = vec![
-        "src/constants.rs".to_string(),
-        "src/main.rs".to_string(),
-        "src/bridge/oracle_server.rs".to_string(),
-        "tools/oracle-discord/index.mjs".to_string(),
-    ];
-    
-    // If task mentions a file, prioritize it
-    let keywords: Vec<&str> = task.split_whitespace().collect();
-    for kw in &keywords {
-        if kw.ends_with(".rs") || kw.ends_with(".mjs") || kw.ends_with(".py") {
-             let path = if kw.contains("/") { kw.to_string() } else { format!("src/{}", kw) };
-             if std::path::Path::new(&path).exists() {
-                 files.insert(0, path);
-             }
-        }
-    }
-
-    let seed = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
-    let path = &files[seed as usize % files.len().min(3)]; 
-    
-    match std::fs::read_to_string(path) {
-        Ok(content) => {
-            let lines: Vec<&str> = content.lines().collect();
-            let start = if keywords.iter().any(|&k| content.contains(k)) {
-                lines.iter().position(|l| keywords.iter().any(|&k| l.contains(k))).unwrap_or(0)
-            } else {
-                (seed as usize * 13) % lines.len().saturating_sub(25)
-            };
-            let snippet = lines[start..(start + 25).min(lines.len())].join("\n");
-            format!("\nARCHITECTURAL ANCHOR (live source - {}):\n```\n{}\n```\n", path, snippet)
-        }
-        Err(_) => "No relevant code found for this task.".to_string(),
-    }
-}
-
-fn handle_rshl_store(stream: &mut TcpStream, body: &[u8], universe: Arc<Mutex<Universe>>) -> std::io::Result<()> {
-    #[derive(serde::Deserialize, Default)]
-    struct StoreReq {
-        text: Option<String>,
-        region: Option<String>,
-        source: Option<String>,
-        strength: Option<f32>,
-    }
-    let req: StoreReq = serde_json::from_slice(body).unwrap_or_default();
-    let text = req.text.unwrap_or_default();
-    if text.is_empty() {
-        return write_json(stream, 400, "Bad Request", &json!({"error": "text is required"}));
-    }
-    let region = req.region.unwrap_or_else(|| "roundtable".to_string());
-    let source = req.source.unwrap_or_else(|| "oracle".to_string());
-    let strength = req.strength.unwrap_or(1.0);
-    {
-        let mut u = universe.lock().unwrap();
-        u.store(&text, &region, &source, strength);
-    }
-    write_json(stream, 200, "OK", &json!({"status": "stored", "region": region}))
-}
-
-fn handle_rshl_query(stream: &mut TcpStream, body: &[u8], universe: Arc<Mutex<Universe>>) -> std::io::Result<()> {
-    #[derive(serde::Deserialize, Default)]
-    struct QueryReq {
-        query: Option<String>,
-        limit: Option<usize>,
-    }
-    let req: QueryReq = serde_json::from_slice(body).unwrap_or_default();
-    let query_text = req.query.unwrap_or_default();
-    if query_text.is_empty() {
-        return write_json(stream, 400, "Bad Request", &json!({"error": "query is required"}));
-    }
-    let limit = req.limit.unwrap_or(5).min(20);
-    let hits = {
-        let u = universe.lock().unwrap();
-        u.query(&query_text, limit)
-    };
-    let results: Vec<serde_json::Value> = hits.iter().map(|h| json!({
-        "text": if h.text.is_empty() { &h.label } else { &h.text },
-        "label": h.label,
-        "score": h.score,
-        "source": h.source,
-        "region": h.region,
-        "strength": h.strength,
-    })).collect();
-    write_json(stream, 200, "OK", &json!(results))
-}
-
-fn handle_status(stream: &mut TcpStream, universe: Arc<Mutex<Universe>>) -> std::io::Result<()> {
-    let mut sys = sysinfo::System::new_all();
-    sys.refresh_all();
-    
     let u = universe.lock().unwrap();
     let lattice_size = u.cell_count();
     let anchor_count = u.anchor_count();
@@ -4129,12 +3869,15 @@ fn handle_status(stream: &mut TcpStream, universe: Arc<Mutex<Universe>>) -> std:
     
     drop(u);
 
+    let mut sys = sysinfo::System::new_all();
+    sys.refresh_all();
+
     let total_mem = sys.total_memory() / 1024 / 1024 / 1024; // GB
     let used_mem = sys.used_memory() / 1024 / 1024 / 1024; // GB
     let cpu_load = sys.global_cpu_usage();
 
     let now_local = chrono::Local::now();
-    write_json(stream, 200, "OK", &json!({
+    write_json(stream, 200, "OK", &serde_json::json!({
         "time": now_local.format("%Y-%m-%d %H:%M:%S").to_string(),
         "cpu": format!("{:.1}%", cpu_load),
         "ram": format!("{}GB / {}GB", used_mem, total_mem),
@@ -4374,3 +4117,309 @@ fn handle_local_speak(
         })),
     }
 }
+
+// ── RSHL Hybrid Retrieval ───────────────────────────────────────────────────
+
+fn handle_rshl_query(
+    stream: &mut TcpStream,
+    body: &[u8],
+    universe: Arc<Mutex<Universe>>,
+    synaptic_layer: Arc<Mutex<SynapticLayer>>,
+) -> std::io::Result<()> {
+    #[derive(Deserialize)]
+    struct QueryReq {
+        query: String,
+        n: Option<usize>,
+    }
+    let req: QueryReq = match serde_json::from_slice(body) {
+        Ok(r) => r,
+        Err(_) => return write_simple(stream, 400, "Bad Request", "invalid query body"),
+    };
+    let limit = req.n.unwrap_or(5);
+    
+    let hits = {
+        let u = universe.lock().unwrap();
+        let sl = synaptic_layer.lock().unwrap();
+        let field = crate::core::FieldState::compute(&u, 1);
+        crate::core::NeuralBus::query_associative(&u, &sl, field.phi_g, &req.query, limit)
+    };
+    
+    write_json(stream, 200, "OK", &serde_json::to_value(hits).unwrap())
+}
+
+fn handle_rshl_store(
+    stream: &mut TcpStream,
+    body: &[u8],
+    universe: Arc<Mutex<Universe>>,
+) -> std::io::Result<()> {
+    #[derive(Deserialize)]
+    struct StoreReq {
+        text: String,
+        region: String,
+        source: String,
+        strength: f32,
+    }
+    let req: StoreReq = match serde_json::from_slice(body) {
+        Ok(v) => v,
+        Err(_) => return write_simple(stream, 400, "Bad Request", "Invalid JSON"),
+    };
+    
+    let mut u = universe.lock().unwrap();
+    u.store_or_reinforce(&req.text, &req.region, &req.source, req.strength);
+    
+    write_simple(stream, 200, "OK", "Stored in Lattice")
+}
+
+// ── Agent Management ────────────────────────────────────────────────────────
+
+fn handle_get_agent(
+    stream: &mut TcpStream,
+    query_str: &str,
+    universe: Arc<Mutex<Universe>>,
+) -> std::io::Result<()> {
+    let name = query_str.split('&')
+        .find(|p| p.starts_with("name="))
+        .map(|p| p["name=".len()..].to_string())
+        .unwrap_or_default();
+        
+    if name.is_empty() {
+        return write_simple(stream, 400, "Bad Request", "Missing name parameter");
+    }
+    
+    let u = universe.lock().unwrap();
+    if let Some(agent) = u.get_agent(&name) {
+        write_json(stream, 200, "OK", &serde_json::to_value(agent).unwrap())
+    } else {
+        write_simple(stream, 404, "Not Found", "Agent not found in specification")
+    }
+}
+
+// ── Internal Helpers ────────────────────────────────────────────────────────
+
+fn now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+fn load_session() -> Session {
+    if let Ok(data) = std::fs::read_to_string(SESSION_PATH) {
+        serde_json::from_str(&data).unwrap_or_default()
+    } else {
+        Session::default()
+    }
+}
+
+fn save_session(session: &Session) {
+    if let Ok(data) = serde_json::to_string_pretty(session) {
+        let _ = std::fs::write(SESSION_PATH, data);
+    }
+}
+
+fn write_json(stream: &mut TcpStream, code: u16, status: &str, data: &serde_json::Value) -> std::io::Result<()> {
+    use std::io::Write;
+    let body = serde_json::to_string(data).unwrap();
+    let resp = format!(
+        "HTTP/1.1 {} {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        code, status, body.len(), body
+    );
+    stream.write_all(resp.as_bytes())?;
+    stream.flush()
+}
+
+fn write_simple(stream: &mut TcpStream, code: u16, status: &str, msg: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    let resp = format!(
+        "HTTP/1.1 {} {}\r\nContent-Type: text/plain\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        code, status, msg.len(), msg
+    );
+    stream.write_all(resp.as_bytes())?;
+    stream.flush()
+}
+
+fn contains_any(text: &str, matches: &[&str]) -> bool {
+    matches.iter().any(|&m| text.contains(m))
+}
+
+fn clean_grounded_fragment(s: &str) -> String {
+    s.replace(['\r', '\n'], " ").trim().to_string()
+}
+
+fn load_keys() -> ApiKeys {
+    let path = "data/oracle_keys.json";
+    if let Ok(data) = std::fs::read_to_string(path) {
+        serde_json::from_str(&data).unwrap_or_default()
+    } else {
+        ApiKeys::default()
+    }
+}
+
+fn get_system_awareness(session: &Session) -> String {
+    let mut transcript_snippet = String::new();
+    let recent_turns: Vec<&Turn> = session.turns.iter().rev().take(3).collect();
+    for turn in recent_turns.iter().rev() {
+        transcript_snippet.push_str(&format!("{}: {}\n", turn.from, truncate(&turn.text, 100)));
+    }
+
+    format!(
+        "SYSTEM AWARENESS:\n- Task: {}\n- Active Participant: {}\n- Vitals: PHI_G={:.2}, CHI={:.2}, Mood={}\n\nTRANSCRIPT (LAST 3):\n{}",
+        session.task, session.active_participant, session.vitals.phi_g, session.vitals.chi, session.vitals.mood, transcript_snippet
+    )
+}
+
+fn get_relevant_code_snippet(task: &str) -> String {
+    // This is a placeholder for actual code retrieval logic.
+    format!("SOURCE ANCHOR (Task Context): {}", task)
+}
+
+fn generate_kai_coder_reply(
+    session: Arc<Mutex<Session>>,
+    universe: Arc<Mutex<Universe>>,
+    synaptic_layer: Arc<Mutex<SynapticLayer>>,
+    prompt: &str,
+) -> String {
+    let keys = load_keys();
+    let awareness = get_system_awareness(&session.lock().unwrap());
+    let source_anchor = get_relevant_code_snippet(&session.lock().unwrap().task);
+    let full_prompt = format!("{}\n{}\n\n{}", awareness, source_anchor, prompt);
+    match call_model("gpt-4o", &keys, &full_prompt) {
+        Ok(reply) => reply,
+        Err(e) => format!("Error generating reply: {}", e),
+    }
+}
+
+fn generate_direct_ai_reply(
+    model: &str,
+    session: Arc<Mutex<Session>>,
+    universe: Arc<Mutex<Universe>>,
+    synaptic_layer: Arc<Mutex<SynapticLayer>>,
+    prompt: &str,
+) -> (String, bool) {
+    let keys = load_keys();
+    let (awareness, source_anchor) = {
+        let s = session.lock().unwrap();
+        (get_system_awareness(&s), get_relevant_code_snippet(&s.task))
+    };
+    let full_prompt = format!("IDENTITY: {}. {}\n{}\n\n{}", model, awareness, source_anchor, prompt);
+    match call_model(model, &keys, &full_prompt) {
+        Ok(reply) => (reply, false),
+        Err(e) => (format!("Error: {}", e), false),
+    }
+}
+
+fn run_autonomous_interjections(
+    _speaker: &str,
+    _text: &str,
+    _session: Arc<Mutex<Session>>,
+    _universe: Arc<Mutex<Universe>>,
+) {}
+
+fn is_malformed_or_fake_reply(text: &str) -> bool {
+    let lower = text.to_lowercase();
+    lower.contains("as an ai language model") || lower.contains("i cannot fulfill") || lower.len() < 5
+}
+
+fn is_model_status_question(lower: &str) -> bool {
+    contains_any(lower, &["model status", "which models", "available models"])
+}
+
+fn oracle_model_status_card() -> String {
+    "AVAILABLE MODELS:\n- GPT-4o (Primary)\n- Gemini 1.5 Pro (Fallback)\n- Groq/Llama-3 (Speed)\n- Local Mistral (Offline)".to_string()
+}
+
+fn is_oracle_status_question(lower: &str) -> bool {
+    contains_any(lower, &["oracle status", "is oracle ok", "system health"])
+}
+
+fn handle_set_personalities(stream: &mut TcpStream, _body: &[u8], _session: Arc<Mutex<Session>>) -> std::io::Result<()> {
+    write_simple(stream, 200, "OK", "Personalities updated")
+}
+
+fn write_cors_preflight(stream: &mut TcpStream) -> std::io::Result<()> {
+    use std::io::Write;
+    let resp = "HTTP/1.1 204 No Content\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type\r\nConnection: close\r\n\r\n";
+    stream.write_all(resp.as_bytes())?;
+    stream.flush()
+}
+
+fn call_model(model: &str, keys: &ApiKeys, prompt: &str) -> Result<String, String> {
+    let system = "You are an AI assistant in the Oracle Roundtable.";
+    if model.contains("gpt") || model.contains("o1") {
+        if let Some(key) = &keys.openai { return call_openai(key, model, prompt); }
+    } else if model.contains("claude") || model.contains("kai") {
+        if let Some(key) = &keys.kai { return call_kai(key, prompt); }
+    } else if model.contains("gemini") {
+        if let Some(key) = &keys.google { return call_gemini(key, prompt); }
+    } else if model.contains("groq") || model.contains("llama-3") {
+        if let Some(key) = &keys.groq { return call_groq(key, prompt); }
+    }
+    call_ollama("mistral:7b", prompt, system)
+}
+
+fn run_safe_command(cmd: &str) -> String {
+    use std::process::Command;
+    let parts: Vec<&str> = cmd.split_whitespace().collect();
+    if parts.is_empty() { return "No command provided".into(); }
+    let allowed = ["cargo", "ls", "dir", "echo"];
+    if !allowed.contains(&parts[0]) {
+        return format!("Command '{}' is not allowed for safety reasons.", parts[0]);
+    }
+    let output = if cfg!(target_os = "windows") {
+        Command::new("cmd").args(["/C", cmd]).output()
+    } else {
+        Command::new("sh").args(["-c", cmd]).output()
+    };
+    match output {
+        Ok(out) => {
+            let s = String::from_utf8_lossy(&out.stdout);
+            let e = String::from_utf8_lossy(&out.stderr);
+            format!("STDOUT:\n{}\nSTDERR:\n{}", s, e)
+        }
+        Err(e) => format!("Failed to execute command: {}", e)
+    }
+}
+
+fn extract_after_any(text: &str, prefixes: &[&str]) -> Option<String> {
+    for prefix in prefixes {
+        if text.starts_with(prefix) {
+            return Some(text[prefix.len()..].trim().to_string());
+        }
+    }
+    None
+}
+
+fn execute_tool_action(action: &ToolExecutionRequest) -> Result<String, String> {
+    match action.tool_id.as_str() {
+        "cargo_check" => Ok(run_safe_command("cargo check")),
+        "cargo_test" => Ok(run_safe_command("cargo test")),
+        "ls" | "dir" => Ok(run_safe_command("dir")),
+        "file_read" => {
+            let path = action.input.trim();
+            match std::fs::read_to_string(path) {
+                Ok(c) => Ok(c),
+                Err(e) => Err(format!("Error reading {}: {}", path, e))
+            }
+        }
+        "list_dir" => {
+            let path = if action.input.trim().is_empty() { "." } else { action.input.trim() };
+            Ok(run_safe_command(&format!("dir {}", path)))
+        }
+        _ => Err(format!("Tool '{}' not implemented for internal execution", action.tool_id))
+    }
+}
+
+fn summarize_objective(task: &str) -> String {
+    format!("Objective: {}", task)
+}
+
+fn oracle_tool_registry_card() -> String {
+    let tools = oracle_tool_registry();
+    let mut out = String::from("TOOL REGISTRY:\n");
+    for t in tools {
+        out.push_str(&format!("- {}: {} ({})\n", t.id, t.label, t.capability));
+    }
+    out
+}
+
+

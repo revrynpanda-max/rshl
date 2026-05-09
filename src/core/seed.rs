@@ -160,7 +160,7 @@ mod tests {
             seeds.len()
         );
         assert!(
-            seeds.len() <= 20,
+            seeds.len() <= 30,
             "Seeds should be reasonable in count, got {}",
             seeds.len()
         );

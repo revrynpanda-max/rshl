@@ -4,8 +4,8 @@ import { CHANNEL_IDS } from './channel-rules.mjs';
 const MAX_AI_FAILURES = 3;
 const AI_FAILURE_COUNTS = new Map();  // speaker -> failure count this session
 const AI_OFFLINE_SET = new Set();     // speakers taken offline this session
-const PROVIDER_COOLDOWNS = new Map(); // providerName -> timestamp to re-enable
-const PROVIDER_FAILURE_STREAK = new Map(); // providerName -> failure count
+export const PROVIDER_COOLDOWNS = new Map(); // providerName -> timestamp to re-enable
+export const PROVIDER_FAILURE_STREAK = new Map(); // providerName -> failure count
 
 /**
  * Record a failure for an AI speaker in the work channel.
@@ -38,13 +38,31 @@ export function isSpeakerOffline(speaker) {
 /**
  * Record a failure for a specific Neural Provider (e.g., "Groq", "OpenAI")
  */
-export function recordProviderFailure(provider, errorStatus) {
+export function recordProviderFailure(provider, errorStatus, errorMessage = "") {
   const streak = (PROVIDER_FAILURE_STREAK.get(provider) || 0) + 1;
   PROVIDER_FAILURE_STREAK.set(provider, streak);
 
-  // SMART BACKOFF: 2m for transient 429s, exponential after streak 2
+  const errorText = String(errorMessage || "").toUpperCase();
+  const isPermanent = errorText.includes("BALANCE_EXHAUSTED") || 
+                     errorText.includes("EXPIRED") || 
+                     errorText.includes("RENEW THE API KEY") ||
+                     errorText.includes("INVALID_ARGUMENT") ||
+                     errorText.includes("CREDIT_LIMIT_REACHED") ||
+                     errorText.includes("AUTHENTICATION_ERROR") ||
+                     errorText.includes("INVALID X-API-KEY") ||
+                     errorText.includes("ALL AVAILABLE CREDITS") ||
+                     errorText.includes("MONTHLY SPENDING LIMIT");
+
+  const isTimeout = errorText.includes("TIMEOUT") || errorText.includes("ABORTED");
+
   let cooldownMs = 120000; // 2 minutes flat start
-  if (streak > 2) {
+  if (isPermanent) {
+    cooldownMs = 86400000; // 24 hours
+    console.error(`[CircuitBreaker] Provider ${provider} PERMANENT FAILURE detected: ${errorMessage}. Deactivating for 24h.`);
+  } else if (isTimeout && provider.startsWith("Local")) {
+    cooldownMs = 5000; // 5 second breather for local congestion
+    console.log(`[CircuitBreaker] Provider ${provider} TIMEOUT detected. Short 5s breather...`);
+  } else if (streak > 2) {
     const baseCooldown = 300000; // 5 minutes
     cooldownMs = Math.min(baseCooldown * Math.pow(2, streak - 2), 3600000);
   }
@@ -52,8 +70,10 @@ export function recordProviderFailure(provider, errorStatus) {
   const cooldownUntil = Date.now() + cooldownMs;
   PROVIDER_COOLDOWNS.set(provider, cooldownUntil);
   
-  logAudit('NEURAL_FAILURE', { provider, errorStatus, streak, cooldownMs });
-  console.warn(`[CircuitBreaker] Provider ${provider} STREAK ${streak}. COOLDOWN for ${Math.round(cooldownMs/60000)}m due to error ${errorStatus}`);
+  logAudit('NEURAL_FAILURE', { provider, errorStatus, streak, cooldownMs, isPermanent });
+  if (!isPermanent) {
+    console.warn(`[CircuitBreaker] Provider ${provider} STREAK ${streak}. COOLDOWN for ${Math.round(cooldownMs/60000)}m due to error ${errorStatus}`);
+  }
 }
 
 /**
@@ -78,4 +98,23 @@ export function isProviderReady(provider) {
     return true;
   }
   return false;
+}
+
+/**
+ * Hard reset for all failure states. Used by Sentinel for self-healing.
+ */
+export function resetAllFailureStates() {
+  AI_FAILURE_COUNTS.clear();
+  AI_OFFLINE_SET.clear();
+  PROVIDER_COOLDOWNS.clear();
+  PROVIDER_FAILURE_STREAK.clear();
+  logAudit('SYSTEM_RESET', { reason: "Sentinel triggered full neural reset." });
+}
+
+export function resetFailureTracker() {
+  AI_FAILURE_COUNTS.clear();
+  AI_OFFLINE_SET.clear();
+  PROVIDER_COOLDOWNS.clear();
+  PROVIDER_FAILURE_STREAK.clear();
+  console.log("[FailureTracker] All neural and speaker failure states have been reset to baseline.");
 }

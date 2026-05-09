@@ -307,7 +307,7 @@ pub fn consolidate_pair(
         return None;
     }
 
-    let field = FieldState::measure(universe, &bundle);
+    let field = FieldState::measure(universe, &bundle, 1);
 
     // Only create bridge if the resulting field is high quality
     if field.phi_g < 1.2 || field.chi > 0.45 {
@@ -549,6 +549,7 @@ pub fn store_synthesis(universe: &mut Universe, dream: &DreamResult) -> bool {
         syn.strength,
         Some(syn.vec.clone()),
         Some(conv_score),
+        "",
     )
 }
 

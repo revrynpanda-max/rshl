@@ -190,7 +190,7 @@ pub fn train_hlv_command(path: &str) {
     let data_dir = "data";
 
     // Load existing state or start fresh
-    let (mut universe, candidates, drive, tick, dream_count) =
+    let (mut universe, mut candidates, mut drive, tick, dream_count, mut synaptic_layer) =
         persistence::load(data_dir).unwrap_or_else(|| {
             (
                 Universe::new(),
@@ -198,6 +198,7 @@ pub fn train_hlv_command(path: &str) {
                 Drive::default(),
                 0,
                 0,
+                crate::core::SynapticLayer::new(),
             )
         });
 
@@ -219,7 +220,7 @@ pub fn train_hlv_command(path: &str) {
                 "HLV training complete: {} sections, {} anchors, {} claims added, {} reinforced",
                 summary.total_sections, summary.anchors_added, summary.claims_added, summary.claims_reinforced
             );
-            let save_result = persistence::save(&universe, &candidates, &drive, tick, dream_count, data_dir);
+            let save_result = persistence::save(data_dir, &universe, &candidates, &drive, &synaptic_layer, tick, dream_count);
             if save_result.ok {
                 println!("Universe saved ({} cells).", save_result.cells);
             } else {

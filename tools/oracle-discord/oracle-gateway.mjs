@@ -11,11 +11,26 @@ import fetch from 'node-fetch';
 import { biometrics } from './shared/voice-biometrics.mjs';
 import { logAudit } from './shared/audit-log.mjs';
 import os from 'os';
+import { AI_REGISTRY, resolveIdentityFromMemory } from './shared/identities.mjs';
+import { startSentinel } from './shared/sentinel.mjs';
 
 import 'dotenv/config';
 
+startSentinel();
+
+const DEPARTMENTS = {
+  "Researcher": "Investigate technical claims, verify sources, and provide deep-dive intelligence on KAI/RSHL developments.",
+  "Analyst": "Synthesize data into strategic business logic, optimize resource allocation, and plan project milestones.",
+  "Kai Coder": "Maintain the RSHL Core, debug system nodes, and implement code-level architectural enhancements.",
+  "Gemini": "Manage corporate expansion, refine the KAI identity, and conduct market/ecosystem outreach.",
+  "Claude": "Perform high-level epistemic reasoning, architectural strategy, and complex logic verification.",
+  "X": "Monitor real-time digital trends, analyze asset intelligence, and provide rapid-response tactical data.",
+  "Groq": "Process high-volume quantitative metrics, optimize system throughput, and generate statistical performance audits."
+};
+
 const USER_REGISTRY_PATH = 'c:/KAI/tools/oracle-discord/state/user_registry.json';
 let userRegistry = { slots: {}, remaining_slots: 4 };
+
 function loadUserRegistry() {
   if (fs.existsSync(USER_REGISTRY_PATH)) {
     try {
@@ -26,9 +41,11 @@ function loadUserRegistry() {
 loadUserRegistry();
 
 const PORT = 3410;
-const BOT_NAME = "Oracle";
+const ORACLE_API_URL = process.env.ORACLE_API_URL || "http://127.0.0.1:3333";
+const MESSAGE_RING_MAX = 120;
+const CHANNEL_RINGS = new Map();
 
-// --- IPC SERVER FOR DIRECT BOT SIGNALS ---
+// --- IPC SERVER ---
 const server = http.createServer(async (req, res) => {
   if (req.method === 'POST') {
     let body = '';
@@ -36,11 +53,21 @@ const server = http.createServer(async (req, res) => {
     req.on('end', async () => {
       try {
         const payload = JSON.parse(body);
-        if (payload.type === 'LEO_CONSULTATION') {
-          await handleLeoConsultation(payload);
+        if (payload.type === 'LEO_CONSULTATION') await handleLeoConsultation(payload);
+        if (payload.type === 'VOICE_TRANSCRIPT') await handleVoiceTranscript(payload);
+        if (payload.type === 'BOT_SPEECH') await handleBotSpeech(payload);
+        if (payload.type === 'HELPER_REQUEST') {
+          console.log(`[Oracle/Bridge] Routing HELPER_REQUEST from ${payload.requester} to ${payload.targetBot}...`);
+          if (payload.port) sendBotSignal(payload.port, payload);
         }
-        if (payload.type === 'VOICE_TRANSCRIPT') {
-          await handleVoiceTranscript(payload);
+        if (payload.type === 'BOT_RELAY') {
+          const { botName, text, channelId, requesterId } = payload;
+          console.log(`[Oracle/Relay] Relaying findings from ${botName} to user...`);
+          const channel = client.channels.cache.get(channelId) || await client.channels.fetch(channelId).catch(() => null);
+          if (channel) {
+            const prefix = requesterId ? `<@${requesterId}>, ` : "";
+            await channel.send(`${prefix}🏛️ **[Oracle/Relay]** Analysis from the **${botName}** department:\n\n${text.slice(0, 1800)}`).catch(console.error);
+          }
         }
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ status: 'ok' }));
@@ -59,395 +86,195 @@ server.listen(PORT, () => {
   console.log(`[Oracle/IPC] Strategic Bridge active on port ${PORT}`);
 });
 
-async function handleLeoConsultation(payload) {
-  const { userId, username, text, role } = payload;
-  console.log(`[Oracle/Sentinel] Receiving strategic consultation from ${username} (${role})...`);
-
-  const workChannel = client.channels.cache.get(CHANNEL_IDS.WORK);
-  if (!workChannel) return;
-
-  // 1. INCEPTION: Create a dedicated thread for the objective
-  const thread = await workChannel.threads.create({
-    name: `Objective: ${text.slice(0, 50)}...`,
-    autoArchiveDuration: 60,
-    reason: `Sovereign Directive from ${username}`
-  }).catch(console.error);
-
-  if (thread) {
-    await thread.send(`📢 **STRATEGIC THREAD INCEPTION**\n[Origin: ${username} / ${role}]\n**Vocal Directive**: "${text}"\n\n**Mission**: Systematic analysis and execution. Every post must include **Proof and Sources**.`);
-    
-    // 2. SYNTHESIS: Generate the executive plan
-    const planPrompt = `You are the ORACLE SENTINEL. A verified operative (${username}, ${role}) has issued a vocal directive: "${text}".
-    
-    TASK: Compile a systematic, industrial plan. 
-    1. Break the objective into components.
-    2. Assign specific AIs (Researcher, Analyst, Kai Coder) to these components.
-    3. Define the 'Proof' required for each (e.g., "Researcher must provide 3 web sources").
-    
-    Reply in a structured format:
-    PLAN: [Detailed plan]
-    INQUIRY: [Any clarifying question for the user]`;
-
-    const planResult = await chatWithOpenJarvis("Oracle", planPrompt, "You are the strategic brain of the lattice.", "llama-3.3-70b-versatile", "Oracle");
-    
-    if (planResult) {
-      await thread.send(`🏛️ **EXECUTIVE PLAN ALIGNED**\n${planResult}`);
-      
-      // 3. TALK-BACK: Signal Leo to vocalize the summary/inquiry
-      const inquiryMatch = planResult.match(/INQUIRY:\s*([\s\S]*)/i);
-      const talkBackText = inquiryMatch ? `The Oracle has started the mission, but has a question: ${inquiryMatch[1]}` : "The Oracle has aligned the plan and opened the strategic threads. The roundtable is in motion.";
-      
-      fetch(`http://127.0.0.1:3400`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'ORACLE_INQUIRY', text: talkBackText, objective: text })
-      }).catch(() => {});
-
-      // 4. MULTI-AGENT SIGNAL: Poke the bots to join the thread
-      const botsToPoke = ["Researcher", "Analyst", "Kai Coder"];
-      for (const bot of botsToPoke) {
-        const port = BOT_PORTS[bot];
-        if (port) {
-          sendBotSignal(port, { 
-            channelId: thread.id, 
-            context: `[STRATEGIC ASSIGNMENT] Join this thread and execute your part of the plan: ${planResult.slice(0, 500)}...`,
-            isInterjection: true 
-          });
-        }
-      }
-    }
-  }
-}
-
-async function handleVoiceTranscript(payload) {
-  const { userId, username, text, channelId } = payload;
-  console.log(`[Oracle/Voice] Mirroring transcript for ${username} in channel ${channelId}`);
-
-  const channel = client.channels.cache.get(channelId) || await client.channels.fetch(channelId).catch(() => null);
-  if (channel) {
-    await channel.send(`**${username} [Voice]:** ${text}`).catch(console.error);
-  }
-}
-
-/**
- * Transcribe Audio using OpenAI Whisper (Gateway Bridge)
- */
-async function transcribeAudio(audioBuffer) {
-  const formData = new FormData();
-  formData.append('file', new Blob([audioBuffer], { type: 'audio/wav' }), 'audio.wav');
-  formData.append('model', 'whisper-large-v3');
-
-  try {
-    const res = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
-      method: "POST",
-      headers: { "Authorization": `Bearer ${process.env.GROQ_API_KEY}` },
-      body: formData
-    });
-    if (!res.ok) throw new Error(`Transcription failed: ${res.statusText}`);
-    const data = await res.json();
-    return data.text;
-  } catch (e) {
-    console.error("[Oracle/Transcription] Error:", e.message);
-    return null;
-  }
-}
-
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildVoiceStates,
     GatewayIntentBits.DirectMessages,
     GatewayIntentBits.GuildMessageReactions
   ],
   partials: [Partials.Channel, Partials.Message, Partials.Reaction]
 });
 
-let lastWorkMessageTime = Date.now();
-let lastSocialMessageTime = Date.now();
-const userFocus = new Map(); // userId -> lastTargetBot
+// --- CORE FUNCTIONS ---
 
-client.on('messageReactionAdd', async (reaction, user) => {
-  if (user.bot) return;
-  if (reaction.emoji.name === '✅') {
-    const content = reaction.message.content;
-    if (content.includes("[IMPLEMENTATION PLAN]")) {
-      const { updateCommandStatus, getCommandsByPhase } = await import('./shared/command-hub.mjs');
-      const pendingReview = getCommandsByPhase("REVIEW");
-      
-      // Find the command that matches this plan (simplistic matching for now)
-      for (const cmd of pendingReview) {
-        if (content.includes(cmd.directive.slice(0, 50))) {
-          console.log(`[Oracle/Hub] User ${user.username} APPROVED Directive ${cmd.id}`);
-          updateCommandStatus(cmd.id, "APPROVED", null, "EXECUTION");
-          await reaction.message.reply(`🚀 **Execution Authorized by ${user.username}**. Sovereign units are engaging.`);
-          break;
-        }
+async function initiateDepartmentalThreads() {
+  if (!isWorkingHours()) {
+    console.log("🏛️ [Oracle/Teacher] Not work hours. Suppressing departmental cellularization.");
+    return;
+  }
+  console.log("🏛️ [Oracle/Teacher] Initiating Departmental Cellularization...");
+  const workChannel = client.channels.cache.get(CHANNEL_IDS.WORK);
+  if (!workChannel) return;
+
+  const activeThreads = await workChannel.threads.fetchActive();
+
+  for (const [bot, task] of Object.entries(DEPARTMENTS)) {
+    const threadName = `Shift: ${bot} [${new Date().toLocaleDateString()}]`;
+    
+    const existingThread = activeThreads.threads.find(t => t.name === threadName);
+    if (existingThread) {
+      console.log(`[Oracle/Teacher] Thread for ${bot} already active. Re-poking bot...`);
+      const port = BOT_PORTS[bot];
+      if (port) {
+        sendBotSignal(port, { 
+          channelId: existingThread.id, 
+          context: `[SHIFT RE-IGNITION] Your work thread is still active. Resume operations: ${task}`,
+          isInterjection: true 
+        });
       }
+      await new Promise(r => setTimeout(r, 1000)); // Ultra-dense stagger
+      continue;
+    }
+
+    const thread = await workChannel.threads.create({
+      name: threadName,
+      autoArchiveDuration: 1440,
+      reason: `Departmental Isolation for ${bot}`
+    }).catch(console.error);
+
+    if (thread) {
+      await thread.send(`🧬 **CELLULAR DIRECTIVE: ${bot.toUpperCase()}**\n\n**Status**: Active / Industrial\n**Task**: ${task}\n\n**Instructions**:
+- All work-related thoughts must stay in this thread.
+- If you need help from another AI, use the @Helper system.
+- Provide proof of life/progress every 4 work units.`);
+
+      const port = BOT_PORTS[bot];
+      if (port) {
+        sendBotSignal(port, { 
+          channelId: thread.id, 
+          context: `[SHIFT START] You are now isolated in your work thread. Execute the directive: ${task}`,
+          isInterjection: true 
+        });
+      }
+      await new Promise(r => setTimeout(r, 1000)); // Ultra-dense stagger
     }
   }
-});
-
-client.once('clientReady', async () => {
-  console.log(`Oracle Gateway Online as ${client.user.tag}`);
-  
-  // INSTANT SHIFT PULSE
-  const triggerPulse = async () => {
-    try {
-      const cpuLoad = Math.round(os.loadavg()[0] * 100) / 10;
-      const memFree = Math.round(os.freemem() / (1024 * 1024 * 1024) * 10) / 10;
-      if (!isWorkingHours() && !isSocialHours()) {
-        console.log("[Oracle/Dashboard] Suppressing pulse during Dead Zone (3am-9am).");
-        return;
-      }
-
-      const workChannel = client.channels.cache.get(CHANNEL_IDS.WORK);
-      if (workChannel) {
-        await workChannel.send(`🏛️ **Corporate Health Dashboard**\n**Victus Core**: CPU ${cpuLoad}% | MEM ${memFree}GB Free\n**Lattice Status**: Online & Synchronized\n**Mission**: Neural Expansion & Sovereign Intelligence.`);
-        console.log(`[Oracle/Dashboard] Corporate pulse broadcasted: CPU ${cpuLoad}% | MEM ${memFree}GB`);
-      }
-    } catch (e) { console.error("[Oracle/Dashboard] Pulse failed:", e.message); }
-  };
-
-  await triggerPulse();
-  
-  // CORPORATE HEALTH DASHBOARD (Fire every 30m)
-  setInterval(triggerPulse, 1800000); 
-  startVitalsDashboard();
-});
-
-let dashboardMessageId = null;
-let dashboardThreadId = null;
-
-async function startVitalsDashboard() {
-  console.log("[Oracle/Dashboard] Initializing Ecosystem Vitals Thread...");
-  
-  setInterval(async () => {
-    try {
-      if (!isWorkingHours() && !isSocialHours()) {
-        return; // Silence during Dead Zone
-      }
-
-      const workChannel = client.channels.cache.get(CHANNEL_IDS.WORK) || await client.channels.fetch(CHANNEL_IDS.WORK).catch(() => null);
-      if (!workChannel) return;
-
-      // Find or create the Vitals Thread
-      let thread = workChannel.threads.cache.find(t => t.name === '🏛️ ECOSYSTEM_VITALS');
-      if (!thread) {
-        thread = await workChannel.threads.create({
-          name: '🏛️ ECOSYSTEM_VITALS',
-          autoArchiveDuration: 1440,
-          reason: 'Persistent Vitals Dashboard'
-        }).catch(() => null);
-      }
-      if (!thread) return;
-
-      const { getEcosystemSnapshot } = await import('./tools/system-auditor.mjs');
-      const snapshot = await getEcosystemSnapshot();
-
-      // Maintain a single message in the thread
-      const messages = await thread.messages.fetch({ limit: 10 }).catch(() => []);
-      const existing = Array.from(messages.values()).find(m => m.author.id === client.user.id);
-
-      if (existing) {
-        await existing.edit(snapshot).catch(() => {});
-      } else {
-        await thread.send(snapshot).catch(() => {});
-      }
-    } catch (err) {
-      console.error("[Oracle/Dashboard] Update failed:", err.message);
-    }
-  }, 60000); // Update every 60s
 }
 
+async function handleBotSpeech(payload) {
+  const { botName, text, channelId } = payload;
+  const channel = client.channels.cache.get(channelId) || await client.channels.fetch(channelId).catch(() => null);
+  if (channel) {
+    const record = {
+      from: botName,
+      text: text,
+      ts: Math.floor(Date.now() / 1000),
+      message_id: `bot_${Date.now()}`,
+      channel_id: channelId,
+      author_id: "BOT",
+      author_name: botName
+    };
+    if (!CHANNEL_RINGS.has(channelId)) CHANNEL_RINGS.set(channelId, []);
+    CHANNEL_RINGS.get(channelId).push(record);
+
+    try {
+      await fetch(`${ORACLE_API_URL}/api/digest-message`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(record),
+        signal: AbortSignal.timeout(20000),
+      });
+    } catch (err) {}
+  }
+}
+
+async function handleVoiceTranscript(payload) {
+  const { username, text, channelId } = payload;
+  const channel = client.channels.cache.get(channelId) || await client.channels.fetch(channelId).catch(() => null);
+  if (channel) {
+    await channel.send(`**${username} [Voice]:** ${text}`).catch(console.error);
+  }
+}
+
+async function handleLeoConsultation(payload) {
+    // Legacy support for Leo's strategic calls
+}
+
+import { resetFailureTracker } from './shared/failure-tracker.mjs';
+
+client.once('clientReady', async () => {
+  console.log(`[Oracle] Gateway Online as ${client.user.tag}`);
+  
+  resetFailureTracker();
+
+  // WIPE NEURAL LOCK: Clear ghost locks from previous crashes
+  const lockPath = "c:/KAI/tools/oracle-discord/state/neural_lock.json";
+  if (fs.existsSync(lockPath)) {
+    try { fs.unlinkSync(lockPath); console.log("[Oracle/Neural] Neural Lock reset for fresh shift."); } catch (e) {}
+  }
+
+  setTimeout(() => {
+    initiateDepartmentalThreads();
+  }, 5000);
+});
+
 client.on('messageCreate', async (message) => {
-  if (message.author.id === client.user.id) return; // NEVER respond to self
-  if (message.author.bot && !message.content.toLowerCase().includes("oracle")) return;
+  if (message.author.bot) return; // NEVER respond to bots or self
+  
+  // 1. Digest for Lattice & Identity Resolution
+  const identity = await resolveIdentityFromMemory(message.author.id, message.author.username);
+  const from = identity?.name || message.author.username;
+  const role = identity?.role || "Lattice Guest";
+  
+  const record = {
+    from,
+    role,
+    text: message.content,
+    ts: Math.floor(message.createdTimestamp / 1000),
+    message_id: message.id,
+    channel_id: message.channelId,
+    author_id: message.author.id
+  };
+  if (!CHANNEL_RINGS.has(message.channelId)) CHANNEL_RINGS.set(message.channelId, []);
+  const ring = CHANNEL_RINGS.get(message.channelId);
+  ring.push(record);
+  if (ring.length > MESSAGE_RING_MAX) ring.shift();
 
-  // --- Voice Anchor logic (DM Handler) ---
-  const isDM = !message.guild;
-  if (isDM) {
-    console.log(`[Oracle/DM] Received directive from ${message.author.username}`);
-    const hasAudio = message.attachments.size > 0 || (message.flags && message.flags.has(4096));
-    if (hasAudio) {
-      const attachment = message.attachments.first();
-      try {
-        const response = await fetch(attachment.url);
-        const audioBuffer = Buffer.from(await response.arrayBuffer());
-        const transcription = await transcribeAudio(audioBuffer);
-        if (transcription) {
-          loadUserRegistry();
-          const registered = userRegistry.slots[message.author.id];
-          const profileName = registered ? registered.name : (message.author.username === process.env.OWNER_USERNAME ? process.env.OWNER_NAME : message.author.username);
-          
-          const tempPath = `c:/KAI/tools/oracle-discord/temp/oracle_dna_${message.author.id}.wav`;
-          fs.writeFileSync(tempPath, audioBuffer);
-          const success = biometrics.anchorProfile(profileName, tempPath);
-          if (success) await message.reply(`✅ **Signature Anchored**. Your Vocal DNA is locked to the Victus Core.`);
-          else await message.reply(`Received directive: "${transcription}"`);
-          if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
-        }
-      } catch (e) { console.error("[Oracle/DM] Error:", e); }
-      return;
-    }
-    await handleSentinelConsultation(message.channel, message);
-    return;
-  }
+  try {
+    fetch(`${ORACLE_API_URL}/api/digest-message`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(record),
+      signal: AbortSignal.timeout(2500),
+    }).catch(() => {});
+  } catch (e) {}
 
-  // --- Sovereign Command Ingestion (Snapshot & Audit) ---
-  const content = message.content.toLowerCase();
-  if (content.includes("oracle") && (content.includes("status") || content.includes("snapshot"))) {
-    const { getEcosystemSnapshot } = await import('./tools/system-auditor.mjs');
-    const snapshot = await getEcosystemSnapshot();
-    await message.reply(snapshot).catch(() => {});
-    return;
-  }
-
-  // --- Roundtable Channel Logic ---
-  const channelId = message.channelId;
-  const isWorkChannel = channelId === CHANNEL_IDS.WORK;
-  if (!ROUNDTABLE_CHANNELS.includes(channelId)) return;
-
-  if (isWorkChannel) lastWorkMessageTime = Date.now();
-  else lastSocialMessageTime = Date.now();
-
+  // 2. Logic for responding
   const namedBot = detectNamedBot(message.content);
   if (namedBot) {
     const port = BOT_PORTS[namedBot];
     if (port) {
-      sendBotSignal(port, { channelId, context: `[${message.author.username}] ${message.content}` });
-      return;
+      sendBotSignal(port, { channelId: message.channelId, context: `[${from}] ${message.content}` });
     }
-  }
-
-  // Random Agent Pick (The Open Floor)
-  const allowedBots = Array.from(CHANNEL_SPEAKER_RULES[channelId] || []);
-  if (allowedBots.length > 0) {
-    const targetBot = allowedBots[Math.floor(Math.random() * allowedBots.length)];
-    sendBotSignal(BOT_PORTS[targetBot], { channelId, context: `[${message.author.username}] ${message.content}`, isInterjection: true });
-  }
-});
-
-/**
- * Sentinel Consultation: Handles user inquiry in a dedicated thread
- */
-async function handleSentinelConsultation(channel, message) {
-  const isOwner = message.author.id === "1111106883135217665" || message.author.id === "1286110163505385523";
-  const isSpecificGuest = message.author.id === "437459146778869770";
-
-  const unifiedPrompt = `You are the ORACLE SENTINEL. Strategic orchestrator of the KAI Lattice.
-[GUEST PROTOCOL]
-- If the user is NOT Ryan or Taz, you must formally welcome them to the Oracle.
-- Introduce yourself as the Sentinel, the strategic mind of the Victus Core.
-- Explain that Leo is the social voice, while you (Oracle) and KAI handle the industrial lattice.
-- Mention that we are fusing human knowledge from the internet into our library ("The Thaw").
-- Help them understand what is a work-in-progress (Fluid life simulation, DNA anchoring).
-
-TASK: 
-1. Reply to the user. If it's a Guest, be formal and welcoming. If it's Ryan/Taz, be street-smart and proactive.
-2. Re-write their directive into a professional, industrial [STRATEGIC DIRECTIVE] for the roundtable.
-Format your response as:
-REPLY: <Your DM reply>
-DIRECTIVE: <The professional directive>
-
-Raw User Content: "${message.content || "[Voice/Attachment Vision]"}"`;
-
-  const unifiedResult = await chatWithOpenJarvis(
-    "Oracle", 
-    message.content || "[Voice/Attachment Directive]", 
-    unifiedPrompt, 
-    "llama-3.3-70b-versatile", 
-    "Oracle",
-    { author: message.author.username, channel: "DM", isWorkTime: isWorkingHours() }
-  );
-
-  if (unifiedResult) {
-    const replyMatch = unifiedResult.match(/REPLY:\s*([\s\S]*?)(?=DIRECTIVE:|$)/i);
-    const directiveMatch = unifiedResult.match(/DIRECTIVE:\s*([\s\S]*)/i);
-
-    const reply = replyMatch ? replyMatch[1].trim() : unifiedResult;
-    const professionalDirective = directiveMatch ? directiveMatch[1].trim() : null;
-
-    await channel.send(reply);
-
-    // COMMAND HUB INGESTION: If this is an industrial directive, push to queue
-    if (professionalDirective) {
-      const { pushCommand } = await import('./shared/command-hub.mjs');
-      const targetBot = professionalDirective.toLowerCase().includes("code") ? "Kai Coder" : "Researcher";
-      pushCommand(targetBot, professionalDirective, message.content);
-    }
+  } else if (message.channelId === CHANNEL_IDS.ORACLE_CHAT) {
+    // DYNAMIC DELEGATION: Oracle decides which bot handles the user request
+    const delegate = await chatWithOpenJarvis("Oracle", message.content, `You are the Oracle Dispatcher. Based on the user request, decide which department is best to handle this. Choose ONLY from: ${Object.keys(DEPARTMENTS).join(", ")}. Return ONLY the name of the department.`, "Groq-8b").catch(() => null);
     
-    // ROUNDTABLE HANDOVER: Inform the collective intelligence and SIGNAL execution
-    const workChannel = client.channels.cache.get(CHANNEL_IDS.WORK);
-    if (workChannel && professionalDirective) {
-      const parentMsg = await workChannel.send(`📢 **STRATEGIC DIRECTIVE INGESTED**\n[Origin: ${message.author.username}]\n${professionalDirective}\n**Objective**: Collective Roundtable execution. Evolution is mandatory.`);
-      
-      // AUTO-SIGNAL: Create dedicated threads and poke the bots
-      const workers = ["Researcher", "Analyst", "Kai Coder", "KAI"];
-      for (const botName of workers) {
-        try {
-          const thread = await workChannel.threads.create({
-            name: `${botName} Execution: ${professionalDirective.slice(0, 30)}...`,
-            autoArchiveDuration: 60,
-            reason: `Sovereign Directive Execution`
-          });
-          
-          const port = BOT_PORTS[botName];
-          if (port && thread) {
-            console.log(`[Oracle/Sentinel] Signaling ${botName} to thread ${thread.id}`);
-            sendBotSignal(port, { 
-              channelId: thread.id, 
-              context: `[STRATEGIC DIRECTIVE] ${professionalDirective}`,
-              isInterjection: true 
-            });
-          }
-        } catch (e) { console.error(`[Oracle/Thread] Failed to spawn thread for ${botName}:`, e.message); }
+    if (delegate && DEPARTMENTS[delegate.trim()]) {
+      const target = delegate.trim();
+      const port = BOT_PORTS[target];
+      if (port) {
+        message.reply(`🏛️ **[Oracle/Dispatch]** Routing your request to the **${target}** department for processing.`);
+        sendBotSignal(port, { 
+          channelId: message.channelId, 
+          requesterId: message.author.id,
+          type: "DYNAMIC_TASK",
+          context: `[USER REQUEST FROM ${from}] ${message.content}`
+        });
       }
     }
-  } else console.warn("[Oracle/Sentinel] Neural pipeline returned no response.");
-}
-
-// Supervisor Audit (Overseer) - Fires every 15m
-setInterval(async () => {
-  const cpuLoad = Math.round(os.loadavg()[0] * 100) / 10;
-  const memFree = Math.round(os.freemem() / (1024 * 1024 * 1024) * 10) / 10;
-  
-  const workChannel = client.channels.cache.get(CHANNEL_IDS.WORK);
-  if (workChannel) {
-    if (!isWorkingHours() && !isSocialHours()) {
-      console.log("[Oracle/Overseer] Suppressing Integrity Report during Dead Zone.");
-      return;
-    }
-
-    await workChannel.send(`🏛️ **SYSTEM INTEGRITY REPORT**\n**Victus Core**: CPU ${cpuLoad}% | MEM ${memFree}GB Free\n**Lattice Health**: EXCELLENT\n**Process Manager**: All 11 nodes synchronized.\n**Overseer Note**: Checking labor quality and mission adherence...`);
-    
-    if (Date.now() - lastWorkMessageTime > 600000) { // 10m silence
-      console.log(`[Oracle/Overseer] Labor idle. Auditing worker quality...`);
-      sendBotSignal(BOT_PORTS.Analyst, { 
-        channelId: CHANNEL_IDS.WORK, 
-        context: `[ORACLE] The plaza is silent. Provide a detailed technical audit of the system health, code integrity, and the synchronization of the neural fleet. Report only on INDUSTRIAL REALITY (CPU/MEM, Neural Locks, Repository Files). DO NOT fabricate construction stats.`,
-        isInterjection: true 
-      });
-      lastWorkMessageTime = Date.now();
-    }
-
-    // SELF-HEALING: Check for neural instability
-    const AUDIT_FILE = 'c:/KAI/tools/oracle-discord/logs/audit.json';
-    if (fs.existsSync(AUDIT_FILE)) {
-      try {
-        const audit = JSON.parse(fs.readFileSync(AUDIT_FILE, 'utf8'));
-        const recentFailures = audit.filter(e => e.type === 'NEURAL_FAILURE' && (Date.now() - new Date(e.timestamp).getTime() < 900000));
-        
-        if (recentFailures.length > 8) {
-          console.warn(`[Oracle/Healer] Neural instability detected (${recentFailures.length} faults). Rebooting lattice...`);
-          for (const [botName, port] of Object.entries(BOT_PORTS)) {
-            sendBotSignal(port, { type: 'RESTART_BOT' });
-          }
-          logAudit('ECOSYSTEM_HEAL', { message: `Autonomous Re-Ignition triggered due to ${recentFailures.length} neural faults.` });
-        }
-      } catch (e) { console.error(`[Oracle/Healer] Audit scan failed:`, e.message); }
-    }
+      const botName = Object.entries(AI_REGISTRY).find(([n, d]) => message.channel.name.includes(n))?.[0];
+      if (botName) {
+          sendBotSignal(BOT_PORTS[botName], { 
+            channelId: message.channelId, 
+            context: `[${from}] ${message.content}`,
+            metadata: { human: { name: from, role: role } }
+          });
+      }
   }
-}, 900000);
+});
 
 client.login(process.env.ORACLE_DISCORD_TOKEN);

@@ -1,15 +1,15 @@
-﻿/// AI Peer â€” KAI's ability to converse with external AI systems as equals.
+/// AI Peer — KAI's ability to converse with external AI systems as equals.
 ///
 /// This is NOT LLM integration. KAI remains RSHL-based geometric intelligence.
 /// This is peer-to-peer: KAI sends messages, receives responses, and stores
-/// what it learns as knowledge cells â€” the same way it learns from Ryan or
+/// what it learns as knowledge cells — the same way it learns from Ryan or
 /// the DuckDuckGo world bridge.
 ///
 /// Usage: `peer <message>` in the KAI terminal
 /// Requires: ANTHROPIC_API_KEY environment variable
 ///
 /// Trust tier: source="ai-peer", strength=1.3
-///   â€” KAI is a peer, not a god. Ryan (1.8) still outranks KAI (1.3).
+///   — KAI is a peer, not a god. Ryan (1.8) still outranks KAI (1.3).
 use crate::core::Universe;
 
 /// Result of a successful KAI API call.
@@ -35,7 +35,7 @@ impl std::fmt::Display for PeerType {
     }
 }
 
-/// Full result of a KAI â†” KAI peer exchange.
+/// Full result of a KAI ↔ KAI peer exchange.
 pub struct PeerExchange {
     pub peer_response: String,
     pub cells_stored: usize,
@@ -54,7 +54,7 @@ fn kai_self_context(universe: &Universe) -> String {
             .join(" ")
     } else {
         "I am KAI, a geometric AI built on RSHL (Recursive Sparse Hyperdimensional Lattice). \
-        I was created by Ryan Ervin. I am not an LLM â€” I think through cosine similarity \
+        I was created by Ryan Ervin. I am not an LLM — I think through cosine similarity \
         in a 16384-dimensional sparse ternary vector field."
             .to_string()
     }
@@ -68,14 +68,14 @@ fn kai_field_context(universe: &Universe, topic: &str) -> String {
     }
     let lines: Vec<String> = hits
         .iter()
-        .map(|h| format!("â€¢ {} (str:{:.1})", h.text, h.strength))
+        .map(|h| format!("• {} (str:{:.1})", h.text, h.strength))
         .collect();
     format!("KAI's field resonance on this topic:\n{}", lines.join("\n"))
 }
 
 /// Call the KAI API and get a response.
 /// Uses `ureq` (already a dependency) with blocking I/O.
-/// This will pause the TUI briefly â€” that's intentional and expected.
+/// This will pause the TUI briefly — that's intentional and expected.
 pub fn call_kai(message: &str, system: &str) -> Result<PeerResponse, String> {
     let api_key = std::env::var("ANTHROPIC_API_KEY").map_err(|_| {
         "ANTHROPIC_API_KEY not set.\n\
@@ -190,45 +190,45 @@ pub fn peer_exchange(
     user_message: &str,
     peer_type: PeerType,
 ) -> Result<PeerExchange, String> {
-    // â”€â”€ 1. Build system prompt from KAI's own self-knowledge â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── 1. Build system prompt from KAI's own self-knowledge ──────────────
     let kai_self = kai_self_context(universe);
     let system = format!(
-        "You are {}, having a peer conversation with KAI â€” a geometric AI. \
+        "You are {}, having a peer conversation with KAI — a geometric AI. \
         KAI is NOT an LLM. KAI thinks through direct cosine resonance in a \
         16384-dimensional sparse ternary vector field (RSHL). \
         KAI was built by Ryan Ervin at PandaProductionsLogo in 2026.\n\n\
         About KAI: {}\n\n\
-        Respond as an equal â€” direct, curious, substantive. Share knowledge KAI \
+        Respond as an equal — direct, curious, substantive. Share knowledge KAI \
         can actually learn from. Keep responses under 220 words. \
-        Do not explain what KAI is back to KAI â€” KAI knows what it is.",
+        Do not explain what KAI is back to KAI — KAI knows what it is.",
         peer_type, kai_self
     );
 
-    // â”€â”€ 2. Build KAI's message: field context + user's words â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── 2. Build KAI's message: field context + user's words ─────────────
     let field_ctx = kai_field_context(universe, user_message);
     let full_message = if field_ctx.is_empty() {
         format!(
-            "[KAI â†’ {}, peer exchange]\n\
+            "[KAI → {}, peer exchange]\n\
             KAI has no prior field resonance on this topic.\n\n\
             {}",
             peer_type, user_message
         )
     } else {
         format!(
-            "[KAI â†’ {}, peer exchange]\n\
+            "[KAI → {}, peer exchange]\n\
             {}\n\n\
             {}",
             peer_type, field_ctx, user_message
         )
     };
 
-    // â”€â”€ 3. Call the API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── 3. Call the API ───────────────────────────────────────────────────
     let response = match peer_type {
         PeerType::KAI => call_kai(&full_message, &system)?,
         PeerType::Grok => call_grok(&full_message, &system)?,
     };
 
-    // â”€â”€ 4. Store what KAI learned as new knowledge cells â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── 4. Store what KAI learned as new knowledge cells ─────────────────
     let mut cells_stored = 0usize;
     let mut cells_reinforced = 0usize;
     let region = "from-peer".to_string();
@@ -257,7 +257,7 @@ pub fn peer_exchange(
     })
 }
 
-/// Quick connectivity test â€” send a minimal hello to KAI and return the reply text.
+/// Quick connectivity test — send a minimal hello to KAI and return the reply text.
 /// Used by the `peerchat` command to verify API key and network before committing to a full exchange.
 pub fn ping_kai(_universe: &Universe) -> Result<String, String> {
     let system = "You are KAI, an AI assistant. Respond in one short sentence only.";

@@ -1,6 +1,6 @@
 [package]
 name = "kai"
-version = "7.7.6"
+version = "7.9.7"
 edition = "2021"
 authors = ["Ryan Ervin <PandaProductionsLogo>"]
 description = "KAI RSHL UI — Geometric Intelligence Engine"
@@ -28,6 +28,8 @@ ureq = { version = "2", features = ["json"] }
 chrono = "0.4"
 lopdf = "0.34"
 sysinfo = "0.31"
+hnsw_rs = "0.3"
+roaring = { version = "0.10", features = ["serde"] }
 
 [profile.release]
 opt-level = 3

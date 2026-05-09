@@ -191,6 +191,7 @@ pub fn build_generative_state(
     prompt: &str,
     trace: &ConversationTrace,
     field: &FieldState,
+    user_id: &str,
 ) -> SparseVec {
     // ── 1. Prompt backbone — the spine ───────────────────────────────
     // This is the canonical "minimum viable encoder" output. If every
@@ -211,7 +212,7 @@ pub fn build_generative_state(
     // + look-ahead anchor + recency penalty that the TUI retrieval
     // path uses, then hands us cell references so we can fold the
     // raw vectors in.
-    let hits = universe.predictive_query_vecs(backbone.clone(), trace, MIXER_STEPS, MEMORY_TOP_K);
+    let hits = universe.predictive_query_vecs_user(backbone.clone(), trace, MIXER_STEPS, MEMORY_TOP_K, user_id);
     let (memory_vec, memory_cont) = memory_bundles_from_hits(&hits);
 
     // ── 4. FieldState modulation — g drives memory, chi drives contrast
@@ -481,7 +482,7 @@ mod tests {
         let trace = ConversationTrace::new();
         let field = FieldState::default();
 
-        let state = build_generative_state(&universe, &lex, "hello world", &trace, &field);
+        let state = build_generative_state(&universe, &lex, "hello world", &trace, &field, "");
 
         // No terms can contribute — output must be safe zero vector.
         assert_eq!(

@@ -44,6 +44,10 @@ function startProcess(name, script, args = []) {
       if (kai && kai.connected) {
         kai.send({ type: 'OBSERVE_VITALS', vitals: msg.vitals });
       }
+      const oracle = processes.get("Oracle");
+      if (oracle && oracle.connected) {
+        oracle.send({ type: 'OBSERVE_VITALS', bot: msg.botName, vitals: msg.vitals, api: msg.api });
+      }
     }
     if (msg.type === 'SOCIAL_STIMULUS') {
       // One bot spoke, wake up the others!
@@ -71,13 +75,18 @@ function startProcess(name, script, args = []) {
   processes.set(name, child);
 }
 
-// Start everything
+// Core Ignition: Start mission-critical bots instantly
 startProcess("Oracle", "oracle-gateway.mjs");
 startProcess("Leo", "bots/leo.mjs");
 startProcess("KAI", "bots/kai.mjs");
 
+// Rapid-Fire Startup: Spawn remaining fleet with minimal overhead
+let delay = 0;
 for (const bot of BOTS) {
-  startProcess(bot, "bots/start-bot.mjs", [bot]);
+  setTimeout(() => {
+    startProcess(bot, "bots/start-bot.mjs", [bot]);
+  }, delay);
+  delay += 100; // 100ms gap to avoid CPU spike, but near-instant
 }
 
 // Global World Clock Heartbeat

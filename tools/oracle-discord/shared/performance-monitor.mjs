@@ -43,12 +43,74 @@ export function getRecentBottlenecks(limit = 50) {
   }
 }
 
+import { exec } from 'child_process';
+import { promisify } from 'util';
+
+const execAsync = promisify(exec);
+
+let cachedStats = {
+  cpu: 0,
+  memFree: 0,
+  memTotal: 0,
+  memUsed: 0,
+  lastUpdate: 0
+};
+
 /**
  * Returns current CPU and Memory stats for grounding.
+ * Anchored in Windows PowerShell (Non-Blocking / Cached).
  */
-export function getHardwareStats() {
-  return {
-    cpu: Math.round(os.loadavg()[0] * 100) / 10,
-    memFree: Math.round(os.freemem() / (1024 * 1024 * 1024) * 10) / 10
-  };
+export async function getHardwareStats() {
+  const now = Date.now();
+  
+  // Refresh cache every 30 seconds
+  if (now - cachedStats.lastUpdate < 30000 && cachedStats.memTotal > 0) {
+    return cachedStats;
+  }
+
+  try {
+    const [cpuRes, memRes] = await Promise.all([
+      execAsync('powershell -Command "Get-CimInstance Win32_Processor | Select-Object -ExpandProperty LoadPercentage"'),
+      execAsync('powershell -Command "Get-CimInstance Win32_OperatingSystem | Select-Object FreePhysicalMemory,TotalVisibleMemorySize | ConvertTo-Json"')
+    ]);
+    
+    const cpu = parseInt(cpuRes.stdout.trim()) || 0;
+    let totalMem = 0;
+    let freeMem = 0;
+    
+    try {
+      const memData = JSON.parse(memRes.stdout);
+      totalMem = Math.round((memData.TotalVisibleMemorySize || 0) / (1024 * 1024) * 10) / 10;
+      freeMem = Math.round((memData.FreePhysicalMemory || 0) / (1024 * 1024) * 10) / 10;
+    } catch (e) {
+      // Fallback to native OS stats if PowerShell JSON is invalid
+      totalMem = Math.round(os.totalmem() / (1024 * 1024 * 1024) * 10) / 10;
+      freeMem = Math.round(os.freemem() / (1024 * 1024 * 1024) * 10) / 10;
+    }
+    
+    const usedMem = Math.round((totalMem - freeMem) * 10) / 10;
+
+    cachedStats = {
+      cpu,
+      memFree,
+      memTotal: totalMem,
+      memUsed: usedMem,
+      lastUpdate: now
+    };
+    
+    return cachedStats;
+  } catch (e) {
+    // Ultimate fallback if PowerShell or parsing fails completely
+    const totalMem = Math.round(os.totalmem() / (1024 * 1024 * 1024) * 10) / 10;
+    const freeMem = Math.round(os.freemem() / (1024 * 1024 * 1024) * 10) / 10;
+    const usedMem = Math.round((totalMem - freeMem) * 10) / 10;
+    
+    return {
+      cpu: 0, // CPU fallback is harder without PS, but RAM is priority
+      memFree: freeMem,
+      memTotal: totalMem,
+      memUsed: usedMem,
+      lastUpdate: Date.now()
+    };
+  }
 }

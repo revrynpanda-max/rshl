@@ -38,6 +38,7 @@ pub struct MindEvent {
 /// The KAI Cognition Engine — The "Brain" decoupled from the UI.
 pub struct Engine {
     pub universe: Universe,
+    pub synaptic_layer: SynapticLayer,
     pub drive: Drive,
     pub reasoner: Reasoner,
     pub candidates: CandidateBuffer,
@@ -105,6 +106,7 @@ pub struct Engine {
     pub scn: SuprachiasmaticNucleus,
     pub lexsem: LexSemEngine,
     pub ipl: InferiorParietalLobule,
+    pub sys: sysinfo::System,
     pub tick: u64,
     pub dream_count: u64,
     pub tick_log_file: Option<std::fs::File>,
@@ -124,6 +126,17 @@ pub struct Engine {
     pub last_input: String,
     pub dominant_band: usize,
     pub oscillator_amplitude: f32,
+    pub agent_specs: std::collections::HashMap<String, super::index::AgentSpec>,
+    pub vitals: HardwareVitals,
+    pub last_field: FieldState,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
+pub struct HardwareVitals {
+    pub cpu_load: f32,
+    pub mem_used_gb: f32,
+    pub mem_total_gb: f32,
+    pub last_update: u64,
 }
 
 impl Engine {
@@ -358,21 +371,26 @@ impl Engine {
 
     pub fn new(base_dir: &str) -> Self {
         // Try to load saved state
-        let (universe, candidates, drive, _tick, _loaded_dream_count) =
+        let (universe, candidates, drive, _tick, _loaded_dream_count, synaptic_layer_loaded) =
             if crate::persistence::state_exists(base_dir) {
                 match crate::persistence::load(base_dir) {
-                    Some((u, c, d, t, dc)) => (u, c, d, t, dc),
+                    Some((u, c, d, t, dc, sl)) => (u, c, d, t, dc, sl),
                     None => {
                         let mut u = Universe::new();
                         crate::core::seed::seed_universe(&mut u);
-                        (u, CandidateBuffer::new(), Drive::default(), 0, 0)
+                        (u, CandidateBuffer::new(), Drive::default(), 0, 0, crate::core::SynapticLayer::new())
                     }
                 }
             } else {
                 let mut u = Universe::new();
                 crate::core::seed::seed_universe(&mut u);
-                (u, CandidateBuffer::new(), Drive::default(), 0, 0)
+                (u, CandidateBuffer::new(), Drive::default(), 0, 0, crate::core::SynapticLayer::new())
             };
+
+        // Rebuild Hybrid Index (Lexicon + HNSW) on startup
+        let mut universe = universe;
+        universe.rebuild_index(0.0);
+        let universe = universe;
 
         let log_file_path = std::env::var("KAI_TICK_LOG")
             .unwrap_or_else(|_| "C:\\KAI\\data\\kai_ticks.csv".to_string());
@@ -417,8 +435,16 @@ impl Engine {
             .map(|m| m.global_workspace.clone())
             .unwrap_or_default();
 
-        Self {
+        // Prefer the one from Snapshot (Engine Core) but fallback to MindSnapshot if needed
+        let synaptic_layer = if synaptic_layer_loaded.synapses.is_empty() {
+             mind.as_ref().map(|m| m.synaptic_layer.clone()).unwrap_or_default()
+        } else {
+             synaptic_layer_loaded
+        };
+
+        let mut this_engine = Self {
             universe,
+            synaptic_layer,
             drive,
             reasoner: Reasoner::new(),
             candidates,
@@ -486,6 +512,7 @@ impl Engine {
             scn: SuprachiasmaticNucleus::new(),
             lexsem: LexSemEngine::new(),
             ipl: InferiorParietalLobule::new(),
+            sys: sysinfo::System::new_all(),
             tick: _tick,
             dream_count: _loaded_dream_count,
             tick_log_file,
@@ -505,6 +532,31 @@ impl Engine {
             last_input: String::new(),
             dominant_band: 0,
             oscillator_amplitude: 0.0,
+            agent_specs: std::collections::HashMap::new(),
+            vitals: HardwareVitals::default(),
+            last_field: FieldState::default(),
+        };
+        
+        this_engine.load_agent_specs(base_dir);
+        this_engine
+    }
+
+    /// Load all declarative Agent Specifications from data/agents/*.json
+    pub fn load_agent_specs(&mut self, base_dir: &str) {
+        let agents_dir = format!("{}/data/agents", base_dir);
+        if let Ok(entries) = std::fs::read_dir(agents_dir) {
+            for entry in entries.flatten() {
+                if let Some(path) = entry.path().to_str() {
+                    if path.ends_with(".json") {
+                        if let Ok(content) = std::fs::read_to_string(path) {
+                            if let Ok(spec) = serde_json::from_str::<super::index::AgentSpec>(&content) {
+                                println!("[OAS] Loaded agent: {} ({})", spec.name, spec.id);
+                                self.agent_specs.insert(spec.id.clone(), spec);
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -595,6 +647,21 @@ impl Engine {
     pub fn tick(&mut self, is_responding: bool) -> FieldState {
         self.tick += 1;
 
+        // ── Hardware Vitals (Phase 4) ───────────────────────────────
+        if self.tick % 5 == 0 {
+            self.sys.refresh_cpu_all();
+            self.sys.refresh_memory();
+            
+            let cpu_load = self.sys.global_cpu_usage();
+            let mem_used = self.sys.used_memory() as f32 / (1024.0 * 1024.0 * 1024.0);
+            let mem_total = self.sys.total_memory() as f32 / (1024.0 * 1024.0 * 1024.0);
+            
+            self.vitals.cpu_load = cpu_load;
+            self.vitals.mem_used_gb = mem_used;
+            self.vitals.mem_total_gb = mem_total;
+            self.vitals.last_update = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
+        }
+
         // ── Advance the golden-ratio spiral once per tick ────────────
         self.spiral.tick();
 
@@ -618,7 +685,7 @@ impl Engine {
         };
 
         // ── STREAM 2: CPU Logic (field state + drive) ─────────────────
-        let mut field = FieldState::compute(&self.universe);
+        let mut field = FieldState::compute(&self.universe, 1);
         self.drive.update(&field);
 
         let cells = self.universe.cells();
@@ -705,15 +772,34 @@ impl Engine {
             let _ = log_file.flush();
         }
 
+        self.last_field = field.clone();
+
         // DREAM CYCLE (STREAM 1)
         if self.tick.is_multiple_of(3) {
             self.run_dream_cycle();
         }
 
-        // BOID LATTICE SELF-ORGANIZATION (every 30 ticks)
-        // Safeguards: anchor protection, similarity cap, regional isolation.
-        // Logs stats for monitoring — do not increase frequency until 30-tick baseline is established.
-        if self.tick.is_multiple_of(30) {
+        // ── Autonomous Tuning (Phase 4) ───────────────────────────────
+        let cpu_high = self.vitals.cpu_load > 85.0;
+        let mem_high = if self.vitals.mem_total_gb > 0.0 {
+            (self.vitals.mem_used_gb / self.vitals.mem_total_gb) > 0.85
+        } else {
+            false
+        };
+
+        if self.tick.is_multiple_of(30) && !cpu_high {
+            // Biological Pruning: Remove claims with zero vitality
+            let pruned_v = self.universe.recycle_dead_claims();
+            if pruned_v > 0 {
+                println!("[Homeostasis] Recycled {} dead/low-vitality cells.", pruned_v);
+            }
+
+            // Synaptic pruning (LTD)
+            self.synaptic_layer.ltd_sweep();
+
+            if mem_high {
+                self.universe.prune_contested();
+            }
             use crate::core::boid_engine::{BoidState, BoidSettings, run_boid_iteration, find_near_duplicates};
 
             let total_cells = self.universe.cell_count();
@@ -727,7 +813,7 @@ impl Engine {
             let mut state = state_before;
             let settings = BoidSettings::default();
             for _ in 0..3 {
-                run_boid_iteration(&mut state, &settings);
+                run_boid_iteration(&mut state, &settings, &field);
             }
             state.apply_to_universe(&mut self.universe);
 
@@ -861,5 +947,37 @@ impl Engine {
             + self.vp.hedonic_tone * 0.10
             + recent_charge * 0.12)
             .clamp(0.0, 1.0);
+    }
+
+    /// High-level query interface that utilizes the full Neural Bus.
+    ///
+    /// This handles:
+    /// 1. Geometric Query (Universe)
+    /// 2. Synaptic Propagation (Associative Recall)
+    /// 3. Hebbian Learning (LTP)
+    pub fn query(&mut self, text: &str, n: usize) -> Vec<QueryHit> {
+        // Stage 1-3: Perform associative query
+        let hits = NeuralBus::query_associative(
+            &self.universe,
+            &self.synaptic_layer,
+            self.last_field.phi_g,
+            text,
+            n
+        );
+
+        if hits.is_empty() { return hits; }
+
+        // Stage 4: Hebbian Learning (LTP)
+        // The final set of active neurons wire together
+        let active_labels: Vec<String> = hits.iter().map(|h| h.label.clone()).collect();
+        self.synaptic_layer.record_co_firing(
+            &active_labels,
+            self.dopamine.level,
+            self.last_field.phi_g,
+            self.last_field.chi,
+            self.tick
+        );
+
+        hits
     }
 }

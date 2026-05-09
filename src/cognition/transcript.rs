@@ -150,7 +150,7 @@ pub fn brief(base_dir: &str, session_id: &str) -> String {
     for entry in user_turns.iter().take(12) {
         let preview = entry.label.lines().next().unwrap_or("").trim();
         if preview.len() > 5 {
-            lines.push(format!("  ❯ {}", safe_str_slice(preview, 90)));
+            lines.push(format!("  > {}", safe_str_slice(preview, 90)));
         }
     }
     if user_turns.len() > 12 {

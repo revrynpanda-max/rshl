@@ -17,33 +17,19 @@ export function logAudit(type, data) {
       ...data
     };
 
-    let audit = [];
-    if (fs.existsSync(AUDIT_FILE)) {
-      try {
-        const content = fs.readFileSync(AUDIT_FILE, 'utf8');
-        audit = JSON.parse(content);
-      } catch (e) {
-        console.error("[AuditLog] Parse failed, starting fresh:", e.message);
-        audit = [];
-      }
-    }
-    
-    audit.push(entry);
-    
-    // LOG PRUNING: Keep only the last 1000 entries to prevent memory exhaustion
-    if (audit.length > 1000) {
-      audit = audit.slice(-1000);
-    }
-
-    fs.writeFileSync(AUDIT_FILE, JSON.stringify(audit, null, 2));
+    // HIGH-PERFORMANCE APPEND: JSON Lines (JSONL) format
+    fs.appendFileSync(AUDIT_FILE, JSON.stringify(entry) + '\n');
     
     // Also log to console for immediate visibility
     if (type === 'ERROR' || type === 'NEURAL_FAILURE') {
       console.warn(`[AUDIT] ${type}: ${JSON.stringify(data)}`);
     } else {
-      console.log(`[AUDIT] ${type}: ${data.message || ''}`);
+      console.log(`[AUDIT] ${type}: ${data.botName || ''} via ${data.provider || ''}`);
     }
   } catch (e) {
     console.error(`[Audit] Failed to write log:`, e.message);
   }
 }
+
+// Global anchor for fleet-wide reliability
+global.logAudit = logAudit;

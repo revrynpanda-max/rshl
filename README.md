@@ -1,7 +1,7 @@
-# 🧬 KAI RSHL: Sovereign Autonomous Intelligence (v7.9.7)
+# 🧬 KAI RSHL: Sovereign Autonomous Intelligence (v21.0.0)
 
 ![Rust CI](https://github.com/revrynpanda-max/rshl/actions/workflows/rust-ci.yml/badge.svg)
-![Version](https://img.shields.io/badge/version-7.9.7-brightgreen.svg)
+![Version](https://img.shields.io/badge/version-21.0.0-brightgreen.svg)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 
 **KAI RSHL** is a sovereign, autonomous executive intelligence suite designed for industrial-scale operations. It is not a chatbot. It is a **Unified Cognitive Infrastructure** that fuses high-performance Rust engineering with an advanced epistemic lattice memory to automate complex reasoning, reduce operational latency, and secure grounded, actionable truth.

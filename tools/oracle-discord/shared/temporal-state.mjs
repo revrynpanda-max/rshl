@@ -22,11 +22,16 @@ class TemporalStateManager {
       if (fs.existsSync(this.statePath)) {
         const raw = fs.readFileSync(this.statePath, 'utf8').trim();
         if (raw) {
-          this.state = JSON.parse(raw);
+          try {
+            this.state = JSON.parse(raw);
+          } catch (parseError) {
+            console.warn(`[Temporal/State] Corruption detected in ${this.statePath}. Resetting to baseline.`);
+            this.save(); // Overwrite the corruption with clean state
+          }
         }
       }
     } catch (e) { 
-      console.warn("[Temporal/State] Load error (healing):", e.message); 
+      console.warn("[Temporal/State] Critical access error (healing):", e.message); 
     }
   }
 

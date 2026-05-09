@@ -41,9 +41,10 @@ export async function runSystemAudit() {
       report += `- Speaker Issues: ${speakerFailures.length} detections (Check voice-manager and transcript routing).\n`;
     }
 
-    // 3. Temporal State
-    const now = new Date();
-    const estHour = now.getUTCHours() - 4; // Simple EST approx
+    // 3. Temporal State (Precise EST)
+    const estNow = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: 'numeric', hour12: false }).format(now);
+    const estHour = parseInt(estNow);
+    
     if (estHour >= 3 && estHour < 9) {
       report += `[RSHL SOVEREIGNTY] System in Consolidation Phase. All bots are hard-sleeping.\n`;
     } else if (estHour >= 15 && estHour < 23) {
@@ -114,7 +115,17 @@ export async function getEcosystemSnapshot() {
       const mins = Math.floor(minsRemaining % 60);
       const duration = `${hours}h ${mins}m`;
       
-      const etDate = new Date(now + minsRemaining * 60000);
+      let etDate = new Date(now + minsRemaining * 60000);
+      
+      // DEAD-ZONE CAP: No bot stays awake past 3 AM EST
+      const deadZoneTime = new Date(now);
+      deadZoneTime.setHours(3, 0, 0, 0);
+      if (deadZoneTime < now) deadZoneTime.setDate(deadZoneTime.getDate() + 1);
+      
+      if (!isSleeping && etDate > deadZoneTime) {
+        etDate = deadZoneTime;
+      }
+
       const etString = etDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'America/New_York' });
 
       const statusEmoji = isSleeping ? "💤" : (vitals.energy < 20 ? "⚠️" : "🔋");

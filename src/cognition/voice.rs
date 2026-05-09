@@ -780,7 +780,7 @@ pub fn generate_response_predictive(
         let name = extract_introduced_name(&lower);
 
         // Stop hard-filtering to `source=greeting` on every input. Let
-        // the full universe compete first â€" only fall back to the
+        // the full universe compete first — only fall back to the
         // greeting-only pool when no cell scores above the floor. This
         // kills the 4-cell rotation by letting seed / identity / world
         // cells win when they predict the next turn better.

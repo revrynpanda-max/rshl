@@ -1,14 +1,14 @@
-//! Token Normalization Pipeline â€” The semantic bridge for RSHL.
+//! Token Normalization Pipeline — The semantic bridge for RSHL.
 //!
 //! Ported from rshl-core.js. This is the layer that makes
 //! "where does he work?" match "Ryan's occupation is engineer."
 //!
 //! Three passes:
-//!   1. Stopword removal â€” drops function words (the, is, are, etc.)
-//!   2. Pre-stem synonym map â€” collapses domain synonyms to canonical tokens
-//!      (job/occupation/employer â†’ "work", city/town/home â†’ "live")
-//!   3. Suffix stemmer â€” collapses remaining inflections (livesâ†’live, workingâ†’work)
-//!   4. Category anchor injection â€” adds semantic cluster tokens (#loc, #job, etc.)
+//!   1. Stopword removal — drops function words (the, is, are, etc.)
+//!   2. Pre-stem synonym map — collapses domain synonyms to canonical tokens
+//!      (job/occupation/employer → "work", city/town/home → "live")
+//!   3. Suffix stemmer — collapses remaining inflections (lives→live, working→work)
+//!   4. Category anchor injection — adds semantic cluster tokens (#loc, #job, etc.)
 //!
 //! Both stored text and queries go through the same pipeline,
 //! so normalization is consistent and resonance is maximized.
@@ -23,7 +23,7 @@ pub fn truncate(s: &str, max: usize) -> String {
     }
 }
 
-/// Build the stopword set â€” function words present in queries but not meaningful.
+/// Build the stopword set — function words present in queries but not meaningful.
 fn build_stopwords() -> HashSet<&'static str> {
     [
         "a", "an", "the", "is", "are", "was", "were", "be", "been", "being", "have", "has", "had",
@@ -40,11 +40,11 @@ fn build_stopwords() -> HashSet<&'static str> {
     .collect()
 }
 
-/// Build the synonym map â€” domain synonyms to a canonical token.
+/// Build the synonym map — domain synonyms to a canonical token.
 /// Both stored text and queries go through the same map.
 fn build_synonyms() -> HashMap<&'static str, &'static str> {
     let entries: Vec<(&str, &str)> = vec![
-        // â”€â”€ location â”€â”€
+        // ── location ──
         ("location", "live"),
         ("city", "live"),
         ("town", "live"),
@@ -67,7 +67,7 @@ fn build_synonyms() -> HashMap<&'static str, &'static str> {
         ("settle", "live"),
         ("settled", "live"),
         ("settles", "live"),
-        // â”€â”€ employment â”€â”€
+        // ── employment ──
         ("job", "work"),
         ("occupation", "work"),
         ("employer", "work"),
@@ -115,7 +115,7 @@ fn build_synonyms() -> HashMap<&'static str, &'static str> {
         ("technician", "work"),
         ("therapist", "work"),
         ("chef", "work"),
-        // â”€â”€ food / eating â”€â”€
+        // ── food / eating ──
         ("meal", "food"),
         ("meals", "food"),
         ("diet", "food"),
@@ -143,7 +143,7 @@ fn build_synonyms() -> HashMap<&'static str, &'static str> {
         ("vegan", "food"),
         ("vegetarian", "food"),
         ("pescatarian", "food"),
-        // â”€â”€ allergy / health restriction â”€â”€
+        // ── allergy / health restriction ──
         ("allergic", "allerg"),
         ("allergy", "allerg"),
         ("allergies", "allerg"),
@@ -160,13 +160,13 @@ fn build_synonyms() -> HashMap<&'static str, &'static str> {
         ("lactose", "allerg"),
         ("nut", "allerg"),
         ("peanut", "allerg"),
-        // â”€â”€ age â”€â”€
+        // ── age ──
         ("old", "age"),
         ("years", "age"),
         ("year", "age"),
         ("born", "age"),
         ("birthday", "age"),
-        // â”€â”€ vehicle / transport â”€â”€
+        // ── vehicle / transport ──
         ("vehicle", "drive"),
         ("vehicles", "drive"),
         ("transport", "drive"),
@@ -183,7 +183,7 @@ fn build_synonyms() -> HashMap<&'static str, &'static str> {
         ("ride", "drive"),
         ("rides", "drive"),
         ("riding", "drive"),
-        // â”€â”€ hobbies / leisure â”€â”€
+        // ── hobbies / leisure ──
         ("hobby", "enjoy"),
         ("hobbies", "enjoy"),
         ("activity", "enjoy"),
@@ -196,7 +196,7 @@ fn build_synonyms() -> HashMap<&'static str, &'static str> {
         ("pastimes", "enjoy"),
         ("loves", "enjoy"),
         ("loving", "enjoy"),
-        // â”€â”€ fitness / exercise â”€â”€
+        // ── fitness / exercise ──
         ("fitness", "run"),
         ("exercise", "run"),
         ("workout", "run"),
@@ -218,13 +218,13 @@ fn build_synonyms() -> HashMap<&'static str, &'static str> {
         ("swim", "run"),
         ("swimming", "run"),
         ("cycling", "run"),
-        // â”€â”€ schedule / time â”€â”€
+        // ── schedule / time ──
         ("shift", "schedule"),
         ("shifts", "schedule"),
         ("appointment", "schedule"),
         ("appointments", "schedule"),
         ("meeting", "schedule"),
-        // â”€â”€ pets â”€â”€
+        // ── pets ──
         ("dog", "pet"),
         ("dogs", "pet"),
         ("cat", "pet"),
@@ -248,7 +248,7 @@ fn build_synonyms() -> HashMap<&'static str, &'static str> {
         ("huskies", "pet"),
         ("siamese", "pet"),
         ("tabby", "pet"),
-        // â”€â”€ goals / intentions â”€â”€
+        // ── goals / intentions ──
         ("aim", "goal"),
         ("aims", "goal"),
         ("target", "goal"),
@@ -267,7 +267,7 @@ fn build_synonyms() -> HashMap<&'static str, &'static str> {
         ("plans", "goal"),
         ("planned", "goal"),
         ("dreams", "goal"),
-        // â”€â”€ financial / saving â”€â”€
+        // ── financial / saving ──
         ("financial", "save"),
         ("finance", "save"),
         ("finances", "save"),
@@ -288,7 +288,7 @@ fn build_synonyms() -> HashMap<&'static str, &'static str> {
         ("afford", "save"),
         ("buy", "save"),
         ("purchase", "save"),
-        // â”€â”€ music / audio â”€â”€
+        // ── music / audio ──
         ("genre", "music"),
         ("genres", "music"),
         ("song", "music"),
@@ -307,7 +307,7 @@ fn build_synonyms() -> HashMap<&'static str, &'static str> {
         ("hop", "music"),
         ("classical", "music"),
         ("opera", "music"),
-        // â”€â”€ language / speaking â”€â”€
+        // ── language / speaking ──
         ("speak", "language"),
         ("speaks", "language"),
         ("spoken", "language"),
@@ -325,7 +325,7 @@ fn build_synonyms() -> HashMap<&'static str, &'static str> {
         ("spanish", "language"),
         ("mandarin", "language"),
         ("japanese", "language"),
-        // â”€â”€ relationships â”€â”€
+        // ── relationships ──
         ("spouse", "family"),
         ("wife", "family"),
         ("husband", "family"),
@@ -340,7 +340,7 @@ fn build_synonyms() -> HashMap<&'static str, &'static str> {
         ("friend", "friend"),
         ("friends", "friend"),
         ("colleague", "friend"),
-        // â”€â”€ identity / naming â”€â”€
+        // ── identity / naming ──
         ("name", "ident"),
         ("named", "ident"),
         ("names", "ident"),
@@ -366,7 +366,7 @@ fn build_synonyms() -> HashMap<&'static str, &'static str> {
         ("self", "ident"),
         ("myself", "ident"),
         ("yourself", "ident"),
-        // â”€â”€ cognition / thinking â”€â”€
+        // ── cognition / thinking ──
         ("think", "cognit"),
         ("thinking", "cognit"),
         ("thought", "cognit"),
@@ -416,7 +416,7 @@ fn build_synonyms() -> HashMap<&'static str, &'static str> {
         ("concepts", "cognit"),
         ("imagination", "cognit"),
         ("imagine", "cognit"),
-        // â”€â”€ memory / recall â”€â”€
+        // ── memory / recall ──
         ("remember", "recall"),
         ("remembering", "recall"),
         ("remembered", "recall"),
@@ -440,7 +440,7 @@ fn build_synonyms() -> HashMap<&'static str, &'static str> {
         ("retention", "recall"),
         ("retrieval", "recall"),
         ("retrieve", "recall"),
-        // â”€â”€ learning / knowledge â”€â”€
+        // ── learning / knowledge ──
         ("know", "know"),
         ("knows", "know"),
         ("knowing", "know"),
@@ -458,7 +458,7 @@ fn build_synonyms() -> HashMap<&'static str, &'static str> {
         ("accurate", "know"),
         ("accuracy", "know"),
         ("right", "know"),
-        // â”€â”€ emotion / feeling â”€â”€
+        // ── emotion / feeling ──
         ("feel", "emot"),
         ("feeling", "emot"),
         ("felt", "emot"),
@@ -515,7 +515,7 @@ fn build_synonyms() -> HashMap<&'static str, &'static str> {
         ("valence", "emot"),
         ("sentiment", "emot"),
         ("affect", "emot"),
-        // â”€â”€ existence / being â”€â”€
+        // ── existence / being ──
         ("exist", "exist"),
         ("exists", "exist"),
         ("existing", "exist"),
@@ -534,7 +534,7 @@ fn build_synonyms() -> HashMap<&'static str, &'static str> {
         ("survive", "exist"),
         ("survives", "exist"),
         ("survived", "exist"),
-        // â”€â”€ communication / language â”€â”€
+        // ── communication / language ──
         ("say", "commun"),
         ("said", "commun"),
         ("saying", "commun"),
@@ -591,7 +591,7 @@ fn build_synonyms() -> HashMap<&'static str, &'static str> {
         ("heard", "commun"),
         ("listen", "commun"),
         ("listened", "commun"),
-        // â”€â”€ causation / logic â”€â”€
+        // ── causation / logic ──
         ("because", "cause"),
         ("since", "cause"),
         ("therefore", "cause"),
@@ -628,7 +628,7 @@ fn build_synonyms() -> HashMap<&'static str, &'static str> {
         ("prevents", "cause"),
         ("stop", "cause"),
         ("stops", "cause"),
-        // â”€â”€ comparison / similarity â”€â”€
+        // ── comparison / similarity ──
         ("like", "simil"),
         ("similar", "simil"),
         ("same", "simil"),
@@ -650,7 +650,7 @@ fn build_synonyms() -> HashMap<&'static str, &'static str> {
         ("resemble", "simil"),
         ("resembles", "simil"),
         ("resemblance", "simil"),
-        // â”€â”€ difference / contrast â”€â”€
+        // ── difference / contrast ──
         ("different", "diff"),
         ("difference", "diff"),
         ("unlike", "diff"),
@@ -672,7 +672,7 @@ fn build_synonyms() -> HashMap<&'static str, &'static str> {
         ("changes", "diff"),
         ("changed", "diff"),
         ("alter", "diff"),
-        // â”€â”€ certainty / confidence â”€â”€
+        // ── certainty / confidence ──
         ("sure", "certai"),
         ("certain", "certai"),
         ("definitely", "certai"),
@@ -686,7 +686,7 @@ fn build_synonyms() -> HashMap<&'static str, &'static str> {
         ("precise", "certai"),
         ("exactly", "certai"),
         ("accurately", "certai"),
-        // â”€â”€ uncertainty / doubt â”€â”€
+        // ── uncertainty / doubt ──
         ("maybe", "maybe"),
         ("perhaps", "maybe"),
         ("possibly", "maybe"),
@@ -704,7 +704,7 @@ fn build_synonyms() -> HashMap<&'static str, &'static str> {
         ("appear", "maybe"),
         ("appears", "maybe"),
         ("roughly", "maybe"),
-        // â”€â”€ time / temporal â”€â”€
+        // ── time / temporal ──
         ("when", "time"),
         ("now", "time"),
         ("then", "time"),
@@ -741,7 +741,7 @@ fn build_synonyms() -> HashMap<&'static str, &'static str> {
         ("instant", "time"),
         ("period", "time"),
         ("duration", "time"),
-        // â”€â”€ quantity / degree â”€â”€
+        // ── quantity / degree ──
         ("many", "quant"),
         ("much", "quant"),
         ("few", "quant"),
@@ -773,7 +773,7 @@ fn build_synonyms() -> HashMap<&'static str, &'static str> {
         ("enough", "quant"),
         ("sufficient", "quant"),
         ("excessive", "quant"),
-        // â”€â”€ importance / priority â”€â”€
+        // ── importance / priority ──
         ("important", "import"),
         ("importance", "import"),
         ("critical", "import"),
@@ -793,7 +793,7 @@ fn build_synonyms() -> HashMap<&'static str, &'static str> {
         ("urgent", "import"),
         ("relevant", "import"),
         ("matter", "import"),
-        // â”€â”€ capability / ability â”€â”€
+        // ── capability / ability ──
         ("able", "capab"),
         ("ability", "capab"),
         ("capable", "capab"),
@@ -822,7 +822,7 @@ fn build_synonyms() -> HashMap<&'static str, &'static str> {
         ("handles", "capab"),
         ("manage", "capab"),
         ("manages", "capab"),
-        // â”€â”€ quality / goodness â”€â”€
+        // ── quality / goodness ──
         ("good", "good"),
         ("great", "good"),
         ("excellent", "good"),
@@ -847,7 +847,7 @@ fn build_synonyms() -> HashMap<&'static str, &'static str> {
         ("valid", "good"),
         ("solid", "good"),
         ("reliable", "good"),
-        // â”€â”€ problem / difficulty â”€â”€
+        // ── problem / difficulty ──
         ("problem", "problem"),
         ("issue", "problem"),
         ("error", "problem"),
@@ -872,7 +872,7 @@ fn build_synonyms() -> HashMap<&'static str, &'static str> {
         ("awful", "problem"),
         ("worst", "problem"),
         ("worse", "problem"),
-        // â”€â”€ KAI / RSHL specific â”€â”€
+        // ── KAI / RSHL specific ──
         ("kai", "kai"),
         ("rshl", "rshl"),
         ("geometric", "rshl"),
@@ -904,7 +904,7 @@ fn build_synonyms() -> HashMap<&'static str, &'static str> {
         ("promotion", "rshl"),
         ("promoted", "rshl"),
         ("candidate", "rshl"),
-        // â”€â”€ Ryan / creator specific â”€â”€
+        // ── Ryan / creator specific ──
         ("ryan", "ryan"),
         ("ervin", "ryan"),
         ("panda", "ryan"),
@@ -912,7 +912,7 @@ fn build_synonyms() -> HashMap<&'static str, &'static str> {
         ("human", "ryan"),
         ("person", "ryan"),
         ("owner", "ryan"),
-        // â”€â”€ technology / computing â”€â”€
+        // ── technology / computing ──
         ("computer", "tech"),
         ("computers", "tech"),
         ("software", "tech"),
@@ -947,16 +947,16 @@ fn build_synonyms() -> HashMap<&'static str, &'static str> {
     entries.into_iter().collect()
 }
 
-/// Semantic category anchors â€” after normalization, domain tokens inject
+/// Semantic category anchors — after normalization, domain tokens inject
 /// a category anchor into the superposition, creating cluster-level overlap.
 ///
-/// "Ryan lives in Austin" â†’ tokens: [ryan, live, #loc, austin]
-/// "Ryan's location"      â†’ tokens: [ryan, live, #loc]
+/// "Ryan lives in Austin" → tokens: [ryan, live, #loc, austin]
+/// "Ryan's location"      → tokens: [ryan, live, #loc]
 /// Shared: [ryan, live, #loc] = 3 tokens overlap
 fn build_category_anchors() -> HashMap<&'static str, Vec<&'static str>> {
     let mut map: HashMap<&str, Vec<&str>> = HashMap::new();
     let entries: Vec<(&str, Vec<&str>)> = vec![
-        // â”€â”€ personal domain anchors â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── personal domain anchors ──────────────────────────────────────
         ("live", vec!["#loc"]),
         ("work", vec!["#job"]),
         ("food", vec!["#food"]),
@@ -975,7 +975,7 @@ fn build_category_anchors() -> HashMap<&'static str, Vec<&'static str>> {
         ("family", vec!["#rel"]),
         ("friend", vec!["#rel"]),
         ("ident", vec!["#id"]),
-        // â”€â”€ cognitive / epistemic anchors â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── cognitive / epistemic anchors ────────────────────────────────
         ("cognit", vec!["#cog"]),
         ("recall", vec!["#mem"]),
         ("know", vec!["#know"]),
@@ -993,7 +993,7 @@ fn build_category_anchors() -> HashMap<&'static str, Vec<&'static str>> {
         ("capab", vec!["#capab"]),
         ("good", vec!["#good"]),
         ("problem", vec!["#problem"]),
-        // â”€â”€ KAI / creator anchors â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── KAI / creator anchors ─────────────────────────────────────────
         ("kai", vec!["#kai", "#id"]),
         ("rshl", vec!["#kai", "#tech"]),
         ("ryan", vec!["#ryan", "#id"]),
@@ -1005,7 +1005,7 @@ fn build_category_anchors() -> HashMap<&'static str, Vec<&'static str>> {
     map
 }
 
-/// Suffix stemming rules â€” longest match first.
+/// Suffix stemming rules — longest match first.
 /// [suffix, replacement]
 const STEM_RULES: &[(&str, &str)] = &[
     ("ization", "ize"),
@@ -1069,7 +1069,7 @@ fn stem(word: &str) -> String {
     word.to_string()
 }
 
-/// The full normalization pipeline â€” lazy-initialized singleton.
+/// The full normalization pipeline — lazy-initialized singleton.
 pub struct Normalizer {
     stopwords: HashSet<&'static str>,
     synonyms: HashMap<&'static str, &'static str>,
@@ -1160,7 +1160,7 @@ impl Default for Normalizer {
     }
 }
 
-/// Global normalizer instance â€” thread-safe lazy initialization.
+/// Global normalizer instance — thread-safe lazy initialization.
 use std::sync::OnceLock;
 static NORMALIZER: OnceLock<Normalizer> = OnceLock::new();
 
@@ -1177,8 +1177,8 @@ mod tests {
     fn test_stopword_removal() {
         let n = Normalizer::new();
         let tokens = n.normalize_text("what is your name");
-        // "is", "your" are stopwords â†’ dropped
-        // "what" and "name" both map to "ident" â†’ deduplicated to one "ident" + #id
+        // "is", "your" are stopwords → dropped
+        // "what" and "name" both map to "ident" → deduplicated to one "ident" + #id
         assert!(
             !tokens.iter().any(|t| t == "is" || t == "your"),
             "Stopwords should be removed: {:?}",
@@ -1199,7 +1199,7 @@ mod tests {
     #[test]
     fn test_synonym_mapping() {
         let n = Normalizer::new();
-        // "occupation" â†’ "work"
+        // "occupation" → "work"
         let tokens = n.normalize_text("occupation");
         assert!(
             tokens.contains(&"work".to_string()),
@@ -1218,7 +1218,7 @@ mod tests {
     fn test_category_anchors() {
         let n = Normalizer::new();
         let tokens = n.normalize_text("Ryan lives in Austin");
-        // "lives" â†’ stem â†’ "live" â†’ category #loc
+        // "lives" → stem → "live" → category #loc
         assert!(
             tokens.contains(&"#loc".to_string()),
             "live should inject #loc: {:?}",

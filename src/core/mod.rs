@@ -20,8 +20,12 @@ pub mod seed;
 pub mod sparse_vec;
 pub mod spiral;
 pub mod stat_lexicon;
+pub mod synapse;
 pub mod universe;
+pub mod index;
+pub mod scale_manager;
 
+pub use synapse::{SynapticLayer, NeuralBus};
 pub use embeddings::Embeddings;
 pub use field_state::FieldState;
 pub use lexicon::Lexicon;

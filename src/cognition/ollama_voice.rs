@@ -425,7 +425,8 @@ impl OllamaVoice {
         // 4. The user turn is the raw input — Ollama speaks FROM the SRHT state,
         //    not from a pre-built lattice synthesis.
         let prompt = input.to_string();
-        let reply = self.call_generate(&system, &prompt)?;
+
+        let reply = self.call_generate(&system, &prompt)?;
         Some(reply)
     }
 }

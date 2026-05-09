@@ -112,6 +112,9 @@ pub struct FieldState {
     pub c: f32,     // Commit readiness
     pub wm: f32,    // Memory reinforcement weight
     pub pr: f32,    // Replay priority
+    pub gamma: f32, // Recycling efficiency / vitality
+    pub omega_health: f32, // Unified lattice health indicator
+    pub regen_score: f32, // Trigger for neurogenesis/pruning
 
     // Legacy aliases for backward compatibility with drive/lattice
     pub coherence: f32,
@@ -126,7 +129,7 @@ pub struct FieldInput<'a> {
     /// The synthetic (bound/bundled) vector being evaluated
     pub synthetic_vec: Option<&'a SparseVec>,
     /// Source cells from the universe that matched
-    pub source_vecs: Vec<(&'a SparseVec, f32, u64)>, // (vec, strength, created_ts)
+    pub source_vecs: Vec<(&'a SparseVec, f32, u64, f32)>, // (vec, strength, created_ts, vitality)
     /// Raw similarity scores from the query
     pub candidate_scores: Vec<f32>,
     /// The evolving goal vector from the drive system
@@ -139,6 +142,8 @@ pub struct FieldInput<'a> {
     pub total_count: usize,
     /// Previous phi_g (for momentum)
     pub prev_phi_g: f32,
+    /// Dominant layer ID for scale adjustment
+    pub layer_id: u8,
 }
 
 impl FieldState {
@@ -160,7 +165,7 @@ impl FieldState {
 
         // Synthetic vec vs each source
         if let Some(syn) = input.synthetic_vec {
-            for (src_vec, _, _) in &input.source_vecs {
+            for (src_vec, _, _, _) in &input.source_vecs {
                 coherence_samples.push(clamp01(syn.cosine(src_vec)));
             }
         }
@@ -248,7 +253,7 @@ impl FieldState {
         };
 
         // ── Recency / strength ─────────────────────────────────────────
-        let r = if let Some((_, _, ts)) = input.source_vecs.first() {
+        let r = if let Some((_, _, ts, _)) = input.source_vecs.first() {
             recency_weight(*ts)
         } else {
             1.0
@@ -261,27 +266,44 @@ impl FieldState {
                 &input
                     .source_vecs
                     .iter()
-                    .map(|(_, str, _)| str / 5.0)
+                    .map(|(_, str, _, _)| str / 5.0)
                     .collect::<Vec<_>>(),
             ))
         };
 
-        // ── Emergence cascade ──────────────────────────────────────────
-        // Adaptive density: boost weak signals in sparse lattices using sqrt(rho)
-        let adaptive_rho = rho.sqrt();
-        let phi_raw = clamp01(adaptive_rho * r_val * s);
+        // ── Emergence cascade (BRAIN-INSPIRED VERSION) ──────────────────
+        // Formula: phi_g = rho * R^2 * (1 - chi) * g * Gamma * f(sigma)
+        
+        // 0. Recycling Efficiency (gamma) - Mean vitality of source claims
+        let gamma = if input.source_vecs.is_empty() {
+            0.0
+        } else {
+            let sum_vit: f32 = input.source_vecs.iter().map(|s| s.3).sum();
+            sum_vit / (input.source_vecs.len() as f32)
+        };
 
-        // Dynamic Friction Sigmoid (Officer Gemini's Proposal)
-        // Reduces chi penalty for high-resonance truth claims while maintaining it for noise.
-        // Formula: chi_dynamic = chi * (1.0 / (1.0 + exp(k * (phi_raw - threshold))))
+        // 1. Scale Adjustment f(sigma)
+        let scale_settings = super::scale_manager::get_settings_for_layer(input.layer_id);
+        let f_sigma = scale_settings.scale_factor;
+
+        // 2. Non-linear resonance (R^2)
+        let r_sq = r_val * r_val;
+
+        // 3. Contradiction Penalty (1 - chi)
+        // We use the dynamic sigmoid chi from Officer Gemini for smoother transitions
+        let phi_base = clamp01(rho * r_val * s);
         let k = 15.0; // Slope steepness
         let threshold = 0.05; // Resonance threshold for friction drop
-        let sigmoid_factor = 1.0 / (1.0 + ((phi_raw - threshold) * k).exp());
+        let sigmoid_factor = 1.0 / (1.0 + ((phi_base - threshold) * k).exp());
         let chi_dynamic = chi * sigmoid_factor;
-
         let chi_penalty = (1.0 - chi_dynamic).max(0.0);
+
+        // 4. Final superposed emergence
+        let phi_g = clamp01(rho * r_sq * chi_penalty * g * gamma * f_sigma);
+        
+        // Raw phi for legacy reasons
+        let phi_raw = clamp01(rho * r_val * s);
         let phi_c = clamp01(phi_raw * chi_penalty);
-        let phi_g = clamp01(phi_c * g);
 
         // Momentum
         let m_val = phi_g - input.prev_phi_g;
@@ -292,6 +314,14 @@ impl FieldState {
         let c = clamp01(phi_g * (1.0 - chi) * tau);
         let wm = clamp01(phi_g * r);
         let pr = clamp01(((1.0 - phi_g) + chi + q) / 3.0);
+
+        // 18. Unified Health (omega_health)
+        // For a single point, we simplify to phi_g dampened by chi.
+        let omega_health = phi_g * (1.0 - chi).max(0.0);
+
+        // 19. Neurogenesis / Regeneration Trigger
+        // Score = alpha * chi + beta * (1 - phi_g)
+        let regen_score = clamp01(0.5 * chi + 0.5 * (1.0 - phi_g));
 
         Self {
             rho,
@@ -311,6 +341,9 @@ impl FieldState {
             c,
             wm,
             pr,
+            gamma,
+            omega_health,
+            regen_score,
             // Legacy aliases
             coherence: r_val,
             mass: u * n,
@@ -320,7 +353,7 @@ impl FieldState {
     }
 
     /// Measure the field state for a specific synthetic vector and the universe.
-    pub fn measure(universe: &Universe, bundle: &SparseVec) -> Self {
+    pub fn measure(universe: &Universe, bundle: &SparseVec, layer_id: u8) -> Self {
         let hits = universe.query_vec(bundle, 5);
         let mut candidate_scores = Vec::new();
         let mut source_vecs = Vec::new();
@@ -331,6 +364,7 @@ impl FieldState {
                 &cell.claim.vec,
                 cell.claim.confidence,
                 cell.claim.created_at,
+                cell.claim.vitality,
             ));
         }
 
@@ -343,6 +377,7 @@ impl FieldState {
             history: &[],
             total_count: (hits.len() + 2).max(10),
             prev_phi_g: 0.0,
+            layer_id,
         };
 
         Self::compute_full(&input)
@@ -350,7 +385,7 @@ impl FieldState {
 
     /// Simple compute from universe only (backward compatible).
     /// Used when you don't have a full FieldInput (e.g., heartbeat status).
-    pub fn compute(universe: &Universe) -> Self {
+    pub fn compute(universe: &Universe, layer_id: u8) -> Self {
         use std::collections::HashMap;
         let cells = universe.cells();
         if cells.is_empty() {

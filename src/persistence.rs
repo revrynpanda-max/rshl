@@ -24,6 +24,8 @@ struct Snapshot {
     universe: Universe,
     candidates: CandidateBuffer,
     drive: Drive,
+    #[serde(default)]
+    synaptic_layer: crate::core::SynapticLayer,
 }
 
 const STATE_FILE: &str = "data/kai-state.json";
@@ -39,6 +41,8 @@ pub struct MindSnapshot {
     pub episodic: EpisodicStore,
     pub global_workspace: GlobalWorkspace,
     pub self_state_hub: SelfStateHub,
+    #[serde(default)]
+    pub synaptic_layer: crate::core::SynapticLayer,
 }
 
 pub struct SaveResult {
@@ -57,12 +61,13 @@ pub struct LoadResult {
 
 /// Save the full cognitive state to disk.
 pub fn save(
+    base_dir: &str,
     universe: &Universe,
     candidates: &CandidateBuffer,
     drive: &Drive,
+    synaptic_layer: &crate::core::SynapticLayer,
     tick: u64,
     dream_count: u64,
-    base_dir: &str,
 ) -> SaveResult {
     let state_path = format!("{}/{}", base_dir, STATE_FILE);
     let backup_path = format!("{}/{}", base_dir, BACKUP_FILE);
@@ -78,12 +83,13 @@ pub fn save(
 
     let snapshot = Snapshot {
         version: 2,
-        saved_at: chrono_now(),
+        saved_at: chrono::Local::now().to_rfc3339(),
         tick,
         dream_count,
         universe: universe.clone(),
         candidates: candidates.clone(),
         drive: drive.clone(),
+        synaptic_layer: synaptic_layer.clone(),
     };
 
     match serde_json::to_string(&snapshot) {
@@ -138,6 +144,7 @@ pub fn save_mind(
     episodic: &EpisodicStore,
     global_workspace: &GlobalWorkspace,
     self_state_hub: &SelfStateHub,
+    synaptic_layer: &crate::core::SynapticLayer,
     base_dir: &str,
 ) -> SaveResult {
     let state_path = format!("{}/{}", base_dir, MIND_FILE);
@@ -158,6 +165,7 @@ pub fn save_mind(
         episodic: episodic.clone(),
         global_workspace: global_workspace.clone(),
         self_state_hub: self_state_hub.clone(),
+        synaptic_layer: synaptic_layer.clone(),
     };
 
     match serde_json::to_string(&snapshot) {
@@ -228,7 +236,7 @@ pub fn load_mind(base_dir: &str) -> Option<MindSnapshot> {
 }
 
 /// Load cognitive state from disk.
-pub fn load(base_dir: &str) -> Option<(Universe, CandidateBuffer, Drive, u64, u64)> {
+pub fn load(base_dir: &str) -> Option<(Universe, CandidateBuffer, Drive, u64, u64, crate::core::SynapticLayer)> {
     let state_path = format!("{}/{}", base_dir, STATE_FILE);
 
     if !Path::new(&state_path).exists() {
@@ -245,7 +253,7 @@ pub fn load(base_dir: &str) -> Option<(Universe, CandidateBuffer, Drive, u64, u6
     let snapshot: Snapshot = match serde_json::from_str(&raw) {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("persistence: failed to deserialize {}: {}", state_path, e);
+            eprintln!("persistence: failed to parse {}: {}", state_path, e);
             return None;
         }
     };
@@ -264,6 +272,7 @@ pub fn load(base_dir: &str) -> Option<(Universe, CandidateBuffer, Drive, u64, u6
         snapshot.drive,
         snapshot.tick,
         snapshot.dream_count,
+        snapshot.synaptic_layer,
     ))
 }
 

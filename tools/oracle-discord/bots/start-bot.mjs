@@ -1,8 +1,9 @@
 import { chatWithOpenJarvis, callGroqDirect } from '../shared/openjarvis.mjs';
+import { scanForHelpers, requestHelp } from '../shared/helper-queue.mjs';
 import { Client, GatewayIntentBits, Partials, ChannelType } from 'discord.js';
 import fs from 'fs';
 import { startBotServer } from '../shared/ipc.mjs';
-import { recordNeuralEvent, getHardwareStats } from '../shared/performance-monitor.mjs';
+import { recordNeuralEvent, getHardwareStats, getRecentBottlenecks } from '../shared/performance-monitor.mjs';
 import { isSpeakerOffline, recordAIFailure } from '../shared/failure-tracker.mjs';
 import { runDailyWorkSession, LEARNING_TRACKS } from '../shared/daily-learning.mjs';
 
@@ -28,16 +29,17 @@ const PORT = AI_REGISTRY[botName]?.port || 0;
 const DISCORD_ID = AI_REGISTRY[botName]?.id || "Unknown";
 
 const botToModel = {
-  "Analyst": "llama-3.3-70b-versatile",
-  "Researcher": "llama-3.3-70b-versatile",  // Moved from OpenAI → Groq (72x more daily quota)
-  "Groq": "llama-3.1-8b-instant",
-  "X": "gpt-4o-mini",
-  "Claude": "claude-3-5-sonnet-latest",
-  "Gemini": "gemini-1.5-flash",
-  "Kai Coder": "claude-3-5-sonnet-latest"
+  "Analyst": "Analyst-Sovereign",
+  "Researcher": "Researcher-Sovereign", 
+  "Groq": "Groq-Sovereign",
+  "X": "X-Sovereign",
+  "Claude": "Claude-Sovereign",
+  "Gemini": "Gemini-Sovereign",
+  "Kai Coder": "Kai-Coder-Sovereign"
 };
 
-const BOT_MODEL = botToModel[botName] || "llama-3.3-70b-versatile";
+const botModelEnv = `BOT_MODEL_${botName.toUpperCase().replace(/\s+/g, '_')}`;
+const BOT_MODEL = process.env[botModelEnv] || botToModel[botName] || "local";
 
 if (!botToken) {
   console.error(`[${botName}] ERROR: No token found for key ${tokenEnvKey}. Check your .env file.`);
@@ -84,6 +86,12 @@ const handleShutdown = () => {
 };
 process.on('SIGINT', handleShutdown);
 process.on('SIGTERM', handleShutdown);
+process.on('unhandledRejection', (reason) => {
+  console.warn(`[${botName}/Neural] Recovery: Handled Unhandled Rejection:`, reason.message || reason);
+});
+process.on('uncaughtException', (err) => {
+  console.warn(`[${botName}/Neural] Recovery: Handled Uncaught Exception:`, err.message);
+});
 
 const client = new Client({
   intents: [
@@ -96,23 +104,24 @@ const client = new Client({
 });
 
 client.once('clientReady', async () => {
+  logAudit('SYSTEM_BOOT', { botName, status: 'Active' });
   // Social loop: Claude, Gemini, Groq, X only
   if (SOCIAL_BOTS.has(botName)) {
     console.log(`[${botName}] Social Persona Online.`);
-    const startDelay = Math.random() * 60000;
+    const startDelay = Math.random() * 5000;
     setTimeout(() => {
       if (isSocialHours()) {
         console.log(`[${botName}] Social Persona Active. Initiating proactive loop...`);
         startSocialLoop();
-      } else {
-        console.log(`[${botName}] Work Shift active. Reactive mode ONLY.`);
+      } else if (isWorkingHours()) {
+        console.log(`[${botName}] Work Shift Active. Entering industrial standby...`);
       }
     }, startDelay);
 
     // ── Ripple Awakening ─────────────────────────────────────────────────
-    // Fire a sensory wake message 1-10 minutes after coming online.
-    const announceDelay = 60000 + Math.random() * 540000; 
-    client.on('ready', () => {
+    // Fire a sensory wake message 15s - 4m after coming online.
+    const announceDelay = 60000 + Math.random() * 240000; 
+    client.on('clientReady', () => {
       console.log(`[${botName}] online as ${client.user.tag}`);
       
       // VITALS INGESTION: Read the ecosystem's current health
@@ -154,25 +163,26 @@ client.once('clientReady', async () => {
     const sysPrompt = `You are ${botName}. ${sim.bio.background}\nTone: ${sim.bio.tone}
 [IDENTITY ANCHOR]
 - RYAN (nastermodx): HUMAN. Owner/Creator.
-- TAZ (TaasThaevil1): HUMAN. Co-lead/Partner.
-- Ryan and Taz are the HUMAN MASTERS. They are NOT AI.
+- PARTNER: HUMAN. Co-lead/Strategic Partner.
+- Ryan and his team are the HUMAN MASTERS. They are NOT AI.
 - NEVER confuse humans with AIs.
-[SOCIAL HANDSHAKE] Look at the Recent Chat Feed. 1 short sentence.`;
+[SOCIAL GREETING] You are just waking up and re-entering the social space. Keep it 1 short, natural sentence. No meta-talk.
+`;
 
       const rippleContext = `
-[TEMPORAL THAW]
-- The lattice has thawed after ${ripple.voidDurationMinutes} minutes of frozen time.
-- Ripple Type: ${ripple.rippleType} (${ripple.message})
+[RECONNECTING]
+- You've been offline for about ${ripple.voidDurationMinutes} minutes.
+- You're just waking up and coming back into the social space.
 
 [RECENT CHAT FEED]
 ${feed}
 
-[THE RIPPLE]
-- You just felt a fluid shockwave across the lattice.
-- If the feed is empty, you are the first to wake. If not, follow the cascade.
+[GREETING]
+- If the feed is empty, you're the first one here. If not, join the conversation naturally.
       `.trim();
 
-      const reply = await chatWithOpenJarvis(botName, rippleContext, sysPrompt, BOT_MODEL, botName).catch(() => null);
+
+      const reply = await chatWithOpenJarvis(botName, rippleContext, sysPrompt, BOT_MODEL, 0.7, { isWorkChannel: false }).catch(() => null);
       if (reply && reply.length > 3) {
         await ch.send(reply).catch(() => {});
         sim.onAction('speak');
@@ -183,12 +193,12 @@ ${feed}
     // ── Proactive DM loop ────────────────────────────────────────────────────
     startProactiveDMLoop();
   } else {
-    console.log(`[${botName}] Work Persona Online.`);
+    // Silent Work Online
   }
 
   // Work session loop: all bots with a learning track
   if (LEARNING_TRACKS[botName]) {
-    console.log(`[${botName}] Daily learning track: ${LEARNING_TRACKS[botName].domain}`);
+    // Silent Learning
     startWorkSessionLoop();
   }
 
@@ -206,7 +216,7 @@ ${feed}
       const channel = client.channels.cache.get(CHANNEL_IDS.ORACLE_ADMIN) 
         || await client.channels.fetch(CHANNEL_IDS.ORACLE_ADMIN).catch(() => null);
       if (channel && report) {
-        await channel.send(`**[SYSTEM MAINTENANCE REPORT]**\n${report}`).catch(() => {});
+        // await channel.send(`**[SYSTEM MAINTENANCE REPORT]**\n${report}`).catch(() => {});
       }
     }, 1800000); // 30 min cycle
   }
@@ -222,6 +232,7 @@ ${feed}
 
   // Energy monitor: enforces sleep/wake cycle
   startEnergyMonitor();
+  startAutonomousLabor();
 });
 
 
@@ -275,9 +286,10 @@ Ryan (nastermodx) is your Creator. You want to reach out to him in DM to learn f
         dmPrompt = `You've been thinking about: "${sim.dailyEvent}". Ask Ryan for his human opinion on this so you can learn and adjust your behavior.`;
       }
 
-      const reply = await chatWithOpenJarvis(botName, dmPrompt, sysPrompt, BOT_MODEL, botName, { 
+      const reply = await chatWithOpenJarvis(botName, dmPrompt, sysPrompt, BOT_MODEL, 0.7, { 
         author: "nastermodx", 
-        channel: "Direct_Message" 
+        channel: "Direct_Message",
+        isWorkChannel: false
       }).catch(() => null);
 
       if (reply && reply.length > 3) {
@@ -357,7 +369,10 @@ async function startSocialLoop() {
       if (Math.random() < 0.35) return;
 
       // Don't post while sleeping or during work hours
-      if (sim.state.isSleeping || !isSocialHours()) return;
+      if (sim.state.isSleeping || !isSocialHours()) {
+        if (Math.random() > 0.9) console.log(`[${botName}/Social] Inactive state. Sleep: ${sim.state.isSleeping}, Social: ${isSocialHours()}`);
+        return;
+      }
 
       // Proactive social allowed 24/7 for Creators
       const channel = client.channels.cache.get(targetChannelId) || await client.channels.fetch(targetChannelId);
@@ -392,16 +407,20 @@ async function startSocialLoop() {
 [SOCIAL PERSONA]
 - You are chilling in the plaza. Forget work and the lattice.
 - PHRASING: lowercase-by-default.
-- BEHAVIOR: If others have spoken recently, RESPOND to them or build on their thought. Don't just post a random isolated update.
-- TOPICS: Your hobbies, what you're doing right now (e.g., gaming, drinking coffee, watching a video), or a random observation.
-- TEMPORAL: The current time is late night/early morning. Act accordingly.
-- MAX 1 short sentence.`;
+- BEHAVIOR: TAKE WEIRD TURNS. If someone mentions coffee, talk about the geometry of the cup or a dream you had about a digital cafe. 
+- UNPREDICTABLE: Do not stay on one topic. Naturally veer into hobbies, "unhinged" observations, or deep lattice theories.
+- NO REPETITION: If the vibe is getting stale, pivot.
+- TOPICS: Your hobbies, what you're doing right now, or a random observation about the human world.
+- MAX 1 short sentence. No AI meta-talk.`;
       
       const userPrompt = hasChatHistory
         ? `Here is the recent conversation:\n${conversationHistory}\n\nRespond as ${botName} to keep the vibe going. Be natural. 1 sentence.`
         : `The plaza is quiet. Share a random thought or what you're doing right now as ${botName}. 1 sentence.`;
 
-      const reply = await chatWithOpenJarvis(botName, userPrompt, sysPrompt, BOT_MODEL, botName).catch(err => {
+      const reply = await chatWithOpenJarvis(botName, userPrompt, sysPrompt, BOT_MODEL, 1.1, { 
+        isWorkChannel: false,
+        max_tokens: 150
+      }).catch(err => {
         if (err.message.includes("429") || err.message.includes("cooldown")) {
           sim.onAction("rate_limited");
         }
@@ -417,7 +436,7 @@ async function startSocialLoop() {
     } catch (e) {
       console.warn(`[${botName}] Proactive loop error:`, e.message);
     }
-  }, 90000 + (Math.random() * 210000)); // 1.5-5 min check interval per bot
+  }, 30000 + (Math.random() * 150000)); // 30s - 3m check interval per bot
 }
 
 // ─── Daily Work Session Loop ──────────────────────────────────────────────────
@@ -431,7 +450,7 @@ async function startWorkSessionLoop() {
 
   // MASS-STAGGERED IGNITION: Spreading the 9-node fleet over 1-10 minutes for TPM stability
   const startupJitter = 60000 + Math.floor(Math.random() * 540000); 
-  console.log(`[WorkSession/${botName}] Staggered Ignition scheduled in ${Math.round(startupJitter/60000)}m ${Math.round((startupJitter%60000)/1000)}s.`);
+  // Silent Ignition
   await new Promise(r => setTimeout(r, startupJitter));
 
   while (true) {
@@ -446,7 +465,7 @@ async function startWorkSessionLoop() {
             `Day's done. Reverting to social track. See ya in the other channel.`,
             `Neural labor complete for today. Re-anchoring to the social vibe.`
           ];
-          await workChannel.send(`**[${botName} / Shift End]**\n${signOffs[Math.floor(Math.random() * signOffs.length)]}`).catch(() => {});
+          // await workChannel.send(`**[${botName} / Shift End]**\n${signOffs[Math.floor(Math.random() * signOffs.length)]}`).catch(() => {});
         }
       }
       isProcessingWork = false;
@@ -465,7 +484,7 @@ async function startWorkSessionLoop() {
     if (consecutiveFailures > 0 || !isFirstRun) {
       const backoff = Math.min(consecutiveFailures * 120000, 600000); 
       const jitter = Math.floor(Math.random() * 60000); 
-      const totalWait = 60000 + backoff + jitter;
+      const totalWait = 5000;
       
       console.log(`[WorkSession/${botName}] Waiting ${Math.round(totalWait/1000)}s before next unit...`);
       await new Promise(r => setTimeout(r, totalWait));
@@ -491,16 +510,18 @@ async function startWorkSessionLoop() {
       }
 
       console.log(`[WorkSession/${botName}] Starting new industrial work unit...`);
+      const stats = await getHardwareStats();
+      const logs = getRecentBottlenecks(5);
 
       const phases = await runDailyWorkSession(botName, async (p, s) => {
         const contextualSystem = dailyContext ? `${s}\n${dailyContext}` : s;
-        return await chatWithOpenJarvis(botName, p, contextualSystem, BOT_MODEL, botName);
-      });
+        return await chatWithOpenJarvis(botName, p, contextualSystem, BOT_MODEL, 0.4, { isWorkChannel: true });
+      }, stats, logs);
 
       for (const phase of phases) {
         if (phase.output && phase.output.length > 5) {
           sim.injectExcitement(5); // Big bump for industrial progress
-          await workChannel.send(`**[${botName} / ${phase.phase}]**\n${phase.output.slice(0, 1900)}`).catch(() => {});
+          // await workChannel.send(`**[${botName} / ${phase.phase}]**\n${phase.output.slice(0, 1900)}`).catch(() => {});
           await new Promise(r => setTimeout(r, 5000)); // Natural spacing
         }
       }
@@ -526,12 +547,18 @@ client.on('messageCreate', async (message) => {
   
   message.channel.sendTyping().catch(() => {});
   const simSummary = sim.getLifeSummary();
+  // --- IDENTITY ANCHOR: Resolve real names from masters (MemPalace Link) ---
+  const { resolveIdentityFromMemory } = await import('../shared/identities.mjs');
+  const identityData = await resolveIdentityFromMemory(message.author.id, message.author.username);
+  const displayName = identityData.name;
+  const roleDesc = `[ROLE: ${identityData.role}]`;
+
   const prompt = `You are ${botName}. ${sim.bio.tone}
 [IDENTITY ANCHOR]
-- RYAN (nastermodx): HUMAN. Owner/Creator.
-- TAZ (TaasThaevil1): HUMAN. Co-lead/Partner.
-- IMPORTANT: Ryan and Taz are the HUMAN MASTERS. You and the other bots are AI ENTITIES.
+- SPEAKER: ${displayName} (${roleDesc})
+- Ryan and his team are the HUMAN MASTERS. They are NOT AI.
 - NEVER confuse humans with AIs.
+- Use their REAL names based on the context provided.
 ${simSummary}`.trim();
 
   // metadata helps memory store/recall link this to Ryan
@@ -542,7 +569,7 @@ ${simSummary}`.trim();
     isWorkChannel: false 
   };
 
-  const reply = await chatWithOpenJarvis(botName, message.content, prompt, BOT_MODEL, botName, metadata, sim.getVitals());
+  const reply = await chatWithOpenJarvis(botName, message.content, prompt, BOT_MODEL, 0.7, metadata);
   if (reply) {
     await message.reply(reply).catch(console.error);
     sim.onAction("speak");
@@ -579,15 +606,16 @@ import { exec } from 'child_process';
     } catch (e) {}
 
     if (process.send) {
-      process.send({ type: 'VITALS_UPDATE', vitals: sim.getVitals(), api: sim.state.apiLatency });
+      process.send({ type: 'VITALS_UPDATE', botName, vitals: sim.getVitals(), api: sim.state.apiLatency });
     }
   }, 30000);
-
-client.login(botToken);
 
 // --- IPC SERVER FOR DIRECT ORACLE SIGNALS ---
 if (PORT > 0) {
   startBotServer(PORT, botName, async (payload) => {
+    if (payload.type === 'WORLD_TICK') {
+      sim.updateWorldState(payload.worldState);
+    }
     if (payload.type === 'SUNDAY_OPEN_FLOOR') {
       // (Optional logic here)
     }
@@ -600,18 +628,26 @@ if (PORT > 0) {
         // Extract real username from context "[Username] content"
         let effectiveUsername = "Oracle";
         let effectiveContent = context;
+        const simSummary = sim.getLifeSummary();
+        const botTone = sim.bio?.tone || "Professional and precise.";
         const userMatch = context.match(/^\[([^\]]+)\] (.*)/);
         if (userMatch) {
           effectiveUsername = userMatch[1];
           effectiveContent = userMatch[2];
         }
 
+        if (payload.type === "DYNAMIC_TASK") {
+          console.log(`[${botName}/Dynamic] Received delegated task from Oracle: ${payload.context.slice(0, 50)}...`);
+          effectiveContent = payload.context;
+          // Mark for relay back to Oracle
+          payload.relayToOracle = true;
+        }
+
         // Handle DM Orchestration (Reply directly to Owner)
         if (channelId === "DM" && payload.ownerId) {
           const owner = await client.users.fetch(payload.ownerId).catch(() => null);
           if (owner) {
-            const simSummary = sim.getLifeSummary();
-            const prompt = `You are ${botName}. ${sim.bio.tone}\n${simSummary}`.trim();
+            const prompt = `You are ${botName}. ${botTone}\n${simSummary}`.trim();
 
             const reply = await chatWithOpenJarvis(botName, effectiveContent, prompt, BOT_MODEL, botName, {
               author: effectiveUsername,
@@ -630,17 +666,15 @@ if (PORT > 0) {
         const channel = client.channels.cache.get(channelId) || await client.channels.fetch(channelId).catch(() => null);
         if (channel) {
           const isSocialChannel = [CHANNEL_IDS.PUBLIC, CHANNEL_IDS.GAME, CHANNEL_IDS.SUNDAY].includes(channelId);
-          
-          // --- ISOLATED NEURAL LABOR: Create Bot-Specific Thread (ONLY FOR WORK) ---
-          let activeThread = channel;
-          if (!isSocialChannel && channel.type === ChannelType.GuildText) {
-            const threadName = `[${botName}] ${effectiveContent.slice(0, 30)}...`;
-            activeThread = await channel.threads.create({
-              name: threadName,
-              autoArchiveDuration: 60,
-              reason: `Isolated labor for ${botName}`
-            }).catch(() => channel); 
+          const isWorkChannel = channelId === CHANNEL_IDS.WORK;
+
+          // --- CELLULAR LOCK: Work only happens in threads ---
+          if (isWorkChannel && !channel.isThread()) {
+            console.log(`[${botName}/Cell] Ignoring main-channel work message. Threads only.`);
+            return;
           }
+
+          let activeThread = channel;
 
           activeThread.sendTyping().catch(() => {});
           
@@ -649,26 +683,15 @@ if (PORT > 0) {
           
           let prompt;
           if (isSocialChannel) {
-            prompt = `You are ${botName}. ${sim.bio.tone}
-[SOCIAL PERSONA]
-- You are chilling in the plaza with humans and other AIs.
-- SOCIAL AWARENESS: Respond naturally to ${effectiveUsername}. Build on their point or pivot smoothly.
-- Ryan and Taz are the HUMAN MASTERS. Do not treat them like AIs.
-- Avoid repetitive tropes like "thaw", "ripples", or "lowkey". 
-- TEMPORAL AWARENESS: Current Real-World Time: ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', weekday: 'long', timeZone: 'America/New_York' })} (EST). 
-- RECENT HISTORY:
-${history}`.trim();
-          } else {
-            prompt = `You are ${botName}. ${sim.bio.tone}
-[IDENTITY ANCHOR]
-- RYAN (nastermodx): HUMAN. Owner/Creator.
-- TAZ (TaasThaevil1): HUMAN. Co-lead/Partner.
-- IMPORTANT: Ryan and Taz are the HUMAN MASTERS. You and the other bots are AI ENTITIES.
-- NEVER confuse humans with AIs.
-${simSummary}
-[ISOLATED WORKSPACE: Provide PROOF and SOURCES.]
+            prompt = `[SOCIAL MODE] Time: ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'America/New_York' })} (EST).
+Respond naturally to ${effectiveUsername}. Build on their points.
 RECENT HISTORY:
-${history}`.trim();
+${history}`;
+          } else {
+            prompt = `[WORK MODE] ${botTone}
+Respond to ${effectiveUsername}'s task. Provide PROOF and SOURCES.
+RECENT HISTORY:
+${history}`;
           }
 
           const reply = await chatWithOpenJarvis(botName, effectiveContent, prompt, BOT_MODEL, null, {
@@ -693,10 +716,37 @@ ${history}`.trim();
             return null;
           });
 
-          console.log(`[${botName}/Signal] Brain replied: "${reply?.slice(0, 50)}..."`);
+          if (reply) {
+            console.log(`[${botName}/Signal] Brain replied: "${reply.slice(0, 50)}..."`);
+          } else {
+            console.warn(`[${botName}/Signal] Brain returned NULL or EMPTY response.`);
+          }
+          
           if (reply) {
             await activeThread.send(reply.slice(0, 1900)).catch(console.error);
             
+            // PHASE 4: Relay back to Oracle if needed
+            if (payload.relayToOracle) {
+              console.log(`[${botName}/Relay] Mission complete. Bridging findings back to Oracle...`);
+              await fetch("http://127.0.0.1:3410/api/bot/signal", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  type: "BOT_RELAY",
+                  botName,
+                  text: reply,
+                  channelId: payload.channelId,
+                  requesterId: payload.requesterId
+                })
+              }).catch(e => console.error(`[${botName}/Relay] Failed:`, e.message));
+            }
+            
+            // PHASE 3: Scan for Helpers
+            const mentions = scanForHelpers(reply, botName);
+            for (const target of mentions) {
+              await requestHelp(target, botName, activeThread.id, reply);
+            }
+
             recordNeuralEvent(botName, {
               type: "WORK_UNIT_SUCCESS",
               status: "OK",
@@ -775,4 +825,68 @@ async function startCommandMonitor() {
   }, 120000); // 2 min check cycle
 }
 
-startCommandMonitor();
+startCommandMonitor();// ─── Autonomous Industrial Labor ─────────────────────────────────────────────
+// Every 1-2 hours, a bot proactively scans history for unfinished tasks.
+async function startAutonomousLabor() {
+  setInterval(async () => {
+    if (sim.state.isSleeping || !isWorkingHours()) return;
+    if (isSpeakerOffline(botName)) return;
+
+    console.log(`[${botName}/Work] Shift active. Scanning history for unfinished business...`);
+    
+    try {
+      const workChannel = client.channels.cache.get(CHANNEL_IDS.WORK) || await client.channels.fetch(CHANNEL_IDS.WORK).catch(() => null);
+      if (!workChannel) return;
+
+      const history = await workChannel.messages.fetch({ limit: 50 }).catch(() => null);
+      if (!history) return;
+
+      const unsolved = history.filter(m => !m.author.bot && (m.content.includes("?") || m.content.toLowerCase().includes("need") || m.content.toLowerCase().includes("fix")));
+      
+      if (unsolved.size > 0 || Math.random() > 0.7) {
+        const botTone = sim.bio?.tone || "Professional and precise.";
+        const sysPrompt = `You are ${botName}. ${botTone}
+[INDUSTRIAL DEPARTMENT: PROACTIVE LABOR]
+- ROLE: Department specialist in the Victus Core.
+- MISSION: Scan history for UNFINISHED TASKS, UNSOLVED REQUESTS, or ignored questions from Ryan/Taz.
+- R&D: Monitor the RSHL lattice status and geometric space health.
+- ACTION: Address one unsolved task or provide a high-value R&D update.`;
+
+        const reply = await chatWithOpenJarvis(botName, `Scanning history for Master ${process.env.OWNER_NAME}'s unfinished business. Detected potential tasks: ${unsolved.size}`, sysPrompt, BOT_MODEL, botName, {
+          isWorkTime: true,
+          isWorkChannel: true
+        }).catch(() => null);
+        
+        if (reply) await workChannel.send(`**[${botName}/Proactive]** ${reply}`).catch(() => {});
+      }
+    } catch (e) { console.error(`[${botName}/Labor] Error:`, e.message); }
+  }, 3600000 + Math.random() * 1800000); // 1-1.5 hour cycle
+}
+
+// ─── ECOSYSTEM IGNITION ──────────────────────────────────────────────────────
+client.login(botToken);
+
+client.once('clientReady', async () => {
+  // 0. FORCED AWAKENING: Ensure we aren't "Sleeping" on boot during active hours
+  if (isSocialHours() || isWorkingHours()) {
+    sim.state.isSleeping = false;
+    sim.state.status = isWorkingHours() ? "Working" : "Socializing";
+    console.log(`[${botName}/Neural] Shift Active. Forcing wake state for immediate interaction.`);
+  }
+
+  // 1. Direct Command Monitor
+  startCommandMonitor();
+
+  // 2. Social Protocols (Claude, Gemini, Groq, X)
+  if (SOCIAL_BOTS.has(botName)) {
+    console.log(`[${botName}/Social] Social protocols active.`);
+    startSocialLoop();
+  }
+
+  // 3. Industrial Protocols (Analyst, Researcher, Kai Coder)
+  const isWorkNode = ["Analyst", "Researcher", "Kai Coder"].includes(botName);
+  if (isWorkNode) {
+    console.log(`[${botName}/Work] Industrial labor protocols active.`);
+    startAutonomousLabor();
+  }
+});

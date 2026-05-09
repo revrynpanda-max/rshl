@@ -7,7 +7,7 @@
 //!
 //! This is the mathematical core of KAI's memory.
 pub const DIM: usize = 16384;
-const SPARSITY: f32 = 0.12; // Increased from 0.04 to 12% for better connectivity
+const SPARSITY: f32 = 0.12;
 
 /// A sparse ternary vector in 16384 dimensions.
 /// Values are -1, 0, or +1 stored as i8 for cache efficiency.
@@ -102,15 +102,15 @@ impl SparseVec {
     #[inline]
     fn compute_norm(data: &[i8]) -> f32 {
         let mut count = 0u32;
-        // Wide loop for SIMD auto-vectorization — compiler emits
-        // vpabsb + vpcmpb or equivalent on AVX2-capable CPUs.
-        for chunk in data.chunks_exact(64) {
+        // Process chunks of 64
+        let chunks = data.chunks_exact(64);
+        let rem = chunks.remainder();
+        for chunk in chunks {
             for &v in chunk {
                 count += (v != 0) as u32;
             }
         }
-        // Remainder (DIM=16384 is 64-aligned, so this is a no-op)
-        for &v in &data[data.len() - (data.len() % 64)..] {
+        for &v in rem {
             count += (v != 0) as u32;
         }
         (count as f32).sqrt()
@@ -350,9 +350,12 @@ impl SparseVec {
         let (a, b) = (&self.data, &other.data);
         let mut dot: i32 = 0;
 
-        // Process 64 elements at a time for maximum SIMD utilization.
-        // The compiler emits vpmaddubsw + vpmaddwd sequences on AVX2.
-        for (ca, cb) in a.chunks_exact(64).zip(b.chunks_exact(64)) {
+        let chunks_a = a.chunks_exact(64);
+        let chunks_b = b.chunks_exact(64);
+        let rem_a = chunks_a.remainder();
+        let rem_b = chunks_b.remainder();
+
+        for (ca, cb) in chunks_a.zip(chunks_b) {
             let mut local: i32 = 0;
             for i in 0..64 {
                 local += ca[i] as i32 * cb[i] as i32;
@@ -360,10 +363,8 @@ impl SparseVec {
             dot += local;
         }
 
-        // Handle remainder (DIM=16384 is 64-aligned, so this is dead code)
-        let rem_start = a.len() - (a.len() % 64);
-        for i in rem_start..a.len() {
-            dot += a[i] as i32 * b[i] as i32;
+        for (ra, rb) in rem_a.iter().zip(rem_b.iter()) {
+            dot += *ra as i32 * *rb as i32;
         }
         dot
     }
@@ -406,6 +407,35 @@ impl SparseVec {
         }
         let cached_norm = Self::compute_norm(&data);
         Self { data, cached_norm }
+    }
+
+    /// Weighted superposition of multiple vectors.
+    /// Each vector is multiplied by its weight before accumulation.
+    /// Resulting components are thresholded to produce a ternary vector.
+    pub fn weighted_superpose(vecs: &[(&SparseVec, f32)], threshold_ratio: f32) -> Self {
+        if vecs.is_empty() {
+            return Self::zero();
+        }
+        let mut acc = vec![0f32; DIM];
+        let mut total_weight = 0.0f32;
+        for (v, w) in vecs {
+            total_weight += w;
+            for i in 0..DIM {
+                acc[i] += v.data[i] as f32 * *w;
+            }
+        }
+        let threshold = total_weight * threshold_ratio;
+        let mut data = vec![0i8; DIM];
+        for i in 0..DIM {
+            data[i] = if acc[i] >= threshold {
+                1
+            } else if acc[i] <= -threshold {
+                -1
+            } else {
+                0
+            };
+        }
+        Self::from_raw(data)
     }
 
     /// Superpose without consensus threshold, but with a sparsity target.
@@ -585,6 +615,48 @@ impl SparseVec {
             .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
             .filter(|(_, score)| *score > 0.15)
             .map(|(word, _)| word.to_string())
+    }
+
+    /// Vogel Spiral Projection (Noids)
+    ///
+    /// Generates a unique 16,383-dimensional spatial anchor vector for a given
+    /// cell index using the Golden Angle (137.508°). This ensures that new
+    /// claims are "placed" in the lattice with maximum initial separation
+    /// (Weyl distribution) before the Boid engine starts moving them.
+    ///
+    /// The `seed` allows for "localized" spirals (e.g. per-user cellularization).
+    pub fn project_vogel_spiral(index: usize, seed: u32) -> Self {
+        let mut data = vec![0i8; DIM];
+        let n = (index + 1) as f32;
+        const GOLDEN_ANGLE: f32 = 2.399_963_1_f32; // 137.508 degrees in radians
+        
+        // Offset the theta by the seed's own golden angle contribution
+        let theta_offset = (seed as f32 * GOLDEN_ANGLE) % std::f32::consts::TAU;
+        let theta = (n * GOLDEN_ANGLE) + theta_offset;
+        
+        // Use the angle to select which dimensions are active.
+        let target_nnz = (DIM as f32 * 0.10) as usize; // 10% density for anchors
+        
+        for k in 0..target_nnz {
+            // Mix the index, k, and seed to get a deterministic dimension
+            let mut s = (index as u32)
+                .wrapping_add(k as u32)
+                .wrapping_add(seed)
+                .wrapping_mul(0x9E3779B9);
+            s ^= s << 13;
+            s ^= s >> 17;
+            s ^= s << 5;
+            
+            let dim_idx = (s as usize) % DIM;
+            if data[dim_idx] == 0 {
+                // Use the phase angle to determine the sign
+                let phase = (theta + (k as f32 * 0.1)) % std::f32::consts::TAU;
+                data[dim_idx] = if phase < std::f32::consts::PI { 1 } else { -1 };
+            }
+        }
+        
+        let cached_norm = Self::compute_norm(&data);
+        Self { data, cached_norm }
     }
 }
 

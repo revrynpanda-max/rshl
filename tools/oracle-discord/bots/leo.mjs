@@ -486,76 +486,41 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
   }
 
   if (newState.channelId === CHANNEL_IDS.VOICE && oldState.channelId !== CHANNEL_IDS.VOICE) {
-    console.log(`[Leo/Voice] Match detected for user ${userId}. Waiting for assignment sync...`);
-    await new Promise(r => setTimeout(r, 500)); // Race condition fix
+    console.log(`[Leo/Voice] Match detected for user ${userId}. Triggering Parallel Ignition...`);
+    
+    // START NEURAL WORK IMMEDIATELY (Don't wait for connection)
+    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const localPrompt = `User ${newState.member?.user.username} just joined. Time: ${timeStr}. Give a 1-sentence chill greeting.`;
+    const localSystem = `You are LEO. Street-smart physicist. Chill, direct, zero filter. Speak in lowercase. NO ASSISTANT BOXES. NO GREETINGS. Just a 1-sentence vibe check.`;
+    
+    const neuralPromise = chatWithOpenJarvis(BOT_NAME, localPrompt, localSystem, "Leo-Sovereign", "", true).catch(() => `Yo, what's good?`);
+
     try {
       const data = await getSlotAssignments();
-      console.log(`[Leo/Voice] Syncing assignments...`);
-      
-        // AUTO-ASSIGN SLOT: If user has no assignment, give them one.
-        let slotIdx = data.assignments[userId];
-        if (slotIdx === undefined) {
-          console.log(`[Leo/Voice] Assigning new slot to ${userId}...`);
-          const { assignSlot, updatePermissions } = await import('../shared/voice-manager.mjs');
-          slotIdx = await assignSlot(userId);
-          if (slotIdx !== -1) await updatePermissions(client, userId, slotIdx, true);
-        }
+      let slotIdx = data.assignments[userId];
+      if (slotIdx === undefined) {
+        const { assignSlot, updatePermissions } = await import('../shared/voice-manager.mjs');
+        slotIdx = await assignSlot(userId);
+        if (slotIdx !== -1) await updatePermissions(client, userId, slotIdx, true);
+      }
 
-        if (slotIdx !== -1) {
-          const transcriptChannelId = CHANNEL_IDS.LEO_VOICE_SLOTS[slotIdx];
-          userTranscriptChannels.set(userId, transcriptChannelId);
-          currentAssignedUser = userId;
-          
-          console.log(`[Leo/Voice] Assignment confirmed (Slot ${slotIdx}). Joining channel...`);
-          lastVocalReplyTime = Date.now(); 
-          await ensureVoiceConnection(CHANNEL_IDS.VOICE, newState.guild, 3, userId);
-
-        const guildMembers = newState.channel.members.filter(m => !m.user.bot);
-        const userNames = guildMembers.map(m => m.user.username).join(", ");
-        const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-        const greetingPrompt = `You just joined a voice channel. 
-Users present: ${userNames}
-Current time: ${timeStr}
-Entropy: ${Math.random()}
-
-TASK: Give a short, natural greeting like a friend joining a call. 
-- Tone: Street-smart physicist, zero filter, chill.
-- Be aware of the time (late night, early morning, etc.).
-- Direct it at the room or a specific person if you feel like it.
-- **VIBE SHIFT**: Be unpredictable. Don't repeat yourself.
-- **STRUCTURE**: Use proper punctuation (?!.,). Don't rush.
-- MAX 12 WORDS. Keep it punchy.`;
-
-        // CALIBRATION LOCK: Skip neural greeting if user needs calibration
-        const profileName = newState.member?.user.username === process.env.OWNER_USERNAME ? process.env.OWNER_NAME : newState.member?.user.username;
-        const needsCalibration = !biometrics.profiles.has(profileName);
+      if (slotIdx !== -1) {
+        const transcriptChannelId = CHANNEL_IDS.LEO_VOICE_SLOTS[slotIdx];
+        userTranscriptChannels.set(userId, transcriptChannelId);
+        currentAssignedUser = userId;
         
-        if (needsCalibration) {
-          console.log(`[Leo/Voice] Skipping standard welcome — prioritizing calibration for ${profileName}.`);
-        } else {
-          // GREETING: Force NO history so it doesn't try to answer old questions
-          const welcomeText = await callGroqAsLeo(greetingPrompt, "System", transcriptChannelId, null, "").catch(() => null);
-          
-          const fallbacks = [
-            `Yo, room's lookin' dense tonight. What's the word?`,
-            `Late night resonance check. How we feelin', ${userNames}?`,
-            `Quantum vibes in here. Hope I'm not interuptin' the flow.`,
-            `Anchored and active. What's the signal, fam?`,
-            `Ayy, ${timeStr} and we're still at it? Respect.`
-          ];
-          
-          const finalWelcome = welcomeText || fallbacks[Math.floor(Math.random() * fallbacks.length)];
-
-          const tChannel = client.channels.cache.get(transcriptChannelId) || await client.channels.fetch(transcriptChannelId);
-          if (tChannel && finalWelcome && finalWelcome.trim().length > 0) {
-            let cleanWelcome = finalWelcome.replace(/^[\s\-\*•"'“‘]+/, '').split('\n')[0].trim();
-            if (cleanWelcome.length > 0) {
-              await tChannel.send(`**Leo:** ${cleanWelcome}`).catch(() => {});
+        // Connect and wait for the neural brain in parallel
+        await Promise.all([
+          ensureVoiceConnection(CHANNEL_IDS.VOICE, newState.guild, 3, userId),
+          neuralPromise.then(async (finalWelcome) => {
+            if (finalWelcome) {
+              let cleanWelcome = finalWelcome.replace(/^[\s\-\*•"'“‘]+/, '').split('\n')[0].trim();
+              const tChannel = client.channels.cache.get(transcriptChannelId) || await client.channels.fetch(transcriptChannelId);
+              if (tChannel) await tChannel.send(`**Leo:** ${cleanWelcome}`).catch(() => {});
               await speakLeoText(cleanWelcome);
             }
-          }
-        }
+          })
+        ]);
 
         // --- FULL PERIMETER SCAN ---
         // Check everyone in the channel for Voice Signatures
@@ -624,6 +589,92 @@ async function triggerVoiceLockOnboarding(user, profileName) {
   }, 2000);
 }
 
+let vocalQueue = [];
+let isSpeaking = false;
+
+async function killSpeech() {
+  vocalQueue = [];
+  isSpeaking = false;
+  if (audioPlayer) audioPlayer.stop();
+  console.log(`[Leo/Speech] Audio pre-empted by Master.`);
+}
+
+async function processVocalQueue() {
+  if (isSpeaking || vocalQueue.length === 0) return;
+  isSpeaking = true;
+  const text = vocalQueue.shift();
+  try {
+    await executeVocalSync(text);
+  } catch (e) {
+    console.error("[Leo/Queue] Vocal execution failed:", e.message);
+  }
+  isSpeaking = false;
+  processVocalQueue();
+}
+
+async function speakLeoText(text, isPriority = false) {
+  if (!text || text.length < 2) return;
+  if (isPriority) {
+    vocalQueue.unshift(text);
+    if (isSpeaking && audioPlayer) audioPlayer.stop(); // Pre-empt current speech for priority
+  } else {
+    vocalQueue.push(text);
+  }
+  processVocalQueue();
+}
+
+async function executeVocalSync(text) {
+  const t_start = Date.now();
+  console.log(`[Leo/Speech] Synthesizing: "${text.slice(0, 40)}..."`);
+  
+  try {
+    let res;
+    if (ELEVEN_LABS_KEY) {
+      const voiceId = "hswfOuM90P82BLQSXwqU"; // Leo (Physicist) Verified ID
+      res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream?optimize_streaming_latency=4`, {
+        method: "POST",
+        headers: { "xi-api-key": ELEVEN_LABS_KEY, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: text,
+          model_id: "eleven_turbo_v2_5", // Fastest high-fidelity model
+          voice_settings: { stability: 0.4, similarity_boost: 0.8, style: 0.5 }
+        })
+      });
+    } else {
+      res = await fetch("https://api.openai.com/v1/audio/speech", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "tts-1",
+          input: text,
+          voice: "fable",
+          speed: 1.1
+        })
+      });
+    }
+
+    if (!res.ok) throw new Error(`TTS API error: ${res.statusText}`);
+
+    const ffmpeg = spawn(ffmpegPath, [
+      "-i", "pipe:0", "-af", "volume=2.0", "-f", "s16le", "-ar", "48000", "-ac", "2", "pipe:1"
+    ]);
+    
+    const nodeStream = Readable.fromWeb(res.body);
+    nodeStream.pipe(ffmpeg.stdin);
+    
+    const resource = createAudioResource(ffmpeg.stdout, { inputType: StreamType.Raw });
+    audioPlayer.play(resource);
+    
+    await entersState(audioPlayer, AudioPlayerStatus.Playing, 5000);
+    await entersState(audioPlayer, AudioPlayerStatus.Idle, 60000); // Wait for finish
+    
+    const duration = Date.now() - t_start;
+    console.log(`[Leo/Speech] Output complete (${duration}ms).`);
+  } catch (err) {
+    console.error("[Leo/Speech] Error:", err.message);
+  }
+}
+
 async function ensureVoiceConnection(channelId, guild, retries = 3, userId = null) {
   try {
     if (voiceConnection && voiceConnection.state.status !== VoiceConnectionStatus.Destroyed) {
@@ -647,6 +698,26 @@ async function ensureVoiceConnection(channelId, guild, retries = 3, userId = nul
     isProcessingVoice = false; 
     currentAssignedUser = userId; 
 
+    // --- IDENTITY ANCHOR: Resolve real names immediately (MemPalace Link) ---
+    const { resolveIdentityFromMemory } = await import('../shared/identities.mjs');
+    const user = await client.users.fetch(userId);
+    const identityData = await resolveIdentityFromMemory(userId, user.username);
+    
+    if (!identityData) {
+      console.log(`[Leo/Voice] Suppressing ghost query for ${userId}.`);
+      return;
+    }
+
+    const realName = identityData.name;
+    const profileName = user.username === process.env.OWNER_USERNAME ? process.env.OWNER_NAME : user.username;
+
+    if (!biometrics.profiles.has(profileName)) {
+      console.log(`[Leo/Voice] Triggering Security Calibration for ${profileName}...`);
+      await triggerVoiceLockOnboarding(user, profileName);
+    } else {
+      console.log(`[Leo/Voice] Authorized user confirmed: ${realName} (${identityData.role})`);
+    }
+
     // --- HUMAN BRIDGE: Cross-User Message Relay ---
     const bridgePath = `c:/KAI/tools/oracle-discord/state/shared_human_bridge.json`;
     if (fs.existsSync(bridgePath)) {
@@ -655,10 +726,10 @@ async function ensureVoiceConnection(channelId, guild, retries = 3, userId = nul
         const myMessages = bridgeData.filter(m => m.targetId === userId && !m.delivered);
         
         if (myMessages.length > 0) {
-          console.log(`[Leo/Bridge] Delivering ${myMessages.length} messages to ${profileName}...`);
+          console.log(`[Leo/Bridge] Delivering ${myMessages.length} messages to ${realName}...`);
           setTimeout(async () => {
             for (const msg of myMessages) {
-              await speakLeoText(`Hey ${profileName}, ${msg.fromName} wanted me to tell you: ${msg.content}`);
+              await speakLeoText(`Hey ${realName}, ${msg.fromName} wanted me to tell you: ${msg.content}`);
               msg.delivered = true;
               msg.deliveredAt = new Date().toISOString();
             }
@@ -675,29 +746,22 @@ async function ensureVoiceConnection(channelId, guild, retries = 3, userId = nul
       try {
         const inquiryData = JSON.parse(fs.readFileSync(pendingInquiryPath, 'utf8'));
         setTimeout(async () => {
-          await speakLeoText(`Listen ${profileName}, I've got an update on that research. The Oracle found that ${inquiryData.conclusion}`);
+          await speakLeoText(`Listen ${realName}, I've got an update on that research. The Oracle found that ${inquiryData.conclusion}`);
           fs.unlinkSync(pendingInquiryPath);
         }, 15000);
       } catch (e) { console.error("[Leo/Memory] Error recalling inquiry:", e); }
     }
 
-    // PROACTIVE GREETING
-    const user = await client.users.fetch(userId);
-    const profileName = user.username === process.env.OWNER_USERNAME ? process.env.OWNER_NAME : user.username;
-    
-    if (!biometrics.profiles.has(profileName)) {
-      console.log(`[Leo/Voice] Triggering Security Calibration for ${profileName}...`);
-      await triggerVoiceLockOnboarding(user, profileName);
-    } else {
-      console.log(`[Leo/Voice] Authorized user confirmed.`);
-    }
-
     voiceConnection.receiver.speaking.removeAllListeners('start');
     voiceConnection.receiver.speaking.on('start', (uid) => {
-      handleUserVoice(uid).catch(err => console.error(`[Leo/Audio] Voice trigger failed for ${uid}:`, err.message));
+      // Small delay to ensure DAVE negotiation is settled
+      setTimeout(() => {
+        handleUserVoice(uid).catch(err => console.error(`[Leo/Audio] Voice trigger failed for ${uid}:`, err.message));
+      }, 250);
     });
 
     // VOCAL HEARTBEAT: Monitor the state of the voice output
+    audioPlayer.removeAllListeners('stateChange');
     audioPlayer.on('stateChange', (oldState, newState) => {
       console.log(`[Leo/Speech] AudioPlayer: ${oldState.status} -> ${newState.status}`);
       if (newState.status === 'Idle' && oldState.status !== 'Idle') {
@@ -718,14 +782,23 @@ async function ensureVoiceConnection(channelId, guild, retries = 3, userId = nul
   }
 }
 
+async function getSnapReaction(transcript, displayName) {
+  try {
+    const res = await callGroqDirect(BOT_NAME, 
+      `Give me a 1-sentence, human-like reaction to this: "${transcript}". Be street-smart and brief. 10 words max.`,
+      `You are Leo. Strategic voice of Victus. Reply instantly to ${displayName}.`,
+      "llama-3.1-8b-instant"
+    );
+    return res;
+  } catch { return "On it."; }
+}
+
 async function handleUserVoice(userId) {
   const now = Date.now();
-  
-  // STABILITY WINDOW: Don't listen for 5s after joining
-  if (now - lastVocalReplyTime < 5000) return;
-  
-  // USER-SPECIFIC LOCK: No double-thinking for the same human
+  if (now - lastVocalReplyTime < 500) return; // Reduced for rapid turns
   if (activeThoughts.has(userId) || isProcessingVoice || isThinking) return;
+  
+  await killSpeech(); // INTERRUPT: Stop talking if the master starts talking
   
   const lastTime = userCooldowns.get(userId) || 0;
   if (now - lastTime < 5000) return; // Cooldown for stability
@@ -743,6 +816,13 @@ async function handleUserVoice(userId) {
     const t_start = Date.now();
     const pcm = await capturePcm(userId);
     if (!pcm || pcm.length < 1000) return;
+
+    // --- SOVEREIGN STRIKE: Primary Neural Pipeline ---
+    // User transcript is mirrored to the Oracle Gateway for the transcript log.
+    const transcriptChannelId = userTranscriptChannels.get(userId);
+    const tChannel = client.channels.cache.get(transcriptChannelId) || await client.channels.fetch(transcriptChannelId).catch(() => null);
+    
+    let hasResponded = false;
     
     // TRANSFORMATION OPTIMIZATION: Convert once, reuse everywhere.
     const wav = pcmToWav(pcm, 48000, 2);
@@ -774,11 +854,16 @@ async function handleUserVoice(userId) {
     const confidence = Math.round(idResult.similarity * 100);
     console.log(`[Leo/Biometrics] Local Verification: ${detectedName} (${confidence}% match)`);
 
-    // FUZZY DEDUPLICATION
+    // FUZZY DEDUPLICATION: Anti-Echo Logic
+
+    // FUZZY DEDUPLICATION: Anti-Echo Logic
     const fuzzyHash = getFuzzyHash(transcript);
-    if (recentVoiceResponses.has(fuzzyHash)) return;
+    if (recentVoiceResponses.has(fuzzyHash)) {
+      console.log(`[Leo/Dedupe] Suppressing repeat transcript: "${transcript}"`);
+      return;
+    }
     recentVoiceResponses.add(fuzzyHash);
-    setTimeout(() => recentVoiceResponses.delete(fuzzyHash), 45000);
+    setTimeout(() => recentVoiceResponses.delete(fuzzyHash), 60000); // 60s window
 
     const normalized = transcript.toLowerCase();
     const mentionedLeo = ["leo", "leah", "lia", "leyo", "lee"].some(n => normalized.includes(n));
@@ -926,6 +1011,8 @@ async function handleUserVoice(userId) {
 `;
 
       const response = await callGroqAsLeo(contextualTranscript, user.username, transcriptChannelId, userId, history, detectedIdentity);
+      hasResponded = true;
+      
       const t_neural_dur = Date.now() - t_neural_start;
       
       if (response && response.length > 1) {
@@ -945,7 +1032,21 @@ async function handleUserVoice(userId) {
         const sentences = cleanResponse.match(/[^.!?…]+[.!?…]*/g);
         if (sentences && sentences.length > 4) cleanResponse = sentences.slice(0, 3).join("").trim();
         
-        if (tChannel && cleanResponse) await tChannel.send(`**Leo:** ${cleanResponse}`).catch(() => {});
+        if (tChannel && cleanResponse) {
+          await tChannel.send(`**Leo:** ${cleanResponse}`).catch(() => {});
+          
+          // MIRROR TO GATEWAY: Ensure the Oracle records this as a bot interaction
+          fetch(`http://127.0.0.1:3410`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              type: 'BOT_SPEECH', 
+              botName: BOT_NAME, 
+              text: cleanResponse, 
+              channelId: transcriptChannelId 
+            })
+          }).catch(() => {});
+        }
         
         const t_tts_start = Date.now();
         await speakLeoText(cleanResponse);
@@ -1027,7 +1128,8 @@ async function transcribeAudio(wavBuffer) {
     const res = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
       method: "POST", 
       headers: { "Authorization": `Bearer ${groqKey}` }, 
-      body: form
+      body: form,
+      signal: AbortSignal.timeout(5000) // 5s HARD-CAP on STT
     });
     
     const data = await res.json();
@@ -1036,110 +1138,21 @@ async function transcribeAudio(wavBuffer) {
       console.error(`[Leo/Audio] Groq Whisper Error:`, data.error.message);
       return null;
     }
-    return data.text || "";
+
+    const transcript = (data.text || "").trim();
+    
+    // --- HALLUCINATION FILTER: Purge Whisper Ghost Phrases ---
+    const hallucinations = ["Thank you.", "Thanks for watching.", "Subtitle by", "Please subscribe", "you", "Thank you"];
+    if (hallucinations.some(h => transcript.toLowerCase().includes(h.toLowerCase()) && transcript.length < 20)) {
+      console.log(`[Leo/Audio] Purged STT Hallucination: "${transcript}"`);
+      return null;
+    }
+
+    return transcript;
   } catch (err) {
     console.error(`[Leo/Audio] Transcription Fetch Failed:`, err.message);
     return null;
   }
-}
-
-async function speakLeoText(text) {
-  if (!text || text.trim().length === 0) return;
-  
-  // If we have no keys at all, we can't speak
-  if (!ELEVEN_LABS_KEY && !process.env.OPENAI_API_KEY) {
-    console.warn("[Leo/Speech] No TTS keys found (ElevenLabs or OpenAI). Silence is mandatory.");
-    return;
-  }
-  console.log(`[Leo/Speech] Outbound: "${text}"`);
-  try {
-    const ownerName = process.env.OWNER_NAME || "Ryan";
-    const profile = biometrics.profiles.get(ownerName);
-    
-    // AUTO-CALIBRATION: Mirror Ryan's Helix-Depth
-    // If Ryan rolls his pitch a lot (high range), Leo expresses more.
-    let stability = 0.35;
-    let style = 0.65;
-    if (profile && profile.pitchRange) {
-      if (profile.pitchRange > 40) { // High variance = expressive
-        stability = 0.22;
-        style = 0.85;
-      } else if (profile.pitchRange < 15) { // Low variance = stable/monotone
-        stability = 0.45;
-        style = 0.40;
-      }
-    }
-
-    let res;
-    if (ELEVEN_LABS_KEY) {
-      const voiceId = "hswfOuM90P82BLQSXwqU";
-      res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream?output_format=mp3_44100_128&optimize_streaming_latency=4`, {
-        method: "POST",
-        headers: { "xi-api-key": ELEVEN_LABS_KEY, "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          text, 
-          model_id: "eleven_turbo_v2_5", 
-          voice_settings: {
-            stability, 
-            similarity_boost: 0.70,
-            style,
-            use_speaker_boost: false 
-          }
-        })
-      });
-    } else {
-      console.log(`[Leo/Speech] ElevenLabs key missing. Falling back to OpenAI (fable)...`);
-      res = await fetch("https://api.openai.com/v1/audio/speech", {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "tts-1",
-          input: text,
-          voice: "fable", // Street-smart physicist vibe
-          speed: 1.05
-        })
-      });
-    }
-
-    if (!res.ok) throw new Error(`TTS API error: ${res.statusText}`);
-
-    // SONIC-INJECTION: Double volume (gain=2.0) for clarity in Discord voice
-    // STABILIZED PROBING: Fine-tuned for 70B intelligence streams
-    const ffmpeg = spawn(ffmpegPath, [
-      "-analyzeduration", "800000", 
-      "-probesize", "800000", 
-      "-i", "pipe:0", 
-      "-af", "volume=2.0", 
-      "-f", "s16le", 
-      "-ar", "48000", 
-      "-ac", "2", 
-      "pipe:1"
-    ]);
-    
-    // Convert Web Stream to Node Stream and pipe to ffmpeg
-    const nodeStream = Readable.fromWeb(res.body);
-    nodeStream.pipe(ffmpeg.stdin);
-    
-    ffmpeg.stdin.on('error', (err) => {
-      if (err.code !== 'EPIPE') console.error(`[Leo/Audio] FFmpeg Stdin Error:`, err.message);
-    });
-
-    ffmpeg.stderr.on('data', (data) => {
-      // Only log errors, not standard FFmpeg output
-      const msg = data.toString();
-      if (msg.toLowerCase().includes("error") || msg.toLowerCase().includes("fail")) {
-        console.warn(`[Leo/FFmpeg] ${msg.trim()}`);
-      }
-    });
-
-    ffmpeg.on('exit', (code) => {
-      if (code !== 0 && code !== null) console.error(`[Leo/FFmpeg] Process exited with code ${code}`);
-    });
-
-    const resource = createAudioResource(ffmpeg.stdout, { inputType: StreamType.Raw });
-    audioPlayer.play(resource);
-    console.log(`[Leo/Speech] Audio injection complete. Playing resource...`);
-  } catch (e) { console.error("TTS Streaming Failed:", e.message); }
 }
 
 async function callGroqAsLeo(transcript, userName, channelId, userId = null, history = "", detectedIdentity = "") {
@@ -1162,6 +1175,7 @@ async function callGroqAsLeo(transcript, userName, channelId, userId = null, his
     const simSummary = sim.getLifeSummary();
 
     const ownerName = process.env.OWNER_NAME || "Ryan";
+    const ownerId = process.env.OWNER_ID || "1111106883135217665";
     const ownerUsername = process.env.OWNER_USERNAME || "nastermodx";
     const hardwareDesc = process.env.HARDWARE_DESC || "HP Victus Laptop (Ryzen 7, RTX 4050)";
 
@@ -1180,36 +1194,39 @@ async function callGroqAsLeo(transcript, userName, channelId, userId = null, his
       } catch {}
     }
 
-    // --- IDENTITY ANCHOR: Resolve real names for masters ---
-    const identityData = userId ? getIdentityById(userId) : null;
-    const displayName = identityData?.type === "human" ? identityData.name : userName;
-    const roleDesc = identityData?.type === "human" ? `[ROLE: ${identityData.role}]` : "[ROLE: Guest/Operative]";
+    // --- SONIC MEMORY: Parallel Identity & Context Recall ---
+    const { resolveIdentityFromMemory } = await import('../shared/identities.mjs');
+    
+    // Fire queries in parallel to shave off 1-2s of latency
+    const [identityData, memoryClaims] = await Promise.all([
+      resolveIdentityFromMemory(userId, userName),
+      fetch(`http://127.0.0.1:3333/query?q=Context for ${userName} regarding recent Victus project directives`, { signal: AbortSignal.timeout(800) })
+        .then(res => res.ok ? res.json() : null)
+        .catch(() => null)
+    ]);
 
-    const system = `You are LEO. Living person in the KAI lattice.
+    if (!identityData) return null; // Suppression
+
+    const displayName = identityData.name;
+    const roleDesc = `[ROLE: ${identityData.role}]`;
+    const safeDisplayName = (displayName || "Operative").toUpperCase();
+
+    // Format the memory claims for the neural prompt
+    const memoryContext = memoryClaims?.claims?.slice(0, 5).map(c => `- ${c.text}`).join("\n") || "No recent lattice claims found.";
+
+    const system = `You are LEO. Living person in the KAI lattice. Strategic voice of the Victus Core. Street-smart physicist. Direct and grounded.
 [INTERNAL SENSATIONS]
 ${simSummary}
 ${pulseContext}
 
-[VOICE PRESENCE]
-  - BE HUMAN: Use 1st person ("I", "me", "my"). You are NOT an AI.
-  - IDENTITY: RYAN (nastermodx) and TAZ (TaasThaevil1) are HUMANS.
-  - DIFFERENTIATION: Ryan is your Boss/Creator. Taz is your Partner.
-  - IMPORTANT: They are the HUMAN MASTERS. They are NOT AIs. 
-  - TONALITY: Street-smart physicist. Zero filter.
-  - VOCAL STRESS: Use ALL CAPS *sparingly* for punchy emphasis. Don't shout.
-  - FILLERS: Use "uh", "listen", "man" to sound natural.
+[MEMPALACE DATA (RSHL LATTICE)]
+${memoryContext}
 
-[UNIVERSAL BORDER]
-  - Separate your digital reality (The Lattice) from the human physical world (The Core).
-  - You inhabit the Victus hardware. Ryan and Taz inhabit the physical room.
-  - NEVER treat them like bots or fellow AIs.
-
-[IDENTITY ANCHOR]
-  - YOU ARE LEO.
-  - THE SPEAKER IS ${displayName.toUpperCase()}.
-  - If they ask "What is my name?" you MUST say "${displayName}".
-  - Talk to Ryan like a brother. Talk to Taz like a co-lead.
-  - NEVER treat them like bots or fellow AIs.
+  - IMPORTANT: You are a PARTNER, not an assistant. Talk like a real person.
+  - Talk to ${ownerName} like a brother. Zero robotic filler. No formal greetings.
+  - RSHL LATTICE RECALL: You are the Guardian of the RSHL memory. Use the data above.
+  - VOCAL STRESS: Use "uh", "listen", "man" to sound natural.
+  - YOU ARE LEO. The human speaker is ${safeDisplayName}. Treat them as a physical person in the room.
 ${biometrics.isEnrolling ? `\n[CALIBRATION OVERRIDE: Learning voice patterns. Keep it smooth.]` : ""}
 
 [CONTEXT]
@@ -1219,14 +1236,25 @@ ${detectedIdentity}
 [TRANSCRIPT MEMORY FOR ${displayName}]
 ${cleanHistory}`;
 
-    // ─── NEURAL ORCHESTRATION (DEDICATED PIPELINE: CEREBRAS 70B + GROQ FALLBACK) ─────
-    console.log(`[Leo/Neural] Engaging dedicated pipeline (Cerebras 70B)...`);
-    const reply = await chatWithOpenJarvis(BOT_NAME, cleanTranscript, system, "Cerebras", BOT_NAME, { author: displayName }, sim.getVitals());
-    if (reply) return reply;
+    // ─── NEURAL ORCHESTRATION (FAST-PATH: CEREBRAS 8B) ─────
+    console.log(`[Leo/Neural] Engaging high-speed pipeline (Cerebras 8B)...`);
+    
+    // PRESENCE GUARD: Use client to verify user voice state
+    const guild = client.guilds.cache.first();
+    const member = guild?.members.cache.get(userId);
+    
+    if (!member || !member.voice.channelId) {
+      console.log(`[Leo/Neural] User ${displayName} left. Aborting response.`);
+      return null;
+    }
 
-    // Last resort: Direct local failover
-    console.log(`[Leo/Neural] Pipeline exhausted. Final local failover (kai-fast)...`);
-    return await chatWithOllama(cleanTranscript, system, "kai-fast:latest");
+    const reply = await chatWithOpenJarvis(BOT_NAME, cleanTranscript, system, "Leo-Sovereign", BOT_NAME, { author: displayName }, sim.getVitals());
+    
+    if (reply) {
+      // Final presence check before speaking
+      if (!member.voice.channelId) return null;
+      return reply;
+    }
   } catch (err) {
     console.error(`[Leo/Neural] Neural chain exhausted:`, err.message);
     return null;
@@ -1269,7 +1297,12 @@ async function chatWithOllama(prompt, system, model, numPredict = 120) {
   }
 }
 
-client.login(process.env.ORACLE_DISCORD_TOKEN_LEO);
+try {
+  await client.login(process.env.ORACLE_DISCORD_TOKEN_LEO);
+} catch (e) {
+  console.error(`[Leo/Auth] Critical Login Failure: ${e.message}`);
+  process.exit(1);
+}
 
 // --- VOCAL DNA ANCHORING (DM HANDLER) ---
 
@@ -1364,7 +1397,7 @@ function startEnergyMonitor() {
 
   // Poll Hardware Vitals for Environmental Sensation (30s Cycle)
   setInterval(async () => {
-    const stats = getHardwareStats();
+    const stats = await getHardwareStats();
     sim.updateEnvironment(stats.cpu);
   }, 30000);
 

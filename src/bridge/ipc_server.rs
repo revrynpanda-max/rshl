@@ -106,7 +106,7 @@ fn handle_command(
             let query_type = detect_query_type(text);
             let mut lex_engine = LexSemEngine::new();
             let lex = lex_engine.analyze(text);
-            let field = FieldState::compute(universe);
+            let field = FieldState::compute(universe, 1);
             drive.update(&field);
             let hits = chat_hits(
                 universe,
@@ -260,7 +260,7 @@ fn handle_command(
 
         // ── status — field metrics ────────────────────────────────────────────
         "status" => {
-            let field = FieldState::compute(universe);
+            let field = FieldState::compute(universe, 1);
             drive.update(&field);
             let rc = universe.region_counts();
 
