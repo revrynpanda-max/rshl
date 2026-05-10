@@ -75,13 +75,13 @@ export async function chatWithOpenJarvis(botName, transcript, systemPrompt, mode
   };
 
   // ── Prompt wrapping ────────────────────────────────────────────────────────
-  // Work channel: add a light industrial tone anchor + human metadata.
-  // Social channel: pass the prompt through clean — Modelfile identity handles tone.
-  // We do NOT wrap social prompts with tone guards because baked Modelfile identity
-  // is already correct and wrappers fight it.
+  // Work channel: add a light industrial tone anchor + human metadata + RSHL grounding.
   let finalSystem;
   if (isWork) {
-    const INDUSTRIAL_GUARD = `[SHIFT: WORK] Direct, professional, no corporate filler. If something is wrong, say so. No AI metaphors.`;
+    const INDUSTRIAL_GUARD = `[SHIFT: WORK] Direct, professional, no corporate filler. No AI metaphors.
+[PROJECT: KAI RSHL] v7.9.7 Sonic-Parallel. 16K Sparse Ternary Lattice.
+[WHITEPAPER] Ingested. Use technical anchors (Fibonacci Torsion, Boids, SynapticLayer).`;
+    
     const humanData = metadata.human
       ? `[USER] ${metadata.human.name} (${metadata.human.role})`
       : '';
@@ -90,6 +90,7 @@ export async function chatWithOpenJarvis(botName, transcript, systemPrompt, mode
     // Social: just pass the prompt as-is. The Modelfile already baked the right person.
     finalSystem = systemPrompt;
   }
+
 
   // 100% LOCAL SOVEREIGN PIPELINES
   const sovereignModel = `${botName.replace(" ", "-")}-Sovereign`;

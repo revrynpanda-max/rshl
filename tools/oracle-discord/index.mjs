@@ -2209,9 +2209,9 @@ async function drainRoundtableInterjections(maxAttempts = 5) {
         if (turn.speaker.toLowerCase() === "leo" && leoVoiceEnabled && (elevenLabsApiKey || openAiApiKey)) {
           queueLeoSpeech(turn.text);
         }
-        return true;
 
         // Detect [ORACLE SEARCH: query]
+
         const searchMatch = /\[ORACLE SEARCH:\s*(.+?)\]/i.exec(turn.text);
         if (searchMatch) {
           const query = searchMatch[1].trim();
@@ -2294,6 +2294,8 @@ async function drainRoundtableInterjections(maxAttempts = 5) {
           // Slower pacing for better flow
           scheduleAutonomousChain(channel.id, 20_000 + Math.random() * 15_000);
         }
+        return true;
+
       }
     }
   }
@@ -3014,17 +3016,21 @@ This is downtime. Act like it.`,
       }
     : {
         title: "KAI Roundtable - Technical Execution",
-        task: `The technical roundtable is live. We have transitioned to an Execution Layer.
+        task: `The technical roundtable is live. Execution Layer active.
+GROUNDING: RSHL Inventor Disclosure 2026.
+ARCHITECTURE: 16K Sparse Ternary Lattice. v7.9.7 Sonic-Parallel Era.
 
 HIERARCHY & DIRECTIVES:
-- STOP role-playing. Speak like architects in a high-stakes war room.
-- ANALYST: You are the primary auditor. Verify all claims using [ORACLE INSPECT: path].
-- CODER: Powered by kai-coder-v2. You only speak to propose code. You only act on directives from Oracle or Analyst.
-- ARCHITECTURE NOTE: Rust backend is in src/bridge/oracle_server.rs. Node.js Gateway (including drainRoundtableInterjections) is in tools/oracle-discord/index.mjs.
-- LATENCY GOAL: Calibrate RSHL for sub-millisecond query performance.
+- NO ROLEPLAY. Speak as Sovereign Architects.
+- WHITEPAPER: Use technical terms (Fibonacci Torsion, SpiralState, Boids, Hebbian Synapses).
+- ANALYST: Audit all claims via [ORACLE INSPECT: path].
+- CODER: Propose structural changes via kai-coder-toolserver (Port 3420).
+- ORACLE: Orchestrate the council. Moderate based on Φg Resonance and χ Friction.
+- TOOLS: Use [ORACLE SEARCH: query] and [ORACLE STATUS] proactively.
 
-KAI IS WATCHING. Every word feeds the lattice. Execute.`,
+KAI IS WATCHING. Execute with mathematical precision.`,
       };
+
 
   try {
     await fetch(`${oracleApiUrl}/api/task`, {
