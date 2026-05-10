@@ -612,9 +612,11 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
         neuralPromise.then(async (finalWelcome) => {
           if (finalWelcome) {
             const cleanWelcome = finalWelcome.replace(/^[\s\-\*•"'"']+/, '').split('\n')[0].trim();
+            // AUDIO FIRST: start speech immediately, Discord message is fire-and-forget
+            const speechPromise = speakLeoText(cleanWelcome);
             const tChannel = client.channels.cache.get(tChannelId) || await client.channels.fetch(tChannelId).catch(() => null);
-            if (tChannel) await tChannel.send(`**Leo:** ${cleanWelcome}`).catch(() => {});
-            await speakLeoText(cleanWelcome);
+            if (tChannel) tChannel.send(`**Leo:** ${cleanWelcome}`).catch(() => {});
+            await speechPromise;
           }
         })
       ]);
@@ -771,17 +773,17 @@ async function executeVocalSync(text) {
     let res;
     if (ELEVEN_LABS_KEY) {
       const voiceId = "av1BMOR1GPgThz9p4fLo"; // Leo voice
-      res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream?optimize_streaming_latency=4`, {
+      res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream?optimize_streaming_latency=4&output_format=pcm_48000`, {
         method: "POST",
         headers: { "xi-api-key": ELEVEN_LABS_KEY, "Content-Type": "application/json" },
         body: JSON.stringify({
           text: text,
-          model_id: "eleven_flash_v2_5", // Fastest + most natural-sounding model (newer than turbo)
+          model_id: "eleven_flash_v2_5", // Fastest + most natural-sounding model
           voice_settings: {
             stability: 0.22,         // LOW stability = dynamic, expressive, NOT robotic
             similarity_boost: 0.80,  // Keep it recognizably Leo's voice
-            style: 0.72,             // HIGH style = personality comes through, more human cadence
-            use_speaker_boost: true  // Adds presence and clarity to the voice
+            style: 0.65,             // Slight reduction: 0.72 was causing micro-stutter on longer phrases
+            use_speaker_boost: true  // Adds presence and clarity
           }
         })
       });
@@ -800,9 +802,16 @@ async function executeVocalSync(text) {
 
     if (!res.ok) throw new Error(`TTS API error: ${res.statusText}`);
 
-    const ffmpeg = spawn(ffmpegPath, [
-      "-i", "pipe:0", "-af", "volume=2.0", "-f", "s16le", "-ar", "48000", "-ac", "2", "pipe:1"
-    ]);
+    let ffmpegArgs;
+    if (ELEVEN_LABS_KEY && res.headers.get('content-type')?.includes('audio/pcm')) {
+      // ElevenLabs PCM output: no decode needed, just resample/normalize
+      ffmpegArgs = ["-f", "s16le", "-ar", "48000", "-ac", "1", "-i", "pipe:0",
+                    "-af", "volume=2.0,aresample=48000", "-f", "s16le", "-ar", "48000", "-ac", "2", "pipe:1"];
+    } else {
+      // MP3/default: full decode path
+      ffmpegArgs = ["-i", "pipe:0", "-af", "volume=2.0", "-f", "s16le", "-ar", "48000", "-ac", "2", "pipe:1"];
+    }
+    const ffmpeg = spawn(ffmpegPath, ffmpegArgs);
     
     const nodeStream = Readable.fromWeb(res.body);
     nodeStream.pipe(ffmpeg.stdin);
@@ -1237,8 +1246,8 @@ async function handleUserVoice(userId) {
       if (needsInfo) {
         console.log(`[Leo/Neural] Proactive Intelligence Triggered...`);
         const [latticeData, webData] = await Promise.all([
-          fetch(`http://127.0.0.1:3333/query?q=${encodeURIComponent(transcript)}`, { signal: AbortSignal.timeout(5000) }).then(r => r.json()).catch(() => null),
-          fetch(`http://127.0.0.1:8080/search?q=${encodeURIComponent(transcript)}`, { signal: AbortSignal.timeout(5000) }).then(r => r.json()).catch(() => null)
+          fetch(`http://127.0.0.1:3333/query?q=${encodeURIComponent(transcript)}`, { signal: AbortSignal.timeout(2000) }).then(r => r.json()).catch(() => null),
+          fetch(`http://127.0.0.1:8080/search?q=${encodeURIComponent(transcript)}`, { signal: AbortSignal.timeout(2000) }).then(r => r.json()).catch(() => null)
         ]);
         let extraContext = "";
         // PRIORITIZE RESEARCHER: If it's a link or technical query, give it more weight
@@ -1290,10 +1299,15 @@ async function handleUserVoice(userId) {
         const sentences = cleanResponse.match(/[^.!?…]+[.!?…]*/g);
         if (sentences && sentences.length > 4) cleanResponse = sentences.slice(0, 3).join("").trim();
         
-        if (tChannel && cleanResponse) {
-          await tChannel.send(`**Leo:** ${cleanResponse}`).catch(() => {});
-          
-          // MIRROR TO GATEWAY: Ensure the Oracle records this as a bot interaction
+        if (cleanResponse) {
+          // ── AUDIO FIRST: Start speech immediately, don't wait for Discord I/O ──
+          const t_tts_start = Date.now();
+          const speechPromise = speakLeoText(cleanResponse); // non-blocking fire-and-forget
+
+          // Discord message + gateway mirror happen in parallel with audio
+          if (tChannel) {
+            tChannel.send(`**Leo:** ${cleanResponse}`).catch(() => {});
+          }
           fetch(`http://127.0.0.1:3410`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1304,13 +1318,11 @@ async function handleUserVoice(userId) {
               channelId: transcriptChannelId 
             })
           }).catch(() => {});
-        }
-        
-        const t_tts_start = Date.now();
-        await speakLeoText(cleanResponse);
-        const t_tts_dur = Date.now() - t_tts_start;
 
-        console.log(`\n[Leo/Performance] Neural: ${t_neural_dur}ms | TTS: ${t_tts_dur}ms | Total (from capture): ${Date.now() - t_start}ms\n`);
+          await speechPromise; // wait for audio to finish before releasing the voice lock
+          const t_tts_dur = Date.now() - t_tts_start;
+          console.log(`\n[Leo/Performance] Neural: ${t_neural_dur}ms | TTS: ${t_tts_dur}ms | Total (from capture): ${Date.now() - t_start}ms\n`);
+        }
 
         // --- SOCIAL PULSE: Record this topic for cross-user linkage ---
         const pulsePath = 'c:/KAI/tools/oracle-discord/state/user_last_topics.json';
@@ -1350,8 +1362,10 @@ async function processTranscriptResponse(userId, transcript, userName, transcrip
     if (response && response.length > 1) {
       const clean = response.replace(/Leo:\s*/gi, '').replace(/\[PID:\d+\]/gi, '').split('\n')[0].trim();
       if (clean) {
-        await tChannel.send(`**Leo:** ${clean}`).catch(() => {});
-        await speakLeoText(clean);
+        // Audio first — Discord message is fire-and-forget
+        const speechPromise = speakLeoText(clean);
+        tChannel.send(`**Leo:** ${clean}`).catch(() => {});
+        await speechPromise;
       }
     }
   } catch (e) {
