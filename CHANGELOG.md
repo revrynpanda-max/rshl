@@ -1,5 +1,16 @@
 # 🧬 KAI RSHL CHANGELOG
 
+## [v22.1.0] — 2026-05-10
+### **🏛️ STABILIZATION OF THE SOVEREIGN ORACLE: IDENTITY & TOOLS**
+This milestone focuses on hardening the 24/7 autonomous loop and grounding agent discourse in the 2026 RSHL Whitepaper.
+
+- **Whitepaper Integration**: Ingested the definitive "RSHL Inventor Disclosure 2026" as the project's primary knowledge anchor.
+- **Identity Hardening**: Refactored Leo's system prompt to enforce strict second-person identity, eliminating self-user confusion.
+- **Kai Coder Tool Expansion**: Expanded the toolserver (Port 3420) with Search, Lattice Query, System Audit, and Process Snapshot capabilities.
+- **Voice-to-Briefing Pipeline**: Standardized the delivery of Oracle findings via Leo's voice/DM channel based on user presence.
+- **Hardware Telemetry Grounding**: Injected real-time HP Victus vitals into every agent's situational awareness.
+- **Tool Connectivity Optimization**: Updated the toolserver to allow global interfaces (0.0.0.0) and CORS for cross-node UI integration.
+
 ## [v22.0.0] — 2026-05-10
 ### **🏛️ SOVEREIGN INTELLIGENCE: NATIVE REASONING & KAI CODER AGENT**
 This milestone marks the final transition from cloud-dependent LLMs to a 100% native, sovereign RSHL reasoning substrate.

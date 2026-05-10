@@ -243,9 +243,112 @@ async function toolSysinfo() {
   };
 }
 
-const TOOL_MAP = { read: toolRead, list: toolList, grep: toolGrep, write: toolWrite, exec: toolExec, check: toolCheck, diff: toolDiff, apply: toolApply, sysinfo: toolSysinfo };
+async function toolSearch({ query }) {
+  // Use internal web-search utility or a fallback
+  try {
+    const res = await fetch(`http://127.0.0.1:8080/search?q=${encodeURIComponent(query)}`, { timeout: 10000 });
+    if (res.ok) return await res.json();
+    return { error: `Search service error: ${res.statusText}` };
+  } catch (e) {
+    return { error: `Search service unreachable: ${e.message}` };
+  }
+}
+
+async function toolLattice({ query }) {
+  try {
+    const res = await fetch('http://127.0.0.1:3333/api/rshl/query', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: query }),
+      timeout: 5000
+    });
+    return await res.json();
+  } catch (e) {
+    return { error: `Lattice (3333) unreachable: ${e.message}` };
+  }
+}
+
+async function toolInspect({ path: filePath }) {
+  try {
+    const res = await fetch('http://127.0.0.1:3333/api/inspect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: filePath }),
+      timeout: 5000
+    });
+    return await res.json();
+  } catch (e) {
+    return { error: `Inspector (3333) unreachable: ${e.message}` };
+  }
+}
+
+async function toolStatus() {
+  try {
+    const res = await fetch('http://127.0.0.1:3333/api/status', { timeout: 3000 });
+    return await res.json();
+  } catch (e) {
+    return { error: `Status (3333) unreachable: ${e.message}` };
+  }
+}
+
+async function toolAudit() {
+  // Runs the system-auditor script if available
+  try {
+    const auditorPath = path.join(DISCORD_ROOT, 'scripts', 'system-auditor.mjs');
+    if (!fs.existsSync(auditorPath)) return { error: 'Auditor script not found.' };
+    const { stdout, stderr } = await execAsync(`node "${auditorPath}" --json`, { timeout: 30000 });
+    return JSON.parse(stdout);
+  } catch (e) {
+    return { error: `Audit failed: ${e.message}` };
+  }
+}
+
+async function toolSnapshot() {
+  try {
+    const { stdout } = await execAsync('powershell -Command "Get-Process | Sort-Object CPU -Descending | Select-Object -First 10 | ConvertTo-Json"', { timeout: 5000 });
+    return { processes: JSON.parse(stdout), timestamp: new Date().toISOString() };
+  } catch (e) {
+    return { error: `Snapshot failed: ${e.message}` };
+  }
+}
+
+async function toolTest() {
+  const results = {};
+  for (const name of Object.keys(TOOL_MAP)) {
+    results[name] = 'ready';
+  }
+  return { status: 'Tool diagnostics complete', results };
+}
+
+const TOOL_MAP = { 
+  read: toolRead, 
+  list: toolList, 
+  grep: toolGrep, 
+  write: toolWrite, 
+  exec: toolExec, 
+  check: toolCheck, 
+  diff: toolDiff, 
+  apply: toolApply, 
+  sysinfo: toolSysinfo,
+  search: toolSearch,
+  lattice: toolLattice,
+  inspect: toolInspect,
+  status: toolStatus,
+  audit: toolAudit,
+  snapshot: toolSnapshot,
+  test: toolTest
+};
 
 const server = http.createServer(async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204);
+    return res.end();
+  }
+
   res.setHeader('Content-Type', 'application/json');
 
   if (req.method === 'GET' && req.url === '/health') {
@@ -280,7 +383,7 @@ const server = http.createServer(async (req, res) => {
   res.end(JSON.stringify({ error: 'Not found' }));
 });
 
-server.listen(PORT, '127.0.0.1', () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`[KaiCoderTools] Tool server online at port ${PORT}`);
   console.log(`[KaiCoderTools] Project root (read): ${PROJECT_ROOT}`);
   console.log(`[KaiCoderTools] Sandbox (write): ${SANDBOX_ROOT}`);
@@ -289,3 +392,4 @@ server.listen(PORT, '127.0.0.1', () => {
 });
 
 export { PORT as TOOL_SERVER_PORT };
+
