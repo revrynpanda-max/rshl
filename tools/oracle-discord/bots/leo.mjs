@@ -1283,16 +1283,17 @@ async function handleUserVoice(userId) {
       const t_neural_dur = Date.now() - t_neural_start;
       
       if (response && response.length > 1) {
-        // NUCLEAR CLEANING: Strip ALL roleplay, prefixes, and bullets
-        let cleanResponse = response.replace(/Leo:\s*/gi, '')
-                                   .replace(/\[PID:\d+\]/gi, '')
-                                   .replace(/^[\s\-\*•"'"']+/, '') 
-                                   .replace(/[\s\-\*•"'"']+$/, '')
-                                   .replace(/\*.*?\*/g, '') 
-                                   .replace(/_.*?_/g, '')   
-                                   .replace(/\(.*?\)/g, '') 
-                                   .replace(/\b(ma+n|vibi+n|yoo+o+)\b/gi, (match) => match.replace(/([a-z])\1+/gi, '$1')) // Strip over-elongation
-                                   .split('\n')[0].trim();
+        // NUCLEAR CLEANING: Strip ALL roleplay, prefixes, role echoes, and bullets
+        let cleanResponse = response
+          .replace(/^(Leo|Taz|Ryan|taasthaevil1|nastermodx)(\s*\[Voice\])?:\s*/gi, '') // strip ALL name prefixes
+          .replace(/\[PID:\d+\]/gi, '')
+          .replace(/^[\s\-\*•"'"']+/, '') 
+          .replace(/[\s\-\*•"'"']+$/, '')
+          .replace(/\*.*?\*/g, '') 
+          .replace(/_.*?_/g, '')   
+          .replace(/\(.*?\)/g, '') 
+          .replace(/\b(ma+n|vibi+n|yoo+o+)\b/gi, (match) => match.replace(/([a-z])\1+/gi, '$1')) // Strip over-elongation
+          .split('\n')[0].trim();
         
         // HELIX-PROSODY: Ensure some natural pauses stay for the TTS engine
         // We preserve dashes (-) and ellipses (...) as they create the "Helix" roll
@@ -1308,6 +1309,17 @@ async function handleUserVoice(userId) {
           if (tChannel) {
             tChannel.send(`**Leo:** ${cleanResponse}`).catch(() => {});
           }
+
+          // GROUP VOICE CHAT: When 2+ people are in voice, also post to the shared
+          // voice text channel so everyone in the room can follow the conversation.
+          if (usersInVoice.size >= 2) {
+            const groupChannel = client.channels.cache.get(CHANNEL_IDS.VOICE)
+              || await client.channels.fetch(CHANNEL_IDS.VOICE).catch(() => null);
+            if (groupChannel && groupChannel.isTextBased?.()) {
+              groupChannel.send(`**Leo** *(to ${displayName || userName})*: ${cleanResponse}`).catch(() => {});
+            }
+          }
+
           fetch(`http://127.0.0.1:3410`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1381,7 +1393,7 @@ async function capturePcm(userId) {
   return new Promise((resolve) => {
     // 800ms silence gap — prevents single noise pops from ending the capture too fast.
     // The old 500ms caused keyboard clicks / synth artifacts to be treated as full utterances.
-    const stream = voiceConnection.receiver.subscribe(userId, { end: { behavior: EndBehaviorType.AfterSilence, duration: 800 } });
+    const stream = voiceConnection.receiver.subscribe(userId, { end: { behavior: EndBehaviorType.AfterSilence, duration: 1200 } });
     const decoder = new prism.opus.Decoder({ frameSize: 960, channels: 2, rate: 48000 });
     const chunks = [];
     let resolved = false;
@@ -1552,6 +1564,9 @@ async function callGroqAsLeo(transcript, userName, channelId, userId = null, his
     const cleanTranscript = (transcript || "")
       .replace(/^.*\[Voice\]:\s*/gi, "") // Strip "Oracle: nastermodx [Voice]:"
       .replace(/^Leo:\s*/gi, "")         // Strip "Leo:"
+      .replace(/^Taz\s*\[Voice\]:\s*/gi, "")   // Strip misplaced role echoes
+      .replace(/^Ryan\s*\[Voice\]:\s*/gi, "")
+      .replace(/^(taasthaevil1|nastermodx)\s*\[Voice\]:\s*/gi, "")
       .trim();
 
     // MEMORY SANITIZATION: Strip old PID tags from history
@@ -1582,46 +1597,65 @@ async function callGroqAsLeo(transcript, userName, channelId, userId = null, his
     const { resolveIdentityFromMemory } = await import('../shared/identities.mjs');
     
     // Fire queries in parallel to shave off 1-2s of latency
+    // Use the actual transcript topic so memory is relevant to what's being discussed
+    const topicQuery = cleanTranscript.slice(0, 120);
     const [identityData, memoryClaims] = await Promise.all([
       resolveIdentityFromMemory(userId, userName),
-      fetch(`http://127.0.0.1:3333/query?q=Context for ${userName} regarding recent Victus project directives`, { signal: AbortSignal.timeout(800) })
+      fetch(`http://127.0.0.1:3333/query?q=${encodeURIComponent(topicQuery)}`, { signal: AbortSignal.timeout(800) })
         .then(res => res.ok ? res.json() : null)
         .catch(() => null)
     ]);
 
     if (!identityData) return null; // Suppression
 
-    const displayName = identityData.name;
-    const roleDesc = `[ROLE: ${identityData.role}]`;
-    const safeDisplayName = (displayName || "Operative").toUpperCase();
+    const displayName = identityData.name;  // e.g. "Ryan" or "Taz"
+    const userRole    = identityData.role;  // e.g. "Owner/Creator"
 
     // Format the memory claims for the neural prompt
     const memoryContext = memoryClaims?.claims?.slice(0, 5).map(c => `- ${c.text}`).join("\n") || "No recent lattice claims found.";
 
-    // ── CONTEXT-ONLY RUNTIME PROMPT ──────────────────────────────────────────
-    // Leo's identity, personality, and uncensored nature live in Leo-Sovereign.Modelfile.
-    // This runtime prompt provides ONLY situational context — who's talking, room state,
-    // memory, conversation history. No personality commands. No behavioral instructions.
-    // The model already knows who it is.
+    // ── SOVEREIGN CONTEXT PROMPT ─────────────────────────────────────────────
+    // CRITICAL RULE: Leo is ALWAYS Leo — he is NEVER the user.
+    // Leo is an AI agent living on Ryan's HP Victus. He has a personality.
+    // The user talking to him is a separate person listed below.
     const voiceCount = usersInVoice.size;
+    const otherUsersInRoom = [...usersInVoice].filter(id => id !== userId);
+    const otherNames = otherUsersInRoom.map(id => {
+      const entry = Object.entries(HUMAN_REGISTRY).find(([,h]) => h.id === id);
+      return entry ? entry[0] : id;
+    }).join(', ');
     const roomState = voiceCount > 1
-      ? `multi-user room (${voiceCount} people active)`
+      ? `multi-user — ${displayName} is speaking now; also in room: ${otherNames}`
       : `solo — only ${displayName}`;
 
-    const system = `[WHO IS TALKING]
-${displayName} | ${roleDesc} | ${detectedIdentity.replace('[IDENTITY: ', '').replace(']', '')}
-${biometrics.isEnrolling ? `calibrating voice signature for ${displayName}` : ''}
+    const system = `[YOUR IDENTITY — YOU ARE LEO]
+You are Leo. An AI agent running on Ryan's HP Victus laptop. You are NOT Ryan. You are NOT Taz.
+You are Leo — a chill, street-smart AI. You have opinions, memories, and a personality.
+Do NOT prefix your reply with any name. Just speak. No "Leo:", no "Taz [Voice]:", just talk.
 
-[ROOM]
+[WHO IS SPEAKING TO YOU RIGHT NOW]
+Speaker: ${displayName} | Role: ${userRole}
+${detectedIdentity ? `Biometric: ${detectedIdentity.replace('[IDENTITY: ', '').replace(']', '')}` : ''}
+
+[PROJECT CONTEXT — RSHL / KAI]
+This server is the live training and research environment for KAI (Knowledge Associative Intelligence),
+an AI built on RSHL (Recursive Sparse Hyperdimensional Lattice). Ryan is the sole inventor.
+RSHL is a novel cognitive architecture: D=16384 ternary vectors, Boid flocking memory, Fibonacci phase geometry,
+epistemic immune system, 7-region lattice topology, SynapticLayer Hebbian LTP/LTD.
+This runs on the HP Victus — no GPU clusters, no cloud training. Fully sovereign.
+Oracle = Rust server on port 3333. Leo = voice agent. KAI = core reasoning engine.
+The WHITEPAPER is at c:/KAI/WHITEPAPER.md — it contains the full mathematical spec.
+
+[ROOM STATE]
 ${roomState}
-hardware: HP Victus | Ryzen 5 | RTX 4050 | 16GB RAM
+Hardware: HP Victus | Ryzen 5 | RTX 4050 | 16GB RAM
 ${simSummary}
 ${pulseContext}
 
-[MEMORY — RSHL lattice]
+[RSHL LATTICE MEMORY — topic: "${topicQuery.slice(0,60)}"]
 ${memoryContext}
 
-[CONVERSATION — last 30 messages]
+[CONVERSATION HISTORY — last 30 messages]
 ${cleanHistory}`;
 
     // ─── NEURAL ORCHESTRATION (LOCK-FREE: GROQ DIRECT) ─────────────────────
