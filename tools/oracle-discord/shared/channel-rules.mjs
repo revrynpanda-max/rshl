@@ -6,17 +6,35 @@ export const CHANNEL_IDS = {
   GAME: "1499298054291980368",       // game-with-leo
   SENSITIVE: "1500053533515448480",  // sensitive-info
   SUNDAY: "1500085302268526712",     // ai-social-chat
-  VOICE: "1489796367466500129",      // public voice chat
+  VOICE: "1489796367466500129",      // public voice chat (shared)
   RADIO: "1500048983568023552",      // ai radio
   UNREGISTERED_SLOT: "1500958679669674086", // For onboarding instructions
   LEO_VOICE_SLOTS: [
     "1500527640107417783", // Ryan (Slot 1)
     "1500529928184008885", // Taz (Slot 2)
-    "1500529995087610027", // Guest (Slot 3)
-    "1500530046111318116", // Public 4
+    "1500529995087610027", // Guest 1 — user 437459146778869770 (Slot 3)
+    "1500530046111318116", // Guest 2 — user 1002347589959688303 (Slot 4)
     "1500530070081503343", // Public 5
     "1500530095368962098"  // Public 6
   ]
+};
+
+// ── FIXED User → Transcript Channel Registry ──────────────────────────────────
+// Source of truth: when a user joins voice, Leo looks up their transcript
+// channel here. This never changes dynamically.
+export const USER_TRANSCRIPT_MAP = {
+  "1111106883135217665": "1500527640107417783", // Ryan       → Slot 1
+  "1286110163505385523": "1500529928184008885", // Taz        → Slot 2
+  "437459146778869770":  "1500529995087610027", // Guest 1    → Slot 3
+  "1002347589959688303": "1500530046111318116", // Guest 2    → Slot 4
+};
+
+// ── Reverse map: transcript channel → user identity ──────────────────────────
+export const TRANSCRIPT_USER_INFO = {
+  "1500527640107417783": { userId: "1111106883135217665", name: "Ryan",    role: "Owner/Creator",   slotIdx: 0 },
+  "1500529928184008885": { userId: "1286110163505385523", name: "Taz",     role: "Co-lead/Partner", slotIdx: 1 },
+  "1500529995087610027": { userId: "437459146778869770",  name: "Guest",   role: "Lattice Guest",   slotIdx: 2 },
+  "1500530046111318116": { userId: "1002347589959688303", name: "Guest 2", role: "Lattice Guest",   slotIdx: 3 },
 };
 
 export const CHANNEL_SPEAKER_RULES = {

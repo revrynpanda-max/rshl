@@ -723,18 +723,19 @@ client.on("messageCreate", async (message) => {
     // Handle DM or Leo Commands
     if (isDM || await maybeHandleLeoVoiceCommand(message, text)) {
       if (isDM) {
-        // DMs go straight to callGroqAsLeo — raw, unhinged Leo. Same path as voice for consistency.
         const name = message.author.displayName || message.author.username || "there";
         try { await message.channel.sendTyping(); } catch {}
-        const reply = await callGroqAsLeo(text, name);
+        
+        const sysPrompt = `You are Oracle, the central intelligence and coordinator of the KAI ecosystem. 
+You are talking privately to ${name}. Be professional, direct, and helpful. No emojis.`;
+
+        const reply = await chatWithOpenJarvis("Oracle", text, sysPrompt, "Oracle-Sovereign", 0.7, { author: name, channel: "DM" }).catch(() => null);
+        
         if (reply) {
-          await message.channel.send(`**Leo:** ${reply}`);
-          leoMemoryStore(name, text, reply, "dm").catch(() => {});
-          if (leoVoiceEnabled && (elevenLabsApiKey || openAiApiKey)) queueLeoSpeech(reply);
+          await message.channel.send(`**Oracle:** ${reply}`);
         }
         return;
       }
-      if (!isDM) return;
     }
 
     // Phase 3: Gaming with Leo (Special Channel Logic)

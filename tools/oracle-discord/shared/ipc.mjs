@@ -9,15 +9,13 @@ export function startBotServer(port, name, onTrigger) {
       let body = '';
       req.on('data', chunk => body += chunk);
       req.on('end', () => {
-        try {
-          const payload = JSON.parse(body);
-          onTrigger(payload);
-          res.writeHead(200);
-          res.end(JSON.stringify({ status: 'ok' }));
-        } catch (e) {
-          res.writeHead(400);
-          res.end(JSON.stringify({ error: e.message }));
-        }
+        // Respond immediately so the caller doesn't time out waiting for the handler
+        res.writeHead(200);
+        res.end(JSON.stringify({ status: 'ok' }));
+        // Run the async callback separately so its awaits actually execute
+        Promise.resolve(onTrigger(JSON.parse(body))).catch(e => {
+          console.error(`[IPC] onTrigger error:`, e.message);
+        });
       });
     } else {
       res.writeHead(404);

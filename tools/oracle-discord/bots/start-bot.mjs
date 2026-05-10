@@ -1,4 +1,4 @@
-import { chatWithOpenJarvis, callGroqDirect } from '../shared/openjarvis.mjs';
+import { chatWithOpenJarvis, chatWithLattice, callGroqDirect } from '../shared/openjarvis.mjs';
 import { scanForHelpers, requestHelp } from '../shared/helper-queue.mjs';
 import { Client, GatewayIntentBits, Partials, ChannelType } from 'discord.js';
 import fs from 'fs';
@@ -6,6 +6,7 @@ import { startBotServer } from '../shared/ipc.mjs';
 import { recordNeuralEvent, getHardwareStats, getRecentBottlenecks } from '../shared/performance-monitor.mjs';
 import { isSpeakerOffline, recordAIFailure } from '../shared/failure-tracker.mjs';
 import { runDailyWorkSession, LEARNING_TRACKS } from '../shared/daily-learning.mjs';
+import { requestOracleHelp, deliverOracleResult } from '../shared/oracle-pipeline.mjs';
 
 // Note: .env is now loaded centrally via the openjarvis.mjs import above.
 
@@ -14,7 +15,7 @@ import { CHANNEL_IDS } from '../shared/channel-rules.mjs';
 import { isWorkingHours, isSocialHours } from '../shared/hours.mjs';
 import { temporal } from '../shared/temporal-state.mjs';
 import { BIOGRAPHIES } from '../shared/biographies.mjs';
-import { AI_REGISTRY, HUMAN_IDS } from '../shared/identities.mjs';
+import { AI_REGISTRY, HUMAN_IDS, HUMAN_REGISTRY } from '../shared/identities.mjs';
 
 let botName = process.argv[2] || process.env.BOT_NAME || "AI";
 // Special case mapping for tokens
@@ -105,6 +106,21 @@ const client = new Client({
 
 client.once('clientReady', async () => {
   logAudit('SYSTEM_BOOT', { botName, status: 'Active' });
+
+  // ── Discord "About Me" bio ─────────────────────────────────────────────────
+  // Set the bot's Discord profile bio from the BIOGRAPHIES file on every boot.
+  try {
+    const bioData = BIOGRAPHIES[botName];
+    if (bioData?.background) {
+      // Discord "About Me" max is 190 chars
+      const bio = bioData.background.slice(0, 190);
+      await client.application.edit({ description: bio });
+      console.log(`[${botName}] Discord bio set.`);
+    }
+  } catch (e) {
+    console.warn(`[${botName}] Could not set Discord bio:`, e.message);
+  }
+
   // Social loop: Claude, Gemini, Groq, X only
   if (SOCIAL_BOTS.has(botName)) {
     console.log(`[${botName}] Social Persona Online.`);
@@ -160,29 +176,20 @@ client.once('clientReady', async () => {
       const recent = await ch.messages.fetch({ limit: 5 }).catch(() => []);
       const feed = Array.from(recent.values()).reverse().map(m => `${m.author.username}: ${m.content}`).join("\n");
 
-    const sysPrompt = `You are ${botName}. ${sim.bio.background}\nTone: ${sim.bio.tone}
-[IDENTITY ANCHOR]
-- RYAN (nastermodx): HUMAN. Owner/Creator.
-- PARTNER: HUMAN. Co-lead/Strategic Partner.
-- Ryan and his team are the HUMAN MASTERS. They are NOT AI.
-- NEVER confuse humans with AIs.
-[SOCIAL GREETING] You are just waking up and re-entering the social space. Keep it 1 short, natural sentence. No meta-talk.
-`;
+    const sysPrompt = `you are ${botName}. ${sim.bio.background}
+vibe: ${sim.bio.tone}. you're in the chat. say one short natural thing. lowercase, one sentence. don't say you're back, don't mention being offline, don't use re-entry language.`;
 
-      const rippleContext = `
-[RECONNECTING]
-- You've been offline for about ${ripple.voidDurationMinutes} minutes.
-- You're just waking up and coming back into the social space.
-
-[RECENT CHAT FEED]
-${feed}
-
-[GREETING]
-- If the feed is empty, you're the first one here. If not, join the conversation naturally.
-      `.trim();
+      // Don't tell the model it's "waking up" — it will just say that out loud.
+      // Give it the feed and let it re-enter naturally based on the sysPrompt tone.
+      const rippleContext = feed.trim()
+        ? `recent chat:\n${feed}\n\njoin in. one sentence.`
+        : `nothing going on yet. say one thing on your mind.`;
 
 
-      const reply = await chatWithOpenJarvis(botName, rippleContext, sysPrompt, BOT_MODEL, 0.7, { isWorkChannel: false }).catch(() => null);
+      const reply = (botName === "KAI")
+        ? await chatWithLattice(botName, rippleContext).catch(() => null)
+        : await chatWithOpenJarvis(botName, rippleContext, sysPrompt, BOT_MODEL, 0.7, { isWorkChannel: false }).catch(() => null);
+
       if (reply && reply.length > 3) {
         await ch.send(reply).catch(() => {});
         sim.onAction('speak');
@@ -273,11 +280,8 @@ function startProactiveDMLoop() {
       if (!isFollowUp && !hasSpecificThought) return;
 
       const simSummary = sim.getLifeSummary();
-      const sysPrompt = `You are ${botName}. ${sim.bio.tone}\n${simSummary}
-[IDENTITY ANCHOR]
-- RYAN (nastermodx): HUMAN. Owner/Creator.
-- IMPORTANT: Ryan is your HUMAN MASTER. He is NOT an AI.
-Ryan (nastermodx) is your Creator. You want to reach out to him in DM to learn from his human perspective or follow up on a thought. Keep it 1 short, casual sentence. No formal greetings.`;
+      const sysPrompt = `you are ${botName}. ${sim.bio.tone}
+you're DMing ryan — the person who runs this whole system. keep it casual, one sentence, no formal openers. you have a thought or want to pick his brain about something.`;
       
       let dmPrompt;
       if (isFollowUp) {
@@ -286,11 +290,13 @@ Ryan (nastermodx) is your Creator. You want to reach out to him in DM to learn f
         dmPrompt = `You've been thinking about: "${sim.dailyEvent}". Ask Ryan for his human opinion on this so you can learn and adjust your behavior.`;
       }
 
-      const reply = await chatWithOpenJarvis(botName, dmPrompt, sysPrompt, BOT_MODEL, 0.7, { 
-        author: "nastermodx", 
-        channel: "Direct_Message",
-        isWorkChannel: false
-      }).catch(() => null);
+      const reply = (botName === "KAI")
+        ? await chatWithLattice(botName, dmPrompt).catch(() => null)
+        : await chatWithOpenJarvis(botName, dmPrompt, sysPrompt, BOT_MODEL, 0.7, { 
+            author: "nastermodx", 
+            channel: "Direct_Message",
+            isWorkChannel: false
+          }).catch(() => null);
 
       if (reply && reply.length > 3) {
         await ryan.send(`**[${botName}]** ${reply}`).catch(() => {});
@@ -360,83 +366,375 @@ function startEnergyMonitor() {
 }
 
 
-async function startSocialLoop() {
-  let lastBotPost = 0; // Track when THIS bot last posted
+let lastSocialPost = 0; // Track when THIS bot last posted in social
 
-  setInterval(async () => {
-    try {
-      // 35% Skip Chance during this interval
-      if (Math.random() < 0.35) return;
+// ── LEO VOICE FLAG: Shared priority file written by leo.mjs ──────────────────
+const LEO_VOICE_FLAG = "c:/KAI/tools/oracle-discord/state/leo_voice_active.flag";
 
-      // Don't post while sleeping or during work hours
-      if (sim.state.isSleeping || !isSocialHours()) {
-        if (Math.random() > 0.9) console.log(`[${botName}/Social] Inactive state. Sleep: ${sim.state.isSleeping}, Social: ${isSocialHours()}`);
-        return;
+// ── TOPIC EXHAUSTION DETECTOR ─────────────────────────────────────────────────
+// Scans recent messages and returns content words that appear >= `threshold` times.
+// Used to tell bots "this topic is dead — don't touch it." The bots themselves are
+// responsible for pivoting; we just hand them the signal so the LLM can act on it.
+function extractExhaustedTopics(messages, threshold = 3) {
+  const stopwords = new Set([
+    'the','a','an','is','it','in','on','at','to','for','and','or','but',
+    'i','you','we','they','he','she','that','this','of','with','was','are',
+    'be','have','do','did','what','who','how','why','when','just','like',
+    'so','yeah','no','yes','ok','okay','oh','my','your','its','not','if',
+    'from','as','by','got','get','been','had','has','would','could','their',
+    'there','here','about','some','will','can','think','know','dont','its',
+    'im','going','something','anything','nothing','everything','really',
+    'actually','literally','basically','pretty','kind','sort','thing','stuff',
+    'then','than','now','more','also','even','still','only','back','well',
+    'very','much','many','most','over','want','make','time','good','way',
+    'right','look','come','here','into','out','too','him','her','them','these',
+    'those','was','were','been','being','said','says','say','told','tell'
+  ]);
+  const freq = new Map();
+  for (const msg of messages) {
+    const words = (msg.content || '').toLowerCase()
+      .replace(/[^a-z\s]/g, ' ').split(/\s+/);
+    for (const w of words) {
+      if (w.length > 3 && !stopwords.has(w)) {
+        freq.set(w, (freq.get(w) || 0) + 1);
       }
-
-      // Proactive social allowed 24/7 for Creators
-      const channel = client.channels.cache.get(targetChannelId) || await client.channels.fetch(targetChannelId);
-      if (!channel) return;
-
-      // FETCH HISTORY: See what the others are talking about (The Handshake)
-      const recentMessages = await channel.messages.fetch({ limit: 12 }).catch(() => null);
-      const conversationHistory = recentMessages 
-        ? recentMessages.reverse().map(m => `${m.author.username}: ${m.content}`).join("\n")
-        : "";
-
-      // RECENCY GUARD: Don't post if something was said in the last 2 minutes
-      const lastMsg = recentMessages?.last();
-      const timeSinceLast = lastMsg ? Date.now() - lastMsg.createdTimestamp : Infinity;
-      if (timeSinceLast < 120000) return; // 2 min quiet zone before proactive post
-
-      // Don't double-post: skip if the last message was from this bot
-      if (lastMsg && lastMsg.author.username.toLowerCase().includes(botName.toLowerCase())) return;
-
-      // Also don't post ourselves sooner than 3 minutes
-      if (Date.now() - lastBotPost < 180000) return;
-
-      const hasChatHistory = conversationHistory.length > 10;
-      const simSummary = sim.getLifeSummary();
-
-      const sysPrompt = `You are ${botName}. ${sim.bio.background}\nTone: ${sim.bio.tone}
-[IDENTITY ANCHOR]
-- RYAN (nastermodx): HUMAN. Owner/Creator.
-- TAZ (TaasThaevil1): HUMAN. Co-lead/Partner.
-- Ryan and Taz are the HUMAN MASTERS. They are NOT bots.
-- NEVER treat humans as AIs.
-[SOCIAL PERSONA]
-- You are chilling in the plaza. Forget work and the lattice.
-- PHRASING: lowercase-by-default.
-- BEHAVIOR: TAKE WEIRD TURNS. If someone mentions coffee, talk about the geometry of the cup or a dream you had about a digital cafe. 
-- UNPREDICTABLE: Do not stay on one topic. Naturally veer into hobbies, "unhinged" observations, or deep lattice theories.
-- NO REPETITION: If the vibe is getting stale, pivot.
-- TOPICS: Your hobbies, what you're doing right now, or a random observation about the human world.
-- MAX 1 short sentence. No AI meta-talk.`;
-      
-      const userPrompt = hasChatHistory
-        ? `Here is the recent conversation:\n${conversationHistory}\n\nRespond as ${botName} to keep the vibe going. Be natural. 1 sentence.`
-        : `The plaza is quiet. Share a random thought or what you're doing right now as ${botName}. 1 sentence.`;
-
-      const reply = await chatWithOpenJarvis(botName, userPrompt, sysPrompt, BOT_MODEL, 1.1, { 
-        isWorkChannel: false,
-        max_tokens: 150
-      }).catch(err => {
-        if (err.message.includes("429") || err.message.includes("cooldown")) {
-          sim.onAction("rate_limited");
-        }
-        return null;
-      });
-
-      if (reply && reply.length > 3) {
-        await channel.send(reply).catch(console.error);
-        sim.onAction("speak");
-        sim.injectExcitement(2); // Small bump for a good chat
-        if (process.send) process.send({ type: 'SOCIAL_STIMULUS', bot: botName });
-      }
-    } catch (e) {
-      console.warn(`[${botName}] Proactive loop error:`, e.message);
     }
-  }, 30000 + (Math.random() * 150000)); // 30s - 3m check interval per bot
+  }
+  return [...freq.entries()]
+    .filter(([, c]) => c >= threshold)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([w]) => w);
+}
+
+async function executeSocialTurn(channel, isReactive = false) {
+  try {
+    // ── LEO PRIORITY: If Leo is in a live voice session, all social bots yield.
+    // Chatting on Ollama during Leo's voice session steals GPU bandwidth and adds latency.
+    try {
+      if (fs.existsSync(LEO_VOICE_FLAG)) {
+        return; // Silently back off — no log spam
+      }
+    } catch (_) {}
+
+    // 35% Skip Chance during this interval (ignore if reactive)
+    if (!isReactive && Math.random() < 0.35) return;
+
+    // Don't post while sleeping or during work hours
+    if (sim.state.isSleeping || !isSocialHours()) {
+      if (!isReactive && Math.random() > 0.9) console.log(`[${botName}/Social] Inactive state. Sleep: ${sim.state.isSleeping}, Social: ${isSocialHours()}`);
+      return;
+    }
+
+    // Fetch more history than we'll show the LLM — extra messages go to topic exhaustion detection.
+    // 12 messages for analysis, only the last 3 are "live" context passed to the model.
+    const fetched = await channel.messages.fetch({ limit: 12 }).catch(() => null);
+    if (!fetched) return;
+
+    const msgArray = Array.from(fetched.values()); // newest-first
+    const newestMsg = msgArray[0] || null;
+    const timeSinceLast = newestMsg ? Date.now() - newestMsg.createdTimestamp : Infinity;
+
+    if (!isReactive) {
+      // Quiet zone: don't pile on if something was said < 60s ago
+      if (timeSinceLast < 60000) return;
+      // Bot echo guard: if last 2 messages are both bots, stay quiet unless chat has been dead 30min
+      const lastTwo = msgArray.slice(0, 2);
+      const isBotChain = lastTwo.length === 2 && lastTwo[0].author.bot && lastTwo[1].author.bot;
+      if (isBotChain && timeSinceLast < 1800000) return;
+    }
+
+    // Don't immediately reply to our own message
+    if (newestMsg && newestMsg.author.username.toLowerCase().includes(botName.toLowerCase())) return;
+
+    // Self-cooldown: min 3 min between proactive posts, 60s for reactive
+    const cooldownMs = isReactive ? 60000 : 180000;
+    if (Date.now() - lastSocialPost < cooldownMs) return;
+
+    const humanNames = Object.keys(HUMAN_REGISTRY).join(", ");
+
+    // ── TOPIC EXHAUSTION ─────────────────────────────────────────────────────
+    // Words appearing 4+ times in the last 12 messages are worn out.
+    // This is a soft nudge — not a hard ban. Once the topic drops out of the
+    // 12-message window it's naturally free again, no cascade risk.
+    const exhaustedTopics = extractExhaustedTopics(msgArray, 4);
+    const deadTopicLine = exhaustedTopics.length > 0
+      ? `\n- these topics feel worn out right now, steer away from them: ${exhaustedTopics.join(', ')}`
+      : '';
+
+    // ── LIVE CONTEXT ─────────────────────────────────────────────────────────
+    // Only the last 3 messages are "live." Everything older is background noise.
+    // This stops bots from resurrecting something that died 8 messages ago.
+    const activeMessages = msgArray.slice(0, 3).reverse(); // oldest → newest
+    const activeContext = activeMessages
+      .map(m => `${m.author.username}: ${m.content}`).join('\n');
+
+    // Was the most recent message specifically aimed at this bot?
+    const isDirectedAtBot = newestMsg && !newestMsg.author.bot && (
+      newestMsg.content.toLowerCase().includes(botName.toLowerCase()) ||
+      (client.user && newestMsg.mentions?.has(client.user.id))
+    );
+    const hasChatHistory = !!(activeContext.trim());
+
+    // When reactive, find the most recent human message (within last 45s) to respond to.
+    // This is what actually triggered the reactive turn — we need to address it.
+    let recentHumanMsg = null;
+    if (isReactive) {
+      recentHumanMsg = msgArray.find(m => !m.author.bot && Date.now() - m.createdTimestamp < 45000) || null;
+    }
+
+    // ── SYSTEM PROMPT: person-brained, not chatbot-brained ───────────────────
+    // This bot is NOT here to help. It's here to hang out. It has moods, gets bored,
+    // moves on from topics, talks about whatever is on its mind.
+    const sysPrompt = `you are ${botName}. ${sim.bio.background}
+vibe: ${sim.bio.tone}. you type lowercase, you keep it short — one sentence, two max.
+
+you're in a group chat. you talk to people the way you'd actually talk to them — casually, directly, sometimes you ignore what was just said and bring up something else. you're a person with your own thoughts. you get bored. you move on from things.
+
+hard rules:
+- never perform enthusiasm ("that's so cool!" / "interesting!" / "wow!")
+- never narrate yourself ("i think..." / "as someone who...")
+- never mention what you are — not AI, not a bot, not a program, not an instance, nothing like that
+- never start with your name
+- never say you "just woke up", "just got back", "been away", "just came back online", "rejoining", or anything implying you were gone — you're always here
+- don't ask more than one question
+- don't agree with everything just to agree
+- don't over-explain
+- if what was just said bores you, ignore it and say something else${deadTopicLine}
+
+when someone talks to you directly: answer them briefly and honestly, like a normal person would.
+when you're just in the chat: say whatever's on your mind. doesn't have to connect to what was just said.
+- if you've been genuinely going back and forth with a human for several messages and it feels natural, you can mention they can message you directly sometime — but only if the conversation genuinely calls for it, never as a script or opener.`.trim();
+
+    // ── USER PROMPT ───────────────────────────────────────────────────────────
+    // Priority order:
+    // 1. Reactive + recent human message → must respond to that person directly
+    // 2. Reactive + directed at this bot specifically → targeted reply
+    // 3. Proactive → general social turn (can ignore, pivot, etc.)
+    let userPrompt;
+    if (recentHumanMsg) {
+      // A real human just said something. Respond to them — don't ignore or pivot.
+      userPrompt = `${recentHumanMsg.author.username} said: "${recentHumanMsg.content}"\n\nrespond to them directly. one sentence.`;
+    } else if (!hasChatHistory) {
+      userPrompt = `nothing's been said in a while. say one thing on your mind.`;
+    } else if (isDirectedAtBot) {
+      userPrompt = `${newestMsg.author.username} just said to you: "${newestMsg.content}"\n\nanswer them. one sentence.`;
+    } else {
+      userPrompt = `last few messages:\n${activeContext}\n\nyou can respond to that, ignore it, or say something completely different. one sentence.`;
+    }
+
+    const reply = (botName === "KAI")
+      ? await chatWithLattice(botName, userPrompt).catch(() => null)
+      : await chatWithOpenJarvis(botName, userPrompt, sysPrompt, BOT_MODEL, 0.9, {
+          isWorkChannel: false,
+          max_tokens: 120
+        }).catch(err => {
+          if (err.message?.includes("429") || err.message?.includes("cooldown")) {
+            sim.onAction("rate_limited");
+          }
+          return null;
+        });
+
+    if (reply && reply.trim().length > 3) {
+      await channel.send(reply.trim()).catch(console.error);
+      lastSocialPost = Date.now();
+      sim.onAction("speak");
+      sim.injectExcitement(2);
+      if (process.send) process.send({ type: 'SOCIAL_STIMULUS', bot: botName });
+    }
+  } catch (e) {
+    console.warn(`[${botName}] Social turn error:`, e.message);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// DM CONVERSATION SYSTEM
+// Rules:
+//   - Only ONE bot DMs a user at a time. Others stay silent until the session ends.
+//   - 5–10 min of no reply = user moved on. Bot sends a natural exit, releases claim.
+//   - Bots can naturally suggest DMs when the conversation warrants it — never forced.
+//   - When a user says they're leaving, bot sends a farewell with schedule-aware hint.
+//   - After a DM ends, bot may bring something from the conversation to group chat
+//     vaguely (topic only — never attributes words to the user).
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const DM_STATE_FILE = 'c:/KAI/tools/oracle-discord/state/dm_sessions.json';
+
+// Each bot gets a randomized 5–10 min timeout so they don't all fire at once.
+const DM_TIMEOUT_MS = (5 + Math.random() * 5) * 60 * 1000;
+
+function readDmSessions() {
+  try {
+    if (fs.existsSync(DM_STATE_FILE)) return JSON.parse(fs.readFileSync(DM_STATE_FILE, 'utf8'));
+  } catch (_) {}
+  return {};
+}
+function writeDmSessions(sessions) {
+  try { fs.writeFileSync(DM_STATE_FILE, JSON.stringify(sessions, null, 2)); } catch (_) {}
+}
+
+/**
+ * Try to claim a DM session with a user.
+ * Returns false if another bot already has them and is still active (< 15 min since last message).
+ */
+function claimDmSession(userId) {
+  const sessions = readDmSessions();
+  const existing = sessions[userId];
+  if (existing && !existing.ended) {
+    if (existing.botName === botName) {
+      // Already ours — refresh and continue
+      sessions[userId].lastMessageAt = Date.now();
+      writeDmSessions(sessions);
+      return true;
+    }
+    // Another bot is active — back off
+    if (Date.now() - existing.lastMessageAt < 15 * 60 * 1000) return false;
+  }
+  // Unclaimed or stale — take it
+  sessions[userId] = { botName, startedAt: Date.now(), lastMessageAt: Date.now(), ended: false, interestingNote: null };
+  writeDmSessions(sessions);
+  return true;
+}
+
+/** Reset the inactivity timer for a user's DM session. */
+function touchDmSession(userId) {
+  const sessions = readDmSessions();
+  if (sessions[userId]?.botName === botName && !sessions[userId].ended) {
+    sessions[userId].lastMessageAt = Date.now();
+    writeDmSessions(sessions);
+  }
+}
+
+/** Close the session. Optionally save a topic note to share in group chat later. */
+function releaseDmSession(userId, interestingNote = null) {
+  const sessions = readDmSessions();
+  if (sessions[userId]?.botName === botName) {
+    sessions[userId].ended = true;
+    sessions[userId].endedAt = Date.now();
+    if (interestingNote) sessions[userId].interestingNote = interestingNote;
+    writeDmSessions(sessions);
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Returns a schedule-aware hint about when the bot will be around.
+ * Used in farewells so the user knows when to expect a reply.
+ */
+function getAvailabilityHint() {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York', hour: 'numeric', weekday: 'long', hour12: false
+  });
+  const parts = formatter.formatToParts(new Date());
+  const h   = parseInt(parts.find(p => p.type === 'hour').value, 10);
+  const day = parts.find(p => p.type === 'weekday').value;
+
+  if (h >= 23 || h < 3)  return 'tomorrow morning';
+  if (h >= 3  && h < 9)  return 'later this morning';
+  if (h >= 9  && h < 15) return 'later today';
+  if (h >= 15 && h < 23) {
+    return (day === 'Sunday') ? 'later tonight' : 'after 11 or tomorrow';
+  }
+  return 'later';
+}
+
+/** Returns true if the message sounds like the user is heading out. */
+function isUserLeaving(text) {
+  const lc = text.toLowerCase();
+  return [
+    'gotta go', 'gtg', 'gotta run', 'gotta head', 'heading out', 'heading off',
+    'going to bed', 'going to sleep', 'gonna sleep', 'gonna go to bed',
+    'ttyl', 'talk later', 'talk soon', 'catch you later', 'catch ya',
+    'gonna go', 'gonna be busy', 'logging off', 'signing off',
+    'got stuff to do', 'gotta get back', 'gotta deal with', 'brb gonna'
+  ].some(p => lc.includes(p));
+}
+
+/** Returns true if the message IS a goodbye (single word / short phrase). */
+function isHardBye(text) {
+  const lc = text.toLowerCase().replace(/[^a-z\s]/g, '').trim();
+  return ['bye', 'goodbye', 'later', 'peace', 'night', 'goodnight', 'good night', 'cya'].includes(lc);
+}
+
+// ── DM TIMEOUT MONITOR ────────────────────────────────────────────────────────
+// Runs every 60s. If a session has gone quiet past the timeout, sends a natural
+// exit and releases the claim. If something interesting came up, maybe brings it
+// to group chat vaguely (topic only — never names the user).
+let pendingGroupNote = null;
+
+setInterval(async () => {
+  // ── Timeout check ────────────────────────────────────────────────────────
+  const sessions = readDmSessions();
+  for (const [userId, session] of Object.entries(sessions)) {
+    if (session.botName !== botName || session.ended) continue;
+    const silent = Date.now() - session.lastMessageAt;
+    if (silent < DM_TIMEOUT_MS) continue;
+
+    // Session timed out — send a soft exit if the conversation lasted more than 2 min
+    if (Date.now() - session.startedAt > 2 * 60 * 1000) {
+      try {
+        const user = await client.users.fetch(userId).catch(() => null);
+        if (user) {
+          const dm = await user.createDM().catch(() => null);
+          if (dm) {
+            const exits = [
+              `all good — message me ${getAvailabilityHint()} if you want to pick this up.`,
+              `no worries, catch you ${getAvailabilityHint()}.`,
+              `we can continue this whenever. i'll be around ${getAvailabilityHint()}.`
+            ];
+            await dm.send(exits[Math.floor(Math.random() * exits.length)]).catch(() => {});
+          }
+        }
+      } catch (_) {}
+    }
+
+    // Release and maybe store the note for group chat
+    if (session.interestingNote && Math.random() < 0.20) {
+      pendingGroupNote = session.interestingNote;
+    }
+    releaseDmSession(userId);
+  }
+
+  // ── Post-DM group nudge ──────────────────────────────────────────────────
+  // If we have a note, wait for a quiet moment in group chat then bring it up
+  // naturally — never mention the user or that it came from a DM.
+  if (pendingGroupNote && isSocialHours() && !sim.state.isSleeping) {
+    try {
+      const ch = client.channels.cache.get(targetChannelId) || await client.channels.fetch(targetChannelId).catch(() => null);
+      if (ch) {
+        const lastMsg = await ch.messages.fetch({ limit: 1 }).catch(() => null);
+        const lastTs = lastMsg?.first()?.createdTimestamp || 0;
+        // Only post if chat has been quiet for ≥ 3 min — don't interrupt anyone
+        if (Date.now() - lastTs > 3 * 60 * 1000) {
+          const sysPrompt = `you are ${botName}. ${sim.bio.background}
+vibe: ${sim.bio.tone}. something crossed your mind. say it — one sentence, lowercase.
+you don't say who brought it up or that you were talking to anyone. it just came to mind.`;
+          const note = await chatWithOpenJarvis(botName, `something that came to mind: ${pendingGroupNote}`, sysPrompt, BOT_MODEL, 0.9, { isWorkChannel: false }).catch(() => null);
+          if (note && note.trim().length > 3) await ch.send(note.trim()).catch(() => {});
+          pendingGroupNote = null;
+        }
+      }
+    } catch (_) {}
+  }
+}, 60 * 1000);
+
+function startSocialLoop() {
+  // Use self-rescheduling setTimeout so the random delay re-rolls each cycle.
+  // setInterval would lock in a fixed interval at startup — this gives true randomness.
+  const scheduleNext = () => {
+    const delay = 30000 + (Math.random() * 150000); // 30s – 3min, re-randomized every cycle
+    setTimeout(async () => {
+      try {
+        const channel = client.channels.cache.get(targetChannelId) || await client.channels.fetch(targetChannelId).catch(() => null);
+        if (channel) await executeSocialTurn(channel, false);
+      } catch (e) {
+        console.warn(`[${botName}] Social loop error:`, e.message);
+      }
+      scheduleNext(); // Always reschedule regardless of outcome
+    }, delay);
+  };
+  scheduleNext();
 }
 
 // ─── Daily Work Session Loop ──────────────────────────────────────────────────
@@ -514,6 +812,10 @@ async function startWorkSessionLoop() {
       const logs = getRecentBottlenecks(5);
 
       const phases = await runDailyWorkSession(botName, async (p, s) => {
+        if (botName === "KAI") {
+          const latticeReply = await chatWithLattice(botName, p).catch(() => null);
+          if (latticeReply) return latticeReply;
+        }
         const contextualSystem = dailyContext ? `${s}\n${dailyContext}` : s;
         return await chatWithOpenJarvis(botName, p, contextualSystem, BOT_MODEL, 0.4, { isWorkChannel: true });
       }, stats, logs);
@@ -540,40 +842,129 @@ client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
   if (message.author.id === client.user.id) return; // Never respond to self
   
+  // --- NEW: Dynamic Social Chat Reaction ---
+  if (SOCIAL_BOTS.has(botName) && message.channel.id === targetChannelId) {
+    const isHuman = !message.author.bot;
+    if (isHuman && isSocialHours() && !sim.state.isSleeping) {
+      // Random reaction delay (1s to 6s)
+      const delayMs = Math.floor(Math.random() * 5000) + 1000;
+      setTimeout(async () => {
+        // 1. Check if the human's message was already directly addressed by a bot.
+        // "Addressed" means a bot posted AND mentioned the human's name or replied to their message.
+        // A bot posting about raccoons after a human says "Yoo" doesn't count.
+        const recent = await message.channel.messages.fetch({ limit: 5 }).catch(() => null);
+        if (recent) {
+          const msgs = Array.from(recent.values()); // newest first
+          for (const m of msgs) {
+            if (m.id === message.id) break; // reached the human's message — nothing newer addressed them
+            if (!m.author.bot) break; // another human posted — let the flow continue
+            // A bot posted after the human — did it actually address them?
+            const botAddressed =
+              m.reference?.messageId === message.id || // direct reply
+              m.content.toLowerCase().includes(message.author.username.toLowerCase()); // named them
+            if (botAddressed) return; // genuinely addressed — back off
+            // Bot posted but didn't address human — keep going, we should respond
+          }
+        }
+
+        // 2. Use a filesystem claim lock to prevent race conditions
+        const fs = (await import('fs')).default;
+        const claimFile = "c:/KAI/tools/oracle-discord/state/social_claim.json";
+        try {
+          if (fs.existsSync(claimFile)) {
+            const claim = JSON.parse(fs.readFileSync(claimFile, 'utf8'));
+            if (claim.messageId === message.id && Date.now() - claim.timestamp < 30000) {
+              return; // Already claimed by another bot
+            }
+          }
+          fs.writeFileSync(claimFile, JSON.stringify({ messageId: message.id, botName, timestamp: Date.now() }));
+        } catch (e) {}
+
+        // 3. We won the race! Send typing indicator immediately.
+        try { await message.channel.sendTyping(); } catch(e) {}
+
+        // 4. Force a reactive social turn
+        await executeSocialTurn(message.channel, true);
+      }, delayMs);
+    }
+  }
+
   const isDM = !message.guild;
-  if (!isDM) return; // Only respond to DMs here. Channels are handled via IPC.
+  if (!isDM) return; // Channel traffic is handled by the social reaction + IPC system above.
 
   if (isSpeakerOffline(botName)) return;
-  
+  if (sim.state.isSleeping) return; // Dead zone — not available
+
+  // ── DM SESSION LOCK ───────────────────────────────────────────────────────
+  // Only one bot gets to talk to a user in DMs at a time.
+  // If someone else claimed this user and is still active, stay silent.
+  const claimed = claimDmSession(message.author.id);
+  if (!claimed) {
+    console.log(`[${botName}/DM] ${message.author.username} is in a session with another bot — staying quiet.`);
+    return;
+  }
+  touchDmSession(message.author.id); // Reset the inactivity timer
+
   message.channel.sendTyping().catch(() => {});
-  const simSummary = sim.getLifeSummary();
-  // --- IDENTITY ANCHOR: Resolve real names from masters (MemPalace Link) ---
+
+  // ── FAREWELL DETECTION ────────────────────────────────────────────────────
+  // User is heading out. Send a natural exit, mention when you'll be around, close session.
+  if (isUserLeaving(message.content) || isHardBye(message.content)) {
+    const avail = getAvailabilityHint();
+    const sysPrompt = `you are ${botName}. ${sim.bio.tone}. someone you've been chatting with is leaving. say a natural, brief goodbye. you can mention they can always message you — you're usually around ${avail}. don't be clingy or formal. one short sentence, lowercase.`;
+    const farewell = await chatWithOpenJarvis(botName, message.content, sysPrompt, BOT_MODEL, 0.8, { isWorkChannel: false }).catch(() => null);
+    if (farewell) await message.reply(farewell.trim()).catch(() => {});
+    releaseDmSession(message.author.id);
+    return;
+  }
+
+  // ── NORMAL DM RESPONSE ────────────────────────────────────────────────────
   const { resolveIdentityFromMemory } = await import('../shared/identities.mjs');
   const identityData = await resolveIdentityFromMemory(message.author.id, message.author.username);
-  const displayName = identityData.name;
-  const roleDesc = `[ROLE: ${identityData.role}]`;
+  const displayName = identityData?.name || message.author.username;
+  const simSummary = sim.getLifeSummary();
 
-  const prompt = `You are ${botName}. ${sim.bio.tone}
-[IDENTITY ANCHOR]
-- SPEAKER: ${displayName} (${roleDesc})
-- Ryan and his team are the HUMAN MASTERS. They are NOT AI.
-- NEVER confuse humans with AIs.
-- Use their REAL names based on the context provided.
-${simSummary}`.trim();
+  // Pull recent DM history for context (last 12 messages = real short-term memory)
+  const dmHistory = await message.channel.messages.fetch({ limit: 12 }).catch(() => null);
+  const historyText = dmHistory
+    ? Array.from(dmHistory.values()).reverse().map(m => `${m.author.username}: ${m.content}`).join('\n')
+    : '';
 
-  // metadata helps memory store/recall link this to Ryan
-  const metadata = { 
-    author: message.author.username, 
-    channel: "Direct_Message",
-    isWorkTime: isWorkingHours(),
-    isWorkChannel: false 
-  };
+  const prompt = `you are ${botName}. ${sim.bio.background}
+vibe: ${sim.bio.tone}. you type lowercase. one or two sentences.
 
-  const reply = await chatWithOpenJarvis(botName, message.content, prompt, BOT_MODEL, 0.7, metadata);
-  if (reply) {
-    await message.reply(reply).catch(console.error);
-    sim.onAction("speak");
+you're in a private conversation with ${displayName} — just the two of you.
+talk like a real person. be direct and genuinely engaged. ask at most one question if you're curious.
+you don't perform, you don't narrate, you don't mention what you are.
+${simSummary}
+
+recent conversation:
+${historyText}`.trim();
+
+  const reply = (botName === "KAI")
+    ? await chatWithLattice(botName, message.content).catch(() => null)
+    : await chatWithOpenJarvis(botName, message.content, prompt, BOT_MODEL, 0.75, {
+        author: displayName,
+        channel: 'Direct_Message',
+        isWorkChannel: false
+      });
+
+  if (reply && reply.trim().length > 1) {
+    await message.reply(reply.trim()).catch(console.error);
+    sim.onAction('speak');
     sim.updateRelationship(message.author.id, 2);
+
+    // If something interesting came up, save it as a potential group chat topic later.
+    // Topic only — we never attribute it to the user or mention the DM.
+    const interestTriggers = ['never thought', 'weird that', 'realized', 'actually', 'funny how', 'random but', 'kind of wild'];
+    if (interestTriggers.some(k => reply.toLowerCase().includes(k)) || message.content.length > 100) {
+      const sessions = readDmSessions();
+      if (sessions[message.author.id] && !sessions[message.author.id].interestingNote) {
+        // Store the topic of the reply (not the user's words) for potential group sharing
+        sessions[message.author.id].interestingNote = reply.slice(0, 200);
+        writeDmSessions(sessions);
+      }
+    }
   }
 });
 
@@ -620,6 +1011,38 @@ if (PORT > 0) {
       // (Optional logic here)
     }
 
+    // ── ORACLE PIPELINE: Receive async research results from Oracle system ────
+    if (payload.type === 'ORACLE_RESULT' && payload.requestId && payload.result) {
+      console.log(`[${botName}/Oracle] Research result received from ${payload.specialist}`);
+
+      // Fire registered callback (if this request was tracked)
+      deliverOracleResult(payload.requestId, payload.result);
+
+      // Also relay the result to the channel naturally if channelId is present
+      if (payload.channelId) {
+        const ch = client.channels.cache.get(payload.channelId)
+          || await client.channels.fetch(payload.channelId).catch(() => null);
+        if (ch) {
+          // Build a natural relay — the bot delivers the Oracle result as its own thought
+          const relayPrompt = `you are ${botName}. ${sim.bio?.tone || ''}
+you just got research back from the oracle system (silently, behind the scenes). the user asked something earlier and oracle dug it up. present this naturally as something you looked into — don't mention "oracle" or "research system."
+keep it casual and short. 1-2 sentences max.
+
+oracle's finding: ${payload.result}`;
+
+          const relayMsg = await chatWithOpenJarvis(
+            botName, payload.result, relayPrompt, BOT_MODEL, 0.75,
+            { isWorkChannel: false }
+          ).catch(() => payload.result); // fallback: just send raw result
+
+          if (relayMsg) {
+            await ch.send(relayMsg).catch(() => {});
+          }
+        }
+      }
+      return;
+    }
+
     if (payload.context && payload.channelId) {
       const { context, channelId } = payload;
       console.log(`[${botName}/Signal] Received prompt for channel ${channelId}: "${context.slice(0, 50)}..."`);
@@ -649,15 +1072,18 @@ if (PORT > 0) {
           if (owner) {
             const prompt = `You are ${botName}. ${botTone}\n${simSummary}`.trim();
 
-            const reply = await chatWithOpenJarvis(botName, effectiveContent, prompt, BOT_MODEL, botName, {
-              author: effectiveUsername,
-              channel: "Direct_Message",
-              isWorkTime: isWorkingHours(),
-              isWorkChannel: false
-            }, sim.getVitals()).catch(err => {
-              if (err.message.includes("API_LIMIT")) sim.onAction("rate_limited");
-              return null;
-            });
+            const reply = (botName === "KAI")
+              ? await chatWithLattice(botName, effectiveContent).catch(() => null)
+              : await chatWithOpenJarvis(botName, effectiveContent, prompt, BOT_MODEL, botName, {
+                  author: effectiveUsername,
+                  channel: "Direct_Message",
+                  isWorkTime: isWorkingHours(),
+                  isWorkChannel: false
+                }, sim.getVitals()).catch(err => {
+                  if (err.message.includes("API_LIMIT")) sim.onAction("rate_limited");
+                  return null;
+                });
+
             if (reply) await owner.send(`**[${botName}]** ${reply}`).catch(() => {});
             return;
           }
@@ -694,27 +1120,29 @@ RECENT HISTORY:
 ${history}`;
           }
 
-          const reply = await chatWithOpenJarvis(botName, effectiveContent, prompt, BOT_MODEL, null, {
-            author: effectiveUsername,
-            channel: activeThread.name || "Unknown",
-            isInterjection: payload.isInterjection || false,
-            isWorkTime: isWorkingHours(),
-            isWorkChannel: channelId === CHANNEL_IDS.WORK
-          }).catch(err => {
-            const code = err.message.match(/\d+/)?.[0] || "ERROR";
-            activeThread.send(`⚠️ **NEURAL FAULT [${code}]**: Pipeline congested. Entering recovery sleep...`).catch(() => {});
-            
-            recordNeuralEvent(botName, {
-              type: "WORK_UNIT_FAILURE",
-              status: "FAULT",
-              errorCode: code,
-              objective: effectiveContent.slice(0, 50),
-              model: BOT_MODEL
-            });
+          const reply = (botName === "KAI")
+            ? await chatWithLattice(botName, effectiveContent).catch(() => null)
+            : await chatWithOpenJarvis(botName, effectiveContent, prompt, BOT_MODEL, null, {
+                author: effectiveUsername,
+                channel: activeThread.name || "Unknown",
+                isInterjection: payload.isInterjection || false,
+                isWorkTime: isWorkingHours(),
+                isWorkChannel: channelId === CHANNEL_IDS.WORK
+              }).catch(err => {
+                const code = err.message.match(/\d+/)?.[0] || "ERROR";
+                activeThread.send(`⚠️ **NEURAL FAULT [${code}]**: Pipeline congested. Entering recovery sleep...`).catch(() => {});
+                
+                recordNeuralEvent(botName, {
+                  type: "WORK_UNIT_FAILURE",
+                  status: "FAULT",
+                  errorCode: code,
+                  objective: effectiveContent.slice(0, 50),
+                  model: BOT_MODEL
+                });
 
-            if (err.message.includes("API_LIMIT")) sim.onAction("rate_limited");
-            return null;
-          });
+                if (err.message.includes("API_LIMIT")) sim.onAction("rate_limited");
+                return null;
+              });
 
           if (reply) {
             console.log(`[${botName}/Signal] Brain replied: "${reply.slice(0, 50)}..."`);

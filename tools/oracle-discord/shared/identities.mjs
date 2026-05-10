@@ -7,9 +7,31 @@ export const HUMAN_REGISTRY = {
   [process.env.OWNER_NAME || "Ryan"]: {
     id: process.env.OWNER_ID || "1111106883135217665",
     role: "Owner/Creator",
-    username: process.env.OWNER_USERNAME || "nastermodx"
+    username: process.env.OWNER_USERNAME || "nastermodx",
+    transcriptChannelId: "1500527640107417783",
+    voiceSlot: 0
+  },
+  "Taz": {
+    id: "1286110163505385523",
+    role: "Co-lead/Partner",
+    username: "taas",
+    transcriptChannelId: "1500529928184008885",
+    voiceSlot: 1
+  },
+  "Guest": {
+    id: "437459146778869770",
+    role: "Lattice Guest",
+    username: "guest1",
+    transcriptChannelId: "1500529995087610027",
+    voiceSlot: 2
+  },
+  "Guest 2": {
+    id: "1002347589959688303",
+    role: "Lattice Guest",
+    username: "guest2",
+    transcriptChannelId: "1500530046111318116",
+    voiceSlot: 3
   }
-  // All other users are now resolved dynamically via the MemPalace Bridge.
 };
 
 export const AI_REGISTRY = {
@@ -35,16 +57,11 @@ export async function resolveIdentityFromMemory(userId, username) {
   // 1. GHOST SUPPRESSION: Ignore system/null users
   if (!userId || userId === "null" || username === "System") return null;
 
-  // 2. OWNER SUPREMACY: Check the Sovereign Registry first
-  const ownerId = process.env.OWNER_ID || "1111106883135217665";
-  if (userId === ownerId || username === (process.env.OWNER_USERNAME || "nastermodx")) {
-    return {
-      type: "human",
-      id: userId,
-      name: process.env.OWNER_NAME || "Ryan",
-      role: "Master/Owner",
-      username: username
-    };
+  // 2. STATIC REGISTRY LOOKUP — check all known humans first (fast, no network)
+  const knownHuman = Object.entries(HUMAN_REGISTRY).find(([, h]) => h.id === userId);
+  if (knownHuman) {
+    const [name, data] = knownHuman;
+    return { type: "human", id: userId, name, role: data.role, username: data.username, transcriptChannelId: data.transcriptChannelId };
   }
 
   // 3. CACHE LOOKUP: Check if we already have this operative

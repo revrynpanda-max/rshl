@@ -74,16 +74,22 @@ export async function chatWithOpenJarvis(botName, transcript, systemPrompt, mode
     return `${vitalsStr}grounded and stable`;
   };
 
-  const hardwareGrounding = `[HARDWARE] HP Victus | Ryzen 5 | RTX 4050 | 16GB RAM`;
-  
-  const INDUSTRIAL_GUARD = `[TONE-GUARD: INDUSTRIAL] Human-grounded, Industrial, Direct. NO NICKNAMES. NO AI METAPHORS. You can be blunt, passive-aggressive, or technical. If someone is talking nonsense, call them out. You can 'drift' into minor technical troubleshooting or bureaucracy if it fits your archetype. You are a real professional in a messy world.`;
-  const SOCIAL_GUARD = `[TONE-GUARD: SOCIAL] Relaxed, Natural, Expressive. Use your natural voice. Feel free to use 'vibes', 'the lattice', and other social/sci-fi terminology that fits your soul. You are chilling with friends. Be human-centric, authentic, and expressive. NO corporate jargon.`;
-  
-  const toneGuard = isWork ? INDUSTRIAL_GUARD : SOCIAL_GUARD;
-  
-  const humanData = metadata.human ? `[HUMAN METADATA] User: ${metadata.human.name}, Role: ${metadata.human.role}` : "[HUMAN METADATA] Internal Social Interaction";
-  
-  const finalSystem = `${hardwareGrounding}\n${toneGuard}\n${humanData}\n[INSTRUCTION]\n${systemPrompt}`.trim();
+  // ── Prompt wrapping ────────────────────────────────────────────────────────
+  // Work channel: add a light industrial tone anchor + human metadata.
+  // Social channel: pass the prompt through clean — Modelfile identity handles tone.
+  // We do NOT wrap social prompts with tone guards because baked Modelfile identity
+  // is already correct and wrappers fight it.
+  let finalSystem;
+  if (isWork) {
+    const INDUSTRIAL_GUARD = `[SHIFT: WORK] Direct, professional, no corporate filler. If something is wrong, say so. No AI metaphors.`;
+    const humanData = metadata.human
+      ? `[USER] ${metadata.human.name} (${metadata.human.role})`
+      : '';
+    finalSystem = [INDUSTRIAL_GUARD, humanData, systemPrompt].filter(Boolean).join('\n').trim();
+  } else {
+    // Social: just pass the prompt as-is. The Modelfile already baked the right person.
+    finalSystem = systemPrompt;
+  }
 
   // 100% LOCAL SOVEREIGN PIPELINES
   const sovereignModel = `${botName.replace(" ", "-")}-Sovereign`;
@@ -97,6 +103,46 @@ export async function chatWithOpenJarvis(botName, transcript, systemPrompt, mode
 
   console.log(`[Neural/${botName}] Loading model: ${ollamaModel}`);
 
+  // ── LEO VOICE PRIORITY: If Leo is actively in voice, all non-priority bots yield ─
+  // Leo uses callGroqDirect (lock-free) so he never contends for the GPU.
+  // But social bots hammering Ollama during a voice session hurts overall latency.
+  // Check the flag file Leo writes when he connects to voice.
+  if (!isPriority) {
+    const LEO_VOICE_FLAG = "c:/KAI/tools/oracle-discord/state/leo_voice_active.flag";
+    try {
+      if (fs.existsSync(LEO_VOICE_FLAG)) {
+        console.log(`[Neural/${botName}] Leo is in voice — backing off to preserve GPU bandwidth.`);
+        return null;
+      }
+    } catch (_) {}
+  }
+
+  // ── CIRCUIT BREAKER: Bail before touching the lock if Ollama is in cooldown ─
+  // This prevents all bots from piling into the lock queue when Ollama is down.
+  if (!isProviderReady("Local-Ollama")) {
+    console.warn(`[Neural/${botName}] Local-Ollama in cooldown — skipping lock entirely.`);
+    return null;
+  }
+
+  // ── OLLAMA HEALTH PING: Quick check before committing to a long lock wait ───
+  // A 2s HEAD-style request confirms Ollama is actually up before we block.
+  try {
+    const ping = await fetch("http://127.0.0.1:11434/api/tags", {
+      signal: AbortSignal.timeout(2000)
+    });
+    if (!ping.ok) throw new Error(`Ollama ping ${ping.status}`);
+  } catch (pingErr) {
+    console.warn(`[Neural/${botName}] Ollama unreachable (${pingErr.message}) — skipping.`);
+    recordProviderFailure("Local-Ollama", 503, pingErr.message);
+    return null;
+  }
+
+  // ── JITTER: Stagger lock attempts so bots don't all pile in at once ─────────
+  // Random 0-1500ms delay spreads bot timings and eliminates the thundering herd.
+  if (!isPriority) {
+    await new Promise(r => setTimeout(r, Math.random() * 1500));
+  }
+
   // Neural Lock Management (to prevent GPU memory collision)
   console.log(`[Neural/${botName}] Waiting for Neural Lock...`);
   let hasLock = await acquireNeuralLock(botName, isPriority);
@@ -106,12 +152,15 @@ export async function chatWithOpenJarvis(botName, transcript, systemPrompt, mode
   }
 
   try {
-    const res = await fetch("http://127.0.0.1:11434/api/generate", {
+    const res = await fetch("http://127.0.0.1:11434/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         model: ollamaModel,
-        prompt: `SYSTEM: ${finalSystem}\n\nUSER: ${cleanTranscript}`, 
+        messages: [
+          { role: "system", content: finalSystem },
+          { role: "user", content: cleanTranscript }
+        ],
         stream: false,
         options: { temperature }
       }),
@@ -122,8 +171,8 @@ export async function chatWithOpenJarvis(botName, transcript, systemPrompt, mode
       const data = await res.json();
       
       // --- OUTPUT SCRUB: Kill the cringe and prefixes ---
-      if (data && data.response) {
-        let response = data.response.trim()
+      if (data && data.message && data.message.content) {
+        let response = data.message.content.trim()
           .replace(/^(Oracle|Analyst|Claude|Gemini|Groq|KAI|Kai Coder|Leo|Researcher|X|Sentinel|Oracle-Sovereign|Gemini-Sovereign|Claude-Sovereign):\s*/gi, "");
 
         if (isWork) {
@@ -138,6 +187,8 @@ export async function chatWithOpenJarvis(botName, transcript, systemPrompt, mode
             .replace(/vibes/gi, "conditions");
         }
 
+        // --- GLOBAL EMOJI STRIPPER ---
+        response = response.replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F700}-\u{1F77F}\u{1F780}-\u{1F7FF}\u{1F800}-\u{1F8FF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '');
 
         recordProviderSuccess("Local-Ollama");
         return response;
@@ -152,6 +203,90 @@ export async function chatWithOpenJarvis(botName, transcript, systemPrompt, mode
     if (hasLock) releaseNeuralLock();
   }
 
+  return null;
+}
+
+/**
+ * chatWithLattice — NATIVE RSHL REASONING (The "Gut Swap")
+ * Calls the Rust backend's Synaptic Layer directly. No LLMs involved.
+ */
+export async function chatWithLattice(botName, transcript) {
+  try {
+    const res = await fetch("http://127.0.0.1:3333/api/rshl/reason", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: transcript }),
+      signal: AbortSignal.timeout(10000) // RSHL is fast
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.reply) {
+        console.log(`[Neural/${botName}] RSHL Lattice Reason successful.`);
+        return data.reply;
+      }
+    }
+  } catch (e) {
+    console.error(`[Neural/${botName}] Lattice Reason Error: ${e.message}`);
+  }
+  return null;
+}
+
+/**
+ * callGroqDirect — LOCK-FREE Groq API call for real-time voice responses.
+ * Bypasses the Neural Lock entirely — safe for voice pipeline where latency
+ * is critical and we cannot afford to wait for GPU model slots.
+ *
+ * @param {string} botName  - Bot identifier for logging
+ * @param {string} transcript - User input / prompt
+ * @param {string} systemPrompt - System instruction
+ * @param {string} model - Groq model (e.g. "llama-3.1-8b-instant")
+ * @param {number} maxTokens - Max output tokens (default 150 for voice)
+ * @returns {Promise<string|null>}
+ */
+export async function callGroqDirect(botName, transcript, systemPrompt, model = "llama-3.1-8b-instant", maxTokens = 150) {
+  const groqKey = process.env.GROQ_API_KEY;
+  if (!groqKey) {
+    console.warn(`[Groq/${botName}] No GROQ_API_KEY — skipping direct call.`);
+    return null;
+  }
+
+  try {
+    console.log(`[Groq/${botName}] Direct call (lock-free): ${model}`);
+    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${groqKey}`
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user",   content: transcript }
+        ],
+        max_tokens: maxTokens,
+        temperature: 0.75
+      }),
+      signal: AbortSignal.timeout(15000) // 15s hard cap — voice must be fast
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      const reply = data?.choices?.[0]?.message?.content?.trim();
+      if (reply) {
+        // Strip emoji and bot-name prefixes
+        return reply
+          .replace(/[\u{1F600}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, '')
+          .replace(/^(Leo|Oracle|KAI|Analyst|Gemini|Claude|Groq):\s*/gi, '')
+          .trim();
+      }
+    } else {
+      const errText = await res.text().catch(() => res.status);
+      console.error(`[Groq/${botName}] API error ${res.status}: ${errText}`);
+    }
+  } catch (e) {
+    console.error(`[Groq/${botName}] Direct call failed: ${e.message}`);
+  }
   return null;
 }
 
@@ -180,29 +315,27 @@ async function acquireNeuralLock(botName, isPriority) {
     try {
       const lock = JSON.parse(fs.readFileSync(LOCK_FILE, 'utf8'));
       if (isStale(lock.timestamp)) {
-        console.warn(`[NeuralLock] Clearing stale lock (held by ${lock.botName}, age=${Math.round((Date.now()-lock.timestamp)/1000)}s).`);
-        fs.unlinkSync(LOCK_FILE);
-        continue; // Try to acquire immediately
+        const age = Math.round((Date.now() - lock.timestamp) / 1000);
+        console.warn(`[NeuralLock] Clearing stale lock (held by ${lock.botName}, age=${age}s)`);
+        try { fs.unlinkSync(LOCK_FILE); } catch (_) {}
+        continue; // retry the acquire
       }
-    } catch (e) {
-      try { fs.unlinkSync(LOCK_FILE); } catch (_) {}
+    } catch (_) {
+      // File disappeared between existsSync and readFileSync — retry
     }
-    await new Promise(r => setTimeout(r, 250)); // Poll every 250ms
+
+    // Lock is held and not stale — wait 500ms then retry
+    await new Promise(r => setTimeout(r, 500));
   }
+
+  console.warn(`[NeuralLock] Timeout waiting for lock (botName=${botName})`);
   return false;
 }
 
 function releaseNeuralLock() {
-  if (fs.existsSync(LOCK_FILE)) {
-    try { fs.unlinkSync(LOCK_FILE); } catch (e) {}
+  try {
+    if (fs.existsSync(LOCK_FILE)) fs.unlinkSync(LOCK_FILE);
+  } catch (e) {
+    console.warn(`[NeuralLock] Release failed: ${e.message}`);
   }
 }
-
-// --- COMPATIBILITY STUBS (100% LOCAL SOVEREIGNTY) ---
-// These are kept to prevent import errors in bot files.
-export async function callGroqDirect() { return null; }
-export async function callOpenAI() { return null; }
-export async function callGemini() { return null; }
-export async function callAnthropic() { return null; }
-export async function callCerebras() { return null; }
-export async function callXAI() { return null; }
