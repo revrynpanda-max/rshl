@@ -39,7 +39,7 @@ try {
 }
 
 import { isAllowed, CHANNEL_IDS, USER_TRANSCRIPT_MAP, TRANSCRIPT_USER_INFO } from '../shared/channel-rules.mjs';
-import { HUMAN_REGISTRY, HUMAN_IDS, getIdentityById } from '../shared/identities.mjs';
+import { HUMAN_REGISTRY, HUMAN_IDS, getIdentityById, resolveIdentityFromMemory } from '../shared/identities.mjs';
 import { recordAIFailure, isSpeakerOffline, isProviderReady, recordProviderFailure } from '../shared/failure-tracker.mjs';
 import { isLoopingResponse } from '../shared/utils.mjs';
 import { AgentSimulation } from '../shared/simulation.mjs';
@@ -53,6 +53,36 @@ import { getHardwareStats } from '../shared/performance-monitor.mjs';
 import { isWorkingHours } from '../shared/hours.mjs';
 import { runDailyWorkSession } from '../shared/daily-learning.mjs';
 import { getCompletedForNotification, markAsNotified } from '../shared/command-hub.mjs';
+
+// ── IN-MEMORY HISTORY CACHE ────────────────────────────────────────────────────────
+// Avoid a Discord API round-trip on every voice turn.
+// Messages are cached per transcript-channel for 15 seconds.
+const historyCache = new Map(); // channelId -> { text, ts }
+const HISTORY_TTL = 15_000;
+
+async function getCachedHistory(tChannel) {
+  if (!tChannel) return '';
+  const now = Date.now();
+  const cached = historyCache.get(tChannel.id);
+  if (cached && now - cached.ts < HISTORY_TTL) return cached.text;
+  const msgs = await tChannel.messages.fetch({ limit: 15 }).catch(() => null);
+  const text = msgs
+    ? msgs.reverse().map(m => `${m.author.username}: ${m.content}`).join('\n')
+    : '';
+  historyCache.set(tChannel.id, { text, ts: now });
+  return text;
+}
+
+// ── SOCIAL PULSE CACHE (pre-loaded, refreshed every 30s) ─────────────────────
+const PULSE_PATH = 'c:/KAI/tools/oracle-discord/state/user_last_topics.json';
+let pulseCache = {};
+function refreshPulseCache() {
+  try {
+    if (fs.existsSync(PULSE_PATH)) pulseCache = JSON.parse(fs.readFileSync(PULSE_PATH, 'utf8'));
+  } catch {}
+}
+refreshPulseCache();
+setInterval(refreshPulseCache, 30_000);
 
 // --- HYBRID FUSION SERVICES ---
 const realtime = new RealtimeBridge(process.env.OPENAI_API_KEY);
@@ -1225,36 +1255,38 @@ async function handleUserVoice(userId) {
         });
       }
 
-      // 30-message rolling cache — gives Leo real short-term memory of the conversation.
-      // Messages are sorted oldest-first so Leo reads context in chronological order.
-      const recentMessages = tChannel
-        ? await tChannel.messages.fetch({ limit: 30 }).catch(() => null)
-        : null;
-      const history = recentMessages
-        ? recentMessages.reverse().map(m => `${m.author.username}: ${m.content}`).join("\n")
-        : "";
-
-      // PROACTIVE INTELLIGENCE: Expanded Semantic Triggers
+      // ── PARALLEL PRE-FLIGHT: history + proactive intelligence run together ────────────
+      // Before this they ran sequentially: history(~700ms) then proactive(2000ms) = ~2700ms.
+      // Now they race in parallel: total = max(history, proactive) ≈ 800-1200ms.
       let contextualTranscript = transcript;
-      const needsInfo = normalized.includes("search") || normalized.includes("who is") || normalized.includes("what is") || 
-                        normalized.includes("how") || normalized.includes("status") || normalized.includes("news") || 
-                        normalized.includes("war") || normalized.includes("current") || normalized.includes("today") ||
-                        normalized.includes("happening") || normalized.includes("going on") || normalized.includes("link") ||
-                        normalized.includes("url") || normalized.includes("read") || normalized.includes("saying") ||
-                        normalized.includes(".md") || normalized.includes("inside");
-      
-      if (needsInfo) {
-        console.log(`[Leo/Neural] Proactive Intelligence Triggered...`);
-        const [latticeData, webData] = await Promise.all([
-          fetch(`http://127.0.0.1:3333/query?q=${encodeURIComponent(transcript)}`, { signal: AbortSignal.timeout(2000) }).then(r => r.json()).catch(() => null),
-          fetch(`http://127.0.0.1:8080/search?q=${encodeURIComponent(transcript)}`, { signal: AbortSignal.timeout(2000) }).then(r => r.json()).catch(() => null)
-        ]);
-        let extraContext = "";
-        // PRIORITIZE RESEARCHER: If it's a link or technical query, give it more weight
-        if (webData && webData.summary) extraContext += `[REAL-TIME DATA: ${webData.summary}] `;
-        if (latticeData && latticeData.claims) extraContext += `[LATTICE DATA: ${latticeData.claims.slice(0,2).map(c=>c.text).join("; ")}] `;
-        
-        if (extraContext) contextualTranscript = `[GROUNDED TRUTH AVAILABLE]\n${extraContext}\nUser asked: ${transcript}`;
+      const needsInfo = normalized.includes('search') || normalized.includes('who is') ||
+                        normalized.includes('what is') || normalized.includes('status') ||
+                        normalized.includes('news') || normalized.includes('current') ||
+                        normalized.includes('today') || normalized.includes('happening') ||
+                        normalized.includes('url') || normalized.includes('.md') ||
+                        normalized.includes('going on');
+
+      const [history, proactiveResult] = await Promise.all([
+        getCachedHistory(tChannel),
+        needsInfo
+          ? (async () => {
+              console.log(`[Leo/Neural] Proactive Intelligence Triggered...`);
+              const [latticeData, webData] = await Promise.all([
+                fetch(`http://127.0.0.1:3333/query?q=${encodeURIComponent(transcript)}`,
+                  { signal: AbortSignal.timeout(1200) }).then(r => r.json()).catch(() => null),
+                fetch(`http://127.0.0.1:8080/search?q=${encodeURIComponent(transcript)}`,
+                  { signal: AbortSignal.timeout(1200) }).then(r => r.json()).catch(() => null)
+              ]);
+              let extra = '';
+              if (webData?.summary)  extra += `[REAL-TIME DATA: ${webData.summary}] `;
+              if (latticeData?.claims) extra += `[LATTICE DATA: ${latticeData.claims.slice(0,2).map(c=>c.text).join('; ')}] `;
+              return extra || null;
+            })()
+          : Promise.resolve(null)
+      ]);
+
+      if (proactiveResult) {
+        contextualTranscript = `[GROUNDED TRUTH AVAILABLE]\n${proactiveResult}\nUser asked: ${transcript}`;
       }
 
       const t_neural_start = Date.now();
@@ -1476,7 +1508,7 @@ async function transcribeAudio(wavBuffer) {
       method: "POST",
       headers: { "Authorization": `Bearer ${groqKey}` },
       body: form,
-      signal: AbortSignal.timeout(5000) // 5s HARD-CAP on STT
+      signal: AbortSignal.timeout(4000) // 4s hard-cap on STT
     });
 
     const data = await res.json();
@@ -1578,23 +1610,18 @@ async function callGroqAsLeo(transcript, userName, channelId, userId = null, his
     const ownerUsername = process.env.OWNER_USERNAME || "nastermodx";
     const hardwareDesc = process.env.HARDWARE_DESC || "HP Victus Laptop (Ryzen 7, RTX 4050)";
 
-    // --- SOCIAL PULSE: Cross-User Memory Linkage ---
+    // --- SOCIAL PULSE: Cross-User Memory Linkage (uses pre-loaded cache) ---
     const otherId = userId === RYAN_ID ? TAAS_ID : RYAN_ID;
-    const pulsePath = 'c:/KAI/tools/oracle-discord/state/user_last_topics.json';
-    let pulseContext = "";
-    if (fs.existsSync(pulsePath)) {
-      try {
-        const pulseData = JSON.parse(fs.readFileSync(pulsePath, 'utf8'));
-        const otherPulse = pulseData[otherId];
-        if (otherPulse) {
-          const hoursAgo = Math.round((Date.now() - new Date(otherPulse.timestamp)) / 3600000);
-          pulseContext = `\n[SOCIAL PULSE: The other user (${otherPulse.name}) was in here ${hoursAgo} hours ago talking about: "${otherPulse.topic}"]`;
-        }
-      } catch {}
+    let pulseContext = '';
+    const otherPulse = pulseCache[otherId];
+    if (otherPulse) {
+      const hoursAgo = Math.round((Date.now() - new Date(otherPulse.timestamp)) / 3_600_000);
+      pulseContext = `\n[SOCIAL PULSE: The other user (${otherPulse.name}) was here ${hoursAgo}h ago talking about: "${otherPulse.topic}"]`;
     }
 
     // --- SONIC MEMORY: Parallel Identity & Context Recall ---
-    const { resolveIdentityFromMemory } = await import('../shared/identities.mjs');
+    // resolveIdentityFromMemory is now a top-level import — no dynamic import overhead.
+    // Social pulse is pre-cached every 30s — no fs.readFileSync in the hot path.
     
     // Fire queries in parallel to shave off 1-2s of latency
     // Use the actual transcript topic so memory is relevant to what's being discussed
@@ -1677,7 +1704,7 @@ ${cleanHistory}`;
     }
 
     // First try lock-free Groq; fall back to chatWithOpenJarvis (Ollama) if Groq key missing
-    let reply = await callGroqDirect(BOT_NAME, cleanTranscript, system, "llama-3.1-8b-instant", 200);
+    let reply = await callGroqDirect(BOT_NAME, cleanTranscript, system, 'llama-3.1-8b-instant', 120);
     if (!reply) {
       console.log(`[Leo/Neural] Groq unavailable — falling back to local Ollama (may wait for lock)...`);
       // chatWithOpenJarvis(botName, transcript, systemPrompt, modelOverride, entropy, metadata)
