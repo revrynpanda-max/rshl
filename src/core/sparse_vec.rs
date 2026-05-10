@@ -658,6 +658,73 @@ impl SparseVec {
         let cached_norm = Self::compute_norm(&data);
         Self { data, cached_norm }
     }
+
+    /// From Dense Floats (The "Crusher")
+    ///
+    /// Converts a dense floating-point vector (e.g. from an LLM embedding) into
+    /// a sparse ternary vector ($D=16,384$) using a deterministic sparse
+    /// random projection (RP).
+    ///
+    /// The projection is seeded so that the same input vector always produces
+    /// the same ternary representation. This "reverse engineers" the semantic
+    /// proximity of GEMM math into the geometric resonance of the lattice.
+    pub fn from_dense_floats(dense: &[f32]) -> Self {
+        let mut v = vec![0.0f32; DIM];
+        let n_in = dense.len();
+        
+        // --- Deterministic Sparse Random Projection ---
+        // For each input dimension, we "smear" it across 32 output dimensions
+        // with deterministic signs. This preserves the L2 distance of the
+        // dense space in the high-dim ternary space (Johnson-Lindenstrauss).
+        let m = 32; 
+        for (j, &val) in dense.iter().enumerate() {
+            if val.abs() < 1e-6 { continue; }
+            
+            let mut s = (j as u32).wrapping_mul(0x9E3779B9);
+            for _ in 0..m {
+                // XorShift for speed and determinism
+                s ^= s << 13;
+                s ^= s >> 17;
+                s ^= s << 5;
+                
+                let idx = (s as usize) % DIM;
+                let sign = if (s >> 16).wrapping_add(s).is_multiple_of(2) { 1.0 } else { -1.0 };
+                v[idx] += val * sign;
+            }
+        }
+
+        // --- Ternary Thresholding (Z-Score) ---
+        // Keep top 12% magnitudes to match KAI's native sparsity.
+        let mut data = vec![0i8; DIM];
+        let target_count = (DIM as f32 * SPARSITY) as usize;
+        
+        let mut magnitudes: Vec<f32> = v.iter().map(|f| f.abs()).collect();
+        magnitudes.sort_unstable_by(|a, b| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
+        
+        let threshold = if target_count < DIM {
+            magnitudes[target_count]
+        } else {
+            0.0
+        };
+
+        if threshold > 0.0 {
+            for i in 0..DIM {
+                if v[i].abs() >= threshold {
+                    data[i] = if v[i] > 0.0 { 1 } else { -1 };
+                }
+            }
+        } else {
+            // Fallback for very small vectors
+            for i in 0..DIM {
+                if v[i] != 0.0 {
+                    data[i] = if v[i] > 0.0 { 1 } else { -1 };
+                }
+            }
+        }
+
+        let cached_norm = Self::compute_norm(&data);
+        Self { data, cached_norm }
+    }
 }
 
 impl Default for SparseVec {

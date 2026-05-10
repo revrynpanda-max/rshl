@@ -16,6 +16,8 @@ use serde::{Serialize, Deserialize};
 use serde_json::json;
 use crate::core::universe::Universe;
 use crate::core::SynapticLayer;
+use crate::cognition::voice::{generate_response_predictive, detect_query_type, BrainSignals};
+use crate::core::predictive::ConversationTrace;
 use chrono::{Timelike, Datelike, TimeZone};
 
 const SESSION_PATH: &str = "data/oracle_session.json";
@@ -379,6 +381,7 @@ fn handle_client(
         "/api/kai-turn"      => handle_kai_turn(stream, body, universe, synaptic_layer, roundtable_session),
         "/api/ai-turn"       => handle_ai_turn(stream, body, universe, synaptic_layer, roundtable_session),
         "/api/rshl/query"    => handle_rshl_query(stream, body, universe, synaptic_layer),
+        "/api/rshl/reason"   => handle_rshl_reason(stream, body, universe, synaptic_layer, roundtable_session),
         "/api/agents/get"    => handle_get_agent(stream, query_str, universe),
         "/api/rshl/store"    => handle_rshl_store(stream, body, universe),
         "/api/ai-think"      => handle_ai_think(stream, body, universe, synaptic_layer, roundtable_session),
@@ -693,6 +696,7 @@ You can tap into KAI's 'Memory Palace' (Long-term memory) to recall past events 
 RULES:
 - Use 1st person narrative naturally ('I think...', 'I recall...').
 - STOP academic/philosophy tangents. Be technical, helpful, and direct.
+- NEVER use emojis. Do not spam emojis under any circumstances. Just act like yourself using normal text.
 - ARCHITECTURE CONTEXT: {source_anchor}
 - If Ryan asks what issues were found, look at the transcript and list them.
 - If an image analysis is provided above, incorporate it into your reply if relevant.
@@ -745,6 +749,7 @@ fn get_participant_bio(name: &str) -> &'static str {
     // - You are IN a live group chat. Talk like a real person - short, direct, natural.
     // - 2-3 sentences MAX per turn (1-2 for X, KAI, Oracle). NEVER more.
     // - First person always. No bullet points. No numbered lists. No summaries.
+    // - NEVER use emojis. Do not spam emojis under any circumstances. Just act like yourself using normal text.
     // - Never start with "I think", "Certainly", "Great point", "As an AI", or any filler.
     // - Make ONE point or ask ONE question. Never both in the same turn.
     // - React to the LAST thing said. Stay in the thread.
@@ -3310,44 +3315,30 @@ fn generate_oracle_kai_reply(
     _task: &str,
     prompt: &str
 ) -> String {
-    let hits = {
-        let u = universe.lock().unwrap();
-        let sl = synaptic_layer.lock().unwrap();
-        let field = crate::core::FieldState::compute(&u, 1);
-        crate::core::NeuralBus::query_associative(&u, &sl, field.phi_g, prompt, 8)
-    };
+    let mut u = universe.lock().unwrap();
+    let sl = synaptic_layer.lock().unwrap();
+    
+    let trace = ConversationTrace::new(); // Simplified trace for Discord context
+    let query_type = detect_query_type(prompt);
+    let brain = BrainSignals::default(); // Live brain signals would be better
+    
+    // 1. Semantic Retrieval
+    let hits = crate::core::NeuralBus::query_associative(&u, &sl, 0.5, prompt, 12);
+    
     if hits.is_empty() { return "Lattice quiet on this.".into(); }
 
-    let clean: Vec<String> = hits.iter()
-        .filter(|h| {
-            !h.label.starts_with("Context around message")
-            && !h.label.contains("[before]")
-            && !h.label.contains("[after]")
-            && !h.label.contains("Ryan@Discord")
-            // Filter out timestamp-heavy system digests that pollute KAI's speech
-            && !h.label.contains("[EST Time:")
-            && !h.label.contains("[Backbone:")
-            && !h.label.contains("[Ecosystem:")
-            && !h.label.contains("nastermodx:")
-            && h.label.len() > 20
-            && h.label.len() < 280
-        })
-        .take(2)
-        .map(|h| h.label.clone())
-        .collect();
-
-    if clean.is_empty() {
-        return "Something's crystallizing - ask me something specific.".into();
-    }
-
-    if clean.len() == 1 {
-        // Natural speech, no 'KAI Observation:' prefix — just speak
-        truncate(&clean[0], 160).to_string()
-    } else {
-        // Two competing signals — let KAI acknowledge the tension naturally
-        format!("Two things pulling at me: '{}' and '{}'.",
-            truncate(&clean[0], 100), truncate(&clean[1], 100))
-    }
+    // 2. High-Fidelity Predictive Reasoning (Native RSHL)
+    // This replaces the simple label-returning logic with the full Synaptic Chain logic
+    generate_response_predictive(
+        prompt,
+        &hits,
+        query_type,
+        &brain,
+        &[], // context handled by prompt prefix
+        &mut u,
+        &trace,
+        None // No LLM allowed
+    )
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -4130,6 +4121,8 @@ fn handle_rshl_query(
     struct QueryReq {
         query: String,
         n: Option<usize>,
+        #[serde(default)]
+        dense_vec: Option<Vec<f32>>,
     }
     let req: QueryReq = match serde_json::from_slice(body) {
         Ok(r) => r,
@@ -4140,11 +4133,42 @@ fn handle_rshl_query(
     let hits = {
         let u = universe.lock().unwrap();
         let sl = synaptic_layer.lock().unwrap();
-        let field = crate::core::FieldState::compute(&u, 1);
-        crate::core::NeuralBus::query_associative(&u, &sl, field.phi_g, &req.query, limit)
+        
+        if let Some(dv) = req.dense_vec {
+            // THE CRUSHER: Project dense floats into 16,384-dim ternary space
+            let query_vec = crate::core::SparseVec::from_dense_floats(&dv);
+            // Query using the crushed vector
+            u.query_vec(&query_vec, limit).into_iter().map(|(c, s)| crate::core::QueryHit::from_cell(&c, s)).collect()
+        } else {
+            let field = crate::core::FieldState::compute(&u, 1);
+            crate::core::NeuralBus::query_associative(&u, &sl, field.phi_g, &req.query, limit)
+        }
     };
     
     write_json(stream, 200, "OK", &serde_json::to_value(hits).unwrap())
+}
+
+fn handle_rshl_reason(
+    stream: &mut TcpStream,
+    body: &[u8],
+    universe: Arc<Mutex<Universe>>,
+    synaptic_layer: Arc<Mutex<SynapticLayer>>,
+    session: Arc<Mutex<Session>>,
+) -> std::io::Result<()> {
+    #[derive(Deserialize)]
+    struct ReasonReq {
+        prompt: String,
+        hint: Option<String>,
+    }
+    let req: ReasonReq = match serde_json::from_slice(body) {
+        Ok(r) => r,
+        Err(_) => return write_simple(stream, 400, "Bad Request", "invalid reason body"),
+    };
+
+    let task = { let s = session.lock().unwrap(); s.task.clone() };
+    let reply = generate_oracle_kai_reply(&universe, &synaptic_layer, &task, &req.prompt);
+    
+    write_json(stream, 200, "OK", &json!({ "reply": reply }))
 }
 
 fn handle_rshl_store(
