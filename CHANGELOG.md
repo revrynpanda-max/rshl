@@ -1,5 +1,16 @@
 # 🧬 KAI RSHL CHANGELOG
 
+## [v22.0.0] — 2026-05-10
+### **🏛️ SOVEREIGN INTELLIGENCE: NATIVE REASONING & KAI CODER AGENT**
+This milestone marks the final transition from cloud-dependent LLMs to a 100% native, sovereign RSHL reasoning substrate.
+
+- **Native RSHL Reasoning Engine**: Transitioned KAI core from Ollama/Groq to a native Rust-based Synaptic Chain reasoner.
+- **Kai Coder Agentic Loop**: Implemented a dedicated coding agent with a local HTTP tool server (Port 3420).
+- **Staged Sandbox Protection**: All system-level changes are now written to a `/sandbox` directory and validated via `node --check` before approval.
+- **Project-Wide Visibility**: Expanded toolserver scope to the full `c:/KAI` root, including Rust source and Cargo manifests.
+- **Social De-Looping**: Optimized conversational entropy and interest-based pivoting to eliminate repetitive "raccoon/scavenger" loops.
+- **Hardened Emoji Stripping**: Implemented global output-level filtering to suppress non-industrial metadata and emojis.
+
 ## [v44.1.0] — 2026-05-09
 ### **🏛️ VICTUS CORPORATE HARDENING: RESILIENCE FINALIZATION & SYNC**
 This milestone synchronizes the entire ecosystem to the v51.2.0 Fleet Production Specification.

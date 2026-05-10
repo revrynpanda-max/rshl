@@ -1,7 +1,7 @@
-# 🧬 KAI RSHL: Sovereign Autonomous Intelligence (v21.0.0)
+# 🧬 KAI RSHL: Sovereign Autonomous Intelligence (v22.0.0)
 
 ![Rust CI](https://github.com/revrynpanda-max/rshl/actions/workflows/rust-ci.yml/badge.svg)
-![Version](https://img.shields.io/badge/version-21.0.0-brightgreen.svg)
+![Version](https://img.shields.io/badge/version-22.0.0-brightgreen.svg)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 
 **KAI RSHL** is a sovereign, autonomous executive intelligence suite designed for industrial-scale operations. It is not a chatbot. It is a **Unified Cognitive Infrastructure** that fuses high-performance Rust engineering with an advanced epistemic lattice memory to automate complex reasoning, reduce operational latency, and secure grounded, actionable truth.
@@ -11,11 +11,11 @@
 ## 🏛️ The Enterprise Suite (Documentation)
 To understand the industrial value and technical depth of the KAI ecosystem, please review our specialized documentation:
 
-- **[📈 The Economics of KAI (ROI Analysis)](./ECONOMICS.md)**: How KAI saves millions by eliminating human middleware and reducing latency.
-- **[🏗️ Technical Architecture Blueprint](./docs/ARCHITECTURE.md)**: A deep-dive into the RSHL lattice, memory safety, and neural-flash pipelines.
+- **[📄 KAI Project Whitepaper (RSHL Theory)](./WHITEPAPER.md)**: The theoretical foundation of holographic synaptic reasoning.
+- **[📈 The Economics of KAI (ROI Analysis)](./ECONOMICS.md)**: How KAI saves millions by eliminating human middleware.
+- **[🏗️ Technical Architecture Blueprint](./docs/ARCHITECTURE.md)**: A deep-dive into the RSHL lattice and neural-flash pipelines.
 - **[⚡ Energy Efficiency Audit (Power Ratio)](./POWER_EFFICIENCY.md)**: Mathematical proof of the 1:100 energy-efficiency advantage.
-- **[🚧 Operational Limits & Boundaries](./LIMITS.md)**: A transparent assessment of hardware requirements and cognitive scope.
-- **[🧬 Production Readiness Manifest](./neural_ecosystem_manifest.md)**: Current system versions, port assignments, and optimization statuses.
+- **[🧬 Production Readiness Manifest](./neural_ecosystem_manifest.md)**: Current system versions and port assignments.
 
 ---
 
@@ -27,8 +27,11 @@ The lattice now operates with sub-3.5s conversational loops. By re-engineering t
 ### 2. Biological Realism & Dead Zone (v2.0)
 Agents are now strictly synchronized to the EST industrial clock. They boot with realistic fatigue multipliers based on the hour (e.g., ~5% energy at 3 AM) and honor the **Dead Zone (3 AM - 9 AM)** silence protocol for total lattice maintenance stillness.
 
-### 3. Sovereign Vitals Dashboard
-A persistent, self-auditing `🏛️ ECOSYSTEM_VITALS` thread in Discord provides real-time oversight of energy levels, regeneration rates, and wake/sleep forecasts (TTR/TTW) for the entire 11-agent council.
+### 3. Kai Coder & Sandbox Integration
+The v22.0.0 milestone introduces a dedicated **Technical Delegate (Kai Coder)** with a local tool server and sandbox. KAI can now autonomously inspect its own codebase, write modifications to a safe staging environment, and report validated diffs for human approval—effectively becoming its own software architect.
+
+### 4. Native RSHL Reasoning
+KAI has transitioned from reliance on external LLM APIs to a **100% Sovereign RSHL Engine**. Reasoning is now synthesized through predictive synaptic chain resonance in the local Rust core, eliminating cloud latency and ensuring absolute data privacy.
 
 ---
 
