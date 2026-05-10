@@ -223,6 +223,100 @@ function canShareData(speakerId, dataOwnerId) {
   return false;
 }
 
+// ── ORACLE BRIEFING QUEUE ──────────────────────────────────────────────────────────────
+// Persistent file queue: Oracle/Kai Coder push answers here.
+// Leo drains it every 10s and delivers:
+//   • voice (speak in channel) if user is currently in voice
+//   • DM otherwise
+const BRIEFINGS_PATH = 'c:/KAI/tools/oracle-discord/state/oracle_briefings.json';
+
+function loadBriefings() {
+  try {
+    if (fs.existsSync(BRIEFINGS_PATH)) return JSON.parse(fs.readFileSync(BRIEFINGS_PATH, 'utf8'));
+  } catch {}
+  return [];
+}
+function saveBriefings(list) {
+  try { fs.writeFileSync(BRIEFINGS_PATH, JSON.stringify(list, null, 2)); } catch {}
+}
+
+/**
+ * Deliver a briefing to a user.
+ * Speaks in voice if they are in the voice channel, DMs them if not.
+ * Long text is split into voice-friendly chunks.
+ */
+async function deliverBriefing(userId, text, label = 'Oracle') {
+  if (!text || text.length < 2) return;
+
+  const guild  = client.guilds.cache.first() ||
+                 await client.guilds.fetch(process.env.ORACLE_GUILD_ID).catch(() => null);
+  const isInVoice = guild && voiceConnection &&
+    voiceConnection.state.status !== VoiceConnectionStatus.Destroyed &&
+    usersInVoice.has(userId);
+
+  console.log(`[Leo/Briefing] Delivering ${label} answer to ${userId} — ${isInVoice ? 'VOICE' : 'DM'}`);
+
+  if (isInVoice) {
+    // Split into natural sentence-length chunks so TTS doesn't time out on huge reports
+    const sentences = text.match(/[^.!?\n]+[.!?\n]*/g) || [text];
+    const chunks = [];
+    let buf = '';
+    for (const s of sentences) {
+      if ((buf + s).length > 400) { if (buf.trim()) chunks.push(buf.trim()); buf = s; }
+      else buf += s;
+    }
+    if (buf.trim()) chunks.push(buf.trim());
+
+    for (const chunk of chunks) {
+      await speakLeoText(chunk);
+      await new Promise(r => setTimeout(r, 200)); // tiny gap between chunks
+    }
+
+    // Also post full text to transcript channel so there's a text record
+    const tChannelId = userTranscriptChannels.get(userId);
+    const tChannel   = tChannelId
+      ? client.channels.cache.get(tChannelId) || await client.channels.fetch(tChannelId).catch(() => null)
+      : null;
+    if (tChannel) tChannel.send(`**[${label}]** ${text.slice(0, 1900)}`).catch(() => {});
+
+  } else {
+    // DM path: split into 1900-char chunks to stay under Discord limit
+    try {
+      const user = await client.users.fetch(userId).catch(() => null);
+      if (!user) return;
+      const dm = await user.createDM();
+      const chunks = [];
+      for (let i = 0; i < text.length; i += 1900) chunks.push(text.slice(i, i + 1900));
+      for (const chunk of chunks) {
+        await dm.send(`**[${label} — Briefing]** ${chunk}`).catch(() => {});
+      }
+      console.log(`[Leo/Briefing] DM sent to ${userId} (${chunks.length} chunk(s))`);
+    } catch (e) {
+      console.warn('[Leo/Briefing] DM failed:', e.message);
+    }
+  }
+}
+
+// Drain pending briefings every 10s
+setInterval(async () => {
+  if (sim.state.status === 'Sleeping') return;
+  let briefings = loadBriefings();
+  if (briefings.length === 0) return;
+
+  const pending = briefings.filter(b => !b.delivered);
+  for (const b of pending) {
+    try {
+      await deliverBriefing(b.userId, b.text, b.label || 'Oracle');
+      b.delivered = true;
+      b.deliveredAt = new Date().toISOString();
+    } catch (e) {
+      console.warn('[Leo/Briefing] Delivery error:', e.message);
+    }
+  }
+  // Keep only last 50 (delivered or not)
+  saveBriefings(briefings.slice(-50));
+}, 10_000);
+
 // --- BACKGROUND TASK HEARTBEAT ---
 setInterval(async () => {
   const now = Date.now();
@@ -408,12 +502,27 @@ startBotServer(PORT, BOT_NAME, async (payload) => {
   // ORACLE TALK-BACK: Vocalize a plan or inquiry from the core
   if (payload.type === 'ORACLE_INQUIRY') {
     const { text, objective } = payload;
-    console.log(`[Leo/IPC] Oracle is sending a strategic inquiry: "${text.slice(0, 50)}..."`);
+    console.log(`[Leo/IPC] Oracle inquiry: "${text.slice(0, 50)}..."`);
     await speakLeoText(text);
-    if (objective) {
-      // Logic to store current objective focus
-      sim.state.currentObjective = objective;
-    }
+    if (objective) sim.state.currentObjective = objective;
+    return;
+  }
+
+  // ORACLE_ANSWER: Oracle/Kai Coder completed a request — queue for delivery
+  if (payload.type === 'ORACLE_ANSWER') {
+    const { userId, text, label } = payload;
+    if (!userId || !text) return;
+    console.log(`[Leo/IPC] Queuing Oracle answer for ${userId}: "${text.slice(0, 60)}..."`);
+    const briefings = loadBriefings();
+    briefings.push({
+      id: Date.now().toString(),
+      userId,
+      text,
+      label: label || 'Oracle',
+      queuedAt: new Date().toISOString(),
+      delivered: false
+    });
+    saveBriefings(briefings.slice(-50));
     return;
   }
 

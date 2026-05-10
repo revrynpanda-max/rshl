@@ -19,6 +19,30 @@ import { runCodingTask, applySandboxFile, isToolServerOnline, makeLLMCaller } fr
 import { fork } from 'child_process';
 import path from 'path';
 
+// ── PUSH COMPLETED ANSWERS TO LEO FOR VOICE/DM DELIVERY ─────────────────────
+// Leo will speak the answer in voice if the user is in the channel,
+// or DM them directly if they're offline.
+async function notifyLeoWithAnswer(userId, text, label = 'Oracle') {
+  if (!userId || !text) return;
+  try {
+    await fetch(`http://127.0.0.1:3400`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'ORACLE_ANSWER', userId, text, label }),
+      signal: AbortSignal.timeout(2000)
+    });
+    console.log(`[Oracle/Briefing] Pushed ${label} answer to Leo for ${userId}`);
+  } catch (e) {
+    // Leo might not be up — write directly to the briefing queue file as fallback
+    const BRIEFINGS_PATH = 'c:/KAI/tools/oracle-discord/state/oracle_briefings.json';
+    let list = [];
+    try { if (fs.existsSync(BRIEFINGS_PATH)) list = JSON.parse(fs.readFileSync(BRIEFINGS_PATH, 'utf8')); } catch {}
+    list.push({ id: Date.now().toString(), userId, text, label, queuedAt: new Date().toISOString(), delivered: false });
+    try { fs.writeFileSync(BRIEFINGS_PATH, JSON.stringify(list.slice(-50), null, 2)); } catch {}
+    console.warn(`[Oracle/Briefing] Leo IPC unreachable — wrote to briefing queue file.`);
+  }
+}
+
 import 'dotenv/config';
 
 startSentinel();
@@ -547,6 +571,9 @@ client.on('messageCreate', async (message) => {
       for (const chunk of chunks) {
         await message.channel.send(chunk).catch(() => {});
       }
+
+      // — DELIVER ANSWER TO USER VIA LEO (voice or DM) —
+      await notifyLeoWithAnswer(message.author.id, report.slice(0, 3000), 'Kai Coder');
       return;
     }
 
@@ -555,6 +582,8 @@ client.on('messageCreate', async (message) => {
     const reply = await chatWithOpenJarvis('Oracle', text, sysPrompt, 'Oracle-Sovereign', 0.4, { isWorkChannel: false }).catch(() => null);
     if (reply) {
       await message.channel.send(`**Oracle:** ${reply}`).catch(() => {});
+      // — DELIVER ANSWER TO USER VIA LEO (voice or DM) —
+      await notifyLeoWithAnswer(message.author.id, reply, 'Oracle');
     }
     return;
   }
@@ -597,6 +626,9 @@ client.on('messageCreate', async (message) => {
       for (const chunk of chunks) {
         await message.channel.send(chunk).catch(() => {});
       }
+
+      // — DELIVER ANSWER TO USER VIA LEO (voice or DM) —
+      await notifyLeoWithAnswer(message.author.id, report.slice(0, 3000), 'Kai Coder');
       return;
     }
 
