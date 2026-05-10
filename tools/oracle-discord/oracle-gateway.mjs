@@ -13,10 +13,30 @@ import { logAudit } from './shared/audit-log.mjs';
 import os from 'os';
 import { AI_REGISTRY, resolveIdentityFromMemory } from './shared/identities.mjs';
 import { startSentinel } from './shared/sentinel.mjs';
+import { processOracleQueue } from './shared/oracle-pipeline.mjs';
+import { queryLattice } from './shared/lattice-bridge.mjs';
+import { runCodingTask, applySandboxFile, isToolServerOnline, makeLLMCaller } from './shared/kai-coder-agent.mjs';
+import { fork } from 'child_process';
+import path from 'path';
 
 import 'dotenv/config';
 
 startSentinel();
+
+// ── Passive Oracle Pipeline Poll ─────────────────────────────────────────────
+// Catches any queued requests where the IPC trigger signal failed (bot was offline etc.)
+setInterval(() => {
+  processOracleQueue(async (specialist, question, latticeContext) => {
+    const sysPrompt = `you are ${specialist}. you are part of the oracle system — the back-end intelligence layer of the KAI RSHL ecosystem.
+${latticeContext ? latticeContext + '\n' : ''}a social bot in the lattice has silently requested your help with a question. process it and return a concise, accurate answer. no fluff. just the answer.`;
+
+    return await chatWithOpenJarvis(
+      specialist, question, sysPrompt,
+      `${specialist.replace(' ', '-')}-Sovereign`, 0.6,
+      { isWorkChannel: false }
+    ).catch(() => null);
+  });
+}, 120000); // every 2 minutes
 
 const DEPARTMENTS = {
   "Researcher": "Investigate technical claims, verify sources, and provide deep-dive intelligence on KAI/RSHL developments.",
@@ -56,6 +76,29 @@ const server = http.createServer(async (req, res) => {
         if (payload.type === 'LEO_CONSULTATION') await handleLeoConsultation(payload);
         if (payload.type === 'VOICE_TRANSCRIPT') await handleVoiceTranscript(payload);
         if (payload.type === 'BOT_SPEECH') await handleBotSpeech(payload);
+        if (payload.type === 'PIPELINE_REQUEST') {
+          // A social bot silently requested Oracle system help.
+          // Process asynchronously — don't block the IPC response.
+          setImmediate(() => {
+            processOracleQueue(async (specialist, question, latticeContext) => {
+              const port = AI_REGISTRY[specialist]?.port;
+              if (!port) return null;
+
+              // Build the research prompt for this specialist
+              const sysPrompt = `you are ${specialist}. you are part of the oracle system — the back-end intelligence layer of the KAI RSHL ecosystem.
+${latticeContext ? latticeContext + '\n' : ''}a social bot in the lattice has silently requested your help with a question. process it and return a concise, accurate answer. no fluff. just the answer.`;
+
+              return await chatWithOpenJarvis(
+                specialist, question, sysPrompt,
+                `${specialist.replace(' ', '-')}-Sovereign`, 0.6,
+                { isWorkChannel: false }
+              ).catch(e => {
+                console.warn(`[Oracle/Pipeline] ${specialist} call failed:`, e.message);
+                return null;
+              });
+            });
+          });
+        }
         if (payload.type === 'HELPER_REQUEST') {
           console.log(`[Oracle/Bridge] Routing HELPER_REQUEST from ${payload.requester} to ${payload.targetBot}...`);
           if (payload.port) sendBotSignal(payload.port, payload);
@@ -197,8 +240,16 @@ import { resetFailureTracker } from './shared/failure-tracker.mjs';
 
 client.once('clientReady', async () => {
   console.log(`[Oracle] Gateway Online as ${client.user.tag}`);
-  
+
   resetFailureTracker();
+
+  // ── Start Kai Coder Tool Server ────────────────────────────────────────────
+  // Forked as a child process so it survives independently
+  const toolServerPath = path.resolve('c:/KAI/tools/oracle-discord/tools/kai-coder-toolserver.mjs');
+  const toolServer = fork(toolServerPath, [], { silent: false });
+  toolServer.on('error', e => console.warn('[Oracle/ToolServer] Launch error:', e.message));
+  toolServer.on('exit', code => console.warn(`[Oracle/ToolServer] Exited with code ${code}. Auto-restart not configured.`));
+  console.log('[Oracle/ToolServer] Kai Coder tool server launched (port 3420).');
 
   // WIPE NEURAL LOCK: Clear ghost locks from previous crashes
   const lockPath = "c:/KAI/tools/oracle-discord/state/neural_lock.json";
@@ -209,7 +260,213 @@ client.once('clientReady', async () => {
   setTimeout(() => {
     initiateDepartmentalThreads();
   }, 5000);
+
+  // ── End of Day Report ──────────────────────────────────────────────────────
+  // Checks every minute whether it's end-of-shift (11pm EST Mon-Fri / 2pm or midnight Sat).
+  // When shift just ended, generates a full report and DMs Ryan.
+  startEndOfDayWatcher();
 });
+
+// ── END OF DAY REPORT SYSTEM ─────────────────────────────────────────────────
+const AUDIT_FILE = 'c:/KAI/tools/oracle-discord/logs/audit.json';
+const EOD_SENT_FILE = 'c:/KAI/tools/oracle-discord/state/eod_sent.json';
+const OWNER_ID = process.env.OWNER_ID || "1111106883135217665";
+
+function getESTHour() {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    hour: 'numeric',
+    weekday: 'long',
+    hour12: false
+  });
+  const parts = formatter.formatToParts(new Date());
+  return {
+    hour: parseInt(parts.find(p => p.type === 'hour').value, 10),
+    day: parts.find(p => p.type === 'weekday').value
+  };
+}
+
+function isEndOfShift() {
+  const { hour, day } = getESTHour();
+  // Mon-Fri: work ends at 23 (11pm)
+  if (day !== 'Saturday' && day !== 'Sunday') return hour === 23;
+  // Saturday: work ends at 14 (2pm) or 24/0 (midnight)
+  if (day === 'Saturday') return hour === 14 || hour === 0;
+  return false;
+}
+
+function todayKey() {
+  return new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+}
+
+function getShiftKey() {
+  const { hour } = getESTHour();
+  return `${todayKey()}-${hour < 15 ? 'morning' : 'evening'}`;
+}
+
+function wasEodSentThisShift() {
+  try {
+    if (!fs.existsSync(EOD_SENT_FILE)) return false;
+    const data = JSON.parse(fs.readFileSync(EOD_SENT_FILE, 'utf8'));
+    return data.lastShift === getShiftKey();
+  } catch { return false; }
+}
+
+function markEodSent() {
+  try {
+    fs.writeFileSync(EOD_SENT_FILE, JSON.stringify({ lastShift: getShiftKey(), sentAt: new Date().toISOString() }));
+  } catch (e) { console.warn('[Oracle/EOD] Could not mark EOD sent:', e.message); }
+}
+
+function readAuditLog(sinceHoursAgo = 10) {
+  try {
+    if (!fs.existsSync(AUDIT_FILE)) return [];
+    const lines = fs.readFileSync(AUDIT_FILE, 'utf8').split('\n').filter(Boolean);
+    const cutoff = Date.now() - (sinceHoursAgo * 3600000);
+    return lines
+      .map(l => { try { return JSON.parse(l); } catch { return null; } })
+      .filter(e => e && new Date(e.timestamp).getTime() > cutoff);
+  } catch { return []; }
+}
+
+async function generateAndSendEodReport() {
+  if (wasEodSentThisShift()) return;
+  markEodSent();
+
+  console.log('[Oracle/EOD] Generating End of Day report...');
+
+  const events = readAuditLog(10);
+  const owner = await client.users.fetch(OWNER_ID).catch(() => null);
+  if (!owner) {
+    console.warn('[Oracle/EOD] Could not fetch owner for DM.');
+    return;
+  }
+
+  // Build audit summary for LLM
+  const eventSummary = events.length > 0
+    ? events.slice(-80).map(e => `[${e.timestamp?.slice(11,16)}] ${e.type} — ${e.botName || ''} ${e.provider || ''} ${e.status || ''}`).join('\n')
+    : 'No events logged this shift.';
+
+  const { day, hour } = getESTHour();
+  const reportPrompt = `You are Oracle — the orchestrator of the KAI RSHL ecosystem. It is end of shift (${day}, ${hour}:00 EST).
+Write a concise End of Day report for Ryan (the owner). This goes directly to his DMs.
+
+[SHIFT AUDIT LOG]
+${eventSummary}
+
+Write the report in this format:
+**[KAI RSHL — End of Day Report]**
+Date/Shift: [today + shift]
+
+**What was completed today:**
+[bullet points of notable events, completed tasks, interactions]
+
+**Issues / errors encountered:**
+[any failures, provider outages, anomalies]
+
+**Tools and systems used:**
+[list providers, models, APIs that fired today]
+
+**Continuing to next work day:**
+[anything that's ongoing or needs attention]
+
+**Lattice health:**
+[brief note on system state]
+
+Keep it tight and factual. No fluff. Ryan reads this at night.`;
+
+  // Try local Oracle-Sovereign first (no cloud dependency)
+  let report = null;
+  try {
+    const localRes = await fetch("http://127.0.0.1:11434/api/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "Oracle-Sovereign",
+        prompt: reportPrompt,
+        stream: false,
+        options: { temperature: 0.3, num_predict: 800 }
+      }),
+      signal: AbortSignal.timeout(60000)
+    });
+    if (localRes.ok) {
+      const data = await localRes.json();
+      report = data.response?.trim();
+    }
+  } catch (e) {
+    console.warn('[Oracle/EOD] Local model failed, trying Groq fallback:', e.message);
+  }
+
+  // Groq fallback only if local is unavailable
+  if (!report && process.env.GROQ_API_KEY) {
+    try {
+      const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.GROQ_API_KEY}` },
+        body: JSON.stringify({
+          model: "llama-3.1-8b-instant",
+          messages: [{ role: "user", content: reportPrompt }],
+          temperature: 0.3,
+          max_tokens: 800
+        }),
+        signal: AbortSignal.timeout(20000)
+      });
+      if (groqRes.ok) {
+        const data = await groqRes.json();
+        report = data.choices?.[0]?.message?.content?.trim();
+      }
+    } catch (e) {
+      console.warn('[Oracle/EOD] Groq fallback also failed:', e.message);
+    }
+  }
+
+  if (report) {
+    await owner.send(report).catch(e => console.warn('[Oracle/EOD] DM failed:', e.message));
+    console.log('[Oracle/EOD] End of Day report sent to Ryan.');
+    return;
+  }
+
+  // Fallback: send a plain summary if LLM fails
+  const fallback = `**[KAI RSHL — End of Day Report]**\n${day} shift ended.\n\nEvents logged this shift: ${events.length}\n\nAudit log: \`${AUDIT_FILE}\`\n\n_(Full report generation failed — check Oracle logs)_`;
+  await owner.send(fallback).catch(() => {});
+}
+
+function startEndOfDayWatcher() {
+  // Check every 60 seconds whether shift just ended
+  setInterval(async () => {
+    if (isEndOfShift()) {
+      await generateAndSendEodReport().catch(e => {
+        console.warn('[Oracle/EOD] Watcher error:', e.message);
+      });
+    }
+  }, 60000);
+  console.log('[Oracle/EOD] End of Day watcher active.');
+}
+
+
+// ── Task classification helpers ────────────────────────────────────────────────
+// Used to detect when a message should go to Kai Coder vs normal Oracle routing.
+
+const CODING_KEYWORDS = [
+  'fix', 'debug', 'add', 'build', 'implement', 'refactor', 'create', 'write code',
+  'update', 'change', 'modify', 'check', 'audit', 'test', 'scan', 'analyze',
+  'why is', 'what is wrong', 'broken', 'error in', 'the code', 'the file',
+  'sandbox', 'the system', 'the project', 'codebase', 'source'
+];
+
+function isCodingTask(text) {
+  const lower = text.toLowerCase();
+  return CODING_KEYWORDS.some(kw => lower.includes(kw)) && text.length > 20;
+}
+
+// ── Oracle DM & oracle-chat message handler ───────────────────────────────────
+
+const AUTHORIZED_IDS = new Set([
+  process.env.OWNER_ID || '1111106883135217665',   // Ryan
+  '1286110163505385523',                             // Taz
+]);
+
+const activeCodingTasks = new Map(); // messageId -> true  (prevent double-run)
 
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return; // NEVER respond to bots or self
@@ -217,7 +474,7 @@ client.on('messageCreate', async (message) => {
   // 1. Digest for Lattice & Identity Resolution
   const identity = await resolveIdentityFromMemory(message.author.id, message.author.username);
   const from = identity?.name || message.author.username;
-  const role = identity?.role || "Lattice Guest";
+  const role = identity?.role || 'Lattice Guest';
   
   const record = {
     from,
@@ -235,45 +492,148 @@ client.on('messageCreate', async (message) => {
 
   try {
     fetch(`${ORACLE_API_URL}/api/digest-message`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(record),
       signal: AbortSignal.timeout(2500),
     }).catch(() => {});
   } catch (e) {}
 
-  // 2. Logic for responding
+  const text   = message.content.trim();
+  const lower  = text.toLowerCase();
+  const isDM   = !message.guild;
+  const isAuthorized = AUTHORIZED_IDS.has(message.author.id);
+
+  // ── 2. DM handler (Ryan or Taz DMing Oracle directly) ─────────────────────
+  if (isDM && isAuthorized) {
+
+    // 2a. "apply [filename]" — approve a sandboxed file for production
+    const applyMatch = lower.match(/^apply\s+(.+)$/);
+    if (applyMatch) {
+      const filePath = applyMatch[1].trim();
+      await message.reply(`**Oracle:** Applying \`${filePath}\` to production...`).catch(() => {});
+      const result = await applySandboxFile(filePath);
+      await message.reply(`**Oracle:** ${result}`).catch(() => {});
+      return;
+    }
+
+    // 2b. Coding / system task — route through Kai Coder agent
+    if (isCodingTask(text)) {
+      const toolOnline = await isToolServerOnline();
+      if (!toolOnline) {
+        await message.reply('**Oracle:** Kai Coder tool server is offline. Restart the gateway to bring it back online.').catch(() => {});
+        return;
+      }
+
+      await message.reply('**Oracle:** Routing to Kai Coder — standing by...').catch(() => {});
+      logAudit('KAI_CODER_TASK_START', { from, task: text.slice(0, 100) });
+
+      const callLLM = makeLLMCaller((progress) => {
+        // Surface phase updates back to the DM channel
+        message.channel.send(`**[Kai Coder/${progress.split(']')[0].replace('[', '')}]** ${progress}`).catch(() => {});
+      });
+
+      const result = await runCodingTask(text, callLLM, null).catch(e => ({
+        success: false,
+        report: `Task failed with error: ${e.message}`
+      }));
+
+      logAudit('KAI_CODER_TASK_END', { from, success: result.success, files: result.written?.length || 0 });
+
+      // Split report into chunks if needed (Discord 2000 char limit)
+      const report = result.report || 'No report generated.';
+      const chunks = [];
+      for (let i = 0; i < report.length; i += 1900) chunks.push(report.slice(i, i + 1900));
+      for (const chunk of chunks) {
+        await message.channel.send(chunk).catch(() => {});
+      }
+      return;
+    }
+
+    // 2c. General Oracle DM (non-coding) — route through openjarvis as Oracle
+    const sysPrompt = `You are Oracle — the central intelligence of the KAI RSHL ecosystem. You are speaking privately to ${from} (${role}). Be direct, concise, and helpful. No emojis.`;
+    const reply = await chatWithOpenJarvis('Oracle', text, sysPrompt, 'Oracle-Sovereign', 0.4, { isWorkChannel: false }).catch(() => null);
+    if (reply) {
+      await message.channel.send(`**Oracle:** ${reply}`).catch(() => {});
+    }
+    return;
+  }
+
+  // ── 3. oracle-chat work channel ────────────────────────────────────────────
+  if (message.channelId === CHANNEL_IDS.WORK && isAuthorized) {
+
+    // 3a. "apply [filename]" in oracle-chat
+    const applyMatch = lower.match(/^apply\s+(.+)$/);
+    if (applyMatch) {
+      const filePath = applyMatch[1].trim();
+      const result = await applySandboxFile(filePath);
+      await message.reply(`**Oracle:** ${result}`).catch(() => {});
+      return;
+    }
+
+    // 3b. Coding task — route through Kai Coder agent, post to same channel
+    if (isCodingTask(text) && !activeCodingTasks.has(message.id)) {
+      activeCodingTasks.set(message.id, true);
+      setTimeout(() => activeCodingTasks.delete(message.id), 300000); // 5min cleanup
+
+      const toolOnline = await isToolServerOnline();
+      if (!toolOnline) {
+        await message.reply('**Oracle:** Kai Coder tool server is offline.').catch(() => {});
+        return;
+      }
+
+      await message.reply('**Oracle:** Kai Coder is on it. Analyzing...').catch(() => {});
+      logAudit('KAI_CODER_TASK_START', { from, channel: 'oracle-chat', task: text.slice(0, 100) });
+
+      const result = await runCodingTask(text, null, null).catch(e => ({
+        success: false,
+        report: `Task failed: ${e.message}`
+      }));
+
+      logAudit('KAI_CODER_TASK_END', { from, success: result.success });
+      const report = result.report || 'No report.';
+      const chunks = [];
+      for (let i = 0; i < report.length; i += 1900) chunks.push(report.slice(i, i + 1900));
+      for (const chunk of chunks) {
+        await message.channel.send(chunk).catch(() => {});
+      }
+      return;
+    }
+
+    // 3c. Non-coding message in oracle-chat: dynamic delegation as before
+    const namedBot = detectNamedBot(message.content);
+    if (namedBot) {
+      const port = BOT_PORTS[namedBot];
+      if (port) sendBotSignal(port, { channelId: message.channelId, context: `[${from}] ${message.content}` });
+    } else {
+      const delegate = await chatWithOpenJarvis(
+        'Oracle', message.content,
+        `You are the Oracle Dispatcher. Based on the user request, decide which department is best: ${Object.keys(DEPARTMENTS).join(', ')}. Return ONLY the department name.`,
+        'Oracle-Sovereign', 0.2
+      ).catch(() => null);
+
+      if (delegate && DEPARTMENTS[delegate.trim()]) {
+        const target = delegate.trim();
+        const port = BOT_PORTS[target];
+        if (port) {
+          message.reply(`**Oracle:** Routing to **${target}**.`);
+          sendBotSignal(port, {
+            channelId: message.channelId,
+            requesterId: message.author.id,
+            type: 'DYNAMIC_TASK',
+            context: `[USER REQUEST FROM ${from}] ${message.content}`
+          });
+        }
+      }
+    }
+    return;
+  }
+
+  // ── 4. General named-bot routing (non-work channels) ──────────────────────
   const namedBot = detectNamedBot(message.content);
   if (namedBot) {
     const port = BOT_PORTS[namedBot];
-    if (port) {
-      sendBotSignal(port, { channelId: message.channelId, context: `[${from}] ${message.content}` });
-    }
-  } else if (message.channelId === CHANNEL_IDS.ORACLE_CHAT) {
-    // DYNAMIC DELEGATION: Oracle decides which bot handles the user request
-    const delegate = await chatWithOpenJarvis("Oracle", message.content, `You are the Oracle Dispatcher. Based on the user request, decide which department is best to handle this. Choose ONLY from: ${Object.keys(DEPARTMENTS).join(", ")}. Return ONLY the name of the department.`, "Groq-8b").catch(() => null);
-    
-    if (delegate && DEPARTMENTS[delegate.trim()]) {
-      const target = delegate.trim();
-      const port = BOT_PORTS[target];
-      if (port) {
-        message.reply(`🏛️ **[Oracle/Dispatch]** Routing your request to the **${target}** department for processing.`);
-        sendBotSignal(port, { 
-          channelId: message.channelId, 
-          requesterId: message.author.id,
-          type: "DYNAMIC_TASK",
-          context: `[USER REQUEST FROM ${from}] ${message.content}`
-        });
-      }
-    }
-      const botName = Object.entries(AI_REGISTRY).find(([n, d]) => message.channel.name.includes(n))?.[0];
-      if (botName) {
-          sendBotSignal(BOT_PORTS[botName], { 
-            channelId: message.channelId, 
-            context: `[${from}] ${message.content}`,
-            metadata: { human: { name: from, role: role } }
-          });
-      }
+    if (port) sendBotSignal(port, { channelId: message.channelId, context: `[${from}] ${message.content}` });
   }
 });
 
