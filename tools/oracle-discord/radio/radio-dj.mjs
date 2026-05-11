@@ -213,6 +213,8 @@ export async function handleRadioVoiceIntent(text, speakFn, requestedBy = 'someo
         return true;
       }
       await speakFn(`skipping.`);
+      djState.skipping = true;      // suppress transition talk in _onSongEnd
+      djState.nextAnnounced = false; // force fresh announcement for next song
       djState.audioPlayer?.stop();
       return true;
     }
@@ -267,6 +269,7 @@ let djState = {
   playingTTS:        false,   // true while TTS is occupying audioPlayer
   nextAnnounced:     false,   // true when _closeRequestWindow already announced next song
   transitioning:     false,   // true while _onSongEnd is running (prevents double-fire)
+  skipping:          false,   // true when user explicitly skipped (suppress transition talk)
   playlistMode:      true,
   playlistName:      'default',
   playlistIndex:     0,
@@ -426,7 +429,7 @@ async function _djSpeak(text) {
   }
 }
 
-async function _playNextSong() {
+async function _playNextSong(preloaded = null) {
   if (!djState.active) return;
 
   let song = djState.songQueue.shift();
@@ -447,12 +450,16 @@ async function _playNextSong() {
     return;
   }
 
-  // Build search query from playlist entry
+  // Build search query
   const query = `${song.title} ${song.artist || ''}`.trim();
 
-  // Resolve duration via yt-dlp (we keep playlist title/artist for display)
-  const meta     = await resolveSongMeta(query);
-  const duration = (meta.duration && meta.duration >= 30) ? meta.duration : 240;
+  // If preloaded stream matches this song, skip the yt-dlp meta + stream calls
+  // (saves ~5-10s of sequential yt-dlp latency)
+  let duration = 240;
+  if (!preloaded) {
+    const meta = await resolveSongMeta(query);
+    duration = (meta.duration && meta.duration >= 30) ? meta.duration : 240;
+  }
 
   djState.currentSong = {
     ...song,
@@ -496,7 +503,8 @@ async function _playNextSong() {
     }).catch(() => {});
   }
 
-  const { resource, ytdlpProc } = streamSong(query);
+  // Use preloaded stream if available (launched during TTS to reduce gap)
+  const { resource, ytdlpProc } = preloaded || streamSong(query);
   djState.currentResource = resource;
 
   ytdlpProc.stderr?.on('data', d => {
@@ -627,23 +635,38 @@ async function _onSongEnd() {
   if (djState.transitioning) return; // prevent double-fire from fade + natural end
   djState.transitioning = true;
 
+  const wasSkip = djState.skipping;
+  djState.skipping = false;
+
   if (djState.fadeTimer)  { clearTimeout(djState.fadeTimer);  djState.fadeTimer  = null; }
   if (djState.windowTimer) { clearTimeout(djState.windowTimer); djState.windowTimer = null; }
 
-  const prev = djState.currentSong;
-  const next  = djState.songQueue[0] || null;
+  // Peek at the next song so we can pre-start yt-dlp in parallel with TTS
+  const nextSong = djState.songQueue[0]
+    || (() => {
+      const list = getPlaylist(djState.playlistName);
+      return list[djState.playlistIndex % list.length] || null;
+    })();
 
-  // Brief pause — let the fade settle before Leo talks
+  // Pre-launch the yt-dlp stream NOW — it runs while Leo talks (saves 5-10s latency)
+  let preloaded = null;
+  if (nextSong) {
+    const q = `${nextSong.title} ${nextSong.artist || ''}`.trim();
+    preloaded = streamSong(q);
+  }
+
   await _sleep(400);
 
-  // DJ talk between tracks — speak + post to chat
-  const djLine = _buildTransitionLine(prev, next);
-  await _djSpeak(djLine);
-
-  await _sleep(300);
+  // Skip transition talk if user explicitly skipped — they already heard "skipping."
+  if (!wasSkip) {
+    const prev = djState.currentSong;
+    const djLine = _buildTransitionLine(prev, nextSong);
+    await _djSpeak(djLine);
+    await _sleep(300);
+  }
 
   djState.transitioning = false;
-  await _playNextSong();
+  await _playNextSong(preloaded);
 }
 
 function _buildTransitionLine(prev, next) {
