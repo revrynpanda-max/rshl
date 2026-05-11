@@ -46,14 +46,50 @@ export function parseRadioIntent(text) {
     return { intent: 'playlist', playlist: playlistMatch[3].replace('-', '-') };
   }
 
+  // Artist shuffle — "play some X songs" / "random funny X song" / "something from X"
+  // Must run BEFORE general requestMatch to catch vague multi-word artist requests
+  const shufflePatterns = [
+    // "play some Lonely Island songs, random funny one"
+    /\b(?:play\s+)?some\s+(.+?)\s+songs?/i,
+    // "random song from The Lonely Island" / "a random Lonely Island song"
+    /\b(?:a\s+)?(?:random|funny|popular|good)\s+(?:song|track|one)\s+(?:from|by)\s+(.+?)(?:\s+that.+)?$/i,
+    // "something from The Lonely Island"
+    /\bsomething\s+(?:from|by)\s+(.+?)(?:\s+(?:please|thanks))?$/i,
+    // "play The Lonely Island, something funny"
+    /^play\s+(.+?),\s+(?:something|a song|random|any)/i,
+  ];
+  for (const pat of shufflePatterns) {
+    const m = t.match(pat);
+    if (m) {
+      const artist = m[1].trim().replace(/[.,!?]+$/, '');
+      if (artist.length > 1) {
+        const mood = /funny|comedy|hype|sad|chill|party/.exec(t)?.[0] || '';
+        return { intent: 'artist_shuffle', artist, mood };
+      }
+    }
+  }
+
   // Song request — "play X" / "put on X" / "queue X" / "can you play X" / "I want to hear X"
   const requestMatch = t.match(
     /\b(?:play|put on|queue(?: up)?|add|request|can you play|i(?:'d)? want (?:to hear|to listen to)?)\s+(.+?)(?:\s+(?:please|next|now|for me))?$/i
   );
   if (requestMatch) {
-    const song = requestMatch[1].trim();
-    if (song.length > 2 && !['something', 'music', 'a song', 'anything', 'songs'].includes(song)) {
-      return { intent: 'request', song };
+    let song = requestMatch[1].trim();
+    // Reject if it's a vague descriptor rather than a song title
+    const VAGUE = /\b(songs?|tracks?|music|random|something|anything|some|funny|popular|from them)\b/i;
+    if (song.length > 50 || VAGUE.test(song)) {
+      // Try to salvage an artist name if present
+      const artistFallback = song.match(/(?:from|by)\s+(.+?)(?:\s+that.+)?$/i);
+      if (artistFallback) {
+        return { intent: 'artist_shuffle', artist: artistFallback[1].trim(), mood: '' };
+      }
+      // Otherwise ignore this vague request
+    } else {
+      // Strip leading filler words ("some ", "a ", "the ", "random ")
+      song = song.replace(/^(?:some|a|the|random|any)\s+/i, '').trim();
+      if (song.length > 1 && !['something', 'music', 'a song', 'anything', 'songs'].includes(song)) {
+        return { intent: 'request', song };
+      }
     }
   }
 
@@ -106,7 +142,6 @@ export async function handleRadioVoiceIntent(text, speakFn, requestedBy = 'someo
 
   switch (intent.intent) {
     case 'request': {
-      // Split "Song - Artist" if present
       const parts = intent.song.split(/\s*-\s*/);
       const title  = parts[0].trim();
       const artist = parts[1]?.trim() || '';
@@ -118,6 +153,19 @@ export async function handleRadioVoiceIntent(text, speakFn, requestedBy = 'someo
         `${title} queued up.`,
       ];
       await speakFn(confirmations[Math.floor(Math.random() * confirmations.length)]);
+      return true;
+    }
+    case 'artist_shuffle': {
+      // Search for a specific popular/mood-based song by the artist
+      const { artist, mood } = intent;
+      const searchQ = `${artist} ${mood || 'popular'} song audio`;
+      const meta = await resolveSongMeta(searchQ);
+      // Use the resolved title but always credit the requested artist
+      const resolvedTitle = meta.title
+        .replace(/\s*[\[(](?:official|audio|video|lyrics?|hd|4k)[^)\]]*[)\]]\s*/gi, '')
+        .trim();
+      const result = await addRequest(resolvedTitle, artist, requestedBy);
+      await speakFn(`got it — queuing ${resolvedTitle} by ${artist} for ${requestedBy}.`);
       return true;
     }
     case 'skip': {
