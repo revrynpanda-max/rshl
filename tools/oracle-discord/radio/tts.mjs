@@ -41,7 +41,7 @@ export async function djTTS(text, player) {
 
     const res = await fetch(
       `https://api.elevenlabs.io/v1/text-to-speech/${LEO_VOICE_ID}/stream` +
-      `?optimize_streaming_latency=4&output_format=pcm_48000`,
+      `?optimize_streaming_latency=3&output_format=pcm_48000`,
       {
         method:  'POST',
         headers: { 'xi-api-key': ELEVEN_LABS_KEY, 'Content-Type': 'application/json' },
@@ -63,10 +63,10 @@ export async function djTTS(text, player) {
       return;
     }
 
-    // ElevenLabs PCM 48kHz mono → stereo for Discord (same args as leo.mjs)
+    // ElevenLabs PCM 48kHz mono → stereo for Discord
     const ffmpeg = spawn(ffmpegPath, [
       '-f', 's16le', '-ar', '48000', '-ac', '1', '-i', 'pipe:0',
-      '-af', 'volume=2.0,aresample=48000',
+      '-af', 'volume=0.8',
       '-f', 's16le', '-ar', '48000', '-ac', '2', 'pipe:1',
     ]);
 
