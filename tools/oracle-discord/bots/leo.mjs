@@ -672,12 +672,13 @@ client.on('messageCreate', async (message) => {
       if (radioHandled) return;
     }
 
-    // Non-command text in radio channel — let Leo respond naturally (text reply, no voice)
-    message.channel.sendTyping().catch(() => {});
-    const recentMessages = await message.channel.messages.fetch({ limit: 6 });
-    const conversationHistory = recentMessages.reverse().map(m => `${m.author.username}: ${m.content}`).join('\n');
-    const reply = await callGroqAsLeo(txt, message.author.username, message.channelId, null, conversationHistory);
-    if (reply) await message.reply(reply).catch(console.error);
+    // Not a radio command — redirect instead of chatting
+    const redirects = [
+      `this channel is for song requests. drop a track name or say \`skip\`, \`!np\`, \`!queue\`.`,
+      `radio channel only. request a song or use \`!np\` / \`!queue\`.`,
+      `hit me with a song request. anything else goes in the main chat.`,
+    ];
+    await message.reply(redirects[Math.floor(Math.random() * redirects.length)]).catch(() => {});
     return;
   }
 
