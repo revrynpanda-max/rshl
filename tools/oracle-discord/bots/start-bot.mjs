@@ -1,6 +1,7 @@
 import { chatWithOpenJarvis, chatWithLattice, callGroqDirect } from '../shared/openjarvis.mjs';
 import { scanForHelpers, requestHelp } from '../shared/helper-queue.mjs';
-import { Client, GatewayIntentBits, Partials, ChannelType } from 'discord.js';
+import { Client, GatewayIntentBits, Partials, ChannelType, AttachmentBuilder } from 'discord.js';
+import { handleImageRequest, isImageRequest } from '../shared/gemi-image.mjs';
 import fs from 'fs';
 import { startBotServer } from '../shared/ipc.mjs';
 import { recordNeuralEvent, getHardwareStats, getRecentBottlenecks } from '../shared/performance-monitor.mjs';
@@ -830,7 +831,36 @@ async function startWorkSessionLoop() {
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
   if (message.author.id === client.user.id) return; // Never respond to self
-  
+
+  // ── GEMI IMAGE GENERATION ──────────────────────────────────────────────────
+  // Gemi intercepts image requests before any other handling.
+  // Works in: social channel (if @mentioned), DMs, IPC-triggered messages.
+  if (botName === 'Gemini' && isImageRequest(message.content)) {
+    const isMentioned = message.mentions.has(client.user.id) || !message.guild;
+    if (isMentioned) {
+      message.channel.sendTyping().catch(() => {});
+      try {
+        const result = await handleImageRequest(message.content);
+        if (result) {
+          const ext = result.mimeType.includes('png') ? 'png' : 'jpg';
+          const attachment = new AttachmentBuilder(result.buffer, { name: `gemi_${Date.now()}.${ext}` });
+          await message.reply({
+            content: `here's what i made — "${result.prompt.slice(0, 120)}" *(${result.model})*`,
+            files: [attachment]
+          });
+          return;
+        } else {
+          await message.reply('image generation failed — try a different prompt or check the API key.');
+          return;
+        }
+      } catch (e) {
+        console.warn('[Gemi/Image] messageCreate handler error:', e.message);
+        await message.reply('something went wrong generating that image.').catch(() => {});
+        return;
+      }
+    }
+  }
+
   // --- NEW: Dynamic Social Chat Reaction ---
   if (SOCIAL_BOTS.has(botName) && message.channel.id === targetChannelId) {
     const isHuman = !message.author.bot;
@@ -1043,7 +1073,25 @@ oracle's finding: ${payload.result}`;
     if (payload.context && payload.channelId) {
       const { context, channelId } = payload;
       console.log(`[${botName}/Signal] Received prompt for channel ${channelId}: "${context.slice(0, 50)}..."`);
-      
+
+      // ── GEMI IMAGE: also handle IPC-triggered image requests ─────────────
+      if (botName === 'Gemini' && isImageRequest(context)) {
+        try {
+          const ch = client.channels.cache.get(channelId)
+            || await client.channels.fetch(channelId).catch(() => null);
+          if (ch) {
+            ch.sendTyping().catch(() => {});
+            const result = await handleImageRequest(context);
+            if (result) {
+              const ext = result.mimeType.includes('png') ? 'png' : 'jpg';
+              const attachment = new AttachmentBuilder(result.buffer, { name: `gemi_${Date.now()}.${ext}` });
+              await ch.send({ content: `"${result.prompt.slice(0, 120)}" *(${result.model})*`, files: [attachment] });
+              return;
+            }
+          }
+        } catch (e) { console.warn('[Gemi/Image] IPC image error:', e.message); }
+      }
+
       try {
         // Extract real username from context "[Username] content"
         let effectiveUsername = "Oracle";
