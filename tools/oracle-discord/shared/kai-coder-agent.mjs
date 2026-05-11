@@ -37,19 +37,19 @@ Rust / RSHL Core (c:/KAI/src/):
 - memory.rs            — SynapticLayer: Hebbian LTP/LTD, 7-region topology
 - epistemic_immune.rs  — Anomaly detection and lattice self-defense
 - Cargo.toml           — Dependencies: axum, tokio, serde, ndarray, rand
-- Build: `cargo build --release` | Check: `cargo check` | Test: `cargo test`
+- Build: \`cargo build --release\` | Check: \`cargo check\` | Test: \`cargo test\`
 
 Node.js / Discord Ecosystem (c:/KAI/tools/oracle-discord/):
 - oracle-gateway.mjs   — Oracle dispatcher, port 3410. Routes all inter-agent traffic.
 - bots/leo.mjs         — Voice AI, port 3400. ElevenLabs TTS, Groq Whisper STT.
 - bots/start-bot.mjs   — Shared agent runner for Gemini, Groq, X, Epistemic, Analyst, Researcher.
 - shared/openjarvis.mjs — Neural bus: routes LLM calls to Ollama/Groq/Gemini/etc.
-- shared/lattice-bridge.mjs — Bridge: JS ↔ Rust RSHL engine (port 3333)
+- shared/lattice-bridge.mjs — Bridge: JS <-> Rust RSHL engine (port 3333)
 - shared/kai-coder-agent.mjs — YOUR agentic loop (this file)
 - tools/kai-coder-toolserver.mjs — YOUR tool server, port 3420
-- Node commands: `node <file>`, `npm install`, `npm run dev`, `npm run start`
-- Check syntax: `node --check <file>`
-- Run ecosystem: `.\run-oracle-discord.ps1`
+- Node commands: \`node <file>\`, \`npm install\`, \`npm run dev\`, \`npm run start\`
+- Check syntax: \`node --check <file>\`
+- Run ecosystem: \`.\\run-oracle-discord.ps1\`
 
 Python / OpenJarvis (c:/KAI/OpenJarvis-main/):
 - src/openjarvis/       — Agent framework, tool registry, HTTP server (port 8080)
@@ -59,19 +59,19 @@ Python / OpenJarvis (c:/KAI/OpenJarvis-main/):
 - tools/knowledge_search.py — Knowledge base queries
 - tools/apply_patch.py  — Unified diff application
 - tools/shell_exec.py   — Sandboxed shell execution
-- Python commands: `python -m pytest`, `pip install -r requirements.txt`, `python -m openjarvis`
+- Python commands: \`python -m pytest\`, \`pip install -r requirements.txt\`, \`python -m openjarvis\`
 
 Ollama / Local AI (port 11434):
 - Models: *-Sovereign aliases (Leo-Sovereign, Oracle-Sovereign, Kai-Coder-Sovereign, etc.)
-- Commands: `ollama list`, `ollama run <model>`, `ollama pull <model>`
+- Commands: \`ollama list\`, \`ollama run <model>\`, \`ollama pull <model>\`
 
 [SENIOR ENGINEERING METHODOLOGY]
 1. READ FIRST: Always read the relevant source files before touching anything.
 2. UNDERSTAND THE SYSTEM: Trace call chains. Know which file owns which behavior.
 3. PLAN PRECISELY: Write a change plan. Know what breaks if you change X.
 4. IMPLEMENT MINIMALLY: Change only what is needed. Preserve all existing logic.
-5. VALIDATE: Run node --check, cargo check, or python -m py_compile before reporting.
-6. SANDBOX: Never write directly to production. Always sandbox → diff → apply.
+5. VALIDATE: Run \`node --check\`, \`cargo check\`, or \`python -m py_compile\` before reporting.
+6. SANDBOX: Never write directly to production. Always sandbox -> diff -> apply.
 7. REPORT: Give Ryan and Oracle a clear diff summary with pass/fail status.
 
 [TOOL ARSENAL]
