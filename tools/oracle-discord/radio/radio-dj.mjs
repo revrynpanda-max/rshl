@@ -315,29 +315,35 @@ async function _playNextSong() {
     return;
   }
 
-  // Resolve real metadata
+  // Build search query from playlist entry
   const query = `${song.title} ${song.artist || ''}`.trim();
-  const meta  = await resolveSongMeta(query);
+
+  // Resolve duration via yt-dlp (we keep playlist title/artist for display)
+  const meta     = await resolveSongMeta(query);
+  const duration = (meta.duration && meta.duration >= 30) ? meta.duration : 240;
+
   djState.currentSong = {
     ...song,
-    title:     meta.title || song.title,
-    duration:  meta.duration,
+    title:     song.title,
+    artist:    song.artist || '',
+    duration,
     startedAt: Date.now(),
   };
 
-  console.log(`[Radio] Streaming: ${djState.currentSong.title} (~${meta.duration}s)`);
+  console.log(`[Radio] Streaming: ${song.title} — ${song.artist || ''} (~${duration}s)`);
 
-  // Announce the song — only if not already announced (e.g. single request window)
+  // Announce — use clean playlist title/artist (not yt-dlp meta which pollutes titles)
   if (!djState.nextAnnounced) {
-    const reqBy = song.requestedBy && song.requestedBy !== 'playlist' ? song.requestedBy : null;
-    const artist = djState.currentSong.title.includes(' - ') ? '' : (song.artist || '');
-    const announceLines = [
-      `alright, here we go — ${djState.currentSong.title}${artist ? ` by ${artist}` : ''}.`,
-      `next up: ${djState.currentSong.title}${artist ? `, ${artist}` : ''}.${reqBy ? ` this one's for ${reqBy}.` : ''}`,
-      `${djState.currentSong.title}${artist ? ` — ${artist}` : ''} coming in hot.`,
-      `rolling into ${djState.currentSong.title}${artist ? ` by ${artist}` : ''} now.`,
+    const reqBy  = song.requestedBy && song.requestedBy !== 'playlist' ? song.requestedBy : null;
+    const a      = song.artist || '';
+    const t      = song.title;
+    const lines  = [
+      `alright, here we go — ${t}${a ? ` by ${a}` : ''}.`,
+      `next up: ${t}${a ? `, ${a}` : ''}.${reqBy ? ` this one's for ${reqBy}.` : ''}`,
+      `${t}${a ? ` — ${a}` : ''} coming in hot.`,
+      `rolling into ${t}${a ? ` by ${a}` : ''} now.`,
     ];
-    await _djSpeak(announceLines[Math.floor(Math.random() * announceLines.length)]);
+    await _djSpeak(lines[Math.floor(Math.random() * lines.length)]);
   }
   djState.nextAnnounced = false;
 
@@ -368,14 +374,16 @@ async function _playNextSong() {
   djState.audioPlayer.play(resource);
   _fadeIn().catch(() => {});
 
-  // Schedule fade-out to begin 10s before song ends
+  // Schedule fade-out to begin 10s before song ends (only for reasonable durations)
   if (djState.fadeTimer) clearTimeout(djState.fadeTimer);
-  const fadeDelay = Math.max(5_000, (meta.duration - 10) * 1_000);
-  djState.fadeTimer = setTimeout(() => _fadeOut().catch(() => {}), fadeDelay);
+  if (duration >= 30) {
+    const fadeDelay = Math.max(15_000, (duration - 10) * 1_000);
+    djState.fadeTimer = setTimeout(() => _fadeOut().catch(() => {}), fadeDelay);
+  }
 
   // Schedule request window (40s before end)
-  if (meta.duration >= MIN_SONG_DURATION_FOR_WINDOW) {
-    const windowDelay = Math.max(0, (meta.duration - 40) * 1000);
+  if (duration >= MIN_SONG_DURATION_FOR_WINDOW) {
+    const windowDelay = Math.max(0, (duration - 40) * 1000);
     if (djState.windowTimer) clearTimeout(djState.windowTimer);
     djState.windowTimer = setTimeout(_openRequestWindow, windowDelay);
   }
