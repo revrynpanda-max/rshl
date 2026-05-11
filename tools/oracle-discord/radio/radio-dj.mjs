@@ -556,9 +556,15 @@ async function _closeRequestWindow() {
     // Single request — auto-queue it, no poll needed
     djState.songQueue.unshift(pool[0]);
     djState.nextAnnounced = true;
-    await _djSpeak(
-      `got a request — ${pool[0].title} from ${pool[0].requestedBy} is up next.`
-    );
+    // Text-only confirmation — do NOT call _djSpeak() here.
+    // _djSpeak stops the music (TTS takes over the player). After TTS the player
+    // goes idle but _onSongEnd never fires (playingTTS guards it). Radio hangs.
+    // The song continues playing naturally; _onSongEnd → _playNextSong handles the rest.
+    if (djState.textChannel) {
+      djState.textChannel.send(
+        `🎙️ **Leo:** got it — **${pool[0].title}** from ${pool[0].requestedBy} is up next.`
+      ).catch(() => {});
+    }
     return;
   }
 
