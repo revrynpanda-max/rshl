@@ -21,6 +21,7 @@ export async function getSongDuration(title, artist) {
       '--no-download',
       '--no-playlist',
       '--default-search', 'ytsearch1',
+      '--extractor-args', 'youtube:player_client=android',
       query
     ], { windowsHide: true });
 
@@ -42,6 +43,7 @@ export async function resolveSongMeta(query) {
       '--no-download',
       '--no-playlist',
       '--default-search', 'ytsearch1',
+      '--extractor-args', 'youtube:player_client=android',
       query
     ], { windowsHide: true });
 
@@ -74,6 +76,7 @@ export function streamSong(query) {
     '--output', '-',            // pipe to stdout
     '--no-playlist',
     '--quiet',
+    '--extractor-args', 'youtube:player_client=android',
     '--default-search', 'ytsearch1',
     query
   ], { windowsHide: true });

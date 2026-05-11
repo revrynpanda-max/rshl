@@ -50,7 +50,7 @@ export function parseRadioIntent(text) {
     /\b(?:play|put on|queue(?: up)?|add|request|can you play|i want (?:to hear|to listen to)?)\s+(.+?)(?:\s+(?:please|next|now|for me))?$/i
   );
   if (requestMatch) {
-    const song = requestMatch[2].trim();
+    const song = requestMatch[1].trim();
     // Filter false positives (too short or just "something" / "music" / "a song")
     if (song.length > 2 && !['something', 'music', 'a song', 'anything', 'songs'].includes(song)) {
       return { intent: 'request', song };
