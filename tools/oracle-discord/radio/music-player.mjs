@@ -1,6 +1,10 @@
 /**
  * music-player.mjs — Audio streaming engine for Leo's AI Radio
  * Uses yt-dlp to find songs by title and streams audio via FFmpeg into Discord voice.
+ *
+ * NOTE: No --extractor-args are set. yt-dlp's default client selection works
+ * reliably without PO tokens. Specific clients (android/ios/mweb) all require
+ * GVS PO Tokens for HTTPS formats and fall back to images-only, killing the stream.
  */
 
 import { spawn } from 'child_process';
@@ -21,21 +25,21 @@ export async function getSongDuration(title, artist) {
       '--no-download',
       '--no-playlist',
       '--default-search', 'ytsearch1',
-      '--extractor-args', 'youtube:player_client=mweb',
       query
     ], { windowsHide: true });
 
     let output = '';
     proc.stdout.on('data', d => { output += d.toString(); });
+    proc.stderr.on('data', () => {}); // suppress warnings
     proc.on('close', () => {
       const secs = parseInt(output.trim(), 10);
-      resolve(isNaN(secs) ? 210 : secs); // default 3:30 if unknown
+      resolve(isNaN(secs) ? 210 : secs);
     });
     proc.on('error', () => resolve(210));
   });
 }
 
-// ── Real title/artist lookup ───────────────────────────────────────────────────
+// ── Real title/artist + duration lookup ───────────────────────────────────────
 export async function resolveSongMeta(query) {
   return new Promise((resolve) => {
     const proc = spawn('yt-dlp', [
@@ -43,17 +47,17 @@ export async function resolveSongMeta(query) {
       '--no-download',
       '--no-playlist',
       '--default-search', 'ytsearch1',
-      '--extractor-args', 'youtube:player_client=mweb',
       query
     ], { windowsHide: true });
 
     let output = '';
     proc.stdout.on('data', d => { output += d.toString(); });
+    proc.stderr.on('data', () => {}); // suppress warnings
     proc.on('close', () => {
       const line = output.trim().split('\n')[0] || '';
       const [title, dur] = line.split('|||');
       resolve({
-        title: title?.trim() || query,
+        title:    title?.trim() || query,
         duration: parseInt(dur, 10) || 210
       });
     });
@@ -70,19 +74,17 @@ export function createRadioPlayer() {
 
 // ── Stream a song and return { resource, ytdlpProc } ─────────────────────────
 export function streamSong(query) {
-  // Stream audio via yt-dlp piped to stdin of createAudioResource
   const ytProc = spawn('yt-dlp', [
-    '--format', 'bestaudio[ext=m4a]/bestaudio/best',
+    '--format', 'bestaudio/best',
     '--output', '-',
     '--no-playlist',
     '--quiet',
-    '--extractor-args', 'youtube:player_client=mweb',
+    '--no-warnings',
     '--default-search', 'ytsearch1',
     query
   ], { windowsHide: true });
 
-  ytProc.stdin?.on('error', () => {});  // swallow EPIPE if pipe breaks early
-  ytProc.stderr?.on('data', () => {});  // suppress yt-dlp stderr noise
+  ytProc.stdin?.on('error', () => {}); // swallow EPIPE
 
   const resource = createAudioResource(ytProc.stdout, {
     inputType: StreamType.Arbitrary,

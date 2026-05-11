@@ -1,10 +1,9 @@
 /**
  * tts.mjs — Standalone TTS for the Radio DJ
  *
- * Synthesizes speech via ElevenLabs and plays it through the
- * provided AudioPlayer (djState.audioPlayer).  This keeps TTS
- * and music on the SAME player so they never conflict with each
- * other or with Leo's main voice pipeline.
+ * Synthesizes speech via ElevenLabs (same voice/key as leo.mjs) and plays it
+ * through the provided AudioPlayer (djState.audioPlayer). Keeps TTS and music
+ * on the SAME player so they never conflict with Leo's main voice pipeline.
  */
 
 import { spawn }     from 'child_process';
@@ -17,8 +16,9 @@ import {
   StreamType,
 } from '@discordjs/voice';
 
-const ELEVEN_LABS_KEY = process.env.ELEVEN_LABS_KEY || process.env.ELEVENLABS_API_KEY;
-const LEO_VOICE_ID    = process.env.ELEVENLABS_LEO_VOICE_ID || 'av1BMOR1GPgThz9p4fLo';
+// Match leo.mjs exactly — primary key is ELEVENLABS_API_KEY
+const ELEVEN_LABS_KEY = process.env.ELEVENLABS_API_KEY || process.env.ELEVEN_LABS_KEY;
+const LEO_VOICE_ID    = 'av1BMOR1GPgThz9p4fLo'; // Same hardcoded voice as leo.mjs
 
 /**
  * Synthesize `text` via ElevenLabs and play it through `player`.
@@ -33,9 +33,11 @@ export async function djTTS(text, player) {
 
   try {
     if (!ELEVEN_LABS_KEY) {
-      console.warn('[Radio/TTS] No ElevenLabs key — skipping voice.');
+      console.warn('[Radio/TTS] No ElevenLabs key (ELEVENLABS_API_KEY) — skipping voice.');
       return;
     }
+
+    console.log(`[Radio/TTS] Synthesizing: "${text.slice(0, 50)}..."`);
 
     const res = await fetch(
       `https://api.elevenlabs.io/v1/text-to-speech/${LEO_VOICE_ID}/stream` +
@@ -47,9 +49,9 @@ export async function djTTS(text, player) {
           text,
           model_id: 'eleven_flash_v2_5',
           voice_settings: {
-            stability:        0.22,
-            similarity_boost: 0.80,
-            style:            0.65,
+            stability:         0.22,
+            similarity_boost:  0.80,
+            style:             0.65,
             use_speaker_boost: true,
           },
         }),
@@ -61,16 +63,20 @@ export async function djTTS(text, player) {
       return;
     }
 
-    // PCM 48kHz mono → stereo for Discord
+    // ElevenLabs PCM 48kHz mono → stereo for Discord (same args as leo.mjs)
     const ffmpeg = spawn(ffmpegPath, [
       '-f', 's16le', '-ar', '48000', '-ac', '1', '-i', 'pipe:0',
       '-af', 'volume=2.0,aresample=48000',
       '-f', 's16le', '-ar', '48000', '-ac', '2', 'pipe:1',
     ]);
 
-    // Swallow broken-pipe errors silently
-    ffmpeg.stdin.on('error', () => {});
-    ffmpeg.stderr.on('data', () => {}); // suppress ffmpeg logs
+    ffmpeg.stdin.on('error', () => {}); // swallow EPIPE
+    ffmpeg.stderr.on('data', d => {
+      const msg = d.toString();
+      if (msg.includes('Error') || msg.includes('error')) {
+        console.error('[Radio/TTS/FFmpeg]', msg.trim());
+      }
+    });
 
     const nodeStream = Readable.fromWeb(res.body);
     nodeStream.pipe(ffmpeg.stdin);
@@ -81,10 +87,12 @@ export async function djTTS(text, player) {
     await entersState(player, AudioPlayerStatus.Playing, 6_000);
     await entersState(player, AudioPlayerStatus.Idle,    90_000);
 
+    console.log('[Radio/TTS] Speech complete.');
+
   } catch (e) {
-    // "aborted" is expected when stopDJ() fires mid-speech — ignore silently
+    // "aborted" and "Timeout" are expected when stopDJ() fires mid-speech
     if (e?.message && !e.message.includes('aborted') && !e.message.includes('Timeout')) {
-      console.error('[Radio/TTS] Unexpected error:', e.message);
+      console.error('[Radio/TTS] Error:', e.message);
     }
   }
 }
