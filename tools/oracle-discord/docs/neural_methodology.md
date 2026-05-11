@@ -24,7 +24,7 @@ Security is anchored to **Vocal DNA signatures** (`.npy` files) stored in the `d
 ## 4. Neural Orchestration (The Failover Ladder)
 The `chatWithOpenJarvis` orchestrator manages 7+ neural providers to ensure 100% uptime.
 - **Priority Logic**: 
-    - **Work Tasks**: Prioritize `Anthropic` (Claude 3.5 Sonnet) or `Groq` (Llama-3.3-70B).
+    - **Work Tasks**: Prioritize `Sovereign` (Epistemic 3.5 Sonnet) or `Groq` (Llama-3.3-70B).
     - **Voice/Social**: Prioritize `Groq-Fast` (Llama-3.1-8B) for sub-100ms response time.
 
 ## 5. Temporal Boundaries & Biological Realism

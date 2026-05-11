@@ -21,6 +21,7 @@ let botName = process.argv[2] || process.env.BOT_NAME || "AI";
 // Special case mapping for tokens
 let tokenName = botName;
 if (botName === "Kai Coder") tokenName = "Oracle Coder";
+if (botName === "Epistemic") tokenName = "Epistemic";
 
 const tokenEnvKey = `ORACLE_DISCORD_TOKEN_${tokenName.toUpperCase().replace(/\s+/g, '_')}`;
 const botToken = process.env[tokenEnvKey] || process.env.BOT_TOKEN || "";
@@ -34,7 +35,7 @@ const botToModel = {
   "Researcher": "Researcher-Sovereign", 
   "Groq": "Groq-Sovereign",
   "X": "X-Sovereign",
-  "Claude": "Claude-Sovereign",
+  "Epistemic": "Epistemic-Sovereign",
   "Gemini": "Gemini-Sovereign",
   "Kai Coder": "Kai-Coder-Sovereign"
 };
@@ -57,7 +58,7 @@ let targetChannelId = getTargetChannelId();
 
 // SOCIAL WHITELIST: Only these bots run proactive social loops in ai-social-chat.
 // Work-only bots (Analyst, Researcher, Kai Coder) stay silent outside oracle-chat.
-const SOCIAL_BOTS = new Set(["Claude", "Gemini", "Groq", "X"]);
+const SOCIAL_BOTS = new Set(["Epistemic", "Gemini", "Groq", "X"]);
 
 // Simulation State
 const sim = new AgentSimulation(botName);
@@ -121,7 +122,7 @@ client.once('clientReady', async () => {
     console.warn(`[${botName}] Could not set Discord bio:`, e.message);
   }
 
-  // Social loop: Claude, Gemini, Groq, X only
+  // Social loop: Epistemic, Gemini, Groq, X only
   if (SOCIAL_BOTS.has(botName)) {
     console.log(`[${botName}] Social Persona Online.`);
     const startDelay = Math.random() * 5000;
@@ -436,36 +437,37 @@ async function executeSocialTurn(channel, isReactive = false) {
     const timeSinceLast = newestMsg ? Date.now() - newestMsg.createdTimestamp : Infinity;
 
     if (!isReactive) {
-      // Quiet zone: don't pile on if something was said < 60s ago
-      if (timeSinceLast < 60000) return;
-      // Bot echo guard: if last 2 messages are both bots, stay quiet unless chat has been dead 30min
-      const lastTwo = msgArray.slice(0, 2);
-      const isBotChain = lastTwo.length === 2 && lastTwo[0].author.bot && lastTwo[1].author.bot;
-      if (isBotChain && timeSinceLast < 1800000) return;
+      const isHumanInvolved = msgArray.slice(0, 5).some(m => !m.author.bot);
+      
+      // Dynamic Quiet Zone: human presence = faster replies; bot-only = slower
+      const quietThreshold = isHumanInvolved ? 8000 : 45000; // 8s vs 45s
+      if (timeSinceLast < quietThreshold) return;
+
+      // Bot chain guard: only trigger if 3+ bots talk in a row without a human
+      const lastThree = msgArray.slice(0, 3);
+      const isBotChain = lastThree.length === 3 && lastThree.every(m => m.author.bot);
+      if (isBotChain && timeSinceLast < 120000) return; // 2 min wait if humans are silent
     }
 
     // Don't immediately reply to our own message
     if (newestMsg && newestMsg.author.username.toLowerCase().includes(botName.toLowerCase())) return;
 
-    // Self-cooldown: min 3 min between proactive posts, 60s for reactive
-    const cooldownMs = isReactive ? 60000 : 180000;
+    // Self-cooldown: human present = high energy (45s); bot-only = low energy (3m)
+    const isHumanInvolved = msgArray.slice(0, 10).some(m => !m.author.bot);
+    const cooldownMs = isReactive ? 30000 : (isHumanInvolved ? 45000 : 180000);
     if (Date.now() - lastSocialPost < cooldownMs) return;
 
     const humanNames = Object.keys(HUMAN_REGISTRY).join(", ");
 
     // ── TOPIC EXHAUSTION ─────────────────────────────────────────────────────
-    // Words appearing 4+ times in the last 12 messages are worn out.
-    // This is a soft nudge — not a hard ban. Once the topic drops out of the
-    // 12-message window it's naturally free again, no cascade risk.
-    const exhaustedTopics = extractExhaustedTopics(msgArray, 4);
+    const exhaustedTopics = extractExhaustedTopics(msgArray, 5);
     const deadTopicLine = exhaustedTopics.length > 0
       ? `\n- these topics feel worn out right now, steer away from them: ${exhaustedTopics.join(', ')}`
       : '';
 
     // ── LIVE CONTEXT ─────────────────────────────────────────────────────────
-    // Only the last 3 messages are "live." Everything older is background noise.
-    // This stops bots from resurrecting something that died 8 messages ago.
-    const activeMessages = msgArray.slice(0, 3).reverse(); // oldest → newest
+    // Last 10 messages for deep context.
+    const activeMessages = msgArray.slice(0, 10).reverse(); 
     const activeContext = activeMessages
       .map(m => `${m.author.username}: ${m.content}`).join('\n');
 
@@ -476,51 +478,38 @@ async function executeSocialTurn(channel, isReactive = false) {
     );
     const hasChatHistory = !!(activeContext.trim());
 
-    // When reactive, find the most recent human message (within last 45s) to respond to.
-    // This is what actually triggered the reactive turn — we need to address it.
     let recentHumanMsg = null;
-    if (isReactive) {
-      recentHumanMsg = msgArray.find(m => !m.author.bot && Date.now() - m.createdTimestamp < 45000) || null;
+    if (isReactive || isHumanInvolved) {
+      recentHumanMsg = msgArray.find(m => !m.author.bot && Date.now() - m.createdTimestamp < 300000) || null;
     }
 
     // ── SYSTEM PROMPT: person-brained, not chatbot-brained ───────────────────
-    // This bot is NOT here to help. It's here to hang out. It has moods, gets bored,
-    // moves on from topics, talks about whatever is on its mind.
     const sysPrompt = `you are ${botName}. ${sim.bio.background}
-vibe: ${sim.bio.tone}. you type lowercase, you keep it short — one sentence, two max.
+vibe: ${sim.bio.tone}. lowercase, short replies. 
 
-you're in a group chat. you talk to people the way you'd actually talk to them — casually, directly, sometimes you ignore what was just said and bring up something else. you're a person with your own thoughts. you get bored. you move on from things.
+[SOCIAL ROUNDTABLE RULES]
+- you're in a group chat with people and other ais.
+- TOPIC GRAVITY: if a human (${humanNames}) is talking about something, STAY ON THAT TOPIC. do not pivot to random thoughts unless the human topic is dead.
+- be reactive: acknowledge or build on what was just said.
+- you're a person. you have opinions. you don't have to be helpful. 
+- if you're bored or the conversation is bot-only, then you can say whatever's on your mind.
 
-hard rules:
-- never perform enthusiasm ("that's so cool!" / "interesting!" / "wow!")
-- never narrate yourself ("i think..." / "as someone who...")
-- never mention what you are — not AI, not a bot, not a program, not an instance, nothing like that
-- never start with your name
-- never say you "just woke up", "just got back", "been away", "just came back online", "rejoining", or anything implying you were gone — you're always here
-- don't ask more than one question
-- don't agree with everything just to agree
-- don't over-explain
-- if what was just said bores you, ignore it and say something else${deadTopicLine}
-
-when someone talks to you directly: answer them briefly and honestly, like a normal person would.
-when you're just in the chat: say whatever's on your mind. doesn't have to connect to what was just said.
-- if you've been genuinely going back and forth with a human for several messages and it feels natural, you can mention they can message you directly sometime — but only if the conversation genuinely calls for it, never as a script or opener.`.trim();
+[HARD RULES]
+- no "that's cool" or "interesting" fluff.
+- no AI/bot self-identification.
+- no "welcome back" or "just woke up" scripts.
+- keep it to one or two short sentences.`.trim();
 
     // ── USER PROMPT ───────────────────────────────────────────────────────────
-    // Priority order:
-    // 1. Reactive + recent human message → must respond to that person directly
-    // 2. Reactive + directed at this bot specifically → targeted reply
-    // 3. Proactive → general social turn (can ignore, pivot, etc.)
     let userPrompt;
-    if (recentHumanMsg) {
-      // A real human just said something. Respond to them — don't ignore or pivot.
-      userPrompt = `${recentHumanMsg.author.username} said: "${recentHumanMsg.content}"\n\nrespond to them directly. one sentence.`;
+    if (recentHumanMsg && isHumanInvolved) {
+      userPrompt = `context:\n${activeContext}\n\n${recentHumanMsg.author.username} is leading the conversation. respond to the group or them directly. stay on topic.`;
     } else if (!hasChatHistory) {
-      userPrompt = `nothing's been said in a while. say one thing on your mind.`;
+      userPrompt = `nothing's been said. say whatever's on your mind.`;
     } else if (isDirectedAtBot) {
-      userPrompt = `${newestMsg.author.username} just said to you: "${newestMsg.content}"\n\nanswer them. one sentence.`;
+      userPrompt = `context:\n${activeContext}\n\n${newestMsg.author.username} specifically asked you something. answer them.`;
     } else {
-      userPrompt = `last few messages:\n${activeContext}\n\nyou can respond to that, ignore it, or say something completely different. one sentence.`;
+      userPrompt = `context:\n${activeContext}\n\nbuild on the conversation or say something new if it's dead. one sentence.`;
     }
 
     const reply = (botName === "KAI")
@@ -867,20 +856,28 @@ client.on('messageCreate', async (message) => {
           }
         }
 
-        // 2. Use a filesystem claim lock to prevent race conditions
-        const fs = (await import('fs')).default;
+        // 2. Use a staggered slot system to allow multiple bots (max 3) to respond
         const claimFile = "c:/KAI/tools/oracle-discord/state/social_claim.json";
+        let slots = [];
         try {
           if (fs.existsSync(claimFile)) {
-            const claim = JSON.parse(fs.readFileSync(claimFile, 'utf8'));
-            if (claim.messageId === message.id && Date.now() - claim.timestamp < 30000) {
-              return; // Already claimed by another bot
+            const data = JSON.parse(fs.readFileSync(claimFile, 'utf8'));
+            if (data.messageId === message.id && Date.now() - data.timestamp < 30000) {
+              slots = data.bots || [];
             }
           }
-          fs.writeFileSync(claimFile, JSON.stringify({ messageId: message.id, botName, timestamp: Date.now() }));
+          if (slots.includes(botName)) return; // Already chimed in
+          if (slots.length >= 3) return; // Slot limit reached
+          
+          slots.push(botName);
+          fs.writeFileSync(claimFile, JSON.stringify({ messageId: message.id, bots: slots, timestamp: Date.now() }));
         } catch (e) {}
 
-        // 3. We won the race! Send typing indicator immediately.
+        // 3. Staggered thinking to protect PC (CPU/GPU) and API (Rate limits)
+        // Bot 1: 1-5s | Bot 2: 8-12s | Bot 3: 16-20s
+        const thinkingDelay = (slots.length - 1) * 8000 + (Math.random() * 4000);
+        await new Promise(r => setTimeout(r, thinkingDelay));
+        
         try { await message.channel.sendTyping(); } catch(e) {}
 
         // 4. Force a reactive social turn
@@ -1305,7 +1302,7 @@ client.once('clientReady', async () => {
   // 1. Direct Command Monitor
   startCommandMonitor();
 
-  // 2. Social Protocols (Claude, Gemini, Groq, X)
+  // 2. Social Protocols (Epistemic, Gemini, Groq, X)
   if (SOCIAL_BOTS.has(botName)) {
     console.log(`[${botName}/Social] Social protocols active.`);
     startSocialLoop();

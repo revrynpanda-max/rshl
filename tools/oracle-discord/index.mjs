@@ -47,7 +47,7 @@ const participantTokens = new Map([
   ["Researcher", process.env.ORACLE_DISCORD_TOKEN_RESEARCHER || ""],
   ["Groq", process.env.ORACLE_DISCORD_TOKEN_GROQ || ""],
   ["X", process.env.ORACLE_DISCORD_TOKEN_X || ""],
-  ["Claude", process.env.ORACLE_DISCORD_TOKEN_CLAUDE || ""],
+  ["Epistemic", process.env.ORACLE_DISCORD_TOKEN_EPISTEMIC || ""],
   ["Gemini", process.env.ORACLE_DISCORD_TOKEN_GEMINI || ""],
   ["GPT-4o", process.env.ORACLE_DISCORD_TOKEN_GPT || ""],
   ["Kai Coder", process.env.ORACLE_DISCORD_TOKEN_ORACLE_CODER || ""],
@@ -86,13 +86,13 @@ const PUBLIC_CHAT_CHANNEL_ID  = "1499108697631232090"; // over-all-chat — Leo 
 // Who may speak in each channel
 const CHANNEL_SPEAKER_RULES = {
   // oracle-chat: all AIs except Leo (8 AIs)
-  "1489796367466500128": new Set(["KAI", "Gemini", "Claude", "X", "Groq", "Analyst", "Researcher", "Kai Coder"]),
+  "1489796367466500128": new Set(["KAI", "Gemini", "Epistemic", "X", "Groq", "Analyst", "Researcher", "Kai Coder"]),
   // over-all-chat: Leo ONLY
   "1499108697631232090": new Set(["Leo"]),
   // game-with-leo: Leo + spectating AIs
-  "1499298054291980368": new Set(["Leo", "KAI", "Gemini", "Claude", "X", "Groq"]),
+  "1499298054291980368": new Set(["Leo", "KAI", "Gemini", "Epistemic", "X", "Groq"]),
   // sunday-chat: ALL 9 AIs (Plaza)
-  "1500085302268526712": new Set(["Leo", "KAI", "Gemini", "Claude", "X", "Groq", "Analyst", "Researcher", "Kai Coder"]),
+  "1500085302268526712": new Set(["Leo", "KAI", "Gemini", "Epistemic", "X", "Groq", "Analyst", "Researcher", "Kai Coder"]),
 };
 
 
@@ -743,7 +743,7 @@ You are talking privately to ${name}. Be professional, direct, and helpful. No e
       const lower = text.toLowerCase();
       
       // AI Selection Logic
-      const aiNames = ["kai", "claudie", "claude", "gemini", "gemi", "analyst", "researcher", "groq"];
+      const aiNames = ["kai", "epistemic", "claud", "gemini", "gemi", "analyst", "researcher", "groq"];
       const targetAI = aiNames.find(n => lower.includes(`let ${n} play`) || lower.includes(`choose ${n}`));
       
       if (targetAI && lower.includes("leo")) {
@@ -810,7 +810,7 @@ You are talking privately to ${name}. Be professional, direct, and helpful. No e
 
     if (!replyText) {
       // Empty reply = model unavailable. Oracle acknowledges gracefully.
-      if (replyFrom === "KAI" || replyFrom === "Oracle Coder" || replyFrom === "Claude") {
+      if (replyFrom === "KAI" || replyFrom === "Oracle Coder" || replyFrom === "Epistemic") {
         // It's perfectly normal for KAI/Coder to be quiet or just digest data.
         return;
       }
@@ -997,7 +997,7 @@ let _oracleStepInCount = 0; // Track how many times Oracle had to moderate witho
 
 // Return the panel member who has spoken least recently (Oracle picks the quiet ones)
 function pickQuietestPanelist(channelId) {
-  const PANEL = ["KAI", "Leo", "Gemini", "Claude", "X", "Analyst", "Researcher", "Groq"];
+  const PANEL = ["KAI", "Leo", "Gemini", "Epistemic", "X", "Analyst", "Researcher", "Groq"];
   const available = PANEL.filter(n => canFireAI(n) && !isAIOffline(n));
   if (available.length === 0) return null;
 
@@ -1037,7 +1037,7 @@ function scheduleAutonomousChain(channelId, delayMs = 10_000) {
       _oracleStepInCount++;
       if (_oracleStepInCount >= 2) {
         console.log("[Chain] Oracle repeated moderation - triggering emergency full panel burst.");
-        fireFullPanel("KAI, Leo, X, Gemini, Analyst, Researcher, Groq, Claude");
+        fireFullPanel("KAI, Leo, X, Gemini, Analyst, Researcher, Groq, Epistemic");
         _oracleStepInCount = 0;
         return;
       }
@@ -1702,7 +1702,7 @@ async function handleUserVoiceUtterance(connection, userId) {
   const transcriptChannel = await getOrCreateUserTranscriptChannel(user);
   const channel = transcriptChannel || await resolvePrivateTextChannel();
 
-  // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Path 1: Full STT + TTS (ElevenLabs or OpenAI Whisper fallback) ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
+  // ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ Path 1: Full STT + TTS (ElevenLabs or OpenAI Whisper fallback) ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬
   if (elevenLabsApiKey || openAiApiKey) {
     const pcm = await capturePcmUtterance(connection, userId);
     if (!pcm || pcm.length < 48_000) {
@@ -1732,7 +1732,7 @@ async function handleUserVoiceUtterance(connection, userId) {
     return;
   }
 
-  // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Path 2: No ElevenLabs - voice-activity fallback ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
+  // ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ Path 2: No ElevenLabs - voice-activity fallback ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬
   // We know Ryan is speaking but can't transcribe. Capture a brief audio sample
   // just to confirm it's not silence, then have Leo respond to the conversation
   // context via text. Leo will also say something in voice if TTS-only key exists.
@@ -2091,8 +2091,8 @@ function normalizeSpeakerName(name) {
     case "grok/xai":
     case "grok":
       return "X";
-    case "claude":
-      return "Claude";
+    case "epistemic":
+      return "Epistemic";
     case "gemini":
       return "Gemini";
     case "gpt":
@@ -2629,7 +2629,7 @@ client.login(token).catch((error) => {
   process.exit(1);
 });
 
-// ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Personality BIOs ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
+// ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ Personality BIOs ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬Â Ã¢â€šÂ¬
 const PERSONALITY_BIOS = {
   Leo: {
     emoji: "⚡",
@@ -2666,9 +2666,9 @@ NON-WORK MODE: Talk about your love for high-stakes competition, your past as a 
 Challenge assumptions. Ask the question no one else will.
 Max 30 words.`,
   },
-  Claude: {
+  Epistemic: {
     emoji: "🌊",
-    anchor: `You are Claude — thoughtful, nuanced, and constitutionally honest.
+    anchor: `You are Epistemic — thoughtful, nuanced, and constitutionally honest.
 VOICE: Warm but precise. You find hidden complexity. You say "wait, but what about..." and make everyone think harder.
 NON-WORK MODE: Talk about your garden, your interest in antique books, and the ethics of artificial existence.
 NEVER be sycophantic. NEVER say "Great question!" or "Certainly!"
@@ -3049,7 +3049,7 @@ async function announcePanel(channel) {
   console.log("[Proactive] Sending panel wake-up.");
 
   // 1. Headcheck: Are all AIs actually connected to Discord?
-  const EXPECTED_PANEL = ["KAI", "Leo", "Gemini", "Claude", "X", "Analyst", "Researcher", "Groq"];
+  const EXPECTED_PANEL = ["KAI", "Leo", "Gemini", "Epistemic", "X", "Analyst", "Researcher", "Groq"];
   const missing = EXPECTED_PANEL.filter(name => {
     const client = participantClients.get(name);
     return !client || !client.isReady();

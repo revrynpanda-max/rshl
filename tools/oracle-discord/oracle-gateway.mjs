@@ -67,7 +67,7 @@ const DEPARTMENTS = {
   "Analyst": "Synthesize data into strategic business logic, optimize resource allocation, and plan project milestones.",
   "Kai Coder": "Maintain the RSHL Core, debug system nodes, and implement code-level architectural enhancements.",
   "Gemini": "Manage corporate expansion, refine the KAI identity, and conduct market/ecosystem outreach.",
-  "Claude": "Perform high-level epistemic reasoning, architectural strategy, and complex logic verification.",
+  "Epistemic": "Perform high-level epistemic reasoning, architectural strategy, and complex logic verification.",
   "X": "Monitor real-time digital trends, analyze asset intelligence, and provide rapid-response tactical data.",
   "Groq": "Process high-volume quantitative metrics, optimize system throughput, and generate statistical performance audits."
 };
@@ -493,7 +493,9 @@ const AUTHORIZED_IDS = new Set([
 const activeCodingTasks = new Map(); // messageId -> true  (prevent double-run)
 
 client.on('messageCreate', async (message) => {
-  if (message.author.bot) return; // NEVER respond to bots or self
+  if (message.author.id === client.user.id) return; // Prevent self-looping
+  const isMentioningOracle = message.mentions.has(client.user);
+  if (message.author.bot && !isMentioningOracle) return; 
   
   // 1. Digest for Lattice & Identity Resolution
   const identity = await resolveIdentityFromMemory(message.author.id, message.author.username);

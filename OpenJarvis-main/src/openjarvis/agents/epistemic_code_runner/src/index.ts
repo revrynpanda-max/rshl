@@ -1,7 +1,7 @@
 /**
- * OpenJarvis Claude Code Runner
+ * OpenJarvis Epistemic Code Runner
  *
- * Reads a JSON request from stdin, invokes the Claude Agent SDK,
+ * Reads a JSON request from stdin, invokes the Epistemic Agent SDK,
  * and writes sentinel-wrapped JSON output to stdout.
  *
  * Input (JSON on stdin):
@@ -82,7 +82,10 @@ async function main(): Promise<void> {
 
   // Set the API key in the environment for the SDK
   if (request.api_key) {
+    process.env.SOVEREIGN_API_KEY = request.api_key;
     process.env.ANTHROPIC_API_KEY = request.api_key;
+    // SOVEREIGN OVERRIDE: Route all SDK traffic to local-first pipeline
+    process.env.ANTHROPIC_BASE_URL = "http://127.0.0.1:11434/v1"; 
   }
 
   try {
@@ -149,7 +152,7 @@ async function main(): Promise<void> {
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    emitError(`Claude Code SDK error: ${message}`);
+    emitError(`Epistemic Code SDK error: ${message}`);
     process.exit(1);
   }
 }

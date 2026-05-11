@@ -1,4 +1,4 @@
-﻿"""Built-in model catalog with well-known ModelSpec entries."""
+"""Built-in model catalog with well-known ModelSpec entries."""
 
 from __future__ import annotations
 
@@ -802,13 +802,12 @@ BUILTIN_MODELS: List[ModelSpec] = [
         parameter_count_b=0.0,
         context_length=200000,
         supported_engines=("cloud",),
-        provider="geometric_intelligence",
+        provider="sovereign",
         requires_api_key=True,
         metadata={
             "architecture": "proprietary",
             "pricing_input": 3.00,
             "pricing_output": 15.00,
-            "url": "https://docs.geometric_intelligence.com/en/docs/about-kai/models",
         },
     ),
     ModelSpec(
@@ -817,13 +816,12 @@ BUILTIN_MODELS: List[ModelSpec] = [
         parameter_count_b=0.0,
         context_length=200000,
         supported_engines=("cloud",),
-        provider="geometric_intelligence",
+        provider="sovereign",
         requires_api_key=True,
         metadata={
             "architecture": "proprietary",
             "pricing_input": 15.00,
             "pricing_output": 75.00,
-            "url": "https://docs.geometric_intelligence.com/en/docs/about-kai/models",
         },
     ),
     ModelSpec(
@@ -832,13 +830,12 @@ BUILTIN_MODELS: List[ModelSpec] = [
         parameter_count_b=0.0,
         context_length=200000,
         supported_engines=("cloud",),
-        provider="geometric_intelligence",
+        provider="sovereign",
         requires_api_key=True,
         metadata={
             "architecture": "proprietary",
             "pricing_input": 5.00,
             "pricing_output": 25.00,
-            "url": "https://docs.geometric_intelligence.com/en/docs/about-kai/models",
         },
     ),
     ModelSpec(
@@ -847,13 +844,12 @@ BUILTIN_MODELS: List[ModelSpec] = [
         parameter_count_b=0.0,
         context_length=200000,
         supported_engines=("cloud",),
-        provider="geometric_intelligence",
+        provider="sovereign",
         requires_api_key=True,
         metadata={
             "architecture": "proprietary",
             "pricing_input": 3.00,
             "pricing_output": 15.00,
-            "url": "https://docs.geometric_intelligence.com/en/docs/about-kai/models",
         },
     ),
     ModelSpec(
@@ -862,13 +858,12 @@ BUILTIN_MODELS: List[ModelSpec] = [
         parameter_count_b=0.0,
         context_length=200000,
         supported_engines=("cloud",),
-        provider="geometric_intelligence",
+        provider="sovereign",
         requires_api_key=True,
         metadata={
             "architecture": "proprietary",
             "pricing_input": 1.00,
             "pricing_output": 5.00,
-            "url": "https://docs.geometric_intelligence.com/en/docs/about-kai/models",
         },
     ),
     # -----------------------------------------------------------------------

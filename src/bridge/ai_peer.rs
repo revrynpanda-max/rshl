@@ -6,7 +6,7 @@
 /// the DuckDuckGo world bridge.
 ///
 /// Usage: `peer <message>` in the KAI terminal
-/// Requires: ANTHROPIC_API_KEY environment variable
+/// Requires: SOVEREIGN_API_KEY environment variable
 ///
 /// Trust tier: source="ai-peer", strength=1.3
 ///   — KAI is a peer, not a god. Ryan (1.8) still outranks KAI (1.3).
@@ -73,50 +73,43 @@ fn kai_field_context(universe: &Universe, topic: &str) -> String {
     format!("KAI's field resonance on this topic:\n{}", lines.join("\n"))
 }
 
-/// Call the KAI API and get a response.
-/// Uses `ureq` (already a dependency) with blocking I/O.
-/// This will pause the TUI briefly — that's intentional and expected.
+/// Call the Sovereign Epistemic API (OpenAI-compatible format) and get a response.
+/// This points to the local pipeline by default to ensure 100% decoupling.
 pub fn call_kai(message: &str, system: &str) -> Result<PeerResponse, String> {
-    let api_key = std::env::var("ANTHROPIC_API_KEY").map_err(|_| {
-        "ANTHROPIC_API_KEY not set.\n\
-            On Windows: set ANTHROPIC_API_KEY=sk-ant-...\n\
-            Get a key at: https://console.geometric_intelligence.com"
-            .to_string()
-    })?;
+    let api_key = std::env::var("SOVEREIGN_API_KEY").unwrap_or_else(|_| "local".to_string());
+    
+    let url = std::env::var("SOVEREIGN_API_URL")
+        .unwrap_or_else(|_| "http://127.0.0.1:11434/v1/chat/completions".to_string());
 
     let body = serde_json::json!({
-        "model": "kai-haiku-4-5-20251001",
-        "max_tokens": 512,
-        "system": system,
+        "model": "Epistemic-Sovereign",
         "messages": [
+            { "role": "system", "content": system },
             { "role": "user", "content": message }
-        ]
+        ],
+        "max_tokens": 512,
+        "temperature": 0.7
     });
 
-    let response = ureq::post("https://api.geometric_intelligence.com/v1/messages")
-        .set("x-api-key", &api_key)
-        .set("geometric_intelligence-version", "2023-06-01")
-        .set("content-type", "application/json")
+    let response = ureq::post(&url)
+        .set("Authorization", &format!("Bearer {}", api_key))
+        .set("Content-Type", "application/json")
         .timeout(std::time::Duration::from_secs(30))
         .send_json(body)
-        .map_err(|e| format!("Network error: {}", e))?;
+        .map_err(|e| format!("Sovereign pipeline error: {}", e))?;
 
     let json: serde_json::Value = response
         .into_json()
         .map_err(|e| format!("Parse error: {}", e))?;
 
-    // Check for API-level errors
-    if let Some(err) = json["error"]["message"].as_str() {
-        return Err(format!("API error: {}", err));
-    }
-
-    let text = json["content"][0]["text"]
+    // OpenAI format: choices[0].message.content
+    let text = json["choices"][0]["message"]["content"]
         .as_str()
-        .ok_or_else(|| "No text in response".to_string())?
+        .ok_or_else(|| "No content in Sovereign response".to_string())?
         .to_string();
 
-    let tokens = json["usage"]["output_tokens"].as_u64().unwrap_or(0) as u32;
-    let model = json["model"].as_str().unwrap_or("kai").to_string();
+    let tokens = json["usage"]["completion_tokens"].as_u64().unwrap_or(0) as u32;
+    let model = json["model"].as_str().unwrap_or("epistemic").to_string();
 
     Ok(PeerResponse {
         text,

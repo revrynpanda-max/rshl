@@ -36,7 +36,7 @@ export const HUMAN_REGISTRY = {
 
 export const AI_REGISTRY = {
   "Analyst":   { id: "1499327113075888218", port: 3406 },
-  "Claude":    { id: "1499022611542180051", port: 3403 },
+  "Epistemic":  { id: "1499022611542180051", port: 3403 },
   "Gemini":    { id: "1499022418990203034", port: 3402 },
   "Groq":      { id: "1499327027004575794", port: 3405 },
   "KAI":       { id: "1499022265973604372", port: 3401 },

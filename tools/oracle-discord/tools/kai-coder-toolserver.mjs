@@ -124,21 +124,74 @@ async function toolWrite({ path: filePath, content }) {
   return { written: sbPath, sandboxRelative: path.relative(SANDBOX_ROOT, sbPath) };
 }
 
-async function toolExec({ command }) {
-  // Runs inside the sandbox directory with a hard timeout
-  // Allowlist safe commands only — no rm, del, format etc.
-  const BLOCKED = /\b(rm|rmdir|del|format|shutdown|reboot|mkfs|dd\s)/i;
-  if (BLOCKED.test(command)) return { error: `Blocked command: ${command}` };
+// Commands that can wipe the machine — never allowed regardless of context.
+const HARD_BLOCKED = /\b(format\s+[a-z]:|\.\bwipe\b|rm\s+-rf\s+\/|del\s+\/f\s+\/s\s+\/q\s+[a-z]:\\$|shutdown|reboot|mkfs|cipher\s+\/w)\b/i;
+
+/**
+ * toolExec — Run a shell command anywhere inside c:\KAI.
+ * Uses PowerShell as the shell on Windows for full project tooling access.
+ * cwd defaults to PROJECT_ROOT (c:\KAI) but can be overridden per-call.
+ */
+async function toolExec({ command, cwd: cwdParam }) {
+  if (!command) return { error: 'No command provided.' };
+  if (HARD_BLOCKED.test(command)) return { error: `Blocked — destructive command detected: ${command}` };
+
+  // Resolve working directory — must stay inside project root
+  let cwd = PROJECT_ROOT;
+  if (cwdParam) {
+    try { cwd = assertUnderRoot(cwdParam, PROJECT_ROOT); } catch { /* ignore bad cwd, use root */ }
+  }
 
   try {
-    const { stdout, stderr } = await execAsync(command, {
-      cwd: SANDBOX_ROOT,
+    // Use PowerShell on Windows for full ps1/cargo/npm/node/git access
+    const shell = process.platform === 'win32' ? 'powershell.exe' : '/bin/bash';
+    const shellFlag = process.platform === 'win32' ? '-Command' : '-c';
+    const { stdout, stderr } = await execAsync(`${shell} ${shellFlag} "${command.replace(/"/g, '\\"')}"`, {
+      cwd,
       timeout: EXEC_TIMEOUT,
-      windowsHide: true
+      windowsHide: true,
+      env: {
+        ...process.env,
+        KAI_PROJECT_DIR: PROJECT_ROOT,
+        KAI_ORACLE_HOST: 'http://127.0.0.1:3333'
+      }
     });
-    return { stdout: stdout.slice(0, 4000), stderr: stderr.slice(0, 1000), cwd: SANDBOX_ROOT };
+    return { stdout: stdout.slice(0, 6000), stderr: stderr.slice(0, 2000), cwd, shell };
   } catch (e) {
-    return { error: e.message.slice(0, 500), stderr: e.stderr?.slice(0, 500) };
+    return { error: e.message.slice(0, 1000), stderr: e.stderr?.slice(0, 1000), cwd };
+  }
+}
+
+/**
+ * toolPowershell — Explicitly run a PowerShell script or command block.
+ * Supports multi-line scripts. cwd defaults to c:\KAI.
+ * Use this for: cargo builds, npm installs, running .ps1 scripts,
+ * checking services, reading event logs, etc.
+ */
+async function toolPowershell({ script, cwd: cwdParam, timeout: timeoutParam }) {
+  if (!script) return { error: 'No script provided.' };
+  if (HARD_BLOCKED.test(script)) return { error: `Blocked — destructive command detected.` };
+
+  let cwd = PROJECT_ROOT;
+  if (cwdParam) {
+    try { cwd = assertUnderRoot(cwdParam, PROJECT_ROOT); } catch { /* use root */ }
+  }
+  const timeout = Math.min(parseInt(timeoutParam || 60) * 1000, 300000); // max 5min
+
+  try {
+    // Write script to a temp file to avoid quoting nightmares with complex scripts
+    const tmpFile = path.join(SANDBOX_ROOT, `ps_${Date.now()}.ps1`);
+    fs.writeFileSync(tmpFile, script, 'utf8');
+    const { stdout, stderr } = await execAsync(`powershell.exe -ExecutionPolicy Bypass -File "${tmpFile}"`, {
+      cwd,
+      timeout,
+      windowsHide: true,
+      env: { ...process.env, KAI_PROJECT_DIR: PROJECT_ROOT, KAI_ORACLE_HOST: 'http://127.0.0.1:3333' }
+    });
+    try { fs.unlinkSync(tmpFile); } catch {}
+    return { stdout: stdout.slice(0, 8000), stderr: stderr.slice(0, 2000), cwd };
+  } catch (e) {
+    return { error: e.message.slice(0, 1000), stderr: e.stderr?.slice(0, 1000), cwd };
   }
 }
 
@@ -254,12 +307,17 @@ async function toolSearch({ query }) {
   }
 }
 
-async function toolLattice({ query }) {
+async function toolLattice({ action = 'query', query, data, metadata = {} }) {
   try {
-    const res = await fetch('http://127.0.0.1:3333/api/rshl/query', {
+    const endpoint = action === 'store' ? '/api/rshl/anchor' : '/api/rshl/query';
+    const body = action === 'store' 
+      ? { text: data, metadata: { ...metadata, source: 'KaiCoder' } }
+      : { prompt: query };
+
+    const res = await fetch(`http://127.0.0.1:3333${endpoint}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt: query }),
+      body: JSON.stringify(body),
       timeout: 5000
     });
     return await res.json();
@@ -320,22 +378,230 @@ async function toolTest() {
   return { status: 'Tool diagnostics complete', results };
 }
 
+// ── Ecosystem-Specific Command Runners ────────────────────────────────────────
+// Each runner knows the correct cwd, timeout, and shell for its ecosystem.
+// Kai Coder calls these by name rather than crafting raw exec calls.
+
+const RUST_ROOT = PROJECT_ROOT; // Cargo.toml lives at c:\KAI
+const NODE_ROOT = path.join(PROJECT_ROOT, 'tools', 'oracle-discord');
+const PYTHON_ROOT = path.join(PROJECT_ROOT, 'OpenJarvis-main');
+
+/**
+ * toolCargo — Run any Cargo / Rust command in the RSHL project.
+ * Examples: check, build --release, test, clippy, doc, clean
+ */
+async function toolCargo({ command = 'check', args = '', cwd: cwdParam }) {
+  const cwd = cwdParam ? path.resolve(cwdParam) : RUST_ROOT;
+  const fullCmd = `cargo ${command} ${args}`.trim();
+  if (HARD_BLOCKED.test(fullCmd)) return { error: 'Blocked command.' };
+  try {
+    const { stdout, stderr } = await execAsync(`powershell.exe -Command "cargo ${command} ${args}"`, {
+      cwd, timeout: 300000, windowsHide: true, // up to 5min for release builds
+      env: { ...process.env, KAI_PROJECT_DIR: PROJECT_ROOT }
+    });
+    return { stdout: stdout.slice(0, 8000), stderr: stderr.slice(0, 4000), cwd, command: fullCmd };
+  } catch (e) {
+    return { error: e.message.slice(0, 2000), stderr: e.stderr?.slice(0, 2000), cwd, command: fullCmd };
+  }
+}
+
+/**
+ * toolNpm — Run any npm command in the oracle-discord project.
+ * Examples: install, run dev, run start, list, outdated, audit
+ */
+async function toolNpm({ command = 'list', args = '', cwd: cwdParam }) {
+  const cwd = cwdParam ? path.resolve(cwdParam) : NODE_ROOT;
+  const fullCmd = `npm ${command} ${args}`.trim();
+  if (HARD_BLOCKED.test(fullCmd)) return { error: 'Blocked command.' };
+  try {
+    const { stdout, stderr } = await execAsync(`powershell.exe -Command "npm ${command} ${args}"`, {
+      cwd, timeout: 120000, windowsHide: true,
+      env: { ...process.env, KAI_PROJECT_DIR: PROJECT_ROOT }
+    });
+    return { stdout: stdout.slice(0, 8000), stderr: stderr.slice(0, 2000), cwd, command: fullCmd };
+  } catch (e) {
+    return { error: e.message.slice(0, 2000), stderr: e.stderr?.slice(0, 2000), cwd, command: fullCmd };
+  }
+}
+
+/**
+ * toolNode — Run a Node.js script or check its syntax.
+ * action: 'run' | 'check' | 'eval'
+ * Examples: run bots/leo.mjs, check shared/openjarvis.mjs, eval "console.log(1+1)"
+ */
+async function toolNode({ action = 'check', target = '', cwd: cwdParam }) {
+  const cwd = cwdParam ? path.resolve(cwdParam) : NODE_ROOT;
+  let cmd;
+  if (action === 'check') {
+    const resolved = target ? path.resolve(cwd, target) : cwd;
+    cmd = `node --check "${resolved}"`;
+  } else if (action === 'eval') {
+    cmd = `node -e "${target.replace(/"/g, '\\"')}"`;
+  } else {
+    cmd = `node "${target}"`;
+  }
+  if (HARD_BLOCKED.test(cmd)) return { error: 'Blocked command.' };
+  try {
+    const { stdout, stderr } = await execAsync(`powershell.exe -Command "${cmd}"`, {
+      cwd, timeout: 30000, windowsHide: true,
+      env: { ...process.env, KAI_PROJECT_DIR: PROJECT_ROOT }
+    });
+    return { stdout: stdout.slice(0, 6000), stderr: stderr.slice(0, 2000), cwd, command: cmd };
+  } catch (e) {
+    return { valid: false, error: e.message.slice(0, 2000), stderr: e.stderr?.slice(0, 2000), cwd };
+  }
+}
+
+/**
+ * toolPython — Run a Python script, pip command, or pytest.
+ * Examples: script src/some_tool.py, pip install -r requirements.txt, test
+ */
+async function toolPython({ action = 'script', target = '', args = '', cwd: cwdParam }) {
+  const cwd = cwdParam ? path.resolve(cwdParam) : PYTHON_ROOT;
+  let cmd;
+  if (action === 'pip') {
+    cmd = `pip ${target} ${args}`.trim();
+  } else if (action === 'test') {
+    cmd = `python -m pytest ${target} ${args}`.trim();
+  } else if (action === 'check') {
+    cmd = `python -m py_compile "${target}"`;
+  } else if (action === 'module') {
+    cmd = `python -m ${target} ${args}`.trim();
+  } else {
+    cmd = `python "${target}" ${args}`.trim();
+  }
+  if (HARD_BLOCKED.test(cmd)) return { error: 'Blocked command.' };
+  try {
+    const { stdout, stderr } = await execAsync(`powershell.exe -Command "${cmd}"`, {
+      cwd, timeout: 120000, windowsHide: true,
+      env: { ...process.env, KAI_PROJECT_DIR: PROJECT_ROOT, PYTHONPATH: PYTHON_ROOT }
+    });
+    return { stdout: stdout.slice(0, 8000), stderr: stderr.slice(0, 2000), cwd, command: cmd };
+  } catch (e) {
+    return { error: e.message.slice(0, 2000), stderr: e.stderr?.slice(0, 2000), cwd, command: cmd };
+  }
+}
+
+/**
+ * toolOllama — Manage and query local Ollama models.
+ * Examples: list, show Leo-Sovereign, pull llama3.1:8b, ps (running models)
+ */
+async function toolOllama({ command = 'list', args = '' }) {
+  const fullCmd = `ollama ${command} ${args}`.trim();
+  if (HARD_BLOCKED.test(fullCmd)) return { error: 'Blocked command.' };
+  try {
+    const { stdout, stderr } = await execAsync(`powershell.exe -Command "${fullCmd}"`, {
+      timeout: 60000, windowsHide: true,
+      env: { ...process.env }
+    });
+    return { stdout: stdout.slice(0, 6000), stderr: stderr.slice(0, 1000), command: fullCmd };
+  } catch (e) {
+    return { error: e.message.slice(0, 1000), stderr: e.stderr?.slice(0, 1000), command: fullCmd };
+  }
+}
+
+/**
+ * toolOpenJarvis — Bridge to the full OpenJarvis Python tool library.
+ * Kai Coder can invoke any registered OpenJarvis tool through this bridge.
+ * This feeds the donated engineering toolkit (git, web_search, apply_patch,
+ * knowledge_search, shell_exec, etc.) into Kai Coder without a new agent.
+ *
+ * Available tools include:
+ *   kai_cli       — shell commands, read files, project status
+ *   git_tool      — git log, diff, status, commit inspection
+ *   web_search    — real-time web research
+ *   apply_patch   — apply unified diffs to files
+ *   knowledge_search — query the knowledge base / lattice
+ *   shell_exec    — safe shell execution with sandboxing
+ *   file_read     — read project files
+ *   file_write    — write files safely
+ *   repl          — run Python/JS code snippets
+ *   http_request  — make outbound HTTP calls
+ */
+async function toolOpenJarvis({ tool, params = {} }) {
+  if (!tool) return { error: 'tool name is required' };
+  try {
+    const res = await fetch('http://127.0.0.1:8080/api/tool', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tool_name: tool, params }),
+      signal: AbortSignal.timeout(30000)
+    });
+    if (!res.ok) return { error: `OpenJarvis HTTP ${res.status}: ${res.statusText}` };
+    return await res.json();
+  } catch (e) {
+    return { error: `OpenJarvis bridge unreachable: ${e.message}` };
+  }
+}
+
+/**
+ * toolGit — Direct git operations via the OpenJarvis git_tool bridge.
+ * Shorthand for common git operations Kai Coder needs during engineering tasks.
+ */
+async function toolGit({ command = 'status', args = '' }) {
+  return toolOpenJarvis({ tool: 'git_tool', params: { command, args } });
+}
+
+/**
+ * toolWebSearch — Real-time web research for Kai Coder.
+ * Routes through OpenJarvis web_search tool.
+ */
+async function toolWebSearch({ query }) {
+  // Try internal OpenJarvis web_search first, fall back to toolSearch (port 8080)
+  const ojResult = await toolOpenJarvis({ tool: 'web_search', params: { query } });
+  if (!ojResult.error) return ojResult;
+  return toolSearch({ query }); // fallback
+}
+
+/**
+ * toolPatch — Apply a unified diff patch to a file.
+ * Routes through OpenJarvis apply_patch tool.
+ */
+async function toolPatch({ path: filePath, patch }) {
+  return toolOpenJarvis({ tool: 'apply_patch', params: { path: filePath, patch } });
+}
+
+/**
+ * toolKnowledge — Query the knowledge base / long-term memory.
+ * Routes through OpenJarvis knowledge_search tool.
+ */
+async function toolKnowledge({ query }) {
+  return toolOpenJarvis({ tool: 'knowledge_search', params: { query } });
+}
+
 const TOOL_MAP = { 
-  read: toolRead, 
-  list: toolList, 
-  grep: toolGrep, 
-  write: toolWrite, 
-  exec: toolExec, 
-  check: toolCheck, 
-  diff: toolDiff, 
-  apply: toolApply, 
-  sysinfo: toolSysinfo,
-  search: toolSearch,
-  lattice: toolLattice,
-  inspect: toolInspect,
-  status: toolStatus,
-  audit: toolAudit,
-  snapshot: toolSnapshot,
+  // ── Core File & Code Tools ──────────────────────────────────────────────────
+  read: toolRead,       // Read any file in the project
+  list: toolList,       // List directory contents
+  grep: toolGrep,       // Search across source files
+  write: toolWrite,     // Write to sandbox (never production directly)
+  exec: toolExec,       // Execute any PowerShell command across c:\KAI
+  powershell: toolPowershell, // Full multi-line PS1 script execution
+  check: toolCheck,     // node --check syntax validation
+  diff: toolDiff,       // Sandbox vs production diff
+  apply: toolApply,     // Promote sandbox file to production (with backup)
+  // ── Ecosystem Command Runners ───────────────────────────────────────────────
+  cargo: toolCargo,     // Rust: cargo check | build | test | clippy | clean
+  npm: toolNpm,         // Node.js: npm install | run | audit | outdated
+  node: toolNode,       // Node.js: run | check | eval scripts
+  python: toolPython,   // Python: scripts | pip | pytest | module | check
+  ollama: toolOllama,   // Ollama: list | show | pull | ps (model management)
+  // ── System Intelligence ─────────────────────────────────────────────────────
+  sysinfo: toolSysinfo,   // Hardware stats (CPU/RAM/disk)
+  snapshot: toolSnapshot, // Live process snapshot
+  status: toolStatus,     // Oracle server + lattice health
+  audit: toolAudit,       // System audit report
+  // ── Knowledge & Search ──────────────────────────────────────────────────────
+  search: toolSearch,         // Internal search (port 8080)
+  lattice: toolLattice,       // RSHL lattice query + store
+  inspect: toolInspect,       // Deep lattice inspection
+  knowledge: toolKnowledge,   // Long-term knowledge base query
+  websearch: toolWebSearch,   // Real-time web research
+  // ── OpenJarvis Engineering Toolkit (donated skills) ─────────────────────────
+  openjarvis: toolOpenJarvis, // Raw bridge: call ANY OpenJarvis Python tool
+  git: toolGit,               // Git operations (log, diff, status, etc.)
+  patch: toolPatch,           // Apply unified diffs to files
+  // ── Diagnostics ─────────────────────────────────────────────────────────────
   test: toolTest
 };
 

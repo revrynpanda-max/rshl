@@ -1,9 +1,9 @@
-# Long-horizon eval: Claude Opus 4.6 (cloud)
+# Long-horizon eval: Epistemic Opus 4.6 (cloud)
 # 4 benchmarks: GAIA, FRAMES, DeepPlanning, LifelongAgent KG
 
 [meta]
-name = "long-horizon-claude-opus"
-description = "Long-horizon benchmarks on Claude Opus 4.6"
+name = "long-horizon-Epistemic-opus"
+description = "Long-horizon benchmarks on Epistemic Opus 4.6"
 
 [defaults]
 temperature = 0.6
@@ -16,11 +16,11 @@ max_tokens = 4096
 
 [run]
 max_workers = 4
-output_dir = "results/long-horizon-claude-opus/"
+output_dir = "results/long-horizon-Epistemic-opus/"
 seed = 42
 
 [[models]]
-name = "claude-opus-4-6"
+name = "Epistemic-opus-4-6"
 engine = "cloud"
 
 [[benchmarks]]

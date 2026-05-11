@@ -7,7 +7,7 @@ async function primeLattice() {
     "The Oracle DM Bridge is active. Ryan can remotely manage the system via DMs to Oracle.",
     "The !hotfix command performs a full pull, rebuild, and restart of the KAI ecosystem.",
     "The !env command allows for remote environment variable updates via Discord.",
-    "All roundtable bots (Gemini, Claude, Leo, X, Groq) are now project-aware and mission-aligned.",
+    "All roundtable bots (Gemini, Epistemic, Leo, X, Groq) are now project-aware and mission-aligned.",
     "Oracle uses the OpenJarvis Agentic Framework to analyze codebase questions and generate reports.",
     "KAI Observer monitors the integrated phi and coherence of the digital roundtable."
   ];

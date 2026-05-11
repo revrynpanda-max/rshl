@@ -7,7 +7,7 @@ const clock = new WorldClock();
 
 import 'dotenv/config';
 
-const BOTS = ["Gemini", "Claude", "X", "Groq", "Analyst", "Researcher", "Kai Coder"];
+const BOTS = ["Gemini", "Epistemic", "X", "Groq", "Analyst", "Researcher", "Kai Coder"];
 const processes = new Map(); // name -> child process
 
 function broadcast(msg) {

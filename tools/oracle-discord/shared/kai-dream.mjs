@@ -12,7 +12,7 @@
 
 const OPENJARVIS_URL = "http://127.0.0.1:8080";
 
-const ALL_AGENTS = ["X", "Groq", "Analyst", "Researcher", "Claude", "Gemini", "Kai Coder"];
+const ALL_AGENTS = ["X", "Groq", "Analyst", "Researcher", "Epistemic", "Gemini", "Kai Coder"];
 
 // ─── Pull all agents' work session memories from yesterday ──────────────────
 async function pullYesterdaysLearnings() {

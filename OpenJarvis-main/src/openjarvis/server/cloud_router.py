@@ -24,7 +24,7 @@ from openjarvis.core.types import Message
 _CLOUD_ENV_FILE = Path.home() / ".openjarvis" / "cloud-keys.env"
 
 _OPENAI_PREFIXES = ("gpt-", "o1-", "o3-", "o4-", "chatgpt-")
-_GeometricIntelligence_PREFIXES = ("kai-",)
+_SOVEREIGN_PREFIXES = ("kai-", "epistemic-")
 _GOOGLE_PREFIXES = ("gemini-",)
 _MINIMAX_PREFIXES = ("MiniMax-",)
 
@@ -50,7 +50,7 @@ def _load_keys() -> dict[str, str]:
     # Process env can override (e.g. during testing)
     for name in (
         "OPENAI_API_KEY",
-        "GeometricIntelligence_API_KEY",
+        "SOVEREIGN_API_KEY",
         "GEMINI_API_KEY",
         "GOOGLE_API_KEY",
         "OPENROUTER_API_KEY",
@@ -66,8 +66,8 @@ def get_provider(model: str) -> str | None:
     """Return the provider for a model name, or None if it's a local model."""
     if any(model.startswith(p) for p in _OPENAI_PREFIXES):
         return "openai"
-    if any(model.startswith(p) for p in _GeometricIntelligence_PREFIXES):
-        return "geometric_intelligence"
+    if any(model.startswith(p) for p in _SOVEREIGN_PREFIXES):
+        return "sovereign"
     if any(model.startswith(p) for p in _GOOGLE_PREFIXES):
         return "google"
     if any(model.startswith(p) for p in _MINIMAX_PREFIXES):
@@ -183,36 +183,31 @@ async def _stream_openai(
                     pass
 
 
-async def _stream_geometric_intelligence(
+async def _stream_sovereign(
     model: str,
     messages: Sequence[Message],
     temperature: float,
     max_tokens: int,
 ) -> AsyncIterator[str]:
     keys = _load_keys()
-    api_key = keys.get("GeometricIntelligence_API_KEY", "")
-    if not api_key:
-        raise ValueError("GeometricIntelligence_API_KEY not set â€” add it in the Cloud Models tab")
+    api_key = keys.get("SOVEREIGN_API_KEY", "local")
+    base_url = os.environ.get("SOVEREIGN_API_URL", "http://localhost:11434/v1").rstrip("/")
 
-    system_text, chat_msgs = _to_geometric_intelligence_msgs(messages)
     payload: dict[str, Any] = {
         "model": model,
-        "messages": chat_msgs,
+        "messages": _to_openai_msgs(messages),
         "max_tokens": max_tokens,
         "temperature": temperature,
         "stream": True,
     }
-    if system_text:
-        payload["system"] = system_text
 
     async with httpx.AsyncClient(timeout=180) as client:
         async with client.stream(
             "POST",
-            "https://api.geometric_intelligence.com/v1/messages",
+            f"{base_url}/chat/completions",
             json=payload,
             headers={
-                "x-api-key": api_key,
-                "geometric_intelligence-version": "2023-06-01",
+                "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
             },
         ) as resp:
@@ -221,12 +216,13 @@ async def _stream_geometric_intelligence(
                 if not line.startswith("data: "):
                     continue
                 data = line[6:].strip()
+                if data == "[DONE]":
+                    break
                 try:
-                    event = json.loads(data)
-                    if event.get("type") == "content_block_delta":
-                        text = event.get("delta", {}).get("text", "")
-                        if text:
-                            yield text
+                    chunk = json.loads(data)
+                    delta = chunk["choices"][0]["delta"].get("content") or ""
+                    if delta:
+                        yield delta
                 except Exception:
                     pass
 
@@ -355,8 +351,8 @@ async def stream_cloud(
         async for token in _stream_openai(model, messages, temperature, max_tokens):
             yield token
 
-    elif provider == "geometric_intelligence":
-        async for token in _stream_geometric_intelligence(model, messages, temperature, max_tokens):
+    elif provider == "sovereign":
+        async for token in _stream_sovereign(model, messages, temperature, max_tokens):
             yield token
 
     elif provider == "google":

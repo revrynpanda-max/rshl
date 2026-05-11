@@ -21,7 +21,7 @@ $ParticipantTokenNames = @(
     @{ Name = "Researcher";   Env = "ORACLE_DISCORD_TOKEN_RESEARCHER" },
     @{ Name = "Groq";         Env = "ORACLE_DISCORD_TOKEN_GROQ" },
     @{ Name = "X";            Env = "ORACLE_DISCORD_TOKEN_X" },
-    @{ Name = "Claude";       Env = "ORACLE_DISCORD_TOKEN_CLAUDE" },
+    @{ Name = "Epistemic";       Env = "ORACLE_DISCORD_TOKEN_EPISTEMIC" },
     @{ Name = "Gemini";       Env = "ORACLE_DISCORD_TOKEN_GEMINI" },
     @{ Name = "GPT";          Env = "ORACLE_DISCORD_TOKEN_GPT" },
     @{ Name = "Oracle Coder"; Env = "ORACLE_DISCORD_TOKEN_ORACLE_CODER" }

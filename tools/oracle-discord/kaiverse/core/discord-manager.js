@@ -8,7 +8,7 @@ const THREAD_NAMES = [
     "kai-lattice",
     "oracle-command",
     "leo-work",
-    "claude-work",
+    "Epistemic-work",
     "gemini-work",
     "x-work",
     "groq-work"

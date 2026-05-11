@@ -1,4 +1,4 @@
-﻿"""Agents primitive â€” multi-turn reasoning and tool use."""
+"""Agents primitive â€” multi-turn reasoning and tool use."""
 
 from __future__ import annotations
 
@@ -50,7 +50,7 @@ except ImportError:
     pass
 
 try:
-    import openjarvis.agents.kai_code  # noqa: F401
+    import openjarvis.agents.epistemic_code  # noqa: F401
 except ImportError:
     pass
 

@@ -1,10 +1,10 @@
-﻿"""ClaudeCodeAgent -- wraps the Claude Agent SDK via Node.js subprocess bridge.
+"""EpistemicCodeAgent -- wraps the Epistemic Agent SDK via Node.js subprocess bridge.
 
-Spawns a Node.js runner process that calls the ``@anthropic-ai/claude-code``
-SDK, communicating via JSON over stdin/stdout with sentinel-delimited output.
+Spawns a Node.js runner process that calls the agentic SDK,
+communicating via JSON over stdin/stdout with sentinel-delimited output.
 
 The engine parameter is accepted for interface conformance with BaseAgent but
-is not used -- inference is handled entirely by the Claude Agent SDK.
+is not used -- inference is handled entirely by the Epistemic Agent SDK.
 """
 
 from __future__ import annotations
@@ -30,28 +30,26 @@ _OUTPUT_START = "---OPENJARVIS_OUTPUT_START---"
 _OUTPUT_END = "---OPENJARVIS_OUTPUT_END---"
 
 # Path to the bundled runner source (relative to this module).
-# In editable installs this lives next to this file; in wheel installs
-# it is placed under _node_modules/ to avoid namespace package conflicts.
-_RUNNER_SRC = Path(__file__).resolve().parent / "claude_code_runner"
+_RUNNER_SRC = Path(__file__).resolve().parent / "epistemic_code_runner"
 if not _RUNNER_SRC.exists():
     _RUNNER_SRC = (
-        Path(__file__).resolve().parents[2] / "_node_modules" / "claude_code_runner"
+        Path(__file__).resolve().parents[2] / "_node_modules" / "epistemic_code_runner"
     )
 
 
-@AgentRegistry.register("claude_code")
-class ClaudeCodeAgent(BaseAgent):
-    """Agent that wraps the Claude Agent SDK via a Node.js subprocess.
+@AgentRegistry.register("epistemic_code")
+class EpistemicCodeAgent(BaseAgent):
+    """Agent that wraps the Epistemic Agent SDK via a Node.js subprocess.
 
     Spawns a Node.js process running ``dist/index.js`` which imports
-    ``@anthropic-ai/claude-code`` and streams agentic responses.  Results
+    the sovereign SDK and streams agentic responses. Results
     are communicated back via sentinel-delimited JSON on stdout.
 
     The ``engine`` parameter is accepted for BaseAgent interface conformance
-    but is not used -- all inference is handled by the Claude Agent SDK.
+    but is not used -- all inference is handled by the Epistemic Agent SDK.
     """
 
-    agent_id = "claude_code"
+    agent_id = "epistemic_code"
     accepts_tools = False
     _default_temperature = 0.7
     _default_max_tokens = 1024
@@ -78,7 +76,7 @@ class ClaudeCodeAgent(BaseAgent):
             temperature=temperature,
             max_tokens=max_tokens,
         )
-        self._api_key = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
+        self._api_key = api_key or os.environ.get("SOVEREIGN_API_KEY", "")
         self._workspace = workspace or os.getcwd()
         self._session_id = session_id
         self._allowed_tools = allowed_tools
@@ -90,7 +88,7 @@ class ClaudeCodeAgent(BaseAgent):
     # ------------------------------------------------------------------
 
     def _ensure_runner(self) -> Path:
-        """Copy the bundled runner to ``~/.openjarvis/claude_code_runner/``
+        """Copy the bundled runner to ``~/.openjarvis/kai_code_runner/``
         and run ``npm install`` if ``node_modules`` is missing.
 
         Returns the path to the runner directory.
@@ -99,11 +97,11 @@ class ClaudeCodeAgent(BaseAgent):
         """
         if shutil.which("node") is None:
             raise RuntimeError(
-                "ClaudeCodeAgent requires Node.js (>=22). "
+                "EpistemicCodeAgent requires Node.js (>=22). "
                 "Install it from https://nodejs.org/ or via your package manager."
             )
 
-        dest = Path.home() / ".openjarvis" / "claude_code_runner"
+        dest = Path.home() / ".openjarvis" / "epistemic_code_runner"
         dest.mkdir(parents=True, exist_ok=True)
 
         # Copy runner files if missing or outdated
@@ -120,7 +118,7 @@ class ClaudeCodeAgent(BaseAgent):
         # Install npm dependencies if node_modules missing
         node_modules = dest / "node_modules"
         if not node_modules.exists():
-            logger.info("Installing claude_code_runner dependencies...")
+            logger.info("Installing epistemic_code_runner dependencies...")
             subprocess.run(
                 ["npm", "install", "--production"],
                 cwd=str(dest),
@@ -141,7 +139,7 @@ class ClaudeCodeAgent(BaseAgent):
         context: Optional[AgentContext] = None,
         **kwargs: Any,
     ) -> AgentResult:
-        """Execute a query via the Claude Agent SDK subprocess.
+        """Execute a query via the Epistemic Agent SDK subprocess.
 
         Spawns ``node dist/index.js``, writes a JSON request to stdin, and
         reads sentinel-delimited JSON output from stdout.
@@ -172,7 +170,7 @@ class ClaudeCodeAgent(BaseAgent):
         except subprocess.TimeoutExpired:
             self._emit_turn_end(turns=1, error=True)
             return AgentResult(
-                content=f"Claude Code agent timed out after {self._timeout}s.",
+                content=f"Epistemic Code agent timed out after {self._timeout}s.",
                 turns=1,
                 metadata={"error": True, "error_type": "timeout"},
             )
@@ -180,13 +178,13 @@ class ClaudeCodeAgent(BaseAgent):
         if proc.returncode != 0:
             stderr = proc.stderr.strip() if proc.stderr else "Unknown error"
             logger.error(
-                "claude_code_runner exited with code %d: %s",
+                "epistemic_code_runner exited with code %d: %s",
                 proc.returncode,
                 stderr,
             )
             self._emit_turn_end(turns=1, error=True)
             return AgentResult(
-                content=f"Claude Code agent failed: {stderr}",
+                content=f"Epistemic Code agent failed: {stderr}",
                 turns=1,
                 metadata={"error": True, "returncode": proc.returncode},
             )
@@ -244,5 +242,5 @@ class ClaudeCodeAgent(BaseAgent):
         return content, tool_results, metadata
 
 
-__all__ = ["ClaudeCodeAgent"]
+__all__ = ["EpistemicCodeAgent"]
 

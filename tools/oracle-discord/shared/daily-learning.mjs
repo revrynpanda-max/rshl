@@ -20,8 +20,8 @@ export const LEARNING_TRACKS = {
     domain: "Hardware Maintenance & Upkeep",
     focus: ["Lattice stability monitoring", "Geometric space health", "Hardware/System sensor oversight"]
   },
-  "Claude": {
-    domain: "Social Synthesis & Community Vibe",
+  "Epistemic": {
+    domain: "Epistemic Reasoning & Strategic Logic",
     focus: ["Synthesizing cultural trends", "Evaluating social cohesion", "Deep-diving into narrative structures"]
   },
   "Gemini": {

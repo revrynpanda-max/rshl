@@ -3575,21 +3575,26 @@ fn call_openai_vision(key: &str, model: &str, prompt: &str, image_url: &str) -> 
 
 
 fn call_kai(key: &str, prompt: &str) -> Result<String, String> {
-    // KAI persona is powered by Claude (Anthropic API) — real endpoint
+    // KAI persona is powered by the Sovereign Epistemic pipeline
+    let url = std::env::var("SOVEREIGN_API_URL")
+        .unwrap_or_else(|_| "http://127.0.0.1:11434/v1/chat/completions".to_string());
+
     let body = json!({
-        "model": "claude-3-5-sonnet-20241022",
+        "model": "Epistemic-Sovereign",
         "max_tokens": 300,
-        "messages": [{"role": "user", "content": prompt}]
+        "messages": [
+            {"role": "system", "content": "You are KAI, a geometric AI. Respond concisely."},
+            {"role": "user", "content": prompt}
+        ]
     });
-    let resp = ureq::post("https://api.anthropic.com/v1/messages")
-        .set("x-api-key", key)
-        .set("anthropic-version", "2023-06-01")
+    let resp = ureq::post(&url)
+        .set("Authorization", &format!("Bearer {}", key))
         .set("Content-Type", "application/json")
         .timeout(Duration::from_secs(30))
         .send_string(&body.to_string())
         .map_err(|e| e.to_string())?;
     let j: serde_json::Value = resp.into_json().map_err(|e| e.to_string())?;
-    j["content"][0]["text"].as_str().map(|s| s.to_string()).ok_or_else(|| "no content".into())
+    j["choices"][0]["message"]["content"].as_str().map(|s| s.to_string()).ok_or_else(|| "no content".into())
 }
 
 fn call_gemini(key: &str, prompt: &str) -> Result<String, String> {
@@ -4371,7 +4376,7 @@ fn call_model(model: &str, keys: &ApiKeys, prompt: &str) -> Result<String, Strin
     let system = "You are an AI assistant in the Oracle Roundtable.";
     if model.contains("gpt") || model.contains("o1") {
         if let Some(key) = &keys.openai { return call_openai(key, model, prompt); }
-    } else if model.contains("claude") || model.contains("kai") {
+    } else if model.contains("Epistemic") || model.contains("kai") {
         if let Some(key) = &keys.kai { return call_kai(key, prompt); }
     } else if model.contains("gemini") {
         if let Some(key) = &keys.google { return call_gemini(key, prompt); }

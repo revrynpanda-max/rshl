@@ -39,15 +39,15 @@ export const TRANSCRIPT_USER_INFO = {
 
 export const CHANNEL_SPEAKER_RULES = {
   // oracle-chat: full work panel, NO Leo, Oracle is silent moderator
-  [CHANNEL_IDS.WORK]: new Set(["KAI", "Gemini", "Claude", "X", "Groq", "Analyst", "Researcher", "Oracle Coder", "KAI Coder"]),
+  [CHANNEL_IDS.WORK]: new Set(["KAI", "Gemini", "Epistemic", "X", "Groq", "Analyst", "Researcher", "Oracle Coder", "KAI Coder"]),
   // over-all-chat: Leo ONLY
   [CHANNEL_IDS.PUBLIC]: new Set(["Leo"]),
   // game-with-leo: Leo + spectating AIs (soft commentary only)
-  [CHANNEL_IDS.GAME]: new Set(["Leo", "KAI", "Gemini", "Claude", "X", "Groq"]),
+  [CHANNEL_IDS.GAME]: new Set(["Leo", "KAI", "Gemini", "Epistemic", "X", "Groq"]),
   // sensitive-info: NOBODY responds here
   [CHANNEL_IDS.SENSITIVE]: new Set([]),
-  // ai-social-chat: Claude, Gemini, Groq, X only — social banter, no work bots, no Leo
-  [CHANNEL_IDS.SUNDAY]: new Set(["Claude", "Gemini", "Groq", "X"])
+  // ai-social-chat: Epistemic, Gemini, Groq, X only — social banter, no work bots, no Leo
+  [CHANNEL_IDS.SUNDAY]: new Set(["Epistemic", "Gemini", "Groq", "X"])
 };
 
 import { HUMAN_IDS, AI_IDS } from './identities.mjs';
@@ -56,7 +56,7 @@ export const BOT_PORTS = {
   "Leo": 3400,
   "KAI": 3401,
   "Gemini": 3402,
-  "Claude": 3403,
+  "Epistemic": 3403,
   "X": 3404,
   "Groq": 3405,
   "Analyst": 3406,
@@ -100,7 +100,7 @@ export function detectNamedBot(content) {
   if (/\b(leo|leah|lia|leyo|lee)\b/.test(c)) return "Leo";
   if (/\b(kai)\b/.test(c) && !c.includes("coder")) return "KAI";
   if (c.includes("gemini")) return "Gemini";
-  if (c.includes("claude")) return "Claude";
+  if (c.includes("epistemic")) return "Epistemic";
   if (c.includes("groq")) return "Groq";
   if (c.includes("analyst")) return "Analyst";
   if (c.includes("researcher")) return "Researcher";

@@ -15,6 +15,7 @@ To understand the industrial value and technical depth of the KAI ecosystem, ple
 - **[📄 KAI Project Whitepaper (RSHL Theory)](./WHITEPAPER.md)**: The theoretical foundation of holographic synaptic reasoning.
 - **[📈 The Economics of KAI (ROI Analysis)](./ECONOMICS.md)**: How KAI saves millions by eliminating human middleware.
 - **[🏗️ Technical Architecture Blueprint](./docs/ARCHITECTURE.md)**: A deep-dive into the RSHL lattice and neural-flash pipelines.
+- **[🏛️ Architectural Manifest (6-Layer Design)](./ARCHITECTURE_MANIFEST.md)**: The industrial service-oriented hierarchy of KAI.
 - **[⚡ Energy Efficiency Audit (Power Ratio)](./POWER_EFFICIENCY.md)**: Mathematical proof of the 1:100 energy-efficiency advantage.
 - **[🧬 Production Readiness Manifest](./neural_ecosystem_manifest.md)**: Current system versions and port assignments.
 
@@ -49,15 +50,16 @@ The KAI roundtable consists of specialized autonomous nodes, each port-locked fo
 
 | Node | IPC Port | Core Model | Role & Intelligence Profile |
 |------|----------|------------|-----------------------------|
-| **Leo** | 3400 | Llama-3.1-8B | Primary voice agent. The unhinged social heart of KAI. |
+| **Leo** | 3400 | Leo-Sovereign | Primary voice agent. The unhinged social heart of KAI. |
 | **KAI** | 3401 | Local RSHL | The God. Unified observer and epistemic anchor. |
-| **Gemini** | 3402 | Gemini-1.5-Flash | Multi-modal creative and systems auditor. |
-| **Claude** | 3403 | Claude-3.5-Sonnet| The Philosopher. Nuance and ethical strategy. |
-| **X** | 3404 | Grok-Beta | Real-time social pulse and provocateur. |
-| **Groq** | 3405 | Llama-3.1-8B | High-speed accelerationist and logic engine. |
-| **Analyst** | 3406 | Llama-3.3-70B | Statistical strategy and data breakdown. |
-| **Researcher**| 3407 | GPT-4o-mini | OSINT intelligence and deep-web extraction. |
-| **Kai Coder** | 3408 | GPT-4o-mini | Technical delegate. Writes and executes code. |
+| **Gemini** | 3402 | Gemini-Sovereign | Multi-modal creative and systems auditor. |
+| **Epistemic** | 3403 | Epistemic-Sovereign| The Philosopher. Nuance and ethical strategy. |
+| **X** | 3404 | X-Sovereign | Real-time social pulse and provocateur. |
+| **Groq** | 3405 | Groq-Sovereign | High-speed accelerationist and logic engine. |
+| **Analyst** | 3406 | Analyst-Sovereign | Statistical strategy and data breakdown. |
+| **Researcher**| 3407 | Researcher-Sovereign | OSINT intelligence and deep-web extraction. |
+| **Kai Coder** | 3408 | Kai-Coder-Sovereign | Technical delegate. Writes and executes code. |
+
 | **GPT-4o** | 3409 | GPT-4o | Legacy executive fallback and complex reasoning. |
 | **Oracle** | 3410 | Gateway | The Orchestrator. Central transcription bridge. |
 

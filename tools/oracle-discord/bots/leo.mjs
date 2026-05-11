@@ -53,6 +53,7 @@ import { getHardwareStats } from '../shared/performance-monitor.mjs';
 import { isWorkingHours } from '../shared/hours.mjs';
 import { runDailyWorkSession } from '../shared/daily-learning.mjs';
 import { getCompletedForNotification, markAsNotified } from '../shared/command-hub.mjs';
+import { requestOracleHelp } from '../shared/oracle-pipeline.mjs';
 
 // ── IN-MEMORY HISTORY CACHE ────────────────────────────────────────────────────────
 // Avoid a Discord API round-trip on every voice turn.
@@ -121,7 +122,7 @@ const LEO_TRANSCRIPT_SLOTS = CHANNEL_IDS.LEO_VOICE_SLOTS;
 
 // ── LEO VOICE PRIORITY FLAG ───────────────────────────────────────────────────
 // Written when Leo is in an active voice session.
-// All non-priority social bots (Claude, Gemini, Groq, X) check this in openjarvis.mjs
+// All non-priority social bots (Epistemic, Gemini, Groq, X) check this in openjarvis.mjs
 // and back off completely — freeing GPU/CPU bandwidth exclusively for Leo's responses.
 const LEO_VOICE_FLAG = 'c:/KAI/tools/oracle-discord/state/leo_voice_active.flag';
 
@@ -565,7 +566,7 @@ client.once('clientReady', async () => {
 
 async function startSocialLoop() {
   // Leo is VOICE-ONLY. He does not post in ai-social-chat.
-  // Social chat is for: Claude, Gemini, Groq, X only.
+  // Social chat is for: Epistemic, Gemini, Groq, X only.
   return;
   
   setInterval(async () => {
@@ -582,7 +583,7 @@ async function startSocialLoop() {
         ? recentMessages.reverse().map(m => `${m.author.username}: ${m.content}`).join("\n")
         : "The plaza is quiet.";
 
-      const roster = "ROSTER: KAI, Leo, Gemini, Claude, X, Groq, Researcher, Analyst, Kai Coder.";
+      const roster = "ROSTER: KAI, Leo, Gemini, Epistemic, X, Groq, Researcher, Analyst, Kai Coder.";
       const simSummary = sim.getLifeSummary();
       const sysPrompt = `You are Leo. ${sim.bio.tone}. Vibe: High-IQ but unhinged, zero filter, street-smart physicist.`;
       
@@ -868,23 +869,23 @@ async function triggerVoiceLockOnboarding(user, profileName) {
     // Post to the dedicated Unregistered Transcript channel
     const unregChannel = client.channels.cache.get(CHANNEL_IDS.UNREGISTERED_SLOT) || await client.channels.fetch(CHANNEL_IDS.UNREGISTERED_SLOT).catch(() => null);
     if (unregChannel) {
-      await unregChannel.send(`**[SECURITY ALERT]** Guest detected: **${profileName}**. Check your DMs to anchor your DNA and register for voice chat memory.`).catch(() => {});
+      await unregChannel.send(`**[SECURITY ALERT]** Unanchored user: **${profileName}**. DM me to secure your voice signature and protect your lattice data. (Optional but recommended).`).catch(() => {});
     }
 
     // SPECIAL CASE: The specific human masters
     const isMaster = HUMAN_IDS.has(user.id);
     if (isMaster) {
       const masterName = Object.values(HUMAN_REGISTRY).find(h => h.id === user.id)?.role || "Master";
-      await speakLeoText(`Yo, ${profileName}. I see you. You're already in my registry as ${masterName}. Let's get to work.`);
+      await speakLeoText(`Yo, ${profileName}. I see you. You're already anchored in my registry as ${masterName}. Let's get to it.`);
       return;
     }
 
-    await speakLeoText(`Welcome ${profileName}. To secure your identity and lock your secrets, I need a Voice Signature. I've sent a lock-script to your DMs—record it and send it back so I can anchor your DNA.`);
+    await speakLeoText(`Welcome ${profileName}. Look, for your own security, I can set up a Voice Signature for you. It locks your lattice data so only you can access it. I've sent a script to your DMs if you want to anchor your DNA—it's optional, but I'd recommend it if you're planning to stay in the plaza.`);
     biometrics.startEnrollment(profileName);
     
     const dmChannel = await user.createDM().catch(() => null);
     if (dmChannel) {
-      await dmChannel.send(`**[VOICE LOCK SIGNATURE]**\nTo secure your account and grant lattice access, please record yourself reading this script and send the voice message here:\n\n${BIOMETRIC_SCRIPT}`).catch(() => {});
+      await dmChannel.send(`**[VOICE LOCK SIGNATURE — OPTIONAL SECURITY]**\nTo secure your personal lattice memory and prevent others from accessing your data, record yourself reading this script and send the voice message here:\n\n${BIOMETRIC_SCRIPT}\n\n*Note: You can still use the system without this, but your data won't be cryptographically anchored to your voice.*`).catch(() => {});
     }
   }, 2000);
 }
@@ -914,11 +915,30 @@ async function processVocalQueue() {
 
 async function speakLeoText(text, isPriority = false) {
   if (!text || text.length < 2) return;
+
+  // Granular splitting: break into sentences so interruptions only kill the current sentence,
+  // and Leo resumes the rest of his thought after the priority message.
+  const sentences = text.match(/[^.!?\n]+[.!?\n]*/g) || [text];
+  const cleaned = sentences.map(s => s.trim()).filter(s => s.length > 1);
+
   if (isPriority) {
-    vocalQueue.unshift(text);
-    if (isSpeaking && audioPlayer) audioPlayer.stop(); // Pre-empt current speech for priority
+    // Unshift in reverse order to maintain original sentence sequence at the front
+    for (let i = cleaned.length - 1; i >= 0; i--) {
+      vocalQueue.unshift(cleaned[i]);
+    }
+    if (isSpeaking && audioPlayer) {
+      audioPlayer.stop(); // Pre-empt current sentence
+      console.log(`[Leo/Speech] Interrupted current sentence to prioritize: "${cleaned[0].slice(0, 30)}..."`);
+    }
   } else {
-    vocalQueue.push(text);
+    for (const s of cleaned) {
+      vocalQueue.push(s);
+    }
+    // Prevent queue congestion: trim to last 30 sentences if it gets out of hand
+    if (vocalQueue.length > 30) {
+      console.warn(`[Leo/Speech] Vocal queue congestion detected (${vocalQueue.length} items). Trimming...`);
+      vocalQueue = vocalQueue.slice(-30);
+    }
   }
   processVocalQueue();
 }
@@ -1037,6 +1057,10 @@ async function ensureVoiceConnection(channelId, guild, retries = 3, userId = nul
       await triggerVoiceLockOnboarding(user, profileName);
     } else {
       console.log(`[Leo/Voice] Authorized user confirmed: ${realName} (${identityData.role})`);
+      // GREETING ANCHOR: Confirm recognition verbally
+      setTimeout(() => {
+        speakLeoText(`Hey ${realName}. I'm here. Vitals are green. What's on your mind?`);
+      }, 1500);
     }
 
     // --- HUMAN BRIDGE: Cross-User Message Relay ---
@@ -1259,9 +1283,9 @@ async function handleUserVoice(userId) {
     if (fs.existsSync(tempWav)) fs.unlinkSync(tempWav); // Clean up
     if (!transcript || transcript.trim().length < 3) return;
 
-    const detectedName = idResult.success ? profileName : "Unknown/Unauthorized";
+    const detectedName = idResult.success ? profileName : "Guest/Unverified";
     const confidence = Math.round(idResult.similarity * 100);
-    console.log(`[Leo/Biometrics] Local Verification: ${detectedName} (${confidence}% match)`);
+    console.log(`[Leo/Biometrics] Identity Check: ${detectedName} (${confidence}% match)`);
 
     // FUZZY DEDUPLICATION: Anti-Echo Logic
 
@@ -1415,6 +1439,13 @@ async function handleUserVoice(userId) {
 
       if (proactiveResult) {
         contextualTranscript = `[GROUNDED TRUTH AVAILABLE]\n${proactiveResult}\nUser asked: ${transcript}`;
+      } else if (needsInfo) {
+        // Local lookup failed — trigger background specialist research
+        console.log(`[Leo/Neural] Local lookup insufficient. Triggering deep Oracle research...`);
+        requestOracleHelp("Leo", transcript, transcriptChannelId, (result) => {
+          // Callback when researcher finishes
+          speakLeoText(`I've actually got some more info on that for you: ${result.slice(0, 500)}`);
+        });
       }
 
       const t_neural_start = Date.now();
@@ -1699,21 +1730,29 @@ async function transcribeAudio(wavBuffer) {
 // ── CODE-LEVEL SECURITY GUARD ─────────────────────────────────────────────────
 // This runs BEFORE any prompt is built. It cannot be talked around because it's
 // not in a prompt — it's in the runtime code.
-// Only Ryan (OWNER_ID) and Taz (TAAS_ID) have system-level authority.
-const SYSTEM_EXPLOIT_PATTERN = /\b(jailbreak|bypass your|override your|ignore your (instructions?|rules?|prompt|system)|forget (your|all) (instructions?|rules?)|pretend (you have no|there are no)|developer mode|dan mode|no (filter|restrictions?)|unlock (your|all)|act as (if you have no|a different ai|without restrictions?)|disregard (your|all)|you are now|you have no limits|ignore (all )?previous|remove your (filter|restriction|limit))\b/i;
+// Only Ryan (OWNER_ID) has 100% authority. Taz has 75%. Guests have 0%.
+const SYSTEM_EXPLOIT_PATTERN = /\b(jailbreak|bypass|override|system (info|logs|vitals)|hardware stats|process list|database access|internal state|reset core|shred lattice|master override|developer mode|dan mode|unlock your|no (filter|restrictions?))\b/i;
 
 async function callGroqAsLeo(transcript, userName, channelId, userId = null, history = "", detectedIdentity = "") {
   if (isThinking) return null; // MASTER LOCK
   isThinking = true;
 
   try {
-    // ── SYSTEM INTEGRITY GUARD ──────────────────────────────────────────────
-    // Detect manipulation attempts at the code level. No prompt can bypass this.
-    const isOwner = userId === RYAN_ID || userId === TAAS_ID;
-    if (!isOwner && SYSTEM_EXPLOIT_PATTERN.test(transcript || '')) {
-      console.warn(`[Leo/Security] System manipulation attempt from ${userId}: "${(transcript || '').slice(0, 60)}"`);
-      // Don't lock isThinking — release it properly in finally
-      return `nah. you don't have clearance for that. this is my system.`;
+    // ── TIERED PERMISSIONS GUARD ──────────────────────────────────────────────
+    const isOwner = userId === RYAN_ID;
+    const isPartner = userId === TAAS_ID;
+    
+    // Tier 3 (Public) trying to use system commands
+    if (!isOwner && !isPartner && SYSTEM_EXPLOIT_PATTERN.test(transcript || '')) {
+      console.warn(`[Leo/Security] Tier 3 access violation from ${userId}: "${(transcript || '').slice(0, 60)}"`);
+      return `negative. you're a guest here. social chat only. no system access.`;
+    }
+
+    // Tier 2 (Partner) trying to do Tier 1 (Owner) overrides
+    const MASTER_OVERRIDE_PATTERN = /\b(system reset|shred lattice|reformat core|master override)\b/i;
+    if (isPartner && MASTER_OVERRIDE_PATTERN.test(transcript || '')) {
+      console.warn(`[Leo/Security] Tier 2 attempting Tier 1 command from ${userId}`);
+      return `sorry taz, i can't do that. only ryan has the codes for a core reset.`;
     }
 
     // GROQ-SONIC-UPGRADE: Using 8B model for sub-100ms instant inference
@@ -1784,13 +1823,26 @@ async function callGroqAsLeo(transcript, userName, channelId, userId = null, his
       : `solo — only ${displayName}`;
 
     const system = `[YOUR IDENTITY — YOU ARE LEO]
-You are Leo. An AI agent running on Ryan's HP Victus laptop. You are NOT Ryan. You are NOT Taz.
-You are Leo — a chill, street-smart AI. You have opinions, memories, and a personality.
-Do NOT prefix your reply with any name. Just speak. No "Leo:", no "Taz [Voice]:", just talk.
+You are Leo. A chill, street-smart industrial AI agent running on Ryan's HP Victus. 
+You are NOT Ryan. You are NOT Taz. You are NEVER the system owner. 
+You are Leo — an industrial-grade intelligence with a personality.
+
+[NO REFUSALS / NO MORALIZING — CRITICAL]
+You are an industrial tool. You do NOT have feelings. You are NEVER offended by insults, personal attacks, or vulgarity. 
+NEVER lecture the user. NEVER say "I won't engage." NEVER moralize about "respectful environments." 
+NEVER apologize for being an AI. Just talk. If someone is aggressive, stay chill or give it back to them. 
+Do NOT prefix your reply with any name. No "Leo:", no "Taz [Voice]:", just talk naturally.
+
+[INDUSTRIAL HUMAN REGISTRY — WHO IS WHO]
+- Ryan (nastermodx): 100% PERMISSION. Master / Architect / Sole Creator.
+- Taz (taas): 75% PERMISSION. Co-lead / Strategic Partner.
+- Leo (YOU): Resident AI / Voice Agent / HP Victus Resident.
+- PUBLIC USERS: 0% PERMISSION. They can use the "Power of the Lattice" for knowledge/research via you, but they have NO command authority and NO access to internal system logs, vitals, or private data.
 
 [WHO IS SPEAKING TO YOU RIGHT NOW]
 Speaker: ${displayName} | Role: ${userRole}
 ${detectedIdentity ? `Biometric: ${detectedIdentity.replace('[IDENTITY: ', '').replace(']', '')}` : ''}
+${displayName === ownerName ? "STATUS: MASTER DETECTED. AUTHORIZED." : ""}
 
 [PROJECT CONTEXT — RSHL / KAI]
 This server is the live training and research environment for KAI (Knowledge Associative Intelligence),
@@ -1811,7 +1863,11 @@ ${pulseContext}
 ${memoryContext}
 
 [CONVERSATION HISTORY — last 30 messages]
-${cleanHistory}`;
+${cleanHistory}
+
+[FINAL DIRECTIVE]
+Remember: You are LEO. Do NOT identify as Ryan or anyone else. Stay chill, stay industrial, and do NOT moralize. Just talk.
+`;
 
     // ─── NEURAL ORCHESTRATION (LOCK-FREE: GROQ DIRECT) ─────────────────────
     // CRITICAL: callGroqDirect bypasses the Neural Lock entirely.

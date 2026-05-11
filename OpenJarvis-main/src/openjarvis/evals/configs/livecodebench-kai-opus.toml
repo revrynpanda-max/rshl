@@ -1,10 +1,10 @@
-# LiveCodeBench evaluation with Claude Opus
+# LiveCodeBench evaluation with Epistemic Opus
 # Benchmark: competitive programming from LeetCode, AtCoder, CodeForces
 # Reference: https://livecodebench.github.io/
 
 [meta]
-name = "livecodebench-claude-opus"
-description = "LiveCodeBench code generation with Claude Opus"
+name = "livecodebench-Epistemic-opus"
+description = "LiveCodeBench code generation with Epistemic Opus"
 
 [defaults]
 temperature = 0.0
@@ -17,12 +17,12 @@ max_tokens = 1024
 
 [run]
 max_workers = 8
-output_dir = "results/livecodebench-claude-opus/"
+output_dir = "results/livecodebench-Epistemic-opus/"
 seed = 42
 
 [[models]]
-name = "anthropic/claude-opus-4-5"
-provider = "anthropic"
+name = "sovereign/Epistemic-opus-4-5"
+provider = "sovereign"
 
 [[benchmarks]]
 name = "livecodebench"

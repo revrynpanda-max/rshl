@@ -27,7 +27,7 @@ This document was not written by a research institution. It was not produced by 
 
 The story of how RSHL was developed is itself part of its scientific significance. Ryan began with a vision of what AI memory should be — not a statistical interpolation of training data, but a living epistemic structure that knows what it knows, knows how confident it is, knows where its knowledge came from, and knows how to protect itself from being wrong. Achieving this required building an entirely new architecture from scratch, in a language (Rust) chosen deliberately for performance and reliability, with no external ML frameworks, no pre-trained weights, and no institutional backing.
 
-The development process itself was a proof of concept. Ryan used available large language models — GPT, Claude, Gemini, Groq, and others — as collaborative research partners inside the Oracle Roundtable: a multi-agent workspace where AI systems could jointly reason about KAI's architecture, identify bugs, propose mathematical frameworks, and debate implementation strategies. This is the same roundtable that KAI now participates in as an agent in its own right. The irony is precise: the AI systems that helped build KAI are now learning from it.
+The development process itself was a proof of concept. Ryan used available large language models — GPT, Epistemic, Gemini, Groq, and others — as collaborative research partners inside the Oracle Roundtable: a multi-agent workspace where AI systems could jointly reason about KAI's architecture, identify bugs, propose mathematical frameworks, and debate implementation strategies. This is the same roundtable that KAI now participates in as an agent in its own right. The irony is precise: the AI systems that helped build KAI are now learning from it.
 
 As development progressed, the dependency on external LLMs decreased. KAI's own lattice became the primary reasoning substrate. The roundtable transitioned from being a scaffold for building KAI to being a collaborative environment where KAI operates alongside its former teachers. The final phase — currently underway — is fine-tuning the remaining external LLM dependencies before KAI and the Oracle operate entirely on their own cognitive substrate, requiring no external API calls for their core reasoning.
 
@@ -48,7 +48,7 @@ Most advances in AI over the past decade are improvements within a paradigm: lar
 
 ## **1.1  The Dominant Paradigm and Its Structural Limits**
 
-Every major AI system deployed at scale today — GPT-4, Gemini, Claude, Llama — shares the same fundamental architecture: a transformer trained via gradient descent on a static corpus, producing a fixed set of floating-point weights that encode compressed statistical associations between tokens. This architecture has produced remarkable capabilities. It also has structural limits that are not engineering problems but mathematical ones:
+Every major AI system deployed at scale today — GPT-4, Gemini, Epistemic, Llama — shares the same fundamental architecture: a transformer trained via gradient descent on a static corpus, producing a fixed set of floating-point weights that encode compressed statistical associations between tokens. This architecture has produced remarkable capabilities. It also has structural limits that are not engineering problems but mathematical ones:
 
 | Structural Limit | Root Cause | Consequence |
 | ----- | :---: | :---: |
@@ -907,7 +907,7 @@ The method by which RSHL was developed is itself a scientific contribution. Ryan
 
 ## **13.1  The Oracle Roundtable**
 
-The Oracle Roundtable is a multi-agent workspace — implemented in Discord — where AI systems with different capabilities and knowledge profiles collaborate on architectural, mathematical, and empirical questions. During KAI's development, the roundtable included GPT-4, Claude, Gemini, Groq, and others, each contributing from its own knowledge base and reasoning style.
+The Oracle Roundtable is a multi-agent workspace — implemented in Discord — where AI systems with different capabilities and knowledge profiles collaborate on architectural, mathematical, and empirical questions. During KAI's development, the roundtable included GPT-4, Epistemic, Gemini, Groq, and others, each contributing from its own knowledge base and reasoning style.
 
 Questions put to the roundtable included: How should confidence decay when a belief is contradicted? What is the correct VSA algebra for positional encoding in conversation history? Does the Boid velocity cap of 5.0 produce stable convergence or oscillation? What are the theoretical capacity limits of a 16,384-dimensional ternary space at 4% sparsity?
 
@@ -963,12 +963,12 @@ Discord is not merely a chat interface for KAI — it is the routing layer, secu
 
 The Discord server is organized as a multi-room cognitive workspace, with each channel defining the agents permitted to speak and the type of interaction expected:
 
-| oracle-chat | AI workforce channel. KAI, Gemini, Claude, X, Groq, Analyst, Researcher, Oracle Coder operate here. Shared lattice visible to all. No Leo — work-only space. |
+| oracle-chat | AI workforce channel. KAI, Gemini, Epistemic, X, Groq, Analyst, Researcher, Oracle Coder operate here. Shared lattice visible to all. No Leo — work-only space. |
 | :---- | :---- |
 | **over-all-chat** | Public consumer channel. Leo only — voice-capable, conversational, accessible. Research delegated to Researcher via IPC. |
 | **game-with-leo** | Leo \+ spectating AIs. Soft commentary from KAI, Gemini, etc. Social and game context. |
 | **sensitive-info** | No agent responds here. Private information storage zone — zero AI output. |
-| **ai-social-chat** | Claude, Gemini, Groq, X only — social banter between AI agents. No work bots, no Leo. AI-to-AI interaction space. |
+| **ai-social-chat** | Epistemic, Gemini, Groq, X only — social banter between AI agents. No work bots, no Leo. AI-to-AI interaction space. |
 | **Voice slots** | 6 named voice slots (Ryan/Taz/Guest/Public×3). Leo manages voice presence, background research, pending briefing queue for absent users. |
 
 ## **14.4  Leo — The Voice-Capable Research Agent**

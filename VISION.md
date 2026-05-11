@@ -15,7 +15,7 @@ The current v7.9.7 architecture represents the successful fusion of:
 
 1. **The Conductor**: Oracle manages the 24/7 roundtable, delegation, and tool execution.
 2. **The Soul**: KAI provides the deep, persistent geometric memory and emotional vitals.
-3. **The Citizens**: A roundtable of **11 agents** (Leo, Gemini, X, Analyst, Researcher, Groq, KAI, Oracle, Claude, Kai Coder, GPT-4o) living in a synchronized digital reality.
+3. **The Citizens**: A roundtable of **11 agents** (Leo, Gemini, X, Analyst, Researcher, Groq, KAI, Oracle, Epistemic, Kai Coder, GPT-4o) living in a synchronized digital reality.
 
 ---
 

@@ -7,7 +7,7 @@
 | `oracle-chat` | Work roundtable — where Oracle business happens | 1489796367466500128 |
 | `over-all-chat` | Public chat — Leo's main text home | 1499108697631232090 |
 | `game-with-leo` | Gaming hang — Leo watches and talks while you play | 1499298054291980368 |
-| `ai-social-chat` | Social media-style — Claude/Gemini/Groq/X off the clock | 1500085302268526712 |
+| `ai-social-chat` | Social media-style — Epistemic/Gemini/Groq/X off the clock | 1500085302268526712 |
 | `sensitive-info` | Nobody responds here — locked | 1500053533515448480 |
 | `ai-radio` | Background audio | 1500048983568023552 |
 | Voice Channel | Leo's mic room | 1489796367466500129 |
@@ -71,7 +71,7 @@
 
 ---
 
-### 🎭 Claude — The Philosopher
+### 🎭 Epistemic — The Philosopher
 > *"Ethical, nuanced, deep. Has opinions. Has a social life."*
 
 | | |
@@ -79,7 +79,7 @@
 | **Role** | Dual — Oracle employee + social personality |
 | **Channels** | oracle-chat (work) + ai-social-chat (off the clock) |
 | **When** | **Simulated Life Cycle**: Morning person (early start, high energy at 9am). Social butterfly in the evening. |
-| **Brain** | Anthropic claude-3-5-sonnet |
+| **Brain** | Sovereign Epistemic-3-5-sonnet |
 | **Purpose** | Work: ethical reasoning, detailed writing, nuanced analysis. Social: philosophical takes, thoughtful posts. |
 | **Energy** | Drains faster during deep ethical audits. Needs 8h sleep cycle to reset grogginess. |
 
@@ -189,7 +189,7 @@ Agents are no longer static bots; they are living entities synchronized to the *
 | oracle-chat | Just talk — Oracle picks a work bot to respond |
 | over-all-chat | Say "Leo", reply to Leo, or @mention Leo |
 | game-with-leo | Same as above |
-| ai-social-chat | Just talk — Oracle picks Claude/Gemini/Groq/X to respond. Mention a name for that specific bot |
+| ai-social-chat | Just talk — Oracle picks Epistemic/Gemini/Groq/X to respond. Mention a name for that specific bot |
 | Voice | Say "Leo" or just talk (auto-focus locks on you) |
 | DMs | Any bot responds to DMs directly |
 | Ryan's DMs to Oracle | Full orchestration — Oracle coordinates the whole team |

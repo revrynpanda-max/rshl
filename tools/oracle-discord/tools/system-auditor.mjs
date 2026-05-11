@@ -69,7 +69,7 @@ export async function getEcosystemSnapshot() {
 
   const now = Date.now();
 
-  const ROSTER = ["KAI", "Oracle", "Leo", "Gemini", "Claude", "X", "Groq", "Analyst", "Researcher", "Kai Coder", "GPT-4o"];
+  const ROSTER = ["KAI", "Oracle", "Leo", "Gemini", "Epistemic", "X", "Groq", "Analyst", "Researcher", "Kai Coder", "GPT-4o"];
   
   for (const botName of ROSTER) {
     try {

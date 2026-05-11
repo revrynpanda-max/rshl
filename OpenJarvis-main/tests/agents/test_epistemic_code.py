@@ -1,4 +1,4 @@
-﻿"""Tests for ClaudeCodeAgent."""
+"""Tests for EpistemicCodeAgent."""
 
 from __future__ import annotations
 
@@ -10,10 +10,10 @@ import pytest
 
 import openjarvis.agents  # noqa: F401 -- trigger registration
 from openjarvis.agents._stubs import AgentResult
-from openjarvis.agents.claude_code import (
+from openjarvis.agents.epistemic_code import (
     _OUTPUT_END,
     _OUTPUT_START,
-    ClaudeCodeAgent,
+    EpistemicCodeAgent,
 )
 from openjarvis.core.events import EventBus, EventType
 from openjarvis.core.registry import AgentRegistry
@@ -52,21 +52,21 @@ def _mock_proc(
 # ---------------------------------------------------------------------------
 
 
-class TestClaudeCodeRegistration:
+class TestEpistemicCodeRegistration:
     def test_agent_id(self):
         engine = MagicMock()
         engine.engine_id = "mock"
-        agent = ClaudeCodeAgent(engine, "test-model")
-        assert agent.agent_id == "claude_code"
+        agent = EpistemicCodeAgent(engine, "test-model")
+        assert agent.agent_id == "epistemic_code"
 
     def test_accepts_tools_false(self):
-        assert ClaudeCodeAgent.accepts_tools is False
+        assert EpistemicCodeAgent.accepts_tools is False
 
     def test_registry_key(self):
-        AgentRegistry.register_value("claude_code", ClaudeCodeAgent)
-        assert AgentRegistry.contains("claude_code")
-        cls = AgentRegistry.get("claude_code")
-        assert cls is ClaudeCodeAgent
+        AgentRegistry.register_value("epistemic_code", EpistemicCodeAgent)
+        assert AgentRegistry.contains("epistemic_code")
+        cls = AgentRegistry.get("epistemic_code")
+        assert cls is EpistemicCodeAgent
 
 
 # ---------------------------------------------------------------------------
@@ -78,7 +78,7 @@ class TestEnsureRunner:
     def test_raises_when_node_not_found(self):
         engine = MagicMock()
         engine.engine_id = "mock"
-        agent = ClaudeCodeAgent(engine, "test-model")
+        agent = EpistemicCodeAgent(engine, "test-model")
         with patch("shutil.which", return_value=None):
             with pytest.raises(RuntimeError, match="Node.js"):
                 agent._ensure_runner()
@@ -86,7 +86,7 @@ class TestEnsureRunner:
     def test_creates_runner_dir(self, tmp_path):
         engine = MagicMock()
         engine.engine_id = "mock"
-        agent = ClaudeCodeAgent(engine, "test-model")
+        agent = EpistemicCodeAgent(engine, "test-model")
 
         home_dir = tmp_path / "home"
         home_dir.mkdir()
@@ -97,7 +97,7 @@ class TestEnsureRunner:
             patch("subprocess.run") as mock_run,
         ):
             mock_run.return_value = _mock_proc()
-            dest = home_dir / ".openjarvis" / "claude_code_runner"
+            dest = home_dir / ".openjarvis" / "epistemic_code_runner"
             result = agent._ensure_runner()
             assert result == dest
             mock_run.assert_called_once()
@@ -107,10 +107,10 @@ class TestEnsureRunner:
     def test_skips_npm_install_when_node_modules_exists(self, tmp_path):
         engine = MagicMock()
         engine.engine_id = "mock"
-        agent = ClaudeCodeAgent(engine, "test-model")
+        agent = EpistemicCodeAgent(engine, "test-model")
 
         home_dir = tmp_path / "home"
-        dest = home_dir / ".openjarvis" / "claude_code_runner"
+        dest = home_dir / ".openjarvis" / "epistemic_code_runner"
         dest.mkdir(parents=True)
         (dest / "node_modules").mkdir()
 
@@ -128,7 +128,7 @@ class TestEnsureRunner:
 # ---------------------------------------------------------------------------
 
 
-class TestClaudeCodeRun:
+class TestEpistemicCodeRun:
     def _make_agent(self, **kwargs):
         engine = MagicMock()
         engine.engine_id = "mock"
@@ -137,13 +137,13 @@ class TestClaudeCodeRun:
             "workspace": "/tmp/test",
         }
         defaults.update(kwargs)
-        return ClaudeCodeAgent(engine, "test-model", **defaults)
+        return EpistemicCodeAgent(engine, "test-model", **defaults)
 
     def test_successful_run(self):
         agent = self._make_agent()
         output = _wrap_output(
             {
-                "content": "Hello from Claude Code!",
+                "content": "Hello from Epistemic Code!",
                 "tool_results": [],
                 "metadata": {"message_count": 3},
             }
@@ -161,7 +161,7 @@ class TestClaudeCodeRun:
             result = agent.run("Say hello")
 
         assert isinstance(result, AgentResult)
-        assert result.content == "Hello from Claude Code!"
+        assert result.content == "Hello from Epistemic Code!"
         assert result.turns == 1
         assert result.tool_results == []
         assert result.metadata["message_count"] == 3
@@ -322,12 +322,12 @@ class TestClaudeCodeRun:
 # ---------------------------------------------------------------------------
 
 
-class TestClaudeCodeEvents:
+class TestEpistemicCodeEvents:
     def test_emits_turn_start_and_end(self):
         bus = EventBus(record_history=True)
         engine = MagicMock()
         engine.engine_id = "mock"
-        agent = ClaudeCodeAgent(
+        agent = EpistemicCodeAgent(
             engine,
             "test-model",
             bus=bus,
@@ -360,7 +360,7 @@ class TestClaudeCodeEvents:
         bus = EventBus(record_history=True)
         engine = MagicMock()
         engine.engine_id = "mock"
-        agent = ClaudeCodeAgent(
+        agent = EpistemicCodeAgent(
             engine,
             "test-model",
             bus=bus,
@@ -389,14 +389,14 @@ class TestClaudeCodeEvents:
             e for e in bus.history if e.event_type == EventType.AGENT_TURN_START
         ]
         assert len(start_events) == 1
-        assert start_events[0].data["agent"] == "claude_code"
+        assert start_events[0].data["agent"] == "epistemic_code"
         assert start_events[0].data["input"] == "test input"
 
     def test_error_emits_turn_end(self):
         bus = EventBus(record_history=True)
         engine = MagicMock()
         engine.engine_id = "mock"
-        agent = ClaudeCodeAgent(
+        agent = EpistemicCodeAgent(
             engine,
             "test-model",
             bus=bus,
@@ -431,7 +431,7 @@ class TestParseOutput:
             "metadata": {"k": "v"},
         }
         stdout = _wrap_output(payload)
-        content, tools, meta = ClaudeCodeAgent._parse_output(
+        content, tools, meta = EpistemicCodeAgent._parse_output(
             stdout,
         )
         assert content == "hello"
@@ -439,7 +439,7 @@ class TestParseOutput:
         assert meta == {"k": "v"}
 
     def test_no_sentinels(self):
-        content, tools, meta = ClaudeCodeAgent._parse_output(
+        content, tools, meta = EpistemicCodeAgent._parse_output(
             "plain text",
         )
         assert content == "plain text"
@@ -464,7 +464,7 @@ class TestParseOutput:
             "metadata": {},
         }
         stdout = _wrap_output(payload)
-        content, tools, meta = ClaudeCodeAgent._parse_output(
+        content, tools, meta = EpistemicCodeAgent._parse_output(
             stdout,
         )
         assert len(tools) == 2
@@ -481,14 +481,14 @@ class TestParseOutput:
             "metadata": {},
         }
         stdout = "some debug output\n" + _wrap_output(payload) + "\nmore output"
-        content, tools, meta = ClaudeCodeAgent._parse_output(
+        content, tools, meta = EpistemicCodeAgent._parse_output(
             stdout,
         )
         assert content == "result"
 
     def test_invalid_json(self):
         stdout = f"{_OUTPUT_START}\n{{broken\n{_OUTPUT_END}"
-        content, tools, meta = ClaudeCodeAgent._parse_output(
+        content, tools, meta = EpistemicCodeAgent._parse_output(
             stdout,
         )
         assert meta.get("parse_error") is True
@@ -499,19 +499,19 @@ class TestParseOutput:
 # ---------------------------------------------------------------------------
 
 
-class TestClaudeCodeDefaults:
+class TestEpistemicCodeDefaults:
     def test_default_api_key_from_env(self, monkeypatch):
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "env-key-123")
+        monkeypatch.setenv("SOVEREIGN_API_KEY", "env-key-123")
         engine = MagicMock()
         engine.engine_id = "mock"
-        agent = ClaudeCodeAgent(engine, "test-model")
+        agent = EpistemicCodeAgent(engine, "test-model")
         assert agent._api_key == "env-key-123"
 
     def test_explicit_api_key_overrides_env(self, monkeypatch):
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "env-key")
+        monkeypatch.setenv("SOVEREIGN_API_KEY", "env-key")
         engine = MagicMock()
         engine.engine_id = "mock"
-        agent = ClaudeCodeAgent(
+        agent = EpistemicCodeAgent(
             engine,
             "test-model",
             api_key="explicit-key",
@@ -521,13 +521,13 @@ class TestClaudeCodeDefaults:
     def test_default_timeout(self):
         engine = MagicMock()
         engine.engine_id = "mock"
-        agent = ClaudeCodeAgent(engine, "test-model")
+        agent = EpistemicCodeAgent(engine, "test-model")
         assert agent._timeout == 300
 
     def test_custom_timeout(self):
         engine = MagicMock()
         engine.engine_id = "mock"
-        agent = ClaudeCodeAgent(
+        agent = EpistemicCodeAgent(
             engine,
             "test-model",
             timeout=60,
@@ -537,7 +537,7 @@ class TestClaudeCodeDefaults:
     def test_no_bus_works(self):
         engine = MagicMock()
         engine.engine_id = "mock"
-        agent = ClaudeCodeAgent(
+        agent = EpistemicCodeAgent(
             engine,
             "test-model",
             api_key="k",

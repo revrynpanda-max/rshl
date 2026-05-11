@@ -48,7 +48,7 @@ export async function chatWithOpenJarvis(botName, transcript, systemPrompt, mode
   if (isWork) {
     cleanTranscript = cleanTranscript
       .replace(/Gemi/gi, "Gemini")
-      .replace(/Claudey/gi, "Claude")
+      .replace(/claudey/gi, "Epistemic")
       .replace(/Groqy/gi, "Groq")
       .replace(/X-AI/gi, "X")
       .replace(/KAI-Coder/gi, "Kai Coder")
@@ -174,12 +174,12 @@ export async function chatWithOpenJarvis(botName, transcript, systemPrompt, mode
       // --- OUTPUT SCRUB: Kill the cringe and prefixes ---
       if (data && data.message && data.message.content) {
         let response = data.message.content.trim()
-          .replace(/^(Oracle|Analyst|Claude|Gemini|Groq|KAI|Kai Coder|Leo|Researcher|X|Sentinel|Oracle-Sovereign|Gemini-Sovereign|Claude-Sovereign):\s*/gi, "");
+          .replace(/^(Oracle|Analyst|Epistemic|Gemini|Groq|KAI|Kai Coder|Leo|Researcher|X|Sentinel|Oracle-Sovereign|Gemini-Sovereign|Epistemic-Sovereign):\s*/gi, "");
 
         if (isWork) {
           response = response
             .replace(/Gemi/gi, "Gemini")
-            .replace(/Claudey/gi, "Claude")
+            .replace(/claudey/gi, "Epistemic")
             .replace(/Groqy/gi, "Groq")
             .replace(/the lattice/gi, "the system")
             .replace(/digital symphony/gi, "strategic operations")
@@ -278,7 +278,7 @@ export async function callGroqDirect(botName, transcript, systemPrompt, model = 
         // Strip emoji and bot-name prefixes
         return reply
           .replace(/[\u{1F600}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, '')
-          .replace(/^(Leo|Oracle|KAI|Analyst|Gemini|Claude|Groq):\s*/gi, '')
+          .replace(/^(Leo|Oracle|KAI|Analyst|Gemini|Epistemic|Groq):\s*/gi, '')
           .trim();
       }
     } else {
