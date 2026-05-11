@@ -150,10 +150,12 @@ let djState = {
   requestWindowOpen: false,
   playingTTS:        false,   // true while TTS is occupying audioPlayer
   nextAnnounced:     false,   // true when _closeRequestWindow already announced next song
+  transitioning:     false,   // true while _onSongEnd is running (prevents double-fire)
   playlistMode:      true,
   playlistName:      'default',
   playlistIndex:     0,
   windowTimer:       null,
+  fadeTimer:         null,    // scheduled fade-out before song ends
   pollMessage:       null,
   textChannel:       null,
   guild:             null,
@@ -213,12 +215,14 @@ export async function startDJ(voiceChannel, textChannel, guild) {
 /** Stop DJ mode cleanly */
 export function stopDJ() {
   if (djState.windowTimer) clearTimeout(djState.windowTimer);
+  if (djState.fadeTimer)   clearTimeout(djState.fadeTimer);
   djState.audioPlayer?.stop(true);
   djState.voiceConnection?.destroy();
   Object.assign(djState, {
     active: false, voiceConnection: null, audioPlayer: null,
     currentResource: null, currentSong: null, songQueue: [],
     requestPool: [], requestWindowOpen: false, windowTimer: null,
+    fadeTimer: null, transitioning: false,
     pollMessage: null, textChannel: null, guild: null,
     playingTTS: false, nextAnnounced: false,
   });
@@ -359,9 +363,17 @@ async function _playNextSong() {
     if (msg.includes('WARNING')) console.warn('[Radio/yt-dlp]', msg.trim());
   });
 
+  // Start silent, fade in over 3s for smooth entry
+  resource.volume?.setVolume(0);
   djState.audioPlayer.play(resource);
+  _fadeIn().catch(() => {});
 
-  // Schedule request window
+  // Schedule fade-out to begin 10s before song ends
+  if (djState.fadeTimer) clearTimeout(djState.fadeTimer);
+  const fadeDelay = Math.max(5_000, (meta.duration - 10) * 1_000);
+  djState.fadeTimer = setTimeout(() => _fadeOut().catch(() => {}), fadeDelay);
+
+  // Schedule request window (40s before end)
   if (meta.duration >= MIN_SONG_DURATION_FOR_WINDOW) {
     const windowDelay = Math.max(0, (meta.duration - 40) * 1000);
     if (djState.windowTimer) clearTimeout(djState.windowTimer);
@@ -468,23 +480,26 @@ async function _resolvePoll(candidates) {
 }
 
 async function _onSongEnd() {
-  if (!djState.active || typeof djState.speakFn !== 'function') return;
+  if (!djState.active) return;
+  if (djState.transitioning) return; // prevent double-fire from fade + natural end
+  djState.transitioning = true;
+
+  if (djState.fadeTimer)  { clearTimeout(djState.fadeTimer);  djState.fadeTimer  = null; }
   if (djState.windowTimer) { clearTimeout(djState.windowTimer); djState.windowTimer = null; }
 
   const prev = djState.currentSong;
   const next  = djState.songQueue[0] || null;
 
-  // Brief pause before DJ talk
-  await _sleep(DIM_DELAY_MS);
+  // Brief pause — let the fade settle before Leo talks
+  await _sleep(400);
 
   // DJ talk between tracks — speak + post to chat
   const djLine = _buildTransitionLine(prev, next);
   await _djSpeak(djLine);
 
-  // Small gap
-  await _sleep(400);
+  await _sleep(300);
 
-  // Play next
+  djState.transitioning = false;
   await _playNextSong();
 }
 
@@ -517,3 +532,32 @@ function _buildTransitionLine(prev, next) {
 }
 
 function _sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ── Audio fade helpers ────────────────────────────────────────────────────────
+
+/** Gradually fade current music resource from 1.0 → 0 over ~8s, then stop. */
+async function _fadeOut() {
+  const STEPS = 25, DURATION_MS = 8_000;
+  const stepMs = DURATION_MS / STEPS;
+  for (let i = STEPS - 1; i >= 0; i--) {
+    if (!djState.active || djState.playingTTS || djState.transitioning) return;
+    try { djState.currentResource?.volume?.setVolume(i / STEPS); } catch (_) {}
+    await _sleep(stepMs);
+  }
+  // Once silent, stop the player — triggers _onSongEnd via stateChange
+  if (djState.active && !djState.playingTTS && !djState.transitioning) {
+    console.log('[Radio] Fade-out complete — stopping stream');
+    djState.audioPlayer?.stop();
+  }
+}
+
+/** Ramp current music resource from 0 → 1.0 over ~3s after song starts. */
+async function _fadeIn() {
+  const STEPS = 20, DURATION_MS = 3_000;
+  const stepMs = DURATION_MS / STEPS;
+  for (let i = 1; i <= STEPS; i++) {
+    if (!djState.active || djState.playingTTS) return;
+    try { djState.currentResource?.volume?.setVolume(i / STEPS); } catch (_) {}
+    await _sleep(stepMs);
+  }
+}
