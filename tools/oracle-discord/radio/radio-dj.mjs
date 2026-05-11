@@ -202,7 +202,12 @@ export async function startDJ(voiceChannel, textChannel, guild, speakFn) {
   }
 
   console.log('[Radio] DJ mode active');
-  await speakFn("radio's live — i'm your dj. drop a request anytime.");
+  // Speak + post to text channel
+  const intro = "radio's live. i'm your dj. drop a request in the chat or just vibe."
+  await _djSpeak(intro);
+  if (textChannel) {
+    textChannel.send('🎙️ **Leo Radio** is live — say or type what you want to hear. Playlists: `default` `hype` `chill` `late-night`').catch(() => {});
+  }
   await _playNextSong();
 }
 
@@ -269,6 +274,15 @@ export function isDJActive() { return djState.active; }
 
 // ── Internal ──────────────────────────────────────────────────────────────────
 
+/** Speak via TTS AND post to radio text channel simultaneously */
+async function _djSpeak(text) {
+  if (typeof djState.speakFn !== 'function') return;
+  if (djState.textChannel) {
+    djState.textChannel.send(`🎙️ **Leo:** ${text}`).catch(() => {});
+  }
+  await djState.speakFn(text);
+}
+
 async function _playNextSong() {
   if (!djState.active) return;
 
@@ -288,7 +302,7 @@ async function _playNextSong() {
 
   if (!song) {
     if (typeof djState.speakFn === 'function')
-      await djState.speakFn("queue's empty. drop a request or say 'playlist hype' to run one.");
+      await _djSpeak("queue's empty. drop a request or say which playlist you want.");
     return;
   }
 
@@ -304,13 +318,38 @@ async function _playNextSong() {
 
   console.log(`[Radio] Streaming: ${djState.currentSong.title} (~${meta.duration}s)`);
 
+  // Announce the song — speak + post Now Playing embed to text channel
+  const reqBy = song.requestedBy && song.requestedBy !== 'playlist' ? song.requestedBy : null;
+  const artist = djState.currentSong.title.includes(' - ') ? '' : (song.artist || '');
+  const announceLines = [
+    `alright, here we go — ${djState.currentSong.title}${artist ? ` by ${artist}` : ''}.`,
+    `next up: ${djState.currentSong.title}${artist ? `, ${artist}` : ''}.${reqBy ? ` this one's for ${reqBy}.` : ''}`,
+    `${djState.currentSong.title}${artist ? ` — ${artist}` : ''} coming in hot.`,
+    `rolling into ${djState.currentSong.title}${artist ? ` by ${artist}` : ''} now.`,
+  ];
+  const announcement = announceLines[Math.floor(Math.random() * announceLines.length)];
+  await _djSpeak(announcement);
+
+  // Post Now Playing embed to radio text channel
+  if (djState.textChannel) {
+    djState.textChannel.send({
+      embeds: [{
+        color: 0x9b59b6,
+        author: { name: '▶️  Now Playing' },
+        title: djState.currentSong.title,
+        description: artist ? `**${artist}**` : undefined,
+        footer: reqBy ? { text: `Requested by ${reqBy}` } : { text: 'From playlist' },
+        timestamp: new Date().toISOString(),
+      }]
+    }).catch(() => {});
+  }
+
   const { resource, ytdlpProc } = streamSong(query);
   djState.currentResource = resource;
 
   ytdlpProc.stderr?.on('data', d => {
     const msg = d.toString();
-    if (!msg.includes('WARNING')) return; // silence normal yt-dlp info
-    console.warn('[Radio/yt-dlp]', msg.trim());
+    if (msg.includes('WARNING')) console.warn('[Radio/yt-dlp]', msg.trim());
   });
 
   djState.audioPlayer.play(resource);
@@ -346,9 +385,9 @@ async function _closeRequestWindow() {
   if (pool.length === 1) {
     // Single request — auto-queue it, no poll needed
     djState.songQueue.unshift(pool[0]);
-    await djState.speakFn(
-      `got a request — ${pool[0].title} from ${pool[0].requestedBy} is up next.`
-    );
+  await _djSpeak(
+    `got a request — ${pool[0].title} from ${pool[0].requestedBy} is up next.`
+  );
     return;
   }
 
@@ -364,8 +403,8 @@ async function _runPoll() {
   const candidates = djState.requestPool.slice(0, 5); // max 5 poll options
   console.log(`[Radio] Running poll with ${candidates.length} songs`);
 
-  await djState.speakFn(
-    `got ${candidates.length} requests coming in — putting it to a vote. you've got ${POLL_DURATION_SECONDS} seconds.`
+  await _djSpeak(
+    `got ${candidates.length} requests — putting it to a vote. ${POLL_DURATION_SECONDS} seconds.`
   );
 
   try {
@@ -417,9 +456,7 @@ async function _resolvePoll(candidates) {
   }
 
   djState.songQueue.unshift(winner);
-  await djState.speakFn(
-    `${winner.title} won the vote — that's up next.`
-  );
+  await _djSpeak(`${winner.title} won the vote — that's next.`);
 }
 
 async function _onSongEnd() {
@@ -429,34 +466,43 @@ async function _onSongEnd() {
   const prev = djState.currentSong;
   const next  = djState.songQueue[0] || null;
 
-  // Dim music (it's already ended but dim just in case there's overlap)
-  dimVolume(djState.currentResource);
+  // Brief pause before DJ talk
   await _sleep(DIM_DELAY_MS);
 
-  // DJ talk between tracks
+  // DJ talk between tracks — speak + post to chat
   const djLine = _buildTransitionLine(prev, next);
-  await djState.speakFn(djLine);
+  await _djSpeak(djLine);
 
-  // Small gap feel
-  await _sleep(500);
+  // Small gap
+  await _sleep(400);
 
   // Play next
   await _playNextSong();
 }
 
 function _buildTransitionLine(prev, next) {
-  const prevStr = prev?.title || 'that one';
-  const nextStr = next ? `${next.title}${next.artist ? ` by ${next.artist}` : ''}` : null;
+  const prevTitle = prev?.title || 'that one';
+  // Strip YouTube junk like "(Official Video)" "[Audio]" etc
+  const cleanTitle = (t) => t.replace(/\s*[\[(](?:official|audio|video|lyrics?|hd|4k|mv)[^)\]]*[)\]]\s*/gi, '').trim();
+  const prevStr = cleanTitle(prevTitle);
+  const nextStr = next ? cleanTitle(next.title) : null;
+  const reqBy   = next?.requestedBy && next.requestedBy !== 'playlist' ? ` — requested by ${next.requestedBy}` : '';
 
   if (!nextStr) {
-    return `that was ${prevStr}. queue's looking empty — hit me with a !request.`;
+    const empties = [
+      `that was ${prevStr}. queue's looking empty — drop a request.`,
+      `${prevStr} — nice one. queue's dry, hit me with something.`,
+      `wrapping up ${prevStr}. nothing queued up — what do you want to hear?`,
+    ];
+    return empties[Math.floor(Math.random() * empties.length)];
   }
 
   const transitions = [
-    `that was ${prevStr}. next up: ${nextStr}.`,
-    `${prevStr} — solid. keeping it going with ${nextStr}.`,
-    `alright, ${prevStr} done. rolling into ${nextStr} now.`,
-    `that was ${prevStr}. coming in next — ${nextStr}.`,
+    `that was ${prevStr}. next up we got ${nextStr}${reqBy}.`,
+    `${prevStr} — solid track. keeping it moving with ${nextStr}${reqBy}.`,
+    `alright, ${prevStr} done. rolling into ${nextStr} now${reqBy}.`,
+    `coming out of ${prevStr}, sliding right into ${nextStr}${reqBy}.`,
+    `good stuff. ${nextStr} is up next${reqBy}.`,
   ];
 
   return transitions[Math.floor(Math.random() * transitions.length)];
