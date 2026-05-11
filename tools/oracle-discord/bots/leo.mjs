@@ -674,9 +674,9 @@ client.on('messageCreate', async (message) => {
 
     // Not a radio command — redirect instead of chatting
     const redirects = [
-      `this channel is for song requests. drop a track name or say \`skip\`, \`!np\`, \`!queue\`.`,
-      `radio channel only. request a song or use \`!np\` / \`!queue\`.`,
-      `hit me with a song request. anything else goes in the main chat.`,
+      `this is the radio channel — just drop a song name or artist and i'll queue it up.`,
+      `radio only in here. just say what you want to hear and i'll put it on.`,
+      `want a song? just type the name or say the artist and i got you. everything else goes in main chat.`,
     ];
     await message.reply(redirects[Math.floor(Math.random() * redirects.length)]).catch(() => {});
     return;
