@@ -54,6 +54,7 @@ import { isWorkingHours } from '../shared/hours.mjs';
 import { runDailyWorkSession } from '../shared/daily-learning.mjs';
 import { getCompletedForNotification, markAsNotified } from '../shared/command-hub.mjs';
 import { requestOracleHelp } from '../shared/oracle-pipeline.mjs';
+import { startDJ, stopDJ, addRequest, startPlaylist, getStatus, getQueue, isDJActive } from '../radio/radio-dj.mjs';
 
 // ── IN-MEMORY HISTORY CACHE ────────────────────────────────────────────────────────
 // Avoid a Discord API round-trip on every voice turn.
@@ -622,6 +623,62 @@ client.on('messageCreate', async (message) => {
   const isTranscriptSlot = CHANNEL_IDS.LEO_VOICE_SLOTS.includes(message.channelId);
   const isPublicChannel = message.channelId === CHANNEL_IDS.PUBLIC;   // over-all-chat
   const isGameChannel   = message.channelId === CHANNEL_IDS.GAME;     // game-with-leo
+  const isRadioChannel  = message.channelId === CHANNEL_IDS.RADIO;    // ai-radio text
+
+  // ── RADIO DJ COMMANDS ─────────────────────────────────────────────────────
+  if (isRadioChannel && !message.author.bot) {
+    const txt = message.content.trim();
+    const lower = txt.toLowerCase();
+
+    if (lower.startsWith('!request ')) {
+      const songQuery = txt.slice(9).trim();
+      const [title, ...artistParts] = songQuery.split(' - ');
+      const artist = artistParts.join(' - ');
+      const result = await addRequest(title.trim(), artist.trim(), message.author.username);
+      if (result === 'pooled') {
+        await message.reply(`got it — vote is open or your request is in the pool.`);
+      } else {
+        await message.reply(`added **${title.trim()}** to the queue.`);
+        if (!isDJActive()) {
+          await message.reply(`radio's not live yet — join the radio voice channel to start it.`);
+        }
+      }
+      return;
+    }
+
+    if (lower.startsWith('!playlist')) {
+      const name = txt.slice(9).trim() || 'default';
+      await startPlaylist(name);
+      await message.reply(`loaded playlist **${name}**. it'll queue after the current song.`);
+      return;
+    }
+
+    if (lower === '!nowplaying' || lower === '!np') {
+      await message.reply(getStatus());
+      return;
+    }
+
+    if (lower === '!queue' || lower === '!q') {
+      const q = getQueue();
+      if (q.length === 0) { await message.reply('queue is empty.'); return; }
+      const listed = q.slice(0, 8).map((s, i) => `${i + 1}. **${s.title}**${s.artist ? ` — ${s.artist}` : ''} *(${s.requestedBy})*`).join('\n');
+      await message.reply(`**Up Next:**\n${listed}${q.length > 8 ? `\n...and ${q.length - 8} more` : ''}`);
+      return;
+    }
+
+    if (lower === '!skip') {
+      const isOwner = ['1111106883135217665', '1286110163505385523'].includes(message.author.id);
+      if (!isOwner) { await message.reply(`only ryan or taz can skip.`); return; }
+      // Stopping the player triggers 'idle' → _onSongEnd → next song
+      // Access player via DJ state — emit fake idle by stopping
+      await message.reply(`skipping...`);
+      stopDJ();
+      await message.reply(`radio stopped. rejoin the voice channel to restart.`);
+      return;
+    }
+
+    return; // Don't process radio text channel messages as regular Leo messages
+  }
 
   // LEO'S ALLOWED ZONES: DMs, transcript slots, over-all-chat, game-with-leo
   if (!isDM && !isTranscriptSlot && !isPublicChannel && !isGameChannel) return;
@@ -681,6 +738,32 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
   const leftChannel    = oldState.channelId;
   const isJoining      = joinedChannel && joinedChannel !== leftChannel;
   const isLeaving      = leftChannel && leftChannel !== joinedChannel;
+
+  // ── RADIO CHANNEL — start/stop DJ mode ───────────────────────────────────
+  if (isJoining && joinedChannel === CHANNEL_IDS.RADIO) {
+    const radioVoice = newState.channel;
+    const radioText  = newState.guild.channels.cache.find(
+      c => c.name && c.name.toLowerCase().includes('radio') && c.isTextBased && c.isTextBased()
+    ) || newState.guild.channels.cache.get(CHANNEL_IDS.PUBLIC);
+    if (!isDJActive()) {
+      console.log(`[Leo/Radio] ${newState.member?.user.username} joined radio — starting DJ mode`);
+      startDJ(radioVoice, radioText, newState.guild, speakLeoText).catch(e => {
+        console.error('[Leo/Radio] DJ start failed:', e.message);
+      });
+    }
+    return;
+  }
+
+  if (isLeaving && leftChannel === CHANNEL_IDS.RADIO) {
+    // Check if radio voice channel is now empty
+    const radioVoice = oldState.channel;
+    const nonBotMembers = radioVoice?.members?.filter(m => !m.user.bot) || { size: 0 };
+    if (nonBotMembers.size === 0 && isDJActive()) {
+      console.log('[Leo/Radio] Radio channel empty — stopping DJ mode');
+      stopDJ();
+    }
+    return;
+  }
 
   // ── USER JOINS ANY VOICE CHANNEL ──────────────────────────────────────────
   if (isJoining) {
