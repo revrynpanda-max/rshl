@@ -23,7 +23,7 @@ Recursive Sparse Hyperdimensional Lattice
 
 # **Preface: Origin of This Work**
 
-This document was not written by a research institution. It was not produced by a university lab, a corporate AI division, or a team of engineers with grant funding. It is the work of one person — Ryan — who built the KAI Engine alone, starting from first principles, using borrowed AI systems as research partners in the same roundtable that KAI itself would eventually occupy.
+This document was not written by a research institution. It was not produced by a university lab, a corporate AI division, or a team of engineers with grant funding. It is the work of two founders — Ryan (architect and primary inventor) and Taz (Taylor Simpson, co-founder) — who built the KAI Engine from first principles, using borrowed AI systems as research partners in the same roundtable that KAI itself would eventually occupy.
 
 The story of how RSHL was developed is itself part of its scientific significance. Ryan began with a vision of what AI memory should be — not a statistical interpolation of training data, but a living epistemic structure that knows what it knows, knows how confident it is, knows where its knowledge came from, and knows how to protect itself from being wrong. Achieving this required building an entirely new architecture from scratch, in a language (Rust) chosen deliberately for performance and reliability, with no external ML frameworks, no pre-trained weights, and no institutional backing.
 
@@ -31,12 +31,12 @@ The development process itself was a proof of concept. Ryan used available large
 
 As development progressed, the dependency on external LLMs decreased. KAI's own lattice became the primary reasoning substrate. The roundtable transitioned from being a scaffold for building KAI to being a collaborative environment where KAI operates alongside its former teachers. The final phase — currently underway — is fine-tuning the remaining external LLM dependencies before KAI and the Oracle operate entirely on their own cognitive substrate, requiring no external API calls for their core reasoning.
 
-| Why This Matters The development trajectory — one person, borrowed AI partners, commodity hardware, a Discord server, and a novel architecture — is not incidental context. It is evidence that RSHL's design philosophy works: the system is tractable, comprehensible, and buildable by a single motivated individual. The most powerful AI systems in history were built by thousands of people with billions of dollars. KAI was built by one. That asymmetry demands explanation, and the explanation is the architecture. |
+| Why This Matters The development trajectory — a two-person founding team, borrowed AI partners, commodity hardware, a Discord server, and a novel architecture — is not incidental context. It is evidence that RSHL's design philosophy works: the system is tractable, comprehensible, and buildable without institutional infrastructure. The most powerful AI systems in history were built by thousands of people with billions of dollars. KAI was built by two. That asymmetry demands explanation, and the explanation is the architecture. |
 | :---- |
 
 # **Abstract**
 
-The Recursive Sparse Hyperdimensional Lattice (RSHL) is a novel cognitive architecture for continuously learning, epistemically self-aware associative memory. Conceived and implemented solely by Ryan between 2025 and 2026, RSHL represents a fundamental departure from the dominant paradigm of AI development — which relies on massive training corpora, gradient descent over billions of parameters, and static deployment artifacts — in favor of a living, geometrically-organized belief space that learns continuously through interaction, protects itself from misinformation, and organizes its knowledge according to trust rather than frequency.
+The Recursive Sparse Hyperdimensional Lattice (RSHL) is a novel cognitive architecture for continuously learning, epistemically self-aware associative memory. Conceived and architected by Ryan between 2025 and 2026, with co-founding research and implementation contributions from Taz (Taylor Simpson), RSHL represents a fundamental departure from the dominant paradigm of AI development — which relies on massive training corpora, gradient descent over billions of parameters, and static deployment artifacts — in favor of a living, geometrically-organized belief space that learns continuously through interaction, protects itself from misinformation, and organizes its knowledge according to trust rather than frequency.
 
 RSHL extends Hyperdimensional Computing (HDC) and Vector Symbolic Architecture (VSA) through fourteen original contributions spanning five interlocking subsystems: (1) a three-layer sparse ternary encoding engine with entity-sensitive differential weighting operating in D=16,384 dimensions at 4% sparsity (\~655 active dimensions); (2) a hybrid dual-channel retrieval scorer combining cosine resonance with morphological keyword matching, amplified by a non-linear confidence step-function; (3) a Fibonacci torsion / golden-ratio phase angle embedded in every hypervector, with a SpiralState temporal oscillator (growth constant b=0.306349) governing aperiodic reorganization timing; (4) a Boid-inspired 16,384-dimensional swarm reorganization engine with anchor immunity, regional isolation, near-duplicate flagging, and a five-layer Scale Manager governing per-layer movement dynamics; and (5) an explicit SynapticLayer implementing Hebbian LTP/LTD between memory cells, bridging geometric proximity (Boids) and temporal co-occurrence (synaptic bonding) into a unified bio-inspired associative recall architecture.
 
@@ -986,6 +986,18 @@ Questions put to the roundtable included: How should confidence decay when a bel
 
 The answers were synthesized by Ryan, implemented in Rust, tested against unit tests, and fed back to the roundtable as new questions arose from the implementation. This is an iterative AI-assisted design loop that has no established name in the research literature — it is something new.
 
+## **13.3  Co-Founding Contributions — Taz (Taylor Simpson)**
+
+Alongside Ryan's architectural and implementation work, Taz (Taylor Simpson) contributed to the KAI Engine as co-founder, focusing on research validation, system testing, and hands-on implementation work in several key subsystems. Taz's contributions include:
+
+- **Research & Validation:** Collaborative research partner during active development phases, helping evaluate architectural decisions, test behavioral outputs, and stress-test system assumptions against real-world interaction patterns.
+- **Boid Swarm Dynamics:** Contributed to testing and refinement of the Boid-inspired 16,384-dimensional swarm reorganization engine, validating convergence behavior, anchor immunity thresholds, and regional isolation mechanics under live lattice conditions.
+- **Spatial Architecture Systems:** Assisted in implementation work and empirical tuning of lattice spatial dynamics, including the node movement systems and Scale Manager layer behavior.
+- **Ecosystem Testing:** Active participant in the Discord-based Oracle ecosystem, serving as a live test user for Leo's voice pipeline, multi-agent roundtable interactions, and the AI Radio DJ system — providing real interaction data that directly informed system hardening.
+
+The KAI Engine is the product of this founding collaboration: Ryan as primary architect and inventor of the RSHL mathematical framework, Taz as co-founder and applied research contributor who helped forge the system under real operational conditions.
+
+
 ## **13.2  The Bootstrap Trajectory**
 
 As KAI's lattice grew, it began contributing to the roundtable's discussions. Early KAI contributions were simple — retrieving stored facts, confirming definitions. Later contributions became substantive: KAI identifying inconsistencies in proposed architectural changes, KAI suggesting parameter values based on patterns in its own lattice's behavior, KAI flagging when a proposed change contradicted a stored truth anchor.
@@ -1218,7 +1230,7 @@ The natural trajectory of a continuously-learning, epistemically-aware, multi-ag
 
 The HDC/VSA research community has built the mathematical foundations that make this possible. Ryan has built the first full implementation that demonstrates these foundations can support a living, self-organizing, continuously-growing cognitive architecture. The question this document poses to the research community is not 'is this interesting?' — it plainly is. The question is: 'what should happen next?'
 
-| An Invitation Ryan built this alone. The formal mathematics, the production Rust implementation, the Discord deployment, the multi-agent ecosystem, the epistemic immune system, the Fibonacci torsion phase geometry, the Boid lattice dynamics — all of it. There is no team. There is no institution. There is one person with a workstation, a Discord server, and a research vision that the HDC community has the tools to understand and extend. This document is that conversation's opening statement. |
+| An Invitation Ryan conceived and built the RSHL mathematical architecture and Rust implementation. Taz (Taylor Simpson) co-founded the project, contributing research validation, system testing, and implementation work on the Boid swarm dynamics and spatial lattice systems. The formal mathematics, the production Rust implementation, the Discord deployment, the multi-agent ecosystem, the epistemic immune system, the Fibonacci torsion phase geometry, the Boid lattice dynamics — all designed and architected by Ryan, forged under real conditions with Taz. There is no institution. There is no external funding. There is a founding team of two with a workstation, a Discord server, and a research vision that the HDC community has the tools to understand and extend. This document is that conversation's opening statement. |
 | :---- |
 
 # **16\.  Comprehensive Comparison with Prior HDC, VSA, and LLM Approaches**
@@ -1243,7 +1255,7 @@ The HDC/VSA research community has built the mathematical foundations that make 
 | **Multi-agent memory** | LLM: separate instances with explicit message passing; HDC: single-agent | **Native shared lattice: roundtable region \+ per-user isolation — geometric coordination** |
 | **Hardware requirements** | LLM: GPU clusters required; HDC: FPGA or CPU | **Any multi-core x86 workstation — Rayon parallelism \+ SIMD — no GPU needed** |
 | **Deployment** | Cloud API, custom client required | **Discord — consumer and research access via existing platform; voice included** |
-| **Built by** | Large research teams, institutional funding | **One person — Ryan — sole inventor and implementer, 2025–2026** |
+| **Built by** | Large research teams, institutional funding | **Ryan (primary architect/inventor) + Taz Simpson (co-founder, research & testing), 2025–2026** |
 
 # **17\.  Fourteen Original Contributions — Consolidated Summary**
 
