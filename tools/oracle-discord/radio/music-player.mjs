@@ -19,7 +19,7 @@ import {
 // ── Duration fetch (separate yt-dlp call, no download) ────────────────────────
 export async function getSongDuration(title, artist) {
   return new Promise((resolve) => {
-    const query = `${title} ${artist}`.trim();
+    const query = `${title} ${artist} audio`.trim();
     const proc = spawn('yt-dlp', [
       '--print', 'duration',
       '--no-download',
@@ -47,7 +47,7 @@ export async function resolveSongMeta(query) {
       '--no-download',
       '--no-playlist',
       '--default-search', 'ytsearch1',
-      query
+      `${query} audio`
     ], { windowsHide: true });
 
     let output = '';
@@ -74,6 +74,8 @@ export function createRadioPlayer() {
 
 // ── Stream a song and return { resource, ytdlpProc } ─────────────────────────
 export function streamSong(query) {
+  // Append 'audio' to bias yt-dlp search toward audio tracks not music videos
+  const searchQuery = query.toLowerCase().includes('audio') ? query : `${query} audio`;
   const ytProc = spawn('yt-dlp', [
     '--format', 'bestaudio/best',
     '--output', '-',
@@ -81,7 +83,7 @@ export function streamSong(query) {
     '--quiet',
     '--no-warnings',
     '--default-search', 'ytsearch1',
-    query
+    searchQuery
   ], { windowsHide: true });
 
   ytProc.stdin?.on('error', () => {}); // swallow EPIPE

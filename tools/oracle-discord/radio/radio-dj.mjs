@@ -48,14 +48,43 @@ export function parseRadioIntent(text) {
 
   // Song request — "play X" / "put on X" / "queue X" / "can you play X" / "I want to hear X"
   const requestMatch = t.match(
-    /\b(?:play|put on|queue(?: up)?|add|request|can you play|i want (?:to hear|to listen to)?)\s+(.+?)(?:\s+(?:please|next|now|for me))?$/i
+    /\b(?:play|put on|queue(?: up)?|add|request|can you play|i(?:'d)? want (?:to hear|to listen to)?)\s+(.+?)(?:\s+(?:please|next|now|for me))?$/i
   );
   if (requestMatch) {
     const song = requestMatch[1].trim();
-    // Filter false positives (too short or just "something" / "music" / "a song")
     if (song.length > 2 && !['something', 'music', 'a song', 'anything', 'songs'].includes(song)) {
       return { intent: 'request', song };
     }
+  }
+
+  // "X by Y" — artist mention is the strongest non-keyword signal
+  // e.g. "Mother Lover by The Lonely Island" or "Blinding Lights by The Weeknd."
+  const byMatch = text.trim().match(/^(.+?)\s+by\s+([^?!]+?)[.!?]?\s*$/i);
+  if (byMatch) {
+    const title  = byMatch[1].trim();
+    const artist = byMatch[2].trim();
+    const noMatch = ['nothing', 'someone', 'something', 'anyone', 'everyone'];
+    if (title.length > 1 && !noMatch.includes(title.toLowerCase())) {
+      return { intent: 'request', song: `${title} - ${artist}` };
+    }
+  }
+
+  // "Title - Artist" bare dash format  e.g. "Blinding Lights - The Weeknd"
+  const dashOnly = text.trim().match(/^([^?!-]+)\s+-\s+([^?!]+?)[.!?]?\s*$/i);
+  if (dashOnly && text.trim().length <= 80) {
+    return { intent: 'request', song: text.trim().replace(/[.!?]+$/, '') };
+  }
+
+  // Bare song title fallback — short, no question words, no chat filler
+  const CHAT_FILLER = /^(hey|hi|hello|yeah|yes|no|ok|okay|lol|nice|cool|thanks|good|great|sounds|awesome|lit|fire|bro|wtf|omg|what|who|when|where|why|how|is |are |does |do |can |could )/i;
+  if (
+    text.trim().length >= 4 &&
+    text.trim().length <= 60 &&
+    !text.includes('?') &&
+    !text.startsWith('!') &&
+    !CHAT_FILLER.test(text.trim())
+  ) {
+    return { intent: 'request', song: text.trim().replace(/[.!?]+$/, '') };
   }
 
   return null;
