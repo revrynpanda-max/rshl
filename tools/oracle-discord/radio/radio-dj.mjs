@@ -14,6 +14,37 @@ import { streamSong, createRadioPlayer, dimVolume, restoreVolume, resolveSongMet
 import { getPlaylist, getPlaylistNames } from './playlists.mjs';
 import { CHANNEL_IDS } from '../shared/channel-rules.mjs';
 import { djTTS } from './tts.mjs';
+import { writeFileSync, readFileSync, existsSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname   = dirname(fileURLToPath(import.meta.url));
+const STATE_FILE  = join(__dirname, '..', 'state', 'radio-state.json');
+const STATE_TTL   = 6 * 60 * 60 * 1000; // 6 hours — ignore stale state after this
+
+function _saveState() {
+  try {
+    const payload = {
+      playlistName:  djState.playlistName,
+      playlistIndex: djState.playlistIndex,
+      songQueue:     djState.songQueue,
+      lastSong:      djState.currentSong
+        ? { title: djState.currentSong.title, artist: djState.currentSong.artist }
+        : null,
+      savedAt: Date.now(),
+    };
+    writeFileSync(STATE_FILE, JSON.stringify(payload, null, 2), 'utf8');
+  } catch (_) {}
+}
+
+function _loadState() {
+  try {
+    if (!existsSync(STATE_FILE)) return null;
+    const raw   = JSON.parse(readFileSync(STATE_FILE, 'utf8'));
+    if (!raw || Date.now() - raw.savedAt > STATE_TTL) return null;
+    return raw;
+  } catch (_) { return null; }
+}
 
 // ── Natural language radio intent parser ──────────────────────────────────────
 // Returns { intent, song, playlist } or null if no radio intent detected.
@@ -249,6 +280,19 @@ let djState = {
 export async function startDJ(voiceChannel, textChannel, guild) {
   if (djState.active) return;
 
+  // Restore previous session state if available
+  const saved = _loadState();
+  if (saved) {
+    djState.playlistName  = saved.playlistName  || 'default';
+    djState.playlistIndex = saved.playlistIndex || 0;
+    djState.songQueue     = saved.songQueue     || [];
+    // Re-queue the last-played song at the front so it resumes
+    if (saved.lastSong?.title) {
+      djState.songQueue.unshift(saved.lastSong);
+      console.log(`[Radio] Resuming from saved state: ${saved.lastSong.title}`);
+    }
+  }
+
   djState.guild       = guild;
   djState.textChannel = textChannel;
   djState.active      = true;
@@ -281,7 +325,9 @@ export async function startDJ(voiceChannel, textChannel, guild) {
   }
 
   console.log('[Radio] DJ mode active');
-  const intro = "radio's live. i'm your dj. drop a request in the chat or just vibe.";
+  const intro = saved?.lastSong
+    ? `back on air. picking up where we left off.`
+    : `radio's live. i'm your dj. drop a request in the chat or just vibe.`;
   await _djSpeak(intro);
   if (textChannel) {
     textChannel.send('🎙️ **Leo Radio** is live — say or type what you want to hear. Playlists: `default` `hype` `chill` `late-night`').catch(() => {});
@@ -293,6 +339,7 @@ export async function startDJ(voiceChannel, textChannel, guild) {
 export function stopDJ() {
   if (djState.windowTimer) clearTimeout(djState.windowTimer);
   if (djState.fadeTimer)   clearTimeout(djState.fadeTimer);
+  _saveState(); // persist before destroying state
   djState.audioPlayer?.stop(true);
   djState.voiceConnection?.destroy();
   Object.assign(djState, {
