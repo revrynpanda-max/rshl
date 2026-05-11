@@ -54,7 +54,7 @@ import { isWorkingHours } from '../shared/hours.mjs';
 import { runDailyWorkSession } from '../shared/daily-learning.mjs';
 import { getCompletedForNotification, markAsNotified } from '../shared/command-hub.mjs';
 import { requestOracleHelp } from '../shared/oracle-pipeline.mjs';
-import { startDJ, stopDJ, addRequest, startPlaylist, getStatus, getQueue, isDJActive } from '../radio/radio-dj.mjs';
+import { startDJ, stopDJ, addRequest, startPlaylist, getStatus, getQueue, isDJActive, handleRadioVoiceIntent } from '../radio/radio-dj.mjs';
 
 // ── IN-MEMORY HISTORY CACHE ────────────────────────────────────────────────────────
 // Avoid a Discord API round-trip on every voice turn.
@@ -625,59 +625,60 @@ client.on('messageCreate', async (message) => {
   const isGameChannel   = message.channelId === CHANNEL_IDS.GAME;     // game-with-leo
   const isRadioChannel  = message.channelId === CHANNEL_IDS.RADIO;    // ai-radio text
 
-  // ── RADIO DJ COMMANDS ─────────────────────────────────────────────────────
+  // ── RADIO DJ COMMANDS + NATURAL LANGUAGE ─────────────────────────────
   if (isRadioChannel && !message.author.bot) {
-    const txt = message.content.trim();
+    const txt   = message.content.trim();
     const lower = txt.toLowerCase();
+    const isOwner = ['1111106883135217665', '1286110163505385523'].includes(message.author.id);
 
+    // Explicit ! commands
     if (lower.startsWith('!request ')) {
       const songQuery = txt.slice(9).trim();
       const [title, ...artistParts] = songQuery.split(' - ');
       const artist = artistParts.join(' - ');
       const result = await addRequest(title.trim(), artist.trim(), message.author.username);
-      if (result === 'pooled') {
-        await message.reply(`got it — vote is open or your request is in the pool.`);
-      } else {
-        await message.reply(`added **${title.trim()}** to the queue.`);
-        if (!isDJActive()) {
-          await message.reply(`radio's not live yet — join the radio voice channel to start it.`);
-        }
-      }
+      await message.reply(result === 'pooled'
+        ? `got it — your request is in the vote pool.`
+        : `added **${title.trim()}** to the queue.`);
       return;
     }
-
     if (lower.startsWith('!playlist')) {
       const name = txt.slice(9).trim() || 'default';
       await startPlaylist(name);
-      await message.reply(`loaded playlist **${name}**. it'll queue after the current song.`);
+      await message.reply(`loaded playlist **${name}**.`);
       return;
     }
-
-    if (lower === '!nowplaying' || lower === '!np') {
-      await message.reply(getStatus());
-      return;
-    }
-
+    if (lower === '!nowplaying' || lower === '!np') { await message.reply(getStatus()); return; }
     if (lower === '!queue' || lower === '!q') {
       const q = getQueue();
       if (q.length === 0) { await message.reply('queue is empty.'); return; }
-      const listed = q.slice(0, 8).map((s, i) => `${i + 1}. **${s.title}**${s.artist ? ` — ${s.artist}` : ''} *(${s.requestedBy})*`).join('\n');
+      const listed = q.slice(0, 8).map((s, i) => `${i+1}. **${s.title}**${s.artist ? ` — ${s.artist}` : ''} *(${s.requestedBy})*`).join('\n');
       await message.reply(`**Up Next:**\n${listed}${q.length > 8 ? `\n...and ${q.length - 8} more` : ''}`);
       return;
     }
-
     if (lower === '!skip') {
-      const isOwner = ['1111106883135217665', '1286110163505385523'].includes(message.author.id);
-      if (!isOwner) { await message.reply(`only ryan or taz can skip.`); return; }
-      // Stopping the player triggers 'idle' → _onSongEnd → next song
-      // Access player via DJ state — emit fake idle by stopping
-      await message.reply(`skipping...`);
+      if (!isOwner) { await message.reply('only ryan or taz can skip.'); return; }
+      await message.reply('skipping...');
       stopDJ();
-      await message.reply(`radio stopped. rejoin the voice channel to restart.`);
+      await message.reply('radio stopped. rejoin the voice channel to restart.');
       return;
     }
 
-    return; // Don't process radio text channel messages as regular Leo messages
+    // Natural language — try radio intent first, then Leo responds normally
+    if (isDJActive()) {
+      const radioHandled = await handleRadioVoiceIntent(txt, async (reply) => {
+        await message.reply(reply);
+      }, message.author.username, isOwner);
+      if (radioHandled) return;
+    }
+
+    // Non-command text in radio channel — let Leo respond naturally (text reply, no voice)
+    message.channel.sendTyping().catch(() => {});
+    const recentMessages = await message.channel.messages.fetch({ limit: 6 });
+    const conversationHistory = recentMessages.reverse().map(m => `${m.author.username}: ${m.content}`).join('\n');
+    const reply = await callGroqAsLeo(txt, message.author.username, message.channelId, null, conversationHistory);
+    if (reply) await message.reply(reply).catch(console.error);
+    return;
   }
 
   // LEO'S ALLOWED ZONES: DMs, transcript slots, over-all-chat, game-with-leo
@@ -1456,6 +1457,18 @@ async function handleUserVoice(userId) {
         return;
       }
 
+      // ── RADIO DJ VOICE INTENT: intercept natural speech for radio commands ──────────
+      if (isDJActive()) {
+        const isOwner = ['1111106883135217665', '1286110163505385523'].includes(userId);
+        const radioHandled = await handleRadioVoiceIntent(
+          transcript, speakLeoText, user.username, isOwner
+        );
+        if (radioHandled) {
+          isProcessingVoice = false;
+          activeThoughts.delete(userId);
+          return;
+        }
+      }
       const transcriptChannelId = userTranscriptChannels.get(userId);
       const tChannel = client.channels.cache.get(transcriptChannelId) || await client.channels.fetch(transcriptChannelId).catch(() => null);
       

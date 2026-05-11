@@ -14,6 +14,124 @@ import { streamSong, createRadioPlayer, dimVolume, restoreVolume, resolveSongMet
 import { getPlaylist, getPlaylistNames } from './playlists.mjs';
 import { CHANNEL_IDS } from '../shared/channel-rules.mjs';
 
+// ── Natural language radio intent parser ──────────────────────────────────────
+// Returns { intent, song, playlist } or null if no radio intent detected.
+export function parseRadioIntent(text) {
+  const t = text.toLowerCase().trim();
+
+  // Skip / Next
+  if (/\b(skip|next song|next track|move on|skip (this|it)|play (something|the next))\b/.test(t)) {
+    return { intent: 'skip' };
+  }
+
+  // Stop / Pause
+  if (/\b(stop (the )?(music|radio|song)|pause|turn (it|the music) off|cut (it|the music))\b/.test(t)) {
+    return { intent: 'stop' };
+  }
+
+  // Now playing
+  if (/\b(what('?s| is) (playing|this( song)?)|what song (is this|are you playing)|now playing)\b/.test(t)) {
+    return { intent: 'nowplaying' };
+  }
+
+  // Queue
+  if (/\b(what('?s| is) (in |the )?(queue|next|coming up)|show (me )?(the )?queue)\b/.test(t)) {
+    return { intent: 'queue' };
+  }
+
+  // Playlist switch — "play the hype playlist" / "switch to chill" / "run late-night"
+  const playlistMatch = t.match(/\b(play|switch to|run|put on)\s+(the\s+)?(default|late.?night|hype|chill)\s+(playlist)?\b/);
+  if (playlistMatch) {
+    return { intent: 'playlist', playlist: playlistMatch[3].replace('-', '-') };
+  }
+
+  // Song request — "play X" / "put on X" / "queue X" / "can you play X" / "I want to hear X"
+  const requestMatch = t.match(
+    /\b(?:play|put on|queue(?: up)?|add|request|can you play|i want (?:to hear|to listen to)?)\s+(.+?)(?:\s+(?:please|next|now|for me))?$/i
+  );
+  if (requestMatch) {
+    const song = requestMatch[2].trim();
+    // Filter false positives (too short or just "something" / "music" / "a song")
+    if (song.length > 2 && !['something', 'music', 'a song', 'anything', 'songs'].includes(song)) {
+      return { intent: 'request', song };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Handle a radio intent extracted from voice or text.
+ * @param {string} text  — raw transcript
+ * @param {Function} speakFn — Leo's TTS function
+ * @param {string} requestedBy — username
+ * @param {boolean} isOwner — Ryan or Taz (can skip/stop)
+ * @returns {boolean} true if handled, false if Leo should respond normally
+ */
+export async function handleRadioVoiceIntent(text, speakFn, requestedBy = 'someone', isOwner = false) {
+  if (!djState.active) return false;
+
+  const intent = parseRadioIntent(text);
+  if (!intent) return false;
+
+  switch (intent.intent) {
+    case 'request': {
+      // Split "Song - Artist" if present
+      const parts = intent.song.split(/\s*-\s*/);
+      const title  = parts[0].trim();
+      const artist = parts[1]?.trim() || '';
+      const result = await addRequest(title, artist, requestedBy);
+      const confirmations = [
+        `got it, ${title} is ${result === 'pooled' ? 'in the vote pool' : 'queued'}.`,
+        `${title} — added.`,
+        `alright, ${title} is ${result === 'pooled' ? 'going to the poll' : 'in the queue'}.`,
+        `${title} queued up.`,
+      ];
+      await speakFn(confirmations[Math.floor(Math.random() * confirmations.length)]);
+      return true;
+    }
+    case 'skip': {
+      if (!isOwner) {
+        await speakFn(`only ryan or taz can skip.`);
+        return true;
+      }
+      await speakFn(`skipping.`);
+      djState.audioPlayer?.stop();
+      return true;
+    }
+    case 'stop': {
+      if (!isOwner) {
+        await speakFn(`only ryan or taz can stop the radio.`);
+        return true;
+      }
+      await speakFn(`alright, stopping.`);
+      stopDJ();
+      return true;
+    }
+    case 'nowplaying': {
+      await speakFn(getStatus());
+      return true;
+    }
+    case 'queue': {
+      const q = getQueue();
+      if (q.length === 0) {
+        await speakFn(`queue's empty right now.`);
+      } else {
+        const listed = q.slice(0, 4).map(s => s.title).join(', ');
+        await speakFn(`up next: ${listed}${q.length > 4 ? `, and ${q.length - 4} more` : ''}.`);
+      }
+      return true;
+    }
+    case 'playlist': {
+      await startPlaylist(intent.playlist);
+      await speakFn(`switching to the ${intent.playlist} playlist.`);
+      return true;
+    }
+  }
+
+  return false;
+}
+
 const REQUEST_WINDOW_BEFORE_END_MS = 40_000; // open window 40s before song ends
 const POLL_DURATION_SECONDS        = 20;      // Discord poll lives 20s
 const DIM_DELAY_MS                 = 800;     // brief pause after dimming before speech
