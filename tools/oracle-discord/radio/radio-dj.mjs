@@ -202,7 +202,7 @@ export async function startDJ(voiceChannel, textChannel, guild, speakFn) {
   }
 
   console.log('[Radio] DJ mode active');
-  await speakFn("yo, radio's live. i'm your dj tonight. drop a !request or i'll run the default playlist.");
+  await speakFn("radio's live — i'm your dj. drop a request anytime.");
   await _playNextSong();
 }
 
@@ -278,7 +278,8 @@ async function _playNextSong() {
   if (!song && djState.playlistMode) {
     const list = getPlaylist(djState.playlistName);
     if (list.length === 0) {
-      await djState.speakFn("queue's dry, i got nothing. drop a !request.");
+      if (typeof djState.speakFn === 'function')
+        await djState.speakFn("queue's dry, nothing in the playlist.");
       return;
     }
     song = list[djState.playlistIndex % list.length];
@@ -286,7 +287,8 @@ async function _playNextSong() {
   }
 
   if (!song) {
-    await djState.speakFn("queue's empty. drop a !request or type !playlist to run a playlist.");
+    if (typeof djState.speakFn === 'function')
+      await djState.speakFn("queue's empty. drop a request or say 'playlist hype' to run one.");
     return;
   }
 
@@ -421,7 +423,7 @@ async function _resolvePoll(candidates) {
 }
 
 async function _onSongEnd() {
-  if (!djState.active) return;
+  if (!djState.active || typeof djState.speakFn !== 'function') return;
   if (djState.windowTimer) { clearTimeout(djState.windowTimer); djState.windowTimer = null; }
 
   const prev = djState.currentSong;
