@@ -13,6 +13,7 @@ import { joinVoiceChannel, VoiceConnectionStatus, entersState } from '@discordjs
 import { streamSong, createRadioPlayer, dimVolume, restoreVolume, resolveSongMeta } from './music-player.mjs';
 import { getPlaylist, getPlaylistNames } from './playlists.mjs';
 import { CHANNEL_IDS } from '../shared/channel-rules.mjs';
+import { djTTS } from './tts.mjs';
 
 // ── Natural language radio intent parser ──────────────────────────────────────
 // Returns { intent, song, playlist } or null if no radio intent detected.
@@ -139,22 +140,23 @@ const MIN_SONG_DURATION_FOR_WINDOW = 60;      // don't open window on songs < 60
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let djState = {
-  active:          false,
-  voiceConnection: null,
-  audioPlayer:     null,
-  currentResource: null,
-  currentSong:     null,       // { title, artist, requestedBy, startedAt, duration }
-  songQueue:       [],         // next songs to play
-  requestPool:     [],         // requests received during the window
+  active:            false,
+  voiceConnection:   null,
+  audioPlayer:       null,
+  currentResource:   null,
+  currentSong:       null,
+  songQueue:         [],
+  requestPool:       [],
   requestWindowOpen: false,
-  playlistMode:    false,
-  playlistName:    'default',
-  playlistIndex:   0,
-  windowTimer:     null,
-  pollMessage:     null,       // Discord poll message reference
-  textChannel:     null,       // radio text channel for polls / !queue output
-  guild:           null,
-  speakFn:         null,       // (text) => Promise — Leo's TTS function
+  playingTTS:        false,   // true while TTS is occupying audioPlayer
+  nextAnnounced:     false,   // true when _closeRequestWindow already announced next song
+  playlistMode:      true,
+  playlistName:      'default',
+  playlistIndex:     0,
+  windowTimer:       null,
+  pollMessage:       null,
+  textChannel:       null,
+  guild:             null,
 };
 
 // ── Exported API ──────────────────────────────────────────────────────────────
@@ -164,14 +166,12 @@ let djState = {
  * @param {VoiceBasedChannel} voiceChannel
  * @param {TextChannel} textChannel
  * @param {Guild} guild
- * @param {Function} speakFn  async (text) => void — Leo's ElevenLabs TTS
  */
-export async function startDJ(voiceChannel, textChannel, guild, speakFn) {
+export async function startDJ(voiceChannel, textChannel, guild) {
   if (djState.active) return;
 
   djState.guild       = guild;
   djState.textChannel = textChannel;
-  djState.speakFn     = speakFn;
   djState.active      = true;
   djState.playlistMode = true;
 
@@ -186,9 +186,9 @@ export async function startDJ(voiceChannel, textChannel, guild, speakFn) {
   djState.audioPlayer = createRadioPlayer();
   djState.voiceConnection.subscribe(djState.audioPlayer);
 
+  // Only trigger _onSongEnd when MUSIC (not TTS) finishes
   djState.audioPlayer.on('stateChange', async (oldS, newS) => {
-    // Song finished naturally
-    if (newS.status === 'idle' && oldS.status === 'playing') {
+    if (newS.status === 'idle' && oldS.status === 'playing' && !djState.playingTTS) {
       await _onSongEnd();
     }
   });
@@ -202,8 +202,7 @@ export async function startDJ(voiceChannel, textChannel, guild, speakFn) {
   }
 
   console.log('[Radio] DJ mode active');
-  // Speak + post to text channel
-  const intro = "radio's live. i'm your dj. drop a request in the chat or just vibe."
+  const intro = "radio's live. i'm your dj. drop a request in the chat or just vibe.";
   await _djSpeak(intro);
   if (textChannel) {
     textChannel.send('🎙️ **Leo Radio** is live — say or type what you want to hear. Playlists: `default` `hype` `chill` `late-night`').catch(() => {});
@@ -220,7 +219,8 @@ export function stopDJ() {
     active: false, voiceConnection: null, audioPlayer: null,
     currentResource: null, currentSong: null, songQueue: [],
     requestPool: [], requestWindowOpen: false, windowTimer: null,
-    pollMessage: null, textChannel: null, guild: null, speakFn: null
+    pollMessage: null, textChannel: null, guild: null,
+    playingTTS: false, nextAnnounced: false,
   });
   console.log('[Radio] DJ mode stopped');
 }
@@ -274,13 +274,20 @@ export function isDJActive() { return djState.active; }
 
 // ── Internal ──────────────────────────────────────────────────────────────────
 
-/** Speak via TTS AND post to radio text channel simultaneously */
+/** Speak via TTS through djState.audioPlayer AND post to radio text channel */
 async function _djSpeak(text) {
-  if (typeof djState.speakFn !== 'function') return;
+  if (!djState.active || !djState.audioPlayer) return;
+  // Post to text channel immediately (non-blocking)
   if (djState.textChannel) {
     djState.textChannel.send(`🎙️ **Leo:** ${text}`).catch(() => {});
   }
-  await djState.speakFn(text);
+  // Synthesize and play through the DJ's own audio player
+  djState.playingTTS = true;
+  try {
+    await djTTS(text, djState.audioPlayer);
+  } finally {
+    djState.playingTTS = false;
+  }
 }
 
 async function _playNextSong() {
@@ -292,8 +299,7 @@ async function _playNextSong() {
   if (!song && djState.playlistMode) {
     const list = getPlaylist(djState.playlistName);
     if (list.length === 0) {
-      if (typeof djState.speakFn === 'function')
-        await djState.speakFn("queue's dry, nothing in the playlist.");
+      await _djSpeak("queue's dry, nothing in the playlist.");
       return;
     }
     song = list[djState.playlistIndex % list.length];
@@ -301,8 +307,7 @@ async function _playNextSong() {
   }
 
   if (!song) {
-    if (typeof djState.speakFn === 'function')
-      await _djSpeak("queue's empty. drop a request or say which playlist you want.");
+    await _djSpeak("queue's empty. drop a request or say which playlist you want.");
     return;
   }
 
@@ -318,17 +323,19 @@ async function _playNextSong() {
 
   console.log(`[Radio] Streaming: ${djState.currentSong.title} (~${meta.duration}s)`);
 
-  // Announce the song — speak + post Now Playing embed to text channel
-  const reqBy = song.requestedBy && song.requestedBy !== 'playlist' ? song.requestedBy : null;
-  const artist = djState.currentSong.title.includes(' - ') ? '' : (song.artist || '');
-  const announceLines = [
-    `alright, here we go — ${djState.currentSong.title}${artist ? ` by ${artist}` : ''}.`,
-    `next up: ${djState.currentSong.title}${artist ? `, ${artist}` : ''}.${reqBy ? ` this one's for ${reqBy}.` : ''}`,
-    `${djState.currentSong.title}${artist ? ` — ${artist}` : ''} coming in hot.`,
-    `rolling into ${djState.currentSong.title}${artist ? ` by ${artist}` : ''} now.`,
-  ];
-  const announcement = announceLines[Math.floor(Math.random() * announceLines.length)];
-  await _djSpeak(announcement);
+  // Announce the song — only if not already announced (e.g. single request window)
+  if (!djState.nextAnnounced) {
+    const reqBy = song.requestedBy && song.requestedBy !== 'playlist' ? song.requestedBy : null;
+    const artist = djState.currentSong.title.includes(' - ') ? '' : (song.artist || '');
+    const announceLines = [
+      `alright, here we go — ${djState.currentSong.title}${artist ? ` by ${artist}` : ''}.`,
+      `next up: ${djState.currentSong.title}${artist ? `, ${artist}` : ''}.${reqBy ? ` this one's for ${reqBy}.` : ''}`,
+      `${djState.currentSong.title}${artist ? ` — ${artist}` : ''} coming in hot.`,
+      `rolling into ${djState.currentSong.title}${artist ? ` by ${artist}` : ''} now.`,
+    ];
+    await _djSpeak(announceLines[Math.floor(Math.random() * announceLines.length)]);
+  }
+  djState.nextAnnounced = false;
 
   // Post Now Playing embed to radio text channel
   if (djState.textChannel) {
@@ -337,8 +344,8 @@ async function _playNextSong() {
         color: 0x9b59b6,
         author: { name: '▶️  Now Playing' },
         title: djState.currentSong.title,
-        description: artist ? `**${artist}**` : undefined,
-        footer: reqBy ? { text: `Requested by ${reqBy}` } : { text: 'From playlist' },
+        description: djState.currentSong.title.includes(' - ') ? undefined : (song.artist ? `**${song.artist}**` : undefined),
+        footer: (song.requestedBy && song.requestedBy !== 'playlist') ? { text: `Requested by ${song.requestedBy}` } : { text: 'From playlist' },
         timestamp: new Date().toISOString(),
       }]
     }).catch(() => {});
@@ -385,9 +392,10 @@ async function _closeRequestWindow() {
   if (pool.length === 1) {
     // Single request — auto-queue it, no poll needed
     djState.songQueue.unshift(pool[0]);
-  await _djSpeak(
-    `got a request — ${pool[0].title} from ${pool[0].requestedBy} is up next.`
-  );
+    djState.nextAnnounced = true;
+    await _djSpeak(
+      `got a request — ${pool[0].title} from ${pool[0].requestedBy} is up next.`
+    );
     return;
   }
 

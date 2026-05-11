@@ -21,7 +21,7 @@ export async function getSongDuration(title, artist) {
       '--no-download',
       '--no-playlist',
       '--default-search', 'ytsearch1',
-      '--extractor-args', 'youtube:player_client=android',
+      '--extractor-args', 'youtube:player_client=ios',
       query
     ], { windowsHide: true });
 
@@ -43,7 +43,7 @@ export async function resolveSongMeta(query) {
       '--no-download',
       '--no-playlist',
       '--default-search', 'ytsearch1',
-      '--extractor-args', 'youtube:player_client=android',
+      '--extractor-args', 'youtube:player_client=ios',
       query
     ], { windowsHide: true });
 
@@ -72,14 +72,17 @@ export function createRadioPlayer() {
 export function streamSong(query) {
   // Stream audio via yt-dlp piped to stdin of createAudioResource
   const ytProc = spawn('yt-dlp', [
-    '--format', 'bestaudio/best',
-    '--output', '-',            // pipe to stdout
+    '--format', 'bestaudio[ext=m4a]/bestaudio/best',
+    '--output', '-',
     '--no-playlist',
     '--quiet',
-    '--extractor-args', 'youtube:player_client=android',
+    '--extractor-args', 'youtube:player_client=ios',
     '--default-search', 'ytsearch1',
     query
   ], { windowsHide: true });
+
+  ytProc.stdin?.on('error', () => {});  // swallow EPIPE if pipe breaks early
+  ytProc.stderr?.on('data', () => {});  // suppress yt-dlp stderr noise
 
   const resource = createAudioResource(ytProc.stdout, {
     inputType: StreamType.Arbitrary,

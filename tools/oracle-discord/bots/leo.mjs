@@ -748,7 +748,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
     ) || newState.guild.channels.cache.get(CHANNEL_IDS.PUBLIC);
     if (!isDJActive()) {
       console.log(`[Leo/Radio] ${newState.member?.user.username} joined radio — starting DJ mode`);
-      startDJ(radioVoice, radioText, newState.guild, speakLeoText).catch(e => {
+      startDJ(radioVoice, radioText, newState.guild).catch(e => {
         console.error('[Leo/Radio] DJ start failed:', e.message);
       });
     }
