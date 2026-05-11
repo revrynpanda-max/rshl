@@ -22,6 +22,14 @@ const __dirname   = dirname(fileURLToPath(import.meta.url));
 const STATE_FILE  = join(__dirname, '..', 'state', 'radio-state.json');
 const STATE_TTL   = 6 * 60 * 60 * 1000; // 6 hours — ignore stale state after this
 
+// Save state on hard kills too (SIGINT = Ctrl+C, SIGTERM = process manager kill)
+function _handleShutdown() {
+  if (djState.active) _saveState();
+  process.exit(0);
+}
+process.once('SIGINT',  _handleShutdown);
+process.once('SIGTERM', _handleShutdown);
+
 function _saveState() {
   try {
     const payload = {
@@ -453,6 +461,9 @@ async function _playNextSong() {
     duration,
     startedAt: Date.now(),
   };
+
+  // Save state now — captures current song even if process is killed before stopDJ()
+  _saveState();
 
   console.log(`[Radio] Streaming: ${song.title} — ${song.artist || ''} (~${duration}s)`);
 
