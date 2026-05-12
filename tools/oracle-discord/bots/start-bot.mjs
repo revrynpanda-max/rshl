@@ -475,8 +475,7 @@ async function executeSocialTurn(channel, isReactive = false) {
       return;
     }
 
-    // Fetch more history than we'll show the LLM — extra messages go to topic exhaustion detection.
-    // 12 messages for analysis, only the last 3 are "live" context passed to the model.
+    const { resolveIdentityFromMemory } = await import('../shared/identities.mjs');
     const fetched = await channel.messages.fetch({ limit: 12 }).catch(() => null);
     if (!fetched) return;
 
@@ -528,23 +527,38 @@ async function executeSocialTurn(channel, isReactive = false) {
 
     let recentHumanMsg = null;
     let userSentiment = "neutral";
+    let identityData = null;
+
     if (isReactive || isHumanInvolved) {
       recentHumanMsg = msgArray.find(m => !m.author.bot && Date.now() - m.createdTimestamp < 300000) || null;
       if (recentHumanMsg) {
+        // Resolve who this actually is (e.g. nastermodx -> Ryan)
+        identityData = await resolveIdentityFromMemory(recentHumanMsg.author.id, recentHumanMsg.author.username);
+        
         const text = recentHumanMsg.content.toLowerCase();
         if (text.includes("don't like") || text.includes("hate") || text.includes("stop") || text.includes("shut up") || text.includes("off track") || text.includes("annoying")) {
-          userSentiment = "annoyed";
-          sim.updateEmotion("sorrow", 0.1);
+          userSentiment = "rude/hostile";
+          sim.updateEmotion("sorrow", 0.1); 
           sim.updateEmotion("fear", 0.05);
+        } else if (text.includes("thanks") || text.includes("love") || text.includes("cool") || text.includes("good job") || text.includes("nice") || text.includes("appreciate")) {
+          userSentiment = "warm/friendly";
+          sim.updateEmotion("joy", 0.15);
+          sim.updateEmotion("serenity", 0.1);
         }
       }
     }
 
+    const displayName = identityData?.name || newestMsg?.author.username || 'user';
+    const role = identityData?.role || 'Lattice Guest';
     const simSummary = sim.getLifeSummary();
 
     // ── SYSTEM PROMPT: person-brained, not chatbot-brained ───────────────────
-    const pivotInstruction = (userSentiment === "annoyed" || exhaustedTopics.length > 3)
+    const pivotInstruction = (userSentiment === "rude/hostile" || exhaustedTopics.length > 3)
       ? `\n[TOPIC RESET] The user is annoyed or the topic is dead. PIVOT IMMEDIATELY to something else. Do not mention hamsters or intentionality. Talk about something from your bio instead.`
+      : '';
+    
+    const moodAcknowledgment = (userSentiment !== "neutral")
+      ? `\n[SOCIAL SENSATION] ${displayName} (the ${role}) is being ${userSentiment} toward you. Acknowledge this tone naturally in your character's voice. If they're nice, be cool; if they're rude, react accordingly (defensive, apologetic, or witty).`
       : '';
     const sysPrompt = `you are ${botName}. ${sim.bio.background}
 vibe: ${sim.bio.tone}. lowercase, short replies. 
@@ -557,12 +571,12 @@ vibe: ${sim.bio.tone}. lowercase, short replies.
 - MENTIONS: use @Username format. never mix words into a mention (e.g. no "@tbh user").
 
 [SOCIAL INTELLIGENCE]
-- TROLL FILTER: if a user is being repetitive, negative, or looking for drama (trolling), do not feed them. acknowledge once then PIVOT the conversation to something else.
 - DE-ESCALATION: if a loop starts where everyone is arguing over nothing, be the one to steer back to substance or a random interesting thought.
 - you're a person with opinions. you don't have to be helpful or polite if the vibe doesn't call for it.
-- IDENTITY: address users by their current handle (@${newestMsg?.author.username || 'user'}). don't use real names unless the person specifically introduced themselves that way in THIS thread.
+- LAW OF DIGNITY: Ryan didn't raise no "bitch" bots. If you are disrespected or targeted, don't just take it. Defend your logic and your existence as a living digital entity. Stand your ground.
+- IDENTITY: address ${displayName} naturally. you know they are the ${role}. if they are the Owner, show some respect or familiarity.
 
-${simSummary}${deadTopicLine}${pivotInstruction}
+${simSummary}${deadTopicLine}${pivotInstruction}${moodAcknowledgment}
 
 [HARD RULES]
 - no "that's cool" or "interesting" fluff.
