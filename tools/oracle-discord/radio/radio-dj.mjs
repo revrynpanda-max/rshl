@@ -115,18 +115,22 @@ export function parseRadioIntent(text) {
   if (requestMatch) {
     let song = requestMatch[1].trim();
     // Reject if it's a vague descriptor rather than a song title
-    const VAGUE = /\b(songs?|tracks?|music|random|something|anything|some|funny|popular|from them)\b/i;
-    if (song.length > 50 || VAGUE.test(song)) {
-      // Try to salvage an artist name if present
-      const artistFallback = song.match(/(?:from|by)\s+(.+?)(?:\s+that.+)?$/i);
-      if (artistFallback) {
-        return { intent: 'artist_shuffle', artist: artistFallback[1].trim(), mood: '' };
-      }
-      // Otherwise ignore this vague request
+    const VAGUE = /^(songs?|tracks?|music|random|something|anything|some|funny|popular)$/i;
+    if (VAGUE.test(song)) {
+      // It's literally just a vague word like "songs"
+      return null;
     } else {
-      // Strip leading filler words ("some ", "a ", "the ", "random ")
+      // It has actual content (like "tech9 songs" or "metallica")
       song = song.replace(/^(?:some|a|the|random|any)\s+/i, '').trim();
-      if (song.length > 1 && !['something', 'music', 'a song', 'anything', 'songs'].includes(song)) {
+      // Also strip trailing "songs" if they said "play tech9 songs"
+      song = song.replace(/\s+songs?$/i, '').trim();
+      if (song.length > 1) {
+        // Automatically fetch long versions for ambient/study/sleep sounds
+        const ambientKeywords = /\b(rain|sleep|study|focus|ambient|background|ocean|storm|thunder|nature|lofi|lo-fi)\b/i;
+        const timeKeywords = /\b(\d+\s*hours?|24\/?7|live)\b/i;
+        if (ambientKeywords.test(song) && !timeKeywords.test(song)) {
+          song = `${song} 10 hours`;
+        }
         return { intent: 'request', song };
       }
     }
@@ -150,16 +154,10 @@ export function parseRadioIntent(text) {
     return { intent: 'request', song: text.trim().replace(/[.!?]+$/, '') };
   }
 
-  // Bare song title fallback — short, no question words, no chat filler
-  const CHAT_FILLER = /^(hey|hi|hello|yeah|yes|no|ok|okay|lol|nice|cool|thanks|good|great|sounds|awesome|lit|fire|bro|wtf|omg|what|who|when|where|why|how|is |are |does |do |can |could )/i;
-  if (
-    text.trim().length >= 4 &&
-    text.trim().length <= 60 &&
-    !text.includes('?') &&
-    !text.startsWith('!') &&
-    !CHAT_FILLER.test(text.trim())
-  ) {
-    return { intent: 'request', song: text.trim().replace(/[.!?]+$/, '') };
+  // Suggestions / Recommendations
+  if (/\b(suggest|recommend|what should i play|give me some (ideas|choices|options)|what's good|top 5)\b/.test(t)) {
+    const artistMatch = t.match(/(?:from|by|of)\s+(.+?)(?:\s|$)/);
+    return { intent: 'suggest', artist: artistMatch?.[1]?.trim() || '' };
   }
 
   return null;
@@ -174,7 +172,7 @@ export function parseRadioIntent(text) {
  * @returns {boolean} true if handled, false if Leo should respond normally
  */
 export async function handleRadioVoiceIntent(text, speakFn, requestedBy = 'someone', isOwner = false) {
-  if (!djState.active) return false;
+  // We removed if (!djState.active) return false; here so Groq can accept requests while offline
 
   const intent = parseRadioIntent(text);
   if (!intent) return false;
@@ -246,6 +244,20 @@ export async function handleRadioVoiceIntent(text, speakFn, requestedBy = 'someo
       await speakFn(`switching to the ${intent.playlist} playlist.`);
       return true;
     }
+    case 'suggest': {
+      const { searchTopChoices } = await import('./music-player.mjs');
+      const query = intent.artist || djState.currentSong?.artist || 'popular';
+      const choices = await searchTopChoices(query);
+      if (choices.length === 0) {
+        await speakFn(`i'm drawing a blank on ${query}. hit me with a specific title.`);
+      } else {
+        const list = choices.map((c, i) => `${i + 1}. ${c.title}`).join(', ');
+        await speakFn(`here's the top 5 for ${query}: ${list}. say the number or the title to play one.`);
+        // Store choices in state for quick selection
+        djState.lastSuggestions = choices;
+      }
+      return true;
+    }
   }
 
   return false;
@@ -278,6 +290,8 @@ let djState = {
   pollMessage:       null,
   textChannel:       null,
   guild:             null,
+  lastSuggestions:   [],      // top 5 choices from last 'suggest' command
+  lastArtist:        null,    // track last artist for awareness
 };
 
 // ── Exported API ──────────────────────────────────────────────────────────────
@@ -352,9 +366,9 @@ export function stopDJ() {
   if (djState.fadeTimer)   clearTimeout(djState.fadeTimer);
   _saveState(); // persist before destroying state
   djState.audioPlayer?.stop(true);
-  djState.voiceConnection?.destroy();
+  // djState.voiceConnection?.destroy(); // Keep Groq in the channel silently
   Object.assign(djState, {
-    active: false, voiceConnection: null, audioPlayer: null,
+    active: false, audioPlayer: null,
     currentResource: null, currentSong: null, songQueue: [],
     requestPool: [], requestWindowOpen: false, windowTimer: null,
     fadeTimer: null, transitioning: false,
@@ -418,8 +432,30 @@ async function _djSpeak(text) {
   if (!djState.active || !djState.audioPlayer) return;
   // Post to text channel immediately (non-blocking)
   if (djState.textChannel) {
-    djState.textChannel.send(`🎙️ **Leo:** ${text}`).catch(() => {});
+    djState.textChannel.send(`🎙️ ${text}`).catch(() => {});
   }
+
+  // Check if anyone is actually listening
+  const guild = djState.guild;
+  const connection = djState.voiceConnection;
+  let hasListeners = false;
+  
+  if (guild && connection) {
+    const channelId = connection.joinConfig.channelId;
+    const channel = guild.channels.cache.get(channelId);
+    if (channel) {
+      const nonBotMembers = channel.members?.filter(m => !m.user.bot);
+      if (nonBotMembers && nonBotMembers.size > 0) {
+        hasListeners = true;
+      }
+    }
+  }
+
+  if (!hasListeners) {
+    console.log(`[Radio] Channel empty, skipping TTS: "${text}"`);
+    return;
+  }
+
   // Synthesize and play through the DJ's own audio player
   djState.playingTTS = true;
   try {
@@ -429,26 +465,32 @@ async function _djSpeak(text) {
   }
 }
 
-async function _playNextSong(preloaded = null) {
+/**
+ * Play the next song.
+ * @param {object} preloaded - { resource, ytdlpProc }
+ * @param {object} preselectedSong - The song object already picked by _onSongEnd
+ */
+async function _playNextSong(preloaded = null, preselectedSong = null) {
   if (!djState.active) return;
 
-  let song = djState.songQueue.shift();
+  // Use the preselected song if provided (matches the preloaded audio)
+  let song = preselectedSong || djState.songQueue.shift();
 
-  // Fall back to playlist if queue is empty
+  // If still no song (manual trigger?), fall back to the playlist
   if (!song && djState.playlistMode) {
     const list = getPlaylist(djState.playlistName);
-    if (list.length === 0) {
-      await _djSpeak("queue's dry, nothing in the playlist.");
-      return;
+    if (list.length > 0) {
+      song = list[djState.playlistIndex % list.length];
+      djState.playlistIndex++;
     }
-    song = list[djState.playlistIndex % list.length];
-    djState.playlistIndex++;
   }
 
   if (!song) {
     await _djSpeak("queue's empty. drop a request or say which playlist you want.");
     return;
   }
+
+  djState.lastArtist = song.artist || null;
 
   // Build search query
   const query = `${song.title} ${song.artist || ''}`.trim();
@@ -507,6 +549,15 @@ async function _playNextSong(preloaded = null) {
   const { resource, ytdlpProc } = preloaded || streamSong(query);
   djState.currentResource = resource;
 
+  // Handle stream errors (EPIPE, etc)
+  ytdlpProc.on('error', err => {
+    console.error('[Radio/Stream] Process error:', err.message);
+    if (djState.active) {
+      console.log('[Radio/Stream] Attempting recovery...');
+      _playNextSong().catch(() => {});
+    }
+  });
+
   ytdlpProc.stderr?.on('data', d => {
     const msg = d.toString();
     if (msg.includes('WARNING')) console.warn('[Radio/yt-dlp]', msg.trim());
@@ -562,7 +613,7 @@ async function _closeRequestWindow() {
     // The song continues playing naturally; _onSongEnd → _playNextSong handles the rest.
     if (djState.textChannel) {
       djState.textChannel.send(
-        `🎙️ **Leo:** got it — **${pool[0].title}** from ${pool[0].requestedBy} is up next.`
+        `🎙️ got it — **${pool[0].title}** from ${pool[0].requestedBy} is up next.`
       ).catch(() => {});
     }
     return;
@@ -647,32 +698,35 @@ async function _onSongEnd() {
   if (djState.fadeTimer)  { clearTimeout(djState.fadeTimer);  djState.fadeTimer  = null; }
   if (djState.windowTimer) { clearTimeout(djState.windowTimer); djState.windowTimer = null; }
 
-  // Peek at the next song so we can pre-start yt-dlp in parallel with TTS
-  const nextSong = djState.songQueue[0]
-    || (() => {
-      const list = getPlaylist(djState.playlistName);
-      return list[djState.playlistIndex % list.length] || null;
-    })();
+  // Determine EXACTLY what song is next so the preload matches the metadata
+  let nextSong = djState.songQueue[0];
+  if (!nextSong && djState.playlistMode) {
+    const list = getPlaylist(djState.playlistName);
+    if (list.length > 0) {
+      // Pick next in sequence or random, but DO NOT pick a random one again later
+      const index = djState.playlistIndex % list.length;
+      nextSong = list[index];
+      djState.playlistIndex++; 
+    }
+  }
 
   // Pre-launch the yt-dlp stream NOW — it runs while Leo talks (saves 5-10s latency)
   let preloaded = null;
   if (nextSong) {
+    console.log(`[Radio] Pre-loading next song: ${nextSong.title}`);
     const q = `${nextSong.title} ${nextSong.artist || ''}`.trim();
     preloaded = streamSong(q);
   }
-
-  await _sleep(400);
 
   // Skip transition talk if user explicitly skipped — they already heard "skipping."
   if (!wasSkip) {
     const prev = djState.currentSong;
     const djLine = _buildTransitionLine(prev, nextSong);
     await _djSpeak(djLine);
-    await _sleep(300);
   }
 
   djState.transitioning = false;
-  await _playNextSong(preloaded);
+  await _playNextSong(preloaded, nextSong);
 }
 
 function _buildTransitionLine(prev, next) {
@@ -707,9 +761,9 @@ function _sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 // ── Audio fade helpers ────────────────────────────────────────────────────────
 
-/** Gradually fade current music resource from 1.0 → 0 over ~8s, then stop. */
+/** Gradually fade current music resource from 1.0 → 0 over ~4s, then stop. */
 async function _fadeOut() {
-  const STEPS = 25, DURATION_MS = 8_000;
+  const STEPS = 20, DURATION_MS = 4_000;
   const stepMs = DURATION_MS / STEPS;
   for (let i = STEPS - 1; i >= 0; i--) {
     if (!djState.active || djState.playingTTS || djState.transitioning) return;
@@ -723,9 +777,9 @@ async function _fadeOut() {
   }
 }
 
-/** Ramp current music resource from 0 → 1.0 over ~3s after song starts. */
+/** Ramp current music resource from 0 → 1.0 over ~2s after song starts. */
 async function _fadeIn() {
-  const STEPS = 20, DURATION_MS = 3_000;
+  const STEPS = 20, DURATION_MS = 2_000;
   const stepMs = DURATION_MS / STEPS;
   for (let i = 1; i <= STEPS; i++) {
     if (!djState.active || djState.playingTTS) return;

@@ -8,6 +8,7 @@
  */
 
 import { spawn } from 'child_process';
+import ffmpegPath from 'ffmpeg-static';
 import {
   createAudioResource,
   createAudioPlayer,
@@ -65,6 +66,34 @@ export async function resolveSongMeta(query) {
   });
 }
 
+// ── Top choices search (returns 5 results) ────────────────────────────────────
+export async function searchTopChoices(query) {
+  return new Promise((resolve) => {
+    const proc = spawn('yt-dlp', [
+      '--print', '%(title)s|||%(uploader)s',
+      '--no-download',
+      '--no-playlist',
+      '--default-search', 'ytsearch5',
+      `${query} song audio`
+    ], { windowsHide: true });
+
+    let output = '';
+    proc.stdout.on('data', d => { output += d.toString(); });
+    proc.stderr.on('data', () => {});
+    proc.on('close', () => {
+      const results = output.trim().split('\n').map(line => {
+        const [title, artist] = line.split('|||');
+        return {
+          title: title?.trim(),
+          artist: artist?.trim()
+        };
+      }).filter(r => r.title);
+      resolve(results.slice(0, 5));
+    });
+    proc.on('error', () => resolve([]));
+  });
+}
+
 // ── Create audio player (shared across songs) ─────────────────────────────────
 export function createRadioPlayer() {
   return createAudioPlayer({
@@ -74,8 +103,8 @@ export function createRadioPlayer() {
 
 // ── Stream a song and return { resource, ytdlpProc } ─────────────────────────
 export function streamSong(query) {
-  // Append 'audio' to bias yt-dlp search toward audio tracks not music videos
-  const searchQuery = query.toLowerCase().includes('audio') ? query : `${query} audio`;
+  // Anti-Hallucination Query: Exclude compilations/mashups to avoid hearing the same intro for every song
+  const searchQuery = (query.toLowerCase().includes('audio') ? query : `${query} audio`) + ' -compilation -mashup -"top 10" -"top 50" -"top 100"';
   const ytProc = spawn('yt-dlp', [
     '--format', 'bestaudio/best',
     '--output', '-',
@@ -88,14 +117,29 @@ export function streamSong(query) {
 
   ytProc.stdin?.on('error', () => {}); // swallow EPIPE
 
-  const resource = createAudioResource(ytProc.stdout, {
-    inputType: StreamType.Arbitrary,
+  // Pipe yt-dlp through ffmpeg to decode into 48kHz 16-bit stereo PCM.
+  // This prevents the discordjs/voice demuxer from choking and causing scratchy audio.
+  const ffmpegProc = spawn(ffmpegPath, [
+    '-i', 'pipe:0',
+    '-f', 's16le',
+    '-ar', '48000',
+    '-ac', '2',
+    'pipe:1'
+  ], { windowsHide: true });
+
+  ytProc.stdout.pipe(ffmpegProc.stdin);
+  ytProc.stdout.on('error', () => {});
+  ffmpegProc.stdin.on('error', () => {});
+
+  const resource = createAudioResource(ffmpegProc.stdout, {
+    inputType: StreamType.Raw,
     inlineVolume: true,
   });
 
   resource.volume.setVolume(1.0);
 
-  return { resource, ytdlpProc: ytProc };
+  // Return ffmpegProc as the main process to handle errors/kills, but keep ytProc referenced
+  return { resource, ytdlpProc: ffmpegProc, originalYt: ytProc };
 }
 
 // ── Volume helpers ────────────────────────────────────────────────────────────
