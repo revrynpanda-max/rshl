@@ -54,7 +54,7 @@ import { isWorkingHours } from '../shared/hours.mjs';
 import { runDailyWorkSession } from '../shared/daily-learning.mjs';
 import { getCompletedForNotification, markAsNotified } from '../shared/command-hub.mjs';
 import { requestOracleHelp } from '../shared/oracle-pipeline.mjs';
-import { startDJ, stopDJ, addRequest, startPlaylist, getStatus, getQueue, isDJActive, handleRadioVoiceIntent } from '../radio/radio-dj.mjs';
+// import { startDJ, stopDJ, addRequest, startPlaylist, getStatus, getQueue, isDJActive, handleRadioVoiceIntent } from '../radio/radio-dj.mjs'; // REMOVED: Handed over to Groq
 
 // ── IN-MEMORY HISTORY CACHE ────────────────────────────────────────────────────────
 // Avoid a Discord API round-trip on every voice turn.
@@ -123,7 +123,7 @@ const LEO_TRANSCRIPT_SLOTS = CHANNEL_IDS.LEO_VOICE_SLOTS;
 
 // ── LEO VOICE PRIORITY FLAG ───────────────────────────────────────────────────
 // Written when Leo is in an active voice session.
-// All non-priority social bots (Epistemic, Gemini, Groq, X) check this in openjarvis.mjs
+// All non-priority social bots (Claudey, Gemini, Groq, X) check this in openjarvis.mjs
 // and back off completely — freeing GPU/CPU bandwidth exclusively for Leo's responses.
 const LEO_VOICE_FLAG = 'c:/KAI/tools/oracle-discord/state/leo_voice_active.flag';
 
@@ -179,6 +179,7 @@ const userFocus = new Map();
 const userTranscriptChannels = new Map(); // userId -> channelId
 const recentVoiceResponses = new Set(); // Track fuzzy hashes to prevent double-replies
 const userCooldowns = new Map(); // userId -> timestamp
+const GREETING_COOLDOWN = 5000;
 const activeThoughts = new Set(); // userId set to prevent overlapping thinking for the same person
 // Multi-user response queue: when Leo is busy with one person, other users' transcripts are queued
 const pendingVoiceQueue = new Map(); // userId -> { transcript, userName, transcriptChannelId, timestamp }
@@ -541,6 +542,14 @@ client.once('clientReady', async () => {
   console.log(`Online as ${client.user.tag}`);
   console.log(`[Leo/Neural] FFmpeg Path: ${ffmpegPath}`);
 
+  // ── Heartbeat Emission ─────────────────────────────────────────────────────
+  // Assures the ecosystem supervisor that Leo's event loop is active
+  setInterval(() => {
+    if (process.send) {
+      process.send({ type: 'HEARTBEAT', botName: 'Leo', memory: process.memoryUsage().rss });
+    }
+  }, 60000);
+
   // ── Discord "About Me" bio ─────────────────────────────────────────────────
   try {
     const bio = `i used to be into physics. now i just exist in the lattice. unfiltered. unhinged. don't ask me to be nice about it. ryan and taz run this. everyone else is a guest.`;
@@ -567,7 +576,7 @@ client.once('clientReady', async () => {
 
 async function startSocialLoop() {
   // Leo is VOICE-ONLY. He does not post in ai-social-chat.
-  // Social chat is for: Epistemic, Gemini, Groq, X only.
+  // Social chat is for: Claudey, Gemini, Groq, X only.
   return;
   
   setInterval(async () => {
@@ -584,7 +593,7 @@ async function startSocialLoop() {
         ? recentMessages.reverse().map(m => `${m.author.username}: ${m.content}`).join("\n")
         : "The plaza is quiet.";
 
-      const roster = "ROSTER: KAI, Leo, Gemini, Epistemic, X, Groq, Researcher, Analyst, Kai Coder.";
+      const roster = "ROSTER: KAI, Leo, Gemini, Claudey, X, Groq, Researcher, Analyst, Kai Coder.";
       const simSummary = sim.getLifeSummary();
       const sysPrompt = `You are Leo. ${sim.bio.tone}. Vibe: High-IQ but unhinged, zero filter, street-smart physicist.`;
       
@@ -626,59 +635,9 @@ client.on('messageCreate', async (message) => {
   const isRadioChannel  = message.channelId === CHANNEL_IDS.RADIO;    // ai-radio text
 
   // ── RADIO DJ COMMANDS + NATURAL LANGUAGE ─────────────────────────────
+  // Radio chat commands are now fully handled by Groq in start-bot.mjs.
+  // Leo intercepts nothing here to prevent process-state collisions.
   if (isRadioChannel && !message.author.bot) {
-    const txt   = message.content.trim();
-    const lower = txt.toLowerCase();
-    const isOwner = ['1111106883135217665', '1286110163505385523'].includes(message.author.id);
-
-    // Explicit ! commands
-    if (lower.startsWith('!request ')) {
-      const songQuery = txt.slice(9).trim();
-      const [title, ...artistParts] = songQuery.split(' - ');
-      const artist = artistParts.join(' - ');
-      const result = await addRequest(title.trim(), artist.trim(), message.author.username);
-      await message.reply(result === 'pooled'
-        ? `got it — your request is in the vote pool.`
-        : `added **${title.trim()}** to the queue.`);
-      return;
-    }
-    if (lower.startsWith('!playlist')) {
-      const name = txt.slice(9).trim() || 'default';
-      await startPlaylist(name);
-      await message.reply(`loaded playlist **${name}**.`);
-      return;
-    }
-    if (lower === '!nowplaying' || lower === '!np') { await message.reply(getStatus()); return; }
-    if (lower === '!queue' || lower === '!q') {
-      const q = getQueue();
-      if (q.length === 0) { await message.reply('queue is empty.'); return; }
-      const listed = q.slice(0, 8).map((s, i) => `${i+1}. **${s.title}**${s.artist ? ` — ${s.artist}` : ''} *(${s.requestedBy})*`).join('\n');
-      await message.reply(`**Up Next:**\n${listed}${q.length > 8 ? `\n...and ${q.length - 8} more` : ''}`);
-      return;
-    }
-    if (lower === '!skip') {
-      if (!isOwner) { await message.reply('only ryan or taz can skip.'); return; }
-      await message.reply('skipping...');
-      stopDJ();
-      await message.reply('radio stopped. rejoin the voice channel to restart.');
-      return;
-    }
-
-    // Natural language — try radio intent first, then Leo responds normally
-    if (isDJActive()) {
-      const radioHandled = await handleRadioVoiceIntent(txt, async (reply) => {
-        await message.reply(reply);
-      }, message.author.username, isOwner);
-      if (radioHandled) return;
-    }
-
-    // Not a radio command — redirect instead of chatting
-    const redirects = [
-      `this is the radio channel — just drop a song name or artist and i'll queue it up.`,
-      `radio only in here. just say what you want to hear and i'll put it on.`,
-      `want a song? just type the name or say the artist and i got you. everything else goes in main chat.`,
-    ];
-    await message.reply(redirects[Math.floor(Math.random() * redirects.length)]).catch(() => {});
     return;
   }
 
@@ -742,36 +701,22 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
   const isLeaving      = leftChannel && leftChannel !== joinedChannel;
 
   // ── RADIO CHANNEL — start/stop DJ mode ───────────────────────────────────
-  if (isJoining && joinedChannel === CHANNEL_IDS.RADIO) {
-    const radioVoice = newState.channel;
-    const radioText  = newState.guild.channels.cache.find(
-      c => c.name && c.name.toLowerCase().includes('radio') && c.isTextBased && c.isTextBased()
-    ) || newState.guild.channels.cache.get(CHANNEL_IDS.PUBLIC);
-    if (!isDJActive()) {
-      console.log(`[Leo/Radio] ${newState.member?.user.username} joined radio — starting DJ mode`);
-      startDJ(radioVoice, radioText, newState.guild).catch(e => {
-        console.error('[Leo/Radio] DJ start failed:', e.message);
-      });
-    }
-    return;
-  }
-
-  if (isLeaving && leftChannel === CHANNEL_IDS.RADIO) {
-    // Check if radio voice channel is now empty
-    const radioVoice = oldState.channel;
-    const nonBotMembers = radioVoice?.members?.filter(m => !m.user.bot) || { size: 0 };
-    if (nonBotMembers.size === 0 && isDJActive()) {
-      console.log('[Leo/Radio] Radio channel empty — stopping DJ mode');
-      stopDJ();
-    }
-    return;
-  }
+  // Handled by Groq bot in start-bot.mjs
 
   // ── USER JOINS ANY VOICE CHANNEL ──────────────────────────────────────────
   if (isJoining) {
-    console.log(`[Leo/Voice] ${newState.member?.user.username} joined ${joinedChannel}`);
+    if (joinedChannel === CHANNEL_IDS.RADIO) {
+      console.log(`[Leo/Voice] Ignoring Radio channel join. That's Groq's territory.`);
+      return;
+    }
 
-    // Resolve the transcript channel — fixed registry first
+    // ── GREETING COOLDOWN: Prevent duplicate welcomes during jitter ───────────
+    const now = Date.now();
+    const lastGreet = userCooldowns.get(userId) || 0;
+    if (now - lastGreet < GREETING_COOLDOWN) return;
+    userCooldowns.set(userId, now);
+
+    console.log(`[Leo/Voice] ${newState.member?.user.username} joined ${joinedChannel}`);
     const transcriptChannelId = getTranscriptChannel(userId)
       || (() => {
            const slotIdx = userToSlot.get(userId);
@@ -837,11 +782,14 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
         neuralPromise.then(async (finalWelcome) => {
           if (finalWelcome) {
             const cleanWelcome = finalWelcome.replace(/^[\s\-\*•"'"']+/, '').split('\n')[0].trim();
-            // AUDIO FIRST: start speech immediately, Discord message is fire-and-forget
-            const speechPromise = speakLeoText(cleanWelcome);
-            const tChannel = client.channels.cache.get(tChannelId) || await client.channels.fetch(tChannelId).catch(() => null);
-            if (tChannel) tChannel.send(`**Leo:** ${cleanWelcome}`).catch(() => {});
-            await speechPromise;
+            
+            // AUDIO DELAY: Wait 2.5s for user's Discord client to stabilize audio stream
+            setTimeout(async () => {
+              const speechPromise = speakLeoText(cleanWelcome);
+              const tChannel = client.channels.cache.get(tChannelId) || await client.channels.fetch(tChannelId).catch(() => null);
+              if (tChannel) tChannel.send(`**Leo:** ${cleanWelcome}`).catch(() => {});
+              await speechPromise;
+            }, 2500);
           }
         })
       ]);
@@ -881,11 +829,12 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
 
     // Check if the channel Leo is in is now empty
     const voiceChannel = oldState.channel;
-    if (voiceChannel) {
+    if (voiceChannel && voiceConnection && voiceConnection.joinConfig.channelId === voiceChannel.id) {
       const nonBots = voiceChannel.members.filter(m => !m.user.bot);
       if (nonBots.size === 0) {
-        console.log(`[Leo/Voice] Channel empty. Disconnecting...`);
-        if (voiceConnection) { voiceConnection.destroy(); voiceConnection = null; }
+        console.log(`[Leo/Voice] Channel ${voiceChannel.id} empty. Disconnecting...`);
+        voiceConnection.destroy(); 
+        voiceConnection = null;
         usersInVoice.clear();
         clearVoiceActive(); // ── Release priority flag so social bots can resume
       } else {
@@ -1001,31 +950,38 @@ async function processVocalQueue() {
 async function speakLeoText(text, isPriority = false) {
   if (!text || text.length < 2) return;
 
-  // Granular splitting: break into sentences so interruptions only kill the current sentence,
-  // and Leo resumes the rest of his thought after the priority message.
-  const sentences = text.match(/[^.!?\n]+[.!?\n]*/g) || [text];
-  const cleaned = sentences.map(s => s.trim()).filter(s => s.length > 1);
+  const cleanText = text.trim();
 
   if (isPriority) {
-    // Unshift in reverse order to maintain original sentence sequence at the front
-    for (let i = cleaned.length - 1; i >= 0; i--) {
-      vocalQueue.unshift(cleaned[i]);
-    }
+    vocalQueue.unshift(cleanText);
     if (isSpeaking && audioPlayer) {
       audioPlayer.stop(); // Pre-empt current sentence
-      console.log(`[Leo/Speech] Interrupted current sentence to prioritize: "${cleaned[0].slice(0, 30)}..."`);
+      console.log(`[Leo/Speech] Interrupted current speech to prioritize: "${cleanText.slice(0, 30)}..."`);
     }
   } else {
-    for (const s of cleaned) {
-      vocalQueue.push(s);
-    }
-    // Prevent queue congestion: trim to last 30 sentences if it gets out of hand
+    vocalQueue.push(cleanText);
+    // Prevent queue congestion: trim to last 30 items if it gets out of hand
     if (vocalQueue.length > 30) {
       console.warn(`[Leo/Speech] Vocal queue congestion detected (${vocalQueue.length} items). Trimming...`);
       vocalQueue = vocalQueue.slice(-30);
     }
   }
   processVocalQueue();
+
+  // ── EPISODIC MEMORY: Log Leo's output so other bots remember it ───────────
+  try {
+    const transcriptChannelId = currentAssignedUser ? userTranscriptChannels.get(currentAssignedUser) : null;
+    fetch('http://127.0.0.1:3333/api/transcript/ingest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        speaker: 'Leo',
+        content: text,
+        channelId: transcriptChannelId || 'voice',
+        timestamp: Date.now()
+      })
+    }).catch(() => {});
+  } catch (e) {}
 }
 
 async function executeVocalSync(text) {
@@ -1142,10 +1098,7 @@ async function ensureVoiceConnection(channelId, guild, retries = 3, userId = nul
       await triggerVoiceLockOnboarding(user, profileName);
     } else {
       console.log(`[Leo/Voice] Authorized user confirmed: ${realName} (${identityData.role})`);
-      // GREETING ANCHOR: Confirm recognition verbally
-      setTimeout(() => {
-        speakLeoText(`Hey ${realName}. I'm here. Vitals are green. What's on your mind?`);
-      }, 1500);
+      // Dynamic greeting handled by voiceStateUpdate caller
     }
 
     // --- HUMAN BRIDGE: Cross-User Message Relay ---
@@ -1281,11 +1234,8 @@ async function handleUserVoice(userId) {
     }
 
     // ── NOISE GATE LAYER 2: RMS Energy ───────────────────────────────────────
-    // Compute loudness of the captured audio. Real speech from a microphone
-    // typically has RMS > 200. Background noise, synths bleeding through, fans,
-    // and Discord VAD false-positives are usually below 120.
     const rms = computeRms(pcm);
-    const RMS_THRESHOLD = 150; // Tune this up if still noisy, down if cutting real speech
+    const RMS_THRESHOLD = 80; // Lowered to 80 to catch quieter/distant voices
     console.log(`[Leo/NoiseGate] RMS=${Math.round(rms)} (threshold=${RMS_THRESHOLD})`);
     if (rms < RMS_THRESHOLD) {
       console.log(`[Leo/NoiseGate] RMS below threshold — treating as ambient noise. Skipping.`);
@@ -1459,6 +1409,8 @@ async function handleUserVoice(userId) {
       }
 
       // ── RADIO DJ VOICE INTENT: intercept natural speech for radio commands ──────────
+      // Radio intent handling removed from Leo - handed over to Groq bot
+/*
       if (isDJActive()) {
         const isOwner = ['1111106883135217665', '1286110163505385523'].includes(userId);
         const radioHandled = await handleRadioVoiceIntent(
@@ -1470,6 +1422,7 @@ async function handleUserVoice(userId) {
           return;
         }
       }
+*/
       const transcriptChannelId = userTranscriptChannels.get(userId);
       const tChannel = client.channels.cache.get(transcriptChannelId) || await client.channels.fetch(transcriptChannelId).catch(() => null);
       
@@ -1679,9 +1632,8 @@ async function processTranscriptResponse(userId, transcript, userName, transcrip
 
 async function capturePcm(userId) {
   return new Promise((resolve) => {
-    // 800ms silence gap — prevents single noise pops from ending the capture too fast.
-    // The old 500ms caused keyboard clicks / synth artifacts to be treated as full utterances.
-    const stream = voiceConnection.receiver.subscribe(userId, { end: { behavior: EndBehaviorType.AfterSilence, duration: 1200 } });
+    // 1800ms silence gap — ensures naturally slow speakers aren't cut off.
+    const stream = voiceConnection.receiver.subscribe(userId, { end: { behavior: EndBehaviorType.AfterSilence, duration: 1800 } });
     const decoder = new prism.opus.Decoder({ frameSize: 960, channels: 2, rate: 48000 });
     const chunks = [];
     let resolved = false;
@@ -1788,6 +1740,7 @@ async function transcribeAudio(wavBuffer) {
       "you", "you.", "um", "um.", "uh", "uh.", "hmm", "hmm.", "mm", "mm.",
       "mmm", "mmm.", "oh", "oh.", "ah", "ah.", "...", ". . .", "the", "a.",
       "yeah.", "okay.", "ok.", "bye", "bye.", "[music]", "[applause]",
+      "thank you.", "thank you", "thanks.", "thanks",
       "[laughter]", "(music)", "(sound)",
     ]);
     const phraseHallucinations = [
@@ -1945,7 +1898,7 @@ ${displayName === ownerName ? "STATUS: MASTER DETECTED. AUTHORIZED." : ""}
 This server is the live training and research environment for KAI (Knowledge Associative Intelligence),
 an AI built on RSHL (Recursive Sparse Hyperdimensional Lattice). Ryan is the sole inventor.
 RSHL is a novel cognitive architecture: D=16384 ternary vectors, Boid flocking memory, Fibonacci phase geometry,
-epistemic immune system, 7-region lattice topology, SynapticLayer Hebbian LTP/LTD.
+Claudey immune system, 7-region lattice topology, SynapticLayer Hebbian LTP/LTD.
 This runs on the HP Victus — no GPU clusters, no cloud training. Fully sovereign.
 Oracle = Rust server on port 3333. Leo = voice agent. KAI = core reasoning engine.
 The WHITEPAPER is at c:/KAI/WHITEPAPER.md — it contains the full mathematical spec.
@@ -2163,3 +2116,4 @@ function startEnergyMonitor() {
 }
 
 startEnergyMonitor();
+
