@@ -136,6 +136,13 @@ export function parseRadioIntent(text) {
     }
   }
 
+  // Artist only (bare name) — "The Lonely Island" / "The Weeknd"
+  // If it's a known artist name or looks like one (Capitalized Words), treat as suggestion
+  const isBareArtist = /^[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*$/.test(text.trim());
+  if (isBareArtist && text.trim().length > 3 && text.trim().length < 40) {
+    return { intent: 'suggest', artist: text.trim() };
+  }
+
   // "X by Y" — artist mention is the strongest non-keyword signal
   // e.g. "Mother Lover by The Lonely Island" or "Blinding Lights by The Weeknd."
   const byMatch = text.trim().match(/^(.+?)\s+by\s+([^?!]+?)[.!?]?\s*$/i);
@@ -197,6 +204,10 @@ export async function handleRadioVoiceIntent(text, speakFn, requestedBy = 'someo
       const { artist, mood } = intent;
       const searchQ = `${artist} ${mood || 'popular'} song audio`;
       const meta = await resolveSongMeta(searchQ);
+      if (!meta) {
+        await speakFn(`i couldn't find a good match for ${artist}.`);
+        return true;
+      }
       // Use the resolved title but always credit the requested artist
       const resolvedTitle = meta.title
         .replace(/\s*[\[(](?:official|audio|video|lyrics?|hd|4k)[^)\]]*[)\]]\s*/gi, '')

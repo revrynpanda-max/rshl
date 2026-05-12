@@ -57,10 +57,21 @@ export async function resolveSongMeta(query) {
     proc.on('close', () => {
       const line = output.trim().split('\n')[0] || '';
       const [title, dur] = line.split('|||');
-      resolve({
-        title:    title?.trim() || query,
-        duration: parseInt(dur, 10) || 210
-      });
+      
+      // Basic validation: does the title actually share a word with the query?
+      const queryWords = query.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+      const titleLower = (title || '').toLowerCase();
+      const isMatch = queryWords.length === 0 || queryWords.some(w => titleLower.includes(w));
+
+      if (!isMatch && queryWords.length > 0) {
+        console.warn(`[Radio/Meta] Query mismatch: "${query}" returned "${title}". Rejecting.`);
+        resolve(null);
+      } else {
+        resolve({
+          title:    title?.trim() || query,
+          duration: parseInt(dur, 10) || 210
+        });
+      }
     });
     proc.on('error', () => resolve({ title: query, duration: 210 }));
   });
@@ -101,10 +112,12 @@ export function createRadioPlayer() {
   });
 }
 
-// ── Stream a song and return { resource, ytdlpProc } ─────────────────────────
 export function streamSong(query) {
-  // Anti-Hallucination Query: Exclude compilations/mashups to avoid hearing the same intro for every song
-  const searchQuery = (query.toLowerCase().includes('audio') ? query : `${query} audio`) + ' -compilation -mashup -"top 10" -"top 50" -"top 100"';
+  // Anti-Hallucination Query: Exclude compilations/mashups/live to avoid hearing irrelevant audio
+  // Prioritize "Lyrics" versions for clean studio audio
+  const searchQuery = (query.toLowerCase().includes('audio') ? query : `${query} lyrics audio`) 
+    + ' -live -concert -compilation -mashup -"top 10" -"top 50" -"top 100"';
+  
   const ytProc = spawn('yt-dlp', [
     '--format', 'bestaudio/best',
     '--output', '-',
