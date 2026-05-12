@@ -10,7 +10,7 @@
  */
 
 import { joinVoiceChannel, VoiceConnectionStatus, entersState } from '@discordjs/voice';
-import { streamSong, createRadioPlayer, dimVolume, restoreVolume, resolveSongMeta } from './music-player.mjs';
+import { streamSong, createRadioPlayer, dimVolume, restoreVolume, resolveSongMeta, searchTopChoices } from './music-player.mjs';
 import { getPlaylist, getPlaylistNames } from './playlists.mjs';
 import { CHANNEL_IDS } from '../shared/channel-rules.mjs';
 import { djTTS } from './tts.mjs';
@@ -294,8 +294,8 @@ let djState = {
   transitioning:     false,   // true while _onSongEnd is running (prevents double-fire)
   skipping:          false,   // true when user explicitly skipped (suppress transition talk)
   playlistMode:      true,
-  playlistName:      'default',
   playlistIndex:     0,
+  autoplay:         true,    // automatically find 'related' songs when queue is dry
   windowTimer:       null,
   fadeTimer:         null,    // scheduled fade-out before song ends
   pollMessage:       null,
@@ -757,6 +757,27 @@ async function _onSongEnd() {
       }
       
       djState.playlistIndex++; 
+    }
+  }
+
+  // --- AUTOPLAY / DISCOVERY MODE ---
+  // If still no song, find something "related" to the last one played
+  if (!nextSong && djState.autoplay) {
+    const seed = prev || { title: 'popular', artist: 'music' };
+    console.log(`[Radio] Queue dry. Autoplay discovery based on: ${seed.title}`);
+    
+    const query = `related to ${seed.title} ${seed.artist || ''} official audio lyrics`;
+    const choices = await searchTopChoices(query);
+    
+    if (choices.length > 0) {
+      // Pick a random one from the top 3 related results
+      const pick = choices[Math.floor(Math.random() * Math.min(3, choices.length))];
+      nextSong = { 
+        title: pick.title, 
+        artist: pick.artist || '', 
+        requestedBy: 'autoplay' 
+      };
+      console.log(`[Radio] Discovery picked: ${nextSong.title}`);
     }
   }
 
