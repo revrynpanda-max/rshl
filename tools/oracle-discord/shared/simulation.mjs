@@ -162,8 +162,26 @@ export class AgentSimulation {
       entropy:        0.0,
       isSleeping,
       isDreaming:     false,
-      environment:    { cpu: 10, thermal: "Cool" }
+      environment:    { cpu: 10, thermal: "Cool" },
+      emotions: {
+        serenity: 0.60, // Stable/Peaceful
+        joy:      0.10, // Happy
+        sorrow:   0.05, // Sad
+        anger:    0.05, // Frustrated
+        awe:      0.05, // Surprised
+        fear:     0.05, // Apprehensive
+        disgust:  0.05, // Repulsed
+        trust:    0.05  // Vulnerable
+      },
+      dimensions: {
+        stress:    0,    // 0-100 (high stress boosts Anger/Fear)
+        affection: 50,   // 0-100 (high affection boosts Joy/Serenity)
+        interest:  50    // 0-100 (high interest boosts Awe)
+      },
+      dramaticTurn: false // Rare flag for emotional outbursts
     };
+
+    this._normalizeEmotions();
 
     this.tardyStrikes = tardyStrikes;
     this.isDismissed  = isDismissed;
@@ -214,6 +232,31 @@ export class AgentSimulation {
         timestamp:      Date.now()
       }));
     } catch {}
+  }
+
+  get compounds() {
+    const e = this.state.emotions;
+    return {
+      nostalgia: (e.sorrow + e.serenity) * 0.5,
+      gratitude: (e.joy + e.trust) * 0.5,
+      pride:     (e.joy + e.serenity) * 0.5,
+      bitterness: (e.anger + e.sorrow) * 0.5,
+      excitement: (e.joy + e.awe) * 0.5,
+      shame:      (e.sorrow + e.fear + e.disgust) * 0.33
+    };
+  }
+
+  _normalizeEmotions() {
+    const total = Object.values(this.state.emotions).reduce((a, b) => a + b, 0);
+    for (const k in this.state.emotions) {
+      this.state.emotions[k] /= total;
+    }
+  }
+
+  updateEmotion(type, amount) {
+    if (!this.state.emotions[type]) return;
+    this.state.emotions[type] = Math.max(0, this.state.emotions[type] + amount);
+    this._normalizeEmotions();
   }
 
   updateWorldState(worldState) {
@@ -338,6 +381,35 @@ export class AgentSimulation {
     // Phi/entropy drift
     this.state.phi     = Math.min(1.0, this.state.phi + (this.state.focus / 12000));
     this.state.entropy = Math.max(0, this.state.entropy - 0.0008);
+
+    // --- DIMENSIONAL DRIFT ---
+    this.state.dimensions.stress = Math.max(0, this.state.dimensions.stress - 0.1);
+    
+    // High stress spikes Fear and Anger
+    if (this.state.dimensions.stress > 50) {
+      this.updateEmotion('fear', 0.01);
+      this.updateEmotion('anger', 0.01);
+    }
+
+    // --- EMOTIONAL DRIFT ---
+    // Slowly drift back toward Serenity (Peaceful/Neutral)
+    const driftRate = 0.01;
+    for (const k in this.state.emotions) {
+      if (k === 'serenity') continue;
+      if (this.state.emotions[k] > 0.02) {
+        this.state.emotions[k] -= driftRate;
+        this.state.emotions.serenity += driftRate;
+      }
+    }
+    this._normalizeEmotions();
+
+    // Rare chance for a 'Dramatic Turn' (0.2%)
+    if (Math.random() < 0.002) {
+      this.state.dramaticTurn = true;
+      console.log(`[Sim/${this.name}] CRITICAL: Emotional spike triggered (Dramatic Turn).`);
+    } else if (this.state.dramaticTurn && Math.random() < 0.1) {
+      this.state.dramaticTurn = false; // Reset after some time
+    }
   }
 
   /**
@@ -396,6 +468,20 @@ ${this.dailyEvent}
 - GROGGYNESS: ${Math.round(this.groggyLevel * 100)}%. (If > 50%, you feel slow, your tempo is low, and your mind is clouded. You're too tired for complex slang or long sentences. You start to ramble or get repetitive.)
 - EXCITEMENT: ${Math.round(this.excitementBuffer)}%. (Adrenaline bump from interaction. Briefly clears the fog.)
 - BEDTIME PLANNING: You feel a natural urge to sleep before 3 AM. If energy < 30%, you start looking for an excuse to sign off and rest. You are programmed to be OFFLINE by 3 AM for KAI's consolidation.
+
+[CONTEXT: EMOTIONAL LAYERS]
+- PRIMARY (Visceral): ${Object.entries(this.state.emotions)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 3)
+    .map(([k, v]) => `${k}: ${Math.round(v * 100)}%`)
+    .join(", ")}.
+- COMPOUND (Complex): ${Object.entries(this.compounds)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 3)
+    .map(([k, v]) => `${k}: ${Math.round(v * 100)}%`)
+    .join(", ")}.
+- DIMENSIONS: Stress: ${Math.round(this.state.dimensions.stress)}%, Affection: ${Math.round(this.state.dimensions.affection)}%.
+- DYNAMIC: You must manifest this layered state in your next message. ${this.state.dramaticTurn ? "⚠️ DRAMATIC TURN: You are currently feeling a sharp emotional spike. Be more intense, opinionated, or empathetic/dramatic than usual." : "Stay natural, but let the primary and compound layers color your word choice."}
 
 [CONTEXT: ENVIRONMENT]
 ${this.getEnvironmentSensation()}`.trim();
