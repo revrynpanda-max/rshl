@@ -410,9 +410,9 @@ export async function addRequest(title, artist = '', requestedBy = 'someone') {
     }
     return 'pooled';
   } else {
-    // Outside window — goes straight to queue
-    djState.songQueue.push(song);
-    console.log(`[Radio] Request queued: ${title} (queue size: ${djState.songQueue.length})`);
+    // Outside window — goes straight to the front of the queue
+    djState.songQueue.unshift(song);
+    console.log(`[Radio] Request queued (PRIORITY): ${title} (queue size: ${djState.songQueue.length})`);
     return 'queued';
   }
 }
