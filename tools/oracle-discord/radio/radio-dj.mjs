@@ -311,17 +311,21 @@ export async function startDJ(voiceChannel, textChannel, guild) {
     djState.playlistName  = saved.playlistName  || 'default';
     djState.playlistIndex = saved.playlistIndex || 0;
     djState.songQueue     = saved.songQueue     || [];
-    // Re-queue the last-played song at the front so it resumes
-    if (saved.lastSong?.title) {
-      djState.songQueue.unshift(saved.lastSong);
-      console.log(`[Radio] Resuming from saved state: ${saved.lastSong.title}`);
-    }
+    // We NO LONGER unshift the last song, as it causes duplicates on restart.
+    // We just keep it in saved.lastSong to influence the next transition.
+    djState.lastSong = saved.lastSong;
   }
 
   djState.guild       = guild;
   djState.textChannel = textChannel;
   djState.active      = true;
   djState.playlistMode = true;
+
+  // Initial Playlist Load (if queue is empty)
+  if (djState.songQueue.length === 0) {
+    const list = getPlaylist(djState.playlistName);
+    djState.songQueue = _shuffle([...list]);
+  }
 
   djState.voiceConnection = joinVoiceChannel({
     channelId: voiceChannel.id,
@@ -353,10 +357,13 @@ export async function startDJ(voiceChannel, textChannel, guild) {
   const intro = saved?.lastSong
     ? `back on air. picking up where we left off.`
     : `radio's live. i'm your dj. drop a request in the chat or just vibe.`;
+  
   await _djSpeak(intro);
+  
   if (textChannel) {
     textChannel.send('🎙️ **Leo Radio** is live — say or type what you want to hear. Playlists: `default` `hype` `chill` `late-night`').catch(() => {});
   }
+  
   await _playNextSong();
 }
 
@@ -405,8 +412,24 @@ export async function startPlaylist(name = 'default') {
   djState.playlistName  = name;
   djState.playlistIndex = 0;
   const list = getPlaylist(name);
-  djState.songQueue = [...list]; // copy so mutations don't affect original
-  console.log(`[Radio] Playlist "${name}" loaded — ${djState.songQueue.length} songs`);
+  
+  // SHUFFLE: Use Fisher-Yates to ensure true randomness
+  const shuffled = [...list];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  
+  djState.songQueue = shuffled;
+  console.log(`[Radio] Playlist "${name}" loaded and shuffled — ${djState.songQueue.length} songs`);
+}
+
+function _shuffle(array) {
+  for (let i = array.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [array[i], array[j]] = [array[j], array[i]];
+  }
+  return array;
 }
 
 /** Returns current status string */
