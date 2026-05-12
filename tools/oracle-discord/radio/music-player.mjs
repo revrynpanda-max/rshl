@@ -44,11 +44,11 @@ export async function getSongDuration(title, artist) {
 export async function resolveSongMeta(query) {
   return new Promise((resolve) => {
     const proc = spawn('yt-dlp', [
-      '--print', '%(title)s|||%(duration)s',
+      '--print', '%(title)s|||%(duration)s|||%(uploader)s',
       '--no-download',
       '--no-playlist',
       '--default-search', 'ytsearch1',
-      `${query} audio`
+      `${query} lyrics audio`
     ], { windowsHide: true });
 
     let output = '';
@@ -56,20 +56,28 @@ export async function resolveSongMeta(query) {
     proc.stderr.on('data', () => {}); // suppress warnings
     proc.on('close', () => {
       const line = output.trim().split('\n')[0] || '';
-      const [title, dur] = line.split('|||');
+      const [title, dur, uploader] = line.split('|||');
       
-      // Basic validation: does the title actually share a word with the query?
+      const duration = parseInt(dur, 10) || 0;
+      const uploaderLower = (uploader || '').toLowerCase();
+      
+      // QUALITY GUARD: Reject random vlogs, memes, or extreme lengths
+      // Music is usually 90s - 15m. Official 'Topic' channels are gold.
+      const isOfficial = uploaderLower.includes('topic') || uploaderLower.includes('vevo') || uploaderLower.includes('records');
+      const isReasonableLength = duration >= 90 && duration <= 900; // 1.5m to 15m
+      
       const queryWords = query.toLowerCase().split(/\s+/).filter(w => w.length > 3);
       const titleLower = (title || '').toLowerCase();
-      const isMatch = queryWords.length === 0 || queryWords.some(w => titleLower.includes(w));
+      const hasKeywords = queryWords.length === 0 || queryWords.some(w => titleLower.includes(w));
 
-      if (!isMatch && queryWords.length > 0) {
-        console.warn(`[Radio/Meta] Query mismatch: "${query}" returned "${title}". Rejecting.`);
+      if ((!hasKeywords || !isReasonableLength) && !isOfficial) {
+        console.warn(`[Radio/Meta] Low-quality result: "${title}" by "${uploader}" (${duration}s). Rejecting.`);
         resolve(null);
       } else {
         resolve({
           title:    title?.trim() || query,
-          duration: parseInt(dur, 10) || 210
+          duration: duration || 210,
+          uploader: uploader?.trim()
         });
       }
     });
@@ -81,11 +89,11 @@ export async function resolveSongMeta(query) {
 export async function searchTopChoices(query) {
   return new Promise((resolve) => {
     const proc = spawn('yt-dlp', [
-      '--print', '%(title)s|||%(uploader)s',
+      '--print', '%(title)s|||%(uploader)s|||%(duration)s',
       '--no-download',
       '--no-playlist',
       '--default-search', 'ytsearch5',
-      `${query} song audio`
+      `${query} lyrics audio`
     ], { windowsHide: true });
 
     let output = '';
@@ -93,12 +101,15 @@ export async function searchTopChoices(query) {
     proc.stderr.on('data', () => {});
     proc.on('close', () => {
       const results = output.trim().split('\n').map(line => {
-        const [title, artist] = line.split('|||');
+        const [title, artist, durationStr] = line.split('|||');
+        const duration = parseInt(durationStr, 10) || 0;
         return {
           title: title?.trim(),
-          artist: artist?.trim()
+          artist: artist?.trim(),
+          duration
         };
-      }).filter(r => r.title);
+      }).filter(r => r.title && r.duration >= 90 && r.duration <= 900); // Filter out junk in search too
+      
       resolve(results.slice(0, 5));
     });
     proc.on('error', () => resolve([]));
