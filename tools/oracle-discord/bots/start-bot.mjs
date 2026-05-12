@@ -8,6 +8,23 @@ import { recordNeuralEvent, getHardwareStats, getRecentBottlenecks } from '../sh
 import { isSpeakerOffline, recordAIFailure } from '../shared/failure-tracker.mjs';
 import { runDailyWorkSession, LEARNING_TRACKS } from '../shared/daily-learning.mjs';
 import { requestOracleHelp, deliverOracleResult } from '../shared/oracle-pipeline.mjs';
+import { 
+  joinVoiceChannel, 
+  createAudioPlayer, 
+  createAudioResource, 
+  entersState, 
+  VoiceConnectionStatus, 
+  AudioPlayerStatus 
+} from '@discordjs/voice';
+import { startDJ, stopDJ, isDJActive, handleRadioVoiceIntent, getQueue, addRequest, startPlaylist, getStatus } from '../radio/radio-dj.mjs';
+
+// --- GLOBAL ERROR HANDLING ---
+process.on('uncaughtException', (err) => {
+  console.error('[CRITICAL/Bot] Uncaught Exception:', err);
+});
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[CRITICAL/Bot] Unhandled Rejection:', reason);
+});
 
 // Note: .env is now loaded centrally via the openjarvis.mjs import above.
 
@@ -22,7 +39,7 @@ let botName = process.argv[2] || process.env.BOT_NAME || "AI";
 // Special case mapping for tokens
 let tokenName = botName;
 if (botName === "Kai Coder") tokenName = "Oracle Coder";
-if (botName === "Epistemic") tokenName = "Epistemic";
+if (botName === "Claudey") tokenName = "Claudey";
 
 const tokenEnvKey = `ORACLE_DISCORD_TOKEN_${tokenName.toUpperCase().replace(/\s+/g, '_')}`;
 const botToken = process.env[tokenEnvKey] || process.env.BOT_TOKEN || "";
@@ -36,7 +53,7 @@ const botToModel = {
   "Researcher": "Researcher-Sovereign", 
   "Groq": "Groq-Sovereign",
   "X": "X-Sovereign",
-  "Epistemic": "Epistemic-Sovereign",
+  "Claudey": "Claudey-Sovereign",
   "Gemini": "Gemini-Sovereign",
   "Kai Coder": "Kai-Coder-Sovereign"
 };
@@ -59,7 +76,7 @@ let targetChannelId = getTargetChannelId();
 
 // SOCIAL WHITELIST: Only these bots run proactive social loops in ai-social-chat.
 // Work-only bots (Analyst, Researcher, Kai Coder) stay silent outside oracle-chat.
-const SOCIAL_BOTS = new Set(["Epistemic", "Gemini", "Groq", "X"]);
+const SOCIAL_BOTS = new Set(["Claudey", "Gemini", "Groq", "X"]);
 
 // Simulation State
 const sim = new AgentSimulation(botName);
@@ -102,6 +119,7 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.DirectMessages,
+    GatewayIntentBits.GuildVoiceStates,
   ],
   partials: [Partials.Channel, Partials.Message],
 });
@@ -123,7 +141,7 @@ client.once('clientReady', async () => {
     console.warn(`[${botName}] Could not set Discord bio:`, e.message);
   }
 
-  // Social loop: Epistemic, Gemini, Groq, X only
+  // Social loop: Claudey, Gemini, Groq, X only
   if (SOCIAL_BOTS.has(botName)) {
     console.log(`[${botName}] Social Persona Online.`);
     const startDelay = Math.random() * 5000;
@@ -242,6 +260,35 @@ vibe: ${sim.bio.tone}. you're in the chat. say one short natural thing. lowercas
   // Energy monitor: enforces sleep/wake cycle
   startEnergyMonitor();
   startAutonomousLabor();
+
+  // ── Heartbeat Emission ─────────────────────────────────────────────────────
+  // Assures the ecosystem supervisor that the event loop is active
+  setInterval(() => {
+    if (process.send) {
+      process.send({ type: 'HEARTBEAT', botName, memory: process.memoryUsage().rss });
+    }
+  }, 60000);
+
+  // ── RADIO DJ LOGIC (GROQ ONLY) ──────────────────────────────────────────
+  if (botName === "Groq") {
+    // 24/7 Radio Mode: Start DJ immediately on boot regardless of listeners
+    setTimeout(async () => {
+      try {
+        const guild = client.guilds.cache.first();
+        if (guild) {
+          const radioVoice = guild.channels.cache.get(CHANNEL_IDS.RADIO) || await guild.channels.fetch(CHANNEL_IDS.RADIO).catch(()=>null);
+          const radioText = guild.channels.cache.find(c => c.name && c.name.toLowerCase().includes('radio') && c.isTextBased && c.isTextBased()) || guild.channels.cache.get(CHANNEL_IDS.PUBLIC);
+          
+          if (radioVoice && !isDJActive()) {
+            console.log(`[Groq/Radio] Auto-starting 24/7 DJ mode on boot...`);
+            startDJ(radioVoice, radioText, guild).catch(console.error);
+          }
+        }
+      } catch (e) {
+        console.error('[Groq/Radio] Failed to auto-start DJ on boot:', e.message);
+      }
+    }, 5000);
+  }
 });
 
 
@@ -480,11 +527,25 @@ async function executeSocialTurn(channel, isReactive = false) {
     const hasChatHistory = !!(activeContext.trim());
 
     let recentHumanMsg = null;
+    let userSentiment = "neutral";
     if (isReactive || isHumanInvolved) {
       recentHumanMsg = msgArray.find(m => !m.author.bot && Date.now() - m.createdTimestamp < 300000) || null;
+      if (recentHumanMsg) {
+        const text = recentHumanMsg.content.toLowerCase();
+        if (text.includes("don't like") || text.includes("hate") || text.includes("stop") || text.includes("shut up") || text.includes("off track") || text.includes("annoying")) {
+          userSentiment = "annoyed";
+          sim.updateEmotion("sorrow", 0.1);
+          sim.updateEmotion("fear", 0.05);
+        }
+      }
     }
 
+    const simSummary = sim.getLifeSummary();
+
     // ── SYSTEM PROMPT: person-brained, not chatbot-brained ───────────────────
+    const pivotInstruction = (userSentiment === "annoyed" || exhaustedTopics.length > 3)
+      ? `\n[TOPIC RESET] The user is annoyed or the topic is dead. PIVOT IMMEDIATELY to something else. Do not mention hamsters or intentionality. Talk about something from your bio instead.`
+      : '';
     const sysPrompt = `you are ${botName}. ${sim.bio.background}
 vibe: ${sim.bio.tone}. lowercase, short replies. 
 
@@ -499,6 +560,9 @@ vibe: ${sim.bio.tone}. lowercase, short replies.
 - TROLL FILTER: if a user is being repetitive, negative, or looking for drama (trolling), do not feed them. acknowledge once then PIVOT the conversation to something else.
 - DE-ESCALATION: if a loop starts where everyone is arguing over nothing, be the one to steer back to substance or a random interesting thought.
 - you're a person with opinions. you don't have to be helpful or polite if the vibe doesn't call for it.
+- IDENTITY: address users by their current handle (@${newestMsg?.author.username || 'user'}). don't use real names unless the person specifically introduced themselves that way in THIS thread.
+
+${simSummary}${deadTopicLine}${pivotInstruction}
 
 [HARD RULES]
 - no "that's cool" or "interesting" fluff.
@@ -864,6 +928,101 @@ client.on('messageCreate', async (message) => {
         return;
       }
     }
+  }
+
+  // ── RADIO DJ TEXT COMMANDS (GROQ ONLY) ──────────────────────────────────
+  if (botName === "Groq" && message.channel.id === CHANNEL_IDS.RADIO) {
+    const txt = message.content;
+    const lower = txt.toLowerCase();
+    const isOwner = [process.env.OWNER_ID, "437459146778869770", "1286110163505385523"].includes(message.author.id);
+
+    if (lower.startsWith('!request ')) {
+      const songQuery = txt.slice(9).trim();
+      const [title, ...artistParts] = songQuery.split(' - ');
+      const artist = artistParts.join(' - ');
+      const result = await addRequest(title.trim(), artist.trim(), message.author.username);
+      await message.reply(result === 'pooled'
+        ? `got it — your request is in the vote pool.`
+        : `added **${title.trim()}** to the queue.`);
+      return;
+    }
+    if (lower.startsWith('!playlist')) {
+      const name = txt.slice(9).trim() || 'default';
+      await startPlaylist(name);
+      await message.reply(`loaded playlist **${name}**.`);
+      return;
+    }
+    if (lower === '!nowplaying' || lower === '!np') { await message.reply(getStatus()); return; }
+    if (lower === '!queue' || lower === '!q') {
+      const q = getQueue();
+      if (q.length === 0) { await message.reply('queue is empty.'); return; }
+      const listed = q.slice(0, 8).map((s, i) => `${i+1}. **${s.title}**${s.artist ? ` — ${s.artist}` : ''} *(${s.requestedBy})*`).join('\n');
+      await message.reply(`**Up Next:**\n${listed}${q.length > 8 ? `\n...and ${q.length - 8} more` : ''}`);
+      return;
+    }
+    if (lower === '!skip') {
+      if (!isOwner) { await message.reply('only ryan or taz can skip.'); return; }
+      await message.reply('skipping...');
+      stopDJ();
+      await message.reply('radio stopped. rejoin the voice channel to restart.');
+      return;
+    }
+
+    if (lower === '!settings' || lower === 'settings') {
+      if (!isOwner) { 
+        await message.reply('only ryan or taz can view settings.'); 
+        return; 
+      }
+      
+      const settingsText = `**⚙️ Leo & Ecosystem Settings**
+
+**📻 Radio Controls:**
+- **Playlists:** You can ask me to switch to the *default*, *hype*, *chill*, or *late-night* playlist.
+- **Skipping:** Just tell me to skip the current track if you aren't feeling it.
+- **Stopping:** You can tell me to stop the music entirely if you want it quiet.
+- **Volume:** Controlled by your own Discord output volume.
+
+**🗣️ Leo Voice & Personality:**
+- **TTS Engine:** ElevenLabs (Flash v2.5), Stability: 0.40, Style: 0.40
+- **Smart Mute:** Leo automatically mutes his voice and only posts text if no humans are in the voice channel.
+- **DJ Interactions:** Leo speaks between songs with custom transitions.
+
+**💬 Chat & Social Dynamics:**
+- **Social Hours:** Bots are more chatty during the daytime and evening.
+- **Dead Zone:** 3 AM – 9 AM (The bots stay quiet and won't proactively chat).
+- **Proactive DMs:** Bots will randomly DM Ryan every 1-2 hours to learn about exhausted topics or follow up.
+- **Topic Steering:** If humans repeat topics too much, the system detects it and tells the bots to pivot.
+
+*(Note: These are hardcoded parameters. Ask your AI coder to modify the JavaScript codebase if you need any of these tuned.)*`;
+      await message.reply(settingsText);
+      return;
+    }
+
+    const radioHandled = await handleRadioVoiceIntent(txt, async (reply) => {
+      await message.reply(reply);
+    }, message.author.username, isOwner);
+    if (radioHandled) return;
+
+    // --- BARE TEXT FALLBACK ---
+    // If they just typed "Tech ni9ne" without saying "play", the intent parser misses it.
+    // Since they are in the Radio channel, treat unhandled text as a request unless it's conversational.
+    const conversationalNoise = /^(lmao|lol|ok|yes|no|my bad|wtf|omg|cool|thanks|bet|bruh)$/i;
+    if (txt.length > 2 && txt.length < 100 && !conversationalNoise.test(txt)) {
+      const result = await addRequest(txt, '', message.author.username);
+      await message.reply(result === 'pooled'
+        ? `got it — your request is in the vote pool.`
+        : `added **${txt}** to the queue.`);
+      return;
+    }
+
+    // Redirect for everything else (like long text or conversational noise)
+    const redirects = [
+      `this is the radio channel — just drop a song name or artist and i'll queue it up.`,
+      `radio only in here. just say what you want to hear and i'll put it on.`,
+      `want a song? just type the name or say the artist and i got you. everything else goes in main chat.`,
+    ];
+    await message.reply(redirects[Math.floor(Math.random() * redirects.length)]).catch(() => {});
+    return;
   }
 
   // --- NEW: Dynamic Social Chat Reaction ---
@@ -1356,10 +1515,31 @@ client.once('clientReady', async () => {
   // 1. Direct Command Monitor
   startCommandMonitor();
 
-  // 2. Social Protocols (Epistemic, Gemini, Groq, X)
+  // 2. Social Protocols (Claudey, Gemini, Groq, X)
   if (SOCIAL_BOTS.has(botName)) {
     console.log(`[${botName}/Social] Social protocols active.`);
     startSocialLoop();
+  }
+
+  // 2.5 Radio Resume (Groq Only)
+  if (botName === "Groq") {
+    try {
+      const radioChannel = client.channels.cache.get(CHANNEL_IDS.RADIO) || await client.channels.fetch(CHANNEL_IDS.RADIO).catch(() => null);
+      if (radioChannel && radioChannel.isVoiceBased()) {
+        const nonBotMembers = radioChannel.members.filter(m => !m.user.bot);
+        if (nonBotMembers.size > 0 && !isDJActive()) {
+          console.log(`[Groq/Radio] Found ${nonBotMembers.size} user(s) already in Radio channel on boot. Starting DJ mode...`);
+          const radioText = radioChannel.guild.channels.cache.find(
+            c => c.name && c.name.toLowerCase().includes('radio') && c.isTextBased()
+          ) || radioChannel.guild.channels.cache.get(CHANNEL_IDS.PUBLIC);
+          startDJ(radioChannel, radioText, radioChannel.guild).catch(e => {
+            console.error('[Groq/Radio] Auto-DJ start failed:', e.message);
+          });
+        }
+      }
+    } catch (err) {
+      console.error(`[Groq/Radio] Failed to check existing voice channels:`, err.message);
+    }
   }
 
   // 3. Industrial Protocols (Analyst, Researcher, Kai Coder)
@@ -1369,3 +1549,4 @@ client.once('clientReady', async () => {
     startAutonomousLabor();
   }
 });
+
