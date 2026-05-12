@@ -722,13 +722,29 @@ async function _onSongEnd() {
   if (djState.windowTimer) { clearTimeout(djState.windowTimer); djState.windowTimer = null; }
 
   // Determine EXACTLY what song is next so the preload matches the metadata
-  let nextSong = djState.songQueue[0];
+  let nextSong = djState.songQueue.shift();
+  
+  // DUPLICATE GUARD: If the next song is literally the one we just played, skip it
+  const prev = djState.currentSong;
+  if (nextSong && prev && nextSong.title === prev.title && nextSong.artist === prev.artist) {
+    console.log(`[Radio] Duplicate detected (${nextSong.title}) — skipping to next.`);
+    nextSong = djState.songQueue.shift();
+  }
+
   if (!nextSong && djState.playlistMode) {
     const list = getPlaylist(djState.playlistName);
     if (list.length > 0) {
       // Pick next in sequence or random, but DO NOT pick a random one again later
-      const index = djState.playlistIndex % list.length;
+      let index = djState.playlistIndex % list.length;
       nextSong = list[index];
+      
+      // Secondary duplicate guard for playlist sequence
+      if (prev && nextSong.title === prev.title && nextSong.artist === prev.artist) {
+        index = (djState.playlistIndex + 1) % list.length;
+        nextSong = list[index];
+        djState.playlistIndex++;
+      }
+      
       djState.playlistIndex++; 
     }
   }
