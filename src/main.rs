@@ -228,7 +228,7 @@ impl App {
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_else(|_| ".".to_string());
 
-        let engine = kai::core::engine::Engine::new(&base_dir);
+        let engine = kai::core::engine::Engine::new(&base_dir, None);
 
         Self {
             engine,
@@ -1505,7 +1505,7 @@ impl App {
                 &universe,
                 &candidates,
                 &drive,
-                &synaptic_layer,
+                &synaptic_layer.read().unwrap(),
                 tick,
                 dream_count,
             );
@@ -1514,7 +1514,7 @@ impl App {
                 &episodic,
                 &global_workspace,
                 &self_state_hub,
-                &synaptic_layer,
+                &synaptic_layer.read().unwrap(),
                 &base_dir,
             );
         });
@@ -1526,7 +1526,7 @@ impl App {
             &self.engine.universe,
             &self.engine.candidates,
             &self.engine.drive,
-            &self.engine.synaptic_layer,
+            &self.engine.synaptic_layer.read().unwrap(),
             self.engine.tick,
             self.engine.dream_count,
         );
@@ -1535,7 +1535,7 @@ impl App {
             &self.engine.episodic,
             &self.engine.global_workspace,
             &self.engine.hub,
-            &self.engine.synaptic_layer,
+            &self.engine.synaptic_layer.read().unwrap(),
             &self.base_dir,
         );
         (lattice, mind)
@@ -10081,7 +10081,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             (u, SynapticLayer::new())
         };
         println!("--- KAI ORACLE HEADLESS MODE ---");
-        println!("Oracle HTTP API: http://127.0.0.1:3333");
+        println!("Oracle HTTP API: http://127.0.0.1:3334");
         println!("Use /api/oracle-turn or /api/discord-turn with {{from,text}}.");
         kai::bridge::oracle_server::start_oracle_server(
             std::sync::Arc::new(std::sync::Mutex::new(universe)),
@@ -10173,7 +10173,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Open oracle.html in your browser to join the roundtable.
     {
         let oracle_universe = std::sync::Arc::new(std::sync::Mutex::new(app.engine.universe.clone()));
-        let oracle_synapses = std::sync::Arc::new(std::sync::Mutex::new(app.engine.synaptic_layer.clone()));
+        let oracle_synapses = std::sync::Arc::new(std::sync::Mutex::new(app.engine.synaptic_layer.read().unwrap().clone()));
         std::thread::spawn(move || {
             kai::bridge::oracle_server::start_oracle_server(oracle_universe, oracle_synapses);
         });

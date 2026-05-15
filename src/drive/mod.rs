@@ -44,6 +44,7 @@ const BOREDOM_SCALE: f32 = 0.3;
 pub enum Mood {
     Dormant,
     Neutral,
+    Stable,
     Curious,
     Engaged,
     Uneasy,
@@ -55,6 +56,7 @@ impl std::fmt::Display for Mood {
         match self {
             Mood::Dormant => write!(f, "dormant"),
             Mood::Neutral => write!(f, "neutral"),
+            Mood::Stable => write!(f, "stable"),
             Mood::Curious => write!(f, "curious"),
             Mood::Engaged => write!(f, "engaged"),
             Mood::Uneasy => write!(f, "uneasy"),
@@ -68,6 +70,7 @@ impl Mood {
         match self {
             Mood::Dormant => "💤",
             Mood::Neutral => "·",
+            Mood::Stable => "💎",
             Mood::Curious => "🔍",
             Mood::Engaged => "⚡",
             Mood::Uneasy => "😟",

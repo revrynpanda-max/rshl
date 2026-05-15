@@ -21,7 +21,7 @@ $ParticipantTokenNames = @(
     @{ Name = "Researcher";   Env = "ORACLE_DISCORD_TOKEN_RESEARCHER" },
     @{ Name = "Groq";         Env = "ORACLE_DISCORD_TOKEN_GROQ" },
     @{ Name = "X";            Env = "ORACLE_DISCORD_TOKEN_X" },
-    @{ Name = "Epistemic";       Env = "ORACLE_DISCORD_TOKEN_EPISTEMIC" },
+    @{ Name = "Claudey";       Env = "ORACLE_DISCORD_TOKEN_CLAUDEY" },
     @{ Name = "Gemini";       Env = "ORACLE_DISCORD_TOKEN_GEMINI" },
     @{ Name = "GPT";          Env = "ORACLE_DISCORD_TOKEN_GPT" },
     @{ Name = "Oracle Coder"; Env = "ORACLE_DISCORD_TOKEN_ORACLE_CODER" }
@@ -229,7 +229,7 @@ function Ensure-DiscordConfig {
 
 function Test-OracleReachable {
     try {
-        Invoke-RestMethod -Uri "http://127.0.0.1:3333/api/session" -Method Get -TimeoutSec 2 | Out-Null
+        Invoke-RestMethod -Uri "http://127.0.0.1:3334/api/session" -Method Get -TimeoutSec 2 | Out-Null
         $true
     } catch {
         $false
@@ -267,7 +267,7 @@ function Start-KaiOracle {
 
     for ($i = 0; $i -lt 60; $i++) {
         if (Test-OracleReachable) {
-            Write-Host "Oracle is reachable at http://127.0.0.1:3333"
+            Write-Host "Oracle is reachable at http://127.0.0.1:3334"
             return
         }
         Start-Sleep -Milliseconds 500
@@ -386,6 +386,14 @@ try {
     }
 
     # ── Step 2: Kill existing gateway processes ───────────────────────────
+    Write-Host "[Init] Hard-resetting environment to prevent port conflicts..." -ForegroundColor Yellow
+    Stop-Process -Name kai -Force -ErrorAction SilentlyContinue
+    Stop-Process -Name node -Force -ErrorAction SilentlyContinue
+    $port3334 = Get-NetTCPConnection -LocalPort 3334 -ErrorAction SilentlyContinue
+    if ($port3334) { Stop-Process -Id $port3334.OwningProcess -Force -ErrorAction SilentlyContinue }
+    $port3001 = Get-NetTCPConnection -LocalPort 3001 -ErrorAction SilentlyContinue
+    if ($port3001) { Stop-Process -Id $port3001.OwningProcess -Force -ErrorAction SilentlyContinue }
+    Start-Sleep -Seconds 1
     Stop-ExistingDiscordGateways
 
     # ── Step 3: Launch KAI + OpenJarvis in PARALLEL ───────────────────────
@@ -402,16 +410,16 @@ try {
         if (-not (Test-OracleReachable)) {
             Start-KaiOracle -RepoRoot $repoRoot
         } else {
-            Write-Host "[KAI] Already reachable at http://127.0.0.1:3333"
+            Write-Host "[KAI] Already reachable at http://127.0.0.1:3334"
         }
     }
 
     # ── Step 4: Start Discord gateway ─────────────────────────────────────
     Write-Host ""
     Write-Host "[Startup] Phase 2 - Backends online. Starting microservices ecosystem..."
-    Write-Host "[Startup] You will see individual console windows for each bot."
     Write-Host ""
     .\run-ecosystem.ps1
 } finally {
     Pop-Location
 }
+

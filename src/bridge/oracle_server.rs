@@ -297,9 +297,9 @@ struct ToolPlanRequest {
 // ── Server Entry Point ───────────────────────────────────────────────────────
 
 pub fn start_oracle_server(universe: Arc<Mutex<Universe>>, synaptic_layer: Arc<Mutex<SynapticLayer>>) {
-    let listener = TcpListener::bind("127.0.0.1:3333")
-        .expect("Oracle: could not bind port 3333");
-    println!("--- ORACLE ROUNDTABLE ONLINE (PORT 3333) ---");
+    let listener = TcpListener::bind("127.0.0.1:3334")
+        .expect("Oracle: could not bind port 3334");
+    println!("--- ORACLE ROUNDTABLE ONLINE (PORT 3334) ---");
 
     let roundtable_session = Arc::new(Mutex::new(load_session()));
     let public_session = Arc::new(Mutex::new(Session {
@@ -845,7 +845,7 @@ fn build_contextual_memory_string(
         let u = universe.lock().unwrap();
         let sl = synaptic_layer.lock().unwrap();
         let field = crate::core::FieldState::compute(&u, 1);
-        crate::core::NeuralBus::query_associative(&u, &sl, field.phi_g, query, 5)
+        crate::core::NeuralBus::query_associative(&u, &sl, field.phi_g, query, 5, &[], "")
     };
     let sess = session.lock().unwrap();
     let transcript_context = if is_transcript_lookup_question(query) {
@@ -3323,7 +3323,7 @@ fn generate_oracle_kai_reply(
     let brain = BrainSignals::default(); // Live brain signals would be better
     
     // 1. Semantic Retrieval
-    let hits = crate::core::NeuralBus::query_associative(&u, &sl, 0.5, prompt, 12);
+    let hits = crate::core::NeuralBus::query_associative(&u, &sl, 0.5, prompt, 12, &[], "");
     
     if hits.is_empty() { return "Lattice quiet on this.".into(); }
 
@@ -3444,7 +3444,7 @@ fn build_context_packet(sess: &Session, universe: &Universe, synaptic_layer: &cr
 
     let query_term = if focus.trim().is_empty() { "current project objective" } else { focus };
     let field = crate::core::FieldState::compute(universe, 1);
-    let memory = crate::core::NeuralBus::query_associative(universe, synaptic_layer, field.phi_g, query_term, 15);
+    let memory = crate::core::NeuralBus::query_associative(universe, synaptic_layer, field.phi_g, query_term, 15, &[], "");
     
     let memory_iter = memory.iter()
         .filter(|h| {
@@ -4146,7 +4146,7 @@ fn handle_rshl_query(
             u.query_vec(&query_vec, limit).into_iter().map(|(c, s)| crate::core::QueryHit::from_cell(&c, s)).collect()
         } else {
             let field = crate::core::FieldState::compute(&u, 1);
-            crate::core::NeuralBus::query_associative(&u, &sl, field.phi_g, &req.query, limit)
+            crate::core::NeuralBus::query_associative(&u, &sl, field.phi_g, &req.query, limit, &[], "")
         }
     };
     

@@ -11,6 +11,7 @@ use crate::core::field_state::DreamHistoryEntry;
 ///
 /// This is how KAI thinks while "asleep" — finding connections between
 /// concepts he already has, and strengthening the ones that matter.
+use rayon::prelude::*;
 use crate::core::{FieldState, SparseVec, Universe};
 use rand::Rng;
 use std::sync::Mutex;
@@ -152,18 +153,18 @@ fn replay_priority(
     (recency_boost * 0.3 + weakness + source_boost + noise).min(1.0)
 }
 
-/// Select the best dream pair from candidate cells.
-/// Matches the JS selectDreamPair logic: scores pairs by overlap band,
-/// replay priority, cross-region bonus, and duplicate penalty.
-fn select_dream_pair(universe: &Universe) -> Option<(usize, usize, f32)> {
+/// Select a batch of promising dream pairs using HNSW neighbors.
+/// This is MUCH smarter than random scanning: it finds cells that actually
+/// resonate, then filters them by the resonance "sweet spot" (0.52).
+pub fn select_dream_batch(universe: &Universe, batch_size: usize) -> Vec<(usize, usize, f32)> {
     let cells = universe.cells();
     if cells.len() < 2 {
-        return None;
+        return Vec::new();
     }
 
-    // Rank cells by replay priority, take top candidates
-    let limit = 14.min(cells.len());
-    let mut scored: Vec<(usize, f32)> = cells
+    // 1. Pick "seed" cells by replay priority
+    let n_seeds = (batch_size * 2).min(cells.len());
+    let mut seeds: Vec<(usize, f32)> = cells
         .iter()
         .enumerate()
         .map(|(i, c)| {
@@ -179,54 +180,70 @@ fn select_dream_pair(universe: &Universe) -> Option<(usize, usize, f32)> {
             )
         })
         .collect();
-    scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-    scored.truncate(limit);
+    seeds.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    seeds.truncate(n_seeds);
 
-    let mut best: Option<(usize, usize, f32, f32)> = None; // (i, j, overlap, pair_score)
+    let mut pairs = Vec::new();
+    let hnsw = universe.hnsw.as_ref();
 
-    for ci in 0..scored.len() {
-        for cj in (ci + 1)..scored.len() {
-            let i = scored[ci].0;
-            let j = scored[cj].0;
-            let a = &cells[i];
-            let b = &cells[j];
+    for (si, seed_priority) in seeds {
+        let seed_vec = &cells[si].claim.vec;
+        
+        // 2. Find neighbors via HNSW
+        let mut neighbors = Vec::new();
+        if let Some(h) = hnsw {
+            let hits = h.search(&[seed_vec.clone()], 12, 100);
+            for hit in hits.iter() {
+                if hit.d_id != si {
+                    neighbors.push(hit.d_id);
+                }
+            }
+        } else {
+            // Fallback to random if no index
+            let mut rng = rand::thread_rng();
+            for _ in 0..8 {
+                neighbors.push(rng.gen_range(0..cells.len()));
+            }
+        }
+
+        // 3. Evaluate pairs
+        for ni in neighbors {
+            if si == ni { continue; }
+            let a = &cells[si];
+            let b = &cells[ni];
 
             let overlap = a.claim.vec.phasor_coherence(&b.claim.vec);
-
-            // Filter: allow resonance above 0.18 (including phase-aligned negative torsion)
-            if !(0.18..=0.88).contains(&overlap) {
+            
+            // Filter: target the 0.52 sweet spot
+            if !(0.22..=0.88).contains(&overlap) {
                 continue;
             }
 
-            // Target the 0.52 sweet spot — max information from partial overlap
             let target_band = 1.0 - (overlap - 0.52).abs();
+            let pair_score = (seed_priority + 0.5) * 0.4 + target_band * 0.6;
+            
+            pairs.push((si, ni, overlap, pair_score));
+        }
+    }
 
-            // Replay priority average
-            let replay_mean = (scored[ci].1 + scored[cj].1) / 2.0;
-
-            // Cross-region diversity bonus
-            let cross_region = if a.region != b.region { 0.12 } else { 0.0 };
-
-            // Penalize near-duplicates
-            let dup_penalty = if overlap > 0.72 {
-                (overlap - 0.72) * 0.65
-            } else {
-                0.0
-            };
-
-            let pair_score = replay_mean * 0.40 + target_band * 0.28 + cross_region - dup_penalty;
-
-            let is_better = match &best {
-                Some((_, _, _, bs)) => pair_score > *bs,
-                None => true,
-            };
-            if is_better {
-                best = Some((i, j, overlap, pair_score));
+    // Sort by pair score and take top batch_size
+    pairs.sort_by(|a, b| b.3.partial_cmp(&a.3).unwrap_or(std::cmp::Ordering::Equal));
+    
+    // Deduplicate pairs (si, ni) == (ni, si)
+    let mut seen = std::collections::HashSet::new();
+    let mut final_batch = Vec::new();
+    for (si, ni, overlap, _) in pairs {
+        let key = if si < ni { (si, ni) } else { (ni, si) };
+        if !seen.contains(&key) {
+            seen.insert(key);
+            final_batch.push((si, ni, overlap));
+            if final_batch.len() >= batch_size {
+                break;
             }
         }
     }
 
-    best.map(|(i, j, overlap, _)| (i, j, overlap))
+    final_batch
 }
 
 /// Pick the best insight from query results, preferring non-source matches.
@@ -358,8 +375,24 @@ pub fn consolidate_pair(
 }
 
 pub fn consolidate(universe: &Universe) -> Option<DreamResult> {
-    let (idx_a, idx_b, _overlap) = select_dream_pair(universe)?;
-    consolidate_pair(universe, idx_a, idx_b, None)
+    let batch = select_dream_batch(universe, 1);
+    if let Some((idx_a, idx_b, _)) = batch.first() {
+        consolidate_pair(universe, *idx_a, *idx_b, None)
+    } else {
+        None
+    }
+}
+
+/// Run a batch of dream cycles in parallel using Rayon.
+pub fn consolidate_batch(universe: &Universe, batch_size: usize) -> Vec<DreamResult> {
+    let batch = select_dream_batch(universe, batch_size);
+    
+    // Evaluate field states in parallel
+    batch.into_par_iter()
+        .filter_map(|(idx_a, idx_b, _)| {
+            consolidate_pair(universe, idx_a, idx_b, None)
+        })
+        .collect()
 }
 
 /// Return the set of significant words that appear in BOTH texts.

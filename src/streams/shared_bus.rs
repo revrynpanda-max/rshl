@@ -16,6 +16,7 @@ pub struct GpuState {
     pub last_batch_duration_us: u64,
     pub cosines_per_second: f64,
     pub utilization: f32,
+    pub gpu_load: f32, // Real hardware load (0.0 - 100.0)
     pub last_tick: Option<Instant>,
 }
 
@@ -80,6 +81,21 @@ pub enum StreamEvent {
         count: usize,
     },
 
+    // CPU → GPU: "Run a batch of N dreams"
+    DreamBatchRequest {
+        count: usize,
+    },
+
+    // GPU → CPU: "Batch dream results"
+    DreamBatchResult {
+        results: Vec<String>, // Serialized DreamResults or just summary strings
+    },
+    
+    // CPU → RAM: "Run boids and pruning"
+    HomeostasisRequest {
+        field: crate::core::field_state::FieldState,
+    },
+
     // Any → Any: "Heartbeat tick"
     Tick {
         stream: String,
@@ -95,6 +111,7 @@ pub enum StreamEvent {
 /// The shared bus that connects all three streams.
 /// Each stream gets its own sender for publishing events,
 /// and a receiver for reading events from the other streams.
+#[derive(Clone)]
 pub struct SharedBus {
     // State snapshots — read by any stream, written by the owning stream
     pub gpu_state: Arc<RwLock<GpuState>>,

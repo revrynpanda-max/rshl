@@ -185,6 +185,21 @@ pub struct QueryHit {
     /// Voice synthesis uses this to skip user-stored utterances as KAI's own words.
     #[serde(default)]
     pub source: String,
+    /// Unix timestamp when the originating message was received.
+    #[serde(default)]
+    pub timestamp: u64,
+    /// Discord user ID that produced this cell, empty for system cells.
+    #[serde(default)]
+    pub user_id: String,
+    /// Discord channel ID where this cell originated.
+    #[serde(default)]
+    pub channel_id: String,
+    /// Discord message ID for direct linking, empty if not from Discord.
+    #[serde(default)]
+    pub message_id: String,
+    /// Extracted keywords for BM25-style exact-match retrieval.
+    #[serde(default)]
+    pub keywords: Vec<String>,
 }
 
 impl QueryHit {
@@ -197,6 +212,11 @@ impl QueryHit {
             score,
             strength: cell.claim.confidence,
             source: cell.claim.source.clone(),
+            timestamp: 0,
+            user_id: String::new(),
+            channel_id: String::new(),
+            message_id: String::new(),
+            keywords: Vec::new(),
         }
     }
 }
@@ -211,6 +231,9 @@ pub struct Universe {
     pub hnsw: Option<hnsw_rs::prelude::Hnsw<'static, SparseVec, super::index::TernaryDistance>>,
     #[serde(default)]
     pub user_equations: HashMap<String, SparseVec>,
+    /// Optional GPU compute handle — set by Engine::new, skipped during serialization.
+    #[serde(skip)]
+    pub gpu: Option<std::sync::Arc<super::gpu_compute::GpuCompute>>,
 }
 
 impl Clone for Universe {
@@ -220,6 +243,7 @@ impl Clone for Universe {
             lexicon: self.lexicon.clone(),
             hnsw: None,
             user_equations: self.user_equations.clone(),
+            gpu: None,
         }
     }
 }
@@ -603,6 +627,7 @@ impl Universe {
             lexicon: super::index::LatticeLexicon::new(),
             hnsw: None,
             user_equations: HashMap::new(),
+            gpu: None,
         }
     }
 
@@ -924,6 +949,11 @@ impl Universe {
                     score: fused_score * 100.0, // Scale for visibility
                     strength: cell.claim.confidence,
                     source: cell.claim.source.clone(),
+                    timestamp: 0,
+                    user_id: String::new(),
+                    channel_id: String::new(),
+                    message_id: String::new(),
+                    keywords: Vec::new(),
                 }
             })
             .collect();
@@ -1012,6 +1042,11 @@ impl Universe {
                     score,
                     strength: cell.claim.confidence,
                     source: cell.claim.source.clone(),
+                    timestamp: 0,
+                    user_id: String::new(),
+                    channel_id: String::new(),
+                    message_id: String::new(),
+                    keywords: Vec::new(),
                 }
             })
             .collect()
@@ -1130,6 +1165,11 @@ impl Universe {
                     score,
                     strength: cell.claim.confidence,
                     source: cell.claim.source.clone(),
+                    timestamp: 0,
+                    user_id: String::new(),
+                    channel_id: String::new(),
+                    message_id: String::new(),
+                    keywords: Vec::new(),
                 }
             })
             .collect()
@@ -1145,9 +1185,14 @@ impl Universe {
                 text: c.claim.text.clone(),
                 vec: c.claim.vec.clone(),
                 region: c.region.clone(),
-                score: 1.0, // score is irrelevant — selection is by source
+                score: 1.0,
                 strength: c.claim.confidence,
                 source: c.claim.source.clone(),
+                timestamp: 0,
+                user_id: String::new(),
+                channel_id: String::new(),
+                message_id: String::new(),
+                keywords: Vec::new(),
             })
             .collect()
     }
@@ -2164,6 +2209,11 @@ impl Universe {
                     score,
                     strength: c.claim.confidence,
                     source: c.claim.source.clone(),
+                    timestamp: 0,
+                    user_id: String::new(),
+                    channel_id: String::new(),
+                    message_id: String::new(),
+                    keywords: Vec::new(),
                 }
             })
             .collect()

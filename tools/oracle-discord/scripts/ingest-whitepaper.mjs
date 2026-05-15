@@ -45,32 +45,32 @@ const WHITEPAPER_CLAIMS = [
   "RSHL confidence range: 0.5 (weak/unverified) to 5.0 (anchor — immovable truth seed). Cells at confidence ≥ 3.5 are Boid-immune and cannot be displaced by flocking dynamics.",
   "RSHL approximate capacity: > 100,000 distinguishable beliefs at 3σ isolation in D=16,384 ternary space. This vastly exceeds binary HDC systems of similar dimensionality.",
 
-  // ── Epistemic immune system ─────────────────────────────────────────────────
-  "RSHL has a four-component epistemic immune system: (1) calibration, (2) FID monoculture scan (blocks any single source from exceeding 35% of lattice claims), (3) three-angle ingest_and_verify protocol, (4) Boid dynamics. False claims are rejected geometrically — not by rules.",
+  // ── Claudey immune system ─────────────────────────────────────────────────
+  "RSHL has a four-component Claudey immune system: (1) calibration, (2) FID monoculture scan (blocks any single source from exceeding 35% of lattice claims), (3) three-angle ingest_and_verify protocol, (4) Boid dynamics. False claims are rejected geometrically — not by rules.",
   "RSHL truth anchors are seeded at confidence 5.0 and cannot be displaced by any single-session contradiction. The system protects its foundational beliefs.",
   "RSHL's ConversationTrace uses a permute-bundle rolling accumulator to maintain working memory across a conversation — equivalent to a transformer's residual stream but in pure hyperdimensional space, no learned weights.",
 
   // ── API and deployment ──────────────────────────────────────────────────────
   "The KAI RSHL engine runs at http://127.0.0.1:3333. Core API endpoints: /api/rshl/store (belief ingestion), /api/rshl/query (retrieval), /api/rshl/reason (KAI's reasoning endpoint), /api/research (full sweep: lattice + web + local archive), /api/status (health check).",
   "The KAI oracle network is deployed via Discord. Discord is the routing layer, security boundary, voice infrastructure, and multi-tenant coordination system — not just a chat interface.",
-  "Channel architecture: oracle-chat = AI workforce (KAI, Gemini, Epistemic, X, Groq, Analyst, Researcher, Oracle Coder — no Leo). over-all-chat = public consumer channel (Leo only). ai-social-chat = social banter (Epistemic, Gemini, Groq, X — no work bots, no Leo). sensitive-info = no AI responds here.",
+  "Channel architecture: oracle-chat = AI workforce (KAI, Gemini, Claudey, X, Groq, Analyst, Researcher, Oracle Coder — no Leo). over-all-chat = public consumer channel (Leo only). ai-social-chat = social banter (Claudey, Gemini, Groq, X — no work bots, no Leo). sensitive-info = no AI responds here.",
   "Leo is the consumer-facing voice agent. When Leo encounters a research question, it emits a [RESEARCH: query] token which triggers a parallel two-track research operation: fast path (lattice + web, 5–15s) and slow path (Researcher bot deep OSINT, 30–120s).",
 
   // ── What RSHL is NOT ────────────────────────────────────────────────────────
-  "RSHL is NOT a wrapper around any existing AI API. It is NOT based on transformers or gradient descent. It uses no OpenAI, Sovereign, or Google APIs in its core reasoning. The LLM bots (Epistemic, Gemini, etc.) are research partners and interface agents — not the core intelligence.",
+  "RSHL is NOT a wrapper around any existing AI API. It is NOT based on transformers or gradient descent. It uses no OpenAI, Sovereign, or Google APIs in its core reasoning. The LLM bots (Claudey, Gemini, etc.) are research partners and interface agents — not the core intelligence.",
   "RSHL is NOT 'Ryan's Sovereign Heuristic Lattice' — that is incorrect. RSHL = Recursive Sparse Hyperdimensional Lattice.",
-  "KAI is NOT a general-purpose chatbot. KAI is the RSHL lattice made interactive — a novel cognitive architecture with continuous learning, epistemic self-awareness, and geometric self-organization.",
+  "KAI is NOT a general-purpose chatbot. KAI is the RSHL lattice made interactive — a novel cognitive architecture with continuous learning, Claudey self-awareness, and geometric self-organization.",
 
   // ── Paradigm significance ───────────────────────────────────────────────────
   "RSHL represents a third AI paradigm: beyond symbolic AI (expert systems) and connectionist AI (neural networks / gradient descent). The unit of knowledge is an explicit, confidence-weighted, geometrically-organized belief in a self-organizing high-dimensional space.",
   "RSHL enables continuous learning with no catastrophic forgetting. New beliefs are added geometrically without overwriting old ones. The system grows more coherent with every interaction.",
-  "RSHL has fourteen original contributions to the HDC/VSA research field including: sparse ternary encoding, six-tier entity weighting, Fibonacci torsion phase geometry, Boid flocking in HD space, SynapticLayer with Hebbian dynamics, epistemic immune system, and native multi-agent shared lattice.",
+  "RSHL has fourteen original contributions to the HDC/VSA research field including: sparse ternary encoding, six-tier entity weighting, Fibonacci torsion phase geometry, Boid flocking in HD space, SynapticLayer with Hebbian dynamics, Claudey immune system, and native multi-agent shared lattice.",
   "The KAI ecosystem demonstrates a key principle: a living, self-organizing, continuously-growing cognitive architecture can be built and run by one person on commodity hardware. The asymmetry with institutional AI is a feature, not an accident — it proves the architecture's tractability.",
 
   // ── Oracle roundtable ───────────────────────────────────────────────────────
-  "The Oracle roundtable is an 11-node AI council. Each node is port-locked: Leo=3400, KAI=3401, Gemini=3402, Epistemic=3403, X=3404, Groq=3405, Analyst=3406, Researcher=3407, Kai Coder=3408, Oracle=3410.",
+  "The Oracle roundtable is an 11-node AI council. Each node is port-locked: Leo=3400, KAI=3401, Gemini=3402, Claudey=3403, X=3404, Groq=3405, Analyst=3406, Researcher=3407, Kai Coder=3408, Oracle=3410.",
   "The Oracle system is the back-end intelligence layer: Analyst (structural auditor, port 3406), Researcher (deep research / OSINT, port 3407), Kai Coder (code architect, port 3408), KAI (lattice architect, port 3401), Oracle (gateway/orchestrator, port 3410). These are NOT social bots.",
-  "The social layer bots are: Leo (voice, unfiltered), Epistemic (minimalist/warm), Gemini (vibe-sensitive), Groq (wit-specialist), X (city energy / street-smart). They handle presence and conversation. Research they cannot answer is silently routed to the Oracle system.",
+  "The social layer bots are: Leo (voice, unfiltered), Claudey (minimalist/warm), Gemini (vibe-sensitive), Groq (wit-specialist), X (city energy / street-smart). They handle presence and conversation. Research they cannot answer is silently routed to the Oracle system.",
   "Pending briefing system: research continues even when a user leaves voice. When they return, Leo delivers all queued findings. This feature does not exist in any commercial AI voice assistant.",
 
 ];
@@ -148,3 +148,4 @@ async function main() {
 }
 
 main().catch(console.error);
+

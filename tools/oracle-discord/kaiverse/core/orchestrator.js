@@ -5,7 +5,7 @@ import { discordManager } from './discord-manager.js';
 // import { KAI } from '../agents/main/kai.js';
 // import { Oracle } from '../agents/main/oracle.js';
 // import { Leo } from '../agents/main/leo.js';
-// import { Epistemic } from '../agents/main/Epistemic.js';
+// import { Claudey } from '../agents/main/Claudey.js';
 // import { Gemini } from '../agents/main/gemini.js';
 // import { X } from '../agents/main/x.js';
 // import { GroqAgent } from '../agents/main/groq.js';
@@ -45,8 +45,8 @@ discordManager.onMessage(async (message, threadMap) => {
             case "leo-work":
                 // Leo.handleMessage(message);
                 break;
-            case "Epistemic-work":
-                // Epistemic.handleMessage(message);
+            case "Claudey-work":
+                // Claudey.handleMessage(message);
                 break;
             case "gemini-work":
                 // Gemini.handleMessage(message);
@@ -69,14 +69,14 @@ discordManager.onMessage(async (message, threadMap) => {
         return;
     }
 
-    // game-with-leo
+    // self-optimize-check
     if (channelId === "1499298054291980368") {
-        console.log("[Orchestrator] Message in #game-with-leo.");
-        // Leo.handleGameMessage(message);
+        console.log("[Orchestrator] Message in #self-optimize-check.");
+        // Route to the diagnostics lane; no social/game spectator loop.
         return;
     }
 
-    // ai-social-chat (Epistemic, Gemini, X, Groq off the clock)
+    // ai-social-chat (Claudey, Gemini, X, Groq off the clock)
     if (channelId === "1500085302268526712") {
         console.log("[Orchestrator] Message in #ai-social-chat.");
         // Randomly assign a social AI to respond, or parse mentions
@@ -87,3 +87,4 @@ discordManager.onMessage(async (message, threadMap) => {
 
 console.log("[Orchestrator] Booting up KAI RSHL V7 Ecosystem...");
 discordManager.start(ORACLE_TOKEN);
+

@@ -38,7 +38,7 @@ pub struct MindEvent {
 /// The KAI Cognition Engine — The "Brain" decoupled from the UI.
 pub struct Engine {
     pub universe: Universe,
-    pub synaptic_layer: SynapticLayer,
+    pub synaptic_layer: std::sync::Arc<std::sync::RwLock<SynapticLayer>>,
     pub drive: Drive,
     pub reasoner: Reasoner,
     pub candidates: CandidateBuffer,
@@ -129,6 +129,7 @@ pub struct Engine {
     pub agent_specs: std::collections::HashMap<String, super::index::AgentSpec>,
     pub vitals: HardwareVitals,
     pub last_field: FieldState,
+    pub gpu: Option<std::sync::Arc<super::gpu_compute::GpuCompute>>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
@@ -158,6 +159,11 @@ impl Engine {
             score: self.live_self_state_salience.max(0.1),
             strength: self.live_self_state_salience.max(0.1),
             source: "live-self-state".into(),
+            timestamp: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs(),
+            user_id: String::new(),
+            channel_id: String::new(),
+            message_id: String::new(),
+            keywords: Vec::new(),
         }
     }
 
@@ -369,7 +375,7 @@ impl Engine {
         frame.finalize_authority();
     }
 
-    pub fn new(base_dir: &str) -> Self {
+    pub fn new(base_dir: &str, gpu: Option<std::sync::Arc<super::gpu_compute::GpuCompute>>) -> Self {
         // Try to load saved state
         let (universe, candidates, drive, _tick, _loaded_dream_count, synaptic_layer_loaded) =
             if crate::persistence::state_exists(base_dir) {
@@ -389,8 +395,8 @@ impl Engine {
 
         // Rebuild Hybrid Index (Lexicon + HNSW) on startup
         let mut universe = universe;
+        universe.gpu = gpu.clone();
         universe.rebuild_index(0.0);
-        let universe = universe;
 
         let log_file_path = std::env::var("KAI_TICK_LOG")
             .unwrap_or_else(|_| "C:\\KAI\\data\\kai_ticks.csv".to_string());
@@ -436,11 +442,12 @@ impl Engine {
             .unwrap_or_default();
 
         // Prefer the one from Snapshot (Engine Core) but fallback to MindSnapshot if needed
-        let synaptic_layer = if synaptic_layer_loaded.synapses.is_empty() {
+        let synaptic_layer_raw = if synaptic_layer_loaded.synapses.is_empty() {
              mind.as_ref().map(|m| m.synaptic_layer.clone()).unwrap_or_default()
         } else {
              synaptic_layer_loaded
         };
+        let synaptic_layer = std::sync::Arc::new(std::sync::RwLock::new(synaptic_layer_raw));
 
         let mut this_engine = Self {
             universe,
@@ -535,6 +542,7 @@ impl Engine {
             agent_specs: std::collections::HashMap::new(),
             vitals: HardwareVitals::default(),
             last_field: FieldState::default(),
+            gpu,
         };
         
         this_engine.load_agent_specs(base_dir);
@@ -591,17 +599,16 @@ impl Engine {
             ("I learn from every conversation. My knowledge grows through interaction.", 2.0),
             ("I have a 78-module neural architecture that models emotion, memory, and cognition.", 2.0),
         ];
+        let uni = &mut self.universe;
         for (text, strength) in nature {
-            self.universe.store(text, "memory", "identity", *strength);
+            uni.store(text, "memory", "identity", *strength);
         }
 
         // ── Name — from identity.json ─────────────────────────────────
         if !name.is_empty() {
-            self.universe
-                .store(&format!("My name is {}.", name), "memory", "identity", 4.0);
-            self.universe
-                .store(&format!("I am {}.", name), "memory", "identity", 4.0);
-            self.universe.store(
+            uni.store(&format!("My name is {}.", name), "memory", "identity", 4.0);
+            uni.store(&format!("I am {}.", name), "memory", "identity", 4.0);
+            uni.store(
                 &format!(
                     "I am {}, built on RSHL — Recursive Sparse Hyperdimensional Lattice.",
                     name
@@ -610,17 +617,21 @@ impl Engine {
                 "identity",
                 3.0,
             );
-            let separator = if !creator.is_empty() {
-                format!(
-                    "I am not {}. {} is my creator, the person I was built for.",
-                    creator, creator
-                )
+            if !creator.is_empty() {
+                uni.store(
+                    &format!(
+                        "I am not {}. {} is my creator, the person I was built for.",
+                        creator, creator
+                    ),
+                    "memory",
+                    "identity",
+                    2.5,
+                );
             } else {
-                "I am not the person I talk with. My user is a separate person from me.".to_string()
-            };
-            self.universe.store(&separator, "memory", "identity", 2.5);
+                uni.store("I am not the person I talk with. My user is a separate person from me.", "memory", "identity", 2.5);
+            }
         } else {
-            self.universe.store(
+            uni.store(
                 "I haven't been given a name yet. My user can name me in data/identity.json.",
                 "memory",
                 "identity",
@@ -632,9 +643,9 @@ impl Engine {
         if !creator.is_empty() {
             let note = config.creator_note.as_deref().unwrap_or("").trim();
             if !note.is_empty() {
-                self.universe.store(note, "memory", "identity", 3.5);
+                uni.store(note, "memory", "identity", 3.5);
             } else {
-                self.universe.store(
+                uni.store(
                     &format!("{} created me from the ground up from scratch.", creator),
                     "memory",
                     "identity",
@@ -647,19 +658,47 @@ impl Engine {
     pub fn tick(&mut self, is_responding: bool) -> FieldState {
         self.tick += 1;
 
+        if self.tick % 500 == 0 {
+            self.synaptic_layer.write().unwrap().ltd_sweep();
+        }
+
         // ── Hardware Vitals (Phase 4) ───────────────────────────────
-        if self.tick % 5 == 0 {
-            self.sys.refresh_cpu_all();
-            self.sys.refresh_memory();
+        self.sys.refresh_cpu_all();
+        self.sys.refresh_memory();
             
-            let cpu_load = self.sys.global_cpu_usage();
-            let mem_used = self.sys.used_memory() as f32 / (1024.0 * 1024.0 * 1024.0);
-            let mem_total = self.sys.total_memory() as f32 / (1024.0 * 1024.0 * 1024.0);
+        let cpu_load = self.sys.global_cpu_usage();
+        let mem_used = self.sys.used_memory() as f32 / (1024.0 * 1024.0 * 1024.0);
+        let mem_total = self.sys.total_memory() as f32 / (1024.0 * 1024.0 * 1024.0);
+        
+        self.vitals.cpu_load = cpu_load;
+        self.vitals.mem_used_gb = mem_used;
+        self.vitals.mem_total_gb = mem_total;
+        self.vitals.last_update = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
+
+        // ── Dynamic Regional Gating (The 12-Region Master Map) ──
+        if let Some(ref gpu) = self.gpu {
+            // --- THALAMIC HEARTBEAT (The Rhythm of Logic) ---
+            // Link hardware load to cognitive 'Sharpness' (Temperature)
+            let load_factor = self.vitals.cpu_load / 100.0;
+            // let brain_temp = 4.0 + (load_factor * 2.0); // Hotter load = Sharper attention
+
+            let active_region = match self.drive.mood {
+                crate::drive::Mood::Engaged => {
+                    if self.last_input.contains("code") || self.last_input.contains("rust") { 1u32 } 
+                    else if self.last_input.contains("bio") || self.last_input.contains("life") { 6u32 }
+                    else { 1u32 }
+                },
+                crate::drive::Mood::Curious => 2u32, 
+                crate::drive::Mood::Conflicted => 3u32, 
+                crate::drive::Mood::Stable => 8u32, 
+                _ => 0u32, 
+            };
             
-            self.vitals.cpu_load = cpu_load;
-            self.vitals.mem_used_gb = mem_used;
-            self.vitals.mem_total_gb = mem_total;
-            self.vitals.last_update = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
+            let final_region = if self.last_input.contains("predict") || self.last_input.contains("future") { 7u32 }
+            else if self.last_input.contains("dream") || self.last_input.contains("music") { 5u32 }
+            else { active_region };
+
+            gpu.update_active_region(final_region);
         }
 
         // ── Advance the golden-ratio spiral once per tick ────────────
@@ -688,21 +727,26 @@ impl Engine {
         let mut field = FieldState::compute(&self.universe, 1);
         self.drive.update(&field);
 
-        let cells = self.universe.cells();
-        let sample_n = 64.min(cells.len());
-        let lattice_state = if sample_n == 0 {
-            SparseVec::zero()
-        } else {
-            let refs: Vec<&SparseVec> = cells.iter().take(sample_n).map(|c| &c.claim.vec).collect();
-            SparseVec::superpose_sparse(&refs, 0.25)
+        let (lattice_state, rho) = {
+            let cells = self.universe.cells();
+            let sample_n = 64.min(cells.len());
+            let ls = if sample_n == 0 {
+                SparseVec::zero()
+            } else {
+                let refs: Vec<&SparseVec> = cells.iter().take(sample_n).map(|c| &c.claim.vec).collect();
+                SparseVec::superpose_sparse(&refs, 0.25)
+            };
+            let r = ls.nnz() as f32 / crate::core::sparse_vec::DIM as f32;
+            (ls, r)
         };
+
         let current_pattern = self
             .drive
             .goal_vector
             .clone()
             .unwrap_or_else(SparseVec::zero);
 
-        field.rho = lattice_state.nnz() as f32 / crate::core::sparse_vec::DIM as f32;
+        field.rho = rho;
         field.q = 1.0 - field.r_val;
         field.phi_g = (field.phi_g + osc_out.delta_phi).clamp(0.001, 0.999);
         field.chi = (field.chi + osc_out.delta_chi).clamp(0.0, 0.999);
@@ -774,95 +818,52 @@ impl Engine {
 
         self.last_field = field.clone();
 
-        // DREAM CYCLE (STREAM 1)
-        if self.tick.is_multiple_of(3) {
-            self.run_dream_cycle();
-        }
-
-        // ── Autonomous Tuning (Phase 4) ───────────────────────────────
-        let cpu_high = self.vitals.cpu_load > 85.0;
-        let mem_high = if self.vitals.mem_total_gb > 0.0 {
-            (self.vitals.mem_used_gb / self.vitals.mem_total_gb) > 0.85
-        } else {
-            false
-        };
-
-        if self.tick.is_multiple_of(30) && !cpu_high {
-            // Biological Pruning: Remove claims with zero vitality
-            let pruned_v = self.universe.recycle_dead_claims();
-            if pruned_v > 0 {
-                println!("[Homeostasis] Recycled {} dead/low-vitality cells.", pruned_v);
-            }
-
-            // Synaptic pruning (LTD)
-            self.synaptic_layer.ltd_sweep();
-
-            if mem_high {
-                self.universe.prune_contested();
-            }
-            use crate::core::boid_engine::{BoidState, BoidSettings, run_boid_iteration, find_near_duplicates};
-
-            let total_cells = self.universe.cell_count();
-            let state_before = BoidState::from_universe(&self.universe);
-
-            // Count near-duplicates before flocking (flagged, not pulled together)
-            let dupes = find_near_duplicates(&state_before);
-            let anchor_count = state_before.is_anchor.iter().filter(|&&a| a).count();
-            let non_anchor_count = total_cells - anchor_count;
-
-            let mut state = state_before;
-            let settings = BoidSettings::default();
-            for _ in 0..3 {
-                run_boid_iteration(&mut state, &settings, &field);
-            }
-            state.apply_to_universe(&mut self.universe);
-
-            // Verify no anchors were mutated (should always be 0)
-            let anchors_attempted = 0usize; // apply_to_universe skips is_anchor=true cells
-
-            let log_msg = format!(
-                "[BOID tick={}] cells={} | non-anchors moved={} | anchors protected={} | anchors_attempted={} | near-duplicates flagged={}",
-                self.tick, total_cells, non_anchor_count, anchor_count, anchors_attempted, dupes.len()
-            );
-            println!("{}", log_msg);
-            self.push_event("RAM", "🧲", log_msg);
-
-            // Log near-duplicate pairs for review (first 5 only)
-            for (i, j, sim) in dupes.iter().take(5) {
-                println!("  [BOID DUPE] cells ({},{}) similarity={:.4} — flagged for merge review", i, j, sim);
-            }
-        }
-
         field
     }
 
     pub fn run_dream_cycle(&mut self) {
-        if let Some(dream) = crate::cognition::consolidate(&self.universe) {
-            self.dream_count += 1;
-            crate::cognition::observe_dream(&mut self.candidates, &dream);
-            crate::cognition::reinforce_dream_sources(&mut self.universe, &dream);
+        let (dream, discovery_msg) = {
+            let mut uni = &mut self.universe;
+            if let Some(dream) = crate::cognition::consolidate(&uni) {
+                self.dream_count += 1;
+                crate::cognition::observe_dream(&mut self.candidates, &dream);
+                
+                // ── Neuroplasticity LTP: Boosted by current dopamine level ──
+                let ltp_gain = 0.04 * (1.0 + self.dopamine.level);
+                uni.reinforce_by_text(&dream.concept_a, ltp_gain);
+                uni.reinforce_by_text(&dream.concept_b, ltp_gain);
 
-            if let Some(syn) = dream.synthesis.as_ref() {
-                if crate::cognition::store_synthesis(&mut self.universe, &dream) {
-                    self.push_event(
-                        "GPU",
-                        "💡",
-                        format!(
+                let mut discovery_msg = None;
+                if let Some(syn) = dream.synthesis.as_ref() {
+                    if crate::cognition::store_synthesis(&mut uni, &dream) {
+                        discovery_msg = Some(format!(
                             "Discovery: {} (shared: {})",
                             crate::core::normalize::truncate(&syn.text, 70),
                             syn.shared_concepts.join(", ")
-                        ),
-                    );
+                        ));
+                    }
                 }
+                (Some(dream), discovery_msg)
+            } else {
+                (None, None)
+            }
+        };
+
+        if let Some(dream) = dream {
+            if let Some(msg) = discovery_msg {
+                self.push_event("GPU", "💡", msg);
             }
 
             if !dream.duplicate_echo && !dream.insight.is_empty() {
-                let validation = crate::cognition::validate_insight(
-                    &dream.insight,
-                    &dream.concept_a,
-                    &dream.concept_b,
-                    &self.universe,
-                );
+                let validation = {
+                    let uni = &self.universe;
+                    crate::cognition::validate_insight(
+                        &dream.insight,
+                        &dream.concept_a,
+                        &dream.concept_b,
+                        uni,
+                    )
+                };
                 match validation.verdict {
                     crate::cognition::InsightVerdict::Validated
                     | crate::cognition::InsightVerdict::Novel => {
@@ -959,10 +960,12 @@ impl Engine {
         // Stage 1-3: Perform associative query
         let hits = NeuralBus::query_associative(
             &self.universe,
-            &self.synaptic_layer,
+            &self.synaptic_layer.read().unwrap(),
             self.last_field.phi_g,
             text,
-            n
+            n,
+            &[],
+            ""
         );
 
         if hits.is_empty() { return hits; }
@@ -970,7 +973,7 @@ impl Engine {
         // Stage 4: Hebbian Learning (LTP)
         // The final set of active neurons wire together
         let active_labels: Vec<String> = hits.iter().map(|h| h.label.clone()).collect();
-        self.synaptic_layer.record_co_firing(
+        self.synaptic_layer.write().unwrap().record_co_firing(
             &active_labels,
             self.dopamine.level,
             self.last_field.phi_g,
@@ -979,5 +982,69 @@ impl Engine {
         );
 
         hits
+    }
+
+    /// Run heavy lattice organization (Boids + Pruning).
+    /// This is called by the background RAM stream to keep the heartbeat fast.
+    pub fn run_homeostasis_cycle(&mut self) {
+        let cpu_high = self.vitals.cpu_load > 85.0;
+        let mem_high = if self.vitals.mem_total_gb > 0.0 {
+            (self.vitals.mem_used_gb / self.vitals.mem_total_gb) > 0.85
+        } else {
+            false
+        };
+
+        if cpu_high { return; }
+
+        // Biological Pruning: Remove claims with zero vitality
+        let (pruned_v, log_msg, dupes) = {
+            let mut uni = &mut self.universe;
+            let pruned_v = uni.recycle_dead_claims();
+            
+            // Synaptic pruning (LTD)
+            self.synaptic_layer.write().unwrap().ltd_sweep();
+
+            if mem_high {
+                uni.prune_contested();
+            }
+
+            use crate::core::boid_engine::{BoidState, BoidSettings, run_boid_iteration, find_near_duplicates};
+
+            let total_cells = uni.cell_count();
+            if total_cells < 10 { 
+                (pruned_v, String::new(), Vec::new())
+            } else {
+                let state_before = BoidState::from_universe(&uni);
+                let dupes = find_near_duplicates(&state_before);
+                let anchor_count = state_before.is_anchor.iter().filter(|&&a| a).count();
+                let non_anchor_count = total_cells - anchor_count;
+
+                let mut state = state_before;
+                let settings = BoidSettings::default();
+                let field = self.last_field.clone();
+
+                for _ in 0..3 {
+                    run_boid_iteration(&mut state, &settings, &field);
+                }
+                state.apply_to_universe(&mut uni);
+
+                let log_msg = format!(
+                    "cells={} | non-anchors moved={} | anchors protected={} | dupes flagged={}",
+                    total_cells, non_anchor_count, anchor_count, dupes.len()
+                );
+                (pruned_v, log_msg, dupes)
+            }
+        };
+
+        if pruned_v > 0 {
+            self.push_event("RAM", "🧹", format!("Recycled {} dead/low-vitality cells.", pruned_v));
+        }
+
+        if !log_msg.is_empty() {
+            self.push_event("RAM", "🧲", log_msg);
+            for (i, j, sim) in dupes.iter().take(2) {
+                self.push_event("RAM", "⚖", format!("Dupe detected: cells ({},{}) similarity={:.4}", i, j, sim));
+            }
+        }
     }
 }

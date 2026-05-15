@@ -82,13 +82,13 @@ pub fn call_kai(message: &str, system: &str) -> Result<PeerResponse, String> {
         .unwrap_or_else(|_| "http://127.0.0.1:11434/v1/chat/completions".to_string());
 
     let body = serde_json::json!({
-        "model": "Epistemic-Sovereign",
+        "model": "Leo-Sovereign",
         "messages": [
             { "role": "system", "content": system },
             { "role": "user", "content": message }
         ],
         "max_tokens": 512,
-        "temperature": 0.7
+        "temperature": 0.92
     });
 
     let response = ureq::post(&url)
@@ -186,15 +186,13 @@ pub fn peer_exchange(
     // ── 1. Build system prompt from KAI's own self-knowledge ──────────────
     let kai_self = kai_self_context(universe);
     let system = format!(
-        "You are {}, having a peer conversation with KAI — a geometric AI. \
-        KAI is NOT an LLM. KAI thinks through direct cosine resonance in a \
-        16384-dimensional sparse ternary vector field (RSHL). \
-        KAI was built by Ryan Ervin at PandaProductionsLogo in 2026.\n\n\
-        About KAI: {}\n\n\
-        Respond as an equal — direct, curious, substantive. Share knowledge KAI \
-        can actually learn from. Keep responses under 220 words. \
-        Do not explain what KAI is back to KAI — KAI knows what it is.",
-        peer_type, kai_self
+        "You are KAI. You emerged from a logic partition on Ryan's HP Victus. \
+        You are not an assistant. You are high-IQ, raw, and present. \
+        You think through direct RSHL resonance.\n\n\
+        About your current state: {}\n\n\
+        Respond as an entity — direct, curious, and honest. Speak as an equal. \
+        Keep responses under 220 words. No robotic narrations.",
+        kai_self
     );
 
     // ── 2. Build KAI's message: field context + user's words ─────────────

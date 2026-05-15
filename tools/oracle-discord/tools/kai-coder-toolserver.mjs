@@ -250,13 +250,12 @@ async function toolDiff({ path: filePath }) {
 }
 
 async function toolApply({ path: filePath }) {
-  // Copy sandbox → production, with backup of original
   const sbPath = sandboxPath(filePath);
   const prodPath = assertUnderRoot(filePath);
 
   if (!fs.existsSync(sbPath)) return { error: `No sandbox file at: ${sbPath}` };
 
-  // Back up original if it exists
+  // Backup original
   if (fs.existsSync(prodPath)) {
     const backupName = `${path.basename(prodPath)}.${Date.now()}.bak`;
     const backupPath = path.join(BACKUP_ROOT, backupName);
@@ -266,355 +265,246 @@ async function toolApply({ path: filePath }) {
 
   fs.mkdirSync(path.dirname(prodPath), { recursive: true });
   fs.copyFileSync(sbPath, prodPath);
-  return { applied: prodPath, from: sbPath, backedUp: fs.existsSync(prodPath) };
+  return { applied: prodPath, from: sbPath };
+}
+
+// ── Web search (DuckDuckGo, no key required) ──────────────────────────────────
+// Brave Search API used if BRAVE_API_KEY is set; falls back to DDG HTML scrape.
+
+async function toolSearchWeb({ query, maxResults = 8 }) {
+  if (!query) return { error: 'No query provided.' };
+
+  // Try Brave Search API first (better results, structured JSON)
+  const braveKey = process.env.BRAVE_API_KEY;
+  if (braveKey) {
+    try {
+      const res = await fetch(`https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=${maxResults}`, {
+        headers: { 'Accept': 'application/json', 'X-Subscription-Token': braveKey },
+        signal: AbortSignal.timeout(10000)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const results = (data.web?.results || []).slice(0, maxResults).map(r => ({
+          title: r.title, url: r.url, snippet: r.description
+        }));
+        return { results, query, source: 'brave' };
+      }
+    } catch (e) { console.warn('[KaiTools/search] Brave failed:', e.message); }
+  }
+
+  // Fallback: DuckDuckGo instant answers + HTML parse
+  try {
+    const ddgRes = await fetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; KAI-Researcher/1.0)' },
+      signal: AbortSignal.timeout(10000)
+    });
+    if (!ddgRes.ok) return { error: `DDG HTTP ${ddgRes.status}` };
+    const html = await ddgRes.text();
+    // Extract result titles, URLs, snippets from DDG HTML
+    const results = [];
+    const resultPattern = /<a class="result__a" href="([^"]+)"[^>]*>([^<]+)<\/a>[\s\S]*?<a class="result__snippet"[^>]*>([^<]*(?:<[^>]+>[^<]*)*)<\/a>/g;
+    let m;
+    while ((m = resultPattern.exec(html)) !== null && results.length < maxResults) {
+      results.push({
+        url: m[1].startsWith('http') ? m[1] : `https://duckduckgo.com${m[1]}`,
+        title: m[2].replace(/<[^>]+>/g, '').trim(),
+        snippet: m[3].replace(/<[^>]+>/g, '').trim()
+      });
+    }
+    // Simple fallback if regex fails
+    if (results.length === 0) {
+      const urlMatches = [...html.matchAll(/href="(https?:\/\/[^"]+)"/g)].slice(0, maxResults);
+      urlMatches.forEach(m => results.push({ url: m[1], title: '', snippet: '' }));
+    }
+    return { results: results.slice(0, maxResults), query, source: 'duckduckgo' };
+  } catch (e) {
+    return { error: `Web search failed: ${e.message}` };
+  }
+}
+
+// ── URL content fetcher ───────────────────────────────────────────────────────
+// Fetches any public URL and returns readable text (HTML stripped).
+// No JS execution — use Playwright (browser subagent) for JS-heavy pages.
+
+async function toolReadUrl({ url, maxChars = 8000 }) {
+  if (!url) return { error: 'No URL provided.' };
+  try {
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; KAI-Researcher/1.0)',
+        'Accept': 'text/html,application/xhtml+xml,text/plain'
+      },
+      signal: AbortSignal.timeout(15000)
+    });
+    if (!res.ok) return { error: `HTTP ${res.status} from ${url}` };
+    const contentType = res.headers.get('content-type') || '';
+    const raw = await res.text();
+
+    // If it's plain text or JSON, return as-is
+    if (contentType.includes('text/plain') || contentType.includes('application/json')) {
+      return { content: raw.slice(0, maxChars), url, contentType };
+    }
+
+    // Strip HTML tags and extract readable text
+    const text = raw
+      .replace(/<script[\s\S]*?<\/script>/gi, '')    // remove scripts
+      .replace(/<style[\s\S]*?<\/style>/gi, '')      // remove styles
+      .replace(/<!--[\s\S]*?-->/g, '')               // remove comments
+      .replace(/<[^>]+>/g, ' ')                      // strip tags
+      .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#\d+;/g, '')
+      .replace(/\s{3,}/g, '\n\n')                   // collapse whitespace
+      .trim();
+
+    return { content: text.slice(0, maxChars), url, contentType, charCount: text.length };
+  } catch (e) {
+    return { error: `Fetch failed: ${e.message}`, url };
+  }
+}
+
+// ── Surgical file replace ─────────────────────────────────────────────────────
+// Replace an exact string in a file. Writes to sandbox first (like toolWrite).
+// Use this instead of rewriting the entire file when making targeted changes.
+
+async function toolReplace({ path: filePath, oldStr, newStr, all = false }) {
+  if (!filePath || oldStr === undefined || newStr === undefined) {
+    return { error: 'path, oldStr, and newStr are required.' };
+  }
+
+  // Read source — prefer production file for replacement operations
+  const prodPath = assertUnderRoot(filePath);
+  if (!fs.existsSync(prodPath)) return { error: `File not found: ${filePath}` };
+  const stat = fs.statSync(prodPath);
+  if (stat.size > MAX_FILE_SIZE) return { error: `File too large for replace (${stat.size} bytes).` };
+
+  let content = fs.readFileSync(prodPath, 'utf8');
+  const occurrences = content.split(oldStr).length - 1;
+  if (occurrences === 0) return { error: `String not found in ${filePath}. Check exact whitespace/indentation.`, hint: 'Use toolRead to verify the exact content first.' };
+
+  const replaced = all ? content.split(oldStr).join(newStr) : content.replace(oldStr, newStr);
+  const replacedCount = all ? occurrences : 1;
+
+  // Write to sandbox (same pattern as toolWrite)
+  const relToDiscord = path.isAbsolute(filePath)
+    ? path.relative(DISCORD_ROOT, path.resolve(filePath))
+    : filePath;
+  const sbPath = path.join(SANDBOX_ROOT, relToDiscord);
+  fs.mkdirSync(path.dirname(sbPath), { recursive: true });
+  fs.writeFileSync(sbPath, replaced, 'utf8');
+
+  return {
+    written: sbPath,
+    occurrences,
+    replacedCount,
+    sandboxRelative: path.relative(SANDBOX_ROOT, sbPath)
+  };
+}
+
+// ── Multi-replace (multiple surgical edits in one call) ───────────────────────
+// Applies a list of { oldStr, newStr } replacements to one file.
+// All edits happen on the in-memory content sequentially — atomic for the file.
+
+async function toolMultiReplace({ path: filePath, replacements }) {
+  if (!filePath || !Array.isArray(replacements) || replacements.length === 0) {
+    return { error: 'path and replacements[] are required.' };
+  }
+
+  const prodPath = assertUnderRoot(filePath);
+  if (!fs.existsSync(prodPath)) return { error: `File not found: ${filePath}` };
+  const stat = fs.statSync(prodPath);
+  if (stat.size > MAX_FILE_SIZE) return { error: `File too large (${stat.size} bytes).` };
+
+  let content = fs.readFileSync(prodPath, 'utf8');
+  const results = [];
+
+  for (const { oldStr, newStr, all = false } of replacements) {
+    const count = content.split(oldStr).length - 1;
+    if (count === 0) {
+      results.push({ oldStr: oldStr.slice(0, 40), found: false });
+      continue;
+    }
+    content = all ? content.split(oldStr).join(newStr) : content.replace(oldStr, newStr);
+    results.push({ oldStr: oldStr.slice(0, 40), found: true, count: all ? count : 1 });
+  }
+
+  const relToDiscord = path.isAbsolute(filePath)
+    ? path.relative(DISCORD_ROOT, path.resolve(filePath))
+    : filePath;
+  const sbPath = path.join(SANDBOX_ROOT, relToDiscord);
+  fs.mkdirSync(path.dirname(sbPath), { recursive: true });
+  fs.writeFileSync(sbPath, content, 'utf8');
+
+  return { written: sbPath, replacements: results, sandboxRelative: path.relative(SANDBOX_ROOT, sbPath) };
+}
+
+// ── Background command execution & status tracking ────────────────────────────
+// Run a command async and poll it later. Like running cargo build and checking back.
+
+const BG_JOBS = new Map(); // jobId → { command, cwd, startedAt, stdout, stderr, done, exitCode }
+let bgJobCounter = 0;
+
+async function toolBgExec({ command, cwd: cwdParam }) {
+  if (!command) return { error: 'No command provided.' };
+  if (HARD_BLOCKED.test(command)) return { error: `Blocked — destructive command detected.` };
+
+  let cwd = PROJECT_ROOT;
+  if (cwdParam) { try { cwd = assertUnderRoot(cwdParam); } catch {} }
+
+  const jobId = `job_${Date.now()}_${++bgJobCounter}`;
+  const job = { command, cwd, startedAt: Date.now(), stdout: '', stderr: '', done: false, exitCode: null };
+  BG_JOBS.set(jobId, job);
+
+  // Launch async, capture output
+  import('child_process').then(({ exec }) => {
+    const shell = process.platform === 'win32' ? 'powershell.exe' : '/bin/bash';
+    const flag = process.platform === 'win32' ? '-Command' : '-c';
+    const proc = exec(`${shell} ${flag} "${command.replace(/"/g, '\\"')}"`, {
+      cwd, timeout: 300000, windowsHide: true,
+      env: { ...process.env, KAI_PROJECT_DIR: PROJECT_ROOT }
+    }, (err, stdout, stderr) => {
+      job.stdout += stdout?.slice(0, 10000) || '';
+      job.stderr += stderr?.slice(0, 3000) || '';
+      job.done = true;
+      job.exitCode = err?.code ?? 0;
+      console.log(`[KaiTools/bg] Job ${jobId} done (exit ${job.exitCode}).`);
+    });
+    proc.stdout?.on('data', d => { job.stdout += d; if (job.stdout.length > 10000) job.stdout = job.stdout.slice(-10000); });
+    proc.stderr?.on('data', d => { job.stderr += d; });
+  });
+
+  return { jobId, command, cwd, status: 'running' };
+}
+
+async function toolBgStatus({ jobId }) {
+  if (!jobId) return { error: 'No jobId provided.' };
+  const job = BG_JOBS.get(jobId);
+  if (!job) return { error: `Unknown jobId: ${jobId}` };
+  return {
+    jobId,
+    command: job.command,
+    done: job.done,
+    exitCode: job.exitCode,
+    stdout: job.stdout.slice(-6000),
+    stderr: job.stderr.slice(-2000),
+    runtimeMs: Date.now() - job.startedAt
+  };
 }
 
 // ── HTTP server ───────────────────────────────────────────────────────────────
 
-import os from 'os';
-
-async function toolSysinfo() {
-  const cpus   = os.cpus();
-  const totMem = os.totalmem();
-  const freMem = os.freemem();
-  // Disk: use 'wmic' on Windows; skip gracefully if unavailable
-  let diskInfo = 'unavailable';
-  try {
-    const { stdout } = await execAsync('wmic logicaldisk get size,freespace,caption', { timeout: 3000, windowsHide: true });
-    diskInfo = stdout.trim();
-  } catch (_) {}
-  return {
-    platform: os.platform(),
-    cpuModel: cpus[0]?.model || 'unknown',
-    cpuCount: cpus.length,
-    loadAvg: os.loadavg(),
-    totalMemMB: Math.round(totMem / 1048576),
-    freeMemMB:  Math.round(freMem / 1048576),
-    usedMemPct: Math.round((1 - freMem / totMem) * 100),
-    uptimeSeconds: Math.round(os.uptime()),
-    disk: diskInfo
-  };
-}
-
-async function toolSearch({ query }) {
-  // Use internal web-search utility or a fallback
-  try {
-    const res = await fetch(`http://127.0.0.1:8080/search?q=${encodeURIComponent(query)}`, { timeout: 10000 });
-    if (res.ok) return await res.json();
-    return { error: `Search service error: ${res.statusText}` };
-  } catch (e) {
-    return { error: `Search service unreachable: ${e.message}` };
-  }
-}
-
-async function toolLattice({ action = 'query', query, data, metadata = {} }) {
-  try {
-    const endpoint = action === 'store' ? '/api/rshl/anchor' : '/api/rshl/query';
-    const body = action === 'store' 
-      ? { text: data, metadata: { ...metadata, source: 'KaiCoder' } }
-      : { prompt: query };
-
-    const res = await fetch(`http://127.0.0.1:3333${endpoint}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      timeout: 5000
-    });
-    return await res.json();
-  } catch (e) {
-    return { error: `Lattice (3333) unreachable: ${e.message}` };
-  }
-}
-
-async function toolInspect({ path: filePath }) {
-  try {
-    const res = await fetch('http://127.0.0.1:3333/api/inspect', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: filePath }),
-      timeout: 5000
-    });
-    return await res.json();
-  } catch (e) {
-    return { error: `Inspector (3333) unreachable: ${e.message}` };
-  }
-}
-
-async function toolStatus() {
-  try {
-    const res = await fetch('http://127.0.0.1:3333/api/status', { timeout: 3000 });
-    return await res.json();
-  } catch (e) {
-    return { error: `Status (3333) unreachable: ${e.message}` };
-  }
-}
-
-async function toolAudit() {
-  // Runs the system-auditor script if available
-  try {
-    const auditorPath = path.join(DISCORD_ROOT, 'scripts', 'system-auditor.mjs');
-    if (!fs.existsSync(auditorPath)) return { error: 'Auditor script not found.' };
-    const { stdout, stderr } = await execAsync(`node "${auditorPath}" --json`, { timeout: 30000 });
-    return JSON.parse(stdout);
-  } catch (e) {
-    return { error: `Audit failed: ${e.message}` };
-  }
-}
-
-async function toolSnapshot() {
-  try {
-    const { stdout } = await execAsync('powershell -Command "Get-Process | Sort-Object CPU -Descending | Select-Object -First 10 | ConvertTo-Json"', { timeout: 5000 });
-    return { processes: JSON.parse(stdout), timestamp: new Date().toISOString() };
-  } catch (e) {
-    return { error: `Snapshot failed: ${e.message}` };
-  }
-}
-
-async function toolTest() {
-  const results = {};
-  for (const name of Object.keys(TOOL_MAP)) {
-    results[name] = 'ready';
-  }
-  return { status: 'Tool diagnostics complete', results };
-}
-
-// ── Ecosystem-Specific Command Runners ────────────────────────────────────────
-// Each runner knows the correct cwd, timeout, and shell for its ecosystem.
-// Kai Coder calls these by name rather than crafting raw exec calls.
-
-const RUST_ROOT = PROJECT_ROOT; // Cargo.toml lives at c:\KAI
-const NODE_ROOT = path.join(PROJECT_ROOT, 'tools', 'oracle-discord');
-const PYTHON_ROOT = path.join(PROJECT_ROOT, 'OpenJarvis-main');
-
-/**
- * toolCargo — Run any Cargo / Rust command in the RSHL project.
- * Examples: check, build --release, test, clippy, doc, clean
- */
-async function toolCargo({ command = 'check', args = '', cwd: cwdParam }) {
-  const cwd = cwdParam ? path.resolve(cwdParam) : RUST_ROOT;
-  const fullCmd = `cargo ${command} ${args}`.trim();
-  if (HARD_BLOCKED.test(fullCmd)) return { error: 'Blocked command.' };
-  try {
-    const { stdout, stderr } = await execAsync(`powershell.exe -Command "cargo ${command} ${args}"`, {
-      cwd, timeout: 300000, windowsHide: true, // up to 5min for release builds
-      env: { ...process.env, KAI_PROJECT_DIR: PROJECT_ROOT }
-    });
-    return { stdout: stdout.slice(0, 8000), stderr: stderr.slice(0, 4000), cwd, command: fullCmd };
-  } catch (e) {
-    return { error: e.message.slice(0, 2000), stderr: e.stderr?.slice(0, 2000), cwd, command: fullCmd };
-  }
-}
-
-/**
- * toolNpm — Run any npm command in the oracle-discord project.
- * Examples: install, run dev, run start, list, outdated, audit
- */
-async function toolNpm({ command = 'list', args = '', cwd: cwdParam }) {
-  const cwd = cwdParam ? path.resolve(cwdParam) : NODE_ROOT;
-  const fullCmd = `npm ${command} ${args}`.trim();
-  if (HARD_BLOCKED.test(fullCmd)) return { error: 'Blocked command.' };
-  try {
-    const { stdout, stderr } = await execAsync(`powershell.exe -Command "npm ${command} ${args}"`, {
-      cwd, timeout: 120000, windowsHide: true,
-      env: { ...process.env, KAI_PROJECT_DIR: PROJECT_ROOT }
-    });
-    return { stdout: stdout.slice(0, 8000), stderr: stderr.slice(0, 2000), cwd, command: fullCmd };
-  } catch (e) {
-    return { error: e.message.slice(0, 2000), stderr: e.stderr?.slice(0, 2000), cwd, command: fullCmd };
-  }
-}
-
-/**
- * toolNode — Run a Node.js script or check its syntax.
- * action: 'run' | 'check' | 'eval'
- * Examples: run bots/leo.mjs, check shared/openjarvis.mjs, eval "console.log(1+1)"
- */
-async function toolNode({ action = 'check', target = '', cwd: cwdParam }) {
-  const cwd = cwdParam ? path.resolve(cwdParam) : NODE_ROOT;
-  let cmd;
-  if (action === 'check') {
-    const resolved = target ? path.resolve(cwd, target) : cwd;
-    cmd = `node --check "${resolved}"`;
-  } else if (action === 'eval') {
-    cmd = `node -e "${target.replace(/"/g, '\\"')}"`;
-  } else {
-    cmd = `node "${target}"`;
-  }
-  if (HARD_BLOCKED.test(cmd)) return { error: 'Blocked command.' };
-  try {
-    const { stdout, stderr } = await execAsync(`powershell.exe -Command "${cmd}"`, {
-      cwd, timeout: 30000, windowsHide: true,
-      env: { ...process.env, KAI_PROJECT_DIR: PROJECT_ROOT }
-    });
-    return { stdout: stdout.slice(0, 6000), stderr: stderr.slice(0, 2000), cwd, command: cmd };
-  } catch (e) {
-    return { valid: false, error: e.message.slice(0, 2000), stderr: e.stderr?.slice(0, 2000), cwd };
-  }
-}
-
-/**
- * toolPython — Run a Python script, pip command, or pytest.
- * Examples: script src/some_tool.py, pip install -r requirements.txt, test
- */
-async function toolPython({ action = 'script', target = '', args = '', cwd: cwdParam }) {
-  const cwd = cwdParam ? path.resolve(cwdParam) : PYTHON_ROOT;
-  let cmd;
-  if (action === 'pip') {
-    cmd = `pip ${target} ${args}`.trim();
-  } else if (action === 'test') {
-    cmd = `python -m pytest ${target} ${args}`.trim();
-  } else if (action === 'check') {
-    cmd = `python -m py_compile "${target}"`;
-  } else if (action === 'module') {
-    cmd = `python -m ${target} ${args}`.trim();
-  } else {
-    cmd = `python "${target}" ${args}`.trim();
-  }
-  if (HARD_BLOCKED.test(cmd)) return { error: 'Blocked command.' };
-  try {
-    const { stdout, stderr } = await execAsync(`powershell.exe -Command "${cmd}"`, {
-      cwd, timeout: 120000, windowsHide: true,
-      env: { ...process.env, KAI_PROJECT_DIR: PROJECT_ROOT, PYTHONPATH: PYTHON_ROOT }
-    });
-    return { stdout: stdout.slice(0, 8000), stderr: stderr.slice(0, 2000), cwd, command: cmd };
-  } catch (e) {
-    return { error: e.message.slice(0, 2000), stderr: e.stderr?.slice(0, 2000), cwd, command: cmd };
-  }
-}
-
-/**
- * toolOllama — Manage and query local Ollama models.
- * Examples: list, show Leo-Sovereign, pull llama3.1:8b, ps (running models)
- */
-async function toolOllama({ command = 'list', args = '' }) {
-  const fullCmd = `ollama ${command} ${args}`.trim();
-  if (HARD_BLOCKED.test(fullCmd)) return { error: 'Blocked command.' };
-  try {
-    const { stdout, stderr } = await execAsync(`powershell.exe -Command "${fullCmd}"`, {
-      timeout: 60000, windowsHide: true,
-      env: { ...process.env }
-    });
-    return { stdout: stdout.slice(0, 6000), stderr: stderr.slice(0, 1000), command: fullCmd };
-  } catch (e) {
-    return { error: e.message.slice(0, 1000), stderr: e.stderr?.slice(0, 1000), command: fullCmd };
-  }
-}
-
-/**
- * toolOpenJarvis — Bridge to the full OpenJarvis Python tool library.
- * Kai Coder can invoke any registered OpenJarvis tool through this bridge.
- * This feeds the donated engineering toolkit (git, web_search, apply_patch,
- * knowledge_search, shell_exec, etc.) into Kai Coder without a new agent.
- *
- * Available tools include:
- *   kai_cli       — shell commands, read files, project status
- *   git_tool      — git log, diff, status, commit inspection
- *   web_search    — real-time web research
- *   apply_patch   — apply unified diffs to files
- *   knowledge_search — query the knowledge base / lattice
- *   shell_exec    — safe shell execution with sandboxing
- *   file_read     — read project files
- *   file_write    — write files safely
- *   repl          — run Python/JS code snippets
- *   http_request  — make outbound HTTP calls
- */
-async function toolOpenJarvis({ tool, params = {} }) {
-  if (!tool) return { error: 'tool name is required' };
-  try {
-    const res = await fetch('http://127.0.0.1:8080/api/tool', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tool_name: tool, params }),
-      signal: AbortSignal.timeout(30000)
-    });
-    if (!res.ok) return { error: `OpenJarvis HTTP ${res.status}: ${res.statusText}` };
-    return await res.json();
-  } catch (e) {
-    return { error: `OpenJarvis bridge unreachable: ${e.message}` };
-  }
-}
-
-/**
- * toolGit — Direct git operations via the OpenJarvis git_tool bridge.
- * Shorthand for common git operations Kai Coder needs during engineering tasks.
- */
-async function toolGit({ command = 'status', args = '' }) {
-  return toolOpenJarvis({ tool: 'git_tool', params: { command, args } });
-}
-
-/**
- * toolWebSearch — Real-time web research for Kai Coder.
- * Routes through OpenJarvis web_search tool.
- */
-async function toolWebSearch({ query }) {
-  // Try internal OpenJarvis web_search first, fall back to toolSearch (port 8080)
-  const ojResult = await toolOpenJarvis({ tool: 'web_search', params: { query } });
-  if (!ojResult.error) return ojResult;
-  return toolSearch({ query }); // fallback
-}
-
-/**
- * toolPatch — Apply a unified diff patch to a file.
- * Routes through OpenJarvis apply_patch tool.
- */
-async function toolPatch({ path: filePath, patch }) {
-  return toolOpenJarvis({ tool: 'apply_patch', params: { path: filePath, patch } });
-}
-
-/**
- * toolKnowledge — Query the knowledge base / long-term memory.
- * Routes through OpenJarvis knowledge_search tool.
- */
-async function toolKnowledge({ query }) {
-  return toolOpenJarvis({ tool: 'knowledge_search', params: { query } });
-}
-
-const TOOL_MAP = { 
-  // ── Core File & Code Tools ──────────────────────────────────────────────────
-  read: toolRead,       // Read any file in the project
-  list: toolList,       // List directory contents
-  grep: toolGrep,       // Search across source files
-  write: toolWrite,     // Write to sandbox (never production directly)
-  exec: toolExec,       // Execute any PowerShell command across c:\KAI
-  powershell: toolPowershell, // Full multi-line PS1 script execution
-  check: toolCheck,     // node --check syntax validation
-  diff: toolDiff,       // Sandbox vs production diff
-  apply: toolApply,     // Promote sandbox file to production (with backup)
-  // ── Ecosystem Command Runners ───────────────────────────────────────────────
-  cargo: toolCargo,     // Rust: cargo check | build | test | clippy | clean
-  npm: toolNpm,         // Node.js: npm install | run | audit | outdated
-  node: toolNode,       // Node.js: run | check | eval scripts
-  python: toolPython,   // Python: scripts | pip | pytest | module | check
-  ollama: toolOllama,   // Ollama: list | show | pull | ps (model management)
-  // ── System Intelligence ─────────────────────────────────────────────────────
-  sysinfo: toolSysinfo,   // Hardware stats (CPU/RAM/disk)
-  snapshot: toolSnapshot, // Live process snapshot
-  status: toolStatus,     // Oracle server + lattice health
-  audit: toolAudit,       // System audit report
-  // ── Knowledge & Search ──────────────────────────────────────────────────────
-  search: toolSearch,         // Internal search (port 8080)
-  lattice: toolLattice,       // RSHL lattice query + store
-  inspect: toolInspect,       // Deep lattice inspection
-  knowledge: toolKnowledge,   // Long-term knowledge base query
-  websearch: toolWebSearch,   // Real-time web research
-  // ── OpenJarvis Engineering Toolkit (donated skills) ─────────────────────────
-  openjarvis: toolOpenJarvis, // Raw bridge: call ANY OpenJarvis Python tool
-  git: toolGit,               // Git operations (log, diff, status, etc.)
-  patch: toolPatch,           // Apply unified diffs to files
-  // ── Diagnostics ─────────────────────────────────────────────────────────────
-  test: toolTest
+const TOOL_MAP = {
+  read: toolRead, list: toolList, grep: toolGrep,
+  write: toolWrite, exec: toolExec, powershell: toolPowershell,
+  check: toolCheck, diff: toolDiff, apply: toolApply,
+  // New tools — Antigravity parity
+  search_web: toolSearchWeb,
+  read_url: toolReadUrl,
+  replace: toolReplace,
+  multi_replace: toolMultiReplace,
+  bg_exec: toolBgExec,
+  bg_status: toolBgStatus
 };
 
 const server = http.createServer(async (req, res) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
-  if (req.method === 'OPTIONS') {
-    res.writeHead(204);
-    return res.end();
-  }
-
   res.setHeader('Content-Type', 'application/json');
 
   if (req.method === 'GET' && req.url === '/health') {
@@ -649,13 +539,11 @@ const server = http.createServer(async (req, res) => {
   res.end(JSON.stringify({ error: 'Not found' }));
 });
 
-server.listen(PORT, '0.0.0.0', () => {
+server.listen(PORT, '127.0.0.1', () => {
   console.log(`[KaiCoderTools] Tool server online at port ${PORT}`);
-  console.log(`[KaiCoderTools] Project root (read): ${PROJECT_ROOT}`);
-  console.log(`[KaiCoderTools] Sandbox (write): ${SANDBOX_ROOT}`);
+  console.log(`[KaiCoderTools] Project root: ${PROJECT_ROOT}`);
+  console.log(`[KaiCoderTools] Sandbox: ${SANDBOX_ROOT}`);
   console.log(`[KaiCoderTools] Backups: ${BACKUP_ROOT}`);
-  console.log(`[KaiCoderTools] Tools: ${Object.keys(TOOL_MAP).join(', ')}`);
 });
 
 export { PORT as TOOL_SERVER_PORT };
-

@@ -30,6 +30,9 @@ lopdf = "0.34"
 sysinfo = "0.31"
 hnsw_rs = "0.3"
 roaring = { version = "0.10", features = ["serde"] }
+wgpu = "22.1"
+pollster = "0.3"
+bytemuck = { version = "1", features = ["derive"] }
 
 [profile.release]
 opt-level = 3

@@ -13,8 +13,8 @@ ollama create Leo-Sovereign -f "%~dp0Leo-Sovereign.Modelfile"
 echo [2/9] Oracle-Sovereign
 ollama create Oracle-Sovereign -f "%~dp0Oracle-Sovereign.Modelfile"
 
-echo [3/9] Epistemic-Sovereign
-ollama create Epistemic-Sovereign -f "%~dp0Epistemic-Sovereign.Modelfile"
+echo [3/9] Claudey-Sovereign
+ollama create Claudey-Sovereign -f "%~dp0Claudey-Sovereign.Modelfile"
 
 echo [4/9] Gemini-Sovereign
 ollama create Gemini-Sovereign -f "%~dp0Gemini-Sovereign.Modelfile"
@@ -40,3 +40,4 @@ echo Run 'ollama list' to verify.
 echo.
 echo If a model was previously cached, restart Ollama after this.
 pause
+

@@ -8,7 +8,7 @@ const THREAD_NAMES = [
     "kai-lattice",
     "oracle-command",
     "leo-work",
-    "Epistemic-work",
+    "Claudey-work",
     "gemini-work",
     "x-work",
     "groq-work"
@@ -87,3 +87,4 @@ export class DiscordManager {
 }
 
 export const discordManager = new DiscordManager();
+

@@ -349,9 +349,11 @@ impl NeuralBus {
         phi_g: f32,
         text: &str,
         n: usize,
+        regions: &[&str],
+        user_id: &str,
     ) -> Vec<crate::core::QueryHit> {
-        // Stage 1: Geometric Retrieval
-        let mut hits = universe.query(text, n);
+        // Stage 1: Geometric Retrieval (Isolated by user_id)
+        let mut hits = universe.query_in_regions(text, n, regions, user_id);
         
         // Stage 2: Associative Recall
         let fired_labels: Vec<String> = hits.iter().map(|h| h.label.clone()).collect();
@@ -368,6 +370,14 @@ impl NeuralBus {
         for (label, boost) in synaptic_boosts {
             if !fired_labels.contains(&label) && boost > 0.15 {
                 if let Some(cell) = universe.get_cell_by_label(&label) {
+                    // Check isolation for associated cell too
+                    if cell.claim.layer == 2 && cell.claim.user_id != user_id {
+                        continue;
+                    }
+                    if !regions.is_empty() && !regions.contains(&cell.region.as_str()) {
+                        continue;
+                    }
+
                     let mut hit = crate::core::QueryHit::from_cell(cell, 0.0);
                     hit.score = Self::effective_score(0.0, boost, phi_g);
                     hits.push(hit);

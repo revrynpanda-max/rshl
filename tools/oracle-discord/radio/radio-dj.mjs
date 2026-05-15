@@ -584,18 +584,20 @@ async function _playNextSong(preloaded = null, preselectedSong = null) {
   djState.currentResource = resource;
 
   // Handle stream errors (EPIPE, etc)
-  ytdlpProc.on('error', err => {
-    console.error('[Radio/Stream] Process error:', err.message);
-    if (djState.active) {
-      console.log('[Radio/Stream] Attempting recovery...');
-      _playNextSong().catch(() => {});
-    }
-  });
+  if (ytdlpProc) {
+    ytdlpProc.on('error', err => {
+      console.error('[Radio/Stream] Process error:', err.message);
+      if (djState.active) {
+        console.log('[Radio/Stream] Attempting recovery...');
+        _playNextSong().catch(() => {});
+      }
+    });
 
-  ytdlpProc.stderr?.on('data', d => {
-    const msg = d.toString();
-    if (msg.includes('WARNING')) console.warn('[Radio/yt-dlp]', msg.trim());
-  });
+    ytdlpProc.stderr?.on('data', d => {
+      const msg = d.toString();
+      if (msg.includes('WARNING')) console.warn('[Radio/yt-dlp]', msg.trim());
+    });
+  }
 
   // Start silent, fade in over 3s for smooth entry
   resource.volume?.setVolume(0);

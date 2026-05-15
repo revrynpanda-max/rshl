@@ -11,6 +11,7 @@ pub mod field_state;
 pub mod lexicon;
 pub mod memory;
 pub mod mind_frame;
+pub mod gpu_compute;
 pub mod normalize;
 pub mod oscillator;
 pub mod predictive;

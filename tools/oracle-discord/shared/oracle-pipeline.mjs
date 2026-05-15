@@ -2,7 +2,7 @@
  * oracle-pipeline.mjs — Silent Background Research System
  *
  * How it works:
- * 1. A social bot (Epistemic, Gemini, Groq, X) receives a message it can't fully answer.
+ * 1. A social bot (Claudey, Gemini, Groq, X) receives a message it can't fully answer.
  * 2. The bot calls `requestOracleHelp(botName, question, channelId, callback)`.
  * 3. The request is written to the oracle queue file and an HTTP call fires to Oracle (port 3410).
  * 4. Oracle routes the request to the right specialist:
@@ -53,7 +53,7 @@ function classifyRequest(question) {
 /**
  * requestOracleHelp — Called by social bots to silently request back-end processing.
  *
- * @param {string} requestingBot - The name of the bot making the request (e.g. "Epistemic")
+ * @param {string} requestingBot - The name of the bot making the request (e.g. "Claudey")
  * @param {string} question - The question or topic to research
  * @param {string} channelId - The Discord channel to send the result to
  * @param {Function|null} callback - Optional callback(result) when answer arrives
@@ -209,3 +209,4 @@ export async function processOracleQueue(callSpecialist) {
   const trimmed = queue.filter(r => r.status === 'pending' || r.status === 'processing' || r.timestamp > tenMinAgo);
   fs.writeFileSync(QUEUE_FILE, JSON.stringify(trimmed, null, 2));
 }
+

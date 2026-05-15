@@ -319,6 +319,7 @@ mod tests {
             &episodic,
             &global_workspace,
             &self_state_hub,
+            &crate::core::SynapticLayer::new(),
             &base_dir,
         );
         assert!(saved.ok);

@@ -285,11 +285,21 @@ impl SparseVec {
             }
         }
 
-        // Ternary threshold + Sparsification: keep only top 4% magnitudes
+        // Ternary threshold + Sparsification: keep only the top `target_count`
+        // magnitudes. Fast path: when the accumulator already holds fewer
+        // nonzeros than the target (the normal case for real-length cells),
+        // every nonzero survives and the threshold is 0 - so we skip sorting
+        // 16,384 mostly-zero values entirely. Output is identical to the old
+        // full-sort version: when nnz > target_count the top (target_count+1)
+        // values are all nonzero, so sorting only the nonzeros yields the same
+        // threshold; when nnz <= target_count the old sort's element at
+        // target_count was 0, giving threshold 0 either way.
         let target_count = ((DIM as f32) * SPARSITY) as usize;
-        let mut magnitudes: Vec<i32> = v.iter().map(|s| s.abs()).collect();
-        magnitudes.sort_unstable_by(|a, b| b.cmp(a));
-        let threshold = if target_count < DIM {
+        let nnz = v.iter().filter(|&&s| s != 0).count();
+        let threshold: i32 = if target_count < DIM && nnz > target_count {
+            let mut magnitudes: Vec<i32> =
+                v.iter().filter(|&&s| s != 0).map(|s| s.abs()).collect();
+            magnitudes.sort_unstable_by(|a, b| b.cmp(a));
             magnitudes[target_count]
         } else {
             0

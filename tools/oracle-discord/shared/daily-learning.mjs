@@ -20,8 +20,8 @@ export const LEARNING_TRACKS = {
     domain: "Hardware Maintenance & Upkeep",
     focus: ["Lattice stability monitoring", "Geometric space health", "Hardware/System sensor oversight"]
   },
-  "Epistemic": {
-    domain: "Epistemic Reasoning & Strategic Logic",
+  "Claudey": {
+    domain: "Claudey Reasoning & Strategic Logic",
     focus: ["Synthesizing cultural trends", "Evaluating social cohesion", "Deep-diving into narrative structures"]
   },
   "Gemini": {
@@ -77,3 +77,4 @@ TASK: Perform a deep audit or research update on this area.
   
   return phases;
 }
+

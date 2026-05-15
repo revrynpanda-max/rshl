@@ -617,7 +617,19 @@ fn live_self_state_hit(
         score,
         strength,
         source: "self-state".to_string(),
+        timestamp: now_secs(),
+        user_id: String::new(),
+        channel_id: String::new(),
+        message_id: String::new(),
+        keywords: Vec::new(),
     }
+}
+
+fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
 }
 
 fn err_json(msg: &str) -> String {

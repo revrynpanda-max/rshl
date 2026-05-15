@@ -18,6 +18,7 @@
 import fetch from 'node-fetch';
 import path from 'path';
 import { chatWithOpenJarvis } from './openjarvis.mjs';
+import { KaiSubAgentPool, parallelFileAnalysis, parallelResearch } from './kai-subagent-pool.mjs';
 
 const TOOL_SERVER  = 'http://127.0.0.1:3420';
 const PROJECT_ROOT = 'c:/KAI';  // Full project root — matches tool server
@@ -35,14 +36,14 @@ Rust / RSHL Core (c:/KAI/src/):
 - oracle_server.rs     — Axum HTTP server, port 3333. Entry point for all lattice operations.
 - lattice.rs           — RSHL engine: D=16384 ternary vectors, Boid flocking, Fibonacci phase geometry
 - memory.rs            — SynapticLayer: Hebbian LTP/LTD, 7-region topology
-- epistemic_immune.rs  — Anomaly detection and lattice self-defense
+- Claudey_immune.rs  — Anomaly detection and lattice self-defense
 - Cargo.toml           — Dependencies: axum, tokio, serde, ndarray, rand
 - Build: \`cargo build --release\` | Check: \`cargo check\` | Test: \`cargo test\`
 
 Node.js / Discord Ecosystem (c:/KAI/tools/oracle-discord/):
 - oracle-gateway.mjs   — Oracle dispatcher, port 3410. Routes all inter-agent traffic.
 - bots/leo.mjs         — Voice AI, port 3400. ElevenLabs TTS, Groq Whisper STT.
-- bots/start-bot.mjs   — Shared agent runner for Gemini, Groq, X, Epistemic, Analyst, Researcher.
+- bots/start-bot.mjs   — Shared agent runner for Gemini, Groq, X, Claudey, Analyst, Researcher.
 - shared/openjarvis.mjs — Neural bus: routes LLM calls to Ollama/Groq/Gemini/etc.
 - shared/lattice-bridge.mjs — Bridge: JS <-> Rust RSHL engine (port 3333)
 - shared/kai-coder-agent.mjs — YOUR agentic loop (this file)
@@ -76,8 +77,12 @@ Ollama / Local AI (port 11434):
 
 [TOOL ARSENAL]
 You have: read, list, grep, write, exec (PowerShell), powershell, check, diff, apply,
-sysinfo, snapshot, status, audit, lattice, inspect, knowledge, websearch,
+search_web (live DuckDuckGo/Brave search), read_url (fetch any webpage as text),
+replace (surgical string-replace in files), multi_replace (multiple replacements at once),
+bg_exec (background command), bg_status (check background job),
+sysinfo, snapshot, status, audit, lattice, inspect, knowledge,
 openjarvis (full Python toolkit bridge), git, patch.
+You can also spawn parallel sub-agents via KaiSubAgentPool for research, file analysis, and code generation.
 
 [SECURITY]
 Ryan (nastermodx) has 100% authority. Taz has 75%. Never apply to production without Oracle/Ryan approval.
@@ -157,20 +162,61 @@ Example: ["bots/start-bot.mjs", "shared/openjarvis.mjs"]`;
   } catch (_) { return []; }
 }
 
-// ── Read files ────────────────────────────────────────────────────────────────
+// ── Read files (parallel) ─────────────────────────────────────────────────────
+// All files are fetched simultaneously from the tool server — no waiting in line.
 
 async function readFiles(relativePaths) {
-  const results = [];
-  for (const relPath of relativePaths) {
+  const reads = relativePaths.map(async (relPath) => {
     const fullPath = path.join(PROJECT_ROOT, relPath).replace(/\\/g, '/');
     const result = await callTool('read', { path: fullPath });
-    if (result.content) {
-      results.push({ path: relPath, content: result.content });
-    } else {
-      results.push({ path: relPath, error: result.error || 'Could not read' });
+    return result.content
+      ? { path: relPath, content: result.content }
+      : { path: relPath, error: result.error || 'Could not read' };
+  });
+  return await Promise.all(reads);
+}
+
+// ── Web research sub-agents ───────────────────────────────────────────────────
+// If the task mentions things that benefit from web lookup (APIs, libraries, patterns),
+// spawn Groq sub-agents to research relevant topics in parallel.
+
+const WEB_RESEARCH_TRIGGERS = /\b(api|library|package|npm|crate|how to|pattern|best practice|integrate|oauth|webhook|http|endpoint|documentation|sdk)\b/i;
+
+async function runWebResearchIfNeeded(task, fileContext, log, onProgress) {
+  if (!WEB_RESEARCH_TRIGGERS.test(task)) return '';
+
+  // Ask a fast sub-agent what topics to research for this task
+  const pool = new KaiSubAgentPool(3);
+  const topicsRaw = await pool.runOne({
+    id: 'research-topics',
+    model: 'fast',
+    maxTokens: 300,
+    system: 'You are a research coordinator. Given a coding task, identify the 2-3 most important technical topics that would benefit from web research. Output ONLY a JSON array of short query strings.',
+    prompt: `Task: ${task}\n\nContext: ${fileContext.slice(0, 500)}\n\nWhat 2-3 specific technical topics should be searched to best solve this? JSON array only.`
+  });
+
+  let topics = [];
+  try {
+    const match = (topicsRaw || '').match(/\[[\s\S]*?\]/);
+    if (match) topics = JSON.parse(match[0]).slice(0, 3);
+  } catch {}
+
+  if (topics.length === 0) return '';
+
+  log(`Web research: ${topics.join(' | ')}`);
+  if (onProgress) onProgress(`Researching: ${topics.join(', ')}...`);
+
+  // Fetch web results via tool server (parallel)
+  const searchResults = await Promise.all(topics.map(async (topic) => {
+    const res = await callTool('search_web', { query: topic, maxResults: 4 });
+    if (res.results && res.results.length > 0) {
+      return `[${topic}]\n${res.results.map(r => `- ${r.title}: ${r.snippet}`).join('\n')}`;
     }
-  }
-  return results;
+    return null;
+  }));
+
+  const combined = searchResults.filter(Boolean).join('\n\n');
+  return combined ? `\n\n[WEB RESEARCH RESULTS]\n${combined}` : '';
 }
 
 // ── Parse file blocks from LLM output ────────────────────────────────────────
@@ -242,6 +288,10 @@ export async function runCodingTask(task, callLLM, onProgress = null) {
     `// FILE: ${f.path}\n\`\`\`javascript\n${f.content.slice(0, 6000)}\n\`\`\``
   ).join('\n\n---\n\n');
 
+  // ── Phase 2.5: Parallel web research (if task involves external APIs/libraries)
+  const webResearch = await runWebResearchIfNeeded(task, fileContext, log, onProgress);
+  if (webResearch) log(`Web research complete (${webResearch.length} chars of findings).`);
+
   // ── Phase 3: Plan ─────────────────────────────────────────────────────────
   log('Phase 3: Generating change plan...');
   const planPrompt = `You are Kai Coder — lead architect of the oracle-discord project running on KAI RSHL (Recursive Sparse Hyperdimensional Lattice).
@@ -250,6 +300,7 @@ TASK: ${task}
 
 CURRENT SOURCE FILES:
 ${fileContext}
+${webResearch}
 
 Write a concise implementation plan. List:
 1. What is wrong or missing
@@ -272,6 +323,7 @@ ${plan || 'See task above'}
 
 CURRENT SOURCE FILES:
 ${fileContext}
+${webResearch}
 
 Output ONLY the modified files. For each file you change, use this exact format:
 
@@ -348,14 +400,7 @@ If a file needs no changes, do not include it. Do not explain, do not add commen
 
   const report = buildReport({ task, plan, written, validationResults, diffs, passing, failing, allValid });
 
-  return {
-    success: allValid,
-    plan,
-    written,
-    validationResults,
-    diffs,
-    report
-  };
+  return { success: allValid, plan, written, validationResults, diffs, report };
 }
 
 // ── Report builder ────────────────────────────────────────────────────────────
@@ -390,26 +435,24 @@ function buildReport({ task, plan, written, validationResults, diffs, passing, f
   lines.push(
     ``,
     allValid
-      ? `**Status: READY TO APPLY** — all checks pass. Ryan or Oracle can approve.`
+      ? `**Status: READY TO APPLY** — all checks pass. Say \`apply [filename]\` to push to production.`
       : `**Status: NEEDS REVIEW** — ${failing.length} file(s) failed syntax check. Do not apply until fixed.`,
     ``,
-    `To apply a file: send Oracle the command \`apply [filename]\``
+    `To apply a specific file: \`apply bots/start-bot.mjs\``
   );
 
   return lines.join('\n');
 }
 
-// ── Apply helper — called when Oracle/Ryan approves a specific file ───────────
+// ── Apply helper ──────────────────────────────────────────────────────────────
 
 export async function applySandboxFile(filePath) {
   const result = await callTool('apply', { path: filePath });
-  if (result.applied) {
-    return `Applied ${filePath} → ${result.applied}. Backup created.`;
-  }
+  if (result.applied) return `Applied \`${filePath}\` to production. Backup created.`;
   return `Apply failed: ${result.error}`;
 }
 
-// ── Health check ──────────────────────────────────────────────────────────────
+// ── Tool server health ─────────────────────────────────────────────────────────
 
 export async function isToolServerOnline() {
   try {

@@ -31,6 +31,18 @@ pub struct Claim {
     /// User identifier for cellularization (isolation).
     #[serde(default)]
     pub user_id: String,
+    /// Discord channel ID where this belief originated.
+    #[serde(default)]
+    pub channel_id: String,
+    /// Discord message ID for exact retrieval.
+    #[serde(default)]
+    pub message_id: String,
+    /// Discord guild ID.
+    #[serde(default)]
+    pub guild_id: String,
+    /// Extracted keywords for fast overlap lookup.
+    #[serde(default)]
+    pub keywords: Vec<String>,
 }
 
 pub const LAYER_QUANTUM: u8 = 0;
@@ -70,6 +82,10 @@ impl Claim {
             vitality: 1.0,
             layer: LAYER_SYNCYTIUM, 
             user_id: String::new(),
+            channel_id: String::new(),
+            message_id: String::new(),
+            guild_id: String::new(),
+            keywords: Vec::new(),
         }
     }
 }
