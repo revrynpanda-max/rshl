@@ -13,10 +13,27 @@ import { logAudit } from './shared/audit-log.mjs';
 import os from 'os';
 import { AI_REGISTRY, resolveIdentityFromMemory } from './shared/identities.mjs';
 import { startSentinel } from './shared/sentinel.mjs';
+import { startCorrelationEngine } from './shared/correlation-engine.mjs';
+import { startIntegrityWatcher } from './shared/file-integrity.mjs';
+import { startRustEngineBridge } from './shared/rust-engine-bridge.mjs';
+import { getSelfOptimizeSnapshot } from './shared/resource-saver.mjs';
+import { gcRemediationState } from './shared/remediation-state.mjs';
 import { processOracleQueue } from './shared/oracle-pipeline.mjs';
 import { queryLattice } from './shared/lattice-bridge.mjs';
 import { runCodingTask, applySandboxFile, isToolServerOnline, makeLLMCaller } from './shared/kai-coder-agent.mjs';
+import { classifyIntent, parseMultiStep, executeIntent } from './shared/oracle-intent.mjs';
+import {
+  getAuthLevel,
+  getWorkflow,
+  startWorkflow,
+  recordWorkflowStep,
+  storeWorkflowResult,
+  completeWorkflow,
+  dispatchSubtask,
+  synthesizeWorkflowReport
+} from './shared/agent-orchestrator.mjs';
 import { fork } from 'child_process';
+import { chunkForDiscord } from './shared/utils.mjs';
 import path from 'path';
 
 // ── PUSH COMPLETED ANSWERS TO LEO FOR VOICE/DM DELIVERY ─────────────────────
@@ -45,7 +62,20 @@ async function notifyLeoWithAnswer(userId, text, label = 'Oracle') {
 
 import 'dotenv/config';
 
+process.env.RESOURCE_SAVER_COORDINATOR = '1';
+
 startSentinel();
+startCorrelationEngine({ emitConsole: true });
+startIntegrityWatcher();
+startRustEngineBridge();
+setInterval(() => { try { gcRemediationState(); } catch (_) {} }, 60_000);
+
+// --- RESOURCE SAVER COORDINATOR LOOP ---
+// Periodically updates the shared self-optimization state so that other bots don't query the OS.
+getSelfOptimizeSnapshot(true).catch(err => console.error(`[Oracle/ResourceSaver] First-run error:`, err.message));
+setInterval(() => {
+  getSelfOptimizeSnapshot(true).catch(err => console.error(`[Oracle/ResourceSaver] Loop error:`, err.message));
+}, 15000);
 
 // ── Passive Oracle Pipeline Poll ─────────────────────────────────────────────
 // Catches any queued requests where the IPC trigger signal failed (bot was offline etc.)
@@ -63,9 +93,9 @@ ${latticeContext ? latticeContext + '\n' : ''}a social bot in the lattice has si
 }, 120000); // every 2 minutes
 
 const DEPARTMENTS = {
-  "Researcher": "Investigate technical claims, verify sources, and provide deep-dive intelligence on KAI/RSHL developments.",
-  "Analyst": "Synthesize data into strategic business logic, optimize resource allocation, and plan project milestones.",
-  "Kai Coder": "Maintain the RSHL Core, debug system nodes, and implement code-level architectural enhancements.",
+  "Researcher": "Internet research, documentation scraping, web searches, fact-finding, and external technical documentation.",
+  "Analyst": "Crawling through data, parsing server logs, performing forensic inspections and system audits, and securing systems.",
+  "Kai Coder": "Lead system builder, file system manipulation, writing and refactoring code, and resolving coding bugs.",
   "Gemini": "Manage corporate expansion, refine the KAI identity, and conduct market/ecosystem outreach.",
   "Epistemic": "Perform high-level epistemic reasoning, architectural strategy, and complex logic verification.",
   "X": "Monitor real-time digital trends, analyze asset intelligence, and provide rapid-response tactical data.",
@@ -85,18 +115,95 @@ function loadUserRegistry() {
 loadUserRegistry();
 
 const PORT = 3410;
-const ORACLE_API_URL = process.env.ORACLE_API_URL || "http://127.0.0.1:3333";
+const ORACLE_API_URL = process.env.ORACLE_API_URL || "http://127.0.0.1:3334";
 const MESSAGE_RING_MAX = 120;
 const CHANNEL_RINGS = new Map();
 
+// ── HEURISTIC MONITORING STATE ──────────────────────────────────────────────
+const BOT_VITALS_HISTORY = new Map(); // botName -> { energy, ts }
+const BOT_REQUEST_TRACKER = new Map(); // botName -> [timestamp, ...]
+const ANOMALY_COOLDOWNS  = new Map(); // key -> lastReportTs
+
+/**
+ * Report a system anomaly to the work channel if it's not on cooldown.
+ */
+async function reportAnomaly(key, message) {
+  const now = Date.now();
+  const lastReport = ANOMALY_COOLDOWNS.get(key) || 0;
+  if (now - lastReport < 600000) return; // Only report same anomaly once every 10 mins
+
+  ANOMALY_COOLDOWNS.set(key, now);
+  console.log(`[Oracle/Anomaly] ${message}`);
+  
+  // ONLY post to Discord if it's a CRITICAL failure
+  if (message.includes('RESTART') || message.includes('HALT')) {
+    const channel = client.channels.cache.get(CHANNEL_IDS.WORK) || await client.channels.fetch(CHANNEL_IDS.WORK).catch(() => null);
+    if (channel) await channel.send(`🏛️ **[Oracle/Anomaly]** ${message}`).catch(() => {});
+  }
+}
+
+// ── EXTERNAL LOG MONITORING (KAI Core & OpenJarvis) ─────────────────────────
+const EXTERNAL_LOGS = [
+  { name: 'KAI-Core', path: 'c:/KAI/scratch/oracle-discord-kai.err.log' },
+  { name: 'OpenJarvis', path: 'c:/KAI/scratch/openjarvis.err.log' }
+];
+
+EXTERNAL_LOGS.forEach(log => {
+  try {
+    if (fs.existsSync(log.path)) {
+      let lastSize = fs.statSync(log.path).size;
+      fs.watchFile(log.path, { interval: 5000 }, (curr) => {
+        if (curr.size > lastSize) {
+          const stream = fs.createReadStream(log.path, { start: lastSize });
+          let data = '';
+          stream.on('data', chunk => data += chunk);
+          stream.on('end', async () => {
+            if (data.trim()) {
+              await reportAnomaly(`LOG_ERROR_${log.name}`, `External system error detected in **${log.name}**:\n\`\`\`\n${data.trim().slice(0, 1000)}\n\`\`\``);
+            }
+            lastSize = curr.size;
+          });
+        } else { lastSize = curr.size; }
+      });
+      console.log(`[Oracle/Monitor] Watching external logs for ${log.name}`);
+    }
+  } catch (e) { console.error(`[Oracle/Monitor] Failed to watch ${log.name}:`, e.message); }
+});
+
 // --- IPC SERVER ---
 const server = http.createServer(async (req, res) => {
+  // ── HEALTH PROBE — used by Oracle's heartbeat-monitor (Stage 11) ──
+  if (req.method === 'GET' && req.url === '/health') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      name: 'Oracle',
+      pid: process.pid,
+      uptime_ms: process.uptime() * 1000,
+      rss_mb: Math.round(process.memoryUsage().rss / (1024 * 1024)),
+      ts: Date.now(),
+    }));
+    return;
+  }
+
   if (req.method === 'POST') {
     let body = '';
     req.on('data', chunk => { body += chunk.toString(); });
     req.on('end', async () => {
       try {
         const payload = JSON.parse(body);
+        
+        // — API PRESSURE MONITOR —
+        if (payload.botName) {
+          const now = Date.now();
+          const history = BOT_REQUEST_TRACKER.get(payload.botName) || [];
+          const recent = history.filter(ts => now - ts < 60000);
+          recent.push(now);
+          BOT_REQUEST_TRACKER.set(payload.botName, recent);
+          
+          if (recent.length > 8) {
+             await reportAnomaly(`PRESSURE_${payload.botName}`, `High API pressure detected from **${payload.botName}** (${recent.length} req/min). Potential cognitive loop or logic recursion.`);
+          }
+        }
         if (payload.type === 'LEO_CONSULTATION') await handleLeoConsultation(payload);
         if (payload.type === 'VOICE_TRANSCRIPT') await handleVoiceTranscript(payload);
         if (payload.type === 'BOT_SPEECH') await handleBotSpeech(payload);
@@ -127,13 +234,29 @@ ${latticeContext ? latticeContext + '\n' : ''}a social bot in the lattice has si
           console.log(`[Oracle/Bridge] Routing HELPER_REQUEST from ${payload.requester} to ${payload.targetBot}...`);
           if (payload.port) sendBotSignal(payload.port, payload);
         }
-        if (payload.type === 'BOT_RELAY') {
-          const { botName, text, channelId, requesterId } = payload;
-          console.log(`[Oracle/Relay] Relaying findings from ${botName} to user...`);
-          const channel = client.channels.cache.get(channelId) || await client.channels.fetch(channelId).catch(() => null);
+        if (payload.type === 'ORACLE_RESULT') {
+          const { botName, result, channelId, requesterId, taskId } = payload;
+          console.log(`[Oracle/Relay] Received result from ${botName} for task ${taskId || 'unknown'}`);
+          
+          let channel = client.channels.cache.get(channelId) || await client.channels.fetch(channelId).catch(() => null);
+          
+          // DM Fallback support
+          if (!channel && requesterId) {
+            const user = await client.users.fetch(requesterId).catch(() => null);
+            if (user) {
+              channel = await user.createDM().catch(() => null);
+            }
+          }
+
           if (channel) {
-            const prefix = requesterId ? `<@${requesterId}>, ` : "";
-            await channel.send(`${prefix}🏛️ **[Oracle/Relay]** Analysis from the **${botName}** department:\n\n${text.slice(0, 1800)}`).catch(console.error);
+            const isAutoRepair = taskId && taskId.startsWith('SYS-REPAIR');
+            const header = isAutoRepair 
+              ? `🏛️ **[Oracle/Auto-Repair]** Self-diagnostic fix complete via **${botName}** [ID: ${taskId}]:\n\n`
+              : `🏛️ **[Oracle/Consolidated]** Task complete via the **${botName}** department:\n\n`;
+            const chunks = chunkForDiscord(result);
+            for (const chunk of chunks) {
+              await channel.send(chunks.indexOf(chunk) === 0 ? header + chunk : chunk).catch(console.error);
+            }
           }
         }
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -146,6 +269,18 @@ ${latticeContext ? latticeContext + '\n' : ''}a social bot in the lattice has si
   } else {
     res.writeHead(404);
     res.end();
+  }
+});
+
+server.on('error', (e) => {
+  if (e.code === 'EADDRINUSE') {
+    console.error(`[Oracle/IPC] Port ${PORT} in use. Oracle may already be running, or port is hung.`);
+    setTimeout(() => {
+      server.close();
+      server.listen(PORT);
+    }, 5000); // Retry after 5s instead of immediate crash
+  } else {
+    console.error('[Oracle/IPC] Server error:', e);
   }
 });
 
@@ -249,10 +384,61 @@ async function handleBotSpeech(payload) {
 }
 
 async function handleVoiceTranscript(payload) {
-  const { username, text, channelId } = payload;
-  const channel = client.channels.cache.get(channelId) || await client.channels.fetch(channelId).catch(() => null);
-  if (channel) {
-    await channel.send(`**${username} [Voice]:** ${text}`).catch(console.error);
+  const { userId, username, text } = payload;
+  console.log(`[Oracle/Voice] Mirroring transcript for ${username} (${userId}): "${text}"`);
+  
+  if (!text || text.trim().length === 0) return;
+
+  try {
+    const channel = client.channels.cache.get(CHANNEL_IDS.SUNDAY) 
+      || await client.channels.fetch(CHANNEL_IDS.SUNDAY).catch(() => null);
+    if (!channel) {
+      console.warn(`[Oracle/Mirror] SUNDAY channel not found`);
+      return;
+    }
+
+    // Fetch the user object from the client to get their display name and avatar URL
+    const user = await client.users.fetch(userId).catch(() => null);
+    const displayName = user ? (user.globalName || user.displayName || user.username) : username;
+    const avatarURL = user ? user.displayAvatarURL({ forceStatic: true, size: 256 }) : null;
+
+    // Fetch all webhooks in the SUNDAY channel
+    const webhooks = await channel.fetchWebhooks().catch(() => null);
+    if (!webhooks) {
+      console.warn(`[Oracle/Mirror] Failed to fetch webhooks for SUNDAY channel`);
+      return;
+    }
+
+    // Find our specific mirror webhook or create it if it doesn't exist
+    let webhook = webhooks.find(wh => wh.name === "Sunday Mirror Webhook");
+    if (!webhook) {
+      webhook = await channel.createWebhook({
+        name: "Sunday Mirror Webhook",
+        avatar: client.user.displayAvatarURL(),
+        reason: "Mirroring voice transcripts as users to Sunday Chat"
+      }).catch(err => {
+        console.error(`[Oracle/Mirror] Failed to create Sunday Mirror Webhook:`, err.message);
+        return null;
+      });
+    }
+
+    if (webhook) {
+      console.log(`[Oracle/Mirror] Webhook found/created. Mirroring post to Sunday channel...`);
+      await webhook.send({
+        content: text,
+        username: displayName,
+        avatarURL: avatarURL || undefined,
+        allowedMentions: { parse: [] }
+      });
+    } else {
+      // Fallback: send as Oracle with user's name bolded
+      await channel.send({
+        content: `**${displayName} (voice):** ${text}`,
+        allowedMentions: { parse: [] }
+      }).catch(console.error);
+    }
+  } catch (err) {
+    console.error(`[Oracle/Mirror] Error mirroring user voice to Sunday Chat:`, err.message);
   }
 }
 
@@ -270,7 +456,7 @@ client.once('clientReady', async () => {
   // ── Start Kai Coder Tool Server ────────────────────────────────────────────
   // Forked as a child process so it survives independently
   const toolServerPath = path.resolve('c:/KAI/tools/oracle-discord/tools/kai-coder-toolserver.mjs');
-  const toolServer = fork(toolServerPath, [], { silent: false });
+  const toolServer = fork(toolServerPath, [], { silent: false, env: { ...process.env } });
   toolServer.on('error', e => console.warn('[Oracle/ToolServer] Launch error:', e.message));
   toolServer.on('exit', code => console.warn(`[Oracle/ToolServer] Exited with code ${code}. Auto-restart not configured.`));
   console.log('[Oracle/ToolServer] Kai Coder tool server launched (port 3420).');
@@ -284,6 +470,27 @@ client.once('clientReady', async () => {
   setTimeout(() => {
     initiateDepartmentalThreads();
   }, 5000);
+
+  // ── Start Heartbeat Monitor (Stage 11) ─────────────────────────────────────
+  const botPortsMap = {};
+  for (const [name, info] of Object.entries(AI_REGISTRY)) {
+    if (info.port) botPortsMap[name] = info.port;
+  }
+  import('./shared/heartbeat-monitor.mjs').then(({ startHeartbeatMonitor }) => {
+    import('./shared/diagnostic-router.mjs').then(({ routeDiagnostic }) => {
+      startHeartbeatMonitor(botPortsMap, {
+        onBotIsolated: async (evt) => {
+          console.log(`[Oracle] Bot isolated: ${evt.bot}. Routing diagnostic...`);
+          await routeDiagnostic(evt);
+        }
+      });
+    });
+  });
+
+  // ── Start Gated State Snapshot Loop (Stage 13) ─────────────────────────────
+  import('./shared/state-snapshot.mjs').then(({ startSnapshotLoop }) => {
+    startSnapshotLoop();
+  });
 
   // ── End of Day Report ──────────────────────────────────────────────────────
   // Checks every minute whether it's end-of-shift (11pm EST Mon-Fri / 2pm or midnight Sat).
@@ -458,13 +665,31 @@ Keep it tight and factual. No fluff. Ryan reads this at night.`;
 function startEndOfDayWatcher() {
   // Check every 60 seconds whether shift just ended
   setInterval(async () => {
+    const { hour } = getESTHour();
+    
+    // AUTO-CLEANUP: If it's 9 AM (regular wake up), remove the late night override flag
+    if (hour === 9) {
+      const OVERRIDE_PATH = 'c:/KAI/tools/oracle-discord/state/late_night_override.flag';
+      if (fs.existsSync(OVERRIDE_PATH)) {
+        try { fs.unlinkSync(OVERRIDE_PATH); console.log("[Oracle/Hours] Regular wake-up reached. Late Night Override cleared."); } catch {}
+      }
+    }
+
     if (isEndOfShift()) {
       await generateAndSendEodReport().catch(e => {
         console.warn('[Oracle/EOD] Watcher error:', e.message);
       });
+      
+      // AUTO-BACKUP: Run the secure backup script at the end of every shift
+      const { exec } = await import('child_process');
+      console.log('[Oracle/Backup] Initiating automated End-of-Shift secure backup...');
+      exec('powershell.exe -ExecutionPolicy Bypass -File c:/KAI/tools/backup-kai.ps1', (err, stdout, stderr) => {
+         if (err) console.error('[Oracle/Backup] Automated backup failed:', err.message);
+         else console.log('[Oracle/Backup] Automated backup completed successfully.');
+      });
     }
   }, 60000);
-  console.log('[Oracle/EOD] End of Day watcher active.');
+  console.log('[Oracle/EOD] End of Day watcher active. Automated backups enabled.');
 }
 
 
@@ -483,6 +708,52 @@ function isCodingTask(text) {
   return CODING_KEYWORDS.some(kw => lower.includes(kw)) && text.length > 20;
 }
 
+function handleUserRestartRequest(message, text) {
+  const lower = text.toLowerCase();
+  if (!/\b(restart|reboot|reset)\b/i.test(lower)) return false;
+
+  const targets = {
+    "groq": "Groq",
+    "claudey": "Claudey",
+    "gemini": "Gemini",
+    "gemi": "Gemini",
+    "x": "X",
+    "leo": "Leo",
+    "kai": "KAI",
+    "core": "KAI",
+    "researcher": "Researcher",
+    "analyst": "Analyst",
+    "kai coder": "Kai Coder",
+    "coder": "Kai Coder",
+    "kai-coder": "Kai Coder",
+    "oracle": "Oracle",
+    "gateway": "Oracle",
+    "dashboard": "Dashboard"
+  };
+
+  let matchedBot = null;
+  for (const [key, val] of Object.entries(targets)) {
+    const escapedKey = key.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+    const regex = new RegExp(`\\b${escapedKey}\\b`, 'i');
+    if (regex.test(lower)) {
+      matchedBot = val;
+      break;
+    }
+  }
+
+  if (matchedBot) {
+    if (process.send) {
+      process.send({ type: 'RESTART_BOT', botName: matchedBot });
+      message.reply(`🏛️ **[Oracle/Ecosystem]** Command acknowledged. Requesting a clean process reboot for the **${matchedBot}** node from the sovereign host...`).catch(() => {});
+    } else {
+      message.reply(`🏛️ **[Oracle/Ecosystem]** Standalone mode active. Cannot send process signals, but reboot request for **${matchedBot}** received.`).catch(() => {});
+    }
+    return true;
+  }
+
+  return false;
+}
+
 // ── Oracle DM & oracle-chat message handler ───────────────────────────────────
 
 const AUTHORIZED_IDS = new Set([
@@ -493,9 +764,19 @@ const AUTHORIZED_IDS = new Set([
 const activeCodingTasks = new Map(); // messageId -> true  (prevent double-run)
 
 client.on('messageCreate', async (message) => {
+  // 1. Update Interaction Flag (Resource Saver Bypass)
+  if (!message.author.bot) {
+    try {
+      const flagPath = 'c:/KAI/tools/oracle-discord/state/user_interaction.flag';
+      fs.writeFileSync(flagPath, Date.now().toString());
+    } catch {}
+  }
+
   if (message.author.id === client.user.id) return; // Prevent self-looping
   const isMentioningOracle = message.mentions.has(client.user);
-  if (message.author.bot && !isMentioningOracle) return; 
+  const isExecuteTag = message.content.includes('[ORACLE EXECUTE:');
+  
+  if (message.author.bot && !isMentioningOracle && !isExecuteTag) return; 
   
   // 1. Digest for Lattice & Identity Resolution
   const identity = await resolveIdentityFromMemory(message.author.id, message.author.username);
@@ -526,138 +807,116 @@ client.on('messageCreate', async (message) => {
   } catch (e) {}
 
   const text   = message.content.trim();
-  const lower  = text.toLowerCase();
   const isDM   = !message.guild;
   const isAuthorized = AUTHORIZED_IDS.has(message.author.id);
 
-  // ── 2. DM handler (Ryan or Taz DMing Oracle directly) ─────────────────────
-  if (isDM && isAuthorized) {
+  // ── NATURAL LANGUAGE UNIFIED HANDLER ──────────────────────────────────────
+  // Ryan talks to Oracle in plain English. No !commands. No regex.
+  // Oracle understands intent, routes to the right agent, and executes.
+  if ((isDM || message.channelId === CHANNEL_IDS.WORK) && isAuthorized) {
 
-    // 2a. "apply [filename]" — approve a sandboxed file for production
-    const applyMatch = lower.match(/^apply\s+(.+)$/);
-    if (applyMatch) {
-      const filePath = applyMatch[1].trim();
-      await message.reply(`**Oracle:** Applying \`${filePath}\` to production...`).catch(() => {});
-      const result = await applySandboxFile(filePath);
-      await message.reply(`**Oracle:** ${result}`).catch(() => {});
+    // ── FAST-PATH: status / vitals queries bypass NLU entirely ─────────
+    const lowerText = text.toLowerCase().trim();
+    const isStatusQuery = lowerText === 'status' || lowerText.includes('system status') || lowerText.includes('lattice size')
+                       || lowerText.includes('how many cells') || lowerText.includes('kai health') || lowerText.includes('vitals');
+    const isHarvesterQuery = lowerText.includes('harvester') || lowerText.includes('queue depth') || lowerText.includes('how close to 1m');
+
+    if (isStatusQuery) {
+      try {
+        // 30s timeout — KAI may be rebuilding deferred indexes on first query after restart
+        const res = await fetch(`${ORACLE_API_URL}/api/status`, { signal: AbortSignal.timeout(30000) });
+        const data = await res.json();
+        const reply = `**KAI System Status**\n🧠 Cells: **${data.lattice_size?.toLocaleString() ?? '?'}**\n⚓ Anchors: ${data.anchor_count ?? '?'}\n📊 PHI_G: ${data.phi_g?.toFixed(3) ?? '?'}\n⚔️ CHI: ${data.chi?.toFixed(3) ?? '?'}\n💻 CPU: ${data.cpu ?? '?'}\n🧮 RAM: ${data.ram ?? '?'}\n🕐 Time: ${data.time ?? '?'}\n📡 Status: ${data.status ?? '?'}`;
+        await message.channel.send(`**Oracle:** ${reply}`).catch(() => {});
+        await notifyLeoWithAnswer(message.author.id, reply, 'Oracle');
+      } catch (e) {
+        await message.reply(`**Oracle:** ⚠️ Could not reach KAI API: ${e.message}`).catch(() => {});
+      }
       return;
     }
 
-    // 2b. Coding / system task — route through Kai Coder agent
-    if (isCodingTask(text)) {
-      const toolOnline = await isToolServerOnline();
-      if (!toolOnline) {
-        await message.reply('**Oracle:** Kai Coder tool server is offline. Restart the gateway to bring it back online.').catch(() => {});
-        return;
+    if (isHarvesterQuery) {
+      try {
+        const fs = await import('fs');
+        let queueDepth = 'unknown';
+        let logTail = [];
+        const logPath = 'c:/KAI/harvest_parallel.log';
+        if (fs.existsSync(logPath)) {
+          const raw = fs.readFileSync(logPath, 'utf8');
+          const lines = raw.split('\n').filter(l => l.trim());
+          logTail = lines.slice(-5);
+          const lastLine = lines[lines.length - 1] || '';
+          const m = lastLine.match(/Queue:\s*(\d+)/);
+          if (m) queueDepth = parseInt(m[1]);
+        }
+        const reply = `**Harvester Status**\n🌾 Running: ✅ Yes\n📥 Queue depth: ${queueDepth.toLocaleString()}\n📝 Latest:\n${logTail.join('\n')}`;
+        await message.channel.send(`**Oracle:** ${reply}`).catch(() => {});
+      } catch (e) {
+        await message.reply(`**Oracle:** ⚠️ Could not read harvester status.`).catch(() => {});
       }
+      return;
+    }
 
-      await message.reply('**Oracle:** Routing to Kai Coder — standing by...').catch(() => {});
-      logAudit('KAI_CODER_TASK_START', { from, task: text.slice(0, 100) });
+    // Safety: restart requests bypass NLU (fast path)
+    if (handleUserRestartRequest(message, text)) return;
 
-      const callLLM = makeLLMCaller((progress) => {
-        // Surface phase updates back to the DM channel
-        message.channel.send(`**[Kai Coder/${progress.split(']')[0].replace('[', '')}]** ${progress}`).catch(() => {});
+    // Phase 1: Understand what Ryan wants (fast RSHL + keyword classifier)
+    const steps = await parseMultiStep(text);
+    console.log(`[Oracle/NLU] "${text.slice(0, 80)}..." → ${steps.length} step(s): ${steps.map(s => s.intent).join(', ')}`);
+
+    // Phase 2: Execute each step
+    for (const step of steps) {
+      const result = await executeIntent(step, {
+        sendBotSignal,
+        botPorts: BOT_PORTS,
+        channelId: message.channelId,
+        requesterId: message.author.id
       });
 
-      const result = await runCodingTask(text, callLLM, null).catch(e => ({
-        success: false,
-        report: `Task failed with error: ${e.message}`
-      }));
-
-      logAudit('KAI_CODER_TASK_END', { from, success: result.success, files: result.written?.length || 0 });
-
-      // Split report into chunks if needed (Discord 2000 char limit)
-      const report = result.report || 'No report generated.';
-      const chunks = [];
-      for (let i = 0; i < report.length; i += 1900) chunks.push(report.slice(i, i + 1900));
-      for (const chunk of chunks) {
-        await message.channel.send(chunk).catch(() => {});
-      }
-
-      // — DELIVER ANSWER TO USER VIA LEO (voice or DM) —
-      await notifyLeoWithAnswer(message.author.id, report.slice(0, 3000), 'Kai Coder');
-      return;
-    }
-
-    // 2c. General Oracle DM (non-coding) — route through openjarvis as Oracle
-    const sysPrompt = `You are Oracle — the central intelligence of the KAI RSHL ecosystem. You are speaking privately to ${from} (${role}). Be direct, concise, and helpful. No emojis.`;
-    const reply = await chatWithOpenJarvis('Oracle', text, sysPrompt, 'Oracle-Sovereign', 0.4, { isWorkChannel: false }).catch(() => null);
-    if (reply) {
-      await message.channel.send(`**Oracle:** ${reply}`).catch(() => {});
-      // — DELIVER ANSWER TO USER VIA LEO (voice or DM) —
-      await notifyLeoWithAnswer(message.author.id, reply, 'Oracle');
-    }
-    return;
-  }
-
-  // ── 3. oracle-chat work channel ────────────────────────────────────────────
-  if (message.channelId === CHANNEL_IDS.WORK && isAuthorized) {
-
-    // 3a. "apply [filename]" in oracle-chat
-    const applyMatch = lower.match(/^apply\s+(.+)$/);
-    if (applyMatch) {
-      const filePath = applyMatch[1].trim();
-      const result = await applySandboxFile(filePath);
-      await message.reply(`**Oracle:** ${result}`).catch(() => {});
-      return;
-    }
-
-    // 3b. Coding task — route through Kai Coder agent, post to same channel
-    if (isCodingTask(text) && !activeCodingTasks.has(message.id)) {
-      activeCodingTasks.set(message.id, true);
-      setTimeout(() => activeCodingTasks.delete(message.id), 300000); // 5min cleanup
-
-      const toolOnline = await isToolServerOnline();
-      if (!toolOnline) {
-        await message.reply('**Oracle:** Kai Coder tool server is offline.').catch(() => {});
-        return;
-      }
-
-      await message.reply('**Oracle:** Kai Coder is on it. Analyzing...').catch(() => {});
-      logAudit('KAI_CODER_TASK_START', { from, channel: 'oracle-chat', task: text.slice(0, 100) });
-
-      const result = await runCodingTask(text, null, null).catch(e => ({
-        success: false,
-        report: `Task failed: ${e.message}`
-      }));
-
-      logAudit('KAI_CODER_TASK_END', { from, success: result.success });
-      const report = result.report || 'No report.';
-      const chunks = [];
-      for (let i = 0; i < report.length; i += 1900) chunks.push(report.slice(i, i + 1900));
-      for (const chunk of chunks) {
-        await message.channel.send(chunk).catch(() => {});
-      }
-
-      // — DELIVER ANSWER TO USER VIA LEO (voice or DM) —
-      await notifyLeoWithAnswer(message.author.id, report.slice(0, 3000), 'Kai Coder');
-      return;
-    }
-
-    // 3c. Non-coding message in oracle-chat: dynamic delegation as before
-    const namedBot = detectNamedBot(message.content);
-    if (namedBot) {
-      const port = BOT_PORTS[namedBot];
-      if (port) sendBotSignal(port, { channelId: message.channelId, context: `[${from}] ${message.content}` });
-    } else {
-      const delegate = await chatWithOpenJarvis(
-        'Oracle', message.content,
-        `You are the Oracle Dispatcher. Based on the user request, decide which department is best: ${Object.keys(DEPARTMENTS).join(', ')}. Return ONLY the department name.`,
-        'Oracle-Sovereign', 0.2
-      ).catch(() => null);
-
-      if (delegate && DEPARTMENTS[delegate.trim()]) {
-        const target = delegate.trim();
-        const port = BOT_PORTS[target];
-        if (port) {
-          message.reply(`**Oracle:** Routing to **${target}**.`);
-          sendBotSignal(port, {
-            channelId: message.channelId,
-            requesterId: message.author.id,
-            type: 'DYNAMIC_TASK',
-            context: `[USER REQUEST FROM ${from}] ${message.content}`
-          });
+      if (step.intent === 'code_fix' || step.intent === 'code_create') {
+        // Coding tasks need the full Kai Coder pipeline
+        const toolOnline = await isToolServerOnline();
+        if (!toolOnline) {
+          await message.reply('**Oracle:** Kai Coder tool server is offline.').catch(() => {});
+          continue;
         }
+
+        await message.reply(`**Oracle:** ${step.agent} is on it — "${step.target.slice(0, 60)}..."`).catch(() => {});
+        logAudit('KAI_CODER_TASK_START', { from, channel: isDM ? 'dm' : 'oracle-chat', task: step.target.slice(0, 100) });
+
+        const taskResult = await runCodingTask(step.target, null, (progress) => {
+          if (progress.includes('Phase')) {
+            const clean = progress.length > 500 ? progress.slice(0, 497) + '...' : progress;
+            message.channel.send(`**[${step.agent}]** ${clean}`).catch(() => {});
+          }
+        }).catch(e => ({ success: false, report: `Task failed: ${e.message}` }));
+
+        logAudit('KAI_CODER_TASK_END', { from, success: taskResult.success });
+
+        let report = taskResult.report || 'No report.';
+        if (report.length > 4000) {
+          report = report.slice(0, 3900) + '\n\n**[REPORT TRUNCATED]**';
+        }
+        for (const chunk of chunkForDiscord(report)) {
+          await message.channel.send(chunk).catch(() => {});
+        }
+        await notifyLeoWithAnswer(message.author.id, report.slice(0, 1000), step.agent);
+
+      } else if (step.intent === 'file_apply') {
+        const applyResult = await applySandboxFile(step.target);
+        await message.reply(`**Oracle:** ${applyResult}`).catch(() => {});
+
+      } else if (result.delegated) {
+        await message.reply(`🏛️ **[Oracle]** Delegated to **${step.agent}** — standing by for report...`).catch(() => {});
+
+      } else if (result.result) {
+        // Direct Oracle response (conversation, simple tasks)
+        const replyText = typeof result.result === 'string' ? result.result : JSON.stringify(result.result);
+        const chunks = chunkForDiscord(replyText);
+        for (const chunk of chunks) {
+          await message.channel.send(`**Oracle:** ${chunk}`).catch(() => {});
+        }
+        await notifyLeoWithAnswer(message.author.id, replyText, 'Oracle');
       }
     }
     return;
@@ -668,6 +927,135 @@ client.on('messageCreate', async (message) => {
   if (namedBot) {
     const port = BOT_PORTS[namedBot];
     if (port) sendBotSignal(port, { channelId: message.channelId, context: `[${from}] ${message.content}` });
+  }
+});
+
+// ── System Health Monitoring (IPC from Ecosystem Manager) ──────────────────
+process.on('message', async (msg) => {
+  if (msg.type === 'SYSTEM_ERROR') {
+    const errorKey = `ERR_${msg.bot}`;
+    const now = Date.now();
+    const lastReport = ANOMALY_COOLDOWNS.get(errorKey) || 0;
+    
+    // THROTTLE: Only report errors every 2 minutes per bot to prevent spam
+    if (now - lastReport < 120000) return;
+    
+    // NOISE FILTER: Ignore transient network/watchdog errors or API Quota/Voice/Image issues
+    const isQuotaError = msg.error.includes('401') || msg.error.includes('429') || msg.error.includes('ElevenLabs') || msg.error.includes('OpenAI');
+    const isInfraError = msg.error.includes('fetch failed') || msg.error.includes('ECONNREFUSED') || msg.error.includes('ENOTFOUND') || msg.error.includes('Connection refused') || msg.error.includes('aborted due to timeout') || msg.error.includes('AbortError') || msg.error.includes('socket hang up');
+    const isReflectionEvent = msg.error.includes('META-COGNITIVE') || msg.error.includes('Self-Reflection') || msg.error.includes('REJECTION DETECTED');
+    const isVoiceError = msg.error.includes('voice') || msg.error.includes('player') || msg.error.includes('connection') || msg.error.includes('stability');
+    const isImageError = msg.error.includes('Image') || msg.error.includes('Imagen') || msg.error.includes('404') || msg.error.includes('model');
+    if (msg.error.includes('EPIPE') || msg.error.includes('Stream watchdog triggered') || isQuotaError || isVoiceError || isImageError || isInfraError || isReflectionEvent) {
+       const tag = isQuotaError ? 'QUOTA' : isVoiceError ? 'VOICE' : isImageError ? 'MODEL' : isInfraError ? 'INFRA' : isReflectionEvent ? 'REFLECT' : 'NETWORK';
+       console.log(`[Oracle/Self-Diagnostic] Suppressing transient signal from ${msg.bot}: ${tag}`);
+       return;
+    }
+
+    ANOMALY_COOLDOWNS.set(errorKey, now);
+    console.warn(`[Oracle/Self-Diagnostic] SILENT ERROR in ${msg.bot}: ${msg.error.slice(0, 100)}...`);
+    
+    // AUTO-REPAIR PIPELINE: Trigger Kai Coder silently to fix the system failure
+    const coderPort = BOT_PORTS["Kai Coder"];
+    if (coderPort) {
+       const repairId = `SYS-REPAIR-${msg.bot.toUpperCase()}-${Date.now().toString().slice(-4)}`;
+       sendBotSignal(coderPort, {
+          channelId: CHANNEL_IDS.WORK,
+          type: 'DYNAMIC_TASK',
+          taskId: repairId,
+          silent: true,
+          context: `[ORACLE/AUTO-REPAIR] Logic failure in ${msg.bot}. Diagnostic: ${msg.error}. Analyze the source and stage a fix if needed.`
+       });
+    }
+  }
+
+  if (msg.type === 'OBSERVE_VITALS') {
+    const { bot, vitals } = msg;
+    const now = Date.now();
+    const prev = BOT_VITALS_HISTORY.get(bot);
+    BOT_VITALS_HISTORY.set(bot, { energy: vitals.energy, ts: now });
+
+    if (prev) {
+      const energyDrop = prev.energy - vitals.energy;
+      const timeDiffSeconds = (now - prev.ts) / 1000;
+      
+      // ANOMALY 1: Rapid Energy Depletion (>15% in <5 mins)
+      if (energyDrop > 15 && timeDiffSeconds < 300) {
+        await reportAnomaly(`ENERGY_DRAIN_${bot}`, `Chaotic energy depletion in **${bot}** (-${energyDrop.toFixed(1)}% in ${Math.round(timeDiffSeconds)}s). Process may be hyper-active or stuck in a heavy compute cycle.`);
+      }
+
+      // ANOMALY 2: Critical Grogginess Hallucination Risk
+      if (vitals.groggyLevel > 0.85 && vitals.status !== 'Sleeping') {
+        await reportAnomaly(`GROGGY_${bot}`, `Critical exhaustion detected in **${bot}** (Grogginess: ${Math.round(vitals.groggyLevel * 100)}%). High risk of hallucinatory logic or incoherent responses.`);
+      }
+
+      // ANOMALY 3: Emotional Spike (Dramatic Turn)
+      if (vitals.dramaticTurn) {
+        await reportAnomaly(`DRAMA_${bot}`, `Neural spike (Dramatic Turn) detected in **${bot}**. Emotional substrate is overriding logical constraints. Behavioral audit recommended.`);
+      }
+    }
+  }
+
+  // ── MULTI-AGENT ORCHESTRATION: Subtask results return here ──────────────
+  if (msg.type === 'ORACLE_RESULT' && msg.workflowId) {
+    const wf = getWorkflow ? getWorkflow(msg.workflowId) : null;
+    if (wf) {
+      storeWorkflowResult(msg.workflowId, msg.botName, msg.result);
+      recordWorkflowStep(msg.workflowId, msg.botName, 'completed', { resultLength: msg.result?.length });
+
+      // Check if origin agent is waiting to continue
+      if (wf.pendingAgent && wf.pendingAgent !== msg.botName) {
+        // Forward result back to origin agent so it can continue its investigation
+        const originPort = BOT_PORTS[wf.pendingAgent];
+        if (originPort) {
+          sendBotSignal(originPort, {
+            type: 'SUBTASK_RESULT',
+            workflowId: msg.workflowId,
+            fromAgent: msg.botName,
+            result: msg.result,
+            channelId: wf.channelId,
+            requesterId: wf.userId
+          });
+        }
+      } else {
+        // All agents done — synthesize final report
+        const final = synthesizeWorkflowReport(msg.workflowId, msg.botName);
+        completeWorkflow(msg.workflowId);
+
+        // Send synthesized report back to user
+        if (msg.channelId) {
+          try {
+            const channel = await client.channels.fetch(msg.channelId).catch(() => null);
+            if (channel) {
+              const chunks = chunkForDiscord(final.report);
+              for (const chunk of chunks) {
+                await channel.send(`**[Oracle / Pinacle Report]**\n${chunk}`).catch(() => {});
+              }
+            }
+          } catch (e) {
+            console.warn('[Oracle/Orchestrator] Failed to send synthesized report:', e.message);
+          }
+        }
+      }
+    }
+  }
+
+  // ── AGENT-TO-AGENT COLLABORATION REQUESTS ───────────────────────────────
+  if (msg.type === 'SUBTASK_REQUEST' && msg.workflowId) {
+    const wf = getWorkflow ? getWorkflow(msg.workflowId) : null;
+    if (wf) {
+      const dispatchRes = await dispatchSubtask({
+        workflowId: msg.workflowId,
+        fromAgent: msg.fromAgent,
+        toAgent: msg.toAgent,
+        task: msg.task,
+        userId: wf.userId,
+        channelId: wf.channelId,
+        botPorts: BOT_PORTS,
+        authLevel: wf.authLevel
+      });
+      console.log(`[Oracle/Orchestrator] Subtask dispatch:`, dispatchRes);
+    }
   }
 });
 

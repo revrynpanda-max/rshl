@@ -1,0 +1,63 @@
+// shared/topic-tracker.mjs
+// Detects when the social chat has been circling the same topic / citation /
+// name for too long, and returns a system-prompt nudge that tells the bot
+// to pivot or close out instead of re-litigating.
+//
+// Each bot process maintains its own per-channel ring buffer. Bots all see
+// the same Discord messages, so their views stay roughly in sync.
+
+const HISTORY_PER_CHANNEL = new Map();    // channelId -> string[] (last N message contents, lowercase)
+const HISTORY_LIMIT = 20;
+
+// Common English words we never want to flag as a "topic" — too generic.
+const STOP = new Set((
+  "about above after again against also being been before below between both "
++ "does doing during each have having into more most other ours over some "
++ "such than them then there these they this those through under until very "
++ "were what when where which while with would your just like that this what "
++ "really thats theyre weve youre dont cant wont gonna kinda lots tell told "
++ "even still even more some kind sort thing things stuff really actually "
++ "though yeah okay alright sure right yeah maybe pretty much"
+).split(/\s+/));
+
+export function recordChannelMessage(channelId, content) {
+  if (!channelId || !content) return;
+  if (!HISTORY_PER_CHANNEL.has(channelId)) HISTORY_PER_CHANNEL.set(channelId, []);
+  const arr = HISTORY_PER_CHANNEL.get(channelId);
+  arr.push(String(content).toLowerCase());
+  while (arr.length > HISTORY_LIMIT) arr.shift();
+}
+
+/**
+ * If the recent chat is stuck on a topic (the same significant word appears
+ * across many recent messages), return a nudge string to inject into the
+ * system prompt. Otherwise return "".
+ */
+export function topicPivotNudge(channelId) {
+  const arr = HISTORY_PER_CHANNEL.get(channelId) || [];
+  if (arr.length < 8) return "";   // not enough history yet
+
+  const docFreq = {};              // word -> number of recent messages it appears in
+  for (const msg of arr) {
+    const words = msg.match(/[a-z][a-z']{3,}/g) || [];
+    const unique = new Set(words);
+    for (const w of unique) {
+      if (STOP.has(w)) continue;
+      docFreq[w] = (docFreq[w] || 0) + 1;
+    }
+  }
+
+  const top = Object.entries(docFreq).sort((a, b) => b[1] - a[1])[0];
+  if (!top) return "";
+  const [word, count] = top;
+
+  // Tunable: if a single noun has shown up in 6+ of the last 20 messages,
+  // the room is locked on it. Escalate the nudge with how stuck it is.
+  if (count >= 10) {
+    return `\n[CONVERSATION STATE] You have been arguing about "${word}" for ${count} of the last ${arr.length} messages. BOW OUT or PIVOT HARD — do not re-litigate the same point a third time. Either change the subject, concede, or just stop replying. The room is bored.`;
+  }
+  if (count >= 6) {
+    return `\n[CONVERSATION STATE] The chat has circled "${word}" for ${count}/${arr.length} recent messages. Either bring something NEW (new angle, new topic, concrete admission) or step back this turn.`;
+  }
+  return "";
+}

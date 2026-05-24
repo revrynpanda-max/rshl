@@ -1,0 +1,127 @@
+//! Axum HTTP server (port 3333) – expanded to serve ClaimStore endpoints.
+
+use crate::claim_store::ClaimStore;
+use crate::memory::EpistemicMemory;
+use axum::{
+    extract::State,
+    routing::{get, post},
+    Json, Router,
+};
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+
+#[derive(Clone)]
+pub struct AppState {
+    pub epistemic: Arc<EpistemicMemory>,
+    pub claim_store: Arc<ClaimStore>,
+}
+
+#[derive(Deserialize)]
+pub struct InsertClaimReq {
+    pub user_id: String,
+    pub subject: String,
+    pub relation: String,
+    pub object: String,
+    pub polarity: String,           // "Positive", "Negative", "Ambivalent"
+    pub confidence: f32,
+    pub source: String,
+    pub source_trust: f32,
+    pub status: String,
+}
+
+#[derive(Serialize)]
+pub struct InsertClaimResp {
+    pub claim_id: String,
+    pub tier: u8,
+}
+
+async fn handle_insert_claim(
+    State(state): State<AppState>,
+    Json(req): Json<InsertClaimReq>,
+) -> Json<InsertClaimResp> {
+    let polarity = match req.polarity.as_str() {
+        "Negative" => crate::claim_store::Polarity::Negative,
+        "Ambivalent" => crate::claim_store::Polarity::Ambivalent,
+        _ => crate::claim_store::Polarity::Positive,
+    };
+    let user_hash = crate::user_isolation::hash_user_id(&req.user_id);
+
+    let claim = crate::claim_store::Claim {
+        id: String::new(),
+        subject: req.subject,
+        relation: req.relation,
+        object: req.object,
+        polarity,
+        confidence: req.confidence,
+        source: req.source,
+        source_trust: req.source_trust,
+        status: req.status,
+        timestamp: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+        emotion: crate::emotional_weight::initial_emotional_weight(&crate::claim_store::Claim {
+            id: String::new(),
+            subject: "".into(),
+            relation: "".into(),
+            object: "".into(),
+            polarity: crate::claim_store::Polarity::Positive,
+            confidence: req.confidence,
+            source: req.source.clone(),
+            source_trust: req.source_trust,
+            status: req.status.clone(),
+            timestamp: 0,
+            emotion: crate::claim_store::EmotionalValence::default(),
+            user_hash: user_hash.clone(),
+            tier: 0,
+        }),
+        user_hash,
+        tier: 0,
+    };
+
+    let id = state.epistemic.insert_claim(claim).await;
+    // Retrieve to get tier
+    let tier = if let Some(c) = state.claim_store.get_by_id(&id).await {
+        c.tier
+    } else {
+        0
+    };
+    Json(InsertClaimResp { claim_id: id, tier })
+}
+
+#[derive(Deserialize)]
+pub struct QueryReq {
+    pub user_id: String,
+    pub subject: String,
+}
+
+async fn handle_query(
+    State(state): State<AppState>,
+    Json(req): Json<QueryReq>,
+) -> Json<Vec<crate::claim_store::Claim>> {
+    let results = state.epistemic.query_user_claims(&req.subject, &req.user_id).await;
+    Json(results)
+}
+
+async fn handle_dream_cycle(State(state): State<AppState>) -> Json<&'static str> {
+    state.epistemic.dream_cycle().await;
+    Json("Dream Cycle executed")
+}
+
+pub async fn start_server(claim_store: Arc<ClaimStore>) {
+    let epistemic = Arc::new(EpistemicMemory::new(claim_store.clone()));
+    let state = AppState {
+        epistemic,
+        claim_store,
+    };
+
+    let app = Router::new()
+        .route("/claim/insert", post(handle_insert_claim))
+        .route("/claim/query", post(handle_query))
+        .route("/dream", post(handle_dream_cycle))
+        .with_state(state);
+
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3333").await.unwrap();
+    println!("Oracle server listening on port 3333");
+    axum::serve(listener, app).await.unwrap();
+}

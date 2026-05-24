@@ -69,9 +69,25 @@
 
 use crate::core::attention;
 use crate::core::predictive::ConversationTrace;
+use crate::core::rshl_transformer::{RshlTransformerBlock, TransformerConfig};
 use crate::core::sparse_vec::{SparseVec, DIM};
 use crate::core::stat_lexicon::{self, StatLexicon};
 use crate::core::{FieldState, Universe};
+use std::sync::OnceLock;
+
+// ─────────────────────────────────────────────────────────────────────
+// Global transformer block — lazy-initialized from config.
+// Like a biological neural structure: it grows once and persists.
+// ─────────────────────────────────────────────────────────────────────
+
+static TRANSFORMER_BLOCK: OnceLock<RshlTransformerBlock> = OnceLock::new();
+
+fn get_transformer_block() -> &'static RshlTransformerBlock {
+    TRANSFORMER_BLOCK.get_or_init(|| {
+        let config = TransformerConfig::load_or_default("data/kai_transformer_config.json");
+        config.build_block()
+    })
+}
 
 // ─────────────────────────────────────────────────────────────────────
 // Tunable weights — every bundle term is a (SparseVec, f32) pair, the
@@ -244,7 +260,7 @@ pub fn build_generative_state(
     // preserving bundle primitive the rest of the lattice uses
     // everywhere (see SparseVec::superpose_sparse for the all-equal-
     // weight version).
-    weighted_superpose(
+    let mut state = weighted_superpose(
         &[
             (&backbone, W_BACKBONE),
             (&attended, W_ATTENDED),
@@ -254,7 +270,28 @@ pub fn build_generative_state(
             (trace_term, W_TRACE),
         ],
         TARGET_DENSITY,
-    )
+    );
+
+    // ── 7. Transformer head context augmentation ──────────────────────
+    // Run the RSHL transformer block on the state, attending to the
+    // retrieved memory cells as context. This gives the decoder
+    // multi-head awareness of which memories are most relevant to
+    // the current prompt — the geometric equivalent of transformer
+    // self-attention, but in sparse ternary space.
+    //
+    // Like a cortical column sharpening its receptive field: the
+    // transformer reweights the state based on contextual resonance.
+    let block = get_transformer_block();
+    if !hits.is_empty() {
+        let context: Vec<(usize, SparseVec)> = hits
+            .iter()
+            .enumerate()
+            .map(|(i, (cell, _score))| (i, cell.claim.vec.clone()))
+            .collect();
+        state = block.forward(&state, &context);
+    }
+
+    state
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -366,8 +403,8 @@ fn memory_bundles_from_hits(
 
     let cont_terms: Vec<(&SparseVec, f32)> = hits
         .iter()
-        .filter(|(cell, _)| cell.continuation.nnz() > 0)
-        .map(|(cell, score)| (&cell.continuation, score.max(0.05)))
+        .filter(|(cell, _)| cell.continuation.as_ref().map_or(0, |c| c.nnz()) > 0)
+        .filter_map(|(cell, score)| cell.continuation.as_ref().map(|c| (c, score.max(0.05))))
         .collect();
     let memory_cont = if cont_terms.is_empty() {
         SparseVec::zero()
@@ -410,11 +447,9 @@ pub(crate) fn weighted_superpose(terms: &[(&SparseVec, f32)], density: f32) -> S
             continue;
         }
         any_contribution = true;
-        for i in 0..DIM {
-            let d = v.data[i] as f32;
-            if d != 0.0 {
-                sums[i] += *w * d;
-            }
+        for (i, val) in v.iter() {
+            let d = val as f32;
+            sums[i] += *w * d;
         }
     }
 
@@ -490,7 +525,7 @@ mod tests {
             0,
             "cold-boot state should be zero, not NaN/junk"
         );
-        assert_eq!(state.data.len(), DIM);
+        assert_eq!(state.to_dense().len(), DIM);
     }
 
     #[test]

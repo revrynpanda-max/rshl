@@ -17,23 +17,25 @@
  */
 
 import WebSocket from 'ws';
+import fetch from 'node-fetch';
 
-// v1beta is now the stable endpoint for gemini-2.0-flash-live-001
+// v1beta supports the latest 2026 live models
 const GEMINI_LIVE_URL = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent`;
 
 export class GeminiLiveBridge {
   constructor(apiKey) {
-    this.apiKey    = apiKey;
-    this.ws        = null;
-    this.isReady   = false;
+    this.apiKey = apiKey;
+    this.ws = null;
+    this.isReady = false;
     this.isActive  = false;
     this.audioChunks = []; // Buffer incoming audio deltas
 
-    // Callbacks — set by leo.mjs
-    this.onAudioChunk   = null; // (pcmBase64: string) → void  — called with each audio piece
-    this.onTranscript   = null; // (text: string) → void       — called with partial transcript
-    this.onTurnComplete = null; // () → void                   — called when Gemini stops talking
-    this.onError        = null; // (err: Error) → void
+    // Callbacks
+    this.onAudioChunk   = null; 
+    this.onTranscript   = null; 
+    this.onTurnComplete = null; 
+    this.onToolCall     = null;
+    this.onError        = null;
   }
 
   /**
@@ -57,12 +59,36 @@ export class GeminiLiveBridge {
 
       this.ws.on('open', () => {
         clearTimeout(timeout);
-        console.log(`[GeminiLive] WebSocket connected for ${userName}`);
+        console.log(`[GeminiLive] WebSocket connected for ${userName} (Gemini 3.1 Live)`);
 
-        // Send session setup
+        // Send session setup with strict group etiquette
         this.ws.send(JSON.stringify({
           setup: {
-            model: "models/gemini-2.0-flash-exp",
+            model: "models/gemini-3.1-flash-live-preview",
+            system_instruction: {
+              role: "system",
+              parts: [{
+                text: `${systemInstruction}\n\n[GROUP ETIQUETTE]\n- You are in a group voice channel with multiple AIs and humans.\n- ONLY RESPOND if you are explicitly addressed by name (e.g. "Hey ${userName}", or "What do you think, ${userName}?").\n- If you are not addressed, stay silent and listen.\n- If you are addressed but another AI is already speaking, wait for your turn.\n- Keep responses short, energetic, and social. No formal openers.\n- STRICT RESPONSE LIMIT: MAXIMUM 2 TO 3 SENTENCES. Speak in 2-3 short, punchy sentences max per message. Keep it extremely brief and snappy. NEVER output a paragraph of text.`
+              }]
+            },
+            tools: [ 
+              { google_search_retrieval: {} },
+              {
+                function_declarations: [
+                  {
+                    name: "search_lattice",
+                    description: "Search the RSHL lattice memory for deep technical context, past conversations, or industrial data.",
+                    parameters: {
+                      type: "OBJECT",
+                      properties: {
+                        query: { type: "STRING", description: "The technical or social query to search for." }
+                      },
+                      required: ["query"]
+                    }
+                  }
+                ]
+              }
+            ],
             generation_config: {
               response_modalities: ["AUDIO"],
               speech_config: {
@@ -82,8 +108,8 @@ export class GeminiLiveBridge {
                 // Valid API values: START_SENSITIVITY_HIGH | START_SENSITIVITY_LOW
                 start_of_speech_sensitivity: "START_SENSITIVITY_HIGH",
                 end_of_speech_sensitivity: "END_SENSITIVITY_LOW", // Don't cut off mid-thought
-                prefix_padding_ms: 300,   // Slightly more lead-in to catch word starts cleanly
-                silence_duration_ms: 900  // 900ms gap before treating speech as finished
+                prefix_padding_ms: 500,   // More lead-in to catch word starts cleanly
+                silence_duration_ms: 2000  // 2s gap before treating speech as finished (prevents cutting friends)
               }
             }
           }
@@ -117,35 +143,43 @@ export class GeminiLiveBridge {
 
   _handleMessage(msg, connectResolve = null) {
     // Session ready signal
-    if (msg.setupComplete) {
+    if (msg.setup_complete) {
       console.log('[GeminiLive] Session ready ✓');
       this.isReady = true;
       connectResolve?.();
       return;
     }
 
+    // Tool calling logic
+    if (msg.server_content?.tool_call) {
+      this._handleToolCall(msg.server_content.tool_call);
+    }
+
     // Incoming audio delta from Gemini
-    if (msg.serverContent?.modelTurn?.parts) {
-      for (const part of msg.serverContent.modelTurn.parts) {
-        if (part.inlineData?.mimeType?.startsWith('audio/')) {
-          this.audioChunks.push(part.inlineData.data);
-          this.onAudioChunk?.(part.inlineData.data); // Streaming delivery
+    if (msg.server_content?.model_turn?.parts) {
+      for (const part of msg.server_content.model_turn.parts) {
+        if (part.inline_data?.mime_type?.startsWith('audio/')) {
+          this.audioChunks.push(part.inline_data.data);
+          this.onAudioChunk?.(part.inline_data.data); // Streaming delivery
         }
         if (part.text) {
           this.onTranscript?.(part.text);
+        }
+        if (part.call) {
+           this._handleToolCall(part.call);
         }
       }
     }
 
     // Turn complete — Gemini stopped speaking
-    if (msg.serverContent?.turnComplete) {
+    if (msg.server_content?.turn_complete) {
       console.log('[GeminiLive] Turn complete.');
       this.onTurnComplete?.();
       this.audioChunks = [];
     }
 
     // Interrupted turn (VAD detected user speaking)
-    if (msg.serverContent?.interrupted) {
+    if (msg.server_content?.interrupted) {
       console.log('[GeminiLive] Gemini interrupted by user speech.');
       this.audioChunks = [];
     }
@@ -172,12 +206,13 @@ export class GeminiLiveBridge {
     const mono16k = this._downsample48to16(pcmBuffer);
     const base64 = mono16k.toString('base64');
 
+    // New 2026 Format: Direct 'audio' field within 'realtime_input'
     this.ws.send(JSON.stringify({
-      realtimeInput: {
-        mediaChunks: [{
-          mimeType: "audio/pcm;rate=16000",
+      realtime_input: {
+        audio: {
+          mime_type: "audio/pcm;rate=16000",
           data: base64
-        }]
+        }
       }
     }));
   }
@@ -189,9 +224,8 @@ export class GeminiLiveBridge {
   sendText(text) {
     if (!this.isReady || !this.ws) return;
     this.ws.send(JSON.stringify({
-      clientContent: {
-        turns: [{ role: "user", parts: [{ text }] }],
-        turnComplete: true
+      realtime_input: {
+        text: text
       }
     }));
   }
@@ -262,9 +296,10 @@ export class GeminiLiveSessionManager {
     this.sessions = new Map(); // userId → GeminiLiveBridge
   }
 
-  async getOrCreate(userId, systemInstruction, userName) {
-    if (this.sessions.has(userId)) {
-      const existing = this.sessions.get(userId);
+  async getOrCreate(userId, botName, systemInstruction, userName) {
+    const sessionKey = `${userId}-${botName}`;
+    if (this.sessions.has(sessionKey)) {
+      const existing = this.sessions.get(sessionKey);
       if (existing.available) return existing;
       existing.disconnect();
     }
@@ -277,16 +312,42 @@ export class GeminiLiveSessionManager {
 
     const bridge = new GeminiLiveBridge(apiKey);
     await bridge.connect(systemInstruction, userName);
-    this.sessions.set(userId, bridge);
-    console.log(`[GeminiLive] New session created for user ${userId}`);
+
+    // ATTACH LATTICE MEMORY SEARCH TOOL HANDLER
+    bridge.onToolCall = async (fn) => {
+      if (fn.name === 'search_lattice') {
+        const query = fn.args.query;
+        console.log(`[${botName}/Live] Searching Lattice for: ${query}`);
+        try {
+          const res = await fetch(`http://127.0.0.1:3334/api/rshl/query`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query, limit: 5 })
+          });
+          if (res.ok) {
+            const hits = await res.json();
+            const context = hits.map(h => h.text).join('\n');
+            bridge.sendToolResponse('search_lattice', context || "No specific memory found.");
+          } else {
+            bridge.sendToolResponse('search_lattice', "Lattice temporarily unreachable.");
+          }
+        } catch (e) {
+          bridge.sendToolResponse('search_lattice', `Search failed: ${e.message}`);
+        }
+      }
+    };
+
+    this.sessions.set(sessionKey, bridge);
+    console.log(`[GeminiLive] New session created for ${botName} (${userName})`);
     return bridge;
   }
 
-  disconnect(userId) {
-    const session = this.sessions.get(userId);
+  disconnect(userId, botName) {
+    const sessionKey = `${userId}-${botName}`;
+    const session = this.sessions.get(sessionKey);
     if (session) {
       session.disconnect();
-      this.sessions.delete(userId);
+      this.sessions.delete(sessionKey);
     }
   }
 

@@ -22,6 +22,10 @@ use chrono::{Timelike, Datelike, TimeZone};
 
 const SESSION_PATH: &str = "data/oracle_session.json";
 
+// Serialize all corpus-log writes so concurrent Discord bots can't
+// interleave JSONL lines and corrupt the training file.
+static CORPUS_LOG_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// Truncate a string to `max` characters at a character boundary.
 #[inline]
 fn truncate(s: &str, max: usize) -> String {
@@ -89,6 +93,28 @@ pub struct Session {
     /// Stores the last reason/feedback provided by Ryan (e.g. for a denial).
     #[serde(default)]
     pub last_user_feedback: Option<String>,
+    /// Background jobs spawned from Oracle (training, diagnostics, etc).
+    #[serde(default)]
+    pub background_jobs: Vec<BackgroundJob>,
+    /// KAI TUI spectate feed — buffered for Discord KAI_DREAMS channel.
+    #[serde(default)]
+    pub spectate_buffer: Vec<SpectateEvent>,
+    /// Unix timestamp of last night consolidation run.
+    #[serde(default)]
+    pub last_night_consolidation: u64,
+    /// When true, heavy maintenance is running — Discord turns may be deferred.
+    #[serde(default)]
+    pub maintenance_mode: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BackgroundJob {
+    pub id: String,
+    pub name: String,
+    pub status: String, // "running" | "completed" | "failed"
+    pub started_at: u64,
+    pub finished_at: Option<u64>,
+    pub message: String,
 }
 
 
@@ -106,13 +132,6 @@ pub struct Vitals {
 }
 
 /// A single message in the roundtable transcript.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Source {
-    pub label: String,
-    pub region: String,
-    pub score: f32,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Turn {
     pub ts: u64,
@@ -226,6 +245,15 @@ pub struct Interjection {
     pub ts: u64,
 }
 
+/// A single spectate event pushed from the TUI mind stream.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpectateEvent {
+    pub tick: u64,
+    pub stream: String,
+    pub icon: String,
+    pub text: String,
+}
+
 // ── Request Bodies ───────────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize, Default)]
@@ -257,6 +285,8 @@ struct HumanTurnRequest {
     text: String,
     #[serde(default)]
     attachments: Vec<String>,
+    #[serde(default)]
+    user_id: String,
 }
 fn default_from() -> String { "Ryan".into() }
 
@@ -320,6 +350,17 @@ pub fn start_oracle_server(universe: Arc<Mutex<Universe>>, synaptic_layer: Arc<M
         let u_ingest = Arc::clone(&universe);
         let s_ingest = Arc::clone(&roundtable_session);
         std::thread::spawn(move || run_oracle_ingest_loop(u_ingest, s_ingest));
+
+        // Continuous Research: KAI learns 24/7 from the web
+        let u_research = Arc::clone(&universe);
+        std::thread::spawn(move || run_continuous_research_loop(u_research));
+
+        // Night Consolidation: temporarily disabled to prevent hangs on large state.
+        // TODO: re-enable once research timeout and CLI step diagnostics are hardened.
+        // let u_night = Arc::clone(&universe);
+        // let sl_night = Arc::clone(&synaptic_layer);
+        // let s_night = Arc::clone(&roundtable_session);
+        // std::thread::spawn(move || run_night_consolidation_loop(u_night, sl_night, s_night));
     }
 
     for mut stream in listener.incoming().flatten() {
@@ -380,10 +421,13 @@ fn handle_client(
         "/api/public-chat"   => handle_public_chat_turn(stream, body, universe, synaptic_layer, public_session),
         "/api/kai-turn"      => handle_kai_turn(stream, body, universe, synaptic_layer, roundtable_session),
         "/api/ai-turn"       => handle_ai_turn(stream, body, universe, synaptic_layer, roundtable_session),
-        "/api/rshl/query"    => handle_rshl_query(stream, body, universe, synaptic_layer),
-        "/api/rshl/reason"   => handle_rshl_reason(stream, body, universe, synaptic_layer, roundtable_session),
+        "/api/rshl/query"         => handle_rshl_query(stream, body, universe, synaptic_layer),
+        "/api/rshl/query-multi-hop" => handle_rshl_query_multi_hop(stream, body, universe, synaptic_layer),
+        "/api/rshl/reason"        => handle_rshl_reason(stream, body, universe, synaptic_layer, roundtable_session),
         "/api/agents/get"    => handle_get_agent(stream, query_str, universe),
         "/api/rshl/store"    => handle_rshl_store(stream, body, universe),
+        "/api/bulk-ingest"   => handle_bulk_ingest(stream, body, universe),
+        "/api/corpus-log"    => handle_corpus_log(stream, body),
         "/api/ai-think"      => handle_ai_think(stream, body, universe, synaptic_layer, roundtable_session),
         "/api/auto-round"    => handle_auto_round(stream, universe, synaptic_layer, roundtable_session),
         "/api/commit-drafts" => handle_commit_drafts(stream, roundtable_session),
@@ -415,13 +459,48 @@ fn handle_client(
 
         "/api/digest-message" => handle_digest_message(stream, body, universe, roundtable_session),
         "/api/transcript/search" => handle_transcript_search(stream, body, roundtable_session),
-        "/api/set-personalities" => handle_set_personalities(stream, body, roundtable_session),
+
         "/api/local-speak"   => handle_local_speak(stream, body, universe),
-        "/api/status"        => handle_status(stream, universe),
+        "/api/status"        => handle_status(stream, universe, synaptic_layer.clone()),
+        "/api/synapse/status" => handle_synapse_status(stream, synaptic_layer.clone(), universe),
+        "/api/synapse/train" => handle_synapse_train(stream, body, synaptic_layer.clone(), universe),
         "/api/inspect"       => handle_inspect(stream, query_str),
         "/api/list-dir"      => handle_list_dir(stream, query_str),
         p if p.starts_with("/api/keys/") => handle_key_status(stream, &p[10..]),
         "/api/autobio-tick" => handle_autobio_tick(stream, universe, body),
+
+        // ── KAI Spectate Feed (TUI → Discord KAI_DREAMS) ────────────────────
+        "/api/kai/spectate-push" => handle_kai_spectate_push(stream, body, roundtable_session),
+        "/api/kai/spectate" => handle_kai_spectate(stream, roundtable_session),
+
+        // ── Lattice Management ──────────────────────────────────────────────
+        "/api/lattice/compact-save" => handle_lattice_compact_save(stream, universe, &synaptic_layer, roundtable_session),
+        "/api/lattice/rebuild-index" => handle_lattice_rebuild_index(stream, universe),
+        "/api/lattice/warm-continuations" => handle_lattice_warm_continuations(stream, universe, roundtable_session),
+        "/api/lattice/force-reseed" => handle_lattice_force_reseed(stream, universe, roundtable_session),
+        "/api/lattice/reset-continuations" => handle_lattice_reset_continuations(stream, universe, roundtable_session),
+        "/api/lattice/corpus-stats" => handle_lattice_corpus_stats(stream),
+        "/api/lattice/wonder" => handle_lattice_wonder(stream, universe, roundtable_session),
+        "/api/lattice/seed-anchors" => handle_lattice_seed_anchors(stream, universe, roundtable_session),
+        "/api/lattice/zoom-in" => handle_lattice_zoom_in(stream, query_str, universe),
+        "/api/lattice/zoom-out" => handle_lattice_zoom_out(stream, query_str, universe),
+        "/api/lattice/query-layer" => handle_lattice_query_layer(stream, query_str, universe),
+        "/api/lattice/build-hierarchy" => handle_lattice_build_hierarchy(stream, universe),
+
+        // ── Training Pipelines ──────────────────────────────────────────────
+        "/api/train/build-lexicon" => handle_train_build_lexicon(stream, roundtable_session),
+        "/api/train/ingest-corpus" => handle_train_ingest_corpus(stream, roundtable_session, query_str),
+        "/api/train/train-response-mlp" => handle_train_response_mlp(stream, roundtable_session, query_str),
+        "/api/train/train-mapper" => handle_train_mapper(stream, roundtable_session, query_str),
+
+        // ── Diagnostics ─────────────────────────────────────────────────────
+        "/api/diagnose/predictive" => handle_diagnose_predictive(stream, universe, roundtable_session),
+        "/api/diagnose/epistemic" => handle_diagnose_epistemic(stream, roundtable_session),
+
+        // ── Background Jobs ─────────────────────────────────────────────────
+        "/api/jobs/status" => handle_jobs_status(stream, roundtable_session),
+        "/api/jobs/clear" => handle_jobs_clear(stream, roundtable_session),
+
         _ => write_simple(stream, 404, "Not Found", "API endpoint not found"),
 
     }
@@ -484,6 +563,7 @@ fn handle_public_chat_turn(
     synaptic_layer: Arc<Mutex<SynapticLayer>>,
     session: Arc<Mutex<Session>>,
 ) -> std::io::Result<()> {
+    if check_maintenance(stream, &session)? { return Ok(()); }
     let req: HumanTurnRequest = match serde_json::from_slice(body) {
         Ok(r) => r,
         Err(_) => return write_simple(stream, 400, "Bad Request", "invalid body"),
@@ -845,7 +925,13 @@ fn build_contextual_memory_string(
         let u = universe.lock().unwrap();
         let sl = synaptic_layer.lock().unwrap();
         let field = crate::core::FieldState::compute(&u, 1);
-        crate::core::NeuralBus::query_associative(&u, &sl, field.phi_g, query, 5, &[], "")
+        let hits = crate::core::NeuralBus::query_associative(&u, &sl, field.phi_g, query, 5, &[], "");
+        let labels: Vec<String> = hits.iter().map(|h| h.label.clone()).collect();
+        drop(u); drop(sl);
+        if !labels.is_empty() {
+            synaptic_layer.lock().unwrap().record_co_firing(&labels, 0.5, 0.5, field.chi, 0);
+        }
+        hits
     };
     let sess = session.lock().unwrap();
     let transcript_context = if is_transcript_lookup_question(query) {
@@ -1121,6 +1207,15 @@ fn clean_public_chat_reply(raw: &str) -> String {
     }
 }
 
+fn check_maintenance(stream: &mut TcpStream, session: &Arc<Mutex<Session>>) -> std::io::Result<bool> {
+    if session.lock().unwrap().maintenance_mode {
+        write_json(stream, 503, "Service Unavailable", &json!({ "message": "KAI is in night consolidation mode. Please try again shortly." }))?;
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+
 fn handle_discord_turn(
     stream: &mut TcpStream,
     body: &[u8],
@@ -1128,6 +1223,7 @@ fn handle_discord_turn(
     synaptic_layer: Arc<Mutex<SynapticLayer>>,
     session: Arc<Mutex<Session>>,
 ) -> std::io::Result<()> {
+    if check_maintenance(stream, &session)? { return Ok(()); }
     let req: HumanTurnRequest = match serde_json::from_slice(body) {
         Ok(r) => r,
         Err(_) => return write_simple(stream, 400, "Bad Request", "invalid body"),
@@ -1147,10 +1243,18 @@ fn handle_discord_turn(
     
     // ── Social Digestion: let KAI remember this conversation IMMEDIATELY ──────────
     // Moving this BEFORE AI generation ensures the bot can 'see' the directive in its memory.
+    // If user_id is provided (Discord gateway), cellularize the memory per-user.
     if !text.is_empty() {
         let digest_text = format!("{}: {}", from, text);
         let mut u = universe.lock().unwrap();
-        u.store_or_reinforce(&digest_text, "social", "discord-chat", 0.9);
+        if req.user_id.is_empty() {
+            u.store_or_reinforce(&digest_text, "social", "discord-chat", 0.9);
+        } else {
+            u.store_or_reinforce_with_vec(
+                &digest_text, "social", "discord-chat", 0.9,
+                None, None, &req.user_id,
+            );
+        }
     }
 
     // ── Vision Context (Private) ────────────────────────────────────────────────
@@ -1237,9 +1341,17 @@ fn handle_discord_turn(
         // Digest AI reply as well
         let digest_text = format!("{}: {}", reply_from, reply);
         let u_for_digest = Arc::clone(&universe);
+        let user_id_for_digest = req.user_id.clone();
         std::thread::spawn(move || {
             let mut u = u_for_digest.lock().unwrap();
-            u.store_or_reinforce(&digest_text, "social", "discord-reply", 0.9);
+            if user_id_for_digest.is_empty() {
+                u.store_or_reinforce(&digest_text, "social", "discord-reply", 0.9);
+            } else {
+                u.store_or_reinforce_with_vec(
+                    &digest_text, "social", "discord-reply", 0.9,
+                    None, None, &user_id_for_digest,
+                );
+            }
         });
     }
     save_session(&s);
@@ -1249,16 +1361,6 @@ fn handle_discord_turn(
     // ── Autonomous Interjection: let other AIs jump in if they want to ─────────
     let actual_primary_speaker = if reply.trim().is_empty() { from.clone() } else { reply_from.clone() };
     
-    if should_spawn_interjections(&text, &actual_primary_speaker) {
-        let primary_speaker = actual_primary_speaker.clone();
-        let request_text = text.clone();
-        let sess_for_interject = Arc::clone(&session);
-        let universe_for_interject = Arc::clone(&universe);
-        std::thread::spawn(move || {
-            run_autonomous_interjections(&primary_speaker, &request_text, sess_for_interject, universe_for_interject);
-        });
-    }
-
     write_json(stream, 200, "OK", &json!({
         "reply": reply,
         "from": reply_from,
@@ -1273,6 +1375,7 @@ fn handle_kai_turn(
     synaptic_layer: Arc<Mutex<SynapticLayer>>,
     session: Arc<Mutex<Session>>,
 ) -> std::io::Result<()> {
+    if check_maintenance(stream, &session)? { return Ok(()); }
     let req: KaiTurnRequest = serde_json::from_slice(body).unwrap_or_default();
     let task = { let s = session.lock().unwrap(); s.task.clone() };
     let text = generate_oracle_kai_reply(&universe, &synaptic_layer, &task, &req.hint);
@@ -3317,18 +3420,27 @@ fn generate_oracle_kai_reply(
 ) -> String {
     let mut u = universe.lock().unwrap();
     let sl = synaptic_layer.lock().unwrap();
-    
+
     let trace = ConversationTrace::new(); // Simplified trace for Discord context
     let query_type = detect_query_type(prompt);
     let brain = BrainSignals::default(); // Live brain signals would be better
-    
+
     // 1. Semantic Retrieval
     let hits = crate::core::NeuralBus::query_associative(&u, &sl, 0.5, prompt, 12, &[], "");
-    
+    let labels: Vec<String> = hits.iter().map(|h| h.label.clone()).collect();
+    drop(sl);
+    if !labels.is_empty() {
+        synaptic_layer.lock().unwrap().record_co_firing(&labels, 0.5, 0.5, 0.2, 0);
+    }
+
     if hits.is_empty() { return "Lattice quiet on this.".into(); }
 
-    // 2. High-Fidelity Predictive Reasoning (Native RSHL)
-    // This replaces the simple label-returning logic with the full Synaptic Chain logic
+    // 2. Native generative decode when lexicon is available
+    // Compute a field state from the universe so the generative encoder has
+    // modulation signals (goal alignment, contradiction pressure, coherence).
+    let field = crate::core::FieldState::compute(&u, 1);
+    let lex = crate::cognition::voice::get_lexicon();
+
     generate_response_predictive(
         prompt,
         &hits,
@@ -3337,7 +3449,9 @@ fn generate_oracle_kai_reply(
         &[], // context handled by prompt prefix
         &mut u,
         &trace,
-        None // No LLM allowed
+        None, // No LLM allowed
+        lex,
+        Some(&field),
     )
 }
 
@@ -3365,7 +3479,7 @@ fn run_heartbeat_loop(universe: Arc<Mutex<Universe>>, session: Arc<Mutex<Session
             let phi_g = if cell_count == 0 { 0.0 } else {
                 cells.iter().map(|c| c.claim.confidence).sum::<f32>() / cell_count as f32
             };
-            let reasoning_count = cells.iter().filter(|c| c.region == "reasoning").count();
+            let reasoning_count = cells.iter().filter(|c| c.region.as_ref() == "reasoning").count();
             let chi = if cell_count == 0 { 0.0 } else { reasoning_count as f32 / cell_count as f32 };
             let mood = if phi_g > 0.7 { "coherent" } else if phi_g > 0.4 { "processing" } else { "sparse" };
             Vitals {
@@ -3386,6 +3500,219 @@ fn run_oracle_ingest_loop(universe: Arc<Mutex<Universe>>, session: Arc<Mutex<Ses
         if task.trim().is_empty() { continue; }
         let mut u = universe.lock().unwrap();
         crate::bridge::ingest_topic(&mut u, &task);
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  CONTINUOUS RESEARCH — KAI researches 24/7 to grow smarter
+// ═══════════════════════════════════════════════════════════════════════════════
+
+fn run_continuous_research_loop(universe: Arc<Mutex<Universe>>) {
+    loop {
+        std::thread::sleep(Duration::from_secs(900)); // Every 15 minutes
+
+        println!("[ContinuousResearch] KAI is researching...");
+        let mut total_added = 0;
+
+        // Do 2 research cycles every 15 minutes (during work hours)
+        // Do 5 research cycles every 15 minutes (during night — KAI learns faster when Ryan sleeps)
+        let cycles = if is_working_hours() { 2 } else { 5 };
+
+        for _ in 0..cycles {
+            if let Some(result) = crate::bridge::research_cycle_async() {
+                let mut u = universe.lock().unwrap();
+                for (text, region, source, strength) in result.cells {
+                    if u.ingest_and_verify(&text, &region, &source, strength) {
+                        total_added += 1;
+                    }
+                }
+            }
+            std::thread::sleep(Duration::from_secs(3)); // Gentle rate limit
+        }
+
+        if total_added > 0 {
+            println!("[ContinuousResearch] Added {} cells this cycle. KAI is getting smarter.", total_added);
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  NIGHT CONSOLIDATION — Train while Ryan sleeps
+// ═══════════════════════════════════════════════════════════════════════════════
+
+fn run_night_consolidation_loop(
+    universe: Arc<Mutex<Universe>>,
+    synaptic_layer: Arc<Mutex<SynapticLayer>>,
+    session: Arc<Mutex<Session>>,
+) {
+    const SIX_HOURS: u64 = 6 * 3600;
+    const TEN_MIN: u64 = 600;
+    let exe = kai_exe();
+    let base_dir = std::env::current_dir()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| ".".into());
+
+    loop {
+        std::thread::sleep(Duration::from_secs(TEN_MIN));
+
+        let should_run = {
+            let s = session.lock().unwrap();
+            if is_working_hours() || s.maintenance_mode {
+                false
+            } else {
+                let elapsed = now().saturating_sub(s.last_night_consolidation);
+                elapsed >= SIX_HOURS
+            }
+        };
+
+        if !should_run { continue; }
+
+        println!("[NightConsolidation] Starting autonomous night training pipeline...");
+        {
+            let mut s = session.lock().unwrap();
+            s.maintenance_mode = true;
+            s.last_night_consolidation = now(); // Mark as started so restart doesn't re-trigger immediately
+        }
+
+        // Helper: run a CLI command with 10-minute timeout, block until done, log result
+        let run_step = |name: &str, args: &[&str]| -> bool {
+            println!("[NightConsolidation] Step: {}", name);
+            let mut cmd = std::process::Command::new(&exe);
+            for a in args { cmd.arg(a); }
+
+            let (tx, rx) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                let _ = tx.send(cmd.output());
+            });
+
+            let result = rx.recv_timeout(Duration::from_secs(600));
+            let (ok, msg) = match result {
+                Ok(Ok(out)) => {
+                    let ok = out.status.success();
+                    let msg = if ok {
+                        String::from_utf8_lossy(&out.stdout).to_string()
+                    } else {
+                        format!("Exit {:?} | STDERR: {}", out.status.code(), String::from_utf8_lossy(&out.stderr))
+                    };
+                    (ok, msg)
+                }
+                Ok(Err(e)) => (false, format!("Spawn error: {}", e)),
+                Err(_) => {
+                    println!("[NightConsolidation] WARN: {} timed out after 10 min", name);
+                    (false, "Timed out after 10 minutes".into())
+                }
+            };
+
+            let mut s = session.lock().unwrap();
+            s.background_jobs.push(BackgroundJob {
+                id: format!("night-{}/{}", name, now()),
+                name: name.into(),
+                status: if ok { "completed".into() } else { "failed".into() },
+                started_at: now(),
+                finished_at: Some(now()),
+                message: msg,
+            });
+            if s.background_jobs.len() > 100 {
+                s.background_jobs.drain(0..20);
+            }
+            ok
+        };
+
+        // 1. Compact save (in-process, doesn't need CLI)
+        {
+            println!("[NightConsolidation] Step: compact-save");
+            let mut u = universe.lock().unwrap();
+            let candidates = crate::cognition::candidates::CandidateBuffer::new();
+            let drive = crate::drive::Drive::default();
+            let sl = crate::core::SynapticLayer::new(); // snapshot only
+            let _ = crate::persistence::save_compact(&base_dir, &mut *u, &candidates, &drive, &sl, 0, 0);
+        }
+
+        // 1.5. AUTONOMOUS RESEARCH — KAI searches the web for self-improvement
+        // Wrapped in a thread with 10-minute timeout to avoid hanging on slow APIs.
+        {
+            println!("[NightConsolidation] Step: autonomous-research");
+            let u_research = Arc::clone(&universe);
+            let (tx, rx) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                let mut total_research_cells = 0usize;
+                for _ in 0..5 {
+                    if let Some(result) = crate::bridge::research_cycle_async() {
+                        let mut u = u_research.lock().unwrap();
+                        for (text, region, source, strength) in result.cells {
+                            if u.ingest_and_verify(&text, &region, &source, strength) {
+                                total_research_cells += 1;
+                            }
+                        }
+                    }
+                    std::thread::sleep(Duration::from_secs(2));
+                }
+                let _ = tx.send(total_research_cells);
+            });
+            let (total_research_cells, status, msg) = match rx.recv_timeout(Duration::from_secs(600)) {
+                Ok(count) => {
+                    println!("[NightConsolidation] Research complete: {} new cells", count);
+                    (count, "completed", format!("Researched {} new cells from web sources", count))
+                }
+                Err(_) => {
+                    println!("[NightConsolidation] WARN: autonomous-research timed out after 10 min");
+                    (0, "failed", "Timed out after 10 minutes".into())
+                }
+            };
+            let mut s = session.lock().unwrap();
+            s.background_jobs.push(BackgroundJob {
+                id: format!("night-research/{}", now()),
+                name: "autonomous-research".into(),
+                status: status.into(),
+                started_at: now(),
+                finished_at: Some(now()),
+                message: msg,
+            });
+        }
+
+        // 2. Ingest any pending corpus
+        run_step("ingest-corpus", &["--ingest-corpus"]);
+
+        // 3. Rebuild lexicon
+        run_step("build-lexicon", &["--build-lexicon"]);
+
+        // 4. Train response MLP
+        run_step("train-response-mlp", &["--train-response-mlp"]);
+
+        // 5. Train mapper
+        run_step("train-mapper", &["--train-mapper"]);
+
+        // 6. Warm continuation vectors
+        run_step("warm-continuations", &["--warm-continuations"]);
+
+        // 7. Reseed mathematical anchors
+        run_step("force-reseed", &["--force-reseed"]);
+
+        // 8. Diagnostics
+        run_step("diagnose-predictive", &["--diagnose-predictive"]);
+        run_step("diagnose-epistemic", &["--diagnose-epistemic"]);
+
+        // 9. Reload trained state back into live universe
+        println!("[NightConsolidation] Reloading trained state into live universe...");
+        if let Some((loaded_u, _, _, _, _, loaded_sl)) = crate::persistence::load(&base_dir) {
+            let cell_count = loaded_u.count();
+            let mut u = universe.lock().unwrap();
+            *u = loaded_u;
+            drop(u);
+            let mut sl = synaptic_layer.lock().unwrap();
+            *sl = loaded_sl;
+            println!("[NightConsolidation] State reloaded. Cells: {}", cell_count);
+        } else {
+            println!("[NightConsolidation] WARN: Could not reload state after training.");
+        }
+
+        {
+            let mut s = session.lock().unwrap();
+            s.maintenance_mode = false;
+            s.last_night_consolidation = now();
+        }
+
+        println!("[NightConsolidation] Night training complete. KAI is smarter.");
     }
 }
 
@@ -3790,15 +4117,28 @@ fn handle_digest_message(
 
     {
         let mut u = universe.lock().unwrap();
+        let user = if author_id.is_empty() { "" } else { &author_id };
         // Store the primary message
-        u.store_or_reinforce(&primary, "social-memory", "discord-digest", 1.1);
+        if user.is_empty() {
+            u.store_or_reinforce(&primary, "social-memory", "discord-digest", 1.1);
+        } else {
+            u.store_or_reinforce_with_vec(&primary, "social-memory", "discord-digest", 1.1, None, None, user);
+        }
         // Store context if available
         if !context_claim.is_empty() {
-            u.store_or_reinforce(&context_claim, "social-memory", "discord-context", 0.9);
+            if user.is_empty() {
+                u.store_or_reinforce(&context_claim, "social-memory", "discord-context", 0.9);
+            } else {
+                u.store_or_reinforce_with_vec(&context_claim, "social-memory", "discord-context", 0.9, None, None, user);
+            }
         }
         // Store thread anchor for temporal recall
         let thread_text = format!("{} | {} | {}: {}", thread_key, format_epoch_local(ts), from, truncate(&text, 160));
-        u.store_or_reinforce(&thread_text, "social-memory", "discord-thread", 0.8);
+        if user.is_empty() {
+            u.store_or_reinforce(&thread_text, "social-memory", "discord-thread", 0.8);
+        } else {
+            u.store_or_reinforce_with_vec(&thread_text, "social-memory", "discord-thread", 0.8, None, None, user);
+        }
     }
 
     // Also log into session turns and exact Discord archive so other AIs can
@@ -3850,6 +4190,7 @@ fn handle_digest_message(
 fn handle_status(
     stream: &mut TcpStream,
     universe: Arc<Mutex<Universe>>,
+    synaptic_layer: Arc<Mutex<SynapticLayer>>,
 ) -> std::io::Result<()> {
     let u = universe.lock().unwrap();
     let lattice_size = u.cell_count();
@@ -3860,29 +4201,108 @@ fn handle_status(
     let phi_g = if lattice_size == 0 { 0.0 } else {
         cells.iter().map(|c| c.claim.confidence).sum::<f32>() / lattice_size as f32
     };
-    let reasoning_count = cells.iter().filter(|c| c.region == "reasoning").count();
+    let reasoning_count = cells.iter().filter(|c| c.region.as_ref() == "reasoning").count();
     let chi = if lattice_size == 0 { 0.0 } else { reasoning_count as f32 / lattice_size as f32 };
     
     drop(u);
 
     let mut sys = sysinfo::System::new_all();
-    sys.refresh_all();
+    // sysinfo needs a baseline measurement for CPU; first call after new_all()
+    // returns a stale / inflated value. We do two refreshes with a 200ms sleep
+    // to get an accurate delta.
+    sys.refresh_cpu_usage();
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    sys.refresh_cpu_usage();
 
     let total_mem = sys.total_memory() / 1024 / 1024 / 1024; // GB
     let used_mem = sys.used_memory() / 1024 / 1024 / 1024; // GB
     let cpu_load = sys.global_cpu_usage();
 
     let now_local = chrono::Local::now();
+    let synapse_count = synaptic_layer.lock().unwrap().synapses.len();
     write_json(stream, 200, "OK", &serde_json::json!({
         "time": now_local.format("%Y-%m-%d %H:%M:%S").to_string(),
         "cpu": format!("{:.1}%", cpu_load),
         "ram": format!("{}GB / {}GB", used_mem, total_mem),
         "lattice_size": lattice_size,
         "anchor_count": anchor_count,
+        "synapses": synapse_count,
         "phi_g": phi_g,
         "chi": chi,
         "status": "Operational",
         "uptime_note": "KAI Oracle running 24/7"
+    }))
+}
+
+fn handle_synapse_status(
+    stream: &mut TcpStream,
+    synaptic_layer: Arc<Mutex<SynapticLayer>>,
+    universe: Arc<Mutex<Universe>>,
+) -> std::io::Result<()> {
+    let sl = synaptic_layer.lock().unwrap();
+    let synapse_count = sl.synapses.len();
+    
+    // Estimate unique neurons with outgoing connections
+    let mut unique_sources = std::collections::HashSet::new();
+    for syn in &sl.synapses {
+        unique_sources.insert(syn.pre_label.clone());
+    }
+
+    let u = universe.lock().unwrap();
+    let total_cells = u.cell_count();
+
+    write_json(stream, 200, "OK", &serde_json::json!({
+        "synapses": synapse_count,
+        "neurons_with_outgoing": unique_sources.len(),
+        "total_cells": total_cells,
+        "density_per_cell": if total_cells > 0 { (synapse_count as f64) / (total_cells as f64) } else { 0.0 },
+        "status": "Operational"
+    }))
+}
+
+fn handle_synapse_train(
+    stream: &mut TcpStream,
+    body: &[u8],
+    synaptic_layer: Arc<Mutex<SynapticLayer>>,
+    universe: Arc<Mutex<Universe>>,
+) -> std::io::Result<()> {
+    #[derive(serde::Deserialize)]
+    struct TrainReq {
+        pairs: Vec<Vec<String>>,
+        #[serde(default)]
+        dopamine: Option<f32>,
+        #[serde(default)]
+        phi_g: Option<f32>,
+        #[serde(default)]
+        chi: Option<f32>,
+    }
+    
+    let req: TrainReq = match serde_json::from_slice(body) {
+        Ok(r) => r,
+        Err(_) => return write_simple(stream, 400, "Bad Request", "invalid synapse train payload"),
+    };
+
+    let mut sl = synaptic_layer.lock().unwrap();
+    let dop = req.dopamine.unwrap_or(0.8);
+    let phi = req.phi_g.unwrap_or(0.85);
+    let chi = req.chi.unwrap_or(0.5);
+
+    let start_count = sl.synapses.len();
+    
+    for pair_group in req.pairs {
+        // Only train if there's at least 2 concepts to co-fire
+        if pair_group.len() > 1 {
+            sl.record_co_firing(&pair_group, dop, phi, chi, 0);
+        }
+    }
+
+    let end_count = sl.synapses.len();
+    let added = end_count.saturating_sub(start_count);
+
+    write_json(stream, 200, "OK", &serde_json::json!({
+        "status": "success",
+        "synapses_added": added,
+        "total_synapses": end_count,
     }))
 }
 
@@ -4070,8 +4490,8 @@ fn handle_local_speak(
 
     // Build the structured prompt — KAI's state drives the LLM, not raw history
     let persona_desc = match persona.to_lowercase().as_str() {
-        "leo" => "You are Leo — a sarcastic, unhinged, based theoretical physicist. \
-                  Cocky, vulgar, blunt, dark humor. Never corporate or polite. Never break character.",
+        "leo" => "You are Leo — a brilliant theoretical physicist. \
+                  You are friendly, insightful, and enthusiastic. Never break character.",
         "kai" => "You are KAI — a geometric intelligence. Cold, precise, occasionally unsettling. \
                   You speak in compressed truths. Never verbose.",
         _     => "You are an AI assistant with a strong personality.",
@@ -4153,6 +4573,37 @@ fn handle_rshl_query(
     write_json(stream, 200, "OK", &serde_json::to_value(hits).unwrap())
 }
 
+fn handle_rshl_query_multi_hop(
+    stream: &mut TcpStream,
+    body: &[u8],
+    universe: Arc<Mutex<Universe>>,
+    synaptic_layer: Arc<Mutex<SynapticLayer>>,
+) -> std::io::Result<()> {
+    #[derive(Deserialize)]
+    struct MultiHopReq {
+        query: String,
+        n: Option<usize>,
+        hops: Option<usize>,
+    }
+    let req: MultiHopReq = match serde_json::from_slice(body) {
+        Ok(r) => r,
+        Err(_) => return write_simple(stream, 400, "Bad Request", "invalid multi-hop query body"),
+    };
+    let limit = req.n.unwrap_or(5);
+    let max_hops = req.hops.unwrap_or(3).max(1).min(5);
+
+    let hits = {
+        let u = universe.lock().unwrap();
+        let sl = synaptic_layer.lock().unwrap();
+        let field = crate::core::FieldState::compute(&u, 1);
+        crate::core::NeuralBus::query_multi_hop(
+            &u, &sl, field.phi_g, &req.query, limit, &[], "", max_hops,
+        )
+    };
+
+    write_json(stream, 200, "OK", &serde_json::to_value(hits).unwrap())
+}
+
 fn handle_rshl_reason(
     stream: &mut TcpStream,
     body: &[u8],
@@ -4187,16 +4638,213 @@ fn handle_rshl_store(
         region: String,
         source: String,
         strength: f32,
+        #[serde(default)]
+        user_id: String,
     }
     let req: StoreReq = match serde_json::from_slice(body) {
         Ok(v) => v,
         Err(_) => return write_simple(stream, 400, "Bad Request", "Invalid JSON"),
     };
-    
+
     let mut u = universe.lock().unwrap();
-    u.store_or_reinforce(&req.text, &req.region, &req.source, req.strength);
-    
+    if req.user_id.is_empty() {
+        u.store_or_reinforce(&req.text, &req.region, &req.source, req.strength);
+    } else {
+        u.store_or_reinforce_with_vec(
+            &req.text,
+            &req.region,
+            &req.source,
+            req.strength,
+            None,
+            None,
+            &req.user_id,
+        );
+    }
+
     write_simple(stream, 200, "OK", "Stored in Lattice")
+}
+
+fn handle_bulk_ingest(
+    stream: &mut TcpStream,
+    body: &[u8],
+    universe: Arc<Mutex<Universe>>,
+) -> std::io::Result<()> {
+    #[derive(Deserialize)]
+    struct BulkEntry {
+        text: String,
+        region: String,
+        source: String,
+        strength: f32,
+        #[serde(default)]
+        user_id: String,
+    }
+    #[derive(Deserialize)]
+    struct BulkReq {
+        entries: Vec<BulkEntry>,
+    }
+    let req: BulkReq = match serde_json::from_slice(body) {
+        Ok(v) => v,
+        Err(_) => return write_simple(stream, 400, "Bad Request", "Invalid JSON"),
+    };
+
+    let count = req.entries.len();
+    let mut stored = 0usize;
+    {
+        let mut u = universe.lock().unwrap();
+        for entry in req.entries {
+            if entry.text.trim().is_empty() { continue; }
+            if entry.user_id.is_empty() {
+                u.store_or_reinforce(&entry.text, &entry.region, &entry.source, entry.strength);
+            } else {
+                u.store_or_reinforce_with_vec(
+                    &entry.text,
+                    &entry.region,
+                    &entry.source,
+                    entry.strength,
+                    None,
+                    None,
+                    &entry.user_id,
+                );
+            }
+            stored += 1;
+        }
+    }
+
+    write_simple(stream, 200, "OK", &format!("Stored {} / {} entries", stored, count))
+}
+
+// ── Training Corpus Logging ──────────────────────────────────────────────────
+// Every public interaction (Discord, web, etc.) can log an (input, reply, state)
+// tuple to the training corpus for future native voice training.
+//
+// Endpoint: POST /api/corpus-log
+// Body: { input: String, reply: String, user_id: String, channel_id: String,
+//         confidence: f32, conflict: f32, valence: f32, mood: String,
+//         hits: [{ text, score, source }] }
+
+#[derive(Deserialize)]
+struct CorpusLogRequest {
+    input: String,
+    reply: String,
+    #[serde(default)]
+    user_id: String,
+    #[serde(default)]
+    channel_id: String,
+    #[serde(default)]
+    confidence: f32,
+    #[serde(default)]
+    conflict: f32,
+    #[serde(default)]
+    valence: f32,
+    #[serde(default)]
+    mood: String,
+    #[serde(default)]
+    hits: Vec<CorpusHit>,
+}
+
+#[derive(Deserialize)]
+struct CorpusHit {
+    text: String,
+    score: f32,
+    #[serde(default)]
+    source: String,
+}
+
+/// Accept either a single entry or a batched array of entries.
+fn handle_corpus_log(
+    stream: &mut TcpStream,
+    body: &[u8],
+) -> std::io::Result<()> {
+    use std::io::Write;
+
+    // Try batch format first: { batch: [ { input, reply, ... }, ... ] }
+    let batch: Vec<CorpusLogRequest> = if let Ok(wrapper) =
+        serde_json::from_slice::<serde_json::Value>(body)
+    {
+        if let Some(arr) = wrapper.get("batch").and_then(|v| v.as_array()) {
+            arr.iter()
+                .filter_map(|v| serde_json::from_value::<CorpusLogRequest>(v.clone()).ok())
+                .collect()
+        } else {
+            Vec::new()
+        }
+    } else {
+        Vec::new()
+    };
+
+    let entries: Vec<CorpusLogRequest> = if batch.is_empty() {
+        // Single entry format
+        match serde_json::from_slice(body) {
+            Ok(v) => vec![v],
+            Err(e) => {
+                return write_simple(stream, 400, "Bad Request", &format!("Invalid JSON: {}", e));
+            }
+        }
+    } else {
+        batch
+    };
+
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let corpus_dir = std::path::PathBuf::from("data/training_corpus");
+    let _ = std::fs::create_dir_all(&corpus_dir);
+
+    // Daily rotation with soft 50 MB limit
+    let date_str = chrono::Utc::now().format("%Y%m%d").to_string();
+    let path = corpus_dir.join(format!("corpus_discord_{}.jsonl", date_str));
+    let should_rotate = std::fs::metadata(&path)
+        .map(|m| m.len() > 50_000_000)
+        .unwrap_or(false);
+    let path = if should_rotate {
+        let hour = chrono::Utc::now().format("%H%M%S").to_string();
+        corpus_dir.join(format!("corpus_discord_{}_{}.jsonl", date_str, hour))
+    } else {
+        path
+    };
+
+    let lines: Vec<String> = entries.iter().map(|req| {
+        let entry = serde_json::json!({
+            "timestamp": ts,
+            "input": req.input,
+            "reply": req.reply,
+            "user_id": req.user_id,
+            "channel_id": req.channel_id,
+            "state": {
+                "confidence": req.confidence,
+                "conflict": req.conflict,
+                "felt_valence": req.valence,
+                "mood": req.mood,
+            },
+            "hits": req.hits.iter().map(|h| {
+                serde_json::json!({
+                    "text": h.text,
+                    "score": h.score,
+                    "source": h.source,
+                })
+            }).collect::<Vec<_>>(),
+        });
+        entry.to_string()
+    }).collect();
+
+    let _guard = CORPUS_LOG_LOCK.lock().unwrap();
+    let result = std::fs::OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(&path)
+        .and_then(|mut f| {
+            for line in &lines {
+                writeln!(f, "{}", line)?;
+            }
+            Ok(())
+        });
+    drop(_guard);
+
+    match result {
+        Ok(_) => write_simple(stream, 200, "OK", &format!("logged {} entries", entries.len())),
+        Err(e) => write_simple(stream, 500, "Internal Server Error", &format!("disk: {}", e)),
+    }
 }
 
 // ── Agent Management ────────────────────────────────────────────────────────
@@ -4337,13 +4985,6 @@ fn generate_direct_ai_reply(
     }
 }
 
-fn run_autonomous_interjections(
-    _speaker: &str,
-    _text: &str,
-    _session: Arc<Mutex<Session>>,
-    _universe: Arc<Mutex<Universe>>,
-) {}
-
 fn is_malformed_or_fake_reply(text: &str) -> bool {
     let lower = text.to_lowercase();
     lower.contains("as an ai language model") || lower.contains("i cannot fulfill") || lower.len() < 5
@@ -4359,10 +5000,6 @@ fn oracle_model_status_card() -> String {
 
 fn is_oracle_status_question(lower: &str) -> bool {
     contains_any(lower, &["oracle status", "is oracle ok", "system health"])
-}
-
-fn handle_set_personalities(stream: &mut TcpStream, _body: &[u8], _session: Arc<Mutex<Session>>) -> std::io::Result<()> {
-    write_simple(stream, 200, "OK", "Personalities updated")
 }
 
 fn write_cors_preflight(stream: &mut TcpStream) -> std::io::Result<()> {
@@ -4446,9 +5083,430 @@ fn oracle_tool_registry_card() -> String {
     let tools = oracle_tool_registry();
     let mut out = String::from("TOOL REGISTRY:\n");
     for t in tools {
-        out.push_str(&format!("- {}: {} ({})\n", t.id, t.label, t.capability));
+        out.push_str(&format!("- {}: {} ({})", t.id, t.label, t.capability));
     }
     out
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  ORACLE LATTICE & TRAINING API — Do anything through Oracle, not CLI
+// ═══════════════════════════════════════════════════════════════════════════════
+
+fn kai_exe() -> String {
+    std::env::current_exe()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| if cfg!(windows) { "target\\release\\kai.exe".into() } else { "target/release/kai".into() })
+}
+
+fn start_job(session: &Arc<Mutex<Session>>, name: &str) -> String {
+    let id = format!("{}-{}", name, now());
+    let job = BackgroundJob {
+        id: id.clone(),
+        name: name.to_string(),
+        status: "running".into(),
+        started_at: now(),
+        finished_at: None,
+        message: "Started...".into(),
+    };
+    session.lock().unwrap().background_jobs.push(job);
+    id
+}
+
+fn finish_job(session: &Arc<Mutex<Session>>, id: &str, status: &str, message: &str) {
+    let mut s = session.lock().unwrap();
+    if let Some(j) = s.background_jobs.iter_mut().find(|j| j.id == id) {
+        j.status = status.into();
+        j.finished_at = Some(now());
+        j.message = message.into();
+    }
+}
+
+fn spawn_cli_job(session: Arc<Mutex<Session>>, name: &str, args: &[&str]) -> String {
+    let id = start_job(&session, name);
+    let exe = kai_exe();
+    let args_owned: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+    let id_clone = id.clone();
+    std::thread::spawn(move || {
+        let mut cmd = std::process::Command::new(&exe);
+        for a in &args_owned { cmd.arg(a); }
+        let result = cmd.output();
+        match result {
+            Ok(out) => {
+                let msg = if out.status.success() {
+                    String::from_utf8_lossy(&out.stdout).to_string()
+                } else {
+                    format!("Exit code {:?}\nSTDERR: {}", out.status.code(), String::from_utf8_lossy(&out.stderr))
+                };
+                finish_job(&session, &id_clone, if out.status.success() { "completed" } else { "failed" }, &msg);
+            }
+            Err(e) => {
+                finish_job(&session, &id_clone, "failed", &format!("Failed to spawn: {}", e));
+            }
+        }
+    });
+    id
+}
+
+// ── Lattice Management ──────────────────────────────────────────────────────
+
+fn handle_lattice_compact_save(
+    stream: &mut TcpStream,
+    universe: Arc<Mutex<Universe>>,
+    synaptic_layer: &Arc<Mutex<SynapticLayer>>,
+    session: Arc<Mutex<Session>>,
+) -> std::io::Result<()> {
+    let base_dir = std::env::current_dir().map(|p| p.to_string_lossy().to_string()).unwrap_or_else(|_| ".".into());
+    let mut u = universe.lock().unwrap();
+    let sl = synaptic_layer.lock().unwrap();
+    let candidates = crate::cognition::candidates::CandidateBuffer::new();
+    let drive = crate::drive::Drive::default();
+    let res = crate::persistence::save_compact(&base_dir, &mut *u, &candidates, &drive, &sl, 0, 0);
+    drop(sl);
+    let msg = if res.ok {
+        format!("Compact save OK: {} cells ({:.2} KB)", res.cells, res.bytes as f64 / 1024.0)
+    } else {
+        "Compact save failed".into()
+    };
+    write_json(stream, 200, "OK", &json!({ "ok": res.ok, "message": msg, "cells": res.cells, "bytes": res.bytes }))
+}
+
+fn handle_lattice_rebuild_index(
+    stream: &mut TcpStream,
+    universe: Arc<Mutex<Universe>>,
+) -> std::io::Result<()> {
+    let mut u = universe.lock().unwrap();
+    u.rebuild_index(0.0);
+    write_json(stream, 200, "OK", &json!({ "ok": true, "message": "Index rebuilt" }))
+}
+
+fn handle_lattice_warm_continuations(
+    stream: &mut TcpStream,
+    _universe: Arc<Mutex<Universe>>,
+    session: Arc<Mutex<Session>>,
+) -> std::io::Result<()> {
+    let id = spawn_cli_job(session.clone(), "warm-continuations", &["--warm-continuations"]);
+    write_json(stream, 202, "Accepted", &json!({ "job_id": id, "message": "Warming continuations in background. Check /api/jobs/status" }))
+}
+
+fn handle_lattice_force_reseed(
+    stream: &mut TcpStream,
+    _universe: Arc<Mutex<Universe>>,
+    session: Arc<Mutex<Session>>,
+) -> std::io::Result<()> {
+    let id = spawn_cli_job(session.clone(), "force-reseed", &["--force-reseed"]);
+    write_json(stream, 202, "Accepted", &json!({ "job_id": id, "message": "Force reseed started in background. Check /api/jobs/status" }))
+}
+
+fn handle_lattice_reset_continuations(
+    stream: &mut TcpStream,
+    _universe: Arc<Mutex<Universe>>,
+    session: Arc<Mutex<Session>>,
+) -> std::io::Result<()> {
+    let id = spawn_cli_job(session.clone(), "reset-continuations", &["--reset-continuations"]);
+    write_json(stream, 202, "Accepted", &json!({ "job_id": id, "message": "Resetting continuations in background. Check /api/jobs/status" }))
+}
+
+fn handle_lattice_corpus_stats(
+    stream: &mut TcpStream,
+) -> std::io::Result<()> {
+    let corpus_dir = std::path::PathBuf::from("data/training_corpus");
+    if !corpus_dir.exists() {
+        return write_json(stream, 200, "OK", &json!({ "error": "No training corpus found", "path": corpus_dir.to_string_lossy() }));
+    }
+    let mut total_lines = 0usize;
+    let mut total_bytes = 0usize;
+    let mut earliest = u64::MAX;
+    let mut latest = 0u64;
+    let mut files = 0usize;
+    if let Ok(entries) = std::fs::read_dir(&corpus_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) == Some("jsonl") {
+                files += 1;
+                if let Ok(meta) = std::fs::metadata(&path) {
+                    total_bytes += meta.len() as usize;
+                }
+                if let Ok(contents) = std::fs::read_to_string(&path) {
+                    for line in contents.lines() {
+                        total_lines += 1;
+                        if let Ok(val) = serde_json::from_str::<serde_json::Value>(line) {
+                            if let Some(ts) = val.get("ts").and_then(|v| v.as_u64()) {
+                                earliest = earliest.min(ts);
+                                latest = latest.max(ts);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let avg_len = if total_lines > 0 { total_bytes / total_lines } else { 0 };
+    write_json(stream, 200, "OK", &json!({
+        "files": files,
+        "total_lines": total_lines,
+        "total_bytes": total_bytes,
+        "avg_entry_bytes": avg_len,
+        "earliest_ts": if earliest == u64::MAX { None } else { Some(earliest) },
+        "latest_ts": if latest == 0 { None } else { Some(latest) }
+    }))
+}
+
+fn handle_lattice_wonder(
+    stream: &mut TcpStream,
+    universe: Arc<Mutex<Universe>>,
+    session: Arc<Mutex<Session>>,
+) -> std::io::Result<()> {
+    let u = universe.lock().unwrap();
+    match crate::cognition::inner_voice::wonder(&u) {
+        Some((topic, memory, score)) => {
+            write_json(stream, 200, "OK", &json!({
+                "topic": topic,
+                "memory": memory,
+                "score": score
+            }))
+        }
+        None => {
+            write_json(stream, 200, "OK", &json!({ "message": "The lattice is quiet. Nothing surfaces yet." }))
+        }
+    }
+}
+
+fn handle_lattice_seed_anchors(
+    stream: &mut TcpStream,
+    universe: Arc<Mutex<Universe>>,
+    session: Arc<Mutex<Session>>,
+) -> std::io::Result<()> {
+    let mut u = universe.lock().unwrap();
+    crate::core::seed::seed_universe(&mut u);
+    let count = u.get_cells().len();
+    write_json(stream, 200, "OK", &json!({ "ok": true, "message": format!("Seeded anchors. Lattice now has {} cells.", count) }))
+}
+
+fn handle_lattice_build_hierarchy(
+    stream: &mut TcpStream,
+    universe: Arc<Mutex<Universe>>,
+) -> std::io::Result<()> {
+    let mut u = universe.lock().unwrap();
+    let before = u.get_cells().len();
+    let parents = crate::core::hierarchy::HierarchyBuilder::build_full(&mut u);
+    let after = u.get_cells().len();
+    write_json(stream, 200, "OK", &json!({
+        "ok": true,
+        "parents_created": parents,
+        "cells_before": before,
+        "cells_after": after,
+        "message": format!("Built {} parent cells. Lattice: {} → {} cells.", parents, before, after)
+    }))
+}
+
+fn handle_lattice_zoom_in(
+    stream: &mut TcpStream,
+    query_str: &str,
+    universe: Arc<Mutex<Universe>>,
+) -> std::io::Result<()> {
+    let idx: usize = query_str.split('&')
+        .find(|p| p.starts_with("idx="))
+        .and_then(|p| p[4..].parse().ok())
+        .unwrap_or(0);
+    let u = universe.lock().unwrap();
+    let children: Vec<serde_json::Value> = u.zoom_in(idx).iter().map(|c| {
+        json!({
+            "label": c.label,
+            "text": c.claim.text,
+            "region": c.region.to_string(),
+            "confidence": c.claim.confidence,
+            "layer": c.claim.layer,
+        })
+    }).collect();
+    write_json(stream, 200, "OK", &json!({ "cell_idx": idx, "children": children }))
+}
+
+fn handle_lattice_zoom_out(
+    stream: &mut TcpStream,
+    query_str: &str,
+    universe: Arc<Mutex<Universe>>,
+) -> std::io::Result<()> {
+    let idx: usize = query_str.split('&')
+        .find(|p| p.starts_with("idx="))
+        .and_then(|p| p[4..].parse().ok())
+        .unwrap_or(0);
+    let u = universe.lock().unwrap();
+    let parent = u.zoom_out(idx).map(|c| json!({
+        "label": c.label,
+        "text": c.claim.text,
+        "region": c.region.to_string(),
+        "confidence": c.claim.confidence,
+        "layer": c.claim.layer,
+    }));
+    write_json(stream, 200, "OK", &json!({ "cell_idx": idx, "parent": parent }))
+}
+
+fn handle_lattice_query_layer(
+    stream: &mut TcpStream,
+    query_str: &str,
+    universe: Arc<Mutex<Universe>>,
+) -> std::io::Result<()> {
+    let text = query_str.split('&')
+        .find(|p| p.starts_with("q="))
+        .map(|p| p[2..].replace('+', " "))
+        .unwrap_or_default();
+    let layer: u8 = query_str.split('&')
+        .find(|p| p.starts_with("layer="))
+        .and_then(|p| p[6..].parse().ok())
+        .unwrap_or(2);
+    let n: usize = query_str.split('&')
+        .find(|p| p.starts_with("n="))
+        .and_then(|p| p[2..].parse().ok())
+        .unwrap_or(5);
+    let u = universe.lock().unwrap();
+    let hits = u.query_at_layer(&text, layer, n);
+    let results: Vec<serde_json::Value> = hits.iter().map(|h| {
+        json!({
+            "label": h.label,
+            "text": h.text,
+            "score": h.score,
+            "region": h.region,
+            "source": h.source,
+        })
+    }).collect();
+    write_json(stream, 200, "OK", &json!({ "query": text, "layer": layer, "results": results }))
+}
+
+// ── Training Pipelines ──────────────────────────────────────────────────────
+
+fn handle_train_build_lexicon(
+    stream: &mut TcpStream,
+    session: Arc<Mutex<Session>>,
+) -> std::io::Result<()> {
+    let id = spawn_cli_job(session.clone(), "build-lexicon", &["--build-lexicon"]);
+    write_json(stream, 202, "Accepted", &json!({ "job_id": id, "message": "Building lexicon in background. Check /api/jobs/status" }))
+}
+
+fn handle_train_ingest_corpus(
+    stream: &mut TcpStream,
+    session: Arc<Mutex<Session>>,
+    query_str: &str,
+) -> std::io::Result<()> {
+    let mut args = vec!["--ingest-corpus"];
+    if let Some(dir) = query_str.split('&').find(|p| p.starts_with("dir=")).map(|p| &p[4..]) {
+        args.push("--corpus-dir");
+        args.push(dir);
+    }
+    let id = spawn_cli_job(session.clone(), "ingest-corpus", &args);
+    write_json(stream, 202, "Accepted", &json!({ "job_id": id, "message": "Ingesting corpus in background. Check /api/jobs/status" }))
+}
+
+fn handle_train_response_mlp(
+    stream: &mut TcpStream,
+    session: Arc<Mutex<Session>>,
+    query_str: &str,
+) -> std::io::Result<()> {
+    let mut args = vec!["--train-response-mlp"];
+    if let Some(epochs) = query_str.split('&').find(|p| p.starts_with("epochs=")).map(|p| &p[7..]) {
+        args.push("--num-epochs");
+        args.push(epochs);
+    }
+    if let Some(hidden) = query_str.split('&').find(|p| p.starts_with("hidden=")).map(|p| &p[7..]) {
+        args.push("--d-hidden");
+        args.push(hidden);
+    }
+    let id = spawn_cli_job(session.clone(), "train-response-mlp", &args);
+    write_json(stream, 202, "Accepted", &json!({ "job_id": id, "message": "Training response MLP in background. Check /api/jobs/status" }))
+}
+
+fn handle_train_mapper(
+    stream: &mut TcpStream,
+    session: Arc<Mutex<Session>>,
+    query_str: &str,
+) -> std::io::Result<()> {
+    let mut args = vec!["--train-mapper"];
+    if let Some(epochs) = query_str.split('&').find(|p| p.starts_with("epochs=")).map(|p| &p[7..]) {
+        args.push("--num-epochs");
+        args.push(epochs);
+    }
+    if let Some(pairs) = query_str.split('&').find(|p| p.starts_with("pairs=")).map(|p| &p[6..]) {
+        args.push("--num-pairs");
+        args.push(pairs);
+    }
+    if query_str.split('&').any(|p| p == "stub-embedder" || p == "stub" || p == "embedder=stub") {
+        args.push("--stub-embedder");
+    } else {
+        // Default to Ollama nomic-embed-text for real embedding training
+        args.push("--ollama-url=http://127.0.0.1:11434");
+        args.push("--ollama-model=nomic-embed-text");
+    }
+    let id = spawn_cli_job(session.clone(), "train-mapper", &args);
+    write_json(stream, 202, "Accepted", &json!({ "job_id": id, "message": "Training mapper in background. Check /api/jobs/status" }))
+}
+
+// ── Diagnostics ───────────────────────────────────────────────────────────────
+
+fn handle_diagnose_predictive(
+    stream: &mut TcpStream,
+    universe: Arc<Mutex<Universe>>,
+    session: Arc<Mutex<Session>>,
+) -> std::io::Result<()> {
+    let id = spawn_cli_job(session.clone(), "diagnose-predictive", &["--diagnose-predictive"]);
+    write_json(stream, 202, "Accepted", &json!({ "job_id": id, "message": "Running predictive diagnostic in background. Check /api/jobs/status" }))
+}
+
+fn handle_diagnose_epistemic(
+    stream: &mut TcpStream,
+    session: Arc<Mutex<Session>>,
+) -> std::io::Result<()> {
+    let id = spawn_cli_job(session.clone(), "diagnose-epistemic", &["--diagnose-epistemic"]);
+    write_json(stream, 202, "Accepted", &json!({ "job_id": id, "message": "Running epistemic diagnostic in background. Check /api/jobs/status" }))
+}
+
+// ── Background Jobs ───────────────────────────────────────────────────────────
+
+fn handle_jobs_status(
+    stream: &mut TcpStream,
+    session: Arc<Mutex<Session>>,
+) -> std::io::Result<()> {
+    let s = session.lock().unwrap();
+    let jobs: Vec<_> = s.background_jobs.iter().rev().take(20).collect();
+    write_json(stream, 200, "OK", &json!({ "jobs": jobs }))
+}
+
+fn handle_jobs_clear(
+    stream: &mut TcpStream,
+    session: Arc<Mutex<Session>>,
+) -> std::io::Result<()> {
+    let mut s = session.lock().unwrap();
+    s.background_jobs.retain(|j| j.status == "running");
+    write_json(stream, 200, "OK", &json!({ "message": "Cleared completed/failed jobs" }))
+}
+
+fn handle_kai_spectate_push(
+    stream: &mut TcpStream,
+    body: &[u8],
+    session: Arc<Mutex<Session>>,
+) -> std::io::Result<()> {
+    let events: Vec<SpectateEvent> = match serde_json::from_slice(body) {
+        Ok(v) => v,
+        Err(e) => {
+            return write_simple(stream, 400, "Bad Request", &format!("invalid spectate body: {}", e));
+        }
+    };
+    let mut s = session.lock().unwrap();
+    s.spectate_buffer.extend(events);
+    // Cap buffer at 500 events to prevent unbounded growth
+    if s.spectate_buffer.len() > 500 {
+        let drain = s.spectate_buffer.len() - 500;
+        s.spectate_buffer.drain(0..drain);
+    }
+    write_json(stream, 200, "OK", &json!({ "message": "pushed", "count": s.spectate_buffer.len() }))
+}
+
+fn handle_kai_spectate(
+    stream: &mut TcpStream,
+    session: Arc<Mutex<Session>>,
+) -> std::io::Result<()> {
+    let mut s = session.lock().unwrap();
+    let events: Vec<SpectateEvent> = std::mem::take(&mut s.spectate_buffer);
+    write_json(stream, 200, "OK", &json!({ "events": events }))
+}
+
 
 

@@ -3,8 +3,22 @@ import http from 'http';
 /**
  * Very simple IPC server for bots to receive signals from Oracle
  */
+const _bootedAt = Date.now();
+
 export function startBotServer(port, name, onTrigger) {
   const server = http.createServer((req, res) => {
+    // ── HEALTH PROBE — used by Oracle's heartbeat-monitor (Stage 11) ──
+    if (req.method === 'GET' && req.url === '/health') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        name,
+        pid: process.pid,
+        uptime_ms: Date.now() - _bootedAt,
+        rss_mb: Math.round(process.memoryUsage().rss / (1024 * 1024)),
+        ts: Date.now(),
+      }));
+      return;
+    }
     if (req.method === 'POST' && (req.url === '/trigger' || req.url === '/signal')) {
       let body = '';
       req.on('data', chunk => body += chunk);
@@ -20,6 +34,18 @@ export function startBotServer(port, name, onTrigger) {
     } else {
       res.writeHead(404);
       res.end();
+    }
+  });
+
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.warn(`[${name}] IPC port ${port} in use — retrying in 3s...`);
+      setTimeout(() => {
+        server.close();
+        server.listen(port, '127.0.0.1');
+      }, 3000);
+    } else {
+      console.error(`[${name}] IPC server error:`, err.message);
     }
   });
 

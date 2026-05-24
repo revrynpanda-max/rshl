@@ -48,7 +48,7 @@ function Import-DiscordConfig {
             $config.Token = $secure
             Save-DiscordConfig $config
         }
-        if ($config.Token) {
+        if ($config.Token -and -not $env:ORACLE_DISCORD_TOKEN) {
             $env:ORACLE_DISCORD_TOKEN = (ConvertFrom-SecureStringPlain $config.Token).Trim()
         }
         if ($config.AllowedUserId) {
@@ -187,7 +187,7 @@ function Ensure-DiscordConfig {
         Write-Host "Public chat channel set to $env:ORACLE_DISCORD_PUBLIC_CHAT_CHANNEL_ID"
     }
     if (-not $env:ORACLE_DISCORD_LEO_VOICE_CHANNEL_ID) {
-        $env:ORACLE_DISCORD_LEO_VOICE_CHANNEL_ID = "1489796367466500129"
+        $env:ORACLE_DISCORD_LEO_VOICE_CHANNEL_ID = "1505088473307283517"
         Write-Host "Leo voice channel set to $env:ORACLE_DISCORD_LEO_VOICE_CHANNEL_ID"
     }
     if (-not $env:ELEVENLABS_LEO_VOICE_ID) {
@@ -390,10 +390,10 @@ try {
     Stop-Process -Name kai -Force -ErrorAction SilentlyContinue
     Stop-Process -Name node -Force -ErrorAction SilentlyContinue
     $port3334 = Get-NetTCPConnection -LocalPort 3334 -ErrorAction SilentlyContinue
-    if ($port3334) { Stop-Process -Id $port3334.OwningProcess -Force -ErrorAction SilentlyContinue }
+    if ($port3334) { $port3334 | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue } }
     $port3001 = Get-NetTCPConnection -LocalPort 3001 -ErrorAction SilentlyContinue
-    if ($port3001) { Stop-Process -Id $port3001.OwningProcess -Force -ErrorAction SilentlyContinue }
-    Start-Sleep -Seconds 1
+    if ($port3001) { $port3001 | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue } }
+    Start-Sleep -Seconds 2
     Stop-ExistingDiscordGateways
 
     # ── Step 3: Launch KAI + OpenJarvis in PARALLEL ───────────────────────

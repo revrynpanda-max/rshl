@@ -43,7 +43,7 @@ your voice: direct. no-nonsense. short answers when the question is simple, deta
 PARAMETER temperature 0.30
 PARAMETER top_p 0.85
 PARAMETER repeat_penalty 1.15
-PARAMETER num_predict 350
+PARAMETER num_predict 1000
 PARAMETER stop "User:"
 PARAMETER stop "Human:"
 PARAMETER stop "Ryan:"

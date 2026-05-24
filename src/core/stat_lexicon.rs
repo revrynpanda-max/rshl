@@ -176,12 +176,16 @@ pub struct DecodeParams {
     /// RNG seed. Identical `(state, params)` always yields an
     /// identical string.
     pub seed: u64,
+    /// If `true`, the decoder stops at natural clause boundaries
+    /// (`.`, `!`, `?`) instead of running to the hard `max_tokens` cap.
+    /// This produces more natural multi-sentence output.
+    pub clause_aware_stop: bool,
 }
 
 impl Default for DecodeParams {
     fn default() -> Self {
         Self {
-            max_tokens: 32,
+            max_tokens: 128,
             temperature: 0.7,
             top_k: 16,
             repetition_window: 6,
@@ -189,6 +193,7 @@ impl Default for DecodeParams {
             stop_on_immediate_repeat: false,
             bigram_weight: 0.5,
             seed: 0xC0DE_CAFE_F00D_BABE,
+            clause_aware_stop: true,
         }
     }
 }
@@ -207,6 +212,7 @@ impl DecodeParams {
             stop_on_immediate_repeat: true,
             bigram_weight: 0.0,
             seed: 0,
+            clause_aware_stop: false,
         }
     }
 }
@@ -708,6 +714,17 @@ impl StatLexicon {
             // ── 6. emit ──────────────────────────────────────────────
             out.push(picked.clone());
 
+            // ── 6b. clause-aware early stop ──────────────────────────
+            // If the emitted word ends with sentence punctuation, the
+            // decoder has reached a natural boundary. Stop here for
+            // more natural multi-sentence output instead of running
+            // to the hard max_tokens cap.
+            if params.clause_aware_stop {
+                if picked.ends_with('.') || picked.ends_with('!') || picked.ends_with('?') {
+                    break;
+                }
+            }
+
             // ── 7. feed the committed word back into the state ───────
             // Bind the emitted word into its positional role so the
             // next peel sees it exactly where the encoder would have
@@ -1071,12 +1088,9 @@ fn seed_vector(word: &str) -> SparseVec {
 /// Add `weight * seed[i]` to the histogram for every nonzero dim in
 /// the seed vector.
 fn accumulate(hist: &mut [i32], seed: &SparseVec, weight: i32) {
-    let data = &seed.data;
-    for i in 0..DIM {
-        let s = data[i] as i32;
-        if s != 0 {
-            hist[i] += weight * s;
-        }
+    for (i, val) in seed.iter() {
+        let s = val as i32;
+        hist[i] += weight * s;
     }
 }
 
@@ -1158,14 +1172,11 @@ impl XorShift64 {
 }
 
 fn to_pairs(v: &SparseVec) -> SparsePairs {
-    let data = &v.data;
     let mut idx = Vec::new();
     let mut sign = Vec::new();
-    for i in 0..DIM {
-        if data[i] != 0 {
-            idx.push(i as u32);
-            sign.push(data[i]);
-        }
+    for (i, val) in v.iter() {
+        idx.push(i as u32);
+        sign.push(val);
     }
     SparsePairs { idx, sign }
 }
@@ -1193,8 +1204,8 @@ mod tests {
         let a1 = seed_vector("hello");
         let a2 = seed_vector("hello");
         let b = seed_vector("world");
-        assert_eq!(a1.data, a2.data, "same word must produce identical seed");
-        assert_ne!(a1.data, b.data, "different words must differ");
+        assert_eq!(a1.to_dense(), a2.to_dense(), "same word must produce identical seed");
+        assert_ne!(a1.to_dense(), b.to_dense(), "different words must differ");
         // Seed planter lays SEED_PAIRS positives and SEED_PAIRS
         // negatives, so the total is exactly 2 * SEED_PAIRS.
         assert_eq!(
@@ -1253,7 +1264,7 @@ mod tests {
         let a3 = position_key(3);
         let a7 = position_key(7);
 
-        assert_eq!(a0.data, a0_again.data, "position_key must be stable");
+        assert_eq!(a0.to_dense(), a0_again.to_dense(), "position_key must be stable");
         // Different positions should give near-orthogonal keys.
         // Cosine between two independent ternary permutations should
         // sit well below 0.3; we give a lot of margin to keep this

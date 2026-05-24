@@ -25,13 +25,14 @@ import prism from "prism-media";
 import http from "http";
 import { WorldClock } from "./shared/simulation.mjs";
 import { getHardwareStats } from './shared/performance-monitor.mjs';
+import { chunkForDiscord } from './shared/utils.mjs';
 
 
 const token = process.env.ORACLE_DISCORD_TOKEN || "";
 const allowedUserId = process.env.ORACLE_DISCORD_ALLOWED_USER_ID || "";
 const allowedChannelId = process.env.ORACLE_DISCORD_ALLOWED_CHANNEL_ID || "1489796367466500128";
 const publicChatChannelId = "1499108697631232090"; // Public channel ID requested by user
-const oracleApiUrl = (process.env.ORACLE_API_URL || "http://127.0.0.1:3333").replace(/\/+$/, "");
+const oracleApiUrl = (process.env.ORACLE_API_URL || "http://127.0.0.1:3334").replace(/\/+$/, "");
 const leoVoiceChannelId = process.env.ORACLE_DISCORD_LEO_VOICE_CHANNEL_ID || "1489796367466500129";
 const elevenLabsApiKey = process.env.ELEVENLABS_API_KEY || process.env.ORACLE_ELEVENLABS_API_KEY || "";
 const elevenLabsLeoVoiceId = process.env.ELEVENLABS_LEO_VOICE_ID || "NoFvXLmt0kcLW6bQBQ06";
@@ -2496,22 +2497,6 @@ function buttonPromptV2(customId) {
   }
 }
 
-function chunkForDiscord(text) {
-  const max = 1900;
-  if (text.length <= max) return [text];
-
-  const chunks = [];
-  let rest = text;
-  while (rest.length > max) {
-    let cut = rest.lastIndexOf("\n", max);
-    if (cut < max * 0.5) cut = rest.lastIndexOf(" ", max);
-    if (cut < max * 0.5) cut = max;
-    chunks.push(rest.slice(0, cut).trim());
-    rest = rest.slice(cut).trim();
-  }
-  if (rest) chunks.push(rest);
-  return chunks;
-}
 
 function participantClientIntents() {
   return [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates];

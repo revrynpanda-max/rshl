@@ -1,0 +1,90 @@
+import Database from 'better-sqlite3';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const dbPath = path.join(__dirname, '..', 'transcripts.db');
+
+let _db = null;
+function getDB() {
+  if (!_db) {
+    _db = new Database(dbPath, { timeout: 15000 });
+    _db.pragma('journal_mode = WAL');
+    _db.pragma('synchronous = NORMAL');
+    _db.exec(`
+      CREATE VIRTUAL TABLE IF NOT EXISTS transcript_fts USING fts5(
+        speaker,
+        user_id UNINDEXED,
+        content,
+        context,
+        channel_id UNINDEXED,
+        timestamp UNINDEXED
+      );
+    `);
+  }
+  return _db;
+}
+
+/**
+ * Ingest a single message into the episodic transcript memory.
+ * @param {string} speaker - Name of the sender (e.g. "Ryan", "Leo")
+ * @param {string} userId - Discord User ID
+ * @param {string} content - Message text
+ * @param {string} channelId - Discord channel ID
+ */
+export function ingestMessage(speaker, userId, content, channelId) {
+  if (!content || content.trim() === '') return;
+
+  const db = getDB();
+  const stmt = db.prepare(`
+    INSERT INTO transcript_fts (speaker, user_id, content, context, channel_id, timestamp)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `);
+
+  // context is currently just a copy of content, but allows the query to succeed
+  stmt.run(speaker, userId, content, content, channelId, Date.now());
+}
+
+/**
+ * Search the transcript memory for context related to a query.
+ * @param {string} query - The search terms
+ * @param {number} limit - Max number of results to return
+ * @returns {Array} List of matching transcripts
+ */
+export function recallMemory(query, limit = 5) {
+  if (!query || query.trim() === '') return [];
+
+  // FTS5 is sensitive. We sanitize and wrap the query to prevent syntax errors.
+  const safeQuery = query.replace(/[^\w\s]/g, '').trim().split(/\s+/).join(' OR ');
+
+  try {
+    const db = getDB();
+    const stmt = db.prepare(`
+      SELECT speaker, content, channel_id, timestamp 
+      FROM transcript_fts 
+      WHERE context MATCH ? 
+      ORDER BY rank 
+      LIMIT ?
+    `);
+
+    return stmt.all(safeQuery, limit);
+  } catch (err) {
+    console.error('[TranscriptMemory] Search failed:', err.message);
+    return [];
+  }
+}
+
+/**
+ * Fetch the last N messages to establish recent context.
+ * @param {number} limit - Number of messages to retrieve
+ */
+export function getRecentContext(limit = 10) {
+  const db = getDB();
+  const stmt = db.prepare(`
+    SELECT speaker, user_id, content, channel_id, timestamp 
+    FROM transcript_fts 
+    ORDER BY timestamp DESC 
+    LIMIT ?
+  `);
+  // FTS doesn't have an auto-i

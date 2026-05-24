@@ -816,13 +816,17 @@ pub fn generate_training_pairs(
 #[derive(Clone, Debug)]
 pub struct TrainConfig {
     /// `Some(url)` → use `BitNetEmbedder` against that base URL.
-    /// `None`      → use `StubEmbedder` (pipeline-only validation).
+    /// `None`      → skip BitNet (try Ollama, then Stub).
     pub bitnet_url: Option<String>,
 
-    /// When `bitnet_url` is `None` *or* probing BitNet fails in a
-    /// recoverable way, fall back to this stub width. Ignored when a
-    /// live BitNet is up — in that case `d_in` is whatever the
-    /// server returns.
+    /// `Some(url)` → use `OllamaEmbedder` against that base URL.
+    /// `None`      → skip Ollama (try BitNet, then Stub).
+    pub ollama_url: Option<String>,
+
+    /// Ollama model name when using `OllamaEmbedder`.
+    pub ollama_model: String,
+
+    /// When all live embedders fail, fall back to this stub width.
     pub stub_d_in: usize,
 
     /// Mapper hidden width.
@@ -858,6 +862,8 @@ impl Default for TrainConfig {
     fn default() -> Self {
         Self {
             bitnet_url: Some("http://127.0.0.1:8080".to_string()),
+            ollama_url: Some("http://127.0.0.1:11434".to_string()),
+            ollama_model: "nomic-embed-text".to_string(),
             stub_d_in: 384,
             d_hidden: DEFAULT_D_HIDDEN,
             num_pairs: 2_000,
@@ -917,18 +923,61 @@ pub fn train_mapper(cfg: TrainConfig) -> Result<(), String> {
     eprintln!("[training] loaded {} corpus sentences", sentences.len());
 
     // ── 3. Embedder ──────────────────────────────────────────────────
-    let embedder: Box<dyn DenseEmbedder> = match &cfg.bitnet_url {
-        Some(url) => match BitNetEmbedder::new(url.clone()) {
-            Ok(e) => Box::new(e),
-            Err(msg) => {
-                return Err(format!(
-                    "BitNet setup failed:\n  {}\n\nTo use the stub embedder instead pass \
-                     --stub-embedder.",
-                    msg
-                ));
+    // Priority: Ollama > BitNet > Stub.  We try each in turn and
+    // only fall back when the previous one fails.
+    let embedder: Box<dyn DenseEmbedder> = {
+        let mut tried = Vec::new();
+
+        // 3a. Ollama (explicit or auto-detected)
+        if let Some(url) = &cfg.ollama_url {
+            match OllamaEmbedder::new(url.clone(), &cfg.ollama_model) {
+                Ok(e) => {
+                    eprintln!("[training] using Ollama embedder ({})", e.name());
+                    Box::new(e)
+                }
+                Err(msg) => {
+                    tried.push(format!("Ollama at {} ({}): {}", url, cfg.ollama_model, msg));
+                    // fall through
+                    if let Some(url) = &cfg.bitnet_url {
+                        match BitNetEmbedder::new(url.clone()) {
+                            Ok(e) => {
+                                eprintln!("[training] using BitNet embedder ({})", e.name());
+                                Box::new(e)
+                            }
+                            Err(msg) => {
+                                tried.push(format!("BitNet at {}: {}", url, msg));
+                                eprintln!(
+                                    "[training] using StubEmbedder (d_in = {}) — no live embedder found",
+                                    cfg.stub_d_in
+                                );
+                                Box::new(StubEmbedder::new(cfg.stub_d_in))
+                            }
+                        }
+                    } else {
+                        eprintln!(
+                            "[training] using StubEmbedder (d_in = {}) — no live embedder found",
+                            cfg.stub_d_in
+                        );
+                        Box::new(StubEmbedder::new(cfg.stub_d_in))
+                    }
+                }
             }
-        },
-        None => {
+        } else if let Some(url) = &cfg.bitnet_url {
+            match BitNetEmbedder::new(url.clone()) {
+                Ok(e) => {
+                    eprintln!("[training] using BitNet embedder ({})", e.name());
+                    Box::new(e)
+                }
+                Err(msg) => {
+                    tried.push(format!("BitNet at {}: {}", url, msg));
+                    eprintln!(
+                        "[training] using StubEmbedder (d_in = {}) — no live embedder found",
+                        cfg.stub_d_in
+                    );
+                    Box::new(StubEmbedder::new(cfg.stub_d_in))
+                }
+            }
+        } else {
             eprintln!("[training] using StubEmbedder (d_in = {})", cfg.stub_d_in);
             Box::new(StubEmbedder::new(cfg.stub_d_in))
         }
@@ -1030,9 +1079,14 @@ pub fn run_train_mapper_cli(args: &[String]) {
 
     for a in args {
         if a == "--stub-embedder" {
+            cfg.ollama_url = None;
             cfg.bitnet_url = None;
         } else if let Some(v) = a.strip_prefix("--bitnet-url=") {
             cfg.bitnet_url = Some(v.to_string());
+        } else if let Some(v) = a.strip_prefix("--ollama-url=") {
+            cfg.ollama_url = Some(v.to_string());
+        } else if let Some(v) = a.strip_prefix("--ollama-model=") {
+            cfg.ollama_model = v.to_string();
         } else if let Some(v) = a.strip_prefix("--d-in=") {
             cfg.stub_d_in = v.parse().unwrap_or(cfg.stub_d_in);
         } else if let Some(v) = a.strip_prefix("--d-hidden=") {

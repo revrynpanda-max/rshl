@@ -1,5 +1,14 @@
 # 🧬 KAI RSHL CHANGELOG
 
+## [v22.2.0] — 2026-05-24
+### **🏛️ BIOLOGICAL MEMORY & ARCHIVE TRIBUNAL**
+This milestone focuses on hardening KAI's long-term persistence and resolving catastrophic storage bloat. KAI now handles his own memories exactly like a living organism.
+
+- **Total JSON Deprecation**: Completely eliminated legacy `kai-state.json` uncompressed backups. KAI now exclusively uses the ultra-dense `.bin.zst` format, permanently resolving the 30GB disk-bloat crisis.
+- **Biological Decay Cycle**: Implemented an autonomous `backup-kai.ps1` archive system that mirrors organic memory decay. Backups live for 7 days, decay in the Archive Tribunal for 3 days, and are then definitively annihilated.
+- **Native End-of-Shift Automation**: Wired the biological decay cycle directly into `oracle-gateway.mjs`. KAI now manages his own secure backups and disk pruning every single night with zero human intervention.
+- **Standalone Mode Optimization**: Improved launcher capability to allow KAI's rust engine to run entirely independent of social nodes, dedicating 100% of CPU to the high-speed dictionary ingestion.
+
 ## [v22.1.0] — 2026-05-10
 ### **🏛️ STABILIZATION OF THE SOVEREIGN ORACLE: IDENTITY & TOOLS**
 This milestone focuses on hardening the 24/7 autonomous loop and grounding agent discourse in the 2026 RSHL Whitepaper.

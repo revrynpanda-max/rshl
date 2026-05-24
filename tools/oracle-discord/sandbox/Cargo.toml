@@ -1,0 +1,36 @@
+[package]
+name = "kai"
+version = "7.9.7"
+edition = "2021"
+authors = ["Ryan Ervin <PandaProductionsLogo>"]
+description = "KAI RSHL UI — Geometric Intelligence Engine"
+license = "MIT"
+
+[lib]
+name = "kai"
+path = "src/lib.rs"
+
+[[bin]]
+name = "kai"
+path = "src/main.rs"
+
+[dependencies]
+ratatui = "0.29"
+crossterm = "0.28"
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rand = "0.8"
+unicode-width = "0.2"
+crossbeam-channel = "0.5"
+rayon = "1.10"
+ureq = { version = "2", features = ["json"] }
+chrono = "0.4"
+lopdf = "0.34"
+sysinfo = "0.31"
+hnsw_rs = "0.3"
+roaring = { version = "0.10", features = ["serde"] }
+wgpu = "22.1"
+pollster = "0.3"
+bytemuck = { version = "1", features = ["derive"] }
+reqwest = { version = "0.12", features = ["json"] }

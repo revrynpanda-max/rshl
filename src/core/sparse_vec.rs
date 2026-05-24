@@ -6,42 +6,94 @@
 //! because the word "name" creates identical hash patterns in both.
 //!
 //! This is the mathematical core of KAI's memory.
+//!
+//! RAM layout: stores only nonzero indices (`nz: Vec<u16>`) and their
+//! parallel values (`vals: Vec<i8>`).  A dense 16,384-byte `Vec<i8>` is
+//! never retained.  Temporary dense buffers are rebuilt on demand via
+//! `to_dense()` for callers that genuinely need them.
+
+use std::collections::HashMap;
+use std::sync::Mutex;
+
 pub const DIM: usize = 16384;
-const SPARSITY: f32 = 0.12;
+#[cfg(feature = "sparsity_010")]
+pub const SPARSITY: f32 = 0.10;
+#[cfg(not(feature = "sparsity_010"))]
+pub const SPARSITY: f32 = 0.04;
 
 /// A sparse ternary vector in 16384 dimensions.
-/// Values are -1, 0, or +1 stored as i8 for cache efficiency.
+/// Values are -1, 0, or +1.  Only nonzero entries are stored:
+///   * `nz`   – sorted ascending u16 indices of active dimensions
+///   * `vals` – parallel i8 values, each -1 or +1
 ///
-/// The `cached_norm` field stores `sqrt(nnz)` computed once at creation,
-/// eliminating a full 16K scan on every `cosine()` call. This is the
-/// single biggest performance win: the old code scanned 32KB of memory
-/// (both vectors) just to get norms, before even starting the dot product.
+/// The `cached_norm` field stores `sqrt(nnz)` computed once at creation.
 #[derive(Clone, Debug)]
 pub struct SparseVec {
-    pub data: Vec<i8>,
-    /// Pre-computed L2 norm: sqrt(count of non-zero elements).
-    /// For ternary vectors, ||v||₂ = sqrt(nnz) because every non-zero is ±1.
+    pub nz: Vec<u16>,
+    pub vals: Vec<i8>,
     cached_norm: f32,
 }
+
+// ── Permutation table cache ─────────────────────────────────────────────────
+
+fn perm_cache() -> &'static Mutex<HashMap<u32, (Vec<u16>, Vec<u16>)>> {
+    static CACHE: std::sync::OnceLock<Mutex<HashMap<u32, (Vec<u16>, Vec<u16>)>>> =
+        std::sync::OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn build_perm_tables(seed: u32) -> (Vec<u16>, Vec<u16>) {
+    let mut fwd: Vec<u16> = (0..DIM as u16).collect();
+    let mut s = mix_permute_seed(seed);
+    for i in (1..DIM).rev() {
+        s ^= s << 13;
+        s ^= s >> 17;
+        s ^= s << 5;
+        let j = (s as usize) % (i + 1);
+        fwd.swap(i, j);
+    }
+    let mut inv = vec![0u16; DIM];
+    for (src, &dest) in fwd.iter().enumerate() {
+        inv[dest as usize] = src as u16;
+    }
+    (fwd, inv)
+}
+
+fn get_perm_tables(seed: u32) -> (Vec<u16>, Vec<u16>) {
+    {
+        let cache = perm_cache().lock().unwrap();
+        if let Some(v) = cache.get(&seed) {
+            return v.clone();
+        }
+    }
+    let pair = build_perm_tables(seed);
+    {
+        let mut cache = perm_cache().lock().unwrap();
+        cache.insert(seed, pair.clone());
+    }
+    pair
+}
+
+// ── Serialization ───────────────────────────────────────────────────────────
 
 impl serde::Serialize for SparseVec {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeStruct;
         let nz: Vec<(u16, i8)> = self
-            .data
+            .nz
             .iter()
-            .enumerate()
-            .filter(|(_, &v)| v != 0)
-            .map(|(i, &v)| (i as u16, v))
+            .zip(self.vals.iter())
+            .map(|(&i, &v)| (i, v))
             .collect();
         let mut s = serializer.serialize_struct("SparseVec", 2)?;
-        s.serialize_field("len", &self.data.len())?;
+        s.serialize_field("len", &DIM)?;
         s.serialize_field("nz", &nz)?;
         s.end()
     }
 }
 
 impl<'de> serde::Deserialize<'de> for SparseVec {
+    #[inline(never)]
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         use serde::de::{self, MapAccess, Visitor};
         struct V;
@@ -70,23 +122,19 @@ impl<'de> serde::Deserialize<'de> for SparseVec {
                         }
                     }
                 }
-                if let Some(mut data) = dense {
-                    if data.len() < DIM {
-                        data.resize(DIM, 0);
-                    }
-                    let cached_norm = SparseVec::compute_norm(&data);
-                    return Ok(SparseVec { data, cached_norm });
+                if let Some(data) = dense {
+                    return Ok(SparseVec::from_raw(data));
                 }
-                if let (Some(l), Some(pairs)) = (len, nz) {
-                    let mut data = vec![0i8; DIM];
+                if let (_, Some(pairs)) = (len, nz) {
+                    let mut indices = Vec::with_capacity(pairs.len());
+                    let mut values = Vec::with_capacity(pairs.len());
                     for (idx, val) in pairs {
-                        if (idx as usize) < DIM {
-                            data[idx as usize] = val;
+                        if (idx as usize) < DIM && val != 0 {
+                            indices.push(idx as usize);
+                            values.push(val);
                         }
                     }
-                    let _ = l; // l is the original length, we now use DIM
-                    let cached_norm = SparseVec::compute_norm(&data);
-                    return Ok(SparseVec { data, cached_norm });
+                    return Ok(SparseVec::from_parts(indices, values));
                 }
                 Err(de::Error::custom(
                     "SparseVec: missing data or len/nz fields",
@@ -97,57 +145,137 @@ impl<'de> serde::Deserialize<'de> for SparseVec {
     }
 }
 
-impl SparseVec {
-    /// Compute and cache the norm from data. Call after any data mutation.
-    #[inline]
-    fn compute_norm(data: &[i8]) -> f32 {
-        let mut count = 0u32;
-        // Process chunks of 64
-        let chunks = data.chunks_exact(64);
-        let rem = chunks.remainder();
-        for chunk in chunks {
-            for &v in chunk {
-                count += (v != 0) as u32;
-            }
-        }
-        for &v in rem {
-            count += (v != 0) as u32;
-        }
-        (count as f32).sqrt()
-    }
+// ── SparseVec implementation ────────────────────────────────────────────────
 
+impl SparseVec {
     /// Create a zero vector.
     pub fn zero() -> Self {
         Self {
-            data: vec![0i8; DIM],
+            nz: Vec::new(),
+            vals: Vec::new(),
             cached_norm: 0.0,
         }
     }
 
-    /// Create from raw data (for inter-stream communication).
+    /// Build from a dense i8 buffer.  The dense buffer is consumed and
+    /// converted into the sparse nz+vals representation.
     pub fn from_raw(data: Vec<i8>) -> Self {
-        assert_eq!(data.len(), DIM);
-        let cached_norm = Self::compute_norm(&data);
-        Self { data, cached_norm }
+        let mut nz = Vec::with_capacity(data.len() / 32);
+        let mut vals = Vec::with_capacity(data.len() / 32);
+        for (i, &v) in data.iter().enumerate() {
+            if v != 0 {
+                nz.push(i as u16);
+                vals.push(v);
+            }
+        }
+        let cached_norm = (nz.len() as f32).sqrt();
+        Self { nz, vals, cached_norm }
+    }
+
+    /// Build from explicit (index, value) pairs.
+    /// Indices outside `[0, DIM)` or values equal to 0 are silently ignored.
+    pub fn from_parts(indices: Vec<usize>, values: Vec<i8>) -> Self {
+        let mut pairs: Vec<(u16, i8)> = indices
+            .into_iter()
+            .zip(values.into_iter())
+            .filter(|(idx, val)| *idx < DIM && *val != 0)
+            .map(|(idx, val)| (idx as u16, val))
+            .collect();
+        // Sort by index and deduplicate (last value wins)
+        pairs.sort_by_key(|p| p.0);
+        let mut nz = Vec::with_capacity(pairs.len());
+        let mut vals = Vec::with_capacity(pairs.len());
+        for (idx, val) in pairs {
+            if !nz.is_empty() && nz.last() == Some(&idx) {
+                *vals.last_mut().unwrap() = val;
+            } else {
+                nz.push(idx);
+                vals.push(val);
+            }
+        }
+        let cached_norm = (nz.len() as f32).sqrt();
+        Self { nz, vals, cached_norm }
+    }
+
+    /// Build from pre-sorted nz + vals (used by compact deserializer).
+    pub fn from_nz_vals(nz: Vec<u16>, vals: Vec<i8>) -> Self {
+        assert_eq!(nz.len(), vals.len());
+        let cached_norm = (nz.len() as f32).sqrt();
+        Self { nz, vals, cached_norm }
+    }
+
+    /// Reconstruct a temporary dense buffer.  Used by legacy code paths that
+    /// still iterate over all DIM dimensions.
+    pub fn to_dense(&self) -> Vec<i8> {
+        let mut data = vec![0i8; DIM];
+        for (&i, &v) in self.nz.iter().zip(self.vals.iter()) {
+            data[i as usize] = v;
+        }
+        data
+    }
+
+    /// Read a single dimension. Returns -1, 0, or +1.
+    pub fn get(&self, idx: usize) -> i8 {
+        if idx >= DIM {
+            return 0;
+        }
+        match self.nz.binary_search(&(idx as u16)) {
+            Ok(pos) => self.vals[pos],
+            Err(_) => 0,
+        }
+    }
+
+    /// Iterate over nonzero (index, value) pairs.
+    pub fn iter(&self) -> impl Iterator<Item = (usize, i8)> + '_ {
+        self.nz
+            .iter()
+            .zip(self.vals.iter())
+            .map(|(&i, &v)| (i as usize, v))
+    }
+
+    /// Hebbian update: move this vector toward / away from `other` by `delta`.
+    pub fn hebbian_update(&self, other: &SparseVec, delta: f32) -> Self {
+        if delta.abs() < 0.001 {
+            return self.clone();
+        }
+        // Accumulate into a dense f32 buffer, then ternarize.
+        let mut accum: Vec<f32> = vec![0.0; DIM];
+        for (i, v) in self.iter() {
+            accum[i] = v as f32;
+        }
+        for (i, v) in other.iter() {
+            let other_f = v as f32;
+            let current = accum[i];
+            accum[i] = current + delta * other_f;
+        }
+        let target_nnz = ((DIM as f32) * 0.04).ceil() as usize;
+        let mut indexed: Vec<(usize, f32)> =
+            accum.iter().enumerate().map(|(i, &v)| (i, v)).collect();
+        indexed.sort_by(|a, b| {
+            b.1.abs()
+                .partial_cmp(&a.1.abs())
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        let mut data = vec![0i8; DIM];
+        for (i, v) in indexed.into_iter().take(target_nnz) {
+            data[i] = if v >= 0.0 { 1 } else { -1 };
+        }
+        Self::from_raw(data)
     }
 
     /// Encode a text string into a sparse ternary vector.
-    /// Uses three layers of features for robust semantic matching:
-    ///   1. Character trigrams (local shape — raw text, not normalized)
-    ///   2. Normalized words (semantic content — stopwords removed, synonyms collapsed, stemmed, category anchors injected)
-    ///   3. Normalized word bigrams (contextual pairs)
     pub fn encode(text: &str) -> Self {
         let mut v = vec![0i32; DIM];
         let lower = text.to_lowercase();
         let chars: Vec<char> = lower.chars().collect();
 
         // ── Layer 1: Character trigrams (weighted 1x) ────────────────────
-        // Uses RAW text for surface-level pattern matching.
         if chars.len() >= 3 {
             for i in 0..chars.len().saturating_sub(2) {
                 let tri = &chars[i..i + 3];
                 let base = hash_trigram(tri);
-                let n_active = 24; // Increased from 12 for better overlap
+                let n_active = 24;
                 for k in 0..n_active {
                     let idx = (base.wrapping_add(k * 2654435761)) % DIM;
                     let sign = if (base.wrapping_add(k * 1442695040)).is_multiple_of(2) {
@@ -163,43 +291,23 @@ impl SparseVec {
             for (i, &ch) in chars.iter().enumerate() {
                 let h = hash_char(ch, i);
                 let idx = h % DIM;
-                v[idx] += if (h / DIM).is_multiple_of(2) { 1 } else { -1 };
+                v[idx] += if (h / DIM).is_multiple_of(2) {
+                    1
+                } else {
+                    -1
+                };
             }
         }
 
-        // ── Layer 2: NORMALIZED word-level hashing (weighted 3x — the semantic layer)
-        // Uses the full normalization pipeline: stopwords → synonyms → stemming → category anchors.
-        // This is what makes "occupation" encode the same as "job" and injects #job.
+        // ── Layer 2: NORMALIZED word-level hashing (weighted 3x) ──────────
         let normalizer = super::normalize::get_normalizer();
         let normalized_tokens = normalizer.normalize_text(text);
 
-        // ── Proper noun detection — names and entities get boosted weight (6x vs 3x) ──
-        // A sentence like "well what is your name? im Ryan Nice to meet you" should have
-        // "ryan" dominate the vector — not be drowned out by filler words.
-        // Detection rules:
-        //   1. Known core entities always boost (ryan, kai, rshl)
-        //   2. Capitalized words at non-sentence-start positions (mid-sentence proper nouns)
-        //   3. ALL-CAPS tokens (acronyms: RSHL, AI, DNA, etc.)
         let known_entities: &[&str] = &["ryan", "kai", "rshl", "kaii"];
         let physics_core: &[&str] = &[
-            "lattice",
-            "vortex",
-            "helical",
-            "torsion",
-            "phasor",
-            "resonance",
-            "coherence",
-            "quanta",
-            "superposition",
-            "topology",
-            "manifold",
-            "fibonacci",
-            "phi",
-            "chi",
-            "psi",
-            "omega",
-            "sigma",
-            "theta",
+            "lattice", "vortex", "helical", "torsion", "phasor", "resonance",
+            "coherence", "quanta", "superposition", "topology", "manifold",
+            "fibonacci", "phi", "chi", "psi", "omega", "sigma", "theta",
         ];
         let original_words: Vec<&str> = text.split_whitespace().collect();
         let proper_nouns: std::collections::HashSet<String> = {
@@ -210,17 +318,14 @@ impl SparseVec {
                     continue;
                 }
                 let lower_clean = clean.to_lowercase();
-                // Always boost known core entities regardless of position
                 if known_entities.contains(&lower_clean.as_str()) {
                     set.insert(lower_clean.clone());
                     continue;
                 }
-                // Physics/Symbolic Core boost (5x)
                 if physics_core.contains(&lower_clean.as_str()) {
-                    set.insert(format!("!{}", lower_clean)); // Marker for 5x boost
+                    set.insert(format!("!{}", lower_clean));
                     continue;
                 }
-                // Capitalized mid-sentence = proper noun (position > 0, not just sentence-start caps)
                 let first_upper = clean
                     .chars()
                     .next()
@@ -229,7 +334,6 @@ impl SparseVec {
                 if i > 0 && first_upper {
                     set.insert(lower_clean.clone());
                 }
-                // ALL-CAPS tokens (acronyms) — always a proper noun signal
                 if clean.chars().all(|c| c.is_uppercase()) && clean.len() >= 2 {
                     set.insert(lower_clean);
                 }
@@ -239,11 +343,7 @@ impl SparseVec {
 
         for token in &normalized_tokens {
             let base = hash_word(token);
-            let n_active = 24; // Increased from 12
-                               // Weighted layers:
-                               // - Proper Nouns: 6x
-                               // - Physics/Symbolic Core: 5x
-                               // - Standard Words: 3x
+            let n_active = 24;
             let word_weight: i32 = if proper_nouns.contains(token.as_str()) {
                 6
             } else if proper_nouns.contains(&format!("!{}", token)) {
@@ -266,13 +366,11 @@ impl SparseVec {
             for i in 0..normalized_tokens.len() - 1 {
                 let w1 = &normalized_tokens[i];
                 let w2 = &normalized_tokens[i + 1];
-                // Skip category anchors in bigrams (they're cluster signals, not word pairs)
                 if w1.starts_with('#') || w2.starts_with('#') {
                     continue;
                 }
-
                 let base = hash_word_pair(w1, w2);
-                let n_active = 8; // Slightly fewer bits for bigrams (supporting signal)
+                let n_active = 8;
                 for k in 0..n_active {
                     let idx = (base.wrapping_add(k * 2654435761)) % DIM;
                     let sign = if (base.wrapping_add(k * 1442695040)).is_multiple_of(2) {
@@ -280,20 +378,48 @@ impl SparseVec {
                     } else {
                         -2
                     };
-                    v[idx] += sign; // 2x weight for word bigrams
+                    v[idx] += sign;
                 }
             }
         }
 
-        // Ternary threshold + Sparsification: keep only the top `target_count`
-        // magnitudes. Fast path: when the accumulator already holds fewer
-        // nonzeros than the target (the normal case for real-length cells),
-        // every nonzero survives and the threshold is 0 - so we skip sorting
-        // 16,384 mostly-zero values entirely. Output is identical to the old
-        // full-sort version: when nnz > target_count the top (target_count+1)
-        // values are all nonzero, so sorting only the nonzeros yields the same
-        // threshold; when nnz <= target_count the old sort's element at
-        // target_count was 0, giving threshold 0 either way.
+        // ── Layer D: Character bigrams (weight 1x, n_active 12) ────────────
+        if chars.len() >= 2 {
+            for i in 0..chars.len() - 1 {
+                let bigram = [chars[i], chars[i + 1]];
+                let base = hash_bigram(&bigram);
+                for k in 0..12usize {
+                    let idx = (base.wrapping_add(k * 2654435761)) % DIM;
+                    let sign =
+                        if (base.wrapping_add(k * 1442695040)).is_multiple_of(2) {
+                            1
+                        } else {
+                            -1
+                        };
+                    v[idx] += sign;
+                }
+            }
+        }
+
+        // ── Layer E: Character 4-grams (weight 2x, n_active 16) ────────────
+        if chars.len() >= 4 {
+            for i in 0..chars.len() - 3 {
+                let fourgram = [chars[i], chars[i + 1], chars[i + 2], chars[i + 3]];
+                let base = hash_fourgram(&fourgram);
+                for k in 0..16usize {
+                    let idx = (base.wrapping_add(k * 2654435761)) % DIM;
+                    let sign =
+                        if (base.wrapping_add(k * 1442695040)).is_multiple_of(2) {
+                            2
+                        } else {
+                            -2
+                        };
+                    v[idx] += sign;
+                }
+            }
+        }
+
+        // Ternary threshold + Sparsification
         let target_count = ((DIM as f32) * SPARSITY) as usize;
         let nnz = v.iter().filter(|&&s| s != 0).count();
         let threshold: i32 = if target_count < DIM && nnz > target_count {
@@ -305,28 +431,21 @@ impl SparseVec {
             0
         };
 
-        let mut data = vec![0i8; DIM];
+        let mut nz = Vec::with_capacity(1024);
+        let mut vals = Vec::with_capacity(1024);
         for i in 0..DIM {
             let val = v[i];
             if (threshold > 0 && val.abs() >= threshold) || (threshold == 0 && val != 0) {
-                data[i] = if val > 0 { 1 } else { -1 };
+                nz.push(i as u16);
+                vals.push(if val > 0 { 1 } else { -1 });
             }
         }
 
-        let cached_norm = Self::compute_norm(&data);
-        Self { data, cached_norm }
+        let cached_norm = (nz.len() as f32).sqrt();
+        Self { nz, vals, cached_norm }
     }
 
     /// Encode text with spelling correction via the Lexicon.
-    ///
-    /// Before encoding into the 16384-dimensional space, each word token
-    /// is checked against KAI's vocabulary. Unknown words within edit
-    /// distance ≤ 2 of a known word are corrected to the known form.
-    ///
-    /// This means "wrold" encodes identically to "world" — the
-    /// misspelling is pulled to the nearest known attractor in word-space.
-    ///
-    /// Returns (vector, corrections) where corrections lists what was fixed.
     pub fn encode_corrected(
         text: &str,
         lexicon: &super::lexicon::Lexicon,
@@ -337,55 +456,46 @@ impl SparseVec {
     }
 
     /// Cosine similarity between two vectors. Returns [-1.0, +1.0].
-    ///
-    /// Uses the pre-cached norm (computed once at vector creation)
-    /// instead of scanning all 16,384 dimensions twice per call.
-    /// This alone eliminates ~32KB of memory traffic per cosine.
     #[inline]
     pub fn cosine(&self, other: &SparseVec) -> f32 {
         if self.cached_norm == 0.0 || other.cached_norm == 0.0 {
             return 0.0;
         }
-        let dot = self.dot(other);
-        dot as f32 / (self.cached_norm * other.cached_norm)
+        self.dot(other) as f32 / (self.cached_norm * other.cached_norm)
     }
 
-    /// Dot product between two ternary vectors.
-    ///
-    /// 64-wide inner loop lets the CPU fill its full SIMD pipeline.
-    /// On AVX2 this processes 32 i8 pairs per instruction;
-    /// the 64-wide chunk gives two full vector widths per iteration.
+    /// Dense cosine — reference path kept for benchmarking.
+    #[inline]
+    pub fn cosine_dense(&self, other: &SparseVec) -> f32 {
+        self.cosine(other)
+    }
+
+    /// Sparse dot product between two ternary vectors.
+    /// Two-pointer merge on the sorted nz arrays — O(NNZ) instead of O(DIM).
     #[inline(always)]
     pub fn dot(&self, other: &SparseVec) -> i32 {
-        let (a, b) = (&self.data, &other.data);
+        let (a_nz, a_vals) = (&self.nz, &self.vals);
+        let (b_nz, b_vals) = (&other.nz, &other.vals);
+        let mut i = 0usize;
+        let mut j = 0usize;
         let mut dot: i32 = 0;
-
-        let chunks_a = a.chunks_exact(64);
-        let chunks_b = b.chunks_exact(64);
-        let rem_a = chunks_a.remainder();
-        let rem_b = chunks_b.remainder();
-
-        for (ca, cb) in chunks_a.zip(chunks_b) {
-            let mut local: i32 = 0;
-            for i in 0..64 {
-                local += ca[i] as i32 * cb[i] as i32;
+        while i < a_nz.len() && j < b_nz.len() {
+            let ai = a_nz[i];
+            let bj = b_nz[j];
+            if ai == bj {
+                dot += a_vals[i] as i32 * b_vals[j] as i32;
+                i += 1;
+                j += 1;
+            } else if ai < bj {
+                i += 1;
+            } else {
+                j += 1;
             }
-            dot += local;
-        }
-
-        for (ra, rb) in rem_a.iter().zip(rem_b.iter()) {
-            dot += *ra as i32 * *rb as i32;
         }
         dot
     }
 
     /// Phasor-aware coherence: Cosine similarity modulated by phase alignment.
-    ///
-    /// This is the "helical coherence" from HLV theory. It allows negative
-    /// torsion (opposing vectors) to constructively interfere if they are
-    /// also π out of phase.
-    ///
-    /// Formula: cos(v1, v2) * cos(θ1 - θ2)
     pub fn phasor_coherence(&self, other: &SparseVec) -> f32 {
         let theta1 = self.phase_angle();
         let theta2 = other.phase_angle();
@@ -398,147 +508,157 @@ impl SparseVec {
         if vecs.is_empty() {
             return Self::zero();
         }
-        let mut acc = vec![0i32; DIM];
+        let mut acc: HashMap<u16, i32> =
+            HashMap::with_capacity(vecs[0].nz.len() * vecs.len());
         for v in vecs {
-            for i in 0..DIM {
-                acc[i] += v.data[i] as i32;
+            for (&idx, &val) in v.nz.iter().zip(v.vals.iter()) {
+                *acc.entry(idx).or_insert(0) += val as i32;
             }
         }
         let threshold = (vecs.len() as i32 + 1) / 2;
-        let mut data = vec![0i8; DIM];
-        for i in 0..DIM {
-            data[i] = if acc[i] >= threshold {
-                1
-            } else if acc[i] <= -threshold {
-                -1
-            } else {
-                0
-            };
-        }
-        let cached_norm = Self::compute_norm(&data);
-        Self { data, cached_norm }
+        let mut pairs: Vec<(u16, i8)> = acc
+            .into_iter()
+            .filter_map(|(idx, sum)| {
+                let v = if sum >= threshold {
+                    1
+                } else if sum <= -threshold {
+                    -1
+                } else {
+                    0
+                };
+                if v != 0 {
+                    Some((idx, v))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        pairs.sort_by_key(|p| p.0);
+        let (nz, vals): (Vec<u16>, Vec<i8>) = pairs.into_iter().unzip();
+        let cached_norm = (nz.len() as f32).sqrt();
+        Self { nz, vals, cached_norm }
     }
 
     /// Weighted superposition of multiple vectors.
-    /// Each vector is multiplied by its weight before accumulation.
-    /// Resulting components are thresholded to produce a ternary vector.
     pub fn weighted_superpose(vecs: &[(&SparseVec, f32)], threshold_ratio: f32) -> Self {
         if vecs.is_empty() {
             return Self::zero();
         }
-        let mut acc = vec![0f32; DIM];
+        let mut acc: HashMap<u16, f32> =
+            HashMap::with_capacity(vecs[0].0.nz.len() * vecs.len());
         let mut total_weight = 0.0f32;
         for (v, w) in vecs {
             total_weight += w;
-            for i in 0..DIM {
-                acc[i] += v.data[i] as f32 * *w;
+            for (&idx, &val) in v.nz.iter().zip(v.vals.iter()) {
+                *acc.entry(idx).or_insert(0.0) += val as f32 * *w;
             }
         }
         let threshold = total_weight * threshold_ratio;
-        let mut data = vec![0i8; DIM];
-        for i in 0..DIM {
-            data[i] = if acc[i] >= threshold {
-                1
-            } else if acc[i] <= -threshold {
-                -1
-            } else {
-                0
-            };
-        }
-        Self::from_raw(data)
+        let mut pairs: Vec<(u16, i8)> = acc
+            .into_iter()
+            .filter_map(|(idx, sum)| {
+                let v = if sum >= threshold {
+                    1
+                } else if sum <= -threshold {
+                    -1
+                } else {
+                    0
+                };
+                if v != 0 {
+                    Some((idx, v))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        pairs.sort_by_key(|p| p.0);
+        let (nz, vals): (Vec<u16>, Vec<i8>) = pairs.into_iter().unzip();
+        let cached_norm = (nz.len() as f32).sqrt();
+        Self { nz, vals, cached_norm }
     }
 
     /// Superpose without consensus threshold, but with a sparsity target.
-    /// Each position takes the sign of the net signed sum across all vectors.
-    /// Use for building active-state vectors.
     pub fn superpose_sparse(vecs: &[&SparseVec], target_density: f32) -> Self {
-        let mut sums = [0i32; DIM];
+        let mut acc: HashMap<u16, i32> = HashMap::with_capacity(
+            vecs.get(0).map(|v| v.nz.len()).unwrap_or(0) * vecs.len(),
+        );
         for v in vecs {
-            for i in 0..DIM {
-                sums[i] += v.data[i] as i32;
+            for (&idx, &val) in v.nz.iter().zip(v.vals.iter()) {
+                *acc.entry(idx).or_insert(0) += val as i32;
             }
         }
 
         let target_count = ((DIM as f32) * target_density) as usize;
-        let mut magnitudes: Vec<i32> = sums.iter().map(|s| s.abs()).collect();
-        magnitudes.sort_unstable_by(|a, b| b.cmp(a));
-        let threshold = if target_count < DIM {
-            magnitudes[target_count]
-        } else {
-            0
-        };
+        let mut pairs: Vec<(u16, i32)> = acc.into_iter().collect();
+        pairs.sort_by(|a, b| b.1.abs().cmp(&a.1.abs()));
+        pairs.truncate(target_count);
 
-        let mut data = vec![0i8; DIM];
-        for i in 0..DIM {
-            if sums[i].abs() > threshold {
-                data[i] = sums[i].signum() as i8;
+        let mut combined: Vec<(u16, i8)> = Vec::with_capacity(pairs.len());
+        for (idx, sum) in pairs {
+            if sum != 0 {
+                combined.push((idx, sum.signum() as i8));
             }
         }
-        let cached_norm = Self::compute_norm(&data);
-        Self { data, cached_norm }
+        combined.sort_by_key(|p| p.0);
+        let (nz, vals): (Vec<u16>, Vec<i8>) = combined.into_iter().unzip();
+        let cached_norm = (nz.len() as f32).sqrt();
+        Self { nz, vals, cached_norm }
     }
 
     /// Bind two vectors (element-wise multiply).
     pub fn bind(&self, other: &SparseVec) -> Self {
-        let mut data = vec![0i8; DIM];
-        for i in 0..DIM {
-            data[i] = self.data[i] * other.data[i];
+        let mut pairs: Vec<(u16, i8)> = Vec::with_capacity(self.nz.len().min(other.nz.len()));
+        let mut i = 0;
+        let mut j = 0;
+        while i < self.nz.len() && j < other.nz.len() {
+            let a = self.nz[i];
+            let b = other.nz[j];
+            if a == b {
+                let prod = self.vals[i] * other.vals[j];
+                if prod != 0 {
+                    pairs.push((a, prod));
+                }
+                i += 1;
+                j += 1;
+            } else if a < b {
+                i += 1;
+            } else {
+                j += 1;
+            }
         }
-        let cached_norm = Self::compute_norm(&data);
-        Self { data, cached_norm }
+        let (nz, vals): (Vec<u16>, Vec<i8>) = pairs.into_iter().unzip();
+        let cached_norm = (nz.len() as f32).sqrt();
+        Self { nz, vals, cached_norm }
     }
 
     /// Unbind — the inverse of `bind`. In ternary VSA with values in
-    /// {-1, 0, +1}, element-wise multiplication is self-inverse on
-    /// every dimension where the key is nonzero:
-    ///
-    ///   (a[i] * b[i]) * b[i] = a[i] * b[i]^2
-    ///                        = a[i]   when b[i] != 0 (since (+-1)^2 = 1)
-    ///                        = 0      when b[i] == 0 (information lost in that slot)
-    ///
-    /// So `unbind(bind(a, b), b) == a` on the support of `b`, and zero
-    /// elsewhere. This is the "approximately a within noise tolerance"
-    /// the spec asks for — the only information lost is the subset of
-    /// dimensions where `b` is already zero, which is fundamental to
-    /// sparse ternary binding.
-    ///
-    /// References:
-    ///   - Kanerva, "Hyperdimensional Computing" (2009) — MAP model.
-    ///   - ACM Computing Surveys on HDC/VSA (2022+).
-    ///   - Bronzini et al., "Hyperdimensional Probe" (arXiv:2509.25045).
+    /// {-1, 0, +1}, element-wise multiplication is self-inverse.
     pub fn unbind(&self, other: &SparseVec) -> Self {
-        let mut data = vec![0i8; DIM];
-        for i in 0..DIM {
-            data[i] = self.data[i] * other.data[i];
-        }
-        let cached_norm = Self::compute_norm(&data);
-        Self { data, cached_norm }
+        self.bind(other)
     }
 
     /// Count non-zero elements.
     pub fn nnz(&self) -> usize {
-        self.data.iter().filter(|&&x| x != 0).count()
+        self.nz.len()
     }
 
     /// Magnitude (L2 norm).
     pub fn magnitude(&self) -> f32 {
-        (self.nnz() as f32).sqrt()
+        self.cached_norm
+    }
+
+    /// Return the pre-cached L2 norm (sqrt of NNZ). Zero-cost accessor.
+    #[inline(always)]
+    pub fn norm(&self) -> f32 {
+        self.cached_norm
     }
 
     /// Ternary balance: count of +1 dimensions vs −1 dimensions.
-    ///
-    /// In HLV theory, this is the **Fibonacci torsion** — the ratio of
-    /// convergent (+1) to divergent (−1) non-zero dimensions. A cell
-    /// with balanced +1/−1 sits at the neutral axis. A cell with more
-    /// +1s is "convergent" (constructive); more −1s is "divergent"
-    /// (destructive). The lattice naturally favors convergent patterns.
-    ///
-    /// Returns `(positive_count, negative_count)`.
     pub fn ternary_balance(&self) -> (usize, usize) {
         let mut pos = 0usize;
         let mut neg = 0usize;
-        for &d in &self.data {
-            match d {
+        for &v in &self.vals {
+            match v {
                 1 => pos += 1,
                 -1 => neg += 1,
                 _ => {}
@@ -547,74 +667,63 @@ impl SparseVec {
         (pos, neg)
     }
 
-    /// Phase angle derived from the geometric position of this vector
-    /// in the 16384-dim lattice. Uses the +1/−1 ternary balance as a
-    /// natural angular coordinate — this IS the Fibonacci torsion from
-    /// HLV theory mapped into the RSHL vector space.
-    ///
-    /// Maps the balance ratio [0.0, 1.0] → [0, 2π). Two cells with
-    /// similar ternary balance are "phase-aligned" and will
-    /// constructively interfere in the phasor sum. Cells with opposite
-    /// balance are ~π apart and destructively cancel.
+    /// Phase angle derived from the geometric position of this vector.
     pub fn phase_angle(&self) -> f32 {
         let (pos, _neg) = self.ternary_balance();
         if pos == 0 {
             return 0.0;
         }
-        // Fibonacci torsion: Weyl equidistribution via golden angle.
-        // Each +1 dimension contributes one golden-angle step (≈137.508°).
-        // This is the mathematical basis of Fibonacci phyllotaxis and
-        // quasicrystal geometry — maximally uniform phase distribution.
-        // 2π × (1 - 1/φ) = 2π/φ² ≈ 2.39996 radians
         const GOLDEN_ANGLE: f32 = 2.399_963_1_f32;
         (pos as f32 * GOLDEN_ANGLE) % std::f32::consts::TAU
     }
 
     /// Seeded Fisher-Yates permutation. VSA "role" projection.
-    /// Norm is preserved by permutation (same elements, just reordered).
     pub fn permute(&self, seed: u32) -> Self {
-        let mut data = self.data.clone();
-        let mut s = mix_permute_seed(seed);
-        for i in (1..data.len()).rev() {
-            s ^= s << 13;
-            s ^= s >> 17;
-            s ^= s << 5;
-            let j = (s as usize) % (i + 1);
-            data.swap(i, j);
+        let (fwd, _inv) = get_perm_tables(seed);
+        let mut combined: Vec<(u16, i8)> =
+            Vec::with_capacity(self.nz.len());
+        for (&src, &val) in self.nz.iter().zip(self.vals.iter()) {
+            combined.push((fwd[src as usize], val));
         }
-        // Permutation preserves nnz, so norm is unchanged
-        Self { data, cached_norm: self.cached_norm }
+        combined.sort_by_key(|p| p.0);
+        let (nz, vals): (Vec<u16>, Vec<i8>) = combined.into_iter().unzip();
+        Self {
+            nz,
+            vals,
+            cached_norm: self.cached_norm,
+        }
     }
 
-    /// Inverse of `permute(seed)`. Same shuffle, reversed.
+    /// Inverse of `permute(seed)`.
     pub fn permute_inv(&self, seed: u32) -> Self {
-        let n = self.data.len();
-        let mut swaps: Vec<(usize, usize)> = Vec::with_capacity(n - 1);
-        let mut s = mix_permute_seed(seed);
-        for i in (1..n).rev() {
-            s ^= s << 13;
-            s ^= s >> 17;
-            s ^= s << 5;
-            let j = (s as usize) % (i + 1);
-            swaps.push((i, j));
+        let (_fwd, inv) = get_perm_tables(seed);
+        let mut combined: Vec<(u16, i8)> =
+            Vec::with_capacity(self.nz.len());
+        for (&src, &val) in self.nz.iter().zip(self.vals.iter()) {
+            combined.push((inv[src as usize], val));
         }
-        let mut data = self.data.clone();
-        for (i, j) in swaps.into_iter().rev() {
-            data.swap(i, j);
+        combined.sort_by_key(|p| p.0);
+        let (nz, vals): (Vec<u16>, Vec<i8>) = combined.into_iter().unzip();
+        Self {
+            nz,
+            vals,
+            cached_norm: self.cached_norm,
         }
-        // Inverse permutation also preserves nnz
-        Self { data, cached_norm: self.cached_norm }
     }
 
     pub fn contrast(&self, other: &SparseVec) -> Self {
-        let mut data = self.data.clone();
-        for i in 0..DIM {
-            if other.data[i] != 0 {
-                data[i] = 0;
+        let other_set: std::collections::HashSet<u16> =
+            other.nz.iter().copied().collect();
+        let mut nz = Vec::with_capacity(self.nz.len());
+        let mut vals = Vec::with_capacity(self.nz.len());
+        for (&idx, &val) in self.nz.iter().zip(self.vals.iter()) {
+            if !other_set.contains(&idx) {
+                nz.push(idx);
+                vals.push(val);
             }
         }
-        let cached_norm = Self::compute_norm(&data);
-        Self { data, cached_norm }
+        let cached_norm = (nz.len() as f32).sqrt();
+        Self { nz, vals, cached_norm }
     }
 
     /// High-speed cosine search for decoding.
@@ -628,27 +737,17 @@ impl SparseVec {
     }
 
     /// Vogel Spiral Projection (Noids)
-    ///
-    /// Generates a unique 16,383-dimensional spatial anchor vector for a given
-    /// cell index using the Golden Angle (137.508°). This ensures that new
-    /// claims are "placed" in the lattice with maximum initial separation
-    /// (Weyl distribution) before the Boid engine starts moving them.
-    ///
-    /// The `seed` allows for "localized" spirals (e.g. per-user cellularization).
     pub fn project_vogel_spiral(index: usize, seed: u32) -> Self {
         let mut data = vec![0i8; DIM];
         let n = (index + 1) as f32;
-        const GOLDEN_ANGLE: f32 = 2.399_963_1_f32; // 137.508 degrees in radians
-        
-        // Offset the theta by the seed's own golden angle contribution
+        const GOLDEN_ANGLE: f32 = 2.399_963_1_f32;
+
         let theta_offset = (seed as f32 * GOLDEN_ANGLE) % std::f32::consts::TAU;
         let theta = (n * GOLDEN_ANGLE) + theta_offset;
-        
-        // Use the angle to select which dimensions are active.
-        let target_nnz = (DIM as f32 * 0.10) as usize; // 10% density for anchors
-        
+
+        let target_nnz = (DIM as f32 * SPARSITY) as usize;
+
         for k in 0..target_nnz {
-            // Mix the index, k, and seed to get a deterministic dimension
             let mut s = (index as u32)
                 .wrapping_add(k as u32)
                 .wrapping_add(seed)
@@ -656,61 +755,52 @@ impl SparseVec {
             s ^= s << 13;
             s ^= s >> 17;
             s ^= s << 5;
-            
+
             let dim_idx = (s as usize) % DIM;
             if data[dim_idx] == 0 {
-                // Use the phase angle to determine the sign
                 let phase = (theta + (k as f32 * 0.1)) % std::f32::consts::TAU;
                 data[dim_idx] = if phase < std::f32::consts::PI { 1 } else { -1 };
             }
         }
-        
-        let cached_norm = Self::compute_norm(&data);
-        Self { data, cached_norm }
+
+        Self::from_raw(data)
     }
 
     /// From Dense Floats (The "Crusher")
-    ///
-    /// Converts a dense floating-point vector (e.g. from an LLM embedding) into
-    /// a sparse ternary vector ($D=16,384$) using a deterministic sparse
-    /// random projection (RP).
-    ///
-    /// The projection is seeded so that the same input vector always produces
-    /// the same ternary representation. This "reverse engineers" the semantic
-    /// proximity of GEMM math into the geometric resonance of the lattice.
     pub fn from_dense_floats(dense: &[f32]) -> Self {
         let mut v = vec![0.0f32; DIM];
         let n_in = dense.len();
-        
-        // --- Deterministic Sparse Random Projection ---
-        // For each input dimension, we "smear" it across 32 output dimensions
-        // with deterministic signs. This preserves the L2 distance of the
-        // dense space in the high-dim ternary space (Johnson-Lindenstrauss).
-        let m = 32; 
+
+        let m = 32;
         for (j, &val) in dense.iter().enumerate() {
-            if val.abs() < 1e-6 { continue; }
-            
+            if val.abs() < 1e-6 {
+                continue;
+            }
+
             let mut s = (j as u32).wrapping_mul(0x9E3779B9);
             for _ in 0..m {
-                // XorShift for speed and determinism
                 s ^= s << 13;
                 s ^= s >> 17;
                 s ^= s << 5;
-                
+
                 let idx = (s as usize) % DIM;
-                let sign = if (s >> 16).wrapping_add(s).is_multiple_of(2) { 1.0 } else { -1.0 };
+                let sign = if (s >> 16).wrapping_add(s).is_multiple_of(2) {
+                    1.0
+                } else {
+                    -1.0
+                };
                 v[idx] += val * sign;
             }
         }
 
-        // --- Ternary Thresholding (Z-Score) ---
-        // Keep top 12% magnitudes to match KAI's native sparsity.
         let mut data = vec![0i8; DIM];
         let target_count = (DIM as f32 * SPARSITY) as usize;
-        
+
         let mut magnitudes: Vec<f32> = v.iter().map(|f| f.abs()).collect();
-        magnitudes.sort_unstable_by(|a, b| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
-        
+        magnitudes.sort_unstable_by(|a, b| {
+            b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal)
+        });
+
         let threshold = if target_count < DIM {
             magnitudes[target_count]
         } else {
@@ -724,7 +814,6 @@ impl SparseVec {
                 }
             }
         } else {
-            // Fallback for very small vectors
             for i in 0..DIM {
                 if v[i] != 0.0 {
                     data[i] = if v[i] > 0.0 { 1 } else { -1 };
@@ -732,8 +821,7 @@ impl SparseVec {
             }
         }
 
-        let cached_norm = Self::compute_norm(&data);
-        Self { data, cached_norm }
+        Self::from_raw(data)
     }
 }
 
@@ -743,19 +831,325 @@ impl Default for SparseVec {
     }
 }
 
-/// Mix a `u32` seed into a nonzero XorShift32 starting state so that
-/// *every* distinct seed produces a distinct permutation.
-///
-/// The previous implementation (`seed | 1`) collapsed adjacent pairs —
-/// e.g. `permute(0) == permute(1)`, `permute(2) == permute(3)` — which
-/// silently broke positional role-binding (every other slot in a
-/// sequence-encoded sentence landed on the same key) and also made
-/// head 0 == head 1 in `multi_head_consensus`.
-///
-/// The mixer is a SplitMix64-style avalanche so consecutive inputs
-/// (0, 1, 2, …) produce completely unrelated starting states, and the
-/// output is forced nonzero to keep XorShift32 out of its zero fixed
-/// point.
+impl SparseVec {
+    /// Convert this vector to its bitmask form for popcount cosine.
+    pub fn to_dense_mask(&self) -> DenseMask {
+        DenseMask::from_sparse(self)
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PackedMask: 1 KB bitpacked ternary vector for Zen 4 L3 cache fit
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// 2-bit packed ternary: 4 values per byte
+/// Encoding: 00 = 0, 01 = +1, 10 = -1, 11 = reserved
+#[derive(Clone, Debug)]
+pub struct PackedMask {
+    pub data: [u8; 4096], // 16384 values × 2 bits ÷ 8 = 4096 bytes
+    pub cached_norm: f32,
+}
+
+impl PackedMask {
+    pub fn from_dense(mask: &DenseMask) -> Self {
+        let mut data = [0u8; 4096];
+        for dim in 0..DIM {
+            let byte_idx = dim / 4;
+            let shift = (dim % 4) * 2;
+            let word = dim >> 6;
+            let bit = 1u64 << (dim & 63);
+            let val = if (mask.pos[word] & bit) != 0 {
+                0b01
+            } else if (mask.neg[word] & bit) != 0 {
+                0b10
+            } else {
+                0b00
+            };
+            data[byte_idx] |= val << shift;
+        }
+        let mut nnz = 0;
+        for d in &data {
+            for s in 0..4 {
+                if (d >> (s * 2)) & 0b11 != 0 {
+                    nnz += 1;
+                }
+            }
+        }
+        Self {
+            data,
+            cached_norm: (nnz as f32).sqrt(),
+        }
+    }
+
+    #[inline]
+    pub fn cosine_packed(&self, other: &Self) -> f32 {
+        if self.cached_norm == 0.0 || other.cached_norm == 0.0 {
+            return 0.0;
+        }
+        let mut dot: i32 = 0;
+        for i in (0..4096).step_by(8) {
+            let a = u64::from_le_bytes(self.data[i..i + 8].try_into().unwrap());
+            let b = u64::from_le_bytes(other.data[i..i + 8].try_into().unwrap());
+            let a_pos = a & 0x5555_5555_5555_5555;
+            let a_neg = (a >> 1) & 0x5555_5555_5555_5555;
+            let b_pos = b & 0x5555_5555_5555_5555;
+            let b_neg = (b >> 1) & 0x5555_5555_5555_5555;
+            let match_pos = (a_pos & b_pos) | (a_neg & b_neg);
+            let match_neg = (a_pos & b_neg) | (a_neg & b_pos);
+            dot += match_pos.count_ones() as i32;
+            dot -= match_neg.count_ones() as i32;
+        }
+        (dot as f32) / (self.cached_norm * other.cached_norm)
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DenseMask: 4 KB bitpacked ternary vector for SIMD popcount cosine
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Bitpacked form of a ternary vector for popcount-based cosine similarity.
+#[derive(Clone)]
+pub struct DenseMask {
+    pub pos: Box<[u64; 256]>,
+    pub neg: Box<[u64; 256]>,
+    pub norm: f32,
+}
+
+impl DenseMask {
+    /// Convert a SparseVec into its bitmask representation.
+    pub fn from_sparse(v: &SparseVec) -> Self {
+        let mut pos = Box::new([0u64; 256]);
+        let mut neg = Box::new([0u64; 256]);
+        for (&i, &val) in v.nz.iter().zip(v.vals.iter()) {
+            let word = (i as usize) >> 6;
+            let bit = (i as usize) & 63;
+            match val {
+                1 => pos[word] |= 1u64 << bit,
+                -1 => neg[word] |= 1u64 << bit,
+                _ => {}
+            }
+        }
+        Self {
+            pos,
+            neg,
+            norm: v.norm(),
+        }
+    }
+
+    /// Popcount-based cosine similarity. Scalar path (works on all CPUs).
+    #[inline]
+    pub fn cosine(&self, other: &DenseMask) -> f32 {
+        if self.norm == 0.0 || other.norm == 0.0 {
+            return 0.0;
+        }
+        let mut dot: i32 = 0;
+        let n = self.pos.len();
+        let chunks = n / 4;
+        let a_pos = &*self.pos;
+        let a_neg = &*self.neg;
+        let b_pos = &*other.pos;
+        let b_neg = &*other.neg;
+        for i in (0..chunks * 4).step_by(4) {
+            dot += (a_pos[i] & b_pos[i]).count_ones() as i32;
+            dot += (a_pos[i + 1] & b_pos[i + 1]).count_ones() as i32;
+            dot += (a_pos[i + 2] & b_pos[i + 2]).count_ones() as i32;
+            dot += (a_pos[i + 3] & b_pos[i + 3]).count_ones() as i32;
+            dot += (a_neg[i] & b_neg[i]).count_ones() as i32;
+            dot += (a_neg[i + 1] & b_neg[i + 1]).count_ones() as i32;
+            dot += (a_neg[i + 2] & b_neg[i + 2]).count_ones() as i32;
+            dot += (a_neg[i + 3] & b_neg[i + 3]).count_ones() as i32;
+            dot -= (a_pos[i] & b_neg[i]).count_ones() as i32;
+            dot -= (a_pos[i + 1] & b_neg[i + 1]).count_ones() as i32;
+            dot -= (a_pos[i + 2] & b_neg[i + 2]).count_ones() as i32;
+            dot -= (a_pos[i + 3] & b_neg[i + 3]).count_ones() as i32;
+            dot -= (a_neg[i] & b_pos[i]).count_ones() as i32;
+            dot -= (a_neg[i + 1] & b_pos[i + 1]).count_ones() as i32;
+            dot -= (a_neg[i + 2] & b_pos[i + 2]).count_ones() as i32;
+            dot -= (a_neg[i + 3] & b_pos[i + 3]).count_ones() as i32;
+        }
+        for i in (chunks * 4)..n {
+            dot += (a_pos[i] & b_pos[i]).count_ones() as i32;
+            dot += (a_neg[i] & b_neg[i]).count_ones() as i32;
+            dot -= (a_pos[i] & b_neg[i]).count_ones() as i32;
+            dot -= (a_neg[i] & b_pos[i]).count_ones() as i32;
+        }
+        dot as f32 / (self.norm * other.norm)
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// InvertedIndex: dimension → cell_id posting lists for prefilter
+// ─────────────────────────────────────────────────────────────────────────────
+
+pub struct InvertedIndex {
+    /// by_dim[d] = sorted list of cell IDs that have dimension d active
+    pub by_dim: Vec<Vec<u32>>,
+    pub cell_count: u32,
+}
+
+impl InvertedIndex {
+    pub fn build(vecs: &[SparseVec]) -> Self {
+        let mut by_dim: Vec<Vec<u32>> = (0..DIM).map(|_| Vec::new()).collect();
+        for (cell_id, sv) in vecs.iter().enumerate() {
+            for &i in &sv.nz {
+                by_dim[i as usize].push(cell_id as u32);
+            }
+        }
+        Self {
+            by_dim,
+            cell_count: vecs.len() as u32,
+        }
+    }
+
+    pub fn candidates(&self, query: &SparseVec, top_n: usize) -> Vec<u32> {
+        let mut score = vec![0u32; self.cell_count as usize];
+        for &i in &query.nz {
+            for &cid in &self.by_dim[i as usize] {
+                score[cid as usize] += 1;
+            }
+        }
+        let mut ranked: Vec<(u32, u32)> = score
+            .into_iter()
+            .enumerate()
+            .filter(|(_, s)| *s > 0)
+            .map(|(i, s)| (i as u32, s))
+            .collect();
+        ranked.sort_unstable_by(|a, b| b.1.cmp(&a.1));
+        ranked.into_iter().take(top_n).map(|(i, _)| i).collect()
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// KMeansIndex: semantic sub-lattice routing for sub-500 μs queries
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[inline]
+pub fn section_dot_a(q: &DenseMask, c: &DenseMask) -> i32 {
+    let mut dot = 0i32;
+    for w in 0..64 {
+        dot += (q.pos[w] & c.pos[w]).count_ones() as i32;
+        dot += (q.neg[w] & c.neg[w]).count_ones() as i32;
+        dot -= (q.pos[w] & c.neg[w]).count_ones() as i32;
+        dot -= (q.neg[w] & c.pos[w]).count_ones() as i32;
+    }
+    dot
+}
+
+pub struct KMeansIndex {
+    pub centroids: Vec<DenseMask>,
+    pub clusters: Vec<Vec<usize>>,
+    pub k: usize,
+}
+
+impl KMeansIndex {
+    pub fn build(pool: &[SparseVec], pool_mask: &[DenseMask], k: usize, iters: usize) -> Self {
+        let n = pool.len();
+        if n == 0 {
+            return Self {
+                centroids: vec![],
+                clusters: vec![],
+                k: 0,
+            };
+        }
+
+        let k = k.min(n);
+        let step = (n / k).max(1);
+        let mut centroids: Vec<DenseMask> =
+            (0..k).map(|i| pool_mask[i * step].clone()).collect();
+        let mut assignments = vec![0usize; n];
+
+        for _ in 0..iters {
+            for i in 0..n {
+                let best = centroids
+                    .iter()
+                    .enumerate()
+                    .map(|(ci, c)| (ci, section_dot_a(&pool_mask[i], c)))
+                    .max_by_key(|(_, s)| *s)
+                    .map(|(ci, _)| ci)
+                    .unwrap_or(0);
+                assignments[i] = best;
+            }
+            for ci in 0..k {
+                let members: Vec<&SparseVec> = assignments
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, &a)| a == ci)
+                    .map(|(i, _)| &pool[i])
+                    .collect();
+                if !members.is_empty() {
+                    let bundled = SparseVec::bundle(&members);
+                    centroids[ci] = bundled.to_dense_mask();
+                }
+            }
+        }
+
+        let mut clusters: Vec<Vec<usize>> = vec![vec![]; k];
+        for (i, &a) in assignments.iter().enumerate() {
+            clusters[a].push(i);
+        }
+        Self {
+            centroids,
+            clusters,
+            k,
+        }
+    }
+
+    pub fn query(
+        &self,
+        query: &DenseMask,
+        pool: &[DenseMask],
+        n_probe: usize,
+        sec_top: usize,
+        top_k: usize,
+    ) -> Vec<(usize, f32)> {
+        if self.k == 0 {
+            return vec![];
+        }
+
+        let mut c_scores: Vec<(usize, i32)> = self
+            .centroids
+            .iter()
+            .enumerate()
+            .map(|(i, c)| (i, section_dot_a(query, c)))
+            .collect();
+        c_scores.sort_unstable_by(|a, b| b.1.cmp(&a.1));
+
+        let mut candidates: Vec<(usize, i32)> = Vec::with_capacity(n_probe * 600);
+        for &(ci, _) in c_scores.iter().take(n_probe) {
+            for &cell_id in &self.clusters[ci] {
+                candidates.push((cell_id, section_dot_a(query, &pool[cell_id])));
+            }
+        }
+        candidates.sort_unstable_by(|a, b| b.1.cmp(&a.1));
+        candidates.truncate(sec_top);
+
+        let mut results: Vec<(usize, f32)> = candidates
+            .iter()
+            .map(|(cid, _)| (*cid, query.cosine(&pool[*cid])))
+            .collect();
+        results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+        results.truncate(top_k);
+        results
+    }
+
+    pub fn insert(&mut self, cell_id: usize, mask: &DenseMask) {
+        if self.k == 0 {
+            return;
+        }
+        let best = self
+            .centroids
+            .iter()
+            .enumerate()
+            .map(|(ci, c)| (ci, section_dot_a(mask, c)))
+            .max_by_key(|(_, s)| *s)
+            .map(|(ci, _)| ci)
+            .unwrap_or(0);
+        self.clusters[best].push(cell_id);
+    }
+}
+
+// ── Helper functions ─────────────────────────────────────────────────────────
+
 #[inline]
 fn mix_permute_seed(seed: u32) -> u32 {
     let mut s = seed as u64;
@@ -771,7 +1165,6 @@ fn mix_permute_seed(seed: u32) -> u32 {
     }
 }
 
-/// Hash a single character with position.
 fn hash_char(ch: char, pos: usize) -> usize {
     let mut h = ch as usize;
     h = h.wrapping_mul(2654435761);
@@ -780,7 +1173,6 @@ fn hash_char(ch: char, pos: usize) -> usize {
     h
 }
 
-/// Hash a character trigram.
 fn hash_trigram(tri: &[char]) -> usize {
     let mut h: usize = 0;
     for (i, &ch) in tri.iter().enumerate() {
@@ -791,7 +1183,6 @@ fn hash_trigram(tri: &[char]) -> usize {
     h % (usize::MAX / 2)
 }
 
-/// Hash a single word (position-independent for semantic matching).
 fn hash_word(word: &str) -> usize {
     let mut h: usize = 5381;
     for b in word.bytes() {
@@ -801,7 +1192,6 @@ fn hash_word(word: &str) -> usize {
     h % (usize::MAX / 2)
 }
 
-/// Hash a pair of words (order-sensitive for context).
 fn hash_word_pair(w1: &str, w2: &str) -> usize {
     let h1 = hash_word(w1);
     let h2 = hash_word(w2);
@@ -809,14 +1199,50 @@ fn hash_word_pair(w1: &str, w2: &str) -> usize {
     combined.wrapping_mul(0x9e3779b9) % (usize::MAX / 2)
 }
 
+fn hash_bigram(bi: &[char; 2]) -> usize {
+    let mut h: usize = bi[0] as usize;
+    h = h.wrapping_mul(31).wrapping_add(bi[1] as usize);
+    h = h.wrapping_mul(0x9e3779b9);
+    h % (usize::MAX / 2)
+}
+
+fn hash_fourgram(fg: &[char; 4]) -> usize {
+    let mut h: usize = 0;
+    for (i, &ch) in fg.iter().enumerate() {
+        h = h.wrapping_mul(31).wrapping_add(ch as usize);
+        h ^= (i + 1).wrapping_mul(2654435761);
+    }
+    h = h.wrapping_mul(0x9e3779b9);
+    h % (usize::MAX / 2)
+}
+
+// ── Tests ───────────────────────────────────────────────────────────────────
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
+    fn test_packed_mask_equivalence() {
+        let a = SparseVec::encode("the cat sat on the mat");
+        let b = SparseVec::encode("the cat sat on a mat");
+        let a_dense = a.to_dense_mask();
+        let b_dense = b.to_dense_mask();
+        let dense_c = a_dense.cosine(&b_dense);
+        let packed_c = PackedMask::from_dense(&a_dense)
+            .cosine_packed(&PackedMask::from_dense(&b_dense));
+        assert!(
+            (dense_c - packed_c).abs() < 1e-5,
+            "drift: dense_c = {}, packed_c = {}",
+            dense_c,
+            packed_c
+        );
+    }
+
+    #[test]
     fn test_encode_produces_sparse_vec() {
         let v = SparseVec::encode("hello world");
-        assert_eq!(v.data.len(), DIM);
+        assert_eq!(v.to_dense().len(), DIM);
         let nnz = v.nnz();
         assert!(nnz > 0 && nnz < DIM / 2, "nnz={} should be sparse", nnz);
     }
@@ -841,13 +1267,15 @@ mod tests {
         let a = SparseVec::encode("quantum physics equations");
         let b = SparseVec::encode("chocolate cake recipe");
         let sim = a.cosine(&b);
-        assert!(sim < 0.3, "different texts should have low cosine: {}", sim);
+        assert!(
+            sim < 0.3,
+            "different texts should have low cosine: {}",
+            sim
+        );
     }
 
     #[test]
     fn test_word_semantic_matching() {
-        // With normalization, "where does Ryan live" and "Ryan's city"
-        // should both contain tokens [ryan, live, #loc] — high overlap
         let query = SparseVec::encode("where does Ryan live");
         let answer = SparseVec::encode("Ryan's city is Austin");
         let unrelated = SparseVec::encode("quantum physics equations");
@@ -863,7 +1291,6 @@ mod tests {
 
     #[test]
     fn test_synonym_equivalence() {
-        // "occupation" and "job" should both normalize to "work" + "#job"
         let a = SparseVec::encode("Ryan's occupation");
         let b = SparseVec::encode("Ryan's job");
         let sim = a.cosine(&b);
@@ -876,7 +1303,6 @@ mod tests {
 
     #[test]
     fn test_bundle_preserves_majority() {
-        // Bundle of overlapping vecs should be closer to each input than random
         let a = SparseVec::encode("mathematics algebra geometry");
         let b = SparseVec::encode("mathematics calculus topology");
         let c = SparseVec::encode("mathematics number theory");
@@ -889,13 +1315,10 @@ mod tests {
         );
     }
 
-    /// Deterministic sparse ternary vector generator for tests. Uses the
-    /// same XorShift PRNG as `permute` so results are reproducible across
-    /// runs and platforms. Sparsity matches the ~4% design target.
     fn random_sparse(seed: u32) -> SparseVec {
         let mut s = seed | 1;
         let mut data = vec![0i8; DIM];
-        let target_nnz = (DIM as f32 * SPARSITY) as usize; // ~163 nonzeros
+        let target_nnz = (DIM as f32 * SPARSITY) as usize;
         let mut set = 0usize;
         let mut attempts = 0usize;
         while set < target_nnz && attempts < DIM * 4 {
@@ -904,7 +1327,6 @@ mod tests {
             s ^= s << 5;
             let i = (s as usize) % DIM;
             if data[i] == 0 {
-                // Low bit of the next rng step picks sign.
                 s ^= s << 13;
                 s ^= s >> 17;
                 s ^= s << 5;
@@ -916,19 +1338,8 @@ mod tests {
         SparseVec::from_raw(data)
     }
 
-    /// Step 1 of the autoregressive engine: prove `unbind(bind(a, b), b)`
-    /// recovers `a` on every dimension where `b` is nonzero (ternary VSA
-    /// binding is self-inverse on the key's support). Noise only appears
-    /// in dimensions where `b` is zero — that information is fundamentally
-    /// lost by sparse ternary binding, which is the expected behavior.
-    ///
-    /// This is the math foundation the whole generative decoder rests on:
-    /// to pull the i-th word out of a sentence hypervector `S`, we compute
-    /// `S.unbind(&position_i)` and find the nearest lexicon entry.
     #[test]
     fn test_unbind_inverts_bind_on_key_support() {
         let _a = random_sparse(0x9E37_79B9);
- 
     }
 }
-

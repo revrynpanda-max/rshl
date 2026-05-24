@@ -2,6 +2,8 @@ import { logAudit } from './audit-log.mjs';
 import { CHANNEL_IDS } from './channel-rules.mjs';
 
 const MAX_AI_FAILURES = 3;
+import { recordMetric } from './metrics-store.mjs';
+
 const AI_FAILURE_COUNTS = new Map();  // speaker -> failure count this session
 const AI_OFFLINE_SET = new Set();     // speakers taken offline this session
 export const PROVIDER_COOLDOWNS = new Map(); // providerName -> timestamp to re-enable
@@ -11,6 +13,7 @@ export const PROVIDER_FAILURE_STREAK = new Map(); // providerName -> failure cou
  * Record a failure for an AI speaker in the work channel.
  */
 export function recordAIFailure(speaker, reason, channelId, onOfflineCallback) {
+  recordMetric('failure-tracker', 'speaker_failure', 1, { speaker, reason: String(reason).slice(0, 60) });
   if (channelId !== CHANNEL_IDS.WORK) return;
   if (!speaker || speaker.toLowerCase() === "oracle" || speaker === "system") return;
 
@@ -22,6 +25,7 @@ export function recordAIFailure(speaker, reason, channelId, onOfflineCallback) {
   if (count >= MAX_AI_FAILURES && !AI_OFFLINE_SET.has(speaker)) {
     AI_OFFLINE_SET.add(speaker);
     console.warn(`[FailureTracker] ${speaker} OFFLINE after ${count} failures.`);
+    recordMetric('failure-tracker', 'speaker_offline_state', 'offline', { speaker, count });
     if (onOfflineCallback) {
       onOfflineCallback(speaker, count, reason).catch(e => {});
     }
@@ -39,6 +43,7 @@ export function isSpeakerOffline(speaker) {
  * Record a failure for a specific Neural Provider (e.g., "Groq", "OpenAI")
  */
 export function recordProviderFailure(provider, errorStatus, errorMessage = "") {
+  recordMetric('failure-tracker', 'provider_failure', errorStatus || 0, { provider, msg: String(errorMessage).slice(0, 60) });
   const streak = (PROVIDER_FAILURE_STREAK.get(provider) || 0) + 1;
   PROVIDER_FAILURE_STREAK.set(provider, streak);
 
@@ -80,6 +85,7 @@ export function recordProviderFailure(provider, errorStatus, errorMessage = "") 
  * Record a success for a provider to reset its failure streak
  */
 export function recordProviderSuccess(provider) {
+  recordMetric('failure-tracker', 'provider_recovery', 1, { provider });
   if (PROVIDER_FAILURE_STREAK.has(provider)) {
     PROVIDER_FAILURE_STREAK.set(provider, 0);
     PROVIDER_COOLDOWNS.delete(provider);

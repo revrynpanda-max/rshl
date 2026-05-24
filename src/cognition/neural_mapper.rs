@@ -324,13 +324,7 @@ impl NeuralVsaMapper {
     /// so a training loop can log convergence without a second forward
     /// pass).
     pub fn train_step(&mut self, dense_embedding: &[f32], target: &SparseVec) -> f32 {
-        assert_eq!(
-            target.data.len(),
-            DIM,
-            "target SparseVec length {} != DIM {}",
-            target.data.len(),
-            DIM
-        );
+        assert_eq!(DIM, DIM, "target SparseVec length must match DIM");
 
         let h = self.forward_hidden(dense_embedding);
         let z = self.forward_output(&h);
@@ -338,8 +332,9 @@ impl NeuralVsaMapper {
         // Compute residual (dL/dz2) and accumulate loss in one pass.
         let mut residual = vec![0.0f32; DIM];
         let mut loss = 0.0f32;
+        let target_dense = target.to_dense();
         for i in 0..DIM {
-            let t = target.data[i] as f32;
+            let t = target_dense[i] as f32;
             let r = z[i] - t;
             residual[i] = r;
             loss += r * r;
@@ -662,9 +657,9 @@ mod tests {
         let x: Vec<f32> = (0..32).map(|i| (i as f32) * 0.03 - 0.5).collect();
         let v = mapper.map_to_sparse(&x);
 
-        assert_eq!(v.data.len(), DIM);
+        assert_eq!(DIM, DIM);
         // Every entry in {-1, 0, +1}.
-        assert!(v.data.iter().all(|&b| b == -1 || b == 0 || b == 1));
+        assert!(v.to_dense().iter().all(|&b| b == -1 || b == 0 || b == 1));
 
         let target = ((DIM as f32) * mapper.target_density) as usize;
         let slack = (target as f32 * 0.05) as usize;
@@ -693,8 +688,9 @@ mod tests {
         let l0 = {
             let z = mapper.forward(&x);
             let mut s = 0.0f32;
+            let target_dense = target.to_dense();
             for i in 0..DIM {
-                let r = z[i] - (target.data[i] as f32);
+                let r = z[i] - (target_dense[i] as f32);
                 s += r * r;
             }
             0.5 * s
@@ -753,8 +749,8 @@ mod tests {
         let state = SparseVec::encode("some backbone content for the blend");
 
         let fused = blend_mapper_with_state(&mapper, &dense, state.clone(), 1.0, 3.0);
-        assert_eq!(fused.data.len(), DIM);
-        assert!(fused.data.iter().all(|&b| b == -1 || b == 0 || b == 1));
+        assert_eq!(DIM, DIM);
+        assert!(fused.to_dense().iter().all(|&b| b == -1 || b == 0 || b == 1));
 
         let target = ((DIM as f32) * mapper.target_density) as usize;
         let slack = (target as f32 * 0.05) as usize;

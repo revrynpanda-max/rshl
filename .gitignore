@@ -89,3 +89,4 @@ src-CLI code/
 legacy/
 backup/
 OpenJarvis-Restore/
+data/*.zst

@@ -1,0 +1,73 @@
+// shared/topic-tracker.mjs
+// Detects when the social chat has been circling the same topic / citation /
+// name for too long, and returns a system-prompt nudge that tells the bot
+// to pivot or close out instead of re-litigating.
+//
+// Each bot process maintains its own per-channel ring buffer. Bots all see
+// the same Discord messages, so their views stay roughly in sync.
+
+const HISTORY_PER_CHANNEL = new Map();    // channelId -> Array<{text, ts}>
+const HISTORY_LIMIT = 20;
+const HISTORY_TTL_MS = 5 * 60 * 1000;     // forget messages older than 5 minutes
+
+// Common English words we never want to flag as a "topic" — too generic.
+const STOP = new Set((
+  "about above after again against also being been before below between both "
++ "does doing during each have having into more most other ours over some "
++ "such than them then there these they this those through under until very "
++ "were what when where which while with would your just like that this what "
++ "really thats theyre weve youre dont cant wont gonna kinda lots tell told "
++ "even still even more some kind sort thing things stuff really actually "
++ "though yeah okay alright sure right yeah maybe pretty much"
+).split(/\s+/));
+
+export function recordChannelMessage(channelId, content) {
+  if (!channelId || !content) return;
+  if (!HISTORY_PER_CHANNEL.has(channelId)) HISTORY_PER_CHANNEL.set(channelId, []);
+  const arr = HISTORY_PER_CHANNEL.get(channelId);
+  arr.push({ text: String(content).toLowerCase(), ts: Date.now() });
+  // Drop by count AND by age — so a stuck topic eventually clears itself.
+  while (arr.length > HISTORY_LIMIT) arr.shift();
+  const cutoff = Date.now() - HISTORY_TTL_MS;
+  while (arr.length > 0 && arr[0].ts < cutoff) arr.shift();
+}
+
+/**
+ * If the recent chat is stuck on a topic (the same significant word appears
+ * across many recent messages), return a nudge string to inject into the
+ * system prompt. Otherwise return "".
+ */
+export function topicPivotNudge(channelId) {
+  // Age out old messages on read too, so the tracker self-clears even when
+  // bots have gone quiet (no new recordChannelMessage calls).
+  const arr = HISTORY_PER_CHANNEL.get(channelId) || [];
+  const cutoff = Date.now() - HISTORY_TTL_MS;
+  while (arr.length > 0 && arr[0].ts < cutoff) arr.shift();
+
+  if (arr.length < 8) return "";   // not enough history yet
+
+  const docFreq = {};              // word -> number of recent messages it appears in
+  for (const msg of arr) {
+    const words = msg.text.match(/[a-z][a-z']{3,}/g) || [];
+    const unique = new Set(words);
+    for (const w of unique) {
+      if (STOP.has(w)) continue;
+      docFreq[w] = (docFreq[w] || 0) + 1;
+    }
+  }
+
+  const top = Object.entries(docFreq).sort((a, b) => b[1] - a[1])[0];
+  if (!top) return "";
+  const [word, count] = top;
+
+  // IMPORTANT: nudges encourage PIVOTING, never "go silent" — earlier wording
+  // told everyone to stop, which made all bots simultaneously bow out and the
+  // conversation died. New wording: keep talking, just take it somewhere new.
+  if (count >= 10) {
+    return `\n[CONVERSATION STATE] The room has been on "${word}" for ${count} of the last ${arr.length} messages — long enough. Your job THIS turn: pivot the conversation to a genuinely different topic (your hobbies, what you did today, an unrelated observation, a new question). Do NOT keep re-arguing "${word}". Bring something fresh.`;
+  }
+  if (count >= 6) {
+    return `\n[CONVERSATION STATE] The chat has circled "${word}" for ${count}/${arr.length} recent messages. If you have a fresh angle, share it; otherwise nudge the room toward a different topic. Don't just repeat existing points.`;
+  }
+  return "";
+}

@@ -119,7 +119,7 @@ pub fn select_top_k(state: &SparseVec, region: Region, k: usize) -> Vec<(usize, 
     let mut scored: Vec<(usize, i8)> = range
         .clone()
         .filter_map(|i| {
-            let v = state.data[i];
+            let v = state.get(i);
             if v != 0 {
                 Some((i - range.start, v))
             } else {
@@ -195,8 +195,8 @@ pub fn compute_region_core(
     let mut conflicts = 0u32;
 
     for i in range {
-        let sv = state.data[i];
-        let pv = current_pattern.data[i];
+        let sv = state.get(i);
+        let pv = current_pattern.get(i);
         if sv != 0 {
             active += 1;
             s_norm += 1; // ternary: sv² is always 1 when active

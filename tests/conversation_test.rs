@@ -389,6 +389,11 @@ fn test_live_self_state_hit(input: &str) -> QueryHit {
         score: 0.90,
         strength: 1.2,
         source: "self-model".to_string(),
+        timestamp: 0,
+        user_id: String::new(),
+        channel_id: String::new(),
+        message_id: String::new(),
+        keywords: Vec::new(),
     }
 }
 

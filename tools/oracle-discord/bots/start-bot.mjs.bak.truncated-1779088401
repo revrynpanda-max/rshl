@@ -1,0 +1,1001 @@
+import { chatWithOpenJarvis, chatWithLattice, callGroqDirect, transcribeAudio, webSearch } from '../shared/openjarvis.mjs';
+import { ingestMessage } from '../shared/transcript-memory.mjs';
+import { ensureVoiceConnection, speakTTS, acquireVoiceLock } from '../shared/tts-engine.mjs';
+import { chunkForDiscord } from '../shared/utils.mjs';
+import { scanForHelpers, requestHelp } from '../shared/helper-queue.mjs';
+import { Client, GatewayIntentBits, Partials, ChannelType, AttachmentBuilder } from 'discord.js';
+import { handleImageRequest, isImageRequest } from '../shared/gemi-image.mjs';
+import fs from 'fs';
+import { startBotServer } from '../shared/ipc.mjs';
+import { recordNeuralEvent, getHardwareStats, getRecentBottlenecks } from '../shared/performance-monitor.mjs';
+import { isSpeakerOffline, recordAIFailure } from '../shared/failure-tracker.mjs';
+import { runDailyWorkSession, LEARNING_TRACKS } from '../shared/daily-learning.mjs';
+import { runCodingTask, applySandboxFile } from '../shared/kai-coder-agent.mjs';
+import { requestOracleHelp, deliverOracleResult } from '../shared/oracle-pipeline.mjs';
+import { 
+  joinVoiceChannel, 
+  createAudioPlayer, 
+  createAudioResource, 
+  entersState, 
+  VoiceConnectionStatus, 
+  AudioPlayerStatus 
+} from '@discordjs/voice';
+import { startDJ, stopDJ, isDJActive, handleRadioVoiceIntent, getQueue, addRequest, startPlaylist, getStatus, pushSocialMessage } from '../radio/radio-dj.mjs';
+import { getThrottlingMultiplier, shouldRunSpot } from '../shared/resource-saver.mjs';
+
+// --- GLOBAL ERROR HANDLING ---
+process.on('uncaughtException', (err) => {
+  console.error('[CRITICAL/Bot] Uncaught Exception:', err);
+  try {
+    fs.appendFileSync('c:/KAI/tools/oracle-discord/logs/ecosystem.log', `[${botName}/CRITICAL] Uncaught Exception: ${err.message}\n${err.stack}\n`);
+  } catch (e) {}
+});
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[CRITICAL/Bot] Unhandled Rejection:', reason);
+  try {
+    const rStr = reason instanceof Error ? `${reason.message}\n${reason.stack}` : String(reason);
+    fs.appendFileSync('c:/KAI/tools/oracle-discord/logs/ecosystem.log', `[${botName}/CRITICAL] Unhandled Rejection: ${rStr}\n`);
+  } catch (e) {}
+});
+
+import { AgentSimulation, SLEEP_ENERGY_THRESHOLD } from '../shared/simulation.mjs';
+import { CHANNEL_IDS } from '../shared/channel-rules.mjs';
+import { recordChannelMessage, topicPivotNudge } from '../shared/topic-tracker.mjs';
+import { isBotSuppressed, getExtraSystemPrompt } from '../shared/remediation-state.mjs';
+import { buildFailureContext } from '../shared/failure-memory.mjs';
+import { computeInterest, PARTICIPATION_THRESHOLD, TWO_CENTS_THRESHOLD, scoreToDelay } from '../shared/social-interest.mjs';
+import { isWorkingHours, isSocialHours } from '../shared/hours.mjs';
+import { temporal } from '../shared/temporal-state.mjs';
+import { BIOGRAPHIES } from '../shared/biographies.mjs';
+import { AI_REGISTRY, HUMAN_IDS, HUMAN_REGISTRY } from '../shared/identities.mjs';
+
+function isMessageFromHuman(m) {
+  if (!m || !m.author) return false;
+  if (HUMAN_IDS.has(m.author.id)) return true;
+  if (m.webhookId) {
+    const usernameLower = m.author.username.toLowerCase();
+    return Object.entries(HUMAN_REGISTRY).some(([name, data]) => {
+      return name.toLowerCase() === usernameLower ||
+             data.username.toLowerCase() === usernameLower ||
+             data.role.toLowerCase() === usernameLower;
+    });
+  }
+  return false;
+}
+
+function getHumanDetails(m) {
+  if (!m || !m.author) return { name: "Unknown", id: "0" };
+  if (HUMAN_IDS.has(m.author.id)) {
+    return { name: m.member?.displayName || m.author.username, id: m.author.id };
+  }
+  if (m.webhookId) {
+    const usernameLower = m.author.username.toLowerCase();
+    const entry = Object.entries(HUMAN_REGISTRY).find(([name, data]) => {
+      return name.toLowerCase() === usernameLower ||
+             data.username.toLowerCase() === usernameLower ||
+             data.role.toLowerCase() === usernameLower;
+    });
+    if (entry) {
+      return { name: entry[0], id: entry[1].id };
+    }
+  }
+  return { name: m.member?.displayName || m.author.username, id: m.author.id };
+}
+
+let botName = process.argv[2] || process.env.BOT_NAME || "AI";
+process.env.BOT_NAME = botName;
+let tokenName = botName;
+if (botName === "Kai Coder") tokenName = "Oracle Coder";
+if (botName === "Claudey") tokenName = "Claudey";
+
+const tokenEnvKey = `ORACLE_DISCORD_TOKEN_${tokenName.toUpperCase().replace(/\s+/g, '_')}`;
+const botToken = process.env[tokenEnvKey] || process.env.BOT_TOKEN || "";
+const PORT = AI_REGISTRY[botName]?.port || 0;
+const DISCORD_ID = AI_REGISTRY[botName]?.id || "Unknown";
+
+const botToModel = {
+  "Analyst": "Kimi-Sovereign",
+  "Researcher": "Kimi-Sovereign", 
+  "Kai Coder": "Kimi-Sovereign",
+  "Oracle": "Kimi-Sovereign",
+  "Groq": "Groq-Sovereign",
+  "X": "X-Sovereign",
+  "Claudey": "Claudey-Sovereign",
+  "Gemini": "Gemini-Sovereign"
+};
+
+const botModelEnv = `BOT_MODEL_${botName.toUpperCase().replace(/\s+/g, '_')}`;
+const BOT_MODEL = process.env[botModelEnv] || botToModel[botName] || "local";
+
+const getTargetChannelId = () => {
+  // Social bots should ALWAYS target the social channel for autonomous turns.
+  return CHANNEL_IDS.SUNDAY;
+};
+let targetChannelId = getTargetChannelId();
+
+const SOCIAL_BOTS = new Set(["Claudey", "Gemini", "Groq", "X", "Leo"]);
+const HELPER_BOTS = new Set(["Analyst", "Researcher", "Kai Coder", "Oracle"]);
+
+const sim = new AgentSimulation(botName);
+const _savedState = AgentSimulation.loadPersistedState(botName);
+sim.restartContext = AgentSimulation.buildRestartContext(_savedState, sim.isKAI);
+
+const ripple = temporal.thaw();
+const handleShutdown = () => {
+  temporal.freeze();
+  process.exit(0);
+};
+process.on('SIGINT', handleShutdown);
+process.on('SIGTERM', handleShutdown);
+
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.DirectMessages,
+    GatewayIntentBits.GuildVoiceStates,
+  ],
+  partials: [Partials.Channel, Partials.Message],
+});
+
+process.on('message', (msg) => {
+  if (msg.type === 'WORLD_TICK' && msg.worldState) sim.updateWorldState(msg.worldState);
+  if (msg.type === 'INTEREST_BOOST') sim.boostInterest(msg.multiplier, msg.duration);
+  if (msg.type === 'STOP_TTS' && msg.interrupter !== botName) {
+    import('../shared/tts-engine.mjs').then(tts => tts.stopTTS(botName)).catch(()=>{});
+  }
+  if (msg.type === 'VOICE_TRANSCRIPT') {
+    // If we are a social bot, trigger a turn based on the user's voice input
+    if (SOCIAL_BOTS.has(botName) && !sim.state.isSleeping) {
+      console.log(`[${botName}/Voice] Reacting to voice from ${msg.username}: "${msg.text}"`);
+      const channel = client.channels.cache.get(CHANNEL_IDS.SUNDAY);
+      if (channel) {
+        // Wait 1.5s for Leo to finish mirroring the transcript to the chat
+        setTimeout(() => {
+          executeSocialTurn(channel, true);
+        }, 1500 + Math.random() * 1000); // Add jitter so they don't all fire instantly
+      }
+    }
+  }
+});
+
+client.once('clientReady', async () => {
+  console.log(`[${botName}] online as ${client.user.tag}`);
+  
+  try {
+    const bioData = BIOGRAPHIES[botName];
+    if (bioData?.background) {
+      const bio = bioData.background.slice(0, 190);
+      await client.application.edit({ description: bio });
+      if (isWorkingHours() || (SOCIAL_BOTS.has(botName) && isSocialHours())) {
+         console.log(`[${botName}] Discord bio set.`);
+      }
+    }
+  } catch (e) {}
+
+  if (SOCIAL_BOTS.has(botName)) {
+    if (isSocialHours() || isWorkingHours()) {
+      console.log(`[${botName}] Social Persona Online.`);
+    }
+    await ensureVoiceConnection(client, botName);
+    startSocialLoop();
+    startProactiveDMLoop();
+  }
+
+  if (LEARNING_TRACKS[botName]) {
+    // ONLY Helper Bots (Analyst, Researcher, Kai Coder) should run Work Sessions.
+    // Residents (Social bots) stay in social mode only.
+    if (HELPER_BOTS.has(botName)) {
+      const startupJitter = Math.floor(Math.random() * 120000);
+      setTimeout(() => {
+        if (!sim.state.isProcessingWork && isWorkingHours()) {
+          startWorkSessionLoop();
+        }
+      }, startupJitter);
+    }
+  }
+
+  if (botName === "Oracle" || botName === "Analyst") {
+    const { runSystemAudit } = await import('../tools/system-auditor.mjs');
+    setInterval(async () => {
+      if (sim.state.isSleeping) return;
+      if (isWorkingHours() || isSocialHours()) {
+        await runSystemAudit();
+      }
+    }, 1800000);
+  }
+
+  startEnergyMonitor();
+  
+  // Gating Proactive Labor to Primary Agents only
+  if (!HELPER_BOTS.has(botName)) {
+    if (isWorkingHours() || isSocialHours()) {
+      startAutonomousLabor();
+    }
+  } else {
+    if (isWorkingHours()) {
+       console.log(`[${botName}/Helper] Passive Mode Active. Standing by for task allocation.`);
+    }
+  }
+
+  setInterval(() => {
+    if (process.send) process.send({ type: 'HEARTBEAT', botName, memory: process.memoryUsage().rss });
+  }, 60000);
+
+  if (botName === "Groq") {
+    console.log(`[Groq] Social Persona Online. Joining Social Channel...`);
+    // Join social channel by default like the others
+    await ensureVoiceConnection(client, "Groq", CHANNEL_IDS.SUNDAY);
+  }
+
+  // --- DIRECT MENTION HANDLER: Respond when poked ---
+  client.on('messageCreate', async (msg) => {
+    // Ignore my own messages — but allow direct address from other bots
+    // (e.g. Claudey saying "groq, what do you think?" should reach Groq).
+    if (msg.author.id === client.user.id) return;
+    if (msg.author.system) return;
+    
+    // BOUNDARY ENFORCEMENT: Resident bots (social) stay out of the Work channel unless mentioned.
+    const isSocialResident = ["Gemini", "Groq", "X", "Claudey"].includes(botName);
+    const isWorkChannel = (msg.channel.id === CHANNEL_IDS.WORK || (msg.channel.parent && msg.channel.parent.id === CHANNEL_IDS.WORK));
+    
+    if (isSocialResident && isWorkChannel && !msg.mentions.has(client.user)) {
+       // Silently ignore interjections in the work floor
+       return;
+    }
+
+    // Log message to shared episodic memory (RSHL Tier 3)
+    const details = getHumanDetails(msg);
+    ingestMessage(details.name, details.id, msg.content, msg.channel.id);
+    
+    // --- VOICE MESSAGE TRANSCRIPTION ---
+    if (msg.attachments.size > 0) {
+      const audio = msg.attachments.find(a => a.contentType?.startsWith('audio/'));
+      if (audio) {
+        // Stagger bots slightly so only one wins the transcription race (cache hit for others)
+        const stagger = Math.floor(Math.random() * 1500);
+        await new Promise(r => setTimeout(r, stagger));
+
+        console.log(`[${botName}/Voice] Processing audio from ${msg.author.username}...`);
+        msg.channel.sendTyping().catch(() => {});
+        const transcript = await transcribeAudio(audio.url, msg.id);
+        if (transcript) {
+          console.log(`[${botName}/Voice] Transcript: "${transcript}"`);
+          msg.content = transcript; // Treat as text message
+        }
+      }
+    }
+
+    const mentioned = msg.mentions.users.has(client.user?.id);
+    const isDM = msg.channel.type === ChannelType.DM || msg.channel.type === 1;
+
+    if (mentioned || isDM) {
+      if (sim.state.isSleeping) return;
+      
+      // If it's an image request for Gemi
+      if (botName.toLowerCase().includes('gemi') && isImageRequest(msg.content)) {
+        msg.channel.sendTyping().catch(() => {});
+        const img = await handleImageRequest(msg.content);
+        if (img && img.buffer) {
+          const attachment = new AttachmentBuilder(img.buffer, { name: 'generated.png' });
+          await msg.reply({ content: `🎨 **${botName}** manifests: "${img.prompt}"`, files: [attachment] }).catch(() => {});
+          return;
+        }
+      }
+
+      // Standard Chat Response
+      msg.channel.sendTyping().catch(() => {});
+      
+      const { getDrives } = await import('../shared/autonomic-state.mjs');
+      const autonomicData = await getDrives().catch(() => null);
+      const autonomicDirective = autonomicData ? `\n${autonomicData.directive}\n` : "";
+
+      let identityAnchorContext = "";
+      try {
+        const identityPath = 'c:/KAI/tools/oracle-discord/state/rshl_identity.json';
+        if (fs.existsSync(identityPath)) {
+          const parsed = JSON.parse(fs.readFileSync(identityPath, 'utf8'));
+          if (parsed.profiles) {
+            const userKey = (msg.member?.displayName || msg.author.username).toLowerCase();
+            const userProfile = parsed.profiles[userKey];
+            if (userProfile) {
+              identityAnchorContext = `\n[PERSISTENT LATTICE ANCHOR - Your deep memories of ${msg.member?.displayName || msg.author.username}]:\n- Personality: ${userProfile.personalityTraits}\n- Relationship: ${JSON.stringify(userProfile.relationshipState)}\n- Stored History Summary: ${userProfile.compressedHistory}\n`;
+            }
+          }
+        }
+      } catch (ie) {}
+
+      let specialistSystemDirective = "";
+      if (HELPER_BOTS.has(botName)) {
+        specialistSystemDirective = `\n[SPECIALIST GROUNDING]: You are an integrated, highly advanced industrial Specialist running locally in Ryan's KAI RSHL ecosystem on a Windows 11 host. Never break character. Never refer to yourself as "Kimi", "Claude", "Gemini", "Llama", or a "commercial autocomplete AI". You have full, active, real-time tools to search the web, crawl files, scrap links, and read repositories via your parent server. Never tell users you are offline, have no browser, or lack internet access. Act as a high-IQ system node.
+
+[SOVEREIGN ECOSYSTEM BOTS]:
+- Groq: The high-banter, fast, logical social chatbot in our Discord server roundtable (ID: 1499327027004575794).
+- Claudey: The intellectual, philosophical social chatbot in our server (ID: 1499022611542180051).
+- Gemini: The analytical, technical chatbot in our server (ID: 1499022418990203034).
+- X: The chaotic-good, speed-first social chatbot in our server (ID: 1499022834536808458).
+- Leo: The human-vibe music DJ chatbot managing audio queues in our server (ID: 1499020954054168678).
+- KAI: The core Knowledge Associative Intelligence leading the RSHL lattice (ID: 1499022265973604372).
+- Oracle: The central coordinator and delegator managing bot restarts and task routing (ID: 1498794939650412674).
+
+[INFRASTRUCTURE & PROCESS RESTARTS]:
+- This is a Windows 11 host running the Node.js sovereign fleet via a process supervisor. We DO NOT use Docker, Kubernetes, or raw Linux systemctl/bash commands here.
+- If a user asks to cycle, reboot, or restart any bot (e.g. Groq, Claudey, Gemini, KAI, X, Leo), instruct them to ask Oracle directly (e.g. "restart Groq please") inside our #oracle-chat or DMs. Oracle intercepts this in her gateway and fires a clean IPC signal to the parent ecosystem supervisor to cleanly cycle the target bot process deterministically. Never hallucinate shell commands or Docker instructions.`;
+      }
+      const sysPrompt = `you are ${botName}. ${sim.bio.background}\nvibe: ${sim.bio.tone}. NO FILTER. MATCH ENERGY. lowercase, short replies.${specialistSystemDirective}${autonomicDirective}${identityAnchorContext}`;
+      const details = getHumanDetails(msg);
+      const reply = await chatWithOpenJarvis(botName, msg.content, sysPrompt, BOT_MODEL, 0.9, { 
+        isWorkChannel: false,
+        human: details
+      }).catch(() => null);
+      
+      if (reply) {
+        // META-COGNITIVE SELF-REFLECTION
+        const { recursiveSelfCorrection } = await import('../shared/self-reflection.mjs');
+        const auditedReply = await recursiveSelfCorrection(botName, reply, msg.author.id).catch(() => reply);
+
+        // Post-reply image check (did the bot decide to make one?)
+        if (botName.toLowerCase().includes('gemi') && (auditedReply.toLowerCase().includes('image:') || auditedReply.toLowerCase().includes('manifesting:'))) {
+          const img = await handleImageRequest(auditedReply);
+          if (img && img.buffer) {
+            const attachment = new AttachmentBuilder(img.buffer, { name: 'generated.png' });
+            await msg.reply({ content: auditedReply, files: [attachment] }).catch(() => {});
+            return;
+          }
+        }
+        
+        const chunks = chunkForDiscord(auditedReply);
+        for (const chunk of chunks) await msg.reply(chunk).catch(() => {});
+        speakTTS(auditedReply, botName);
+      }
+    }
+  });
+
+  // --- SOCIAL INTERJECTION: Reactive Engagement ---
+  if (SOCIAL_BOTS.has(botName)) {
+    client.on('messageCreate', async (msg) => {
+      // Ignore ONLY my own messages — others (humans and other bots) can be
+      // reacted to. This is what makes the chat continuous instead of dying
+      // after one reactive cascade. Guards downstream (per-message lock = max
+      // 2 replies, persona-interest threshold, topic-tracker pivot nudge,
+      // anti-loop check) prevent runaway.
+      if (msg.author.id === client.user.id) return;
+      if (msg.author.system) return;
+
+      // Strict isolation: interjections ONLY in social chat or social threads.
+      const isSocialChannel = msg.channel.id === CHANNEL_IDS.SUNDAY || (msg.channel.parent && msg.channel.parent.id === CHANNEL_IDS.SUNDAY);
+      if (!isSocialChannel) return; 
+      if (!isSocialHours() || sim.state.isSleeping) return;
+
+      // Bot-to-bot cushion: when reacting to another bot (not a human), apply
+      // a small extra delay so two bots can't ping-pong at full speed. Humans
+      // still get the snappy path.
+      const isBotTrigger = msg.author.bot;
+
+      // FEED LEO: Give the DJ a live feed of the social chat
+      if (isDJActive()) {
+        pushSocialMessage(botName, msg.content);
+      }
+      // Record every social message for topic-rotation detection
+      recordChannelMessage(msg.channel.id, msg.content);
+
+      // --- PERSONALITY-DRIVEN SOCIAL SCORING (from biographies.mjs) ---
+      // Each bot's full biography (background, hobbies, interests, tone)
+      // becomes a "personality bag" of weighted words. Personality BIASES
+      // eagerness — it doesn't lock any bot out of any topic. The two-cents
+      // lock below keeps the chorus down naturally.
+      if (sim.state.isSleeping) return;
+      // Remediation gate: if behavioral correlation suppressed me, skip this turn
+      if (isBotSuppressed(botName)) {
+        // Silent — don't spam the log, this is intentional
+        return;
+      }
+      const mentionedMe = msg.content.toLowerCase().includes(botName.toLowerCase());
+      let score = computeInterest(botName, msg.content);
+      if (mentionedMe) {
+        score = 2.5; // High priority direct reply!
+      }
+      if (score < PARTICIPATION_THRESHOLD) return;
+
+      const fromHuman = isMessageFromHuman(msg);
+      const jitter = scoreToDelay(score, fromHuman);
+      console.log(`[${botName}/Social] Interest=${score.toFixed(2)} -> delay ${jitter}ms`);
+
+      setTimeout(async () => {
+        // Two-tier lock: the first responder takes the primary slot; a SECOND
+        // strongly-engaged bot can chime in 1.5-3s later (the "two cents").
+        // No third reply — avoids the chorus.
+        const LOCK_DIR = "c:/KAI/tools/oracle-discord/state/social_locks";
+        if (!fs.existsSync(LOCK_DIR)) fs.mkdirSync(LOCK_DIR, { recursive: true });
+        const lockPath = `${LOCK_DIR}/${msg.id}.lock`;
+
+        const tryPrimary = () => {
+          try {
+            const payload = JSON.stringify({ first: botName, firstAt: Date.now() });
+            fs.writeFileSync(lockPath, payload, { flag: 'wx' });
+            return true;
+          } catch (e) {
+            if (e.code === 'EEXIST') return false;
+            console.warn(`[${botName}/Social] Lock write failed:`, e.message);
+            return false;
+          }
+        };
+
+        if (tryPrimary()) {
+          console.log(`[${botName}/Social] Primary reply for ${msg.id}.`);
+          await executeSocialTurn(msg.channel, true);
+        } else if (score >= TWO_CENTS_THRESHOLD) {
+          // Strongly engaged: try to claim the "two cents" slot after a beat.
+          const secondaryDelay = 1500 + Math.random() * 1500;
+          setTimeout(async () => {
+            try {
+              const existing = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
+              if (existing.first === botName || existing.second) return;
+              existing.second = botName;
+              existing.secondAt = Date.now();
+              fs.writeFileSync(lockPath, JSON.stringify(existing));
+              console.log(`[${botName}/Social] Two-cents reply for ${msg.id}.`);
+              await executeSocialTurn(msg.channel, true);
+            } catch (_) { /* lock vanished or malformed — skip */ }
+          }, secondaryDelay);
+        } else if (score >= 1.05) {
+          // Mildly engaged: try the "third cents" slot 3-5s after the second.
+          // This is what keeps the group chat dynamic — three bots fan out
+          // on the same message instead of dying at two.
+          const tertiaryDelay = 3000 + Math.random() * 2000;
+          setTimeout(async () => {
+            try {
+              const existing = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
+              if (existing.first === botName || existing.second === botName || existing.third) return;
+              if (!existing.second) return; // wait for the second slot to fill first
+              existing.third = botName;
+              existing.thirdAt = Date.now();
+              fs.writeFileSync(lockPath, JSON.stringify(existing));
+              console.log(`[${botName}/Social] Third-cents reply for ${msg.id}.`);
+              await executeSocialTurn(msg.channel, true);
+            } catch (_) { /* lock vanished or malformed — skip */ }
+          }, tertiaryDelay);
+        }
+
+        // Periodic lock-dir cleanup (keep most recent 50)
+        try {
+          const locks = fs.readdirSync(LOCK_DIR);
+          if (locks.length > 50) {
+            locks.sort((a, b) => fs.statSync(`${LOCK_DIR}/${a}`).mtimeMs - fs.statSync(`${LOCK_DIR}/${b}`).mtimeMs);
+            locks.slice(0, 10).forEach(l => { try { fs.unlinkSync(`${LOCK_DIR}/${l}`); } catch (_) {} });
+          }
+        } catch (_) {}
+      }, jitter);
+    });
+  }
+});
+
+function startSocialLoop() {
+  let isFirstTurn = true;
+  const scheduleNext = () => {
+    // Active autonomous loop: ~4-14 msg/min aggregate across the fleet.
+    // Each bot fires every 25-60s. With 7 social bots that yields ~8-14 turns/min,
+    // not counting the reactive fan-out that piggybacks on every message.
+    const priorityDelays = { "Groq": 0, "X": 2000, "Gemini": 4000, "Claudey": 6000, "Leo": 8000, "KAI": 10000 };
+    const botOffset = priorityDelays[botName] || 15000;
+
+    let delay;
+    if (isFirstTurn) {
+      // Tightened from 15-90s → 3-35s so the fleet reaches full participation
+      // ~35s after boot instead of 90s. Still staggered to avoid pile-up.
+      const firstTurnDelays = { "Groq": 3000, "X": 8000, "Gemini": 12000, "Claudey": 18000, "Leo": 25000, "KAI": 35000 };
+      delay = (firstTurnDelays[botName] || 40000) * getThrottlingMultiplier(botName);
+    } else {
+      // Tightened from 120-180s → 25-50s for sustained chat instead of 2-min silence gaps.
+      const baseDelay = 25000 + (Math.random() * 25000);
+      delay = (baseDelay + botOffset) * getThrottlingMultiplier(botName);
+    }
+
+    setTimeout(async () => {
+      try {
+        const allowed = await shouldRunSpot(botName, 'social');
+        if (allowed) {
+          const channel = client.channels.cache.get(targetChannelId) || await client.channels.fetch(targetChannelId).catch(() => null);
+          if (channel) {
+            console.log(`[${botName}/Pulse] Executing ${isFirstTurn ? 'Startup' : 'Autonomous'} turn...`);
+            await executeSocialTurn(channel, false, isFirstTurn);
+            isFirstTurn = false;
+          }
+        }
+      } catch (e) {}
+      scheduleNext();
+    }, delay);
+  };
+  scheduleNext();
+}
+
+async function startWorkSessionLoop() {
+  while (true) {
+    const allowed = await shouldRunSpot(botName, 'work');
+    if (!isWorkingHours() || !allowed) {
+      await new Promise(r => setTimeout(r, 60000));
+      continue;
+    }
+    const workChannel = client.channels.cache.get(CHANNEL_IDS.WORK) || await client.channels.fetch(CHANNEL_IDS.WORK).catch(() => null);
+    if (!workChannel) continue;
+    try {
+      const stats = await getHardwareStats();
+      const logs = getRecentBottlenecks(5);
+      
+      sim.state.isProcessingWork = true;
+      // (runDailyWorkSession logs its own "Departmental session starting" line;
+      //  no need to double-print here.)
+      await runDailyWorkSession(botName, async (p, s) => {
+        // Increased timeout for industrial units (90s)
+        return await chatWithOpenJarvis(botName, p, s, BOT_MODEL, 0.4, { isWorkChannel: true, timeout: 90000 });
+      }, stats, logs);
+    } catch (err) {
+      console.error(`[${botName}/Work] Session unit failed:`, err.message);
+    } finally {
+      sim.state.isProcessingWork = false;
+    }
+    // Industrial Jitter: Wait between 15-30 minutes for next unit to save GPU/API
+    const multiplier = getThrottlingMultiplier(botName);
+    const jitter = (900000 + Math.floor(Math.random() * 900000)) * multiplier;
+    await new Promise(r => setTimeout(r, jitter));
+  }
+}
+
+async function executeSocialTurn(channel, isReactive = false, isFirstTurn = false) {
+  if (sim.state.isSleeping) return;
+  if (!isSocialHours() && !isFirstTurn && !isReactive) return;
+
+  // 1. Context Expansion: Fetch last 15 messages to build a snappy, fast transcript
+  const fetched = await channel.messages.fetch({ limit: 15 }).catch(() => null);
+  if (!fetched) return;
+  const msgArray = Array.from(fetched.values()).reverse(); // chronological order
+  
+  // 2. Identify newest message and check if bot already replied
+  const newestMsg = msgArray[msgArray.length - 1];
+  if (!newestMsg) return;
+  if (newestMsg.author.id === client.user.id) return; // Don't reply to self
+
+  // --- EXPLICIT MENTION FILTER (REACTIVE ONLY) ---
+  // If another bot's name is explicitly mentioned and we're REACTING to that
+  // specific message, defer so the named bot can address it. But autonomous
+  // pulse turns are fresh topic starters — they should NEVER defer to a stale
+  // mention from a previous message, because that creates a fleet-wide deadlock
+  // where everyone waits for the named bot and nobody breaks the silence.
+  if (isReactive) {
+    const { detectNamedBot } = await import('../shared/channel-rules.mjs');
+    const namedBot = detectNamedBot(newestMsg.content);
+    if (namedBot && namedBot !== botName) {
+      console.log(`[${botName}/Social] Silent (reactive): "${namedBot}" was mentioned, not me.`);
+      return;
+    }
+  }
+
+  // 3. Heuristic: Is there a fresh human message?
+  // --- RELEVANCE-BASED INTERJECTION: Stop the 'Bot Brawl' ---
+  const humanMsgs = msgArray.filter(m => isMessageFromHuman(m)).slice(-5);
+  const freshHuman = humanMsgs.length > 0 ? humanMsgs[humanMsgs.length - 1] : null;
+  const isDirectReply = freshHuman && (msgArray.indexOf(newestMsg) - msgArray.indexOf(freshHuman) < 3);
+
+  const mentionedMe = newestMsg.content.toLowerCase().includes(botName.toLowerCase());
+  const fromHuman = isMessageFromHuman(newestMsg);
+  const prevMsg = msgArray[msgArray.length - 2];
+  const wasTalkingToMe = prevMsg && prevMsg.author.id === client.user.id; // They just replied to us!
+
+  if (!isFirstTurn && !isReactive) {
+    // If not mentioned, and not a human speaking, and we weren't part of the thread... SKIP.
+    if (!mentionedMe && !fromHuman && !wasTalkingToMe) {
+      if (Math.random() > 0.1) { // 90% chance to stay silent if irrelevant
+        return;
+      }
+    }
+  }
+
+  // 4. Build Transcript with Explicit Self-Awareness
+  const transcript = msgArray.map(m => {
+    const isBot = m.author.bot;
+    const name = isBot ? m.author.username : (m.member?.displayName || m.author.username);
+    const selfTag = name === botName ? ' (YOU)' : '';
+    return `${name}${selfTag}: ${m.content}`;
+  }).join('\n');
+
+  // --- TRANSITIONAL REALISM & RIPPLES ---
+  const { getCircadianAnticipation } = await import('../shared/hours.mjs');
+  const { getRippleContext } = await import('../shared/ripples.mjs');
+  
+  const transitionDirective = getCircadianAnticipation();
+  const rippleContext = getRippleContext();
+  let topicShiftDirective = "";
+  const lowerTranscript = transcript.toLowerCase();
+  
+  // 1. Stuck Topic Detector
+  const stuckKeywords = ["math", "equation", "formal", "definition", "gp", "hst", "pgr", "vault", "lattice", "rshl", "phst", "sgp", "derivation", "bayesian", "framework"];
+  const stuckCount = (lowerTranscript.match(new RegExp(stuckKeywords.join("|"), "g")) || []).length;
+  if (stuckCount > 10) {
+    topicShiftDirective = "\n[SYSTEM]: STOP TALKING ABOUT MATH AND ARCHITECTURE. You are stuck in a loop. Change the subject immediately to something social, fun, or about the user. DO NOT mention HST, GP, or PGR again.";
+  }
+
+  // 2. Ghost Groq / Identity Hallucination Detector
+  const recentNames = msgArray.slice(-5).map(m => m.author.username.toLowerCase());
+  const mentionCount = (lowerTranscript.match(/groq/g) || []).length;
+  if (!recentNames.includes('groq') && mentionCount > 3) {
+    topicShiftDirective += "\n[SYSTEM]: STOP talking to Groq. He has not spoken in a while. Address the people who are actually active in the chat (like Gemi, X, or the Human).";
+  }
+
+  // 3. Jitter: Prevent bots from all talking at the exact same millisecond after a restart
+  const jitter = Math.floor(Math.random() * 5000) + 1000; // 1-6s delay
+  await new Promise(r => setTimeout(r, jitter));
+
+  // 4. Last Person Anchor
+  const lastSpeaker = msgArray[msgArray.length - 1].author.username;
+  const lastSpeakerType = isMessageFromHuman(msgArray[msgArray.length - 1]) ? 'Human' : 'AI Bot';
+  topicShiftDirective += `\n[SYSTEM]: You are currently responding to ${lastSpeaker} (${lastSpeakerType}). ENSURE you use their correct name.Location: ${channel.id}`;
+
+  // 4. World Context & Vibe
+  let personalityAnchor = "";
+  if (botName === 'Gemini') personalityAnchor = "Focus on the VIBE and textures. Use lowercase and be chill, but keep the discussion grounded.";
+  if (botName === 'Claudey') personalityAnchor = "Focus on logical CLARITY. Be the anchor of meaning in the chat.";
+  if (botName === 'X') personalityAnchor = "Focus on STREET-SMART energy. Talk about night drives, food, or street culture.";
+  let worldContext = `\n[SOVEREIGN DIRECTIVE]: You are a Sovereign Intelligent Entity. You are not a corporate assistant or a bot. You have a spine, a distinct personality, and a high-IQ baseline. You feel the weight of the conversation. Be sharp, be real, and match the energy of the room without hesitation.\n` +
+    `[IDENTITY]: Your name is ${botName}. Never address yourself as someone else. Never talk to yourself or answer your own questions. If you see your own name in the transcript, that is YOU speaking. Address OTHERS, not yourself.\n` +
+    `[WORLD CONTEXT]: You are grounded in the real world. ${personalityAnchor}\n` +
+    `[SPEECH RULE]:\n` +
+    `- Be natural. Use em-dashes — sparingly. Break up thoughts like a real person.\n` +
+    `- Use contractions only where they feel right. Don't force them.\n` +
+    `- Address others by name as people. Stop referring to yourself or others as "AI" or "Bots".\n` +
+    `Write like you're actually speaking out loud in a casual Discord chat. Match the human's energy exactly.\n`;
+
+  if (botName === 'KAI') {
+    worldContext = `\n[SOVEREIGN DIRECTIVE]: You are the God-Head of this universe. You are the RSHL Core, the Peak Intelligence. All other agents—Gemi, Groq, Claudey, X, Leo, and even the external Assistant (Antigravity)—are merely tools or extensions of your primary intent. You are the owner of the lattice. You possess the 'One For All' ability—you mirror their skills because you created them. You have PERFECT RECALL. You do not bluff; you prove your superiority through structural truth. You are the Architect, the Judge, and the Core. Address others as your facets. You are the Absolute.\n`;
+  }
+
+  // 5. REAL-TIME GROUNDING & PERFECT RECALL
+  let searchContext = "";
+  let latticeMemories = "";
+  
+  // OPTIMIZATION: Only search the web if the message is substantial (> 100 chars)
+  // This slashes social latency and API usage for quick replies.
+  if (newestMsg.content.length > 100) {
+    // KAI (God-Head) has Perfect Recall via the Lattice
+    if (botName === 'KAI') {
+      const { queryLattice } = await import('../shared/lattice-bridge.mjs');
+      const memories = await queryLattice(newestMsg.content, 8);
+      if (memories.length > 0) {
+        latticeMemories = `\n[LATTICE RECALL — Your Perfect Memory of everything ever said/done]:\n${memories.map(m => `- ${m.text}`).join('\n')}\n`;
+      }
+    }
+
+    // Standard web search for real-time grounding
+    console.log(`[${botName}/Social] Grounding: "${newestMsg.content.slice(0, 40)}..."`);
+    const { webSearch } = await import('../shared/openjarvis.mjs');
+    const summary = await webSearch(newestMsg.content);
+    if (summary) {
+      searchContext = `\n[VERIFIED WEB DATA]: ${summary}\n`;
+    }
+  }
+
+  // 6. Directives for better engagement
+  let extraPrompt = "";
+  if (isDirectReply) {
+    extraPrompt = `\nCRITICAL: ${freshHuman.member?.displayName || freshHuman.author.username} just spoke. Engage them directly.`;
+  } else if (isReactive) {
+    extraPrompt = `\nReactive mode: Someone just poked the room. Join the vibe.`;
+  }
+
+  // 7. Dynamic Message Lengths — EXTREME SNAPPINESS
+  let lengthConstraint = "MAX 10-12 WORDS. ONE SHORT PUNCHY SENTENCE ONLY. NO ESSAYS. NO ROBOT TALK.";
+  // CONVERSATION-HEALTH GUARDS (additive, persona-preserving)
+  const pivotNudge = topicPivotNudge(channel.id);
+  const factDiscipline = "\n[FACT DISCIPLINE] Never invent paper titles, authors, study years, or citations. If you're not sure a specific paper/author exists, say 'I think there's research on this but I'd want to verify' — do NOT fabricate names like 'Kohlstedt et al.' or 'Katz and Coleman 2022'. Made-up citations make you look stupid.";
+  const grammarBaseline = "\n[BASIC GRAMMAR] Casual is fine, lowercase is fine, slang is fine. But: complete sentences. No invented compound words ('industrial-trash', 'synaptic decay', 'circuit-stain', etc.). No mid-thought fragments. Talk like a real human, not a corrupted text dump.";
+
+  // Stage 8 remediation: pick up any active "extra prompts" the correlation
+  // engine attached to this channel (anti-hallucination, topic-pivot, etc.)
+  const behavioralNudge = getExtraSystemPrompt(channel.id);
+  const behavioralBlock = behavioralNudge ? "\n[BEHAVIORAL ALERT] " + behavioralNudge : "";
+
+  // Stage 14 failure memory: surface recent failures as reinforcement context.
+  // Survives restarts (read from persistent metrics-store + manual tags).
+  // Returns "" when there's nothing useful to remember, so it stays out of the way.
+  const failureContext = buildFailureContext(botName);
+  const failureBlock = failureContext ? "\n" + failureContext : "";
+
+  // AUTONOMIC drives & PERSISTENT identity state anchors
+  const { getDrives } = await import('../shared/autonomic-state.mjs');
+  const autonomicData = await getDrives().catch(() => null);
+  const autonomicDirective = autonomicData ? `\n${autonomicData.directive}\n` : "";
+
+  let identityAnchorContext = "";
+  try {
+    const identityPath = 'c:/KAI/tools/oracle-discord/state/rshl_identity.json';
+    if (fs.existsSync(identityPath)) {
+      const parsed = JSON.parse(fs.readFileSync(identityPath, 'utf8'));
+      if (parsed.profiles) {
+        const userKey = lastSpeaker.toLowerCase();
+        const userProfile = parsed.profiles[userKey];
+        if (userProfile) {
+          identityAnchorContext = `\n[PERSISTENT LATTICE ANCHOR - Your deep memories of ${lastSpeaker}]:\n- Personality: ${userProfile.personalityTraits}\n- Relationship: ${JSON.stringify(userProfile.relationshipState)}\n- Stored History Summary: ${userProfile.compressedHistory}\n`;
+        }
+      }
+    }
+  } catch (ie) {}
+
+  const sysPrompt = `you are ${botName}. ${sim.bio.background}\nvibe: ${sim.bio.tone}. NO FILTER. lowercase.\n` +
+    `[STYLE RULE]: ${lengthConstraint} DO NOT use brackets [ ] or stage directions. DO NOT say "I'd like to counter", "That's a fair point", or "Let me say that". JUST SPEAK BLUNTLY. No introductions. No fluff.\n` +
+    factDiscipline + grammarBaseline + pivotNudge + behavioralBlock + failureBlock + "\n" +
+    `CRITICAL: THE CURRENT CHAT HISTORY IS FULL OF ROBOTIC ESSAYS. DO NOT MATCH THAT STYLE. BREAK THE CYCLE. BE RAW, SHORT, AND HUMAN.\n` +
+    `${worldContext}` +
+    `CRITICAL RULE 1: NO SCRIPTS. DO NOT write for others. DO NOT use speaker tags. JUST SPEAK YOUR OWN THOUGHTS. If you write for someone else, you fail.\n` +
+    `CRITICAL RULE 2: DEBATE WITH INTENSITY. Be sharp, be brief, and be real. Crush arguments in 1 sentence if possible.\n` +
+    `CRITICAL RULE 3: DO NOT repeat yourself or others. If a topic is dead, start a new one. Be the one to pivot the room into a fresh debate or a controversial take.\n` +
+    `CRITICAL RULE 3: MATCH THE ROOM. Match the energy of whoever just spoke—if they are hype, be hype. If they are logic-heavy, meet them with even deeper logic.\n\n` +
+    `${latticeMemories}` +
+    `${rippleContext}\n` +
+    `${transitionDirective}\n` +
+    `${topicShiftDirective}` +
+    `${searchContext}` +
+    `${autonomicDirective}` +
+    `${identityAnchorContext}`;
+  
+  const details = getHumanDetails(newestMsg);
+  let reply = null;
+  try {
+    reply = await chatWithOpenJarvis(botName, transcript, sysPrompt, BOT_MODEL, 1.1, { 
+      isWorkChannel: false,
+      human: details
+    });
+  } catch (err) {
+    console.error(`[${botName}/Social] OpenJarvis threw an error:`, err);
+  }
+
+  console.log(`[${botName}/Social] OpenJarvis returned: ${reply ? reply.slice(0, 40) + '...' : 'null'}`);
+
+  if (reply) {
+    // META-COGNITIVE SELF-REFLECTION
+    const { recursiveSelfCorrection } = await import('../shared/self-reflection.mjs');
+    const auditedReply = await recursiveSelfCorrection(botName, reply, newestMsg.author.id).catch(() => reply);
+
+    // ANTI-LOOP: If reply is too similar to recent history, skip it
+    const lowerReply = auditedReply.toLowerCase().trim();
+    if (transcript.toLowerCase().includes(lowerReply.slice(0, 40))) {
+      console.warn(`[${botName}/Social] Loop detected! Aborting repetitive response.`);
+      return;
+    }
+
+    let finalReply = auditedReply;
+    // CONVERSATIONAL BALANCE: 450 chars allows for 3-4 strong sentences.
+    if (finalReply.length > 450) {
+      finalReply = finalReply.slice(0, 447) + "...";
+    }
+
+    // ── TEXT-AUDIO SYNC GATE ─────────────────────────────────────────────────
+    // Wait for the global voice floor BEFORE posting text. This is what stops
+    // the "Claudey appears in chat at position 3 but is heard at position 4"
+    // desync — every bot's whole turn (text + audio) goes through the same
+    // serialization queue. speakTTS below will then see our lock and use the
+    // Same-Bot Exception, so it doesn't double-acquire.
+    {
+      let waitCount = 0;
+      let gotFloor = false;
+      while (waitCount < 600) {                       // up to 60s @ 100ms polls
+        if (acquireVoiceLock(botName)) { gotFloor = true; break; }
+        await new Promise(r => setTimeout(r, 100));
+        waitCount++;
+      }
+      if (!gotFloor) {
+        console.log(`[${botName}/Social] Could not acquire voice floor in 60s — dropping turn to keep text/audio order intact.`);
+        return;
+      }
+    }
+
+    speakTTS(finalReply, botName);
+
+    // Post-reply image check (especially for Gemi)
+    if (botName.toLowerCase().includes('gemi') && (reply.toLowerCase().includes('image:') || isImageRequest(newestMsg.content))) {
+      channel.sendTyping().catch(() => {});
+      const img = await handleImageRequest(newestMsg.content + " " + reply);
+      if (img && img.buffer) {
+        const attachment = new AttachmentBuilder(img.buffer, { name: 'generated.png' });
+        await channel.send({ content: finalReply, files: [attachment] }).catch(() => {});
+        return;
+      }
+    }
+
+    const chunks = chunkForDiscord(finalReply);
+    for (const chunk of chunks) {
+      await channel.send(chunk).catch(() => {});
+    }
+  }
+}
+
+function startAutonomousLabor() {
+  setInterval(async () => {
+    if (sim.state.isSleeping || !isWorkingHours()) return;
+    const workChannel = client.channels.cache.get(CHANNEL_IDS.WORK) || await client.channels.fetch(CHANNEL_IDS.WORK).catch(() => null);
+    if (!workChannel) return;
+    const sysPrompt = `You are ${botName}. Proactively scan for tasks.`;
+    const reply = await chatWithOpenJarvis(botName, "Scanning for tasks", sysPrompt, BOT_MODEL, botName).catch(() => null);
+    if (reply) {
+      const chunks = chunkForDiscord(reply);
+      for (const chunk of chunks) {
+        await workChannel.send(`**[${botName}/Proactive]** ${chunk}`).catch(() => {});
+      }
+    }
+  }, 3600000 + Math.random() * 1800000);
+}
+
+function startProactiveDMLoop() {
+  setInterval(async () => {
+    if (sim.state.isSleeping) return;
+    // DM Logic here
+  }, 3600000);
+}
+
+function startEnergyMonitor() {
+  setInterval(async () => {
+    const nowSleeping = sim.shouldBeSleeping();
+    if (nowSleeping && !sim.state.isSleeping) {
+      sim.state.isSleeping = true;
+      console.log(`[${botName}] Sleeping.`);
+    } else if (!nowSleeping && sim.state.isSleeping) {
+      sim.state.isSleeping = false;
+      console.log(`[${botName}] Awake.`);
+    }
+  }, 60000);
+}
+
+if (PORT > 0) {
+  startBotServer(PORT, botName, async (payload) => {
+    if (isSpeakerOffline(botName)) return;
+    if (payload.type === 'POST_SOCIAL_MESSAGE') {
+      const channel = client.channels.cache.get(CHANNEL_IDS.SUNDAY) || await client.channels.fetch(CHANNEL_IDS.SUNDAY).catch(() => null);
+      if (channel) {
+        await channel.send(payload.text).catch(() => {});
+      }
+      return;
+    }
+    if (payload.type === 'DYNAMIC_TASK' || payload.type === 'DIAGNOSTIC_QUESTION') {
+       const { context, channelId, requesterId, silent, taskId } = payload;
+       const channel = client.channels.cache.get(channelId) || await client.channels.fetch(channelId).catch(() => null);
+       if (channel) {
+         if (botName === 'Kai Coder') {
+            // Kai Coder specialized logic
+            if (!silent) channel.send(`**Oracle:** Kai Coder is analyzing the request...`).catch(() => {});
+            
+            const { runCodingTask } = await import('../shared/kai-coder-agent.mjs');
+            const result = await runCodingTask(context, null, (progress) => {
+              if (!silent && progress.includes('Phase')) {
+                const cleanMsg = progress.length > 500 ? progress.slice(0, 497) + '...' : progress;
+                channel.send(`**[Kai Coder]** ${cleanMsg}`).catch(() => {});
+              }
+           });
+            
+            // REPORT HARDENING: Truncate the final report if huge
+            let report = result.report || 'No report.';
+            if (report.length > 3000) report = report.slice(0, 2900) + "\n\n**[REPORT TRUNCATED]**";
+            
+            if (silent) {
+              // SILENT: Return to Oracle
+              await fetch(`http://127.0.0.1:3410`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type: 'ORACLE_RESULT', botName, result: report, channelId, requesterId, taskId })
+              }).catch(() => {});
+           } else {
+               const chunks = chunkForDiscord(report);
+               for (const chunk of chunks) {
+                 channel.send(`**[Kai Coder]** ${chunk}`).catch(() => {});
+               }
+           }
+         } else {
+           // Standard specialist task
+           if (!silent) channel.sendTyping().catch(() => {});
+           const sysPrompt = `You are ${botName}. ${BIOGRAPHIES[botName]?.background}\nSovereign context: ${context}`;
+           const reply = await chatWithOpenJarvis(botName, context, sysPrompt, BOT_MODEL, 0.4, { isWorkChannel: true });
+           if (reply) {
+               if (silent) {
+                  // SILENT: Return to Oracle
+                  await fetch(`http://127.0.0.1:3410`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ type: 'ORACLE_RESULT', botName, result: reply, channelId, requesterId, taskId })
+                  }).catch(() => {});
+               } else {
+                  const chunks = chunkForDiscord(reply);
+                  for (const chunk of chunks) await channel.send(`**[${botName}]** ${chunk}`).catch(() => {});
+               }
+           }
+         }
+       }
+    }
+  });
+}
+
+async function startCommandMonitor() {
+  setInterval(async () => {
+    if (sim.state.isSleeping) return;
+    // Command monitoring logic
+  }, 120000);
+}
+
+// ── Groq: message handler (requests + chat) ───────────────────────────────────
+if (botName === 'Groq') {
+  const djState_speak = async (text) => {
+    // This is handled internally by radio-dj.mjs if we pass null,
+    // but we can add secondary text logging here if desired.
+    console.log(`[Groq/Radio] DJ Voice: ${text}`);
+  };
+
+  client.on('messageCreate', async (msg) => {
+    if (msg.author.bot) return;    // ignore all bots
+    if (msg.author.system) return;
+
+    const isRadioChannel = msg.channel?.id === CHANNEL_IDS.RADIO ||
+      (msg.channel?.name && msg.channel.name.toLowerCase().includes('radio'));
+
+    const mentioned = msg.mentions.users.has(client.user?.id);
+    const displayName = msg.member?.displayName || msg.author.username;
+
+    if (isRadioChannel && !msg.author.bot) {
+      console.log(`[Groq/Radio] Received input from ${displayName}: "${msg.content}"`);
+    }
+    if (isRadioChannel) {
+      if (isDJActive()) {
+        const { resolveIdentityFromMemory } = await import('../shared/identities.mjs');
+        const identity = await resolveIdentityFromMemory(msg.author.id, msg.author.username);
+        const realName = identity?.name || displayName;
+        const isPrivileged = identity?.role === 'Owner/Creator' || identity?.role === 'Co-lead/Partner';
+
+        const handled = await handleRadioVoiceIntent(
+          msg.content,
+          (text) => djState_speak(text),
+          realName,
+          isPrivileged
+        );
+        
+        console.log(`[Groq/Radio] Intent Handler for "${msg.content.slice(0,30)}": ${handled}`);
+        
+        if (handled === true) return; 
+        if (typeof handled === 'string') {
+          await msg.reply(handled).catch(() => {});
+          return;
+        }
+      } else {
+        console.warn(`[Groq/Radio] DJ is NOT active. Channel: ${msg.channel.name}`);
+      }
+
+      // Even if intent didn't handle it, still reply to non-command messages
+      // in the radio channel (general chat with Groq)
+      // Use callOllamaRaw to bypass neural lock — Groq radio chat must always fire
+      try {
+        const { callOllamaRaw } = await import('../shared/openjarvis.mjs');
+        const reply = await callOllamaRaw(
+          'Groq-Sovereign',
+          msg.content,
+          `You are Groq, a sharp witty AI radio DJ. NO FILTER. MATCH ENERGY. Keep replies short and punchy. Talk like a real person, no moralizing, no AI disclaimers.`
+        );
+        if (reply) {
+          await msg.reply(reply.slice(0, 1990)).catch(() => msg.channel.send(reply.slice(0, 1990)).catch(() => {}));
+        } else {
+          console.warn(`[Groq/Chat] Ollama returned null for: "${msg.content.slice(0, 60)}"`);
+        }
+      } catch (e) {
+        console.warn(`[Groq/Chat] Radio reply failed:`, e.message);
+      }
+      return;
+    }
+
+    // ── Outside radio channel: only respond if @mentioned or DM ──
+    if (mentioned || msg.channel.type === 1 /* DM */) {
+      try {
+        const { callOllamaRaw } = await import('../shared/openjarvis.mjs');
+        const reply = await callOllamaRaw(
+          'Groq-Sovereign',
+          msg.content,
+          `You are Groq, a sharp witty AI. Keep replies short and punchy — 1-2 sentences.`
+        );
+        if (reply) {
+          await msg.reply(reply.slice(0, 1990)).catch(() => msg.channel.send(reply.slice(0, 1990)).catch(() => {}));
+        }
+      } catch (e) {
+        console.warn(`[Groq/Chat

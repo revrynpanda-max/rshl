@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KAI Lattice — Throughput, Efficiency & Accuracy</title>
+<style>
+:root { color-scheme: light; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: #f6f7f9; color: #1c1f23; line-height: 1.5;
+  padding: 24px; max-width: 1080px; margin: 0 auto;
+}
+h1 { font-size: 23px; margin-bottom: 3px; }
+h2 { font-size: 15px; margin: 26px 0 12px; color: #2b2f36; border-bottom: 2px solid #e3e6ea; padding-bottom: 6px; }
+.sub { color: #6b7280; font-size: 13px; margin-bottom: 18px; }
+.panel { background: #fff; border: 1px solid #e3e6ea; border-radius: 10px; padding: 16px; margin-bottom: 14px; }
+.grid { display: flex; gap: 12px; flex-wrap: wrap; }
+.card { flex: 1; min-width: 150px; background: #fff; border: 1px solid #e3e6ea; border-radius: 10px; padding: 13px 15px; }
+.card .big { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
+.card .lbl { font-size: 11px; color: #6b7280; text-transform: uppercase; letter-spacing: .04em; margin-top: 2px; }
+.card .note { font-size: 11px; color: #9097a0; margin-top: 4px; }
+.ok { color: #1a7f37; } .warn { color: #b8860b; } .bad { color: #b42318; } .accent { color: #5b51d8; }
+code { background: #eef0f3; padding: 1px 5px; border-radius: 4px; font-size: 12px; font-family: ui-monospace, Menlo, monospace; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 7px 9px; border-bottom: 1px solid #eceef1; }
+th { font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: #6b7280; }
+tr:last-child td { border-bottom: none; }
+.badge { display:inline-block; font-size:10.5px; font-weight:600; padding:2px 7px; border-radius:20px; }
+.b-ok { background:#e7f4ec; color:#1a7f37; } .b-warn { background:#fbf1d9; color:#97700a; }
+ul { margin: 4px 0 4px 18px; } li { margin: 3px 0; }
+.foot { color: #9097a0; font-size: 11px; margin-top: 22px; text-align: center; }
+.lattice-wrap { display:flex; gap:10px; flex-wrap:wrap; }
+.subl { flex:1; min-width:180px; border-radius:8px; padding:10px 12px; color:#fff; }
+.subl .t { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; }
+.subl .d { font-size:11px; opacity:.85; margin-top:2px; }
+.dot-row { margin-top:7px; line-height:0; }
+.dot { display:inline-block; width:3px; height:3px; margin:1px; border-radius:50%; background:rgba(255,255,255,.55); }
+.dot.on { background:#fff; }
+.barlbl { font-size:11px; color:#3a3f47; }
+</style>
+</head>
+<body>
+
+<h1>KAI Lattice — Throughput, Efficiency &amp; Accuracy</h1>
+<div class="sub">Live benchmark of the RSHL core (<code>RSHL_USB/rshl-core-v3.mjs</code>, mirrored from <code>src/core/sparse_vec.rs</code>). Measured on Node v22, single-threaded, May 14 2026.</div>
+
+<div class="panel">
+<strong>Bottom line:</strong> The lattice is working. Code is healthy — the Rust core compiles clean (verified earlier, 0 warnings), and every JS/HTML file checked is valid. Throughput is solid (~1.14&nbsp;billion dot-ops/sec on one CPU thread). VSA recall is functional — 78–100% recall@K with a positive signal margin at every bundle size. The one real issue: the encoder runs far <em>sparser</em> than its documented 12% spec — see Efficiency below.
+</div>
+
+<h2>The Lattice &amp; Its 4 Sub-Lattices</h2>
+<div class="panel">
+<p style="font-size:13px;margin-bottom:10px;">Every thought is a <strong>16,384-dimensional sparse ternary vector</strong> (each dimension is <code>-1</code>, <code>0</code>, or <code>+1</code>). The lattice is partitioned into <strong>4 sub-lattices of 4,096 dims each</strong> — the <code>Region</code> enum in <code>src/core/regions.rs</code>:</p>
+<div class="lattice-wrap">
+  <div class="subl" style="background:#4f46e5">
+    <div class="t">Left · 0</div><div class="d">4,096 dims — logic, structure, gain-driven</div>
+    <div class="dot-row" id="d0"></div>
+  </div>
+  <div class="subl" style="background:#0891b2">
+    <div class="t">Right · 1</div><div class="d">4,096 dims — associative, salience + temporal</div>
+    <div class="dot-row" id="d1"></div>
+  </div>
+  <div class="subl" style="background:#7c3aed">
+    <div class="t">Bridge · 2</div><div class="d">4,096 dims — cross-hemisphere binding</div>
+    <div class="dot-row" id="d2"></div>
+  </div>
+  <div class="subl" style="background:#0d9488">
+    <div class="t">Global · 3</div><div class="d">4,096 dims — unified awareness</div>
+    <div class="dot-row" id="d3"></div>
+  </div>
+</div>
+<p style="font-size:11.5px;color:#9097a0;margin-top:10px;">Dots above are illustrative — lit dots show roughly the measured active-dimension density of a typical cell (~0.6%).</p>
+</div>
+
+<h2>Op/s &amp; Dots — Limits and Live Throughput</h2>
+<div class="grid">
+  <div class="card"><div class="big">16,384</div><div class="lbl">Dots / vector (DIM)</div><div class="note">Hard limit — one cosine touches all 16,384</div></div>
+  <div class="card"><div class="big">65,536</div><div class="lbl">Max addressable dots</div><div class="note">Sparse index is <code>u16</code> → 4× headroom before u32</div></div>
+  <div class="card"><div class="big accent">69,350</div><div class="lbl">Cosine Op/s</div><div class="note">Single CPU thread · ×6 with the thread pool</div></div>
+  <div class="card"><div class="big accent">1.14 B</div><div class="lbl">Dots / sec</div><div class="note">= Op/s × 16,384 dimensional MACs</div></div>
+</div>
+<div class="grid" style="margin-top:12px;">
+  <div class="card"><div class="big">1,091</div><div class="lbl">Encode Op/s</div><div class="note">text → 16k sparse ternary vector</div></div>
+  <div class="card"><div class="big">2,167</div><div class="lbl">MB / sec data scanned</div><div class="note">vector bytes read during comparison</div></div>
+  <div class="card"><div class="big">O(log N)</div><div class="lbl">Recall complexity</div><div class="note">HNSW graph (<code>hnsw_rs</code>) — no hard cell ceiling</div></div>
+  <div class="card"><div class="big">~23.7 MB</div><div class="lbl">1,515-cell lattice in RAM</div><div class="note">16,384 bytes/cell dense; ~3 B/active sparse</div></div>
+</div>
+<p style="font-size:11.5px;color:#9097a0;margin-top:8px;">These are the portable JS core's numbers on one thread. The Rust engine adds a 6-thread pool and a GPU path (<code>cosine.wgsl</code>: 256 GPU threads × 64 dims each per workgroup), so the production figures are materially higher — that path can't be measured in this Linux sandbox (no GPU).</p>
+
+<h2>Efficiency — Sparsity (the one real issue)</h2>
+<div class="panel">
+<p style="font-size:13px;">The core advertises <strong>12% density (~1,966 active dims)</strong>. Measured reality is much sparser — the encoder places only 24 dims per token and the 12% sparsification floor never engages for normal-length text:</p>
+<table style="margin-top:8px;">
+<tr><th>Text length</th><th>Active dims</th><th>Density</th><th></th></tr>
+<tr><td>1 word</td><td>24</td><td>0.15%</td><td></td></tr>
+<tr><td>3 words (typical short cell)</td><td>72–94</td><td>~0.57%</td><td><span class="badge b-warn">typical</span></td></tr>
+<tr><td>8 words</td><td>192</td><td>1.17%</td><td></td></tr>
+<tr><td>20 words</td><td>480</td><td>2.93%</td><td></td></tr>
+<tr><td>50–120 words</td><td>624 (plateau)</td><td>3.81%</td><td><span class="badge b-warn">ceiling</span></td></tr>
+<tr><td><strong>Documented target</strong></td><td><strong>1,966</strong></td><td><strong>12.0%</strong></td><td><span class="badge b-warn">never reached</span></td></tr>
+</table>
+<p style="font-size:12.5px;margin-top:10px;"><strong>Is this broken?</strong> Not exactly — sparser vectors are <em>faster</em> and recall still works (below). But it has a real cost: superposition capacity. The fix is a core encoding change (raise per-token dims, or make the sparsification floor adaptive) and it would re-encode the whole lattice — an architect decision, not a silent edit. Flagging, not changing.</p>
+</div>
+
+<h2>Accuracy — VSA Recall (bundle K cells, recall each from the full corpus)</h2>
+<div class="panel">
+<svg id="recallChart" viewBox="0 0 640 220" style="width:100%;height:auto;"></svg>
+<table style="margin-top:10px;">
+<tr><th>Bundle size</th><th>Recall@K</th><th>Member cosine</th><th>Non-member cosine</th><th>Signal margin</th></tr>
+<tr><td>2</td><td>100.0%</td><td>0.719</td><td>0.248</td><td class="ok">+0.472</td></tr>
+<tr><td>4</td><td>93.8%</td><td>0.549</td><td>0.225</td><td class="ok">+0.324</td></tr>
+<tr><td>8</td><td>86.5%</td><td>0.413</td><td>0.219</td><td class="ok">+0.195</td></tr>
+<tr><td>16</td><td>78.6%</td><td>0.318</td><td>0.218</td><td class="ok">+0.100</td></tr>
+<tr><td>32</td><td>81.8%</td><td>0.260</td><td>0.197</td><td class="ok">+0.063</td></tr>
+<tr><td>64</td><td>79.7%</td><td>0.211</td><td>0.160</td><td class="warn">+0.051</td></tr>
+</table>
+<p style="font-size:12.5px;margin-top:10px;">Recall stays <strong>78–100%</strong> and the member-vs-non-member margin is positive everywhere — the lattice genuinely discriminates. Margins thin out past bundle size ~16 (that's where the low density costs capacity), and non-member cosine sitting at 0.16–0.25 instead of ~0 is a mild encoder-distribution quirk. Both trace back to the same sparsity gap above.</p>
+</div>
+
+<h2>Code Health</h2>
+<div class="panel">
+<ul>
+<li><strong>Rust core</strong> — <span class="badge b-ok">clean</span> <code>cargo check</code> + <code>cargo build</code> pass with 0 warnings (verified earlier); unchanged since — only HTML/PowerShell/JS were touched after that.</li>
+<li><strong>JS / benchmark files</strong> — <span class="badge b-ok">valid</span> all pass <code>node --check</code>, including the new <code>benchmarks/rshl_lattice_bench.mjs</code>.</li>
+<li><strong>oracle.html &amp; sovereign-start.ps1</strong> — <span class="badge b-ok">clean</span> 0 mojibake, 0 stray bytes after the earlier encoding repairs.</li>
+<li><strong>Caught during this run:</strong> the editor appended ~448 NUL bytes to the new benchmark file on save (a quirk of the mounted Windows drive). Detected via <code>node --check</code>, stripped, re-verified. Worth knowing if other recent saves to <code>C:\KAI</code> look truncated.</li>
+</ul>
+</div>
+
+<div class="foot">Benchmark source: <code>benchmarks/rshl_lattice_bench.mjs</code> · raw JSON: <code>reports/rshl_lattice_bench_result.json</code> · Re-run anytime with <code>node benchmarks/rshl_lattice_bench.mjs</code></div>
+
+<script>
+// illustrative density dots per sub-lattice (~0.6% of a 4096 slice ≈ 24 lit of ~360 shown)
+for (let r = 0; r < 4; r++) {
+  const el = document.getElementById('d' + r);
+  let html = '';
+  for (let i = 0; i < 360; i++) html += '<span class="dot' + (Math.random() < 0.06 ? ' on' : '') + '"></span>';
+  el.innerHTML = html;
+}
+
+// recall chart
+(function () {
+  const data = [
+    { k: 2, recall: 1.000, margin: 0.472 },
+    { k: 4, recall: 0.938, margin: 0.324 },
+    { k: 8, recall: 0.865, margin: 0.195 },
+    { k: 16, recall: 0.786, margin: 0.100 },
+    { k: 32, recall: 0.818, margin: 0.063 },
+    { k: 64, recall: 0.797, margin: 0.051 },
+  ];
+  const W = 640, H = 220, padL = 44, padR = 16, padT = 14, padB = 34;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  let svg = '';
+  // gridlines + y labels (recall %)
+  for (let p = 0; p <= 100; p += 25) {
+    const y = padT + plotH - (p / 100) * plotH;
+    svg += `<line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="#eceef1"/>`;
+    svg += `<text x="${padL - 8}" y="${y + 3}" text-anchor="end" font-size="10" fill="#9097a0">${p}%</text>`;
+  }
+  const n = data.length, slot = plotW / n;
+  // recall bars
+  data.forEach((d, i) => {
+    const bw = slot * 0.46;
+    const x = padL + i * slot + slot / 2 - bw - 2;
+    const h = d.recall * plotH;
+    svg += `<rect x="${x}" y="${padT + plotH - h}" width="${bw}" height="${h}" rx="2" fill="#5b51d8"/>`;
+    svg += `<text x="${x + bw / 2}" y="${padT + plotH - h - 4}" text-anchor="middle" font-size="9.5" fill="#5b51d8" font-weight="700">${Math.round(d.recall * 100)}%</text>`;
+    svg += `<text x="${padL + i * slot + slot / 2}" y="${H - 16}" text-anchor="middle" font-size="10" fill="#3a3f47">bundle ${d.k}</text>`;
+  });
+  // margin bars (scaled: margin 0.5 -> full height)
+  data.forEach((d, i) => {
+    const bw = slot * 0.46;
+    const x = padL + i * slot + slot / 2 + 2;
+    const h = (d.margin / 0.5) * plotH;
+    svg += `<rect x="${x}" y="${padT + plotH - h}" width="${bw}" height="${h}" rx="2" fill="#0d9488"/>`;
+    svg += `<text x="${x + bw / 2}" y="${padT + plotH - h - 4}" text-anchor="middle" font-size="9" fill="#0d9488" font-weight="700">+${d.margin.toFixed(2)}</text>`;
+  });
+  // legend
+  svg += `<rect x="${padL}" y="2" width="9" height="9" fill="#5b51d8"/><text x="${padL + 13}" y="10" font-size="10" fill="#3a3f47">recall@K</text>`;
+  svg += `<rect x="${padL + 78}" y="2" width="9" height="9" fill="#0d9488"/><text x="${padL + 91}" y="10" font-size="10" fill="#3a3f47">signal margin (member − non-member cosine)</text>`;
+  document.getElementById('recallChart').innerHTML = svg;
+})();
+</script>
+</body>
+</html>

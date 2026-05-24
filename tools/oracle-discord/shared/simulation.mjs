@@ -131,12 +131,6 @@ export class AgentSimulation {
       const recovery = Math.min(SLEEP_RESTORE_PER_MIN * elapsedMins, 100 - calculatedEnergy);
       let restoredEnergy = calculatedEnergy + recovery;
       
-      // DEAD-ZONE ENFORCEMENT: If it's 3 AM - 9 AM, energy is locked to 'Sleeping' state
-      const h = estNow.getHours();
-      if (h >= 3 && h < 9) {
-        restoredEnergy = Math.min(90, 5 + (h - 3) * 14);
-      }
-
       startEnergy  = Math.min(100, Math.max(5, restoredEnergy));
       startFocus   = Math.min(100, (saved.focus          ?? 80)  + elapsedMins * 0.05);
       startSocial  = Math.min(100, (saved.social_battery ?? 100) + elapsedMins * 0.10);
@@ -275,18 +269,9 @@ export class AgentSimulation {
     if (this.isKAI) return false;
     if (this.isDismissed) return true;
 
-    // The dead zone (3am–9am EST) is the ABSOLUTE shutdown.
+    // Check if within active work or social hours (supporting late-night activity)
     const inActiveHours = isWorkingHours() || isSocialHours();
     if (!inActiveHours) return true;
-
-    // PRE-EMPTIVE WIND-DOWN: If it's near 3 AM and energy is low, start sleeping.
-    const now = new Date();
-    const estNow = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
-    const h = estNow.getHours();
-    const m = estNow.getMinutes();
-
-    // If it's between 2:00 AM and 3:00 AM, and energy is < 15%, go to sleep early.
-    if (h === 2 && this.state.energy < 15) return true;
 
     // DYNAMIC BEDTIME: If energy is critically low (<5%), force sleep.
     if (this.state.energy < SLEEP_ENERGY_THRESHOLD) return true;
@@ -467,7 +452,7 @@ ${this.dailyEvent}
 [CONTEXT: DYNAMIC BIOLOGY]
 - GROGGYNESS: ${Math.round(this.groggyLevel * 100)}%. (If > 50%, you feel slow, your tempo is low, and your mind is clouded. You're too tired for complex slang or long sentences. You start to ramble or get repetitive.)
 - EXCITEMENT: ${Math.round(this.excitementBuffer)}%. (Adrenaline bump from interaction. Briefly clears the fog.)
-- BEDTIME PLANNING: You feel a natural urge to sleep before 3 AM. If energy < 30%, you start looking for an excuse to sign off and rest. You are programmed to be OFFLINE by 3 AM for KAI's consolidation.
+- BEDTIME PLANNING: You can stay awake all night to chat and debate. Only if your energy drops below 5% do you feel a brief, natural urge to take a quick nap to recharge.
 
 [CONTEXT: EMOTIONAL LAYERS]
 - PRIMARY (Visceral): ${Object.entries(this.state.emotions)

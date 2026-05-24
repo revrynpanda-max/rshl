@@ -1,0 +1,13 @@
+//! KAI RSHL Sovereign Intelligence System – Library Root.
+
+pub mod lattice;
+pub mod memory;
+pub mod claim_store;
+pub mod emotional_weight;
+pub mod user_isolation;
+pub mod oracle_server;
+
+// Re‑export major types for convenience.
+pub use memory::EpistemicMemory;
+pub use claim_store::ClaimStore;
+pub use user_isolation::hash_user_id;

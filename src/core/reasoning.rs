@@ -191,7 +191,7 @@ impl Reasoner {
                 phi_g,
                 resonance_score: *best_score,
                 matched_text: best_cell.label.clone(),
-                matched_region: best_cell.region.clone(),
+                matched_region: best_cell.region.to_string(),
             });
 
             // ── Step 4: Check if Φg peaked — stop if converged ───────
@@ -361,7 +361,7 @@ impl Reasoner {
                 } else {
                     format!(" (Sources: {})", sources.join(", "))
                 };
-                return (format!("{}{}", cell.label, annotation), cell.region.clone());
+                return (format!("{}{}", cell.label, annotation), cell.region.to_string());
             }
         }
 

@@ -4,6 +4,7 @@
  */
 
 import fs from 'fs';
+import { recordMetric } from './metrics-store.mjs';
 import { resetAllFailureStates } from './failure-tracker.mjs';
 
 const LOG_FILE = "c:/KAI/tools/oracle-discord/logs/audit.json";
@@ -49,6 +50,7 @@ export function isQuarantined(botName) {
 }
 
 export async function triggerEmergencyFix(reason) {
+  recordMetric('sentinel', 'emergency_fix_triggered', 1, { reason: String(reason).slice(0, 80) });
   console.warn(`⚠️ [Sentinel] EMERGENCY TRIGGER: ${reason}. Halting Pipelines...`);
   isHalted = true;
   
@@ -62,6 +64,12 @@ export async function triggerEmergencyFix(reason) {
     // 2. RESET FAILURE TRACKER
     resetAllFailureStates();
     console.log(`[Sentinel] API Failure States reset.`);
+    
+    // 3. PURGE AUDIT LOGS (Prevents endless looping on old errors)
+    if (fs.existsSync(LOG_FILE)) {
+      fs.writeFileSync(LOG_FILE, '');
+      console.log(`[Sentinel] Audit logs purged to break panic loop.`);
+    }
     
     // 3. WAIT FOR SYSTEM CALM
     await new Promise(r => setTimeout(r, 5000));

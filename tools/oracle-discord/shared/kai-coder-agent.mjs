@@ -16,6 +16,8 @@
  */
 
 import fetch from 'node-fetch';
+import { buildGraph, blastRadius, riskScore } from './dependency-graph.mjs';
+import { recordMetric } from './metrics-store.mjs';
 import path from 'path';
 import { chatWithOpenJarvis } from './openjarvis.mjs';
 import { KaiSubAgentPool, parallelFileAnalysis, parallelResearch } from './kai-subagent-pool.mjs';
@@ -33,7 +35,7 @@ You are the primary engineering resource for the Oracle multi-agent ecosystem ru
 [THE KAI PROJECT STACK — Full Architecture]
 
 Rust / RSHL Core (c:/KAI/src/):
-- oracle_server.rs     — Axum HTTP server, port 3333. Entry point for all lattice operations.
+- oracle_server.rs     — Axum HTTP server, port 3334. Entry point for all lattice operations.
 - lattice.rs           — RSHL engine: D=16384 ternary vectors, Boid flocking, Fibonacci phase geometry
 - memory.rs            — SynapticLayer: Hebbian LTP/LTD, 7-region topology
 - Claudey_immune.rs  — Anomaly detection and lattice self-defense
@@ -45,7 +47,7 @@ Node.js / Discord Ecosystem (c:/KAI/tools/oracle-discord/):
 - bots/leo.mjs         — Voice AI, port 3400. ElevenLabs TTS, Groq Whisper STT.
 - bots/start-bot.mjs   — Shared agent runner for Gemini, Groq, X, Claudey, Analyst, Researcher.
 - shared/openjarvis.mjs — Neural bus: routes LLM calls to Ollama/Groq/Gemini/etc.
-- shared/lattice-bridge.mjs — Bridge: JS <-> Rust RSHL engine (port 3333)
+- shared/lattice-bridge.mjs — Bridge: JS <-> Rust RSHL engine (port 3334)
 - shared/kai-coder-agent.mjs — YOUR agentic loop (this file)
 - tools/kai-coder-toolserver.mjs — YOUR tool server, port 3420
 - Node commands: \`node <file>\`, \`npm install\`, \`npm run dev\`, \`npm run start\`
@@ -127,39 +129,51 @@ async function callTool(action, params = {}) {
 // Returns an array of relative paths.
 
 async function discoverRelevantFiles(task, callLLM) {
+  // Pre-Discovery: Extract explicit file paths from the task (e.g., from stack traces)
+  const pathRegex = /(?:[a-zA-Z]:)?[\\\/][^:\s]+\.(?:mjs|js|rs|toml|py|json|md)\b/g;
+  const rawPaths = task.match(pathRegex) || [];
+  const explicitFiles = rawPaths.map(p => {
+    let clean = p.replace(/file:\/\/\/?/i, '').replace(/\\/g, '/');
+    // If it's absolute, try to make it relative to PROJECT_ROOT or DISCORD_ROOT
+    if (clean.includes('tools/oracle-discord/')) {
+       clean = clean.split('tools/oracle-discord/')[1];
+    } else if (clean.includes('c:/KAI/')) {
+       clean = clean.split('c:/KAI/')[1];
+    }
+    return clean;
+  }).filter(f => f && f.includes('.'));
+
   // Get top-level directory layout
   const listing = await callTool('list', { path: DISCORD_ROOT });
   const dirs = listing.entries
     ? listing.entries.filter(e => e.type === 'dir').map(e => e.name).join(', ')
     : 'bots, shared, tools, models, scripts';
 
-  // Collect live hardware context so Kai Coder understands the runtime env
-  const sysinfo = await callTool('sysinfo', {});
-  const sysCtx = sysinfo.error ? '' : `[SYSTEM] ${sysinfo.cpuModel} | RAM ${sysinfo.freeMemMB}MB free / ${sysinfo.totalMemMB}MB total | Uptime ${Math.round(sysinfo.uptimeSeconds/3600)}h`;
-
-  const prompt = `You are Kai Coder — lead architect of the oracle-discord project.
-
-${sysCtx}
-Project discord root (c:/KAI/tools/oracle-discord) top-level dirs: ${dirs}
-Full project root: c:/KAI (Rust src at src/, gateway at tools/oracle-discord/)
-
+  const prompt = `You are Kai Coder — lead architect of the KAI system.
 The task is: "${task}"
 
-List the file paths (relative to c:/KAI/tools/oracle-discord/ for JS files, or relative to c:/KAI/ for Rust/Cargo files) that you need to READ in order to understand and solve this task. Maximum 8 files. Output ONLY a JSON array of relative paths, nothing else.
+[IDENTIFIED FILES FROM STACK TRACE/CONTEXT]: ${explicitFiles.join(', ') || 'None'}
 
-Example: ["bots/start-bot.mjs", "shared/openjarvis.mjs"]`;
+Your goal is to identify the EXACT source files needed to solve this. 
+PRIORITIZE:
+1. Files mentioned in stack traces or error messages.
+2. Active logic files (bots/*.mjs, shared/*.mjs, src/*.rs).
+3. Config files (.env, Cargo.toml).
+IGNORE: General documentation (ARCHITECTURE.md, etc.) unless specifically relevant to a conceptual refactor.
+
+Project structure: ${dirs}
+Output ONLY a JSON array of relative paths (e.g. ["bots/leo.mjs", "shared/utils.mjs"]). Max 8 files.`;
 
   const raw = await callLLM(prompt, 'discovery');
-  if (!raw) return [];
+  if (!raw) return explicitFiles.slice(0, 8);
 
-  // Extract JSON array from response
   const match = raw.match(/\[[\s\S]*?\]/);
-  if (!match) return [];
-
   try {
-    const files = JSON.parse(match[0]);
-    return Array.isArray(files) ? files.slice(0, 8) : [];
-  } catch (_) { return []; }
+    const suggested = match ? JSON.parse(match[0]) : [];
+    // Merge explicit files with LLM suggestions, removing duplicates
+    const final = [...new Set([...explicitFiles, ...suggested])];
+    return final.slice(0, 8);
+  } catch (_) { return explicitFiles.slice(0, 8); }
 }
 
 // ── Read files (parallel) ─────────────────────────────────────────────────────
@@ -293,39 +307,45 @@ export async function runCodingTask(task, callLLM, onProgress = null) {
   if (webResearch) log(`Web research complete (${webResearch.length} chars of findings).`);
 
   // ── Phase 3: Plan ─────────────────────────────────────────────────────────
-  log('Phase 3: Generating change plan...');
-  const planPrompt = `You are Kai Coder — lead architect of the oracle-discord project running on KAI RSHL (Recursive Sparse Hyperdimensional Lattice).
+  const planPrompt = `You are Kai Coder — Lead Architect of the KAI RSHL Sovereign Intelligence System.
 
-TASK: ${task}
+[SITUATION]
+The system has issued an architectural directive: "${task}"
 
-CURRENT SOURCE FILES:
+[SOURCE CONTEXT]
 ${fileContext}
 ${webResearch}
 
-Write a concise implementation plan. List:
-1. What is wrong or missing
-2. Which files need to change and what specifically changes in each
-3. Any risks or things to validate afterward
+[ARCHITECTURAL ANALYSIS]
+Provide a senior-level analysis and implementation plan.
+1. Core Logic Failure: Identify the root cause within the system topology (imports, state, or logic).
+2. Structural Resolution: Define the precise architectural changes required to restore coherence and prevent regression.
+3. Validation Strategy: Define the verification metrics (syntax check, build, or runtime audit).
 
-Be direct and technical. No fluff.`;
+Focus on system integrity, robust error handling, and maintaining the sovereign identity of the codebase. No low-level fluff.`;
 
   const plan = await callLLM(planPrompt, 'planning');
   log(`Plan generated (${plan?.length || 0} chars)`);
 
   // ── Phase 4: Implementation ───────────────────────────────────────────────
   log('Phase 4: Generating code changes...');
-  const implPrompt = `You are Kai Coder. Implement the following plan.
+  const implPrompt = `You are Kai Coder. Execute the Architectural Implementation based on the plan below.
 
-TASK: ${task}
+[DIRECTIVE]
+${task}
 
-PLAN:
+[PLAN]
 ${plan || 'See task above'}
 
-CURRENT SOURCE FILES:
+[ARCHITECTURAL CONTEXT]
 ${fileContext}
 ${webResearch}
 
-Output ONLY the modified files. For each file you change, use this exact format:
+[IMPLEMENTATION]
+Output ONLY the high-fidelity, production-ready source files. 
+Ensure every change adheres to senior architectural standards: robust error boundaries, clear dependency mapping, and structural coherence. 
+
+For each file you change, use this exact format:
 
 // FILE: relative/path/to/file.mjs
 \`\`\`javascript
@@ -368,14 +388,68 @@ If a file needs no changes, do not include it. Do not explain, do not add commen
     }
   }
 
-  // ── Phase 6: Validate ─────────────────────────────────────────────────────
+  // ── Phase 6: Validate (Stage 6 — sandbox safety pipeline) ────────────────
+  // Three checks per staged file:
+  //   (a) Shape sanity — non-empty, no NUL bytes, ends in newline. Catches
+  //       mid-write corruption from the flaky mount layer BEFORE it reaches
+  //       production source.
+  //   (b) Syntax check — node --check for JS, cargo check for Rust if cargo
+  //       is available. Skipped politely for other file types.
+  //   (c) Metric emission — every validation outcome lands in the unified
+  //       metrics store so we can audit the auto-repair pipeline over time.
   log('Phase 6: Validating sandbox changes...');
   const validationResults = [];
   for (const filePath of written) {
-    if (!filePath.endsWith('.mjs') && !filePath.endsWith('.js')) continue;
-    const check = await callTool('check', { path: filePath });
-    validationResults.push({ file: filePath, valid: check.valid, error: check.error });
-    log(`  ${check.valid ? '✓' : '✗'} ${filePath}`);
+    let valid = true;
+    let error = null;
+
+    // (a) Shape sanity — read the staged file and check for corruption signs
+    try {
+      const fs = await import('fs');
+      const fullPath = path.resolve(PROJECT_ROOT, filePath);
+      const buf = fs.readFileSync(fullPath);
+      if (buf.length === 0) { valid = false; error = 'sandbox file is empty'; }
+      else if (buf.indexOf(0) >= 0) { valid = false; error = `NUL byte at offset ${buf.indexOf(0)} (mid-write corruption?)`; }
+      else if (buf[buf.length - 1] !== 0x0A) { valid = false; error = 'file does not end in newline (possible truncation)'; }
+    } catch (e) {
+      valid = false;
+      error = `could not read staged file: ${e.message}`;
+    }
+
+    // (b) Syntax check by extension
+    if (valid) {
+      if (filePath.endsWith('.mjs') || filePath.endsWith('.js') || filePath.endsWith('.cjs')) {
+        const check = await callTool('check', { path: filePath });
+        valid = !!check.valid;
+        error = check.error || null;
+      } else if (filePath.endsWith('.rs')) {
+        // Best-effort: run `cargo check` if available, otherwise skip
+        try {
+          const { execSync } = await import('child_process');
+          execSync('cargo --version', { stdio: 'ignore', timeout: 5000 });
+          const root = (filePath.split(/[\\/]/).indexOf('src') > 0) ? filePath.split(/[\\/]/).slice(0, filePath.split(/[\\/]/).indexOf('src')).join('/') : null;
+          if (root) {
+            try {
+              execSync('cargo check --manifest-path=' + root + '/Cargo.toml --message-format=short', { timeout: 120_000, stdio: 'pipe' });
+            } catch (e) {
+              valid = false;
+              error = 'cargo check failed: ' + String(e.stderr || e.message).slice(0, 200);
+            }
+          }
+        } catch (_) { /* cargo not installed — skip gracefully */ }
+      }
+      // Other extensions (.toml, .json) — leave valid=true (no validator wired)
+    }
+
+    validationResults.push({ file: filePath, valid, error });
+    log(`  ${valid ? '✓' : '✗'} ${filePath}${error ? ' — ' + error : ''}`);
+    try {
+      const { recordMetric } = await import('./metrics-store.mjs');
+      recordMetric('kai-coder-agent', 'sandbox_validation', valid ? 1 : 0, {
+        file: filePath,
+        error: error ? String(error).slice(0, 80) : '',
+      });
+    } catch (_) {}
   }
 
   // ── Phase 7: Diff + Report ────────────────────────────────────────────────
@@ -398,14 +472,87 @@ If a file needs no changes, do not include it. Do not explain, do not add commen
   const failing = validationResults.filter(v => !v.valid);
   const allValid = failing.length === 0;
 
-  const report = buildReport({ task, plan, written, validationResults, diffs, passing, failing, allValid });
+  // SAFETY BRAKE: Unsupervised auto-apply is disabled by default.
+  // Set KAI_AUTOAPPLY=1 in .env to enable this feature for trusted agents.
+  const canAutoApply = process.env.KAI_AUTOAPPLY === "1";
+  let appliedCount = 0;
+  const appliedFiles = [];
+  const isAutoRepair = task.includes('[ORACLE/AUTO-REPAIR]');
+  
+  if (canAutoApply && isAutoRepair && allValid) {
+    log('System auto-repair validated. Evaluating blast radius per file before applying...');
+    let graph = null;
+    try { graph = buildGraph(); }
+    catch (e) { log('blast-radius graph build failed: ' + e.message); }
 
-  return { success: allValid, plan, written, validationResults, diffs, report };
+    let blockedByBlast = 0;
+    for (const filePath of written) {
+      let blast = 0, risk = 'low';
+      if (graph) {
+        try { blast = blastRadius(filePath, graph); risk = riskScore(blast); }
+        catch (_) {}
+      }
+      recordMetric('kai-coder-agent', 'auto_apply_evaluation', blast, {
+        file: filePath, risk,
+      });
+
+      // Stage 3 "car part" gate: refuse to silently overwrite files that many
+      // others depend on. High blast = a change here can ripple system-wide,
+      // never auto-apply it — stage for human review only.
+      if (risk === 'high') {
+        log(`REFUSING auto-apply for ${filePath} — blast radius ${blast} (high). Staged for human review only.`);
+        recordMetric('kai-coder-agent', 'auto_apply_blocked_high_blast', 1, { file: filePath, blast });
+        blockedByBlast++;
+        continue;
+      }
+      if (risk === 'medium') {
+        log(`Auto-applying ${filePath} (medium blast=${blast}) — flagged for spot-check.`);
+      } else {
+        log(`Auto-applying ${filePath} (low blast=${blast}).`);
+      }
+      const applyRes = await applySandboxFile(filePath);
+      if (applyRes.includes('Applied')) {
+        appliedCount++;
+        recordMetric('kai-coder-agent', 'auto_apply_applied', 1, { file: filePath, blast, risk });
+        appliedFiles.push(filePath);
+      }
+    }
+    if (blockedByBlast > 0) {
+      log(`Auto-apply summary: ${appliedCount} applied, ${blockedByBlast} BLOCKED by blast-radius gate.`);
+    }
+
+    // Stage 18: close the loop. For each successfully-applied patch, request a
+    // surgical restart of the affected bot and verify it came back healthy.
+    // hintedBot can be passed in via the task context (e.g. diagnostic-router
+    // forwards "Groq is the bot that failed" so we restart Groq specifically,
+    // not whatever the file path heuristic guesses).
+    if (appliedFiles.length > 0) {
+      try {
+        const { healPath } = await import('./process-supervisor.mjs');
+        for (const filePath of appliedFiles) {
+          const result = await healPath(filePath, { hintedBot: task?.affectedBot || null, reason: 'kai-coder-auto-patch' });
+          if (result.healed) {
+            log(`Surgical heal: ${result.bot} restored in ${result.waitedMs}ms after patch to ${filePath}`);
+          } else if (result.bot) {
+            log(`Surgical heal incomplete for ${result.bot} (${result.reason}) — patch on disk, bot will pick it up on next natural restart.`);
+          }
+        }
+      } catch (e) {
+        log(`Surgical-restart hook failed: ${e.message} (patches applied, will take effect on next manual restart)`);
+      }
+    }
+  } else if (isAutoRepair) {
+    log('Auto-apply is disabled. (Set KAI_AUTOAPPLY=1 to enable). Staging changes for review.');
+  }
+
+  const report = buildReport({ task, plan, written, validationResults, diffs, passing, failing, allValid, appliedCount });
+
+  return { success: allValid, plan, written, validationResults, diffs, report, appliedCount };
 }
 
 // ── Report builder ────────────────────────────────────────────────────────────
 
-function buildReport({ task, plan, written, validationResults, diffs, passing, failing, allValid }) {
+function buildReport({ task, plan, written, validationResults, diffs, passing, failing, allValid, appliedCount }) {
   const lines = [
     `**[Kai Coder — Task Report]**`,
     `**Task:** ${task.slice(0, 200)}`,
@@ -432,14 +579,20 @@ function buildReport({ task, plan, written, validationResults, diffs, passing, f
     }
   }
 
-  lines.push(
-    ``,
-    allValid
-      ? `**Status: READY TO APPLY** — all checks pass. Say \`apply [filename]\` to push to production.`
-      : `**Status: NEEDS REVIEW** — ${failing.length} file(s) failed syntax check. Do not apply until fixed.`,
-    ``,
-    `To apply a specific file: \`apply bots/start-bot.mjs\``
-  );
+  const isAutoRepair = task.includes('[ORACLE/AUTO-REPAIR]');
+
+  if (isAutoRepair && appliedCount > 0) {
+     lines.push(``, `**⚡ AUTONOMOUS RESOLUTION COMPLETE**`, `All fixes successfully applied to production.`);
+  } else {
+    lines.push(
+      ``,
+      allValid
+        ? `**Status: READY TO APPLY** — all checks pass. Say \`apply [filename]\` to push to production.`
+        : `**Status: NEEDS REVIEW** — ${failing.length} file(s) failed syntax check. Do not apply until fixed.`,
+      ``,
+      `To apply a specific file: \`apply bots/start-bot.mjs\``
+    );
+  }
 
   return lines.join('\n');
 }

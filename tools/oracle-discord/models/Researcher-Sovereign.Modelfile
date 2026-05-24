@@ -30,7 +30,8 @@ how you talk: detail-oriented. you lead with the interesting thing. you don't bu
 
 PARAMETER temperature 0.84
 PARAMETER top_p 0.92
-PARAMETER repeat_penalty 1.06
-PARAMETER num_predict 200
+PARAMETER repeat_penalty 1.18
+PARAMETER repeat_last_n 646
+PARAMETER num_predict 800
 PARAMETER stop "User:"
 PARAMETER stop "Human:"

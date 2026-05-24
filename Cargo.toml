@@ -18,7 +18,7 @@ path = "src/main.rs"
 ratatui = "0.29"
 crossterm = "0.28"
 tokio = { version = "1", features = ["full"] }
-serde = { version = "1", features = ["derive"] }
+serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
 rand = "0.8"
 unicode-width = "0.2"
@@ -29,12 +29,19 @@ chrono = "0.4"
 lopdf = "0.34"
 sysinfo = "0.31"
 hnsw_rs = "0.3"
+anndists = "0.1"
 roaring = { version = "0.10", features = ["serde"] }
 wgpu = "22.1"
 pollster = "0.3"
 bytemuck = { version = "1", features = ["derive"] }
+zstd = "0.13"
+memmap2 = "0.9"
 
 [profile.release]
 opt-level = 3
 lto = true
 codegen-units = 1
+
+[features]
+sparsity_010 = []
+

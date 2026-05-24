@@ -108,8 +108,8 @@ impl Embeddings {
                     let weight = (**count as f32).sqrt(); // sqrt to prevent dominant neighbors
                     let neighbor_hash = SparseVec::encode(neighbor);
 
-                    for d in 0..DIM {
-                        context[d] += (neighbor_hash.data[d] as f32 * weight) as i32;
+                    for (d, val) in neighbor_hash.iter() {
+                        context[d] += (val as f32 * weight) as i32;
                     }
                     total_weight += weight;
                 }
@@ -174,9 +174,10 @@ impl Embeddings {
         let hash_weight = 1.0 - alpha;
         let learn_weight = alpha / learned_tokens.len() as f32;
 
+        let hash_dense = hash_vec.to_dense();
         let mut blended = vec![0i8; DIM];
         for d in 0..DIM {
-            let h = hash_vec.data[d] as f32 * hash_weight;
+            let h = hash_dense[d] as f32 * hash_weight;
             let l = learned_sum[d] as f32 * learn_weight;
             let combined = h + l;
 

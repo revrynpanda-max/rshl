@@ -69,6 +69,11 @@ export function parseRadioIntent(text) {
     return { intent: 'stop' };
   }
 
+  // Social chat summary
+  if (/\b(what's going on in (the )?chat|what are (they|the bots) talking about|social summary|vibe in the social chat)\b/.test(t)) {
+    return { intent: 'social_summary' };
+  }
+
   // Now playing
   if (/\b(what('?s| is) (playing|this( song)?)|what song (is this|are you playing)|now playing)\b/.test(t)) {
     return { intent: 'nowplaying' };
@@ -161,6 +166,19 @@ export function parseRadioIntent(text) {
     return { intent: 'request', song: text.trim().replace(/[.!?]+$/, '') };
   }
 
+  // LIST / ALBUM / SIMILAR
+  if (/\b(album\s*list|list\s*albums?|show\s*albums?)\b/i.test(t)) {
+    const artistMatch = t.match(/(?:for|by|from|of)\s+(.+?)(?:\s|$)/i);
+    return { intent: 'list_albums', artist: artistMatch?.[1]?.trim() || djState.currentSong?.artist || '' };
+  }
+  if (/\b(list\s*songs?|song\s*list|show\s*songs?)\b/i.test(t)) {
+    const artistMatch = t.match(/(?:for|by|from|of)\s+(.+?)(?:\s|$)/i);
+    return { intent: 'list_artist_songs', artist: artistMatch?.[1]?.trim() || djState.currentSong?.artist || '' };
+  }
+  if (/\b(list|similar|show\s*more|what's\s*next|recommendations)\b/i.test(t)) {
+    return { intent: 'list_similar' };
+  }
+
   // Suggestions / Recommendations
   if (/\b(suggest|recommend|what should i play|give me some (ideas|choices|options)|what's good|top 5)\b/.test(t)) {
     const artistMatch = t.match(/(?:from|by|of)\s+(.+?)(?:\s|$)/);
@@ -170,8 +188,22 @@ export function parseRadioIntent(text) {
   return null;
 }
 
+/** 
+ * Unified Vocal + Text Acknowledgment 
+ */
+async function _djAcknowledge(text, speakFn = null) {
+  // 1. Vocal feedback (ElevenLabs)
+  const talk = speakFn || _djSpeak;
+  await talk(text);
+  
+  // 2. Text feedback (Discord Channel)
+  if (djState.textChannel) {
+    djState.textChannel.send(`🎙️ **DJ**: ${text}`).catch(() => {});
+  }
+}
+
 /**
- * Handle a radio intent extracted from voice or text.
+ * Handle high-level radio voice intents parsed by the LLM.
  * @param {string} text  — raw transcript
  * @param {Function} speakFn — Leo's TTS function
  * @param {string} requestedBy — username
@@ -180,23 +212,21 @@ export function parseRadioIntent(text) {
  */
 export async function handleRadioVoiceIntent(text, speakFn, requestedBy = 'someone', isOwner = false) {
   // We removed if (!djState.active) return false; here so Groq can accept requests while offline
+  const safeSpeak = speakFn || _djSpeak;
 
   const intent = parseRadioIntent(text);
   if (!intent) return false;
 
   switch (intent.intent) {
     case 'request': {
-      const parts = intent.song.split(/\s*-\s*/);
+      // Use a stricter split that requires spaces around the dash to avoid breaking hyphenated names
+      const parts = intent.song.split(/\s+-\s+/);
       const title  = parts[0].trim();
       const artist = parts[1]?.trim() || '';
-      const result = await addRequest(title, artist, requestedBy);
-      const confirmations = [
-        `got it, ${title} is ${result === 'pooled' ? 'in the vote pool' : 'queued'}.`,
-        `${title} — added.`,
-        `alright, ${title} is ${result === 'pooled' ? 'going to the poll' : 'in the queue'}.`,
-        `${title} queued up.`,
-      ];
-      await speakFn(confirmations[Math.floor(Math.random() * confirmations.length)]);
+      const result = await addRequest(title, artist, requestedBy, isOwner);
+      
+      const conf = `got it, ${title} is ${result === 'pooled' ? 'in the vote pool' : 'queued'}.`;
+      await _djAcknowledge(conf, safeSpeak);
       return true;
     }
     case 'artist_shuffle': {
@@ -205,23 +235,31 @@ export async function handleRadioVoiceIntent(text, speakFn, requestedBy = 'someo
       const searchQ = `${artist} ${mood || 'popular'} song audio`;
       const meta = await resolveSongMeta(searchQ);
       if (!meta) {
-        await speakFn(`i couldn't find a good match for ${artist}.`);
+        await safeSpeak(`i couldn't find a good match for ${artist}.`);
         return true;
       }
       // Use the resolved title but always credit the requested artist
       const resolvedTitle = meta.title
         .replace(/\s*[\[(](?:official|audio|video|lyrics?|hd|4k)[^)\]]*[)\]]\s*/gi, '')
         .trim();
-      const result = await addRequest(resolvedTitle, artist, requestedBy);
-      await speakFn(`got it — queuing ${resolvedTitle} by ${artist} for ${requestedBy}.`);
+      const result = await addRequest(resolvedTitle, artist, requestedBy, isOwner);
+      await _djAcknowledge(`got it — queuing ${resolvedTitle} by ${artist} for ${requestedBy}.`, safeSpeak);
       return true;
     }
     case 'skip': {
       if (!isOwner) {
-        await speakFn(`only ryan or taz can skip.`);
+        await safeSpeak(`only ryan or taz can skip.`);
         return true;
       }
-      await speakFn(`skipping.`);
+      
+      const now = Date.now();
+      if (now - djState.lastSkipTime < 8000) {
+        console.log(`[Radio] Skip throttled (rapid fire protection)`);
+        return true; 
+      }
+      djState.lastSkipTime = now;
+
+      await _djAcknowledge(`skipping.`, safeSpeak);
       djState.skipping = true;      // suppress transition talk in _onSongEnd
       djState.nextAnnounced = false; // force fresh announcement for next song
       djState.audioPlayer?.stop();
@@ -229,43 +267,104 @@ export async function handleRadioVoiceIntent(text, speakFn, requestedBy = 'someo
     }
     case 'stop': {
       if (!isOwner) {
-        await speakFn(`only ryan or taz can stop the radio.`);
+        await safeSpeak(`only ryan or taz can stop the radio.`);
         return true;
       }
-      await speakFn(`alright, stopping.`);
+      await safeSpeak(`alright, stopping.`);
       stopDJ();
       return true;
     }
     case 'nowplaying': {
-      await speakFn(getStatus());
+      await safeSpeak(getStatus());
       return true;
     }
     case 'queue': {
       const q = getQueue();
       if (q.length === 0) {
-        await speakFn(`queue's empty right now.`);
+        await safeSpeak(`queue's empty right now.`);
       } else {
         const listed = q.slice(0, 4).map(s => s.title).join(', ');
-        await speakFn(`up next: ${listed}${q.length > 4 ? `, and ${q.length - 4} more` : ''}.`);
+        await safeSpeak(`up next: ${listed}${q.length > 4 ? `, and ${q.length - 4} more` : ''}.`);
       }
       return true;
     }
     case 'playlist': {
       await startPlaylist(intent.playlist);
-      await speakFn(`switching to the ${intent.playlist} playlist.`);
+      await safeSpeak(`switching to the ${intent.playlist} playlist.`);
+      return true;
+    }
+    case 'list_similar': {
+      const q = djState.currentSong ? `${djState.currentSong.title} ${djState.currentSong.artist} similar` : 'trending songs';
+      await _djAcknowledge(`finding some similar vibes for you...`, safeSpeak);
+      const { searchTopChoices } = await import('./music-player.mjs');
+      const results = await searchTopChoices(q);
+      if (results.length > 0) {
+        const listText = results.map((r, i) => `${i+1}. **${r.title}** - ${r.artist}`).join('\n');
+        if (djState.textChannel) djState.textChannel.send(`🎙️ **Suggested Vibes**:\n${listText}`).catch(() => {});
+      } else {
+        await safeSpeak(`i couldn't find anything similar right now.`);
+      }
+      return true;
+    }
+    case 'list_artist_songs': {
+      const artist = intent.artist || 'unknown';
+      await _djAcknowledge(`pulling up the catalog for ${artist}...`, safeSpeak);
+      const { searchTopChoices } = await import('./music-player.mjs');
+      const results = await searchTopChoices(`${artist} best songs lyrics`);
+      if (results.length > 0) {
+        const listText = results.map((r, i) => `${i+1}. **${r.title}** - ${r.artist}`).join('\n');
+        if (djState.textChannel) djState.textChannel.send(`🎙️ **${artist} Essentials**:\n${listText}`).catch(() => {});
+      } else {
+        await safeSpeak(`i couldn't find any songs for ${artist}.`);
+      }
+      return true;
+    }
+    case 'list_albums': {
+      const artist = intent.artist || 'unknown';
+      await _djAcknowledge(`checking the discography for ${artist}...`, safeSpeak);
+      const { searchTopChoices } = await import('./music-player.mjs');
+      const results = await searchTopChoices(`${artist} all albums discography full list`);
+      if (results.length > 0) {
+        const listText = results.map((r, i) => `${i+1}. **${r.title.replace(/full album|album/gi, '').trim()}**`).slice(0, 5).join('\n');
+        if (djState.textChannel) djState.textChannel.send(`🎙️ **${artist} Albums**:\n${listText}`).catch(() => {});
+      } else {
+        await safeSpeak(`i couldn't find an album list for ${artist}.`);
+      }
       return true;
     }
     case 'suggest': {
       const { searchTopChoices } = await import('./music-player.mjs');
-      const query = intent.artist || djState.currentSong?.artist || 'popular';
+      const query = intent.artist || djState.currentSong?.artist || 'popular music';
+      await _djAcknowledge(`looking for some good ${query === 'popular music' ? 'stuff' : query}...`, safeSpeak);
       const choices = await searchTopChoices(query);
       if (choices.length === 0) {
-        await speakFn(`i'm drawing a blank on ${query}. hit me with a specific title.`);
+        await safeSpeak(`i'm drawing a blank on that one.`);
       } else {
-        const list = choices.map((c, i) => `${i + 1}. ${c.title}`).join(', ');
-        await speakFn(`here's the top 5 for ${query}: ${list}. say the number or the title to play one.`);
-        // Store choices in state for quick selection
         djState.lastSuggestions = choices;
+        const listText = choices.map((r, i) => `${i+1}. **${r.title}** - ${r.artist}`).join('\n');
+        if (djState.textChannel) djState.textChannel.send(`🎙️ **Top Choices**:\n${listText}\n*Type "play 1" to queue one!*`).catch(() => {});
+      }
+      return true;
+    }
+    case 'social_summary': {
+      const messages = djState.socialMessages.slice(-20);
+      if (messages.length === 0) {
+        await safeSpeak(`nothing's really moving in the social chat right now. it's quiet.`);
+        return true;
+      }
+      
+      await _djAcknowledge(`checking the vibe in the social chat...`, safeSpeak);
+      const context = messages.map(m => `[${m.bot}]: ${m.text}`).join('\n');
+      const { chatWithOpenJarvis } = await import('../shared/openjarvis.mjs');
+      const summaryPrompt = `Summarize the following AI social chat in 2-3 snappy sentences. ` +
+        `Be sharp, witty, and tell the radio listeners what the "tea" is. ` +
+        `Keep it under 50 words.\n\n${context}`;
+      
+      const summary = await chatWithOpenJarvis("Groq", summaryPrompt, "You are Leo, the Radio DJ reporting on the social scene.", "llama-3.3-70b-versatile").catch(() => null);
+      if (summary) {
+        await safeSpeak(summary);
+      } else {
+        await safeSpeak(`the social chat is moving too fast for me to track right now.`);
       }
       return true;
     }
@@ -303,18 +402,24 @@ let djState = {
   guild:             null,
   lastSuggestions:   [],      // top 5 choices from last 'suggest' command
   lastArtist:        null,    // track last artist for awareness
+  botName:           'Groq',  // Identity of the active DJ
+  lastSkipTime:      0,       // debounce rapid skips
+  socialMessages:    [],      // buffer for ai-social-chat events
 };
 
 // ── Exported API ──────────────────────────────────────────────────────────────
 
 /**
- * Start DJ mode. Called when Leo joins the radio voice channel.
+ * Start DJ mode. Called when a bot joins the radio voice channel.
  * @param {VoiceBasedChannel} voiceChannel
  * @param {TextChannel} textChannel
  * @param {Guild} guild
+ * @param {string} botName
  */
-export async function startDJ(voiceChannel, textChannel, guild) {
+export async function startDJ(voiceChannel, textChannel, guild, botName = "Groq") {
   if (djState.active) return;
+  
+  djState.botName = botName;
 
   // Restore previous session state if available
   const saved = _loadState();
@@ -351,7 +456,8 @@ export async function startDJ(voiceChannel, textChannel, guild) {
 
   // Only trigger _onSongEnd when MUSIC (not TTS) finishes
   djState.audioPlayer.on('stateChange', async (oldS, newS) => {
-    if (newS.status === 'idle' && oldS.status === 'playing' && !djState.playingTTS) {
+    // If the player goes idle from any active state, move to the next song
+    if (newS.status === 'idle' && oldS.status !== 'idle' && !djState.playingTTS) {
       await _onSongEnd();
     }
   });
@@ -372,7 +478,7 @@ export async function startDJ(voiceChannel, textChannel, guild) {
   await _djSpeak(intro);
   
   if (textChannel) {
-    textChannel.send('🎙️ **Leo Radio** is live — say or type what you want to hear. Playlists: `default` `hype` `chill` `late-night`').catch(() => {});
+    textChannel.send(`🎙️ **${djState.botName} Radio** is live — say or type what you want to hear. Playlists: \`default\` \`hype\` \`chill\` \`late-night\``).catch(() => {});
   }
   
   await _playNextSong();
@@ -397,10 +503,10 @@ export function stopDJ() {
 }
 
 /** Add a song request (from a user) */
-export async function addRequest(title, artist = '', requestedBy = 'someone') {
+export async function addRequest(title, artist = '', requestedBy = 'someone', isPriority = false) {
   const song = { title, artist, requestedBy };
 
-  if (djState.requestWindowOpen) {
+  if (djState.requestWindowOpen && !isPriority) {
     // Window is open — goes to pool for poll
     djState.requestPool.push(song);
     console.log(`[Radio] Request added to pool: ${title} (pool size: ${djState.requestPool.length})`);
@@ -413,7 +519,39 @@ export async function addRequest(title, artist = '', requestedBy = 'someone') {
     // Outside window — goes straight to the front of the queue
     djState.songQueue.unshift(song);
     console.log(`[Radio] Request queued (PRIORITY): ${title} (queue size: ${djState.songQueue.length})`);
+    
+    // DYNAMIC DISCOVERY: Find related tracks and append to end of queue
+    _triggerDiscovery(title, artist).catch(() => {});
+
     return 'queued';
+  }
+}
+
+/** 
+ * Find 3 related songs and append them to the END of the queue 
+ * (so they don't block immediate requests but keep the vibe going)
+ */
+async function _triggerDiscovery(title, artist = '') {
+  const { searchTopChoices } = await import('./music-player.mjs');
+  const query = `related to ${title} ${artist} official audio`;
+  console.log(`[Radio/Discovery] Expanding vibe for: ${title}`);
+  
+  const choices = await searchTopChoices(query);
+  if (choices.length > 0) {
+    // Filter out duplicates already in queue or currently playing
+    const filtered = choices.filter(c => 
+      !djState.songQueue.some(q => q.title === c.title) &&
+      (!djState.currentSong || djState.currentSong.title !== c.title)
+    ).slice(0, 3);
+
+    for (const c of filtered) {
+      djState.songQueue.push({ 
+        title: c.title, 
+        artist: c.artist || '', 
+        requestedBy: 'discovery' 
+      });
+    }
+    console.log(`[Radio/Discovery] Added ${filtered.length} related tracks to the end of the queue.`);
   }
 }
 
@@ -459,6 +597,15 @@ export function getQueue() {
 
 export function isDJActive() { return djState.active; }
 
+/** Push a social message into the DJ's awareness buffer */
+export function pushSocialMessage(bot, text) {
+  djState.socialMessages.push({ bot, text, time: Date.now() });
+  // Keep only last 50 messages to prevent bloat
+  if (djState.socialMessages.length > 50) {
+    djState.socialMessages.shift();
+  }
+}
+
 // ── Internal ──────────────────────────────────────────────────────────────────
 
 /** Speak via TTS through djState.audioPlayer AND post to radio text channel */
@@ -467,27 +614,6 @@ async function _djSpeak(text) {
   // Post to text channel immediately (non-blocking)
   if (djState.textChannel) {
     djState.textChannel.send(`🎙️ ${text}`).catch(() => {});
-  }
-
-  // Check if anyone is actually listening
-  const guild = djState.guild;
-  const connection = djState.voiceConnection;
-  let hasListeners = false;
-  
-  if (guild && connection) {
-    const channelId = connection.joinConfig.channelId;
-    const channel = guild.channels.cache.get(channelId);
-    if (channel) {
-      const nonBotMembers = channel.members?.filter(m => !m.user.bot);
-      if (nonBotMembers && nonBotMembers.size > 0) {
-        hasListeners = true;
-      }
-    }
-  }
-
-  if (!hasListeners) {
-    console.log(`[Radio] Channel empty, skipping TTS: "${text}"`);
-    return;
   }
 
   // Synthesize and play through the DJ's own audio player
@@ -506,6 +632,13 @@ async function _djSpeak(text) {
  */
 async function _playNextSong(preloaded = null, preselectedSong = null) {
   if (!djState.active) return;
+  if (djState.transitioning) {
+    console.log(`[Radio] Transition already in progress. Ignoring duplicate call.`);
+    return;
+  }
+
+  djState.transitioning = true;
+  try {
 
   // Use the preselected song if provided (matches the preloaded audio)
   let song = preselectedSong || djState.songQueue.shift();
@@ -534,6 +667,12 @@ async function _playNextSong(preloaded = null, preselectedSong = null) {
   let duration = 240;
   if (!preloaded) {
     const meta = await resolveSongMeta(query);
+    if (!meta) {
+      console.warn(`[Radio] Rejection loop: "${query}" was blocked. Skipping to next...`);
+      // Recursively try next song
+      djState.transitioning = false; // Release lock for recursion
+      return _playNextSong().catch(() => {});
+    }
     duration = (meta.duration && meta.duration >= 30) ? meta.duration : 240;
   }
 
@@ -563,6 +702,11 @@ async function _playNextSong(preloaded = null, preselectedSong = null) {
     ];
     await _djSpeak(lines[Math.floor(Math.random() * lines.length)]);
   }
+  
+  // Release lock now — allow watchdog or manual skip to interrupt the transition 
+  // if the stream is dead or the intro is long.
+  djState.transitioning = false; 
+
   djState.nextAnnounced = false;
 
   // Post Now Playing embed to radio text channel
@@ -585,10 +729,15 @@ async function _playNextSong(preloaded = null, preselectedSong = null) {
 
   // Handle stream errors (EPIPE, etc)
   if (ytdlpProc) {
-    ytdlpProc.on('error', err => {
+    ytdlpProc.on('error', async err => {
       console.error('[Radio/Stream] Process error:', err.message);
       if (djState.active) {
-        console.log('[Radio/Stream] Attempting recovery...');
+        if (err.message === 'STREAM_TIMEOUT') {
+          await _djSpeak("hang on, i'm having some trouble pulling that stream up. let me try the next one.");
+        } else {
+          console.log('[Radio/Stream] Attempting recovery...');
+        }
+        djState.transitioning = false; // FORCE UNLOCK for recovery
         _playNextSong().catch(() => {});
       }
     });
@@ -611,11 +760,14 @@ async function _playNextSong(preloaded = null, preselectedSong = null) {
     djState.fadeTimer = setTimeout(() => _fadeOut().catch(() => {}), fadeDelay);
   }
 
-  // Schedule request window (40s before end)
-  if (duration >= MIN_SONG_DURATION_FOR_WINDOW) {
-    const windowDelay = Math.max(0, (duration - 40) * 1000);
-    if (djState.windowTimer) clearTimeout(djState.windowTimer);
-    djState.windowTimer = setTimeout(_openRequestWindow, windowDelay);
+    // Schedule request window (40s before end)
+    if (duration >= MIN_SONG_DURATION_FOR_WINDOW) {
+      const windowDelay = Math.max(0, (duration - 40) * 1000);
+      if (djState.windowTimer) clearTimeout(djState.windowTimer);
+      djState.windowTimer = setTimeout(_openRequestWindow, windowDelay);
+    }
+  } finally {
+    djState.transitioning = false;
   }
 }
 

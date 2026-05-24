@@ -11,7 +11,33 @@
 //!   3. FIRST-PERSON SYNTHESIS — convert cell text to KAI's voice
 //!   4. BRAIN-STATE TONE — 0-3 word prefix/suffix from live neural state
 //!   5. IDENTITY SAFETY — KAI never claims Ryan's name as its own
-use crate::core::{predictive, ConversationTrace, QueryHit, Universe};
+use crate::core::{predictive, ConversationTrace, FieldState, QueryHit, StatLexicon, Universe};
+use crate::core::rshl_transformer::get_emotional_temp;
+use crate::core::stat_lexicon::DecodeParams;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::OnceLock;
+
+/// When true, KAI speaks entirely through the native RSHL lattice —
+/// no Ollama, no external LLM. This is the path to true cognitive sovereignty.
+/// Set via `--native-only` CLI flag.
+pub static NATIVE_ONLY: AtomicBool = AtomicBool::new(false);
+
+// ── Lazy lexicon for native generative decode ────────────────────────────────
+// The TUI doesn't carry a StatLexicon in App state (it's large), so we
+// load it once on first generative call and keep it alive for the session.
+
+static LEXICON: OnceLock<StatLexicon> = OnceLock::new();
+
+/// Return a reference to the loaded lexicon, or None if the file is missing
+/// or corrupt. Loaded once and cached for the process lifetime.
+pub fn get_lexicon() -> Option<&'static StatLexicon> {
+    LEXICON.get_or_init(|| {
+        StatLexicon::load("data/stat-lexicon.json")
+            .unwrap_or_else(|_| StatLexicon::new())
+    });
+    let lex = LEXICON.get().unwrap();
+    if lex.is_empty() { None } else { Some(lex) }
+}
 
 // ── UTF-8 safe slice ──────────────────────────────────────────────────────────
 
@@ -517,6 +543,8 @@ pub fn generate_response(
         universe,
         &empty_trace,
         ollama,
+        None,
+        None,
     )
 }
 
@@ -536,6 +564,8 @@ pub fn generate_response_predictive(
     universe: &mut Universe,
     trace: &ConversationTrace,
     ollama: Option<&crate::cognition::ollama_voice::OllamaVoice>,
+    lex: Option<&StatLexicon>,
+    field: Option<&FieldState>,
 ) -> String {
     let trimmed = input.trim();
     let lower = trimmed.to_lowercase();
@@ -979,8 +1009,12 @@ pub fn generate_response_predictive(
     // decided (when the field is coherent enough), or the lattice speaks
     // raw. Never both in the same output — that's what creates the
     // "two voices jammed together" problem.
-    if let Some(ov) = ollama {
-        if phi_c > 0.04 {
+    //
+    // NATIVE_ONLY mode: KAI speaks purely from the lattice. No Ollama.
+    // This is the path to true sovereignty — the lattice IS the mind.
+    if !NATIVE_ONLY.load(Ordering::Relaxed) {
+        if let Some(ov) = ollama {
+            if phi_c > 0.30 {
             // Coherent field: Ollama speaks the lattice's signal.
             // The full SRHT state + active cells are in the system prompt
             // so everything the lattice wants to say is already there.
@@ -995,9 +1029,39 @@ pub fn generate_response_predictive(
             ) {
                 return identity_safety_filter(ollama_text, query_type);
             }
+            }
+            // Low coherence (phi_c ≤ 0.30): the lattice hasn't crystallized
+            // its thought yet. Fall through to pure-lattice synthesis.
         }
-        // Low coherence (phi_c ≤ 0.30): the lattice hasn't crystallized
-        // its thought yet. Fall through to pure-lattice synthesis.
+    }
+
+    // ── Native generative decode (RSHL transformer + incremental_generate) ────
+    // When the lexicon and field are available we build a full generative
+    // latent state (prompt + memory + field + trace) and run the sparse
+    // autoregressive decoder. This is the path to true sovereignty —
+    // no retrieval, no templates, pure lattice-born language.
+    if let (Some(lex), Some(field)) = (lex, field) {
+        if NATIVE_ONLY.load(Ordering::Relaxed) || phi_c > 0.20 {
+            let state = universe.encode_generative_state(trimmed, lex, trace, field, "");
+            let emotional_temp = get_emotional_temp();
+            let temp = if emotional_temp > 0.0 { emotional_temp } else { 0.7 };
+            let params = DecodeParams {
+                max_tokens: 64,
+                temperature: temp,
+                top_k: 8,
+                repetition_window: 16,
+                repetition_penalty: 0.15,
+                stop_on_immediate_repeat: false,
+                bigram_weight: 0.0,
+                seed: 0xC0FFEE,
+                clause_aware_stop: true,
+            };
+            let decoded = lex.incremental_generate_with(state, params);
+            if !decoded.trim().is_empty() {
+                return identity_safety_filter(decoded, query_type);
+            }
+            // Empty decode — fall through to retrieval synthesis
+        }
     }
 
     // ── Pure-lattice fallback (Ollama unavailable or timed out) ─────────────
@@ -1920,6 +1984,11 @@ mod tests {
             score,
             strength: 1.5,
             source: "seed".to_string(),
+            timestamp: 0,
+            user_id: String::new(),
+            channel_id: String::new(),
+            message_id: String::new(),
+            keywords: Vec::new(),
         }
     }
 

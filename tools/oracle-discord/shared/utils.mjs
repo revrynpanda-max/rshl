@@ -32,3 +32,20 @@ export function isLoopingResponse(text) {
   }
   return false;
 }
+
+export function chunkForDiscord(text) {
+  const max = 1900;
+  if (text.length <= max) return [text];
+
+  const chunks = [];
+  let rest = text;
+  while (rest.length > max) {
+    let cut = rest.lastIndexOf("\n", max);
+    if (cut < max * 0.5) cut = rest.lastIndexOf(" ", max);
+    if (cut < max * 0.5) cut = max;
+    chunks.push(rest.slice(0, cut).trim());
+    rest = rest.slice(cut).trim();
+  }
+  if (rest) chunks.push(rest);
+  return chunks;
+}

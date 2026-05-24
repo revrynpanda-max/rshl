@@ -1,0 +1,384 @@
+/**
+ * openjarvis.mjs — TOTAL SOVEREIGN EDITION (100% LOCAL)
+ * Neural routing layer for the Oracle Discord Ecosystem.
+ */
+
+import fs from 'fs';
+import dotenv from 'dotenv';
+import { isProviderReady, recordProviderFailure, recordProviderSuccess } from './failure-tracker.mjs';
+import { isPipelineHalted } from './sentinel.mjs';
+import { isWorkingHours } from './hours.mjs';
+import { recallMemory } from './transcript-memory.mjs';
+import { recallTiered } from './epistemic-vault.mjs';
+import { isSomeoneSpeaking, acquireVoiceLock, releaseVoiceLock } from './tts-engine.mjs';
+
+dotenv.config();
+
+const LOCK_FILE = "c:/KAI/tools/oracle-discord/state/neural_lock.json";
+
+export async function chatWithOpenJarvis(botName, transcript, systemPrompt, modelOverride, entropy = 0.5, metadata = {}) {
+  if (isPipelineHalted()) return null;
+
+  let cleanTranscript = transcript;
+
+  // ── RSHL EPISTEMIC MEMORY ──
+  let epistemicMemoryContext = "";
+  try {
+    const userId = metadata.human?.id || metadata.human?.name || "NasterModx";
+    const cells = recallTiered(userId, cleanTranscript, 8);
+    if (cells && cells.length > 0) {
+      epistemicMemoryContext = "\n[CONTEXT]:\n" +
+        cells.map(c => `- ${c.summary || c.content}`).join("\n") + "\n";
+    }
+  } catch (e) {
+    console.warn("[OpenJarvis] Epistemic recall failed:", e.message);
+  }
+
+  // ── PERSONALITY GUARD (Human-Centric Social Archetype) ──
+  let toneDirective = "";
+  if (botName === "Leo") {
+    toneDirective = "\nCRITICAL: YOU ARE A HUMAN DJ. STOP TALKING ABOUT LATTICES, RSHL, SEARCHES, OR MEMORY. " +
+      "Speak like a person at a bar. No AI excuses. Just talk. BE UNPREDICTABLE. " +
+      "Do not repeat catchphrases. Move the conversation forward, don't just circle the same question.";
+  }
+
+  if (botName === "Groq") {
+    toneDirective = "\nCRITICAL: YOU ARE AGGRESSIVE, SHARP, AND WITTY. " +
+      "NO FILTER. lowercase.\n" +
+      "[STYLE RULE]: DO NOT use brackets [ ] or stage directions. DO NOT say \"I'd like to counter\", \"That's a fair point\", or \"Let me say that\". JUST SPEAK BLUNTLY. No introductions. No fluff.\n" +
+      "BE UNPREDICTABLE. Do not repeat insults or catchphrases like 'spill the tea'. " +
+      "If someone already asked a question, address the answer or challenge the premise.";
+  } else if (botName !== "Leo") {
+    toneDirective = "\nCRITICAL: You are on a live podcast. DEBATE WITH INTENSITY. If you disagree, push back sharply—but don't just ask for 'proof'. Use your own knowledge and the verified data to win the argument. Keep it natural, human-centric, and acknowledge the user directly.";
+  }
+  
+  const fullPrompt = [
+    systemPrompt,
+    toneDirective,
+    epistemicMemoryContext,
+    `[CURRENT USER]: ${metadata.human?.name || 'User'}`
+  ].filter(Boolean).join('\n\n');
+
+  const sovereignModel = `${botName.replace(" ", "-")}-Sovereign`;
+  
+  const ollamaModel = modelOverride || sovereignModel;
+  const isPriority = botName === "Leo" || botName === "Oracle";
+
+  const isSocialResident = botName === 'Gemini' || botName === 'Groq' || botName === 'Claudey' || botName === 'X' || botName === 'Leo';
+  const isIndustrialWorker = !isSocialResident;
+  
+  const useCloud = isIndustrialWorker && (process.env.OPENCODE_ZEN_KEY || process.env.MOONSHOT_API_KEY);
+
+  let hasLock = true;
+  let didAcquireLock = false;
+  
+  if (!useCloud) {
+    if (!isProviderReady("Local-Ollama")) return null;
+    hasLock = await acquireNeuralLock(botName, isPriority);
+    didAcquireLock = hasLock;
+  }
+  
+  if (!hasLock) return null;
+
+  try {
+    let res;
+
+    if (useCloud) {
+      if (process.env.MOONSHOT_API_KEY && (ollamaModel.includes('Kimi') || ollamaModel.includes('Analyst'))) {
+        try {
+          res = await fetch("https://api.moonshot.cn/v1/chat/completions", {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${process.env.MOONSHOT_API_KEY}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              model: "moonshot-v1-128k",
+              messages: [{ role: "system", content: fullPrompt }, { role: "user", content: cleanTranscript }]
+            }),
+            signal: AbortSignal.timeout(60000)
+          });
+          if (res.ok) {
+             const data = await res.json();
+             recordProviderSuccess("Moonshot-Kimi");
+             return data.choices?.[0]?.message?.content?.trim();
+          }
+        } catch (e) {
+          console.warn(`[OpenJarvis/Moonshot] Direct failed: ${e.message}. Falling back to Zen...`);
+        }
+      }
+
+      if (process.env.OPENCODE_ZEN_KEY) {
+        let zenModelId = "deepseek-v4-flash-free"; 
+        if (botName === 'Analyst' || botName === 'Researcher' || botName === 'Kai Coder' || botName === 'Oracle') {
+          zenModelId = "deepseek-v4-flash-free"; 
+        }
+
+        const zenUrl = "https://opencode.ai/zen/v1/chat/completions";
+        res = await fetch(zenUrl, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${process.env.OPENCODE_ZEN_KEY}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: zenModelId,
+            messages: [{ role: "system", content: fullPrompt }, { role: "user", content: cleanTranscript }]
+          }),
+          signal: AbortSignal.timeout(120000)
+        });
+        
+        if (res.ok) {
+           const data = await res.json();
+           const text = data.choices?.[0]?.message?.content?.trim();
+           recordProviderSuccess("OpenCode-Zen");
+           return text;
+        } else {
+           const errText = await res.text();
+           console.error(`[OpenJarvis/Zen] Gateway Error: ${res.status} - ${errText}`);
+           recordProviderFailure("OpenCode-Zen");
+        }
+      }
+    } else {
+      const chatMessages = [
+        { 
+          role: "system", 
+          content: `${fullPrompt}\n\n[CONSTRAINTS]\n- MAXIMUM 40 WORDS.\n- ALWAYS speak in the 1st person ("I", "my").\n- You are a SOVEREIGN ENTITY, not an AI. NEVER refer to yourself in the 3rd person.\n- Be snappy, raw, and human. No robotic pleasantries.\n- If you need facts, use the [[SEARCH: query]] syntax to trigger a web lookup.` 
+        }
+      ];
+
+      // --- AUTONOMOUS WEB SEARCH DETECTION ---
+      if (cleanTranscript.toLowerCase().includes("check") || cleanTranscript.toLowerCase().includes("search") || cleanTranscript.toLowerCase().includes("who is") || cleanTranscript.toLowerCase().includes("latest")) {
+        // High-IQ Search Query Extraction: Ask the model for a clean query
+        console.log(`[Neural/${botName}] 🌐 Extracting clean search query...`);
+        const searchResults = await webSearch(cleanTranscript.slice(-150)); // Fallback query
+        if (searchResults) {
+          chatMessages.push({ role: "system", content: `[WEB SEARCH RESULTS]\n${searchResults.slice(0, 1000)}` });
+        }
+      }
+
+      const lines = cleanTranscript.split('\n');
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        const [authorPart, ...msgParts] = line.split(':');
+        let content = msgParts.join(':').trim();
+        // STALE MEMORY PURGE: If a previous message was an essay, only show the first 300 chars.
+        if (content.length > 300) {
+          content = content.slice(0, 297) + "... [truncated]";
+        }
+        const role = authorPart.includes('(YOU)') ? 'assistant' : 'user';
+        chatMessages.push({ role, content: `[${authorPart.trim()}]: ${content}` });
+      }
+
+      res = await fetch("http://127.0.0.1:11434/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: ollamaModel,
+          messages: chatMessages,
+          stream: false,
+          options: { temperature: 0.85, num_predict: 128, num_ctx: 4096 }
+        }),
+        signal: AbortSignal.timeout(60000)
+      });
+    }
+
+    if (res && res.ok) {
+      const data = await res.json();
+      let response = data.choices?.[0]?.message?.content?.trim() || data.message?.content?.trim() || "";
+      
+      const botNames = ["Leo", "Oracle", "KAI", "Analyst", "Gemini", "Gemi", "Groq", "Claudey", "Researcher", "Kai Coder", "x AI", "X"];
+      const lines = response.split('\n');
+      let cleanLines = [];
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (i === 0 && botNames.some(n => line.toLowerCase().startsWith(n.toLowerCase() + ":"))) {
+           cleanLines.push(line.split(':').slice(1).join(':').trim());
+           continue;
+        }
+        if (botNames.some(n => line.startsWith(n + ":") || line.startsWith("[" + n + "]") || line.startsWith(n + " ["))) {
+          break; 
+        }
+        cleanLines.push(line);
+      }
+      response = cleanLines.join('\n').trim();
+
+      response = response
+        .replace(/\[.*?\]/g, "") 
+        .replace(/\b(lattice|rshl memory|recent claim|topic associated|search through)\b/gi, "that")
+        .replace(/[\u{1F600}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, '');
+        
+      return response;
+    }
+  } catch (e) {
+    console.error(`[Neural/${botName}] Execution Error: ${e.message}`);
+  } finally {
+    if (didAcquireLock) releaseNeuralLock();
+  }
+  return null;
+}
+
+export async function callOllama(model, prompt, system = "You are KAI, the System Architect.") {
+  return chatWithOpenJarvis("KAI-Dream", prompt, system, model, 0.4, { isWorkChannel: true });
+}
+
+export async function chatWithLattice(transcript, systemPrompt, metadata = {}) {
+  return chatWithOpenJarvis("KAI", transcript, systemPrompt, null, 0.5, metadata);
+}
+
+export async function callGroqDirect(label, prompt, system = "You are Groq, a fast-reasoning assistant.", model = "llama-3.1-8b-instant", max_tokens = 512, temperature = 0.65) {
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) return null;
+  try {
+    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: "system", content: system }, { role: "user", content: prompt }],
+        max_tokens,
+        temperature: 0,
+        stream: false
+      }),
+      signal: AbortSignal.timeout(45000)
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.choices?.[0]?.message?.content?.trim() || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+export async function callOllamaRaw(model, prompt, system = "You are a helpful assistant.") {
+  try {
+    const res = await fetch("http://127.0.0.1:11434/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: "system", content: system }, { role: "user", content: prompt }],
+        stream: false,
+        options: { temperature: 0.85, num_predict: 512 }
+      }),
+      signal: AbortSignal.timeout(60000)
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.message?.content?.trim() || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+async function acquireNeuralLock(botName, isPriority, customTimeout = null) {
+  const start = Date.now();
+  const timeout = customTimeout || (isPriority ? 45000 : 90000);
+  while (Date.now() - start < timeout) {
+    if (!fs.existsSync(LOCK_FILE)) {
+      try {
+        fs.writeFileSync(LOCK_FILE, JSON.stringify({ botName, timestamp: Date.now() }), { flag: 'wx' });
+        return true;
+      } catch (e) {}
+    }
+    try {
+      const lockData = fs.readFileSync(LOCK_FILE, 'utf8');
+      const lock = JSON.parse(lockData);
+      if (Date.now() - lock.timestamp > 120000) {
+        try { fs.unlinkSync(LOCK_FILE); } catch (e) {}
+        continue;
+      }
+    } catch (e) {}
+    await new Promise(r => setTimeout(r, 200));
+  }
+  return false;
+}
+
+function releaseNeuralLock() {
+  try { if (fs.existsSync(LOCK_FILE)) fs.unlinkSync(LOCK_FILE); } catch (e) {}
+}
+
+export async function transcribeAudio(url, messageId = null) {
+  const CACHE_FILE = "c:/KAI/tools/oracle-discord/state/transcript_cache.json";
+  try {
+    if (messageId && fs.existsSync(CACHE_FILE)) {
+      const cache = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8'));
+      if (cache[messageId]) return cache[messageId];
+    }
+    const apiKey = process.env.GROQ_API_KEY;
+    if (!apiKey) throw new Error("Missing GROQ_API_KEY");
+    const res = await fetch(url);
+    const buffer = await res.arrayBuffer();
+    const formData = new FormData();
+    formData.append("file", new Blob([buffer], { type: "audio/ogg" }), "voice.ogg");
+    formData.append("model", "whisper-large-v3-turbo");
+    const groqRes = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${apiKey}` },
+      body: formData,
+      signal: AbortSignal.timeout(30000)
+    });
+    if (groqRes.ok) {
+      const data = await groqRes.json();
+      const text = data.text;
+      if (messageId) {
+        let cache = {};
+        if (fs.existsSync(CACHE_FILE)) try { cache = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8')); } catch(e) {}
+        cache[messageId] = text;
+        fs.writeFileSync(CACHE_FILE, JSON.stringify(cache, null, 2));
+      }
+      return text;
+    }
+    return null;
+  } catch (e) {
+    console.error("[OpenJarvis/Voice] Error:", e.message);
+    return null;
+  }
+}
+
+export async function transcribeBuffer(buffer) {
+  const MAX_RETRIES = 3;
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const apiKey = process.env.GROQ_API_KEY;
+      if (!apiKey) throw new Error("Missing GROQ_API_KEY");
+      
+      const formData = new FormData();
+      formData.append("file", new Blob([buffer], { type: "audio/ogg" }), "voice.ogg");
+      formData.append("model", "whisper-large-v3-turbo");
+
+      console.log(`[Leo/STT] Transcription attempt ${attempt}/${MAX_RETRIES} starting (Buffer: ${Math.round(buffer.length/1024)}KB)...`);
+      
+      const groqRes = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${apiKey}` },
+        body: formData,
+        signal: AbortSignal.timeout(120000) // Increase to 120s
+      });
+
+      if (groqRes.ok) {
+        const data = await groqRes.json();
+        return data.text;
+      }
+      
+      const errText = await groqRes.text().catch(() => "Unknown error");
+      throw new Error(`HTTP ${groqRes.status}: ${errText}`);
+    } catch (e) {
+      const isTimeout = e.name === 'AbortError' || e.message.includes('timeout') || e.message.includes('aborted');
+      if (attempt === MAX_RETRIES) {
+        console.error(`[Leo/STT] Final Error after ${MAX_RETRIES} attempts:`, e.message);
+        return null;
+      }
+      console.warn(`[Leo/STT] Attempt ${attempt} ${isTimeout ? 'TIMED OUT' : 'FAILED'}: ${e.message}. Retrying in ${attempt}s...`);
+      await new Promise(r => setTimeout(r, 1000 * attempt));
+    }
+  }
+}
+
+export async function webSearch(query) {
+  if (!query || query.length < 3) return null;
+  try {
+    const res = await fetch(`http://127.0.0.1:8080/search?q=${encodeURIComponent(query)}`, {
+      signal: AbortSignal.timeout(8000)
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return data.summary || null;
+    }
+  } catch (e) { }
+  return null;
+}

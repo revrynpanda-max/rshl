@@ -256,12 +256,12 @@ fn pick_best_insight(
     // Prefer the strongest non-source match
     for (cell, score) in hits {
         if cell.label.trim() != source_a_text.trim() && cell.label.trim() != source_b_text.trim() {
-            return (cell.label.clone(), cell.region.clone(), *score, true);
+            return (cell.label.clone(), cell.region.to_string(), *score, true);
         }
     }
     // Fall back to best match
     if let Some((cell, score)) = hits.first() {
-        return (cell.label.clone(), cell.region.clone(), *score, false);
+        return (cell.label.clone(), cell.region.to_string(), *score, false);
     }
     (
         "no strong concept found".to_string(),
@@ -349,11 +349,11 @@ pub fn consolidate_pair(
     Some(DreamResult {
         concept_a: a.label.clone(),
         concept_b: b.label.clone(),
-        region_a: a.region.clone(),
-        region_b: b.region.clone(),
+        region_a: a.region.to_string(),
+        region_b: b.region.to_string(),
         overlap: *resonance,
         insight: best_cell.label.clone(),
-        insight_region: best_cell.region.clone(),
+        insight_region: best_cell.region.to_string(),
         phi_g: field.phi_g,
         c: *resonance,
         wm: field.wm,

@@ -486,7 +486,7 @@ impl FieldState {
             let total_active: usize = (0..sample_limit)
                 .map(|i| cells[i * stride].claim.vec.nnz())
                 .sum();
-            let dim = cells[0].claim.vec.data.len(); // 16384
+            let dim = crate::core::sparse_vec::DIM; // 16384
             let total_dims = sample_limit * dim;
             clamp01(total_active as f32 / total_dims as f32)
         } else {

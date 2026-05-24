@@ -91,8 +91,8 @@ pub fn build_attended_query(tokens: &[String], cell_vecs: &[&SparseVec]) -> Spar
     // Weighted superposition
     let mut combined = vec![0.0f32; DIM];
     for (vec, weight) in token_vecs.iter().zip(weights.iter()) {
-        for d in 0..DIM {
-            combined[d] += vec.data[d] as f32 * weight;
+        for (d, val) in vec.iter() {
+            combined[d] += val as f32 * weight;
         }
     }
 
@@ -139,7 +139,7 @@ mod tests {
         let tokens = vec!["sky".to_string(), "blue".to_string(), "color".to_string()];
         let result = build_attended_query(&tokens, &[]);
         // Should produce a non-zero vector
-        let nonzero: usize = result.data.iter().filter(|&&v| v != 0).count();
+        let nonzero: usize = result.nnz();
         assert!(
             nonzero > 50,
             "Attended query should produce meaningful vector, got {} nonzero",

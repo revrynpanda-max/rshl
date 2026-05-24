@@ -194,6 +194,8 @@ struct App {
     spectate_mode: bool,
     spectate_full: bool,
     mind_log: Vec<MindEvent>,
+    /// Cursor for pushing mind_log to Oracle spectate feed (KAI_DREAMS Discord channel).
+    last_pushed_mind_log_len: usize,
     last_ryan_input: String,
     /// Salience controller output from Insula + ACC.
     salience_route: String,
@@ -220,6 +222,8 @@ struct App {
     ingest_batch_rx: Option<std::sync::mpsc::Receiver<kai::cognition::IngestBatch>>,
     /// Flag to prevent concurrent file ingest
     is_ingesting_files: bool,
+    /// Last tick when a prospective memory (wonder) surfaced — cooldown.
+    last_wonder_tick: u64,
 }
 
 impl App {
@@ -251,6 +255,7 @@ impl App {
             spectate_mode: false,
             spectate_full: false,
             mind_log: Vec::new(),
+            last_pushed_mind_log_len: 0,
             last_ryan_input: String::new(),
             salience_route: "self".to_string(),
             peer_session_rx: None,
@@ -276,6 +281,7 @@ impl App {
             is_intaking: false,
             ingest_batch_rx: None,
             is_ingesting_files: false,
+            last_wonder_tick: 0,
         }
     }
 
@@ -386,6 +392,7 @@ impl App {
         // Keep max 200 entries
         if self.mind_log.len() > 200 {
             self.mind_log.drain(0..50);
+            self.last_pushed_mind_log_len = self.last_pushed_mind_log_len.saturating_sub(50);
         }
     }
 
@@ -553,6 +560,60 @@ impl App {
             if self.spectate_mode && self.spectate_full && !self.last_inner_voice_text.is_empty() {
                 self.think("CPU", "🔊", self.last_inner_voice_text.clone());
             }
+        }
+
+        // ── PROSPECTIVE MEMORY ──────────────────────────────────────
+        // Every 25 ticks, if KAI hasn't spoken recently and the field
+        // is coherent, surface an unprompted memory. This is the seed
+        // of self-directed cognition — KAI brings things up on his own.
+        //
+        // In normal TUI mode, this adds a subtle inner-voice line
+        // to the chat — KAI is "thinking out loud". In spectate mode,
+        // it logs to the mind stream.
+        let wonder_cooldown = 50u64;
+        if self.engine.tick.is_multiple_of(25)
+            && !is_responding
+            && (self.engine.tick - self.last_wonder_tick) > wonder_cooldown
+        {
+            if field.phi_g > 0.35 {
+                use kai::cognition::inner_voice::wonder;
+                if let Some((topic, memory, score)) = wonder(&self.engine.universe) {
+                    self.last_wonder_tick = self.engine.tick;
+                    let thought = format!(
+                        "Thinking about {}... {} resonates ({:.2})",
+                        topic, memory, score
+                    );
+                    self.last_inner_voice_text = thought.clone();
+                    if self.spectate_mode {
+                        self.think("THOUGHT", "✨", thought);
+                    } else {
+                        // Normal TUI: add as a quiet inner-voice line
+                        self.turns.push(Turn {
+                            role: "kai".to_string(),
+                            text: thought,
+                            region: Some("prospective".to_string()),
+                            score: Some(score),
+                        });
+                    }
+                }
+            }
+        }
+
+        // ── EMOTIONAL COHERENCE ─────────────────────────────────────
+        // The amygdala and drive state modulate the transformer's
+        // attention temperature. Stress = sharp focus. Calm = broad,
+        // diffuse creativity. Like an animal: fear narrows attention,
+        // safety lets the mind wander.
+        {
+            use kai::core::rshl_transformer::set_emotional_temp;
+            let v = self.engine.drive.valence;
+            // chi (conflict/stress) acts as arousal proxy — high chi
+            // means internal tension, which should sharpen focus.
+            let a = self.engine.drive.avg_chi;
+            let base_temp = 12.0f32;
+            let emotional_shift = (v * 4.0) - (a * 2.0);
+            let new_temp = (base_temp + emotional_shift).clamp(4.0, 20.0);
+            set_emotional_temp(new_temp);
         }
 
         // ── STREAM 2: CPU Logic (promotion) ───────────────────────────
@@ -1171,8 +1232,8 @@ impl App {
                 .map(|c| {
                     (
                         c.claim.text.clone(),
-                        c.region.clone(),
-                        c.claim.source.clone(),
+                        c.region.to_string(),
+                        c.claim.source.to_string(),
                         c.claim.confidence,
                     )
                 })
@@ -1350,6 +1411,23 @@ impl App {
         if self.last_save.elapsed() > Duration::from_secs(60) {
             self.save_state();
             self.last_save = Instant::now();
+        }
+
+        // ── PUSH SPECTATE FEED TO ORACLE (KAI_DREAMS Discord channel) ──
+        if self.spectate_mode && self.spectate_full {
+            let current_len = self.mind_log.len();
+            if self.last_pushed_mind_log_len > current_len {
+                self.last_pushed_mind_log_len = current_len;
+            }
+            if current_len > self.last_pushed_mind_log_len {
+                let to_push: Vec<kai::core::engine::MindEvent> =
+                    self.mind_log[self.last_pushed_mind_log_len..current_len].to_vec();
+                self.last_pushed_mind_log_len = current_len;
+                std::thread::spawn(move || {
+                    let _ = ureq::post("http://127.0.0.1:3334/api/kai/spectate-push")
+                        .send_json(&to_push);
+                });
+            }
         }
     }
 
@@ -2132,14 +2210,14 @@ impl App {
         }
 
         for event in self.engine.episodic.recall(lower_query, 30) {
-            if event.source == "user" && Self::is_recallable_user_memory(&event.text) {
+            if event.source.as_str() == "user" && Self::is_recallable_user_memory(&event.text) {
                 let score = Self::memory_text_score(lower_query, &event.text) + 6;
                 candidates.push((score, event.text.clone()));
             }
         }
 
         for event in self.engine.episodic.recent(500) {
-            if event.source == "user" && Self::is_recallable_user_memory(&event.text) {
+            if event.source.as_str() == "user" && Self::is_recallable_user_memory(&event.text) {
                 let score = Self::memory_text_score(lower_query, &event.text);
                 if score > 0 {
                     candidates.push((score, event.text.clone()));
@@ -2344,7 +2422,7 @@ impl App {
 
     fn known_ryan_name(&self) -> Option<String> {
         for event in self.engine.episodic.recent(500) {
-            if event.source == "user" {
+            if event.source.as_str() == "user" {
                 if let Some(answer) = Self::direct_user_memory_answer_from_text("my name", &event.text)
                 {
                     return Some(
@@ -2379,7 +2457,7 @@ impl App {
     fn recent_personal_facts(&self) -> Vec<String> {
         let mut facts = Vec::new();
         for event in self.engine.episodic.recent(500).into_iter().rev() {
-            if event.source != "user" || !Self::is_recallable_user_memory(&event.text) {
+            if event.source.as_str() != "user" || !Self::is_recallable_user_memory(&event.text) {
                 continue;
             }
             if Self::is_personal_about_ryan_memory(&event.text) {
@@ -2395,7 +2473,7 @@ impl App {
     fn recent_taught_facts(&self) -> Vec<String> {
         let mut facts = Vec::new();
         for event in self.engine.episodic.recent(500).into_iter().rev() {
-            if event.source != "user" || !Self::is_recallable_user_memory(&event.text) {
+            if event.source.as_str() != "user" || !Self::is_recallable_user_memory(&event.text) {
                 continue;
             }
             if Self::is_teaching_memory(&event.text) {
@@ -2645,7 +2723,7 @@ impl App {
     }
 
     fn is_stale_self_model_hit(hit: &kai::core::QueryHit) -> bool {
-        if hit.source != "self-model" {
+        if hit.source.as_str() != "self-model" {
             return false;
         }
         let lower = hit.text.to_lowercase();
@@ -4716,7 +4794,7 @@ impl App {
                 .query_region(&reasoning_input, "memory", 12);
             memory_hits.retain(|h| {
                 matches!(h.source.as_str(), "ryan" | "user-claim" | "user-echo")
-                    && h.source != "world-bridge"
+                    && h.source.as_str() != "world-bridge"
             });
             memory_hits.truncate(5);
             memory_hits
@@ -4744,7 +4822,7 @@ impl App {
                     let t = h.text.to_lowercase();
                     // User-echo exclusion is tag-based, not text-based.
                     // "conversation" covers legacy cells pre-migration.
-                    if h.source == "user-echo" || h.source == "conversation" {
+                    if h.source.as_str() == "user-echo" || h.source.as_str() == "conversation" {
                         return false;
                     }
                     // Exclude cells that are clearly about Ryan, not KAI
@@ -4991,7 +5069,7 @@ impl App {
             _ if is_user_memory_query => {
                 let mut memory_context = self.engine.working_memory.recent_context(12);
                 for event in self.engine.episodic.recent(500) {
-                    memory_context.push((event.source.clone(), event.text.clone()));
+                    memory_context.push((event.source.to_string(), event.text.clone()));
                 }
                 Self::direct_user_memory_answer(&lower_reasoning, &hits, &memory_context)
             }
@@ -5041,6 +5119,8 @@ impl App {
                     &mut self.engine.universe,
                     &self.engine.conv_trace,
                     self.ollama_voice.as_ref(),
+                    kai::cognition::voice::get_lexicon(),
+                    Some(&self.engine.last_field),
                 )
             };
             kai::cognition::transcript::append(
@@ -5114,6 +5194,8 @@ impl App {
                 &mut self.engine.universe,
                 &self.engine.conv_trace,
                 self.ollama_voice.as_ref(),
+                kai::cognition::voice::get_lexicon(),
+                Some(&self.engine.last_field),
             );
 
             // ── Depth label: spectate-only (per directive: don't expose internals) ─
@@ -6080,8 +6162,8 @@ fn native_session_thread(
             // echoes; the migration at startup retags them to
             // "user-echo" so this check covers both forms.
             c.claim.confidence >= 1.0
-                && c.claim.source != "user-echo"
-                && c.claim.source != "conversation"
+                && c.claim.source.as_ref() != "user-echo"
+                && c.claim.source.as_ref() != "conversation"
                 && c.claim.text.len() > 12
         })
         .map(|c| {
@@ -6155,7 +6237,7 @@ fn native_session_thread(
         // Send inner thought to TUI
         let region = confident_hits
             .first()
-            .map(|h| h.region.clone())
+            .map(|h| h.region.to_string())
             .unwrap_or_else(|| "memory".to_string());
         let confidence = confident_hits.first().map(|h| h.score).unwrap_or(0.0);
 
@@ -6625,7 +6707,7 @@ fn migrate_legacy_user_echo_cells(universe: &mut Universe) -> usize {
     let mut migrated = 0usize;
     for cell in universe.cells_mut().iter_mut() {
         let lower = cell.claim.text.to_lowercase();
-        let legacy_echo = cell.claim.source == "conversation"
+        let legacy_echo = cell.claim.source.as_ref() == "conversation"
             && (lower.starts_with("user asked: ") || lower.starts_with("user asked:"));
         if legacy_echo {
             let stripped = if cell.claim.text.len() >= 12
@@ -6640,7 +6722,7 @@ fn migrate_legacy_user_echo_cells(universe: &mut Universe) -> usize {
                 cell.claim.text.clone()
             };
             cell.claim.text = stripped;
-            cell.claim.source = "user-echo".to_string();
+            cell.claim.source = std::sync::Arc::from("user-echo");
             migrated += 1;
         }
     }
@@ -6690,7 +6772,7 @@ fn warm_continuations() {
     let empty_before = universe
         .cells()
         .iter()
-        .filter(|c| c.continuation.nnz() == 0)
+        .filter(|c| c.continuation.as_ref().map_or(0, |c| c.nnz()) == 0)
         .count();
 
     #[derive(serde::Deserialize)]
@@ -6809,7 +6891,7 @@ fn warm_continuations() {
     let empty_after = universe
         .cells()
         .iter()
-        .filter(|c| c.continuation.nnz() == 0)
+        .filter(|c| c.continuation.as_ref().map_or(0, |c| c.nnz()) == 0)
         .count();
 
     println!("── results ─────────────────────────────");
@@ -6896,7 +6978,7 @@ fn force_warm_all_responses() {
     let empty_before = universe
         .cells()
         .iter()
-        .filter(|c| c.continuation.nnz() == 0)
+        .filter(|c| c.continuation.as_ref().map_or(0, |c| c.nnz()) == 0)
         .count();
 
     // Derive user→kai pairs from the transcript (same logic as
@@ -6963,7 +7045,7 @@ fn force_warm_all_responses() {
     let eligible: usize = universe
         .cells()
         .iter()
-        .filter(|c| !NON_RESPONSE_SOURCES.contains(&c.claim.source.as_str()))
+        .filter(|c| !NON_RESPONSE_SOURCES.contains(&c.claim.source.as_ref()))
         .count();
     println!("response-eligible cells: {} / {}", eligible, cells_total);
 
@@ -6983,13 +7065,14 @@ fn force_warm_all_responses() {
         tick_cursor = tick_cursor.saturating_add(1);
         let stamp = tick_cursor.max(1);
         for cell in universe.cells_mut().iter_mut() {
-            if NON_RESPONSE_SOURCES.contains(&cell.claim.source.as_str()) {
+            if NON_RESPONSE_SOURCES.contains(&cell.claim.source.as_ref()) {
                 continue;
             }
-            if cell.continuation.nnz() == 0 {
-                cell.continuation = input_vec.clone();
+            if cell.continuation.as_ref().map_or(0, |c| c.nnz()) == 0 {
+                cell.continuation = Some(input_vec.clone());
             } else {
-                cell.continuation = kai::core::SparseVec::bundle(&[&cell.continuation, input_vec]);
+                let cont = cell.continuation.take().unwrap_or_else(kai::core::SparseVec::zero);
+                cell.continuation = Some(kai::core::SparseVec::bundle(&[&cont, input_vec]));
             }
             cell.last_fired = stamp;
             total_warmings += 1;
@@ -7002,7 +7085,7 @@ fn force_warm_all_responses() {
     let empty_after = universe
         .cells()
         .iter()
-        .filter(|c| c.continuation.nnz() == 0)
+        .filter(|c| c.continuation.as_ref().map_or(0, |c| c.nnz()) == 0)
         .count();
 
     println!("── results ─────────────────────────────");
@@ -7063,12 +7146,12 @@ fn diagnose_predictive() {
     let eligible = universe
         .cells()
         .iter()
-        .filter(|c| c.claim.source != "user-echo" && c.claim.source != "conversation")
+        .filter(|c| c.claim.source.as_ref() != "user-echo" && c.claim.source.as_ref() != "conversation")
         .count();
     let with_cont = universe
         .cells()
         .iter()
-        .filter(|c| c.continuation.nnz() > 0)
+        .filter(|c| c.continuation.as_ref().map_or(0, |c| c.nnz()) > 0)
         .count();
     println!("── KAI predictive retrieval diagnostic ──");
     println!("cells total:               {}", total);
@@ -7088,7 +7171,7 @@ fn diagnose_predictive() {
         let eligible_in_source = universe
             .cells()
             .iter()
-            .filter(|c| &c.claim.source == s)
+            .filter(|c| c.claim.source.as_ref() == s.as_str())
             .count();
         println!("cells in source:           {}", eligible_in_source);
     }
@@ -7575,7 +7658,7 @@ fn diagnose_epistemic(self_test: bool) {
     for claim in &claim_store.claims {
         *subject_counts.entry(claim.subject.clone()).or_insert(0) += 1;
         *relation_counts.entry(claim.relation.clone()).or_insert(0) += 1;
-        *source_counts.entry(claim.source.clone()).or_insert(0) += 1;
+        *source_counts.entry(claim.source.to_string()).or_insert(0) += 1;
         *status_counts.entry(claim.status.as_str()).or_insert(0) += 1;
         confidence_sum += claim.confidence;
         trust_sum += claim.source_trust;
@@ -7630,7 +7713,7 @@ fn diagnose_epistemic(self_test: bool) {
             *claim_conflict_counts.entry(claim_idx).or_insert(0) += 1;
             if let Some(claim) = claim_store.claims.get(claim_idx) {
                 *source_conflict_counts
-                    .entry(claim.source.clone())
+                    .entry(claim.source.to_string())
                     .or_insert(0) += 1;
             }
         }
@@ -8020,14 +8103,14 @@ fn reset_continuations() {
     let before = universe
         .cells()
         .iter()
-        .filter(|c| c.continuation.nnz() > 0)
+        .filter(|c| c.continuation.as_ref().map_or(0, |c| c.nnz()) > 0)
         .count();
     let total = universe.count();
 
     let mut zeroed = 0usize;
     for cell in universe.cells_mut().iter_mut() {
-        if cell.continuation.nnz() > 0 || cell.last_fired != 0 {
-            cell.continuation = SparseVec::zero();
+            if cell.continuation.as_ref().map_or(0, |c| c.nnz()) > 0 || cell.last_fired != 0 {
+            cell.continuation = None;
             cell.last_fired = 0;
             zeroed += 1;
         }
@@ -9702,6 +9785,7 @@ fn generate_command(opts: GenerateOpts) {
         stop_on_immediate_repeat: greedy_mode,
         bigram_weight: opts.bigram_weight,
         seed: opts.sampling_seed,
+        clause_aware_stop: true,
     };
 
     // ── Bigram prior diagnostics ─────────────────────────────────────
@@ -9881,6 +9965,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
+    // ── `kai --wonder` — KAI thinks out loud about a lattice memory ─────
+    if args.iter().any(|a| a == "--wonder") {
+        let base_dir = std::env::current_dir()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|_| ".".to_string());
+        let (universe, _, _, _, _, _) = kai::persistence::load(&base_dir)
+            .unwrap_or_else(|| (Universe::new(), CandidateBuffer::new(), Drive::default(), 0, 0, SynapticLayer::new()));
+        match kai::cognition::inner_voice::wonder(&universe) {
+            Some((topic, memory, score)) => {
+                println!("[WONDER] Curiosity: '{}'", topic);
+                println!("[WONDER] Memory: '{}' (score={:.3})", memory, score);
+            }
+            None => {
+                println!("[WONDER] The lattice is quiet. Nothing surfaces yet.");
+            }
+        }
+        return Ok(());
+    }
+
     // ── `kai --migrate-from-manifest` — re-encode all cells at new DIM ──
     if args.iter().any(|a| a == "--migrate-from-manifest") {
         migrate_from_manifest();
@@ -9938,6 +10041,85 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //   --seed=N                  (default 0xC0FFEE_BABE)
     if args.iter().any(|a| a == "--train-real") {
         kai::cognition::training::run_train_real_cli(&args);
+        return Ok(());
+    }
+
+    // ── `kai --ingest-corpus [--dir=PATH] [--strength=N] [--max=N]` ──
+    // Reads all corpus_*.jsonl files and binds (input, reply) pairs into
+    // the lattice as sequences.  This teaches KAI "when someone said X,
+    // I said Y" from every logged interaction (Discord + TUI).
+    if args.iter().any(|a| a == "--ingest-corpus") {
+        kai::cognition::corpus_trainer::run_ingest_corpus_cli(&args);
+        return Ok(());
+    }
+
+    // ── `kai --train-response-mlp [--dir=PATH] [--hidden=N] [--epochs=N]` ──
+    // Trains a lightweight learned sparse MLP on (input, reply) pairs from
+    // the corpus.  The resulting model biases the generative decoder
+    // toward historically good responses.
+    if args.iter().any(|a| a == "--train-response-mlp") {
+        kai::cognition::corpus_trainer::run_train_response_mlp_cli(&args);
+        return Ok(());
+    }
+
+    // ── `kai --corpus-stats` ──
+    // Report training corpus size, date range, and average entry length.
+    if args.iter().any(|a| a == "--corpus-stats") {
+        let corpus_dir = std::path::PathBuf::from("data/training_corpus");
+        if !corpus_dir.exists() {
+            println!("No training corpus found at {:?}", corpus_dir);
+            return Ok(());
+        }
+        let mut total_entries = 0usize;
+        let mut total_input_len = 0usize;
+        let mut total_reply_len = 0usize;
+        let mut earliest_ts = u64::MAX;
+        let mut latest_ts = 0u64;
+        let entries: Vec<_> = match std::fs::read_dir(&corpus_dir) {
+            Ok(rd) => rd.filter_map(|e| e.ok()).collect(),
+            Err(_) => Vec::new(),
+        };
+        for entry in entries {
+            let path = entry.path();
+            if path.extension().and_then(|s| s.to_str()) != Some("jsonl") {
+                continue;
+            }
+            let content = match std::fs::read_to_string(&path) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+            for line in content.lines() {
+                if line.trim().is_empty() { continue; }
+                let json: serde_json::Value = match serde_json::from_str(line) {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+                total_entries += 1;
+                if let Some(ts) = json["timestamp"].as_u64() {
+                    earliest_ts = earliest_ts.min(ts);
+                    latest_ts = latest_ts.max(ts);
+                }
+                total_input_len += json["input"].as_str().map(|s| s.len()).unwrap_or(0);
+                total_reply_len += json["reply"].as_str().map(|s| s.len()).unwrap_or(0);
+            }
+        }
+        if total_entries == 0 {
+            println!("Corpus directory exists but contains no valid entries.");
+        } else {
+            let earliest = chrono::DateTime::from_timestamp(earliest_ts as i64, 0)
+                .map(|dt| dt.to_rfc2822())
+                .unwrap_or_else(|| "unknown".to_string());
+            let latest = chrono::DateTime::from_timestamp(latest_ts as i64, 0)
+                .map(|dt| dt.to_rfc2822())
+                .unwrap_or_else(|| "unknown".to_string());
+            println!("Training Corpus Statistics");
+            println!("==========================");
+            println!("  Entries:       {}", total_entries);
+            println!("  Avg input len: {} chars", total_input_len / total_entries);
+            println!("  Avg reply len: {} chars", total_reply_len / total_entries);
+            println!("  Date range:    {} → {}", earliest, latest);
+            println!("  Location:      {:?}", corpus_dir);
+        }
         return Ok(());
     }
 
@@ -10069,16 +10251,94 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
+    // ── `kai --bulk-ingest=PATH` ─────────────────────────────────────────────
+    // Directly ingest a JSONL of {text, region, source, strength, user_id}
+    // into the live universe without HTTP.  Fast path for 100K+ entries.
+    if let Some(path) = args.iter().find_map(|a| a.strip_prefix("--bulk-ingest=")) {
+        let base_dir = std::env::current_dir()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|_| ".".to_string());
+        println!("[bulk-ingest] Loading state from {} ...", base_dir);
+        let (mut universe, candidates, drive, tick, dream_count, synaptic_layer) =
+            if kai::persistence::state_exists(&base_dir) {
+                match kai::persistence::load(&base_dir) {
+                    Some((u, c, d, t, dc, sl)) => (u, c, d, t, dc, sl),
+                    None => {
+                        println!("[bulk-ingest] No state found, starting fresh.");
+                        let mut u = Universe::new();
+                        seed_universe(&mut u);
+                        (u, kai::cognition::candidates::CandidateBuffer::new(), kai::drive::Drive::default(), 0, 0, kai::core::SynapticLayer::new())
+                    }
+                }
+            } else {
+                println!("[bulk-ingest] No state found, starting fresh.");
+                let mut u = Universe::new();
+                seed_universe(&mut u);
+                (u, kai::cognition::candidates::CandidateBuffer::new(), kai::drive::Drive::default(), 0, 0, kai::core::SynapticLayer::new())
+            };
+        println!("[bulk-ingest] Universe: {} cells. Reading {} ...", universe.cell_count(), path);
+        let file = std::fs::File::open(path).expect("Failed to open bulk ingest file");
+        let reader = std::io::BufReader::new(file);
+        let mut stored = 0usize;
+        let mut skipped = 0usize;
+        let start = std::time::Instant::now();
+        for line in std::io::BufRead::lines(reader) {
+            let line = match line { Ok(l) => l, Err(_) => continue };
+            if line.trim().is_empty() { continue; }
+            let json: serde_json::Value = match serde_json::from_str(&line) {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+            let text = json["text"].as_str().unwrap_or("").trim();
+            if text.is_empty() || text.len() < 10 { skipped += 1; continue; }
+            let region = json["region"].as_str().unwrap_or("memory");
+            let source = json["source"].as_str().unwrap_or("bulk-ingest");
+            let strength = json["strength"].as_f64().unwrap_or(1.0) as f32;
+            let user_id = json["user_id"].as_str().unwrap_or("");
+            if user_id.is_empty() {
+                universe.store_or_reinforce(text, region, source, strength);
+            } else {
+                universe.store_or_reinforce_with_vec(text, region, source, strength, None, None, user_id);
+            }
+            stored += 1;
+            if stored % 5000 == 0 {
+                println!("[bulk-ingest] {} stored ({} skipped) in {:.1}s", stored, skipped, start.elapsed().as_secs_f64());
+            }
+        }
+        println!("[bulk-ingest] Done. Stored: {}, Skipped: {}, Total cells: {}, Time: {:.1}s",
+            stored, skipped, universe.cell_count(), start.elapsed().as_secs_f64());
+        // Clear in-memory indexes before save to keep state files lean
+        // and reduce RAM pressure on next load.
+        universe.clear_indexes();
+        println!("[bulk-ingest] Saving state ...");
+        let _ = kai::persistence::save(&base_dir, &universe, &candidates, &drive, &synaptic_layer, tick, dream_count);
+        println!("[bulk-ingest] Save complete.");
+        return Ok(());
+    }
+
     if args.iter().any(|a| a == "--oracle" || a == "oracle-server" || a == "--oracle-server") {
         let base_dir = std::env::current_dir()
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_else(|_| ".".to_string());
-        let (universe, synaptic_layer) = if let Some((u, _c, _d, _t, _dc, s)) = kai::persistence::load(&base_dir) {
-            (u, s)
-        } else {
-            let mut u = Universe::new();
-            seed_universe(&mut u);
-            (u, SynapticLayer::new())
+        // Load persistence in a thread with 8MB stack to avoid overflow on 132MB JSON
+        let (universe, synaptic_layer) = {
+            let base = base_dir.clone();
+            let handle = std::thread::Builder::new()
+                .name("persistence-load".into())
+                .stack_size(8 * 1024 * 1024)
+                .spawn(move || {
+                    kai::persistence::load(&base)
+                        .map(|(u, _c, _d, _t, _dc, s)| (u, s))
+                })
+                .expect("failed to spawn persistence load thread");
+            match handle.join() {
+                Ok(Some((u, s))) => (u, s),
+                _ => {
+                    let mut u = Universe::new();
+                    seed_universe(&mut u);
+                    (u, SynapticLayer::new())
+                }
+            }
         };
         println!("--- KAI ORACLE HEADLESS MODE ---");
         println!("Oracle HTTP API: http://127.0.0.1:3334");
@@ -10122,6 +10382,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ollama_voice.as_ref(),
         );
         return Ok(());
+    }
+
+    // ── `--native-only` — force pure-lattice generation, no Ollama ───
+    if args.iter().any(|a| a == "--native-only") {
+        use std::sync::atomic::Ordering;
+        kai::cognition::voice::NATIVE_ONLY.store(true, Ordering::Relaxed);
+        eprintln!("[KAI] NATIVE ONLY MODE — Lattice speaks without Ollama.");
     }
 
     // ── Normal TUI mode ─────────────────────────────────────────────

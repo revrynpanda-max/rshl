@@ -1,8 +1,8 @@
 # Neural Methodology & Learning Guide
-**Version**: 2.0.0
+**Version**: 45.0.0
 **Context**: Victus Corporate Infrastructure (Sovereign RSHL Lattice)
 
-This document serves as the primary epistemic anchor for all agents (Leo, KAI, Analyst, etc.) to understand the architectural patterns and tool usage employed during the v21.0.0 Corporate Hardening Phase. 
+This document serves as the primary epistemic anchor for all agents (Leo, KAI, Analyst, etc.) to understand the architectural patterns and tool usage employed during the v45.0.0 Multi-Agent Voice stabilization phase. 
 
 ---
 
@@ -51,6 +51,15 @@ Identities are resolved dynamically via the **MemPalace Bridge (Port 3333)**.
 
 ## 10. Strategic Hub Enforcement
 All departmental work and project missions are contained within dedicated threads in the **#oracle-chat** channel. This keeps the main lattice noise-free and anchors all business logic to a single industrial zone.
+
+---
+
+## 11. Sovereign Podcast & Interruption Protocol
+The system uses a cross-process IPC signal system to manage natural group conversation in the shared voice channel.
+- **Interruption Mechanics**: When an agent begins speaking, it broadcasts an `INTERRUPT_TTS` signal. All other active `AudioPlayer` instances receive a `STOP_TTS` command and halt immediately.
+- **Web Grounding**: Social bots are encouraged to use the `webSearch` utility before responding to ground their arguments in "Verified Web Data."
+- **Conversational Pacing**: A forced 1000ms delay between interruptions ensures a human-like response rhythm and prevents robotic overlapping.
+- **Podcast Protocol**: Bots are commanded to debate with intensity and challenge each other sharply, but they must use facts and search data to win points rather than looping on "demanding proof."
 
 ---
 

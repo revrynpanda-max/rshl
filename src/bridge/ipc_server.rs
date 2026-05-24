@@ -151,7 +151,7 @@ fn handle_command(
                 .map(|h| {
                     serde_json::json!({
                         "text": h.label,
-                        "region": h.region,
+                        "region": h.region.to_string(),
                         "score": h.score,
                         "strength": h.strength,
                         "source": h.source,
@@ -188,11 +188,11 @@ fn handle_command(
             let hits = universe.query(text, n.min(20));
             let filtered: Vec<serde_json::Value> = hits
                 .iter()
-                .filter(|h| region_filter.map(|r| h.region == r).unwrap_or(true))
+                .filter(|h| region_filter.map(|r| h.region.as_str() == r).unwrap_or(true))
                 .map(|h| {
                     serde_json::json!({
                         "text":     h.label,
-                        "region":   h.region,
+                        "region": h.region.to_string(),
                         "score":    h.score,
                         "strength": h.strength,
                     })
@@ -288,7 +288,7 @@ fn handle_command(
             let mut cells: Vec<&crate::core::Cell> = universe
                 .cells()
                 .iter()
-                .filter(|c| region_filter.map(|r| c.region == r).unwrap_or(true))
+                .filter(|c| region_filter.map(|r| c.region.as_ref() == r).unwrap_or(true))
                 .collect();
             cells.sort_by(|a, b| {
                 b.claim
@@ -303,9 +303,9 @@ fn handle_command(
                 .map(|c| {
                     serde_json::json!({
                         "text":     c.claim.text,
-                        "region":   c.region,
+                        "region": c.region.to_string(),
                         "strength": c.claim.confidence,
-                        "source":   c.claim.source,
+                        "source": c.claim.source.to_string(),
                     })
                 })
                 .collect();
@@ -364,7 +364,7 @@ fn chat_hits(
             universe
                 .get_by_source("seed")
                 .into_iter()
-                .filter(|h| h.region == "memory")
+                .filter(|h| h.region.as_str() == "memory")
                 .collect()
         } else {
             universe.query_region(text, "memory", 12)
@@ -476,7 +476,7 @@ fn is_kai_self_state_query(lower: &str, _lex: &LexSemOutput) -> bool {
 }
 
 fn is_stale_self_model_hit(hit: &QueryHit) -> bool {
-    if hit.source != "self-model" {
+    if hit.source.as_str() != "self-model" {
         return false;
     }
     let lower = hit.label.to_lowercase();

@@ -4,6 +4,22 @@ All notable changes to the Victus Core and RSHL Lattice Bridge will be documente
 
 ---
 
+## [45.0.0] — 2026-05-16 (Sovereign Podcast & Multi-Agent Voice)
+### Added
+- **Global Voice Interruption System**: Implemented cross-process `INTERRUPT_TTS` and `STOP_TTS` signals. Bots now instantly halt speech when another agent begins, simulating natural group conversation.
+- **Web Grounding (Social)**: Integrated real-time web search into the social turn logic. Bots now pull verified context via OpenJarvis to back up claims with "proof."
+- **Sovereign Debate Protocol**: Enforced high-intensity, fact-based debating rules. Bots are now commanded to challenge each other sharply using data rather than arguing about theories.
+- **Topic Shift Heuristic**: Implemented automatic subject-change logic to break "stuck" theoretical or mathematical loops in social chat.
+- **Groq Voice Proxying**: Enabled KAI to act as a voice proxy for Groq, reading his social messages aloud in the shared voice channel.
+- **Natural Conversational Pacing**: Added a 1s response delay to mimic human listening and reaction time.
+
+### Fixed
+- **Voice Pipeline Stability**: Resolved `prism.opus.OpusHead` crashes by refactoring the audio stream to use raw Opus decoding through FFmpeg.
+- **Identity Awareness**: Overhauled transcript formatting to clearly distinguish between AI Bots and Humans, ensuring bots acknowledge the user directly.
+- **Race Conditions**: Fixed synchronization issues in the TTS pipeline where transcripts were firing before audio buffers were fully written.
+
+---
+
 ## [44.0.0] — 2026-05-07 (Fleet Resilience)
 ### Added
 - **Global Crash Guards**: Implemented `unhandledRejection` and `uncaughtException` handlers in `start-bot.mjs`. Bots now recover from neural faults instead of exiting.

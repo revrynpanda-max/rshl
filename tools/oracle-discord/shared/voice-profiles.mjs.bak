@@ -1,0 +1,12 @@
+export const VOICE_PROFILES = {
+  "Leo": "CwhRBWXzGAHq8TQ4Fs17",      // Roger (Laid-Back, Casual - Male)
+  "Groq": "TX3LPaxmHKxFdv7VOQHJ",     // Liam (Fast-Paced, Intelligent - Male)
+  "Gemini": "EXAVITQu4vr4xnSDxMaL",   // Sarah (Mature, Reassuring - Female)
+  "Claudey": "pFZP5JQG7iQjIQuC4Bku",  // Lily (Velvety Actress - Female)
+  "X": "goT3UYdM9bhm0n2lmKQx",        // Edward (British, Dark, Low - Male)
+  "KAI": "pNInz6obpgDQGcFmaJgB",      // Adam (Dominant, Firm - Male)
+  "Analyst": "nPczCjzI2devNBz1zQrb",  // Brian (Deep, Resonant - Male)
+  "Researcher": "pqHfZKP75CvOlQylNhV4", // Bill (Wise, Mature - Male)
+  "Kai Coder": "ctbfMo4IDq5ExcIEim2K", // Gareth (Assured, Corporate - Male)
+  "Oracle": "onwK4e9ZLuTAKqWW03F9"    // Daniel (Steady Broadcaster - Male)
+};

@@ -73,7 +73,7 @@ pub fn ram_tick(
                             .par_iter()
                             .enumerate()
                             .map(|(i, orig)| {
-                                if is_anchor[i] { return orig.data.clone(); }
+                                if is_anchor[i] { return orig.to_dense(); }
                                 let start_idx = i * words;
                                 let slice = &result.bundle_sums[start_idx .. start_idx + words];
                                 crate::core::gpu_compute::threshold_bundle(slice, total_cells)
@@ -87,8 +87,8 @@ pub fn ram_tick(
                             run_boid_iteration(&mut state, &settings, &field);
                         }
                         state.positions.iter().enumerate().map(|(i, pos)| {
-                            if is_anchor[i] { return cells_snapshot[i].data.clone(); }
-                            let orig = &cells_snapshot[i].data;
+                            if is_anchor[i] { return cells_snapshot[i].to_dense(); }
+                            let orig = cells_snapshot[i].to_dense();
                             let target_nnz = (crate::core::sparse_vec::DIM as f32 * 0.04) as usize;
                             let mut acc: Vec<(usize, i32)> = orig.iter().enumerate()
                                 .map(|(k, &v)| (k, v as i32 * 100 + (pos[k] * 50.0) as i32))

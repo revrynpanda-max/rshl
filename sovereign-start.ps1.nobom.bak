@@ -1,0 +1,41 @@
+# KAI Sovereign Master Launcher
+# Unifies the 16,384-dim CNS, Oracle Roundtable, and Discord Multi-Bot Ecosystem.
+
+# Force UTF-8 so Sovereign Emojis and Logic display correctly
+chcp 65001 >$null
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$env:LANG = "en_US.UTF-8"
+
+Write-Host "🌌 --- KAI SOVEREIGN COMMAND --- 🌌" -ForegroundColor Cyan
+Write-Host "Initializing 16,384-dimensional CNS and Unity Protocol..."
+
+# 1. Kill any ghost processes to avoid port conflicts
+Write-Host "🧹 Clearing environment..." -ForegroundColor Gray
+taskkill /F /IM kai.exe /T 2>$null
+Get-Process | Where-Object { $_.CommandLine -match "run-oracle-discord|ecosystem-manager|start-bot" } | Stop-Process -Force -ErrorAction SilentlyContinue
+
+# 2. Launch the Master Oracle-Discord Gateway
+# This script handles KAI startup, OpenJarvis, and all Discord bots.
+Write-Host "🚀 Launching Sovereign Discord Bridge..." -ForegroundColor Green
+$discord_path = "c:\KAI\tools\oracle-discord\run-oracle-discord.ps1"
+
+if (Test-Path $discord_path) {
+    Start-Process powershell -ArgumentList "-NoExit", "-File", "$discord_path"
+} else {
+    Write-Host "❌ Error: Could not find Discord bridge at $discord_path" -ForegroundColor Red
+}
+
+# 3. Wait for port 3333 to stabilize (The Rust Engine)
+Write-Host "⏳ Waiting for Sovereign CNS to initialize..." -ForegroundColor Yellow
+Start-Sleep -Seconds 10
+
+# 4. Open Diagnostic UI
+Write-Host "🌐 Opening Diagnostic UI..." -ForegroundColor Green
+Start-Process "c:\KAI\oracle.html"
+
+Write-Host "🌌 --- SOVEREIGN SYSTEMS ACTIVE --- 🌌" -ForegroundColor Cyan
+Write-Host "KAI is now learning, dreaming, and evolving."
+Write-Host "Monitoring #kai-dreams for real-time evolution logs."
+Write-Host "Press any key to exit launcher (KAI will remain active in the background)."
+$null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")

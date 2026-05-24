@@ -38,6 +38,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::Arc;
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -59,8 +60,8 @@ const LTD_IDLE_TICKS: u64 = 80;
 /// Maximum outgoing synapses per neuron (axon fan-out limit)
 const MAX_FAN_OUT: usize = 32;
 
-/// Maximum total synapses — prevents memory explosion
-const MAX_TOTAL_SYNAPSES: usize = 8192;
+/// Maximum total synapses — 10M cap for dense associative memory on 400K+ cell lattices
+const MAX_TOTAL_SYNAPSES: usize = 10_000_000;
 
 // ── Synapse ───────────────────────────────────────────────────────────────────
 
@@ -71,10 +72,10 @@ const MAX_TOTAL_SYNAPSES: usize = 8192;
 /// which gives us bidirectional associative recall.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Synapse {
-    /// Label of the firing (pre-synaptic) cell
-    pub pre_label: String,
-    /// Label of the co-activated (post-synaptic) cell
-    pub post_label: String,
+    /// Label of the firing (pre-synaptic) cell (Arc<str> dedupes across synapses)
+    pub pre_label: Arc<str>,
+    /// Label of the co-activated (post-synaptic) cell (Arc<str> dedupes across synapses)
+    pub post_label: Arc<str>,
     /// Synaptic strength [0.0 – 1.0]. Grows via LTP, shrinks via LTD.
     pub weight: f32,
     /// Last tick this synapse fired (for LTD idle tracking)
@@ -91,7 +92,7 @@ pub struct SynapticLayer {
     pub synapses: Vec<Synapse>,
     /// pre_label → indices into self.synapses (fast fan-out lookup)
     #[serde(default)]
-    index: HashMap<String, Vec<usize>>,
+    index: HashMap<Arc<str>, Vec<usize>>,
     /// Current tick counter
     pub tick: u64,
     /// Total LTP events applied
@@ -150,12 +151,12 @@ impl SynapticLayer {
         let mut boosts: HashMap<String, f32> = HashMap::new();
 
         for label in fired_labels {
-            if let Some(indices) = self.index.get(label) {
+            if let Some(indices) = self.index.get(label.as_str()) {
                 for &idx in indices {
                     let syn = &self.synapses[idx];
                     // Don't boost cells that already fired
-                    if fired_labels.contains(&syn.post_label) { continue; }
-                    let entry = boosts.entry(syn.post_label.clone()).or_insert(0.0);
+                    if fired_labels.iter().any(|l| l.as_str() == &*syn.post_label) { continue; }
+                    let entry = boosts.entry(syn.post_label.to_string()).or_insert(0.0);
                     *entry = (*entry + syn.weight * 0.4).min(0.8); // cap boost at 0.8
                 }
             }
@@ -208,7 +209,7 @@ impl SynapticLayer {
     pub fn weight(&self, pre: &str, post: &str) -> f32 {
         if let Some(indices) = self.index.get(pre) {
             for &idx in indices {
-                if self.synapses[idx].post_label == post {
+                if &*self.synapses[idx].post_label == post {
                     return self.synapses[idx].weight;
                 }
             }
@@ -252,7 +253,7 @@ impl SynapticLayer {
         // Find existing synapse
         if let Some(indices) = self.index.get(pre) {
             for &idx in indices {
-                if self.synapses[idx].post_label == post {
+                if &*self.synapses[idx].post_label == post {
                     let syn = &mut self.synapses[idx];
                     syn.weight = (syn.weight + gain).min(MAX_WEIGHT);
                     syn.last_fire_tick = tick;
@@ -272,14 +273,16 @@ impl SynapticLayer {
 
         // Create new synapse
         let idx = self.synapses.len();
+        let pre_arc: Arc<str> = pre.into();
+        let post_arc: Arc<str> = post.into();
         self.synapses.push(Synapse {
-            pre_label: pre.to_string(),
-            post_label: post.to_string(),
+            pre_label: pre_arc.clone(),
+            post_label: post_arc,
             weight: gain,
             last_fire_tick: tick,
             fire_count: 1,
         });
-        self.index.entry(pre.to_string()).or_default().push(idx);
+        self.index.entry(pre_arc).or_default().push(idx);
         self.total_ltp += 1;
     }
 
@@ -371,10 +374,10 @@ impl NeuralBus {
             if !fired_labels.contains(&label) && boost > 0.15 {
                 if let Some(cell) = universe.get_cell_by_label(&label) {
                     // Check isolation for associated cell too
-                    if cell.claim.layer == 2 && cell.claim.user_id != user_id {
+                    if cell.claim.layer == 2 && cell.claim.user_id.as_ref() != user_id {
                         continue;
                     }
-                    if !regions.is_empty() && !regions.contains(&cell.region.as_str()) {
+                    if !regions.is_empty() && !regions.contains(&cell.region.as_ref()) {
                         continue;
                     }
 
@@ -388,6 +391,92 @@ impl NeuralBus {
         hits.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
         hits.truncate(n + 2);
         hits
+    }
+
+    /// Multi-hop associative retrieval — follow synaptic chains 3–5 steps deep.
+    ///
+    /// This is the core reasoning mechanism. Single-hop associative recall
+    /// finds direct neighbors; multi-hop traces indirect connections:
+    ///   "cat" → "mat" → "floor" → "carpet" → "vacuum"
+    ///
+    /// Each hop decays the signal by `decay` (default 0.7) so distant
+    /// associations contribute less. The result is a richer context set
+    /// that captures latent relational structure invisible to cosine alone.
+    ///
+    /// Returns all unique hits merged from every hop, ranked by cumulative
+    /// effective score.
+    pub fn query_multi_hop(
+        universe: &crate::core::Universe,
+        synaptic_layer: &SynapticLayer,
+        phi_g: f32,
+        text: &str,
+        n: usize,
+        regions: &[&str],
+        user_id: &str,
+        max_hops: usize,
+    ) -> Vec<crate::core::QueryHit> {
+        let max_hops = max_hops.max(1).min(5);
+        let decay = 0.7f32;
+
+        // ── Hop 0: geometric retrieval ────────────────────────────────────
+        let mut all_hits: Vec<crate::core::QueryHit> =
+            universe.query_in_regions(text, n * 2, regions, user_id);
+        let mut visited: std::collections::HashSet<String> =
+            all_hits.iter().map(|h| h.label.clone()).collect();
+
+        // ── Hops 1..N: synaptic propagation ───────────────────────────────
+        let mut frontier: Vec<String> = all_hits.iter().map(|h| h.label.clone()).collect();
+
+        for hop in 1..=max_hops {
+            if frontier.is_empty() { break; }
+
+            // Propagate one step from current frontier
+            let synaptic_boosts = synaptic_layer.propagate(&frontier);
+
+            // Build next frontier from newly discovered cells
+            let mut next_frontier: Vec<String> = Vec::new();
+            let hop_decay = decay.powi(hop as i32);
+
+            for (label, boost) in synaptic_boosts {
+                if visited.contains(&label) { continue; }
+                if boost * hop_decay < 0.05 { continue; } // too weak after decay
+
+                if let Some(cell) = universe.get_cell_by_label(&label) {
+                    // Isolation & region checks
+                    if cell.claim.layer == 2 && cell.claim.user_id.as_ref() != user_id {
+                        continue;
+                    }
+                    if !regions.is_empty() && !regions.contains(&cell.region.as_ref()) {
+                        continue;
+                    }
+
+                    let effective = Self::effective_score(0.0, boost * hop_decay, phi_g);
+                    let mut hit = crate::core::QueryHit::from_cell(cell, 0.0);
+                    hit.score = effective;
+                    all_hits.push(hit);
+
+                    visited.insert(label.clone());
+                    next_frontier.push(label);
+                }
+            }
+
+            frontier = next_frontier;
+        }
+
+        // ── Merge & rank ────────────────────────────────────────────────
+        // Deduplicate by label, keeping the highest score
+        let mut best: std::collections::HashMap<String, crate::core::QueryHit> =
+            std::collections::HashMap::new();
+        for hit in all_hits {
+            best.entry(hit.label.clone())
+                .and_modify(|h| h.score = h.score.max(hit.score))
+                .or_insert(hit);
+        }
+
+        let mut merged: Vec<crate::core::QueryHit> = best.into_values().collect();
+        merged.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        merged.truncate(n + max_hops * 2);
+        merged
     }
 }
 

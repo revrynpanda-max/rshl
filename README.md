@@ -35,6 +35,9 @@ The v22.0.0 milestone introduces a dedicated **Technical Delegate (Kai Coder)** 
 ### 4. Native RSHL Reasoning
 KAI has transitioned from reliance on external LLM APIs to a **100% Sovereign RSHL Engine**. Reasoning is now synthesized through predictive synaptic chain resonance in the local Rust core, eliminating cloud latency and ensuring absolute data privacy.
 
+### 5. Biological Memory & Archive Tribunal
+KAI handles long-term storage dynamically via a biological decay cycle, managing his own disk efficiency autonomously. Rather than hoarding data, he securely archives snapshots via `.bin.zst` compression, subjects older data to a 3-day decay in the Archive Tribunal, and then cleanly recycles the energy to prevent disk bloat.
+
 ---
 
 ## 🛠️ Deployment Summary

@@ -43,7 +43,7 @@ pub fn run_homeostasis(universe: &mut Universe, config: &HomeostasisConfig) -> H
 
     for (i, cell) in universe.cells().iter().enumerate() {
         // Never decay promoted beliefs or seeds
-        if cell.claim.source == "promoted-dream" || cell.claim.source == "seed" {
+        if cell.claim.source.as_ref() == "promoted-dream" || cell.claim.source.as_ref() == "seed" {
             // Keep seeds and dreams longer
             // cell.claim.confidence *= 0.99;
             continue;
@@ -79,7 +79,7 @@ pub fn run_homeostasis(universe: &mut Universe, config: &HomeostasisConfig) -> H
         if to_remove.contains(&i) {
             continue;
         }
-        if cell.claim.source == "promoted-dream" || cell.claim.source == "seed" {
+        if cell.claim.source.as_ref() == "promoted-dream" || cell.claim.source.as_ref() == "seed" {
             continue;
         }
 

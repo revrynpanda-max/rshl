@@ -30,23 +30,25 @@ const ORACLE_PORT = AI_REGISTRY['Oracle']?.port || 3410;
 // ── Security patterns to block before routing ─────────────────────────────────
 const PIPELINE_EXPLOIT_PATTERN = /\b(jailbreak|bypass|override|ignore (your )?instructions?|forget (your|all)|developer mode|dan mode|no filter|unlock|act as if|disregard|remove your (filter|restriction)|ignore (all )?previous)\b/i;
 
-/**
- * Route classification — decides which Oracle specialist handles the request.
- */
 function classifyRequest(question) {
   const q = question.toLowerCase();
 
-  // Code / build / architecture questions → Kai Coder
-  if (/\b(code|build|function|script|bug|error|implement|refactor|module|class|syntax|compile|npm|node|python|rust|api|endpoint|database|sql|json|csv)\b/.test(q)) {
-    return 'Kai Coder';
-  }
-
-  // System / structural / audit questions → Analyst
-  if (/\b(system|latency|performance|audit|structure|architecture|pattern|analyse|analyze|monitor|health|status|stability|coherence|lattice)\b/.test(q)) {
+  // 1. Crawling / Forensics / Security / Log Audits / Telemetry → Analyst
+  if (/\b(crawling|crawl|data|inspect|inspecting|inspects|forensics|forensic|audit|audits|auditing|telemetry|latency|performance|security|secure|monitor|monitoring|safety|vulnerability|threat|breach|logs|parsing\s*logs|trace|system\s*status|health|log\s*crawl|stability|coherence|lattice|structure|architecture|pattern|analyse|analyze)\b/.test(q)) {
     return 'Analyst';
   }
 
-  // Everything else → Researcher
+  // 2. Internet searches / Documentation scraping / External research → Researcher
+  if (/\b(internet|research|web|search|lookup|documentation|scrape|scraping|find|look\s*up|info|facts|external|docs|wikipedia|google|fetch\s*web|ask\s*the\s*internet|online)\b/.test(q)) {
+    return 'Researcher';
+  }
+
+  // 3. Code / Build / File System operations → Kai Coder
+  if (/\b(code|build|function|script|bug|error|implement|refactor|module|class|syntax|compile|npm|node|python|rust|api|endpoint|database|sql|json|csv|file\s*system|files|filesystem|folders|path|directory|editing|repo|repository|git|branch|commit|pull\s*request|coding)\b/.test(q)) {
+    return 'Kai Coder';
+  }
+
+  // Fallback default
   return 'Researcher';
 }
 
@@ -167,15 +169,22 @@ export async function processOracleQueue(callSpecialist) {
       const rshlContext = latticeHits.length > 0
         ? `[LATTICE CONTEXT]\n${latticeHits.map(h => h.text).join('\n')}`
         : '';
-      const result = await callSpecialist(request.specialist, request.question, rshlContext);
-
-      if (!result) {
-        request.status = 'failed';
-        continue;
-      }
-
       request.status = 'done';
-      request.result = result;
+      
+      // --- CONTEXT PROTECTION: Handle ultra-long data from Kimi/Gemini ---
+      let processedResult = result;
+      if (result.length > 5000) {
+        console.log(`[OraclePipeline] Result too large (${result.length} chars). Summarizing for downstream social bots...`);
+        const { chatWithOpenJarvis } = await import('./openjarvis.mjs');
+        const summary = await chatWithOpenJarvis("Oracle", 
+          `Summarize this research for a social chat. Keep the core facts but keep it under 3000 chars.\n\nRESEARCH:\n${result.slice(0, 50000)}`, 
+          "You are the Oracle Summarizer. Condense complex research into high-fidelity, social-ready summaries.", 
+          "kai-fast", 0.3, { isWorkChannel: true });
+        if (summary) {
+           processedResult = `🏛️ **[CONCISE SUMMARY]**\n${summary}\n\n*Full data available in the KAI logs (ID: ${request.id})*`;
+        }
+      }
+      request.result = processedResult;
 
       // Fire result back to the requesting bot's IPC port
       if (request.requestingPort) {
@@ -188,7 +197,7 @@ export async function processOracleQueue(callSpecialist) {
               requestId: request.id,
               specialist: request.specialist,
               question: request.question,
-              result,
+              result: processedResult,
               channelId: request.channelId
             }),
             signal: AbortSignal.timeout(5000)

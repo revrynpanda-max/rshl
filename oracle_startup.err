@@ -1,0 +1,4 @@
+
+thread 'main' (10940) panicked at src\bridge\oracle_server.rs:331:10:
+Oracle: could not bind port 3334: Os { code: 10048, kind: AddrInUse, message: "Only one usage of each socket address (protocol/network address/port) is normally permitted." }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace

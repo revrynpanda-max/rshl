@@ -169,7 +169,7 @@ pub fn explore_lexicon_binding(
         word_a,
         word_b,
         resonated_text: best_cell.label.clone(),
-        resonated_region: best_cell.region.clone(),
+        resonated_region: best_cell.region.to_string(),
         score: *best_score,
     })
 }
@@ -182,6 +182,35 @@ pub struct LexiconExploration {
     pub resonated_text: String,
     pub resonated_region: String,
     pub score: f32,
+}
+
+/// Prospective memory — KAI brings up a memory unprompted.
+///
+/// Queries the lattice for a "wonder" topic: something KAI is
+/// curious about that the user hasn't asked. This is the seed
+/// of genuine self-directed cognition.
+///
+/// Returns: (topic_query, top_hit_text, score)
+pub fn wonder(universe: &Universe) -> Option<(String, String, f32)> {
+    // Curiosity seeds — topics KAI naturally wonders about
+    let curiosity_seeds = [
+        "what do I know",
+        "what connects",
+        "what pattern",
+        "what truth",
+        "what meaning",
+        "who am I",
+        "why lattice",
+        "how grow",
+    ];
+    use rand::Rng;
+    let mut rng = rand::thread_rng();
+    let seed = curiosity_seeds[rng.gen_range(0..curiosity_seeds.len())];
+    let hits = universe.query(seed, 5);
+    hits.into_iter()
+        .filter(|h| h.score > 0.20)
+        .max_by(|a, b| a.score.partial_cmp(&b.score).unwrap_or(std::cmp::Ordering::Equal))
+        .map(|h| (seed.to_string(), h.text.clone(), h.score))
 }
 
 #[cfg(test)]

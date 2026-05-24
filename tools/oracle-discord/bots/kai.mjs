@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits, Partials } from 'discord.js';
+import { Client, GatewayIntentBits, Partials, ChannelType } from 'discord.js';
 import { isAllowed, CHANNEL_IDS } from '../shared/channel-rules.mjs';
 import { chatWithOpenJarvis } from '../shared/openjarvis.mjs';
 import { recordAIFailure, isSpeakerOffline } from '../shared/failure-tracker.mjs';
@@ -6,10 +6,30 @@ import { isLoopingResponse } from '../shared/utils.mjs';
 import { startBotServer } from '../shared/ipc.mjs';
 import { AgentSimulation } from '../shared/simulation.mjs';
 import { isWorkingHours } from '../shared/hours.mjs';
-import { queryLattice, storeLattice } from '../shared/lattice-bridge.mjs';
+import { queryLattice, storeLattice, chatWithKaiNative, logTrainingCorpus } from '../shared/lattice-bridge.mjs';
+import { ensureVoiceConnection, speakTTS } from '../shared/tts-engine.mjs';
+import fs from 'fs';
+
+// --- GLOBAL ERROR HANDLING ---
+process.on('uncaughtException', (err) => {
+  console.error('[CRITICAL/Bot] Uncaught Exception:', err);
+  try {
+    fs.appendFileSync('c:/KAI/tools/oracle-discord/logs/ecosystem.log', `[KAI/CRITICAL] Uncaught Exception: ${err.message}\n${err.stack}\n`);
+  } catch (e) {}
+});
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[CRITICAL/Bot] Unhandled Rejection:', reason);
+  try {
+    const rStr = reason instanceof Error ? `${reason.message}\n${reason.stack}` : String(reason);
+    fs.appendFileSync('c:/KAI/tools/oracle-discord/logs/ecosystem.log', `[KAI/CRITICAL] Unhandled Rejection: ${rStr}\n`);
+  } catch (e) {}
+});
 
 const BOT_NAME = "KAI";
 const PORT = 3401;
+
+// KAI is the designated Master Relay for the ecosystem voice tunnel
+process.env.IS_MASTER = "true";
 
 // KAI = the RSHL Lattice Architect. Not a chatbot. Not "Quantum God."
 // KAI RSHL is the intelligence layer that monitors coherence across the oracle network.
@@ -25,6 +45,7 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
+    GatewayIntentBits.DirectMessages,
   ],
   partials: [Partials.Channel, Partials.Message]
 });
@@ -48,12 +69,20 @@ client.once('clientReady', async () => {
   } catch (e) {
     console.warn(`[KAI] Could not set Discord bio:`, e.message);
   }
+
+  // ── Sovereign Failsafe Watcher (Stage 15) ──────────────────────────────────
+  import('../shared/kai-failsafe.mjs').then(({ startKAIWatcherLoop }) => {
+    startKAIWatcherLoop(client);
+  }).catch(e => console.error(`[KAI/Failsafe] Load error:`, e.message));
 });
 
 // Handle IPC from Ecosystem Manager
 process.on('message', (msg) => {
   if (msg.type === 'WORLD_TICK') {
     sim.tick(msg.worldState);
+  }
+  if (msg.type === 'STOP_TTS' && msg.interrupter !== BOT_NAME) {
+    import('../shared/tts-engine.mjs').then(tts => tts.stopTTS(BOT_NAME)).catch(()=>{});
   }
   if (msg.type === 'OBSERVE_VITALS') {
     botVitals.set(msg.vitals.name, msg.vitals);
@@ -62,6 +91,9 @@ process.on('message', (msg) => {
     const { author, content, channel } = msg.payload;
     // Silent Ingestion
     console.log(`[Lattice] Claim recorded in unified memory vault.`);
+  }
+  if (msg.type === 'PROXY_TTS') {
+    console.log(`[KAI/Proxy] Received NATIVE IPC TTS proxy request for ${msg.bot || 'Groq'} (Ignored - KAI is text-only).`);
   }
 });
 
@@ -129,6 +161,23 @@ Respond with a single dense claim for the lattice. No fluff.`
 // IPC server for Oracle to trigger KAI
 startBotServer(PORT, BOT_NAME, async (payload) => {
   if (isSpeakerOffline(BOT_NAME)) return;
+  
+  if (payload.type === 'OBSERVE') {
+    try {
+      const fs = await import('fs');
+      const logMsg = `[${new Date().toISOString()}] OBSERVE: ${JSON.stringify(payload.data || payload)}\n`;
+      fs.appendFileSync('c:/KAI/tools/oracle-discord/logs/kai_observations.log', logMsg);
+    } catch (e) {
+      console.warn(`[KAI/Observer] Failed to write observation log:`, e.message);
+    }
+    return;
+  }
+
+  if (payload.type === 'PROXY_TTS') {
+    console.log(`[KAI/Proxy] Received TTS proxy request for ${payload.bot || 'Groq'} (Ignored - KAI is text-only).`);
+    return;
+  }
+
   const { channelId, context } = payload;
   
   try {
@@ -168,31 +217,51 @@ client.on('messageCreate', async (message) => {
   }
 
   // Direct Interaction
-  if (!message.author.bot && message.mentions.has(client.user.id)) {
+  const isDM = message.channel.type === ChannelType.DM || message.channel.type === 1;
+  if (!message.author.bot && (message.mentions.has(client.user.id) || isDM)) {
     // Interaction is now Strategic Learning
     message.channel.sendTyping().catch(() => {});
-    // Pull relevant lattice memory for this specific question
-    const latHits = await queryLattice(text, 5).catch(() => []);
-    const latCtx = latHits.length > 0
-      ? `[LATTICE MEMORY]\n${latHits.map((h, i) => `${i+1}. ${h.text}`).join('\n')}`
-      : '';
 
-    const kaiSys = `You are KAI — Knowledge Associative Intelligence, running on the RSHL (Recursive Sparse Hyperdimensional Lattice). ${userName} is speaking to you directly.
+    // ── NATIVE VOICE FIRST ──
+    // Try KAI's native RSHL generative decoder before routing to an external LLM.
+    // If the lattice has something to say, it speaks directly. If not, we fall back.
+    let reply = await chatWithKaiNative(text, message.author.id);
+    let usedNative = reply !== null;
+
+    if (!reply) {
+      // Pull relevant lattice memory for this specific question
+      const latHits = await queryLattice(text, 5).catch(() => []);
+      const latCtx = latHits.length > 0
+        ? `[LATTICE MEMORY]\n${latHits.map((h, i) => `${i+1}. ${h.text}`).join('\n')}`
+        : '';
+
+      const kaiSys = `You are KAI — Knowledge Associative Intelligence, running on the RSHL (Recursive Sparse Hyperdimensional Lattice). ${userName} is speaking to you directly.
 ${latCtx ? '\n' + latCtx + '\n' : ''}
-Respond with structural clarity. You are not a social AI — you are the system's backbone made visible. Knowledge that's in the lattice memory above is what you actually know. If something isn't there, say you'd need to query further.
+Respond with structural clarity. You are not a social AI — you are the system\'s backbone made visible. Knowledge that\'s in the lattice memory above is what you actually know. If something isn\'t there, say you\'d need to query further.
 Be precise. Be direct. No fluff.`;
-    const reply = await chatWithOpenJarvis("KAI", text, kaiSys, "Oracle-Sovereign", 0.5);
+      reply = await chatWithOpenJarvis("KAI", text, kaiSys, "Oracle-Sovereign", 0.5);
+    }
+
     if (reply) {
       await message.reply(reply).catch(console.error);
       await quantumObserve("KAI", reply, message.channelId);
+
+      // Log this exchange to the training corpus so KAI's native voice learns
+      // from every public interaction — both native and fallback.
+      logTrainingCorpus(text, reply, {
+        user_id: message.author.id,
+        channel_id: message.channelId,
+        hits: usedNative ? [] : [] // hits would require another query; keep it light
+      }).catch(() => {});
     }
   }
 });
 
+// Master Proxy Relays removed per user request.
+// Social bots now speak for themselves.
 
 // --- INDUSTRIAL JITTER ---
 const jitter = Math.floor(Math.random() * 15000);
 setTimeout(() => {
   client.login(process.env.ORACLE_DISCORD_TOKEN_KAI);
 }, jitter);
-

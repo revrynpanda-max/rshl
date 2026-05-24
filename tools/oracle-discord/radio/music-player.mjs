@@ -34,6 +34,8 @@ export async function getSongDuration(title, artist) {
       '--no-download',
       '--no-playlist',
       '--default-search', 'ytsearch1',
+      '--socket-timeout', '10',
+      '--geo-bypass',
       query
     ], { windowsHide: true });
 
@@ -57,6 +59,8 @@ export async function resolveSongMeta(query) {
       '--no-download',
       '--no-playlist',
       '--default-search', 'ytsearch1',
+      '--socket-timeout', '10',
+      '--geo-bypass',
       `${query} lyrics audio`
     ], { windowsHide: true });
 
@@ -85,7 +89,12 @@ export async function resolveSongMeta(query) {
       const hasKeywords = queryWords.length === 0 || queryWords.some(w => titleLower.includes(w));
 
       if (!hasKeywords || !isReasonableLength || isPodcast) {
-        console.warn(`[Radio/Meta] Poor match or Podcast detected: "${title}" by "${uploader}" (${duration}s). Rejecting.`);
+        let reason = "";
+        if (!hasKeywords) reason = "Keyword mismatch";
+        else if (!isReasonableLength) reason = `Duration out of bounds (${duration}s)`;
+        else if (isPodcast) reason = "Podcast detected";
+        
+        console.warn(`[Radio/Meta] Rejected: "${title}" by "${uploader}" (${duration}s). Reason: ${reason}`);
         resolve(null);
       } else {
         resolve({
@@ -110,6 +119,8 @@ export async function searchTopChoices(query) {
       '--no-download',
       '--no-playlist',
       '--default-search', 'ytsearch5',
+      '--socket-timeout', '10',
+      '--geo-bypass',
       `${query} lyrics audio`
     ], { windowsHide: true });
 
@@ -138,9 +149,14 @@ export async function searchTopChoices(query) {
 
 // ── Create audio player (shared across songs) ─────────────────────────────────
 export function createRadioPlayer() {
-  return createAudioPlayer({
+  const player = createAudioPlayer({
     behaviors: { noSubscriber: NoSubscriberBehavior.Pause }
   });
+  player.on('error', error => {
+    console.error(`[AudioPlayer] Stream Error (${error.resource.metadata?.title || 'Unknown'}):`, error.message);
+    // Resource cleanup is handled by @discordjs/voice, but we log for the Ecosystem Manager
+  });
+  return player;
 }
 
 export function streamSong(query, banter = null, urlOrId = null) {
@@ -173,6 +189,8 @@ export function streamSong(query, banter = null, urlOrId = null) {
     '--quiet',
     '--no-warnings',
     '--buffer-size', '16M',
+    '--socket-timeout', '10',
+    '--geo-bypass',
   ];
 
   if (urlOrId) {
@@ -241,7 +259,9 @@ export function streamSong(query, banter = null, urlOrId = null) {
         console.error('[Radio/Pipeline] Music Pipe Error:', err.message);
     }
   });
-  
+  ytProc.on('error', (err) => console.warn(`[Radio/Player] yt-dlp error:`, err.message));
+  ffmpegProc.on('error', (err) => console.warn(`[Radio/Player] ffmpeg error:`, err.message));
+
   const pass = new PassThrough();
   ffmpegProc.stdout.pipe(pass);
 
@@ -256,11 +276,12 @@ export function streamSong(query, banter = null, urlOrId = null) {
     } catch (e) {}
   };
 
-  // WATCHDOG: If no audio data flows within 15s, kill and retry
+  // WATCHDOG: If no audio data flows within 45s, kill and retry
   const watchdog = setTimeout(() => {
-    console.warn(`[Radio/Player] Stream watchdog triggered for: ${query}. No data for 15s.`);
+    console.warn(`[Radio/Player] Stream watchdog triggered for: ${query}. No data for 45s.`);
+    ytProc.emit('error', new Error('STREAM_TIMEOUT'));
     kill();
-  }, 15000);
+  }, 45000);
 
   ffmpegProc.stdout.once('data', () => {
     clearTimeout(watchdog);
@@ -280,7 +301,7 @@ export function streamSong(query, banter = null, urlOrId = null) {
                 unlinkSync(join(CACHE_DIR, files[0].name));
             }
         } catch (e) {}
-    });
+    }).catch(e => console.error("[Radio/Cache] Cleanup error:", e.message));
   }
 
   const resource = createAudioResource(pass, {

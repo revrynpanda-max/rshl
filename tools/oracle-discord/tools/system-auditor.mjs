@@ -42,12 +42,11 @@ export async function runSystemAudit() {
     }
 
     // 3. Temporal State (Precise EST)
+    const now = new Date();
     const estNow = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: 'numeric', hour12: false }).format(now);
     const estHour = parseInt(estNow);
     
-    if (estHour >= 3 && estHour < 9) {
-      report += `[RSHL SOVEREIGNTY] System in Consolidation Phase. All bots are hard-sleeping.\n`;
-    } else if (estHour >= 15 && estHour < 23) {
+    if (estHour >= 15 && estHour < 23) {
       report += `[INDUSTRIAL STATE] Work Shift Active. Efficiency prioritized.\n`;
     } else {
       report += `[SOCIAL STATE] Social Plaza Active. Relaxation track enabled.\n`;
@@ -69,7 +68,7 @@ export async function getEcosystemSnapshot() {
 
   const now = Date.now();
 
-  const ROSTER = ["KAI", "Oracle", "Leo", "Gemini", "Epistemic", "X", "Groq", "Analyst", "Researcher", "Kai Coder", "GPT-4o"];
+  const ROSTER = ["KAI", "Oracle", "Leo", "Gemini", "Claudey", "X", "Groq", "Analyst", "Researcher", "Kai Coder", "GPT-4o"];
   
   for (const botName of ROSTER) {
     try {
@@ -117,14 +116,7 @@ export async function getEcosystemSnapshot() {
       
       let etDate = new Date(now + minsRemaining * 60000);
       
-      // DEAD-ZONE CAP: No bot stays awake past 3 AM EST
-      const deadZoneTime = new Date(now);
-      deadZoneTime.setHours(3, 0, 0, 0);
-      if (deadZoneTime < now) deadZoneTime.setDate(deadZoneTime.getDate() + 1);
-      
-      if (!isSleeping && etDate > deadZoneTime) {
-        etDate = deadZoneTime;
-      }
+
 
       const etString = etDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'America/New_York' });
 

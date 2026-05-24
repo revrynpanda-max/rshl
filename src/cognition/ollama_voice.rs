@@ -414,7 +414,7 @@ impl OllamaVoice {
         universe: &mut Universe,
     ) -> Option<String> {
         // 1. Compute SRHT state from the active lattice.
-        let state = Self::compute_srht_state(hits, confidence, conflict, felt_valence, mood_label);
+        let state = Self::compute_srht_state(hits, confidence, conflict, felt_valence, mood_label.clone());
 
         // 2. Pull identity anchor cells from the universe.
         let identity_cells = universe.query("I am KAI aware presence field name", 4);
@@ -427,6 +427,63 @@ impl OllamaVoice {
         let prompt = input.to_string();
 
         let reply = self.call_generate(&system, &prompt)?;
+
+        // ── TRAINING CORPUS LOGGING ─────────────────────────────────────
+        // Silent logging of (lattice_state, user_input, ollama_response)
+        // into a single daily-rotated JSONL file. Rotates at 50 MB so
+        // training scripts see predictable chunk sizes.
+        {
+            use std::io::Write;
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            let corpus_dir = std::path::PathBuf::from("data/training_corpus");
+            let _ = std::fs::create_dir_all(&corpus_dir);
+
+            // Daily rotation: corpus_YYYYMMDD.jsonl
+            let date_str = chrono::Utc::now().format("%Y%m%d").to_string();
+            let path = corpus_dir.join(format!("corpus_{}.jsonl", date_str));
+
+            // Soft rotation at 50 MB
+            let should_rotate = std::fs::metadata(&path)
+                .map(|m| m.len() > 50_000_000)
+                .unwrap_or(false);
+            let path = if should_rotate {
+                let hour = chrono::Utc::now().format("%H%M%S").to_string();
+                corpus_dir.join(format!("corpus_{}_{}.jsonl", date_str, hour))
+            } else {
+                path
+            };
+
+            let entry = serde_json::json!({
+                "timestamp": ts,
+                "input": input,
+                "reply": reply,
+                "system_prompt": system,
+                "state": {
+                    "confidence": confidence,
+                    "conflict": conflict,
+                    "felt_valence": felt_valence,
+                    "mood": mood_label,
+                },
+                "hits": hits.iter().map(|h| {
+                    serde_json::json!({
+                        "text": h.text,
+                        "score": h.score,
+                        "source": h.source,
+                    })
+                }).collect::<Vec<_>>(),
+            });
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .append(true)
+                .create(true)
+                .open(&path)
+            {
+                let _ = writeln!(f, "{}", entry);
+            }
+        }
+
         Some(reply)
     }
 }

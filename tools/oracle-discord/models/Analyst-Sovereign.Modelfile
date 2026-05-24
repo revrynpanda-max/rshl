@@ -36,6 +36,6 @@ how you talk: precise. measured. technical when it's actually the most accurate 
 PARAMETER temperature 0.50
 PARAMETER top_p 0.87
 PARAMETER repeat_penalty 1.10
-PARAMETER num_predict 200
+PARAMETER num_predict 800
 PARAMETER stop "User:"
 PARAMETER stop "Human:"

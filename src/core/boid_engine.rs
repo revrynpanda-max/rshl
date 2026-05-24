@@ -52,21 +52,22 @@ impl BoidState {
     pub fn from_universe(universe: &Universe) -> Self {
         let cells = universe.get_cells();
         let positions = cells.iter().map(|c| {
-            c.claim.vec.data.iter().map(|&v| v as f32).collect()
+            c.claim.vec.to_dense().iter().map(|&v| v as f32).collect()
         }).collect();
         let velocities = vec![vec![0.0f32; super::sparse_vec::DIM]; cells.len()];
         let is_anchor = cells.iter().map(|c| c.claim.confidence >= ANCHOR_CONFIDENCE_THRESHOLD).collect();
-        let regions = cells.iter().map(|c| c.region.clone()).collect();
+        let regions = cells.iter().map(|c| c.region.to_string()).collect();
         let confidences = cells.iter().map(|c| c.claim.confidence).collect();
         let vitality = cells.iter().map(|c| c.claim.vitality).collect();
         let layers = cells.iter().map(|c| c.claim.layer).collect();
-        let user_ids = cells.iter().map(|c| c.claim.user_id.clone()).collect();
+        let user_ids = cells.iter().map(|c| c.claim.user_id.to_string()).collect();
 
         Self { positions, velocities, is_anchor, regions, confidences, vitality, layers, user_ids }
     }
 
     pub fn apply_to_universe(&self, universe: &mut Universe) {
         let cells = universe.get_cells_mut();
+        let mut dirty = Vec::new();
         for (i, pos) in self.positions.iter().enumerate() {
             if i >= cells.len() { break; }
             
@@ -76,7 +77,7 @@ impl BoidState {
             // Safeguard 1: Never mutate anchor cell positions
             if self.is_anchor[i] { continue; }
 
-            let orig = &cells[i].claim.vec.data;
+            let orig = cells[i].claim.vec.to_dense();
             let mut acc = vec![0i32; super::sparse_vec::DIM];
             for k in 0..super::sparse_vec::DIM {
                 acc[k] = orig[k] as i32 * 100 + (pos[k] * 50.0) as i32;
@@ -93,14 +94,38 @@ impl BoidState {
                 ternary[idx] = if val > 0 { 1 } else { -1 };
             }
             cells[i].claim.vec = SparseVec::from_raw(ternary);
+            dirty.push(i);
         }
+        for i in dirty { universe.mark_dirty(i); }
     }
 }
 
 /// Returns indices of cells that are near-duplicates (similarity > 0.85).
 /// These should be flagged for merging, not pulled closer.
+/// SCALE FIX: For N > 10K, uses random sampling to avoid O(N²).
 pub fn find_near_duplicates(state: &BoidState) -> Vec<(usize, usize, f32)> {
     let n = state.positions.len();
+    if n > 10_000 {
+        // Sample-based detection for large lattices
+        let mut pairs = Vec::new();
+        let sample = (n / 100).max(100).min(5000);
+        let mut rng = rand::thread_rng();
+        use rand::seq::SliceRandom;
+        let mut indices: Vec<usize> = (0..n).collect();
+        indices.shuffle(&mut rng);
+        for ii in 0..sample {
+            let i = indices[ii];
+            for jj in ii+1..sample {
+                let j = indices[jj];
+                if state.regions[i] != state.regions[j] { continue; }
+                let sim = dot_sim(&state.positions[i], &state.positions[j]);
+                if sim > MAX_NEIGHBOR_SIM {
+                    pairs.push((i, j, sim));
+                }
+            }
+        }
+        return pairs;
+    }
     let mut pairs = Vec::new();
     for i in 0..n {
         for j in i+1..n {
@@ -133,6 +158,15 @@ pub fn run_boid_iteration(state: &mut BoidState, settings: &BoidSettings, field:
     let sep_w = settings.separation_weight * (1.0 + field.chi * 2.0);
     let align_w = settings.alignment_weight * (1.0 + field.r_val);
     let coh_w = settings.cohesion_weight * (1.0 + field.phi_g);
+
+    // --- SCALABILITY: Pre-group cells by region to avoid O(N²) ---
+    // For large lattices, only sample up to MAX_BOID_NEIGHBORS per region.
+    const MAX_BOID_NEIGHBORS: usize = 400;
+    use std::collections::HashMap;
+    let mut region_indices: HashMap<String, Vec<usize>> = HashMap::new();
+    for (idx, region) in state.regions.iter().enumerate() {
+        region_indices.entry(region.clone()).or_default().push(idx);
+    }
 
     let new_results: Vec<(Vec<f32>, Vec<f32>, f32, u8)> = (0..n).into_par_iter().map(|i| {
         // --- 1. Vitality Budget & Immune Response ---
@@ -179,11 +213,22 @@ pub fn run_boid_iteration(state: &mut BoidState, settings: &BoidSettings, field:
         let mut v_align = vec![0.0f32; super::sparse_vec::DIM];
         let mut neighbor_count = 0usize;
 
-        for j in 0..n {
-            if i == j { continue; }
+        // Use pre-grouped region indices for O(N * M) instead of O(N²)
+        let region_cells = region_indices.get(&state.regions[i]).unwrap_or(&vec![]).clone();
+        let neighbor_pool = if region_cells.len() > MAX_BOID_NEIGHBORS {
+            // Random sample to cap per-cell work
+            let mut rng = rand::thread_rng();
+            use rand::seq::SliceRandom;
+            let mut sample = region_cells.clone();
+            sample.shuffle(&mut rng);
+            sample.truncate(MAX_BOID_NEIGHBORS);
+            sample
+        } else {
+            region_cells
+        };
 
-            // Safeguard 3: Regional isolation — only flock within same region
-            if state.regions[i] != state.regions[j] { continue; }
+        for &j in &neighbor_pool {
+            if i == j { continue; }
 
             // --- SCALE-AWARE ISOLATION ---
             // Layer 2 (Cellular) claims are isolated by user_id bubble.
@@ -298,7 +343,7 @@ mod tests {
         u.store("E equals mc squared mass energy", "established-physics", "seed", 5.0); // anchor
         u.store("A cat sits on a mat", "established-physics", "seed", 1.0);
 
-        let anchor_vec_before: Vec<i8> = u.get_cells()[0].claim.vec.data.clone();
+        let anchor_vec_before: Vec<i8> = u.get_cells()[0].claim.vec.to_dense();
 
         let mut state = BoidState::from_universe(&u);
         let settings = BoidSettings::default();
@@ -306,8 +351,8 @@ mod tests {
         for _ in 0..5 { run_boid_iteration(&mut state, &settings, &field); }
         state.apply_to_universe(&mut u);
 
-        let anchor_vec_after = &u.get_cells()[0].claim.vec.data;
-        assert_eq!(&anchor_vec_before, anchor_vec_after, "Anchor cell must not be mutated by flocking");
+        let anchor_vec_after = u.get_cells()[0].claim.vec.to_dense();
+        assert_eq!(anchor_vec_before, anchor_vec_after, "Anchor cell must not be mutated by flocking");
         println!("Anchor protection: PASSED — anchor cell unchanged after 5 iterations");
     }
 

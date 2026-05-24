@@ -8,7 +8,7 @@
 //!   - iterative layers = repeated refinement passes in `predictive_query`
 //!   - next-state binding = `Cell.continuation` accumulation
 //!
-//! Final score for each cell:
+//! Final score for each cell (whitepaper-backed weights):
 //!     0.20 * similarity(refined_state, cell.vec)
 //!   + 0.55 * predictive_match(trace, cell.continuation)
 //!   + 0.15 * multi_head_consensus(refined_state, cell.vec)
@@ -25,7 +25,7 @@ pub const DEFAULT_HEADS: usize = 4;
 pub const DEFAULT_ITER_STEPS: usize = 8;
 
 /// Recency decay window (in dialogue turns). Widened from 6 to 12 so the
-/// -0.45 recency penalty has time to bite before a small cell pool (e.g.
+/// -0.20 recency penalty has time to bite before a small cell pool (e.g.
 /// the 4 warmed greeting cells) rotates back into the top of the ranking.
 pub const RECENCY_WINDOW: u64 = 12;
 
@@ -114,14 +114,14 @@ mod tests {
     #[test]
     fn permute_is_deterministic() {
         let v = SparseVec::encode("hey");
-        assert_eq!(v.permute(7).data, v.permute(7).data);
+        assert_eq!(v.permute(7).to_dense(), v.permute(7).to_dense());
     }
 
     #[test]
     fn permute_inv_undoes_permute() {
         let v = SparseVec::encode("hello world");
         let back = v.permute(42).permute_inv(42);
-        assert_eq!(v.data, back.data);
+        assert_eq!(v.to_dense(), back.to_dense());
     }
 
     #[test]

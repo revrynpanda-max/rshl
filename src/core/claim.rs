@@ -1,12 +1,13 @@
 use crate::core::SparseVec;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Claim {
     #[serde(default)]
     pub text: String,
     #[serde(default = "default_source")]
-    pub source: String,
+    pub source: Arc<str>,
     /// List of evidence labels or unique identifiers supporting this claim.
     #[serde(default)]
     pub evidence: Vec<String>,
@@ -30,16 +31,16 @@ pub struct Claim {
     pub layer: u8,
     /// User identifier for cellularization (isolation).
     #[serde(default)]
-    pub user_id: String,
+    pub user_id: Arc<str>,
     /// Discord channel ID where this belief originated.
     #[serde(default)]
-    pub channel_id: String,
+    pub channel_id: Arc<str>,
     /// Discord message ID for exact retrieval.
     #[serde(default)]
-    pub message_id: String,
+    pub message_id: Arc<str>,
     /// Discord guild ID.
     #[serde(default)]
-    pub guild_id: String,
+    pub guild_id: Arc<str>,
     /// Extracted keywords for fast overlap lookup.
     #[serde(default)]
     pub keywords: Vec<String>,
@@ -55,8 +56,8 @@ fn default_vitality() -> f32 {
     1.0
 }
 
-fn default_source() -> String {
-    "unknown".to_string()
+fn default_source() -> Arc<str> {
+    Arc::from("unknown")
 }
 
 fn default_confidence() -> f32 {
@@ -72,7 +73,7 @@ impl Claim {
 
         Self {
             text: text.to_string(),
-            source: source.to_string(),
+            source: Arc::from(source),
             evidence: Vec::new(),
             confidence,
             last_verified: now,
@@ -80,11 +81,11 @@ impl Claim {
             contradictions: Vec::new(),
             vec,
             vitality: 1.0,
-            layer: LAYER_SYNCYTIUM, 
-            user_id: String::new(),
-            channel_id: String::new(),
-            message_id: String::new(),
-            guild_id: String::new(),
+            layer: LAYER_SYNCYTIUM,
+            user_id: Arc::from(""),
+            channel_id: Arc::from(""),
+            message_id: Arc::from(""),
+            guild_id: Arc::from(""),
             keywords: Vec::new(),
         }
     }

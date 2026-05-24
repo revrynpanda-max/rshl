@@ -72,8 +72,10 @@ export async function getBanterAudio(text) {
       '-f', 's16le', '-ar', '48000', '-ac', '2', 'pipe:1',
     ]);
 
-    const nodeStream = Readable.fromWeb(res.body);
-    nodeStream.pipe(ffmpeg.stdin);
+    const arrayBuffer = await res.arrayBuffer();
+    const audioBuffer = Buffer.from(arrayBuffer);
+    ffmpeg.stdin.write(audioBuffer);
+    ffmpeg.stdin.end();
 
     ffmpeg.stdin.on('error', () => {}); // swallow EPIPE
     ffmpeg.stderr.on('data', () => {}); // ignore noise
@@ -144,8 +146,10 @@ export async function djTTS(text, player) {
       }
     });
 
-    const nodeStream = Readable.fromWeb(res.body);
-    nodeStream.pipe(ffmpeg.stdin);
+    const arrayBuffer = await res.arrayBuffer();
+    const audioBuffer = Buffer.from(arrayBuffer);
+    ffmpeg.stdin.write(audioBuffer);
+    ffmpeg.stdin.end();
 
     const resource = createAudioResource(ffmpeg.stdout, { inputType: StreamType.Raw, inlineVolume: true });
     resource.volume?.setVolume(1.0);

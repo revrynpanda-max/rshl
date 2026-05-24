@@ -129,6 +129,7 @@ pub struct Engine {
     pub agent_specs: std::collections::HashMap<String, super::index::AgentSpec>,
     pub vitals: HardwareVitals,
     pub last_field: FieldState,
+    pub calibration: CalibrationEngine,
     pub gpu: Option<std::sync::Arc<super::gpu_compute::GpuCompute>>,
 }
 
@@ -379,7 +380,8 @@ impl Engine {
         // Try to load saved state
         let (universe, candidates, drive, _tick, _loaded_dream_count, synaptic_layer_loaded) =
             if crate::persistence::state_exists(base_dir) {
-                match crate::persistence::load(base_dir) {
+                // Try compact format first (new, size-efficient), fall back to legacy JSON
+                match crate::persistence::load_compact(base_dir) {
                     Some((u, c, d, t, dc, sl)) => (u, c, d, t, dc, sl),
                     None => {
                         let mut u = Universe::new();
@@ -542,6 +544,7 @@ impl Engine {
             agent_specs: std::collections::HashMap::new(),
             vitals: HardwareVitals::default(),
             last_field: FieldState::default(),
+            calibration: CalibrationEngine::new(),
             gpu,
         };
         
@@ -957,21 +960,35 @@ impl Engine {
     /// 2. Synaptic Propagation (Associative Recall)
     /// 3. Hebbian Learning (LTP)
     pub fn query(&mut self, text: &str, n: usize) -> Vec<QueryHit> {
-        // Stage 1-3: Perform associative query
-        let hits = NeuralBus::query_associative(
+        // Stage 1-3: Perform associative query.
+        // WIDEN: We scan up to 30 cells internally to ensure a rich co-firing set for synapse formation.
+        let mut hits = NeuralBus::query_associative(
             &self.universe,
             &self.synaptic_layer.read().unwrap(),
             self.last_field.phi_g,
             text,
-            n,
+            n.max(30),
             &[],
             ""
         );
 
         if hits.is_empty() { return hits; }
 
+        // Stage 3b: Dynamic Calibration — apply per-region confidence offsets
+        for hit in &mut hits {
+            let eff_threshold = self.calibration.effective_threshold(&hit.region, 2.9);
+            // If calibration has raised the threshold, scale down the score slightly
+            // to reflect increased skepticism for this region.
+            let offset = eff_threshold - 2.9;
+            if offset > 0.01 {
+                hit.score = hit.score * (1.0 - offset * 0.1).max(0.5);
+            }
+        }
+        // Re-sort after calibration adjustments
+        hits.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+
         // Stage 4: Hebbian Learning (LTP)
-        // The final set of active neurons wire together
+        // The final set of active neurons wire together (the full widened set)
         let active_labels: Vec<String> = hits.iter().map(|h| h.label.clone()).collect();
         self.synaptic_layer.write().unwrap().record_co_firing(
             &active_labels,
@@ -981,6 +998,54 @@ impl Engine {
             self.tick
         );
 
+        // Truncate back to the requested N before returning to the caller
+        hits.truncate(n);
+        hits
+    }
+
+    /// Multi-hop associative query — follow synaptic chains 3–5 steps deep.
+    ///
+    /// This is the reasoning engine. Instead of just finding cells
+    /// geometrically close to the query, it traces learned associations
+    /// through the synaptic layer, accumulating context from indirect
+    /// connections.
+    pub fn query_multi_hop(&mut self, text: &str, n: usize, max_hops: usize) -> Vec<QueryHit> {
+        // WIDEN: We scan up to 30 cells internally to ensure a rich co-firing set for synapse formation.
+        let mut hits = NeuralBus::query_multi_hop(
+            &self.universe,
+            &self.synaptic_layer.read().unwrap(),
+            self.last_field.phi_g,
+            text,
+            n.max(30),
+            &[],
+            "",
+            max_hops,
+        );
+
+        if hits.is_empty() { return hits; }
+
+        // Calibration
+        for hit in &mut hits {
+            let eff_threshold = self.calibration.effective_threshold(&hit.region, 2.9);
+            let offset = eff_threshold - 2.9;
+            if offset > 0.01 {
+                hit.score = hit.score * (1.0 - offset * 0.1).max(0.5);
+            }
+        }
+        hits.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+
+        // Hebbian learning on the final active set (the full widened set)
+        let active_labels: Vec<String> = hits.iter().map(|h| h.label.clone()).collect();
+        self.synaptic_layer.write().unwrap().record_co_firing(
+            &active_labels,
+            self.dopamine.level,
+            self.last_field.phi_g,
+            self.last_field.chi,
+            self.tick,
+        );
+
+        // Truncate back to the requested N before returning
+        hits.truncate(n);
         hits
     }
 

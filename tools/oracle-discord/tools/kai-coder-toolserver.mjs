@@ -153,7 +153,7 @@ async function toolExec({ command, cwd: cwdParam }) {
       env: {
         ...process.env,
         KAI_PROJECT_DIR: PROJECT_ROOT,
-        KAI_ORACLE_HOST: 'http://127.0.0.1:3333'
+        KAI_ORACLE_HOST: 'http://127.0.0.1:3334'
       }
     });
     return { stdout: stdout.slice(0, 6000), stderr: stderr.slice(0, 2000), cwd, shell };
@@ -186,7 +186,7 @@ async function toolPowershell({ script, cwd: cwdParam, timeout: timeoutParam }) 
       cwd,
       timeout,
       windowsHide: true,
-      env: { ...process.env, KAI_PROJECT_DIR: PROJECT_ROOT, KAI_ORACLE_HOST: 'http://127.0.0.1:3333' }
+      env: { ...process.env, KAI_PROJECT_DIR: PROJECT_ROOT, KAI_ORACLE_HOST: 'http://127.0.0.1:3334' }
     });
     try { fs.unlinkSync(tmpFile); } catch {}
     return { stdout: stdout.slice(0, 8000), stderr: stderr.slice(0, 2000), cwd };
