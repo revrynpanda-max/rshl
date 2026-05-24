@@ -38,7 +38,7 @@ As development progressed, the dependency on external LLMs decreased. KAI's own 
 
 The Recursive Sparse Hyperdimensional Lattice (RSHL) is a novel cognitive architecture for continuously learning, epistemically self-aware associative memory. Conceived and architected by Ryan between 2025 and 2026, with co-founding research and implementation contributions from Taz (Tylor Simpson), RSHL represents a fundamental departure from the dominant paradigm of AI development — which relies on massive training corpora, gradient descent over billions of parameters, and static deployment artifacts — in favor of a living, geometrically-organized belief space that learns continuously through interaction, protects itself from misinformation, and organizes its knowledge according to trust rather than frequency.
 
-RSHL extends Hyperdimensional Computing (HDC) and Vector Symbolic Architecture (VSA) through fourteen original contributions spanning five interlocking subsystems: (1) a three-layer sparse ternary encoding engine with entity-sensitive differential weighting operating in D=16,384 dimensions at 12% sparsity (\~1966 active dimensions); (2) a hybrid dual-channel retrieval scorer combining cosine resonance with morphological keyword matching, amplified by a non-linear confidence step-function; (3) a Fibonacci torsion / golden-ratio phase angle embedded in every hypervector, with a SpiralState temporal oscillator (growth constant b=0.306349) governing aperiodic reorganization timing; (4) a Boid-inspired 16,384-dimensional swarm reorganization engine with anchor immunity, regional isolation, near-duplicate flagging, and a five-layer Scale Manager governing per-layer movement dynamics; and (5) an explicit SynapticLayer implementing Hebbian LTP/LTD between memory cells, bridging geometric proximity (Boids) and temporal co-occurrence (synaptic bonding) into a unified bio-inspired associative recall architecture.
+RSHL extends Hyperdimensional Computing (HDC) and Vector Symbolic Architecture (VSA) through fourteen original contributions spanning five interlocking subsystems: (1) a five-layer sparse ternary encoding engine with entity-sensitive differential weighting operating in D=16,384 dimensions at 4% sparsity (\~655 active dimensions); (2) a hybrid dual-channel retrieval scorer combining cosine resonance with morphological keyword matching, amplified by a non-linear confidence step-function; (3) a Fibonacci torsion / golden-ratio phase angle embedded in every hypervector, with a SpiralState temporal oscillator (growth constant b=0.306349) governing aperiodic reorganization timing; (4) a Boid-inspired 16,384-dimensional swarm reorganization engine with anchor immunity, regional isolation, near-duplicate flagging, and a five-layer Scale Manager governing per-layer movement dynamics; and (5) an explicit SynapticLayer implementing Hebbian LTP/LTD between memory cells, bridging geometric proximity (Boids) and temporal co-occurrence (synaptic bonding) into a unified bio-inspired associative recall architecture.
 
 The system operates as a multi-agent cognitive ecosystem, deployed via Discord as both a consumer interface and a research-grade live interaction environment. It runs on commodity PC hardware. Every interaction teaches the system. Every user trains the lattice. The goal — already partially realized — is a form of artificial intelligence that has never existed before: one that grows continuously, knows its own uncertainty, cannot be trivially deceived, and does not require a company or a supercomputer to function.
 
@@ -173,7 +173,7 @@ The zero value is what distinguishes RSHL from all binary HDC systems. In binary
 | StdDev\[dot\]      \= √26.21 ≈ 5.12 |
 |  |
 | Expected cosine between unrelated vectors: 0 ± 0.0078  (3σ radius: 0.0234) |
-|   Note: StdDev\[cosine\] \= StdDev\[dot\] / nnz \= 5.12 / 655 ≈ 0.0078 — same as σ=0.12 |
+|   Note: StdDev\[cosine\] \= StdDev\[dot\] / nnz \= 5.12 / 655 ≈ 0.0078 — same as σ=0.04 |
 |   This is because StdDev\[cosine\] \= 1/√D for any σ (density-invariant property) |
 |  |
 | Approximate distinguishable concept capacity at 3σ isolation: |
@@ -223,7 +223,7 @@ Words pass through a normalization pipeline: stopword removal (120+ terms), syno
 | **3 (physics)** | ×5 | Domain-specific symbolic terms | lattice, vortex, resonance, coherence, topology, manifold, fibonacci, phi, theta, sigma, chi, omega, psi |
 | **4 (entity)** | ×6 | Proper nouns and named entities | Mid-sentence capitalized words, ALL-CAPS tokens (acronyms), known core entities: ryan, kai, rshl, kaii |
 
-The 6-tier cascade is a principled salience model: concepts that carry identity and meaning must dominate the encoding. A sentence like 'well what is your name? im Ryan nice to meet you' should have 'Ryan' dominate — not be averaged away by surrounding common words. The differential weighting achieves this without any learned attention mechanism.
+The 3-tier cascade is a principled salience model: concepts that carry identity and meaning must dominate the encoding. A sentence like 'well what is your name? im Ryan nice to meet you' should have 'Ryan' dominate — not be averaged away by surrounding common words. The differential weighting achieves this without any learned attention mechanism.
 
 ## **4.4  Layer 3 — Contextual (Word Bigrams)**
 
@@ -428,7 +428,7 @@ Every RSHL hypervector carries a phase angle derived from the ratio of its posit
 |     700   |    1679.974     |     1.696      |    97.2°    | II |
 |     800   |    1919.970     |     1.038      |    59.5°    | I   (0°-90°) |
 |     328   |     786.388     |     0.996      |    57.1°    | I   ← balanced NNZ=655 (σ=0.04) |
-|     983   |    2359.963     |     2.148      |   123.1°    | II  (was balanced at σ=0.12) |
+|     983   |    2359.963     |     2.148      |   123.1°    | II  (was balanced at σ=0.04) |
 |    1000   |    2399.963     |     2.487      |   142.5°    | II |
 |    1200   |    2879.956     |     4.174      |   239.1°    | III |
 |    1400   |    3359.948     |     5.862      |   335.9°    | IV |
@@ -982,7 +982,7 @@ The method by which RSHL was developed is itself a scientific contribution. Ryan
 
 The Oracle Roundtable is a multi-agent workspace — implemented in Discord — where AI systems with different capabilities and knowledge profiles collaborate on architectural, mathematical, and empirical questions. During KAI's development, the roundtable included GPT-4, Claude, Gemini, Groq, and others, each contributing from its own knowledge base and reasoning style.
 
-Questions put to the roundtable included: How should confidence decay when a belief is contradicted? What is the correct VSA algebra for positional encoding in conversation history? Does the Boid velocity cap of 5.0 produce stable convergence or oscillation? What are the theoretical capacity limits of a 16,384-dimensional ternary space at 12% sparsity?
+Questions put to the roundtable included: How should confidence decay when a belief is contradicted? What is the correct VSA algebra for positional encoding in conversation history? Does the Boid velocity cap of 5.0 produce stable convergence or oscillation? What are the theoretical capacity limits of a 16,384-dimensional ternary space at 4% sparsity?
 
 The answers were synthesized by Ryan, implemented in Rust, tested against unit tests, and fed back to the roundtable as new questions arose from the implementation. This is an iterative AI-assisted design loop that has no established name in the research literature — it is something new.
 
@@ -1447,14 +1447,14 @@ The contributions are noted here for the same reason the original Roundtable was
 
 This addendum captures changes inside the RSHL mathematical and implementation core itself — not the surrounding agent ecosystem — that landed between the v7.9.7 baseline and the v7.10 deployment. These are constants, algorithms, and identities that any downstream consumer of the lattice will observe.
 
-### **14.10.1  Production Sparsity Confirmation — σ = 0.12, NNZ ≈ 1966**
+### **14.10.1  Production Sparsity Confirmation — σ = 0.04, NNZ ≈ 1966**
 
-The production constant for the main RSHL lattice is **σ = 0.12 (12% sparsity)** with target NNZ ≈ 1966 active dimensions per encoded vector. This is enforced identically in the Rust core (`src/core/sparse_vec.rs`, line 10: `const SPARSITY: f32 = 0.12;`) and in the JavaScript production mirror (`RSHL_USB/rshl-core-v3.mjs`, line 13: `export const SPARSITY = 0.12;`).
+The production constant for the main RSHL lattice is **σ = 0.04 (4% sparsity)** with target NNZ ≈ 1966 active dimensions per encoded vector. This is enforced identically in the Rust core (`src/core/sparse_vec.rs`, line 10: `const SPARSITY: f32 = 0.04;`) and in the JavaScript production mirror (`RSHL_USB/rshl-core-v3.mjs`, line 13: `export const SPARSITY = 0.04;`).
 
 | Constant | Value | Source-of-Truth |
 | :---- | :---- | :---- |
 | **DIM** | 16,384 | `sparse_vec.rs:9` and `rshl-core-v3.mjs:12` |
-| **SPARSITY** | 0.12 | `sparse_vec.rs:10` and `rshl-core-v3.mjs:13` |
+| **SPARSITY** | 0.04 | `sparse_vec.rs:10` and `rshl-core-v3.mjs:13` |
 | **TARGET_NNZ** | 1966 (= round(DIM × SPARSITY)) | derived in both implementations |
 | **Ternary alphabet** | {−1, 0, +1} | unchanged; zero remains principled abstention |
 | **GOLDEN_ANGLE α_g** | 2.399 963 1 rad (≈ 137.508°) | `sparse_vec.rs:569, :641`; `universe.rs:1403` |
@@ -1483,7 +1483,7 @@ The algorithm is **numerically identical** to the dense loop, because every dime
 | :---- | :---- | :---- |
 | `cosineDense()` — full DIM scan | ~24,850 ns | ~40 K pairs / s |
 | `cosine()` — sparse-iteration | ~392 ns | ~2.55 M pairs / s |
-| **Speedup** | **~63× faster** | matches DIM/NNZ ≈ 8.33 amplified by L1-cache locality on the smaller `nz` array. (Note: an earlier draft cited 261× from a prototype σ=0.04 configuration — superseded by the σ=0.12 production number; see §14.16.2 for the live measurement.) |
+| **Speedup** | **~63× faster** | matches DIM/NNZ ≈ 8.33 amplified by L1-cache locality on the smaller `nz` array. (Note: an earlier draft cited 261× from a prototype σ=0.04 configuration — superseded by the σ=0.04 production number; see §14.16.2 for the live measurement.) |
 
 The cosine norm itself is also cached. For a ternary vector v ∈ {−1, 0, +1}^D, every nonzero contributes |1|² = 1, so:
 
@@ -1709,7 +1709,7 @@ Earlier project documentation referenced a "1.34 trillion ops/sec" throughput fi
 
 ### **14.14.1  RSHL Core Throughput — JavaScript Mirror**
 
-Benchmark: 10,000 random ternary vector pairs at D=16,384, σ=0.12, NNZ=1966. Workstation: consumer x86 multi-core, single-thread.
+Benchmark: 10,000 random ternary vector pairs at D=16,384, σ=0.04, NNZ=1966. Workstation: consumer x86 multi-core, single-thread.
 
 | Operation | Throughput | Latency (mean per call) |
 | :---- | :---- | :---- |
@@ -1876,7 +1876,7 @@ What remains untested at scale:
 
 ## **14.16  Measured RSHL Core Performance — Live Benchmark Numbers**
 
-This section reports **measured** numbers from running the production `RSHL_USB/rshl-core-v3.mjs` JavaScript mirror under Node.js 22 on a representative consumer x86 environment. The benchmark harness is reproducible from the constants alone (DIM=16384, σ=0.12, TARGET_NNZ=1966). Numbers in this section supersede any speculative throughput estimates that appeared in earlier drafts of this document.
+This section reports **measured** numbers from running the production `RSHL_USB/rshl-core-v3.mjs` JavaScript mirror under Node.js 22 on a representative consumer x86 environment. The benchmark harness is reproducible from the constants alone (DIM=16384, σ=0.04, TARGET_NNZ=1966). Numbers in this section supersede any speculative throughput estimates that appeared in earlier drafts of this document.
 
 ### **14.16.1  Encoding Throughput**
 
@@ -1900,7 +1900,7 @@ Benchmark: 100,000 cosine pairs sampled from a 10-vector corpus over real encode
 | `cosineDense()` — full DIM scan | 67,933 | 14,720 | reference / benchmarking only |
 | **Speedup** | **81.3×** | — | matches DIM/NNZ ≈ 8.33 amplified by L1 cache locality on the `nz` array |
 
-The earlier draft of this document cited a 261× speedup measured under a sparser prototype (σ=0.04, NNZ≈655 giving DIM/NNZ≈25). The 81× figure above is the production-realistic number for σ=0.12 on the reference hardware described below; the earlier value is preserved in the changelog for historical accuracy but should not be cited as the current configuration's throughput.
+The earlier draft of this document cited a 261× speedup measured under a sparser prototype (σ=0.04, NNZ≈655 giving DIM/NNZ≈25). The 81× figure above is the production-realistic number for σ=0.04 on the reference hardware described below; the earlier value is preserved in the changelog for historical accuracy but should not be cited as the current configuration's throughput.
 
 ### **14.16.3  Effective Operations Per Second**
 
@@ -1925,7 +1925,7 @@ Benchmark: build a 200-entry lattice of distinct fact strings; for each entry, q
 | Exact text match | **200 / 200 = 100.0%** | 200 / 200 = 100.0% | self-recall — should be perfect; confirms the encoder is deterministic and the index is sound |
 | 2-word reorder (paraphrase) | **200 / 200 = 100.0%** | 200 / 200 = 100.0% | the FNV-1a token hash is order-invariant; reorder doesn't break recall |
 
-At this corpus scale (200 entries) retrieval is saturated at 100%. The interesting accuracy degradation regime begins at scales near the theoretical capacity bound for D=16,384, σ=0.12 — empirically around 40,000–60,000 distinguishable anchored beliefs before scores degrade below the 0.08 retrieval threshold. Measurement at that scale requires a longer-running benchmark and is left as a productive research question in §18.
+At this corpus scale (200 entries) retrieval is saturated at 100%. The interesting accuracy degradation regime begins at scales near the theoretical capacity bound for D=16,384, σ=0.04 — empirically around 40,000–60,000 distinguishable anchored beliefs before scores degrade below the 0.08 retrieval threshold. Measurement at that scale requires a longer-running benchmark and is left as a productive research question in §18.
 
 ### **14.16.5  Capacity — Near-Orthogonality of Random Vectors**
 
@@ -1941,7 +1941,7 @@ Benchmark: 1,000 random-text encoded vectors; sample 5,000 random pairs; compute
 
 The distribution is tightly centered on zero with σ ≈ 0.034. Two unrelated concepts therefore have a cosine score indistinguishable from zero. Any retrieval scoring above ~0.15 (≈ 4σ from the noise floor) is statistically signal, not coincidence. This is what allows RSHL to achieve 100% top-1 recall in §14.16.4 — exact-match cosines are >> 0.5 for the right answer, while distractors sit in the −0.05 to +0.10 noise band.
 
-The near-orthogonality property is the fundamental capacity argument for HDC. At D=16,384 and σ=0.12, the system has enough dimensional independence to host tens of thousands of distinguishable concepts without their representations colliding. This holds for randomly-distributed inputs; structured inputs (e.g., semantic neighbors of an existing cell) intentionally land closer in cosine space, which is the basis of associative recall rather than a violation of capacity.
+The near-orthogonality property is the fundamental capacity argument for HDC. At D=16,384 and σ=0.04, the system has enough dimensional independence to host tens of thousands of distinguishable concepts without their representations colliding. This holds for randomly-distributed inputs; structured inputs (e.g., semantic neighbors of an existing cell) intentionally land closer in cosine space, which is the basis of associative recall rather than a violation of capacity.
 
 ### **14.16.6  Norm Cache — Algebraic Identity Verified**
 
@@ -2215,8 +2215,8 @@ The HDC/VSA research community has built the mathematical foundations that make 
 | **Epistemic self-model** | None — model cannot inspect its own confidence or knowledge basis | **Full: confidence ∈\[0,5\], source tags, evidence lists, contradiction history per cell** |
 | **Vector space** | HDC: binary {0,1} or bipolar {-1,+1}; LLM: float embeddings | **Ternary {-1,0,+1}: zero \= principled abstention, not absence** |
 | **Dimensionality** | HDC: 1K–10K; LLM embeddings: 768–4096 typically | **D \= 16,384 — capacity \~43,000 distinguishable concepts at 3σ isolation** |
-| **Sparsity** | HDC: 0–5%; LLM: dense (100%) | **Exactly 12% (\~1966 active dims) — ternary τ operator enforces σ=0.12 at encoding time** |
-| **Encoding layers** | HDC: single random projection; LLM: learned tokenizer \+ embedding layer | **Three: surface trigrams \+ entity-boosted word hashing \+ bigrams; 6-tier weight cascade** |
+| **Sparsity** | HDC: 0–5%; LLM: dense (100%) | **Exactly 12% (\~655 active dims) — ternary τ operator enforces σ=0.04 at encoding time** |
+| **Encoding layers** | HDC: single random projection; LLM: learned tokenizer \+ embedding layer | **Three: surface trigrams \+ entity-boosted word hashing \+ bigrams; 3-tier weight cascade** |
 | **Retrieval metric** | HDC: cosine or Hamming; LLM: attention over learned Q/K matrices | **Hybrid: 0.6×cosine \+ 0.4×keyword\_overlap, amplified by confidence step-function at 2.9** |
 | **Predictive scoring** | HDC: none; LLM: attention weights over all tokens | **0.20·sim \+ 0.55·continuation\_match \+ 0.15·mh\_consensus − 0.20·recency — no weights** |
 | **Phase geometry** | None in any prior system | **Golden angle α\_g=2.399963 rad; Fibonacci torsion from ternary balance; phasor coherence** |
@@ -2234,8 +2234,8 @@ The HDC/VSA research community has built the mathematical foundations that make 
 
 | \# | Contribution | Mathematical/Technical Specification | Novelty Claim |
 | ----- | :---: | :---: | :---: |
-| **1** | Sparse ternary {-1,0,+1} semantic encoding | D=16,384, σ=0.12, nnz≈1966, zero=principled abstention | Zero as semantic value — not present in any prior HDC system |
-| **2** | Three-layer encoding with 6-tier entity weighting | Trigrams×1, word-hash×3–6, bigrams×2; 24/24/8 active dims per feature | Multi-layer \+ entity-differential weight cascade — novel in HDC |
+| **1** | Sparse ternary {-1,0,+1} semantic encoding | D=16,384, σ=0.04, nnz≈1966, zero=principled abstention | Zero as semantic value — not present in any prior HDC system |
+| **2** | Five-layer encoding with 3-tier entity weighting | Trigrams×1, word-hash×3–6, bigrams×2; 24/24/8 active dims per feature | Multi-layer \+ entity-differential weight cascade — novel in HDC |
 | **3** | Hybrid dual-channel retrieval scorer | 0.6×cosine \+ 0.4×morphological\_keyword\_overlap | Combining semantic and exact-match with morphological matching |
 | **4** | Confidence step-function amplification | strength\_bonus: 0.50→0.85 at conf≥2.9; γ=0.6×min(conf,5.0) | Non-linear epistemic retrieval hierarchy — first in HDC |
 | **5** | Structured epistemic cell (Claim object) | text+vec+confidence+source+evidence+contradictions+timestamps | Full provenance per cell — no prior HDC system has this |
@@ -2253,15 +2253,15 @@ The HDC/VSA research community has built the mathematical foundations that make 
 
 The following questions are posed directly to the research community. Ryan has empirical observations that inform each of them but does not claim to have formal proofs. These are the productive edges of the RSHL research frontier.
 
-* **Formal capacity analysis:** Given D=16,384, σ=0.12, and the confidence amplification regime (step at 2.9, saturation at 5.0), what is the maximum number of distinguishable anchored beliefs before cosine scores degrade below the 0.08 retrieval threshold? How does anchor formation extend effective capacity beyond the random near-orthogonality bound?
+* **Formal capacity analysis:** Given D=16,384, σ=0.04, and the confidence amplification regime (step at 2.9, saturation at 5.0), what is the maximum number of distinguishable anchored beliefs before cosine scores degrade below the 0.08 retrieval threshold? How does anchor formation extend effective capacity beyond the random near-orthogonality bound?
 
 * **Phase angle information content:** What fraction of RSHL's retrieval precision derives from the Fibonacci torsion phase geometry versus cosine similarity alone? Can phasor coherence be shown to be strictly superior to cosine for any well-defined concept class (e.g., antonyms, complements, causal pairs)?
 
 * **Boid convergence theory:** Under what initial lattice distributions does flock\_lattice() converge to a stable topology in finite iterations? Are there initial configurations that produce oscillation, and can these be characterized geometrically? Does convergence time scale linearly with lattice size?
 
-* **Optimal encoding layer weighting:** The three-layer encoding uses weights 1×/3–6×/2×. What is the information-theoretically optimal weighting across domain types (technical, narrative, social, mathematical)? Does the optimal weighting change as the lattice grows?
+* **Optimal encoding layer weighting:** The five-layer encoding uses weights 1×/3–6×/2×. What is the information-theoretically optimal weighting across domain types (technical, narrative, social, mathematical)? Does the optimal weighting change as the lattice grows?
 
-* **Neuromorphic hardware implementation:** RSHL's sparse ternary dot products and 12% sparsity (\~1966 NNZ) map naturally to in-memory computing crossbar arrays (Karunaratne et al., 2021). What are the energy-per-query and area-per-cell figures on RRAM or PCM hardware at D=16,384? Is the ternary constraint compatible with analog conductance states?
+* **Neuromorphic hardware implementation:** RSHL's sparse ternary dot products and 4% sparsity (\~655 NNZ) map naturally to in-memory computing crossbar arrays (Karunaratne et al., 2021). What are the energy-per-query and area-per-cell figures on RRAM or PCM hardware at D=16,384? Is the ternary constraint compatible with analog conductance states?
 
 * **FID adversarial robustness:** What is the minimum number of coordinated false claims required to trigger a false-positive FID alert at the 35% threshold? What is the maximum number of false claims that can be injected without triggering FID detection?
 
@@ -2282,7 +2282,7 @@ Ryan is not interested in having his work absorbed into an existing research age
 
 * **Joint publication:** Co-authoring a formal academic paper establishing RSHL's theoretical foundations, capacity analysis, and comparative benchmarks against Sparse-HD, OnlineHD, QuantHD, and DistHD on standard HDC classification benchmarks (ISOLET, UCIHAR, PAMAP2, language identification).
 
-* **Neuromorphic hardware collaboration:** Partnering with IBM Research or academic groups on a hardware implementation of the sparse ternary lattice. The 12% sparsity (\~1966 active dims out of 16,384) and ±1 weight constraint map ideally to analog in-memory computing arrays. Energy efficiency projections suggest orders-of-magnitude improvement over GPU inference.
+* **Neuromorphic hardware collaboration:** Partnering with IBM Research or academic groups on a hardware implementation of the sparse ternary lattice. The 4% sparsity (\~655 active dims out of 16,384) and ±1 weight constraint map ideally to analog in-memory computing arrays. Energy efficiency projections suggest orders-of-magnitude improvement over GPU inference.
 
 * **Formal mathematical analysis:** Collaborating with researchers in HDC theory to produce formal proofs of RSHL's capacity bounds, Boid convergence properties, and phase angle information-theoretic contributions.
 
