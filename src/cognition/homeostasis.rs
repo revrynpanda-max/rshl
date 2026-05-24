@@ -62,7 +62,7 @@ pub fn run_homeostasis(universe: &mut Universe, config: &HomeostasisConfig) -> H
 
         // Compute decay amount
         let stale_factor = (age as f32 / (30.0 * 86400.0)).min(1.0);
-        let weak_factor = (1.0 - cell.claim.confidence / config.decay_strength_ceiling).max(0.0);
+        let weak_factor = (1.0_f32 - cell.claim.confidence / config.decay_strength_ceiling).max(0.0_f32);
         let amount = config.decay_rate * (0.5 + stale_factor * 0.3 + weak_factor * 0.2);
 
         let new_strength = cell.claim.confidence - amount;
@@ -92,7 +92,7 @@ pub fn run_homeostasis(universe: &mut Universe, config: &HomeostasisConfig) -> H
         }
 
         let stale_factor = (age as f32 / (30.0 * 86400.0)).min(1.0);
-        let weak_factor = (1.0 - cell.claim.confidence / config.decay_strength_ceiling).max(0.0);
+        let weak_factor = (1.0_f32 - cell.claim.confidence / config.decay_strength_ceiling).max(0.0_f32);
         let amount = config.decay_rate * (0.5 + stale_factor * 0.3 + weak_factor * 0.2);
         cell.claim.confidence = (cell.claim.confidence - amount).max(0.0);
     }

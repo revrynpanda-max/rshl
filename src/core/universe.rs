@@ -279,7 +279,13 @@ pub struct Universe {
     /// Memory-mapped full-text store. Cell.text_id indexes into this for lazy text retrieval.
     #[serde(skip)]
     pub text_store: Option<super::text_store::TextStore>,
+    #[serde(default = "default_calibration_floor")]
+    pub calibration_floor: f32,
+    #[serde(default)]
+    pub recent_contradictions: u32,
 }
+
+fn default_calibration_floor() -> f32 { 0.40 }
 
 impl Clone for Universe {
     fn clone(&self) -> Self {
@@ -294,6 +300,8 @@ impl Clone for Universe {
             mask_pool: vec![],
             dirty_indices: std::collections::HashSet::new(),
             text_store: None,
+            calibration_floor: self.calibration_floor,
+            recent_contradictions: self.recent_contradictions,
         }
     }
 }
@@ -683,6 +691,8 @@ impl Universe {
             mask_pool: vec![],
             dirty_indices: std::collections::HashSet::new(),
             text_store: None,
+            calibration_floor: 0.40,
+            recent_contradictions: 0,
         }
     }
 
@@ -1102,6 +1112,7 @@ impl Universe {
         let query_words = extract_query_keywords(text);
         let mag_q = q.nnz() as f32;
         let mag_q_sqrt = mag_q.sqrt();
+        let theta_q = q.phase_angle();
 
         let mut scored: Vec<(usize, f32)> = self.cells.par_iter().enumerate()
             .filter(|(_, cell)| {
@@ -1113,8 +1124,10 @@ impl Universe {
                 let cosine = if mag_q > 0.0 && mag_c > 0.0 {
                     dot as f32 / (mag_q_sqrt * mag_c.sqrt())
                 } else { 0.0 };
+                let theta_c = cell.claim.vec.phase_angle();
+                let phasor_coherence = cosine * (theta_q - theta_c).cos();
                 let kw = keyword_overlap_score(&query_words, &cell.claim.text);
-                let raw = 0.6 * cosine + 0.4 * kw;
+                let raw = 0.6 * phasor_coherence + 0.4 * kw;
                 let boosted = if raw > 0.15 {
                     let s = if cell.claim.confidence >= 2.9 { 0.85 } else { 0.5 };
                     raw * (s + 0.6 * cell.claim.confidence.min(5.0))
@@ -1152,6 +1165,7 @@ impl Universe {
             return self.query_full_scan(text, n);
         }
         let q = SparseVec::encode(text);
+        let theta_q = q.phase_angle();
         let q_mask = q.to_dense_mask();
         let query_words = extract_query_keywords(text);
         let idx = self.kmeans_index.as_ref().unwrap();
@@ -1165,7 +1179,9 @@ impl Universe {
             .map(|(i, cosine)| {
                 let cell = &self.cells[i];
                 let kw = keyword_overlap_score(&query_words, &cell.claim.text);
-                let raw = 0.6 * cosine + 0.4 * kw;
+                let theta_c = cell.claim.vec.phase_angle();
+                let phasor_coherence = cosine * (theta_q - theta_c).cos();
+                let raw = 0.6 * phasor_coherence + 0.4 * kw;
                 let boosted = if raw > 0.15 {
                     let s = if cell.claim.confidence >= 2.9 { 0.85 } else { 0.5 };
                     raw * (s + 0.6 * cell.claim.confidence.min(5.0))
@@ -1280,6 +1296,7 @@ impl Universe {
         let query_words = extract_query_keywords(text);
         let mag_q = q.nnz() as f32;
         let mag_q_sqrt = mag_q.sqrt();
+        let theta_q = q.phase_angle();
 
         // ── FAST PATH: KMeans cascade scan (sub-500 μs) ──────────────────────
         // Used when: KMeans index is built AND no region filter is active.
@@ -1307,7 +1324,9 @@ impl Universe {
                 .map(|(i, cosine)| {
                     let cell = &self.cells[i];
                     let kw = keyword_overlap_score(&query_words, &cell.claim.text);
-                    let raw = 0.6 * cosine + 0.4 * kw;
+                    let theta_c = cell.claim.vec.phase_angle();
+                let phasor_coherence = cosine * (theta_q - theta_c).cos();
+                let raw = 0.6 * phasor_coherence + 0.4 * kw;
                     // Phasor coherence bonus: cells phase-aligned with the query
                     // get a small boost (whitepaper Section 6.3, Contribution 6)
                     const PHASOR_WEIGHT: f32 = 0.05;
@@ -1363,7 +1382,9 @@ impl Universe {
 
                 let kw = keyword_overlap_score(&query_words, &cell.claim.text);
                 // Hybrid: 60% cosine similarity (semantic) + 40% keyword overlap (exact match)
-                let raw = 0.6 * cosine + 0.4 * kw;
+                let theta_c = cell.claim.vec.phase_angle();
+                let phasor_coherence = cosine * (theta_q - theta_c).cos();
+                let raw = 0.6 * phasor_coherence + 0.4 * kw;
 
                 // Phasor coherence bonus: cells phase-aligned with the query
                 // get a small boost (whitepaper Section 6.3, Contribution 6)
@@ -1421,6 +1442,7 @@ impl Universe {
     pub fn query_vec_user(&self, q: &SparseVec, n: usize, user_id: &str) -> Vec<(Cell, f32)> {
         let mag_q = q.nnz() as f32;
         let mag_q_sqrt = mag_q.sqrt();
+        let theta_q = q.phase_angle();
 
         let mut scored: Vec<(usize, f32)> = self
             .cells
@@ -1474,6 +1496,7 @@ impl Universe {
         let query_words = extract_query_keywords(text);
         let mag_q = q.nnz() as f32;
         let mag_q_sqrt = mag_q.sqrt();
+        let theta_q = q.phase_angle();
 
         let mut scored: Vec<(usize, f32)> = self
             .cells
@@ -1495,7 +1518,9 @@ impl Universe {
 
                 let kw = keyword_overlap_score(&query_words, &cell.claim.text);
                 // Hybrid: 60% cosine similarity (semantic) + 40% keyword overlap (exact match)
-                let raw = 0.6 * cosine + 0.4 * kw;
+                let theta_c = cell.claim.vec.phase_angle();
+                let phasor_coherence = cosine * (theta_q - theta_c).cos();
+                let raw = 0.6 * phasor_coherence + 0.4 * kw;
                 
                 // Anti-bleed: only boost if there is semantic relevance.
                 let boosted = if raw > 0.15 {
@@ -1937,7 +1962,7 @@ impl Universe {
         //   PHYSICS_RESONANCE_FLOOR = 0.55  (minimum for physics claims)
         //   COHERENCE_FLOOR         = 0.40  (minimum for any claim)
         const PHYSICS_RESONANCE_FLOOR: f32 = 0.55;
-        const COHERENCE_FLOOR: f32 = 0.40;
+        let coherence_floor = if self.calibration_floor > 0.0 { self.calibration_floor } else { 0.40 };
 
         // Angle 1 — Direct evidence: query for cells that SUPPORT this claim
         let supporting_hits = self.query_in_regions(text, 10, &[region], "");
@@ -1986,6 +2011,16 @@ impl Universe {
             total_sim / region_cells.len() as f32
         };
 
+        if angle2_score > 0.0 {
+            self.recent_contradictions = self.recent_contradictions.saturating_add(1);
+            if self.recent_contradictions > 5 {
+                self.calibration_floor = (self.calibration_floor + 0.05).min(0.65);
+                self.recent_contradictions = 0;
+            }
+        } else {
+            self.calibration_floor = (self.calibration_floor - 0.01).max(0.40);
+        }
+
         // ── Epistemic Gatekeeper ───────────────────────────────────────────
         //   if resonance < COHERENCE_FLOOR:   → reject entirely
         //   if resonance < PHYSICS_RESONANCE_FLOOR AND region = 'established-physics':
@@ -1993,10 +2028,10 @@ impl Universe {
         //   if Angle 2 score > Angle 1 score:  → route to 'contested' region at low confidence
         //   else:                               → store C in target region at assigned confidence
 
-        if angle3_resonance < COHERENCE_FLOOR {
+        if angle3_resonance < coherence_floor {
             log_rejected_claim(text, region, source, confidence, "three-angle coherence floor");
             println!("REJECTED: '{}' (Reason: three-angle coherence {:.2} < floor {:.2})",
-                     text, angle3_resonance, COHERENCE_FLOOR);
+                     text, angle3_resonance, coherence_floor);
             return false;
         }
 
@@ -2268,6 +2303,7 @@ impl Universe {
                 use rayon::prelude::*;
                 let mag_q = candidate_vec.nnz() as f32;
                 let mag_q_sqrt = mag_q.sqrt();
+        let theta_q = candidate_vec.phase_angle();
 
                 let res = self
                     .cells
@@ -2446,8 +2482,8 @@ impl Universe {
             .par_iter()
             .map(|&i| {
                 let cell = &self.cells[i];
-                let sim = state.cosine(&cell.claim.vec).max(0.0);
-                let predict_match = cell.continuation.as_ref().map_or(0.0, |c| prediction_anchor.cosine(c).max(0.0));
+                let sim = state.phasor_coherence(&cell.claim.vec).max(0.0);
+                let predict_match = cell.continuation.as_ref().map_or(0.0, |c| prediction_anchor.phasor_coherence(c).max(0.0));
                 let mh = predictive::multi_head_consensus(
                     &state,
                     &cell.claim.vec,
@@ -2550,8 +2586,8 @@ impl Universe {
             .par_iter()
             .map(|&i| {
                 let cell = &self.cells[i];
-                let sim = state.cosine(&cell.claim.vec).max(0.0);
-                let predict_match = cell.continuation.as_ref().map_or(0.0, |c| prediction_anchor.cosine(c).max(0.0));
+                let sim = state.phasor_coherence(&cell.claim.vec).max(0.0);
+                let predict_match = cell.continuation.as_ref().map_or(0.0, |c| prediction_anchor.phasor_coherence(c).max(0.0));
                 let mh = predictive::multi_head_consensus(
                     &state,
                     &cell.claim.vec,
@@ -2657,8 +2693,8 @@ impl Universe {
             .par_iter()
             .map(|&i| {
                 let cell = &self.cells[i];
-                let sim = state.cosine(&cell.claim.vec).max(0.0);
-                let predict_match = cell.continuation.as_ref().map_or(0.0, |c| prediction_anchor.cosine(c).max(0.0));
+                let sim = state.phasor_coherence(&cell.claim.vec).max(0.0);
+                let predict_match = cell.continuation.as_ref().map_or(0.0, |c| prediction_anchor.phasor_coherence(c).max(0.0));
                 let mh = predictive::multi_head_consensus(
                     &state,
                     &cell.claim.vec,
@@ -2777,8 +2813,8 @@ impl Universe {
             .par_iter()
             .map(|&i| {
                 let cell = &self.cells[i];
-                let sim = state.cosine(&cell.claim.vec).max(0.0);
-                let predict_match = cell.continuation.as_ref().map_or(0.0, |c| prediction_anchor.cosine(c).max(0.0));
+                let sim = state.phasor_coherence(&cell.claim.vec).max(0.0);
+                let predict_match = cell.continuation.as_ref().map_or(0.0, |c| prediction_anchor.phasor_coherence(c).max(0.0));
                 let mh = predictive::multi_head_consensus(
                     &state,
                     &cell.claim.vec,
