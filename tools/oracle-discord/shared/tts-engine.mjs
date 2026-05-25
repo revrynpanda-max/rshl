@@ -64,6 +64,39 @@ const botPlayers = new Map();
 const botConnections = new Map();
 const ttsTokens = new Map(); // name -> timestamp (for interruption logic)
 
+const QUEUE_FILE = 'c:/KAI/tools/oracle-discord/state/voice_queue.json';
+
+function getVoiceQueue() {
+  try { return JSON.parse(fs.readFileSync(QUEUE_FILE, 'utf8')); } catch(e) { return []; }
+}
+function setVoiceQueue(q) {
+  try { fs.writeFileSync(QUEUE_FILE, JSON.stringify(q)); } catch(e) {}
+}
+
+export function enqueueVoice(botName, id, isInterrupt = false) {
+  let q = getVoiceQueue();
+  const now = Date.now();
+  q = q.filter(item => now - item.time < 180000); // 3m max TTL
+  if (isInterrupt) {
+    q.unshift({ botName, id, time: now });
+  } else {
+    q.push({ botName, id, time: now });
+  }
+  setVoiceQueue(q);
+}
+
+export function dequeueVoice(id) {
+  let q = getVoiceQueue();
+  q = q.filter(item => item.id !== id);
+  setVoiceQueue(q);
+}
+
+export function isMyVoiceTurn(id) {
+  let q = getVoiceQueue();
+  if (q.length === 0) return true;
+  return q[0].id === id;
+}
+
 const LOCK_FILE = 'c:/KAI/tools/oracle-discord/state/voice_lock.flag';
 
 export function isSomeoneSpeaking(selfBotName = null) {
@@ -196,7 +229,6 @@ export async function ensureVoiceConnection(client, botName) {
 
 
 export function stopTTS(botName) {
-  ttsTokens.delete(botName); // Abort any pending generations
   const player = botPlayers.get(botName);
   if (player && player.state.status !== AudioPlayerStatus.Idle) {
     player.stop();
@@ -264,9 +296,16 @@ export async function speakTTS(text, botName) {
     
     const voiceId = VOICE_PROFILES[botName] || VOICE_PROFILES["X"];
     
-    // --- Voice Interruption Logic ---
-    const token = Date.now();
-    ttsTokens.set(botName, token);
+    // --- GLOBAL VOICE QUEUE: TAKE TICKET IMMEDIATELY ---
+    // Take the ticket BEFORE generation so the voice order perfectly matches text chat order.
+    const isInterrupt = /^(wait|stop|hold on|hold up|actually|whoa|hang on|excuse me)\b/i.test(cleanedText);
+    const myVoiceId = Date.now().toString() + Math.random().toString();
+    enqueueVoice(botName, myVoiceId, isInterrupt);
+
+    if (isInterrupt) {
+      console.log(`[${botName}/TTS] ⚡ BARGE-IN DETECTED! Interrupting current speaker!`);
+      if (process.send) process.send({ type: 'INTERRUPT_TTS', botName });
+    }
 
     // SOCIAL CUES: Signal to the ecosystem that we are speaking (Wait for Silence handles clashing)
     if (process.send) {
@@ -305,6 +344,43 @@ export async function speakTTS(text, botName) {
     }
 
     if (!pregeneratedMp3) {
+      console.log(`[${botName}/TTS] Pre-generating via local Kokoro-TTS...`);
+      const kokoroVoices = {
+        "Gemini": "af_bella",
+        "Claudey": "af_heart",
+        "X": "am_michael",
+        "Groq": "am_adam",
+        "KAI": "am_michael",
+        "Leo": "am_michael"
+      };
+      const voice = kokoroVoices[botName] || "af_heart";
+
+      pregeneratedMp3 = await new Promise((resolveBuffer) => {
+        const pythonCode = `
+import sys, io, soundfile as sf
+import warnings
+warnings.filterwarnings('ignore')
+try:
+    from kokoro import KPipeline
+    import numpy as np
+    pipeline = KPipeline(lang_code='a')
+    generator = pipeline('''${cleanedText.replace(/'/g, "\\'")}''', voice='${voice}', speed=1)
+    samples = [audio for _, _, audio in generator]
+    if samples:
+        combined = np.concatenate(samples)
+        sf.write(sys.stdout.buffer, combined, 24000, format='WAV')
+except Exception as e:
+    sys.exit(1)
+`;
+        const py = spawn('python', ['-c', pythonCode]);
+        const chunks = [];
+        py.stdout.on('data', d => chunks.push(d));
+        py.on('close', (code) => resolveBuffer(code === 0 && chunks.length > 0 ? Buffer.concat(chunks) : null));
+        py.on('error', () => resolveBuffer(null));
+      });
+    }
+
+    if (!pregeneratedMp3) {
       const fallbackVoices = {
         'Groq': 'en-US-AndrewNeural',
         'Claudey': 'en-US-EmmaNeural',
@@ -330,40 +406,37 @@ export async function speakTTS(text, botName) {
       return;
     }
 
-    // --- GLOBAL VOICE QUEUE: Wait for silence before speaking ---
-    console.log(`[${botName}/TTS] Audio ready. Entering queue for voice floor...`);
+    // --- PRE-GENERATE AUDIO BEFORE QUEUEING ---
+    // The ticket is already held in the queue. Audio generation runs in background.
+
     const _lockWaitStart = Date.now();
     let waitCount = 0;
     let hasLock = false;
-    while (waitCount < 600) { // 60 seconds max
-      if (acquireVoiceLock(botName)) {
-        if (player && player.state.status !== AudioPlayerStatus.Idle) {
-          await new Promise(r => setTimeout(r, 100));
-          waitCount++;
-          continue;
+    while (waitCount < 1800) { // 180 seconds max
+      if (isMyVoiceTurn(myVoiceId)) {
+        if (acquireVoiceLock(botName)) {
+          if (player && player.state.status !== AudioPlayerStatus.Idle) {
+            await new Promise(r => setTimeout(r, 100));
+            waitCount++;
+            continue;
+          }
+          hasLock = true;
+          break;
         }
-        hasLock = true;
-        break;
       }
       await new Promise(r => setTimeout(r, 100));
       waitCount++;
     }
 
     if (!hasLock) {
+      dequeueVoice(myVoiceId);
       recordMetric('tts-engine', 'lock_wait_timeout', 1, { bot: botName });
-      console.log(`[${botName}/TTS] Lock wait timed out (60s) — yielding turn to avoid overlap.`);
+      console.log(`[${botName}/TTS] Lock wait timed out (180s) — yielding turn to avoid overlap.`);
       resolve();
       return;
     }
     const _lockAcquireTs = Date.now();
-
-    // Check if WE were interrupted while waiting in queue
-    if (ttsTokens.get(botName) !== token) {
-      console.log(`[${botName}/TTS] Generation aborted (interrupted while in queue).`);
-      releaseVoiceLock(botName);
-      resolve();
-      return;
-    }
+    // Lock acquired, and audio is generated. Time to speak.
 
     // Ensure we are connected
     const newlyConnected = await ensureVoiceConnection(cachedClient, botName);
@@ -374,22 +447,18 @@ export async function speakTTS(text, botName) {
     player = botPlayers.get(targetPlayerName);
     if (!player) {
       console.error(`[${botName}/TTS] ERROR: No voice player configured after lock acquired.`);
+      dequeueVoice(myVoiceId);
       releaseVoiceLock(botName);
       resolve();
       return;
     }
 
     // HUMAN PACING: Add a randomized breath delay before playback starts
-    const breathDelay = 1500 + Math.random() * 1000;
+    const breathDelay = 200 + Math.random() * 300;
     console.log(`[${botName}/TTS] Taking a breath for ${Math.round(breathDelay)}ms...`);
     await new Promise(r => setTimeout(r, breathDelay));
 
-    // Check interruption one last time after breath
-    if (ttsTokens.get(botName) !== token) {
-      releaseVoiceLock(botName);
-      resolve();
-      return;
-    }
+    // Check interruption one last time after breath (removed token check)
 
     try {
       const ffmpeg = spawn(ffmpegPath, [
@@ -414,6 +483,7 @@ export async function speakTTS(text, botName) {
       const stateListener = (oldState, newState) => {
         if (newState.status === AudioPlayerStatus.Idle) {
           player.off('stateChange', stateListener);
+          dequeueVoice(myVoiceId);
           releaseVoiceLock(botName);
           resolve();
         }
@@ -423,6 +493,7 @@ export async function speakTTS(text, botName) {
       const safetyTimeout = setTimeout(() => {
         console.warn(`[${botName}/TTS] Safety timeout reached — auto-releasing lock.`);
         player.off('stateChange', stateListener);
+        dequeueVoice(myVoiceId);
         releaseVoiceLock(botName);
         resolve();
       }, Math.max(60000, cleanedText.length * 150));
@@ -431,6 +502,7 @@ export async function speakTTS(text, botName) {
 
     } catch (e) {
       console.warn(`[${botName}/TTS] Failed to speak:`, e.message);
+      dequeueVoice(myVoiceId);
       releaseVoiceLock(botName);
       resolve();
     }
@@ -611,7 +683,7 @@ async function performOpenAITTS(text, botName) {
         clearTimeout(safetyTimeout);
         
         // Conversational breath pause before releasing lock and resolving
-        const breathPause = 1200 + Math.random() * 400;
+        const breathPause = 200 + Math.random() * 100;
         setTimeout(() => {
           releaseVoiceLock(botName);
           resolve();
@@ -717,7 +789,7 @@ except Exception as e:
         clearTimeout(safetyTimeout);
         
         // Conversational breath pause before releasing lock and resolving
-        const breathPause = 1200 + Math.random() * 400;
+        const breathPause = 200 + Math.random() * 100;
         setTimeout(() => {
           releaseVoiceLock(botName);
           resolve();

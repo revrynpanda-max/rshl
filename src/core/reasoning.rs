@@ -48,6 +48,28 @@ pub struct ReasonResult {
     pub depth: usize,
 }
 
+/// A node in the fractal simulation tree for what-if branching.
+#[derive(Clone, Debug)]
+pub struct TreeBranch {
+    pub step: usize,
+    pub vector: SparseVec,
+    pub phi_g: f32,
+    pub resonance_score: f32,
+    pub matched_text: String,
+    pub matched_region: String,
+    pub weight: f32,
+    pub path: Vec<usize>,
+}
+
+/// Result of a fractal reasoning tree search.
+#[derive(Clone, Debug)]
+pub struct ReasonTreeResult {
+    pub best_path: Vec<TreeBranch>,
+    pub output_text: String,
+    pub output_region: String,
+    pub max_phi: f32,
+}
+
 /// Configuration for the reasoner.
 pub struct ReasonerConfig {
     pub max_depth: usize,
@@ -290,6 +312,123 @@ impl Reasoner {
             output_text,
             output_region,
             chain,
+        }
+    }
+
+    /// Run the fractal what-if simulation tree on a query.
+    ///
+    /// Generates a multidimensional "what-if" fractal tree. At each step, KAI evaluates
+    /// multiple branches (possibilities/variables) and applies a dynamically calculated
+    /// weight to find the best overarching path rather than the greedy best step.
+    pub fn reason_tree_with_context(
+        &self,
+        query: &str,
+        universe: &Universe,
+        context: &[ContextSlot],
+    ) -> ReasonTreeResult {
+        let query_vec = SparseVec::encode(query);
+        let mut current;
+        if context.is_empty() {
+            current = query_vec.clone();
+        } else {
+            let mut bundle_vecs: Vec<&SparseVec> = Vec::new();
+            bundle_vecs.push(&query_vec);
+            bundle_vecs.push(&query_vec);
+            bundle_vecs.push(&query_vec);
+            for slot in context.iter().rev().take(6) {
+                let role_weight = if slot.role == "user" { 1.5 } else { 1.0 };
+                let effective_weight = slot.strength * role_weight;
+                if effective_weight > 0.3 {
+                    bundle_vecs.push(&slot.vec);
+                    if effective_weight > 0.7 {
+                        bundle_vecs.push(&slot.vec);
+                    }
+                }
+            }
+            current = SparseVec::bundle(&bundle_vecs);
+        }
+
+        let mut nodes: Vec<TreeBranch> = Vec::new();
+        // Queue: (current_vector, step, parent_path, accumulated_weight)
+        let mut queue: Vec<(SparseVec, usize, Vec<usize>, f32)> = Vec::new();
+        queue.push((current, 0, Vec::new(), 1.0));
+
+        let mut best_leaf: Option<usize> = None;
+        let mut best_phi = 0.0;
+        let branching_factor = 3;
+
+        while !queue.is_empty() {
+            let mut next_queue = Vec::new();
+
+            for (vec, step, path, acc_weight) in queue {
+                let hits = universe.query_vec(&vec, branching_factor);
+                if hits.is_empty() { continue; }
+
+                for (rank, (cell, score)) in hits.iter().enumerate() {
+                    if *score < self.config.min_resonance { continue; }
+
+                    let mut new_path = path.clone();
+                    let node_idx = nodes.len();
+                    new_path.push(node_idx);
+
+                    // Dynamic weighting based on variables: rank acts as a probability penalty,
+                    // score acts as the alignment truth value.
+                    let branch_weight = acc_weight * score * (1.0 - (rank as f32 * 0.15));
+                    let phi_g = *score; 
+
+                    let node = TreeBranch {
+                        step,
+                        vector: vec.clone(),
+                        phi_g,
+                        resonance_score: *score,
+                        matched_text: cell.label.clone(),
+                        matched_region: cell.region.to_string(),
+                        weight: branch_weight,
+                        path: new_path.clone(),
+                    };
+                    nodes.push(node);
+
+                    let path_score = phi_g * branch_weight;
+                    if path_score > best_phi {
+                        best_phi = path_score;
+                        best_leaf = Some(node_idx);
+                    }
+
+                    if step + 1 < self.config.max_depth && phi_g < self.config.phi_threshold {
+                        // Derive next what-if thought by binding
+                        let bound = vec.bind(&cell.claim.vec);
+                        let bundled = SparseVec::bundle(&[&vec, &bound, &cell.claim.vec]);
+                        next_queue.push((bundled, step + 1, new_path, branch_weight));
+                    }
+                }
+            }
+            queue = next_queue;
+        }
+
+        let best_path = if let Some(leaf_idx) = best_leaf {
+            nodes[leaf_idx].path.iter().map(|&i| nodes[i].clone()).collect()
+        } else {
+            Vec::new()
+        };
+
+        let (output_text, output_region) = if best_path.is_empty() {
+            (String::new(), String::new())
+        } else {
+            let leaf = best_path.last().unwrap();
+            
+            if best_path.len() > 1 {
+                let path_labels: Vec<String> = best_path.iter().take(3).map(|n| n.matched_text.clone()).collect();
+                (format!("{} (Fractal Path: {})", leaf.matched_text, path_labels.join(" → ")), leaf.matched_region.clone())
+            } else {
+                (leaf.matched_text.clone(), leaf.matched_region.clone())
+            }
+        };
+
+        ReasonTreeResult {
+            best_path,
+            output_text,
+            output_region,
+            max_phi: best_phi,
         }
     }
 

@@ -310,7 +310,10 @@ pub fn consolidate_pair(
         return None;
     }
 
-    let bundle = SparseVec::bundle(&[&a.claim.vec, &b.claim.vec]);
+    // Use creative vectorization (alpha = strength A, beta = strength B, tau = average of alpha and beta)
+    let alpha = a.claim.confidence;
+    let beta = b.claim.confidence;
+    let bundle = SparseVec::bind_creative(&a.claim.vec, &b.claim.vec, alpha, beta, 0.5 * (alpha + beta));
 
     // Find resonance
     let hits = universe.query_vec(&bundle, 1);

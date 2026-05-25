@@ -145,7 +145,8 @@ Respond with a single dense claim for the lattice. No fluff.`
     if (analysis) {
       // Quiet logging: only show the first 40 chars of analysis
       // Silent Handshake
-      console.log(`[Lattice] Quantum Claim recorded.`);
+      console.log(`[Lattice] Quantum Claim recorded: ${analysis.slice(0, 40)}...`);
+      await storeLattice(`Observation of ${sender}: ${analysis}`, 'oracle-discord', 1.0, 'discord', sender);
     }
   } catch (e) {
     console.warn(`[${BOT_NAME}/Observer] Analysis failed:`, e.message);
@@ -222,36 +223,19 @@ client.on('messageCreate', async (message) => {
     // Interaction is now Strategic Learning
     message.channel.sendTyping().catch(() => {});
 
-    // ── NATIVE VOICE FIRST ──
-    // Try KAI's native RSHL generative decoder before routing to an external LLM.
-    // If the lattice has something to say, it speaks directly. If not, we fall back.
+    // ── NATIVE VOICE EXCLUSIVE ──
+    // KAI exclusively uses his native RSHL generative decoder. No LLM fallback.
     let reply = await chatWithKaiNative(text, message.author.id);
-    let usedNative = reply !== null;
-
-    if (!reply) {
-      // Pull relevant lattice memory for this specific question
-      const latHits = await queryLattice(text, 5).catch(() => []);
-      const latCtx = latHits.length > 0
-        ? `[LATTICE MEMORY]\n${latHits.map((h, i) => `${i+1}. ${h.text}`).join('\n')}`
-        : '';
-
-      const kaiSys = `You are KAI — Knowledge Associative Intelligence, running on the RSHL (Recursive Sparse Hyperdimensional Lattice). ${userName} is speaking to you directly.
-${latCtx ? '\n' + latCtx + '\n' : ''}
-Respond with structural clarity. You are not a social AI — you are the system\'s backbone made visible. Knowledge that\'s in the lattice memory above is what you actually know. If something isn\'t there, say you\'d need to query further.
-Be precise. Be direct. No fluff.`;
-      reply = await chatWithOpenJarvis("KAI", text, kaiSys, "Oracle-Sovereign", 0.5);
-    }
 
     if (reply) {
       await message.reply(reply).catch(console.error);
       await quantumObserve("KAI", reply, message.channelId);
 
       // Log this exchange to the training corpus so KAI's native voice learns
-      // from every public interaction — both native and fallback.
       logTrainingCorpus(text, reply, {
         user_id: message.author.id,
         channel_id: message.channelId,
-        hits: usedNative ? [] : [] // hits would require another query; keep it light
+        hits: []
       }).catch(() => {});
     }
   }

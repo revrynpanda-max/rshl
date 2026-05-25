@@ -898,6 +898,10 @@ impl Universe {
         conv_score: Option<f32>,
         user_id: &str,
     ) {
+        if self.cells.len() >= 1_000_000 {
+            return; // 1M cell ceiling reached
+        }
+
         let convergence_score = conv_score.unwrap_or_else(|| {
             let phi_g = strength.clamp(0.0, 1.0) * 0.5;
             let angles = [phi_g, 0.5_f32, 0.0_f32, 0.3_f32, 0.5_f32];

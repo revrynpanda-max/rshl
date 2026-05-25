@@ -415,7 +415,7 @@ impl App {
         }
 
         // Log field state for spectate (verbose only)
-        if self.spectate_mode && self.spectate_full && self.engine.tick.is_multiple_of(3) {
+        if self.spectate_mode && self.engine.tick.is_multiple_of(3) {
             self.think(
                 "CPU",
                 "◉",
@@ -484,7 +484,7 @@ impl App {
         // ── STREAM 1: GPU Math (dream consolidation with parallel cosine) ──
         if self.engine.tick.is_multiple_of(3) {
             let gpu_start = Instant::now();
-            if self.spectate_mode && self.spectate_full {
+            if self.spectate_mode {
                 self.think(
                     "GPU",
                     "⚡",
@@ -557,7 +557,7 @@ impl App {
                     }
                 }
             }
-            if self.spectate_mode && self.spectate_full && !self.last_inner_voice_text.is_empty() {
+            if self.spectate_mode && !self.last_inner_voice_text.is_empty() {
                 self.think("CPU", "🔊", self.last_inner_voice_text.clone());
             }
         }
@@ -1414,7 +1414,7 @@ impl App {
         }
 
         // ── PUSH SPECTATE FEED TO ORACLE (KAI_DREAMS Discord channel) ──
-        if self.spectate_mode && self.spectate_full {
+        if self.spectate_mode {
             let current_len = self.mind_log.len();
             if self.last_pushed_mind_log_len > current_len {
                 self.last_pushed_mind_log_len = current_len;
@@ -6090,7 +6090,7 @@ impl App {
             }
 
             // ── Spectate: show neuro-biometric status ────────────────
-            if self.spectate_mode && self.spectate_full {
+            if self.spectate_mode {
                 self.think("CPU", "🧠¬", format!(
                     "BIO: VP_hedonic={:.2} | Septal_rew={:.2} | DBB_ACh={:.2} | NBM_gain={:.2} | SCN_phase={:.2}",
                     self.engine.vp.hedonic_tone,
@@ -9059,6 +9059,10 @@ fn render_mindview(f: &mut Frame, app: &App, area: Rect) {
         let start = app.mind_log.len().saturating_sub(max_visible);
 
         for event in &app.mind_log[start..] {
+            if !app.spectate_full && event.stream != "THOUGHT" && event.stream != "MONOLOGUE" && event.stream != "DREAM" && event.stream != "VOICE" {
+                continue; // Hide raw/verbose streams in brief mode
+            }
+
             if event.stream == "THOUGHT" {
                 // ── Natural language inner thought — FULL TEXT, word-wrapped ─
                 // Never truncate thoughts. KAI's inner voice should be readable

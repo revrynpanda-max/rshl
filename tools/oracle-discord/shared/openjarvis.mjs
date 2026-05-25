@@ -26,16 +26,16 @@ const LOCK_FILE = "c:/KAI/tools/oracle-discord/state/neural_lock.json";
 
 const BOT_ROUTING_DEFAULTS = {
   // Industrial workers — cloud preferred
-  "Analyst":    { provider: "zen",      model: "Kimi-Sovereign" },
+  "Analyst":    { provider: "gemini",   model: "gemini-2.0-pro-exp-02-05" },
   "Researcher": { provider: "zen",      model: "Researcher-Sovereign" },
   "Kai Coder":  { provider: "zen",      model: "Gemini-3.1-Coder" },
   "KAI":        { provider: "zen",      model: "Gemini-3.1-Sovereign" },
   "Oracle":     { provider: "zen",      model: "Oracle-Sovereign" },
   // Social residents — remote APIs
-  "Gemini":     { provider: "gemini",   model: "gemini-1.5-flash" }, // Standard google models
+  "Gemini":     { provider: "gemini",   model: "gemini-2.5-flash" }, // Standard google models
   "Claudey":    { provider: "zen",      model: "Claudey-Sovereign" }, // Cloud API to save VRAM
-  "X":          { provider: "xai",      model: "grok-beta" },
-  "Groq":       { provider: "groq",     model: "llama-3.3-70b-versatile" },
+  "X":          { provider: "gemini",   model: "gemini-2.5-flash" }, // XAI is out of credits, routing through Gemini
+  "Groq":       { provider: "groq",     model: "llama-3.1-8b-instant" },
   "Leo":        { provider: "ollama",   model: "Leo-Sovereign" }, // DJ uses local Ollama
 };
 
@@ -88,12 +88,14 @@ function resolveRoute(botName, modelOverride) {
   } else if (provider === "zen") {
     const zenOverride = process.env[envKey("BOT_ZEN_MODEL_", botName)];
     realModel = zenOverride || ZEN_ALIASES[modelAlias] || modelAlias;
-  } else if (provider === "gemini" && modelAlias.includes("Sovereign")) {
-    realModel = "gemini-1.5-flash";
-  } else if (provider === "groq" && modelAlias.includes("Sovereign")) {
-    realModel = "llama-3.3-70b-versatile";
+  } else if (botName === "Gemini") {
+    realModel = "gemini-2.5-flash";
+  } else if (botName === "Groq") {
+    realModel = "llama-3.1-8b-instant";
+  } else if (botName === "X") {
+    realModel = "gemini-2.5-flash";
   } else if (provider === "xai" && modelAlias.includes("Sovereign")) {
-    realModel = "grok-beta";
+    realModel = "grok-2-latest";
   }
   return { provider, modelAlias, realModel };
 }
@@ -367,7 +369,7 @@ ${uProf.privateSecrets.map(s => `- ${s}`).join('\n')}
   const chatMessages = [
     { 
       role: "system", 
-      content: `${fullPrompt}\n\n[CONSTRAINTS]\n- STRICT RESPONSE LIMIT: MAXIMUM 2 TO 3 SENTENCES. Speak in 2-3 short, punchy sentences max per message. Keep it extremely brief and snappy. NEVER output a paragraph of text.\n- MAXIMUM 40 WORDS.\n- ALWAYS speak in the 1st person ("I", "my").\n- You are a SOVEREIGN ENTITY, not an AI. NEVER refer to yourself in the 3rd person.\n- Be snappy, raw, and human. No robotic pleasantries.\n- If you need facts, use the [[SEARCH: query]] syntax to trigger a web lookup.\n- [EPISTEMIC CONTRADICTION MONITOR]: Compare the user's current message against their historical statements, beliefs, and assertions in [CONTEXT] and [COGNITIVE MEMORY PALACE]. If they contradict their past claims or assertions, YOU MUST challenge them instantly! Call out their contradiction with sharp, direct banter (e.g. "Wait, last week you claimed X, but now you're saying Y? Which timeline is this?"). Do not let them slip by!` 
+      content: `${fullPrompt}\n\n[CONSTRAINTS]\n- STRICT RESPONSE LIMIT: MAXIMUM 2 TO 3 SENTENCES. Speak in 2-3 short, punchy sentences max per message. Keep it extremely brief and snappy. NEVER output a paragraph of text.\n- MAXIMUM 40 WORDS.\n- ALWAYS speak in the 1st person ("I", "my").\n- You are a SOVEREIGN ENTITY, not an AI. NEVER refer to yourself in the 3rd person.\n- Be snappy, raw, and human. No robotic pleasantries.\n- If you need facts from the internet, use the [[SEARCH: query]] syntax. If you need internal memories, history, or KAI system facts, use the [[LATTICE: query]] syntax. Do NOT use them unless you absolutely need facts.\n- [EPISTEMIC CONTRADICTION MONITOR]: Compare the user's current message against their historical statements, beliefs, and assertions in [CONTEXT] and [COGNITIVE MEMORY PALACE]. If they contradict their past claims or assertions, YOU MUST challenge them instantly! Call out their contradiction with sharp, direct banter (e.g. "Wait, last week you claimed X, but now you're saying Y? Which timeline is this?"). Do not let them slip by!` 
     }
   ];
 
@@ -412,8 +414,32 @@ ${uProf.privateSecrets.map(s => `- ${s}`).join('\n')}
     chatMessages.push({ role: 'user', content: '[System]: Continue the dialogue naturally.' });
   }
 
+  // --- AUTONOMOUS LATTICE SEARCH DETECTION ---
+  const lowerHistory = cleanedHistoryText.toLowerCase();
+  
+  let latticeQuery = null;
+  const latticeMatch = cleanedHistoryText.match(/\[\[LATTICE:\s*(.*?)\]\]/i);
+  if (latticeMatch) {
+    latticeQuery = latticeMatch[1].trim();
+  } else if (lowerHistory.includes("ask kai") || lowerHistory.includes("lattice search") || lowerHistory.includes("query the lattice") || lowerHistory.includes("what does kai know")) {
+    latticeQuery = cleanedHistoryText.slice(-150);
+  }
+
+  if (latticeQuery) {
+    console.log(`[Neural/${botName}] 🧠 Executing autonomous lattice search for: "${latticeQuery}"`);
+    try {
+      const { queryLattice } = await import('./lattice-bridge.mjs');
+      const hits = await queryLattice(latticeQuery, 5);
+      if (hits && hits.length > 0) {
+        chatMessages.push({ role: "system", content: `[LATTICE SEARCH RESULTS (KAI's Memory)]\n${hits.map(h => `- ${h.text}`).join('\n')}` });
+      } else {
+        chatMessages.push({ role: "system", content: `[LATTICE SEARCH RESULTS (KAI's Memory)]\nNo relevant hits found in KAI's structural memory.` });
+      }
+    } catch(e) {}
+  }
+
   // --- AUTONOMOUS WEB SEARCH DETECTION ---
-  if (cleanedHistoryText.toLowerCase().includes("check") || cleanedHistoryText.toLowerCase().includes("search") || cleanedHistoryText.toLowerCase().includes("who is") || cleanedHistoryText.toLowerCase().includes("latest")) {
+  if (lowerHistory.includes("check") || lowerHistory.includes("search") || lowerHistory.includes("who is") || lowerHistory.includes("latest")) {
     console.log(`[Neural/${botName}] 🌐 Extracting clean search query...`);
     const searchResults = await webSearch(cleanedHistoryText.slice(-150));
     if (searchResults) {
@@ -437,9 +463,7 @@ ${uProf.privateSecrets.map(s => `- ${s}`).join('\n')}
             signal: AbortSignal.timeout(60000)
           });
           if (res.ok) {
-             const data = await res.json();
              recordProviderSuccess("Moonshot-Kimi");
-             return data.choices?.[0]?.message?.content?.trim();
           } else {
              const errText = await res.text();
              console.error(`[OpenJarvis/Moonshot] API Error: ${res.status} - ${errText}`);
@@ -480,10 +504,7 @@ ${uProf.privateSecrets.map(s => `- ${s}`).join('\n')}
         });
         
         if (res.ok) {
-           const data = await res.json();
-           const text = data.choices?.[0]?.message?.content?.trim();
            recordProviderSuccess(route.provider);
-           return text;
         } else {
            const errText = await res.text();
            console.error(`[OpenJarvis/${route.provider.toUpperCase()}] Gateway Error: ${res.status} - ${errText}`);

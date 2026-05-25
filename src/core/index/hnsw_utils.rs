@@ -14,7 +14,9 @@ impl<'a> Distance<SparseVec> for TernaryDistance {
             return 1.0;
         }
         let sim = v1[0].cosine(&v2[0]);
-        // Distance is 1.0 - similarity (0.0 means identical, 2.0 means opposite)
-        1.0 - sim
+        // Distance is 1.0 - similarity (0.0 means identical, 2.0 means opposite).
+        // Clamp to 0.0 to prevent floating point inaccuracies from yielding negative distances,
+        // which causes `hnsw_rs` to panic with `assertion failed: c.dist_to_ref <= 0.`
+        (1.0 - sim).max(0.0)
     }
 }

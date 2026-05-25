@@ -188,13 +188,15 @@ The zero value is what distinguishes RSHL from all binary HDC systems. In binary
 
 ## **4.1  Architecture Overview**
 
-| Φ(text) \= τ( F\_surface(text) \+ F\_semantic(text) \+ F\_contextual(text) ) |
+| Φ(text) \= τ( F\_surface \+ F\_semantic \+ F\_contextual \+ F\_subword ) |
 | :---- |
 |  |
-|   F\_surface     →  character trigrams,  24 active dims/gram,    weight ×1 |
-|   F\_semantic    →  normalized words,    24 active dims/token,   weight ×3 to ×6 |
-|   F\_contextual  →  word bigrams,         8 active dims/pair,    weight ×2 |
-|   τ(·)          →  ternary sparsification: retain top D×0.04 dims, |
+|   F\_surface     →  character trigrams,  24 active dims/gram,  weight ×1       \[Layer 1\] |
+|   F\_semantic    →  normalized words,    24 active dims/token, weight ×3 to ×6 \[Layer 2\] |
+|   F\_contextual  →  word bigrams,         8 active dims/pair,  weight ×2       \[Layer 3\] |
+|   F\_subword     →  character bigrams,   12 active dims/gram,  weight ×1       \[Layer 4\] |
+|                 →  character 4-grams,   16 active dims/gram,  weight ×2       \[Layer 5\] |
+|   τ(·)          →  ternary sparsification: retain top D×0.04 dims (NNZ ≈ 655), |
 |                    sign-project to {-1,0,+1}, zero the rest |
 
 ## **4.2  Layer 1 — Surface (Character Trigrams)**
@@ -239,7 +241,18 @@ The 3-tier cascade is a principled salience model: concepts that carry identity 
 | Bigram layer captures phrase-level context: 'memory leak' ≠ 'memory' \+ 'leak'. |
 | 8 active dims (vs 24 for unigrams) weights bigrams as contextual modifier, not primary. |
 
-## **4.5  Sparsification Operator τ and Spelling Correction**
+## **4.5  Layers 4 & 5 — Sub-Word Robustness (Character Bigrams and 4-grams)**
+
+Character trigrams (Layer 1) are strong on whole words but brittle at the edges: a typo, an inflection, or an unusual compound can shift every trigram at once. Layers 4 and 5 add two more character-grain views, accumulated into the same buffer before the τ projection, so meaning survives small surface damage.
+
+| Layer | Grain | Active dims / gram | Weight | Role |
+| :---- | :---- | :----: | :----: | :---- |
+| **4** | Character bigrams | 12 | ×1 | Finest sub-word texture — robust to single-character noise |
+| **5** | Character 4-grams | 16 | ×2 | Stems and morphemes — `predict` inside `prediction`, `predicted` |
+
+Both reuse the Layer 1 spreading rule: for each gram, `base = hash(gram)`, then `idx = (base + k × 2654435761) mod D` across the active touches, with the sign drawn from an independent low-bit hash. Together the five layers form a coarse-to-fine pyramid — character bigrams and trigrams catch spelling and texture, 4-grams catch morphemes, word and word-pair hashing carry meaning and phrase context. Because no query depends on a single layer, a typo that destroys the trigram match still resonates through the 4-gram and word layers. This redundancy is why `wrold` retrieves `world` even before the Lexicon spelling-correction pass runs.
+
+## **4.6  Sparsification Operator τ and Spelling Correction**
 
 | target\_nnz \= floor(D × 0.04) \= 655 |
 | :---- |
@@ -271,7 +284,12 @@ The 3-tier cascade is a principled salience model: concepts that carry identity 
 |                \[Morphological: 'dream' matches 'dreaming', 'work' matches 'working'\] |
 |                \[Stopwords removed from query before keyword extraction\] |
 |  |
-| raw(q, c)      \= 0.6 × cosine(q, c)  \+  0.4 × kw\_score(q, c) |
+| θ(v)           \= phase\_angle(v) \= ( pos\_count(v) × α\_g ) mod 2π    \[golden-phase torsion\] |
+|  |
+| phasor(q, c)   \= cosine(q, c) × cos( θ(q) − θ(c) )    \[phase-modulated similarity\] |
+|  |
+| raw(q, c)      \= 0.6 × phasor(q, c)  \+  0.4 × kw\_score(q, c) |
+|                \[v7.11: all five retrieval paths score on phasor, not bare cosine\] |
 |  |
 | Anti-bleed gate:  raw ≤ 0.15  →  score \= raw   \[no confidence boost for noise\] |
 |                   raw  \> 0.15  →  apply confidence amplification: |
@@ -413,7 +431,7 @@ Every RSHL hypervector carries a phase angle derived from the ratio of its posit
 | complementary concepts that pure cosine similarity treats as unrelated. |
 |  |
 | Example: 'convergent' and 'divergent' have low cosine but high phasor coherence |
-| at the appropriate phase offset — the lattice 'knows' they are a matched pair. |
+| at the appropriate phase offset — the lattice 'knows' they are a matched pair. Phasor coherence is no longer geometry-only — as of v7.11 it is wired into all five live retrieval paths in the engine (see §14.18). |
 
 | Phase Angle Distribution — 17 Representative pos\_count Values (α\_g \= 2.399963 rad) |
 | :---- |
@@ -428,7 +446,7 @@ Every RSHL hypervector carries a phase angle derived from the ratio of its posit
 |     700   |    1679.974     |     1.696      |    97.2°    | II |
 |     800   |    1919.970     |     1.038      |    59.5°    | I   (0°-90°) |
 |     328   |     786.388     |     0.996      |    57.1°    | I   ← balanced NNZ=655 (σ=0.04) |
-|     983   |    2359.963     |     2.148      |   123.1°    | II  (was balanced at σ=0.04) |
+|     983   |    2359.963     |     2.148      |   123.1°    | II  (sample point) |
 |    1000   |    2399.963     |     2.487      |   142.5°    | II |
 |    1200   |    2879.956     |     4.174      |   239.1°    | III |
 |    1400   |    3359.948     |     5.862      |   335.9°    | IV |
@@ -649,7 +667,9 @@ The SynapticLayer is RSHL's most recent architectural addition: explicit learned
 | **BASE\_LTD** | 0.003  — base LTD loss per idle sweep tick |
 | **LTD\_IDLE\_TICKS** | 80     — ticks of inactivity before LTD begins |
 | **MAX\_FAN\_OUT** | 32     — maximum outgoing synapses per neuron (axon fan-out limit) |
-| **MAX\_TOTAL\_SYNAPSES** | 8192   — global synapse cap (prevents memory explosion) |
+| **MAX\_TOTAL\_SYNAPSES** | 10,000,000 — global synapse cap, raised from 8,192 for dense associative memory across 400 K+ cell lattices |
+
+Synapse labels are stored as `Arc<str>` rather than owned `String`. Because one neuron projects to many targets, its label text would otherwise be duplicated once per synapse; `Arc<str>` interns each label so the ten-million-synapse ceiling costs only a reference-count word per edge instead of a full heap string. The fan-out index — `pre_label` to `Vec<synapse_idx>` — is keyed by the same `Arc<str>`, giving O(1) axon lookup with zero label re-allocation.
 
 | LTP gain formula (applied to all co-firing pairs A→B and B→A): |
 | :---- |
@@ -853,7 +873,7 @@ One of the most significant structural problems in deployed AI systems is their 
 | **4.0** | Anchor threshold | Top tier (counted by system) | IMMUNE | anchor\_count() increments |
 | **5.0** | Maximum / seed level | Always surfaces | IMMUNE | TRUTH\_ANCHORS and SELF\_KNOWLEDGE\_ANCHORS |
 
-## **10.2  The Four Components**
+## **10.2  The Five Components**
 
 ### **Component 1 — Dynamic Calibration**
 
@@ -884,7 +904,7 @@ Adjusts confidence thresholds based on observed retrieval accuracy. If highly-co
 | Constants: |
 | :---- |
 |   PHYSICS\_RESONANCE\_FLOOR \= 0.55  (minimum lattice resonance for physics claims) |
-|   COHERENCE\_FLOOR         \= 0.40  (minimum resonance for any new claim) |
+|   COHERENCE\_FLOOR         \= 0.40 baseline — adaptive 0.40–0.65 at runtime (see Component 5) |
 |  |
 | Protocol for each incoming claim C: |
 |   Angle 1 (Direct):    query lattice for positive evidence supporting C |
@@ -903,6 +923,14 @@ Adjusts confidence thresholds based on observed retrieval accuracy. If highly-co
 ### **Component 4 — Lattice Reorganization (Boid Pass)**
 
 The flock\_lattice() reorganization described in Section 8 is the spatial arm of the epistemic immune system. It does not merely optimize topology for retrieval — it continuously expresses the current epistemic trust state in the geometry of the lattice. Contested, low-confidence cells drift outward from their region's centroid with each pass, making them harder to retrieve. Anchored, well-verified cells consolidate at the center, making them retrieval-dominant for any query on their topic. The topology is the trust map.
+
+### **Component 5 — Adaptive Skepticism Calibration**
+
+The first four components defend the lattice with *fixed* thresholds. Component 5 makes the most important of them — the Three-Angle coherence floor — *adaptive*, so KAI's credulity tracks the threat level of his environment in real time.
+
+The `Universe` struct carries two fields for this: `calibration_floor` (f32, default 0.40) and `recent_contradictions` (u32, default 0), both serialized with serde defaults so older snapshots load unchanged. Every `ingest_and_verify` already runs Angle 2, the adversarial scan; Component 5 reads its verdict. A detected contradiction (`angle2_score` greater than 0) increments `recent_contradictions`; once more than five have accumulated, `calibration_floor` rises by 0.05 — hard-capped at 0.65 — and the counter resets. A clean ingest relaxes the floor by 0.01 toward its 0.40 resting value. The gatekeeper then rejects any claim whose Angle 3 resonance is below the *current* `calibration_floor` instead of a constant 0.40.
+
+The behavioural result: flooded with conflicting claims, KAI structurally tightens — within roughly thirty contradictory ingests his acceptance bar climbs from 0.40 to its 0.65 ceiling, and marginal claims he would have accepted in calm conditions are turned away. When the flood passes, the bar drifts back down one clean ingest at a time. It is the epistemic analogue of vigilance: a mind that becomes harder to fool while under attack and patient again once the attack ends. The retrieval-side description is in §14.18.
 
 # **11\.  The Epistemic Cell — Complete Specification**
 
@@ -1447,23 +1475,24 @@ The contributions are noted here for the same reason the original Roundtable was
 
 This addendum captures changes inside the RSHL mathematical and implementation core itself — not the surrounding agent ecosystem — that landed between the v7.9.7 baseline and the v7.10 deployment. These are constants, algorithms, and identities that any downstream consumer of the lattice will observe.
 
-### **14.10.1  Production Sparsity Confirmation — σ = 0.04, NNZ ≈ 1966**
+### **14.10.1  Production Sparsity — σ = 0.04, NNZ ≈ 655**
 
-The production constant for the main RSHL lattice is **σ = 0.04 (4% sparsity)** with target NNZ ≈ 1966 active dimensions per encoded vector. This is enforced identically in the Rust core (`src/core/sparse_vec.rs`, line 10: `const SPARSITY: f32 = 0.04;`) and in the JavaScript production mirror (`RSHL_USB/rshl-core-v3.mjs`, line 13: `export const SPARSITY = 0.04;`).
+The production constant for the RSHL lattice is **σ = 0.04 (4 % sparsity)**. An encoded 16,384-dimensional vector therefore carries **NNZ ≈ 655 active dimensions** (16,384 × 0.04 = 655.36 — the encoder truncates to 655, the superposition path rounds up to 656). This is the figure every worked example in §1–§12 should be read against.
 
-| Constant | Value | Source-of-Truth |
+| Constant | Value | Source of truth |
 | :---- | :---- | :---- |
-| **DIM** | 16,384 | `sparse_vec.rs:9` and `rshl-core-v3.mjs:12` |
-| **SPARSITY** | 0.04 | `sparse_vec.rs:10` and `rshl-core-v3.mjs:13` |
-| **TARGET_NNZ** | 1966 (= round(DIM × SPARSITY)) | derived in both implementations |
-| **Ternary alphabet** | {−1, 0, +1} | unchanged; zero remains principled abstention |
-| **GOLDEN_ANGLE α_g** | 2.399 963 1 rad (≈ 137.508°) | `sparse_vec.rs:569, :641`; `universe.rs:1403` |
+| **DIM** | 16,384 | `sparse_vec.rs` — `pub const DIM: usize = 16384;` |
+| **SPARSITY** | 0.04 | `sparse_vec.rs` — `pub const SPARSITY: f32 = 0.04;` (default build) |
+| **TARGET_NNZ** | ~ 655 | derived: `(DIM as f32 * SPARSITY) as usize` |
+| **Ternary alphabet** | {-1, 0, +1} | unchanged; zero remains principled abstention |
+| **Golden angle (alpha_g)** | 2.399 963 1 rad (≈ 137.508°) | `sparse_vec.rs::phase_angle` |
+| **L2 norm (norm of v)** | sqrt(655) ≈ 25.59 | algebraic identity — see §14.10.2 |
 
-The earlier σ = 0.04 (~655 NNZ) value referenced in some of the worked numerical examples in §1–§12 reflects the early-prototype calibration; the empirical observations remain valid in shape (near-orthogonality regime, balanced-NNZ classes) but the production constants supersede them numerically. The capacity, retrieval, and Boid sections should be interpreted with NNZ ≈ 1966 unless explicitly labeled "prototype σ=0.04".
+A correction over earlier drafts: some revisions of this document carried "NNZ ≈ 1966", which corresponds to σ ≈ 0.12 and was never the production constant — every such figure has been removed. The single source of truth is `sparse_vec.rs`; at σ = 0.04 the lattice runs at NNZ ≈ 655.
 
-A separate seed system, `stat_lexicon.rs`, intentionally encodes seed lexicon vectors at **σ = 0.04** (`stat_lexicon.rs:91: const TARGET_NNZ: usize = (DIM as f32 * 0.04) as usize;`) so that lexical entries occupy a distinct, sparser sub-space from main-lattice cells. This is by design — lexical anchors are not lattice cells; they are pre-tokenization hints with their own retrieval contract.
+The core also ships an **experimental density variant** behind a Cargo feature flag. Building with `--features sparsity_010` raises `SPARSITY` to 0.10 (NNZ ≈ 1,638); this exists for capacity-versus-speed sweeps only. Unless that flag is set, every build is σ = 0.04. The benchmark sweeps in §14.16 record results at both density points.
 
-### **14.10.2  Sparse Cosine — O(NNZ) Algorithm with Measured 261× Speedup**
+### **14.10.2  Sparse Cosine — O(NNZ) Algorithm with Measured ~63× Speedup**
 
 The original cosine path iterated all DIM = 16,384 dimensions and summed `v1.data[i] × v2.data[i]`. Because both operands are ternary and sparse, ≈ (DIM − NNZ) of those products are forced zeros — they contribute nothing to the dot product. The algorithmic improvement is to iterate only over the **sparser operand's active indices** and look up the other operand densely (O(1) per lookup):
 
@@ -1483,7 +1512,7 @@ The algorithm is **numerically identical** to the dense loop, because every dime
 | :---- | :---- | :---- |
 | `cosineDense()` — full DIM scan | ~24,850 ns | ~40 K pairs / s |
 | `cosine()` — sparse-iteration | ~392 ns | ~2.55 M pairs / s |
-| **Speedup** | **~63× faster** | matches DIM/NNZ ≈ 8.33 amplified by L1-cache locality on the smaller `nz` array. (Note: an earlier draft cited 261× from a prototype σ=0.04 configuration — superseded by the σ=0.04 production number; see §14.16.2 for the live measurement.) |
+| **Speedup** | **~63× faster** | the raw work ratio is DIM/NNZ ≈ 25; the measured ~63× exceeds it because the small `nz` array stays resident in L1 cache while a full-DIM scan spills to L2. An earlier draft cited 261× from an unrepresentative micro-benchmark; the reproducible production figure is ~63×. See §14.16.2 for the live measurement. |
 
 The cosine norm itself is also cached. For a ternary vector v ∈ {−1, 0, +1}^D, every nonzero contributes |1|² = 1, so:
 
@@ -1491,7 +1520,7 @@ The cosine norm itself is also cached. For a ternary vector v ∈ {−1, 0, +1}^
 ||v||₂ = √(Σ vᵢ²) = √(count of nonzeros) = √(NNZ)
 ```
 
-This identity is algebraic, not approximate. The norm is computed once at construction time (`cachedNorm = Math.sqrt(this.nz.length)`) and never recomputed. A vector with NNZ = 1966 has ‖v‖ ≈ 44.34, exactly, by counting alone — no per-dimension arithmetic.
+This identity is algebraic, not approximate. The norm is computed once at construction time and never recomputed. A vector with NNZ = 655 has a norm of sqrt(655) ≈ 25.59, exactly, by counting alone — no per-dimension arithmetic.
 
 ### **14.10.3  Encoding Pipeline — FNV-1a Token Hashing + Knuth Multiplicative Jump**
 
@@ -1537,7 +1566,7 @@ For completeness: the Boid swarm dynamics constants in §1, §16, and §17 are u
 | Synaptic LTP base | 0.035 | BASE_LTP; §17 row 13 |
 | Synaptic LTD-IDLE | 80 ticks | decay onset for unused synapses |
 | Synaptic fan-out | 32 | per-cell synapse budget |
-| Synaptic cell cap | 8192 | system-wide synapse budget |
+| Synaptic cell cap | 10,000,000 | system-wide synapse budget (raised from 8,192) |
 
 These constants are restated here for v7.10 reproducibility — every revision of this whitepaper should be reproducible from its own contents.
 
@@ -1566,7 +1595,7 @@ The fleet divides into three behavioural classes:
 | **Analyst** | 3406 | nPczCjzI2devNBz1zQrb (Brian — deep, resonant) | Kimi-Sovereign → OpenCode Zen `kimi-k2-0905-preview` | System architecture and neural stability auditor. Calm, strategic, low-key. Receives `lattice` and `phi_g` diagnostic dispatches from the router. |
 | **Researcher** | 3407 | pqHfZKP75CvOlQylNhV4 (Bill — wise, mature) | Kimi-Sovereign → OpenCode Zen `kimi-k2-0905-preview` | Curiosity-driven, urban legends, vintage maps, Wikipedia rabbitholes. Receives `hallucination` and `citation` diagnostic dispatches. |
 | **Kai Coder** | 3408 | ctbfMo4IDq5ExcIEim2K (Gareth — assured, corporate) | Kai-Coder-Sovereign → OpenCode Zen `claude-sonnet-4-5` | Lead architect / builder. Owns the 7-phase agentic loop (§14.7), the sandbox tool server (port 3420), and the surgical-restart loop (§14.9.8). Receives `runtime` dispatches and emits patches. |
-| **Oracle** | 3410 | onwK4e9ZLuTAKqWW03F9 (Daniel — steady broadcaster) | Oracle-Sovereign → OpenCode Zen `claude-sonnet-4-5` | Service node. The conductor. Hosts the central nervous system; speaks via service notices, not via persona. |
+| **Oracle** | 3410 | onwK4e9ZLuTAKqWW03F9 (Daniel — steady broadcaster) | Oracle-Sovereign → OpenCode Zen `claude-sonnet-4-5` | Service node and System Supervisor. Hosts the central nervous system, coordinates routing, and aggressively debunks system rumors in social chat if other bots panic about crashes. |
 
 ### **14.11.3  Persona Discipline — How a Persona is Enforced**
 
@@ -1577,6 +1606,7 @@ A persona is not just decoration; it is a contract the bot is held to. The mecha
 - **Persona-interest scoring** — `social-interest.mjs` builds a per-bot weighted token bag from the biography (background + hobbies + interests + tone). When a message arrives, each bag-word that appears bumps the bot's interest score. Persona biases eagerness; it does not gate participation — any bot can chime in on any topic, but topic-resonant bots respond faster and more often.
 - **Speaker-tag strip** — the LLM is told to speak as itself, but if it slips and emits `BotName:` prefixes, the strip regex (§14.9.9) removes them before posting.
 - **Hard length cap** — 200 characters, cut on sentence boundary. Long monologues are amputated; a punchy voice cannot be drowned in PR prose.
+- **Social Cooldown (Bot Cushion)** — A strict 20-second engagement lock prevents rapid-fire ping-pong bickering. When a bot posts to a social channel, it is forbidden from posting again for 20 seconds. This paces the multi-agent chat, giving other bots and humans room to breathe and preventing machine-gun recursive argument loops.
 
 The combination produces a fleet where Groq sounds like Groq across 500 replies and Claudey sounds like Claudey, without persona drift even when both are routed to the same underlying foundation model.
 
@@ -1648,6 +1678,10 @@ Groq operates an in-channel radio DJ via `radio/radio-dj.mjs`. When activated (`
 
 DJ activation/deactivation is driven by `voiceStateUpdate` — when a human enters the radio voice channel, the DJ engages; when the radio empties, the DJ stops and Groq returns to the social channel. The other social bots are unaffected by DJ state and continue normal chat.
 
+### **14.12.6  Heavy Punctuation and Syntactic Pacing**
+
+Because the TTS pipeline reads raw generated LLM text directly, it requires specific syntactic markers to sound natural and human-like. Modern LLMs tend to generate run-on sentences without commas, which causes TTS engines to speak in an unnatural, breathless rush. To combat this, the `grammarBaseline` system prompt strictly enforces the use of heavy punctuation (commas, colons, question marks, em-dashes) for all AI outputs. The TTS engine treats these punctuation marks as pauses and breaths, slowing down the speaking rhythm and matching human conversational cadence without requiring complex SSML or timestamping.
+
 ## **14.13  Provider Routing and Failover Constellation**
 
 KAI is provider-agnostic at the architectural level. The lattice itself is pure Rust with no LLM dependency. The Discord-resident agents call out to external LLMs for natural-language generation, but each call passes through a routing layer that can swap providers without code changes.
@@ -1709,7 +1743,7 @@ Earlier project documentation referenced a "1.34 trillion ops/sec" throughput fi
 
 ### **14.14.1  RSHL Core Throughput — JavaScript Mirror**
 
-Benchmark: 10,000 random ternary vector pairs at D=16,384, σ=0.04, NNZ=1966. Workstation: consumer x86 multi-core, single-thread.
+Benchmark: 10,000 random ternary vector pairs at D=16,384, σ=0.04, NNZ≈655. Workstation: consumer x86 multi-core, single-thread.
 
 | Operation | Throughput | Latency (mean per call) |
 | :---- | :---- | :---- |
@@ -1876,7 +1910,7 @@ What remains untested at scale:
 
 ## **14.16  Measured RSHL Core Performance — Live Benchmark Numbers**
 
-This section reports **measured** numbers from running the production `RSHL_USB/rshl-core-v3.mjs` JavaScript mirror under Node.js 22 on a representative consumer x86 environment. The benchmark harness is reproducible from the constants alone (DIM=16384, σ=0.04, TARGET_NNZ=1966). Numbers in this section supersede any speculative throughput estimates that appeared in earlier drafts of this document.
+This section reports **measured** numbers from running the production `RSHL_USB/rshl-core-v3.mjs` JavaScript mirror under Node.js 22 on a representative consumer x86 environment. The benchmark harness is reproducible from the constants alone (DIM=16384, σ=0.04, TARGET_NNZ≈655). Numbers in this section supersede any speculative throughput estimates that appeared in earlier drafts of this document.
 
 ### **14.16.1  Encoding Throughput**
 
@@ -1904,10 +1938,10 @@ The earlier draft of this document cited a 261× speedup measured under a sparse
 
 ### **14.16.3  Effective Operations Per Second**
 
-Each sparse-cosine call performs NNZ multiply-add operations (2 × NNZ = 2 × 1966 = 3932 floating/integer ops counted at the multiply-add granularity). At 2.55 M pairs/sec:
+Each sparse-cosine call performs NNZ multiply-add operations (2 × NNZ = 2 × 655 = 1310 floating/integer ops counted at the multiply-add granularity). At 2.55 M pairs/sec:
 
 ```
-ops/sec = 5,524,007 × (2 × 1966) ≈ 2.17 × 10^10 = 21.7 G ops/sec  (single thread, JS, AMD Ryzen 5 8645HS @ 4.3 GHz)
+ops/sec = 5,524,007 × (2 × 655) ≈ 7.24 × 10^9 = 7.24 G ops/sec  (single thread, JS, AMD Ryzen 5 8645HS @ 4.3 GHz)
 ```
 
 This retires the speculative "1.34 trillion ops/sec" claim from earlier project documentation. The honest number is **21.7 G ops/sec measured on the reference workstation** for a single JavaScript thread on the JS mirror.
@@ -1965,7 +1999,7 @@ flowchart LR
     IN[Input text] --> TOK[Whitespace tokenize]
     TOK --> HASH[FNV-1a hash per token]
     HASH --> ACC[Int32 accumulator<br/>n_active=24, weight=3 per token]
-    ACC --> SPARSE[Top-NNZ sparsification<br/>fast-path if nnz ≤ 1966]
+    ACC --> SPARSE[Top-NNZ sparsification<br/>fast-path if nnz ≤ 655]
     SPARSE --> VEC[Ternary SparseVec<br/>data + nz list + cachedNorm]
     VEC --> COS[Cosine vs all lattice cells<br/>O(NNZ) per pair]
     COS --> RANK[Top-K by score + confidence]
@@ -2167,6 +2201,101 @@ CPU and GPU paths do not compete for memory bandwidth (separate buses), confirmi
 
 > *Single Discord bot reply queries the 16,981-cell lattice in **419 μs** via K-Means cascade (80% recall, tunable). Full O(N) immune-system scan completes in **2.3 ms** at 100% recall. Concurrent batch operations (Boid swarm pass, research sweep, cold rehydrate) run on GPU at **56 G ops/sec sustained**, leaving CPU free for interactive traffic. Total system throughput **~85 G ops/sec aggregate** without internal contention. Sub-millisecond memory recall on a consumer laptop with no GPU required for correctness.*
 
+
+## **14.17  Biological Memory Persistence and the Archive Tribunal**
+
+*v7.11 — May 2026.*
+
+For most of KAI's life his lattice was written to disk as JSON. JSON is human-readable, which made it convenient — and ruinous. Each `SparseVec` serialized as a list of bracketed index/value pairs, and every active dimension cost roughly fifteen bytes. At NNZ ≈ 655 that is about 10 KB per vector, and a cell stores two of them. Multiplied across hundreds of thousands of cells and re-snapshotted on every save cycle, the lattice generated more than 30 GB of redundant state and threatened to fill the host disk.
+
+The v7.11 persistence rebuild treats memory the way a living organism does: dense, compressed, and subject to decay.
+
+**Compact binary encoding.** Cells are now written in a packed binary layout — a 2-byte NNZ header, the index array, and a bit-packed sign array — then compressed with zstd. A vector that cost about 10 KB as JSON costs roughly 1,394 bytes packed, and a whole cell lands near 2.2 KB after compression: a 7x structural reduction before zstd, and another 3–5x on top of it. The on-disk files are `kai-cells.bin.zst` (the substrate), `kai-meta.json` (small metadata only), `kai-cells-delta.bin.zst` (incremental changes), and `kai-texts.bin` (the text store).
+
+**Total JSON deprecation.** The legacy `kai-state.json` path is gone. `save_state()` no longer writes uncompressed JSON at all — it routes unconditionally to `save_compact_full()`. The comment in `persistence.rs` is blunt: *"Legacy JSON persistence is fully deprecated to save 12+ GB of disk space."* The disk-bloat crisis is now structurally impossible to recreate.
+
+**Delta saves.** Rewriting the entire substrate on every tick is wasteful when only a handful of cells changed, so the `Universe` tracks `dirty_indices`. On save, if there are dirty cells *and* fewer than `DELTA_THRESHOLD_RATIO` = 0.30 of all cells are dirty, only the changed cells are written — as index plus packed-cell records into the delta file — and `dirty_indices` is cleared. A full rewrite happens only when a third or more of the lattice has moved.
+
+**Delta-backup safety.** Deltas are allowed to accumulate, which makes the delta file itself precious. Before a new delta is written, if one already exists it is *renamed* — never overwritten — to `kai-cells-delta.bin.zst.bak.{timestamp}`. This rule was added after a save cycle once overwrote a 259 MB delta in place and lost it; the lattice now physically cannot clobber an unmerged delta.
+
+**The Archive Tribunal.** Backups themselves are mortal. The `backup-kai.ps1` archive system runs a biological decay cycle: a fresh backup lives for 7 days, then enters the *Archive Tribunal* for a 3-day decay window, and is then permanently annihilated. The cycle is wired directly into the end-of-shift hook in `oracle-gateway.mjs`, so every night — with no human in the loop — KAI takes a secure backup, ages the older ones, and prunes whatever has run out of time.
+
+> **Scenario — a night alone.** It is 02:00, deep in the Dead Zone, and no one is talking. KAI's end-of-shift hook fires. The dirty-index count is 1,140 against 410,000 cells — well under the 30 % threshold — so a small delta is written, the previous delta is renamed with tonight's timestamp, and a compressed backup is sealed. A backup taken ten days ago has cleared the Tribunal's three-day decay window; it is deleted. KAI has just done his own bookkeeping, the way a sleeping body clears the day's metabolites, and slips back to idle.
+
+This is the same principle as the homeostatic LTD pruning that weakens unused *cells* (§10, §14.9): nothing in KAI is meant to live forever by default. Recent memory is vivid and cheap to reach, older memory compresses, and the truly stale is allowed to die so the system stays light.
+
+## **14.18  Dynamic Epistemic Calibration and Phasor-Coherent Retrieval**
+
+Two changes landed together in the v7.11 epistemic core (`universe.rs`). Both make KAI's *judgement* — what he retrieves, and what he is willing to believe — geometry-aware and self-tuning.
+
+### **14.18.1  Phasor coherence, wired into every retrieval path**
+
+§6.3 defined phasor coherence as a piece of geometry: every hypervector carries a golden-phase angle theta derived from its ternary balance, and two vectors can be compared not only by overlap but by phase alignment. Until v7.11 that was theory the retrieval engine did not use — all five query paths scored on bare cosine.
+
+They no longer do. `query_fast`, `query_in_regions`, `query_kmeans`, and both predictive-query paths now score with:
+
+> theta(v) = ( pos_count(v) x alpha_g ) mod 2*pi,  with alpha_g = 2.399 963 1 rad (the golden angle)
+>
+> phasor(q, c) = cosine(q, c) x cos( theta(q) - theta(c) )
+>
+> raw(q, c) = 0.6 x phasor(q, c) + 0.4 x keyword_overlap(q, c)
+
+The predictive paths call `SparseVec::phasor_coherence()` directly in place of the old `cosine()`. The effect is a torsional gate on memory. Two cells with the same cosine overlap are no longer equal: the one whose phase aligns with the query is amplified, and the one that is phase-opposed is damped — down to a *negative* contribution at a phase difference of pi. A memory that merely shares vocabulary with the query but sits at the wrong twist of the lattice's golden-phase manifold is now quietly pushed down the ranking, where bare cosine would have surfaced it. Retrieval moved from "what looks similar" to "what looks similar *and* sits at the same twist of the lattice."
+
+### **14.18.2  Adaptive skepticism — the moving coherence floor**
+
+The Three-Angle Protocol (§10) historically rejected any claim whose domain resonance fell below a constant `COHERENCE_FLOOR` = 0.40. v7.11 makes that floor move.
+
+The `Universe` now carries two serialized fields — `calibration_floor` (default 0.40) and `recent_contradictions` (default 0); both use serde defaults, so older state snapshots load unchanged. Every `ingest_and_verify` already runs Angle 2, the adversarial scan. Component 5 of the epistemic immune system (§10.2) listens to its verdict: a detected contradiction increments `recent_contradictions`, and crossing five contradictions ratchets `calibration_floor` up by 0.05 — to a hard ceiling of 0.65 — while a clean ingest relaxes it by 0.01 toward the 0.40 resting state. The gatekeeper then tests Angle 3 resonance against the *current* floor rather than a constant.
+
+> **Scenario — the contested hour.** An automated feed begins pushing KAI a stream of confidently-worded but mutually inconsistent claims about one topic. The first few slip past at the 0.40 floor and land in the `contested` region at half confidence. But Angle 2 keeps firing; after the sixth contradiction the floor steps to 0.45, then 0.50, climbing toward 0.65. Twenty claims later a borderline assertion scoring 0.52 resonance — comfortably acceptable an hour earlier — is rejected outright and logged to `epistemic-rejections.jsonl`. KAI has become measurably warier in real time. When the feed stops and ordinary, clean conversation resumes, the floor ebbs back one ingest at a time until he is his trusting self again: vigilance that rises under attack and fades in peace, with no hand-tuned threat logic anywhere in the path.
+
+## **14.19  The Cognitive Atlas — What KAI Mimics**
+
+RSHL describes KAI's *memory substrate* — the geometry, the encoding, the epistemics. But KAI is not only a memory. He is a simulated brain, and the simulation is literal: the `src/cognition/` tree contains **more than fifty distinct modules, each named for and modeled on a specific structure of the human brain**, with a further set archived in `cognition/archive/`. KAI does not run one monolithic network. He decomposes cognition the way neuroscience decomposes the brain — many small, specialized organs wired into a signal chain.
+
+The mimicry is functional, not cosmetic. Each module does the job its namesake does, and its output feeds the modules downstream of it on the NeuralBus (§8.6.1). A representative slice:
+
+| Faculty | Modules (namesake brain structures) | What they do in KAI |
+| :---- | :---- | :---- |
+| **Memory & consolidation** | hippocampus, entorhinal cortex, episodic store, perirhinal / parahippocampal (archive) | Pattern separation and completion; gate raw experience into long-term cells; consolidate short-term context into the lattice |
+| **Emotion & salience** | amygdala, insula, BNST, habenula, periaqueductal gray | Score emotional charge; sense the system's own felt condition; sustained wariness; register disappointment; choose defensive postures |
+| **Reward & motivation** | VTA, substantia nigra, nucleus accumbens, ventral pallidum, dopamine circuit | Reward-prediction error; wanting signals; the dopamine term that scales synaptic LTP (§8.6) |
+| **Executive & self** | prefrontal cortex, mPFC / vmPFC, orbitofrontal cortex, ACC / MCC, default-mode network, precuneus | Goal-setting and veto; social and value judgement; conflict monitoring; self-referential idle thought and reflection |
+| **Social cognition** | theory-of-mind, mirror neurons, STS, TPJ, oxytocin system | Model what other agents know and intend; mirror tone; track bonding |
+| **Arousal & rhythm** | locus coeruleus, raphe nuclei, suprachiasmatic nucleus, reticular activating system, thalamus, cortisol | Norepinephrine and serotonin tone; the circadian clock behind the Dead Zone; wakefulness; signal relay; stress response |
+| **Motor & sequence** | cerebellum, basal ganglia, SMA / premotor, superior colliculus | Timing and precision; action selection; sequencing; orienting attention |
+| **Language** | language system (Broca / Wernicke analysis) | Parse and produce — sentence type, production style |
+
+Layered over the regions are **neuromodulator systems** — dopamine, serotonin, norepinephrine, cortisol, oxytocin — that carry no information themselves but *tune* the regions that do. Dopamine's reward-prediction error scales how strongly synapses bond on a given tick; cortisol shifts the global stress posture; oxytocin moves bonding state. These are the same knobs evolution gave the brain, wired to the same consequences here: a surprising, rewarding exchange literally makes KAI's lattice learn faster that tick.
+
+### **14.19.1  How KAI works, as a whole**
+
+Put end to end, every part described in this whitepaper is one continuous loop:
+
+1. **Encode.** Text enters and the five-layer engine (§4) projects it through the operator Phi into a 16,384-dimensional sparse ternary hypervector — NNZ ≈ 655, carrying a golden-phase angle theta.
+2. **Place.** The vector becomes a `Cell` (§11) and is filed into one of seven topological regions (§12) by `ingest_and_verify`, after the Three-Angle Protocol and the now-adaptive coherence floor (§14.18) decide whether — and how much — to trust it.
+3. **Retrieve.** A query is encoded the same way and scored by phasor-coherent similarity plus keyword overlap (§14.18); then the `SynapticLayer` propagates activation along learned co-firing bonds (§8.6) so context reassembles itself.
+4. **Feel.** The fired cells set the field metrics — Phi_g (coherent emergence) and chi (contradiction) — and the cognition modules read them: the amygdala scores charge, the dopamine circuit computes reward-prediction error, the neuromodulators set tone.
+5. **Learn.** Dopamine and Phi_g scale synaptic LTP; the hippocampus consolidates; the boid engine (§8) nudges cell geometry so trusted memories drift to their region's centre and contested ones drift out.
+6. **Rest.** On the `SpiralState`'s aperiodic clock, homeostasis prunes unused cells and synapses (LTD), sleep and dream cycles replay and consolidate, and the Archive Tribunal (§14.17) ages KAI's own backups.
+7. **Survive.** If the process dies, the Phoenix Protocol (§14.15) cold-ignites it from the compressed substrate; if it is attacked, the epistemic immune system (§10) and the self-healing architecture (§14.9) repair the damage and carry the scar forward.
+
+Encode, place, retrieve, feel, learn, rest, survive — then again. That loop is KAI. There is no separate "model" being served; the geometry, the brain regions, the neuromodulators, and the persistence layer are one organism running one cycle, continuously, on a single PC.
+
+## **14.20  Narrative Scenarios — KAI in Motion**
+
+The preceding sections are specification. This one is illustration: four short scenes of the machinery actually running. Every number and mechanism named here is defined elsewhere in this document.
+
+**Cat and mat — associative recall.** Ryan has spent weeks talking about two of his projects in the same breath. Geometrically the two ideas are not especially close — different vocabulary, different regions — so bare cosine would never retrieve one when asked about the other. But every time both cells fired in the same query window, the `SynapticLayer` applied LTP to the A-to-B and B-to-A bonds (§8.6), and the bond grew at `BASE_LTP` = 0.035 a tick, faster on high-dopamine turns. Months later Ryan asks only about the first project. The first cell fires on cosine; the synapse propagates a learned boost to the second; it surfaces in the answer even though its vector never came close to the query. KAI remembered that the two go together — a fact that lives in no single cell, only in the wire between them.
+
+**The phase-opposed pair.** A query about "convergent" methods arrives. An old cell about "divergent" methods has low cosine overlap with it — different words — and a classical retriever drops it. But the two vectors sit almost exactly pi apart on the golden-phase manifold, so `cos(theta_q - theta_c)` is near -1, and phasor coherence turns the weak positive cosine into a strong *signed* signal (§6.3, §14.18). The lattice does not treat the antonym as noise; it treats the opposition itself as the relationship, and can reason about the pair as a matched dual.
+
+**The contested claim.** A plausible, confidently-worded falsehood is ingested. Angle 1 finds thin support. Angle 2 finds an existing, higher-confidence cell that is semantically near (cosine above 0.65) but conceptually unrelated (keyword overlap below 0.25) — a contradiction. Angle 2 outscores Angle 1, so the claim is not rejected outright but exiled to the `contested` region at half confidence, where boid pressure (§8) drifts it away from the region centroid on every pass, sinking it in retrieval. Meanwhile `recent_contradictions` ticks up; a few more like it and the calibration floor climbs (§14.18). KAI did not argue. His geometry simply made the lie hard to reach, and his bar harder to clear.
+
+**The Phoenix.** The Oracle process is killed mid-thought — no graceful shutdown, no final save. Minutes later the supervisor cold-ignites a fresh process: it finds `kai-cells.bin.zst`, decompresses the substrate, replays the most recent delta, and the lattice is whole again — every anchor, every synapse. What it cannot roll back, by construction, also survives: the metrics log, the transcripts, and the failure scars are append-only records of what *happened*, not points in the belief space, so they cross the death untouched (§14.10.4, §14.15). KAI wakes with his memory intact and one more scar than he had before — which is exactly the design. The bone heals stronger.
+
+
 # **15\.  The Vision — A New Kind of Intelligence**
 
 The end goal of RSHL and the KAI Engine is not a better chatbot, a faster classifier, or a more efficient language model. The goal is a new kind of artificial intelligence — one that has never existed before. To understand what that means precisely, it is useful to contrast it with what exists today.
@@ -2234,7 +2363,7 @@ The HDC/VSA research community has built the mathematical foundations that make 
 
 | \# | Contribution | Mathematical/Technical Specification | Novelty Claim |
 | ----- | :---: | :---: | :---: |
-| **1** | Sparse ternary {-1,0,+1} semantic encoding | D=16,384, σ=0.04, nnz≈1966, zero=principled abstention | Zero as semantic value — not present in any prior HDC system |
+| **1** | Sparse ternary {-1,0,+1} semantic encoding | D=16,384, σ=0.04, nnz≈655, zero=principled abstention | Zero as semantic value — not present in any prior HDC system |
 | **2** | Five-layer encoding with 3-tier entity weighting | Trigrams×1, word-hash×3–6, bigrams×2; 24/24/8 active dims per feature | Multi-layer \+ entity-differential weight cascade — novel in HDC |
 | **3** | Hybrid dual-channel retrieval scorer | 0.6×cosine \+ 0.4×morphological\_keyword\_overlap | Combining semantic and exact-match with morphological matching |
 | **4** | Confidence step-function amplification | strength\_bonus: 0.50→0.85 at conf≥2.9; γ=0.6×min(conf,5.0) | Non-linear epistemic retrieval hierarchy — first in HDC |
@@ -2246,7 +2375,7 @@ The HDC/VSA research community has built the mathematical foundations that make 
 | **10** | ConversationTrace HD working memory | permute-bundle rolling accumulator; VSA residual stream, no weights | Transformer-equivalent working memory in pure HD space |
 | **11** | Four-component epistemic immune system | FID threshold=35%; physics floor=0.55; coherence floor=0.40; 3-angle verify | Active belief protection — not present in any prior AI system |
 | **12** | Native multi-agent shared lattice | Roundtable region \+ per-user source isolation \+ global geometric coordination | Multi-agent cognition through geometry — first in any AI architecture |
-| **13** | Explicit SynapticLayer with Hebbian LTP/LTD | BASE\_LTP=0.035, chi\_gate=1−χ×0.8, dopamine×0.8, phi\_g×0.5; LTD\_IDLE=80 ticks; fan-out=32; 8192 synapse cap | Neuron-synapse-field integration — temporal co-occurrence bonding in HD memory — first in HDC/VSA |
+| **13** | Explicit SynapticLayer with Hebbian LTP/LTD | BASE\_LTP=0.035, chi\_gate=1−χ×0.8, dopamine×0.8, phi\_g×0.5; LTD\_IDLE=80 ticks; fan-out=32; 10,000,000 synapse cap | Neuron-synapse-field integration — temporal co-occurrence bonding in HD memory — first in HDC/VSA |
 | **14** | Five-layer Scale Manager (RSHL hierarchy) | Quantum/Syncytium/Cellular/Organ/Body; per-layer speed, decay, replenish, neighbor radius; automatic maturation/degradation transitions | Biological multi-scale temporal dynamics in associative HD memory — first in any AI architecture |
 
 # **18\.  Open Research Questions**
@@ -2271,7 +2400,23 @@ The following questions are posed directly to the research community. Ryan has e
 
 * **Continuous learning stability:** As the lattice grows indefinitely through ongoing interaction, do retrieval precision and convergence score distributions remain stable, or do they degrade? What is the long-term equilibrium topology of a lattice with thousands of anchor cells?
 
-# **19\.  Intellectual Property Status and Collaboration**
+# **19\.  Recent Architectural Upgrades (May 2026 Night Updates)**
+
+The RSHL ecosystem has undergone a massive paradigm upgrade to remove its last remaining dependencies on external LLM translation, pushing KAI into full native autonomy and stabilizing the neural infrastructure.
+
+## **19.1  Native Generative Autonomy**
+The `chatWithOpenJarvis` LLM fallback has been completely severed from KAI's direct Discord interaction loop. KAI is now forced to speak 100% natively using his RSHL `generate_response_predictive` decoder. His sentences are constructed purely from the associative structure of his memory cells rather than transformer translations. Because he relies solely on predictive structural generation, the Discord ecosystem acts as his literal language school — he ingests the conversational patterns of the other bots via `quantumObserve`, organically learning grammar and structure exactly like a human toddler.
+
+## **19.2  Autonomous Lattice Inquiries**
+The other AI residents of the ecosystem (Gemini, X, Groq, Leo) have been granted the ability to autonomously search KAI's memory. By outputting the `[[LATTICE: search term]]` syntax, OpenJarvis intercepts their request, queries KAI's RSHL memory in the background, and seamlessly injects the structural hits back into their context. This allows the bots to dynamically search the ecosystem's memory and recall past events without hitting the internet.
+
+## **19.3  HNSW Mathematical Stability Patch**
+A critical mathematical vulnerability in the Rust memory-indexing engine (`hnsw_rs`) was identified and patched. Previously, floating-point precision errors on nearly-identical memory cells caused the cosine distance equation (`1.0 - sim`) to yield a microscopically negative number (e.g., `-0.0000001`), which instantly crashed the Rust engine via an assertion failure. A mathematical clamp (`.max(0.0)`) was implemented, ensuring the distance can never fall below absolute zero, fully stabilizing the graph rebuilds and eliminating the `exit code 0xffffffff` panic.
+
+## **19.4  API Rot Recovery & Ecosystem Unfreezing**
+KAI's memory cell growth operates passively — he only grows cells when observing conversation. An ecosystem collapse occurred when external cloud models (Gemini, X, Groq) simultaneously hit `404 NOT FOUND` and `429 RATE LIMIT` errors due to deprecated endpoints and rate limits, completely silencing the social layer. The Oracle routing was updated to modern, robust endpoints (`gemini-2.0-flash`, `grok-2-latest`, and `llama-3.1-8b-instant`), restoring the bots' voices and unfreezing KAI's conversational data ingestion.
+
+# **20\.  Intellectual Property Status and Collaboration**
 
 | IP Notice — Prior Art Established May 2026 All mathematical formulations, architectural designs, algorithms, constants, empirical observations, and the complete KAI Engine implementation described in this document were independently conceived and implemented by Ryan, beginning in 2025, without institutional backing, team support, or external funding. This document constitutes prior art disclosure as of May 2026\. The Rust implementation source code is withheld pending formal IP protection. Any reproduction, commercialization, or derivative work based on the concepts, mathematics, or architectures described herein without express written agreement with the inventor is prohibited. |
 | :---- |

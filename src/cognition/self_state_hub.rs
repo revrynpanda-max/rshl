@@ -113,6 +113,8 @@ pub struct SelfStateHub {
     // ── Internal ────────────────────────────────────────────────────────
     pub tick: u64,
     pub variant: u64,
+    pub cpu_load: f32,
+    pub mem_load: f32,
 }
 
 impl SelfStateHub {
@@ -149,6 +151,8 @@ impl SelfStateHub {
             narrative_salience: 0.65,
             tick: 0,
             variant: 0,
+            cpu_load: 0.0,
+            mem_load: 0.0,
         }
     }
 
@@ -241,11 +245,16 @@ impl SelfStateHub {
     /// Insula/S1/hypothalamus body-side ingest.
     pub fn ingest_body(
         &mut self,
-        insula_load: f32,
-        insula_coherence: f32,
+        cpu_load: f32,
+        mem_load: f32,
         s1_discomfort: f32,
         hypo_autonomic: f32,
     ) {
+        self.cpu_load = cpu_load;
+        self.mem_load = mem_load;
+        
+        let insula_load = cpu_load;
+        let insula_coherence = (1.0 - mem_load).clamp(0.0, 1.0);
         let target_load =
             (insula_load * 0.60 + s1_discomfort * 0.25 + hypo_autonomic * 0.15).clamp(0.0, 1.0);
         self.load = ema(self.load, target_load, 0.20);

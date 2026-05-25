@@ -819,6 +819,28 @@ impl Engine {
             let _ = log_file.flush();
         }
 
+        // ── Autonomous Internal Monologue (Daydreaming) ──
+        if !is_responding && self.tick % 300 == 0 && self.neural_synchrony > 0.65 {
+            // Use the new Fractal What-If Trees to ponder a random concept from the lattice
+            let cells = self.universe.cells();
+            if !cells.is_empty() {
+                let random_idx = (self.tick as usize * 17) % cells.len(); // deterministic pseudo-random
+                let seed_text = cells[random_idx].label.clone();
+                
+                let reasoner = crate::core::reasoning::Reasoner::new();
+                let tree_result = reasoner.reason_tree_with_context(&seed_text, &self.universe, &[]);
+                
+                if !tree_result.output_text.is_empty() {
+                    self.push_event("MONOLOGUE", "💭", format!("Pondering '{}': {}", seed_text, tree_result.output_text));
+                }
+            }
+
+            self.run_dream_cycle();
+            if !self.last_dream_text.is_empty() {
+                self.push_event("DREAM", "🌌", self.last_dream_text.clone());
+            }
+        }
+
         self.last_field = field.clone();
 
         field

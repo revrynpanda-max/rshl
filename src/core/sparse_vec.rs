@@ -539,6 +539,39 @@ impl SparseVec {
         Self { nz, vals, cached_norm }
     }
 
+    /// Creative binding: V_creative = tau(alpha * V_A + beta * V_B)
+    pub fn bind_creative(a: &SparseVec, b: &SparseVec, alpha: f32, beta: f32, threshold: f32) -> Self {
+        let mut acc: HashMap<u16, f32> = HashMap::with_capacity(a.nz.len() + b.nz.len());
+        for (&idx, &val) in a.nz.iter().zip(a.vals.iter()) {
+            *acc.entry(idx).or_insert(0.0) += val as f32 * alpha;
+        }
+        for (&idx, &val) in b.nz.iter().zip(b.vals.iter()) {
+            *acc.entry(idx).or_insert(0.0) += val as f32 * beta;
+        }
+        
+        let mut pairs: Vec<(u16, i8)> = acc
+            .into_iter()
+            .filter_map(|(idx, sum)| {
+                let v = if sum >= threshold {
+                    1
+                } else if sum <= -threshold {
+                    -1
+                } else {
+                    0
+                };
+                if v != 0 {
+                    Some((idx, v))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        pairs.sort_by_key(|p| p.0);
+        let (nz, vals): (Vec<u16>, Vec<i8>) = pairs.into_iter().unzip();
+        let cached_norm = (nz.len() as f32).sqrt();
+        Self { nz, vals, cached_norm }
+    }
+
     /// Weighted superposition of multiple vectors.
     pub fn weighted_superpose(vecs: &[(&SparseVec, f32)], threshold_ratio: f32) -> Self {
         if vecs.is_empty() {

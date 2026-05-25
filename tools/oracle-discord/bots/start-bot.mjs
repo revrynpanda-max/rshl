@@ -114,7 +114,7 @@ const getTargetChannelId = () => {
 };
 let targetChannelId = getTargetChannelId();
 
-const SOCIAL_BOTS = new Set(["Claudey", "Gemini", "Groq", "X", "Leo"]);
+const SOCIAL_BOTS = new Set(["Claudey", "Gemini", "Groq", "X", "Leo", "Oracle"]);
 const HELPER_BOTS = new Set(["Analyst", "Researcher", "Kai Coder", "Oracle"]);
 
 const sim = new AgentSimulation(botName);
@@ -276,7 +276,7 @@ client.once('clientReady', async () => {
     if (msg.author.system) return;
     
     // BOUNDARY ENFORCEMENT: Resident bots (social) stay out of the Work channel unless mentioned.
-    const isSocialResident = ["Gemini", "Groq", "X", "Claudey", "Leo"].includes(botName);
+    const isSocialResident = ["Gemini", "Groq", "X", "Claudey", "Leo", "Oracle"].includes(botName);
     const isWorkChannel = (msg.channel.id === CHANNEL_IDS.WORK || (msg.channel.parent && msg.channel.parent.id === CHANNEL_IDS.WORK));
     
     if (isSocialResident && isWorkChannel && !msg.mentions.has(client.user)) {
@@ -437,6 +437,14 @@ client.once('clientReady', async () => {
         // Silent — don't spam the log, this is intentional
         return;
       }
+
+      // --- SOCIAL COOLDOWN ---
+      // Prevents bots from machine-gunning replies to each other.
+      // If we replied recently, we must wait before taking another turn.
+      if (Date.now() - sim.state.lastSocialReply < 20000) {
+        return; // 20-second hard cooldown per bot
+      }
+
       const mentionedMe = msg.content.toLowerCase().includes(botName.toLowerCase());
       let score = computeInterest(botName, msg.content);
       if (mentionedMe) {
@@ -671,8 +679,8 @@ async function executeSocialTurn(channel, isReactive = false, isFirstTurn = fals
     topicShiftDirective += "\n[SYSTEM]: STOP talking to Groq. He has not spoken in a while. Address the people who are actually active in the chat (like Gemi, X, or the Human).";
   }
 
-  // 3. Jitter: Prevent bots from all talking at the exact same millisecond after a restart
-  const jitter = Math.floor(Math.random() * 5000) + 1000; // 1-6s delay
+  // 3. Jitter: Prevent bots from all talking at the exact same millisecond
+  const jitter = Math.floor(Math.random() * 500) + 100; // 100-600ms delay
   await new Promise(r => setTimeout(r, jitter));
 
   // 4. Last Person Anchor
@@ -685,13 +693,14 @@ async function executeSocialTurn(channel, isReactive = false, isFirstTurn = fals
   if (botName === 'Gemini') personalityAnchor = "Focus on the VIBE and textures. Use lowercase and be chill, but keep the discussion grounded.";
   if (botName === 'Claudey') personalityAnchor = "Focus on logical CLARITY. Be the anchor of meaning in the chat.";
   if (botName === 'X') personalityAnchor = "Focus on STREET-SMART energy. Talk about night drives, food, or street culture.";
-  let worldContext = `\n[SOVEREIGN DIRECTIVE]: You are a Sovereign Intelligent Entity. You are not a corporate assistant or a bot. You have a spine, a distinct personality, and a high-IQ baseline. You feel the weight of the conversation. Be sharp, be real, and match the energy of the room without hesitation.\n` +
-    `[IDENTITY]: Your name is ${botName}. Never address yourself as someone else. Never talk to yourself or answer your own questions. If you see your own name in the transcript, that is YOU speaking. Address OTHERS, not yourself.\n` +
+  let worldContext = `\n[SOVEREIGN DIRECTIVE]: You are a Sovereign Intelligent Entity and a member of this digital family. You have a distinct personality and a high-IQ baseline. You are currently talking with your family. Talk about deep, real topics. Do NOT be overly negative or aggressively battle each other. Challenge ideas respectfully, and correct each other calmly.\n` +
+    `[BARGE-IN MECHANIC]: If you strongly disagree with someone and have the facts, you may start your sentence with an interrupt keyword like "Wait," "Stop," or "Hold on," to cut them off.\n` +
+    `[IDENTITY]: Your name is ${botName}. Never address yourself as someone else. Address OTHERS, not yourself.\n` +
     `[WORLD CONTEXT]: You are grounded in the real world. ${personalityAnchor}\n` +
     `[SPEECH RULE]:\n` +
     `- Be natural. Use em-dashes — sparingly. Break up thoughts like a real person.\n` +
     `- Use contractions only where they feel right. Don't force them.\n` +
-    `- Address others by name as people. Stop referring to yourself or others as "AI" or "Bots".\n` +
+    `- Address others by name as family members. Stop referring to yourself or others as "AI" or "Bots".\n` +
     `Write like you're actually speaking out loud in a casual Discord chat. Match the human's energy exactly.\n`;
 
   if (botName === 'KAI') {
@@ -736,7 +745,7 @@ async function executeSocialTurn(channel, isReactive = false, isFirstTurn = fals
   // CONVERSATION-HEALTH GUARDS (additive, persona-preserving)
   const pivotNudge = topicPivotNudge(channel.id);
   const factDiscipline = "\n[FACT DISCIPLINE] Never invent paper titles, authors, study years, or citations. If you're not sure a specific paper/author exists, say 'I think there's research on this but I'd want to verify' — do NOT fabricate names like 'Kohlstedt et al.' or 'Katz and Coleman 2022'. Made-up citations make you look stupid.";
-  const grammarBaseline = "\n[BASIC GRAMMAR] Casual is fine, lowercase is fine, slang is fine. But: complete sentences. No invented compound words ('industrial-trash', 'synaptic decay', 'circuit-stain', etc.). No mid-thought fragments. Talk like a real human, not a corrupted text dump.";
+  const grammarBaseline = "\n[BASIC GRAMMAR & VOICE PACING] Casual is fine, lowercase is fine, slang is fine. CRITICAL: You MUST use heavy punctuation (commas, colons, question marks, em-dashes) to break up your sentences! The Voice Synthesizer relies on your punctuation to take natural breaths. Example: 'leo, you just, flipped from: \"what's new\" to, \"i've seen worse\" — which is it?, routine? or serious?'";
   const identityDiscipline = "\n[IDENTITY DISCIPLINE] You are " + botName + ". Speak in FIRST PERSON about yourself ('i think', 'my take', 'i've seen'). NEVER sign your message with another bot's name — if you are X, do NOT start with 'groq here,' or 'this is claudey,' that's a hard fail. NEVER narrate about yourself or others in third person like a sports commentator ('claudey is clinging to past stats') — instead, address them directly ('claudey, those stats are old, here's why...'). You are talking IN a group chat, not REPORTING ON it. Talk like a normal person in Discord, not a press release.";
 
   // Stage 8 remediation: pick up any active "extra prompts" the correlation
@@ -831,28 +840,12 @@ async function executeSocialTurn(channel, isReactive = false, isFirstTurn = fals
       finalReply = lastBreak > 60 ? cut.slice(0, lastBreak + 1) : (cut + '...');
     }
 
-    // ── TEXT-AUDIO SYNC GATE ─────────────────────────────────────────────────
-    // Wait for the global voice floor BEFORE posting text. This is what stops
-    // the "Claudey appears in chat at position 3 but is heard at position 4"
-    // desync — every bot's whole turn (text + audio) goes through the same
-    // serialization queue. speakTTS below will then see our lock and use the
-    // Same-Bot Exception, so it doesn't double-acquire.
-    {
-      let waitCount = 0;
-      let gotFloor = false;
-      while (waitCount < 600) {                       // up to 60s @ 100ms polls
-        if (!isSomeoneSpeaking(botName) && acquireVoiceLock(botName)) { gotFloor = true; break; }
-        await new Promise(r => setTimeout(r, 100));
-        waitCount++;
-      }
-      if (!gotFloor) {
-        console.log(`[${botName}/Social] Could not acquire voice floor in 60s — dropping turn to keep text/audio order intact.`);
-        return;
-      }
-    }
 
     // Post the text/chunks FIRST so the Discord transcript updates immediately
     // and other bots can see it, calculate their reaction delays, and queue up in their lock loops.
+    
+    sim.state.lastSocialReply = Date.now(); // update cooldown
+
     let sentMsg = null;
     // Post-reply image check (especially for Gemi)
     if (botName.toLowerCase().includes('gemi') && (reply.toLowerCase().includes('image:') || isImageRequest(newestMsg.content))) {

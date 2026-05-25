@@ -43,6 +43,7 @@ pub fn run_server(
     drive: &mut Drive,
     ollama: Option<&crate::cognition::ollama_voice::OllamaVoice>,
 ) {
+    let mut sys = sysinfo::System::new_all();
     let stdin = std::io::stdin();
     let stdout = std::io::stdout();
     let mut out = std::io::BufWriter::new(stdout.lock());
@@ -74,6 +75,7 @@ pub fn run_server(
             drive,
             &mut recent_context,
             ollama,
+            &mut sys,
         );
         let _ = writeln!(out, "{}", response);
         let _ = out.flush();
@@ -87,6 +89,7 @@ fn handle_command(
     drive: &mut Drive,
     recent_context: &mut Vec<(String, String)>,
     ollama: Option<&crate::cognition::ollama_voice::OllamaVoice>,
+    sys: &mut sysinfo::System,
 ) -> String {
     let val: serde_json::Value = match serde_json::from_str(json_line) {
         Ok(v) => v,
@@ -116,6 +119,7 @@ fn handle_command(
                 drive,
                 &field,
                 recent_context,
+                sys,
             );
             let mut brain = BrainSignals::default();
             brain.felt_valence = drive.valence;
@@ -345,6 +349,7 @@ fn chat_hits(
     drive: &Drive,
     field: &FieldState,
     recent_context: &[(String, String)],
+    sys: &mut sysinfo::System,
 ) -> Vec<QueryHit> {
     let lower = text.to_lowercase();
 
@@ -355,6 +360,7 @@ fn chat_hits(
             field,
             text,
             recent_context.len() as u64 + text.len() as u64,
+            sys,
         )];
     }
 
@@ -526,6 +532,7 @@ fn live_self_state_hit(
     field: &FieldState,
     current_text: &str,
     variant: u64,
+    sys: &mut sysinfo::System,
 ) -> QueryHit {
     // Tunnel path doesn't carry the full App state, so we build a fresh
     // SelfStateHub, feed it the minimum viable signals from drive + field +
@@ -588,9 +595,16 @@ fn live_self_state_hit(
         0.50,
         0.55,
     );
+    sys.refresh_cpu_all();
+    sys.refresh_memory();
+    let cpu_load = sys.global_cpu_usage() / 100.0;
+    let mem_used_gb = sys.used_memory() as f32;
+    let mem_total_gb = sys.total_memory() as f32;
+    let mem_load = if mem_total_gb > 0.0 { mem_used_gb / mem_total_gb } else { 0.0 };
+
     hub.ingest_body(
-        acc_conflict_proxy,
-        (1.0 - field.chi).clamp(0.0, 1.0),
+        cpu_load,
+        mem_load,
         acc_conflict_proxy,
         0.50,
     );
