@@ -217,7 +217,7 @@ pub fn read_cell<R: Read>(r: &mut R) -> Result<Cell, CompactError> {
     } else {
         (Vec::new(), None, 0)
     };
-    Ok(Cell { label, region: Arc::from(region), claim, continuation, last_fired, convergence_score, nnz, pos_vec, children, parent, text_id })
+    Ok(Cell { label, region: Arc::from(region), claim, continuation, last_fired, convergence_score, nnz, pos_vec, children, parent, text_id, is_archived: false, activation_heat: 0.0 })
 }
 
 // ── Compression ─────────────────────────────────────────────────────────────

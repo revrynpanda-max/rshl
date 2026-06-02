@@ -189,3 +189,17 @@ export function aggregateMetric(source, metric, windowMs = 60_000, tagMatch = nu
     last_ts: recs[recs.length - 1].ts,
   };
 }
+/**
+ * Returns a time-ordered array of { ts, value } points for a given metric
+ * over the last `windowMs` milliseconds. Used by the causal engine.
+ */
+export function getMetricHistory(source, metric, windowMs = 60 * 60_000) {
+  const recs = queryMetrics({
+    source, metric,
+    since: Date.now() - windowMs,
+    limit: 10_000,
+  });
+  return recs
+    .map(r => ({ ts: r.ts, value: Number(r.value) }))
+    .filter(r => Number.isFinite(r.value));
+}

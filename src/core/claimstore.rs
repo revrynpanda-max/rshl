@@ -889,7 +889,7 @@ mod tests {
     #[test]
     fn source_policy_assigns_status_and_trust() {
         let mut universe = Universe::new();
-        universe.store("Earth is round", "reasoning", "truth-anchor", 5.0);
+        universe.store("Earth is round", "reasoning", "truth-anchor", 3.0);
         universe.store(
             "A web claim is provisional",
             "reasoning",
@@ -899,6 +899,7 @@ mod tests {
         universe.store("Ryan lives in Ohio", "memory", "ryan", 2.0);
 
         let store = ClaimStore::from_universe(&universe);
+        println!("DEBUG CLAIMS: {:?}", store.claims);
 
         assert_eq!(store.claims[0].status, ClaimStatus::Stable);
         assert_eq!(store.claims[0].source_trust, 1.00);

@@ -300,7 +300,8 @@ function Start-OpenJarvis {
 
     $env:OPENJARVIS_CONFIG = Join-Path $JarvisDir "configs\openjarvis\config.toml"
     $uvPath = (Get-Command uv -ErrorAction SilentlyContinue).Source
-    if (-not $uvPath) { $uvPath = "$env:USERPROFILE\.local\bin\uv.exe" }
+    if (-not $uvPath) { $uvPath = "C:\Users\$env:USERNAME\miniconda3\Scripts\uv.exe" }
+    if (-not (Test-Path $uvPath)) { $uvPath = "$env:USERPROFILE\.local\bin\uv.exe" }
     if (-not (Test-Path $uvPath)) { $uvPath = "C:\Users\$env:USERNAME\.local\bin\uv.exe" }
 
     $defaultConfigDir = Join-Path $env:USERPROFILE ".openjarvis"
@@ -413,6 +414,43 @@ try {
             Write-Host "[KAI] Already reachable at http://127.0.0.1:3334"
         }
     }
+
+    # Wait for KAI CNS to initialize before attaching sensors
+    Write-Host "      Waiting 3s for CNS to initialize..." -ForegroundColor DarkGray
+    Start-Sleep -Seconds 3
+
+    # ── Step 3.5: START SENSORY LAYER (RF + IR) ───────────────────────────
+    Write-Host ""
+    Write-Host "[Startup] Phase 1.5 - Launching Sensory Layer (RF + IR)..." -ForegroundColor Magenta
+    
+    # Kill any leftover sensor processes
+    Get-WmiObject Win32_Process -Filter "Name='python.exe' OR Name='python3.exe'" -ErrorAction SilentlyContinue | ForEach-Object {
+        try {
+            if ($_.CommandLine -like "*tinysa_bridge*" -or $_.CommandLine -like "*ir_bridge*" -or $_.CommandLine -like "*sensor_watchdog*") {
+                $_.Terminate() | Out-Null
+            }
+        } catch {}
+    }
+
+    Write-Host "      [RF] Starting TinySA Ultra bridge on COM6..." -ForegroundColor DarkGray
+    Start-Process -FilePath "python" `
+                  -ArgumentList "C:\KAI\tools\tinysa_bridge.py --headless --port COM6" `
+                  -WindowStyle Hidden `
+                  -ErrorAction SilentlyContinue
+
+    Write-Host "      [IR] Starting IR camera bridge..." -ForegroundColor DarkGray
+    Start-Process -FilePath "python" `
+                  -ArgumentList "C:\KAI\tools\ir_bridge.py --headless" `
+                  -WindowStyle Hidden `
+                  -ErrorAction SilentlyContinue
+
+    Write-Host "      [WD] Starting Sensor Watchdog..." -ForegroundColor DarkGray
+    Start-Process -FilePath "powershell" `
+                  -ArgumentList "-WindowStyle Hidden -ExecutionPolicy Bypass -File C:\KAI\tools\sensors\sensor_watchdog.ps1" `
+                  -WindowStyle Hidden `
+                  -ErrorAction SilentlyContinue
+
+    Write-Host "      Sensory layer online: RF vision + IR thermal awareness active." -ForegroundColor DarkGray
 
     # ── Step 4: Start Discord gateway ─────────────────────────────────────
     Write-Host ""

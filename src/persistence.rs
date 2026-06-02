@@ -599,16 +599,16 @@ pub fn load_text_store(base_dir: &str, universe: &mut crate::core::Universe) {
                     }
                 }
             }
-            let mut reclaimed = 0usize;
+            let mut reclaimed = 0isize;
             for (idx, synthetic) in to_truncate {
                 let cell = &mut universe.cells_mut()[idx];
                 cell.text_id = idx as u32;
-                reclaimed += cell.claim.text.len();
+                reclaimed += cell.claim.text.len() as isize;
                 cell.claim.text = synthetic;
-                reclaimed -= cell.claim.text.len();
+                reclaimed -= cell.claim.text.len() as isize;
             }
             if reclaimed > 1024 * 1024 {
-                println!("persistence: reclaimed ~{:.1} MB of parent text via text store", reclaimed as f64 / (1024.0 * 1024.0));
+                println!("persistence: reclaimed ~{:.1} MB of parent text via text store", (reclaimed as f64) / (1024.0 * 1024.0));
             }
             println!("persistence: text store attached ({} entries)", count);
         }
@@ -690,6 +690,8 @@ mod tests {
             children: Vec::new(),
             parent: None,
             text_id: 0,
+            is_archived: false,
+            activation_heat: 0.0,
         };
 
         let bytes = compact::serialize_cells(&[cell.clone()]).expect("serialize should succeed");
@@ -749,6 +751,8 @@ mod tests {
                 children: Vec::new(),
                 parent: None,
                 text_id: 0,
+                is_archived: false,
+                activation_heat: 0.0,
             }
         }
 

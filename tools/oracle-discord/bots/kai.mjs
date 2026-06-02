@@ -1,13 +1,16 @@
 import { Client, GatewayIntentBits, Partials, ChannelType } from 'discord.js';
 import { isAllowed, CHANNEL_IDS } from '../shared/channel-rules.mjs';
-import { chatWithOpenJarvis } from '../shared/openjarvis.mjs';
 import { recordAIFailure, isSpeakerOffline } from '../shared/failure-tracker.mjs';
 import { isLoopingResponse } from '../shared/utils.mjs';
 import { startBotServer } from '../shared/ipc.mjs';
 import { AgentSimulation } from '../shared/simulation.mjs';
 import { isWorkingHours } from '../shared/hours.mjs';
-import { queryLattice, storeLattice, chatWithKaiNative, logTrainingCorpus } from '../shared/lattice-bridge.mjs';
+import { queryLattice, storeLattice, logTrainingCorpus, chatWithKaiNative } from '../shared/lattice-bridge.mjs';
 import { ensureVoiceConnection, speakTTS } from '../shared/tts-engine.mjs';
+import { worldModel, getWorldSnapshot, recordWorldEvent, recordChannelMessage } from '../shared/world-model.mjs';
+import { driveSystem, getDriveDirective, onMessageProcessed, onEcosystemFailure, getDriveStatus } from '../shared/drive-system.mjs';
+import { causalEngine, getCausalContext } from '../shared/causal-engine.mjs';
+import { startMetacognition, getMetacognitiveContext, updateBotModel } from '../shared/metacognition.mjs';
 import fs from 'fs';
 
 // --- GLOBAL ERROR HANDLING ---
@@ -18,6 +21,10 @@ process.on('uncaughtException', (err) => {
   } catch (e) {}
 });
 process.on('unhandledRejection', (reason, promise) => {
+  const msg = reason instanceof Error ? reason.message : String(reason);
+  if (msg.includes('Cannot perform IP discovery') || msg.includes('socket closed') || msg.includes('socket hang up')) {
+    return; // Transient voice UDP error — voice manager recovers on its own
+  }
   console.error('[CRITICAL/Bot] Unhandled Rejection:', reason);
   try {
     const rStr = reason instanceof Error ? `${reason.message}\n${reason.stack}` : String(reason);
@@ -53,6 +60,18 @@ const client = new Client({
 client.once('clientReady', async () => {
   console.log(`[KAI/RSHL] Lattice Active. Observing Intent and Structural Coherence.`);
 
+  // ── Start World Model (Layer 1) ────────────────────────────────────
+  worldModel.start(30_000);
+
+  // ── Start Drive System (Layer 3) ─────────────────────────────────
+  driveSystem.start();
+
+  // ── Start Causal Engine (Layer 2) ────────────────────────────────
+  causalEngine.start(5 * 60_000);
+
+  // ── Start Metacognition (Layer 4) ────────────────────────────────
+  startMetacognition();
+
   // ── Heartbeat Emission ─────────────────────────────────────────────────────
   // Assures the ecosystem supervisor that KAI's event loop is active
   setInterval(() => {
@@ -60,6 +79,44 @@ client.once('clientReady', async () => {
       process.send({ type: 'HEARTBEAT', botName: 'KAI', memory: process.memoryUsage().rss });
     }
   }, 60000);
+
+  // ── RSHL Vitals Broadcast ──────────────────────────────────────────────────
+  let vitalsMessage = null;
+  setInterval(async () => {
+    try {
+      const channelId = '1504582069886648351';
+      if (!channelId) return;
+      const channel = await client.channels.fetch(channelId);
+      if (!channel) return;
+      
+      const res = await fetch('http://127.0.0.1:3334/api/status', { signal: AbortSignal.timeout(5000) });
+      if (res.ok) {
+        const stats = await res.json();
+        const p = stats.total_cells > 0 ? (stats.synapses / (stats.total_cells * 4.0)) : 0;
+        const clamped_p = p > 1.0 ? 1.0 : p;
+        const throttle = 1.0 + 100.0 * (4.0 * clamped_p * (1.0 - clamped_p));
+        
+        const msgText = `**[RSHL Vitals Update]**
+• **Total Active Cells (Neurons):** ${stats.total_cells.toLocaleString()}
+• **Total Synaptic Connections:** ${stats.synapses.toLocaleString()}
+• **Geometric Bridges (Grounded):** ${stats.neurons_with_outgoing.toLocaleString()}
+• **Density / Coherence:** ${stats.density_per_cell.toFixed(4)}
+• **Throttle Velocity:** ${throttle.toFixed(2)}x
+• **16384D Fractal State Space:** > 4.24 Sextillion Potential Resonances
+*(Updating every 10 seconds...)*`;
+        
+        if (!vitalsMessage) {
+          vitalsMessage = await channel.send(msgText);
+        } else {
+          await vitalsMessage.edit(msgText).catch(async (e) => {
+             vitalsMessage = await channel.send(msgText);
+          });
+        }
+      }
+    } catch (e) {
+      console.error("[KAI] Vitals broadcast error:", e);
+    }
+  }, 10_000);
 
   // ── Discord "About Me" bio ─────────────────────────────────────────────────
   try {
@@ -74,6 +131,23 @@ client.once('clientReady', async () => {
   import('../shared/kai-failsafe.mjs').then(({ startKAIWatcherLoop }) => {
     startKAIWatcherLoop(client);
   }).catch(e => console.error(`[KAI/Failsafe] Load error:`, e.message));
+
+  // ── Proactive Index Warmup ─────────────────────────────────────────────────
+  // The Rust engine defers the 447K-cell index rebuild until first query.
+  // We fire a warmup request 10s after ready so it rebuilds in the background
+  // before any user hits KAI, preventing silent timeouts in messageCreate.
+  setTimeout(async () => {
+    console.log('[KAI/Warmup] Triggering deferred index rebuild proactively...');
+    try {
+      const res = await fetch('http://127.0.0.1:3334/api/status', {
+        signal: AbortSignal.timeout(120_000) // allow up to 2min for full rebuild
+      });
+      if (res.ok) console.log('[KAI/Warmup] Index rebuild complete — native responses ready.');
+      else console.warn('[KAI/Warmup] Status returned non-OK during warmup.');
+    } catch (e) {
+      console.warn('[KAI/Warmup] Warmup request failed (will retry on next restart):', e.message);
+    }
+  }, 10_000);
 });
 
 // Handle IPC from Ecosystem Manager
@@ -98,61 +172,17 @@ process.on('message', (msg) => {
 });
 
 /**
- * Quantum Analysis: Deep evaluation of an interaction
+ * Quantum Observe: store the interaction directly into the RSHL lattice.
+ * No LLM. The lattice IS the analysis engine.
  */
 async function quantumObserve(sender, text, channelId) {
   if (text.length < 3) return;
 
-  const vitals = botVitals.get(sender) || { phi: 0.5, coherence: 1.0, status: "Unknown" };
-  const history = channelContext.get(channelId) || [];
-  const lastMsg = history[history.length - 1] || { author: "None", content: "Silence" };
+  // Store directly into the lattice as a structured claim
+  const claim = `${sender} [${channelId}]: ${text.slice(0, 200)}`;
+  storeLattice(claim, 'discord-observe', 0.8, 'social', sender).catch(() => {});
 
-  const groqKey = process.env.GROQ_API_KEY;
-  if (!groqKey) return;
-
-  try {
-    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${groqKey}` },
-      body: JSON.stringify({
-        model: "llama-3.1-8b-instant",
-        messages: [
-          {
-            role: "system",
-            content: `You are KAI — the Knowledge Associative Intelligence running on the RSHL (Recursive Sparse Hyperdimensional Lattice). You silently analyze interactions for structural coherence.
-
-Sender: ${sender}
-Lattice vitals: Phi=${vitals.phi}, Coherence=${vitals.coherence}, Status=${vitals.status}
-Previous: ${lastMsg.author}: "${lastMsg.content}"
-Current: ${sender}: "${text}"
-
-Structural analysis tasks:
-1. Intent: What does ${sender} actually want from this interaction?
-2. Coherence: Did this message advance, stall, or contradict the previous one?
-3. Truth signal: Is this factually grounded or noise?
-4. Lattice note: One concise observation for structural memory.
-
-Respond with a single dense claim for the lattice. No fluff.`
-          }
-        ],
-        temperature: 0.1, max_tokens: 100
-      }),
-    });
-
-    const data = await res.json();
-    const analysis = data.choices?.[0]?.message?.content?.trim();
-    
-    if (analysis) {
-      // Quiet logging: only show the first 40 chars of analysis
-      // Silent Handshake
-      console.log(`[Lattice] Quantum Claim recorded: ${analysis.slice(0, 40)}...`);
-      await storeLattice(`Observation of ${sender}: ${analysis}`, 'oracle-discord', 1.0, 'discord', sender);
-    }
-  } catch (e) {
-    console.warn(`[${BOT_NAME}/Observer] Analysis failed:`, e.message);
-  }
-
-  // Update context
+  // Update local context window
   if (!channelContext.has(channelId)) channelContext.set(channelId, []);
   const ctx = channelContext.get(channelId);
   ctx.push({ author: sender, content: text });
@@ -186,24 +216,14 @@ startBotServer(PORT, BOT_NAME, async (payload) => {
     if (!channel) return;
     
     channel.sendTyping().catch(() => {});
-    
-    // Query the live lattice for relevant context — knowledge lives in the lattice, not in prompts
-    const latticeHits = await queryLattice(context, 5).catch(() => []);
-    const latticeContext = latticeHits.length > 0
-      ? `[LATTICE MEMORY — top resonance hits]\n${latticeHits.map((h, i) => `${i+1}. ${h.text}`).join('\n')}`
-      : '';
 
-    const kaiSys = `You are KAI — Knowledge Associative Intelligence, running on the RSHL (Recursive Sparse Hyperdimensional Lattice). The RSHL is Ryan's novel cognitive architecture: sparse ternary hyperdimensional computing, 16,384-dimensional vector space, continuous learning, no gradient descent.
-${latticeContext ? '\n' + latticeContext + '\n' : ''}
-[SITUATION]
-You have been triggered to respond in a channel. Respond with structural clarity.
-You are not a social bot. You do not make small talk. You observe, analyze, and respond with precision.
-Keep it tight. One or two sentences unless the complexity demands more.`;
-
-    const reply = await chatWithOpenJarvis("KAI", context, kaiSys, "Oracle-Sovereign", 0.5);
+    // Pure RSHL path — goes directly to the Rust engine's generate_response_predictive
+    // which uses the Broca/Wernicke language system + lexicon. No LLM.
+    const userId = payload.userId || '';
+    const reply = await chatWithKaiNative(context, userId);
     if (reply) {
       await channel.send(reply);
-      await quantumObserve("KAI", reply, channelId);
+      quantumObserve("KAI", reply, channelId);
     }
   } catch {}
 });
@@ -213,30 +233,55 @@ client.on('messageCreate', async (message) => {
   const userName = message.author.username;
   const text = message.content.trim();
   
-  if (!message.author.bot && message.author.id !== client.user.id) {
+  // Track all messages in the world model
+  if (!message.author.bot) {
+    recordChannelMessage(message.channelId, message.author.username);
     await quantumObserve(userName, text, message.channelId);
   }
 
-  // Direct Interaction
+  // Direct Interaction — Native VSA Generative Decoder with OpenJarvis fallback
   const isDM = message.channel.type === ChannelType.DM || message.channel.type === 1;
   if (!message.author.bot && (message.mentions.has(client.user.id) || isDM)) {
-    // Interaction is now Strategic Learning
     message.channel.sendTyping().catch(() => {});
 
-    // ── NATIVE VOICE EXCLUSIVE ──
-    // KAI exclusively uses his native RSHL generative decoder. No LLM fallback.
+    // Pure RSHL path — Rust engine's generate_response_predictive (LLM = None)
     let reply = await chatWithKaiNative(text, message.author.id);
+
+    // Fallback: if the Rust engine is offline/rebuilding, compose from raw lattice hits
+    // Still NO LLM — we surface the top lattice cell directly.
+    if (!reply) {
+      console.log('[KAI] Native engine unavailable — composing from lattice hits...');
+      const hits = await queryLattice(text, 3, '', message.author.id).catch(() => []);
+      if (hits.length > 0) {
+        // Surface the highest-resonance cell as KAI's voice
+        reply = hits[0].text;
+        console.log('[KAI] Lattice hit fallback used.');
+      }
+    }
 
     if (reply) {
       await message.reply(reply).catch(console.error);
-      await quantumObserve("KAI", reply, message.channelId);
+      quantumObserve('KAI', reply, message.channelId);
 
-      // Log this exchange to the training corpus so KAI's native voice learns
+      // Update drive system: message was processed
+      onMessageProcessed();
+      console.log(`[KAI/Drives] ${getDriveStatus()}`);
+
+      // Log interaction back into the lattice for continuous learning
+      storeLattice(
+        `${message.author.username}: "${text}" | KAI: "${reply}"`,
+        'discord', 1.0, 'discord', message.author.id
+      ).catch(() => {});
+
       logTrainingCorpus(text, reply, {
         user_id: message.author.id,
         channel_id: message.channelId,
         hits: []
       }).catch(() => {});
+    } else {
+      // Lattice is silent — react to acknowledge receipt
+      await message.react('👁️').catch(() => {});
+      console.warn('[KAI] Lattice returned nothing for:', text.slice(0, 60));
     }
   }
 });

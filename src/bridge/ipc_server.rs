@@ -41,7 +41,8 @@ pub fn run_server(
     universe: &mut Universe,
     candidates: &mut CandidateBuffer,
     drive: &mut Drive,
-    ollama: Option<&crate::cognition::ollama_voice::OllamaVoice>,
+    candle_voice: Option<&crate::cognition::candle_voice::CandleVoice>,
+    bitnet_voice: Option<&crate::cognition::BitnetVoice>,
 ) {
     let mut sys = sysinfo::System::new_all();
     let stdin = std::io::stdin();
@@ -74,7 +75,8 @@ pub fn run_server(
             candidates,
             drive,
             &mut recent_context,
-            ollama,
+            candle_voice,
+            bitnet_voice,
             &mut sys,
         );
         let _ = writeln!(out, "{}", response);
@@ -88,7 +90,8 @@ fn handle_command(
     candidates: &mut CandidateBuffer,
     drive: &mut Drive,
     recent_context: &mut Vec<(String, String)>,
-    ollama: Option<&crate::cognition::ollama_voice::OllamaVoice>,
+    candle_voice: Option<&crate::cognition::candle_voice::CandleVoice>,
+    bitnet_voice: Option<&crate::cognition::BitnetVoice>,
     sys: &mut sysinfo::System,
 ) -> String {
     let val: serde_json::Value = match serde_json::from_str(json_line) {
@@ -139,7 +142,8 @@ fn handle_command(
                 &brain,
                 recent_context,
                 universe,
-                ollama,
+                candle_voice,
+                bitnet_voice,
             );
 
             recent_context.push(("user".to_string(), text.to_string()));
@@ -242,25 +246,30 @@ fn handle_command(
         }
 
         // ── dream — run one dream consolidation cycle ────────────────────────
-        "dream" => match cognition::consolidate(universe) {
-            Some(dream) => {
-                cognition::observe_dream(candidates, &dream);
-                cognition::reinforce_dream_sources(universe, &dream);
-                serde_json::json!({
-                    "ok":     true,
-                    "dream":  {
-                        "insight":   dream.insight,
-                        "concept_a": dream.concept_a,
-                        "concept_b": dream.concept_b,
-                        "phi_g":     dream.phi_g,
-                        "c":         dream.c,
-                        "wm":        dream.wm,
-                    }
-                })
-                .to_string()
-            }
-            None => serde_json::json!({"ok": true, "dream": null}).to_string(),
-        },
+        "dream" => {
+            let res = match cognition::consolidate(universe) {
+                Some(dream) => {
+                    cognition::observe_dream(candidates, &dream);
+                    cognition::reinforce_dream_sources(universe, &dream);
+                    serde_json::json!({
+                        "ok":     true,
+                        "dream":  {
+                            "insight":   dream.insight,
+                            "concept_a": dream.concept_a,
+                            "concept_b": dream.concept_b,
+                            "phi_g":     dream.phi_g,
+                            "c":         dream.c,
+                            "wm":        dream.wm,
+                        }
+                    })
+                    .to_string()
+                }
+                None => serde_json::json!({"ok": true, "dream": null}).to_string(),
+            };
+            // Dynamically consolidate experiences during dreaming
+            cognition::experience::consolidate_experiences(universe);
+            res
+        }
 
         // ── status — field metrics ────────────────────────────────────────────
         "status" => {
@@ -426,6 +435,25 @@ fn chat_hits(
         hits.retain(|h| !matches!(h.source.as_str(), "ryan" | "conversation" | "world-bridge"));
     }
     hits.retain(|h| !is_stale_self_model_hit(h));
+    // ── Filter System Anchor metadata cells — never speak raw lattice linkage text ──
+    hits.retain(|h| !h.label.starts_with("System Anchor:"));
+    // ── For conversational queries, deprioritise heavy math / physics textbook cells ──
+    // They have artificially high strength (5.0) from bulk ingestion and win social
+    // queries they have no business answering.  Keep them only when a topic question
+    // specifically matches (ExplanationQuestion / RequestForInfo) with no KAI-directed flag.
+    let is_conversational = matches!(
+        query_type,
+        QueryType::Greeting | QueryType::Gratitude | QueryType::SelfQuestion
+            | QueryType::Statement | QueryType::Contemplation
+    );
+    if is_conversational {
+        let math_regions = ["advanced_math", "concept", "physics", "chemistry"];
+        // Keep a math hit only if no non-math hit is available at all
+        let has_non_math = hits.iter().any(|h| !math_regions.contains(&h.region.as_str()));
+        if has_non_math {
+            hits.retain(|h| !math_regions.contains(&h.region.as_str()));
+        }
+    }
     hits.truncate(5);
     hits
 }
@@ -493,6 +521,16 @@ fn is_stale_self_model_hit(hit: &QueryHit) -> bool {
         || lower.contains("salience:")
         || lower.contains("load:")
         || lower.contains("conflict:")
+}
+
+/// Returns true when a hit's text is raw lattice metadata that must never be
+/// spoken aloud: System Anchor lines, empty cells, single punctuation, etc.
+#[allow(dead_code)]
+fn is_unspoken_metadata(hit: &QueryHit) -> bool {
+    let t = hit.label.trim();
+    t.starts_with("System Anchor:")
+        || t.is_empty()
+        || (t.len() <= 2 && !t.chars().all(|c| c.is_alphabetic()))
 }
 
 fn is_kai_directed_query(lower: &str) -> bool {

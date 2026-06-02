@@ -58,7 +58,10 @@ const BASE_LTD: f32 = 0.003;
 const LTD_IDLE_TICKS: u64 = 80;
 
 /// Maximum outgoing synapses per neuron (axon fan-out limit)
-const MAX_FAN_OUT: usize = 32;
+pub fn dynamic_fan_out(lattice_size: usize) -> usize {
+    let f = (0.075 * lattice_size as f32).powf(1.0 / 3.0).ceil();
+    (f as usize).max(8)
+}
 
 /// Maximum total synapses — 10M cap for dense associative memory on 400K+ cell lattices
 const MAX_TOTAL_SYNAPSES: usize = 10_000_000;
@@ -120,6 +123,7 @@ impl SynapticLayer {
         phi_g: f32,
         chi: f32,
         tick: u64,
+        lattice_size: usize,
     ) {
         self.tick = tick;
         if labels.len() < 2 { return; }
@@ -137,7 +141,7 @@ impl SynapticLayer {
         for i in 0..labels.len() {
             for j in 0..labels.len() {
                 if i == j { continue; }
-                self.apply_ltp(&labels[i], &labels[j], ltp_gain, tick);
+                self.apply_ltp(&labels[i], &labels[j], ltp_gain, tick, lattice_size);
             }
         }
     }
@@ -249,13 +253,17 @@ impl SynapticLayer {
 
     // ── Private helpers ───────────────────────────────────────────────────────
 
-    fn apply_ltp(&mut self, pre: &str, post: &str, gain: f32, tick: u64) {
+    fn apply_ltp(&mut self, pre: &str, post: &str, gain: f32, tick: u64, lattice_size: usize) {
         // Find existing synapse
         if let Some(indices) = self.index.get(pre) {
             for &idx in indices {
                 if &*self.synapses[idx].post_label == post {
                     let syn = &mut self.synapses[idx];
-                    syn.weight = (syn.weight + gain).min(MAX_WEIGHT);
+                    
+                    // Hyper-Synapse logic: If fired > 50 times, allow weight up to 5.0
+                    let max_w = if syn.fire_count > 50 { 5.0 } else { MAX_WEIGHT };
+                    
+                    syn.weight = (syn.weight + gain).min(max_w);
                     syn.last_fire_tick = tick;
                     syn.fire_count += 1;
                     self.total_ltp += 1;
@@ -266,7 +274,7 @@ impl SynapticLayer {
 
         // Check fan-out limit
         let fan_out = self.index.get(pre).map(|v| v.len()).unwrap_or(0);
-        if fan_out >= MAX_FAN_OUT { return; }
+        if fan_out >= dynamic_fan_out(lattice_size) { return; }
 
         // Check total limit
         if self.synapses.len() >= MAX_TOTAL_SYNAPSES { return; }
@@ -327,7 +335,8 @@ impl NeuralBus {
     pub fn effective_score(base_score: f32, syn_boost: f32, phi_g: f32) -> f32 {
         // Synaptic boost is gated by emergence — high phi_g = synapses matter more
         let synapse_gate = 0.3 + phi_g * 0.4;
-        (base_score + syn_boost * synapse_gate).min(1.0)
+        // Hyper-Synapses can drive the score up to 5.0 (unignorable signal)
+        (base_score + syn_boost * synapse_gate).min(5.0)
     }
 
     /// Compute LTP gain for a synapse given current neuromodulator state.
@@ -478,6 +487,54 @@ impl NeuralBus {
         merged.truncate(n + max_hops * 2);
         merged
     }
+
+    /// Quad-Level Resonance: searches for mutually resonant "thought clusters" instead of isolated cells.
+    /// Finds combinations of cells that share a high geometric and synaptic resonance
+    /// (the 16,384-dimensional Quad-Level physics from the Sovereign Mind architecture).
+    pub fn query_quad_level_resonance(
+        universe: &crate::core::Universe,
+        synaptic_layer: &SynapticLayer,
+        phi_g: f32,
+        text: &str,
+        n: usize,
+        regions: &[&str],
+        user_id: &str,
+    ) -> Vec<crate::core::QueryHit> {
+        // Step 1: Broad geometric retrieval to get candidate pool
+        let mut base_hits = Self::query_multi_hop(universe, synaptic_layer, phi_g, text, n * 3, regions, user_id, 3);
+        
+        if base_hits.len() < 4 {
+            return base_hits; // Not enough cells to form a structural quad cluster
+        }
+        
+        // Step 2: Compute Quad-Level structural integrity
+        // We look for cells that have high synaptic/geometric resonance with each other.
+        // A true "Quad" is a set of nodes heavily interconnected structurally.
+        let mut interconnected_boost = std::collections::HashMap::new();
+        
+        for i in 0..base_hits.len() {
+            for j in 0..base_hits.len() {
+                if i == j { continue; }
+                let weight = synaptic_layer.weight(&base_hits[i].label, &base_hits[j].label);
+                if weight > 0.1 {
+                    // Mutual resonance detected in the sparse field
+                    *interconnected_boost.entry(base_hits[i].label.clone()).or_insert(0.0_f32) += weight * 0.75;
+                }
+            }
+        }
+        
+        // Apply quad-level resonance boosts
+        for hit in base_hits.iter_mut() {
+            if let Some(boost) = interconnected_boost.get(&hit.label) {
+                // If this node is part of a strong structural cluster, it gets a massive structural boost
+                hit.score = Self::effective_score(hit.score, *boost, phi_g);
+            }
+        }
+        
+        base_hits.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        base_hits.truncate(n);
+        base_hits
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -494,7 +551,7 @@ mod tests {
     fn test_synapse_created_on_co_fire() {
         let mut sl = SynapticLayer::new();
         let labels = make_labels(&["cat", "mat", "floor"]);
-        sl.record_co_firing(&labels, 0.5, 0.5, 0.2, 1);
+        sl.record_co_firing(&labels, 0.5, 0.5, 0.2, 1, 400_000);
         assert!(!sl.synapses.is_empty(), "synapses should be created on co-firing");
         assert!(sl.weight("cat", "mat") > 0.0, "cat→mat synapse should exist");
         assert!(sl.weight("mat", "cat") > 0.0, "mat→cat synapse should exist (bidirectional)");
@@ -504,9 +561,9 @@ mod tests {
     fn test_ltp_strengthens_repeated_co_firing() {
         let mut sl = SynapticLayer::new();
         let labels = make_labels(&["apple", "fruit"]);
-        sl.record_co_firing(&labels, 0.5, 0.5, 0.2, 1);
+        sl.record_co_firing(&labels, 0.5, 0.5, 0.2, 1, 400_000);
         let w1 = sl.weight("apple", "fruit");
-        sl.record_co_firing(&labels, 0.5, 0.5, 0.2, 2);
+        sl.record_co_firing(&labels, 0.5, 0.5, 0.2, 2, 400_000);
         let w2 = sl.weight("apple", "fruit");
         assert!(w2 > w1, "repeated co-firing should strengthen synapse: {:.4} → {:.4}", w1, w2);
     }
@@ -516,8 +573,8 @@ mod tests {
         let mut sl_low = SynapticLayer::new();
         let mut sl_high = SynapticLayer::new();
         let labels = make_labels(&["concept_a", "concept_b"]);
-        sl_low.record_co_firing(&labels, 0.1, 0.5, 0.2, 1);
-        sl_high.record_co_firing(&labels, 0.9, 0.5, 0.2, 1);
+        sl_low.record_co_firing(&labels, 0.1, 0.5, 0.2, 1, 400_000);
+        sl_high.record_co_firing(&labels, 0.9, 0.5, 0.2, 1, 400_000);
         let w_low  = sl_low.weight("concept_a", "concept_b");
         let w_high = sl_high.weight("concept_a", "concept_b");
         assert!(w_high > w_low,
@@ -529,8 +586,8 @@ mod tests {
         let mut sl_clear = SynapticLayer::new();
         let mut sl_conflict = SynapticLayer::new();
         let labels = make_labels(&["claim_a", "claim_b"]);
-        sl_clear.record_co_firing(&labels, 0.5, 0.5, 0.05, 1);   // low chi
-        sl_conflict.record_co_firing(&labels, 0.5, 0.5, 0.95, 1); // high chi
+        sl_clear.record_co_firing(&labels, 0.5, 0.5, 0.05, 1, 400_000);   // low chi
+        sl_conflict.record_co_firing(&labels, 0.5, 0.5, 0.95, 1, 400_000); // high chi
         let w_clear    = sl_clear.weight("claim_a", "claim_b");
         let w_conflict = sl_conflict.weight("claim_a", "claim_b");
         assert!(w_clear > w_conflict,
@@ -541,9 +598,9 @@ mod tests {
     fn test_propagation_boosts_associated_cells() {
         let mut sl = SynapticLayer::new();
         // Wire "summer" → "heat" through co-firing
-        sl.record_co_firing(&make_labels(&["summer", "heat"]), 0.8, 0.7, 0.1, 1);
-        sl.record_co_firing(&make_labels(&["summer", "heat"]), 0.8, 0.7, 0.1, 2);
-        sl.record_co_firing(&make_labels(&["summer", "heat"]), 0.8, 0.7, 0.1, 3);
+        sl.record_co_firing(&make_labels(&["summer", "heat"]), 0.8, 0.7, 0.1, 1, 400_000);
+        sl.record_co_firing(&make_labels(&["summer", "heat"]), 0.8, 0.7, 0.1, 2, 400_000);
+        sl.record_co_firing(&make_labels(&["summer", "heat"]), 0.8, 0.7, 0.1, 3, 400_000);
 
         // Now only "summer" fires — does "heat" get a boost?
         let boosts = sl.propagate(&make_labels(&["summer"]));
@@ -555,7 +612,7 @@ mod tests {
     #[test]
     fn test_ltd_weakens_idle_synapse() {
         let mut sl = SynapticLayer::new();
-        sl.record_co_firing(&make_labels(&["old_a", "old_b"]), 0.5, 0.5, 0.2, 0);
+        sl.record_co_firing(&make_labels(&["old_a", "old_b"]), 0.5, 0.5, 0.2, 0, 400_000);
         let w_before = sl.weight("old_a", "old_b");
 
         // Advance tick past LTD threshold
@@ -571,13 +628,15 @@ mod tests {
     fn test_fan_out_limit_enforced() {
         let mut sl = SynapticLayer::new();
         let pre = "hub_neuron";
-        for i in 0..(MAX_FAN_OUT + 10) {
+        let lattice_size = 400_000;
+        let limit = dynamic_fan_out(lattice_size);
+        for i in 0..(limit + 10) {
             let post = format!("target_{}", i);
-            sl.record_co_firing(&[pre.to_string(), post], 0.5, 0.5, 0.2, i as u64);
+            sl.record_co_firing(&[pre.to_string(), post], 0.5, 0.5, 0.2, i as u64, lattice_size);
         }
         let fan_out = sl.index.get(pre).map(|v| v.len()).unwrap_or(0);
-        assert!(fan_out <= MAX_FAN_OUT,
-            "fan-out should be capped at {}: got {}", MAX_FAN_OUT, fan_out);
+        assert!(fan_out <= limit,
+            "fan-out should be capped at {}: got {}", limit, fan_out);
     }
 
     #[test]

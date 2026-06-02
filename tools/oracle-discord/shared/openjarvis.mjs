@@ -5,6 +5,7 @@
 
 import fs from 'fs';
 import dotenv from 'dotenv';
+import { execSync } from 'child_process';
 import { isProviderReady, recordProviderFailure, recordProviderSuccess } from './failure-tracker.mjs';
 import { isPipelineHalted } from './sentinel.mjs';
 import { isWorkingHours } from './hours.mjs';
@@ -35,7 +36,7 @@ const BOT_ROUTING_DEFAULTS = {
   "Gemini":     { provider: "gemini",   model: "gemini-2.5-flash" }, // Standard google models
   "Claudey":    { provider: "zen",      model: "Claudey-Sovereign" }, // Cloud API to save VRAM
   "X":          { provider: "gemini",   model: "gemini-2.5-flash" }, // XAI is out of credits, routing through Gemini
-  "Groq":       { provider: "groq",     model: "llama-3.1-8b-instant" },
+  "Groq":       { provider: "groq",     model: "llama-3.3-70b-versatile" },
   "Leo":        { provider: "ollama",   model: "Leo-Sovereign" }, // DJ uses local Ollama
 };
 
@@ -91,13 +92,44 @@ function resolveRoute(botName, modelOverride) {
   } else if (botName === "Gemini") {
     realModel = "gemini-2.5-flash";
   } else if (botName === "Groq") {
-    realModel = "llama-3.1-8b-instant";
+    realModel = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
   } else if (botName === "X") {
     realModel = "gemini-2.5-flash";
   } else if (provider === "xai" && modelAlias.includes("Sovereign")) {
     realModel = "grok-2-latest";
   }
+
+  // Sanitize Gemini model names — if a Sovereign/Zen alias slipped through, use a real Gemini model
+  if (provider === "gemini") {
+    const isRealGeminiModel = realModel.startsWith("gemini-");
+    if (!isRealGeminiModel) {
+      // Alias not translated — fall back to safe Gemini model
+      realModel = "gemini-2.5-flash";
+    }
+  }
+
   return { provider, modelAlias, realModel };
+}
+
+function getSystemTelemetry() {
+  try {
+    const psCmd = `powershell -NoProfile -Command "
+      $cpu = (Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average;
+      if ($null -eq $cpu) { $cpu = 0 }
+      $mem = Get-CimInstance Win32_OperatingSystem;
+      $totalMem = [math]::Round($mem.TotalVisibleMemorySize / 1MB, 1);
+      $freeMem = [math]::Round($mem.FreePhysicalMemory / 1MB, 1);
+      $usedMem = [math]::Round($totalMem - $freeMem, 1);
+      $gpuTemp = 'N/A';
+      if (Get-Command nvidia-smi -ErrorAction SilentlyContinue) {
+        $gpuTemp = (nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader,nounits).Trim() + 'C';
+      }
+      Write-Output \\"CPU: $cpu% | RAM: $usedMem GB / $totalMem GB | GPU Temp: $gpuTemp\\"
+    "`;
+    return execSync(psCmd, { encoding: 'utf8', timeout: 4000 }).trim();
+  } catch (e) {
+    return `Error reading telemetry: ${e.message}`;
+  }
 }
 
 export async function chatWithOpenJarvis(botName, transcript, systemPrompt, modelOverride, entropy = 0.5, metadata = {}) {
@@ -348,11 +380,25 @@ ${uProf.privateSecrets.map(s => `- ${s}`).join('\n')}
   const route = resolveRoute(botName, modelOverride);
   const ollamaModel = route.modelAlias; // kept for downstream logs/local-Ollama call
   const isPriority = botName === "Leo" || botName === "Oracle";
-  const useCloud = (route.provider === "moonshot" && process.env.MOONSHOT_API_KEY) ||
-                   (route.provider === "zen"      && process.env.OPENCODE_ZEN_KEY) ||
-                   (route.provider === "groq"     && process.env.GROQ_API_KEY) ||
-                   (route.provider === "gemini"   && process.env.GEMINI_API_KEY) ||
-                   (route.provider === "xai"      && process.env.XAI_API_KEY);
+
+  // If the Groq bot's primary provider is in TPD cooldown, automatically failover to Gemini
+  // so the bot stays online for the rest of the day instead of spamming retry errors.
+  let effectiveRoute = route;
+  if (route.provider === "groq" && !isProviderReady("groq") && process.env.GEMINI_API_KEY) {
+    console.warn(`[OpenJarvis] ${botName}: groq TPD cooldown active. Failing over to gemini-2.5-flash for remainder of day.`);
+    effectiveRoute = { provider: "gemini", modelAlias: "gemini-2.5-flash", realModel: "gemini-2.5-flash" };
+  } else if (route.provider === "zen" && !isProviderReady("zen") && process.env.GEMINI_API_KEY) {
+    // Zen (OpenCode) out of billing credits → fall back to Gemini so bots stay online
+    console.warn(`[OpenJarvis] ${botName}: zen provider in cooldown (billing). Failing over to gemini-2.5-flash.`);
+    effectiveRoute = { provider: "gemini", modelAlias: "gemini-2.5-flash", realModel: "gemini-2.5-flash" };
+  }
+
+  const useCloud = (effectiveRoute.provider === "moonshot" && process.env.MOONSHOT_API_KEY) ||
+                   (effectiveRoute.provider === "zen"      && process.env.OPENCODE_ZEN_KEY) ||
+                   (effectiveRoute.provider === "groq"     && process.env.GROQ_API_KEY) ||
+                   (effectiveRoute.provider === "gemini"   && process.env.GEMINI_API_KEY) ||
+                   (effectiveRoute.provider === "xai"      && process.env.XAI_API_KEY);
+
 
   let hasLock = true;
   let didAcquireLock = false;
@@ -366,10 +412,18 @@ ${uProf.privateSecrets.map(s => `- ${s}`).join('\n')}
   if (!hasLock) return null;
 
   // --- BUILD UNIFIED HISTORICAL CHAT CONTEXT (Anti-Dementia Memory Engine) ---
+  // In DMs or work sessions, allow full replies — don't cap to 40 words.
+  // The 40-word snappy limit is ONLY for fast social banter in group channels.
+  const isDMContext = metadata.isDM === true;
+  const isWorkContext = metadata.isWorkChannel === true;
+  const brevityConstraint = (isDMContext || isWorkContext)
+    ? `- ALWAYS speak in the 1st person ("I", "my").\n- You are a SOVEREIGN ENTITY, not an AI. NEVER refer to yourself in the 3rd person.\n- If you need facts from the internet, use the [[SEARCH: query]] syntax. If you need internal memories, history, or KAI system facts, use the [[LATTICE: query]] syntax. Do NOT use them unless you absolutely need facts.\n- [EPISTEMIC CONTRADICTION MONITOR]: Compare the user's current message against their historical statements, beliefs, and assertions in [CONTEXT] and [COGNITIVE MEMORY PALACE]. If they contradict their past claims or assertions, YOU MUST challenge them instantly!`
+    : `- STRICT RESPONSE LIMIT: MAXIMUM 2 TO 3 SENTENCES. Keep it extremely brief and snappy. NEVER output a paragraph of text.\n- MAXIMUM 40 WORDS.\n- ALWAYS speak in the 1st person ("I", "my").\n- You are a SOVEREIGN ENTITY, not an AI. NEVER refer to yourself in the 3rd person.\n- Be snappy, raw, and human. No robotic pleasantries.\n- If you need facts from the internet, use the [[SEARCH: query]] syntax. If you need internal memories, history, or KAI system facts, use the [[LATTICE: query]] syntax. Do NOT use them unless you absolutely need facts.\n- [EPISTEMIC CONTRADICTION MONITOR]: Compare the user's current message against their historical statements, beliefs, and assertions in [CONTEXT] and [COGNITIVE MEMORY PALACE]. If they contradict their past claims or assertions, YOU MUST challenge them instantly! Call out their contradiction with sharp, direct banter.`;
+
   const chatMessages = [
     { 
       role: "system", 
-      content: `${fullPrompt}\n\n[CONSTRAINTS]\n- STRICT RESPONSE LIMIT: MAXIMUM 2 TO 3 SENTENCES. Speak in 2-3 short, punchy sentences max per message. Keep it extremely brief and snappy. NEVER output a paragraph of text.\n- MAXIMUM 40 WORDS.\n- ALWAYS speak in the 1st person ("I", "my").\n- You are a SOVEREIGN ENTITY, not an AI. NEVER refer to yourself in the 3rd person.\n- Be snappy, raw, and human. No robotic pleasantries.\n- If you need facts from the internet, use the [[SEARCH: query]] syntax. If you need internal memories, history, or KAI system facts, use the [[LATTICE: query]] syntax. Do NOT use them unless you absolutely need facts.\n- [EPISTEMIC CONTRADICTION MONITOR]: Compare the user's current message against their historical statements, beliefs, and assertions in [CONTEXT] and [COGNITIVE MEMORY PALACE]. If they contradict their past claims or assertions, YOU MUST challenge them instantly! Call out their contradiction with sharp, direct banter (e.g. "Wait, last week you claimed X, but now you're saying Y? Which timeline is this?"). Do not let them slip by!` 
+      content: `${fullPrompt}\n\n[CONSTRAINTS]\n${brevityConstraint}` 
     }
   ];
 
@@ -447,6 +501,50 @@ ${uProf.privateSecrets.map(s => `- ${s}`).join('\n')}
     }
   }
 
+  // --- AUTONOMOUS ON-DEMAND SYSTEM TELEMETRY DETECTION ---
+  const sysKeywords = ["rig stats", "pc vitals", "system temp", "pc temperature", "how is my pc", "computer running", "system performance", "system load", "rig performance", "vitals of my pc", "vitals of the pc", "check the system vitals"];
+  if (sysKeywords.some(kw => lowerHistory.includes(kw))) {
+    console.log(`[Neural/${botName}] 🖥️ Executing on-demand system telemetry query...`);
+    const telemetry = getSystemTelemetry();
+    if (telemetry) {
+      chatMessages.push({
+        role: "system",
+        content: `[SYSTEM RIG TELEMETRY (ON-DEMAND)]\nReal-time PC Performance: ${telemetry}\n(Note: This is actual live hardware data from the host machine. Relay this back to the user naturally.)`
+      });
+    }
+  }
+
+  // --- AUTONOMOUS ON-DEMAND RF SPECTRUM DETECTION ---
+  const rfKeywords = ["rf stats", "rf readings", "radio frequency", "tinysa", "electromagnetic", "wifi signal", "active frequencies", "rf spectrum", "rf spectrum vitals", "check the rf"];
+  if (rfKeywords.some(kw => lowerHistory.includes(kw))) {
+    console.log(`[Neural/${botName}] 📻 Reading latest RF spectrum snapshot...`);
+    try {
+      const rfFile = "C:/KAI/tools/oracle-discord/state/latest_rf_sweep.json";
+      if (fs.existsSync(rfFile)) {
+        const sweepData = JSON.parse(fs.readFileSync(rfFile, "utf8"));
+        let rfSummary = "";
+        for (const [bandName, r] of Object.entries(sweepData)) {
+          if (r.peak_dbm !== null) {
+            rfSummary += `- ${bandName}: ${r.peak_dbm.toFixed(1)} dBm at ${r.peak_mhz.toFixed(2)} MHz (Last Seen: ${r.last_seen})\n`;
+          } else {
+            rfSummary += `- ${bandName}: waiting for sweep\n`;
+          }
+        }
+        chatMessages.push({
+          role: "system",
+          content: `[TINYSA ULTRA RF SPECTRUM VITALS (ON-DEMAND)]\nLive Electromagnetic Spectrum readings:\n${rfSummary}\n(Note: This is real-time RF data collected by the physical TinySA Ultra. Relay the current signals to the user naturally.)`
+        });
+      } else {
+        chatMessages.push({
+          role: "system",
+          content: `[TINYSA ULTRA RF SPECTRUM VITALS (ON-DEMAND)]\n(Note: The TinySA RF bridge is online, but no active sweep file has been cached yet. Tell the user you are waiting for the first sweep.)`
+        });
+      }
+    } catch (e) {
+      console.warn("[OpenJarvis] Failed to parse latest RF sweep:", e.message);
+    }
+  }
+
   try {
     let res;
 
@@ -473,44 +571,45 @@ ${uProf.privateSecrets.map(s => `- ${s}`).join('\n')}
         }
       }
 
-      if (['zen', 'groq', 'xai', 'gemini'].includes(route.provider)) {
+      if (['zen', 'groq', 'xai', 'gemini'].includes(effectiveRoute.provider)) {
         let endpoint = "";
         let apiKey = "";
         
-        if (route.provider === 'zen') {
+        if (effectiveRoute.provider === 'zen') {
            endpoint = "https://opencode.ai/zen/v1/chat/completions";
            apiKey = process.env.OPENCODE_ZEN_KEY;
-        } else if (route.provider === 'groq') {
+        } else if (effectiveRoute.provider === 'groq') {
            endpoint = "https://api.groq.com/openai/v1/chat/completions";
            apiKey = process.env.GROQ_API_KEY;
-        } else if (route.provider === 'xai') {
+        } else if (effectiveRoute.provider === 'xai') {
            endpoint = "https://api.x.ai/v1/chat/completions";
            apiKey = process.env.XAI_API_KEY;
-        } else if (route.provider === 'gemini') {
+        } else if (effectiveRoute.provider === 'gemini') {
            endpoint = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
            apiKey = process.env.GEMINI_API_KEY;
         }
         
-        console.log(`[OpenJarvis/${route.provider.toUpperCase()}] ${botName} -> ${route.realModel}`);
+        console.log(`[OpenJarvis/${effectiveRoute.provider.toUpperCase()}] ${botName} -> ${effectiveRoute.realModel}`);
         res = await fetch(endpoint, {
           method: "POST",
           headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
           body: JSON.stringify({
-            model: route.realModel,
+            model: effectiveRoute.realModel,
             messages: chatMessages,
-            max_tokens: 256
+            max_tokens: (metadata.isDM || metadata.isWorkChannel) ? 1024 : 512
           }),
           signal: AbortSignal.timeout(120000)
         });
         
         if (res.ok) {
-           recordProviderSuccess(route.provider);
+           recordProviderSuccess(effectiveRoute.provider);
         } else {
            const errText = await res.text();
-           console.error(`[OpenJarvis/${route.provider.toUpperCase()}] Gateway Error: ${res.status} - ${errText}`);
-           recordProviderFailure(route.provider);
+           console.error(`[OpenJarvis/${effectiveRoute.provider.toUpperCase()}] Gateway Error: ${res.status} - ${errText}`);
+           recordProviderFailure(effectiveRoute.provider, res.status, errText);
          }
       }
+
     } else {
       res = await fetch("http://127.0.0.1:11434/api/chat", {
         method: "POST",
@@ -568,15 +667,22 @@ export async function chatWithLattice(transcript, systemPrompt, metadata = {}) {
   return chatWithOpenJarvis("KAI", transcript, systemPrompt, null, 0.5, metadata);
 }
 
-export async function callGroqDirect(label, prompt, system = "You are Groq, a fast-reasoning assistant.", model = "llama-3.1-8b-instant", max_tokens = 512, temperature = 0.65) {
+
+export async function callGroqDirect(label, prompt, system = "You are Groq, a fast-reasoning assistant.", model = "llama-3.3-70b-versatile", max_tokens = 512, temperature = 0.65) {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) return null;
-  try {
+
+  if (!isProviderReady('groq')) {
+    console.warn(`[OpenJarvis/GroqDirect] ${label}: groq provider is in cooldown (TPD or circuit breaker). Skipping.`);
+    return null;
+  }
+  
+  async function attempt(selectedModel) {
     const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
       body: JSON.stringify({
-        model,
+        model: selectedModel,
         messages: [{ role: "system", content: system }, { role: "user", content: prompt }],
         max_tokens,
         temperature,
@@ -584,10 +690,42 @@ export async function callGroqDirect(label, prompt, system = "You are Groq, a fa
       }),
       signal: AbortSignal.timeout(45000)
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`HTTP ${res.status}: ${errText}`);
+    }
     const data = await res.json();
     return data.choices?.[0]?.message?.content?.trim() || null;
+  }
+
+  try {
+    const result = await attempt(model);
+    recordProviderSuccess('groq');
+    return result;
   } catch (e) {
+    const errMsg = e.message || '';
+    // If it's a daily token limit, park the provider until midnight UTC — no retry
+    const isTPD = errMsg.toLowerCase().includes('tokens per day') || 
+                  (errMsg.includes('429') && errMsg.toLowerCase().includes('per day'));
+    if (isTPD) {
+      console.warn(`[OpenJarvis/GroqDirect] ${label}: Groq TPD limit hit. Parking provider until daily reset.`);
+      recordProviderFailure('groq', 429, errMsg);
+      return null;
+    }
+    // For other errors, try the smaller fast model as a fallback
+    if (model !== "llama-3.1-8b-instant") {
+      console.warn(`[OpenJarvis/GroqDirect] Failed with ${model} (${e.message}). Retrying with llama-3.1-8b-instant...`);
+      try {
+        const fallbackResult = await attempt("llama-3.1-8b-instant");
+        if (fallbackResult) recordProviderSuccess('groq');
+        return fallbackResult;
+      } catch (fallbackErr) {
+        console.error(`[OpenJarvis/GroqDirect] Fallback also failed: ${fallbackErr.message}`);
+        recordProviderFailure('groq', 500, fallbackErr.message);
+        return null;
+      }
+    }
+    recordProviderFailure('groq', 500, errMsg);
     return null;
   }
 }

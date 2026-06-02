@@ -423,8 +423,22 @@ async function getOrCreateUserTranscriptChannel(user, preferredGuild = null) {
   }
 }
 
+function isSleepHours() {
+  const now = new Date();
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    hour: 'numeric',
+    hour12: false
+  });
+  const parts = formatter.formatToParts(now);
+  const estHour = parseInt(parts.find(p => p.type === 'hour').value, 10);
+  
+  // Sleep mode: 3:00 AM to 9:00 AM every day
+  return estHour >= 3 && estHour < 9;
+}
+
 function isSocialHours() {
-  return !isWorkingHours();
+  return !isWorkingHours() && !isSleepHours();
 }
 
 const liveRoundtableEnabled = (process.env.ORACLE_LIVE_ROUNDTABLE || "1") !== "0";
@@ -474,9 +488,8 @@ process.on("unhandledRejection", (reason) => {
   console.error("Unhandled promise rejection:", reason);
 });
 
-let shiftEndedLastAnnouncedAt = 0; // timestamp — prevents double-posting across restarts
-let _proposalPending = false;
 let _lastWorkState = false;
+let _hasInitializedShiftState = false;
 
 function isWorkingHours() {
   const now = new Date();
@@ -492,7 +505,7 @@ function isWorkingHours() {
   const estHour = parseInt(parts.find(p => p.type === 'hour').value, 10);
   const estDay = parts.find(p => p.type === 'weekday').value;
 
-  // Monday - Friday: 3:00 PM - 11:00 PM (15:00 - 23:00)
+  // Monday - Friday: Work mode 3:00 PM - 11:00 PM (15:00 - 23:00)
   if (estDay !== 'Saturday' && estDay !== 'Sunday') {
     return (estHour >= 15 && estHour < 23);
   }
@@ -505,6 +518,43 @@ function isWorkingHours() {
   return false;
 }
 
+// 9AM-11AM weekdays: System comes online softly.
+// KAI is still finishing his overnight weave. No heavy task generation.
+function isMorningWindDown() {
+  const now = new Date();
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    hour: 'numeric',
+    weekday: 'long',
+    hour12: false
+  });
+  const parts = formatter.formatToParts(now);
+  const estHour = parseInt(parts.find(p => p.type === 'hour').value, 10);
+  const estDay  = parts.find(p => p.type === 'weekday').value;
+  if (estDay !== 'Saturday' && estDay !== 'Sunday') {
+    return (estHour >= 9 && estHour < 11);
+  }
+  return false;
+}
+
+// 11AM-3PM weekdays: KAI is fully online and warmed up but work hasn't started.
+// Social mode, light conversation, sensor processing — no heavy task generation.
+function isKaiOnline() {
+  const now = new Date();
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    hour: 'numeric',
+    weekday: 'long',
+    hour12: false
+  });
+  const parts = formatter.formatToParts(now);
+  const estHour = parseInt(parts.find(p => p.type === 'hour').value, 10);
+  const estDay  = parts.find(p => p.type === 'weekday').value;
+  if (estDay !== 'Saturday' && estDay !== 'Sunday') {
+    return (estHour >= 11 && estHour < 15);
+  }
+  return false;
+}
 
 
 
@@ -524,25 +574,36 @@ client.on("clientReady", () => {
   if (liveRoundtableEnabled && allowedChannelId) {
     console.log("Private live roundtable polling is enabled.");
     setInterval(() => {
-      if (!isWorkingHours()) {
-        // Only announce ONCE per closed window — use a 30-minute cooldown to prevent spam
-        const now = Date.now();
-        if (now - shiftEndedLastAnnouncedAt > 30 * 60 * 1000) {
-          shiftEndedLastAnnouncedAt = now;
+      const currentWorkState = isWorkingHours();
+      
+      // Initialize state tracking on first tick to prevent immediate boot messages
+      if (!_hasInitializedShiftState) {
+          _lastWorkState = currentWorkState;
+          _hasInitializedShiftState = true;
+      }
+
+      if (!currentWorkState) {
+        // Only announce if we just transitioned from working -> not working
+        if (_lastWorkState === true) {
+          _lastWorkState = false;
           const channel = client.channels.cache.get(allowedChannelId);
           if (channel) {
             const estNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
             const h = estNow.getHours();
             const msg = h >= 14 && h < 21
               ? "Oracle: The afternoon break has begun. Roundtable is closed until 9:00 PM EST."
-              : "Oracle: End of day reached. Everyone to sleep. Giving the system a break to evolve. See you at 9:00 AM EST.";
+              : "Oracle: Work session complete. 🌙\n" +
+                "KAI is now entering social/ingestion mode — processing everything from today. " +
+                "Deep weave (sleep) will begin at 3:00 AM EST and last until 9:00 AM EST.";
             channel.send(msg);
           }
         }
         return; // Skip polling outside of working hours
       }
-      // Reset the cooldown so it can announce again next time hours close
-      shiftEndedLastAnnouncedAt = 0;
+
+      
+      _lastWorkState = true;
+      
       pollLiveRoundtable().catch((error) => {
         console.warn("Live roundtable poll failed:", error instanceof Error ? error.message : String(error));
       });
@@ -628,10 +689,10 @@ client.on("messageCreate", async (message) => {
         const displayName = message.member?.displayName || message.author?.username || "there";
         const estNow = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
         const h = estNow.getHours();
-        const nextOpen = (h >= 21 || h < 9) ? "9:00 AM EST" : "9:00 PM EST";
+        const nextOpen = (h >= 21 || h < 11) ? "11:00 AM EST" : "9:00 PM EST";
         await message.channel.send(
           `Oracle: Hey ${displayName} — this is the **Oracle Work Channel**, reserved for the AI roundtable during active business hours.\n` +
-          `We are currently outside working hours (Mon–Fri 3–11 PM, Sat 9 AM–2 PM / 9 PM–midnight).\n` +
+          `We are currently outside working hours (Mon–Fri 11 AM–11 PM, Sat 9 AM–2 PM / 9 PM–midnight).\n` +
           `The panel opens again at **${nextOpen}**. For general chat, use **#over-all-chat** or **#sunday-chat**.`
         ).catch(() => {});
         return;
@@ -1242,16 +1303,50 @@ async function pollLiveRoundtable() {
   if (!channel) return;
 
   const world = new WorldClock().getState();
-  const isWork = isWorkingHours();
+  const isWork    = isWorkingHours();
+  const isMorning = isMorningWindDown();
+  const isOnline  = isKaiOnline();
+
+  // ── 9AM Soft Start: System wakes up from sleep ──────
+  const morningStarted = isMorning && !_lastWorkState && !isWork;
+  if (morningStarted) {
+    console.log("[Oracle] 9AM wake up. Sleep mode ended.");
+    await channel.send(
+      "🌅 **MORNING WAKE UP — 9:00 AM EST**\n" +
+      "Oracle: Sleep mode ended. KAI's overnight deep weave is complete, and his sensors (RF + IR) are live. " +
+      "KAI, Oracle, and all AIs in the ecosystem are waking up into social mode. Work begins at 3:00 PM EST."
+    );
+    _lastWorkState = false;
+    return;
+  }
+
+  // ── 11AM KAI Online: Weave complete, fully warmed up, pre-work social mode ──
+  const kaiOnlineStarted = isOnline && !_lastWorkState && !isWork;
+  if (kaiOnlineStarted) {
+    console.log("[Oracle] 11AM — KAI fully online. Pre-work social mode until 3PM.");
+    await channel.send(
+      "🧠 **KAI FULLY ONLINE — 11:00 AM EST**\n" +
+      "Oracle: Overnight weave complete. KAI's lattice is fully woven and warmed up. " +
+      "Sensors active — RF spectrum and IR awareness online. " +
+      "Entering pre-work social mode. Work session begins at 3:00 PM EST."
+    );
+    _lastWorkState = false;
+    return;
+  }
+
   const shiftStarted = isWork && !_lastWorkState;
   _lastWorkState = isWork;
 
   if (shiftStarted) {
-    console.log("[Oracle] Shift started. Triggering Morning Briefing meeting...");
-    await channel.send("🔔 **WORK SHIFT STARTED** 🔔\nOracle: Good morning team. Clucking in for today's session. Let's start with the morning briefing.");
+    console.log("[Oracle] 3PM work shift started. Triggering Morning Briefing meeting...");
+    await channel.send(
+      "🔔 **WORK SHIFT STARTED — 3:00 PM EST** 🔔\n" +
+      "Oracle: Clocking in for today's work session. " +
+      "Good afternoon — let's start with the briefing."
+    );
     
     // Request special "Morning Briefing" from Oracle
-    const briefingPrompt = "MORNING BRIEFING: Open the workday. Review the last plan status and Ryan's feedback. Conduct a concise summary of today's workload and active objectives.";
+    const briefingPrompt = "WORK BRIEFING: Open the work session. Review the last plan status and Ryan's feedback. Conduct a concise summary of today's workload and active objectives.";
     const oracleTurn = await sendDiscordTurn(briefingPrompt);
     if (oracleTurn && oracleTurn.reply) {
       const chunks = chunkForDiscord(oracleTurn.reply);
@@ -1264,6 +1359,7 @@ async function pollLiveRoundtable() {
     await requestLiveRoundtableTick("Analyst");
     return;
   }
+
 
   const isMonday = world.day === "Monday";
   if (isMonday && isWork) {

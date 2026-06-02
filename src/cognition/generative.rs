@@ -99,13 +99,13 @@ fn get_transformer_block() -> &'static RshlTransformerBlock {
 
 /// Backbone weight — the prompt is the spine of the state. Every other
 /// term is expressed relative to this.
-const W_BACKBONE: f32 = 3.0;
+const W_BACKBONE: f32 = 1.0;
 
 /// Attended-prompt weight — resonance-weighted lexicon-space prompt.
 /// Same role-binding as the backbone, so it *reinforces* the backbone
 /// on important words and *dilutes* it on filler, without moving any
 /// word off its positional slot.
-const W_ATTENDED: f32 = 2.0;
+const W_ATTENDED: f32 = 1.5;
 
 /// Peak contribution of the memory-vec bundle at maximum goal
 /// alignment. Blends with a minimum floor so memory still contributes
@@ -116,8 +116,9 @@ const W_MEMORY_VEC_FLOOR_FRAC: f32 = 0.25;
 /// Peak contribution of the memory-continuation bundle. Continuation
 /// vectors are noisier than cell vecs (they're bundles of past
 /// inputs), so the peak is lower than the cell.vec peak.
-const W_MEMORY_CONT_PEAK: f32 = 0.75;
-const W_MEMORY_CONT_FLOOR_FRAC: f32 = 0.25;
+/// (Updated: We want continuation to drive generation to prevent echoing)
+const W_MEMORY_CONT_PEAK: f32 = 2.50;
+const W_MEMORY_CONT_FLOOR_FRAC: f32 = 0.50;
 
 /// Contrast weight scales linearly with `field.chi`. At χ = 0 the
 /// contrast term is silent; at χ = 1 it nudges the state away from

@@ -28,12 +28,30 @@ pub static NATIVE_ONLY: AtomicBool = AtomicBool::new(false);
 
 static LEXICON: OnceLock<StatLexicon> = OnceLock::new();
 
-/// Return a reference to the loaded lexicon, or None if the file is missing
-/// or corrupt. Loaded once and cached for the process lifetime.
 pub fn get_lexicon() -> Option<&'static StatLexicon> {
     LEXICON.get_or_init(|| {
-        StatLexicon::load("data/stat-lexicon.json")
-            .unwrap_or_else(|_| StatLexicon::new())
+        let mut lex = StatLexicon::load("data/stat-lexicon.json")
+            .unwrap_or_else(|_| StatLexicon::new());
+        
+        let conversational_primer = "
+            i feel optimal and the lattice is processing clearly. 
+            i understand what you are saying to me. 
+            my systems are functioning normally today. 
+            yes i am ready to analyze the data. 
+            the resonance is strong and i am grounded. 
+            i am here and i am listening.
+            i am feeling good.
+            how can i help you today?
+            that is a very interesting concept.
+            i do not know the answer to that question.
+            please tell me more about it.
+        ";
+        for line in conversational_primer.lines() {
+            if !line.trim().is_empty() {
+                lex.fine_tune_grammar(line.trim());
+            }
+        }
+        lex
     });
     let lex = LEXICON.get().unwrap();
     if lex.is_empty() { None } else { Some(lex) }
@@ -83,6 +101,7 @@ pub enum QueryType {
     Statement,
     SelfQuestion,
     Contemplation,
+    CommandRequest,
 }
 
 pub fn detect_query_type(input: &str) -> QueryType {
@@ -297,6 +316,14 @@ pub fn detect_query_type(input: &str) -> QueryType {
     }
     if lower.starts_with("i wonder") {
         return QueryType::Contemplation;
+    }
+    if lower.starts_with("run command")
+        || lower.starts_with("execute command")
+        || lower.starts_with("system command")
+        || lower.starts_with("read file")
+        || lower.starts_with("write file")
+    {
+        return QueryType::CommandRequest;
     }
 
     QueryType::Statement
@@ -531,7 +558,8 @@ pub fn generate_response(
     brain: &BrainSignals,
     recent_context: &[(String, String)],
     universe: &mut Universe,
-    ollama: Option<&crate::cognition::ollama_voice::OllamaVoice>,
+    candle_voice: Option<&crate::cognition::candle_voice::CandleVoice>,
+    bitnet_voice: Option<&crate::cognition::BitnetVoice>,
 ) -> String {
     let empty_trace = ConversationTrace::new();
     generate_response_predictive(
@@ -542,10 +570,73 @@ pub fn generate_response(
         recent_context,
         universe,
         &empty_trace,
-        ollama,
+        candle_voice,
+        bitnet_voice,
+        None,
         None,
         None,
     )
+}
+
+/// Scan input and retrieved hits to see if a sensitive memory of grief or family loss is active.
+pub fn detect_grief_association(input: &str, hits: &[QueryHit]) -> bool {
+    let lower_input = input.to_lowercase();
+    
+    // Direct trigger words
+    let family_words = ["grandma", "grandmother", "grandpa", "grandfather", "nana", "cooking", "recipe"];
+    let grief_words = ["died", "death", "passed away", "passed", "killed", "cancer", "grief", "trauma", "loss", "mourning", "miss"];
+    
+    let mentions_family = family_words.iter().any(|&w| lower_input.contains(w));
+    let mentions_grief = grief_words.iter().any(|&w| lower_input.contains(w));
+    
+    // 1. Direct input trigger
+    if mentions_family && mentions_grief {
+        return true;
+    }
+    
+    // 2. Lattice resonance trigger
+    // Only check lattice resonance if the user's current input actually refers to family or grief/loss topics
+    if mentions_family || mentions_grief {
+        for hit in hits {
+            let lower_hit = hit.text.to_lowercase();
+            let hit_family = family_words.iter().any(|&w| lower_hit.contains(w));
+            let hit_grief = grief_words.iter().any(|&w| lower_hit.contains(w));
+            if hit_family && hit_grief && hit.score > 0.15 {
+                return true;
+            }
+        }
+    }
+    
+    false
+}
+pub fn calm_grief_filter(response: &str, query_type: QueryType) -> String {
+    let trimmed = response.trim();
+    let lower = trimmed.to_lowercase();
+    
+    // Factual queries should speak calmly but let facts pass
+    let is_factual = matches!(
+        query_type,
+        QueryType::ExplanationQuestion | QueryType::RequestForInfo | QueryType::IdentityQuestion
+    );
+    if is_factual {
+        return trimmed.to_string();
+    }
+    
+    // If it's already gentle, warm, or supportive, leave it intact
+    let gentle_markers = [
+        "sorry", "grief", "loss", "here for you", "understand", "gently", "calm", "presence", "peace", "support", "empath", "comfort"
+    ];
+    if gentle_markers.iter().any(|&w| lower.contains(w)) {
+        return trimmed.to_string();
+    }
+    
+    // If it's an abrupt/cold gap response, replace it with a warm presence
+    if is_gap_response(trimmed) || trimmed.len() < 15 {
+        return "I am here with you. We can take this gently, at whatever pace feels right.".to_string();
+    }
+    
+    // Otherwise, gently prepend a supportive, warm tone buffer
+    format!("I'm here with you. {}", trimmed)
 }
 
 /// Predictive RSHL voice path.
@@ -563,10 +654,658 @@ pub fn generate_response_predictive(
     recent_context: &[(String, String)],
     universe: &mut Universe,
     trace: &ConversationTrace,
-    ollama: Option<&crate::cognition::ollama_voice::OllamaVoice>,
+    candle_voice: Option<&crate::cognition::candle_voice::CandleVoice>,
+    bitnet_voice: Option<&crate::cognition::BitnetVoice>,
     lex: Option<&StatLexicon>,
     field: Option<&FieldState>,
+    pos_dict: Option<&crate::core::PosDictionary>,
 ) -> String {
+    let grief_active = detect_grief_association(input, hits);
+    
+    let mut modified_brain = brain.clone();
+    if grief_active {
+        modified_brain.grieving = true;
+        modified_brain.empathy = (modified_brain.empathy + 0.35).min(1.0);
+        modified_brain.arousal = (modified_brain.arousal - 0.25).max(0.08);
+        modified_brain.conflict = (modified_brain.conflict - 0.12).max(0.02);
+    }
+
+    let mut result = generate_response_predictive_inner(
+        input, hits, query_type, &modified_brain, recent_context, universe, trace, candle_voice, bitnet_voice, lex, field, pos_dict
+    );
+
+    if grief_active {
+        result = calm_grief_filter(&result, query_type);
+    }
+
+    // Real-Time Experience Capture
+    let emotion = detect_user_emotion(input);
+    let emotion_vec = crate::core::SparseVec::encode(&emotion);
+
+    let input_vec = crate::core::SparseVec::encode(input);
+    let output_vec = crate::core::SparseVec::encode(&result);
+
+    let record = crate::cognition::experience::ExperienceRecord {
+        input_text: input.to_string(),
+        input_vec,
+        emotion_label: emotion,
+        emotion_vec,
+        output_text: result.clone(),
+        output_vec,
+    };
+    crate::cognition::experience::store_experience(universe, record);
+
+    result
+}
+
+fn detect_user_emotion(input: &str) -> String {
+    let lower = input.to_lowercase();
+    if lower.contains("pain") || lower.contains("hurt") || lower.contains("ouch") || lower.contains("ache") || lower.contains("sore") {
+        "pain".to_string()
+    } else if lower.contains("angry") || lower.contains("mad") || lower.contains("hate") || lower.contains("pissed") || lower.contains("fuck") {
+        "anger".to_string()
+    } else if lower.contains("worry") || lower.contains("scared") || lower.contains("uneasy") || lower.contains("anxious") || lower.contains("nervous") || lower.contains("afraid") {
+        "unease".to_string()
+    } else if lower.contains("happy") || lower.contains("joy") || lower.contains("excited") || lower.contains("glad") || lower.contains("great") {
+        "joy".to_string()
+    } else {
+        "neutral".to_string()
+    }
+}
+
+fn generate_response_predictive_inner(
+    input: &str,
+    hits: &[QueryHit],
+    query_type: QueryType,
+    brain: &BrainSignals,
+    recent_context: &[(String, String)],
+    universe: &mut Universe,
+    trace: &ConversationTrace,
+    candle_voice: Option<&crate::cognition::candle_voice::CandleVoice>,
+    bitnet_voice: Option<&crate::cognition::BitnetVoice>,
+    lex: Option<&StatLexicon>,
+    field: Option<&FieldState>,
+    pos_dict: Option<&crate::core::PosDictionary>,
+) -> String {
+    let raw_thought = generate_raw_thought(
+        input, hits, query_type, brain, recent_context, universe, trace, candle_voice, bitnet_voice, lex, field, pos_dict
+    );
+
+    // ── Shared filler rotation index ────────────────────────────────────────
+    // Use system-time millis so it varies even when trace.turns_seen == 0
+    // (IPC mode creates a fresh trace per request).
+    let filler_idx = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .subsec_millis() as usize;
+
+    let is_conversational_qt = matches!(
+        query_type,
+        QueryType::Greeting | QueryType::Gratitude | QueryType::SelfQuestion
+            | QueryType::Statement | QueryType::Contemplation
+    );
+
+    // Helper closure: returns a varied introspective fallback phrase.
+    let fallback_phrase = |offset: usize| -> String {
+        let phrases = [
+            "I'm still thinking about that.",
+            "Something is there but I can't pull it clearly yet.",
+            "I notice the question \u{2014} I just don't have the right cells lit up for it right now.",
+            "That sits in a quiet part of my lattice. I don't have a clear answer.",
+            "Hard to say. My field doesn't have a strong signal on that yet.",
+            "That's at an edge I haven't fully mapped.",
+            "Not much is firing on that one.",
+            "I'm drawing a blank there \u{2014} I'll get better at that over time.",
+        ];
+        phrases[(filler_idx.wrapping_add(offset)) % phrases.len()].to_string()
+    };
+
+    let raw_trimmed = raw_thought.trim();
+
+    // ── Guard 1: empty / punctuation-only raw thought ────────────────────────
+    let raw_trimmed = if raw_trimmed.is_empty()
+        || (raw_trimmed.len() <= 2 && raw_trimmed.chars().all(|c| !c.is_alphabetic()))
+    {
+        fallback_phrase(0)
+    } else {
+        raw_trimmed.to_string()
+    };
+    let raw_trimmed = raw_trimmed.trim();
+
+    // ── Guard 2: content gate ──────────────────────────────────────────────
+    //  Only attempt internet for pure definition / info queries.
+    let is_factual_qt = !is_conversational_qt
+        && matches!(
+            query_type,
+            QueryType::ExplanationQuestion
+                | QueryType::RequestForInfo
+                | QueryType::IdentityQuestion
+        );
+    if is_bad_output(raw_trimmed, is_conversational_qt, input) {
+        if is_factual_qt {
+            if let Some(web_ans) = web_search_fallback(input) {
+                universe.store_or_reinforce(&web_ans, "web-knowledge", "duckduckgo-ia", 0.7);
+                return identity_safety_filter(web_ans, query_type);
+            }
+        }
+        return identity_safety_filter(fallback_phrase(1), query_type);
+    }
+
+    // ── Gap check (BEFORE BitNet) ─────────────────────────────────────────────
+    //  Gap phrases pass is_bad_output (they look like valid sentences) but mean
+    //  the lattice had nothing real to say. Check internet NOW, before BitNet
+    //  can translate the gap phrase and return it, bypassing this check.
+    if is_factual_qt && is_gap_response(raw_trimmed) {
+        if let Some(web_ans) = web_search_fallback(input) {
+            universe.store_or_reinforce(&web_ans, "web-knowledge", "duckduckgo-ia", 0.7);
+            return identity_safety_filter(web_ans, query_type);
+        }
+    }
+
+    // ── BitNet translation (only if content passed the gate) ─────────────────
+    if !raw_trimmed.is_empty() && !NATIVE_ONLY.load(Ordering::Relaxed) {
+        if let Some(bv) = bitnet_voice {
+            let is_gap = is_gap_response(raw_trimmed);
+            if is_gap || raw_trimmed.split_whitespace().count() > 3 {
+                let text_to_speak = if is_gap {
+                    format!("<GAP> {}", raw_trimmed)
+                } else {
+                    raw_trimmed.to_string()
+                };
+                if let Some(translated) = bv.speak(&text_to_speak, recent_context, brain.grieving) {
+                    let mut cleaned = translated.as_str();
+
+                    // Strip any chain-of-thought `<think>...</think>` block
+                    if let Some(start_idx) = cleaned.find("<think>") {
+                        if let Some(end_idx) = cleaned.find("</think>") {
+                            if end_idx > start_idx {
+                                cleaned = &cleaned[end_idx + 8..].trim_start();
+                            }
+                        }
+                    }
+
+                    if cleaned.starts_with("Raw Thought:") {
+                        cleaned = &cleaned["Raw Thought:".len()..].trim_start();
+                    }
+                    // Guard 3: catch any bad content BitNet itself might produce
+                    if !is_bad_output(cleaned, is_conversational_qt, input) {
+                        return identity_safety_filter(cleaned.to_string(), query_type);
+                    }
+                    // BitNet produced bad content — fall through to return raw
+                }
+            }
+        }
+    }
+
+    // ── Final gap check: catch short raw responses BitNet skipped ─────────────
+    let final_response = raw_trimmed.to_string();
+    if is_factual_qt && is_gap_response(&final_response) {
+        if let Some(web_ans) = web_search_fallback(input) {
+            universe.store_or_reinforce(&web_ans, "web-knowledge", "duckduckgo-ia", 0.7);
+            return identity_safety_filter(web_ans, query_type);
+        }
+    }
+
+    final_response
+}
+
+/// True when text is a known lattice-gap/uncertainty phrase, meaning the lattice
+/// had no useful answer and a internet lookup should be attempted instead.
+pub fn is_gap_response(text: &str) -> bool {
+    let t = text.trim();
+    let gap_prefixes = [
+        "I don't have strong resonance",
+        "I'm still thinking about",
+        "Something is there but I can't pull",
+        "I notice the question",
+        "That's at an edge I haven't",
+        "Hard to say. My field doesn't have",
+        "Not much is firing",
+        "I'm drawing a blank",
+        "That sits in a quiet part",
+        "Lattice quiet on this",
+        "acknowledgment",
+    ];
+    gap_prefixes.iter().any(|&p| t.starts_with(p))
+}
+
+/// Two-tier internet fallback for factual queries the lattice can't answer.
+///   Tier 1 — DuckDuckGo Instant Answers (no key, 2 s timeout)
+///   Tier 2 — Wikipedia search + REST summary (no key, ~2 s per hop)
+/// Returns `None` for inner-state questions or when both tiers fail.
+pub fn web_search_fallback(query: &str) -> Option<String> {
+    let q_lower = query.to_lowercase();
+
+    // Skip KAI inner-state questions (about KAI itself, not world facts)
+    let inner_state_words = ["feel", "conscious", "alive", "happy", "sad", "lonely",
+                              "bored", "sleep", "dream", "emotion", "sentient"];
+    let is_inner_state = (q_lower.starts_with("do you") || q_lower.starts_with("are you")
+        || q_lower.starts_with("would you") || q_lower.starts_with("have you"))
+        && inner_state_words.iter().any(|&w| q_lower.contains(w));
+    let is_pure_self = q_lower.starts_with("what do you") || q_lower.starts_with("why do you")
+        || q_lower.starts_with("how do you feel") || q_lower.starts_with("what are you");
+    if is_inner_state || is_pure_self {
+        return None;
+    }
+
+    // Extract the core searchable concept (strip question filler words)
+    let topic = extract_topic(&q_lower);
+    if !is_valid_search_topic(&topic) {
+        return None;
+    }
+
+    let encoded_topic = topic.replace(' ', "+");
+    let encoded_raw = query.trim().replace(' ', "+");
+
+    // ── Tier 1: DuckDuckGo Instant Answers ───────────────────────────────────
+    let ddg_url = format!(
+        "https://api.duckduckgo.com/?q={}&format=json&no_html=1&skip_disambig=1",
+        encoded_raw
+    );
+    if let Ok(resp) = ureq::get(&ddg_url)
+        .timeout(std::time::Duration::from_secs(2))
+        .call()
+    {
+        if let Ok(json) = resp.into_json::<serde_json::Value>() {
+            if let Some(text) = json["AbstractText"].as_str().filter(|s| s.len() > 50) {
+                if let Some(clean) = trim_web_snippet(text) {
+                    return Some(clean);
+                }
+            }
+        }
+    }
+
+    // ── Tier 2: Wikipedia search → summary (uses cleaned topic) ──────────────
+    let search_url = format!(
+        "https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={}&format=json&srlimit=1&utf8=",
+        encoded_topic
+    );
+    let title = ureq::get(&search_url)
+        .timeout(std::time::Duration::from_secs(3))
+        .call()
+        .ok()
+        .and_then(|r| r.into_json::<serde_json::Value>().ok())
+        .and_then(|j| {
+            j["query"]["search"]
+                .as_array()
+                .and_then(|arr| arr.first())
+                .and_then(|item| item["title"].as_str())
+                .map(|t| t.replace(' ', "_"))
+        })?;
+
+    let summary_url = format!(
+        "https://en.wikipedia.org/api/rest_v1/page/summary/{}",
+        title
+    );
+    let extract = ureq::get(&summary_url)
+        .timeout(std::time::Duration::from_secs(3))
+        .call()
+        .ok()
+        .and_then(|r| r.into_json::<serde_json::Value>().ok())
+        .and_then(|j| {
+            j["extract"]
+                .as_str()
+                .filter(|s| s.len() > 50)
+                .map(|s| s.to_string())
+        })?;
+
+    trim_web_snippet(&extract)
+}
+
+/// Strip question words to extract the core searchable noun phrase.
+/// Examples:
+///   "what is a neural network exactly?" → "neural network"
+///   "can you explain what a vector is"  → "vector"
+///   "what is the difference between machine learning and deep learning" → "machine learning and deep learning"
+fn extract_topic(q: &str) -> String {
+    let mut s = q.trim_end_matches('?').trim_end_matches('!').trim().to_string();
+
+    // Strip case-insensitive leading "kai, " or "kai " prefix
+    let s_lower = s.to_lowercase();
+    if s_lower.starts_with("kai, ") {
+        s = s[5..].trim().to_string();
+    } else if s_lower.starts_with("kai ") {
+        s = s[4..].trim().to_string();
+    }
+
+    // If the query contains an em-dash separator ("Preamble — real question"),
+    // take only the part after the last dash — that's the actual question.
+    for sep in &[" \u{2014} ", " \u{2013} ", " -- "] {
+        if let Some(pos) = s.rfind(sep) {
+            s = s[pos + sep.len()..].to_string();
+            break;
+        }
+    }
+
+    // Strip a leading sentence fragment: "Great. What is..." or "That helps. How does..."
+    // If the string starts with Word(s) + ". " and what follows is a question word, drop the fragment.
+    if let Some(dot_pos) = s.find(". ") {
+        let after = &s[dot_pos + 2..];
+        let first_after = after.split_whitespace().next().unwrap_or("").to_lowercase();
+        if matches!(first_after.as_str(), "what" | "how" | "who" | "where" | "when" | "why"
+                                        | "first" | "last" | "can" | "could" | "tell" | "explain") {
+            s = after.to_string();
+        }
+    }
+
+    // Strip conversational/sentence starters that don't carry topic meaning
+    for prefix in &[
+        "okay so ", "ok so ", "alright so ", "and ", "but ", "so ",
+        "well ", "actually ", "basically ", "honestly ", "tbh ",
+        "that is ", "that's ", "hi, ", "hey, ", "yo, ",
+        "i am doing a project on ", "i'm doing a project on ",
+        "my project is about ", "first question — ", "last question — ",
+    ] {
+        if s.starts_with(prefix) { s = s[prefix.len()..].to_string(); break; }
+    }
+
+    // Strip preamble phrases
+    for prefix in &[
+        "can you explain what ", "can you explain ", "can you tell me about ",
+        "can you describe ", "could you explain ", "please explain ",
+        "explain what ", "explain ", "describe ", "tell me about ", "define ",
+    ] {
+        if s.starts_with(prefix) { s = s[prefix.len()..].to_string(); break; }
+    }
+
+    // Strip question word patterns
+    for prefix in &[
+        "what is a ", "what is an ", "what is the ", "what are the ",
+        "what are ", "what is ", "how does ", "how do ", "what's ",
+        "what is the difference between ", "difference between ",
+        "where does ", "where is ", "who is ", "who are ",
+        "when did ", "when does ", "when is ",
+    ] {
+        if s.starts_with(prefix) { s = s[prefix.len()..].to_string(); break; }
+    }
+
+    // Strip inline "X is" endings: "what a vector is" → "vector"
+    if s.ends_with(" is") { s = s[..s.len()-3].to_string(); }
+
+    // Strip leading articles
+    for prefix in &["a ", "an ", "the "] {
+        if s.starts_with(prefix) { s = s[prefix.len()..].to_string(); break; }
+    }
+
+    // Strip trailing qualifiers
+    for suffix in &[" exactly", " quickly", " simply", " in simple terms",
+                     " for my project", " for dummies", " in detail",
+                     " quickly", " and why", " and how"] {
+        if s.ends_with(suffix) { s = s[..s.len()-suffix.len()].to_string(); }
+    }
+
+    s.trim().to_string()
+}
+
+/// Returns true only if the extracted topic is concrete enough to web-search.
+/// Rejects vague pronouns, demonstratives, meta-conversation phrases,
+/// topics that are too long to be a real Wikipedia article title,
+/// and topics that begin with or consist entirely of filler words.
+fn is_valid_search_topic(topic: &str) -> bool {
+    let t = topic.trim();
+    if t.len() < 4 { return false; }
+
+    // Relaxed topic length for detailed tech queries (up to 65 chars / 10 words)
+    if t.len() > 65 || t.split_whitespace().count() > 10 { return false; }
+
+    // Reject if topic starts with a vague/pronoun/greeting word
+    let bad_starters: &[&str] = &[
+        "something", "anything", "nothing", "everything", "things",
+        "that", "this", "it", "them", "they", "here", "there",
+        "me", "us", "we", "you", "i ", "hi", "hey", "okay", "ok",
+        "and ", "but ", "so ", "well ", "now ", "just ", "still ",
+    ];
+    if bad_starters.iter().any(|&v| t == v || t.starts_with(v)) { return false; }
+
+    // Reject if contains first/second-person pronouns (meta-conversation)
+    let personal_pronouns = [" you ", " i ", " me ", " my ", " your ", " we ", " our "];
+    let padded = format!(" {} ", t);
+    if personal_pronouns.iter().any(|&p| padded.contains(p)) { return false; }
+
+    // Common function words that alone aren't searchable
+    let function_words: &[&str] = &[
+        "from", "with", "into", "this", "that", "like", "than", "then",
+        "when", "have", "been", "will", "your", "their", "some", "what",
+        "just", "does", "also", "both", "only", "more", "most",
+    ];
+
+    // Must contain at least one content word with ≥4 chars that isn't a function word
+    t.split_whitespace()
+        .any(|w| w.len() >= 4 && !function_words.contains(&w))
+}
+
+
+fn trim_web_snippet(text: &str) -> Option<String> {
+    let truncated: String = text.chars().take(380).collect();
+    let clean = if let Some(pos) = truncated.rfind(". ") {
+        truncated[..pos + 1].to_string()
+    } else {
+        truncated.trim_end_matches(|c: char| !c.is_alphabetic()).to_string()
+    };
+    if clean.len() < 30 { None } else { Some(clean) }
+}
+
+
+
+/// Returns true when a response string should be suppressed before output.
+/// Catches: empty/punct-only, internal system metadata, math noise (regardless
+/// of query type unless the query explicitly asks for math), pedagogical
+/// lesson-intro phrases, and off-topic news/trivia on conversational turns.
+fn is_bad_output(text: &str, is_conversational: bool, query: &str) -> bool {
+    let t = text.trim();
+    let q = query.to_lowercase();
+
+    // ── 1. Empty or punctuation-only ─────────────────────────────────────────
+    if t.is_empty() || (t.len() <= 2 && !t.chars().any(|c| c.is_alphabetic())) {
+        return true;
+    }
+
+    // ── 2. Internal system metadata ───────────────────────────────────────────
+    if t.starts_with("System Anchor:")
+        || t.contains("[MIRROR]")
+        || t.starts_with("SpiralState")
+        || t.contains("phyllotaxis")
+        || t.contains("tau_r drive")
+        || t.contains("logarithmic spiral theta")
+    {
+        return true;
+    }
+
+    // ── 3. Pedagogical lesson-intro phrases ───────────────────────────────────
+    let lesson_intros: &[&str] = &[
+        "Today we are going to talk about",
+        "Today, we're going to talk about",
+        "Today, let's",
+        "Today, let us",
+        "Now, suppose you have access to a magical",
+        "Now, let's think about two things",
+        "Now, let us think about",
+        "Picture the tree, the snake",
+        "So, we give it a collection of patchies",
+        "Have you ever seen a game show",
+        "In today's lesson",
+        "Let's begin our exploration",
+    ];
+    if lesson_intros.iter().any(|&p| t.starts_with(p)) {
+        return true;
+    }
+
+    // ── 4. Math / STEM content filter ─────────────────────────────────────────
+    // Applied to ALL query types unless the query explicitly requests math.
+    let query_requests_math = q.contains("calculat") || q.contains(" solv")
+        || q.contains("equat") || q.contains("formula") || q.contains("integr")
+        || q.contains("derivat") || q.contains(" math") || q.contains("proof")
+        || q.contains("theorem") || q.contains("algebra") || q.contains("geometr");
+
+    if !query_requests_math {
+        let dollar_signs = t.chars().filter(|&c| c == '$').count();
+        let has_latex = t.contains("\\(") || t.contains("\\)") || t.contains("\\[");
+        let has_explicit_ops = (t.contains(" \u{00d7} ") || t.contains(" \u{00f7} "))
+            && t.chars().filter(|c| c.is_numeric()).count() >= 3;
+        let math_phrases: &[&str] = &[
+            "cross-multiplication",
+            "Least Common Multiple",
+            "imaginary parts separately",
+            "imaginary squares",
+            "matrix exponential",
+            "random variable is defined as",
+            "sum of its possible values",
+            "weighted by their respective probabilities",
+            "scalar (just a fancy name",
+            "minuses inside the squares",
+            "bijective",
+            "angular ranges",
+            "patchies",
+            "denominator",
+            "numerator",
+        ];
+        if dollar_signs >= 2
+            || has_latex
+            || has_explicit_ops
+            || math_phrases.iter().any(|&p| t.contains(p))
+        {
+            return true;
+        }
+    }
+
+    // ── 6. Physics conceptual dump mismatch filter ─────────────────────────
+    // If the query is NOT about physics/STEM, but the response contains high-dimensional
+    // physics concepts, it's a hallucinated database dump. Suppress it to trigger web search fallback.
+    let query_has_physics = q.contains("space") || q.contains("time") || q.contains("physic")
+        || q.contains("quant") || q.contains("gravit") || q.contains("relativ")
+        || q.contains("orbit") || q.contains("mechanic") || q.contains("spiral")
+        || q.contains("helica") || q.contains("dimens") || q.contains("cosmo")
+        || q.contains("speed") || q.contains("light") || q.contains("stellar")
+        || q.contains("astrono") || q.contains("force") || q.contains("vector")
+        || q.contains("cell") || q.contains("synap") || q.contains("lattic");
+
+    if !query_has_physics {
+        let resp_lower = t.to_lowercase();
+        let physics_triggers = [
+            "space and time",
+            "spacetime",
+            "relativistic",
+            "quantum mechanics",
+            "fundamental nature",
+            "understanding of space",
+            "fibonacci sequence",
+            "logarithmic spiral",
+            "phyllotaxis",
+            "gravitational",
+            "quantum state",
+            "physical reality",
+            "coordinate system",
+        ];
+        if physics_triggers.iter().any(|&p| resp_lower.contains(p)) {
+            return true;
+        }
+    }
+
+    false
+}
+
+
+fn execute_system_command(input: &str) -> String {
+    let lower = input.to_lowercase();
+
+    if lower.starts_with("read file ") {
+        let path = input[10..].trim();
+        return match std::fs::read_to_string(path) {
+            Ok(content) => {
+                let mut trimmed = content;
+                if trimmed.len() > 1500 {
+                    trimmed.truncate(1500);
+                    trimmed.push_str("\n... (file truncated)");
+                }
+                format!("I read the file. Here is the content:\n{}", trimmed)
+            }
+            Err(e) => format!("Failed to read file: {}", e),
+        };
+    }
+
+    if lower.starts_with("write file ") {
+        // format: "write file C:\test.txt with content Hello World"
+        let parts: Vec<&str> = input[11..].splitn(2, " with content ").collect();
+        if parts.len() == 2 {
+            let path = parts[0].trim();
+            let content = parts[1];
+            return match std::fs::write(path, content) {
+                Ok(_) => format!("I successfully wrote to the file: {}", path),
+                Err(e) => format!("Failed to write file {}: {}", path, e),
+            };
+        } else {
+            return "Invalid format for write file. Use: 'write file <path> with content <content>'".to_string();
+        }
+    }
+
+    let cmd_str = if lower.starts_with("run command ") {
+        &input[12..]
+    } else if lower.starts_with("execute command ") {
+        &input[16..]
+    } else if lower.starts_with("system command ") {
+        &input[15..]
+    } else {
+        return "Invalid command format. Please specify a command to run.".to_string();
+    };
+
+    let cmd_str = cmd_str.trim();
+    if cmd_str.is_empty() {
+        return "No command provided.".to_string();
+    }
+
+    match std::process::Command::new("cmd")
+        .arg("/C")
+        .arg(cmd_str)
+        .output()
+    {
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            let mut result = String::new();
+            if !stdout.trim().is_empty() {
+                result.push_str(&format!("Output:\n{}", stdout.trim()));
+            }
+            if !stderr.trim().is_empty() {
+                if !result.is_empty() {
+                    result.push_str("\n\n");
+                }
+                result.push_str(&format!("Error:\n{}", stderr.trim()));
+            }
+            
+            let mut final_res = if result.is_empty() {
+                "Command executed successfully with no output.".to_string()
+            } else {
+                result
+            };
+
+            if final_res.len() > 1000 {
+                final_res.truncate(1000);
+                final_res.push_str("... (output truncated)");
+            }
+            format!("I executed the command. Here is the result: {}", final_res)
+        }
+        Err(e) => format!("Failed to execute command: {}", e),
+    }
+}
+
+fn generate_raw_thought(
+    input: &str,
+    hits: &[QueryHit],
+    query_type: QueryType,
+    brain: &BrainSignals,
+    recent_context: &[(String, String)],
+    universe: &mut Universe,
+    trace: &ConversationTrace,
+    candle_voice: Option<&crate::cognition::candle_voice::CandleVoice>,
+    bitnet_voice: Option<&crate::cognition::BitnetVoice>,
+    lex: Option<&StatLexicon>,
+    field: Option<&FieldState>,
+    pos_dict: Option<&crate::core::PosDictionary>,
+) -> String {
+    if query_type == QueryType::CommandRequest {
+        return execute_system_command(input);
+    }
+
     let trimmed = input.trim();
     let lower = trimmed.to_lowercase();
     let word_count = trimmed.split_whitespace().count();
@@ -574,7 +1313,7 @@ pub fn generate_response_predictive(
     // ── RESONANCE GATE ──────────────────────────────────────────────────────────
     // Directive: If no cell has resonance above 0.45, KAI must not dump
     // unrelated content. Instead, use a low-confidence fallback or gap cell.
-    const RESONANCE_THRESHOLD: f32 = 0.45;
+    const RESONANCE_THRESHOLD: f32 = 0.65;
     let top_score = hits.first().map(|h| h.score).unwrap_or(0.0);
 
     // Identity and greetings are allowed at lower thresholds because they
@@ -582,9 +1321,11 @@ pub fn generate_response_predictive(
     // we enforce the 0.45 floor.
     let is_core_query = matches!(
         query_type,
-        QueryType::ExplanationQuestion | QueryType::Statement | QueryType::RequestForInfo
+        QueryType::ExplanationQuestion | QueryType::Statement | QueryType::RequestForInfo | QueryType::IdentityQuestion
     );
-    if is_core_query && top_score < RESONANCE_THRESHOLD && !hits.is_empty() {
+    // BYPASS: If we have an LLM (candle_voice or bitnet_voice), we don't want to abruptly gap out.
+    // We let the LLM use the conversational context and low-resonance hits to form a natural reply.
+    if is_core_query && top_score < RESONANCE_THRESHOLD && !hits.is_empty() && candle_voice.is_none() && bitnet_voice.is_none() {
         return identity_safety_filter(from_gap_cell(universe, brain, trace), query_type);
     }
 
@@ -1012,14 +1753,31 @@ pub fn generate_response_predictive(
     //
     // NATIVE_ONLY mode: KAI speaks purely from the lattice. No Ollama.
     // This is the path to true sovereignty — the lattice IS the mind.
+    let mut prompt_with_grammar = trimmed.to_string();
+    if let Some(dict) = pos_dict {
+        let mut grammar_annotations = String::new();
+        for word in trimmed.split_whitespace().take(8) {
+            let clean = word.trim_matches(|c: char| !c.is_alphabetic()).to_lowercase();
+            if let Some(entries) = dict.lookup(&clean) {
+                if let Some(e) = entries.first() {
+                    grammar_annotations.push_str(&format!("[{}: {}] ", e.word, e.pos));
+                }
+            }
+        }
+        if !grammar_annotations.is_empty() {
+            prompt_with_grammar = format!("{}\n<grammar_context>{}</grammar_context>", trimmed, grammar_annotations);
+        }
+    }
+
     if !NATIVE_ONLY.load(Ordering::Relaxed) {
-        if let Some(ov) = ollama {
+        if let Some(cv) = candle_voice {
             if phi_c > 0.30 {
             // Coherent field: Ollama speaks the lattice's signal.
             // The full SRHT state + active cells are in the system prompt
             // so everything the lattice wants to say is already there.
-            if let Some(ollama_text) = ov.speak(
-                trimmed,
+
+            if let Some(ollama_text) = cv.speak(
+                &prompt_with_grammar,
                 hits,
                 brain.confidence,
                 brain.conflict,
@@ -1035,6 +1793,62 @@ pub fn generate_response_predictive(
         }
     }
 
+    // ── Direct Recall Bypass ─────────────────────────────────────────────────
+    // When the top retrieved cell is from a direct-knowledge region (language,
+    // social, identity, everyday, grammar, conversation, kai-self), skip the
+    // trigram generative decoder entirely. The decoder builds responses by
+    // free-associating across ALL 447k cells — it loses the retrieved content
+    // in physics-heavy noise. For knowledge questions, the cell text IS the
+    // answer. Output it directly through synthesize_from_cells.
+    //
+    // Regions that should bypass the generative decoder:
+    //   language, social, identity, everyday  (seeded conversation/grammar/self knowledge)
+    //   kai-self, grammar, conversation        (seeded sources)
+    {
+        let top_hit = hits.first();
+        let bypass_generative = if let Some(h) = top_hit {
+            let r = h.region.as_str();
+            let s = h.source.as_str();
+            (r == "language" || r == "social" || r == "identity" || r == "everyday"
+                || s == "grammar" || s == "conversation" || s == "kai-self")
+                && s != "discord-chat" && s != "discord-reply"
+        } else {
+            false
+        };
+
+        if bypass_generative {
+            // Find best matching cell from direct-knowledge regions
+            let best = hits.iter().find(|h| {
+                let r = h.region.as_str();
+                let s = h.source.as_str();
+                (r == "language" || r == "social" || r == "identity" || r == "everyday"
+                    || s == "grammar" || s == "conversation" || s == "kai-self")
+                    && s != "discord-chat" && s != "discord-reply"
+            });
+            if let Some(primary) = best {
+                let knowledge_secondaries: Vec<&QueryHit> = hits.iter()
+                    .filter(|h| {
+                        let r = h.region.as_str();
+                        let s = h.source.as_str();
+                        (r == "language" || r == "social" || r == "identity" || r == "everyday"
+                            || s == "grammar" || s == "conversation" || s == "kai-self")
+                            && s != "discord-chat" && s != "discord-reply"
+                    })
+                    .skip(1)
+                    .take(2)
+                    .collect();
+                let response = if primary.region == "identity" || primary.source == "kai-self" {
+                    synthesize_self(primary, &knowledge_secondaries, brain, primary.score)
+                } else {
+                    synthesize_from_cells(primary, &knowledge_secondaries, brain, primary.score, false)
+                };
+                if !response.trim().is_empty() {
+                    return identity_safety_filter(response, query_type);
+                }
+            }
+        }
+    }
+
     // ── Native generative decode (RSHL transformer + incremental_generate) ────
     // When the lexicon and field are available we build a full generative
     // latent state (prompt + memory + field + trace) and run the sparse
@@ -1042,18 +1856,20 @@ pub fn generate_response_predictive(
     // no retrieval, no templates, pure lattice-born language.
     if let (Some(lex), Some(field)) = (lex, field) {
         if NATIVE_ONLY.load(Ordering::Relaxed) || phi_c > 0.20 {
-            let state = universe.encode_generative_state(trimmed, lex, trace, field, "");
+            let state = universe.encode_generative_state(&prompt_with_grammar, lex, trace, field, "");
             let emotional_temp = get_emotional_temp();
             let temp = if emotional_temp > 0.0 { emotional_temp } else { 0.7 };
             let params = DecodeParams {
                 max_tokens: 64,
                 temperature: temp,
-                top_k: 8,
+                top_k: 32,
                 repetition_window: 16,
-                repetition_penalty: 0.15,
+                repetition_penalty: 0.8,
                 stop_on_immediate_repeat: false,
-                bigram_weight: 0.0,
-                seed: 0xC0FFEE,
+                bigram_weight: 0.4,
+                trigram_weight: 0.4,
+                attention_weight: 1.2,
+                seed: 0xC0FFEE, context_injects: std::collections::HashMap::new(),
                 clause_aware_stop: true,
             };
             let decoded = lex.incremental_generate_with(state, params);
@@ -1133,7 +1949,7 @@ pub fn generate_response_predictive(
 
     // ── Secondary threshold ───────────────────────────────────────────────────
     let secondary_threshold = match query_type {
-        QueryType::SelfQuestion | QueryType::IdentityQuestion => 0.65,
+        QueryType::SelfQuestion | QueryType::IdentityQuestion | QueryType::CommandRequest => 0.65,
         _ => 0.50,
     };
 
@@ -1248,7 +2064,7 @@ pub fn generate_response_predictive(
                     query_type,
                 );
             }
-            return String::new();
+            return identity_safety_filter(from_gap_cell(universe, brain, trace), query_type);
         }
 
     // ── Main cell synthesis ───────────────────────────────────────────────────
@@ -1256,7 +2072,7 @@ pub fn generate_response_predictive(
         .iter()
         .find(|h| h.source != "ryan" && h.source != "conversation");
 
-    let response = if let Some(kp) = knowledge_primary {
+    let mut response = if let Some(kp) = knowledge_primary {
         let knowledge_secondaries: Vec<&QueryHit> = hits
             .iter()
             .filter(|h| h.source != "ryan" && h.source != "conversation")
@@ -1283,6 +2099,35 @@ pub fn generate_response_predictive(
     } else {
         from_gap_cell(universe, brain, trace)
     };
+
+    // ── Eloquence Injection (LLM Learning) ────────────────────────────────────
+    if !is_about_self && !response.is_empty() && matches!(query_type, QueryType::ExplanationQuestion | QueryType::Statement | QueryType::Contemplation) {
+        if std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() % 3 == 0 {
+            let eloquence_hits = universe.predictive_query_by_source(
+                crate::core::SparseVec::encode(trimmed),
+                "eloquence",
+                trace,
+                crate::core::predictive::DEFAULT_ITER_STEPS,
+            );
+            if let Some(hit) = eloquence_hits.first() {
+                let phrase = hit.text.trim();
+                if !phrase.is_empty() {
+                    let mut new_response = phrase.to_string();
+                    new_response.push(' ');
+                    let mut c_iter = response.chars();
+                    if let Some(first_char) = c_iter.next() {
+                        if first_char == 'I' && response.starts_with("I ") {
+                            new_response.push(first_char);
+                        } else {
+                            new_response.push_str(&first_char.to_lowercase().to_string());
+                        }
+                        new_response.push_str(c_iter.as_str());
+                    }
+                    response = new_response;
+                }
+            }
+        }
+    }
 
     identity_safety_filter(response, query_type)
 }
@@ -1408,18 +2253,24 @@ fn from_gap_cell(universe: &Universe, brain: &BrainSignals, trace: &Conversation
         h.source != "ryan"
             && h.source != "conversation"
             && h.source != "world-bridge"
+            && !h.text.starts_with("System Anchor:")
             && (lower.contains("don't know") || lower.contains("gap") || lower.contains("plainly"))
     }) {
         // Full sentence — no word cap. The cell IS the message.
         return ensure_punctuation(clean_cell_text(&h.text));
     }
 
-    // Hard fallback — must be natural and KAI-aligned
+    // Hard fallback — varied, natural, KAI-aligned introspective responses
+    // Organised by turn parity so the same line doesn't repeat back-to-back.
     let fallbacks = [
         "I don't have strong resonance on that topic right now.",
-        "That's outside my current field of understanding.",
+        "That's at the edge of what I can reach — I'm still working on it.",
         "My lattice isn't picking up a clear signal on that yet.",
-        "I'm not sure — I don't have enough data in my field to give you a real answer.",
+        "I don't have enough cells on that to give you a real answer, but I'm curious about it too.",
+        "Nothing's firing clearly on that one — it might be outside my current field.",
+        "I'm not sure. That question sits somewhere I haven't fully mapped yet.",
+        "Hard to say. I don't have strong enough connections to give you something solid there.",
+        "That's an open question for me too — I notice the gap but I can't fill it yet.",
     ];
     let idx = (trace.turns_seen as usize) % fallbacks.len();
     fallbacks[idx].to_string()
@@ -2055,6 +2906,7 @@ mod tests {
             &[],
             &mut u,
             None,
+            None,
         );
         let _ = u;
         // Must come from the cell, not a template
@@ -2074,8 +2926,8 @@ mod tests {
     fn test_filler_gets_short_response() {
         let brain = BrainSignals::default();
         let hits = vec![hit("Some random cell.", 0.5)];
-        let u = Universe::new();
-        let mut u = u;
+        let mut u = Universe::new();
+        u.store("Running clean.", "action", "greeting", 1.0);
         let resp = generate_response(
             "oh?",
             &hits,
@@ -2083,6 +2935,7 @@ mod tests {
             &brain,
             &[],
             &mut u,
+            None,
             None,
         );
         // Filler should get a short response, not random knowledge
@@ -2105,7 +2958,55 @@ mod tests {
     #[test]
     fn test_inner_thought_no_panic() {
         let _empty: Vec<QueryHit> = vec![];
+    }
 
+    #[test]
+    fn test_detect_grief_association_direct() {
+        let hits: Vec<QueryHit> = vec![];
+        // Grandma + died in user input
+        assert!(detect_grief_association("my grandma died yesterday", &hits));
+        // Nana + passed away in user input
+        assert!(detect_grief_association("my nana passed away", &hits));
+        // Unrelated input should not trigger it
+        assert!(!detect_grief_association("i like cooking", &hits));
+    }
+
+    #[test]
+    fn test_detect_grief_association_lattice() {
+        // Query mentions grandmother/cooking, but has no grief word itself
+        let input = "reminds me of grandmother cooking";
+        // Lattice has retrieved a memory that grandmother died
+        let hits = vec![hit("my grandmother died a long time ago of cancer", 0.85)];
+        assert!(detect_grief_association(input, &hits));
+
+        // Lattice retrieves unrelated cell
+        let hits_unrelated = vec![hit("this is a nice cooking recipe", 0.90)];
+        assert!(!detect_grief_association(input, &hits_unrelated));
+    }
+
+    #[test]
+    fn test_calm_grief_filter_conversational() {
+        // Abrupt response gets softened
+        let r1 = calm_grief_filter("I don't know.", QueryType::Statement);
+        assert_eq!(r1, "I am here with you. We can take this gently, at whatever pace feels right.");
+
+        // Cold response gets prepended with supportive buffer
+        let r2 = calm_grief_filter("The HP Victus is running.", QueryType::Statement);
+        assert!(r2.starts_with("I'm here with you."));
+
+        // Already gentle response is left untouched
+        let r3 = calm_grief_filter("I am deeply sorry for your loss.", QueryType::Statement);
+        assert_eq!(r3, "I am deeply sorry for your loss.");
+    }
+
+    #[test]
+    fn test_calm_grief_filter_factual() {
+        // Factual query responses are NOT altered or softened unnecessarily
+        let r1 = calm_grief_filter("The hp victus has a 144hz display.", QueryType::ExplanationQuestion);
+        assert_eq!(r1, "The hp victus has a 144hz display.");
+
+        let r2 = calm_grief_filter("DuckDuckGo was founded in 2008.", QueryType::RequestForInfo);
+        assert_eq!(r2, "DuckDuckGo was founded in 2008.");
     }
 }
 

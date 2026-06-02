@@ -420,6 +420,62 @@ impl LanguageSystem {
             self.avg_comprehension,
         )
     }
+
+    // ── Eloquence Extraction (LLM Learning) ───────────────────────────────────
+
+    /// Scan text (usually from advanced LLMs) to extract stylistic transition
+    /// phrases and eloquent structures. Returns a list of phrases to be stored
+    /// in the Universe.
+    pub fn extract_eloquence(llm_text: &str) -> Vec<String> {
+        let mut extracted = Vec::new();
+        let text = llm_text.trim();
+        if text.is_empty() {
+            return extracted;
+        }
+
+        // We use simple heuristics to find transition phrases.
+        // E.g., phrases at the start of sentences followed by a comma.
+        let sentences: Vec<&str> = text.split(|c| c == '.' || c == '!' || c == '?').collect();
+        for sentence in sentences {
+            let sentence = sentence.trim();
+            if sentence.is_empty() {
+                continue;
+            }
+
+            // If the sentence starts with a known complex transition or adverb
+            if let Some(comma_pos) = sentence.find(',') {
+                if comma_pos < 30 {
+                    let prefix = &sentence[..comma_pos].trim();
+                    let prefix_lower = prefix.to_lowercase();
+                    let word_count = prefix.split_whitespace().count();
+
+                    // Good transitions are usually 1-4 words.
+                    // E.g., "Furthermore", "Interestingly", "On the other hand", "Fundamentally"
+                    if word_count > 0 && word_count <= 4 {
+                        let is_eloquent = prefix_lower.ends_with("ly") ||
+                            prefix_lower.starts_with("on the ") ||
+                            prefix_lower.starts_with("from a ") ||
+                            prefix_lower.starts_with("in contrast") ||
+                            prefix_lower.starts_with("however") ||
+                            prefix_lower.starts_with("moreover") ||
+                            prefix_lower.starts_with("consequently") ||
+                            prefix_lower.starts_with("ultimately") ||
+                            prefix_lower.starts_with("crucially") ||
+                            prefix_lower.starts_with("fundamentally") ||
+                            prefix_lower.starts_with("in essence") ||
+                            prefix_lower.starts_with("intriguingly");
+
+                        if is_eloquent && prefix.chars().all(|c| c.is_alphabetic() || c.is_whitespace() || c == '\'') {
+                            // Extract with its comma for natural flow
+                            extracted.push(format!("{},", prefix));
+                        }
+                    }
+                }
+            }
+        }
+        
+        extracted
+    }
 }
 
 impl Default for LanguageSystem {

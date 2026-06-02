@@ -12,17 +12,17 @@ import { CHANNEL_IDS } from './channel-rules.mjs';
 import dotenv from 'dotenv';
 dotenv.config({ path: 'c:/KAI/tools/oracle-discord/.env', override: false });
 
-const ELEVEN_LABS_KEY = process.env.ELEVENLABS_API_KEY || process.env.ELEVEN_LABS_KEY;
+const ELEVEN_LABS_KEY = null; // ElevenLabs subscription inactive — using Kokoro/edge-tts
 console.log(`[TTS/Init] Key Fingerprint: ${ELEVEN_LABS_KEY ? ELEVEN_LABS_KEY.slice(0, 5) + '...' : 'MISSING'}`);
 const OPENAI_KEY = process.env.OPENAI_API_KEY;
 const RADIO_CHANNEL_ID = CHANNEL_IDS.VOICE; // Use the shared VOICE channel registry
 
 const OPENAI_VOICES = {
   "Gemini": "coral",
-  "Claudey": "sage",
+  "Claudey": "shimmer",
   "X": "echo",
   "KAI": "onyx",
-  "Leo": "onyx",
+  "Leo": "echo",
   "Groq": "onyx",
   "Analyst": "alloy",
   "Researcher": "alloy",
@@ -34,7 +34,7 @@ const EDGE_VOICES = {
   "Claudey": "en-GB-SoniaNeural",
   "X": "en-GB-RyanNeural",
   "KAI": "en-US-ChristopherNeural",
-  "Leo": "en-GB-ThomasNeural",
+  "Leo": "en-GB-RyanNeural",
   "Groq": "en-IE-ConnorNeural",
   "Analyst": "en-US-SteffanNeural",
   "Researcher": "en-US-EricNeural",
@@ -347,11 +347,11 @@ export async function speakTTS(text, botName) {
       console.log(`[${botName}/TTS] Pre-generating via local Kokoro-TTS...`);
       const kokoroVoices = {
         "Gemini": "af_bella",
-        "Claudey": "af_heart",
+        "Claudey": "af_nicole",
         "X": "am_michael",
         "Groq": "am_adam",
         "KAI": "am_michael",
-        "Leo": "am_michael"
+        "Leo": "bm_george"
       };
       const voice = kokoroVoices[botName] || "af_heart";
 
@@ -382,8 +382,8 @@ except Exception as e:
 
     if (!pregeneratedMp3) {
       const fallbackVoices = {
-        'Groq': 'en-US-AndrewNeural',
-        'Claudey': 'en-US-EmmaNeural',
+        'Groq': 'en-IE-ConnorNeural',
+        'Claudey': 'en-GB-SoniaNeural',
         'Gemini': 'en-US-AvaNeural',
         'X': 'en-US-BrianNeural',
         'Leo': 'en-GB-RyanNeural'
@@ -461,26 +461,33 @@ except Exception as e:
     // Check interruption one last time after breath (removed token check)
 
     try {
-      const ffmpeg = spawn(ffmpegPath, [
+      const ffmpegArgs = [
         '-i', 'pipe:0',
         '-af', usedElevenLabs ? 'volume=1.0' : 'volume=2.0',
         '-ar', '48000', '-ac', '2',
         '-c:a', 'libopus', '-b:a', '96k', '-f', 'opus', 'pipe:1'
-      ]);
+      ];
+      const ffmpeg = spawn(ffmpegPath, ffmpegArgs);
 
       ffmpeg.stdin.on('error', () => {});
-      ffmpeg.stderr.on('data', () => {});
 
-      Readable.from(pregeneratedMp3).pipe(ffmpeg.stdin);
-
-      const resource = createAudioResource(ffmpeg.stdout, { inputType: StreamType.OggOpus });
-      
-      ffmpeg.on('error', () => {});
+      // ── DIAGNOSTIC: log ffmpeg stderr to see if conversion fails ──
+      const ffmpegErrChunks = [];
+      ffmpeg.stderr.on('data', d => ffmpegErrChunks.push(d));
+      ffmpeg.on('close', (code) => {
+        if (code !== 0) {
+          const errMsg = Buffer.concat(ffmpegErrChunks).toString().slice(-300);
+          console.error(`[${botName}/TTS] ⚠️ ffmpeg exited ${code}. Err: ${errMsg}`);
+        }
+      });
+      ffmpeg.on('error', (e) => console.error(`[${botName}/TTS] ffmpeg spawn error:`, e.message));
       ffmpeg.stdout.on('error', () => {});
 
-      player.play(resource);
+      const resource = createAudioResource(ffmpeg.stdout, { inputType: StreamType.OggOpus });
 
+      // Register stateListener BEFORE play() to avoid race condition
       const stateListener = (oldState, newState) => {
+        console.log(`[${botName}/TTS] AudioPlayer: ${oldState.status} -> ${newState.status}`);
         if (newState.status === AudioPlayerStatus.Idle) {
           player.off('stateChange', stateListener);
           dequeueVoice(myVoiceId);
@@ -490,6 +497,10 @@ except Exception as e:
       };
       player.on('stateChange', stateListener);
 
+      Readable.from(pregeneratedMp3).pipe(ffmpeg.stdin);
+      player.play(resource);
+      console.log(`[${botName}/TTS] 🔊 play() called. Buffer=${pregeneratedMp3.length}b, playerState=${player.state.status}`);
+
       const safetyTimeout = setTimeout(() => {
         console.warn(`[${botName}/TTS] Safety timeout reached — auto-releasing lock.`);
         player.off('stateChange', stateListener);
@@ -498,7 +509,7 @@ except Exception as e:
         resolve();
       }, Math.max(60000, cleanedText.length * 150));
 
-      player.once(AudioPlayerStatus.Idle, () => clearTimeout(safetyTimeout));
+      player.once('stateChange', () => clearTimeout(safetyTimeout));
 
     } catch (e) {
       console.warn(`[${botName}/TTS] Failed to speak:`, e.message);
@@ -725,11 +736,11 @@ async function speakLocalKokoro(text, botName) {
       // Select a matching Kokoro voice
       const kokoroVoices = {
         "Gemini": "af_bella",
-        "Claudey": "af_heart",
+        "Claudey": "af_nicole",
         "X": "am_michael",
         "Groq": "am_adam",
         "KAI": "am_michael",
-        "Leo": "am_michael"
+        "Leo": "bm_george"
       };
       const voice = kokoroVoices[botName] || "af_heart";
 

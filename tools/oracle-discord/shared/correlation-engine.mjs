@@ -271,19 +271,30 @@ const RULES = [
   },
   {
     id:       'lattice-cells-stalled',
-    name:     'Rust lattice cell count hasn\'t grown in a long time',
+    name:     'Rust lattice cell count hasn\'t grown despite active chat',
     severity: 'warn',
     evaluate() {
-      const last10  = aggregateMetric('rust-engine', 'cells', 10 * 60_000);
-      if (!last10 || last10.n < 5) return null;
-      const range = last10.max - last10.min;
-      if (range <= 0) {
-        return {
-          message: `lattice cells frozen at ${last10.max} for the last ${last10.n} samples (~10 min). Engine may be idle or stuck.`,
-          evidence: { cells: last10.max, samples: last10.n },
-        };
-      }
-      return null;
+      const last20  = aggregateMetric('rust-engine', 'cells', 20 * 60_000);
+      if (!last20 || last20.n < 5) return null;
+      const range = last20.max - last20.min;
+      if (range > 0) return null; // cells are growing — all good
+
+      // Only alert if chat was actually active (bots were replying).
+      // Frozen cells during a quiet period is NORMAL — the lattice only
+      // grows when conversation flows through /api/discord-turn.
+      const ch = process.env.CHANNEL_SUNDAY || '1500085302268526712';
+      let chatWasActive = false;
+      try {
+        const s = behavioralSnapshot(ch);
+        chatWasActive = s.history_size >= 5 && s.silence_ms < 10 * 60_000;
+      } catch (_) {}
+
+      if (!chatWasActive) return null; // idle period — expected, suppress
+
+      return {
+        message: `lattice cells frozen at ${last20.max} for ${last20.n} samples (~20 min) despite active chat. Engine may be stuck.`,
+        evidence: { cells: last20.max, samples: last20.n },
+      };
     },
   },
   {

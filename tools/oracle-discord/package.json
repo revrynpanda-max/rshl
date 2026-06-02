@@ -6,7 +6,7 @@
   "description": "Minimal Ryan-only Discord gateway for the local KAI Oracle API.",
   "main": "index.mjs",
   "scripts": {
-    "start": "node index.mjs",
+    "start": "node -r dotenv/config index.mjs",
     "check": "node --check index.mjs"
   },
   "dependencies": {

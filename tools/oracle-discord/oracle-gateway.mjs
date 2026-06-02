@@ -453,13 +453,34 @@ client.once('clientReady', async () => {
 
   resetFailureTracker();
 
-  // ── Start Kai Coder Tool Server ────────────────────────────────────────────
-  // Forked as a child process so it survives independently
+  // ── Resilient ToolServer launcher with auto-restart ───────────────────────
   const toolServerPath = path.resolve('c:/KAI/tools/oracle-discord/tools/kai-coder-toolserver.mjs');
-  const toolServer = fork(toolServerPath, [], { silent: false, env: { ...process.env } });
-  toolServer.on('error', e => console.warn('[Oracle/ToolServer] Launch error:', e.message));
-  toolServer.on('exit', code => console.warn(`[Oracle/ToolServer] Exited with code ${code}. Auto-restart not configured.`));
-  console.log('[Oracle/ToolServer] Kai Coder tool server launched (port 3420).');
+  let toolServerRestarts = 0;
+  let toolServerStartedAt = Date.now();
+
+  function launchToolServer() {
+    const toolServer = fork(toolServerPath, [], { silent: false, env: { ...process.env } });
+    toolServerStartedAt = Date.now();
+
+    toolServer.on('error', e => console.warn('[Oracle/ToolServer] Launch error:', e.message));
+    toolServer.on('exit', (code, signal) => {
+      const uptime = Math.round((Date.now() - toolServerStartedAt) / 1000);
+      console.warn(`[Oracle/ToolServer] Exited with code ${code} (signal: ${signal}, uptime: ${uptime}s).`);
+
+      // Reset counter if it ran for more than 60s (healthy run)
+      if (uptime > 60) toolServerRestarts = 0;
+      toolServerRestarts++;
+
+      // Exponential backoff: 2s, 4s, 8s, 16s, 30s max
+      const delay = Math.min(2000 * Math.pow(2, toolServerRestarts - 1), 30000);
+      console.log(`[Oracle/ToolServer] Auto-restarting in ${delay / 1000}s (attempt ${toolServerRestarts})...`);
+      setTimeout(launchToolServer, delay);
+    });
+
+    console.log('[Oracle/ToolServer] Kai Coder tool server launched (port 3420).');
+  }
+
+  launchToolServer();
 
   // WIPE NEURAL LOCK: Clear ghost locks from previous crashes
   const lockPath = "c:/KAI/tools/oracle-discord/state/neural_lock.json";
@@ -946,11 +967,20 @@ process.on('message', async (msg) => {
     const isReflectionEvent = msg.error.includes('META-COGNITIVE') || msg.error.includes('Self-Reflection') || msg.error.includes('REJECTION DETECTED');
     const isVoiceError = msg.error.includes('voice') || msg.error.includes('player') || msg.error.includes('connection') || msg.error.includes('stability');
     const isImageError = msg.error.includes('Image') || msg.error.includes('Imagen') || msg.error.includes('404') || msg.error.includes('model');
-    if (msg.error.includes('EPIPE') || msg.error.includes('Stream watchdog triggered') || isQuotaError || isVoiceError || isImageError || isInfraError || isReflectionEvent) {
-       const tag = isQuotaError ? 'QUOTA' : isVoiceError ? 'VOICE' : isImageError ? 'MODEL' : isInfraError ? 'INFRA' : isReflectionEvent ? 'REFLECT' : 'NETWORK';
+    // Suppress intentional circuit-breaker events and startup noise — not real bugs
+    const isCircuitBreakerEvent = msg.error.includes('TPD cooldown') || msg.error.includes('failover') ||
+                                   msg.error.includes('Failing over to gemini') || msg.error.includes('TPD LIMIT HIT') ||
+                                   msg.error.includes('Going quiet until') || msg.error.includes('in cooldown (TPD') ||
+                                   msg.error.includes('Restored persisted cooldown') || msg.error.includes('Restored 1 active') ||
+                                   msg.error.includes('provider cooldown') || msg.error.includes('Soft reset complete');
+    const isStartupNoise = msg.error.includes('IPC port') || msg.error.includes('port in use') || msg.error.includes('EADDRINUSE');
+    if (msg.error.includes('EPIPE') || msg.error.includes('Stream watchdog triggered') || isQuotaError || isVoiceError || isImageError || isInfraError || isReflectionEvent || isCircuitBreakerEvent || isStartupNoise) {
+       const tag = isCircuitBreakerEvent ? 'CIRCUIT_BREAKER' : isStartupNoise ? 'STARTUP' : isQuotaError ? 'QUOTA' : isVoiceError ? 'VOICE' : isImageError ? 'MODEL' : isInfraError ? 'INFRA' : isReflectionEvent ? 'REFLECT' : 'NETWORK';
        console.log(`[Oracle/Self-Diagnostic] Suppressing transient signal from ${msg.bot}: ${tag}`);
        return;
     }
+
+
 
     ANOMALY_COOLDOWNS.set(errorKey, now);
     console.warn(`[Oracle/Self-Diagnostic] SILENT ERROR in ${msg.bot}: ${msg.error.slice(0, 100)}...`);

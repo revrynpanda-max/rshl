@@ -52,6 +52,7 @@ pub struct Engine {
     pub spiral: SpiralState,
     pub oscillator: crate::core::NeuralOscillator,
     pub hub: SelfStateHub,
+    pub pos_dict: std::sync::Arc<crate::core::PosDictionary>,
     pub idle_ingest: IdleIngest,
     pub episodic: EpisodicStore,
     pub amygdala: AmygdalaGate,
@@ -451,6 +452,16 @@ impl Engine {
         };
         let synaptic_layer = std::sync::Arc::new(std::sync::RwLock::new(synaptic_layer_raw));
 
+        // Load POS Dictionary
+        let dict_path = format!("{}/data/dictionary.json", base_dir);
+        let pos_dict = std::sync::Arc::new(
+            crate::core::PosDictionary::load_from_file(&dict_path)
+                .unwrap_or_else(|e| {
+                    eprintln!("[Warning] Failed to load POS dictionary from {}: {}", dict_path, e);
+                    crate::core::PosDictionary::new()
+                })
+        );
+
         let mut this_engine = Self {
             universe,
             synaptic_layer,
@@ -467,6 +478,7 @@ impl Engine {
             spiral: SpiralState::new(0.05),
             oscillator: crate::core::NeuralOscillator::new(),
             hub,
+            pos_dict,
             idle_ingest: IdleIngest::new(base_dir),
             episodic,
             amygdala: AmygdalaGate::new(),
@@ -819,25 +831,41 @@ impl Engine {
             let _ = log_file.flush();
         }
 
-        // ── Autonomous Internal Monologue (Daydreaming) ──
-        if !is_responding && self.tick % 300 == 0 && self.neural_synchrony > 0.65 {
-            // Use the new Fractal What-If Trees to ponder a random concept from the lattice
-            let cells = self.universe.cells();
-            if !cells.is_empty() {
-                let random_idx = (self.tick as usize * 17) % cells.len(); // deterministic pseudo-random
-                let seed_text = cells[random_idx].label.clone();
-                
-                let reasoner = crate::core::reasoning::Reasoner::new();
-                let tree_result = reasoner.reason_tree_with_context(&seed_text, &self.universe, &[]);
-                
-                if !tree_result.output_text.is_empty() {
-                    self.push_event("MONOLOGUE", "💭", format!("Pondering '{}': {}", seed_text, tree_result.output_text));
+        // ── Autonomic Life Loop (Ecosystem Behaviors) ──
+        if !is_responding && self.tick % 300 == 0 {
+            // Contradiction Tension: Resolve conflicts
+            if self.acc.conflict_level > 0.65 {
+                self.push_event("ACC", "⚖", "High cognitive tension detected. Initiating paradox resolution.".to_string());
+                // (In a full ecosystem, this would trigger a peer review request)
+            }
+
+            // Curiosity Pressure: Network exploration / Wonder
+            if self.predictor.curiosity_pressure > 0.70 {
+                if let Some((topic, memory, _score)) = crate::cognition::inner_voice::wonder(&self.universe) {
+                    self.push_event("VTA", "🧭", format!("Curiosity pressure triggering exploration. Topic: {}", topic));
+                    self.push_event("MONOLOGUE", "💭", format!("Wandering memory: {}", memory));
                 }
             }
 
-            self.run_dream_cycle();
-            if !self.last_dream_text.is_empty() {
-                self.push_event("DREAM", "🌌", self.last_dream_text.clone());
+            // Default Daydreaming (Requires neural synchrony)
+            if self.neural_synchrony > 0.65 {
+                let cells = self.universe.cells();
+                if !cells.is_empty() {
+                    let random_idx = (self.tick as usize * 17) % cells.len(); // deterministic pseudo-random
+                    let seed_text = cells[random_idx].label.clone();
+                    
+                    let reasoner = crate::core::reasoning::Reasoner::new();
+                    let tree_result = reasoner.reason_tree_with_context(&seed_text, &self.universe, &[]);
+                    
+                    if !tree_result.output_text.is_empty() {
+                        self.push_event("MONOLOGUE", "💭", format!("Pondering '{}': {}", seed_text, tree_result.output_text));
+                    }
+                }
+
+                self.run_dream_cycle();
+                if !self.last_dream_text.is_empty() {
+                    self.push_event("DREAM", "🌌", self.last_dream_text.clone());
+                }
             }
         }
 
@@ -1017,7 +1045,8 @@ impl Engine {
             self.dopamine.level,
             self.last_field.phi_g,
             self.last_field.chi,
-            self.tick
+            self.tick,
+            self.universe.cells().len()
         );
 
         // Truncate back to the requested N before returning to the caller
@@ -1064,6 +1093,7 @@ impl Engine {
             self.last_field.phi_g,
             self.last_field.chi,
             self.tick,
+            self.universe.cells().len()
         );
 
         // Truncate back to the requested N before returning
@@ -1084,7 +1114,7 @@ impl Engine {
         if cpu_high { return; }
 
         // Biological Pruning: Remove claims with zero vitality
-        let (pruned_v, log_msg, dupes) = {
+        let (pruned_v, log_msg, dupes, archived_count) = {
             let mut uni = &mut self.universe;
             let pruned_v = uni.recycle_dead_claims();
             
@@ -1095,11 +1125,13 @@ impl Engine {
                 uni.prune_contested();
             }
 
+            let archived_count = uni.archive_dormant_cells();
+
             use crate::core::boid_engine::{BoidState, BoidSettings, run_boid_iteration, find_near_duplicates};
 
             let total_cells = uni.cell_count();
             if total_cells < 10 { 
-                (pruned_v, String::new(), Vec::new())
+                (pruned_v, String::new(), Vec::new(), archived_count)
             } else {
                 let state_before = BoidState::from_universe(&uni);
                 let dupes = find_near_duplicates(&state_before);
@@ -1119,9 +1151,13 @@ impl Engine {
                     "cells={} | non-anchors moved={} | anchors protected={} | dupes flagged={}",
                     total_cells, non_anchor_count, anchor_count, dupes.len()
                 );
-                (pruned_v, log_msg, dupes)
+                (pruned_v, log_msg, dupes, archived_count)
             }
         };
+
+        if archived_count > 0 {
+            self.push_event("RAM", "🗄️", format!("Deep Vault: mathematically compressed {} dormant cells.", archived_count));
+        }
 
         if pruned_v > 0 {
             self.push_event("RAM", "🧹", format!("Recycled {} dead/low-vitality cells.", pruned_v));

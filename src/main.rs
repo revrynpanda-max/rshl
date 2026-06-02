@@ -207,7 +207,8 @@ struct App {
     /// Ollama voice bridge — articulates the lattice's decisions via a local LLM.
     /// `None` when Ollama is not reachable at startup (system runs pure-lattice).
     /// Set KAI_OLLAMA_MODEL env var to override the default model (mistral:7b).
-    ollama_voice: Option<kai::cognition::OllamaVoice>,
+    candle_voice: Option<kai::cognition::CandleVoice>,
+    bitnet_voice: Option<kai::cognition::BitnetVoice>,
     /// True while process_input() is running — shows thinking indicator in TUI.
     is_thinking: bool,
     /// Background embedding learning receiver
@@ -224,6 +225,16 @@ struct App {
     is_ingesting_files: bool,
     /// Last tick when a prospective memory (wonder) surfaced — cooldown.
     last_wonder_tick: u64,
+    /// Episodic summarization receiver
+    summarize_rx: Option<std::sync::mpsc::Receiver<String>>,
+    /// Flag to prevent concurrent summarization
+    is_summarizing: bool,
+    /// Last turn count when summarization was triggered
+    last_summarize_turn_count: usize,
+    /// Background geometric plasticity (MLP fine-tuning)
+    mlp_plasticity_rx: Option<std::sync::mpsc::Receiver<String>>,
+    /// Flag to prevent concurrent MLP learning
+    is_learning_mlp: bool,
 }
 
 impl App {
@@ -266,14 +277,12 @@ impl App {
                     .unwrap_or_default()
                     .as_secs()
             ),
-            // Probe Ollama at startup. If not reachable the system stays pure-lattice.
-            // Override model with KAI_OLLAMA_MODEL env var (default: mistral:7b).
-            ollama_voice: {
-                let url = "http://127.0.0.1:11434";
-                let model =
-                    std::env::var("KAI_OLLAMA_MODEL").unwrap_or_else(|_| "mistral:7b".to_string());
-                kai::cognition::OllamaVoice::new(url, &model)
-            },
+            // Default to CandleVoice for Native "Skin Suit" integration
+            candle_voice: kai::cognition::CandleVoice::new(
+                "models/Phi-3-mini-4k-instruct-q4.gguf",
+                "models/tokenizer.json",
+            ),
+            bitnet_voice: None,
             is_thinking: false,
             embedding_rx: None,
             is_learning_embeddings: false,
@@ -282,6 +291,11 @@ impl App {
             ingest_batch_rx: None,
             is_ingesting_files: false,
             last_wonder_tick: 0,
+            summarize_rx: None,
+            is_summarizing: false,
+            last_summarize_turn_count: 0,
+            mlp_plasticity_rx: None,
+            is_learning_mlp: false,
         }
     }
 
@@ -438,6 +452,68 @@ impl App {
             cpu.chi = self.engine.drive.avg_chi;
             cpu.dream_count = self.engine.dream_count;
             cpu.last_tick = Some(Instant::now());
+        }
+
+        // ── EPISODIC SUMMARIZATION ──
+        if let Some(ref rx) = self.summarize_rx {
+            if let Ok(summary) = rx.try_recv() {
+                self.is_summarizing = false;
+                if !summary.is_empty() {
+                    let mut cleaned = summary.as_str();
+                    if let Some(start_idx) = cleaned.find("<think>") {
+                        if let Some(end_idx) = cleaned.find("</think>") {
+                            if end_idx > start_idx {
+                                cleaned = &cleaned[end_idx + 8..].trim_start();
+                            }
+                        }
+                    }
+                    self.engine.universe.store_or_reinforce_with_vec(
+                        cleaned,
+                        "episodic",
+                        "self",
+                        0.85,
+                        None,
+                        None,
+                        ""
+                    );
+                    if self.spectate_mode {
+                        self.think("RAM", "🧠", format!("Session memory consolidated: {}", truncate(cleaned, 60)));
+                    }
+                }
+            }
+        }
+
+        // Trigger summarization every 10 turns
+        let turns_len = self.turns.len();
+        if turns_len > 0 && turns_len % 10 == 0 && !self.is_summarizing && self.last_summarize_turn_count != turns_len {
+            if let Some(ref bv) = self.bitnet_voice {
+                self.is_summarizing = true;
+                self.last_summarize_turn_count = turns_len;
+                let api_url = bv.api_url().to_string();
+                let recent_turns: Vec<String> = self.turns.iter().rev().take(10).rev().map(|t| format!("{}: {}", t.role, t.text)).collect();
+                let (tx, rx) = std::sync::mpsc::channel();
+                self.summarize_rx = Some(rx);
+                std::thread::spawn(move || {
+                    let system_prompt = "You are an episodic memory summarizer for a geometric AI. Summarize the provided conversation segment into exactly ONE concise sentence representing the core insights, facts, or topics discussed. Do not include introductory text, just the summary. You must use the <think> ... </think> block to reason before generating the single sentence summary.";
+                    let user_prompt = format!("Conversation to summarize:\n{}", recent_turns.join("\n"));
+                    let body = serde_json::json!({
+                        "messages": [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_prompt}
+                        ],
+                        "temperature": 0.2,
+                        "max_tokens": 250,
+                        "stream": false
+                    });
+                    if let Ok(resp) = ureq::post(&api_url).set("Content-Type", "application/json").send_json(body) {
+                        if let Ok(json) = resp.into_json::<serde_json::Value>() {
+                            if let Some(content) = json["choices"][0]["message"]["content"].as_str() {
+                                let _ = tx.send(content.trim().to_string());
+                            }
+                        }
+                    }
+                });
+            }
         }
 
         // ── IDLE LEARNING — passive ingest of data/ingest/*.txt ──
@@ -726,6 +802,35 @@ impl App {
             std::thread::spawn(move || {
                 embeddings_clone.learn_from_cells(&cell_data);
                 let _ = tx.send(embeddings_clone);
+            });
+        }
+
+        // ── STREAM 4: GEOMETRIC PLASTICITY (Ternary MLP Fine-Tuning) ──
+        if let Some(ref rx) = self.mlp_plasticity_rx {
+            if let Ok(report) = rx.try_recv() {
+                self.is_learning_mlp = false;
+                if self.spectate_mode {
+                    self.think("GPU", "🧠", report.clone());
+                } else {
+                    self.turns.push(Turn {
+                        role: "kai".to_string(),
+                        text: report,
+                        region: Some("plasticity".to_string()),
+                        score: Some(1.0),
+                    });
+                }
+            }
+        }
+
+        if !self.is_learning_mlp && self.engine.tick.is_multiple_of(50) && self.engine.universe.count() > 0 {
+            let (tx, rx) = std::sync::mpsc::channel();
+            self.mlp_plasticity_rx = Some(rx);
+            self.is_learning_mlp = true;
+            let universe_clone = self.engine.universe.clone();
+
+            std::thread::spawn(move || {
+                let loss = kai::cognition::lattice_attention::online_train_step(&universe_clone, 5);
+                let _ = tx.send(format!("[PLASTICITY] Brain weights shifted by idle dream. Avg Loss: {:.4}", loss));
             });
         }
 
@@ -1527,6 +1632,19 @@ impl App {
                     exploration.word_b,
                     truncate(&exploration.resonated_text, 30),
                     exploration.score * 100.0,
+                );
+            }
+        }
+
+        // ── Experiential Dreaming ─────────────────────────────────────
+        // Every 3rd dream cycle, consolidate experiential cells into long-term habits
+        if self.engine.dream_count % 3 == 0 {
+            let habits_count = kai::cognition::experience::consolidate_experiences(&mut self.engine.universe);
+            if habits_count > 0 {
+                self.think(
+                    "GPU",
+                    "🌙",
+                    format!("Consolidated {} experiential habits into long-term memory", habits_count),
                 );
             }
         }
@@ -2887,6 +3005,7 @@ impl App {
             QueryType::IdentityQuestion
             | QueryType::SelfQuestion
             | QueryType::ExplanationQuestion
+            | QueryType::CommandRequest
             | QueryType::RequestForInfo => 0.25,
             _ => return false,
         };
@@ -5118,9 +5237,11 @@ impl App {
                     &recent_ctx_with_memory,
                     &mut self.engine.universe,
                     &self.engine.conv_trace,
-                    self.ollama_voice.as_ref(),
+                    self.candle_voice.as_ref(),
+                    self.bitnet_voice.as_ref(),
                     kai::cognition::voice::get_lexicon(),
                     Some(&self.engine.last_field),
+                    Some(&self.engine.pos_dict),
                 )
             };
             kai::cognition::transcript::append(
@@ -5193,9 +5314,11 @@ impl App {
                 &recent_ctx_with_memory,
                 &mut self.engine.universe,
                 &self.engine.conv_trace,
-                self.ollama_voice.as_ref(),
+                self.candle_voice.as_ref(),
+                self.bitnet_voice.as_ref(),
                 kai::cognition::voice::get_lexicon(),
                 Some(&self.engine.last_field),
+                Some(&self.engine.pos_dict),
             );
 
             // ── Depth label: spectate-only (per directive: don't expose internals) ─
@@ -5235,11 +5358,12 @@ impl App {
             self.engine
                 .working_memory
                 .push(&voice_text, "kai", self.engine.tick);
-            // Predictive RSHL: record the response on the lattice side too.
-            // Stamp with the dialogue tick (turns_seen AFTER this push) so
-            // the recency head in `core::predictive` decays per turn, not
-            // per heartbeat.
             self.engine.conv_trace.push(&voice_text, "kai");
+
+            let u_sal = kai::cognition::episodic::compute_salience(&reasoning_input, "user");
+            self.engine.episodic.store(&reasoning_input, "user", &self.session_id, u_sal);
+            let k_sal = kai::cognition::episodic::compute_salience(&voice_text, "kai");
+            self.engine.episodic.store(&voice_text, "kai", &self.session_id, k_sal);
             self.engine.universe.bind_sequence(
                 &reasoning_input,
                 &voice_text,
@@ -5344,6 +5468,7 @@ impl App {
                 QueryType::IdentityQuestion
                 | QueryType::ExplanationQuestion
                 | QueryType::RequestForInfo
+                | QueryType::CommandRequest
                 | QueryType::SelfQuestion => "question",
                 QueryType::Statement | QueryType::Contemplation => "statement",
                 QueryType::Greeting | QueryType::Gratitude => "social",
@@ -9476,6 +9601,7 @@ struct GenerateOpts {
     /// disables the prior entirely (cosine-only); `0.5` is the
     /// general-purpose default.
     bigram_weight: f32,
+    trigram_weight: f32,
     ollama_url: String,
     ollama_model: String,
 }
@@ -9788,7 +9914,10 @@ fn generate_command(opts: GenerateOpts) {
         // truncating mid-output.
         stop_on_immediate_repeat: greedy_mode,
         bigram_weight: opts.bigram_weight,
+        trigram_weight: opts.trigram_weight,
+        attention_weight: 0.5,
         seed: opts.sampling_seed,
+        context_injects: std::collections::HashMap::new(),
         clause_aware_stop: true,
     };
 
@@ -9849,6 +9978,34 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // The TUI is NOT started. This is for bridging into rshlEngine.ts.
     let args: Vec<String> = std::env::args().collect();
 
+    // ── `kai --chat "msg"` — test inference path directly without TUI ──
+    if let Some(pos) = args.iter().position(|a| a == "--chat") {
+        if pos + 1 < args.len() {
+            let msg = &args[pos + 1];
+            let mut app = App::new();
+            println!("\nUser: {}", msg);
+            let hits = app.engine.universe.query(msg, 12);
+            let brain = kai::cognition::voice::BrainSignals::default();
+            let trace = kai::core::ConversationTrace::new();
+            let response = kai::cognition::voice::generate_response_predictive(
+                msg,
+                &hits,
+                kai::cognition::voice::detect_query_type(msg),
+                &brain,
+                &[],
+                &mut app.engine.universe,
+                &trace,
+                app.candle_voice.as_ref(), // CandleVoice
+                app.bitnet_voice.as_ref(), // BitnetVoice
+                kai::cognition::voice::get_lexicon(),
+                None,
+                None,
+            );
+            println!("\nKAI: {}", response);
+            return Ok(());
+        }
+    }
+
     // ── `kai --warm-continuations` — replay real transcript into the lattice ──
     // Walks kai-rust/data/kai-transcript.jsonl, groups by session, pairs every
     // user→kai turn, and calls bind_sequence(user, kai) so existing cells
@@ -9873,6 +10030,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         app.engine.universe.seed_force_math();
         app.save_state_sync();
         println!("[Calibration] Manifold re-anchored. Lattice is enriched.");
+        return Ok(());
+    }
+
+    // ── `kai --retro-mirror` ── Backfill Mirror Neurons ────────
+    if args.iter().any(|a| a == "--retro-mirror") {
+        let mut app = App::new();
+        println!("[Migration] Retroactively generating mirror neurons for existing memory...");
+        let count = app.engine.universe.retro_mirror();
+        println!("[Migration] Successfully generated {} mirror cells.", count);
+        println!("[Stats] Total cells: {}", app.engine.universe.count());
+        
+        let syn = app.engine.synaptic_layer.read().unwrap();
+        println!("[Stats] Total Synapses: {}", syn.synapses.len());
+        println!("[Stats] Total LTP events: {}", syn.total_ltp);
+        
+        app.save_state_sync();
         return Ok(());
     }
 
@@ -10066,6 +10239,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
+    // ── `kai --train-ternary-mlp` ──
+    // Trains the Ternary MLP for autoregressive generation using QAT.
+    if args.iter().any(|a| a == "--train-ternary-mlp") {
+        kai::cognition::lattice_attention::run_train_ternary_mlp_cli(&args);
+        return Ok(());
+    }
     // ── `kai --corpus-stats` ──
     // Report training corpus size, date range, and average entry length.
     if args.iter().any(|a| a == "--corpus-stats") {
@@ -10241,6 +10420,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             repetition_penalty,
             sampling_seed,
             bigram_weight,
+            trigram_weight: 5.0, // default placeholder, could add CLI flag if needed
             ollama_url: args
                 .iter()
                 .find_map(|a| a.strip_prefix("--ollama-url="))
@@ -10251,6 +10431,57 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .find_map(|a| a.strip_prefix("--ollama-model="))
                 .map(|v| v.to_string())
                 .unwrap_or_else(|| "nomic-embed-text".to_string()),
+        });
+        return Ok(());
+    }
+
+    // ── `kai --trigram-debug-tune <prompt> <expected_text>` ──────────────────
+    if let Some(pos) = args.iter().position(|a| a == "--trigram-debug-tune") {
+        if args.len() <= pos + 2 {
+            eprintln!("Usage: kai --trigram-debug-tune \"<prompt>\" \"<expected_text>\"");
+            std::process::exit(1);
+        }
+        let prompt = &args[pos + 1];
+        let expected = &args[pos + 2];
+        
+        let lex_path = "data/stat-lexicon.json";
+        let mut lex = match kai::core::stat_lexicon::StatLexicon::load(lex_path) {
+            Ok(l) => l,
+            Err(e) => {
+                eprintln!("ERROR: Failed to load lexicon from {}: {}", lex_path, e);
+                std::process::exit(1);
+            }
+        };
+        
+        println!("Fine-tuning grammar with LLM translation...");
+        println!("Prompt: {}", prompt);
+        println!("Expected: {}", expected);
+        
+        lex.fine_tune_grammar(expected);
+        
+        println!("Grammar updated. Saving lexicon...");
+        if let Err(e) = lex.save(lex_path) {
+            eprintln!("ERROR: Failed to save lexicon to {}: {}", lex_path, e);
+            std::process::exit(1);
+        }
+        
+        println!("Running generation with updated grammar...");
+        generate_command(GenerateOpts {
+            prompt: prompt.clone(),
+            max_tokens: 30,
+            legacy_encoder: false,
+            mapper_path: None,
+            mapper_weight: 0.0,
+            state_weight: 1.0,
+            temperature: 0.7,
+            top_k: 2048,
+            repetition_window: 6,
+            repetition_penalty: 0.8,
+            sampling_seed: 0xC0DE_CAFE_F00D_BABE,
+            bigram_weight: 0.5,
+            trigram_weight: 5.0, // heavy weight to test it
+            ollama_url: "".to_string(),
+            ollama_model: "".to_string(),
         });
         return Ok(());
     }
@@ -10280,35 +10511,56 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 seed_universe(&mut u);
                 (u, kai::cognition::candidates::CandidateBuffer::new(), kai::drive::Drive::default(), 0, 0, kai::core::SynapticLayer::new())
             };
+        println!("[bulk-ingest] Rebuilding HNSW index for fast ingestion...");
+        universe.rebuild_index(0.0);
         println!("[bulk-ingest] Universe: {} cells. Reading {} ...", universe.cell_count(), path);
         let file = std::fs::File::open(path).expect("Failed to open bulk ingest file");
         let reader = std::io::BufReader::new(file);
         let mut stored = 0usize;
         let mut skipped = 0usize;
         let start = std::time::Instant::now();
+
+        use rayon::prelude::*;
+        let mut batch = Vec::new();
+
+        let mut process_batch = |batch: &mut Vec<String>, stored: &mut usize, skipped: &mut usize, u: &mut Universe| {
+            if batch.is_empty() { return; }
+            let processed: Vec<_> = batch.par_iter().filter_map(|l| {
+                let json: serde_json::Value = serde_json::from_str(l).ok()?;
+                let text = json["text"].as_str()?.trim().to_string();
+                if text.is_empty() || text.len() < 10 { return None; }
+                let region = json["region"].as_str().unwrap_or("memory").to_string();
+                let source = json["source"].as_str().unwrap_or("bulk-ingest").to_string();
+                let strength = json["strength"].as_f64().unwrap_or(1.0) as f32;
+                let user_id = json["user_id"].as_str().unwrap_or("").to_string();
+                let vec = SparseVec::encode(&text);
+                Some((text, region, source, strength, user_id, vec))
+            }).collect();
+
+            *skipped += batch.len() - processed.len();
+            for (text, region, source, strength, user_id, vec) in processed {
+                if user_id.is_empty() {
+                    u.store_or_reinforce_with_vec(&text, &region, &source, strength, Some(vec), None, "");
+                } else {
+                    u.store_or_reinforce_with_vec(&text, &region, &source, strength, Some(vec), None, &user_id);
+                }
+                *stored += 1;
+            }
+            batch.clear();
+        };
+
         for line in std::io::BufRead::lines(reader) {
             let line = match line { Ok(l) => l, Err(_) => continue };
             if line.trim().is_empty() { continue; }
-            let json: serde_json::Value = match serde_json::from_str(&line) {
-                Ok(v) => v,
-                Err(_) => continue,
-            };
-            let text = json["text"].as_str().unwrap_or("").trim();
-            if text.is_empty() || text.len() < 10 { skipped += 1; continue; }
-            let region = json["region"].as_str().unwrap_or("memory");
-            let source = json["source"].as_str().unwrap_or("bulk-ingest");
-            let strength = json["strength"].as_f64().unwrap_or(1.0) as f32;
-            let user_id = json["user_id"].as_str().unwrap_or("");
-            if user_id.is_empty() {
-                universe.store_or_reinforce(text, region, source, strength);
-            } else {
-                universe.store_or_reinforce_with_vec(text, region, source, strength, None, None, user_id);
-            }
-            stored += 1;
-            if stored % 5000 == 0 {
+            batch.push(line);
+            
+            if batch.len() >= 10000 {
+                process_batch(&mut batch, &mut stored, &mut skipped, &mut universe);
                 println!("[bulk-ingest] {} stored ({} skipped) in {:.1}s", stored, skipped, start.elapsed().as_secs_f64());
             }
         }
+        process_batch(&mut batch, &mut stored, &mut skipped, &mut universe);
+
         println!("[bulk-ingest] Done. Stored: {}, Skipped: {}, Total cells: {}, Time: {:.1}s",
             stored, skipped, universe.cell_count(), start.elapsed().as_secs_f64());
         // Clear in-memory indexes before save to keep state files lean
@@ -10373,17 +10625,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 seed_universe(&mut u);
                 (u, CandidateBuffer::new(), Drive::default(), 0, 0, SynapticLayer::new())
             };
-        let ollama_voice = {
-            let url = "http://127.0.0.1:11434";
-            let model =
-                std::env::var("KAI_OLLAMA_MODEL").unwrap_or_else(|_| "mistral:7b".to_string());
-            kai::cognition::OllamaVoice::new(url, &model)
-        };
+        let candle_voice = None;
+        let bitnet_voice = kai::cognition::BitnetVoice::new(
+            "bitnet/build/bin/Release/llama-server.exe",
+            "models/BitNet/bitnet-b1.58-2B-4T.gguf",
+            8080,
+        );
         kai::bridge::ipc_server::run_server(
             &mut universe,
             &mut candidates,
             &mut drive,
-            ollama_voice.as_ref(),
+            candle_voice.as_ref(),
+            bitnet_voice.as_ref(),
         );
         return Ok(());
     }

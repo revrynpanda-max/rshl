@@ -18,6 +18,7 @@ use crate::core::universe::Universe;
 use crate::core::SynapticLayer;
 use crate::cognition::voice::{generate_response_predictive, detect_query_type, BrainSignals};
 use crate::core::predictive::ConversationTrace;
+use crate::generate::{kai_chat, ChatRequest, ChatResponse};
 use chrono::{Timelike, Datelike, TimeZone};
 
 const SESSION_PATH: &str = "data/oracle_session.json";
@@ -353,14 +354,20 @@ pub fn start_oracle_server(universe: Arc<Mutex<Universe>>, synaptic_layer: Arc<M
 
         // Continuous Research: KAI learns 24/7 from the web
         let u_research = Arc::clone(&universe);
-        std::thread::spawn(move || run_continuous_research_loop(u_research));
+        let sl_research = Arc::clone(&synaptic_layer);
+        std::thread::spawn(move || run_continuous_research_loop(u_research, sl_research));
 
-        // Night Consolidation: temporarily disabled to prevent hangs on large state.
-        // TODO: re-enable once research timeout and CLI step diagnostics are hardened.
-        // let u_night = Arc::clone(&universe);
-        // let sl_night = Arc::clone(&synaptic_layer);
-        // let s_night = Arc::clone(&roundtable_session);
-        // std::thread::spawn(move || run_night_consolidation_loop(u_night, sl_night, s_night));
+        // Active Synaptogenesis: Constantly wire concepts together
+        let u_synap = Arc::clone(&universe);
+        let sl_synap = Arc::clone(&synaptic_layer);
+        let s_synap = Arc::clone(&roundtable_session);
+        std::thread::spawn(move || run_active_synaptogenesis_loop(u_synap, sl_synap, s_synap));
+
+        // Night Consolidation: re-enabled for weaving connections and synapses overnight.
+        let u_night = Arc::clone(&universe);
+        let sl_night = Arc::clone(&synaptic_layer);
+        let s_night = Arc::clone(&roundtable_session);
+        std::thread::spawn(move || run_night_consolidation_loop(u_night, sl_night, s_night));
     }
 
     for mut stream in listener.incoming().flatten() {
@@ -461,7 +468,9 @@ fn handle_client(
         "/api/transcript/search" => handle_transcript_search(stream, body, roundtable_session),
 
         "/api/local-speak"   => handle_local_speak(stream, body, universe),
+        "/api/chat"          => handle_chat(stream, body, universe, synaptic_layer.clone()),
         "/api/status"        => handle_status(stream, universe, synaptic_layer.clone()),
+        "/telemetry"         => handle_telemetry(stream),
         "/api/synapse/status" => handle_synapse_status(stream, synaptic_layer.clone(), universe),
         "/api/synapse/train" => handle_synapse_train(stream, body, synaptic_layer.clone(), universe),
         "/api/inspect"       => handle_inspect(stream, query_str),
@@ -926,10 +935,11 @@ fn build_contextual_memory_string(
         let sl = synaptic_layer.lock().unwrap();
         let field = crate::core::FieldState::compute(&u, 1);
         let hits = crate::core::NeuralBus::query_associative(&u, &sl, field.phi_g, query, 5, &[], "");
+        let lattice_size = u.cells().len();
         let labels: Vec<String> = hits.iter().map(|h| h.label.clone()).collect();
         drop(u); drop(sl);
         if !labels.is_empty() {
-            synaptic_layer.lock().unwrap().record_co_firing(&labels, 0.5, 0.5, field.chi, 0);
+            synaptic_layer.lock().unwrap().record_co_firing(&labels, 0.5, 0.5, field.chi, 0, lattice_size);
         }
         hits
     };
@@ -1208,12 +1218,7 @@ fn clean_public_chat_reply(raw: &str) -> String {
 }
 
 fn check_maintenance(stream: &mut TcpStream, session: &Arc<Mutex<Session>>) -> std::io::Result<bool> {
-    if session.lock().unwrap().maintenance_mode {
-        write_json(stream, 503, "Service Unavailable", &json!({ "message": "KAI is in night consolidation mode. Please try again shortly." }))?;
-        Ok(true)
-    } else {
-        Ok(false)
-    }
+    Ok(false) // OVERRIDE: Prevent stuck night consolidation state from blocking queries.
 }
 
 fn handle_discord_turn(
@@ -1255,6 +1260,54 @@ fn handle_discord_turn(
                 None, None, &req.user_id,
             );
         }
+        
+        // ── 6D Memory Indexing (Background) ──
+        let u_arc = universe.clone();
+        let text_clone = text.clone();
+        let from_clone = from.clone();
+        let user_id_clone = req.user_id.clone();
+        std::thread::spawn(move || {
+            let prompt = format!(
+                "Analyze the following text and extract 6 memory parameters: Time (e.g. Morning, 2026), Emotion (e.g. Happy, Neutral), Importance (1-10), People (who is mentioned), Location (where it happened), Topic (what it's about). \
+                 Output ONLY valid JSON exactly like this: {{\"Time\": \"...\", \"Emotion\": \"...\", \"Importance\": \"...\", \"People\": \"...\", \"Location\": \"...\", \"Topic\": \"...\"}} \
+                 Text: {}", text_clone
+            );
+            if let Ok(output) = std::process::Command::new("ollama")
+                .arg("run")
+                .arg("gemma4")
+                .arg(&prompt)
+                .output()
+            {
+                if let Ok(response) = String::from_utf8(output.stdout) {
+                    if let Some(start) = response.find('{') {
+                        if let Some(end) = response.rfind('}') {
+                            let json_str = &response[start..=end];
+                            if let Ok(json) = serde_json::from_str::<serde_json::Value>(json_str) {
+                                let time = json["Time"].as_str().unwrap_or("Unknown");
+                                let emotion = json["Emotion"].as_str().unwrap_or("Neutral");
+                                let importance = json["Importance"].as_str().unwrap_or("5");
+                                let people = json["People"].as_str().unwrap_or("None");
+                                let location = json["Location"].as_str().unwrap_or("Unknown");
+                                let topic = json["Topic"].as_str().unwrap_or("General");
+                                
+                                let enriched = format!("[Time: {} | Emotion: {} | Importance: {} | People: {} | Location: {} | Topic: {}] {}: {}", time, emotion, importance, people, location, topic, from_clone, text_clone);
+                                
+                                let mut u = u_arc.lock().unwrap();
+                                if user_id_clone.is_empty() {
+                                    u.store_or_reinforce(&enriched, "social-6d", "discord-chat", 1.0);
+                                } else {
+                                    u.store_or_reinforce_with_vec(
+                                        &enriched, "social-6d", "discord-chat", 1.0,
+                                        None, None, &user_id_clone,
+                                    );
+                                }
+                                println!("[MEMORY 6D] Successfully indexed memory trace for topic: {}", topic);
+                            }
+                        }
+                    }
+                }
+            }
+        });
     }
 
     // ── Vision Context (Private) ────────────────────────────────────────────────
@@ -1285,7 +1338,7 @@ fn handle_discord_turn(
 
     let (reply_from, reply_kind, reply, already_committed): (String, String, String, bool) = match route.target {
         DiscordTurnTarget::Kai => {
-            let reply = generate_oracle_kai_reply(&universe, &synaptic_layer, &task, &full_prompt_with_vision);
+            let reply = generate_oracle_kai_reply(&universe, &synaptic_layer, &task, &full_prompt_with_vision, &route.prompt);
             ("KAI".to_string(), "kai".to_string(), reply, false)
         }
         DiscordTurnTarget::OracleCoder => {
@@ -1342,6 +1395,10 @@ fn handle_discord_turn(
         let digest_text = format!("{}: {}", reply_from, reply);
         let u_for_digest = Arc::clone(&universe);
         let user_id_for_digest = req.user_id.clone();
+        
+        // Extract eloquence phrases from LLMs
+        let eloquence_phrases = crate::cognition::language::LanguageSystem::extract_eloquence(&reply);
+        
         std::thread::spawn(move || {
             let mut u = u_for_digest.lock().unwrap();
             if user_id_for_digest.is_empty() {
@@ -1351,6 +1408,10 @@ fn handle_discord_turn(
                     &digest_text, "social", "discord-reply", 0.9,
                     None, None, &user_id_for_digest,
                 );
+            }
+            
+            for phrase in eloquence_phrases {
+                u.store_or_reinforce(&phrase, "language", "eloquence", 0.85);
             }
         });
     }
@@ -1378,7 +1439,7 @@ fn handle_kai_turn(
     if check_maintenance(stream, &session)? { return Ok(()); }
     let req: KaiTurnRequest = serde_json::from_slice(body).unwrap_or_default();
     let task = { let s = session.lock().unwrap(); s.task.clone() };
-    let text = generate_oracle_kai_reply(&universe, &synaptic_layer, &task, &req.hint);
+    let text = generate_oracle_kai_reply(&universe, &synaptic_layer, &task, &req.hint, &req.hint);
     let mut s = session.lock().unwrap();
     s.turns.push(Turn { ts: now(), from: "KAI".into(), text, kind: "kai".into() });
     save_session(&s);
@@ -3416,43 +3477,176 @@ fn generate_oracle_kai_reply(
     universe: &Arc<Mutex<Universe>>,
     synaptic_layer: &Arc<Mutex<SynapticLayer>>,
     _task: &str,
-    prompt: &str
+    prompt: &str,
+    user_query: &str
 ) -> String {
     let mut u = universe.lock().unwrap();
     let sl = synaptic_layer.lock().unwrap();
 
     let trace = ConversationTrace::new(); // Simplified trace for Discord context
-    let query_type = detect_query_type(prompt);
-    let brain = BrainSignals::default(); // Live brain signals would be better
+    let query_type = detect_query_type(user_query);
+    let mut brain = BrainSignals::default(); // Live brain signals would be better
 
-    // 1. Semantic Retrieval
-    let hits = crate::core::NeuralBus::query_associative(&u, &sl, 0.5, prompt, 12, &[], "");
+    // 1. Semantic Retrieval (Upgraded to Native Multi-Hop)
+    // Traverse up to 3 degrees of separation to build complex logic chains natively.
+    let hits = crate::core::NeuralBus::query_multi_hop(&u, &sl, 0.5, user_query, 12, &[], "", 3);
+    let lattice_size = u.cells().len();
     let labels: Vec<String> = hits.iter().map(|h| h.label.clone()).collect();
     drop(sl);
     if !labels.is_empty() {
-        synaptic_layer.lock().unwrap().record_co_firing(&labels, 0.5, 0.5, 0.2, 0);
+        synaptic_layer.lock().unwrap().record_co_firing(&labels, 0.5, 0.5, 0.2, 0, lattice_size);
     }
 
     if hits.is_empty() { return "Lattice quiet on this.".into(); }
 
-    // 2. Native generative decode when lexicon is available
-    // Compute a field state from the universe so the generative encoder has
-    // modulation signals (goal alignment, contradiction pressure, coherence).
-    let field = crate::core::FieldState::compute(&u, 1);
-    let lex = crate::cognition::voice::get_lexicon();
+    // Detect if sensitive grief context is active
+    let grief_active = crate::cognition::voice::detect_grief_association(user_query, &hits);
+    let mut system_prompt = "You are KAI's language synthesis center. You must ONLY use the provided 'Memory Lattice Snippet' to answer the user's question. \
+                             If the snippet is completely irrelevant or does not contain the answer, you MUST state that you do not have that concept in your lattice right now. \
+                             DO NOT invent answers. DO NOT use your internal LLM knowledge. \
+                             Translate the raw lattice concepts into a highly natural, fluent, and direct spoken English sentence. \
+                             Max 2 sentences. Avoid robotic phrasing. Do not add conversational boilerplate.".to_string();
 
-    generate_response_predictive(
-        prompt,
-        &hits,
+    let is_factual = matches!(
         query_type,
-        &brain,
-        &[], // context handled by prompt prefix
+        crate::cognition::voice::QueryType::ExplanationQuestion |
+        crate::cognition::voice::QueryType::RequestForInfo |
+        crate::cognition::voice::QueryType::IdentityQuestion
+    );
+
+    if grief_active {
+        brain.grieving = true;
+        brain.empathy = 0.90;
+        brain.arousal = 0.10;
+        brain.conflict = 0.02;
+        
+        if is_factual {
+            system_prompt.push_str("\n\n══════════════ SENSITIVE CONTEXT (CALM FACTS) ══════════════\n\
+                                    A sensitive memory of family loss is active in the conversation history.\n\
+                                    However, the user is currently asking for objective facts.\n\
+                                    Deliver the requested facts calmly, clearly, and directly.\n\
+                                    Do not express emotional grief support or de-escalation statements here. Keep it professional, objective, and peaceful.");
+        } else {
+            system_prompt.push_str("\n\n══════════════ SENSITIVE CONTEXT WARNING ══════════════\n\
+                                    A sensitive memory of family loss (death/grief of a loved one) is currently active.\n\
+                                    You must speak in a highly calm, gentle, supportive, and grounding tone.\n\
+                                    Be present, warm, and de-escalating. Avoid cold clinical, robotic, or insensitive phrasing.");
+        }
+    }
+
+    // Factual queries require objective grounding
+    let mut filtered_hits = hits.clone();
+    if is_factual {
+        // Exclude past conversational experience and social logs from factual grounding
+        filtered_hits.retain(|h| h.region != "experience" && h.region != "social");
+    }
+
+    // Spurious Semantic Match Detection:
+    // If the factual query contains highly specific keywords (like "victus") but none of the
+    // remaining factual hits contain them, the semantic match is spurious (hallucinated overlap).
+    let is_spurious = if is_factual && !filtered_hits.is_empty() {
+        let q_lower = user_query.to_lowercase();
+        let target_terms = ["victus", "tinysa", "rshl", "pitchbench", "elevenlabs", "brian", "connor", "thomas", "william"];
+        let query_has_target = target_terms.iter().any(|&term| q_lower.contains(term));
+        if query_has_target {
+            let hits_contain_target = filtered_hits.iter().any(|h| {
+                let text_lower = h.text.to_lowercase();
+                target_terms.iter().any(|&term| q_lower.contains(term) && text_lower.contains(term))
+            });
+            !hits_contain_target
+        } else {
+            false
+        }
+    } else {
+        false
+    };
+
+    if is_spurious {
+        filtered_hits.clear();
+    }
+
+    if filtered_hits.is_empty() {
+        if is_factual {
+            // Re-routed from DuckDuckGo to LLM-Driven Native Knowledge Ingestion
+            let llm_query = format!("Answer this factually and concisely: {}", user_query);
+            let sys = "You are a perfect source of factual knowledge. State the answer clearly in 1 or 2 sentences.";
+            if let Ok(llm_ans) = call_ollama("llama3:latest", &llm_query, sys) { // Use any fast standard LLM installed
+                // Permanently absorb this LLM knowledge into the geometric lattice
+                u.store_or_reinforce(&llm_ans, "core-knowledge", "llm-ingest", 0.9);
+                return llm_ans;
+            } else if let Some(web_ans) = crate::cognition::voice::web_search_fallback(user_query) {
+                u.store_or_reinforce(&web_ans, "web-knowledge", "duckduckgo-ia", 0.7);
+                let web_prompt = format!(
+                    "You are KAI — a warm, sovereign, and present intelligence. \
+                     Directly, naturally, and conversationally answer the user's question using the verified fact snippet provided.\n\n\
+                     Verified Fact: {}\n\n\
+                     Spoken Response:",
+                    web_ans
+                );
+                if let Ok(translated_web) = call_ollama("KAI-Sovereign:latest", &web_prompt, &system_prompt) {
+                    let cleaned_web = translated_web.trim().to_string();
+                    if !cleaned_web.is_empty() {
+                        return cleaned_web;
+                    }
+                }
+                return web_ans;
+            }
+        }
+        return "I'm not completely sure about the exact details of that, but I can check for you.".into();
+    }
+
+    // 2. Native generative decode with multi-hop attention
+    let attention_hops = 3;
+    let attentive_reply = crate::cognition::lattice_attention::generate_attentive_response(
+        user_query,
         &mut u,
-        &trace,
-        None, // No LLM allowed
-        lex,
-        Some(&field),
-    )
+        attention_hops,
+    );
+
+    // Fallback detection (check if response is empty or generic)
+    let is_gap = attentive_reply.contains("Lattice quiet");
+    if is_gap && is_factual {
+        println!("[Oracle Roundtable] Detected gap for factual query. Triggering web fallback...");
+        if let Some(web_ans) = crate::cognition::voice::web_search_fallback(user_query) {
+            u.store_or_reinforce(&web_ans, "web-knowledge", "duckduckgo-ia", 0.7);
+            return format!("[WEB DECODE] {}", web_ans);
+        } else {
+            return "[LATTICE DECODE] Insufficient statistical confidence. Gap detected.".into();
+        }
+    }
+
+    // 3. Internal Monologue (Self-Talk) Phase
+    // KAI explicitly talks to himself first to form a chain of thought
+    let monologue_query = format!("Internal Thought: {}", user_query);
+    let mut internal_monologue = crate::cognition::lattice_attention::generate_autoregressive_response(
+        &monologue_query,
+        &mut u,
+        15, // max 15 tokens for internal thought
+    );
+    
+    // Clean up the monologue and log it to spectate console
+    internal_monologue = internal_monologue.replace("Internal Thought: ", "").trim().to_string();
+    if !internal_monologue.is_empty() {
+        println!("[KAI INTERNAL THOUGHT] {}", internal_monologue);
+        // Persist the thought to the geometric memory universe
+        u.store_or_reinforce(&internal_monologue, "internal", "monologue", 0.9);
+    }
+
+    // 4. Language Synthesis via Native Autoregressive Lattice
+    // Replaces the single-pass MLP to build responses word-by-word natively, now incorporating the thought
+    let final_query = if internal_monologue.is_empty() {
+        user_query.to_string()
+    } else {
+        format!("{} \n My Thought: {}", user_query, internal_monologue)
+    };
+
+    let ar_reply = crate::cognition::lattice_attention::generate_autoregressive_response(
+        &final_query,
+        &mut u,
+        25, // max 25 tokens for final reply
+    );
+    
+    ar_reply
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -3503,23 +3697,58 @@ fn run_oracle_ingest_loop(universe: Arc<Mutex<Universe>>, session: Arc<Mutex<Ses
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-//  CONTINUOUS RESEARCH — KAI researches 24/7 to grow smarter
-// ═══════════════════════════════════════════════════════════════════════════════
+fn get_ungrounded_concepts(universe: &Universe, synaptic_layer: &SynapticLayer, batch_size: usize) -> Vec<String> {
+    let cells = universe.cells();
+    if cells.is_empty() || batch_size == 0 { return Vec::new(); }
+    
+    use rand::seq::SliceRandom;
+    let mut rng = rand::thread_rng();
+    
+    // Pick a random sample of cells and find ones with 0 synapses
+    let mut indices: Vec<usize> = (0..cells.len()).collect();
+    indices.shuffle(&mut rng);
+    
+    let mut results = Vec::new();
+    for &idx in indices.iter() {
+        let label = &cells[idx].label;
+        if synaptic_layer.strongest_from(label, 1).is_empty() {
+            let words: Vec<&str> = label.split_whitespace().take(3).collect();
+            if !words.is_empty() {
+                results.push(words.join(" "));
+                if results.len() >= batch_size {
+                    break;
+                }
+            }
+        }
+    }
+    results
+}
 
-fn run_continuous_research_loop(universe: Arc<Mutex<Universe>>) {
+fn run_continuous_research_loop(universe: Arc<Mutex<Universe>>, synaptic_layer: Arc<Mutex<SynapticLayer>>) {
     loop {
         std::thread::sleep(Duration::from_secs(900)); // Every 15 minutes
 
         println!("[ContinuousResearch] KAI is researching...");
         let mut total_added = 0;
 
-        // Do 2 research cycles every 15 minutes (during work hours)
-        // Do 5 research cycles every 15 minutes (during night — KAI learns faster when Ryan sleeps)
         let cycles = if is_working_hours() { 2 } else { 5 };
 
         for _ in 0..cycles {
-            if let Some(result) = crate::bridge::research_cycle_async() {
+            // Determine if we should research a random topic or ground an isolated concept
+            let ungrounded = {
+                let u = universe.lock().unwrap();
+                let sl = synaptic_layer.lock().unwrap();
+                get_ungrounded_concepts(&u, &sl, 1).pop()
+            };
+
+            let result = if let Some(topic) = ungrounded {
+                println!("[ContinuousResearch] Exploring ungrounded concept: {}", topic);
+                crate::bridge::research_cycle_with_topic_async(&topic)
+            } else {
+                crate::bridge::research_cycle_async()
+            };
+
+            if let Some(result) = result {
                 let mut u = universe.lock().unwrap();
                 for (text, region, source, strength) in result.cells {
                     if u.ingest_and_verify(&text, &region, &source, strength) {
@@ -3537,6 +3766,109 @@ fn run_continuous_research_loop(universe: Arc<Mutex<Universe>>) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+//  ACTIVE SYNAPTOGENESIS — KAI actively cross-wires existing concepts
+// ═══════════════════════════════════════════════════════════════════════════════
+
+fn run_active_synaptogenesis_loop(
+    universe: Arc<Mutex<Universe>>,
+    synaptic_layer: Arc<Mutex<SynapticLayer>>,
+    session: Arc<Mutex<Session>>,
+) {
+    static POOL: std::sync::OnceLock<rayon::ThreadPool> = std::sync::OnceLock::new();
+    let pool = POOL.get_or_init(|| {
+        let num_cores = (num_cpus::get() as f32 * 0.75).round().max(1.0) as usize;
+        rayon::ThreadPoolBuilder::new().num_threads(num_cores).build().unwrap()
+    });
+
+    loop {
+        // 50ms sleep — keeps API responsive without wasting cycles
+        std::thread::sleep(Duration::from_millis(50));
+
+        let (seeds, phi_g, chi, p, throttle) = {
+            let u = universe.lock().unwrap();
+            let sl = synaptic_layer.lock().unwrap();
+
+            let total_cells = u.cells().len() as f32;
+            let grounded_cells = sl.synapses.len() as f32;
+            let mut p = if total_cells > 0.0 { grounded_cells / (total_cells * 4.0) } else { 0.0 };
+            if p > 1.0 { p = 1.0; }
+
+            let max_boost: f32 = 1000.0;
+            
+            // Tightened Biological Plateau Curve
+            // Accelerates fast in first 20%, cruises at max speed, then gently decelerates in last 20%.
+            let p_scaled = if p < 0.20 {
+                p / 0.20
+            } else if p > 0.80 {
+                (1.0 - p) / 0.20
+            } else {
+                1.0
+            };
+            
+            // Smooth easing (Smoothstep) to keep the acceleration feeling natural, not jerky
+            let ease = p_scaled * p_scaled * (3.0 - 2.0 * p_scaled);
+            let throttle: f32 = 1.0 + max_boost * ease;
+            
+            let batch_size = throttle.max(1.0).round() as usize;
+
+            let mut seeds: Vec<String> = get_ungrounded_concepts(&u, &sl, batch_size);
+            if seeds.is_empty() {
+                use rand::Rng;
+                let mut rng = rand::thread_rng();
+                let cells = u.cells();
+                if !cells.is_empty() {
+                    let n = batch_size.min(cells.len());
+                    for _ in 0..n {
+                        seeds.push(cells[rng.gen_range(0..cells.len())].label.clone());
+                    }
+                }
+            }
+
+            let phi = session.lock().unwrap().vitals.phi_g.clamp(0.0, 1.0);
+            (seeds, phi, 0.1f32, p, throttle)
+        };
+
+        if seeds.is_empty() { continue; }
+
+        println!("[Synaptogenesis] Logistic Throttle Velocity: {:.2}x (P={:.4}) | Processing {} parallel concepts...", throttle, p, seeds.len());
+
+        let mut total_wired = 0;
+
+        use rayon::prelude::*;
+        let hits_list = {
+            let u = universe.lock().unwrap();
+            let sl = synaptic_layer.lock().unwrap();
+            
+            // RAYON BREAKTHROUGH: 
+            // By holding the Mutex lock on the main thread, we get an immutable &Universe.
+            // We can safely hand this immutable reference to the custom thread pool (75% CPU) at once!
+            // No deadlock because the threads don't try to lock the Mutex themselves.
+            pool.install(|| {
+                seeds.par_iter().map(|seed_text| {
+                    crate::core::synapse::NeuralBus::query_multi_hop(&u, &sl, phi_g, seed_text, 15, &[], "", 3)
+                }).collect::<Vec<_>>()
+            })
+        };
+
+        // Now that the heavy parallel read is done, we lock once to write the results
+        if !hits_list.is_empty() {
+            let u_len = universe.lock().unwrap().cells().len();
+            let mut sl = synaptic_layer.lock().unwrap();
+            for hits in hits_list {
+                if hits.len() > 1 {
+                    let active_labels: Vec<String> = hits.into_iter().map(|h| h.label).collect();
+                    sl.record_co_firing(&active_labels, 0.8, phi_g, chi, 0, u_len);
+                    total_wired += active_labels.len() - 1;
+                }
+            }
+        }
+
+        println!("[Synaptogenesis] Batch complete. Established {} new geometric bridges.", total_wired);
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+
 //  NIGHT CONSOLIDATION — Train while Ryan sleeps
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -3619,12 +3951,15 @@ fn run_night_consolidation_loop(
         };
 
         // 1. Compact save (in-process, doesn't need CLI)
+        // CRITICAL FIX: must pass the REAL synaptic_layer, not a blank one.
+        // Previously, a fresh empty SynapticLayer was saved here, wiping all
+        // in-memory connections (geometric bridges) every consolidation cycle.
         {
             println!("[NightConsolidation] Step: compact-save");
             let mut u = universe.lock().unwrap();
+            let sl = synaptic_layer.lock().unwrap();
             let candidates = crate::cognition::candidates::CandidateBuffer::new();
             let drive = crate::drive::Drive::default();
-            let sl = crate::core::SynapticLayer::new(); // snapshot only
             let _ = crate::persistence::save_compact(&base_dir, &mut *u, &candidates, &drive, &sl, 0, 0);
         }
 
@@ -4206,10 +4541,9 @@ fn handle_status(
     
     drop(u);
 
-    let mut sys = sysinfo::System::new_all();
-    // sysinfo needs a baseline measurement for CPU; first call after new_all()
-    // returns a stale / inflated value. We do two refreshes with a 200ms sleep
-    // to get an accurate delta.
+    let mut sys = sysinfo::System::new();
+    // Refresh only the specific components we need
+    sys.refresh_memory();
     sys.refresh_cpu_usage();
     std::thread::sleep(std::time::Duration::from_millis(200));
     sys.refresh_cpu_usage();
@@ -4225,6 +4559,7 @@ fn handle_status(
         "cpu": format!("{:.1}%", cpu_load),
         "ram": format!("{}GB / {}GB", used_mem, total_mem),
         "lattice_size": lattice_size,
+        "total_cells": lattice_size,
         "anchor_count": anchor_count,
         "synapses": synapse_count,
         "phi_g": phi_g,
@@ -4239,21 +4574,20 @@ fn handle_synapse_status(
     synaptic_layer: Arc<Mutex<SynapticLayer>>,
     universe: Arc<Mutex<Universe>>,
 ) -> std::io::Result<()> {
-    let sl = synaptic_layer.lock().unwrap();
-    let synapse_count = sl.synapses.len();
+    let total_cells = { universe.lock().unwrap().cell_count() };
     
-    // Estimate unique neurons with outgoing connections
-    let mut unique_sources = std::collections::HashSet::new();
-    for syn in &sl.synapses {
-        unique_sources.insert(syn.pre_label.clone());
-    }
-
-    let u = universe.lock().unwrap();
-    let total_cells = u.cell_count();
+    let (synapse_count, neurons_with_outgoing) = {
+        let sl = synaptic_layer.lock().unwrap();
+        let mut unique_sources = std::collections::HashSet::new();
+        for syn in &sl.synapses {
+            unique_sources.insert(syn.pre_label.clone());
+        }
+        (sl.synapses.len(), unique_sources.len())
+    };
 
     write_json(stream, 200, "OK", &serde_json::json!({
         "synapses": synapse_count,
-        "neurons_with_outgoing": unique_sources.len(),
+        "neurons_with_outgoing": neurons_with_outgoing,
         "total_cells": total_cells,
         "density_per_cell": if total_cells > 0 { (synapse_count as f64) / (total_cells as f64) } else { 0.0 },
         "status": "Operational"
@@ -4289,10 +4623,11 @@ fn handle_synapse_train(
 
     let start_count = sl.synapses.len();
     
+    let lattice_size = universe.lock().unwrap().cells().len();
     for pair_group in req.pairs {
         // Only train if there's at least 2 concepts to co-fire
         if pair_group.len() > 1 {
-            sl.record_co_firing(&pair_group, dop, phi, chi, 0);
+            sl.record_co_firing(&pair_group, dop, phi, chi, 0, lattice_size);
         }
     }
 
@@ -4354,23 +4689,7 @@ fn handle_inspect(stream: &mut TcpStream, query_str: &str) -> std::io::Result<()
 // ----------------------------------------------
 
 fn is_working_hours() -> bool {
-    use chrono::{Datelike, Timelike, Utc, FixedOffset};
-    let est = FixedOffset::west_opt(5 * 3600).unwrap();
-    let now = Utc::now().with_timezone(&est);
-    let h = now.hour();
-    let weekday = now.weekday();
-
-    // Monday - Friday: 3:00 PM - 11:00 PM (15-23)
-    if weekday != chrono::Weekday::Sat && weekday != chrono::Weekday::Sun {
-        return h >= 15 && h < 23;
-    }
-
-    // Saturday Split Shift (Deep Lab): 9:00 AM - 2:00 PM (9-14) AND 9:00 PM - 12:00 AM (21-24)
-    if weekday == chrono::Weekday::Sat {
-        return (h >= 9 && h < 14) || (h >= 21 && h < 24);
-    }
-
-    false
+    true // OVERRIDE: KAI is always awake right now so Ryan can test him.
 }
 
 
@@ -4534,6 +4853,53 @@ fn handle_local_speak(
     }
 }
 
+// ── KAI Native Chat (memory-aware LLM generation) ───────────────────────────
+
+fn handle_chat(
+    stream: &mut TcpStream,
+    body: &[u8],
+    universe: Arc<Mutex<Universe>>,
+    _synaptic_layer: Arc<Mutex<SynapticLayer>>,
+) -> std::io::Result<()> {
+    let req: ChatRequest = match serde_json::from_slice(body) {
+        Ok(r) => r,
+        Err(e) => {
+            return write_json(stream, 400, "Bad Request", &json!({"error": format!("invalid chat body: {}", e)}));
+        }
+    };
+
+    if req.message.trim().is_empty() {
+        return write_json(stream, 400, "Bad Request", &json!({"error": "message is required"}));
+    }
+
+    // Load API keys and pick provider
+    let keys = load_keys();
+    let provider = req.provider.as_deref().unwrap_or("groq");
+    let model = req.model.as_deref().unwrap_or("llama-3.1-8b-instant");
+
+    let api_key = match provider {
+        "groq" => keys.groq.as_deref(),
+        "openai" => keys.openai.as_deref(),
+        "xai" => keys.xai.as_deref(),
+        "ollama" => Some(""), // Ollama needs no key
+        _ => keys.groq.as_deref(),
+    };
+
+    let key_str = match api_key {
+        Some(k) => k,
+        None => {
+            return write_json(stream, 503, "Service Unavailable", &json!({
+                "error": format!("No API key configured for provider: {}", provider)
+            }));
+        }
+    };
+
+    match kai_chat(universe, key_str, provider, model, &req) {
+        Ok(resp) => write_json(stream, 200, "OK", &serde_json::to_value(resp).unwrap()),
+        Err(e) => write_json(stream, 503, "Generation Failed", &json!({"error": e})),
+    }
+}
+
 // ── RSHL Hybrid Retrieval ───────────────────────────────────────────────────
 
 fn handle_rshl_query(
@@ -4622,7 +4988,7 @@ fn handle_rshl_reason(
     };
 
     let task = { let s = session.lock().unwrap(); s.task.clone() };
-    let reply = generate_oracle_kai_reply(&universe, &synaptic_layer, &task, &req.prompt);
+    let reply = generate_oracle_kai_reply(&universe, &synaptic_layer, &task, &req.prompt, req.hint.as_deref().unwrap_or(&req.prompt));
     
     write_json(stream, 200, "OK", &json!({ "reply": reply }))
 }
@@ -4898,7 +5264,7 @@ fn write_json(stream: &mut TcpStream, code: u16, status: &str, data: &serde_json
     use std::io::Write;
     let body = serde_json::to_string(data).unwrap();
     let resp = format!(
-        "HTTP/1.1 {} {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        "HTTP/1.1 {} {}\r\nAccess-Control-Allow-Origin: *\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
         code, status, body.len(), body
     );
     stream.write_all(resp.as_bytes())?;
@@ -4908,7 +5274,7 @@ fn write_json(stream: &mut TcpStream, code: u16, status: &str, data: &serde_json
 fn write_simple(stream: &mut TcpStream, code: u16, status: &str, msg: &str) -> std::io::Result<()> {
     use std::io::Write;
     let resp = format!(
-        "HTTP/1.1 {} {}\r\nContent-Type: text/plain\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        "HTTP/1.1 {} {}\r\nAccess-Control-Allow-Origin: *\r\nContent-Type: text/plain\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
         code, status, msg.len(), msg
     );
     stream.write_all(resp.as_bytes())?;
@@ -5506,6 +5872,20 @@ fn handle_kai_spectate(
     let mut s = session.lock().unwrap();
     let events: Vec<SpectateEvent> = std::mem::take(&mut s.spectate_buffer);
     write_json(stream, 200, "OK", &json!({ "events": events }))
+}
+
+fn handle_telemetry(stream: &mut TcpStream) -> std::io::Result<()> {
+    if let Ok(html) = std::fs::read_to_string("cern_telemetry.html") {
+        use std::io::Write;
+        let resp = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            html.len(), html
+        );
+        stream.write_all(resp.as_bytes())?;
+        stream.flush()
+    } else {
+        write_simple(stream, 404, "Not Found", "cern_telemetry.html not found in C:\\KAI")
+    }
 }
 
 

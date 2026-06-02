@@ -18,7 +18,7 @@ const LATTICE_URL = process.env.ORACLE_API_URL || "http://127.0.0.1:3334";
 const QUERY_TIMEOUT_MS = 1500;   // was 4000 — 1.5s is the UX pain threshold
 const STORE_TIMEOUT_MS = 1000;   // store should be fire-and-forget fast
 const CORPUS_TIMEOUT_MS = 800;   // corpus logging must never block chat
-const CHAT_TIMEOUT_MS = 5000;    // native voice can take longer
+const CHAT_TIMEOUT_MS = 60000;   // native voice can take longer, give it 60s
 
 // ── LRU Cache ───────────────────────────────────────────────────────────────
 // Simple in-memory cache for queryLattice. Key = "question|limit|region|userId"

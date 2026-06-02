@@ -442,21 +442,9 @@ pub fn research_topic(topic: &str) -> Option<(String, Vec<String>, Vec<String>)>
     Some((main, findings, sources))
 }
 
-/// Autonomous research cycle — KAI researches topics that help him improve.
+/// Autonomous research cycle — KAI researches a specific ungrounded concept.
 /// Returns cells to be ingested.
-pub fn research_cycle_async() -> Option<IntakeResult> {
-    use rand::Rng;
-    let mut rng = rand::thread_rng();
-
-    // 70% chance to research self-improvement, 30% general exploration
-    let topic = if rng.gen_bool(0.7) {
-        let idx = rng.gen_range(0..RESEARCH_TOPICS.len());
-        RESEARCH_TOPICS[idx]
-    } else {
-        let idx = rng.gen_range(0..EXPLORATION_TOPICS.len());
-        EXPLORATION_TOPICS[idx]
-    };
-
+pub fn research_cycle_with_topic_async(topic: &str) -> Option<IntakeResult> {
     let (main, findings, _sources) = research_topic(topic)?;
     let mut cells = Vec::new();
 
@@ -491,3 +479,22 @@ pub fn research_cycle_async() -> Option<IntakeResult> {
         cells,
     })
 }
+
+/// Autonomous research cycle — KAI researches topics that help him improve.
+/// Returns cells to be ingested.
+pub fn research_cycle_async() -> Option<IntakeResult> {
+    use rand::Rng;
+    let mut rng = rand::thread_rng();
+
+    // 70% chance to research self-improvement, 30% general exploration
+    let topic = if rng.gen_bool(0.7) {
+        let idx = rng.gen_range(0..RESEARCH_TOPICS.len());
+        RESEARCH_TOPICS[idx]
+    } else {
+        let idx = rng.gen_range(0..EXPLORATION_TOPICS.len());
+        EXPLORATION_TOPICS[idx]
+    };
+
+    research_cycle_with_topic_async(topic)
+}
+

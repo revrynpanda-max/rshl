@@ -138,6 +138,8 @@ impl HierarchyBuilder {
                 children: group.iter().map(|&i| i as u32).collect(),
                 parent: None,
                 text_id: parent_idx as u32,
+                is_archived: false,
+                activation_heat: 0.0,
             };
 
             universe.cells_mut().push(parent_cell);

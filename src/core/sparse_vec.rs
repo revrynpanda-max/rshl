@@ -214,6 +214,19 @@ impl SparseVec {
         data
     }
 
+    /// Invert the semantic meaning of this vector (Mirror Neurons).
+    pub fn invert(&self) -> Self {
+        let mut vals = Vec::with_capacity(self.vals.len());
+        for &v in &self.vals {
+            vals.push(-v);
+        }
+        Self {
+            nz: self.nz.clone(),
+            vals,
+            cached_norm: self.cached_norm,
+        }
+    }
+
     /// Read a single dimension. Returns -1, 0, or +1.
     pub fn get(&self, idx: usize) -> i8 {
         if idx >= DIM {

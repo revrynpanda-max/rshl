@@ -150,7 +150,7 @@ process.on('exit', clearVoiceActive);
 process.on('SIGINT', () => { clearVoiceActive(); process.exit(0); });
 process.on('SIGTERM', () => { clearVoiceActive(); process.exit(0); });
 
-const ELEVEN_LABS_KEY = process.env.ELEVENLABS_API_KEY;
+const ELEVEN_LABS_KEY = null; // ElevenLabs subscription inactive — using edge-tts
 const OPENAI_KEY = process.env.OPENAI_API_KEY;
 const BOT_NAME = "Leo";
 const PORT = 3400;
@@ -1334,7 +1334,7 @@ async function ensureVoiceConnection(channelId, guild, retries = 3, userId = nul
 
     // --- IDENTITY ANCHOR: Resolve real names immediately (MemPalace Link) ---
     if (!userId) {
-      console.warn(`[Leo/Voice] ensureVoiceConnection called with no userId — skipping identity anchor.`);
+      // Expected during startup and global heartbeats
       return;
     }
     const { resolveIdentityFromMemory } = await import('../shared/identities.mjs');

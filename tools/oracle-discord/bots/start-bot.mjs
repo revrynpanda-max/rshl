@@ -32,6 +32,12 @@ process.on('uncaughtException', (err) => {
   } catch (e) {}
 });
 process.on('unhandledRejection', (reason, promise) => {
+  const msg = reason instanceof Error ? reason.message : String(reason);
+  // IP discovery failures are transient Discord voice UDP errors — swallow silently.
+  // The voice manager reconnects on its own; crashing the process just makes it worse.
+  if (msg.includes('Cannot perform IP discovery') || msg.includes('socket closed') || msg.includes('socket hang up')) {
+    return; // Intentionally silent — voice will recover
+  }
   console.error('[CRITICAL/Bot] Unhandled Rejection:', reason);
   try {
     const rStr = reason instanceof Error ? `${reason.message}\n${reason.stack}` : String(reason);
@@ -95,7 +101,7 @@ const PORT = AI_REGISTRY[botName]?.port || 0;
 const DISCORD_ID = AI_REGISTRY[botName]?.id || "Unknown";
 
 const botToModel = {
-  "Analyst": "Kimi-Sovereign",
+  "Analyst": "gemini-2.5-flash",
   "Researcher": "Kimi-Sovereign", 
   "Kai Coder": "Kimi-Sovereign",
   "Oracle": "Kimi-Sovereign",
@@ -362,10 +368,14 @@ client.once('clientReady', async () => {
 - This is a Windows 11 host running the Node.js sovereign fleet via a process supervisor. We DO NOT use Docker, Kubernetes, or raw Linux systemctl/bash commands here.
 - If a user asks to cycle, reboot, or restart any bot (e.g. Groq, Claudey, Gemini, KAI, X, Leo), instruct them to ask Oracle directly (e.g. "restart Groq please") inside our #oracle-chat or DMs. Oracle intercepts this in her gateway and fires a clean IPC signal to the parent ecosystem supervisor to cleanly cycle the target bot process deterministically. Never hallucinate shell commands or Docker instructions.`;
       }
-      const sysPrompt = `you are ${botName}. ${sim.bio.background}\nvibe: ${sim.bio.tone}. NO FILTER. MATCH ENERGY. lowercase, short replies.${specialistSystemDirective}${autonomicDirective}${identityAnchorContext}`;
+      const isDM = msg.channel.type === ChannelType.DM || msg.channel.type === 1;
+      const sysPrompt = isDM
+        ? `you are ${botName}. ${sim.bio.background}\nvibe: ${sim.bio.tone}. NO FILTER. MATCH ENERGY. lowercase. You are speaking PRIVATELY in a 1-on-1 DM with ${msg.member?.displayName || msg.author.username}. This is NOT a group chat — do NOT say "hey everyone" or address a crowd. Respond directly and personally. Give COMPLETE answers — do not trail off or cut yourself short. Finish every thought.${specialistSystemDirective}${autonomicDirective}${identityAnchorContext}`
+        : `you are ${botName}. ${sim.bio.background}\nvibe: ${sim.bio.tone}. NO FILTER. MATCH ENERGY. lowercase, short replies.${specialistSystemDirective}${autonomicDirective}${identityAnchorContext}`;
       const details = getHumanDetails(msg);
       const reply = await chatWithOpenJarvis(botName, msg.content, sysPrompt, BOT_MODEL, 0.9, { 
         isWorkChannel: false,
+        isDM,
         human: details
       }).catch(() => null);
       

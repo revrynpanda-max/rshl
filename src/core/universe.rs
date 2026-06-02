@@ -103,6 +103,12 @@ pub struct Cell {
     /// ID into the TextStore for the full text of this cell.
     #[serde(default)]
     pub text_id: u32,
+    /// Whether this cell has been mathematically compressed into the Deep Vault.
+    #[serde(default)]
+    pub is_archived: bool,
+    /// Axon Whorls: firing frequency heat to trigger refractory knots.
+    #[serde(default)]
+    pub activation_heat: f32,
 }
 
 impl<'de> Deserialize<'de> for Cell {
@@ -145,6 +151,10 @@ impl<'de> Deserialize<'de> for Cell {
             parent: Option<u32>,
             #[serde(default)]
             text_id: u32,
+            #[serde(default)]
+            is_archived: bool,
+            #[serde(default)]
+            activation_heat: f32,
         }
 
         fn default_strength() -> f32 {
@@ -198,6 +208,8 @@ impl<'de> Deserialize<'de> for Cell {
             children: raw.children,
             parent: raw.parent,
             text_id: raw.text_id,
+            is_archived: raw.is_archived,
+            activation_heat: raw.activation_heat,
         })
     }
 }
@@ -234,7 +246,7 @@ pub struct QueryHit {
 
 impl QueryHit {
     pub fn from_cell(cell: &Cell, score: f32) -> Self {
-        Self {
+        let mut hit = Self {
             label: cell.label.clone(),
             text: cell.claim.text.clone(),
             vec: cell.claim.vec.clone(),
@@ -247,7 +259,23 @@ impl QueryHit {
             channel_id: String::new(),
             message_id: String::new(),
             keywords: Vec::new(),
+        };
+
+        if cell.is_archived {
+            let lh = hash_label(&cell.label);
+            if let Ok(math_cell) = crate::core::deep_vault::recall_from_vault(lh) {
+                if let Ok(payload_str) = String::from_utf8(math_cell.payload) {
+                    let parts: Vec<&str> = payload_str.splitn(3, '|').collect();
+                    if parts.len() == 3 {
+                        hit.label = parts[0].to_string();
+                        hit.text = parts[1].to_string();
+                        hit.source = parts[2].to_string();
+                    }
+                }
+            }
         }
+
+        hit
     }
 }
 
@@ -792,6 +820,35 @@ impl Universe {
         pruned
     }
 
+    /// Moves cells that haven't been accessed recently into the Deep Vault.
+    /// This converts them to math, compresses, encrypts, and frees RAM.
+    pub fn archive_dormant_cells(&mut self) -> usize {
+        crate::core::deep_vault::init_vault();
+        let mut count = 0;
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
+        let archive_threshold = 3600 * 24 * 7; // 7 days of inactivity
+        
+        for cell in self.cells.iter_mut() {
+            // Never archive Truth Anchors or recently fired cells
+            if !cell.is_archived && cell.claim.confidence < 5.0 && (now.saturating_sub(cell.last_fired) > archive_threshold) {
+                let lh = hash_label(&cell.label);
+                if crate::core::deep_vault::archive_to_vault(cell, lh).is_ok() {
+                    cell.is_archived = true;
+                    // Free the strings from RAM
+                    cell.claim.text.clear();
+                    cell.claim.text.shrink_to_fit();
+                    cell.claim.source = std::sync::Arc::from("");
+                    count += 1;
+                }
+            }
+        }
+        
+        if count > 0 {
+            println!("[Deep Vault] Mathematically compressed {} dormant cells.", count);
+        }
+        count
+    }
+
     /// Recycle dead claims (vitality == 0).
     /// Claims that have lost their biological vitality are decomposed and removed.
     pub fn recycle_dead_claims(&mut self) -> usize {
@@ -991,11 +1048,46 @@ impl Universe {
             children: Vec::new(),
             parent: None,
             text_id: 0,
+            is_archived: false,
+            activation_heat: 0.0,
         });
         self.mark_dirty(idx);
 
         // --- Life Equation Accumulator ---
         self.update_life_equation(user_id, &vec);
+
+        // --- Mirror Neurons (Connectome Upgrade) ---
+        // Automatically spawn a perfect opposite perspective for high-strength cells.
+        if strength >= 4.0 {
+            let mirror_label = format!("[MIRROR] {}", text);
+            let mirror_vec = vec.invert();
+            let mut mirror_claim = Claim::new(&mirror_label, source, strength * 0.9, mirror_vec.clone());
+            mirror_claim.layer = initial_layer;
+            mirror_claim.user_id = Arc::from(user_id);
+            
+            let m_id = self.cells.len() as u32;
+            self.lexicon.index_cell(m_id, &mirror_label, &[region.to_string(), format!("source:{}", source), format!("user:{}", user_id)]);
+            self.exact_match_index.insert(hash_label(&mirror_label), m_id);
+            let m_pos_vec = SparseVec::project_vogel_spiral(m_id as usize, user_seed(user_id));
+
+            let m_idx = self.cells.len();
+            self.cells.push(Cell {
+                label: mirror_label,
+                region: Arc::from(region),
+                claim: mirror_claim,
+                continuation: None,
+                last_fired: 0,
+                convergence_score,
+                nnz,
+                pos_vec: m_pos_vec,
+                children: Vec::new(),
+                parent: None,
+                text_id: 0,
+                is_archived: false,
+                activation_heat: 0.0,
+            });
+            self.mark_dirty(m_idx);
+        }
     }
 
     /// Store a new belief.
@@ -1082,6 +1174,8 @@ impl Universe {
             children: Vec::new(),
             parent: None,
             text_id: 0,
+            is_archived: false,
+            activation_heat: 0.0,
         });
         self.mark_dirty(idx);
     }
@@ -1342,7 +1436,11 @@ impl Universe {
                     } else {
                         raw + phasor_bonus
                     };
-                    (i, boosted)
+                    
+                    // Axon Whorls: Heavy penalty if cell is in a refractory knot
+                    let whorl_penalty = if cell.activation_heat > 3.0 { 0.5 } else { 1.0 };
+                    
+                    (i, boosted * whorl_penalty)
                 })
                 .filter(|(_, s)| *s > 0.08)
                 .collect()
@@ -1403,7 +1501,11 @@ impl Universe {
                 } else {
                     raw + phasor_bonus
                 };
-                (i, boosted)
+                
+                // Axon Whorls: Heavy penalty if cell is in a refractory knot
+                let whorl_penalty = if cell.activation_heat > 3.0 { 0.5 } else { 1.0 };
+                
+                (i, boosted * whorl_penalty)
             })
             .filter(|(_, s)| *s > 0.08)
             .collect()
@@ -2043,6 +2145,16 @@ impl Universe {
             log_rejected_claim(text, region, source, confidence, "physics resonance floor");
             println!("REJECTED: '{}' (Reason: physics resonance {:.2} < floor {:.2})",
                      text, angle3_resonance, PHYSICS_RESONANCE_FLOOR);
+            return false;
+        }
+        
+        // ── Sovereign Physics: Strict Friction Gating ──
+        // If the calculated friction (chi / angle2_score) exceeds the structural resonance 
+        // (phi_g / angle3_resonance), the cell threatens the integrity of the 16,384-dim lattice.
+        if angle2_score > angle3_resonance {
+            log_rejected_claim(text, region, source, confidence, "structural friction (chi > phi_g)");
+            println!("REJECTED: '{}' (Reason: Sovereign Physics friction {:.2} > resonance {:.2})",
+                     text, angle2_score, angle3_resonance);
             return false;
         }
 
@@ -2889,6 +3001,7 @@ impl Universe {
                 let cont = cell.continuation.take().unwrap_or_else(SparseVec::zero);
                 cell.continuation = Some(cont.bind(&input_vec));
                 cell.last_fired = stamp;
+                cell.activation_heat += 1.0;
                 found = true;
                 break;
             }
@@ -2972,6 +3085,68 @@ impl Universe {
     }
 
     // ── Fractal Hierarchy: Zoom & Layer Queries ───────────────────────────
+
+    /// Backfills mirror cells for all existing high-confidence cells.
+    pub fn retro_mirror(&mut self) -> usize {
+        let mut new_cells = Vec::new();
+        
+        // Find existing cells that need mirrors
+        for cell in self.cells.iter() {
+            if cell.claim.confidence >= 4.0 && !cell.label.starts_with("[MIRROR]") {
+                let mirror_label = format!("[MIRROR] {}", cell.label);
+                
+                // Check if mirror already exists
+                let already_exists = self.cells.iter().any(|c| c.label == mirror_label);
+                if !already_exists {
+                    new_cells.push((
+                        mirror_label,
+                        cell.claim.text.clone(),
+                        cell.region.to_string(),
+                        cell.claim.source.to_string(),
+                        cell.claim.confidence * 0.9,
+                        cell.claim.vec.invert(),
+                        cell.claim.user_id.to_string(),
+                        cell.claim.layer,
+                        cell.convergence_score,
+                    ));
+                }
+            }
+        }
+        
+        let count = new_cells.len();
+        
+        // Insert mirrors
+        for (label, text, region, source, strength, vec, user_id, layer, conv_score) in new_cells {
+            let mut claim = Claim::new(&label, &source, strength, vec.clone());
+            claim.layer = layer;
+            claim.user_id = Arc::from(user_id.as_str());
+            
+            let m_id = self.cells.len() as u32;
+            self.lexicon.index_cell(m_id, &label, &[region.to_string(), format!("source:{}", source), format!("user:{}", user_id)]);
+            self.exact_match_index.insert(hash_label(&label), m_id);
+            let m_pos_vec = SparseVec::project_vogel_spiral(m_id as usize, user_seed(&user_id));
+
+            let m_idx = self.cells.len();
+            self.cells.push(Cell {
+                label,
+                region: Arc::from(region.as_str()),
+                claim,
+                continuation: None,
+                last_fired: 0,
+                convergence_score: conv_score,
+                nnz: vec.nnz() as u32,
+                pos_vec: m_pos_vec,
+                children: Vec::new(),
+                parent: None,
+                text_id: 0,
+                is_archived: false,
+                activation_heat: 0.0,
+            });
+            self.mark_dirty(m_idx);
+        }
+        
+        count
+    }
 
     /// Retrieve the full text of a cell. Uses the memory-mapped text store if
     /// available, otherwise falls back to the in-RAM `claim.text` micro-label.

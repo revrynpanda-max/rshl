@@ -60,6 +60,7 @@ use std::path::Path;
 use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
+use rayon::prelude::*;
 
 use super::sparse_vec::{SparseVec, DIM};
 
@@ -130,7 +131,7 @@ const NEIGHBOR_WEIGHT: i32 = 1;
 ///   * `DecodeParams::default()` — `temperature=0.7, top_k=16,
 ///     repetition_window=6, repetition_penalty=0.8` — the general-
 ///     purpose sampler the CLI defaults to.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct DecodeParams {
     /// Hard cap on emitted tokens.
     pub max_tokens: usize,
@@ -173,9 +174,19 @@ pub struct DecodeParams {
     /// `BigramPrior` (pre-v2 on-disk files) — a warning is printed
     /// in the CLI path.
     pub bigram_weight: f32,
+    /// Mixing coefficient for the forward-transition trigram prior.
+    /// Added to each candidate's score: `trigram_weight · log P(w | prev2, prev1)`.
+    pub trigram_weight: f32,
+    /// Attention weight for VSA mathematical attention. Pulls the candidate toward
+    /// the full sentence context instead of just the immediate last word.
+    pub attention_weight: f32,
     /// RNG seed. Identical `(state, params)` always yields an
     /// identical string.
     pub seed: u64,
+    /// Contextual semantic injection vectors from the Connectome (Universe).
+    /// If a candidate word exists in this map, its semantic vector is used
+    /// to boost its relevance dynamically during generation.
+    pub context_injects: HashMap<String, SparseVec>,
     /// If `true`, the decoder stops at natural clause boundaries
     /// (`.`, `!`, `?`) instead of running to the hard `max_tokens` cap.
     /// This produces more natural multi-sentence output.
@@ -192,7 +203,10 @@ impl Default for DecodeParams {
             repetition_penalty: 0.8,
             stop_on_immediate_repeat: false,
             bigram_weight: 0.5,
-            seed: 0xC0DE_CAFE_F00D_BABE,
+            trigram_weight: 0.5,
+            attention_weight: 0.8,
+            seed: 0x1337_CAFE_BABE_BEEF,
+            context_injects: HashMap::new(),
             clause_aware_stop: true,
         }
     }
@@ -211,7 +225,10 @@ impl DecodeParams {
             repetition_penalty: 0.0,
             stop_on_immediate_repeat: true,
             bigram_weight: 0.0,
+            trigram_weight: 0.0,
+            attention_weight: 0.0,
             seed: 0,
+            context_injects: HashMap::new(),
             clause_aware_stop: false,
         }
     }
@@ -334,6 +351,59 @@ impl BigramPrior {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// Trigram priors.
+// ─────────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrigramRow {
+    pub prev2: u32,
+    pub prev1: u32,
+    pub next_counts: Vec<(u32, u32)>,
+    pub total: u32,
+}
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub struct TrigramPrior {
+    pub rows: Vec<TrigramRow>,
+    pub vocab_size: u32,
+}
+
+impl TrigramPrior {
+    pub fn is_empty(&self) -> bool {
+        self.vocab_size == 0 || self.rows.is_empty()
+    }
+
+    pub fn log_prob(&self, prev2: Option<usize>, prev1: Option<usize>, next: usize) -> f32 {
+        if self.is_empty() {
+            return 0.0;
+        }
+        let p1 = match prev1 {
+            Some(x) => x as u32,
+            None => return 0.0,
+        };
+        let p2 = match prev2 {
+            Some(x) => x as u32,
+            None => return 0.0,
+        };
+
+        let row_idx = match self.rows.binary_search_by_key(&(p2, p1), |r| (r.prev2, r.prev1)) {
+            Ok(idx) => idx,
+            Err(_) => return 0.0,
+        };
+
+        let row = &self.rows[row_idx];
+        let count = match row.next_counts.binary_search_by_key(&(next as u32), |&(n, _)| n) {
+            Ok(i) => row.next_counts[i].1,
+            Err(_) => 0,
+        };
+
+        const ALPHA: f32 = 0.1;
+        let v = self.vocab_size as f32;
+        ((count as f32 + ALPHA) / (row.total as f32 + ALPHA * v)).ln()
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // Serialized on-disk form.
 //
 // SparseVec itself serializes as a dense Vec<i8>, which would blow up to
@@ -359,6 +429,9 @@ struct LexiconFile {
     /// `bigram_weight` has no effect until the lexicon is rebuilt.
     #[serde(default)]
     bigram: BigramPrior,
+    /// Forward trigram prior. Present in version-3+ files.
+    #[serde(default)]
+    trigram: TrigramPrior,
 }
 
 /// Word → stable SparseVec mapping built from corpus statistics.
@@ -380,6 +453,9 @@ pub struct StatLexicon {
     /// > 0.0`. Empty when the lexicon was loaded from a pre-bigram
     /// > on-disk file (no-op in that case).
     bigram: BigramPrior,
+
+    /// Forward-transition trigram prior built from the corpus.
+    trigram: TrigramPrior,
 }
 
 impl StatLexicon {
@@ -414,23 +490,28 @@ impl StatLexicon {
     /// highest cosine against `target`. Used by the decoder to commit
     /// a continuous prediction back to a discrete word.
     pub fn find_nearest(&self, target: &SparseVec) -> Option<(&str, f32)> {
-        let mut best: Option<(usize, f32)> = None;
-        for (i, v) in self.vectors.iter().enumerate() {
-            let s = target.cosine(v);
-            match best {
-                None => best = Some((i, s)),
-                Some((_, bs)) if s > bs => best = Some((i, s)),
-                _ => {}
-            }
+        if self.is_empty() {
+            return None;
         }
-        best.map(|(i, s)| (self.words[i].as_str(), s))
+        let best = self.vectors
+            .par_iter()
+            .enumerate()
+            .map(|(i, v)| (i, target.cosine(v)))
+            .reduce(
+                || (0, f32::NEG_INFINITY),
+                |best, curr| if curr.1 > best.1 { curr } else { best }
+            );
+        Some((self.words[best.0].as_str(), best.1))
     }
 
     /// Top-K nearest words by cosine similarity.
     pub fn top_k_nearest(&self, target: &SparseVec, k: usize) -> Vec<(String, f32)> {
+        if self.is_empty() {
+            return Vec::new();
+        }
         let mut scored: Vec<(usize, f32)> = self
             .vectors
-            .iter()
+            .par_iter()
             .enumerate()
             .map(|(i, v)| (i, target.cosine(v)))
             .collect();
@@ -583,7 +664,8 @@ impl StatLexicon {
         // one of <=top_k candidates; we don't need anything better.
         let mut rng_state: u64 = params.seed.wrapping_add(0x9E3779B97F4A7C15);
 
-        let mut state = state;
+        let mut state = state.clone();
+        let mut attention_state = state.clone(); // The unbound semantic essence
         let mut out: Vec<String> = Vec::with_capacity(params.max_tokens);
 
         let greedy = params.top_k <= 1 || params.temperature <= 0.0;
@@ -619,21 +701,6 @@ impl StatLexicon {
             }
 
             // ── 3b. forward-transition bigram prior ──────────────────
-            // For each candidate w we add
-            //     bigram_weight · log P(w | out.last())
-            // to its score. The prior is Laplace-smoothed so
-            // log_prob is always finite and unseen transitions are
-            // still allowed (just heavily down-weighted). When the
-            // prior is empty (pre-v2 on-disk lexicon) log_prob
-            // returns 0.0 so this branch becomes a no-op.
-            //
-            // At position 0 there's no real "previous word" to
-            // condition on — out.last() is None. Using the unigram
-            // fallback there would pull the decoder toward common
-            // words ("a", "the") and override the prompt backbone
-            // at the very position where the prompt's round-trip
-            // signal is strongest. So we skip the prior entirely
-            // on pos 0 and let pure cosine drive the first commit.
             if params.bigram_weight > 0.0 && !self.bigram.is_empty() {
                 if let Some(last) = out.last() {
                     let prev_id = self.index.get(last).copied();
@@ -642,22 +709,39 @@ impl StatLexicon {
                             let lp = self.bigram.log_prob(prev_id, next_id);
                             *score += params.bigram_weight * lp;
                         }
-                        // If a candidate isn't in the index
-                        // (shouldn't happen — every candidate comes
-                        // from the lexicon's own word list) we
-                        // simply leave its score alone.
+                    }
+                }
+            }
+
+            if params.trigram_weight > 0.0 && !self.trigram.is_empty() {
+                if out.len() >= 2 {
+                    let prev1 = self.index.get(&out[out.len() - 1]).copied();
+                    let prev2 = self.index.get(&out[out.len() - 2]).copied();
+                    for (w, score) in candidates.iter_mut() {
+                        if let Some(&next_id) = self.index.get(w) {
+                            let lp = self.trigram.log_prob(prev2, prev1, next_id);
+                            *score += params.trigram_weight * lp;
+                        }
+                    }
+                }
+            }
+
+            // ── 3c. VSA Attention Mechanism ──────────────────────────
+            if params.attention_weight > 0.0 {
+                for (w, score) in candidates.iter_mut() {
+                    if let Some(wv) = self.get(w) {
+                        // Dynamically boost based on injected memory vector if available
+                        let base_wv = params.context_injects.get(w).unwrap_or(wv);
+                        let attention_sim = base_wv.cosine(&attention_state);
+                        *score += params.attention_weight * attention_sim;
                     }
                 }
             }
 
             // ── 4. selection ─────────────────────────────────────────
             let picked = if greedy {
-                // candidates already has exactly one entry
                 candidates.remove(0).0
             } else {
-                // Softmax with temperature over the (possibly
-                // penalized) pool. Subtract the max score for
-                // numerical stability before exp.
                 let max_s = candidates
                     .iter()
                     .map(|(_, s)| *s)
@@ -669,8 +753,6 @@ impl StatLexicon {
                     .collect();
                 let sum: f32 = weights.iter().sum();
                 if !sum.is_finite() || sum <= 0.0 {
-                    // Degenerate distribution — fall back to argmax
-                    // on the un-exponentiated (penalized) scores.
                     let mut best_i = 0usize;
                     let mut best_s = f32::NEG_INFINITY;
                     for (i, (_, s)) in candidates.iter().enumerate() {
@@ -699,10 +781,6 @@ impl StatLexicon {
             };
 
             // ── 5. immediate-repeat early-stop (opt-in) ──────────────
-            // Preserves the original pre-sampling decoder's fixpoint
-            // behaviour when `stop_on_immediate_repeat` is set. In
-            // sampled mode we leave this off because the repetition
-            // penalty already handles loops without truncating.
             if params.stop_on_immediate_repeat {
                 if let Some(prev) = out.last() {
                     if prev == &picked {
@@ -734,10 +812,60 @@ impl StatLexicon {
             if let Some(wv) = self.get(&picked) {
                 let bound = wv.bind(&pkey);
                 state = SparseVec::superpose_sparse(&[&state, &bound], 0.04);
+                // Also superpose into the sliding semantic attention state (without positional bind)
+                let inject_vec = params.context_injects.get(&picked).unwrap_or(wv); let bound_inject = inject_vec.bind(&pkey); attention_state = SparseVec::superpose_sparse(&[&attention_state, &bound_inject], 0.04);
             }
         }
 
         out.join(" ")
+    }
+
+    /// Dynamically inject fine-tuning samples (e.g. LLM translation output)
+    /// into the trigram prior.
+    pub fn fine_tune_grammar(&mut self, text: &str) {
+        let tokens = tokenize(text);
+        if tokens.len() < 3 {
+            return;
+        }
+        
+        let mut ids = Vec::new();
+        for t in &tokens {
+            if let Some(&id) = self.index.get(t) {
+                ids.push(id as u32);
+            }
+        }
+        
+        if self.trigram.vocab_size == 0 {
+            self.trigram.vocab_size = self.words.len() as u32;
+        }
+
+        // We give fine-tuning samples a huge weight to overwhelm the prior
+        let weight = 10;
+        
+        for i in 2..ids.len() {
+            let p2 = ids[i - 2];
+            let p1 = ids[i - 1];
+            let next = ids[i];
+            
+            match self.trigram.rows.binary_search_by_key(&(p2, p1), |r| (r.prev2, r.prev1)) {
+                Ok(row_idx) => {
+                    let row = &mut self.trigram.rows[row_idx];
+                    match row.next_counts.binary_search_by_key(&next, |&(n, _)| n) {
+                        Ok(idx) => row.next_counts[idx].1 += weight,
+                        Err(idx) => row.next_counts.insert(idx, (next, weight)),
+                    }
+                    row.total += weight;
+                }
+                Err(row_idx) => {
+                    self.trigram.rows.insert(row_idx, TrigramRow {
+                        prev2: p2,
+                        prev1: p1,
+                        next_counts: vec![(next, weight)],
+                        total: weight,
+                    });
+                }
+            }
+        }
     }
 
     /// Build a fresh lexicon by streaming every path in `paths` through
@@ -856,6 +984,7 @@ impl StatLexicon {
         // corpus.
         let mut bigram_build: Vec<HashMap<u32, u32>> =
             (0..vocab_len).map(|_| HashMap::new()).collect();
+        let mut trigram_build: HashMap<(u32, u32), HashMap<u32, u32>> = HashMap::new();
         let mut row_totals: Vec<u32> = vec![0; vocab_len];
         let mut unigram: Vec<u32> = vec![0; vocab_len];
         let mut total_tokens: u64 = 0;
@@ -868,18 +997,24 @@ impl StatLexicon {
             unigram[curr] = unigram[curr].saturating_add(1);
             total_tokens = total_tokens.saturating_add(1);
 
-            if ti == 0 {
-                continue;
+            if ti > 0 {
+                let prev_tok = &all_tokens[ti - 1];
+                if let Some(&prev) = index.get(prev_tok) {
+                    let row = &mut bigram_build[prev];
+                    let entry = row.entry(curr as u32).or_insert(0);
+                    *entry = entry.saturating_add(1);
+                    row_totals[prev] = row_totals[prev].saturating_add(1);
+
+                    if ti > 1 {
+                        let prev2_tok = &all_tokens[ti - 2];
+                        if let Some(&prev2) = index.get(prev2_tok) {
+                            let trow = trigram_build.entry((prev2 as u32, prev as u32)).or_default();
+                            let tentry = trow.entry(curr as u32).or_insert(0);
+                            *tentry = tentry.saturating_add(1);
+                        }
+                    }
+                }
             }
-            let prev_tok = &all_tokens[ti - 1];
-            let prev = match index.get(prev_tok) {
-                Some(&p) => p,
-                None => continue,
-            };
-            let row = &mut bigram_build[prev];
-            let entry = row.entry(curr as u32).or_insert(0);
-            *entry = entry.saturating_add(1);
-            row_totals[prev] = row_totals[prev].saturating_add(1);
         }
 
         let forward: Vec<Vec<(u32, u32)>> = bigram_build
@@ -891,6 +1026,22 @@ impl StatLexicon {
             })
             .collect();
 
+        let mut trigram_rows: Vec<TrigramRow> = trigram_build
+            .into_iter()
+            .map(|((p2, p1), next_map)| {
+                let mut next_counts: Vec<(u32, u32)> = next_map.into_iter().collect();
+                next_counts.sort_by_key(|&(n, _)| n);
+                let total = next_counts.iter().map(|&(_, c)| c).sum();
+                TrigramRow {
+                    prev2: p2,
+                    prev1: p1,
+                    next_counts,
+                    total,
+                }
+            })
+            .collect();
+        trigram_rows.sort_by_key(|r| (r.prev2, r.prev1));
+
         let bigram = BigramPrior {
             forward,
             row_totals,
@@ -899,11 +1050,17 @@ impl StatLexicon {
             vocab_size: vocab_len as u32,
         };
 
+        let trigram = TrigramPrior {
+            rows: trigram_rows,
+            vocab_size: vocab_len as u32,
+        };
+
         Ok(Self {
             words,
             vectors,
             index,
             bigram,
+            trigram,
         })
     }
 
@@ -923,11 +1080,12 @@ impl StatLexicon {
         // change from v1 → v2 is the *addition* of `bigram`, so
         // serde-level compatibility goes both ways.
         let file = LexiconFile {
-            version: 2,
+            version: 3,
             dim: DIM,
             words: self.words.clone(),
             vectors: self.vectors.iter().map(to_pairs).collect(),
             bigram: self.bigram.clone(),
+            trigram: self.trigram.clone(),
         };
         let bytes = serde_json::to_vec(&file)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
@@ -964,6 +1122,7 @@ impl StatLexicon {
             vectors,
             index,
             bigram: lf.bigram,
+            trigram: lf.trigram,
         })
     }
 }

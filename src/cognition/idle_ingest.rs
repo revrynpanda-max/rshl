@@ -39,14 +39,14 @@ use std::path::{Path, PathBuf};
 /// At ~5s heartbeat that's 240 lines/minute, absorbing a 5,000-line
 /// corpus in about 20 minutes of pure idle time. This is the "sleep
 /// / nobody's talking to me" rate.
-const IDLE_LINES_PER_TICK: usize = 20;
+const IDLE_LINES_PER_TICK: usize = 5000;
 
 /// Per-tick line budget during active conversation. Learning never
 /// fully stops — KAI always has a little attention spare for the
 /// background corpus even while he's chatting. At 5s heartbeat this
 /// is ~24 lines/minute, which is enough to grow noticeably across
 /// a long conversation without competing with response generation.
-const ACTIVE_LINES_PER_TICK: usize = 2;
+const ACTIVE_LINES_PER_TICK: usize = 20;
 
 /// Minimum character count for an ingested line. Skips short fragments
 /// that would encode to nearly-zero sparse vectors.
@@ -532,41 +532,61 @@ impl IdleIngest {
         let buffer = self.buffers.get(&path).expect("buffer just inserted");
         let cursor = self.cursors.get_mut(&path).expect("cursor just inserted");
 
-        while processed < budget && !cursor.done() {
-            let raw = &buffer[cursor.next_line];
-            cursor.next_line += 1;
-            processed += 1;
+        let short_name = cursor.short_name();
+        let remaining = cursor.total_lines.saturating_sub(cursor.next_line);
+        let to_process = budget.min(remaining);
 
-            let (line, region) = classify_line(raw);
-            if line.is_empty() || line.len() < MIN_LINE_LEN {
-                // cursor.skipped += 1;
-                continue;
-            }
-
-            let source = format!("ingest:{}", cursor.short_name());
-
-            // Encode the main line
-            ingested_cells.push(IngestedCell {
-                text: line.clone(),
-                region: region.clone(),
-                source: source.clone(),
-                strength: 1.2,
-                vec: crate::core::SparseVec::encode(&line),
+        if to_process > 0 {
+            let chunk = &buffer[cursor.next_line .. cursor.next_line + to_process];
+            
+            // 85% CPU Ceiling for background ingest to avoid 100% lockups
+            let cpus = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
+            let core_cap = (cpus as f32 * 0.85).max(1.0) as usize;
+            let pool = rayon::ThreadPoolBuilder::new().num_threads(core_cap).build().unwrap();
+            
+            let results: Vec<Vec<IngestedCell>> = pool.install(|| {
+                use rayon::prelude::*;
+                chunk.par_iter().filter_map(|raw| {
+                    let (line, region) = classify_line(raw);
+                    if line.is_empty() || line.len() < MIN_LINE_LEN {
+                        return None;
+                    }
+                    
+                    let mut cells = Vec::new();
+                    let source = format!("ingest:{}", short_name);
+                    
+                    // The line itself
+                    cells.push(IngestedCell {
+                        text: line.clone(),
+                        region: region.clone(),
+                        source: source.clone(),
+                        strength: 1.2,
+                        vec: crate::core::SparseVec::encode(&line),
+                    });
+                    
+                    // Concept anchors
+                    for concept in extract_significant_concepts(&line, MAX_CONCEPTS_PER_LINE) {
+                        let concept_source = format!("ingest-concept:{}", short_name);
+                        cells.push(IngestedCell {
+                            text: concept.clone(),
+                            region: "concept".to_string(),
+                            source: concept_source,
+                            strength: CONCEPT_ANCHOR_STRENGTH,
+                            vec: crate::core::SparseVec::encode(&concept),
+                        });
+                    }
+                    Some(cells)
+                }).collect()
             });
-            cursor.added += 1;
-            added += 1;
-
-            // Encode concepts
-            for concept in extract_significant_concepts(&line, MAX_CONCEPTS_PER_LINE) {
-                let concept_source = format!("ingest-concept:{}", cursor.short_name());
-                ingested_cells.push(IngestedCell {
-                    text: concept.clone(),
-                    region: "concept".to_string(),
-                    source: concept_source,
-                    strength: CONCEPT_ANCHOR_STRENGTH,
-                    vec: crate::core::SparseVec::encode(&concept),
-                });
+            
+            for mut cells in results {
+                added += 1;
+                cursor.added += 1;
+                ingested_cells.append(&mut cells);
             }
+            
+            cursor.next_line += to_process;
+            processed += to_process;
         }
 
         report.lines_processed = processed;
