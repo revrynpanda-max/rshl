@@ -643,7 +643,7 @@ pub fn run_train_ternary_mlp_cli(args: &[String]) {
     println!("  KAI — Ternary MLP Training (QAT)");
     println!("═══════════════════════════════════════════════════════════════════");
     
-    let mut mlp = TernaryMlp::load_weights("C:\\KAI/data/ternary_mlp.bin")
+    let mut mlp = TernaryMlp::load_weights("data/ternary_mlp.bin")
         .unwrap_or_else(|_| {
             println!("No existing weights found, initializing fresh MLP...");
             TernaryMlp::new(crate::core::sparse_vec::DIM, hidden, 42)
@@ -651,7 +651,7 @@ pub fn run_train_ternary_mlp_cli(args: &[String]) {
     let lr = 0.01;
 
     println!("Loading KAI Universe for multi-hop attention contexts...");
-    let mut universe = if let Some(loaded) = crate::persistence::load_compact("C:\\KAI") {
+    let mut universe = if let Some(loaded) = crate::persistence::load_compact(".") {
         loaded.0
     } else {
         println!("Warning: Could not load universe, continuing with empty.");
@@ -748,7 +748,7 @@ pub fn run_train_ternary_mlp_cli(args: &[String]) {
                         mlp.w_out.quantize();
                     }
                     if steps % 500 == 0 {
-                        let weights_path = "C:\\KAI/data/ternary_mlp.bin";
+                        let weights_path = "data/ternary_mlp.bin";
                         mlp.save_weights(weights_path).expect("Failed to save weights");
                         println!("Saved partial weights at step {} to {}", steps, weights_path);
                     }
@@ -760,7 +760,7 @@ pub fn run_train_ternary_mlp_cli(args: &[String]) {
         }
         println!("Epoch {} complete. Avg Loss: {:.4}", epoch, epoch_loss / (steps as f32).max(1.0));
         
-        let weights_path = "C:\\KAI/data/ternary_mlp.bin";
+        let weights_path = "data/ternary_mlp.bin";
         mlp.save_weights(weights_path).expect("Failed to save weights");
         println!("Saved weights for epoch {} to {}", epoch, weights_path);
     }
@@ -769,7 +769,7 @@ pub fn run_train_ternary_mlp_cli(args: &[String]) {
 }
 
 pub fn online_train_step(universe: &crate::core::Universe, sample_size: usize) -> f32 {
-    let weights_path = "C:\\KAI/data/ternary_mlp.bin";
+    let weights_path = "data/ternary_mlp.bin";
     let mut mlp = TernaryMlp::load_weights(weights_path)
         .unwrap_or_else(|_| TernaryMlp::new(crate::core::sparse_vec::DIM, 2048, 42));
     let lr = 0.005; // Slightly lower learning rate for continuous online learning
