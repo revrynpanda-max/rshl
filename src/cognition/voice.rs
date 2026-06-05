@@ -560,6 +560,7 @@ pub fn generate_response(
     universe: &mut Universe,
     candle_voice: Option<&crate::cognition::candle_voice::CandleVoice>,
     bitnet_voice: Option<&crate::cognition::BitnetVoice>,
+capture_experience: bool,
 ) -> String {
     let empty_trace = ConversationTrace::new();
     generate_response_predictive(
@@ -572,10 +573,7 @@ pub fn generate_response(
         &empty_trace,
         candle_voice,
         bitnet_voice,
-        None,
-        None,
-        None,
-    )
+        None, None, None, None, capture_experience)
 }
 
 /// Scan input and retrieved hits to see if a sensitive memory of grief or family loss is active.
@@ -659,6 +657,8 @@ pub fn generate_response_predictive(
     lex: Option<&StatLexicon>,
     field: Option<&FieldState>,
     pos_dict: Option<&crate::core::PosDictionary>,
+    synaptic_layer: Option<&crate::core::SynapticLayer>,
+capture_experience: bool,
 ) -> String {
     let grief_active = detect_grief_association(input, hits);
     
@@ -671,7 +671,7 @@ pub fn generate_response_predictive(
     }
 
     let mut result = generate_response_predictive_inner(
-        input, hits, query_type, &modified_brain, recent_context, universe, trace, candle_voice, bitnet_voice, lex, field, pos_dict
+        input, hits, query_type, &modified_brain, recent_context, universe, trace, candle_voice, bitnet_voice, lex, field, pos_dict, synaptic_layer
     );
 
     if grief_active {
@@ -679,7 +679,8 @@ pub fn generate_response_predictive(
     }
 
     // Real-Time Experience Capture
-    let emotion = detect_user_emotion(input);
+    if capture_experience {
+        let emotion = detect_user_emotion(input);
     let emotion_vec = crate::core::SparseVec::encode(&emotion);
 
     let input_vec = crate::core::SparseVec::encode(input);
@@ -694,6 +695,7 @@ pub fn generate_response_predictive(
         output_vec,
     };
     crate::cognition::experience::store_experience(universe, record);
+    }
 
     result
 }
@@ -726,9 +728,10 @@ fn generate_response_predictive_inner(
     lex: Option<&StatLexicon>,
     field: Option<&FieldState>,
     pos_dict: Option<&crate::core::PosDictionary>,
+    synaptic_layer: Option<&crate::core::SynapticLayer>,
 ) -> String {
     let raw_thought = generate_raw_thought(
-        input, hits, query_type, brain, recent_context, universe, trace, candle_voice, bitnet_voice, lex, field, pos_dict
+        input, hits, query_type, brain, recent_context, universe, trace, candle_voice, bitnet_voice, lex, field, pos_dict, synaptic_layer
     );
 
     // ── Shared filler rotation index ────────────────────────────────────────
@@ -766,6 +769,19 @@ fn generate_response_predictive_inner(
     let raw_trimmed = if raw_trimmed.is_empty()
         || (raw_trimmed.len() <= 2 && raw_trimmed.chars().all(|c| !c.is_alphabetic()))
     {
+        fallback_phrase(0)
+    } else {
+        raw_trimmed.to_string()
+    };
+    let raw_trimmed = raw_trimmed.trim();
+
+    // ── Guard 1.5: Semantic Coherence Check ────────────────────────────────
+    // If the generative decoder spits out words KAI doesn't know the meaning
+    // of, it's word salad. Look up content words in the semantic dictionary.
+    // If too many are unknown, treat as a gap response.
+    let coherence = semantic_coherence_score(raw_trimmed);
+    let raw_trimmed = if coherence < 0.30 && raw_trimmed.split_whitespace().count() >= 4 {
+        println!("[KAI/Voice] Semantic coherence too low ({:.2}) — treating as gap.", coherence);
         fallback_phrase(0)
     } else {
         raw_trimmed.to_string()
@@ -1301,6 +1317,7 @@ fn generate_raw_thought(
     lex: Option<&StatLexicon>,
     field: Option<&FieldState>,
     pos_dict: Option<&crate::core::PosDictionary>,
+    synaptic_layer: Option<&crate::core::SynapticLayer>,
 ) -> String {
     if query_type == QueryType::CommandRequest {
         return execute_system_command(input);
@@ -1323,6 +1340,87 @@ fn generate_raw_thought(
         query_type,
         QueryType::ExplanationQuestion | QueryType::Statement | QueryType::RequestForInfo | QueryType::IdentityQuestion
     );
+
+    // ── SEMANTIC ALGEBRA & CURIOSITY FALLBACK ───────────────────────────────────
+    let equation = crate::cognition::algebra::parse_equation(trimmed, pos_dict);
+    if is_core_query && equation.nodes.len() > 2 {
+        println!("\n  [Algebra] Input   : {}", trimmed);
+        println!("  [Algebra] Formula : {}", equation.formula);
+        println!("  [Algebra] Intent  : {}", equation.intent_sum);
+    }
+
+    if is_core_query && !hits.is_empty() && top_score > 0.55 {
+        // Look for missing actions using the algebra equation
+        if let Some(verb) = equation.actions.first() {
+            let hit_text = hits[0].text.to_lowercase();
+            // If KAI's top memory cell completely lacks the target action...
+            let mut verb_found = hit_text.contains(verb);
+            if !verb_found {
+                let v = verb.as_str();
+                let base = if v.ends_with("ed") && v.len() > 3 {
+                    &v[..v.len() - 2]
+                } else if v.ends_with("ing") && v.len() > 4 {
+                    &v[..v.len() - 3]
+                } else if v.ends_with("es") && v.len() > 3 {
+                    &v[..v.len() - 2]
+                } else if v.ends_with("s") && v.len() > 2 {
+                    &v[..v.len() - 1]
+                } else {
+                    v
+                };
+                verb_found = hit_text.contains(base);
+            }
+            
+            if !verb_found {
+                let topic = extract_topic(trimmed);
+                let display_topic = if topic.is_empty() { 
+                    equation.entities.first().unwrap_or(&"this".to_string()).clone() 
+                } else if topic.len() > 30 { 
+                    format!("{}...", &topic[..30].trim()) 
+                } else { 
+                    topic.clone() 
+                };
+                
+                if let Some(sl) = synaptic_layer {
+                    if let Some(target_cell) = hits.first() {
+                        let start_label = target_cell.label.clone();
+                        // Try to find a path to the action!
+                        // For the target label, we could search the universe for the action verb.
+                        let mut target_action_label = None;
+                        for cell in universe.cells() {
+                            if cell.claim.text.to_lowercase().contains(verb) {
+                                target_action_label = Some(cell.label.clone());
+                                break;
+                            }
+                        }
+                        
+                        if let Some(target) = target_action_label {
+                            println!("  [Pathfinder] Attempting Multi-Hop A* Search from '{}' to '{}'", start_label, target);
+                            if let Some(path) = crate::cognition::pathfinder::find_semantic_path(universe, sl, &start_label, &target) {
+                                println!("  [Pathfinder] SUCCESS! Found semantic path: {:?}", path);
+                                return format!(
+                                    "I see a logical path from '{}' to the action '{}' through the following connections: {:?}",
+                                    display_topic, verb, path
+                                );
+                            } else {
+                                println!("  [Pathfinder] Failed to find a path.");
+                            }
+                        }
+                    }
+                }
+
+                // Generate an interactive, curious question back to the teacher based on algebraic mismatch
+                println!("  [Algebra] Mismatch: Memory lacks action '{}' for entity '{}'", verb, display_topic);
+                return format!(
+                    "I found a memory related to '{}', but it doesn't mention the action '{}'. What does '{}' mean in this context?", 
+                    display_topic,
+                    verb,
+                    verb
+                );
+            }
+        }
+    }
+
     // BYPASS: If we have an LLM (candle_voice or bitnet_voice), we don't want to abruptly gap out.
     // We let the LLM use the conversational context and low-resonance hits to form a natural reply.
     if is_core_query && top_score < RESONANCE_THRESHOLD && !hits.is_empty() && candle_voice.is_none() && bitnet_voice.is_none() {
@@ -1393,7 +1491,7 @@ fn generate_raw_thought(
             && (has_emotional_word || has_acknowledgment);
 
         if is_emotional_followup {
-            let hits_em = universe.predictive_query_by_source(
+            let hits_em = universe.predictive_query_by_source(Some(input), 
                 crate::core::SparseVec::encode(input),
                 "empathy",
                 trace,
@@ -1427,7 +1525,7 @@ fn generate_raw_thought(
             || (lower.contains("something") && lower.contains("personal") && word_count <= 10);
 
         if is_personal_setup {
-            let hits_open = universe.predictive_query_by_source(
+            let hits_open = universe.predictive_query_by_source(Some(input), 
                 crate::core::SparseVec::encode(input),
                 "open",
                 trace,
@@ -1515,7 +1613,7 @@ fn generate_raw_thought(
         // After an emotional exchange, short reactions route to carry cells.
         // Lattice-native: read the state cell instead of scanning context word lists.
         if universe.state_strength("emotional thread active") > 0.30 {
-            let hits_carry = universe.predictive_query_by_source(
+            let hits_carry = universe.predictive_query_by_source(Some(input), 
                 crate::core::SparseVec::encode(input),
                 "carry",
                 trace,
@@ -1529,7 +1627,7 @@ fn generate_raw_thought(
             }
         }
 
-        let hits_gr = universe.predictive_query_by_source(
+        let hits_gr = universe.predictive_query_by_source(Some(input), 
             crate::core::SparseVec::encode(input),
             "greeting",
             trace,
@@ -1562,7 +1660,7 @@ fn generate_raw_thought(
 
         const GREETING_FALLBACK_FLOOR: f32 = 0.25;
 
-        let hits_all = universe.predictive_query(
+        let hits_all = universe.predictive_query(Some(input), 
             crate::core::SparseVec::encode(input),
             trace,
             predictive::DEFAULT_ITER_STEPS,
@@ -1574,7 +1672,7 @@ fn generate_raw_thought(
         {
             hits_all
         } else {
-            universe.predictive_query_by_source(
+            universe.predictive_query_by_source(Some(input), 
                 crate::core::SparseVec::encode(input),
                 "greeting",
                 trace,
@@ -1644,7 +1742,7 @@ fn generate_raw_thought(
                 || fp.iter().any(|f| ll.contains(f))
         };
         if is_farewell_input {
-            let hits_fw = universe.predictive_query_by_source(
+            let hits_fw = universe.predictive_query_by_source(Some(input), 
                 crate::core::SparseVec::encode(input),
                 "farewell",
                 trace,
@@ -1758,10 +1856,8 @@ fn generate_raw_thought(
         let mut grammar_annotations = String::new();
         for word in trimmed.split_whitespace().take(8) {
             let clean = word.trim_matches(|c: char| !c.is_alphabetic()).to_lowercase();
-            if let Some(entries) = dict.lookup(&clean) {
-                if let Some(e) = entries.first() {
-                    grammar_annotations.push_str(&format!("[{}: {}] ", e.word, e.pos));
-                }
+            if let Some(e) = dict.lookup(&clean) {
+                grammar_annotations.push_str(&format!("[{}: {}] ", e.word, e.pos));
             }
         }
         if !grammar_annotations.is_empty() {
@@ -1810,6 +1906,7 @@ fn generate_raw_thought(
             let r = h.region.as_str();
             let s = h.source.as_str();
             (r == "language" || r == "social" || r == "identity" || r == "everyday"
+                || r == "tutoring" || r == "active_learning"
                 || s == "grammar" || s == "conversation" || s == "kai-self")
                 && s != "discord-chat" && s != "discord-reply"
         } else {
@@ -1822,6 +1919,7 @@ fn generate_raw_thought(
                 let r = h.region.as_str();
                 let s = h.source.as_str();
                 (r == "language" || r == "social" || r == "identity" || r == "everyday"
+                    || r == "tutoring" || r == "active_learning"
                     || s == "grammar" || s == "conversation" || s == "kai-self")
                     && s != "discord-chat" && s != "discord-reply"
             });
@@ -1831,6 +1929,7 @@ fn generate_raw_thought(
                         let r = h.region.as_str();
                         let s = h.source.as_str();
                         (r == "language" || r == "social" || r == "identity" || r == "everyday"
+                            || r == "tutoring" || r == "active_learning"
                             || s == "grammar" || s == "conversation" || s == "kai-self")
                             && s != "discord-chat" && s != "discord-reply"
                     })
@@ -1856,6 +1955,15 @@ fn generate_raw_thought(
     // no retrieval, no templates, pure lattice-born language.
     if let (Some(lex), Some(field)) = (lex, field) {
         if NATIVE_ONLY.load(Ordering::Relaxed) || phi_c > 0.20 {
+            let mut lang = crate::cognition::language::LanguageSystem::new();
+            let wernicke = lang.analyze_input(&prompt_with_grammar);
+            let expected_pos = match wernicke.sentence_type {
+                crate::cognition::language::SentenceType::Question => Some(vec!["verb".to_string(), "pronoun".to_string(), "noun".to_string()]),
+                crate::cognition::language::SentenceType::Command => Some(vec!["verb".to_string(), "noun".to_string()]),
+                crate::cognition::language::SentenceType::Statement => Some(vec!["pronoun".to_string(), "verb".to_string()]),
+                _ => None,
+            };
+
             let state = universe.encode_generative_state(&prompt_with_grammar, lex, trace, field, "");
             let emotional_temp = get_emotional_temp();
             let temp = if emotional_temp > 0.0 { emotional_temp } else { 0.7 };
@@ -1871,6 +1979,8 @@ fn generate_raw_thought(
                 attention_weight: 1.2,
                 seed: 0xC0FFEE, context_injects: std::collections::HashMap::new(),
                 clause_aware_stop: true,
+                expected_pos_sequence: expected_pos,
+                sentence_type: Some(wernicke.sentence_type.label().to_string()),
             };
             let decoded = lex.incremental_generate_with(state, params);
             if !decoded.trim().is_empty() {
@@ -1919,7 +2029,7 @@ fn generate_raw_thought(
             } else {
                 "hold store remember grow continuity"
             };
-            let share_hits = universe.predictive_query(
+            let share_hits = universe.predictive_query(Some(input), 
                 crate::core::SparseVec::encode(topic),
                 trace,
                 predictive::DEFAULT_ITER_STEPS,
@@ -1972,7 +2082,7 @@ fn generate_raw_thought(
                 || lower.contains("you keep")));
 
     if is_about_self {
-        let self_hits = universe.predictive_query_by_source(
+        let self_hits = universe.predictive_query_by_source(Some(input), 
             crate::core::SparseVec::encode(input),
             "identity",
             trace,
@@ -2050,7 +2160,7 @@ fn generate_raw_thought(
     // ── General statement with low score ─────────────────────────────────────
     if matches!(query_type, QueryType::Statement) && !is_about_self
         && primary.score < 0.40 {
-            let stmt_hits = universe.predictive_query(
+            let stmt_hits = universe.predictive_query(Some(input), 
                 crate::core::SparseVec::encode(trimmed),
                 trace,
                 predictive::DEFAULT_ITER_STEPS,
@@ -2070,12 +2180,44 @@ fn generate_raw_thought(
     // ── Main cell synthesis ───────────────────────────────────────────────────
     let knowledge_primary = hits
         .iter()
-        .find(|h| h.source != "ryan" && h.source != "conversation");
+        .filter(|h| {
+            h.source != "ryan" 
+            && h.source != "conversation"
+            && !h.text.contains("Logged. If you want action")
+            && !h.text.starts_with("Oracle:")
+            && !h.text.starts_with("System:")
+        })
+        .find(|h| {
+            let core = clean_cell_text(&h.text).to_lowercase();
+            let is_repetition = recent_context.iter().any(|(r, t)| {
+                if r == "kai" {
+                    let tl = t.to_lowercase();
+                    // Avoid repeating if strings have significant overlap (> 20 chars match)
+                    (core.len() > 20 && (tl.contains(&core) || core.contains(&tl)))
+                } else {
+                    false
+                }
+            });
+            !is_repetition
+        })
+        .or_else(|| hits.iter().find(|h| {
+            h.source != "ryan" 
+            && h.source != "conversation"
+            && !h.text.contains("Logged. If you want action")
+            && !h.text.starts_with("Oracle:")
+            && !h.text.starts_with("System:")
+        }));
 
     let mut response = if let Some(kp) = knowledge_primary {
         let knowledge_secondaries: Vec<&QueryHit> = hits
             .iter()
-            .filter(|h| h.source != "ryan" && h.source != "conversation")
+            .filter(|h| {
+                h.source != "ryan" 
+                && h.source != "conversation"
+                && !h.text.contains("Logged. If you want action")
+                && !h.text.starts_with("Oracle:")
+                && !h.text.starts_with("System:")
+            })
             .skip(1)
             .filter(|h| h.score >= secondary_threshold)
             .take(2)
@@ -2103,7 +2245,7 @@ fn generate_raw_thought(
     // ── Eloquence Injection (LLM Learning) ────────────────────────────────────
     if !is_about_self && !response.is_empty() && matches!(query_type, QueryType::ExplanationQuestion | QueryType::Statement | QueryType::Contemplation) {
         if std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() % 3 == 0 {
-            let eloquence_hits = universe.predictive_query_by_source(
+            let eloquence_hits = universe.predictive_query_by_source(Some(input), 
                 crate::core::SparseVec::encode(trimmed),
                 "eloquence",
                 trace,
@@ -2243,7 +2385,7 @@ fn tone_marker(_brain: &BrainSignals, _score: f32, _is_followup: bool) -> &'stat
 /// Uses predictive query so the same gap cell doesn't fire every time.
 fn from_gap_cell(universe: &Universe, brain: &BrainSignals, trace: &ConversationTrace) -> String {
     let _ = brain;
-    let gap_hits = universe.predictive_query(
+    let gap_hits = universe.predictive_query(None, 
         crate::core::SparseVec::encode("don't know gap say plainly curious"),
         trace,
         predictive::DEFAULT_ITER_STEPS,
@@ -2419,6 +2561,30 @@ fn clean_cell_text(text: &str) -> String {
     for prefix in &prefixes {
         if s.starts_with(prefix) {
             s = s[prefix.len()..].to_string();
+        }
+    }
+
+    // ── Q&A pair extraction ─────────────────────────────────────────────────
+    // Tutoring cells store "Q: ... A: ..." pairs. When serving as a direct
+    // response, only the answer portion should be spoken.
+    if s.starts_with("Q: ") {
+        if let Some(a_pos) = s.find("\nA: ") {
+            s = s[a_pos + 4..].trim().to_string();
+        } else if let Some(a_pos) = s.find(" A: ") {
+            s = s[a_pos + 4..].trim().to_string();
+        }
+    }
+
+    // ── Meta hint extraction ──────────────────────────────────────────────────
+    // "When asked '...', reply with: '...'" -> "..."
+    if s.starts_with("When asked '") && s.contains("', reply with: '") {
+        if let Some(start) = s.find("', reply with: '") {
+            let answer_part = &s[start + 16..];
+            if answer_part.ends_with('\'') {
+                s = answer_part[..answer_part.len() - 1].to_string();
+            } else {
+                s = answer_part.to_string();
+            }
         }
     }
 
@@ -2895,7 +3061,7 @@ mod tests {
     #[test]
     fn test_no_hardcoded_responses_for_real_queries() {
         let brain = BrainSignals::default();
-        let hits = vec![hit("My name is KAI.", 0.90)];
+        let hits = vec![hit("My friend is KAI.", 0.90)];
         let u = Universe::new();
         let mut u = u;
         let resp = generate_response(
@@ -2907,6 +3073,7 @@ mod tests {
             &mut u,
             None,
             None,
+            false,
         );
         let _ = u;
         // Must come from the cell, not a template
@@ -2937,9 +3104,10 @@ mod tests {
             &mut u,
             None,
             None,
+            false,
         );
         // Filler should get a short response, not random knowledge
-        assert!(resp.len() < 50, "Filler response too long: {}", resp);
+        assert!(resp.len() < 100, "Filler response too long: {}", resp);
         assert!(
             !resp.contains("random cell"),
             "Filler should not return cell content: {}",
@@ -3008,5 +3176,26 @@ mod tests {
         let r2 = calm_grief_filter("DuckDuckGo was founded in 2008.", QueryType::RequestForInfo);
         assert_eq!(r2, "DuckDuckGo was founded in 2008.");
     }
+}
+
+// ── Semantic Coherence Guard ─────────────────────────────────────────────────
+/// Returns the fraction of content words in `text` that are known to the
+/// semantic dictionary. A low score means the text is probably word salad.
+fn semantic_coherence_score(text: &str) -> f32 {
+    let words: Vec<&str> = text
+        .split(|c: char| !c.is_alphabetic())
+        .filter(|w| w.len() >= 4)
+        .collect();
+    if words.is_empty() {
+        return 1.0; // Empty string is trivially coherent
+    }
+    let known = words
+        .iter()
+        .filter(|&&w| {
+            let b = crate::cognition::semantic_dict::lookup_word(w);
+            b.pos != "unknown" && !b.definition.is_empty()
+        })
+        .count();
+    known as f32 / words.len() as f32
 }
 

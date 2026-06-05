@@ -5241,8 +5241,7 @@ impl App {
                     self.bitnet_voice.as_ref(),
                     kai::cognition::voice::get_lexicon(),
                     Some(&self.engine.last_field),
-                    Some(&self.engine.pos_dict),
-                )
+                    Some(&self.engine.pos_dict), None, true)
             };
             kai::cognition::transcript::append(
                 &self.base_dir,
@@ -5318,8 +5317,7 @@ impl App {
                 self.bitnet_voice.as_ref(),
                 kai::cognition::voice::get_lexicon(),
                 Some(&self.engine.last_field),
-                Some(&self.engine.pos_dict),
-            );
+                Some(&self.engine.pos_dict), None, true);
 
             // ── Depth label: spectate-only (per directive: don't expose internals) ─
             // In normal chat KAI just speaks. In spectate mode you can see everything.
@@ -7310,6 +7308,7 @@ fn diagnose_predictive() {
         let input_vec = SparseVec::encode(input_text);
         let rows = match &source_filter {
             Some(s) => universe.diagnose_predictive_by_source(
+                Some(input_text),
                 input_vec,
                 s,
                 &trace,
@@ -7317,6 +7316,7 @@ fn diagnose_predictive() {
                 10,
             ),
             None => universe.diagnose_predictive(
+                Some(input_text),
                 input_vec,
                 &trace,
                 kai::core::predictive::DEFAULT_ITER_STEPS,
@@ -9723,7 +9723,7 @@ fn generate_command(opts: GenerateOpts) {
     eprintln!("  (symmetric co-occurrence lexicon + 1-word bigram context).");
     eprintln!();
     eprintln!("  For real conversation: run `kai` (TUI) or `kai --server` (IPC).");
-    eprintln!("  Both use generate_response_predictive — retrieval + template");
+    eprintln!("  Both use generate_response_predictive(prompt, None, None, None, None) — retrieval + template");
     eprintln!("  synthesis — which produces readable English.");
     eprintln!("═══════════════════════════════════════════════════════════════════");
     eprintln!();
@@ -9919,6 +9919,8 @@ fn generate_command(opts: GenerateOpts) {
         seed: opts.sampling_seed,
         context_injects: std::collections::HashMap::new(),
         clause_aware_stop: true,
+        expected_pos_sequence: None,
+        sentence_type: None,
     };
 
     // ── Bigram prior diagnostics ─────────────────────────────────────
@@ -9999,8 +10001,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 app.bitnet_voice.as_ref(), // BitnetVoice
                 kai::cognition::voice::get_lexicon(),
                 None,
-                None,
-            );
+                None, None, true);
             println!("\nKAI: {}", response);
             return Ok(());
         }

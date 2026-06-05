@@ -144,7 +144,7 @@ fn handle_command(
                 universe,
                 candle_voice,
                 bitnet_voice,
-            );
+            true);
 
             recent_context.push(("user".to_string(), text.to_string()));
             recent_context.push(("kai".to_string(), reply.clone()));

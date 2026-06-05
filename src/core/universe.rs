@@ -501,7 +501,7 @@ pub const COHERENCE_FLOOR: f32 = 0.40;
 
 /// Extract significant keywords from a query — stopwords removed, ≥3 chars.
 /// These are the terms we expect to literally appear in a matching cell.
-fn extract_query_keywords(text: &str) -> Vec<String> {
+pub fn extract_query_keywords(text: &str) -> Vec<String> {
     const STOPWORDS: &[&str] = &[
         "what",
         "is",
@@ -651,7 +651,7 @@ fn extract_query_keywords(text: &str) -> Vec<String> {
                 && c != '/'
                 && c != '²'
         })
-        .filter(|w| !w.is_empty() && w.len() >= 3 && !STOPWORDS.contains(w))
+        .filter(|w| !w.is_empty() && w.len() >= 2 && !STOPWORDS.contains(&w))
         .map(|w| w.to_string())
         .collect()
 }
@@ -659,7 +659,7 @@ fn extract_query_keywords(text: &str) -> Vec<String> {
 /// Score how many query keywords appear in cell text (0.0—1.0).
 /// Uses morphological prefix matching for words ≥4 chars so "dream" matches "dreaming",
 /// "feel" matches "feelings", "work" matches "working", etc.
-fn keyword_overlap_score(query_words: &[String], cell_text: &str) -> f32 {
+pub fn keyword_overlap_score(query_words: &[String], cell_text: &str) -> f32 {
     if query_words.is_empty() {
        
         return 0.0;
@@ -764,7 +764,7 @@ impl Universe {
             }
         }
         
-        println!("[HNSW] Rebuilt with {} hot cells (Pressure: {:.2}, Total: {})", hot_count, mem_pressure, self.cells.len());
+        // println!("[HNSW] Rebuilt with {} hot cells (Pressure: {:.2}, Total: {})", hot_count, mem_pressure, self.cells.len());
         self.hnsw = Some(hnsw);
 
         // 3. Build KMeans sub-lattice index for sub-500 μs cascade queries
@@ -778,11 +778,11 @@ impl Universe {
             let pool_mask: Vec<super::sparse_vec::DenseMask> = pool_sv.iter()
                 .map(|v| v.to_dense_mask()).collect();
             let idx = super::sparse_vec::KMeansIndex::build(&pool_sv, &pool_mask, k, 6);
-            println!("[KMeans] Built {k}-cluster index over {n} cells");
+            // println!("[KMeans] Built {k}-cluster index over {n} cells");
             self.mask_pool = pool_mask;
             self.kmeans_index = Some(idx);
         } else if n > 200_000 {
-            println!("[KMeans] Skipped ({} cells > 200K threshold). Using parallel scan.", n);
+            // println!("[KMeans] Skipped ({} cells > 200K threshold). Using parallel scan.", n);
         }
     }
 
@@ -1225,7 +1225,7 @@ impl Universe {
                 let theta_c = cell.claim.vec.phase_angle();
                 let phasor_coherence = cosine * (theta_q - theta_c).cos();
                 let kw = keyword_overlap_score(&query_words, &cell.claim.text);
-                let raw = 0.6 * phasor_coherence + 0.4 * kw;
+                let raw = 0.3 * phasor_coherence + 0.7 * kw;
                 let boosted = if raw > 0.15 {
                     let s = if cell.claim.confidence >= 2.9 { 0.85 } else { 0.5 };
                     raw * (s + 0.6 * cell.claim.confidence.min(5.0))
@@ -1279,7 +1279,7 @@ impl Universe {
                 let kw = keyword_overlap_score(&query_words, &cell.claim.text);
                 let theta_c = cell.claim.vec.phase_angle();
                 let phasor_coherence = cosine * (theta_q - theta_c).cos();
-                let raw = 0.6 * phasor_coherence + 0.4 * kw;
+                let raw = 0.3 * phasor_coherence + 0.7 * kw;
                 let boosted = if raw > 0.15 {
                     let s = if cell.claim.confidence >= 2.9 { 0.85 } else { 0.5 };
                     raw * (s + 0.6 * cell.claim.confidence.min(5.0))
@@ -1424,7 +1424,7 @@ impl Universe {
                     let kw = keyword_overlap_score(&query_words, &cell.claim.text);
                     let theta_c = cell.claim.vec.phase_angle();
                 let phasor_coherence = cosine * (theta_q - theta_c).cos();
-                let raw = 0.6 * phasor_coherence + 0.4 * kw;
+                let raw = 0.3 * phasor_coherence + 0.7 * kw;
                     // Phasor coherence bonus: cells phase-aligned with the query
                     // get a small boost (whitepaper Section 6.3, Contribution 6)
                     const PHASOR_WEIGHT: f32 = 0.05;
@@ -1486,7 +1486,7 @@ impl Universe {
                 // Hybrid: 60% cosine similarity (semantic) + 40% keyword overlap (exact match)
                 let theta_c = cell.claim.vec.phase_angle();
                 let phasor_coherence = cosine * (theta_q - theta_c).cos();
-                let raw = 0.6 * phasor_coherence + 0.4 * kw;
+                let raw = 0.3 * phasor_coherence + 0.7 * kw;
 
                 // Phasor coherence bonus: cells phase-aligned with the query
                 // get a small boost (whitepaper Section 6.3, Contribution 6)
@@ -1626,7 +1626,7 @@ impl Universe {
                 // Hybrid: 60% cosine similarity (semantic) + 40% keyword overlap (exact match)
                 let theta_c = cell.claim.vec.phase_angle();
                 let phasor_coherence = cosine * (theta_q - theta_c).cos();
-                let raw = 0.6 * phasor_coherence + 0.4 * kw;
+                let raw = 0.3 * phasor_coherence + 0.7 * kw;
                 
                 // Anti-bleed: only boost if there is semantic relevance.
                 let boosted = if raw > 0.15 {
@@ -2136,15 +2136,15 @@ impl Universe {
 
         if angle3_resonance < coherence_floor {
             log_rejected_claim(text, region, source, confidence, "three-angle coherence floor");
-            println!("REJECTED: '{}' (Reason: three-angle coherence {:.2} < floor {:.2})",
-                     text, angle3_resonance, coherence_floor);
+            // println!("REJECTED: '{}' (Reason: three-angle coherence {:.2} < floor {:.2})",
+                     // text, angle3_resonance, coherence_floor);
             return false;
         }
 
         if region == "established-physics" && angle3_resonance < PHYSICS_RESONANCE_FLOOR {
             log_rejected_claim(text, region, source, confidence, "physics resonance floor");
-            println!("REJECTED: '{}' (Reason: physics resonance {:.2} < floor {:.2})",
-                     text, angle3_resonance, PHYSICS_RESONANCE_FLOOR);
+            // println!("REJECTED: '{}' (Reason: physics resonance {:.2} < floor {:.2})",
+                     // text, angle3_resonance, PHYSICS_RESONANCE_FLOOR);
             return false;
         }
         
@@ -2153,8 +2153,8 @@ impl Universe {
         // (phi_g / angle3_resonance), the cell threatens the integrity of the 16,384-dim lattice.
         if angle2_score > angle3_resonance {
             log_rejected_claim(text, region, source, confidence, "structural friction (chi > phi_g)");
-            println!("REJECTED: '{}' (Reason: Sovereign Physics friction {:.2} > resonance {:.2})",
-                     text, angle2_score, angle3_resonance);
+            // println!("REJECTED: '{}' (Reason: Sovereign Physics friction {:.2} > resonance {:.2})",
+                     // text, angle2_score, angle3_resonance);
             return false;
         }
 
@@ -2180,7 +2180,7 @@ impl Universe {
                 "unresolved epistemic contradiction with higher-confidence source"
             };
             log_rejected_claim(text, target_region, source, target_confidence, reason);
-            println!("REJECTED: '{}' (Reason: {})", text, reason);
+            // println!("REJECTED: '{}' (Reason: {})", text, reason);
             return false;
         }
 
@@ -2486,38 +2486,42 @@ impl Universe {
     /// 3. Returns the top-5 hits.
     pub fn predictive_query(
         &self,
+        raw_query: Option<&str>,
         input: SparseVec,
         trace: &ConversationTrace,
         steps: usize,
     ) -> Vec<QueryHit> {
-        self.predictive_query_filtered(input, trace, steps, |_| true, "")
+        self.predictive_query_filtered(raw_query, input, trace, steps, |_| true, "")
     }
 
     pub fn predictive_query_user(
         &self,
+        raw_query: Option<&str>,
         input: SparseVec,
         trace: &ConversationTrace,
         steps: usize,
         user_id: &str,
     ) -> Vec<QueryHit> {
-        self.predictive_query_filtered(input, trace, steps, |_| true, user_id)
+        self.predictive_query_filtered(raw_query, input, trace, steps, |_| true, user_id)
     }
 
     /// Source-scoped variant for the voice path (greeting / empathy / …).
     /// Same pipeline, just filters eligible cells to a single source tag.
     pub fn predictive_query_by_source(
         &self,
+        raw_query: Option<&str>,
         input: SparseVec,
         source: &str,
         trace: &ConversationTrace,
         steps: usize,
     ) -> Vec<QueryHit> {
         let want = source.to_string();
-        self.predictive_query_filtered(input, trace, steps, move |c| c.claim.source.as_ref() == want.as_str(), "")
+        self.predictive_query_filtered(raw_query, input, trace, steps, move |c| c.claim.source.as_ref() == want.as_str(), "")
     }
 
     pub fn predictive_query_by_source_user(
         &self,
+        raw_query: Option<&str>,
         input: SparseVec,
         source: &str,
         trace: &ConversationTrace,
@@ -2525,7 +2529,7 @@ impl Universe {
         user_id: &str,
     ) -> Vec<QueryHit> {
         let want = source.to_string();
-        self.predictive_query_filtered(input, trace, steps, move |c| c.claim.source.as_ref() == want.as_str(), user_id)
+        self.predictive_query_filtered(raw_query, input, trace, steps, move |c| c.claim.source.as_ref() == want.as_str(), user_id)
     }
 
     /// Diagnostic variant of `predictive_query` that returns the full
@@ -2535,16 +2539,18 @@ impl Universe {
     /// print why the lattice picked what it picked.
     pub fn diagnose_predictive(
         &self,
+        raw_query: Option<&str>,
         input: SparseVec,
         trace: &ConversationTrace,
         steps: usize,
         top_k: usize,
     ) -> Vec<PredictiveScoreBreakdown> {
-        self.diagnose_predictive_user(input, trace, steps, top_k, "")
+        self.diagnose_predictive_user(raw_query, input, trace, steps, top_k, "")
     }
 
     pub fn diagnose_predictive_user(
         &self,
+        raw_query: Option<&str>,
         input: SparseVec,
         trace: &ConversationTrace,
         steps: usize,
@@ -2607,7 +2613,19 @@ impl Universe {
                 );
                 let rec =
                     predictive::recency_penalty(tick, cell.last_fired, predictive::RECENCY_WINDOW);
-                let score = 0.20 * sim + 0.55 * predict_match + 0.15 * mh - 0.20 * rec;
+                let kw = if let Some(q) = raw_query {
+                    let query_words = extract_query_keywords(q);
+                    if !query_words.is_empty() {
+                        keyword_overlap_score(&query_words, &cell.claim.text)
+                    } else { 0.0 }
+                } else { 0.0 };
+                
+                let score = if kw > 0.0 {
+                    0.15 * sim + 0.40 * predict_match + 0.10 * mh + 0.35 * kw - 0.20 * rec
+                } else {
+                    0.20 * sim + 0.55 * predict_match + 0.15 * mh - 0.20 * rec
+                };
+                
                 PredictiveScoreBreakdown {
                     label: cell.label.clone(),
                     text: cell.claim.text.clone(),
@@ -2637,17 +2655,19 @@ impl Universe {
     /// scoring when the full universe is hidden behind a source filter.
     pub fn diagnose_predictive_by_source(
         &self,
+        raw_query: Option<&str>,
         input: SparseVec,
         source: &str,
         trace: &ConversationTrace,
         steps: usize,
         top_k: usize,
     ) -> Vec<PredictiveScoreBreakdown> {
-        self.diagnose_predictive_by_source_user(input, source, trace, steps, top_k, "")
+        self.diagnose_predictive_by_source_user(raw_query, input, source, trace, steps, top_k, "")
     }
 
     pub fn diagnose_predictive_by_source_user(
         &self,
+        raw_query: Option<&str>,
         input: SparseVec,
         source: &str,
         trace: &ConversationTrace,
@@ -2711,7 +2731,18 @@ impl Universe {
                 );
                 let rec =
                     predictive::recency_penalty(tick, cell.last_fired, predictive::RECENCY_WINDOW);
-                let score = 0.20 * sim + 0.55 * predict_match + 0.15 * mh - 0.20 * rec;
+                let kw = if let Some(q) = raw_query {
+                    let query_words = extract_query_keywords(q);
+                    if !query_words.is_empty() {
+                        keyword_overlap_score(&query_words, &cell.claim.text)
+                    } else { 0.0 }
+                } else { 0.0 };
+                
+                let score = if kw > 0.0 {
+                    0.15 * sim + 0.40 * predict_match + 0.10 * mh + 0.35 * kw - 0.20 * rec
+                } else {
+                    0.20 * sim + 0.55 * predict_match + 0.15 * mh - 0.20 * rec
+                };
                 PredictiveScoreBreakdown {
                     label: cell.label.clone(),
                     text: cell.claim.text.clone(),
@@ -2737,6 +2768,7 @@ impl Universe {
     }
     fn predictive_query_filtered<F>(
         &self,
+        raw_query: Option<&str>,
         input: SparseVec,
         trace: &ConversationTrace,
         steps: usize,
@@ -2805,6 +2837,9 @@ impl Universe {
         // querying attention with a shifted key.
         let tick = trace.turns_seen;
         let prediction_anchor = trace.current.permute(1).contrast(&input);
+        
+        let query_words = raw_query.map(|q| extract_query_keywords(q)).unwrap_or_default();
+        
         let mut final_scores: Vec<(usize, f32)> = eligible
             .par_iter()
             .map(|&i| {
@@ -2818,10 +2853,21 @@ impl Universe {
                 );
                 let rec =
                     predictive::recency_penalty(tick, cell.last_fired, predictive::RECENCY_WINDOW);
-                // Transitions dominate. Raw similarity barely contributes;
-                // recency is harsh enough to push repeated cells out of
-                // the top-k.
-                let score = 0.20 * sim + 0.55 * predict_match + 0.15 * mh - 0.20 * rec;
+                    
+                let kw = if !query_words.is_empty() {
+                    keyword_overlap_score(&query_words, &cell.claim.text)
+                } else {
+                    0.0
+                };
+                
+                // Transitions dominate, but we now inject lexical anchoring (kw)
+                // so specific facts don't get lost in the semantic soup.
+                let score = if kw > 0.0 {
+                    0.15 * sim + 0.40 * predict_match + 0.10 * mh + 0.35 * kw - 0.20 * rec
+                } else {
+                    0.20 * sim + 0.55 * predict_match + 0.15 * mh - 0.20 * rec
+                };
+                
                 (i, score)
             })
             .collect();
@@ -2863,16 +2909,18 @@ impl Universe {
     /// TUI still uses the fixed top-5 via `predictive_query`).
     pub fn predictive_query_vecs(
         &self,
+        raw_query: Option<&str>,
         input: SparseVec,
         trace: &ConversationTrace,
         steps: usize,
         top_k: usize,
     ) -> Vec<(&Cell, f32)> {
-        self.predictive_query_vecs_user(input, trace, steps, top_k, "")
+        self.predictive_query_vecs_user(raw_query, input, trace, steps, top_k, "")
     }
 
     pub fn predictive_query_vecs_user(
         &self,
+        raw_query: Option<&str>,
         input: SparseVec,
         trace: &ConversationTrace,
         steps: usize,
@@ -2925,6 +2973,9 @@ impl Universe {
 
         let tick = trace.turns_seen;
         let prediction_anchor = trace.current.permute(1).contrast(&input);
+        
+        let query_words = raw_query.map(|q| extract_query_keywords(q)).unwrap_or_default();
+        
         let mut final_scores: Vec<(usize, f32)> = eligible
             .par_iter()
             .map(|&i| {
@@ -2938,7 +2989,18 @@ impl Universe {
                 );
                 let rec =
                     predictive::recency_penalty(tick, cell.last_fired, predictive::RECENCY_WINDOW);
-                let score = 0.20 * sim + 0.55 * predict_match + 0.15 * mh - 0.20 * rec;
+                    
+                let kw = if !query_words.is_empty() {
+                    keyword_overlap_score(&query_words, &cell.claim.text)
+                } else {
+                    0.0
+                };
+                
+                let score = if kw > 0.0 {
+                    0.15 * sim + 0.40 * predict_match + 0.10 * mh + 0.35 * kw - 0.20 * rec
+                } else {
+                    0.20 * sim + 0.55 * predict_match + 0.15 * mh - 0.20 * rec
+                };
                 (i, score)
             })
             .collect();
@@ -3206,6 +3268,7 @@ impl Universe {
         }
         // Collect top 5 children by confidence
         let mut child_indices: Vec<u32> = cell.children.clone();
+        child_indices.retain(|&idx| (idx as usize) < self.cells.len());
         child_indices.sort_by(|a, b| {
             let ca = self.cells[*a as usize].claim.confidence;
             let cb = self.cells[*b as usize].claim.confidence;
@@ -3223,8 +3286,8 @@ impl Universe {
                     &child.label
                 };
                 // Truncate label to first 40 chars for brevity
-                if label.len() > 40 {
-                    format!("{}…", &label[..40])
+                if label.chars().count() > 40 {
+                    format!("{}…", label.chars().take(40).collect::<String>())
                 } else {
                     label.clone()
                 }

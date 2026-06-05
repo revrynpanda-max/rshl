@@ -175,7 +175,42 @@ export function startKAIWatcherLoop(client, opts = {}) {
 
           if (fleet.deadCount >= MIN_DEAD_FOR_FAILSAFE) {
             oracleMissedCount = 0;
-            await executeQuantumRollback(client);
+            if (client && !global.rollbackPromptActive) {
+                global.rollbackPromptActive = true;
+                try {
+                    const channel = await client.channels.fetch('1504582069886648351').catch(() => null) 
+                                 || await client.channels.fetch(CHANNEL_IDS.WORK).catch(() => null);
+                    if (channel) {
+                        await channel.send("🚨 **[KAI SOVEREIGN WATCHER]**\nI've detected a critical failure: Oracle is unresponsive and the fleet appears dead.\nDo you want me to execute a **Quantum Rollback** to restart the ecosystem? (Reply `yes` or `no` within 5 minutes)");
+                        
+                        const filter = m => !m.author.bot && (m.content.toLowerCase() === 'yes' || m.content.toLowerCase() === 'no');
+                        const collector = channel.createMessageCollector({ filter, time: 300000, max: 1 });
+                        
+                        collector.on('collect', async m => {
+                            if (m.content.toLowerCase() === 'yes') {
+                                await channel.send("Acknowledged. Executing Quantum Rollback.");
+                                await executeQuantumRollback(client);
+                            } else {
+                                await channel.send("Rollback cancelled. I will ignore the dead fleet and remain solo.");
+                                oracleMissedCount = -100; // prevent re-triggering for a long time
+                            }
+                        });
+                        
+                        collector.on('end', collected => {
+                            global.rollbackPromptActive = false;
+                            if (collected.size === 0) {
+                                channel.send("5-minute decision window expired. Rollback cancelled. I will remain solo.");
+                                oracleMissedCount = -100; // prevent re-triggering for a long time
+                            }
+                        });
+                    } else {
+                        await executeQuantumRollback(client);
+                    }
+                } catch(e) {
+                    console.error("[KAI/Failsafe] Prompt error:", e);
+                    await executeQuantumRollback(client);
+                }
+            }
           } else {
             console.log('[KAI/Failsafe] Fleet mostly intact — specialists working. KAI stays passive.');
           }

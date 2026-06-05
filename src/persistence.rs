@@ -443,9 +443,9 @@ pub fn load_compact(base_dir: &str) -> Option<(Universe, CandidateBuffer, Drive,
     let meta_path = format!("{}/{}", base_dir, COMPACT_META_FILE);
     let delta_path = format!("{}/{}", base_dir, COMPACT_DELTA_FILE);
 
-    println!("[load_compact] checking cells_path={} meta_path={}", cells_path, meta_path);
+    // println!("[load_compact] checking cells_path={} meta_path={}", cells_path, meta_path);
     if !Path::new(&cells_path).exists() || !Path::new(&meta_path).exists() {
-        println!("[load_compact] missing files — falling back to legacy JSON");
+        // println!("[load_compact] missing files — falling back to legacy JSON");
         return None;
     }
 
@@ -453,18 +453,18 @@ pub fn load_compact(base_dir: &str) -> Option<(Universe, CandidateBuffer, Drive,
     let cell_bytes = match fs::read(&cells_path) {
         Ok(b) => b,
         Err(e) => {
-            println!("[load_compact] failed to read cells file: {}", e);
+            // println!("[load_compact] failed to read cells file: {}", e);
             return None;
         }
     };
-    println!("[load_compact] read {} bytes from cells file", cell_bytes.len());
+    // println!("[load_compact] read {} bytes from cells file", cell_bytes.len());
     let cells = match compact::deserialize_cells(&cell_bytes) {
         Ok(c) => {
-            println!("[load_compact] deserialized {} cells", c.len());
+            // println!("[load_compact] deserialized {} cells", c.len());
             c
         }
         Err(e) => {
-            println!("[load_compact] deserialize_cells failed: {:?}", e);
+            // println!("[load_compact] deserialize_cells failed: {:?}", e);
             return None;
         }
     };
@@ -480,7 +480,7 @@ pub fn load_compact(base_dir: &str) -> Option<(Universe, CandidateBuffer, Drive,
         valid_cells.push(cell);
     }
     if repaired > 0 {
-        println!("persistence: repaired {} corrupted cells on load", repaired);
+        // println!("persistence: repaired {} corrupted cells on load", repaired);
     }
 
     let mut universe = Universe::new();
@@ -534,7 +534,7 @@ pub fn load_compact(base_dir: &str) -> Option<(Universe, CandidateBuffer, Drive,
     let meta_raw = match fs::read_to_string(&meta_path) {
         Ok(s) => s,
         Err(e) => {
-            println!("[load_compact] failed to read meta file: {}", e);
+            // println!("[load_compact] failed to read meta file: {}", e);
             return None;
         }
     };
@@ -543,12 +543,12 @@ pub fn load_compact(base_dir: &str) -> Option<(Universe, CandidateBuffer, Drive,
     let meta: Meta = match serde_json::from_str(&meta_raw) {
         Ok(m) => m,
         Err(e) => {
-            println!("[load_compact] meta JSON deserialize failed: {}", e);
+            // println!("[load_compact] meta JSON deserialize failed: {}", e);
             return None;
         }
     };
-    println!("[load_compact] loaded meta: tick={} dream_count={} candidates={} synapses={}",
-        meta.tick, meta.dream_count, meta.candidates.entries.len(), meta.synaptic_layer.synapses.len());
+    /* println!("[load_compact] loaded meta: tick={} dream_count={} candidates={} synapses={}",
+             meta.tick, meta.dream_count, meta.candidates.entries.len(), meta.synaptic_layer.synapses.len()); */
 
     Some((universe, meta.candidates, meta.drive, meta.tick, meta.dream_count, meta.synaptic_layer))
 }

@@ -191,6 +191,10 @@ pub struct DecodeParams {
     /// (`.`, `!`, `?`) instead of running to the hard `max_tokens` cap.
     /// This produces more natural multi-sentence output.
     pub clause_aware_stop: bool,
+    /// Optional expected Part-of-Speech sequence to bias generation.
+    pub expected_pos_sequence: Option<Vec<String>>,
+    /// Optional sentence type (e.g., "question", "statement", "command") to bias generation.
+    pub sentence_type: Option<String>,
 }
 
 impl Default for DecodeParams {
@@ -208,6 +212,8 @@ impl Default for DecodeParams {
             seed: 0x1337_CAFE_BABE_BEEF,
             context_injects: HashMap::new(),
             clause_aware_stop: true,
+            expected_pos_sequence: None,
+            sentence_type: None,
         }
     }
 }
@@ -230,6 +236,8 @@ impl DecodeParams {
             seed: 0,
             context_injects: HashMap::new(),
             clause_aware_stop: false,
+            expected_pos_sequence: None,
+            sentence_type: None,
         }
     }
 }
@@ -570,9 +578,27 @@ impl StatLexicon {
             return SparseVec::zero();
         }
         let mut slots: Vec<SparseVec> = Vec::with_capacity(tokens.len());
+        let dict = crate::core::pos_dict::get_dictionary();
         for (i, tok) in tokens.iter().enumerate() {
             if let Some(wv) = self.get(tok) {
-                slots.push(self.bind_at_position(wv, i));
+                let mut bundle_refs: Vec<(&SparseVec, f32)> = vec![(wv, 1.0)];
+                
+                // Inject Semantic Synonyms
+                if let Some(entry) = dict.lookup(tok) {
+                    for syn in &entry.synonyms {
+                        if let Some(syn_vec) = self.get(syn) {
+                            bundle_refs.push((syn_vec, 0.4)); // 40% strength for synonyms
+                        }
+                    }
+                }
+                
+                let mature_wv = if bundle_refs.len() > 1 {
+                    crate::cognition::generative::weighted_superpose(&bundle_refs, 0.04)
+                } else {
+                    wv.clone()
+                };
+                
+                slots.push(self.bind_at_position(&mature_wv, i));
             }
         }
         if slots.is_empty() {
@@ -734,6 +760,42 @@ impl StatLexicon {
                         let base_wv = params.context_injects.get(w).unwrap_or(wv);
                         let attention_sim = base_wv.cosine(&attention_state);
                         *score += params.attention_weight * attention_sim;
+                    }
+                }
+            }
+
+            // ── 3d. Semantic Thesaurus Filter ────────────────────────
+            // Apply grammar constraints and synonym clusters from PosDictionary.
+            let dict = crate::core::pos_dict::get_dictionary();
+            
+            // Expected POS grammar constraint
+            if let Some(expected_pos_seq) = &params.expected_pos_sequence {
+                if pos < expected_pos_seq.len() {
+                    let expected_pos = &expected_pos_seq[pos];
+                    for (w, score) in candidates.iter_mut() {
+                        if let Some(entry) = dict.lookup(w) {
+                            if entry.pos == *expected_pos {
+                                *score += 1.5; // Grammar matching boost
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Synonym semantic clustering
+            // Find the current best candidate to boost its synonyms
+            let mut current_best = candidates[0].0.clone();
+            let mut current_best_score = f32::NEG_INFINITY;
+            for (w, score) in candidates.iter() {
+                if *score > current_best_score {
+                    current_best = w.clone();
+                    current_best_score = *score;
+                }
+            }
+            if let Some(entry) = dict.lookup(&current_best) {
+                for (w, score) in candidates.iter_mut() {
+                    if entry.synonyms.contains(w) {
+                        *score += 1.0; // Synonym semantic boost
                     }
                 }
             }

@@ -71,6 +71,9 @@ export async function sendBotSignal(port, payload) {
       body: JSON.stringify(payload)
     });
   } catch (e) {
-    console.warn(`[IPC] Failed to signal bot on port ${port}:`, e.message);
+    const transient = /fetch failed|ECONNREFUSED|connection refused|ECONNRESET|socket hang up/i;
+    if (!transient.test(e.message)) {
+      console.warn(`[IPC] Failed to signal bot on port ${port}:`, e.message);
+    }
   }
 }

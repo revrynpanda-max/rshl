@@ -5,15 +5,36 @@ use std::io::BufReader;
 use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PosEntry {
-    pub pos: String,
+pub struct SemanticEntry {
     pub word: String,
-    pub definitions: Vec<String>,
+    pub pos: String,
+    #[serde(default)]
+    pub synonyms: Vec<String>,
+    pub definition: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SemanticDictFile {
+    pub words: HashMap<String, SemanticEntry>,
 }
 
 pub struct PosDictionary {
-    // Maps a lowercase word to a list of its dictionary entries
-    pub entries: HashMap<String, Vec<PosEntry>>,
+    // Maps a lowercase word to its semantic entry
+    pub entries: HashMap<String, SemanticEntry>,
+}
+
+static GLOBAL_DICTIONARY: std::sync::OnceLock<PosDictionary> = std::sync::OnceLock::new();
+
+pub fn get_dictionary() -> &'static PosDictionary {
+    GLOBAL_DICTIONARY.get_or_init(|| {
+        let mut dict = PosDictionary::new();
+        if let Err(e) = dict.load_semantic_dict("data/semantic_dict.json") {
+            println!("[Dictionary] Failed to load semantic dict: {}", e);
+        } else {
+            println!("[Dictionary] Loaded {} semantic entries.", dict.entries.len());
+        }
+        dict
+    })
 }
 
 impl PosDictionary {
@@ -23,24 +44,20 @@ impl PosDictionary {
         }
     }
 
-    /// Loads the Webster's Dictionary from a JSON file.
-    pub fn load_from_file<P: AsRef<Path>>(path: P) -> Result<Self, Box<dyn std::error::Error>> {
+    /// Loads the semantic dictionary from a JSON file.
+    pub fn load_semantic_dict<P: AsRef<Path>>(&mut self, path: P) -> Result<(), Box<dyn std::error::Error>> {
         let file = File::open(path)?;
         let reader = BufReader::new(file);
+        let file_data: SemanticDictFile = serde_json::from_reader(reader)?;
         
-        let raw_entries: Vec<PosEntry> = serde_json::from_reader(reader)?;
-        let mut entries_map: HashMap<String, Vec<PosEntry>> = HashMap::with_capacity(raw_entries.len());
-
-        for entry in raw_entries {
-            let key = entry.word.to_lowercase();
-            entries_map.entry(key).or_default().push(entry);
+        for (key, entry) in file_data.words {
+            self.entries.insert(key.to_lowercase(), entry);
         }
-
-        Ok(Self { entries: entries_map })
+        Ok(())
     }
 
-    /// Queries the dictionary for a specific word, returning its entries if found.
-    pub fn lookup(&self, word: &str) -> Option<&Vec<PosEntry>> {
+    /// Queries the dictionary for a specific word, returning its entry if found.
+    pub fn lookup(&self, word: &str) -> Option<&SemanticEntry> {
         self.entries.get(&word.to_lowercase())
     }
 }

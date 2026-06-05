@@ -1,6 +1,8 @@
+pub mod algebra;
 pub mod candle_voice;
 pub mod bitnet_voice;
 pub mod semantic_dict;
+pub mod math_engine;
 pub use bitnet_voice::BitnetVoice;
 pub use candle_voice::CandleVoice;
 pub mod acc;
@@ -156,5 +158,7 @@ pub use corpus_trainer::{ingest_corpus_dir, corpus_stats, run_ingest_corpus_cli,
 pub use voice::{detect_query_type, generate_response, generate_response_predictive, generate_inner_thought, MoodState, BrainSignals, QueryType};
 pub use lattice_attention::{generate_attentive_response, multi_hop_attend, softmax, format_hop_chain};
 pub use persona::{PersonaMatrix, MbtiDichotomy};
+pub mod pathfinder;
+pub use pathfinder::find_semantic_path;
 pub use native_nlg::{NativeGenerator, IntentSkeleton, TernaryWord};
 pub use sequence_chain::{SequenceChain, TernaryDictionary, HDC_DIM};

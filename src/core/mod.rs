@@ -31,6 +31,7 @@ pub mod universe;
 pub mod index;
 pub mod scale_manager;
 pub mod rshl_transformer;
+pub mod interpret;
 
 pub use synapse::{SynapticLayer, NeuralBus};
 pub use rshl_transformer::{RshlHead, RshlFeedForward, RshlTransformerBlock, TransformerConfig};
@@ -48,7 +49,7 @@ pub use reasoning::{ContextSlot, Reasoner};
 pub use sparse_vec::{SparseVec, DenseMask, PackedMask};
 pub use gpu_kernel::GpuKernel;
 pub use stat_lexicon::StatLexicon;
-pub use pos_dict::{PosDictionary, PosEntry};
+pub use pos_dict::{PosDictionary, SemanticEntry};
 pub use universe::{Cell, QueryHit, Universe, PredictiveScoreBreakdown};
 pub use calibration::CalibrationEngine;
 pub use text_store::TextStore;

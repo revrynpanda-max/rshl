@@ -229,7 +229,7 @@ pub fn build_generative_state(
     // + look-ahead anchor + recency penalty that the TUI retrieval
     // path uses, then hands us cell references so we can fold the
     // raw vectors in.
-    let hits = universe.predictive_query_vecs_user(backbone.clone(), trace, MIXER_STEPS, MEMORY_TOP_K, user_id);
+    let hits = universe.predictive_query_vecs_user(Some(prompt), backbone.clone(), trace, MIXER_STEPS, MEMORY_TOP_K, user_id);
     let (memory_vec, memory_cont) = memory_bundles_from_hits(&hits);
 
     // ── 4. FieldState modulation — g drives memory, chi drives contrast

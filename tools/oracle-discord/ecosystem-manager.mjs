@@ -33,6 +33,7 @@ import 'dotenv/config';
 
 const BOTS = ["Gemini", "Claudey", "X", "Groq", "Analyst", "Researcher", "Kai Coder"];
 const processes = new Map(); // name -> child process
+const sleepingBots = new Set(); // name -> true (prevents auto-respawn)
 
 function broadcast(msg) {
   for (const [name, child] of processes) {
@@ -169,9 +170,35 @@ function startProcess(name, script, args = []) {
       }
       if (msg.type === 'RESTART_BOT' && (name === 'Oracle' || name === 'KAI' || name === 'Kai Coder')) {
         const target = msg.botName;
-        const properName = [...processes.keys()].find(k => k.toLowerCase() === target.toLowerCase());
+        const properName = [...processes.keys()].find(k => k.toLowerCase() === target.toLowerCase()) || 
+                           [...BOTS, "Leo", "KAI", "Oracle", "Dashboard"].find(k => k.toLowerCase() === target.toLowerCase());
         if (properName) {
           console.log(`[Ecosystem] ${name} requested restart of ${properName}. Applying...`);
+          startProcess(properName, properName === "Oracle" ? "oracle-gateway.mjs" : (properName === "Leo" ? "bots/leo.mjs" : (properName === "KAI" ? "bots/kai.mjs" : "bots/start-bot.mjs")), [properName]);
+        }
+      }
+      if (msg.type === 'SLEEP_BOT' && name === 'Oracle') {
+        const target = msg.botName;
+        const properName = [...processes.keys()].find(k => k.toLowerCase() === target.toLowerCase());
+        if (properName) {
+          console.log(`[Ecosystem] Oracle requested SLEEP for ${properName}. Stopping process...`);
+          sleepingBots.add(properName);
+          const child = processes.get(properName);
+          if (child) {
+             child.removeAllListeners('close');
+             if (child.connected) child.kill('SIGKILL');
+             processes.delete(properName);
+             console.log(`[Ecosystem] ${properName} is now ASLEEP.`);
+          }
+        }
+      }
+      if (msg.type === 'WAKE_BOT' && name === 'Oracle') {
+        const target = msg.botName;
+        const allKnown = [...BOTS, "Leo", "KAI", "Oracle", "Dashboard"];
+        const properName = allKnown.find(k => k.toLowerCase() === target.toLowerCase());
+        if (properName) {
+          console.log(`[Ecosystem] Oracle requested WAKE for ${properName}...`);
+          sleepingBots.delete(properName);
           startProcess(properName, properName === "Oracle" ? "oracle-gateway.mjs" : (properName === "Leo" ? "bots/leo.mjs" : (properName === "KAI" ? "bots/kai.mjs" : "bots/start-bot.mjs")), [properName]);
         }
       }
@@ -223,6 +250,10 @@ function startProcess(name, script, args = []) {
   });
 
   child.on('close', (code) => {
+    if (sleepingBots.has(name)) {
+      console.log(`[Ecosystem] ${name} process closed, but is ASLEEP. Suppressing auto-respawn.`);
+      return;
+    }
     console.log(`[Ecosystem] ${name} exited with code ${code}. Re-spawning in 5s...`);
     processes.delete(name);
     if (fs.existsSync('c:/KAI/tools/oracle-discord/state/test_failsafe.flag')) {
@@ -242,14 +273,10 @@ function startProcess(name, script, args = []) {
 }
 
 // Core Ignition: Start mission-critical bots with a safe Discord Gateway stagger (5.5s)
-console.log(`[Ecosystem] Initializing core ignition with 5.5s Discord Gateway staggering...`);
+console.log(`[Ecosystem] Initializing core ignition. Starting KAI, Oracle, and Dashboard.`);
 
 startProcess("Dashboard", "dashboard-server.mjs");
 startProcess("Oracle", "oracle-gateway.mjs");
-
-setTimeout(() => {
-  startProcess("Leo", "bots/leo.mjs");
-}, 1000);
 
 setTimeout(() => {
   // KAI is the Master Proxy; he handles the TTS relay for other bots
@@ -257,14 +284,12 @@ setTimeout(() => {
   startProcess("KAI", "bots/kai.mjs");
 }, 2000);
 
-// Spawn remaining fleet with safe, non-colliding intervals
-let delay = 3000;
+// Set all other bots to ASLEEP by default so they don't consume PC resources
+sleepingBots.add("Leo");
 for (const bot of BOTS) {
-  setTimeout(() => {
-    startProcess(bot, "bots/start-bot.mjs", [bot]);
-  }, delay);
-  delay += 1000; // 1s gap is perfectly safe for OS and token separation
+  sleepingBots.add(bot);
 }
+console.log(`[Ecosystem] All secondary bots (Leo, ${BOTS.join(', ')}) are ASLEEP by default. Use Oracle to wake them.`);
 
 // Global World Clock Heartbeat
 setInterval(() => {

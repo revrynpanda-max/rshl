@@ -12,6 +12,8 @@ import { biometrics } from './shared/voice-biometrics.mjs';
 import { logAudit } from './shared/audit-log.mjs';
 import os from 'os';
 import { AI_REGISTRY, resolveIdentityFromMemory } from './shared/identities.mjs';
+
+import { getDynamicRole, teachBotRule, setBotPersona, pruneBotRule } from './shared/dynamic-roles.mjs';
 import { startSentinel } from './shared/sentinel.mjs';
 import { startCorrelationEngine } from './shared/correlation-engine.mjs';
 import { startIntegrityWatcher } from './shared/file-integrity.mjs';
@@ -459,7 +461,7 @@ client.once('clientReady', async () => {
   let toolServerStartedAt = Date.now();
 
   function launchToolServer() {
-    const toolServer = fork(toolServerPath, [], { silent: false, env: { ...process.env } });
+    const toolServer = fork(toolServerPath, [], { silent: true, env: { ...process.env } });
     toolServerStartedAt = Date.now();
 
     toolServer.on('error', e => console.warn('[Oracle/ToolServer] Launch error:', e.message));
@@ -775,6 +777,89 @@ function handleUserRestartRequest(message, text) {
   return false;
 }
 
+function handleUserSleepWakeRequest(message, text) {
+  const lower = text.toLowerCase();
+  
+  const isGlobalQuiet = /\b(quiet mode|focus mode|shut up the other|shut up other|shutup the other|idle background|sleep all|sleep the other|sleep other)\b/i.test(lower);
+  const isGlobalWake = /\b(wake up all|wake all|disable quiet mode|disable focus mode|wake up the other|wake the other)\b/i.test(lower);
+
+  if (isGlobalQuiet) {
+    if (process.send) {
+      const noisyBots = ["Gemini", "Claudey", "X", "Groq"];
+      for (const b of noisyBots) {
+        process.send({ type: 'SLEEP_BOT', botName: b });
+      }
+      message.reply(`🏛️ **[Oracle/Ecosystem]** Quiet Mode engaged. Putting all background social bots (Gemini, Claudey, X, Groq) to sleep to free up system resources.`).catch(() => {});
+    } else {
+      message.reply(`🏛️ **[Oracle/Ecosystem]** Standalone mode active. Cannot send process signals.`).catch(() => {});
+    }
+    return true;
+  }
+
+  if (isGlobalWake) {
+    if (process.send) {
+      const noisyBots = ["Gemini", "Claudey", "X", "Groq"];
+      for (const b of noisyBots) {
+        process.send({ type: 'WAKE_BOT', botName: b });
+      }
+      message.reply(`🏛️ **[Oracle/Ecosystem]** Waking up all background social bots (Gemini, Claudey, X, Groq)...`).catch(() => {});
+    }
+    return true;
+  }
+  
+  const isSleep = /\b(sleep|turn off|shut down|disable|suspend|stop)\b/i.test(lower);
+  const isWake = /\b(wake|turn on|enable|start|boot)\b/i.test(lower);
+  
+  if (!isSleep && !isWake) return false;
+  if (isSleep && isWake) return false; // Ambiguous
+
+  const targets = {
+    "groq": "Groq",
+    "claudey": "Claudey",
+    "gemini": "Gemini",
+    "gemi": "Gemini",
+    "x": "X",
+    "leo": "Leo",
+    "kai": "KAI",
+    "core": "KAI",
+    "researcher": "Researcher",
+    "analyst": "Analyst",
+    "kai coder": "Kai Coder",
+    "coder": "Kai Coder",
+    "kai-coder": "Kai Coder",
+    "oracle": "Oracle",
+    "gateway": "Oracle",
+    "dashboard": "Dashboard"
+  };
+
+  let matchedBot = null;
+  for (const [key, val] of Object.entries(targets)) {
+    const escapedKey = key.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+    const regex = new RegExp(`\\b${escapedKey}\\b`, 'i');
+    if (regex.test(lower)) {
+      matchedBot = val;
+      break;
+    }
+  }
+
+  if (matchedBot) {
+    if (process.send) {
+      if (isSleep) {
+        process.send({ type: 'SLEEP_BOT', botName: matchedBot });
+        message.reply(`🏛️ **[Oracle/Ecosystem]** Command acknowledged. Putting **${matchedBot}** to sleep to conserve neural resources.`).catch(() => {});
+      } else {
+        process.send({ type: 'WAKE_BOT', botName: matchedBot });
+        message.reply(`🏛️ **[Oracle/Ecosystem]** Command acknowledged. Waking **${matchedBot}** from stasis...`).catch(() => {});
+      }
+    } else {
+      message.reply(`🏛️ **[Oracle/Ecosystem]** Standalone mode active. Cannot send process signals to sleep/wake **${matchedBot}**.`).catch(() => {});
+    }
+    return true;
+  }
+
+  return false;
+}
+
 // ── Oracle DM & oracle-chat message handler ───────────────────────────────────
 
 const AUTHORIZED_IDS = new Set([
@@ -831,6 +916,11 @@ client.on('messageCreate', async (message) => {
   const isDM   = !message.guild;
   const isAuthorized = AUTHORIZED_IDS.has(message.author.id);
 
+  if (isDM && !isAuthorized) {
+    console.warn(`[Oracle] Unauthorized DM attempt from ${message.author.tag} (${message.author.id})`);
+    return message.reply(`Unauthorized. Please add OWNER_ID=${message.author.id} to your .env file and restart Oracle.`);
+  }
+
   // ── NATURAL LANGUAGE UNIFIED HANDLER ──────────────────────────────────────
   // Ryan talks to Oracle in plain English. No !commands. No regex.
   // Oracle understands intent, routes to the right agent, and executes.
@@ -878,8 +968,58 @@ client.on('messageCreate', async (message) => {
       return;
     }
 
-    // Safety: restart requests bypass NLU (fast path)
+    // Check for hard reboot/sleep/wake requests directly
+    if (handleUserSleepWakeRequest(message, text)) return;
     if (handleUserRestartRequest(message, text)) return;
+
+    // --- EXPERIENTIAL LEARNING / DYNAMIC ROLES ---
+    if (text.toLowerCase() === "!help" || text.toLowerCase() === "!commands") {
+      const helpMsg = `**Oracle Command Center**
+Here are the commands you can use to control and teach the bots:
+
+🛠️ **Training & Roles**
+• \`!teach [BotName] [Rule]\` - Instantly add a new behavioral rule to a bot's memory (e.g. \`!teach Groq always speak like a pirate\`)
+• \`!role [BotName] [Persona]\` - Completely redefine a bot's core identity (e.g. \`!role Analyst You are a cynical Wall Street veteran\`)
+• \`!prune [BotName]\` - Undo the last rule you taught a bot
+
+📊 **System Status**
+• \`status\` or \`vitals\` - Check the KAI Lattice size and system health
+• \`harvester\` - Check the queue depth for background data processing
+
+You can also just talk to me normally! If you need me to start a complex task, fix code, or restart a bot, just ask in plain English.`;
+      await message.reply(helpMsg).catch(()=>{});
+      return;
+    }
+
+    if (text.startsWith("!teach ") || text.startsWith("!role ") || text.startsWith("!prune ")) {
+      const parts = text.split(" ");
+      const cmd = parts[0].toLowerCase();
+      const targetBot = parts[1];
+      const payload = parts.slice(2).join(" ");
+
+      if (!targetBot) {
+        await message.reply(`**Oracle:** Please specify a bot (e.g. !teach Groq ...)`).catch(()=>{});
+        return;
+      }
+
+      if (cmd === "!teach") {
+        teachBotRule(targetBot, payload);
+        await message.reply(`**Oracle:** ${targetBot} has learned a new rule: "${payload}"`).catch(()=>{});
+        return;
+      } else if (cmd === "!role") {
+        setBotPersona(targetBot, payload);
+        await message.reply(`**Oracle:** ${targetBot}'s core persona has been redefined.`).catch(()=>{});
+        return;
+      } else if (cmd === "!prune") {
+        const success = pruneBotRule(targetBot);
+        if (success) {
+          await message.reply(`**Oracle:** ${targetBot}'s last learned rule was pruned.`).catch(()=>{});
+        } else {
+          await message.reply(`**Oracle:** ${targetBot} has no learned rules to prune.`).catch(()=>{});
+        }
+        return;
+      }
+    }
 
     // Phase 1: Understand what Ryan wants (fast RSHL + keyword classifier)
     const steps = await parseMultiStep(text);
@@ -968,12 +1108,16 @@ process.on('message', async (msg) => {
     const isVoiceError = msg.error.includes('voice') || msg.error.includes('player') || msg.error.includes('connection') || msg.error.includes('stability');
     const isImageError = msg.error.includes('Image') || msg.error.includes('Imagen') || msg.error.includes('404') || msg.error.includes('model');
     // Suppress intentional circuit-breaker events and startup noise — not real bugs
-    const isCircuitBreakerEvent = msg.error.includes('TPD cooldown') || msg.error.includes('failover') ||
-                                   msg.error.includes('Failing over to gemini') || msg.error.includes('TPD LIMIT HIT') ||
-                                   msg.error.includes('Going quiet until') || msg.error.includes('in cooldown (TPD') ||
-                                   msg.error.includes('Restored persisted cooldown') || msg.error.includes('Restored 1 active') ||
-                                   msg.error.includes('provider cooldown') || msg.error.includes('Soft reset complete');
-    const isStartupNoise = msg.error.includes('IPC port') || msg.error.includes('port in use') || msg.error.includes('EADDRINUSE');
+    const errLower = msg.error.toLowerCase();
+    const isCircuitBreakerEvent = errLower.includes('tpd cooldown') || errLower.includes('failover') ||
+                                   errLower.includes('failing over to gemini') || errLower.includes('tpd limit hit') ||
+                                   errLower.includes('going quiet until') || errLower.includes('in cooldown') ||
+                                   errLower.includes('restored persisted cooldown') || errLower.includes('restored 1 active') ||
+                                   errLower.includes('provider cooldown') || errLower.includes('soft reset complete') ||
+                                   errLower.includes('billing failure') || errLower.includes('insufficient balance') ||
+                                   errLower.includes('credits depleted') || errLower.includes('crediterror');
+    const isStartupNoise = errLower.includes('ipc port') || errLower.includes('port in use') || errLower.includes('eaddrinuse') ||
+                           errLower.includes('fetch failed') || errLower.includes('econnrefused') || errLower.includes('connection refused');
     if (msg.error.includes('EPIPE') || msg.error.includes('Stream watchdog triggered') || isQuotaError || isVoiceError || isImageError || isInfraError || isReflectionEvent || isCircuitBreakerEvent || isStartupNoise) {
        const tag = isCircuitBreakerEvent ? 'CIRCUIT_BREAKER' : isStartupNoise ? 'STARTUP' : isQuotaError ? 'QUOTA' : isVoiceError ? 'VOICE' : isImageError ? 'MODEL' : isInfraError ? 'INFRA' : isReflectionEvent ? 'REFLECT' : 'NETWORK';
        console.log(`[Oracle/Self-Diagnostic] Suppressing transient signal from ${msg.bot}: ${tag}`);

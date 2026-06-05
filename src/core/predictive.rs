@@ -34,7 +34,7 @@ pub const RECENCY_WINDOW: u64 = 12;
 /// Every `push` permutes the existing trace by seed=1 (positional role)
 /// and bundles the new turn on top. The resulting vector is KAI's
 /// working-memory hypervector — the residual stream analog.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ConversationTrace {
     pub current: SparseVec,
     pub turns_seen: u64,

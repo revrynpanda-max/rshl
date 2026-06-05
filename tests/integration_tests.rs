@@ -113,7 +113,7 @@ fn test_legacy_cells_deserialize_into_claims() {
 
     assert_eq!(cell.label, "Legacy truth survives schema migration");
     assert_eq!(cell.claim.text, "Legacy truth survives schema migration");
-    assert_eq!(cell.claim.source, "seed");
+    assert_eq!(cell.claim.source, std::sync::Arc::<str>::from("seed"));
     assert_eq!(cell.claim.confidence, 2.5);
     assert_eq!(cell.claim.created_at, 123);
     assert_eq!(cell.claim.last_verified, 123);

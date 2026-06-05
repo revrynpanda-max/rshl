@@ -1076,8 +1076,7 @@ if (PORT > 0) {
 
          if (!silent) channel.send(`**Oracle:** Kai Coder analyzing (${explanationDepth} mode for ${requester})...`).catch(() => {});
 
-         const { runCodingTask } = await import('../shared/kai-coder-agent.mjs');
-         const result = await runCodingTask(context, null, (progress) => {
+          const result = await runCodingTask(context, null, (progress) => {
            if (!silent && progress.includes('Phase')) {
              const cleanMsg = progress.length > 500 ? progress.slice(0, 497) + '...' : progress;
              channel.send(`**[Kai Coder]** ${cleanMsg}`).catch(() => {});

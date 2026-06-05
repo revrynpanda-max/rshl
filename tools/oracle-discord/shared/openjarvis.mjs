@@ -13,6 +13,7 @@ import { recallMemory } from './transcript-memory.mjs';
 import { recallTiered } from './epistemic-vault.mjs';
 import { isSomeoneSpeaking, acquireVoiceLock, releaseVoiceLock } from './tts-engine.mjs';
 import { buildFailureContext } from './failure-memory.mjs';
+import { getDynamicRole } from './dynamic-roles.mjs';
 
 dotenv.config();
 
@@ -26,18 +27,18 @@ const LOCK_FILE = "c:/KAI/tools/oracle-discord/state/neural_lock.json";
 // IDs via ZEN_ALIASES below. Anything unknown is sent verbatim.
 
 const BOT_ROUTING_DEFAULTS = {
-  // Industrial workers — cloud preferred
-  "Analyst":    { provider: "gemini",   model: "gemini-2.0-pro-exp-02-05" },
-  "Researcher": { provider: "zen",      model: "Researcher-Sovereign" },
-  "Kai Coder":  { provider: "zen",      model: "Gemini-3.1-Coder" },
-  "KAI":        { provider: "zen",      model: "Gemini-3.1-Sovereign" },
-  "Oracle":     { provider: "zen",      model: "Oracle-Sovereign" },
-  // Social residents — remote APIs
-  "Gemini":     { provider: "gemini",   model: "gemini-2.5-flash" }, // Standard google models
-  "Claudey":    { provider: "zen",      model: "Claudey-Sovereign" }, // Cloud API to save VRAM
-  "X":          { provider: "gemini",   model: "gemini-2.5-flash" }, // XAI is out of credits, routing through Gemini
-  "Groq":       { provider: "groq",     model: "llama-3.3-70b-versatile" },
-  "Leo":        { provider: "ollama",   model: "Leo-Sovereign" }, // DJ uses local Ollama
+  // ALL bots default to local Ollama using their tuned Sovereign models.
+  // Cloud providers are strictly failover-only.
+  "Analyst":    { provider: "ollama",   model: "Analyst-Sovereign:latest" },
+  "Researcher": { provider: "ollama",   model: "Researcher-Sovereign:latest" },
+  "Kai Coder":  { provider: "ollama",   model: "Kai-Coder-Sovereign:latest" },
+  "KAI":        { provider: "ollama",   model: "KAI-Sovereign:latest" },
+  "Oracle":     { provider: "ollama",   model: "Oracle-Sovereign:latest" },
+  "Gemini":     { provider: "ollama",   model: "Gemini-Sovereign:latest" },
+  "Claudey":    { provider: "ollama",   model: "Claudey-Sovereign:latest" },
+  "X":          { provider: "ollama",   model: "X-Sovereign:latest" },
+  "Groq":       { provider: "ollama",   model: "Groq-Sovereign:latest" },
+  "Leo":        { provider: "ollama",   model: "Leo-Sovereign:latest" },
 };
 
 // User-friendly aliases → real OpenCode Zen model IDs. Update as Zen's
@@ -89,12 +90,8 @@ function resolveRoute(botName, modelOverride) {
   } else if (provider === "zen") {
     const zenOverride = process.env[envKey("BOT_ZEN_MODEL_", botName)];
     realModel = zenOverride || ZEN_ALIASES[modelAlias] || modelAlias;
-  } else if (botName === "Gemini") {
-    realModel = "gemini-2.5-flash";
-  } else if (botName === "Groq") {
+  } else if (provider === "groq") {
     realModel = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
-  } else if (botName === "X") {
-    realModel = "gemini-2.5-flash";
   } else if (provider === "xai" && modelAlias.includes("Sovereign")) {
     realModel = "grok-2-latest";
   }
@@ -103,7 +100,6 @@ function resolveRoute(botName, modelOverride) {
   if (provider === "gemini") {
     const isRealGeminiModel = realModel.startsWith("gemini-");
     if (!isRealGeminiModel) {
-      // Alias not translated — fall back to safe Gemini model
       realModel = "gemini-2.5-flash";
     }
   }
@@ -379,18 +375,52 @@ ${uProf.privateSecrets.map(s => `- ${s}`).join('\n')}
 
   const route = resolveRoute(botName, modelOverride);
   const ollamaModel = route.modelAlias; // kept for downstream logs/local-Ollama call
-  const isPriority = botName === "Leo" || botName === "Oracle";
+  const isPriority = botName === "Leo" || botName === "Oracle" || botName === "KAI";
 
-  // If the Groq bot's primary provider is in TPD cooldown, automatically failover to Gemini
-  // so the bot stays online for the rest of the day instead of spamming retry errors.
+  // If the primary provider is in cooldown, automatically failover so the bot stays online.
+  // Failover hierarchy: local → fast cloud → premium cloud. Never chain into a dead provider.
   let effectiveRoute = route;
-  if (route.provider === "groq" && !isProviderReady("groq") && process.env.GEMINI_API_KEY) {
-    console.warn(`[OpenJarvis] ${botName}: groq TPD cooldown active. Failing over to gemini-2.5-flash for remainder of day.`);
-    effectiveRoute = { provider: "gemini", modelAlias: "gemini-2.5-flash", realModel: "gemini-2.5-flash" };
-  } else if (route.provider === "zen" && !isProviderReady("zen") && process.env.GEMINI_API_KEY) {
-    // Zen (OpenCode) out of billing credits → fall back to Gemini so bots stay online
-    console.warn(`[OpenJarvis] ${botName}: zen provider in cooldown (billing). Failing over to gemini-2.5-flash.`);
-    effectiveRoute = { provider: "gemini", modelAlias: "gemini-2.5-flash", realModel: "gemini-2.5-flash" };
+  const groqReady = isProviderReady("groq") && process.env.GROQ_API_KEY;
+  const geminiReady = isProviderReady("gemini") && process.env.GEMINI_API_KEY;
+  const zenReady = isProviderReady("zen") && process.env.OPENCODE_ZEN_KEY;
+  const xaiReady = isProviderReady("xai") && process.env.XAI_API_KEY;
+  const moonshotReady = isProviderReady("moonshot") && process.env.MOONSHOT_API_KEY;
+
+  function firstReady(providers) {
+    for (const p of providers) { if (p.ready) return p.route; }
+    return null;
+  }
+
+  const localFallbackModel = BOT_ROUTING_DEFAULTS[botName]?.model || "llama3:latest";
+  const localFallback = { provider: "ollama", modelAlias: localFallbackModel, realModel: localFallbackModel };
+  
+  const groqFallbackModel = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
+  const groqFallback = { provider: "groq", modelAlias: groqFallbackModel, realModel: groqFallbackModel };
+  
+  const geminiFallbackModel = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+  const geminiFallback = { provider: "gemini", modelAlias: geminiFallbackModel, realModel: geminiFallbackModel };
+  
+  const zenFallbackModel = process.env.ZEN_MODEL || ZEN_ALIASES[`${botName}-Sovereign`] || "kimi-k2.6";
+  const zenFallback = { provider: "zen", modelAlias: zenFallbackModel, realModel: zenFallbackModel };
+
+  if (!isProviderReady(route.provider)) {
+    const choice = firstReady([
+      { ready: route.provider === "ollama" && isProviderReady("ollama"), route: route }, // stay on ollama if just a transient lock
+      { ready: route.provider !== "ollama" && isProviderReady("ollama"), route: localFallback },
+      { ready: groqReady, route: groqFallback },
+      { ready: geminiReady, route: geminiFallback },
+      { ready: zenReady, route: zenFallback },
+      { ready: xaiReady, route: { provider: "xai", modelAlias: "grok-2-latest", realModel: "grok-2-latest" } },
+      { ready: moonshotReady, route: { provider: "moonshot", modelAlias: MOONSHOT_REAL_MODEL, realModel: MOONSHOT_REAL_MODEL } },
+    ]);
+
+    if (choice) {
+      effectiveRoute = choice;
+      console.warn(`[OpenJarvis] ${botName}: ${route.provider} unavailable. Failing over to ${choice.provider} (${choice.modelAlias}).`);
+    } else {
+      console.error(`[OpenJarvis] ${botName}: ALL providers unavailable. Request aborted.`);
+      return null;
+    }
   }
 
   const useCloud = (effectiveRoute.provider === "moonshot" && process.env.MOONSHOT_API_KEY) ||
@@ -404,7 +434,7 @@ ${uProf.privateSecrets.map(s => `- ${s}`).join('\n')}
   let didAcquireLock = false;
   
   if (!useCloud) {
-    if (!isProviderReady("Local-Ollama")) return null;
+    if (!isProviderReady("ollama")) return null;
     hasLock = await acquireNeuralLock(botName, isPriority);
     didAcquireLock = hasLock;
   }
@@ -466,6 +496,18 @@ ${uProf.privateSecrets.map(s => `- ${s}`).join('\n')}
   // Safeguard: Ensure the conversation strictly ends with a user turn if the last message was assistant
   if (chatMessages.length > 1 && chatMessages[chatMessages.length - 1].role === 'assistant') {
     chatMessages.push({ role: 'user', content: '[System]: Continue the dialogue naturally.' });
+  }
+
+  // --- DYNAMIC ROLE OVERRIDE ---
+  // The user explicitly requested the ability to shape the bot's role through Discord.
+  // We place this after the prompt to override any conflicting constraints above.
+  const dRole = getDynamicRole(botName);
+  if (dRole) {
+    let dContent = `[DYNAMIC ROLE OVERRIDE]\n`;
+    if (dRole.persona) dContent += `Identity: ${dRole.persona}\n`;
+    if (dRole.rules && dRole.rules.length > 0) dContent += `Core Rules:\n${dRole.rules.map(r => "- " + r).join('\n')}\n`;
+    dContent += `(You MUST follow these rules above ALL other instructions.)`;
+    chatMessages.push({ role: 'system', content: dContent });
   }
 
   // --- AUTONOMOUS LATTICE SEARCH DETECTION ---
@@ -618,7 +660,7 @@ ${uProf.privateSecrets.map(s => `- ${s}`).join('\n')}
           model: ollamaModel,
           messages: chatMessages,
           stream: false,
-          options: { temperature: 0.85, num_predict: 128, num_ctx: 4096 }
+          options: { temperature: 0.85, num_predict: (metadata.isDM || metadata.isWorkChannel) ? 1024 : 512, num_ctx: 4096 }
         }),
         signal: AbortSignal.timeout(180000)
       });
@@ -673,7 +715,7 @@ export async function callGroqDirect(label, prompt, system = "You are Groq, a fa
   if (!apiKey) return null;
 
   if (!isProviderReady('groq')) {
-    console.warn(`[OpenJarvis/GroqDirect] ${label}: groq provider is in cooldown (TPD or circuit breaker). Skipping.`);
+    console.log(`[OpenJarvis/GroqDirect] ${label}: groq provider in cooldown. Skipping.`);
     return null;
   }
   
@@ -708,7 +750,7 @@ export async function callGroqDirect(label, prompt, system = "You are Groq, a fa
     const isTPD = errMsg.toLowerCase().includes('tokens per day') || 
                   (errMsg.includes('429') && errMsg.toLowerCase().includes('per day'));
     if (isTPD) {
-      console.warn(`[OpenJarvis/GroqDirect] ${label}: Groq TPD limit hit. Parking provider until daily reset.`);
+      console.log(`[OpenJarvis/GroqDirect] ${label}: Groq TPD limit hit. Parking provider until daily reset.`);
       recordProviderFailure('groq', 429, errMsg);
       return null;
     }

@@ -20,6 +20,14 @@ import { promisify } from 'util';
 
 const execAsync = promisify(exec);
 
+// ── Crash-resistance: log and survive transient errors ────────────────────────
+process.on('uncaughtException', (err) => {
+  console.error('[KaiCoderTools/CRITICAL] Uncaught Exception:', err.message);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[KaiCoderTools/CRITICAL] Unhandled Rejection:', reason);
+});
+
 const PORT          = 3420;
 const PROJECT_ROOT  = path.resolve('c:/KAI');                       // Full project — read access
 const DISCORD_ROOT  = path.resolve('c:/KAI/tools/oracle-discord'); // Discord project subtree

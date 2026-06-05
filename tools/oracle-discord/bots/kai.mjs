@@ -11,6 +11,7 @@ import { worldModel, getWorldSnapshot, recordWorldEvent, recordChannelMessage } 
 import { driveSystem, getDriveDirective, onMessageProcessed, onEcosystemFailure, getDriveStatus } from '../shared/drive-system.mjs';
 import { causalEngine, getCausalContext } from '../shared/causal-engine.mjs';
 import { startMetacognition, getMetacognitiveContext, updateBotModel } from '../shared/metacognition.mjs';
+
 import fs from 'fs';
 
 // --- GLOBAL ERROR HANDLING ---
@@ -82,29 +83,44 @@ client.once('clientReady', async () => {
 
   // ── RSHL Vitals Broadcast ──────────────────────────────────────────────────
   let vitalsMessage = null;
+  let vitalsFailCount = 0;
+  let vitalsLastLog = 0;
   setInterval(async () => {
     try {
       const channelId = '1504582069886648351';
       if (!channelId) return;
       const channel = await client.channels.fetch(channelId);
       if (!channel) return;
-      
-      const res = await fetch('http://127.0.0.1:3334/api/status', { signal: AbortSignal.timeout(5000) });
+
+      // Back off if KAI backend has been consistently unreachable (suppress log spam)
+      if (vitalsFailCount >= 3 && (Date.now() - vitalsLastLog) < 300_000) return;
+
+      const res = await fetch('http://127.0.0.1:3334/api/status', { signal: AbortSignal.timeout(15_000) });
+      const resSyn = await fetch('http://127.0.0.1:3334/api/synapse/status', { signal: AbortSignal.timeout(15_000) }).catch(() => null);
+      if (vitalsFailCount > 0) {
+        console.log("[KAI] Vitals broadcast recovered.");
+        vitalsFailCount = 0;
+      }
       if (res.ok) {
         const stats = await res.json();
+        const synStats = resSyn && resSyn.ok ? await resSyn.json() : { density_per_cell: 0, neurons_with_outgoing: 0 };
         const p = stats.total_cells > 0 ? (stats.synapses / (stats.total_cells * 4.0)) : 0;
         const clamped_p = p > 1.0 ? 1.0 : p;
         const throttle = 1.0 + 100.0 * (4.0 * clamped_p * (1.0 - clamped_p));
-        
+
+        // Calculate true mathematical state space volume (2^Synapses in scientific notation)
+        const permutationsExp = Math.floor(stats.synapses * 0.30103).toLocaleString();
+
         const msgText = `**[RSHL Vitals Update]**
-• **Total Active Cells (Neurons):** ${stats.total_cells.toLocaleString()}
-• **Total Synaptic Connections:** ${stats.synapses.toLocaleString()}
-• **Geometric Bridges (Grounded):** ${stats.neurons_with_outgoing.toLocaleString()}
-• **Density / Coherence:** ${stats.density_per_cell.toFixed(4)}
-• **Throttle Velocity:** ${throttle.toFixed(2)}x
-• **16384D Fractal State Space:** > 4.24 Sextillion Potential Resonances
-*(Updating every 10 seconds...)*`;
-        
+ • **Total Active Cells (Neurons):** ${stats.total_cells.toLocaleString()}
+ • **Total Synaptic Connections:** ${stats.synapses.toLocaleString()}
+ • **Global Phi (Confidence):** ${stats.phi_g.toFixed(4)}
+ • **Density / Coherence:** ${synStats.density_per_cell.toFixed(4)}
+ • **Geometric Bridges (Grounded):** ${synStats.neurons_with_outgoing.toLocaleString()}
+ • **Throttle Velocity:** ${throttle.toFixed(2)}x
+ • **Fractal State Space Volume:** ~ 10^${permutationsExp} Potential Sub-Networks
+*(Updating every 30 seconds...)*`;
+
         if (!vitalsMessage) {
           vitalsMessage = await channel.send(msgText);
         } else {
@@ -114,9 +130,14 @@ client.once('clientReady', async () => {
         }
       }
     } catch (e) {
-      console.error("[KAI] Vitals broadcast error:", e);
+      vitalsFailCount++;
+      vitalsLastLog = Date.now();
+      // Only log the first 3 failures, then once every ~15 min to prevent log spam
+      if (vitalsFailCount <= 3 || vitalsFailCount % 30 === 0) {
+        console.error(`[KAI] Vitals broadcast error (fail #${vitalsFailCount}):`, e.name, e.message);
+      }
     }
-  }, 10_000);
+  }, 30_000);
 
   // ── Discord "About Me" bio ─────────────────────────────────────────────────
   try {
@@ -145,7 +166,7 @@ client.once('clientReady', async () => {
       if (res.ok) console.log('[KAI/Warmup] Index rebuild complete — native responses ready.');
       else console.warn('[KAI/Warmup] Status returned non-OK during warmup.');
     } catch (e) {
-      console.warn('[KAI/Warmup] Warmup request failed (will retry on next restart):', e.message);
+      console.log('[KAI/Warmup] Warmup request deferred — backend busy. Will retry on next restart.');
     }
   }, 10_000);
 });
@@ -247,8 +268,9 @@ client.on('messageCreate', async (message) => {
     // Pure RSHL path — Rust engine's generate_response_predictive (LLM = None)
     let reply = await chatWithKaiNative(text, message.author.id);
 
-    // Fallback: if the Rust engine is offline/rebuilding, compose from raw lattice hits
+    // Fallback: if the Rust engine is offline/rebuilding, compose from raw lattice hits.
     // Still NO LLM — we surface the top lattice cell directly.
+    // If the lattice is also empty, KAI stays silent (sovereignty over noise).
     if (!reply) {
       console.log('[KAI] Native engine unavailable — composing from lattice hits...');
       const hits = await queryLattice(text, 3, '', message.author.id).catch(() => []);
@@ -256,6 +278,8 @@ client.on('messageCreate', async (message) => {
         // Surface the highest-resonance cell as KAI's voice
         reply = hits[0].text;
         console.log('[KAI] Lattice hit fallback used.');
+      } else {
+        console.log('[KAI] Lattice empty — KAI chooses silence over LLM delegation.');
       }
     }
 
@@ -279,9 +303,9 @@ client.on('messageCreate', async (message) => {
         hits: []
       }).catch(() => {});
     } else {
-      // Lattice is silent — react to acknowledge receipt
+      // Lattice and OpenJarvis both failed/silent
       await message.react('👁️').catch(() => {});
-      console.warn('[KAI] Lattice returned nothing for:', text.slice(0, 60));
+      console.warn('[KAI] Lattice and fallback returned nothing for:', text.slice(0, 60));
     }
   }
 });

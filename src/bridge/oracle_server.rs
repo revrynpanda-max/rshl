@@ -16,7 +16,7 @@ use serde::{Serialize, Deserialize};
 use serde_json::json;
 use crate::core::universe::Universe;
 use crate::core::SynapticLayer;
-use crate::cognition::voice::{generate_response_predictive, detect_query_type, BrainSignals};
+use crate::cognition::voice::{generate_response_predictive, detect_query_type, BrainSignals, get_lexicon};
 use crate::core::predictive::ConversationTrace;
 use crate::generate::{kai_chat, ChatRequest, ChatResponse};
 use chrono::{Timelike, Datelike, TimeZone};
@@ -58,6 +58,9 @@ pub struct Session {
     pub task: String,
     /// Full transcript of all turns.
     pub turns: Vec<Turn>,
+    /// Session-persistent conversation trace for working memory.
+    #[serde(default)]
+    pub trace: crate::core::predictive::ConversationTrace,
     /// Exact Discord message archive for transcript recall with sender/time/context.
     #[serde(default)]
     pub discord_messages: Vec<DiscordMessageRecord>,
@@ -328,9 +331,16 @@ struct ToolPlanRequest {
 // ── Server Entry Point ───────────────────────────────────────────────────────
 
 pub fn start_oracle_server(universe: Arc<Mutex<Universe>>, synaptic_layer: Arc<Mutex<SynapticLayer>>) {
+    // ── Warm up semantic dictionary ──────────────────────────────────
+    // Force-load word definitions at startup so the first request doesn't
+    // pay the JSON parse cost. KAI needs to know what words mean.
+    let dict = crate::cognition::semantic_dict::get_global_dict();
+    let dict_len = dict.lock().unwrap().words.len();
+    println!("[Oracle] Semantic dictionary warmed: {} words loaded.", dict_len);
+
     let listener = TcpListener::bind("127.0.0.1:3334")
         .expect("Oracle: could not bind port 3334");
-    println!("--- ORACLE ROUNDTABLE ONLINE (PORT 3334) ---");
+    // println!("--- ORACLE ROUNDTABLE ONLINE (PORT 3334) ---");
 
     let roundtable_session = Arc::new(Mutex::new(load_session()));
     let public_session = Arc::new(Mutex::new(Session {
@@ -473,6 +483,9 @@ fn handle_client(
         "/telemetry"         => handle_telemetry(stream),
         "/api/synapse/status" => handle_synapse_status(stream, synaptic_layer.clone(), universe),
         "/api/synapse/train" => handle_synapse_train(stream, body, synaptic_layer.clone(), universe),
+        "/api/interpret/build" => handle_interpret_build(stream, universe),
+        "/api/interpret/status" => handle_interpret_status(stream),
+        "/api/interpret/decode" => handle_interpret_decode(stream, std::str::from_utf8(body).unwrap_or("")),
         "/api/inspect"       => handle_inspect(stream, query_str),
         "/api/list-dir"      => handle_list_dir(stream, query_str),
         p if p.starts_with("/api/keys/") => handle_key_status(stream, &p[10..]),
@@ -1249,7 +1262,9 @@ fn handle_discord_turn(
     // ── Social Digestion: let KAI remember this conversation IMMEDIATELY ──────────
     // Moving this BEFORE AI generation ensures the bot can 'see' the directive in its memory.
     // If user_id is provided (Discord gateway), cellularize the memory per-user.
-    if !text.is_empty() {
+    let from_lower = from.to_lowercase();
+    let is_system_from = from_lower.contains("oracle") || from_lower.contains("analyst") || from_lower.contains("researcher") || from_lower == "system";
+    if !text.is_empty() && !is_system_from {
         let digest_text = format!("{}: {}", from, text);
         let mut u = universe.lock().unwrap();
         if req.user_id.is_empty() {
@@ -1338,7 +1353,125 @@ fn handle_discord_turn(
 
     let (reply_from, reply_kind, reply, already_committed): (String, String, String, bool) = match route.target {
         DiscordTurnTarget::Kai => {
-            let reply = generate_oracle_kai_reply(&universe, &synaptic_layer, &task, &full_prompt_with_vision, &route.prompt);
+            // Native sovereign path: generate_response_predictive speaks directly
+            // from the RSHL lattice. No LLM wrapper, no Broca's Area polish.
+            let (recent_context, trace): (Vec<(String, String)>, ConversationTrace) = {
+                let mut s = session.lock().unwrap();
+                let rc: Vec<(String, String)> = s.turns.iter().filter(|t| t.kind != "system").rev().take(6).map(|t| (t.kind.clone(), t.text.clone())).collect::<Vec<_>>().into_iter().rev().collect();
+                s.trace.push(&route.prompt, "Oracle-Teacher");
+                (rc, s.trace.clone())
+            };
+            let mut u = universe.lock().unwrap();
+            let sl = synaptic_layer.lock().unwrap();
+            let query_type = detect_query_type(&route.prompt);
+
+            // ── Heuristic Brain Signals ──────────────────────────────────────
+            // Derive emotional/contextual state from recent conversation.
+            // This replaces the blank BrainSignals::default() with at least
+            // a rudimentary sense of whether the user is grieving, curious, etc.
+            let mut brain = BrainSignals::default();
+            {
+                let recent_text: String = recent_context.iter().map(|(_, t)| t.as_str()).collect::<Vec<_>>().join(" ");
+                let recent_lower = recent_text.to_lowercase();
+                let grief_words = ["died", "death", "grief", "grieving", "loss", "lost", "funeral", "miss her", "miss him"];
+                if grief_words.iter().any(|w| recent_lower.contains(w)) {
+                    brain.grieving = true;
+                    brain.empathy = 0.90;
+                    brain.arousal = 0.10;
+                }
+                let q_count = recent_lower.matches('?').count();
+                if q_count >= 2 {
+                    brain.curiosity = 0.75;
+                    brain.dopamine = 0.60;
+                }
+                let warmth_words = ["thank", "love", "appreciate", "grateful", "kind"];
+                if warmth_words.iter().any(|w| recent_lower.contains(w)) {
+                    brain.bond = 0.70;
+                    brain.serotonin = 0.65;
+                    brain.social_reward = 0.55;
+                }
+                // Confidence tracks recent tutoring success via trace
+                brain.confidence = (trace.turns_seen as f32 / 20.0).min(0.85);
+            }
+
+            // ── Math Rule Engine ─────────────────────────────────────────────
+            // Math is not memory — it's rules. If the user asks a math question,
+            // KAI should apply the arithmetic rule directly, not search his lattice.
+            // This is the DNA/RNA architecture: rules = DNA, numbers = RNA, answer = protein.
+            let math_reply = crate::cognition::math_engine::try_solve(&route.prompt)
+                .map(|r| crate::cognition::math_engine::explain_result(&r));
+
+            // ── Explicit Tutoring Lookup ─────────────────────────────────────
+            // Before running the full generative pipeline, check if KAI has been
+            // explicitly taught a Q&A pair for this (or a very similar) question.
+            // We query with a larger window (20) and lower threshold (0.20) so that
+            // paraphrased quiz questions still match stored tutoring cells.
+            let direct_hits = u.query(&route.prompt, 20);
+            let tutoring_reply = direct_hits.iter().filter(|h| {
+                (h.source == "oracle_qa" || h.region == "tutoring" || h.region == "language")
+                    && h.score > 0.20
+            }).filter_map(|h| {
+                let text = if h.text.is_empty() { &h.label } else { &h.text };
+                let trimmed = text.trim();
+                // Skip pure question cells — we need an answer, not the question itself
+                if trimmed.ends_with('?') && !trimmed.contains("A: ") {
+                    return None;
+                }
+                // Extract answer from "Q: ... A: ..." tutoring format
+                if trimmed.starts_with("Q: ") {
+                    if let Some(a_pos) = trimmed.find("\nA: ") {
+                        return Some(trimmed[a_pos + 4..].trim().to_string());
+                    } else if let Some(a_pos) = trimmed.find(" A: ") {
+                        return Some(trimmed[a_pos + 4..].trim().to_string());
+                    } else {
+                        // Combined cell with no A: marker — return whole thing as fallback
+                        return Some(trimmed.to_string());
+                    }
+                }
+                // Answer-only cell or "When asked X, reply with Y" hint cell
+                if trimmed.starts_with("When asked '") && trimmed.contains("', reply with: '") {
+                    if let Some(start) = trimmed.find("', reply with: '") {
+                        let answer_part = &trimmed[start + 16..];
+                        if answer_part.ends_with('\'') {
+                            return Some(answer_part[..answer_part.len() - 1].to_string());
+                        } else {
+                            return Some(answer_part.to_string());
+                        }
+                    }
+                }
+                Some(trimmed.to_string())
+            }).next();
+
+            let reply = if let Some(math_ans) = math_reply {
+                println!("[KAI/Math] Rule engine solved arithmetic question: {}", math_ans);
+                math_ans
+            } else if let Some(tutored) = tutoring_reply {
+                println!("[KAI/Tutor] Direct recall hit — bypassing generative decoder.");
+                tutored
+            } else {
+                println!("[KAI/Tutor] No tutoring match (best score: {:.3}), falling through to native generation.",
+                    direct_hits.first().map(|h| h.score).unwrap_or(0.0));
+                let hits = crate::core::NeuralBus::query_multi_hop(&u, &sl, 0.5, &route.prompt, 12, &[], "", 3);
+                let field = crate::core::FieldState::compute(&u, 1);
+                let response = generate_response_predictive(
+                    &route.prompt,
+                    &hits,
+                    query_type,
+                    &brain,
+                    &recent_context,
+                    &mut u,
+                    &trace,
+                    None, // candle_voice — no LLM
+                    None, // bitnet_voice — no LLM
+                    get_lexicon(),
+                    Some(&field),
+                    None, // pos_dict
+                    Some(&*sl), // synaptic_layer
+                    !is_system_from,
+                );
+                drop(sl);
+                response
+            };
             ("KAI".to_string(), "kai".to_string(), reply, false)
         }
         DiscordTurnTarget::OracleCoder => {
@@ -1391,7 +1524,14 @@ fn handle_discord_turn(
     if !already_committed && !reply.trim().is_empty() {
         s.turns.push(Turn { ts: now(), from: reply_from.clone(), text: reply.clone(), kind: reply_kind.clone() });
         
-        // Digest AI reply as well
+        if reply_from == "KAI" {
+            s.trace.push(&reply, "KAI");
+        }
+
+        // Digest AI reply as well (only for actual participants, exclude Oracle framework messages)
+        let reply_from_lower = reply_from.to_lowercase();
+        let should_digest = reply_from_lower == "kai" || reply_from_lower == "kai coder" || reply_from_lower.contains("user") || reply_from_lower.contains("ryan");
+
         let digest_text = format!("{}: {}", reply_from, reply);
         let u_for_digest = Arc::clone(&universe);
         let user_id_for_digest = req.user_id.clone();
@@ -1401,13 +1541,15 @@ fn handle_discord_turn(
         
         std::thread::spawn(move || {
             let mut u = u_for_digest.lock().unwrap();
-            if user_id_for_digest.is_empty() {
-                u.store_or_reinforce(&digest_text, "social", "discord-reply", 0.9);
-            } else {
-                u.store_or_reinforce_with_vec(
-                    &digest_text, "social", "discord-reply", 0.9,
-                    None, None, &user_id_for_digest,
-                );
+            if should_digest {
+                if user_id_for_digest.is_empty() {
+                    u.store_or_reinforce(&digest_text, "social", "discord-reply", 0.9);
+                } else {
+                    u.store_or_reinforce_with_vec(
+                        &digest_text, "social", "discord-reply", 0.9,
+                        None, None, &user_id_for_digest,
+                    );
+                }
             }
             
             for phrase in eloquence_phrases {
@@ -1439,7 +1581,7 @@ fn handle_kai_turn(
     if check_maintenance(stream, &session)? { return Ok(()); }
     let req: KaiTurnRequest = serde_json::from_slice(body).unwrap_or_default();
     let task = { let s = session.lock().unwrap(); s.task.clone() };
-    let text = generate_oracle_kai_reply(&universe, &synaptic_layer, &task, &req.hint, &req.hint);
+    let text = generate_oracle_kai_reply(&universe, &synaptic_layer, &session, &task, &req.hint, &req.hint);
     let mut s = session.lock().unwrap();
     s.turns.push(Turn { ts: now(), from: "KAI".into(), text, kind: "kai".into() });
     save_session(&s);
@@ -3476,6 +3618,7 @@ fn handle_autobio_tick(stream: &mut TcpStream, universe: Arc<Mutex<Universe>>, b
 fn generate_oracle_kai_reply(
     universe: &Arc<Mutex<Universe>>,
     synaptic_layer: &Arc<Mutex<SynapticLayer>>,
+    session: &Arc<Mutex<Session>>,
     _task: &str,
     prompt: &str,
     user_query: &str
@@ -3483,7 +3626,11 @@ fn generate_oracle_kai_reply(
     let mut u = universe.lock().unwrap();
     let sl = synaptic_layer.lock().unwrap();
 
-    let trace = ConversationTrace::new(); // Simplified trace for Discord context
+    let trace = {
+        let mut s = session.lock().unwrap();
+        s.trace.push(user_query, "User");
+        s.trace.clone()
+    };
     let query_type = detect_query_type(user_query);
     let mut brain = BrainSignals::default(); // Live brain signals would be better
 
@@ -3501,11 +3648,11 @@ fn generate_oracle_kai_reply(
 
     // Detect if sensitive grief context is active
     let grief_active = crate::cognition::voice::detect_grief_association(user_query, &hits);
-    let mut system_prompt = "You are KAI's language synthesis center. You must ONLY use the provided 'Memory Lattice Snippet' to answer the user's question. \
-                             If the snippet is completely irrelevant or does not contain the answer, you MUST state that you do not have that concept in your lattice right now. \
-                             DO NOT invent answers. DO NOT use your internal LLM knowledge. \
-                             Translate the raw lattice concepts into a highly natural, fluent, and direct spoken English sentence. \
-                             Max 2 sentences. Avoid robotic phrasing. Do not add conversational boilerplate.".to_string();
+    let mut system_prompt = "You are KAI, the core intelligence and architect of this system. \
+                             You are speaking directly to the user. I will provide you with your internal retrieved memories and thoughts. \
+                             Use them to formulate a fluid, direct, and highly intelligent conversational response. \
+                             DO NOT mention 'lattice', 'memories', 'thoughts', or refer to the fact that you were provided context. \
+                             Just speak naturally as KAI, seamlessly weaving the knowledge into your response. Keep it concise.".to_string();
 
     let is_factual = matches!(
         query_type,
@@ -3566,7 +3713,7 @@ fn generate_oracle_kai_reply(
     }
 
     if filtered_hits.is_empty() {
-        if is_factual {
+        if is_factual && !crate::cognition::voice::NATIVE_ONLY.load(std::sync::atomic::Ordering::Relaxed) {
             // Re-routed from DuckDuckGo to LLM-Driven Native Knowledge Ingestion
             let llm_query = format!("Answer this factually and concisely: {}", user_query);
             let sys = "You are a perfect source of factual knowledge. State the answer clearly in 1 or 2 sentences.";
@@ -3645,6 +3792,21 @@ fn generate_oracle_kai_reply(
         &mut u,
         25, // max 25 tokens for final reply
     );
+    
+    // 5. Broca's Area (LLM Synthesis)
+    let synthesis_prompt = format!(
+        "User: {}\n\nYour internal retrieved context:\n{}\n{}\n\nRespond to the user naturally and directly as KAI.",
+        user_query, attentive_reply, ar_reply
+    );
+    
+    if !crate::cognition::voice::NATIVE_ONLY.load(std::sync::atomic::Ordering::Relaxed) {
+        if let Ok(synthesized) = call_ollama("KAI-Sovereign:latest", &synthesis_prompt, &system_prompt) {
+            let cleaned = synthesized.trim().to_string();
+            if !cleaned.is_empty() {
+                return cleaned;
+            }
+        }
+    }
     
     ar_reply
 }
@@ -3793,7 +3955,7 @@ fn run_active_synaptogenesis_loop(
             let mut p = if total_cells > 0.0 { grounded_cells / (total_cells * 4.0) } else { 0.0 };
             if p > 1.0 { p = 1.0; }
 
-            let max_boost: f32 = 1000.0;
+            let max_boost: f32 = 0.0; // Disabled boost to prevent parallel crashes
             
             // Tightened Biological Plateau Curve
             // Accelerates fast in first 20%, cruises at max speed, then gently decelerates in last 20%.
@@ -3835,20 +3997,29 @@ fn run_active_synaptogenesis_loop(
         let mut total_wired = 0;
 
         use rayon::prelude::*;
-        let hits_list = {
-            let u = universe.lock().unwrap();
-            let sl = synaptic_layer.lock().unwrap();
+        let mut hits_list = Vec::new();
+        
+        // Process seeds in chunks of 2 to avoid holding the universe lock for too long
+        // and causing /api/status or other endpoints to hit CLOSE_WAIT TCP timeouts.
+        for chunk in seeds.chunks(2) {
+            let chunk_hits = {
+                let u = universe.lock().unwrap();
+                let sl = synaptic_layer.lock().unwrap();
+                
+                // RAYON BREAKTHROUGH: 
+                // By holding the Mutex lock on the main thread, we get an immutable &Universe.
+                // We can safely hand this immutable reference to the custom thread pool (75% CPU) at once!
+                pool.install(|| {
+                    chunk.par_iter().map(|seed_text| {
+                        crate::core::synapse::NeuralBus::query_multi_hop(&u, &sl, phi_g, seed_text, 15, &[], "", 3)
+                    }).collect::<Vec<_>>()
+                })
+            };
+            hits_list.extend(chunk_hits);
             
-            // RAYON BREAKTHROUGH: 
-            // By holding the Mutex lock on the main thread, we get an immutable &Universe.
-            // We can safely hand this immutable reference to the custom thread pool (75% CPU) at once!
-            // No deadlock because the threads don't try to lock the Mutex themselves.
-            pool.install(|| {
-                seeds.par_iter().map(|seed_text| {
-                    crate::core::synapse::NeuralBus::query_multi_hop(&u, &sl, phi_g, seed_text, 15, &[], "", 3)
-                }).collect::<Vec<_>>()
-            })
-        };
+            // Yield the thread to allow pending API requests to grab the Universe lock
+            std::thread::sleep(Duration::from_millis(10));
+        }
 
         // Now that the heavy parallel read is done, we lock once to write the results
         if !hits_list.is_empty() {
@@ -4541,11 +4712,10 @@ fn handle_status(
     
     drop(u);
 
-    let mut sys = sysinfo::System::new();
+    static SYS: std::sync::OnceLock<std::sync::Mutex<sysinfo::System>> = std::sync::OnceLock::new();
+    let mut sys = SYS.get_or_init(|| std::sync::Mutex::new(sysinfo::System::new())).lock().unwrap();
     // Refresh only the specific components we need
     sys.refresh_memory();
-    sys.refresh_cpu_usage();
-    std::thread::sleep(std::time::Duration::from_millis(200));
     sys.refresh_cpu_usage();
 
     let total_mem = sys.total_memory() / 1024 / 1024 / 1024; // GB
@@ -4988,7 +5158,7 @@ fn handle_rshl_reason(
     };
 
     let task = { let s = session.lock().unwrap(); s.task.clone() };
-    let reply = generate_oracle_kai_reply(&universe, &synaptic_layer, &task, &req.prompt, req.hint.as_deref().unwrap_or(&req.prompt));
+    let reply = generate_oracle_kai_reply(&universe, &synaptic_layer, &session, &task, &req.prompt, req.hint.as_deref().unwrap_or(&req.prompt));
     
     write_json(stream, 200, "OK", &json!({ "reply": reply }))
 }
@@ -5436,6 +5606,9 @@ fn execute_tool_action(action: &ToolExecutionRequest) -> Result<String, String> 
         "list_dir" => {
             let path = if action.input.trim().is_empty() { "." } else { action.input.trim() };
             Ok(run_safe_command(&format!("dir {}", path)))
+        }
+        "oracle.web_search" => {
+            Ok(web_search_duckduckgo(&action.input))
         }
         _ => Err(format!("Tool '{}' not implemented for internal execution", action.tool_id))
     }
@@ -5890,3 +6063,56 @@ fn handle_telemetry(stream: &mut TcpStream) -> std::io::Result<()> {
 
 
 
+fn handle_interpret_build(
+    stream: &mut TcpStream,
+    universe: Arc<Mutex<Universe>>,
+) -> std::io::Result<()> {
+    let started = crate::core::interpret::rebuild_feature_map(universe);
+    if started {
+        write_json(stream, 200, "OK", &json!({ "status": "success", "message": "Semantic Feature Map rebuilding in background." }))
+    } else {
+        write_json(stream, 200, "OK", &json!({ "status": "already_building", "message": "Build already in progress — please wait." }))
+    }
+}
+
+fn handle_interpret_status(
+    stream: &mut TcpStream,
+) -> std::io::Result<()> {
+    let lock = crate::core::interpret::get_feature_map();
+    let reader = lock.read().unwrap();
+    let built = reader.is_some();
+    let building = crate::core::interpret::BUILD_IN_PROGRESS.load(std::sync::atomic::Ordering::Relaxed);
+    write_json(stream, 200, "OK", &json!({
+        "built": built,
+        "building": building,
+        "message": if built { "Feature map is active." } else if building { "Feature map is building..." } else { "Feature map not built yet." }
+    }))
+}
+
+fn handle_interpret_decode(
+    stream: &mut TcpStream,
+    body: &str,
+) -> std::io::Result<()> {
+    let req: serde_json::Value = match serde_json::from_str(body) {
+        Ok(v) => v,
+        Err(_) => return write_simple(stream, 400, "Bad Request", "Invalid JSON"),
+    };
+    
+    let text = req["text"].as_str().unwrap_or("");
+    if text.is_empty() {
+        return write_simple(stream, 400, "Bad Request", "Missing 'text' field");
+    }
+    
+    let lock = crate::core::interpret::get_feature_map();
+    let reader = lock.read().unwrap();
+    if let Some(map) = &*reader {
+        let vec = crate::core::SparseVec::encode(text);
+        let concepts = map.interpret_vector(&vec);
+        write_json(stream, 200, "OK", &json!({
+            "text": text,
+            "active_concepts": concepts
+        }))
+    } else {
+        write_simple(stream, 400, "Bad Request", "Feature map not built yet. Call /api/interpret/build first.")
+    }
+}

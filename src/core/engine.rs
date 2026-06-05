@@ -454,13 +454,13 @@ impl Engine {
 
         // Load POS Dictionary
         let dict_path = format!("{}/data/dictionary.json", base_dir);
-        let pos_dict = std::sync::Arc::new(
-            crate::core::PosDictionary::load_from_file(&dict_path)
-                .unwrap_or_else(|e| {
-                    eprintln!("[Warning] Failed to load POS dictionary from {}: {}", dict_path, e);
-                    crate::core::PosDictionary::new()
-                })
-        );
+        let pos_dict = std::sync::Arc::new({
+            let mut pd = crate::core::PosDictionary::new();
+            if let Err(e) = pd.load_semantic_dict("data/semantic_dict.json") {
+                eprintln!("[Warning] Failed to load POS dictionary: {}", e);
+            }
+            pd
+        });
 
         let mut this_engine = Self {
             universe,

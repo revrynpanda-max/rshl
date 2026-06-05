@@ -25,7 +25,7 @@ function loadPersistedCooldowns() {
       if (cooldownUntil > now) {
         PROVIDER_COOLDOWNS.set(provider, cooldownUntil);
         const remainMin = Math.round((cooldownUntil - now) / 60000);
-        console.warn(`[CircuitBreaker] Restored persisted cooldown for ${provider}: ${remainMin}m remaining until ${new Date(cooldownUntil).toISOString()}`);
+        console.log(`[CircuitBreaker] Restored persisted cooldown for ${provider}: ${remainMin}m remaining until ${new Date(cooldownUntil).toISOString()}`);
         restored++;
       }
     }

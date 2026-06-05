@@ -362,7 +362,7 @@ fn wp09_predictive_scoring_weights_match_whitepaper() {
 
     let input = SparseVec::encode("Hello");
     let trace = ConversationTrace::new();
-    let breakdown = u.diagnose_predictive(input, &trace, 8, 5);
+    let breakdown = u.diagnose_predictive(None, input, &trace, 8, 5);
 
     if let Some(top) = breakdown.first() {
         let reconstructed = 0.20 * top.sim + 0.55 * top.predict_match + 0.15 * top.mh - 0.20 * top.rec;
@@ -543,10 +543,10 @@ fn wp13_ltp_strengthens_on_co_fire() {
     let mut sl = SynapticLayer::new();
     let labels = vec!["apple".to_string(), "fruit".to_string()];
 
-    sl.record_co_firing(&labels, 0.5, 0.5, 0.2, 1);
+    sl.record_co_firing(&labels, 0.5, 0.5, 0.2, 1, 400_000);
     let w1 = sl.weight("apple", "fruit");
 
-    sl.record_co_firing(&labels, 0.5, 0.5, 0.2, 2);
+    sl.record_co_firing(&labels, 0.5, 0.5, 0.2, 2, 400_000);
     let w2 = sl.weight("apple", "fruit");
 
     assert!(w2 > w1, "LTP must strengthen synapse on repeated co-firing: {} -> {}", w1, w2);
@@ -559,8 +559,8 @@ fn wp13_high_chi_suppresses_ltp() {
     let mut sl_high = SynapticLayer::new();
     let labels = vec!["a".to_string(), "b".to_string()];
 
-    sl_low.record_co_firing(&labels, 0.5, 0.5, 0.05, 1);
-    sl_high.record_co_firing(&labels, 0.5, 0.5, 0.95, 1);
+    sl_low.record_co_firing(&labels, 0.5, 0.5, 0.05, 1, 400_000);
+    sl_high.record_co_firing(&labels, 0.5, 0.5, 0.95, 1, 400_000);
 
     let w_low = sl_low.weight("a", "b");
     let w_high = sl_high.weight("a", "b");
