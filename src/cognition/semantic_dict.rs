@@ -110,35 +110,42 @@ pub fn lookup_word(word: &str) -> GrammarBundle {
             w_clone
         );
         
-        if let Ok(output) = std::process::Command::new("ollama")
-            .arg("run")
-            .arg("gemma4")
-            .arg(&prompt)
-            .output()
-        {
-            if let Ok(response) = String::from_utf8(output.stdout) {
-                // Find { and } to extract JSON
-                if let Some(start) = response.find('{') {
-                    if let Some(end) = response.rfind('}') {
-                        let json_str = &response[start..=end];
-                        #[derive(Deserialize)]
-                        struct OllamaRes {
-                            pos: String,
-                            definition: String,
-                            synonyms: Vec<String>,
-                        }
-                        if let Ok(parsed) = serde_json::from_str::<OllamaRes>(json_str) {
-                            let bundle = GrammarBundle {
-                                word: w_clone.clone(),
-                                pos: parsed.pos,
-                                definition: parsed.definition,
-                                synonyms: parsed.synonyms,
-                            };
-                            
-                            let mut d = dict_clone.lock().unwrap();
-                            d.words.insert(w_clone.clone(), bundle);
-                            d.save();
-                            println!("[SemanticDict] Learned new word bundle: {}", w_clone);
+        let req_body = serde_json::json!({
+            "model": "gemma4",
+            "prompt": prompt,
+            "stream": false
+        });
+        
+        let response = ureq::post("http://127.0.0.1:11434/api/generate")
+            .timeout(std::time::Duration::from_secs(10))
+            .send_json(req_body);
+            
+        if let Ok(resp) = response {
+            if let Ok(json_resp) = resp.into_json::<serde_json::Value>() {
+                if let Some(response_str) = json_resp["response"].as_str() {
+                    // Find { and } to extract JSON
+                    if let Some(start) = response_str.find('{') {
+                        if let Some(end) = response_str.rfind('}') {
+                            let json_str = &response_str[start..=end];
+                            #[derive(Deserialize)]
+                            struct OllamaRes {
+                                pos: String,
+                                definition: String,
+                                synonyms: Vec<String>,
+                            }
+                            if let Ok(parsed) = serde_json::from_str::<OllamaRes>(json_str) {
+                                let bundle = GrammarBundle {
+                                    word: w_clone.clone(),
+                                    pos: parsed.pos,
+                                    definition: parsed.definition,
+                                    synonyms: parsed.synonyms,
+                                };
+                                
+                                let mut d = dict_clone.lock().unwrap();
+                                d.words.insert(w_clone.clone(), bundle);
+                                d.save();
+                                println!("[SemanticDict] Learned new word bundle: {}", w_clone);
+                            }
                         }
                     }
                 }

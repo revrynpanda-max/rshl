@@ -37,9 +37,9 @@
 //!     - Emotional history: detected mood signals across turns
 //!     - Communication style: verbosity, technicality, question frequency
 //!     - Turn-level engagement score
-//!     - What KAI has already explained (avoid repetition)
+//!     - What KAI has already explained (no need to repeat)
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -379,6 +379,181 @@ impl TheoryOfMind {
 }
 
 impl Default for TheoryOfMind {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ── Implicit RLHF Feedback Ledger ────────────────────────────────────────────
+
+/// Implicit feedback signal — inferred from the user's next message
+/// without them explicitly saying "good" or "bad".
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum FeedbackSignal {
+    /// User continued naturally, agreed, or asked a follow-up. Positive.
+    Positive,
+    /// User corrected, rejected, or expressed confusion. Negative.
+    Negative,
+    /// No strong signal detected. Neutral.
+    Neutral,
+}
+
+/// A record of one of KAI's outputs and its cell sources.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct OutputRecord {
+    /// The cell labels (from lattice hits) that generated this response.
+    pub cell_labels: Vec<String>,
+    /// The response text KAI produced.
+    pub response_text: String,
+    /// When this was produced (turn number).
+    pub turn: u64,
+    /// Running positive hit count.
+    pub positive_hits: u32,
+    /// Total feedback evaluations received for this record.
+    pub total_evaluations: u32,
+}
+
+impl OutputRecord {
+    /// Belief trust score: how often this cluster of cells produces good responses.
+    pub fn trust_score(&self) -> f32 {
+        if self.total_evaluations == 0 {
+            return 0.5;
+        }
+        self.positive_hits as f32 / self.total_evaluations as f32
+    }
+}
+
+/// Ledger tracking KAI's recent outputs for implicit RLHF.
+///
+/// Every time KAI speaks, we record which lattice cells contributed.
+/// The next user input is analyzed for correction/continuation signals.
+/// Based on that signal, those cell clusters are reinforced or penalized
+/// in the production lattice via the `/feedback` API endpoint.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FeedbackLedger {
+    records: VecDeque<OutputRecord>,
+    max_records: usize,
+}
+
+impl FeedbackLedger {
+    pub fn new() -> Self {
+        Self {
+            records: VecDeque::with_capacity(20),
+            max_records: 20,
+        }
+    }
+
+    /// Record KAI's latest output. Call immediately after generating a response.
+    pub fn record_output(&mut self, cell_labels: Vec<String>, response_text: &str, turn: u64) {
+        if self.records.len() >= self.max_records {
+            self.records.pop_front();
+        }
+        self.records.push_back(OutputRecord {
+            cell_labels,
+            response_text: response_text.to_string(),
+            turn,
+            positive_hits: 0,
+            total_evaluations: 0,
+        });
+    }
+
+    /// Detect the implicit feedback signal from the user's next message.
+    ///
+    /// This is how KAI reads between the lines:
+    /// - If you correct him → the cells that generated that response get penalized
+    /// - If you continue naturally → those cells get gently reinforced
+    /// - Over time, KAI forms beliefs: high-trust cell clusters emerge
+    pub fn detect_signal(next_input: &str) -> FeedbackSignal {
+        let lower = next_input.to_lowercase();
+
+        // Strong negative correction signals
+        let negative = [
+            "no,", "no that", "nope", "wrong", "incorrect", "that's wrong", "thats wrong",
+            "not right", "that's not", "thats not", "you're wrong", "youre wrong",
+            "i meant", "i mean", "what i said", "that's not what", "thats not what",
+            "i didn't ask", "i didnt ask", "not what i", "you misunderstood",
+        ];
+
+        // Positive continuation signals
+        let positive = [
+            "yes", "yeah", "yep", "exactly", "right", "correct", "that's right",
+            "thats right", "makes sense", "got it", "nice", "great", "perfect",
+            "good", "awesome", "interesting", "love it", "keep going", "continue",
+        ];
+
+        for sig in &negative {
+            if lower.contains(sig) {
+                return FeedbackSignal::Negative;
+            }
+        }
+
+        for sig in &positive {
+            if lower.starts_with(sig) || lower.contains(&format!(" {} ", sig)) {
+                return FeedbackSignal::Positive;
+            }
+        }
+
+        // A short clarifying question about a topic = positive engagement
+        if lower.contains('?') && lower.len() < 80 {
+            return FeedbackSignal::Positive;
+        }
+
+        FeedbackSignal::Neutral
+    }
+
+    /// Apply a detected signal to recent records.
+    /// Returns the cell labels that should be reinforced or penalized in the lattice.
+    pub fn apply_signal(
+        &mut self,
+        signal: FeedbackSignal,
+        current_turn: u64,
+    ) -> Vec<(String, f32)> {
+        let mut adjustments: Vec<(String, f32)> = Vec::new();
+
+        // Apply to the most recent output record
+        if let Some(record) = self.records.back_mut() {
+            // Only apply if this is a recent output (within 2 turns)
+            if current_turn.saturating_sub(record.turn) <= 2 {
+                record.total_evaluations += 1;
+
+                let delta = match signal {
+                    FeedbackSignal::Positive => {
+                        record.positive_hits += 1;
+                        0.12_f32  // gentle positive reinforcement
+                    }
+                    FeedbackSignal::Negative => {
+                        -0.25_f32 // stronger negative penalty
+                    }
+                    FeedbackSignal::Neutral => 0.0,
+                };
+
+                if delta.abs() > 0.001 {
+                    for label in &record.cell_labels {
+                        adjustments.push((label.clone(), delta));
+                    }
+                }
+            }
+        }
+
+        adjustments
+    }
+
+    /// Get cell labels with their current trust scores.
+    /// High-trust cells form KAI's "beliefs" about facts and topics.
+    pub fn trusted_cells(&self) -> Vec<(&str, f32)> {
+        let mut cells: Vec<(&str, f32)> = Vec::new();
+        for record in &self.records {
+            if record.total_evaluations >= 3 && record.trust_score() > 0.7 {
+                for label in &record.cell_labels {
+                    cells.push((label.as_str(), record.trust_score()));
+                }
+            }
+        }
+        cells
+    }
+}
+
+impl Default for FeedbackLedger {
     fn default() -> Self {
         Self::new()
     }

@@ -59,8 +59,15 @@ pub fn find_semantic_path(
     });
 
     let mut closed_set = HashSet::new();
+    let mut steps = 0;
+    const MAX_STEPS: usize = 2000;
 
     while let Some(State { cost: _, label: current }) = open_set.pop() {
+        steps += 1;
+        if steps > MAX_STEPS {
+            break;
+        }
+
         if current == target_label {
             // We reached the target. Reconstruct path.
             let mut path = vec![current.clone()];

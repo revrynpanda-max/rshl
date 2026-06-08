@@ -230,7 +230,12 @@ pub fn build_generative_state(
     // path uses, then hands us cell references so we can fold the
     // raw vectors in.
     let hits = universe.predictive_query_vecs_user(Some(prompt), backbone.clone(), trace, MIXER_STEPS, MEMORY_TOP_K, user_id);
-    let (memory_vec, memory_cont) = memory_bundles_from_hits(&hits);
+    
+    let healthy_hits: Vec<_> = hits.iter().filter(|(c, _)| c.region.as_ref() != "contested").copied().collect();
+    let poisoned_hits: Vec<_> = hits.iter().filter(|(c, _)| c.region.as_ref() == "contested").copied().collect();
+
+    let (memory_vec, memory_cont) = memory_bundles_from_hits(&healthy_hits);
+    let (poisoned_vec, _) = memory_bundles_from_hits(&poisoned_hits);
 
     // ── 4. FieldState modulation — g drives memory, chi drives contrast
     // Both channels floor at 25% of peak so a cold field still lets
@@ -246,9 +251,8 @@ pub fn build_generative_state(
     let w_contrast = W_CONTRAST_PEAK * chi;
 
     // Contrast = "what about the prompt is NOT already in memory".
-    // Cheap to compute: contrast zeroes every dim where memory has
-    // support, leaving only backbone dims memory doesn't touch.
-    let contrast = backbone.contrast(&memory_vec);
+    // We additionally contrast against poisoned cells so the state routes away from them!
+    let contrast = backbone.contrast(&memory_vec).contrast(&poisoned_vec);
 
     // ── 5. Trace injection — light recency residue ───────────────────
     // trace.current is already a running bundle of the last turns'
@@ -268,6 +272,7 @@ pub fn build_generative_state(
             (&memory_vec, w_memory_vec),
             (&memory_cont, w_memory_cont),
             (&contrast, w_contrast),
+            (&poisoned_vec, -W_MEMORY_VEC_PEAK), // NEGATIVE WEIGHT routes away from poisoned structure
             (trace_term, W_TRACE),
         ],
         TARGET_DENSITY,
@@ -441,7 +446,7 @@ pub(crate) fn weighted_superpose(terms: &[(&SparseVec, f32)], density: f32) -> S
     let mut sums = vec![0f32; DIM];
     let mut any_contribution = false;
     for (v, w) in terms {
-        if *w <= 0.0 {
+        if *w == 0.0 {
             continue;
         }
         if v.nnz() == 0 {

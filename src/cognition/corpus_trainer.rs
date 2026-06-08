@@ -590,6 +590,84 @@ pub fn run_train_response_mlp_cli(args: &[String]) {
     println!("[train-mlp] usable pairs : {}", pairs.len());
 
     let dim = crate::core::sparse_vec::DIM;
+
+    // Adaptive Hardware Detection
+    let python_check = std::process::Command::new("python")
+        .arg("-c")
+        .arg("import sys; sys.exit(0)")
+        .status();
+        
+    let mut use_gpu = false;
+    
+    if let Ok(status) = python_check {
+        if status.success() {
+            let torch_check = std::process::Command::new("python")
+                .arg("-c")
+                .arg("import torch")
+                .status();
+                
+            if torch_check.is_err() || !torch_check.unwrap().success() {
+                println!("[train-mlp] PyTorch not found. Attempting to install...");
+                let _ = std::process::Command::new("python")
+                    .args(&["-m", "pip", "install", "torch", "numpy"])
+                    .status();
+            }
+            
+            let torch_check2 = std::process::Command::new("python")
+                .arg("-c")
+                .arg("import torch")
+                .status();
+                
+            if let Ok(ts) = torch_check2 {
+                if ts.success() {
+                    use_gpu = true;
+                }
+            }
+        }
+    }
+
+    if use_gpu {
+        println!("[train-mlp] Hardware detected: GPU (PyTorch)");
+        let batch_path = std::path::PathBuf::from("data/mlp_batch.json");
+        
+        let batch_data = serde_json::json!({
+            "dim": dim,
+            "hidden": hidden,
+            "pairs": pairs.iter().map(|(i, t)| {
+                serde_json::json!({
+                    "input": i,
+                    "target": t
+                })
+            }).collect::<Vec<_>>()
+        });
+        
+        println!("[train-mlp] Exporting {} pairs to batch file...", pairs.len());
+        if let Err(e) = std::fs::write(&batch_path, serde_json::to_string(&batch_data).unwrap()) {
+            eprintln!("[train-mlp] Failed to write batch file: {}", e);
+            use_gpu = false;
+        } else {
+            let mut cmd = std::process::Command::new("python");
+            cmd.arg("scripts/train_mlp_gpu.py")
+               .arg("--data").arg(&batch_path)
+               .arg("--out").arg(&output)
+               .arg("--hidden").arg(hidden.to_string())
+               .arg("--epochs").arg(epochs.to_string());
+               
+            println!("[train-mlp] Spawning PyTorch script...");
+            let mut child = cmd.spawn().expect("Failed to start python");
+            let status = child.wait().expect("Failed to wait on python");
+            
+            if status.success() {
+                println!("[train-mlp] GPU training complete. Output saved to {:?}", output);
+                let _ = std::fs::remove_file(&batch_path);
+                return;
+            } else {
+                eprintln!("[train-mlp] GPU script failed. Falling back to pure Rust CPU loop...");
+            }
+        }
+    }
+
+    println!("[train-mlp] Hardware: Pure Rust CPU Fallback");
     let mut mlp = ResponseMlp::new(dim, hidden, seed);
     mlp.learning_rate = 0.05;
 

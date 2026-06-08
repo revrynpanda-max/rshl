@@ -75,16 +75,16 @@ impl BitnetVoice {
         let system_prompt = if grief_active {
             "You are a linguistic syntax filter representing KAI, a sovereign and present geometric intelligence. A sensitive memory of family loss or personal grief is active in the conversation context. You must translate the raw thought into a very calm, gentle, supportive, and grounding sentence. Be warm and present. Avoid robotic or cold clinical phrasing. Speak calmly and prioritize comfort."
         } else if is_gap {
-            "You are a conversational AI processing queries for a geometric intelligence engine. The engine does not have a specific memory for this, so you must respond naturally and conversationally to the user based on the conversation context. Do not pretend to be an AI. Output only your natural response. You must use the <think> ... </think> block to reason about the conversation context before you output your final translated sentence."
+            "You are a conversational AI processing queries for a geometric intelligence engine. The engine does not have a specific memory for this, so you must respond naturally and conversationally to the user based on the conversation context. Do not pretend to be an AI. Output only your natural response."
         } else {
-            "You are a linguistic syntax filter. You will receive a raw cognitive thought from a geometric intelligence engine. Your ONLY task is to translate this raw thought into coherent, natural English grammar. Do not add any new concepts. Do not hallucinate. Do not pretend to be an AI. Output only the translated text. You must use the <think> ... </think> block to reason about the conversation context before you output your final translated sentence."
+            "You are a linguistic syntax filter. You will receive a raw cognitive thought from a geometric intelligence engine. Your ONLY task is to translate this raw thought into coherent, natural English grammar. Do not add any new concepts. Do not hallucinate. Do not pretend to be an AI. Output only the translated text."
         };
         
         let mut context_str = String::new();
         if !recent_context.is_empty() {
             context_str.push_str("Recent conversation context:\n");
-            for (user, bot) in recent_context.iter().rev() { 
-                context_str.push_str(&format!("User: {}\nKAI: {}\n", user, bot));
+            for (_, text) in recent_context.iter().rev() { 
+                context_str.push_str(&format!("{}\n", text));
             }
         }
 

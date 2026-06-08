@@ -96,7 +96,7 @@ Never run destructive commands. Never expose secrets or tokens in output.`;
     SENIOR_ENGINEER_IDENTITY,
     'Kai-Coder-Sovereign',
     0.25,
-    { isWorkChannel: true }
+    { isWorkChannel: true, isRawPrompt: true, maxTokens: 4096 }
   ).catch(e => { console.warn(`[KaiCoderAgent/${phase}] LLM error:`, e.message); return null; });
 }
 

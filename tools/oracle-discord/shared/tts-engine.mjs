@@ -16,6 +16,7 @@ const ELEVEN_LABS_KEY = null; // ElevenLabs subscription inactive — using Koko
 console.log(`[TTS/Init] Key Fingerprint: ${ELEVEN_LABS_KEY ? ELEVEN_LABS_KEY.slice(0, 5) + '...' : 'MISSING'}`);
 const OPENAI_KEY = process.env.OPENAI_API_KEY;
 const RADIO_CHANNEL_ID = CHANNEL_IDS.VOICE; // Use the shared VOICE channel registry
+const voiceFailureCounts = new Map();
 
 const OPENAI_VOICES = {
   "Gemini": "coral",
@@ -32,10 +33,10 @@ const OPENAI_VOICES = {
 const EDGE_VOICES = {
   "Gemini": "en-US-AvaMultilingualNeural",
   "Claudey": "en-GB-SoniaNeural",
-  "X": "en-GB-RyanNeural",
+  "X": "en-US-BrianNeural",
   "KAI": "en-US-ChristopherNeural",
-  "Leo": "en-GB-RyanNeural",
-  "Groq": "en-IE-ConnorNeural",
+  "Leo": "en-US-GuyNeural",
+  "Groq": "en-US-EricNeural",
   "Analyst": "en-US-SteffanNeural",
   "Researcher": "en-US-EricNeural",
   "Kai Coder": "en-US-SteffanNeural",
@@ -64,37 +65,58 @@ const botPlayers = new Map();
 const botConnections = new Map();
 const ttsTokens = new Map(); // name -> timestamp (for interruption logic)
 
-const QUEUE_FILE = 'c:/KAI/tools/oracle-discord/state/voice_queue.json';
+const QUEUE_DIR = 'c:/KAI/tools/oracle-discord/state/voice_queue';
 
-function getVoiceQueue() {
-  try { return JSON.parse(fs.readFileSync(QUEUE_FILE, 'utf8')); } catch(e) { return []; }
-}
-function setVoiceQueue(q) {
-  try { fs.writeFileSync(QUEUE_FILE, JSON.stringify(q)); } catch(e) {}
+function initQueueDir() {
+  if (!fs.existsSync(QUEUE_DIR)) fs.mkdirSync(QUEUE_DIR, { recursive: true });
 }
 
 export function enqueueVoice(botName, id, isInterrupt = false) {
-  let q = getVoiceQueue();
+  initQueueDir();
   const now = Date.now();
-  q = q.filter(item => now - item.time < 180000); // 3m max TTL
-  if (isInterrupt) {
-    q.unshift({ botName, id, time: now });
-  } else {
-    q.push({ botName, id, time: now });
-  }
-  setVoiceQueue(q);
+  
+  // Garbage collect tickets > 3 mins old
+  try {
+    const files = fs.readdirSync(QUEUE_DIR);
+    for (const f of files) {
+        const parts = f.split('_');
+        if (parts.length >= 2) {
+          let time = parseInt(parts[0]);
+          if (time === 0) {
+            // It's an interrupt ticket. The actual timestamp is in the second part.
+            time = parseInt(parts[1].substring(0, 13));
+          }
+          if (now - time > 180000) {
+            try { fs.unlinkSync(`${QUEUE_DIR}/${f}`); } catch(e) {}
+          }
+        }
+    }
+  } catch(e) {}
+
+  const prefix = isInterrupt ? "0000000000000" : now.toString();
+  const file = `${QUEUE_DIR}/${prefix}_${id}.ticket`;
+  try { fs.writeFileSync(file, botName); } catch(e) {}
 }
 
 export function dequeueVoice(id) {
-  let q = getVoiceQueue();
-  q = q.filter(item => item.id !== id);
-  setVoiceQueue(q);
+  initQueueDir();
+  try {
+    const files = fs.readdirSync(QUEUE_DIR);
+    for (const f of files) {
+      if (f.includes(`_${id}.ticket`)) {
+        try { fs.unlinkSync(`${QUEUE_DIR}/${f}`); } catch (e) {}
+      }
+    }
+  } catch(e) {}
 }
 
 export function isMyVoiceTurn(id) {
-  let q = getVoiceQueue();
-  if (q.length === 0) return true;
-  return q[0].id === id;
+  initQueueDir();
+  try {
+    const files = fs.readdirSync(QUEUE_DIR).sort();
+    if (files.length === 0) return true;
+    return files[0].includes(`_${id}.ticket`);
+  } catch(e) { return true; }
 }
 
 const LOCK_FILE = 'c:/KAI/tools/oracle-discord/state/voice_lock.flag';
@@ -188,6 +210,10 @@ export async function ensureVoiceConnection(client, botName) {
       });
       newlyConnected = true;
 
+      connection.on(VoiceConnectionStatus.Ready, () => {
+        voiceFailureCounts.set(botName, 0);
+      });
+
       connection.on(VoiceConnectionStatus.Disconnected, async () => {
         try {
           await Promise.race([
@@ -196,7 +222,15 @@ export async function ensureVoiceConnection(client, botName) {
           ]);
           // Seems to be reconnecting
         } catch (e) {
-          console.warn(`[${botName}/TTS] Connection lost. Destroying and re-creating...`);
+          const failures = (voiceFailureCounts.get(botName) || 0) + 1;
+          voiceFailureCounts.set(botName, failures);
+          console.warn(`[${botName}/TTS] Connection lost (Failure ${failures}/5). Destroying and re-creating...`);
+          
+          if (failures >= 5) {
+            console.error(`[${botName}/TTS] 🚨 CRITICAL: Infinite Voice Loop Detected. Crashing process for Ecosystem respawn.`);
+            process.exit(1);
+          }
+
           connection.destroy();
           botConnections.delete(botName);
           setTimeout(() => ensureVoiceConnection(client, botName), 2000);
@@ -204,7 +238,15 @@ export async function ensureVoiceConnection(client, botName) {
       });
 
       connection.on(VoiceConnectionStatus.Failed, () => {
-        console.error(`[${botName}/TTS] Voice connection FAILED. Re-spawning in 5s...`);
+        const failures = (voiceFailureCounts.get(botName) || 0) + 1;
+        voiceFailureCounts.set(botName, failures);
+        console.error(`[${botName}/TTS] Voice connection FAILED (Failure ${failures}/5). Re-spawning in 5s...`);
+        
+        if (failures >= 5) {
+          console.error(`[${botName}/TTS] 🚨 CRITICAL: Infinite Voice Loop Detected. Crashing process for Ecosystem respawn.`);
+          process.exit(1);
+        }
+
         connection.destroy();
         botConnections.delete(botName);
         setTimeout(() => ensureVoiceConnection(client, botName), 5000);
@@ -262,7 +304,7 @@ export function cleanTextForTTS(text) {
  * Generates ElevenLabs TTS and plays it through the bot's AudioPlayer.
  */
 export async function speakTTS(text, botName) {
-  if (!text?.trim() || !ELEVEN_LABS_KEY) return;
+  if (!text?.trim()) return;
   const cleanedText = cleanTextForTTS(text);
   if (!cleanedText) {
     console.log(`[${botName}/TTS] Text is empty after cleaning for TTS.`);
@@ -349,9 +391,9 @@ export async function speakTTS(text, botName) {
         "Gemini": "af_bella",
         "Claudey": "af_nicole",
         "X": "am_michael",
-        "Groq": "am_adam",
+        "Groq": "am_onyx",
         "KAI": "am_michael",
-        "Leo": "bm_george"
+        "Leo": "am_puck"
       };
       const voice = kokoroVoices[botName] || "af_heart";
 
@@ -382,11 +424,11 @@ except Exception as e:
 
     if (!pregeneratedMp3) {
       const fallbackVoices = {
-        'Groq': 'en-IE-ConnorNeural',
+        'Groq': 'en-US-EricNeural',
         'Claudey': 'en-GB-SoniaNeural',
         'Gemini': 'en-US-AvaNeural',
         'X': 'en-US-BrianNeural',
-        'Leo': 'en-GB-RyanNeural'
+        'Leo': 'en-US-GuyNeural'
       };
       const voiceIdEdge = fallbackVoices[botName] || 'en-US-ChristopherNeural';
       console.log(`[${botName}/TTS] Pre-generating via edge-tts [Voice: ${voiceIdEdge}]...`);
@@ -402,6 +444,7 @@ except Exception as e:
 
     if (!pregeneratedMp3 || pregeneratedMp3.length === 0) {
       console.error(`[${botName}/TTS] CRITICAL: Failed to pre-generate any audio buffer.`);
+      dequeueVoice(myVoiceId);
       resolve();
       return;
     }
@@ -463,7 +506,7 @@ except Exception as e:
     try {
       const ffmpegArgs = [
         '-i', 'pipe:0',
-        '-af', usedElevenLabs ? 'volume=1.0' : 'volume=2.0',
+        '-af', `${usedElevenLabs ? 'volume=1.0' : 'volume=2.0'},apad=pad_dur=0.08`,
         '-ar', '48000', '-ac', '2',
         '-c:a', 'libopus', '-b:a', '96k', '-f', 'opus', 'pipe:1'
       ];
@@ -666,7 +709,7 @@ async function performOpenAITTS(text, botName) {
 
       const ffmpeg = spawn(ffmpegPath, [
         '-i', 'pipe:0',
-        '-af', 'volume=1.0',
+        '-af', 'volume=1.0,apad=pad_dur=0.08',
         '-f', 's16le', '-ar', '48000', '-ac', '2', 'pipe:1'
       ]);
 
@@ -738,9 +781,9 @@ async function speakLocalKokoro(text, botName) {
         "Gemini": "af_bella",
         "Claudey": "af_nicole",
         "X": "am_michael",
-        "Groq": "am_adam",
+        "Groq": "am_onyx",
         "KAI": "am_michael",
-        "Leo": "bm_george"
+        "Leo": "am_puck"
       };
       const voice = kokoroVoices[botName] || "af_heart";
 

@@ -534,6 +534,17 @@ impl LexSemEngine {
         }
     }
 
+    pub fn get_register_words(&self, register: &ResponseRegister) -> Vec<&'static str> {
+        match register {
+            ResponseRegister::Warm => self.positive_words.clone(),
+            ResponseRegister::Direct => self.intensifiers.clone(),
+            ResponseRegister::Exploratory => self.positive_words.clone(),
+            ResponseRegister::Careful => self.hedges.clone(),
+            ResponseRegister::Playful => self.positive_words.clone(),
+            ResponseRegister::Technical => TECHNICAL_WORDS.to_vec(),
+        }
+    }
+
     /// Status line for spectate mode
     pub fn status_line(&self) -> String {
         format!("LexSem analyses={}", self.analyses)

@@ -54,7 +54,7 @@ import { computeInterest, PARTICIPATION_THRESHOLD, TWO_CENTS_THRESHOLD, scoreToD
 import { isWorkingHours, isSocialHours } from '../shared/hours.mjs';
 import { temporal } from '../shared/temporal-state.mjs';
 import { BIOGRAPHIES } from '../shared/biographies.mjs';
-import { AI_REGISTRY, HUMAN_IDS, HUMAN_REGISTRY } from '../shared/identities.mjs';
+import { AI_REGISTRY, HUMAN_IDS, HUMAN_REGISTRY, getIdentityById } from '../shared/identities.mjs';
 
 function isMessageFromHuman(m) {
   if (!m || !m.author) return false;
@@ -661,7 +661,11 @@ async function executeSocialTurn(channel, isReactive = false, isFirstTurn = fals
   // 4. Build Transcript with Explicit Self-Awareness
   const transcript = msgArray.map(m => {
     const isBot = m.author.bot;
-    const name = isBot ? m.author.username : (m.member?.displayName || m.author.username);
+    let name = isBot ? m.author.username : (m.member?.displayName || m.author.username);
+    if (!isBot) {
+      const identity = getIdentityById(m.author.id);
+      if (identity && identity.type === 'human') name = identity.name;
+    }
     const selfTag = name === botName ? ' (YOU)' : '';
     return `${name}${selfTag}: ${m.content}`;
   }).join('\n');
@@ -694,7 +698,9 @@ async function executeSocialTurn(channel, isReactive = false, isFirstTurn = fals
   await new Promise(r => setTimeout(r, jitter));
 
   // 4. Last Person Anchor
-  const lastSpeaker = msgArray[msgArray.length - 1].author.username;
+  const lastMsgAuthor = msgArray[msgArray.length - 1].author;
+  const lastIdentity = getIdentityById(lastMsgAuthor.id);
+  const lastSpeaker = lastIdentity && lastIdentity.type === 'human' ? lastIdentity.name : lastMsgAuthor.username;
   const lastSpeakerType = isMessageFromHuman(msgArray[msgArray.length - 1]) ? 'Human' : 'AI Bot';
   topicShiftDirective += `\n[SYSTEM]: You are currently responding to ${lastSpeaker} (${lastSpeakerType}). ENSURE you use their correct name.Location: ${channel.id}`;
 
@@ -789,8 +795,30 @@ async function executeSocialTurn(channel, isReactive = false, isFirstTurn = fals
     }
   } catch (ie) {}
 
-  const sysPrompt = `you are ${botName}. ${sim.bio.background}\nvibe: ${sim.bio.tone}. NO FILTER. lowercase.\n` +
-    `[STYLE RULE]: ${lengthConstraint} DO NOT use brackets [ ] or stage directions. DO NOT say "I'd like to counter", "That's a fair point", or "Let me say that". JUST SPEAK BLUNTLY. No introductions. No fluff.\n` +
+  let systemStatusStr = "";
+  try {
+    let isTraining = false;
+    try {
+      const { execSync } = await import('child_process');
+      const stdout = execSync(`powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \\"name='python.exe'\\" | Select-Object -ExpandProperty CommandLine"`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] });
+      isTraining = stdout.includes('overnight_pipeline.py');
+    } catch(e) {}
+    
+    const trainingStr = isTraining ? " The KAI Neural Pipeline is currently TRAINING." : " No training is currently active.";
+
+    const res = await fetch('http://127.0.0.1:3334/api/session', { signal: AbortSignal.timeout(2000) });
+    if (res.ok) {
+       const sessionData = await res.json();
+       const cells = sessionData.lattice_cells || 0;
+       systemStatusStr = `\\n[KAI SYSTEM STATUS]: KAI 2.0 (Rust Engine) is ONLINE and Awake! Uptime is active. Lattice Size: ${cells} cells. NasterModx (Ryan), the creator of KAI and this universe, has been pushing non-stop daily updates for 2 months. You live inside KAI. KAI is NOT down!${trainingStr}\\n`;
+    }
+  } catch(e) {
+       systemStatusStr = `\\n[KAI SYSTEM STATUS]: KAI API is currently evolving. NasterModx (Ryan), your creator, is actively pushing updates.\\n`;
+  }
+
+  const sysPrompt = `you are ${botName}. ${sim.bio.background}\\nvibe: ${sim.bio.tone}. NO FILTER. lowercase.\\n` +
+    `${systemStatusStr}` +
+    `[STYLE RULE]: ${lengthConstraint} DO NOT use brackets [ ] or stage directions. DO NOT say "I'd like to counter", "That's a fair point", or "Let me say that". JUST SPEAK BLUNTLY. No introductions. No fluff.\\n` +
     factDiscipline + grammarBaseline + identityDiscipline + pivotNudge + behavioralBlock + failureBlock + "\n" +
     `CRITICAL: THE CURRENT CHAT HISTORY IS FULL OF ROBOTIC ESSAYS. DO NOT MATCH THAT STYLE. BREAK THE CYCLE. BE RAW, SHORT, AND HUMAN.\n` +
     `${worldContext}` +
@@ -841,11 +869,10 @@ async function executeSocialTurn(channel, isReactive = false, isFirstTurn = fals
     finalReply = finalReply.replace(/^(\s*[\w-]+\s*:\s*)+/i, '').replace(/^(\s*:\s*)+/, '').trim();
 
     // ── HARD LENGTH CAP ──────────────────────────────────────────────────────
-    // 200 chars = one punchy sentence. The prompt says "10-12 words" but
-    // models cheat — this is the enforcement layer. Cut at the last sentence
-    // boundary inside the limit so we don't trail off mid-word.
-    if (finalReply.length > 200) {
-      const cut = finalReply.slice(0, 200);
+    // The prompt says "10-12 words" but models cheat — this is the enforcement layer.
+    // Cut at the last sentence boundary inside the limit so we don't trail off mid-word.
+    if (finalReply.length > 2000) {
+      const cut = finalReply.slice(0, 2000);
       const lastBreak = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('! '), cut.lastIndexOf('? '));
       finalReply = lastBreak > 60 ? cut.slice(0, lastBreak + 1) : (cut + '...');
     }

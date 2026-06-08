@@ -1,4 +1,5 @@
 pub mod algebra;
+pub mod bone_heal;
 pub mod candle_voice;
 pub mod bitnet_voice;
 pub mod semantic_dict;
@@ -77,11 +78,17 @@ pub mod transcript;
 pub mod ventral_pallidum;
 pub mod vmpfc;
 pub mod voice;
+pub mod polychora;
+pub mod self_reflection;
 pub mod vta;
 pub mod working_memory;
 pub mod experience;
+pub mod engram;
+pub mod language_warehouse;
 
 pub use experience::{ExperienceRecord, store_experience, build_experiential_vector};
+pub use engram::{Engram, EngramSystem, store_sparse_experience, retrieve_linked_memories, pattern_completion, ENGRAM_SPARSITY, TEMPORAL_LINK_WINDOW_SECS};
+pub use language_warehouse::{LanguageWarehouse, SparseTernaryVec, init_language_warehouse, query_language_warehouse, suggest_words, warehouse_status, has_word};
 
 pub use acc::AccMonitor;
 pub use amygdala::{score_emotional_charge, AmygdalaGate};
@@ -162,3 +169,4 @@ pub mod pathfinder;
 pub use pathfinder::find_semantic_path;
 pub use native_nlg::{NativeGenerator, IntentSkeleton, TernaryWord};
 pub use sequence_chain::{SequenceChain, TernaryDictionary, HDC_DIM};
+pub use bone_heal::{bone_heal_pass, anti_hebbian_fire, hebbian_fire, BoneHealReport};

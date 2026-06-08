@@ -1108,12 +1108,25 @@ async function processVocalQueue() {
     await ensureVoiceConnection(CHANNEL_IDS.VOICE, guild).catch(() => {});
   }
 
-  // Sync text-audio floor: Poll until we possess the exclusive voice lock.
-  const { acquireVoiceLock, releaseVoiceLock, isSomeoneSpeaking } = await import('../shared/tts-engine.mjs');
+  // Use the SHARED ticket system so Leo waits his turn in the global FIFO queue.
+  // This ensures voice playback order matches the Discord text chat order.
+  const { acquireVoiceLock, releaseVoiceLock, isSomeoneSpeaking, enqueueVoice, isMyVoiceTurn, dequeueVoice } = await import('../shared/tts-engine.mjs');
+
+  // Take a ticket IMMEDIATELY — this preserves our position in the global queue
+  const myVoiceId = Date.now().toString() + '_leo_' + Math.random().toString();
+  enqueueVoice("Leo", myVoiceId, false);
+
   let waitCount = 0;
   let gotLock = false;
-  while (waitCount < 300) { // Max 30 seconds wait
-    if (!isSomeoneSpeaking("Leo") && acquireVoiceLock("Leo")) {
+  while (waitCount < 600) { // Max 60 seconds wait
+    // Wait for our ticket to be at the front of the queue AND the lock to be free
+    if (isMyVoiceTurn(myVoiceId) && !isSomeoneSpeaking("Leo") && acquireVoiceLock("Leo")) {
+      // Also check our own player is idle
+      if (audioPlayer && audioPlayer.state.status !== AudioPlayerStatus.Idle) {
+        await new Promise(r => setTimeout(r, 100));
+        waitCount++;
+        continue;
+      }
       gotLock = true;
       break;
     }
@@ -1122,7 +1135,8 @@ async function processVocalQueue() {
   }
 
   if (!gotLock) {
-    console.log(`[Leo/Speech] Global voice lock acquisition timed out, yielding this vocal turn.`);
+    console.log(`[Leo/Speech] Global voice queue timed out, yielding this vocal turn.`);
+    dequeueVoice(myVoiceId);
     vocalQueue.shift(); // Drop this item to keep queue healthy
     processVocalQueue();
     return;
@@ -1132,6 +1146,7 @@ async function processVocalQueue() {
   const item = vocalQueue.shift();
   if (!item) {
     // Queue was emptied while waiting for the voice lock
+    dequeueVoice(myVoiceId);
     releaseVoiceLock("Leo");
     isSpeaking = false;
     return;
@@ -1143,8 +1158,9 @@ async function processVocalQueue() {
     console.error("[Leo/Queue] Vocal execution failed:", e.message);
   } finally {
     // Conversational breath pause before releasing lock
-    const breathPause = 1200 + Math.random() * 400;
+    const breathPause = 800 + Math.random() * 400;
     await new Promise(r => setTimeout(r, breathPause));
+    dequeueVoice(myVoiceId);
     releaseVoiceLock("Leo");
     isSpeaking = false;
   }
@@ -1228,10 +1244,38 @@ async function executeVocalSync(text, speaker = "Leo") {
     }
 
     if (!pregeneratedMp3) {
-      // ── EMERGENCY NATURAL FALLBACK ──
-      console.log(`[Leo/Speech] Pre-generating via edge-tts [en-GB-RyanNeural]...`);
+      // ── TRY KOKORO FIRST (Natural-sounding local TTS) ──
+      console.log(`[Leo/Speech] Pre-generating via local Kokoro-TTS [am_puck]...`);
       pregeneratedMp3 = await new Promise((resolveBuffer) => {
-        const edge = spawn('edge-tts', ['--text', cleanedText, '--voice', 'en-GB-RyanNeural']);
+        const pythonCode = `
+import sys, io, soundfile as sf
+import warnings
+warnings.filterwarnings('ignore')
+try:
+    from kokoro import KPipeline
+    import numpy as np
+    pipeline = KPipeline(lang_code='a')
+    generator = pipeline('''${cleanedText.replace(/'/g, "\\'")}''', voice='am_puck', speed=1)
+    samples = [audio for _, _, audio in generator]
+    if samples:
+        combined = np.concatenate(samples)
+        sf.write(sys.stdout.buffer, combined, 24000, format='WAV')
+except Exception as e:
+    sys.exit(1)
+`;
+        const py = spawn('python', ['-c', pythonCode]);
+        const chunks = [];
+        py.stdout.on('data', d => chunks.push(d));
+        py.on('close', (code) => resolveBuffer(code === 0 && chunks.length > 0 ? Buffer.concat(chunks) : null));
+        py.on('error', () => resolveBuffer(null));
+      });
+    }
+
+    if (!pregeneratedMp3) {
+      // ── EMERGENCY EDGE-TTS FALLBACK ──
+      console.log(`[Leo/Speech] Kokoro unavailable. Pre-generating via edge-tts [en-US-GuyNeural]...`);
+      pregeneratedMp3 = await new Promise((resolveBuffer) => {
+        const edge = spawn('edge-tts', ['--text', cleanedText, '--voice', 'en-US-GuyNeural']);
         const chunks = [];
         edge.stdout.on('data', d => chunks.push(d));
         edge.on('close', () => resolveBuffer(Buffer.concat(chunks)));
@@ -1244,27 +1288,12 @@ async function executeVocalSync(text, speaker = "Leo") {
       return;
     }
 
-    // --- GLOBAL VOICE QUEUE: Wait for silence before speaking ---
-    console.log(`[Leo/Speech] Audio ready. Entering queue for voice floor...`);
+    // NOTE: Lock is already held by processVocalQueue() — no need to re-acquire here.
+    // Just wait for our own audioPlayer to be idle before playing.
     let waitCount = 0;
-    let hasLock = false;
-    while (waitCount < 600) { // 60 seconds max
-      if (acquireVoiceLock("Leo")) {
-        if (audioPlayer && audioPlayer.state.status !== AudioPlayerStatus.Idle) {
-          await new Promise(r => setTimeout(r, 100));
-          waitCount++;
-          continue;
-        }
-        hasLock = true;
-        break;
-      }
+    while (waitCount < 100 && audioPlayer && audioPlayer.state.status !== AudioPlayerStatus.Idle) {
       await new Promise(r => setTimeout(r, 100));
       waitCount++;
-    }
-
-    if (!hasLock) {
-      console.log(`[Leo/Speech] Lock wait timed out (60s) — yielding turn to avoid overlap.`);
-      return;
     }
 
     // HUMAN PACING: Add a randomized breath delay before playback starts
@@ -1274,7 +1303,7 @@ async function executeVocalSync(text, speaker = "Leo") {
 
     const ffmpegArgs = [
       '-i', 'pipe:0',
-      '-af', usedElevenLabs ? 'volume=1.0' : 'volume=2.0',
+      '-af', usedElevenLabs ? 'volume=1.0,apad=pad_dur=0.08' : 'volume=2.0,apad=pad_dur=0.08',
       '-c:a', 'libopus', '-b:a', '96k', '-f', 'opus', 'pipe:1'
     ];
     
@@ -1295,13 +1324,12 @@ async function executeVocalSync(text, speaker = "Leo") {
     await entersState(audioPlayer, AudioPlayerStatus.Playing, 5000).catch(() => {});
     await entersState(audioPlayer, AudioPlayerStatus.Idle, 60000).catch(() => {});
     
-    // Release global lock
-    releaseVoiceLock("Leo");
+    // Lock release is handled by processVocalQueue() — don't release here
 
     const duration = Date.now() - t_start;
     console.log(`[Leo/Speech] Output complete (${duration}ms).`);
   } catch (err) {
-    releaseVoiceLock("Leo");
+    // Lock release is handled by processVocalQueue() — just log the error
     console.error("[Leo/Speech] Error:", err.message);
   }
 }
@@ -2420,11 +2448,15 @@ function startEnergyMonitor() {
     
     if (!wasSleeping && nowSleeping) {
       sim.state.status = "Sleeping";
-      console.log(`[Leo/Energy] Entering Dead Zone sleep cycle (3 AM - 9 AM).`);
+      if (sim.state.energy < 2) {
+        console.log(`[Leo/Energy] Entering sleep cycle (Energy Depleted).`);
+      } else {
+        console.log(`[Leo/Energy] Entering sleep cycle (Time-based Dead Zone).`);
+      }
     }
     if (wasSleeping && !nowSleeping) {
       sim.state.status = "Online";
-      console.log(`[Leo/Energy] Waking up. Dead Zone cleared.`);
+      console.log(`[Leo/Energy] Waking up. Sleep cycle cleared.`);
     }
   }, 60000);
 

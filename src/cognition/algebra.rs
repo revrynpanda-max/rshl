@@ -75,7 +75,7 @@ pub fn parse_equation(input: &str, pos_dict: Option<&PosDictionary>) -> Semantic
     let mut actions = Vec::new();
     let mut active_tense = Tense::Unknown;
 
-    let question_words = ["what", "who", "where", "when", "why", "how"];
+    let question_words = ["what", "who", "where", "when", "why", "how", "which"];
     let fillers = ["the", "a", "an", "to", "of", "and", "but", "so"];
     let relations = ["with", "for", "about", "against", "toward", "from", "by", "in", "on", "at"];
     
@@ -86,8 +86,17 @@ pub fn parse_equation(input: &str, pos_dict: Option<&PosDictionary>) -> Semantic
     let past_temps = ["did", "had"];
     let present_temps = ["do", "does", "have", "has", "can"];
     let future_temps = ["will", "would", "shall", "could"];
+    
+    let time_dimensions = ["year", "time", "date", "day", "month", "century", "moment", "era"];
 
-    for word in input.split_whitespace() {
+    // Rolling state tracker for compounding intent
+    let mut dimensional_index = String::new();
+    let mut previous_was_question = false;
+    let mut sequence_intent_modifiers = Vec::new();
+
+    let words: Vec<&str> = input.split_whitespace().collect();
+    
+    for (i, word) in words.iter().enumerate() {
         let clean = word.trim_matches(|c: char| !c.is_alphanumeric());
         if clean.is_empty() {
             continue;
@@ -95,10 +104,25 @@ pub fn parse_equation(input: &str, pos_dict: Option<&PosDictionary>) -> Semantic
         let lower = clean.to_lowercase();
         let is_capitalized = clean.chars().next().map(|c| c.is_uppercase()).unwrap_or(false);
 
-        if question_words.contains(&lower.as_str()) {
-            nodes.push(AlgebraicNode::QuestionNode(clean.to_string()));
+        // Check for dimensional state collapse (e.g., "What" + "year" -> Time Dimension Index)
+        if previous_was_question && time_dimensions.contains(&lower.as_str()) {
+            dimensional_index = format!("TimeDimension[{}]", clean);
+            nodes.push(AlgebraicNode::TemporalNode(dimensional_index.clone(), active_tense));
+            sequence_intent_modifiers.push(format!("Collapsed superposition to {}", dimensional_index));
+            previous_was_question = false;
             continue;
         }
+
+        if question_words.contains(&lower.as_str()) {
+            nodes.push(AlgebraicNode::QuestionNode(clean.to_string()));
+            previous_was_question = true;
+            if lower == "when" {
+                dimensional_index = "TimeDimension[when]".to_string();
+                sequence_intent_modifiers.push("Initialized Time Dimension".to_string());
+            }
+            continue;
+        }
+        previous_was_question = false;
 
         if fillers.contains(&lower.as_str()) {
             nodes.push(AlgebraicNode::FillerNode(clean.to_string()));
@@ -110,7 +134,7 @@ pub fn parse_equation(input: &str, pos_dict: Option<&PosDictionary>) -> Semantic
             continue;
         }
         
-        // Check States of Being
+        // Check States of Being and deeply inspect compound morphology ("be" + "come" handled via LexSem usually, but we capture the root intent)
         if present_states.contains(&lower.as_str()) {
             active_tense = Tense::Present;
             nodes.push(AlgebraicNode::StateOfBeingNode(clean.to_string(), Tense::Present));
@@ -129,15 +153,26 @@ pub fn parse_equation(input: &str, pos_dict: Option<&PosDictionary>) -> Semantic
         if past_temps.contains(&lower.as_str()) {
             active_tense = Tense::Past;
             nodes.push(AlgebraicNode::TemporalNode(clean.to_string(), Tense::Past));
+            sequence_intent_modifiers.push("Shifted vector to Past".to_string());
             continue;
         } else if present_temps.contains(&lower.as_str()) {
             active_tense = Tense::Present;
             nodes.push(AlgebraicNode::TemporalNode(clean.to_string(), Tense::Present));
+            sequence_intent_modifiers.push("Anchored vector to Present".to_string());
             continue;
         } else if future_temps.contains(&lower.as_str()) {
             active_tense = Tense::Future;
             nodes.push(AlgebraicNode::TemporalNode(clean.to_string(), Tense::Future));
+            sequence_intent_modifiers.push("Projected vector to Future".to_string());
             continue;
+        }
+
+        // Deep Suffix/Prefix Dimensional Analysis
+        let mut morphological_intent = String::new();
+        if lower.starts_with("re") && lower.len() > 4 {
+            morphological_intent = "Repetitive/Reversal intent ".to_string();
+        } else if lower.starts_with("un") || lower.starts_with("dis") || lower.starts_with("anti") {
+            morphological_intent = "Inverted/Negative intent ".to_string();
         }
 
         // Use POS dictionary for action vs entity
@@ -174,27 +209,35 @@ pub fn parse_equation(input: &str, pos_dict: Option<&PosDictionary>) -> Semantic
         if is_capitalized && !["What", "Who", "Where", "When", "Why", "How", "Do", "Does", "Did"].contains(&clean) {
             is_action = false;
         } else if !known_noun {
-            // Fallback for complex verbs and participles only if we don't explicitly know it's a noun
-            if !is_action && lower.len() > 4 && (lower.ends_with("ing") || lower.ends_with("ed") || lower.ends_with("es") || lower.ends_with("s")) {
-                if !["thing", "king", "ring", "morning", "evening", "spring", "bring", "sing", "series", "species", "news", "always"].contains(&lower.as_str()) {
+            // Suffix check for morphological actions
+            if !is_action && lower.len() > 4 && (lower.ends_with("ing") || lower.ends_with("ed") || lower.ends_with("es") || lower.ends_with("s") || lower.ends_with("ize") || lower.ends_with("ate") || lower.ends_with("ify")) {
+                if !["thing", "king", "ring", "morning", "evening", "spring", "bring", "sing", "series", "species", "news", "always", "state"].contains(&lower.as_str()) {
                     is_action = true;
                 }
             }
-            if !is_action && ["say", "said", "make", "made", "get", "got", "go", "went"].contains(&lower.as_str()) {
+            if !is_action && ["say", "said", "make", "made", "get", "got", "go", "went", "become", "became"].contains(&lower.as_str()) {
                  is_action = true;
             }
         }
 
         if is_action {
-            // If the word ends in 'ed', it's inherently past tense unless modified by a future temporal
             let mut resolved_tense = active_tense;
-            if lower.ends_with("ed") && active_tense == Tense::Unknown {
-                resolved_tense = Tense::Past;
-            } else if lower.ends_with("ing") && active_tense == Tense::Unknown {
-                resolved_tense = Tense::PresentContinuous;
+            
+            // Extract Time Dimensions from suffixes natively
+            if lower.ends_with("ed") || lower.ends_with("en") {
+                if active_tense == Tense::Unknown { resolved_tense = Tense::Past; }
+                morphological_intent.push_str("[Past Completion Vector]");
+            } else if lower.ends_with("ing") {
+                if active_tense == Tense::Unknown { resolved_tense = Tense::PresentContinuous; }
+                morphological_intent.push_str("[Continuous Activity Vector]");
+            } else if lower.ends_with("ize") || lower.ends_with("ify") {
+                morphological_intent.push_str("[Transformation Vector]");
             }
-            // Update the running overall tense
+            
             active_tense = resolved_tense;
+            if !morphological_intent.is_empty() {
+                sequence_intent_modifiers.push(morphological_intent);
+            }
             
             nodes.push(AlgebraicNode::ActionNode(clean.to_string(), resolved_tense));
             has_action = true;
@@ -207,7 +250,7 @@ pub fn parse_equation(input: &str, pos_dict: Option<&PosDictionary>) -> Semantic
 
     let formula = nodes.iter().map(|n| n.symbol()).collect::<Vec<_>>().join(" + ");
     
-    // Calculate sum meaning based on Temporal Tense
+    // Calculate sum meaning based on Temporal Tense and Dimensional State
     let time_context = match active_tense {
         Tense::Past => "[Occurred in the Past] ",
         Tense::Present => "[Currently happening] ",
@@ -216,14 +259,20 @@ pub fn parse_equation(input: &str, pos_dict: Option<&PosDictionary>) -> Semantic
         Tense::Unknown => "[Timeless] ",
     };
     
+    // Dimensional prefix overrides
+    let mut context_prefix = time_context.to_string();
+    if !dimensional_index.is_empty() {
+        context_prefix = format!("[Target: {}] {}", dimensional_index, time_context);
+    }
+    
     let intent_sum = if has_action && !entities.is_empty() {
         if entities.len() > 1 && formula.contains("R") {
-            format!("{}Action Interaction: {} intent of '{}' towards {}", time_context, entities[0], actions.join(", "), entities.last().unwrap_or(&entities[0]))
+            format!("{}Action Interaction: {} intent of '{}' towards {}", context_prefix, entities[0], actions.join(", "), entities.last().unwrap_or(&entities[0]))
         } else {
-            format!("{}Action execution: '{}' regarding entity '{}'", time_context, actions.join(", "), entities.join(" "))
+            format!("{}Action execution: '{}' regarding entity '{}'", context_prefix, actions.join(", "), entities.join(" "))
         }
     } else if !entities.is_empty() {
-        format!("{}Definitional inquiry regarding '{}'", time_context, entities.join(" "))
+        format!("{}Definitional inquiry regarding '{}'", context_prefix, entities.join(" "))
     } else {
         "Unknown formulation".to_string()
     };
@@ -238,3 +287,4 @@ pub fn parse_equation(input: &str, pos_dict: Option<&PosDictionary>) -> Semantic
         overall_tense: active_tense,
     }
 }
+

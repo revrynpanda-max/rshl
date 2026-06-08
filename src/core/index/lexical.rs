@@ -17,6 +17,11 @@ impl LatticeLexicon {
         Self::default()
     }
 
+    /// Returns the number of unique keywords in the lexicon.
+    pub fn len(&self) -> usize {
+        self.keywords.len()
+    }
+
     /// Index a cell's text and metadata.
     pub fn index_cell(&mut self, id: u32, text: &str, tag_list: &[String]) {
         // Index keywords

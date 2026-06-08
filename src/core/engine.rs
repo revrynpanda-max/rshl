@@ -401,6 +401,9 @@ impl Engine {
         universe.gpu = gpu.clone();
         universe.rebuild_index(0.0);
 
+        let heal_report = crate::cognition::bone_heal_pass(&mut universe);
+        println!("[BoneHeal] Startup scan: {}", heal_report);
+
         let log_file_path = std::env::var("KAI_TICK_LOG")
             .unwrap_or_else(|_| "C:\\KAI\\data\\kai_ticks.csv".to_string());
 

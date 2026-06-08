@@ -12,10 +12,23 @@
 //!   4. BRAIN-STATE TONE — 0-3 word prefix/suffix from live neural state
 //!   5. IDENTITY SAFETY — KAI never claims Ryan's name as its own
 use crate::core::{predictive, ConversationTrace, FieldState, QueryHit, StatLexicon, Universe};
-use crate::core::rshl_transformer::get_emotional_temp;
+
 use crate::core::stat_lexicon::DecodeParams;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
+use std::collections::{HashMap, HashSet};
+
+thread_local! {
+    pub static INTERJECTION_TX: std::cell::RefCell<Option<std::sync::mpsc::Sender<String>>> = std::cell::RefCell::new(None);
+}
+
+pub fn emit_interjection(msg: String) {
+    INTERJECTION_TX.with(|tx| {
+        if let Some(tx) = tx.borrow().as_ref() {
+            let _ = tx.send(msg);
+        }
+    });
+}
 
 /// When true, KAI speaks entirely through the native RSHL lattice —
 /// no Ollama, no external LLM. This is the path to true cognitive sovereignty.
@@ -155,23 +168,35 @@ pub fn detect_query_type(input: &str) -> QueryType {
     }
     let first = words[0];
 
-    // ── Self/identity checks FIRST (content-based, beats word-order) ─────────
-    if lower.contains("your name")
-        || lower.contains("you called")
-        || lower.contains("you named")
-        || lower.contains("who are you")
-        || lower.contains("what are you")
-        || lower.contains("where are you")
-        || lower.contains("where you at")
-        || lower.contains("where do you exist")
-        || lower.contains("where are u")
-        || lower.contains("what can you")
-        || lower.contains("how are you")
-        || lower.contains("how do you feel")
-        || lower.contains("how you feel")
-        || lower.contains("you feeling")
-    {
-        return QueryType::SelfQuestion;
+    // ── Self/identity checks (content-based) ───────────────────────────────
+    // BUT: if the input starts with a greeting word, treat it as a Greeting
+    // even if it contains "how are you" — the user is saying hello, not asking
+    // for KAI's autobiography.
+    let greeting_words = [
+        "hi", "hello", "hey", "sup", "yo", "howdy", "greetings", "wassup", "hiya", "heya",
+    ];
+    let starts_with_greeting = greeting_words
+        .iter()
+        .any(|g| lower.trim().starts_with(g) || lower.trim().starts_with(&format!("{} ", g)));
+
+    if !starts_with_greeting {
+        if lower.contains("your name")
+            || lower.contains("you called")
+            || lower.contains("you named")
+            || lower.contains("who are you")
+            || lower.contains("what are you")
+            || lower.contains("where are you")
+            || lower.contains("where you at")
+            || lower.contains("where do you exist")
+            || lower.contains("where are u")
+            || lower.contains("what can you")
+            || lower.contains("how are you")
+            || lower.contains("how do you feel")
+            || lower.contains("how you feel")
+            || lower.contains("you feeling")
+        {
+            return QueryType::SelfQuestion;
+        }
     }
     if lower.contains("what is yours")
         || lower.contains("what's yours")
@@ -226,8 +251,8 @@ pub fn detect_query_type(input: &str) -> QueryType {
     if greeting_words
         .iter()
         .any(|g| lower.trim() == *g || lower.starts_with(&format!("{} ", g)))
-        && lower.split_whitespace().count() <= 3
     {
+        // Greeting word at the start — always a greeting, regardless of length
         return QueryType::Greeting;
     }
     // "what's good", "what's up", "what is up", "what is good" — casual openers
@@ -368,6 +393,7 @@ pub struct BrainSignals {
     pub curiosity: f32,
     pub cortical_gain: f32,
     pub alertness: f32,
+    pub speaker_name: Option<String>,
 }
 
 impl Default for BrainSignals {
@@ -391,6 +417,7 @@ impl Default for BrainSignals {
             curiosity: 0.55,
             cortical_gain: 0.50,
             alertness: 0.75,
+            speaker_name: None,
         }
     }
 }
@@ -660,6 +687,8 @@ pub fn generate_response_predictive(
     synaptic_layer: Option<&crate::core::SynapticLayer>,
 capture_experience: bool,
 ) -> String {
+
+
     let grief_active = detect_grief_association(input, hits);
     
     let mut modified_brain = brain.clone();
@@ -670,34 +699,135 @@ capture_experience: bool,
         modified_brain.conflict = (modified_brain.conflict - 0.12).max(0.02);
     }
 
-    let mut result = generate_response_predictive_inner(
-        input, hits, query_type, &modified_brain, recent_context, universe, trace, candle_voice, bitnet_voice, lex, field, pos_dict, synaptic_layer
-    );
+    let mut tasks = Vec::new();
+    let is_complex = input.len() > 60 || input.contains(',') || input.contains(" and ");
+    
+    if is_complex {
+        if let Some(bitnet) = bitnet_voice {
+            let prompt = format!(
+                "Analyze the following user input and break it down into an ordered sequence of actionable cognitive tasks based on informational merit and the overall end goal. Output each task on a new line starting with a dash (-). Input: {}", input
+            );
+            if let Some(plan_str) = bitnet.speak(&prompt, recent_context, false) {
+                for line in plan_str.lines() {
+                    let trimmed = line.trim();
+                    if trimmed.starts_with('-') {
+                        tasks.push(trimmed.trim_start_matches('-').trim().to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    if tasks.is_empty() {
+        tasks.push(input.to_string());
+    }
+
+    let mut final_result = String::new();
+    let mut aggregate_context = input.to_string();
+
+    for (i, task) in tasks.iter().enumerate() {
+        if tasks.len() > 1 {
+            if let Some(bitnet) = bitnet_voice {
+                let update_prompt = format!("<GAP> I am now working on this specific task: {}. Give a short, natural conversational update.", task);
+                if let Some(update) = bitnet.speak(&update_prompt, recent_context, false) {
+                    crate::cognition::voice::emit_interjection(format!("SPEAKING: {}", update));
+                }
+            }
+        }
+
+        let mut max_hops = 3;
+        let mut current_input = task.clone();
+        
+        while max_hops > 0 {
+            // Full context informs inner logic of the overarching goal and current task
+            let full_context = format!("Overall Input: {}\nCurrent Task: {}", aggregate_context, current_input);
+            let hop_result = generate_response_predictive_inner(
+                &full_context, hits, query_type, &modified_brain, recent_context, universe, trace, candle_voice, bitnet_voice, lex, field, pos_dict, synaptic_layer
+            );
+            
+            if hop_result.contains("[TOOL:") {
+                let start = hop_result.find("[TOOL:").unwrap() + 6;
+                if let Some(end_offset) = hop_result[start..].find("]") {
+                    let end = start + end_offset;
+                    let command = hop_result[start..end].trim();
+                    
+                    if let Some(bitnet) = bitnet_voice {
+                        let update_prompt = format!("<GAP> I am about to run the system command '{}'. Give a short, natural conversational update.", command);
+                        if let Some(update) = bitnet.speak(&update_prompt, recent_context, false) {
+                            crate::cognition::voice::emit_interjection(format!("SPEAKING: {}", update));
+                        } else {
+                            crate::cognition::voice::emit_interjection(format!("SPEAKING: I'm running a command: {}", command));
+                        }
+                    } else {
+                        crate::cognition::voice::emit_interjection(format!("SPEAKING: I'm running a command: {}", command));
+                    }
+                    
+                    let tool_output = execute_system_command(command);
+                    
+                    current_input = format!("{}\n\nTool Execution '{}' returned:\n{}", task, command, tool_output);
+                    aggregate_context.push_str(&format!("\n[Task {} Tool Output]: {}", i + 1, tool_output));
+                    max_hops -= 1;
+                    continue;
+                }
+            }
+            
+            final_result = hop_result;
+            aggregate_context.push_str(&format!("\n[Task {} Conclusion]: {}", i + 1, final_result));
+            break;
+        }
+    }
+
+    if tasks.len() > 1 {
+        if let Some(bitnet) = bitnet_voice {
+            let final_prompt = format!(
+                "You have just completed a multi-step cognitive process. Context:\n{}\n\nWrite a final conversational reply addressing their original input.",
+                aggregate_context
+            );
+            if let Some(agg_resp) = bitnet.speak(&final_prompt, recent_context, false) {
+                final_result = agg_resp;
+            }
+        }
+    }
 
     if grief_active {
-        result = calm_grief_filter(&result, query_type);
+        final_result = calm_grief_filter(&final_result, query_type);
     }
 
     // Real-Time Experience Capture
+    // Uses sparse engram allocation (biological 2-6% sparsity) instead of dense storage
     if capture_experience {
         let emotion = detect_user_emotion(input);
-    let emotion_vec = crate::core::SparseVec::encode(&emotion);
+        let emotion_vec = crate::core::SparseVec::encode(&emotion);
 
-    let input_vec = crate::core::SparseVec::encode(input);
-    let output_vec = crate::core::SparseVec::encode(&result);
+        let input_vec = crate::core::SparseVec::encode(input);
+        let output_vec = crate::core::SparseVec::encode(&final_result);
 
-    let record = crate::cognition::experience::ExperienceRecord {
-        input_text: input.to_string(),
-        input_vec,
-        emotion_label: emotion,
-        emotion_vec,
-        output_text: result.clone(),
-        output_vec,
-    };
-    crate::cognition::experience::store_experience(universe, record);
+        let record = crate::cognition::experience::ExperienceRecord {
+            input_text: input.to_string(),
+            input_vec,
+            emotion_label: emotion,
+            emotion_vec,
+            output_text: final_result.clone(),
+            output_vec,
+        };
+        
+        // Try sparse engram storage first; fall back to dense if no engram system
+        // NOTE: We temporarily take the engram_system out of the universe to avoid
+        // double mutable borrow (engram_system is inside universe but also needs universe).
+        let mut engram_system_opt = universe.engram_system.take();
+        if let Some(ref mut engram_system) = engram_system_opt {
+            let engram = crate::cognition::experience::store_experience_sparse(
+                engram_system, universe, record
+            );
+            println!("[KAI/Engram] Sparse memory allocated: {} cells (energy: {:.3})",
+                engram.cell_indices.len(), engram.energy);
+        } else {
+            crate::cognition::experience::store_experience(universe, record);
+        }
+        universe.engram_system = engram_system_opt;
     }
 
-    result
+    final_result
 }
 
 fn detect_user_emotion(input: &str) -> String {
@@ -733,6 +863,23 @@ fn generate_response_predictive_inner(
     let raw_thought = generate_raw_thought(
         input, hits, query_type, brain, recent_context, universe, trace, candle_voice, bitnet_voice, lex, field, pos_dict, synaptic_layer
     );
+    println!("[DEBUG] raw_thought returned: '{}'", raw_thought);
+
+    // ── BONE HEAL & HEBBIAN REINFORCEMENT ──────────────────────────────────────
+    if let Some(top_hit) = hits.first() {
+        if top_hit.region == "contested" && top_hit.score > 0.65 {
+            // LTD: poisoned cell fired during a real query — attenuate it
+            let attenuated = crate::cognition::anti_hebbian_fire(universe, &top_hit.label);
+            if attenuated {
+                println!("[BoneHeal/Voice] LTD (anti-Hebbian) applied to poisoned cell: \"{}...\"", 
+                         &top_hit.text.chars().take(40).collect::<String>());
+            }
+        } else if top_hit.score > 0.3 {
+            // LTP: healthy cell fired — strengthen it
+            crate::cognition::hebbian_fire(universe, &top_hit.text, 0.04);
+            // We print minimal logs here for oracle; main.rs handles TUI logs separately
+        }
+    }
 
     // ── Shared filler rotation index ────────────────────────────────────────
     // Use system-time millis so it varies even when trace.turns_seen == 0
@@ -780,15 +927,46 @@ fn generate_response_predictive_inner(
     // of, it's word salad. Look up content words in the semantic dictionary.
     // If too many are unknown, treat as a gap response.
     let coherence = semantic_coherence_score(raw_trimmed);
-    let raw_trimmed = if coherence < 0.30 && raw_trimmed.split_whitespace().count() >= 4 {
+    let raw_trimmed = if coherence < 0.10 && raw_trimmed.split_whitespace().count() >= 8 {
         println!("[KAI/Voice] Semantic coherence too low ({:.2}) — treating as gap.", coherence);
+        // Try language warehouse fallback: query BitNet embeddings for relevant words
+        let (is_loaded, _, _) = crate::cognition::language_warehouse::warehouse_status();
+        if is_loaded {
+            let words: Vec<&str> = input.split_whitespace().collect();
+            let suggestions = crate::cognition::language_warehouse::query_language_warehouse(&words, 8);
+            if !suggestions.is_empty() {
+                let phrase: String = suggestions.iter().map(|(w, _)| w.as_str()).collect::<Vec<_>>().join(" ");
+                if !phrase.is_empty() {
+                    println!("[KAI/Voice] Language warehouse suggestion: {}", phrase);
+                    // Use warehouse suggestion as a template
+                    let fallback = format!("I notice {} but I'm still finding the right words.", phrase);
+                    return identity_safety_filter(fallback, query_type);
+                }
+            }
+        }
         fallback_phrase(0)
     } else {
         raw_trimmed.to_string()
     };
-    let raw_trimmed = raw_trimmed.trim();
+    let mut raw_trimmed = raw_trimmed.trim().to_string();
 
-    // ── Guard 2: content gate ──────────────────────────────────────────────
+    // 🌟 Guard 1.75: Mirror Neurons / Self-Reflection 🌟
+    // KAI evaluates his own thought string before it hits the speech center.
+    match crate::cognition::self_reflection::audit_thought(&raw_trimmed, brain, universe) {
+        crate::cognition::self_reflection::ReflectionOutcome::Pass => {
+            // Thought is clear and aligned.
+        }
+        crate::cognition::self_reflection::ReflectionOutcome::Rewritten(new_thought) => {
+            println!("[KAI/MirrorNeuron] Fragmented thought rewritten internally: {}", new_thought);
+            raw_trimmed = new_thought;
+        }
+        crate::cognition::self_reflection::ReflectionOutcome::Suppress => {
+            println!("[KAI/MirrorNeuron] Incoherent thought suppressed.");
+            raw_trimmed = fallback_phrase(0);
+        }
+    }
+
+    // 🛑 Guard 2: content gate 🛑──────────────────────────────────────────────
     //  Only attempt internet for pure definition / info queries.
     let is_factual_qt = !is_conversational_qt
         && matches!(
@@ -797,7 +975,7 @@ fn generate_response_predictive_inner(
                 | QueryType::RequestForInfo
                 | QueryType::IdentityQuestion
         );
-    if is_bad_output(raw_trimmed, is_conversational_qt, input) {
+    if is_bad_output(&raw_trimmed, is_conversational_qt, input) {
         if is_factual_qt {
             if let Some(web_ans) = web_search_fallback(input) {
                 universe.store_or_reinforce(&web_ans, "web-knowledge", "duckduckgo-ia", 0.7);
@@ -811,7 +989,7 @@ fn generate_response_predictive_inner(
     //  Gap phrases pass is_bad_output (they look like valid sentences) but mean
     //  the lattice had nothing real to say. Check internet NOW, before BitNet
     //  can translate the gap phrase and return it, bypassing this check.
-    if is_factual_qt && is_gap_response(raw_trimmed) {
+    if is_factual_qt && is_gap_response(&raw_trimmed) {
         if let Some(web_ans) = web_search_fallback(input) {
             universe.store_or_reinforce(&web_ans, "web-knowledge", "duckduckgo-ia", 0.7);
             return identity_safety_filter(web_ans, query_type);
@@ -821,7 +999,7 @@ fn generate_response_predictive_inner(
     // ── BitNet translation (only if content passed the gate) ─────────────────
     if !raw_trimmed.is_empty() && !NATIVE_ONLY.load(Ordering::Relaxed) {
         if let Some(bv) = bitnet_voice {
-            let is_gap = is_gap_response(raw_trimmed);
+            let is_gap = is_gap_response(&raw_trimmed);
             if is_gap || raw_trimmed.split_whitespace().count() > 3 {
                 let text_to_speak = if is_gap {
                     format!("<GAP> {}", raw_trimmed)
@@ -845,6 +1023,7 @@ fn generate_response_predictive_inner(
                     }
                     // Guard 3: catch any bad content BitNet itself might produce
                     if !is_bad_output(cleaned, is_conversational_qt, input) {
+                        // 🛑 Guard 3: Identity & Safety override 🛑
                         return identity_safety_filter(cleaned.to_string(), query_type);
                     }
                     // BitNet produced bad content — fall through to return raw
@@ -854,7 +1033,7 @@ fn generate_response_predictive_inner(
     }
 
     // ── Final gap check: catch short raw responses BitNet skipped ─────────────
-    let final_response = raw_trimmed.to_string();
+    let mut final_response = raw_trimmed.to_string();
     if is_factual_qt && is_gap_response(&final_response) {
         if let Some(web_ans) = web_search_fallback(input) {
             universe.store_or_reinforce(&web_ans, "web-knowledge", "duckduckgo-ia", 0.7);
@@ -862,7 +1041,35 @@ fn generate_response_predictive_inner(
         }
     }
 
-    final_response
+    // ── LexSem Register Normalization ─────────────────────────────────────────
+    // Finally, use LexSem to ensure the register of the response matches the
+    // semantic field and tone of the input. This fulfills the user's specific
+    // request to leverage lexsem.rs for register normalization!
+    if !is_gap_response(&final_response) {
+        let mut lexsem = crate::cognition::lexsem::LexSemEngine::new();
+        let input_analysis = lexsem.analyze(input);
+        
+        // We only paraphrase if it's not already highly conversant, to avoid 
+        // damaging pre-formatted good responses (e.g. from an LLM).
+        if candle_voice.is_none() && bitnet_voice.is_none() {
+            if let Some(paraphrased) = lexsem.paraphrase_naturally(&final_response, &input_analysis.suggested_register) {
+                // If the paraphrased response changed, print a log to show LexSem is working!
+                if paraphrased != final_response {
+                    println!("[LexSem/Voice] Normalizing response to '{}' register.", input_analysis.suggested_register.label());
+                }
+                final_response = paraphrased;
+            }
+        }
+    }
+
+    // ── Sentences are no longer arbitrarily truncated to 12 words ────────────
+    // (This was interfering with KAI's ability to answer complex tutoring queries)
+    if !final_response.is_empty() && !final_response.ends_with(|c: char| c.is_ascii_punctuation()) {
+        final_response.push('.');
+    }
+
+    // Pass through identity_safety_filter one last time just in case LexSem altered identity words
+    identity_safety_filter(final_response, query_type)
 }
 
 /// True when text is a known lattice-gap/uncertainty phrase, meaning the lattice
@@ -1226,6 +1433,7 @@ fn execute_system_command(input: &str) -> String {
 
     if lower.starts_with("read file ") {
         let path = input[10..].trim();
+        crate::cognition::voice::emit_interjection(format!("Reading file: {}", path));
         return match std::fs::read_to_string(path) {
             Ok(content) => {
                 let mut trimmed = content;
@@ -1244,6 +1452,7 @@ fn execute_system_command(input: &str) -> String {
         let parts: Vec<&str> = input[11..].splitn(2, " with content ").collect();
         if parts.len() == 2 {
             let path = parts[0].trim();
+            crate::cognition::voice::emit_interjection(format!("Writing file: {}", path));
             let content = parts[1];
             return match std::fs::write(path, content) {
                 Ok(_) => format!("I successfully wrote to the file: {}", path),
@@ -1269,12 +1478,15 @@ fn execute_system_command(input: &str) -> String {
         return "No command provided.".to_string();
     }
 
+    crate::cognition::voice::emit_interjection(format!("Executing command: {}", cmd_str));
+
     match std::process::Command::new("cmd")
         .arg("/C")
         .arg(cmd_str)
         .output()
     {
         Ok(output) => {
+            crate::cognition::voice::emit_interjection(format!("Command finished successfully. Analyzing output..."));
             let stdout = String::from_utf8_lossy(&output.stdout).to_string();
             let stderr = String::from_utf8_lossy(&output.stderr).to_string();
             let mut result = String::new();
@@ -1287,7 +1499,7 @@ fn execute_system_command(input: &str) -> String {
                 }
                 result.push_str(&format!("Error:\n{}", stderr.trim()));
             }
-            
+
             let mut final_res = if result.is_empty() {
                 "Command executed successfully with no output.".to_string()
             } else {
@@ -1300,7 +1512,10 @@ fn execute_system_command(input: &str) -> String {
             }
             format!("I executed the command. Here is the result: {}", final_res)
         }
-        Err(e) => format!("Failed to execute command: {}", e),
+        Err(e) => {
+            crate::cognition::voice::emit_interjection(format!("Command failed: {}", e));
+            format!("Failed to execute command: {}", e)
+        }
     }
 }
 
@@ -1319,6 +1534,7 @@ fn generate_raw_thought(
     pos_dict: Option<&crate::core::PosDictionary>,
     synaptic_layer: Option<&crate::core::SynapticLayer>,
 ) -> String {
+    println!("[DEBUG] generate_raw_thought: input='{}', query_type={:?}", input, query_type);
     if query_type == QueryType::CommandRequest {
         return execute_system_command(input);
     }
@@ -1327,15 +1543,62 @@ fn generate_raw_thought(
     let lower = trimmed.to_lowercase();
     let word_count = trimmed.split_whitespace().count();
 
+    // ── DYNAMIC SELF-REFLECTION (INTERNAL STATE AWARENESS) ────────────────────
+    // If the user asks KAI how he is feeling or about his internal state,
+    // we bypass static dictionary lookups and dynamically generate his structural RNA
+    // (his live metrics encoded as a sparse vector) to map to a learned response.
+    let is_self_state_query = query_type == QueryType::SelfQuestion 
+        && (lower.contains("feeling") 
+            || lower.contains("feel") 
+            || lower.contains("internal") 
+            || lower.contains("limit") 
+            || lower.contains("aware")
+            || lower.contains("how are you")
+            || lower.contains("how do you do")
+            || lower.contains("your state"));
+            
+    let mut hits = hits.to_vec();
+    if is_self_state_query {
+        let internal_dna = universe.internal_state_dna();
+        let reflection_vec = crate::core::SparseVec::encode(&internal_dna);
+        
+        let reflection_hits = universe.query_vec(&reflection_vec, 10);
+        if !reflection_hits.is_empty() {
+            println!("  [SelfReflection] DNA: '{}'", internal_dna);
+            hits.clear();
+            for (cell, score) in reflection_hits {
+                hits.push(crate::core::QueryHit {
+                    label: cell.label.clone(),
+                    text: cell.claim.text.clone(),
+                    vec: cell.claim.vec.clone(),
+                    region: cell.region.to_string(),
+                    score,
+                    strength: cell.claim.confidence,
+                    source: cell.claim.source.to_string(),
+                    timestamp: 0,
+                    user_id: String::new(),
+                    channel_id: String::new(),
+                    message_id: String::new(),
+                    keywords: Vec::new(),
+                });
+            }
+        }
+    }
+
+    // ── LEXSEM ANALYSIS ────────────────────────────────────────────────────────
+    let mut lexsem = crate::cognition::lexsem::LexSemEngine::new();
+    let lex_out = lexsem.analyze(trimmed);
+    let mut astar_path: Option<Vec<String>> = None;
+
     // ── RESONANCE GATE ──────────────────────────────────────────────────────────
-    // Directive: If no cell has resonance above 0.45, KAI must not dump
+    // Directive: If no cell has resonance above threshold, KAI must not dump
     // unrelated content. Instead, use a low-confidence fallback or gap cell.
     const RESONANCE_THRESHOLD: f32 = 0.65;
     let top_score = hits.first().map(|h| h.score).unwrap_or(0.0);
 
     // Identity and greetings are allowed at lower thresholds because they
     // are anchor points, but for general knowledge (Explanation/Statement),
-    // we enforce the 0.45 floor.
+    // we enforce the floor.
     let is_core_query = matches!(
         query_type,
         QueryType::ExplanationQuestion | QueryType::Statement | QueryType::RequestForInfo | QueryType::IdentityQuestion
@@ -1347,6 +1610,19 @@ fn generate_raw_thought(
         println!("\n  [Algebra] Input   : {}", trimmed);
         println!("  [Algebra] Formula : {}", equation.formula);
         println!("  [Algebra] Intent  : {}", equation.intent_sum);
+    }
+    
+    // ── SOCRATIC CURIOSITY FALLBACK ─────────────────────────────────────────────
+    // If the math engine cannot resolve the sequential intent dimensions at all,
+    // or if the entities/actions are completely absent from KAI's semantic space,
+    // KAI should halt and ask the user a clarifying question to resolve the equation.
+    if is_core_query && equation.intent_sum == "Unknown formulation" {
+        let topic = extract_topic(trimmed);
+        if !topic.is_empty() {
+            return format!("I recognize you are asking about '{}', but my algebraic state is missing a temporal dimension or action to resolve it. Could you clarify what exactly you want to know about it?", topic);
+        } else {
+            return "I am unable to mathematically resolve the dimensional intent of that sentence. Could you rephrase your question?".to_string();
+        }
     }
 
     if is_core_query && !hits.is_empty() && top_score > 0.55 {
@@ -1381,42 +1657,183 @@ fn generate_raw_thought(
                     topic.clone() 
                 };
                 
-                if let Some(sl) = synaptic_layer {
-                    if let Some(target_cell) = hits.first() {
-                        let start_label = target_cell.label.clone();
-                        // Try to find a path to the action!
-                        // For the target label, we could search the universe for the action verb.
-                        let mut target_action_label = None;
-                        for cell in universe.cells() {
-                            if cell.claim.text.to_lowercase().contains(verb) {
-                                target_action_label = Some(cell.label.clone());
-                                break;
-                            }
-                        }
+                // ── STAGE 3: Multi-Hop Lattice Attention ─────────────────────────
+                // Encode the intent_sum (normalised action+entity triple) and walk
+                // the lattice via soft attention hops. Different phrasings of the
+                // same question produce different raw encodings but converge to the
+                // same semantic region — this is the "different equations, same answer"
+                // property described by the user.
+                let intent_query = if !equation.intent_sum.is_empty()
+                    && equation.intent_sum != "Unknown formulation"
+                {
+                    equation.intent_sum.clone()
+                } else {
+                    // Fall back to LexSem key concepts when algebra gives nothing useful
+                    if !lex_out.key_concepts.is_empty() {
+                        format!("{} {}", lex_out.key_concepts.join(" "), verb)
+                    } else {
+                        trimmed.to_string()
+                    }
+                };
+
+                crate::cognition::voice::emit_interjection(format!("Exploring semantic geometry: '{}'", intent_query));
+
+                let intent_vec = crate::core::SparseVec::encode(&intent_query);
+                println!("  [MultiHop] Intent query: '{}'",
+                    &intent_query[..intent_query.len().min(60)]);
+                let (hopped_vec, hop_labels) =
+                    crate::cognition::lattice_attention::multi_hop_attend(
+                        &intent_vec,
+                        universe,
+                        3, // 3 hops: entity -> action -> answer
+                    );
+                println!("  [MultiHop] Chain: {}",
+                    crate::cognition::lattice_attention::format_hop_chain(&hop_labels));
+                    
+                crate::cognition::voice::emit_interjection(format!("Followed hop chain: {}", crate::cognition::lattice_attention::format_hop_chain(&hop_labels)));
+
+                let hop_hits = universe.query_vec(&hopped_vec, 5);
+                if let Some((best_cell, best_score)) = hop_hits.first() {
+                    if *best_score > 0.20 {
+                        // ── STAGE 4: Inner-Voice Validation ───────────────────
+                        crate::cognition::voice::emit_interjection("Validating retrieved memory against query dimensions...".to_string());
                         
-                        if let Some(target) = target_action_label {
-                            println!("  [Pathfinder] Attempting Multi-Hop A* Search from '{}' to '{}'", start_label, target);
-                            if let Some(path) = crate::cognition::pathfinder::find_semantic_path(universe, sl, &start_label, &target) {
-                                println!("  [Pathfinder] SUCCESS! Found semantic path: {:?}", path);
-                                return format!(
-                                    "I see a logical path from '{}' to the action '{}' through the following connections: {:?}",
-                                    display_topic, verb, path
-                                );
-                            } else {
-                                println!("  [Pathfinder] Failed to find a path.");
+                        // Check that the multi-hop answer geometrically resonates
+                        // back to the original entities before trusting it.
+                        let entity_a = equation.entities.first()
+                            .map(|s| s.as_str()).unwrap_or(trimmed);
+                        let entity_b = equation.entities.get(1)
+                            .map(|s| s.as_str()).unwrap_or(verb);
+                        let validation =
+                            crate::cognition::inner_voice::validate_insight(
+                                &best_cell.claim.text,
+                                entity_a,
+                                entity_b,
+                                universe,
+                            );
+                        println!("  [InnerVoice] Verdict: {} (echo={:.3})",
+                            validation.verdict, validation.echo_score);
+
+                        if validation.verdict
+                            != crate::cognition::inner_voice::InsightVerdict::Noise
+                        {
+                            let answer = best_cell.claim.text
+                                .split(|c| c == '.' || c == '!' || c == '?')
+                                .next()
+                                .unwrap_or(&best_cell.claim.text)
+                                .trim()
+                                .to_string();
+                            if !answer.is_empty() && answer.split_whitespace().count() > 3 {
+                                return answer;
                             }
                         }
                     }
                 }
 
-                // Generate an interactive, curious question back to the teacher based on algebraic mismatch
-                println!("  [Algebra] Mismatch: Memory lacks action '{}' for entity '{}'", verb, display_topic);
-                return format!(
-                    "I found a memory related to '{}', but it doesn't mention the action '{}'. What does '{}' mean in this context?", 
-                    display_topic,
-                    verb,
-                    verb
-                );
+                // ── A* via synaptic layer as last resort ──────────────────────
+                if let Some(sl) = synaptic_layer {
+                    if let Some(target_cell) = hits.first() {
+                        let start_label = target_cell.label.clone();
+                        // Use semantic encoding to find the best matching verb cell
+                        // (O(log N) via index) instead of scanning all cells (O(N))
+                        let verb_hits =
+                            universe.query_vec(&crate::core::SparseVec::encode(verb), 1);
+                        if let Some((verb_cell, _)) = verb_hits.first() {
+                            let target = verb_cell.label.clone();
+                            println!("  [Pathfinder] A* '{}' -> '{}'",
+                                &start_label[..start_label.len().min(40)],
+                                &target[..target.len().min(40)]);
+                                
+                            crate::cognition::voice::emit_interjection(format!("Computing semantic path from '{}' to '{}'", start_label, target));
+                            
+                            if let Some(path) =
+                                crate::cognition::pathfinder::find_semantic_path(
+                                    universe, sl, &start_label, &target,
+                                )
+                            {
+                                println!("  [Pathfinder] SUCCESS: {:?}", path);
+                                astar_path = Some(path);
+                            } else {
+                                println!("  [Pathfinder] No A* path found.");
+                            }
+                        }
+                    }
+                }
+
+                if astar_path.is_none() {
+                    // All retrieval routes exhausted — report the mismatch honestly
+                    println!("  [Algebra] Mismatch: no route to action '{}' for '{}'",
+                        verb, display_topic);
+                    return format!(
+                        "I found a memory related to '{}', but it doesn't mention the action '{}'. What does '{}' mean in this context?",
+                        display_topic, verb, verb
+                    );
+                }
+            }
+        }
+    }
+
+    // ── LOW-RESONANCE MULTI-HOP RESCUE ──────────────────────────────────────────
+    // Primary score is below threshold but not zero: run LexSem normalisation
+    // then multi-hop attention on the intent triple. This is the core "different
+    // equations -> same answer" path for rephrased questions.
+    if is_core_query
+        && top_score < RESONANCE_THRESHOLD
+        && top_score > 0.10
+        && candle_voice.is_none()
+        && bitnet_voice.is_none()
+    {
+        println!("  [LexSem] Field={} | Concepts={:?} | Register={}",
+            lex_out.primary_field.label(),
+            lex_out.key_concepts,
+            lex_out.suggested_register.label());
+
+        let rescue_query = if !equation.intent_sum.is_empty()
+            && equation.intent_sum != "Unknown formulation"
+        {
+            format!("{} {}", equation.intent_sum, lex_out.key_concepts.join(" "))
+        } else {
+            lex_out.key_concepts.join(" ")
+        };
+
+        if !rescue_query.trim().is_empty() {
+            let rescue_vec = crate::core::SparseVec::encode(&rescue_query);
+            let (hopped_vec, hop_labels) =
+                crate::cognition::lattice_attention::multi_hop_attend(&rescue_vec, universe, 3);
+            println!("  [MultiHop/Rescue] {}",
+                crate::cognition::lattice_attention::format_hop_chain(&hop_labels));
+
+            let rescue_hits = universe.query_vec(&hopped_vec, 5);
+            if let Some((best_cell, best_score)) = rescue_hits.first() {
+                if *best_score > RESONANCE_THRESHOLD {
+                    let entity_a = equation.entities.first()
+                        .map(|s| s.as_str()).unwrap_or(trimmed);
+                    let entity_b = lex_out.key_concepts.first()
+                        .map(|s| s.as_str()).unwrap_or("");
+                    let validation =
+                        crate::cognition::inner_voice::validate_insight(
+                            &best_cell.claim.text,
+                            entity_a,
+                            entity_b,
+                            universe,
+                        );
+                    println!("  [InnerVoice/Rescue] {} (echo={:.3})",
+                        validation.verdict, validation.echo_score);
+
+                    if validation.verdict
+                        != crate::cognition::inner_voice::InsightVerdict::Noise
+                    {
+                        let answer = best_cell.claim.text
+                            .split(|c| c == '.' || c == '!' || c == '?')
+                            .next()
+                            .unwrap_or(&best_cell.claim.text)
+                            .trim()
+                            .to_string();
+                        if !answer.is_empty() && answer.split_whitespace().count() > 3 {
+                            return answer;
+                        }
+                    }
+                }
             }
         }
     }
@@ -1540,6 +1957,8 @@ fn generate_raw_thought(
         }
     }
 
+
+
     // ── Filler / reaction detection ───────────────────────────────────────────
     // "oh?", "hmm", "really?" — KAI doesn't query the universe for these.
     // They're social reactions. KAI asks what's meant or invites continuation.
@@ -1627,93 +2046,7 @@ fn generate_raw_thought(
             }
         }
 
-        let hits_gr = universe.predictive_query_by_source(Some(input), 
-            crate::core::SparseVec::encode(input),
-            "greeting",
-            trace,
-            predictive::DEFAULT_ITER_STEPS,
-        );
-        if let Some(h) = hits_gr.first() {
-            return first_complete_sentence(
-                &synthesize_from_cells(h, &[], brain, h.score, false),
-                10,
-            );
-        }
         return String::new();
-    }
-
-    // ── Greeting — query lattice for presence/awareness cell ─────────────────
-    // KAI's greeting comes from its own knowledge of what it is: "I am here."
-    // The cell text speaks, not a hardcoded template.
-    if matches!(query_type, QueryType::Greeting) {
-        let name = extract_introduced_name(&lower);
-
-        // Stop hard-filtering to `source=greeting` on every input. Let
-        // the full universe compete first — only fall back to the
-        // greeting-only pool when no cell scores above the floor. This
-        // kills the 4-cell rotation by letting seed / identity / world
-        // cells win when they predict the next turn better.
-        let is_inquisitive = lower.contains("good")
-            || lower.contains("up")
-            || lower.contains("happening")
-            || lower.contains("going");
-
-        const GREETING_FALLBACK_FLOOR: f32 = 0.25;
-
-        let hits_all = universe.predictive_query(Some(input), 
-            crate::core::SparseVec::encode(input),
-            trace,
-            predictive::DEFAULT_ITER_STEPS,
-        );
-        let hits_gr = if hits_all
-            .first()
-            .map(|h| h.score >= GREETING_FALLBACK_FLOOR)
-            .unwrap_or(false)
-        {
-            hits_all
-        } else {
-            universe.predictive_query_by_source(Some(input), 
-                crate::core::SparseVec::encode(input),
-                "greeting",
-                trace,
-                predictive::DEFAULT_ITER_STEPS,
-            )
-        };
-
-        let greeting_cell = if is_inquisitive {
-            hits_gr
-                .iter()
-                .find(|h| h.text.ends_with('?'))
-                .or_else(|| hits_gr.first())
-        } else {
-            hits_gr
-                .iter()
-                .find(|h| !h.text.ends_with('?'))
-                .or_else(|| hits_gr.first())
-        };
-
-        if let Some(h) = greeting_cell {
-            let response =
-                first_complete_sentence(&synthesize_from_cells(h, &[], brain, h.score, false), 10);
-            if response.trim().is_empty() {
-                return if let Some(n) = name {
-                    format!("{}. I'm here.", capitalize_first(&n))
-                } else {
-                    "I'm here.".to_string()
-                };
-            }
-            return if let Some(n) = name {
-                format!("{}. {}", capitalize_first(&n), response)
-            } else {
-                response
-            };
-        }
-        // Universe returned nothing — KAI expresses pure presence
-        return if let Some(n) = name {
-            format!("{}.", capitalize_first(&n))
-        } else {
-            "I'm here.".to_string()
-        };
     }
 
     // ── Gratitude / Farewell — query lattice for persistence/memory cell ─────
@@ -1874,7 +2207,7 @@ fn generate_raw_thought(
 
             if let Some(ollama_text) = cv.speak(
                 &prompt_with_grammar,
-                hits,
+                &hits,
                 brain.confidence,
                 brain.conflict,
                 brain.felt_valence,
@@ -1948,6 +2281,62 @@ fn generate_raw_thought(
         }
     }
 
+    // ── Direct user-fact questions ────────────────────────────────────────────
+    let is_user_fact = matches!(
+        query_type,
+        QueryType::IdentityQuestion | QueryType::ExplanationQuestion
+    ) && (lower.contains(" my ")
+        || lower.starts_with("what is my")
+        || lower.starts_with("what's my")
+        || lower.starts_with("where do i")
+        || lower.starts_with("who am i")
+        || lower.starts_with("what do i")
+        || lower.contains("do i do")
+        || lower.contains("do i work")
+        || lower.contains("my job")
+        || lower.contains("my work")
+        || lower.contains("i live")
+        || lower.contains("where am i"));
+
+    if is_user_fact {
+        for hit in hits.iter() {
+            if let Some(direct) = extract_direct_answer(trimmed, &hit.text) {
+                return identity_safety_filter(ensure_punctuation(direct), query_type);
+            }
+        }
+
+        if lower.contains("my name") || lower.starts_with("who am i") {
+            if let Some(name) = &brain.speaker_name {
+                let clean_name = name.split('@').next().unwrap_or(name);
+                let name_lower = clean_name.to_lowercase();
+                if hits.iter().any(|h| h.region == "identity" && h.text.to_lowercase().contains(&name_lower)) {
+                    return identity_safety_filter(format!("Your name is {}.", clean_name), query_type);
+                } else if clean_name.to_lowercase() != "user" && clean_name.to_lowercase() != "unknown" {
+                    return identity_safety_filter(format!("Your name is {}.", clean_name), query_type);
+                }
+            }
+        }
+
+        return identity_safety_filter(from_gap_cell(universe, brain, trace), query_type);
+    }
+
+    // ── Ryan recall ───────────────────────────────────────────────────────────
+    let is_ryan_recall = lower.contains("know about me")
+        || lower.contains("remember about me")
+        || lower.contains("know about you") && lower.contains("me")
+        || (lower.starts_with("what do you know") && lower.contains("me"))
+        || (lower.starts_with("what have you") && lower.contains("me"))
+        || (lower.contains("tell me what you know"))
+        || (lower.starts_with("what do you remember"));
+
+    if is_ryan_recall {
+        let ryan_cells = universe.get_by_source("ryan");
+        if let Some(summary) = synthesize_ryan_recall(&ryan_cells) {
+            return identity_safety_filter(summary, query_type);
+        }
+        return identity_safety_filter(from_gap_cell(universe, brain, trace), query_type);
+    }
+
     // ── Native generative decode (RSHL transformer + incremental_generate) ────
     // When the lexicon and field are available we build a full generative
     // latent state (prompt + memory + field + trace) and run the sparse
@@ -1965,24 +2354,90 @@ fn generate_raw_thought(
             };
 
             let state = universe.encode_generative_state(&prompt_with_grammar, lex, trace, field, "");
-            let emotional_temp = get_emotional_temp();
-            let temp = if emotional_temp > 0.0 { emotional_temp } else { 0.7 };
+            
+            // 🌟 DYNAMIC DECODER TUNING 🌟
+            // Temperature scales with arousal (energy/creativity) and inversely with confidence.
+            let dynamic_temp = 0.6 + (brain.arousal * 0.4) - (brain.confidence * 0.2);
+            let temp = dynamic_temp.clamp(0.2, 1.4);
+            
+            // Top-k widens when curious or conflicted (searching for better/alternative words)
+            let dynamic_top_k = if brain.curiosity > 0.6 || brain.conflict > 0.6 { 32 } else { 16 };
+            
+            let mut context_injects = std::collections::HashMap::new();
+            for w in lexsem.get_register_words(&lex_out.suggested_register) {
+                context_injects.insert(w.to_string(), state.clone());
+            }
+            if let Some(path) = &astar_path {
+                for w in path {
+                    context_injects.insert(w.to_string(), state.clone());
+                }
+            }
+
+            // 🌟 STaR REASONING BRIDGE (Invisible Thought Loop) 🌟
+            // KAI silently runs a fast generation pass to assemble concepts before speaking.
+            if is_core_query {
+                let star_params = DecodeParams {
+                    max_tokens: 6, // short internal thought
+                    temperature: temp * 1.5, // higher temp for creative association
+                    top_k: dynamic_top_k + 8, // wider search for STaR
+                    repetition_window: 4,
+                    repetition_penalty: 1.1,
+                    stop_on_immediate_repeat: true,
+                    bigram_weight: 0.4,
+                    trigram_weight: 0.4,
+                    attention_weight: 1.2,
+                    seed: 0xC0FFEE + 1,
+                    context_injects: context_injects.clone(),
+                    clause_aware_stop: true,
+                    expected_pos_sequence: None,
+                    sentence_type: Some("<THOUGHT>".to_string()),
+                };
+                let internal_thought = lex.incremental_generate_with(state.clone(), star_params);
+                if !internal_thought.trim().is_empty() {
+                    println!("  [STaR/Bridge] Internal recursive thought: <THOUGHT> {} </THOUGHT>", internal_thought.trim());
+                    // Inject the words KAI thought about back into the final generation state
+                    for w in internal_thought.split_whitespace() {
+                        context_injects.insert(w.to_string(), state.clone());
+                    }
+                }
+            }
+
+            // Brevity gate: KAI must speak in 12 words max for conversational queries.
+            // The decoder gets a hard token ceiling and we post-truncate if needed.
+            let word_budget = match query_type {
+                QueryType::Greeting | QueryType::Gratitude => 8,
+                QueryType::IdentityQuestion | QueryType::ExplanationQuestion | QueryType::SelfQuestion => 12,
+                QueryType::CommandRequest | QueryType::RequestForInfo => 15,
+                _ => 12,
+            };
             let params = DecodeParams {
-                max_tokens: 64,
+                max_tokens: word_budget,
                 temperature: temp,
-                top_k: 32,
-                repetition_window: 16,
-                repetition_penalty: 0.8,
-                stop_on_immediate_repeat: false,
-                bigram_weight: 0.4,
-                trigram_weight: 0.4,
-                attention_weight: 1.2,
-                seed: 0xC0FFEE, context_injects: std::collections::HashMap::new(),
+                top_k: dynamic_top_k,
+                repetition_window: 8,
+                repetition_penalty: 1.2,  // stronger repetition penalty
+                stop_on_immediate_repeat: true,  // stop on immediate repeat
+                bigram_weight: 0.6,  // higher grammar weight
+                trigram_weight: 0.6,
+                attention_weight: 1.0,
+                seed: 0xC0FFEE, 
+                context_injects,
                 clause_aware_stop: true,
                 expected_pos_sequence: expected_pos,
                 sentence_type: Some(wernicke.sentence_type.label().to_string()),
             };
-            let decoded = lex.incremental_generate_with(state, params);
+            let mut decoded = lex.incremental_generate_with(state, params);
+            // Hard word-budget enforcement: truncate to first N words
+            let words: Vec<&str> = decoded.split_whitespace().collect();
+            if words.len() > word_budget {
+                let truncated = words[..word_budget].join(" ");
+                // Ensure we end on a sentence boundary if possible
+                decoded = if truncated.ends_with('.') || truncated.ends_with('!') || truncated.ends_with('?') {
+                    truncated
+                } else {
+                    format!("{}.", truncated)
+                };
+            }
             if !decoded.trim().is_empty() {
                 return identity_safety_filter(decoded, query_type);
             }
@@ -2114,48 +2569,7 @@ fn generate_raw_thought(
         return identity_safety_filter(from_gap_cell(universe, brain, trace), query_type);
     }
 
-    // ── Direct user-fact questions ────────────────────────────────────────────
-    let is_user_fact = matches!(
-        query_type,
-        QueryType::IdentityQuestion | QueryType::ExplanationQuestion
-    ) && (lower.contains(" my ")
-        || lower.starts_with("what is my")
-        || lower.starts_with("what's my")
-        || lower.starts_with("where do i")
-        || lower.starts_with("who am i")
-        || lower.starts_with("what do i")
-        || lower.contains("do i do")
-        || lower.contains("do i work")
-        || lower.contains("my job")
-        || lower.contains("my work")
-        || lower.contains("i live")
-        || lower.contains("where am i"));
 
-    if is_user_fact {
-        for hit in hits.iter() {
-            if let Some(direct) = extract_direct_answer(trimmed, &hit.text) {
-                return identity_safety_filter(ensure_punctuation(direct), query_type);
-            }
-        }
-        return identity_safety_filter(from_gap_cell(universe, brain, trace), query_type);
-    }
-
-    // ── Ryan recall ───────────────────────────────────────────────────────────
-    let is_ryan_recall = lower.contains("know about me")
-        || lower.contains("remember about me")
-        || lower.contains("know about you") && lower.contains("me")
-        || (lower.starts_with("what do you know") && lower.contains("me"))
-        || (lower.starts_with("what have you") && lower.contains("me"))
-        || (lower.contains("tell me what you know"))
-        || (lower.starts_with("what do you remember"));
-
-    if is_ryan_recall {
-        let ryan_cells = universe.get_by_source("ryan");
-        if let Some(summary) = synthesize_ryan_recall(&ryan_cells) {
-            return identity_safety_filter(summary, query_type);
-        }
-        return identity_safety_filter(from_gap_cell(universe, brain, trace), query_type);
-    }
 
     // ── General statement with low score ─────────────────────────────────────
     if matches!(query_type, QueryType::Statement) && !is_about_self
@@ -2557,12 +2971,31 @@ fn clean_cell_text(text: &str) -> String {
         "[kai-asked] ",
         "KAI responded: ",
         "kai responded: ",
+        "[Raw] ",
     ];
     for prefix in &prefixes {
         if s.starts_with(prefix) {
             s = s[prefix.len()..].to_string();
         }
     }
+
+    // Strip 6D memory metadata prefix if present
+    if s.starts_with("[Time: ") {
+        if let Some(close_bracket) = s.find("] ") {
+            s = s[close_bracket + 2..].to_string();
+        }
+    }
+
+    // Strip Discord or platform sender prefixes like "Ryan@Discord: " or "Ryan: "
+    if let Some(colon_idx) = s.find(": ") {
+        if colon_idx < 40 {
+            let prefix = &s[..colon_idx];
+            if !prefix.contains(' ') || prefix.contains("@Discord") {
+                s = s[colon_idx + 2..].trim().to_string();
+            }
+        }
+    }
+
 
     // ── Q&A pair extraction ─────────────────────────────────────────────────
     // Tutoring cells store "Q: ... A: ..." pairs. When serving as a direct

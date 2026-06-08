@@ -2175,6 +2175,7 @@ function normalizeSpeakerName(name) {
   const lower = `${name || ""}`.trim().toLowerCase();
   switch (lower) {
     case "kai":
+    case "kai_speaking":
       return "KAI";
     case "leo":
       return "Leo";
@@ -2253,6 +2254,17 @@ async function drainRoundtableInterjections(maxAttempts = 5) {
       const text = `${ij?.text || ""}`.trim();
       if (!text || isLoopingResponse(text)) {
         if (text) recordAIFailure(speaker, 'looping: ' + text.slice(0, 80), channel?.id || '');
+        continue;
+      }
+
+      // === ROUTE KAI THOUGHTS ===
+      if (ij?.from === "KAI_THOUGHT") {
+        const dreamsChannel = client.channels.cache.find(c => c.name === "kai-dreams");
+        if (dreamsChannel) {
+          dreamsChannel.send(`*💭 [KAI THINKING] ${text}*`).catch(() => {});
+        } else if (channel) {
+          channel.send(`*💭 [KAI THINKING] ${text}*`).catch(() => {});
+        }
         continue;
       }
 

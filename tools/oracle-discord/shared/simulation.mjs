@@ -273,6 +273,11 @@ export class AgentSimulation {
     const inActiveHours = isWorkingHours() || isSocialHours();
     if (!inActiveHours) return true;
 
+    // If already sleeping due to low energy, STAY sleeping until fully recharged
+    if (this.state.status === "Sleeping" && this.state.energy < WAKE_ENERGY_THRESHOLD) {
+      return true;
+    }
+
     // DYNAMIC BEDTIME: If energy is critically low (<5%), force sleep.
     if (this.state.energy < SLEEP_ENERGY_THRESHOLD) return true;
 

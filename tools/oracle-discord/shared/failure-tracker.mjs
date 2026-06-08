@@ -126,8 +126,7 @@ export function recordProviderFailure(provider, errorStatus, errorMessage = "") 
 
   // TPD = daily token quota exhausted. Groq resets at midnight UTC.
   const isTPD = errorText.includes("TOKENS PER DAY") || errorText.includes("TPD") ||
-                (errorText.includes("RATE LIMIT") && errorText.includes("PER DAY")) ||
-                (errorStatus === 429 && provider === "groq");
+                (errorText.includes("RATE LIMIT") && errorText.includes("PER DAY"));
 
   const isTimeout = errorText.includes("TIMEOUT") || errorText.includes("ABORTED");
 

@@ -800,6 +800,35 @@ impl StatLexicon {
                 }
             }
 
+            // ── 3e. Constitutional AI Hard Constraints ────────────────
+            // Rule 1: No filler words.
+            for (w, score) in candidates.iter_mut() {
+                if matches!(w.as_str(), "um" | "uh" | "ah" | "like" | "well" | "so" | "hm") {
+                    *score -= 1000.0; // Hard mathematical block
+                }
+            }
+
+            // ── 3f. Semantic POS Sequence Guard ───────────────────────
+            // Prevent ungrammatical sequential POS combinations dynamically
+            if let Some(last_word) = out.last() {
+                if let Some(last_entry) = dict.lookup(last_word) {
+                    for (w, score) in candidates.iter_mut() {
+                        if let Some(cand_entry) = dict.lookup(w) {
+                            // Rule: Articles ("the", "a") cannot be immediately followed by Verbs.
+                            if last_entry.pos == "article" {
+                                if cand_entry.pos == "verb" {
+                                    *score -= 50.0; // Heavy penalty for breaking syntax
+                                }
+                            }
+                            // Rule: Prepositions ("in", "on", "at") usually precede nouns/pronouns, not verbs
+                            if last_entry.pos == "preposition" && cand_entry.pos == "verb" {
+                                *score -= 20.0;
+                            }
+                        }
+                    }
+                }
+            }
+
             // ── 4. selection ─────────────────────────────────────────
             let picked = if greedy {
                 candidates.remove(0).0
@@ -874,8 +903,10 @@ impl StatLexicon {
             if let Some(wv) = self.get(&picked) {
                 let bound = wv.bind(&pkey);
                 state = SparseVec::superpose_sparse(&[&state, &bound], 0.04);
-                // Also superpose into the sliding semantic attention state (without positional bind)
-                let inject_vec = params.context_injects.get(&picked).unwrap_or(wv); let bound_inject = inject_vec.bind(&pkey); attention_state = SparseVec::superpose_sparse(&[&attention_state, &bound_inject], 0.04);
+                // We intentionally DO NOT superpose into attention_state here!
+                // If we did, the generation would enter a positive feedback loop 
+                // and hallucinate forever. attention_state must remain the original
+                // context anchor.
             }
         }
 

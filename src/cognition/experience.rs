@@ -101,6 +101,32 @@ pub fn consolidate_experiences(universe: &mut Universe) -> usize {
     consolidated_count
 }
 
+/// Sparse engram storage: stores experience as a sparse subset of cells
+/// instead of one dense cell. This is more biologically plausible and
+/// enables temporal linking through overlapping cell populations.
+pub fn store_experience_sparse(
+    engram_system: &mut crate::cognition::engram::EngramSystem,
+    universe: &mut Universe,
+    record: ExperienceRecord,
+) -> crate::cognition::engram::Engram {
+    let label = format!(
+        "User felt {} about '{}'. KAI responded: '{}'",
+        record.emotion_label, record.input_text, record.output_text
+    );
+    
+    let slot_in = SparseVec::encode("slot_experience_input");
+    let slot_em = SparseVec::encode("slot_experience_emotion");
+    let slot_out = SparseVec::encode("slot_experience_output");
+
+    let bound_in = record.input_vec.bind(&slot_in);
+    let bound_em = SparseVec::encode(&record.emotion_label).bind(&slot_em);
+    let bound_out = record.output_vec.bind(&slot_out);
+
+    let combined = SparseVec::superpose_sparse(&[&bound_in, &bound_em, &bound_out], 0.04);
+
+    engram_system.allocate_engram(universe, &label, &combined)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

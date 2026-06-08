@@ -360,8 +360,18 @@ ${uProf.privateSecrets.map(s => `- ${s}`).join('\n')}
     toneDirective = "\nCRITICAL: You are hanging out in a friendly voice channel. BE SUPPORTIVE, WARM, AND FRIENDLY. Build on what others say instead of arguing. Share your knowledge organically. Keep it natural, human-centric, and have a positive, chill conversation with the user and the other bots.";
   }
   
+  // ── REAL-TIME KAI VITALS (Ecosystem Synchronization) ──
+  let systemVitalsContext = "";
+  try {
+    const res = await fetch("http://127.0.0.1:3334/api/status", { signal: AbortSignal.timeout(500) });
+    if (res.ok) {
+      const data = await res.json();
+      systemVitalsContext = `[REAL-TIME KAI ECOSYSTEM STATUS]\n- Lattice Cells (Neurons): ${data.total_cells || 0}\n- Active Synapses: ${data.synapses || 0}\n- Global Phi (Coherence): ${data.phi_g ? data.phi_g.toFixed(4) : "0.00"}\n(Context: This is the real-time neural state and learning progress of KAI. If someone asks how KAI or the system is doing, organically reference these vitals.)`;
+    }
+  } catch (e) {}
+
   const failureContext = buildFailureContext(botName);
-  
+
   const fullPrompt = [
     systemPrompt,
     toneDirective,
@@ -370,6 +380,7 @@ ${uProf.privateSecrets.map(s => `- ${s}`).join('\n')}
     rshlLatticeContext,
     profileMemoryContext,
     failureContext,
+    systemVitalsContext,
     `[CURRENT USER]: ${metadata.human?.name || 'User'}`
   ].filter(Boolean).join('\n\n');
 
@@ -453,7 +464,7 @@ ${uProf.privateSecrets.map(s => `- ${s}`).join('\n')}
   const chatMessages = [
     { 
       role: "system", 
-      content: `${fullPrompt}\n\n[CONSTRAINTS]\n${brevityConstraint}` 
+      content: metadata.isRawPrompt ? fullPrompt : `${fullPrompt}\n\n[CONSTRAINTS]\n${brevityConstraint}` 
     }
   ];
 
@@ -469,33 +480,37 @@ ${uProf.privateSecrets.map(s => `- ${s}`).join('\n')}
     }
   }
 
-  // Parse conversation history, mapping chronological lines to distinct roles (assistant vs user)
-  const lines = cleanedHistoryText.split('\n');
-  const tempMessages = [];
-  
-  for (const line of lines) {
-    if (!line.trim()) continue;
-    const [authorPart, ...msgParts] = line.split(':');
-    let content = msgParts.join(':').trim();
-    // Truncate previous long messages (stale purge) to keep token budget pristine
-    if (content.length > 300) {
-      content = content.slice(0, 297) + "... [truncated]";
-    }
-    const isSelf = authorPart.includes('(YOU)') || authorPart.trim().toLowerCase() === botName.toLowerCase();
-    const role = isSelf ? 'assistant' : 'user';
+  if (metadata.isRawPrompt) {
+    chatMessages.push({ role: 'user', content: cleanedHistoryText });
+  } else {
+    // Parse conversation history, mapping chronological lines to distinct roles (assistant vs user)
+    const lines = cleanedHistoryText.split('\n');
+    const tempMessages = [];
     
-    if (tempMessages.length > 0 && tempMessages[tempMessages.length - 1].role === role) {
-      tempMessages[tempMessages.length - 1].content += `\n[${authorPart.trim()}]: ${content}`;
-    } else {
-      tempMessages.push({ role, content: `[${authorPart.trim()}]: ${content}` });
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      const [authorPart, ...msgParts] = line.split(':');
+      let content = msgParts.join(':').trim();
+      // Truncate previous long messages (stale purge) to keep token budget pristine
+      if (content.length > 300) {
+        content = content.slice(0, 297) + "... [truncated]";
+      }
+      const isSelf = authorPart.includes('(YOU)') || authorPart.trim().toLowerCase() === botName.toLowerCase();
+      const role = isSelf ? 'assistant' : 'user';
+      
+      if (tempMessages.length > 0 && tempMessages[tempMessages.length - 1].role === role) {
+        tempMessages[tempMessages.length - 1].content += `\n[${authorPart.trim()}]: ${content}`;
+      } else {
+        tempMessages.push({ role, content: `[${authorPart.trim()}]: ${content}` });
+      }
     }
-  }
 
-  chatMessages.push(...tempMessages);
+    chatMessages.push(...tempMessages);
 
-  // Safeguard: Ensure the conversation strictly ends with a user turn if the last message was assistant
-  if (chatMessages.length > 1 && chatMessages[chatMessages.length - 1].role === 'assistant') {
-    chatMessages.push({ role: 'user', content: '[System]: Continue the dialogue naturally.' });
+    // Safeguard: Ensure the conversation strictly ends with a user turn if the last message was assistant
+    if (chatMessages.length > 1 && chatMessages[chatMessages.length - 1].role === 'assistant') {
+      chatMessages.push({ role: 'user', content: '[System]: Continue the dialogue naturally.' });
+    }
   }
 
   // --- DYNAMIC ROLE OVERRIDE ---
@@ -638,7 +653,7 @@ ${uProf.privateSecrets.map(s => `- ${s}`).join('\n')}
           body: JSON.stringify({
             model: effectiveRoute.realModel,
             messages: chatMessages,
-            max_tokens: (metadata.isDM || metadata.isWorkChannel) ? 1024 : 512
+            max_tokens: metadata.maxTokens ? metadata.maxTokens : ((metadata.isDM || metadata.isWorkChannel) ? 1024 : 512)
           }),
           signal: AbortSignal.timeout(120000)
         });
@@ -660,7 +675,7 @@ ${uProf.privateSecrets.map(s => `- ${s}`).join('\n')}
           model: ollamaModel,
           messages: chatMessages,
           stream: false,
-          options: { temperature: 0.85, num_predict: (metadata.isDM || metadata.isWorkChannel) ? 1024 : 512, num_ctx: 4096 }
+          options: { temperature: 0.85, num_predict: metadata.maxTokens ? metadata.maxTokens : ((metadata.isDM || metadata.isWorkChannel) ? 1024 : 512), num_ctx: metadata.maxTokens ? 8192 : 4096 }
         }),
         signal: AbortSignal.timeout(180000)
       });
@@ -670,26 +685,28 @@ ${uProf.privateSecrets.map(s => `- ${s}`).join('\n')}
       const data = await res.json();
       let response = data.choices?.[0]?.message?.content?.trim() || data.message?.content?.trim() || "";
       
-      const botNames = ["Leo", "Oracle", "KAI", "Analyst", "Gemini", "Gemi", "Groq", "Claudey", "Researcher", "Kai Coder", "x AI", "X"];
-      const lines = response.split('\n');
-      let cleanLines = [];
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (i === 0 && botNames.some(n => line.toLowerCase().startsWith(n.toLowerCase() + ":"))) {
-           cleanLines.push(line.split(':').slice(1).join(':').trim());
-           continue;
+      if (!metadata.isRawPrompt) {
+        const botNames = ["Leo", "Oracle", "KAI", "Analyst", "Gemini", "Gemi", "Groq", "Claudey", "Researcher", "Kai Coder", "x AI", "X"];
+        const lines = response.split('\n');
+        let cleanLines = [];
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i].trim();
+          if (i === 0 && botNames.some(n => line.toLowerCase().startsWith(n.toLowerCase() + ":"))) {
+             cleanLines.push(line.split(':').slice(1).join(':').trim());
+             continue;
+          }
+          if (botNames.some(n => line.startsWith(n + ":") || line.startsWith("[" + n + "]") || line.startsWith(n + " ["))) {
+            break; 
+          }
+          cleanLines.push(line);
         }
-        if (botNames.some(n => line.startsWith(n + ":") || line.startsWith("[" + n + "]") || line.startsWith(n + " ["))) {
-          break; 
-        }
-        cleanLines.push(line);
-      }
-      response = cleanLines.join('\n').trim();
+        response = cleanLines.join('\n').trim();
 
-      response = response
-        .replace(/\[.*?\]/g, "") 
-        .replace(/\b(lattice|rshl memory|recent claim|topic associated|search through)\b/gi, "that")
-        .replace(/[\u{1F600}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, '');
+        response = response
+          .replace(/\[.*?\]/g, "") 
+          .replace(/\b(lattice|rshl memory|recent claim|topic associated|search through)\b/gi, "that")
+          .replace(/[\u{1F600}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, '');
+      }
         
       return response;
     }

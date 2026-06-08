@@ -109,153 +109,9 @@ impl ContextBuilder {
     }
 }
 
-// ── LLM Backends ─────────────────────────────────────────────────────────────
+// ── Local Sovereign Native Decoder ─────────────────────────────────────────────
+// External LLMs have been removed. KAI uses BitNet natively.
 
-fn call_groq(
-    key: &str,
-    model: &str,
-    system: &str,
-    user: &str,
-    temp: f32,
-    top_p: f32,
-    max_tokens: u32,
-) -> Result<String, String> {
-    let body = json!({
-        "model": model,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user}
-        ],
-        "max_tokens": max_tokens,
-        "temperature": temp,
-        "top_p": top_p,
-    });
-    let resp = ureq::post("https://api.groq.com/openai/v1/chat/completions")
-        .set("Authorization", &format!("Bearer {}", key))
-        .set("Content-Type", "application/json")
-        .timeout(std::time::Duration::from_secs(30))
-        .send_string(&body.to_string())
-        .map_err(|e| e.to_string())?;
-    let j: serde_json::Value = resp.into_json().map_err(|e| e.to_string())?;
-    j["choices"][0]["message"]["content"]
-        .as_str()
-        .map(|s| s.trim().to_string())
-        .ok_or_else(|| "No content in Groq response".into())
-}
-
-fn call_openai(
-    key: &str,
-    model: &str,
-    system: &str,
-    user: &str,
-    temp: f32,
-    top_p: f32,
-    max_tokens: u32,
-) -> Result<String, String> {
-    let body = json!({
-        "model": model,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user}
-        ],
-        "max_tokens": max_tokens,
-        "temperature": temp,
-        "top_p": top_p,
-    });
-    let resp = ureq::post("https://api.openai.com/v1/chat/completions")
-        .set("Authorization", &format!("Bearer {}", key))
-        .set("Content-Type", "application/json")
-        .timeout(std::time::Duration::from_secs(30))
-        .send_string(&body.to_string())
-        .map_err(|e| e.to_string())?;
-    let j: serde_json::Value = resp.into_json().map_err(|e| e.to_string())?;
-    j["choices"][0]["message"]["content"]
-        .as_str()
-        .map(|s| s.trim().to_string())
-        .ok_or_else(|| "No content in OpenAI response".into())
-}
-
-fn call_xai(
-    key: &str,
-    model: &str,
-    system: &str,
-    user: &str,
-    temp: f32,
-    top_p: f32,
-    max_tokens: u32,
-) -> Result<String, String> {
-    let body = json!({
-        "model": model,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user}
-        ],
-        "max_tokens": max_tokens,
-        "temperature": temp,
-        "top_p": top_p,
-    });
-    let resp = ureq::post("https://api.x.ai/v1/chat/completions")
-        .set("Authorization", &format!("Bearer {}", key))
-        .set("Content-Type", "application/json")
-        .timeout(std::time::Duration::from_secs(30))
-        .send_string(&body.to_string())
-        .map_err(|e| e.to_string())?;
-    let j: serde_json::Value = resp.into_json().map_err(|e| e.to_string())?;
-    j["choices"][0]["message"]["content"]
-        .as_str()
-        .map(|s| s.trim().to_string())
-        .ok_or_else(|| "No content in xAI response".into())
-}
-
-fn call_ollama(
-    model: &str,
-    system: &str,
-    user: &str,
-    temp: f32,
-    top_p: f32,
-) -> Result<String, String> {
-    let body = json!({
-        "model": model,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user}
-        ],
-        "stream": false,
-        "options": {
-            "temperature": temp,
-            "top_p": top_p
-        }
-    });
-    let resp = ureq::post("http://localhost:11434/api/chat")
-        .set("Content-Type", "application/json")
-        .timeout(std::time::Duration::from_secs(60))
-        .send_string(&body.to_string())
-        .map_err(|e| e.to_string())?;
-    let j: serde_json::Value = resp.into_json().map_err(|e| e.to_string())?;
-    j["message"]["content"]
-        .as_str()
-        .map(|s| s.trim().to_string())
-        .ok_or_else(|| "No content in Ollama response".into())
-}
-
-fn call_llm(
-    provider: &str,
-    key: &str,
-    model: &str,
-    system: &str,
-    user: &str,
-    temp: f32,
-    top_p: f32,
-    max_tokens: u32,
-) -> Result<String, String> {
-    match provider {
-        "groq" => call_groq(key, model, system, user, temp, top_p, max_tokens),
-        "openai" => call_openai(key, model, system, user, temp, top_p, max_tokens),
-        "xai" => call_xai(key, model, system, user, temp, top_p, max_tokens),
-        "ollama" => call_ollama(model, system, user, temp, top_p),
-        _ => Err(format!("Unknown provider: {}", provider)),
-    }
-}
 
 // ── Main Generation API ────────────────────────────────────────────────────────
 
@@ -297,13 +153,10 @@ fn compute_vitals(u: &Universe) -> (f32, f32, usize, usize) {
     (chi, phi_g, anchors, lattice_size)
 }
 
-/// Generate a reply using KAI's memory lattice + an external LLM.
-/// `api_key` should be the key for the chosen provider.
+/// Generate a reply natively using KAI's memory lattice + BitNet 1.58-bit model.
 pub fn kai_chat(
     universe: Arc<Mutex<Universe>>,
-    api_key: &str,
-    provider: &str,
-    model: &str,
+    bitnet: Option<&crate::cognition::BitnetVoice>,
     req: &ChatRequest,
 ) -> Result<ChatResponse, String> {
     // 1. Lock universe, compute vitals, retrieve context
@@ -315,28 +168,20 @@ pub fn kai_chat(
         (chi, phi_g, anchors, cells, mem_ctx)
     };
 
-    // 2. Map KAI state → LLM sampling params
+    // 2. Map KAI state → LLM sampling params (kept for tracking even if BitNet uses fixed currently)
     let (temperature, top_p, _freq_penalty) = kai_params_to_llm(chi, phi_g);
-    let system = ContextBuilder::system_prompt(chi, phi_g, anchors, cells);
 
     // 3. Build full prompt with memory context
-    let full_prompt = format!("{}\n\n{}", memory_context, req.message);
+    let raw_thought = format!("{}\n\n{}", memory_context, req.message);
 
-    // 4. Call LLM or Native Brain
-    let reply = if provider == "native" {
-        let mut u = universe.lock().map_err(|_| "universe lock poisoned")?;
-        crate::cognition::lattice_attention::generate_autoregressive_response(&req.message, &mut u, 50)
+    // 4. Call Bitnet Native Voice
+    let reply = if let Some(voice) = bitnet {
+        let context = req.history.clone().unwrap_or_default();
+        voice.speak(&raw_thought, &context, false).unwrap_or_else(|| {
+            "[System: BitNet local voice engine failed to generate response.]".to_string()
+        })
     } else {
-        call_llm(
-            provider,
-            api_key,
-            model,
-            &system,
-            &full_prompt,
-            temperature,
-            top_p,
-            512,
-        )?
+        return Err("BitNet native voice engine is not available.".to_string());
     };
 
     // 5. Store interaction back into KAI's memory
@@ -350,7 +195,7 @@ pub fn kai_chat(
         temperature,
         top_p,
         cells_consulted: 8,
-        provider_used: provider.to_string(),
-        model_used: model.to_string(),
+        provider_used: "bitnet-native".to_string(),
+        model_used: "b1.58-2B-4T".to_string(),
     })
 }

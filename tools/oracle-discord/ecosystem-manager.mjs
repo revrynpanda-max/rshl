@@ -284,12 +284,23 @@ setTimeout(() => {
   startProcess("KAI", "bots/kai.mjs");
 }, 2000);
 
-// Set all other bots to ASLEEP by default so they don't consume PC resources
-sleepingBots.add("Leo");
+// Start secondary bots on a staggered delay to prevent OS spike
+setTimeout(() => {
+  console.log(`[Ecosystem] Spawning Leo...`);
+  startProcess("Leo", "bots/leo.mjs");
+}, 4000);
+
+let startDelay = 5000;
 for (const bot of BOTS) {
-  sleepingBots.add(bot);
+  if (bot !== "KAI") {
+    const currentBot = bot;
+    setTimeout(() => {
+      console.log(`[Ecosystem] Spawning ${currentBot}...`);
+      startProcess(currentBot, "bots/start-bot.mjs", [currentBot]);
+    }, startDelay);
+    startDelay += 1000;
+  }
 }
-console.log(`[Ecosystem] All secondary bots (Leo, ${BOTS.join(', ')}) are ASLEEP by default. Use Oracle to wake them.`);
 
 // Global World Clock Heartbeat
 setInterval(() => {
