@@ -1,7 +1,7 @@
-# 🧬 KAI RSHL: Sovereign Autonomous Intelligence (v22.1.0)
+# 🧬 KAI RSHL: Sovereign Autonomous Intelligence (v8.4.15)
 
 ![Rust CI](https://github.com/revrynpanda-max/rshl/actions/workflows/rust-ci.yml/badge.svg)
-![Version](https://img.shields.io/badge/version-22.1.0-brightgreen.svg)
+![Version](https://img.shields.io/badge/version-8.4.15-brightgreen.svg)
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 

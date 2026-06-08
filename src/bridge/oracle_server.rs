@@ -5064,7 +5064,7 @@ fn handle_chat(
         }
     };
 
-    match kai_chat(universe, key_str, provider, model, &req) {
+    match kai_chat(universe, None, &req) {
         Ok(resp) => write_json(stream, 200, "OK", &serde_json::to_value(resp).unwrap()),
         Err(e) => write_json(stream, 503, "Generation Failed", &json!({"error": e})),
     }

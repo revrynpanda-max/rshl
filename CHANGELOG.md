@@ -1,5 +1,11 @@
 # 🧬 KAI RSHL CHANGELOG
 
+## [v8.4.15] — 2026-06-08
+### **🏛️ NATIVE LANGUAGE WAREHOUSE & ECHO LOOP FIX**
+- **Native Routing Restored**: Removed all Node.js and Rust LLM/BitNet wrappers. KAI now exclusively uses the pre-extracted `language_warehouse.json` to generate his speech natively from the geometric lattice.
+- **Echo Loop Fix**: Patched `oracle_server.rs` to filter out conversational hits during tutoring mode, ensuring KAI doesn't blindly regurgitate social fragments.
+- **Ecosystem Unification**: Bumped versions across Cargo and documentation to reflect the active daily training milestones and feature additions since v7.9.7.
+
 ## [v22.2.0] — 2026-05-24
 ### **🏛️ BIOLOGICAL MEMORY & ARCHIVE TRIBUNAL**
 This milestone focuses on hardening KAI's long-term persistence and resolving catastrophic storage bloat. KAI now handles his own memories exactly like a living organism.

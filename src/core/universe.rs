@@ -311,6 +311,9 @@ pub struct Universe {
     pub calibration_floor: f32,
     #[serde(default)]
     pub recent_contradictions: u32,
+    /// Sparse engram memory system — biologically-plausible sparse memory allocation
+    #[serde(skip)]
+    pub engram_system: Option<crate::cognition::engram::EngramSystem>,
 }
 
 fn default_calibration_floor() -> f32 { 0.40 }
@@ -330,6 +333,7 @@ impl Clone for Universe {
             text_store: None,
             calibration_floor: self.calibration_floor,
             recent_contradictions: self.recent_contradictions,
+            engram_system: self.engram_system.clone(),
         }
     }
 }
@@ -721,6 +725,7 @@ impl Universe {
             text_store: None,
             calibration_floor: 0.40,
             recent_contradictions: 0,
+            engram_system: Some(crate::cognition::engram::EngramSystem::new(1024)),
         }
     }
 
@@ -771,8 +776,8 @@ impl Universe {
         // Skip when lattice is huge (>200K cells) — mask_pool costs ~4KB per cell
         // (= 800MB+ RAM).  Fallback parallel scan with Rayon is fast enough.
         let n = self.cells.len();
-        if n >= 64 && n <= 200_000 {
-            let k = (n / 500).max(8).min(64); // ~500 cells per cluster
+        if n >= 64 && n <= 1_000_000 {
+            let k = (n / 500).max(8).min(1024); // ~500 cells per cluster
             let pool_sv: Vec<super::sparse_vec::SparseVec> = self.cells.iter()
                 .map(|c| c.claim.vec.clone()).collect();
             let pool_mask: Vec<super::sparse_vec::DenseMask> = pool_sv.iter()
@@ -781,8 +786,8 @@ impl Universe {
             // println!("[KMeans] Built {k}-cluster index over {n} cells");
             self.mask_pool = pool_mask;
             self.kmeans_index = Some(idx);
-        } else if n > 200_000 {
-            // println!("[KMeans] Skipped ({} cells > 200K threshold). Using parallel scan.", n);
+        } else if n > 1_000_000 {
+            // println!("[KMeans] Skipped ({} cells > 1M threshold). Using parallel scan.", n);
         }
     }
 
@@ -809,7 +814,8 @@ impl Universe {
         self.cells.retain(|c| {
             let is_anchor = c.claim.confidence >= 5.0;
             let is_high_quality = c.claim.confidence > 1.2 && c.convergence_score > 0.15;
-            is_anchor || is_high_quality
+            let is_newly_social = c.region.as_ref() == "social" && c.claim.confidence >= 0.85;
+            is_anchor || is_high_quality || is_newly_social
         });
         
         let pruned = before - self.cells.len();
@@ -860,6 +866,21 @@ impl Universe {
             self.rebuild_index(0.8);
         }
         recycled
+    }
+
+    /// Extracts current biological/hardware state and returns it as a string of primitive labels.
+    /// This acts as KAI's structural RNA — providing bare foundational labels (e.g., "fast", "growing", "small")
+    /// which the Response MLP will geometrically map into his own learned vocabulary without relying on hardcoded English sentences.
+    pub fn internal_state_dna(&self) -> String {
+        let engram_status = if self.engram_system.is_some() { "active" } else { "inactive" };
+        
+        format!(
+            "internal_state_dna metrics: cell_count={} vocabulary_size={} recent_contradictions={} engram_system={}",
+            self.cells.len(),
+            self.lexicon.len(),
+            self.recent_contradictions,
+            engram_status
+        )
     }
 
     /// Read-only access to all cells (used by Boid engine and diagnostics).
@@ -1410,7 +1431,21 @@ impl Universe {
             // production lattice with real semantic clusters will be higher recall.
             let n_probe = 3usize;
             let sec_top = (n * 20).max(100).min(400);
-            let candidates = idx.query(&q_mask, &self.mask_pool, n_probe, sec_top, n * 4);
+            let mut candidates = idx.query(&q_mask, &self.mask_pool, n_probe, sec_top, n * 4);
+
+            // Add all dirty (new/unclustered) indices to candidates to ensure they are scanned
+            // This allows short-term memory (conversation context) to be instantly recallable.
+            let candidate_set: std::collections::HashSet<usize> = candidates.iter().map(|(i, _)| *i).collect();
+            for &di in &self.dirty_indices {
+                if !candidate_set.contains(&di) && di < self.cells.len() {
+                    let dot = q.dot(&self.cells[di].claim.vec);
+                    let mag_c = self.cells[di].nnz as f32;
+                    let cosine = if mag_q > 0.0 && mag_c > 0.0 {
+                        dot as f32 / (mag_q_sqrt * mag_c.sqrt())
+                    } else { 0.0 };
+                    candidates.push((di, cosine));
+                }
+            }
 
             // Precompute query phase for phasor coherence (Fibonacci torsion)
             let q_phase = q.phase_angle();
@@ -2035,6 +2070,26 @@ impl Universe {
         }
     }
 
+    /// Weaken a cell by label (anti-Hebbian LTD — Long-Term Depression).
+    ///
+    /// Multiplies confidence by `factor` (e.g. 0.92), floored at 0.05.
+    /// Used by the bone_heal protocol: each time a quarantined (poisoned)
+    /// cell fires during a real query, it gets weakened. Over time it
+    /// becomes functionally inert without being deleted — KAI retains it
+    /// as a negative example.
+    ///
+    /// Returns `true` if the cell was found.
+    pub fn attenuate_cell(&mut self, label: &str, factor: f32) -> bool {
+        for cell in &mut self.cells {
+            if cell.label == label {
+                cell.claim.confidence = (cell.claim.confidence * factor).max(0.05);
+                return true;
+            }
+        }
+        false
+    }
+
+
     /// Forget a specific belief by exact text match.
     pub fn forget(&mut self, text: &str) {
         self.cells.retain(|c| c.claim.text != text);
@@ -2444,20 +2499,24 @@ impl Universe {
             if best_score > 0.85 && best_idx < self.cells.len() {
                 // Semantic duplicate — update existing cell with new text/vec
                 // if it's high-strength (trusted training) or from ryan.
-                if strength >= 0.8 || source == "ryan" {
-                    self.cells[best_idx].label = text.to_string();
-                    self.cells[best_idx].claim.text = text.to_string();
-                    self.cells[best_idx].claim.vec = candidate_vec;
-                    self.cells[best_idx].claim.source = Arc::from(source);
-                    self.cells[best_idx].claim.confidence =
-                        (self.cells[best_idx].claim.confidence + 0.20).min(5.0);
-                } else {
-                    // Regular ingestion — just reinforce
-                    self.cells[best_idx].claim.confidence =
-                        (self.cells[best_idx].claim.confidence + 0.10).min(5.0);
+                // We must also ensure we don't cross-contaminate user bubbles or regions.
+                let cell = &self.cells[best_idx];
+                if cell.region.as_ref() == region && cell.claim.user_id.as_ref() == user_id {
+                    if strength >= 0.8 || source == "ryan" {
+                        self.cells[best_idx].label = text.to_string();
+                        self.cells[best_idx].claim.text = text.to_string();
+                        self.cells[best_idx].claim.vec = candidate_vec;
+                        self.cells[best_idx].claim.source = Arc::from(source);
+                        self.cells[best_idx].claim.confidence =
+                            (self.cells[best_idx].claim.confidence + 0.20).min(5.0);
+                    } else {
+                        // Regular ingestion — just reinforce
+                        self.cells[best_idx].claim.confidence =
+                            (self.cells[best_idx].claim.confidence + 0.10).min(5.0);
+                    }
+                    self.mark_dirty(best_idx);
+                    return false;
                 }
-                self.mark_dirty(best_idx);
-                return false;
             }
         }
         // Genuinely new cell
@@ -3350,3 +3409,4 @@ impl Universe {
             .collect()
     }
 }
+

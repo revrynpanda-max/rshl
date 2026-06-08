@@ -85,6 +85,7 @@ client.once('clientReady', async () => {
   let vitalsMessage = null;
   let vitalsFailCount = 0;
   let vitalsLastLog = 0;
+  let vitalsUpdateTick = 0;
   setInterval(async () => {
     try {
       const channelId = '1504582069886648351';
@@ -110,6 +111,9 @@ client.once('clientReady', async () => {
 
         // Calculate true mathematical state space volume (2^Synapses in scientific notation)
         const permutationsExp = Math.floor(stats.synapses * 0.30103).toLocaleString();
+        
+        vitalsUpdateTick++;
+        const nowStr = new Date().toLocaleString('en-US', { timeZoneName: 'short' });
 
         const msgText = `**[RSHL Vitals Update]**
  • **Total Active Cells (Neurons):** ${stats.total_cells.toLocaleString()}
@@ -119,7 +123,7 @@ client.once('clientReady', async () => {
  • **Geometric Bridges (Grounded):** ${synStats.neurons_with_outgoing.toLocaleString()}
  • **Throttle Velocity:** ${throttle.toFixed(2)}x
  • **Fractal State Space Volume:** ~ 10^${permutationsExp} Potential Sub-Networks
-*(Updating every 30 seconds...)*`;
+*(Updated: ${nowStr} | Tick: ${vitalsUpdateTick})*`;
 
         if (!vitalsMessage) {
           vitalsMessage = await channel.send(msgText);
@@ -266,26 +270,27 @@ client.on('messageCreate', async (message) => {
     message.channel.sendTyping().catch(() => {});
 
     // Pure RSHL path — Rust engine's generate_response_predictive (LLM = None)
-    let reply = await chatWithKaiNative(text, message.author.id);
+    let nativeReply = await chatWithKaiNative(text, message.author.id);
 
     // Fallback: if the Rust engine is offline/rebuilding, compose from raw lattice hits.
     // Still NO LLM — we surface the top lattice cell directly.
-    // If the lattice is also empty, KAI stays silent (sovereignty over noise).
-    if (!reply) {
+    if (!nativeReply) {
       console.log('[KAI] Native engine unavailable — composing from lattice hits...');
       const hits = await queryLattice(text, 3, '', message.author.id).catch(() => []);
       if (hits.length > 0) {
         // Surface the highest-resonance cell as KAI's voice
-        reply = hits[0].text;
+        nativeReply = hits[0].text;
         console.log('[KAI] Lattice hit fallback used.');
       } else {
-        console.log('[KAI] Lattice empty — KAI chooses silence over LLM delegation.');
+        console.log('[KAI] Lattice empty — KAI chooses silence.');
       }
     }
 
-    if (reply) {
-      await message.reply(reply).catch(console.error);
-      quantumObserve('KAI', reply, message.channelId);
+    let finalReply = nativeReply;
+
+    if (finalReply) {
+      await message.reply(finalReply).catch(console.error);
+      quantumObserve('KAI', finalReply, message.channelId);
 
       // Update drive system: message was processed
       onMessageProcessed();
@@ -293,11 +298,11 @@ client.on('messageCreate', async (message) => {
 
       // Log interaction back into the lattice for continuous learning
       storeLattice(
-        `${message.author.username}: "${text}" | KAI: "${reply}"`,
+        `${message.author.username}: "${text}" | KAI: "${nativeReply || '*Silence*'}"`,
         'discord', 1.0, 'discord', message.author.id
       ).catch(() => {});
 
-      logTrainingCorpus(text, reply, {
+      logTrainingCorpus(text, nativeReply || "*Silence*", {
         user_id: message.author.id,
         channel_id: message.channelId,
         hits: []

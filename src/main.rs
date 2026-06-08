@@ -263,7 +263,7 @@ impl App {
             base_dir,
             should_quit: false,
             bus: kai::streams::SharedBus::new(),
-            spectate_mode: false,
+            spectate_mode: true,
             spectate_full: false,
             mind_log: Vec::new(),
             last_pushed_mind_log_len: 0,
@@ -558,7 +558,7 @@ impl App {
         }
 
         // ── STREAM 1: GPU Math (dream consolidation with parallel cosine) ──
-        if self.engine.tick.is_multiple_of(3) {
+        if self.engine.tick.is_multiple_of(15) {
             let gpu_start = Instant::now();
             if self.spectate_mode {
                 self.think(
@@ -693,7 +693,7 @@ impl App {
         }
 
         // ── STREAM 2: CPU Logic (promotion) ───────────────────────────
-        if self.engine.tick.is_multiple_of(10) {
+        if self.engine.tick.is_multiple_of(30) {
             self.run_promotion_cycle();
             if self.spectate_mode && !self.last_promotion_text.is_empty() {
                 self.think("CPU", "🏆", self.last_promotion_text.clone());
@@ -702,7 +702,7 @@ impl App {
 
         // ── STREAM 3: RAM Memory Management ───────────────────────────
         // Homeostasis (decay + prune)
-        if self.engine.tick.is_multiple_of(20) {
+        if self.engine.tick.is_multiple_of(60) {
             self.run_homeostasis_cycle();
             if self.spectate_mode && !self.last_homeostasis_text.is_empty() {
                 self.think("RAM", "🧹", self.last_homeostasis_text.clone());
@@ -710,7 +710,7 @@ impl App {
         }
 
         // World Bridge intake (background learning)
-        if self.engine.tick.is_multiple_of(15) && self.engine.tick > 5 {
+        if self.engine.tick.is_multiple_of(45) && self.engine.tick > 5 {
             if self.spectate_mode {
                 self.think(
                     "RAM",
@@ -4806,6 +4806,7 @@ impl App {
         // happens above now flows directly into the language output.
         // Each field is drawn from the live module state at this exact moment.
         let brain_signals = BrainSignals {
+            speaker_name: Some("kai".to_string()),
             // Amygdala: threat/arousal level
             arousal: self.engine.amygdala.arousal(),
             // Oxytocin: bond with Ryan
@@ -5106,9 +5107,10 @@ impl App {
         // ── Hebbian reinforcement: cells that fired with this query get stronger ─
         // "Neurons that fire together, wire together." — Hebb, 1949.
         // Top hit gets a small strength boost — repeated resonance = durable knowledge.
+        // BONE HEAL: LTD and LTP are now handled naturally inside voice.rs 
+        // during `generate_response_predictive_inner` for ALL conversational paths.
         if let Some(top_hit) = hits.first() {
             if top_hit.score > 0.3 {
-                self.engine.universe.reinforce_by_text(&top_hit.text, 0.04);
                 // ── Neuroplasticity LTP: this cell fired — strengthen its synaptic weight ──
                 let da_level = self.engine.dopamine.level;
                 let ltp_delta =
@@ -10578,7 +10580,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_else(|_| ".".to_string());
         // Load persistence in a thread with 8MB stack to avoid overflow on 132MB JSON
-        let (universe, synaptic_layer) = {
+        let (mut universe, synaptic_layer) = {
             let base = base_dir.clone();
             let handle = std::thread::Builder::new()
                 .name("persistence-load".into())
@@ -10597,12 +10599,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         };
+
+        // BONE HEAL: Clean up any poisoned cells left over by automated ingestion
+        let heal_report = kai::cognition::bone_heal_pass(&mut universe);
+        println!("[BoneHeal] Startup scan: {}", heal_report);
+
         println!("--- KAI ORACLE HEADLESS MODE ---");
         println!("Oracle HTTP API: http://127.0.0.1:3334");
         println!("Use /api/oracle-turn or /api/discord-turn with {{from,text}}.");
+        let bitnet_voice = kai::cognition::BitnetVoice::new(
+            "bitnet/build/bin/Release/llama-server.exe",
+            "models/BitNet/bitnet-b1.58-2B-4T.gguf",
+            8080,
+        ).map(|b| std::sync::Arc::new(std::sync::Mutex::new(b)));
+
         kai::bridge::oracle_server::start_oracle_server(
             std::sync::Arc::new(std::sync::Mutex::new(universe)),
-            std::sync::Arc::new(std::sync::Mutex::new(synaptic_layer))
+            std::sync::Arc::new(std::sync::Mutex::new(synaptic_layer)),
         );
         return Ok(());
     }
@@ -10699,6 +10712,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         let oracle_universe = std::sync::Arc::new(std::sync::Mutex::new(app.engine.universe.clone()));
         let oracle_synapses = std::sync::Arc::new(std::sync::Mutex::new(app.engine.synaptic_layer.read().unwrap().clone()));
+        let oracle_bitnet = kai::cognition::BitnetVoice::new(
+            "bitnet/build/bin/Release/llama-server.exe",
+            "models/BitNet/bitnet-b1.58-2B-4T.gguf",
+            8081, // Different port to avoid conflict if both running somehow
+        ).map(|b| std::sync::Arc::new(std::sync::Mutex::new(b)));
+        
         std::thread::spawn(move || {
             kai::bridge::oracle_server::start_oracle_server(oracle_universe, oracle_synapses);
         });
