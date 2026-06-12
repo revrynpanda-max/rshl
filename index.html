@@ -226,9 +226,7 @@
 
     <nav>
     <a class="logo active" href="index.html">KAI & Oracle</a>
-    <a href="oracle.html">🔮 Oracle UI</a>
-    <a href="dashboard.html">📊 Live Pulse</a>
-    <a href="REPORT.html">📋 System Report</a>
+    <a href="https://github.com/revrynpanda-max/rshl">GitHub Repository →</a>
     <a href="https://github.com/revrynpanda-max/rshl">GitHub →</a>
   </nav>
 
@@ -237,31 +235,46 @@
     <p class="sub">"Identity through geometry, not language prediction."</p>
     <div class="badges">
       <img src="https://github.com/revrynpanda-max/rshl/actions/workflows/rust-ci.yml/badge.svg" alt="Rust CI">
-      <img src="https://img.shields.io/badge/version-6.7.0-brightgreen.svg" alt="v6.7.0">
+      <img src="https://img.shields.io/badge/version-8.4.16-brightgreen.svg" alt="v8.4.16">
       <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT">
     </div>
 
-    <div class="apps-grid">
-      <a class="app-card" href="oracle.html" style="border-color: var(--purple); background: rgba(188, 140, 255, 0.05);">
-        <span class="icon">🛰️</span>
-        <span class="name">Oracle Command Center</span>
-        <span class="desc">Master terminal for universal bridging</span>
+    <style>
+      .cloud-launch {
+        margin: 3rem auto 1rem;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.8rem;
+        background: linear-gradient(135deg, var(--accent), var(--purple));
+        color: #fff;
+        font-weight: 800;
+        font-size: 1.2rem;
+        padding: 1.2rem 2.5rem;
+        border-radius: 12px;
+        text-decoration: none;
+        box-shadow: 0 4px 25px rgba(88, 166, 255, 0.4);
+        transition: transform 0.2s, box-shadow 0.2s;
+      }
+      .cloud-launch:hover {
+        transform: translateY(-3px) scale(1.02);
+        box-shadow: 0 8px 35px rgba(188, 140, 255, 0.6);
+      }
+      .cloud-sub {
+        font-size: 0.9rem;
+        color: var(--muted);
+        max-width: 600px;
+        margin: 0 auto;
+      }
+    </style>
+
+    <div style="text-align: center;">
+      <a class="cloud-launch" href="https://codespaces.new/revrynpanda-max/rshl?quickstart=1" target="_blank">
+        <svg height="24" aria-hidden="true" viewBox="0 0 16 16" version="1.1" width="24" data-view-component="true" fill="currentColor">
+            <path d="M2 1.75C2 .784 2.784 0 3.75 0h8.5C13.216 0 14 .784 14 1.75v12.5A1.75 1.75 0 0 1 12.25 16h-8.5A1.75 1.75 0 0 1 2 14.25Zm1.75-.25a.25.25 0 0 0-.25.25v12.5c0 .138.112.25.25.25h8.5a.25.25 0 0 0 .25-.25V1.75a.25.25 0 0 0-.25-.25Zm6.5 7a.75.75 0 0 1 0 1.5h-4a.75.75 0 0 1 0-1.5Z"></path>
+        </svg>
+        Launch KAI in the Cloud
       </a>
-      <a class="app-card" href="oracle.html">
-        <span class="icon">🔮</span>
-        <span class="name">Oracle Roundtable</span>
-        <span class="desc">Live AI council diagnostic UI</span>
-      </a>
-      <a class="app-card" href="dashboard.html">
-        <span class="icon">📊</span>
-        <span class="name">KAI Live Pulse</span>
-        <span class="desc">Real-time cognitive field monitor</span>
-      </a>
-      <a class="app-card" href="REPORT.html">
-        <span class="icon">📋</span>
-        <span class="name">System Report</span>
-        <span class="desc">RSHL comprehensive audit report</span>
-      </a>
+      <p class="cloud-sub">Spins up a live, headless instance of the KAI Rust engine in GitHub Codespaces and automatically opens the KAI Web Chat portal in your browser.</p>
     </div>
   </header>
 
@@ -334,9 +347,7 @@ cd tools/oracle-discord && .\run-oracle-discord.ps1</div>
 
   <footer>
     Copyright &copy; 2026 Ryan Ervin / Geometric Intelligence Systems &nbsp;&middot;&nbsp;
-    <a href="https://github.com/revrynpanda-max/rshl">GitHub</a> &nbsp;&middot;&nbsp;
-    <a href="/rshl/oracle.html">Oracle UI</a> &nbsp;&middot;&nbsp;
-    <a href="/rshl/dashboard.html">Live Pulse</a>
+    <a href="https://github.com/revrynpanda-max/rshl">GitHub</a>
   </footer>
 
 </body>
