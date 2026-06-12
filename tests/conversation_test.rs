@@ -717,16 +717,16 @@ fn kai_conversation() {
 //   - alertness is high (0.80) — active session
 fn active_brain() -> BrainSignals {
     BrainSignals {
-        arousal: 0.35,
+        arousal: 0.80,
         bond: 0.72,
         social_reward: 0.65,
         approaching: true,
         felt_valence: 0.25,
-        dopamine: 0.65,
+        dopamine: 0.80,
         norepinephrine: 0.45,
         serotonin: 0.55,
-        conflict: 0.12,
-        confidence: 0.68,
+        conflict: 0.05,
+        confidence: 0.80,
         empathy: 0.55,
         social_pain: 0.0,
         hedonic: 0.50,
