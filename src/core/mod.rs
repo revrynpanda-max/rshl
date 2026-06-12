@@ -14,6 +14,20 @@ pub mod memory;
 pub mod mind_frame;
 #[cfg(feature = "gpu")]
 pub mod gpu_compute;
+
+#[cfg(not(feature = "gpu"))]
+pub mod gpu_compute {
+    use crate::core::sparse_vec::SparseVec;
+    pub struct GpuCompute;
+    pub struct BoidForceResult { pub bundle_sums: Vec<i32> }
+    impl GpuCompute {
+        pub async fn new() -> Option<Self> { None }
+        pub async fn batch_cosine(&self, _query: &SparseVec, _targets: &[&SparseVec]) -> Vec<f32> { vec![] }
+        pub async fn run_boid_forces(&self, _cell_vecs: &[SparseVec], _sep_weight: i32, _coh_weight: i32, _anchor_weight: i32) -> BoidForceResult { BoidForceResult { bundle_sums: vec![] } }
+        pub fn update_active_region(&self, _region: u32) {}
+    }
+    pub fn threshold_bundle(_bundle: &[i32], _n: usize) -> Vec<i8> { vec![] }
+}
 #[cfg(feature = "gpu")]
 pub mod gpu_kernel;
 pub mod normalize;

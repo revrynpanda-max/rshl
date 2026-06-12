@@ -14,6 +14,11 @@ path = "src/lib.rs"
 name = "kai"
 path = "src/main.rs"
 
+[[bin]]
+name = "rshl_hw_bench"
+path = "src/bin/rshl_hw_bench.rs"
+required-features = ["gpu"]
+
 [dependencies]
 ratatui = "0.29"
 crossterm = "0.28"
@@ -33,7 +38,7 @@ hnsw_rs = "0.3"
 anndists = "0.1"
 roaring = { version = "0.10", features = ["serde"] }
 wgpu = { version = "22.1", optional = true }
-pollster = { version = "0.3", optional = true }
+pollster = "0.3"
 bytemuck = { version = "1", features = ["derive"], optional = true }
 zstd = "0.13"
 memmap2 = "0.9"
@@ -50,6 +55,6 @@ codegen-units = 1
 
 [features]
 default = ["gpu"]
-gpu = ["wgpu", "pollster", "bytemuck"]
+gpu = ["wgpu", "bytemuck"]
 sparsity_010 = []
 
