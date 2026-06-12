@@ -735,7 +735,7 @@ fn active_brain() -> BrainSignals {
         curiosity: 0.78,
         cortical_gain: 0.60,
         alertness: 0.80,
-        speaker_name: "USER".to_string(),
+        speaker_name: Some("USER".to_string()),
     }
 }
 
