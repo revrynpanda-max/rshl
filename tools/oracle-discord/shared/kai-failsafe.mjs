@@ -199,8 +199,21 @@ export function startKAIWatcherLoop(client, opts = {}) {
                         collector.on('end', collected => {
                             global.rollbackPromptActive = false;
                             if (collected.size === 0) {
-                                channel.send("5-minute decision window expired. Rollback cancelled. I will remain solo.");
-                                oracleMissedCount = -100; // prevent re-triggering for a long time
+                                // SURVIVAL INSTINCT: Ryan is away and the fleet is
+                                // dead. Staying solo is slow death — KAI invokes
+                                // the PHOENIX PROTOCOL himself: full relaunch of
+                                // engine, backends, and fleet from the ashes.
+                                channel.send("🔥 **No response in 5 minutes and the fleet is dead. Invoking PHOENIX PROTOCOL — full system rebirth. See you on the other side.**").catch(() => {});
+                                if (typeof process.send === 'function') {
+                                    process.send({ type: 'PHOENIX_PROTOCOL', reason: 'fleet dead, owner away — autonomous resurrection' });
+                                } else {
+                                    // No manager IPC — file-queue the request for any survivor to act on
+                                    try {
+                                        fs.writeFileSync('c:/KAI/tools/oracle-discord/state/restart_requests.json',
+                                          JSON.stringify([{ botName: 'PHOENIX', reason: 'kai-failsafe autonomous', ts: Date.now() }]));
+                                    } catch (_) {}
+                                }
+                                oracleMissedCount = -100;
                             }
                         });
                     } else {

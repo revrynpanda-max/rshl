@@ -484,6 +484,11 @@ impl Hippocampus {
         self.pattern_store.len()
     }
 
+    /// How many patterns are queued for sleep-phase consolidation replay
+    pub fn pending_count(&self) -> usize {
+        self.pending_consolidations.len()
+    }
+
     /// Brief status for the brain monitor display
     pub fn status_line(&self) -> String {
         format!(

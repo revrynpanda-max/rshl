@@ -100,6 +100,7 @@ dataset.zip
 *.db-wal
 models/
 ui/
+ui/
 KAI_Cloud_Pod.zip
 data/ingest_shelved/
 bitnet/
@@ -107,3 +108,10 @@ state/
 scratch_*.py
 *.pyc
 __pycache__
+KAI_CELLS_SAFE_BACKUP_*/
+scratch_bitnet_extractor/
+neural_structure*.json
+query.json
+req.json
+oracle_test_response.json
+*.bin.zst

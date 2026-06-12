@@ -18,6 +18,7 @@
 import fetch from 'node-fetch';
 import { buildGraph, blastRadius, riskScore } from './dependency-graph.mjs';
 import { recordMetric } from './metrics-store.mjs';
+import { shouldRunSpot } from './resource-saver.mjs';
 import path from 'path';
 import { chatWithOpenJarvis } from './openjarvis.mjs';
 import { KaiSubAgentPool, parallelFileAnalysis, parallelResearch } from './kai-subagent-pool.mjs';
@@ -257,6 +258,46 @@ function parseFileBlocks(llmOutput) {
 export async function runCodingTask(task, callLLM, onProgress = null) {
   // If no callLLM provided, use Oracle’s built-in dispatcher
   if (!callLLM) callLLM = makeLLMCaller(onProgress);
+
+  // ── JUNK-TICKET FILTER ──────────────────────────────────────────────────
+  // Auto-repair tickets about provider/billing/transient errors are NOT
+  // codable — no file change fixes a 429 quota or a network timeout. These
+  // burned GPU for minutes to produce "LLM returned no implementation".
+  if (/\[ORACLE\/AUTO-REPAIR\]/i.test(task)) {
+    if (/(\b(400|401|403|408|429|500|502|503|504|520|521|522|524)\b|quota|rate.?limit|cooldown|timed? ?out|aborted|unavailable|model not found|econn|fetch failed|billing|unexpected server response|socket hang up|enotfound|null.?fallback|returned null|skipping turn|failing over|elevenlabs)/i.test(task)) {
+      console.log('[KaiCoderAgent] Auto-repair ticket is a transient provider/billing error — declining (not codable).');
+      return {
+        success: false,
+        declined: true,
+        report: '🧹 Auto-repair skipped: transient provider/quota/network error, not a code defect. No GPU time spent.'
+      };
+    }
+    // Code generation needs a real cloud model; the local fallback just
+    // times out and emits nothing.
+    try {
+      const { isProviderReady } = await import('./failure-tracker.mjs');
+      const cloudReady = ['groq', 'gemini', 'zen', 'xai', 'moonshot'].some(p => {
+        try { return isProviderReady(p); } catch (_) { return false; }
+      });
+      if (!cloudReady) {
+        console.log('[KaiCoderAgent] No cloud provider available — deferring auto-repair.');
+        return {
+          success: false,
+          deferred: true,
+          report: '⏸️ Auto-repair deferred: all cloud providers cooling down. Will retry when one recovers — the local model is not reliable enough for production codegen.'
+        };
+      }
+    } catch (_) {}
+  }
+
+  if (!(await shouldRunSpot('Kai Coder', 'work'))) {
+    recordMetric('proof-task', 'deferred', 1, { task: 'coding-task', spot: 'Kai Coder' });
+    return {
+      success: false,
+      deferred: true,
+      report: 'Kai Coder work deferred by Resource Governor v2. The task was not started.'
+    };
+  }
 
   const log = (msg) => {
     console.log(`[KaiCoderAgent] ${msg}`);

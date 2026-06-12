@@ -34,6 +34,7 @@
 
 import http from 'http';
 import path from 'path';
+import fs from 'fs';
 import { recordMetric } from './metrics-store.mjs';
 import { BOT_PORTS } from './channel-rules.mjs';
 
@@ -100,12 +101,34 @@ export async function verifyBotHealth(botName, timeoutMs = HEALTH_DEFAULT_TIMEOU
  * Send a RESTART_BOT IPC to the ecosystem-manager (our parent process).
  * Returns true if the message was queued, false if we have no IPC channel.
  */
+// FALLBACK QUEUE: when a caller has no parent IPC channel (e.g. the
+// standalone ToolServer), restart requests are written to a state file that
+// the ecosystem-manager polls every 5s. No more stranded patches.
+const RESTART_QUEUE_FILE = 'c:/KAI/tools/oracle-discord/state/restart_requests.json';
+function queueRestartToFile(botName, reason) {
+  try {
+    let queue = [];
+    try { queue = JSON.parse(fs.readFileSync(RESTART_QUEUE_FILE, 'utf8')); } catch (_) {}
+    if (!Array.isArray(queue)) queue = [];
+    // De-dupe: one pending request per bot
+    if (!queue.some(q => q.botName === botName)) {
+      queue.push({ botName, reason: String(reason).slice(0, 80), ts: Date.now() });
+    }
+    fs.writeFileSync(RESTART_QUEUE_FILE, JSON.stringify(queue, null, 2));
+    console.log('[process-supervisor] No parent IPC — restart of ' + botName + ' queued to file (manager polls every 5s).');
+    recordMetric('process-supervisor', 'restart_queued_file', 1, { bot: botName, reason: String(reason).slice(0, 60) });
+    return true;
+  } catch (e) {
+    console.warn('[process-supervisor] File-queue fallback failed:', e.message);
+    recordMetric('process-supervisor', 'restart_request_no_ipc', 1, { bot: botName, reason: String(reason).slice(0, 60) });
+    return false;
+  }
+}
+
 export function requestBotRestart(botName, reason = 'auto-repair') {
   if (!botName) return false;
   if (typeof process.send !== 'function') {
-    console.warn('[process-supervisor] No parent IPC — restart of ' + botName + ' cannot be requested.');
-    recordMetric('process-supervisor', 'restart_request_no_ipc', 1, { bot: botName, reason: String(reason).slice(0, 60) });
-    return false;
+    return queueRestartToFile(botName, reason);
   }
   try {
     process.send({ type: 'RESTART_BOT', botName, reason: String(reason).slice(0, 80), ts: Date.now() });

@@ -1,31 +1,74 @@
-/**
- * WorldClock — 1 Real Minute = 1 Game Minute
- */
-export class WorldClock {
-  constructor() {
-    this.startTime = Date.now();
-    this.timeScale = 1;
-    this.dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-  }
-  tick() {}
-  getState() { return this.getCurrentState(); }
-  getCurrentState() {
-    const elapsedRealMs = Date.now() - this.startTime;
-    const gameDate = new Date(this.startTime + elapsedRealMs * this.timeScale);
-    return {
-      hour: gameDate.getHours(),
-      minute: gameDate.getMinutes(),
-      day: this.dayNames[gameDate.getDay()],
-      isWeekend: [0, 6].includes(gameDate.getDay()),
-      timeString: gameDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    };
-  }
-}
-
 import fs from 'fs';
 import path from 'path';
 import { BIOGRAPHIES } from './biographies.mjs';
 import { isWorkingHours, isSocialHours } from './hours.mjs';
+
+const WORLD_CLOCK_FILE = path.join(process.cwd(), 'state', 'world-clock.json');
+
+/**
+ * WorldClock — live real-time + kaiverse time (1 real minute = 1 game minute).
+ * Persists tick sequence so every agent shares the same "now".
+ */
+export class WorldClock {
+  constructor() {
+    this.timeScale = 1;
+    this.dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    this.startTime = Date.now();
+    this.tickSeq = 0;
+    try {
+      if (fs.existsSync(WORLD_CLOCK_FILE)) {
+        const saved = JSON.parse(fs.readFileSync(WORLD_CLOCK_FILE, 'utf8'));
+        if (saved.startTime) this.startTime = saved.startTime;
+        if (typeof saved.tickSeq === 'number') this.tickSeq = saved.tickSeq;
+      }
+    } catch (_) {}
+  }
+
+  tick() {
+    this.tickSeq += 1;
+    try {
+      fs.mkdirSync(path.dirname(WORLD_CLOCK_FILE), { recursive: true });
+      fs.writeFileSync(WORLD_CLOCK_FILE, JSON.stringify({
+        startTime: this.startTime,
+        tickSeq: this.tickSeq,
+        updatedAt: new Date().toISOString(),
+      }));
+    } catch (_) {}
+  }
+
+  getState() { return this.getCurrentState(); }
+
+  getCurrentState() {
+    const now = new Date();
+    const elapsedRealMs = Date.now() - this.startTime;
+    const gameDate = new Date(this.startTime + elapsedRealMs * this.timeScale);
+    const realLocal = now.toLocaleString('en-US', {
+      weekday: 'short',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true,
+    });
+    return {
+      realIso: now.toISOString(),
+      realLocal,
+      realEpochMs: now.getTime(),
+      realEpochSec: Math.floor(now.getTime() / 1000),
+      tickSeq: this.tickSeq,
+      hour: gameDate.getHours(),
+      minute: gameDate.getMinutes(),
+      second: gameDate.getSeconds(),
+      day: this.dayNames[gameDate.getDay()],
+      isWeekend: [0, 6].includes(gameDate.getDay()),
+      timeString: gameDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      kaiverseDay: this.dayNames[gameDate.getDay()],
+      kaiverseTime: gameDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+    };
+  }
+}
 
 // Where bot vitals are persisted between restarts
 const STATE_DIR = path.join(process.cwd(), 'state');
@@ -156,6 +199,9 @@ export class AgentSimulation {
       entropy:        0.0,
       isSleeping,
       isDreaming:     false,
+      position:       { x: 0, y: 0, z: 0 },
+      rotation:       { x: 0, y: 0, z: 0 },
+      bodyState:      "idle",
       environment:    { cpu: 10, thermal: "Cool" },
       emotions: {
         serenity: 0.60, // Stable/Peaceful
@@ -499,8 +545,13 @@ ${this.getEnvironmentSensation()}`.trim();
   }
 
   getPromptContext(worldTime) {
-    return `[STATUS]
-Time: ${worldTime.timeString} (${worldTime.day})
+    const realNow = worldTime?.realLocal || worldTime?.realIso || worldTime?.timeString || 'unknown';
+    const kaiverse = worldTime?.kaiverseTime
+      ? `${worldTime.kaiverseDay} ${worldTime.kaiverseTime}`
+      : `${worldTime?.timeString || ''} (${worldTime?.day || ''})`;
+    return `[KAIVERSE NOW]
+Real time: ${realNow}${worldTime?.tickSeq != null ? ` | tick #${worldTime.tickSeq}` : ''}
+Kaiverse: ${kaiverse}
 Status: ${this.state.status} | Groggy: ${Math.round(this.groggyLevel * 100)}%
 Energy: ${Math.round(this.state.energy)}% | Focus: ${Math.round(this.state.focus)}%`.trim();
   }

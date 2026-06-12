@@ -1583,8 +1583,46 @@ impl Universe {
     pub fn query_vec_user(&self, q: &SparseVec, n: usize, user_id: &str) -> Vec<(Cell, f32)> {
         let mag_q = q.nnz() as f32;
         let mag_q_sqrt = mag_q.sqrt();
-        let theta_q = q.phase_angle();
 
+        // ── GPU-Accelerated Path (RTX 4050 POPCNT cascade) ──────────────────
+        // For large lattices (>10K cells), dispatch to the GPU compute shader.
+        // The shader uses bitpacked POPCNT cosine — identical math, ~10x faster.
+        // Falls back to CPU par_iter if GPU is unavailable or lattice is small.
+        const GPU_THRESHOLD: usize = 10_000;
+        if let Some(ref gpu) = self.gpu {
+            if self.cells.len() >= GPU_THRESHOLD {
+                // Collect eligible cell refs and their original indices
+                let eligible: Vec<(usize, &Cell)> = self.cells.iter().enumerate()
+                    .filter(|(_, cell)| {
+                        cell.claim.source.as_ref() != "user-echo"
+                            && cell.claim.source.as_ref() != "conversation"
+                            && (cell.claim.layer != super::claim::LAYER_CELLULAR
+                                || cell.claim.user_id.as_ref() == user_id)
+                    })
+                    .collect();
+
+                let vecs: Vec<&SparseVec> = eligible.iter().map(|(_, c)| &c.claim.vec).collect();
+
+                // Dispatch to GPU — returns cosine scores in same order as vecs
+                let gpu_scores = pollster::block_on(gpu.batch_cosine(q, &vecs));
+
+                if gpu_scores.len() == eligible.len() {
+                    let mut scored: Vec<(usize, f32)> = eligible.iter().zip(gpu_scores.iter())
+                        .filter_map(|((orig_idx, cell), &cosine)| {
+                            let strength_bonus = if cell.claim.confidence >= 2.9 { 0.85 } else { 0.5 };
+                            let score = cosine * (strength_bonus + 0.6 * cell.claim.confidence.min(5.0));
+                            if score > 0.08 { Some((*orig_idx, score)) } else { None }
+                        })
+                        .collect();
+                    scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+                    scored.truncate(n);
+                    return scored.iter().map(|&(i, score)| (self.cells[i].clone(), score)).collect();
+                }
+                // If GPU returned wrong size (shouldn't happen), fall through to CPU
+            }
+        }
+
+        // ── CPU Fallback Path (POPCNT par_iter) ─────────────────────────────
         let mut scored: Vec<(usize, f32)> = self
             .cells
             .par_iter()
@@ -1593,7 +1631,6 @@ impl Universe {
                 if cell.claim.source.as_ref() == "user-echo" || cell.claim.source.as_ref() == "conversation" {
                     return false;
                 }
-                
                 if cell.claim.layer == super::claim::LAYER_CELLULAR {
                     if cell.claim.user_id.as_ref() != user_id {
                         return false;
@@ -1609,11 +1646,7 @@ impl Universe {
                 } else {
                     0.0
                 };
-                let strength_bonus = if cell.claim.confidence >= 2.9 {
-                    0.85
-                } else {
-                    0.5
-                };
+                let strength_bonus = if cell.claim.confidence >= 2.9 { 0.85 } else { 0.5 };
                 let score = cosine * (strength_bonus + 0.6 * cell.claim.confidence.min(5.0));
                 (i, score)
             })
@@ -1622,11 +1655,7 @@ impl Universe {
 
         scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         scored.truncate(n);
-
-        scored
-            .iter()
-            .map(|&(i, score)| (self.cells[i].clone(), score))
-            .collect()
+        scored.iter().map(|&(i, score)| (self.cells[i].clone(), score)).collect()
     }
 
     /// Query only within a specific region — used for self/identity questions

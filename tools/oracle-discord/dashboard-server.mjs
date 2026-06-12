@@ -1,11 +1,30 @@
 import http from 'http';
 import fs from 'fs';
 import path from 'path';
+import { buildProofSummary, renderProofMarkdown, proofPaths } from './shared/proof-metrics.mjs';
 
 const PORT = 3001;
 const DASHBOARD_FILE = 'c:\\KAI\\oracle.html';
 
 const server = http.createServer((req, res) => {
+  if (req.url === '/api/proof/summary') {
+    const summary = buildProofSummary();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(summary, null, 2));
+    return;
+  }
+
+  if (req.url === '/proof') {
+    const summary = buildProofSummary();
+    const markdown = fs.existsSync(proofPaths.latestMarkdown)
+      ? fs.readFileSync(proofPaths.latestMarkdown, 'utf8')
+      : renderProofMarkdown(summary);
+    const escaped = markdown.replace(/[&<>]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch]));
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(`<!doctype html><html><head><meta charset="utf-8"><title>KAI Proof Report</title><style>body{font-family:system-ui,Segoe UI,sans-serif;margin:32px;max-width:1100px;line-height:1.45}pre{white-space:pre-wrap;background:#0d1117;color:#e6edf3;padding:20px;border-radius:8px}a{color:#0969da}</style></head><body><p><a href="/dashboard">Dashboard</a> | <a href="/api/proof/summary">Proof JSON</a></p><pre>${escaped}</pre></body></html>`);
+    return;
+  }
+
   // Proxy /api requests to the Rust CNS on 3334
   if (req.url.startsWith('/api')) {
     const proxyReq = http.request({

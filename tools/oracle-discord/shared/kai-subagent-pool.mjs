@@ -21,6 +21,8 @@
 
 import { callGroqDirect } from './openjarvis.mjs';
 import os from 'os';
+import { getPerformanceTier, shouldRunSpot } from './resource-saver.mjs';
+import { recordMetric } from './metrics-store.mjs';
 
 // ── Sub-Agent Identity ─────────────────────────────────────────────────────────
 // Sub-agents are lightweight Groq instances — fast, lock-free, disposable.
@@ -41,12 +43,28 @@ function getSystemLoad() {
   return Math.min(load / cpus, 1.0);
 }
 
-function getDynamicConcurrency(baseMax = 8) {
+function getLoadConcurrency(baseMax = 8) {
   const load = getSystemLoad();
   if (load > 0.85) return Math.max(2, Math.floor(baseMax * 0.25)); // Heavy load: 2 agents
   if (load > 0.65) return Math.max(3, Math.floor(baseMax * 0.5));  // Medium: half
   if (load > 0.40) return Math.floor(baseMax * 0.75);              // Light-medium: 75%
   return baseMax;                                                    // Idle: full throttle
+}
+
+async function getDynamicConcurrency(baseMax = 8) {
+  const loadCap = getLoadConcurrency(baseMax);
+  try {
+    const perf = await getPerformanceTier();
+    if (perf.tier === 'PROTECT') return 1;
+    if (!perf.spots?.['Kai Coder']?.allowed) return 1;
+    const pressure = Math.max(perf.cpuLoad || 0, perf.gpuLoad || 0, perf.memLoad || 0, perf.projectPressure || 0);
+    if (pressure > 85) return Math.min(loadCap, 2);
+    if (pressure > 70) return Math.min(loadCap, Math.max(2, Math.floor(baseMax * 0.35)));
+    if (pressure > 55) return Math.min(loadCap, Math.max(3, Math.floor(baseMax * 0.55)));
+    return loadCap;
+  } catch {
+    return loadCap;
+  }
 }
 
 // ── Sub-Agent Pool Class ───────────────────────────────────────────────────────
@@ -62,7 +80,7 @@ export class KaiSubAgentPool {
 
   // Acquire a slot — waits if at capacity
   async _acquire() {
-    const effective = getDynamicConcurrency(this.maxConcurrent);
+    const effective = await getDynamicConcurrency(this.maxConcurrent);
     if (this.running < effective) {
       this.running++;
       return;
@@ -91,13 +109,19 @@ export class KaiSubAgentPool {
    * @returns {Promise<string|null>}
    */
   async runOne(task) {
+    const allowed = await shouldRunSpot('Kai Coder', 'work');
+    if (!allowed) {
+      recordMetric('proof-task', 'deferred', 1, { task: task.id || 'sub-agent', spot: 'Kai Coder' });
+      return null;
+    }
     await this._acquire();
+    const effectiveConcurrency = await getDynamicConcurrency(this.maxConcurrent);
     const model = SUB_AGENT_MODELS[task.model] || task.model || SUB_AGENT_MODELS.default;
     const label = task.id || 'sub-agent';
     const maxTokens = task.maxTokens || 1000;
     const system = task.system || 'You are a focused sub-agent in the KAI RSHL ecosystem. Complete your assigned task precisely and return only the requested output.';
 
-    console.log(`[SubAgent/${label}] Starting (model=${model}, concurrent=${this.running}/${getDynamicConcurrency(this.maxConcurrent)})`);
+    console.log(`[SubAgent/${label}] Starting (model=${model}, concurrent=${this.running}/${effectiveConcurrency})`);
     const start = Date.now();
 
     try {
@@ -129,7 +153,7 @@ export class KaiSubAgentPool {
    */
   async runAll(tasks, onProgress = null) {
     if (!tasks || tasks.length === 0) return [];
-    console.log(`[SubAgentPool] Dispatching ${tasks.length} sub-agents. Max concurrent: ${getDynamicConcurrency(this.maxConcurrent)}.`);
+    console.log(`[SubAgentPool] Dispatching ${tasks.length} sub-agents. Max concurrent: ${await getDynamicConcurrency(this.maxConcurrent)}.`);
     const total = tasks.length;
     let done = 0;
 

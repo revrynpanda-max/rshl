@@ -1,4 +1,16 @@
-//! Theory of Mind — KAI's model of what Ryan knows, believes, and wants
+//! Theory of Mind — KAI's model of every person he has met.
+//!
+//! Originally built to track Ryan alone, ToM is now a multi-person registry.
+//! KAI builds a `PersonProfile` for every human (and bot) he encounters across
+//! Discord, chats, and direct messages. Each profile holds:
+//!   - Remembered facts ("Ryan said he has a laptop", "Jake likes Rust")
+//!   - Knowledge map (what topics this person knows about)
+//!   - Emotion history (how they tend to express themselves)
+//!   - Whether they are a bot or human
+//!   - When KAI first and last saw them
+//!
+//! The single-user API is preserved for backward compatibility with the
+//! existing engine tick and response generation paths.
 //!
 //! Theory of Mind (ToM) is the ability to understand that OTHER people have
 //! their own mental states — beliefs, desires, knowledge, intentions —
@@ -91,6 +103,149 @@ pub struct DetectedEmotion {
     pub turn: u64,
 }
 
+// ── Person Fact ───────────────────────────────────────────────────────────────
+
+/// A persistent remembered fact about a specific person.
+/// These are extracted from their messages and stored permanently.
+/// Examples:
+///   "Ryan said he built KAI from scratch"
+///   "Ryan mentioned he uses a laptop with an RTX 4050"
+///   "Jake said he prefers Rust over Python"
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PersonFact {
+    /// The fact text — what KAI remembers about this person.
+    pub text: String,
+    /// How confident KAI is this is actually true (0–1).
+    /// Rises when the person confirms or repeats it. Falls if contradicted.
+    pub confidence: f32,
+    /// When this fact was first recorded (Unix timestamp).
+    pub timestamp: u64,
+    /// Source channel/context (e.g. "discord-channel-123", "direct-message")
+    pub source: String,
+}
+
+// ── Person Profile ────────────────────────────────────────────────────────────
+
+/// KAI's complete model of one person he has met.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PersonProfile {
+    /// Discord user ID or username (the registry key).
+    pub user_id: String,
+    /// Display name as seen in Discord.
+    pub display_name: String,
+    /// Is this entity a bot? Detected from Discord's bot flag + behavioral heuristics.
+    pub is_bot: bool,
+    /// Remembered facts about this person.
+    pub facts: Vec<PersonFact>,
+    /// What topics this person knows/talks about.
+    pub knowledge_map: std::collections::HashMap<String, f32>,
+    /// Recent emotional signals detected in their messages.
+    pub emotion_history: Vec<DetectedEmotion>,
+    /// Total messages KAI has observed from this person.
+    pub message_count: u64,
+    /// Unix timestamp of first observation.
+    pub first_seen: u64,
+    /// Unix timestamp of most recent observation.
+    pub last_seen: u64,
+    /// Detected communication style.
+    pub comm_style: CommunicationStyle,
+    /// Average message length in words.
+    pub avg_msg_length: f32,
+}
+
+impl PersonProfile {
+    pub fn new(user_id: &str, display_name: &str, is_bot: bool) -> Self {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        Self {
+            user_id: user_id.to_string(),
+            display_name: display_name.to_string(),
+            is_bot,
+            facts: Vec::new(),
+            knowledge_map: std::collections::HashMap::new(),
+            emotion_history: Vec::new(),
+            message_count: 0,
+            first_seen: now,
+            last_seen: now,
+            comm_style: CommunicationStyle::Conversational,
+            avg_msg_length: 0.0,
+        }
+    }
+
+    /// Record a new remembered fact about this person.
+    /// Avoids storing near-duplicates (checks if fact text is already known).
+    pub fn remember_fact(&mut self, text: &str, confidence: f32, source: &str) {
+        let lower = text.to_lowercase();
+        let already_known = self.facts.iter().any(|f| {
+            let sim = word_overlap(&f.text.to_lowercase(), &lower);
+            sim > 0.75
+        });
+        if already_known {
+            // Reinforce existing fact
+            if let Some(fact) = self.facts.iter_mut().find(|f| {
+                word_overlap(&f.text.to_lowercase(), &lower) > 0.75
+            }) {
+                fact.confidence = (fact.confidence + 0.05).min(1.0);
+            }
+            return;
+        }
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        self.facts.push(PersonFact {
+            text: text.to_string(),
+            confidence,
+            timestamp: now,
+            source: source.to_string(),
+        });
+        // Keep only the 100 most recent facts per person
+        if self.facts.len() > 100 {
+            self.facts.remove(0);
+        }
+    }
+
+    /// Observe a message from this person and update their profile.
+    pub fn observe_message(&mut self, text: &str) {
+        self.message_count += 1;
+        self.last_seen = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let word_count = text.split_whitespace().count() as f32;
+        let alpha = 0.15_f32;
+        self.avg_msg_length = self.avg_msg_length * (1.0 - alpha) + word_count * alpha;
+
+        // Update comm style
+        if self.avg_msg_length < 5.0 {
+            self.comm_style = CommunicationStyle::Terse;
+        } else if text.contains('?') {
+            self.comm_style = CommunicationStyle::Exploratory;
+        }
+    }
+
+    /// Return a brief summary of what KAI knows about this person.
+    pub fn summary(&self) -> String {
+        let kind = if self.is_bot { "bot" } else { "human" };
+        format!(
+            "{} ({}) — {} messages, {} facts known",
+            self.display_name, kind, self.message_count, self.facts.len()
+        )
+    }
+}
+
+/// Simple word overlap ratio between two lowercase strings (Jaccard-like).
+fn word_overlap(a: &str, b: &str) -> f32 {
+    let wa: std::collections::HashSet<&str> = a.split_whitespace().collect();
+    let wb: std::collections::HashSet<&str> = b.split_whitespace().collect();
+    if wa.is_empty() || wb.is_empty() { return 0.0; }
+    let inter = wa.intersection(&wb).count();
+    let union = wa.union(&wb).count();
+    inter as f32 / union as f32
+}
+
 // ── User Model ────────────────────────────────────────────────────────────────
 
 /// KAI's internal model of Ryan's mental state.
@@ -145,12 +300,16 @@ impl UserModel {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TheoryOfMind {
-    /// KAI's model of the user
+    /// KAI's model of the primary user (Ryan) — preserved for backward compat.
     pub user: UserModel,
     /// Whether the user appears to be an expert overall
     pub user_is_expert: bool,
     /// Detected primary communication style
     pub comm_style: CommunicationStyle,
+    /// Multi-person registry — KAI's memory of everyone he has met.
+    /// Keyed by Discord user_id or username.
+    #[serde(default)]
+    pub registry: std::collections::HashMap<String, PersonProfile>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -167,7 +326,84 @@ impl TheoryOfMind {
             user: UserModel::new(),
             user_is_expert: false,
             comm_style: CommunicationStyle::Conversational,
+            registry: std::collections::HashMap::new(),
         }
+    }
+
+    // ── Multi-person registry API ─────────────────────────────────────────
+
+    /// Get or create a profile for a person by their user ID.
+    /// `is_bot` is used only when creating a new profile — ignored for existing ones.
+    pub fn get_or_create_profile(&mut self, user_id: &str, display_name: &str, is_bot: bool) -> &mut PersonProfile {
+        self.registry
+            .entry(user_id.to_string())
+            .or_insert_with(|| PersonProfile::new(user_id, display_name, is_bot))
+    }
+
+    /// Observe a message from a person identified by user_id.
+    /// Updates their profile and optionally extracts a remembered fact.
+    pub fn observe_person_message(
+        &mut self,
+        user_id: &str,
+        display_name: &str,
+        text: &str,
+        is_bot: bool,
+        channel: &str,
+    ) {
+        let profile = self.get_or_create_profile(user_id, display_name, is_bot);
+        profile.observe_message(text);
+
+        // Extract personal facts from first-person statements
+        if !is_bot {
+            let lower = text.to_lowercase();
+            let personal_markers = [
+                "i am ", "i'm ", "i have ", "i've ", "i was ", "i built ",
+                "i created ", "i own ", "i use ", "i work ", "i live ",
+                "my name is ", "i like ", "i love ", "i hate ", "i prefer ",
+            ];
+            let has_personal = personal_markers.iter().any(|m| lower.contains(m));
+            // Only extract if it's a meaningful-length statement
+            if has_personal && text.split_whitespace().count() >= 5 {
+                let fact_text = format!("{} said: \"{}\"", display_name, &text[..text.len().min(150)]);
+                profile.remember_fact(&fact_text, 0.70, channel);
+            }
+        }
+    }
+
+    /// Remember a specific fact about a person.
+    pub fn remember_about(
+        &mut self,
+        user_id: &str,
+        display_name: &str,
+        fact: &str,
+        confidence: f32,
+        source: &str,
+    ) {
+        let profile = self.get_or_create_profile(user_id, display_name, false);
+        profile.remember_fact(fact, confidence, source);
+    }
+
+    /// Retrieve remembered facts about a person.
+    pub fn facts_about(&self, user_id: &str) -> Vec<&PersonFact> {
+        self.registry
+            .get(user_id)
+            .map(|p| p.facts.iter().collect())
+            .unwrap_or_default()
+    }
+
+    /// Is this Discord user ID known to be a bot?
+    pub fn is_known_bot(&self, user_id: &str) -> Option<bool> {
+        self.registry.get(user_id).map(|p| p.is_bot)
+    }
+
+    /// How many people does KAI have profiles for?
+    pub fn known_person_count(&self) -> usize {
+        self.registry.len()
+    }
+
+    /// Summary of all known people.
+    pub fn registry_summary(&self) -> Vec<String> {
+        self.registry.values().map(|p| p.summary()).collect()
     }
 
     /// Process a user message and update the internal model.

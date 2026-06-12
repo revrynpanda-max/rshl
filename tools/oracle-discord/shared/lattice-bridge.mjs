@@ -19,6 +19,9 @@ const QUERY_TIMEOUT_MS = 1500;   // was 4000 — 1.5s is the UX pain threshold
 const STORE_TIMEOUT_MS = 1000;   // store should be fire-and-forget fast
 const CORPUS_TIMEOUT_MS = 800;   // corpus logging must never block chat
 const CHAT_TIMEOUT_MS = 60000;   // native voice can take longer, give it 60s
+const EFFECTIVE_QUERY_TIMEOUT_MS = Number(process.env.KAI_LATTICE_QUERY_TIMEOUT_MS || 6000);
+const EFFECTIVE_STORE_TIMEOUT_MS = Number(process.env.KAI_LATTICE_STORE_TIMEOUT_MS || 4000);
+const EFFECTIVE_HEALTH_TIMEOUT_MS = Number(process.env.KAI_LATTICE_HEALTH_TIMEOUT_MS || 3000);
 
 // ── LRU Cache ───────────────────────────────────────────────────────────────
 // Simple in-memory cache for queryLattice. Key = "question|limit|region|userId"
@@ -60,7 +63,7 @@ async function ensureHealth() {
   lastHealthCheck = now;
   try {
     const res = await fetch(`${LATTICE_URL}/api/status`, {
-      signal: AbortSignal.timeout(500)
+      signal: AbortSignal.timeout(EFFECTIVE_HEALTH_TIMEOUT_MS)
     });
     isHealthy = res.ok;
     return isHealthy;
@@ -82,8 +85,9 @@ export async function queryLattice(question, limit = 5, region = "", userId = ""
   const cached = getCached(key);
   if (cached !== null) return cached;
 
-  const healthy = await ensureHealth();
-  if (!healthy) return [];
+  // Health is advisory. Under load /api/status can be slower than the actual
+  // query path, so still attempt the query and let that fetch decide.
+  await ensureHealth();
 
   try {
     const res = await fetch(`${LATTICE_URL}/api/rshl/query`, {
@@ -91,19 +95,25 @@ export async function queryLattice(question, limit = 5, region = "", userId = ""
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         query: question.trim(),
+        n: limit,
         limit,
         region: region || undefined,
         user_id: userId || undefined
       }),
-      signal: AbortSignal.timeout(QUERY_TIMEOUT_MS)
+      signal: AbortSignal.timeout(EFFECTIVE_QUERY_TIMEOUT_MS)
     });
 
-    if (!res.ok) return [];
+    if (!res.ok) {
+      isHealthy = false;
+      return [];
+    }
     const hits = await res.json();
     const result = Array.isArray(hits) ? hits : [];
     setCached(key, result);
+    isHealthy = true;
     return result;
   } catch (e) {
+    isHealthy = false;
     return [];
   }
 }
@@ -126,10 +136,17 @@ export async function storeLattice(text, source = 'oracle', strength = 2.0, regi
         region,
         user_id: userId || undefined
       }),
-      signal: AbortSignal.timeout(STORE_TIMEOUT_MS)
+      signal: AbortSignal.timeout(EFFECTIVE_STORE_TIMEOUT_MS)
     });
-    return res.ok;
+    if (res.ok) {
+      invalidateLatticeCache();
+      isHealthy = true;
+      return true;
+    }
+    isHealthy = false;
+    return false;
   } catch (e) {
+    isHealthy = false;
     return false;
   }
 }

@@ -3,7 +3,7 @@ import { recordMetric } from './metrics-store.mjs';
 import { Readable } from 'stream';
 import fs from 'fs';
 import ffmpegPath from 'ffmpeg-static';
-import { createAudioResource, StreamType, AudioPlayerStatus, createAudioPlayer, joinVoiceChannel, EndBehaviorType, entersState, VoiceConnectionStatus } from '@discordjs/voice';
+import { createAudioResource, StreamType, AudioPlayerStatus, createAudioPlayer, joinVoiceChannel, EndBehaviorType, entersState, VoiceConnectionStatus, getVoiceConnection } from '@discordjs/voice';
 import prism from 'prism-media';
 import { pipeline } from 'stream/promises';
 import { VOICE_PROFILES } from './voice-profiles.mjs';
@@ -13,7 +13,7 @@ import dotenv from 'dotenv';
 dotenv.config({ path: 'c:/KAI/tools/oracle-discord/.env', override: false });
 
 const ELEVEN_LABS_KEY = null; // ElevenLabs subscription inactive — using Kokoro/edge-tts
-console.log(`[TTS/Init] Key Fingerprint: ${ELEVEN_LABS_KEY ? ELEVEN_LABS_KEY.slice(0, 5) + '...' : 'MISSING'}`);
+console.log(`[TTS/Init] ElevenLabs disabled; using Kokoro/edge-tts fallback.`);
 const OPENAI_KEY = process.env.OPENAI_API_KEY;
 const RADIO_CHANNEL_ID = CHANNEL_IDS.VOICE; // Use the shared VOICE channel registry
 const voiceFailureCounts = new Map();
@@ -47,6 +47,70 @@ const ttsQueue = [];
 let isProcessingQueue = false;
 let cachedClient = null;
 
+// ── HUMAN-IN-VOICE GATE ─────────────────────────────────────────────────────
+// TTS generation (Kokoro on GPU) is the single biggest spike source. If no
+// human is sitting in the voice channel, nobody hears the audio anyway —
+// so skip generation entirely. Cached for 15s to avoid hammering Discord.
+// Override with KAI_TTS_ALWAYS=1 to restore old always-on behavior.
+// ── GPU GENERATION LOCK (cross-process) ─────────────────────────────────────
+// Only ONE Kokoro TTS generation runs at a time across the whole fleet.
+// Playback is already serialized (one voice at a time), so serializing
+// generation adds almost no latency but turns simultaneous GPU spikes
+// into a smooth, steady single-job queue.
+const GEN_LOCK_PATH = 'c:/KAI/tools/oracle-discord/state/tts_gen.lock';
+const GEN_LOCK_STALE_MS = 90_000;
+async function acquireGenLock(botName, maxWaitMs = 45_000) {
+  const start = Date.now();
+  while (true) {
+    try {
+      const st = fs.statSync(GEN_LOCK_PATH);
+      if (Date.now() - st.mtimeMs > GEN_LOCK_STALE_MS) {
+        try { fs.unlinkSync(GEN_LOCK_PATH); } catch (_) {}
+      }
+    } catch (_) {}
+    try {
+      fs.writeFileSync(GEN_LOCK_PATH, JSON.stringify({ botName, at: Date.now() }), { flag: 'wx' });
+      return true;
+    } catch (e) {
+      if (e.code !== 'EEXIST') return true; // fs trouble — don't block speech
+      if (Date.now() - start > maxWaitMs) return false;
+      await new Promise(r => setTimeout(r, 400));
+    }
+  }
+}
+function releaseGenLock(botName) {
+  try {
+    const data = JSON.parse(fs.readFileSync(GEN_LOCK_PATH, 'utf8'));
+    if (data.botName === botName) fs.unlinkSync(GEN_LOCK_PATH);
+  } catch (_) {}
+}
+
+let humanVoiceCache = { value: false, at: 0 };
+export async function isHumanInVoiceChannel() {
+  if (process.env.KAI_TTS_ALWAYS === '1') return true;
+  const now = Date.now();
+  if (now - humanVoiceCache.at < 15000) return humanVoiceCache.value;
+  humanVoiceCache.at = now;
+  try {
+    // Scan EVERY voice channel in every guild the bot can see (covers the
+    // radio channel, Leo's voice channel, and anything else) for a human.
+    let hasHuman = false;
+    for (const guild of cachedClient?.guilds?.cache?.values?.() || []) {
+      for (const channel of guild.channels.cache.values()) {
+        if (typeof channel.isVoiceBased === 'function' && channel.isVoiceBased()) {
+          if (channel.members?.some?.(m => !m.user?.bot)) { hasHuman = true; break; }
+        }
+      }
+      if (hasHuman) break;
+    }
+    humanVoiceCache.value = hasHuman;
+    return hasHuman;
+  } catch (_) {
+    humanVoiceCache.value = false;
+    return false;
+  }
+}
+
 async function processTTSQueue() {
   if (isProcessingQueue || ttsQueue.length === 0) return;
   isProcessingQueue = true;
@@ -63,6 +127,10 @@ async function processTTSQueue() {
 
 const botPlayers = new Map();
 const botConnections = new Map();
+
+export function getBotPlayer(botName) {
+  return botPlayers.get(botName) || null;
+}
 const ttsTokens = new Map(); // name -> timestamp (for interruption logic)
 
 const QUEUE_DIR = 'c:/KAI/tools/oracle-discord/state/voice_queue';
@@ -159,7 +227,7 @@ export function acquireVoiceLock(botName) {
     try {
       const data = fs.readFileSync(LOCK_FILE, 'utf8');
       const [name, time] = data.split('|');
-      if (Date.now() - parseInt(time) > 30000) {
+      if (Date.now() - parseInt(time) > 120000) {
         fs.unlinkSync(LOCK_FILE);
         return acquireVoiceLock(botName); 
       }
@@ -310,6 +378,27 @@ export async function speakTTS(text, botName) {
     console.log(`[${botName}/TTS] Text is empty after cleaning for TTS.`);
     return;
   }
+
+  // HUMAN-IN-VOICE GATE: no human listening = no GPU spent on audio.
+  if (!(await isHumanInVoiceChannel())) {
+    console.log(`[${botName}/TTS] 💤 No human in voice channel — skipping TTS generation (text-only).`);
+    return;
+  }
+
+  // HUMAN SPEAKING GATE: If a human is actively talking in voice right now,
+  // hold TTS until they are done. Bots should NEVER talk over a human.
+  try {
+    const { getGateState, waitForGateClear } = await import('./voice-gate.mjs');
+    const gate = getGateState();
+    if (gate.speaking) {
+      console.log(`[${botName}/TTS] 🔴 Human speaking — TTS on hold until gate clears...`);
+      await waitForGateClear(15000); // Up to 15s — then proceed anyway
+      console.log(`[${botName}/TTS] 🟢 Gate cleared — resuming TTS.`);
+    }
+  } catch {
+    // voice-gate missing or failed to import — don't block TTS
+  }
+
   
   return new Promise(async (resolve) => {
     // --- MASTER NARRATOR RELAY: Master handles all social voices through its OWN connection ---
@@ -385,8 +474,14 @@ export async function speakTTS(text, botName) {
       }
     }
 
-    if (!pregeneratedMp3) {
+    const socialBots = ['Gemini', 'Claudey', 'X', 'Groq'];
+    const skipKokoro = socialBots.includes(botName);
+
+    if (!pregeneratedMp3 && !skipKokoro) {
       console.log(`[${botName}/TTS] Pre-generating via local Kokoro-TTS...`);
+      // GPU LOCK: wait our turn so parallel bot replies can't stack
+      // multiple Kokoro jobs on the GPU at once.
+      await acquireGenLock(botName);
       const kokoroVoices = {
         "Gemini": "af_bella",
         "Claudey": "af_nicole",
@@ -395,7 +490,15 @@ export async function speakTTS(text, botName) {
         "KAI": "am_michael",
         "Leo": "am_puck"
       };
-      const voice = kokoroVoices[botName] || "af_heart";
+      let voice = kokoroVoices[botName] || "af_heart";
+      // Leo's fallback voice is user-selectable via Discord ("set leo's
+      // fallback voice to am_onyx") — stored in state/leo_voice.json.
+      if (botName === "Leo") {
+        try {
+          const stv = JSON.parse(fs.readFileSync('c:/KAI/tools/oracle-discord/state/leo_voice.json', 'utf8'));
+          if (stv.kokoro) voice = stv.kokoro;
+        } catch (_) {}
+      }
 
       pregeneratedMp3 = await new Promise((resolveBuffer) => {
         const pythonCode = `
@@ -414,12 +517,16 @@ try:
 except Exception as e:
     sys.exit(1)
 `;
-        const py = spawn('python', ['-c', pythonCode]);
+        // windowsHide stops a console window from flashing on EVERY spoken
+        // line — the source of the random PowerShell/cmd popups and part of
+        // the per-utterance CPU spike the user saw.
+        const py = spawn('python', ['-c', pythonCode], { windowsHide: true });
         const chunks = [];
         py.stdout.on('data', d => chunks.push(d));
         py.on('close', (code) => resolveBuffer(code === 0 && chunks.length > 0 ? Buffer.concat(chunks) : null));
         py.on('error', () => resolveBuffer(null));
       });
+      releaseGenLock(botName);
     }
 
     if (!pregeneratedMp3) {
@@ -434,7 +541,7 @@ except Exception as e:
       console.log(`[${botName}/TTS] Pre-generating via edge-tts [Voice: ${voiceIdEdge}]...`);
       
       pregeneratedMp3 = await new Promise((resolveBuffer) => {
-        const edge = spawn('edge-tts', ['--text', cleanedText, '--voice', voiceIdEdge]);
+        const edge = spawn('edge-tts', ['--text', cleanedText, '--voice', voiceIdEdge], { windowsHide: true });
         const chunks = [];
         edge.stdout.on('data', d => chunks.push(d));
         edge.on('close', () => resolveBuffer(Buffer.concat(chunks)));
@@ -504,29 +611,8 @@ except Exception as e:
     // Check interruption one last time after breath (removed token check)
 
     try {
-      const ffmpegArgs = [
-        '-i', 'pipe:0',
-        '-af', `${usedElevenLabs ? 'volume=1.0' : 'volume=2.0'},apad=pad_dur=0.08`,
-        '-ar', '48000', '-ac', '2',
-        '-c:a', 'libopus', '-b:a', '96k', '-f', 'opus', 'pipe:1'
-      ];
-      const ffmpeg = spawn(ffmpegPath, ffmpegArgs);
-
-      ffmpeg.stdin.on('error', () => {});
-
-      // ── DIAGNOSTIC: log ffmpeg stderr to see if conversion fails ──
-      const ffmpegErrChunks = [];
-      ffmpeg.stderr.on('data', d => ffmpegErrChunks.push(d));
-      ffmpeg.on('close', (code) => {
-        if (code !== 0) {
-          const errMsg = Buffer.concat(ffmpegErrChunks).toString().slice(-300);
-          console.error(`[${botName}/TTS] ⚠️ ffmpeg exited ${code}. Err: ${errMsg}`);
-        }
-      });
-      ffmpeg.on('error', (e) => console.error(`[${botName}/TTS] ffmpeg spawn error:`, e.message));
-      ffmpeg.stdout.on('error', () => {});
-
-      const resource = createAudioResource(ffmpeg.stdout, { inputType: StreamType.OggOpus });
+      const resource = createAudioResource(Readable.from(pregeneratedMp3), { inlineVolume: true });
+      resource.volume.setVolume(usedElevenLabs ? 1.0 : 2.0);
 
       // Register stateListener BEFORE play() to avoid race condition
       const stateListener = (oldState, newState) => {
@@ -540,7 +626,6 @@ except Exception as e:
       };
       player.on('stateChange', stateListener);
 
-      Readable.from(pregeneratedMp3).pipe(ffmpeg.stdin);
       player.play(resource);
       console.log(`[${botName}/TTS] 🔊 play() called. Buffer=${pregeneratedMp3.length}b, playerState=${player.state.status}`);
 
@@ -709,7 +794,7 @@ async function performOpenAITTS(text, botName) {
 
       const ffmpeg = spawn(ffmpegPath, [
         '-i', 'pipe:0',
-        '-af', 'volume=1.0,apad=pad_dur=0.08',
+        '-af', 'volume=1.0',
         '-f', 's16le', '-ar', '48000', '-ac', '2', 'pipe:1'
       ]);
 
@@ -763,6 +848,55 @@ async function speakLocalKokoro(text, botName) {
   const cleanedText = cleanTextForTTS(text);
   if (!cleanedText) return;
   
+  const socialBots = ['Gemini', 'Claudey', 'X', 'Groq'];
+  if (socialBots.includes(botName)) {
+      // Force edge-tts for social bots to prevent GPU slamming
+      return new Promise(async (resolve) => {
+        let waitCount = 0;
+        while (waitCount < 300) {
+          if (!isSomeoneSpeaking(botName) && acquireVoiceLock(botName)) break;
+          await new Promise(r => setTimeout(r, 200));
+        }
+        const fallbackVoices = {
+          'Groq': 'en-US-EricNeural',
+          'Claudey': 'en-GB-SoniaNeural',
+          'Gemini': 'en-US-AvaNeural',
+          'X': 'en-US-BrianNeural',
+          'Leo': 'en-US-GuyNeural'
+        };
+        const voiceIdEdge = fallbackVoices[botName] || 'en-US-ChristopherNeural';
+        console.log(`[${botName}/TTS] Cloud Fallback (edge-tts): "${cleanedText.slice(0, 50)}..."`);
+        
+        try {
+          const edge = spawn('edge-tts', ['--text', cleanedText, '--voice', voiceIdEdge], { windowsHide: true });
+          const ffmpegArgs = ['-i', 'pipe:0', '-f', 's16le', '-ar', '48000', '-ac', '2', 'pipe:1'];
+          const ffmpeg = spawn('ffmpeg', ffmpegArgs, { windowsHide: true });
+          
+          edge.stdout.pipe(ffmpeg.stdin);
+          
+          const player = botPlayers.get(botName);
+          if (!player) {
+            releaseVoiceLock(botName);
+            resolve();
+            return;
+          }
+          
+          const resource = createAudioResource(ffmpeg.stdout, { inputType: StreamType.Raw });
+          player.play(resource);
+          
+          player.once(AudioPlayerStatus.Idle, () => {
+            setTimeout(() => { releaseVoiceLock(botName); resolve(); }, 300);
+          });
+          
+          edge.on('error', () => { releaseVoiceLock(botName); resolve(); });
+          ffmpeg.on('error', () => { releaseVoiceLock(botName); resolve(); });
+        } catch (e) {
+          releaseVoiceLock(botName);
+          resolve();
+        }
+      });
+  }
+
   return new Promise(async (resolve) => {
     // --- GLOBAL VOICE QUEUE: Wait for silence ---
     // (jitter sleep removed; lock layer handles serialization)
@@ -771,6 +905,11 @@ async function speakLocalKokoro(text, botName) {
       if (!isSomeoneSpeaking(botName) && acquireVoiceLock(botName)) break;
       await new Promise(r => setTimeout(r, 200));
       waitCount++;
+    }
+
+    if (waitCount >= 300) {
+      console.warn(`[${botName}/TTS] Global voice lock timeout. Bypassing lock for local Kokoro.`);
+      acquireVoiceLock(botName, true); 
     }
 
     try {
@@ -785,7 +924,15 @@ async function speakLocalKokoro(text, botName) {
         "KAI": "am_michael",
         "Leo": "am_puck"
       };
-      const voice = kokoroVoices[botName] || "af_heart";
+      let voice = kokoroVoices[botName] || "af_heart";
+      // Leo's fallback voice is user-selectable via Discord ("set leo's
+      // fallback voice to am_onyx") — stored in state/leo_voice.json.
+      if (botName === "Leo") {
+        try {
+          const stv = JSON.parse(fs.readFileSync('c:/KAI/tools/oracle-discord/state/leo_voice.json', 'utf8'));
+          if (stv.kokoro) voice = stv.kokoro;
+        } catch (_) {}
+      }
 
       // Simple Python bridge to the Kokoro library
       const pythonCode = `
@@ -806,9 +953,9 @@ except Exception as e:
 
       const ffmpeg = spawn(ffmpegPath, [
         '-i', 'pipe:0',
-        '-af', 'volume=1.4', 
+        '-af', 'volume=1.4',
         '-f', 's16le', '-ar', '48000', '-ac', '2', 'pipe:1'
-      ]);
+      ], { windowsHide: true });
 
       const py = spawn('python', ['-c', pythonCode]);
       
@@ -869,7 +1016,6 @@ except Exception as e:
     }
   });
 }
-
 
 
 

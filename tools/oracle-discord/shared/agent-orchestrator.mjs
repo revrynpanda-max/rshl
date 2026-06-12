@@ -59,7 +59,7 @@ const COLLABORATION_EDGES = {
   'Researcher': ['Analyst', 'Kai Coder'],
   'Analyst': ['Researcher', 'Kai Coder'],
   'Kai Coder': ['Analyst', 'Researcher'],
-  'Oracle': ['Researcher', 'Analyst', 'Kai Coder', 'Groq', 'Gemini', 'Claudey', 'X']
+  'Oracle': ['Researcher', 'Analyst', 'Kai Coder', 'KAI']
 };
 
 export function canAgentCollaborate(fromAgent, toAgent) {
@@ -85,6 +85,17 @@ export function startWorkflow(workflowId, { userId, channelId, channelType, auth
     status: 'running'
   });
   return workflowId;
+}
+
+export function ensureWorkflow(workflowId, meta = {}) {
+  if (ACTIVE_WORKFLOWS.has(workflowId)) return workflowId;
+  return startWorkflow(workflowId, {
+    userId: meta.userId || meta.requesterId || '',
+    channelId: meta.channelId || '',
+    channelType: meta.channelType || 'work',
+    authLevel: meta.authLevel || 'PINACLE_AUTH',
+    originalQuery: meta.originalQuery || meta.task || '',
+  });
 }
 
 export function recordWorkflowStep(workflowId, agent, action, data = {}) {
@@ -192,7 +203,7 @@ export async function gatherForensicEvidence(query, options = {}) {
   try {
     const { execSync } = await import('child_process');
     const snapshot = execSync(
-      'powershell -Command "Get-Process | Where-Object { $_.ProcessName -match \"kai|python|node\" } | Select-Object ProcessName, Id, @{N=\'RAM_MB\';E={[math]::Round($_.WorkingSet64/1MB,1)}} | Format-Table -AutoSize"',
+      'powershell -Command "Get-Process | Where-Object { $_.ProcessName -match \'kai|python|node\' } | Select-Object ProcessName, Id, @{N=\'RAM_MB\';E={[math]::Round($_.WorkingSet64/1MB,1)}} | Format-Table -AutoSize"',
       { encoding: 'utf8', timeout: 5000 }
     );
     evidence.push({ type: 'process', label: 'Running Processes', data: snapshot });

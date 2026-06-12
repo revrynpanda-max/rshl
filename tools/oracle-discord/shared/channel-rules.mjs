@@ -7,9 +7,11 @@ export const CHANNEL_IDS = {
   SENSITIVE: "1500053533515448480",  // sensitive-info — SYSTEM ONLY. No bots respond.
   SUNDAY: "1500085302268526712",     // ai-social-chat — social banter, all social bots + KAI
   KAI_DREAMS: "1504582069886648351", // kai-dreams — KAI's thoughts, evolution, spectating
+  SELF_OPTIMIZE: "1504582069886648351", // self-optimize lane
   VOICE: "1489796367466500129",      // public voice chat (shared)
   LEO_VOICE: "1505088473307283517",  // Leo's dedicated voice chat
-  RADIO: "1500048983568023552",      // ai radio
+  RADIO:      "1500048983568023552",      // ai radio
+  KAI_FREQ:   "1513582425446289658",      // kai-freq — RF spectrum sweeps from TinySA
   UNREGISTERED_SLOT: "1500958679669674086", // Onboarding: Leo tells unregistered users to check DMs
   LEO_VOICE_SLOTS: [
     "1500527640107417783", // Slot 1 — Ryan       (registered)
@@ -27,16 +29,16 @@ export const CHANNEL_IDS = {
 export const USER_TRANSCRIPT_MAP = {
   "1111106883135217665": "1500527640107417783", // Ryan  → Slot 1
   "1286110163505385523": "1500529928184008885", // Taz   → Slot 2
-  // Slot 3: OPEN — register guest at 1500529995087610027
-  // Slot 4: OPEN — register guest at 1500530046111318116
+  "437459146778869770": "1500529995087610027", // Guest → Slot 3
+  "1002347589959688303": "1500530046111318116", // Guest 2 → Slot 4
 };
 
 // ── Reverse map: transcript channel → user identity ──────────────────────────
 export const TRANSCRIPT_USER_INFO = {
   "1500527640107417783": { userId: "1111106883135217665", name: "Ryan", role: "Owner/Creator",   slotIdx: 0 },
   "1500529928184008885": { userId: "1286110163505385523", name: "Taz",  role: "Co-lead/Partner", slotIdx: 1 },
-  "1500529995087610027": { userId: null, name: "Open Slot 3", role: "Awaiting Registration", slotIdx: 2 },
-  "1500530046111318116": { userId: null, name: "Open Slot 4", role: "Awaiting Registration", slotIdx: 3 },
+  "1500529995087610027": { userId: "437459146778869770", name: "Guest", role: "Lattice Guest", slotIdx: 2 },
+  "1500530046111318116": { userId: "1002347589959688303", name: "Guest 2", role: "Lattice Guest", slotIdx: 3 },
 };
 
 export const CHANNEL_SPEAKER_RULES = {
@@ -58,7 +60,7 @@ export const CHANNEL_SPEAKER_RULES = {
   [CHANNEL_IDS.SUNDAY]: new Set(["Claudey", "Gemini", "Groq", "X", "Leo", "KAI"]),
 
   // kai-dreams: KAI's internal thought stream. KAI ONLY — autonomous spectate feed from the TUI.
-  [CHANNEL_IDS.KAI_DREAMS]: new Set(["KAI"]),
+  [CHANNEL_IDS.KAI_DREAMS]: new Set(["KAI", "Analyst"]),
 
   // ai-radio: Groq ONLY — DJ and radio chat.
   [CHANNEL_IDS.RADIO]: new Set(["Groq"]),

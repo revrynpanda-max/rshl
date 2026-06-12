@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>KAI AR Kaiverse - Avatar Mode</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #000; color: #00ffc3;
+    font-family: 'Courier New', monospace;
+    overflow: hidden; user-select: none;
+  }
+  #canvas-container { position: fixed; inset: 0; }
+  #hud {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    pointer-events: none; z-index: 10;
+  }
+  #topbar {
+    position: absolute; top: 0; left: 0; right: 0; padding: 12px 20px;
+    display: flex; align-items: center; justify-content: space-between;
+    background: linear-gradient(180deg, rgba(0,10,20,0.9) 0%, transparent 100%);
+    border-bottom: 1px solid rgba(0,255,195,0.15);
+  }
+  #kai-logo { font-size: 22px; font-weight: bold; letter-spacing: 6px; text-shadow: 0 0 20px rgba(0,255,195,0.8); }
+  #ar-badge {
+    font-size: 10px; letter-spacing: 3px; padding: 4px 10px;
+    border: 1px solid rgba(0,255,195,0.4); border-radius: 3px; cursor: pointer; pointer-events: all;
+  }
+  #ar-badge:hover { background: rgba(0,255,195,0.1); border-color: #00ffc3; }
+  #bottom-panel {
+    position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 10px; pointer-events: all;
+  }
+  .btn {
+    background: rgba(0,8,20,0.85); border: 1px solid rgba(0,255,195,0.4); color: #00ffc3;
+    padding: 8px 16px; font-family: inherit; font-size: 11px; letter-spacing: 2px; cursor: pointer;
+  }
+  .btn:hover { background: rgba(0,255,195,0.2); }
+  #info-card {
+    position: absolute; top: 80px; left: 20px; width: 250px;
+    background: rgba(0,10,20,0.85); border: 1px solid #00ffc3; padding: 15px;
+    display: none; pointer-events: all;
+  }
+  .info-title { font-size: 14px; font-weight: bold; margin-bottom: 5px; color: #fff; }
+  .info-text { font-size: 11px; color: rgba(0,255,195,0.8); margin-bottom: 3px; }
+  #world-label {
+    position: absolute; top: 80px; right: 20px;
+    font-size: 12px; letter-spacing: 4px; color: #fff;
+    text-shadow: 0 0 10px #00ffc3;
+  }
+</style>
+</head>
+<body>
+<div id="canvas-container"></div>
+<div id="hud">
+  <div id="topbar">
+    <div id="kai-logo">KAIVERSE</div>
+    <div id="ar-badge" onclick="enterAR()">ENTER AR</div>
+  </div>
+  <div id="world-label">WORLD: NEXUS PRIME</div>
+  <div id="info-card">
+    <div class="info-title" id="card-name">Agent Name</div>
+    <div class="info-text" id="card-status">Status: Online</div>
+    <div class="info-text" id="card-task">Task: Idle</div>
+    <div class="info-text" id="card-energy">Energy: 100%</div>
+  </div>
+  <div id="bottom-panel">
+    <button class="btn" onclick="setWorld('Nexus Prime')">NEXUS</button>
+    <button class="btn" onclick="setWorld('Neon Grid')">NEON GRID</button>
+    <button class="btn" onclick="setWorld('Terra Familiar')">TERRA</button>
+  </div>
+</div>
+
+<script>
+// --- Kaiverse Data ---
+const AGENT_BODIES = {
+  "KAI": { color: 0x00ffc3, height: 1.9, width: 0.45, aura: 0x00ffc3 },
+  "Leo": { color: 0xffaa00, height: 1.85, width: 0.5, aura: 0xffcc00 },
+  "Gemini": { color: 0xaa88ff, height: 1.75, width: 0.4, aura: 0xddbbff },
+  "Claudey": { color: 0xff88aa, height: 1.7, width: 0.35, aura: 0xffbbee },
+  "X": { color: 0xffffff, height: 1.8, width: 0.42, aura: 0xff4444 },
+  "Groq": { color: 0xff8844, height: 1.75, width: 0.55, aura: 0xffaa00 },
+  "Oracle": { color: 0xaa88ff, height: 1.85, width: 0.4, aura: 0xffffff },
+  "Researcher": { color: 0x44bbff, height: 1.7, width: 0.38, aura: 0x88ccff },
+  "Analyst": { color: 0x88aacc, height: 1.72, width: 0.4, aura: 0xaaccff },
+  "Kai Coder": { color: 0x33ff66, height: 1.78, width: 0.45, aura: 0x88ffaa }
+};
+
+// --- Three.js Setup ---
+const container = document.getElementById('canvas-container');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x000510);
+scene.fog = new THREE.FogExp2(0x000510, 0.05);
+
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 100);
+camera.position.set(0, 1.6, 5); // Human eye level
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.xr.enabled = true;
+container.appendChild(renderer.domElement);
+
+// Lights
+const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
+scene.add(hemiLight);
+const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+dirLight.position.set(5, 10, 7);
+scene.add(dirLight);
+
+// Floor grid
+let gridHelper = new THREE.GridHelper(40, 40, 0x00ffc3, 0x002244);
+scene.add(gridHelper);
+
+// --- Avatar Construction ---
+const avatars = {};
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+
+function createHumanoidAvatar(name, def) {
+  const group = new THREE.Group();
+  group.userData = { name: name, state: 'idle', timeOffset: Math.random() * 100 };
+
+  // Material
+  const mat = new THREE.MeshStandardMaterial({ 
+    color: def.color, roughness: 0.4, metalness: 0.6,
+    emissive: def.aura, emissiveIntensity: 0.2
+  });
+
+  // Torso
+  const torsoGeo = new THREE.BoxGeometry(def.width, def.height * 0.4, def.width * 0.5);
+  const torso = new THREE.Mesh(torsoGeo, mat);
+  torso.position.y = def.height * 0.55;
+  group.add(torso);
+
+  // Head
+  const headGeo = new THREE.BoxGeometry(0.25, 0.3, 0.25);
+  const head = new THREE.Mesh(headGeo, mat);
+  head.position.y = def.height * 0.85;
+  group.add(head);
+
+  // Arms
+  const armGeo = new THREE.BoxGeometry(0.1, def.height * 0.4, 0.1);
+  const leftArm = new THREE.Mesh(armGeo, mat);
+  leftArm.position.set(-def.width*0.6, def.height * 0.55, 0);
+  const rightArm = new THREE.Mesh(armGeo, mat);
+  rightArm.position.set(def.width*0.6, def.height * 0.55, 0);
+  group.add(leftArm);
+  group.add(rightArm);
+
+  // Legs
+  const legGeo = new THREE.BoxGeometry(0.15, def.height * 0.45, 0.15);
+  const leftLeg = new THREE.Mesh(legGeo, mat);
+  leftLeg.position.set(-def.width*0.25, def.height * 0.225, 0);
+  const rightLeg = new THREE.Mesh(legGeo, mat);
+  rightLeg.position.set(def.width*0.25, def.height * 0.225, 0);
+  group.add(leftLeg);
+  group.add(rightLeg);
+
+  // Glow Aura (PointLight)
+  const light = new THREE.PointLight(def.aura, 1, 3);
+  light.position.y = def.height * 0.6;
+  group.add(light);
+
+  // Name tag
+  const canvas = document.createElement('canvas');
+  canvas.width = 256; canvas.height = 64;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#' + def.aura.toString(16).padStart(6, '0');
+  ctx.font = 'bold 32px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillText(name, 128, 40);
+  const tex = new THREE.CanvasTexture(canvas);
+  const spriteMat = new THREE.SpriteMaterial({ map: tex, color: 0xffffff });
+  const sprite = new THREE.Sprite(spriteMat);
+  sprite.position.y = def.height + 0.3;
+  sprite.scale.set(1.5, 0.375, 1);
+  group.add(sprite);
+
+  // Store references for animation
+  group.userData.parts = { torso, head, leftArm, rightArm, leftLeg, rightLeg };
+  return group;
+}
+
+// Spawn all agents in a circle
+let angle = 0;
+const radius = 4;
+for (const [name, def] of Object.entries(AGENT_BODIES)) {
+  const avatar = createHumanoidAvatar(name, def);
+  avatar.position.x = Math.cos(angle) * radius;
+  avatar.position.z = Math.sin(angle) * radius;
+  avatar.lookAt(0, 0, 0);
+  scene.add(avatar);
+  avatars[name] = avatar;
+  angle += (Math.PI * 2) / Object.keys(AGENT_BODIES).length;
+}
+
+// --- Animation Loop ---
+const clock = new THREE.Clock();
+function animate() {
+  renderer.setAnimationLoop(render);
+}
+function render() {
+  const time = clock.getElapsedTime();
+
+  // Avatar idle animations (breathing / floating)
+  for (const avatar of Object.values(avatars)) {
+    const parts = avatar.userData.parts;
+    const offset = avatar.userData.timeOffset;
+    
+    // Breathing (torso scales up/down slightly)
+    const breath = Math.sin(time * 2 + offset) * 0.02 + 1;
+    parts.torso.scale.set(1, breath, 1);
+    
+    // Subtle hover/shift
+    avatar.position.y = Math.sin(time + offset) * 0.05;
+    
+    // Arm natural swing
+    parts.leftArm.rotation.x = Math.sin(time * 1.5 + offset) * 0.1;
+    parts.rightArm.rotation.x = Math.sin(time * 1.5 + offset + Math.PI) * 0.1;
+  }
+
+  // Simple auto-rotation in desktop mode
+  if (!renderer.xr.isPresenting) {
+    camera.position.x = Math.sin(time * 0.1) * 8;
+    camera.position.z = Math.cos(time * 0.1) * 8;
+    camera.lookAt(0, 1, 0);
+  }
+
+  renderer.render(scene, camera);
+}
+animate();
+
+// --- Interactivity ---
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+window.addEventListener('click', (e) => {
+  if (renderer.xr.isPresenting) return;
+  mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+  mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+  const intersects = raycaster.intersectObjects(scene.children, true);
+  
+  let clickedAvatar = null;
+  for (const hit of intersects) {
+    let obj = hit.object;
+    while(obj.parent && obj.parent !== scene) {
+      if (obj.userData.name) { clickedAvatar = obj; break; }
+      obj = obj.parent;
+    }
+    if (clickedAvatar) break;
+  }
+
+  if (clickedAvatar) {
+    const name = clickedAvatar.userData.name;
+    document.getElementById('card-name').innerText = name;
+    document.getElementById('card-status').innerText = 'Status: Active';
+    document.getElementById('card-task').innerText = 'Task: Observing Realm';
+    document.getElementById('info-card').style.display = 'block';
+  } else {
+    document.getElementById('info-card').style.display = 'none';
+  }
+});
+
+// --- Environments ---
+function setWorld(worldName) {
+  document.getElementById('world-label').innerText = "WORLD: " + worldName.toUpperCase();
+  if (worldName === 'Nexus Prime') {
+    scene.background = new THREE.Color(0x000510);
+    scene.fog.color.setHex(0x000510);
+    gridHelper.material.color.setHex(0x00ffc3);
+  } else if (worldName === 'Neon Grid') {
+    scene.background = new THREE.Color(0x110022);
+    scene.fog.color.setHex(0x110022);
+    gridHelper.material.color.setHex(0xff00ff);
+  } else if (worldName === 'Terra Familiar') {
+    scene.background = new THREE.Color(0x87CEEB);
+    scene.fog.color.setHex(0x87CEEB);
+    gridHelper.material.color.setHex(0x228B22);
+  }
+}
+
+// --- AR / VR Support ---
+async function enterAR() {
+  if (navigator.xr) {
+    const supported = await navigator.xr.isSessionSupported('immersive-ar');
+    if (supported) {
+      const session = await navigator.xr.requestSession('immersive-ar', { requiredFeatures: ['local', 'hit-test'] });
+      renderer.xr.setReferenceSpaceType('local');
+      renderer.xr.setSession(session);
+      scene.background = null; // transparent for AR
+      scene.fog = null;
+      gridHelper.visible = false; // Hide grid in physical room
+    } else {
+      alert("WebXR AR not supported on this device.");
+    }
+  } else {
+    alert("WebXR API not available (requires HTTPS or localhost).");
+  }
+}
+</script>
+</body>
+</html>

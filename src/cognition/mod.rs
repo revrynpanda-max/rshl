@@ -72,6 +72,9 @@ pub mod substantia_nigra;
 pub mod superior_colliculus;
 pub mod thalamus;
 pub mod theory_of_mind;
+pub mod figurative;
+pub use figurative::{interpret as interpret_figurative, FigurativeClass, InterpretResult, should_store as figurative_should_store};
+
 pub mod tpj;
 pub mod training;
 pub mod transcript;

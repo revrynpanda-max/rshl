@@ -50,12 +50,13 @@ Start-Process -FilePath "python" `
               -WindowStyle Hidden `
               -ErrorAction SilentlyContinue
 
-# IR Camera bridge — silent headless mode, feeds thermal/presence data to KAI
-Write-Host "      [IR] Starting IR camera bridge..." -ForegroundColor DarkGray
-Start-Process -FilePath "python" `
-              -ArgumentList "C:\KAI\tools\ir_bridge.py --headless" `
-              -WindowStyle Hidden `
-              -ErrorAction SilentlyContinue
+# [DISABLED 2026-06-10] ir_bridge.py loops cv2.VideoCapture every 10s with no IR camera
+# connected -> endless Windows device/permission sound. Uncomment when camera is attached.
+# Write-Host "      [IR] Starting IR camera bridge..." -ForegroundColor DarkGray
+# Start-Process -FilePath "python" `
+#               -ArgumentList "C:\KAI\tools\ir_bridge.py --headless" `
+#               -WindowStyle Hidden `
+#               -ErrorAction SilentlyContinue
 
 # 4. START WATCHDOG: Monitors sensors and auto-restarts if they crash
 Write-Host "[4/5] Starting Sensor Watchdog..." -ForegroundColor Magenta

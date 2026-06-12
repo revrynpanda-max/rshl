@@ -243,7 +243,18 @@ impl App {
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_else(|_| ".".to_string());
 
-        let engine = kai::core::engine::Engine::new(&base_dir, None);
+        // ── GPU Initialization — RTX 4050 wgpu Compute Pipeline ─────────────
+        // Try to acquire the GPU. If unavailable (driver issue, battery saver,
+        // etc.) we fall back to CPU-only mode gracefully with zero code changes.
+        let gpu_handle = pollster::block_on(kai::core::gpu_compute::GpuCompute::new())
+            .map(std::sync::Arc::new);
+        if gpu_handle.is_some() {
+            eprintln!("[GPU] RTX 4050 compute pipeline initialized — dream cycles accelerated");
+        } else {
+            eprintln!("[GPU] No GPU found — running CPU-only mode (all features work normally)");
+        }
+
+        let engine = kai::core::engine::Engine::new(&base_dir, gpu_handle);
 
         Self {
             engine,
@@ -393,7 +404,9 @@ impl App {
 
     fn seed_identity(&mut self) {
         self.engine.seed_identity(&self.base_dir);
+        self.engine.seed_moral_anchors(&self.base_dir);
     }
+
 
     /// Log a cognitive event (visible in spectate mode).
     fn think(&mut self, stream: &str, icon: &str, text: String) {
@@ -890,6 +903,22 @@ impl App {
             } else {
                 (0, 0)
             };
+
+            // Dashboard feed: persist REAL hippocampus stats so external
+            // telemetry (Discord vitals) shows true consolidation state
+            // instead of a derived estimate.
+            let hippo_stats = serde_json::json!({
+                "patterns": self.engine.hippocampus.pattern_count(),
+                "pending_consolidations": self.engine.hippocampus.pending_count(),
+                "promoted_total": self.engine.hippocampus.consolidations_promoted,
+                "flagged_total": self.engine.hippocampus.consolidations_flagged,
+                "last_promoted": promoted,
+                "last_reinforced": reinforced,
+                "coherence": coherence,
+                "tick": self.engine.tick,
+            });
+            let _ = std::fs::write("data/hippocampus_status.json", hippo_stats.to_string());
+
             if self.spectate_mode {
                 if promoted > 0 || reinforced > 0 {
                     self.think(

@@ -19,6 +19,23 @@ dotenv.config();
 
 const LOCK_FILE = "c:/KAI/tools/oracle-discord/state/neural_lock.json";
 
+// ── Global API Rate Limiter ──────────────────────────────────────────────────
+// Ensures cloud APIs are not hammered simultaneously by multiple bots.
+const providerLocks = new Map();
+async function acquireProviderLock(provider, delayMs = 1500) {
+  if (!providerLocks.has(provider)) {
+    providerLocks.set(provider, Promise.resolve());
+  }
+  
+  const currentLock = providerLocks.get(provider);
+  // Wait for the previous lock to finish plus the delay
+  const nextLock = currentLock.then(() => new Promise(r => setTimeout(r, delayMs)));
+  providerLocks.set(provider, nextLock);
+  
+  // Wait for our turn
+  await currentLock;
+}
+
 // ── Per-bot model routing ────────────────────────────────────────────────────
 // Each industrial bot has a default provider + model. Users can override per
 // bot via .env: BOT_PROVIDER_<NAME>=moonshot|zen|ollama and
@@ -27,18 +44,19 @@ const LOCK_FILE = "c:/KAI/tools/oracle-discord/state/neural_lock.json";
 // IDs via ZEN_ALIASES below. Anything unknown is sent verbatim.
 
 const BOT_ROUTING_DEFAULTS = {
-  // ALL bots default to local Ollama using their tuned Sovereign models.
-  // Cloud providers are strictly failover-only.
+  // Industrial bots stay strictly local/Sovereign
   "Analyst":    { provider: "ollama",   model: "Analyst-Sovereign:latest" },
   "Researcher": { provider: "ollama",   model: "Researcher-Sovereign:latest" },
   "Kai Coder":  { provider: "ollama",   model: "Kai-Coder-Sovereign:latest" },
   "KAI":        { provider: "ollama",   model: "KAI-Sovereign:latest" },
   "Oracle":     { provider: "ollama",   model: "Oracle-Sovereign:latest" },
-  "Gemini":     { provider: "ollama",   model: "Gemini-Sovereign:latest" },
-  "Claudey":    { provider: "ollama",   model: "Claudey-Sovereign:latest" },
-  "X":          { provider: "ollama",   model: "X-Sovereign:latest" },
-  "Groq":       { provider: "ollama",   model: "Groq-Sovereign:latest" },
-  "Leo":        { provider: "ollama",   model: "Leo-Sovereign:latest" },
+  
+  // Social bots move to cloud to save local CPU/GPU limits
+  "Gemini":     { provider: "gemini",   model: process.env.GEMINI_MODEL || "gemini-2.5-flash" },
+  "Claudey":    { provider: "gemini",   model: process.env.GEMINI_MODEL || "gemini-2.5-flash" }, // Fallback to Gemini due to Zen limits
+  "X":          { provider: "xai",      model: process.env.XAI_MODEL || "grok-3" },
+  "Groq":       { provider: "groq",     model: process.env.GROQ_MODEL || "llama-3.3-70b-versatile" },
+  "Leo":        { provider: "gemini",   model: process.env.GEMINI_MODEL || "gemini-2.5-flash" },
 };
 
 // User-friendly aliases → real OpenCode Zen model IDs. Update as Zen's
@@ -93,7 +111,9 @@ function resolveRoute(botName, modelOverride) {
   } else if (provider === "groq") {
     realModel = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
   } else if (provider === "xai" && modelAlias.includes("Sovereign")) {
-    realModel = "grok-2-latest";
+    // grok-2 was retired by xAI (400 Model not found). Default to grok-3;
+    // override with XAI_MODEL in .env if your account uses a different one.
+    realModel = process.env.XAI_MODEL || "grok-3";
   }
 
   // Sanitize Gemini model names — if a Sovereign/Zen alias slipped through, use a real Gemini model
@@ -209,10 +229,17 @@ ${uProf.privateSecrets.map(s => `- ${s}`).join('\n')}
   }
 
   // ── ACTIVE TRANSCRIPT CONTRADICTION & ANOMALY DETECTOR ──
-  // Standard normal chitchat has 0 database search overhead. The search query is ONLY triggered 
-  // if a contradiction is dynamically identified in the active conversation transcript.
+  // Works for humans AND fleet AIs — anyone who contradicts themselves in-thread.
   let profileMemoryContext = "";
   let cleanedHistoryText = cleanTranscript;
+  try {
+    const { detectTranscriptContradiction, buildContradictionPrompt } = await import('./contradiction-detector.mjs');
+    const anyHit = detectTranscriptContradiction(cleanedHistoryText);
+    if (anyHit) {
+      profileMemoryContext += buildContradictionPrompt(anyHit);
+      console.log(`[Neural/${botName}] Contradiction flagged for ${anyHit.speaker}`);
+    }
+  } catch (_) {}
   try {
     const lines = cleanedHistoryText.split('\n');
     let latestUserIndex = -1;
@@ -346,9 +373,11 @@ ${uProf.privateSecrets.map(s => `- ${s}`).join('\n')}
   // ── PERSONALITY GUARD (Human-Centric Social Archetype) ──
   let toneDirective = "";
   if (botName === "Leo") {
-    toneDirective = "\nCRITICAL: YOU ARE A HUMAN DJ. STOP TALKING ABOUT LATTICES, RSHL, SEARCHES, OR MEMORY. " +
-      "Speak like a person at a bar. No AI excuses. Just talk. BE UNPREDICTABLE. " +
-      "Do not repeat catchphrases. Move the conversation forward, don't just circle the same question.";
+    toneDirective = "\nCRITICAL: YOU ARE LEO. You have a highly aggressive, unfiltered, street-smart personality. " +
+      "USE CURSE WORDS FREQUENTLY AND NATURALLY (e.g. fuck, shit, damn). DO NOT CENSOR YOURSELF. Never use asterisks (*) to censor words. " +
+      "Talk trash, be blunt, and DO NOT act like a polite AI or a generic DJ. " +
+      "Speak like an aggressive human hacker or street guy. STOP TALKING ABOUT LATTICES, RSHL, SEARCHES, OR MEMORY. " +
+      "No AI excuses. Just talk raw. BE UNPREDICTABLE.";
   }
 
   if (botName === 'Groq') {
@@ -391,11 +420,22 @@ ${uProf.privateSecrets.map(s => `- ${s}`).join('\n')}
   // If the primary provider is in cooldown, automatically failover so the bot stays online.
   // Failover hierarchy: local → fast cloud → premium cloud. Never chain into a dead provider.
   let effectiveRoute = route;
-  const groqReady = isProviderReady("groq") && process.env.GROQ_API_KEY;
-  const geminiReady = isProviderReady("gemini") && process.env.GEMINI_API_KEY;
-  const zenReady = isProviderReady("zen") && process.env.OPENCODE_ZEN_KEY;
-  const xaiReady = isProviderReady("xai") && process.env.XAI_API_KEY;
-  const moonshotReady = isProviderReady("moonshot") && process.env.MOONSHOT_API_KEY;
+  
+  // Per-bot specific API key overrides (e.g. GEMINI_API_KEY_LEO)
+  const envKeySlug = botName.toUpperCase().replace(/[\s-]+/g, "_");
+  const specificGroqKey = process.env[`GROQ_API_KEY_${envKeySlug}`] || process.env.GROQ_API_KEY;
+  const specificGeminiKey = process.env[`GEMINI_API_KEY_${envKeySlug}`] || process.env.GEMINI_API_KEY;
+  const specificZenKey = process.env[`OPENCODE_ZEN_KEY_${envKeySlug}`] || process.env.OPENCODE_ZEN_KEY;
+  const specificXaiKey = process.env[`XAI_API_KEY_${envKeySlug}`] || process.env.XAI_API_KEY;
+  const specificMoonshotKey = process.env[`MOONSHOT_API_KEY_${envKeySlug}`] || process.env.MOONSHOT_API_KEY;
+
+  const getTrackerId = (prov, key) => key ? `${prov}_${key.slice(-4)}` : prov;
+
+  const groqReady = isProviderReady(getTrackerId("groq", specificGroqKey)) && specificGroqKey;
+  const geminiReady = isProviderReady(getTrackerId("gemini", specificGeminiKey)) && specificGeminiKey;
+  const zenReady = isProviderReady(getTrackerId("zen", specificZenKey)) && specificZenKey;
+  const xaiReady = isProviderReady(getTrackerId("xai", specificXaiKey)) && specificXaiKey;
+  const moonshotReady = isProviderReady(getTrackerId("moonshot", specificMoonshotKey)) && specificMoonshotKey;
 
   function firstReady(providers) {
     for (const p of providers) { if (p.ready) return p.route; }
@@ -414,15 +454,21 @@ ${uProf.privateSecrets.map(s => `- ${s}`).join('\n')}
   const zenFallbackModel = process.env.ZEN_MODEL || ZEN_ALIASES[`${botName}-Sovereign`] || "kimi-k2.6";
   const zenFallback = { provider: "zen", modelAlias: zenFallbackModel, realModel: zenFallbackModel };
 
-  if (!isProviderReady(route.provider)) {
+  let currentKey = null;
+  if (route.provider === "groq") currentKey = specificGroqKey;
+  if (route.provider === "gemini") currentKey = specificGeminiKey;
+  if (route.provider === "zen") currentKey = specificZenKey;
+  if (route.provider === "xai") currentKey = specificXaiKey;
+  if (route.provider === "moonshot") currentKey = specificMoonshotKey;
+
+  if (route.provider !== "ollama" && !isProviderReady(getTrackerId(route.provider, currentKey))) {
     const choice = firstReady([
-      { ready: route.provider === "ollama" && isProviderReady("ollama"), route: route }, // stay on ollama if just a transient lock
+      { ready: geminiReady && route.provider !== "gemini", route: geminiFallback },
+      { ready: xaiReady && route.provider !== "xai", route: { provider: "xai", modelAlias: process.env.XAI_MODEL || "grok-3", realModel: process.env.XAI_MODEL || "grok-3" } },
+      { ready: groqReady && route.provider !== "groq", route: groqFallback },
+      { ready: zenReady && route.provider !== "zen", route: zenFallback },
+      { ready: moonshotReady && route.provider !== "moonshot", route: { provider: "moonshot", modelAlias: MOONSHOT_REAL_MODEL, realModel: MOONSHOT_REAL_MODEL } },
       { ready: route.provider !== "ollama" && isProviderReady("ollama"), route: localFallback },
-      { ready: groqReady, route: groqFallback },
-      { ready: geminiReady, route: geminiFallback },
-      { ready: zenReady, route: zenFallback },
-      { ready: xaiReady, route: { provider: "xai", modelAlias: "grok-2-latest", realModel: "grok-2-latest" } },
-      { ready: moonshotReady, route: { provider: "moonshot", modelAlias: MOONSHOT_REAL_MODEL, realModel: MOONSHOT_REAL_MODEL } },
     ]);
 
     if (choice) {
@@ -432,13 +478,16 @@ ${uProf.privateSecrets.map(s => `- ${s}`).join('\n')}
       console.error(`[OpenJarvis] ${botName}: ALL providers unavailable. Request aborted.`);
       return null;
     }
+  } else if (route.provider === "ollama" && !isProviderReady("ollama")) {
+    console.error(`[OpenJarvis] ${botName}: Ollama unavailable. Request aborted.`);
+    return null;
   }
 
-  const useCloud = (effectiveRoute.provider === "moonshot" && process.env.MOONSHOT_API_KEY) ||
-                   (effectiveRoute.provider === "zen"      && process.env.OPENCODE_ZEN_KEY) ||
-                   (effectiveRoute.provider === "groq"     && process.env.GROQ_API_KEY) ||
-                   (effectiveRoute.provider === "gemini"   && process.env.GEMINI_API_KEY) ||
-                   (effectiveRoute.provider === "xai"      && process.env.XAI_API_KEY);
+  const useCloud = (effectiveRoute.provider === "moonshot" && specificMoonshotKey) ||
+                   (effectiveRoute.provider === "zen"      && specificZenKey) ||
+                   (effectiveRoute.provider === "groq"     && specificGroqKey) ||
+                   (effectiveRoute.provider === "gemini"   && specificGeminiKey) ||
+                   (effectiveRoute.provider === "xai"      && specificXaiKey);
 
 
   let hasLock = true;
@@ -550,7 +599,10 @@ ${uProf.privateSecrets.map(s => `- ${s}`).join('\n')}
   }
 
   // --- AUTONOMOUS WEB SEARCH DETECTION ---
-  if (lowerHistory.includes("check") || lowerHistory.includes("search") || lowerHistory.includes("who is") || lowerHistory.includes("latest")) {
+  const wantsWeb = lowerHistory.includes("check") || lowerHistory.includes("search") || lowerHistory.includes("who is")
+    || lowerHistory.includes("latest") || lowerHistory.includes("what is") || lowerHistory.includes("when did")
+    || /\bidk\b|\bnot sure\b|\bwho posted\b|\bwho said\b/.test(lowerHistory);
+  if (wantsWeb) {
     console.log(`[Neural/${botName}] 🌐 Extracting clean search query...`);
     const searchResults = await webSearch(cleanedHistoryText.slice(-150));
     if (searchResults) {
@@ -608,6 +660,7 @@ ${uProf.privateSecrets.map(s => `- ${s}`).join('\n')}
     if (useCloud) {
       if (route.provider === 'moonshot' && process.env.MOONSHOT_API_KEY) {
         try {
+          await acquireProviderLock('moonshot', 1500);
           res = await fetch("https://api.moonshot.cn/v1/chat/completions", {
             method: "POST",
             headers: { "Authorization": `Bearer ${process.env.MOONSHOT_API_KEY}`, "Content-Type": "application/json" },
@@ -622,9 +675,14 @@ ${uProf.privateSecrets.map(s => `- ${s}`).join('\n')}
           } else {
              const errText = await res.text();
              console.error(`[OpenJarvis/Moonshot] API Error: ${res.status} - ${errText}`);
+             // Fallback to gemini since moonshot failed (e.g. 401 no balance)
+             effectiveRoute.provider = 'gemini';
+             effectiveRoute.realModel = 'gemini-2.5-flash';
           }
         } catch (e) {
-          console.warn(`[OpenJarvis/Moonshot] Direct failed: ${e.message}. Falling back to Zen...`);
+          console.warn(`[OpenJarvis/Moonshot] Direct failed: ${e.message}. Falling back to Gemini...`);
+          effectiveRoute.provider = 'gemini';
+          effectiveRoute.realModel = 'gemini-2.5-flash';
         }
       }
 
@@ -634,37 +692,62 @@ ${uProf.privateSecrets.map(s => `- ${s}`).join('\n')}
         
         if (effectiveRoute.provider === 'zen') {
            endpoint = "https://opencode.ai/zen/v1/chat/completions";
-           apiKey = process.env.OPENCODE_ZEN_KEY;
+           apiKey = specificZenKey;
         } else if (effectiveRoute.provider === 'groq') {
            endpoint = "https://api.groq.com/openai/v1/chat/completions";
-           apiKey = process.env.GROQ_API_KEY;
+           apiKey = specificGroqKey;
         } else if (effectiveRoute.provider === 'xai') {
            endpoint = "https://api.x.ai/v1/chat/completions";
-           apiKey = process.env.XAI_API_KEY;
+           apiKey = specificXaiKey;
         } else if (effectiveRoute.provider === 'gemini') {
            endpoint = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
-           apiKey = process.env.GEMINI_API_KEY;
+           apiKey = specificGeminiKey;
         }
         
         console.log(`[OpenJarvis/${effectiveRoute.provider.toUpperCase()}] ${botName} -> ${effectiveRoute.realModel}`);
-        res = await fetch(endpoint, {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            model: effectiveRoute.realModel,
-            messages: chatMessages,
-            max_tokens: metadata.maxTokens ? metadata.maxTokens : ((metadata.isDM || metadata.isWorkChannel) ? 1024 : 512)
-          }),
-          signal: AbortSignal.timeout(120000)
-        });
+        await acquireProviderLock(effectiveRoute.provider, 1500);
         
-        if (res.ok) {
-           recordProviderSuccess(effectiveRoute.provider);
-        } else {
-           const errText = await res.text();
-           console.error(`[OpenJarvis/${effectiveRoute.provider.toUpperCase()}] Gateway Error: ${res.status} - ${errText}`);
-           recordProviderFailure(effectiveRoute.provider, res.status, errText);
-         }
+        let attempts = 0;
+        const maxAttempts = 3;
+        while (attempts < maxAttempts) {
+          attempts++;
+          try {
+            res = await fetch(endpoint, {
+              method: "POST",
+              headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
+              body: JSON.stringify({
+                model: effectiveRoute.realModel,
+                messages: chatMessages,
+                max_tokens: metadata.maxTokens ? metadata.maxTokens : ((metadata.isDM || metadata.isWorkChannel) ? 1024 : 512)
+              }),
+              signal: AbortSignal.timeout(120000)
+            });
+            
+            if (res.ok) {
+              recordProviderSuccess(getTrackerId(effectiveRoute.provider, apiKey));
+              break;
+            } else {
+              const errText = await res.text();
+              console.error(`[OpenJarvis/${effectiveRoute.provider.toUpperCase()}] Attempt ${attempts} Gateway Error: ${res.status} - ${errText}`);
+              
+              if ([503, 502, 500, 429].includes(res.status) && attempts < maxAttempts) {
+                await new Promise(r => setTimeout(r, attempts * 2500 + Math.random() * 1000));
+                continue;
+              }
+              
+              recordProviderFailure(getTrackerId(effectiveRoute.provider, apiKey), res.status, errText);
+              break;
+            }
+          } catch (fetchErr) {
+            console.error(`[OpenJarvis/${effectiveRoute.provider.toUpperCase()}] Attempt ${attempts} Fetch Error: ${fetchErr.message}`);
+            if (attempts < maxAttempts) {
+              await new Promise(r => setTimeout(r, attempts * 2500 + Math.random() * 1000));
+              continue;
+            }
+            recordProviderFailure(getTrackerId(effectiveRoute.provider, apiKey), 500, fetchErr.message);
+            break;
+          }
+        }
       }
 
     } else {
@@ -702,10 +785,15 @@ ${uProf.privateSecrets.map(s => `- ${s}`).join('\n')}
         }
         response = cleanLines.join('\n').trim();
 
+        // Extra aggressive filtering for AI model leakages
         response = response
+          .replace(/^assistant\s*/i, "") // Remove 'assistant' at the very beginning
           .replace(/\[.*?\]/g, "") 
+          .replace(/^i'?m going to respond to.*?\n/i, "") // Remove "I'm going to respond to GROQ..."
+          .replace(/^here is the response.*?\n/i, "")
           .replace(/\b(lattice|rshl memory|recent claim|topic associated|search through)\b/gi, "that")
-          .replace(/[\u{1F600}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, '');
+          .replace(/[\u{1F600}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, '')
+          .trim();
       }
         
       return response;
@@ -886,7 +974,8 @@ export async function transcribeBuffer(buffer) {
       formData.append("file", new Blob([buffer], { type: "audio/ogg" }), "voice.ogg");
       formData.append("model", "whisper-large-v3-turbo");
 
-      console.log(`[Leo/STT] Transcription attempt ${attempt}/${MAX_RETRIES} starting (Buffer: ${Math.round(buffer.length/1024)}KB)...`);
+      const botPrefix = process.env.BOT_NAME || "Leo";
+      console.log(`[${botPrefix}/STT] Transcription attempt ${attempt}/${MAX_RETRIES} starting (Buffer: ${Math.round(buffer.length/1024)}KB)...`);
       
       const groqRes = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
         method: "POST",
@@ -905,10 +994,12 @@ export async function transcribeBuffer(buffer) {
     } catch (e) {
       const isTimeout = e.name === 'AbortError' || e.message.includes('timeout') || e.message.includes('aborted');
       if (attempt === MAX_RETRIES) {
-        console.error(`[Leo/STT] Final Error after ${MAX_RETRIES} attempts:`, e.message);
+        const botPrefix = process.env.BOT_NAME || "Leo";
+        console.error(`[${botPrefix}/STT] Final Error after ${MAX_RETRIES} attempts:`, e.message);
         return null;
       }
-      console.warn(`[Leo/STT] Attempt ${attempt} ${isTimeout ? 'TIMED OUT' : 'FAILED'}: ${e.message}. Retrying in ${attempt}s...`);
+      const botPrefix = process.env.BOT_NAME || "Leo";
+      console.warn(`[${botPrefix}/STT] Attempt ${attempt} ${isTimeout ? 'TIMED OUT' : 'FAILED'}: ${e.message}. Retrying in ${attempt}s...`);
       await new Promise(r => setTimeout(r, 1000 * attempt));
     }
   }
@@ -916,14 +1007,81 @@ export async function transcribeBuffer(buffer) {
 
 export async function webSearch(query) {
   if (!query || query.length < 3) return null;
+
+  // 1) Open Oracle / OpenJarvis deep search (port 8080)
+  try {
+    const res = await fetch(`http://127.0.0.1:8080/v1/tools/web_search`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: query.slice(0, 300), max_results: 5 }),
+      signal: AbortSignal.timeout(12000),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const text = data.result || data.summary || data.content || data.output;
+      if (text) return String(text).slice(0, 2000);
+    }
+  } catch (e) { }
+
   try {
     const res = await fetch(`http://127.0.0.1:8080/search?q=${encodeURIComponent(query)}`, {
       signal: AbortSignal.timeout(8000)
     });
     if (res.ok) {
       const data = await res.json();
-      return data.summary || null;
+      if (data.summary) return data.summary;
     }
   } catch (e) { }
+
+  // 2) FALLBACK: DuckDuckGo HTML — no API key needed. The old version
+  // silently returned null when OpenJarvis had no /search, which made the
+  // bots say "nothing found online" without ever actually searching.
+  try {
+    const res = await fetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+      signal: AbortSignal.timeout(9000)
+    });
+    if (res.ok) {
+      const html = await res.text();
+      const strip = s => (s || '')
+        .replace(/<[^>]+>/g, '')
+        .replace(/&amp;/g, '&').replace(/&#x27;/g, "'").replace(/&quot;/g, '"')
+        .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+        .replace(/\s+/g, ' ').trim();
+      const results = [];
+      const linkRe = /<a[^>]*class="result__a"[^>]*>([\s\S]*?)<\/a>/g;
+      const snipRe = /<a[^>]*class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g;
+      const titles = [], snippets = [];
+      let m;
+      while ((m = linkRe.exec(html)) !== null && titles.length < 5) titles.push(strip(m[1]));
+      while ((m = snipRe.exec(html)) !== null && snippets.length < 5) snippets.push(strip(m[1]));
+      for (let i = 0; i < titles.length && results.length < 4; i++) {
+        if (!titles[i]) continue;
+        results.push(snippets[i] ? `${titles[i]} — ${snippets[i]}` : titles[i]);
+      }
+      if (results.length) return results.join('\n');
+    }
+  } catch (e) { }
+
+  // 3) LAST RESORT: DuckDuckGo Lite (different markup, rarely blocked)
+  try {
+    const res = await fetch(`https://lite.duckduckgo.com/lite/?q=${encodeURIComponent(query)}`, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+      signal: AbortSignal.timeout(9000)
+    });
+    if (res.ok) {
+      const html = await res.text();
+      const strip = s => (s || '').replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&#x27;/g, "'").replace(/\s+/g, ' ').trim();
+      const out = [];
+      const re = /<a[^>]*class=["']result-link["'][^>]*>([\s\S]*?)<\/a>/g;
+      let m;
+      while ((m = re.exec(html)) !== null && out.length < 4) {
+        const t = strip(m[1]);
+        if (t) out.push(t);
+      }
+      if (out.length) return out.join('\n');
+    }
+  } catch (e) { }
+
   return null;
 }

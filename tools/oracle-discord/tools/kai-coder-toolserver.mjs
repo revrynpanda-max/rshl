@@ -313,8 +313,21 @@ async function toolSearchWeb({ query, maxResults = 8 }) {
     const resultPattern = /<a class="result__a" href="([^"]+)"[^>]*>([^<]+)<\/a>[\s\S]*?<a class="result__snippet"[^>]*>([^<]*(?:<[^>]+>[^<]*)*)<\/a>/g;
     let m;
     while ((m = resultPattern.exec(html)) !== null && results.length < maxResults) {
+      let rawUrl = m[1];
+      if (rawUrl.includes('uddg=')) {
+        const match = rawUrl.match(/uddg=([^&]+)/);
+        if (match) rawUrl = decodeURIComponent(match[1]);
+      }
+      
+      let finalUrl = rawUrl;
+      if (rawUrl.startsWith('//')) {
+        finalUrl = `https:${rawUrl}`;
+      } else if (!rawUrl.startsWith('http')) {
+        finalUrl = `https://duckduckgo.com${rawUrl}`;
+      }
+      
       results.push({
-        url: m[1].startsWith('http') ? m[1] : `https://duckduckgo.com${m[1]}`,
+        url: finalUrl,
         title: m[2].replace(/<[^>]+>/g, '').trim(),
         snippet: m[3].replace(/<[^>]+>/g, '').trim()
       });

@@ -52,6 +52,10 @@ pub const LAYER_CELLULAR: u8 = 2;
 pub const LAYER_ORGAN: u8 = 3;
 pub const LAYER_BODY: u8 = 4;
 pub const LAYER_EXPERIENTIAL: u8 = 5;
+/// Moral and identity anchors — highest trust tier, never overwritten.
+/// The epistemic immune system rejects claims that directly contradict these.
+pub const LAYER_ANCHOR: u8 = 6;
+
 
 fn default_vitality() -> f32 {
     1.0

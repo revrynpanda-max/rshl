@@ -178,7 +178,24 @@ count = 0
 successes = 0
 failures = 0
 
+def adaptive_sleep():
+    try:
+        path = 'c:/KAI/tools/oracle-discord/state/self_optimize_state.json'
+        if os.path.exists(path):
+            with open(path, 'r') as f:
+                state = json.load(f)
+                tier = state.get('tier', 'NORMAL')
+                if tier == 'PROTECT':
+                    time.sleep(15)
+                elif tier == 'REDUCED':
+                    time.sleep(6)
+                else:
+                    pass
+    except:
+        pass
+
 while time.time() < END_TIME:
+    adaptive_sleep()
     ok = run_conversation(count)
     if ok:
         successes += 1

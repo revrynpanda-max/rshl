@@ -836,11 +836,75 @@ mod tests {
 
     #[test]
     fn extract_concepts_dedupes() {
-        let _concepts = extract_significant_concepts(
+        let concepts = extract_significant_concepts(
             "A neuron is a specialized cell. Neurons transmit information through synapses.",
             5,
         );
-
+        // dedup check — no duplicates in result
+        let mut set = std::collections::HashSet::new();
+        for c in concepts {
+            assert!(set.insert(c));
+        }
     }
 }
 
+/// Self-Directed Curiosity Topic Picker.
+///
+/// KAI chooses what to learn about next based on what's weakest in his lattice.
+/// Instead of following a fixed topic list, he identifies the region with the
+/// lowest average cell strength (the area he knows least about) and generates
+/// a search query from that region's concept vocabulary.
+///
+/// Called by the web intake / DuckDuckGo harvester to pick the next search query.
+///
+/// Returns a search topic string, e.g. "hyperdimensional computing theory"
+/// or "quantum mechanics basics" depending on what KAI's lattice needs most.
+pub fn choose_curiosity_topic(universe: &crate::core::Universe) -> String {
+    use std::collections::HashMap;
+
+    // 1. Compute average confidence per region across all cells
+    let mut region_strength: HashMap<String, (f32, usize)> = HashMap::new();
+    for cell in universe.cells() {
+        let entry = region_strength.entry(cell.region.to_string()).or_insert((0.0, 0));
+        entry.0 += cell.claim.confidence;
+        entry.1 += 1;
+    }
+
+    // Skip internal system regions that must never be weakened
+    let skip_regions = ["system", "identity", "ethics", "anchor", "moral-anchor"];
+
+    let weakest_region = region_strength
+        .iter()
+        .filter(|(r, (_, count))| {
+            *count >= 10
+                && !skip_regions.iter().any(|s| r.contains(s))
+        })
+        .min_by(|a, b| {
+            let avg_a = a.1.0 / a.1.1 as f32;
+            let avg_b = b.1.0 / b.1.1 as f32;
+            avg_a.partial_cmp(&avg_b).unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .map(|(region, _)| region.clone());
+
+    // 2. Build search topic from the weakest region name
+    let topic = match weakest_region.as_deref() {
+        Some("science")      => "scientific discoveries and research findings",
+        Some("math")         => "mathematics theorems and proofs",
+        Some("philosophy")   => "philosophy of mind and consciousness",
+        Some("history")      => "historical events and their causes",
+        Some("technology")   => "emerging technology and engineering",
+        Some("language")     => "linguistics and language structure",
+        Some("social")       => "human social behavior and psychology",
+        Some("memory")       => "memory and cognitive science research",
+        Some("knowledge")    => "general knowledge and interesting facts",
+        Some("concept")      => "abstract concepts and their relationships",
+        Some("physics")      => "physics and fundamental forces",
+        Some("biology")      => "biology and living systems",
+        Some(other)          => {
+            return format!("{} concepts and knowledge", other);
+        }
+        None => "general knowledge facts and discoveries",
+    };
+
+    topic.to_string()
+}

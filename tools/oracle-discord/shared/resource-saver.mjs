@@ -1,11 +1,12 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { exec } from 'child_process';
+import { exec, execFile } from 'child_process';
 import { promisify } from 'util';
 import { recordMetric } from './metrics-store.mjs';
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 export const TIERS = {
   NORMAL: 'NORMAL',
@@ -13,16 +14,137 @@ export const TIERS = {
   PROTECT: 'PROTECT'
 };
 
+// ── DYNAMIC HOST CALIBRATION ────────────────────────────────────────────────
+// KAI's body is whatever device hosts him — a gaming laptop, a 2009 dual-Xeon
+// Mac Pro, or a datacenter node. Percentage gates (CPU/GPU/RAM %) are already
+// device-relative; the MEMORY BUDGETS below are derived from the host's actual
+// RAM at startup instead of being hard-coded for one machine:
+//   - project budget (KAI's own footprint): reduce at 35% of total RAM,
+//     protect at 45% — always leaving the majority for the OS and the human.
+//   - free-memory floors: scale with total, with absolute minimums so tiny
+//     hosts are never squeezed to zero.
+// Override per-host without code changes via env:
+//   KAI_MAX_PROJECT_MEM_MB / KAI_PROTECT_PROJECT_MEM_MB
+const _totalMemMB = Math.round(os.totalmem() / 1024 / 1024);
+const _envNum = (k) => { const v = Number(process.env[k]); return Number.isFinite(v) && v > 0 ? v : null; };
+const _calMaxProject = _envNum('KAI_MAX_PROJECT_MEM_MB') || Math.max(2048, Math.round(_totalMemMB * 0.35));
+const _calProtectProject = _envNum('KAI_PROTECT_PROJECT_MEM_MB') || Math.max(3072, Math.round(_totalMemMB * 0.45));
+const _calMinFree = Math.max(2048, Math.round(_totalMemMB * 0.12));
+const _calProtectFree = Math.max(1536, Math.round(_totalMemMB * 0.07));
+
+// Laptop / limited hardware detection (Codex §21.1 Host Covenant + §21.2 Resource Governor):
+// Detect core count + RAM (reliable cross boot) + best-effort battery to run tighter baselines on laptops / low-power rigs.
+// This prevents the brute-force full-throttle loops (ingestion, social pulses, tutoring, voice streaming, persistence)
+// that slam the shared body (high RAM/CPU, heat, lag, "two people through one doorway") per the exact symptoms observed.
+// Tighter = earlier REDUCED entry, larger deliberate pauses, more skips of non-urgent (ingestion/social replies), queue later.
+// Voice (Leo) and critical (Oracle/KAI/Sentinel) prioritized. Scales up on better rigs.
+// Battery query is async/lazy to avoid top-level ESM issues; cores+RAM give immediate laptop signal.
+function detectLimitedHostSync() {
+  const cores = os.cpus().length || 4;
+  const ramGB = _totalMemMB / 1024;
+  const isLimited = cores <= 6 || ramGB < 20;
+  if (isLimited) {
+    console.log(`[ResourceGovernor] LIMITED HOST DETECTED (laptop-aware per Codex §21.1/§21.2): cores=${cores} RAM=${ramGB.toFixed(1)}GB (battery check deferred) → tighter baseline (earlier throttle, longer pauses, non-urgent skip). Voice prioritized.`);
+  }
+  return { isLimited, cores, ramGB, batteryCheckPending: true };
+}
+const _hostLimits = detectLimitedHostSync();
+
+// Async battery probe (called on first real snapshot) to refine limited status without blocking boot.
+async function probeBatteryForLimits() {
+  if (!_hostLimits.batteryCheckPending) return _hostLimits;
+  try {
+    const { stdout } = await execAsync('powershell -NoProfile -Command "Get-CimInstance Win32_Battery | Select-Object -First 1 BatteryStatus,EstimatedChargeRemaining | ConvertTo-Json -Compress"', { timeout: 3000 });
+    const trimmed = (stdout || '').trim();
+    if (trimmed && trimmed !== 'null') {
+      const b = JSON.parse(trimmed);
+      const status = Number(b.BatteryStatus || 0);
+      const pct = b.EstimatedChargeRemaining != null ? Number(b.EstimatedChargeRemaining) : null;
+      const onBattery = status === 1 || (pct != null && pct < 92);
+      if (onBattery) {
+        _hostLimits.isLimited = true;
+        _hostLimits.onBattery = true;
+        _hostLimits.batteryPct = pct;
+        console.log(`[ResourceGovernor] Battery confirmed limited (on-battery ${pct || '?'}%) — tightening further per Host Covenant.`);
+      }
+    }
+  } catch (_) {}
+  _hostLimits.batteryCheckPending = false;
+  return _hostLimits;
+}
+
+console.log(`[ResourceGovernor] Host calibrated: ${(_totalMemMB / 1024).toFixed(0)}GB RAM, ${os.cpus().length} logical cores → project budget ${_calMaxProject}MB (reduce) / ${_calProtectProject}MB (protect), free floors ${_calMinFree}/${_calProtectFree}MB`);
+
+export const BUDGET_PROFILES = {
+  interactive: {
+    name: 'interactive',
+    // HARD CAPS (user-defined): CPU <= 75%, GPU <= 90%, RAM <= 85%.
+    // Percentages are device-relative — they hold on any processor.
+    // "reduced" kicks in early to PACE the fleet so usage stays steady
+    // instead of spiking to the cap and stuttering.
+    reducedCpu: 62,
+    protectCpu: 75,
+    reducedMem: 75,
+    protectMem: 85,
+    reducedGpu: 78,
+    protectGpu: 90,
+    maxProjectMemMB: _calMaxProject,
+    protectProjectMemMB: _calProtectProject,
+    minFreeMemMB: _calMinFree,
+    protectFreeMemMB: _calProtectFree,
+    reducedDrift: 70,
+    protectDrift: 90,
+    socialOverride: true
+  },
+  overnight: {
+    name: 'overnight',
+    reducedCpu: 78,
+    protectCpu: 90,
+    reducedMem: 82,
+    protectMem: 92,
+    reducedGpu: 75,
+    protectGpu: 92,
+    maxProjectMemMB: _calMaxProject,
+    protectProjectMemMB: _calProtectProject,
+    minFreeMemMB: _calMinFree,
+    protectFreeMemMB: _calProtectFree,
+    reducedDrift: 80,
+    protectDrift: 95,
+    socialOverride: false
+  },
+  'proof-run': {
+    name: 'proof-run',
+    reducedCpu: 65,
+    protectCpu: 85,
+    reducedMem: 72,
+    protectMem: 86,
+    reducedGpu: 70,
+    protectGpu: 88,
+    maxProjectMemMB: 7000,
+    protectProjectMemMB: 9500,
+    minFreeMemMB: 10000,
+    protectFreeMemMB: 6000,
+    reducedDrift: 75,
+    protectDrift: 92,
+    socialOverride: false
+  }
+};
+
+export function getBudgetProfile(name = process.env.KAI_RESOURCE_PROFILE || process.env.RESOURCE_BUDGET_PROFILE || 'interactive') {
+  return BUDGET_PROFILES[name] || BUDGET_PROFILES.interactive;
+}
+
 export const RESOURCE_SPOTS = {
   Sentinel:   { priority: 100, reserveCpu: 2,  reserveRamMB: 64,  critical: true,  lane: 'watchdog' },
   Oracle:     { priority: 95,  reserveCpu: 6,  reserveRamMB: 256, critical: true,  lane: 'orchestration' },
   KAI:        { priority: 95,  reserveCpu: 8,  reserveRamMB: 512, critical: true,  lane: 'lattice' },
-  Leo:        { priority: 80,  reserveCpu: 8,  reserveRamMB: 384, critical: false, lane: 'voice' },
+  Leo:        { priority: 80,  reserveCpu: 8,  reserveRamMB: 384, critical: true,  lane: 'voice' },
   Radio:      { priority: 65,  reserveCpu: 5,  reserveRamMB: 256, critical: false, lane: 'audio' },
   Dashboard:  { priority: 60,  reserveCpu: 2,  reserveRamMB: 128, critical: false, lane: 'visibility' },
   'Kai Coder':{ priority: 55,  reserveCpu: 8,  reserveRamMB: 512, critical: false, lane: 'build' },
   Analyst:    { priority: 50,  reserveCpu: 5,  reserveRamMB: 256, critical: false, lane: 'audit' },
   Researcher: { priority: 45,  reserveCpu: 5,  reserveRamMB: 256, critical: false, lane: 'research' },
+  'Overnight Pipeline': { priority: 42, reserveCpu: 6, reserveRamMB: 512, critical: false, lane: 'learning' },
   Groq:       { priority: 35,  reserveCpu: 4,  reserveRamMB: 256, critical: false, lane: 'social' },
   Gemini:     { priority: 30,  reserveCpu: 4,  reserveRamMB: 256, critical: false, lane: 'social' },
   Claudey:    { priority: 30,  reserveCpu: 4,  reserveRamMB: 256, critical: false, lane: 'social' },
@@ -35,6 +157,15 @@ const ORACLE_URL = (process.env.ORACLE_API_URL || 'http://127.0.0.1:3334').repla
 
 let currentSnapshot = null;
 let lastCheck = 0;
+let actionHistory = [];
+let lastActionSignature = '';
+
+try {
+  if (fs.existsSync(STATE_PATH)) {
+    const existing = JSON.parse(fs.readFileSync(STATE_PATH, 'utf8'));
+    if (Array.isArray(existing.actionHistory)) actionHistory = existing.actionHistory.slice(-50);
+  }
+} catch {}
 
 function clamp(n, min = 0, max = 100) {
   return Math.max(min, Math.min(max, Number.isFinite(n) ? n : 0));
@@ -86,31 +217,84 @@ function featureCost(features = {}) {
   }, 0);
 }
 
+let stagnantDriftTicks = 0;
+let lastPhi = null;
+
 function driftScore(vitals = {}, previousVitals = null) {
   const phi = Number(vitals.phi_g ?? vitals.phi ?? 1);
   const chi = Number(vitals.chi ?? 0);
   const coherence = Number(vitals.coherence ?? (Number.isFinite(chi) ? 1 - chi : 1));
   const phiDelta = previousVitals?.phi_g ? Math.abs(phi - previousVitals.phi_g) : 0;
 
+  if (lastPhi !== null && Math.abs(phi - lastPhi) < 0.001) {
+    stagnantDriftTicks++;
+  } else {
+    stagnantDriftTicks = 0;
+    lastPhi = phi;
+  }
+
   let score = 0;
   if (phi < 0.85) score += (0.85 - phi) * 100;
   if (coherence < 0.82) score += (0.82 - coherence) * 120;
   if (chi > 0.08) score += (chi - 0.08) * 500;
   if (phiDelta > 0.03) score += phiDelta * 200;
+
+  // If KAI stops updating vitals (crashed or starved), gracefully decay drift
+  // instead of freezing the entire ecosystem at Drift=39 forever.
+  if (stagnantDriftTicks > 12) { // About 1 minute of identical vitals
+      const decayFactor = Math.max(0, 1 - ((stagnantDriftTicks - 12) * 0.05));
+      score *= decayFactor;
+  }
+
   return clamp(score);
 }
 
-function decideTier({ cpuLoad, gpuLoad, memLoad, projectPressure, drift }) {
+function decideTier({ cpuLoad, gpuLoad, memLoad, projectPressure, projectMemMB, freeMemMB, drift, profile }) {
   const peak = Math.max(cpuLoad, gpuLoad, memLoad);
-  // RELAXED THRESHOLDS: Windows machines often run at 80%+ RAM normally.
-  if (peak >= 96 || projectPressure >= 88 || drift >= 40) return TIERS.PROTECT;
-  if (peak >= 90 || projectPressure >= 75 || drift >= 25) return TIERS.REDUCED;
+  let reducedDrift = Number(profile.reducedDrift ?? 70);
+  let protectDrift = Number(profile.protectDrift ?? 90);
+  let reducedCpu = profile.reducedCpu;
+  let reducedMem = profile.reducedMem;
+  let reducedGpu = profile.reducedGpu;
+
+  // Apply laptop/limited-host tighter baselines (Codex §21.1 Host Covenant + Resource Governor §21.2).
+  // On limited rigs (battery/<=6c/<20GB): enter REDUCED earlier so non-urgent (ingestion, social replies, background)
+  // back off, deliberate pauses inserted via multipliers, voice/critical stay prioritized. This is the direct
+  // antidote to the observed brute-force 90%+ slamming + "kai.exe 9.4GB + fleet nodes" pile-up.
+  if (_hostLimits && _hostLimits.isLimited) {
+    reducedCpu = Math.max(48, Math.round(reducedCpu * 0.82));
+    reducedMem = Math.max(60, Math.round(reducedMem * 0.85));
+    reducedGpu = Math.max(60, Math.round(reducedGpu * 0.82));
+    reducedDrift = Math.max(55, Math.round(reducedDrift * 0.85));
+    // Also make project pressure bite sooner
+    // (callers see higher effective pressure in REDUCED on laptop)
+  }
+
+  if (
+    cpuLoad >= profile.protectCpu ||
+    gpuLoad >= profile.protectGpu ||
+    memLoad >= profile.protectMem ||
+    projectMemMB >= profile.protectProjectMemMB ||
+    freeMemMB <= profile.protectFreeMemMB ||
+    projectPressure >= 88 ||
+    drift >= protectDrift
+  ) return TIERS.PROTECT;
+  if (
+    cpuLoad >= reducedCpu ||
+    gpuLoad >= reducedGpu ||
+    memLoad >= reducedMem ||
+    projectMemMB >= profile.maxProjectMemMB ||
+    freeMemMB <= profile.minFreeMemMB ||
+    projectPressure >= 75 ||
+    drift >= reducedDrift ||
+    peak >= 90
+  ) return TIERS.REDUCED;
   return TIERS.NORMAL;
 }
 
-function buildSpotPlan(tier, headroom, projectPressure) {
+function buildSpotPlan(tier, headroom, projectPressure, profile) {
   const plan = {};
-  const activeUser = isUserInteracting();
+  const activeUser = profile.socialOverride && isUserInteracting();
 
   for (const [name, spot] of Object.entries(RESOURCE_SPOTS)) {
     const guaranteed = spot.critical;
@@ -123,9 +307,12 @@ function buildSpotPlan(tier, headroom, projectPressure) {
     if (tier === TIERS.REDUCED) {
       // Social bots (priority < 50) are normally deferred in REDUCED tier, 
       // but if the user is interacting, we ALLOW them.
-      allowed = guaranteed || spot.priority >= 50 || (activeUser && spot.lane === 'social');
+      const learningHasRoom = spot.lane === 'learning' && hasReserve && projectPressure < 70;
+      allowed = guaranteed || spot.priority >= 50 || learningHasRoom || (activeUser && spot.lane === 'social');
       multiplier = guaranteed ? 1.25 : 2.0;
-      reason = allowed ? (activeUser ? 'interaction override' : 'reduced lane active') : 'deferred to protect core lanes';
+      reason = allowed
+        ? (learningHasRoom ? 'learning lane has safe headroom' : (activeUser ? 'interaction override' : 'reduced lane active'))
+        : 'deferred to protect core lanes';
     }
 
     if (tier === TIERS.PROTECT) {
@@ -156,6 +343,7 @@ function buildSpotPlan(tier, headroom, projectPressure) {
 }
 
 export function evaluateSelfOptimize(input = {}) {
+  const profile = getBudgetProfile(input.profile);
   const cpuLoad = clamp(input.cpuLoad ?? 0);
   const gpuLoad = clamp(input.gpuLoad ?? 0);
   const memLoad = clamp(input.memLoad ?? 0);
@@ -174,7 +362,7 @@ export function evaluateSelfOptimize(input = {}) {
     featurePressure * 0.30
   );
 
-  const tier = decideTier({ cpuLoad, gpuLoad, memLoad, projectPressure, drift });
+  const tier = decideTier({ cpuLoad, gpuLoad, memLoad, projectPressure, projectMemMB, freeMemMB, drift, profile });
   const headroom = {
     cpu: Math.max(0, 100 - cpuLoad),
     gpu: Math.max(0, 100 - gpuLoad),
@@ -184,10 +372,21 @@ export function evaluateSelfOptimize(input = {}) {
 
   return {
     timestamp: new Date().toISOString(),
+    version: 2,
+    profile: profile.name,
     tier,
+    sampled: {
+      cpuLoad,
+      gpuLoad,
+      memLoad,
+      projectMemMB: Math.round(projectMemMB),
+      processCount: projectProcessCount
+    },
     cpuLoad,
     gpuLoad,
     memLoad,
+    totalMemMB: Math.round(totalMemMB),
+    freeMemMB: Math.round(freeMemMB),
     headroom,
     project: {
       processCount: projectProcessCount,
@@ -197,7 +396,10 @@ export function evaluateSelfOptimize(input = {}) {
       drift: Math.round(drift)
     },
     vitals: input.vitals || {},
-    spots: buildSpotPlan(tier, headroom, projectPressure)
+    processRows: input.processRows || [],
+    topOffenders: (input.processRows || []).slice(0, 8),
+    spots: buildSpotPlan(tier, headroom, projectPressure, profile),
+    actionHistory: []
   };
 }
 
@@ -209,7 +411,7 @@ async function getGpuLoad() {
       return Math.max(...loads, 0);
     }
 
-    const { stdout } = await execAsync('powershell "Get-Counter \'\\GPU Engine(*)\\Utilization Percentage\' | Select-Object -ExpandProperty CounterSamples | Measure-Object -Property CookedValue -Max | Select-Object -ExpandProperty Maximum"', { timeout: 5000 }).catch(() => ({ stdout: '0' }));
+    const { stdout } = await execFileAsync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', "Get-Counter '\\GPU Engine(*)\\Utilization Percentage' | Select-Object -ExpandProperty CounterSamples | Measure-Object -Property CookedValue -Max | Select-Object -ExpandProperty Maximum"], { timeout: 5000, killSignal: 'SIGKILL' }).catch(() => ({ stdout: '0' }));
     return Math.round(parseFloat(stdout.trim()) || 0);
   } catch {
     return 0;
@@ -218,7 +420,7 @@ async function getGpuLoad() {
 
 async function getCpuLoad() {
   try {
-    const { stdout } = await execAsync('powershell "(Get-CimInstance Win32_Processor).LoadPercentage"', { timeout: 5000 }).catch(() => ({ stdout: '0' }));
+    const { stdout } = await execFileAsync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', '(Get-CimInstance Win32_Processor).LoadPercentage'], { timeout: 5000, killSignal: 'SIGKILL' }).catch(() => ({ stdout: '0' }));
     return parseInt(stdout.trim(), 10) || 0;
   } catch {
     const cpus = os.cpus().length || 1;
@@ -238,7 +440,8 @@ $procs | ConvertTo-Json -Compress
 `;
 
   try {
-    const { stdout } = await execAsync(powershellEncoded(query), { maxBuffer: 1024 * 1024, timeout: 8000 });
+    const args = ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(query, 'utf16le').toString('base64')];
+    const { stdout } = await execFileAsync('powershell.exe', args, { maxBuffer: 1024 * 1024, timeout: 8000, killSignal: 'SIGKILL' });
     const trimmed = stdout.trim();
     if (!trimmed) return [];
     const parsed = JSON.parse(trimmed);
@@ -271,16 +474,82 @@ function persistSnapshot(snapshot) {
   } catch {}
 }
 
+function roleFromCommand(commandLine = '', name = '') {
+  const cmd = String(commandLine || '').toLowerCase();
+  if (cmd.includes('ecosystem-manager')) return 'Ecosystem Manager';
+  if (cmd.includes('oracle-gateway')) return 'Oracle';
+  if (cmd.includes('dashboard-server')) return 'Dashboard';
+  if (cmd.includes('overnight_pipeline')) return 'Overnight Pipeline';
+  if (cmd.includes('kai.exe') || cmd.includes('target\\release\\kai')) return 'KAI';
+  const botMatch = cmd.match(/bots[\\/](leo|start-bot)\.mjs(?:\s+\"?([^\"\r\n]+)\"?)?/);
+  if (botMatch?.[1] === 'leo') return 'Leo';
+  if (botMatch?.[2]) return botMatch[2].trim();
+  if (cmd.includes('openjarvis')) return 'OpenJarvis';
+  return name || 'Project Process';
+}
+
+function normalizeProjectProcesses(projectProcesses = []) {
+  return projectProcesses.map(proc => {
+    const workingSetMB = Math.round(((Number(proc.WorkingSetSize) || 0) / 1024 / 1024) * 10) / 10;
+    const commandLine = String(proc.CommandLine || '');
+    return {
+      pid: Number(proc.ProcessId) || 0,
+      name: String(proc.Name || ''),
+      role: roleFromCommand(commandLine, proc.Name),
+      workingSetMB,
+      command: commandLine.length > 220 ? commandLine.slice(0, 217) + '...' : commandLine
+    };
+  }).sort((a, b) => b.workingSetMB - a.workingSetMB);
+}
+
+function rememberActions(snapshot, previousSnapshot = null) {
+  const denied = Object.entries(snapshot.spots || {})
+    .filter(([, spot]) => !spot.allowed)
+    .map(([name]) => name)
+    .sort();
+  const signature = [
+    snapshot.profile,
+    snapshot.tier,
+    denied.join(','),
+    snapshot.project?.pressure,
+    snapshot.project?.drift
+  ].join('|');
+
+  if (signature !== lastActionSignature) {
+    const tierChanged = previousSnapshot?.tier && previousSnapshot.tier !== snapshot.tier;
+    actionHistory.push({
+      ts: Date.now(),
+      at: new Date().toISOString(),
+      profile: snapshot.profile,
+      tier: snapshot.tier,
+      action: tierChanged ? `tier changed ${previousSnapshot.tier} -> ${snapshot.tier}` : `enforcing ${snapshot.tier}`,
+      denied,
+      projectPressure: snapshot.project?.pressure ?? 0,
+      drift: snapshot.project?.drift ?? 0
+    });
+    actionHistory = actionHistory.slice(-50);
+    lastActionSignature = signature;
+  }
+  snapshot.actionHistory = actionHistory;
+  snapshot.lastAction = actionHistory[actionHistory.length - 1] || null;
+}
+
 export async function getSelfOptimizeSnapshot(force = false, injected = null) {
   const now = Date.now();
   if (!force && !injected && currentSnapshot && now - lastCheck < 10000) return currentSnapshot;
   lastCheck = now;
 
+  // Kick off (or await once) the battery probe for accurate laptop detection on first samples.
+  // This makes the governor "detect limited hardware (battery, core count, RAM)" and run tighter baselines.
+  probeBatteryForLimits().catch(() => {});
+
   if (injected) {
+    const previousSnapshot = currentSnapshot;
     currentSnapshot = evaluateSelfOptimize({
       previousVitals: currentSnapshot?.vitals,
       ...injected
     });
+    rememberActions(currentSnapshot, previousSnapshot);
     persistSnapshot(currentSnapshot);
     return currentSnapshot;
   }
@@ -315,6 +584,8 @@ export async function getSelfOptimizeSnapshot(force = false, injected = null) {
   const freeMemMB = os.freemem() / 1024 / 1024;
   const memLoad = clamp(((totalMemMB - freeMemMB) / totalMemMB) * 100);
   const projectMemMB = projectProcesses.reduce((sum, proc) => sum + ((Number(proc.WorkingSetSize) || 0) / 1024 / 1024), 0);
+  const processRows = normalizeProjectProcesses(projectProcesses);
+  const previousSnapshot = currentSnapshot;
 
   currentSnapshot = evaluateSelfOptimize({
     cpuLoad,
@@ -324,9 +595,11 @@ export async function getSelfOptimizeSnapshot(force = false, injected = null) {
     freeMemMB,
     projectMemMB,
     projectProcessCount: projectProcesses.length,
+    processRows,
     vitals,
-    previousVitals: currentSnapshot?.vitals
+    previousVitals: previousSnapshot?.vitals
   });
+  rememberActions(currentSnapshot, previousSnapshot);
 
   persistSnapshot(currentSnapshot);
 
@@ -334,6 +607,19 @@ export async function getSelfOptimizeSnapshot(force = false, injected = null) {
   try {
     recordMetric('performance-monitor', 'cpu_pct', cpuLoad, { mode: 'coordinator' });
     recordMetric('performance-monitor', 'gpu_pct', gpuLoad, { mode: 'coordinator' });
+    recordMetric('performance-monitor', 'mem_pct', Math.round(memLoad), { mode: 'coordinator' });
+    recordMetric('proof-governor', 'tier', currentSnapshot.tier, { profile: currentSnapshot.profile });
+    recordMetric('proof-governor', 'project_memory_mb', currentSnapshot.project.memoryMB, { profile: currentSnapshot.profile });
+    recordMetric('proof-governor', 'project_pressure', currentSnapshot.project.pressure, { profile: currentSnapshot.profile });
+    recordMetric('proof-governor', 'drift', currentSnapshot.project.drift, { profile: currentSnapshot.profile });
+    recordMetric('proof-governor', 'process_count', currentSnapshot.project.processCount, { profile: currentSnapshot.profile });
+    if (currentSnapshot.lastAction) {
+      recordMetric('proof-governor', 'action', currentSnapshot.lastAction.action, {
+        profile: currentSnapshot.profile,
+        tier: currentSnapshot.tier,
+        denied: currentSnapshot.lastAction.denied.join(',')
+      });
+    }
   } catch (_) {}
 
   if (currentSnapshot.tier !== TIERS.NORMAL) {
@@ -352,6 +638,7 @@ export async function getPerformanceTier(force = false) {
     memLoad: snapshot.memLoad,
     projectPressure: snapshot.project.pressure,
     headroom: snapshot.headroom,
+    profile: snapshot.profile,
     spots: snapshot.spots
   };
 }
@@ -360,14 +647,8 @@ export async function shouldRunSpot(spotName = 'Default', taskType = 'background
   const snapshot = await getSelfOptimizeSnapshot(false);
   const spot = snapshot.spots[spotName] || snapshot.spots.Default;
   if (!spot) return true;
-  if (taskType === 'reactive' && spot.priority >= 50) return true;
   if (taskType === 'voice' && spotName === 'Leo' && spot.priority >= 75) return spot.allowed || snapshot.tier !== TIERS.PROTECT;
-  // Social chat is the user-facing product — only block it under truly
-  // critical pressure (PROTECT tier). Moderate load shouldn't gag the bots.
-  if (taskType === 'social') {
-    if (snapshot.tier === TIERS.PROTECT) return false;
-    return true;
-  }
+  if (taskType === 'reactive') return spot.allowed || (snapshot.tier !== TIERS.PROTECT && spot.priority >= 75);
   return !!spot.allowed;
 }
 
@@ -379,5 +660,32 @@ export function getThrottlingMultiplier(spotName = 'Default') {
   const snapshot = currentSnapshot;
   if (!snapshot) return 1.0;
   const spot = snapshot.spots[spotName] || snapshot.spots.Default || spotFor(spotName);
-  return spot.multiplier || 1.0;
+  let m = spot.multiplier || 1.0;
+  // Extra deliberate backoff on limited hosts (Codex: insert deliberate pauses; tighter on laptop).
+  if (_hostLimits && _hostLimits.isLimited && snapshot.tier !== TIERS.NORMAL) {
+    m = m * 1.6; // ~60% longer effective cycle times for background when laptop + load
+  }
+  return m;
+}
+
+/**
+ * Deliberate host-aware pause. Callers (social pulses, ingestion, tutor rounds, index work, persistence)
+ * should await this instead of fixed sleep() when they want to "insert deliberate pauses".
+ * Longer on REDUCED/PROTECT or limited hardware; shorter when voice priority or human present.
+ * This + shouldRunSpot + interest delays = "one at a time through the doorway".
+ */
+export async function hostAwarePause(baseMs = 800, context = {}) {
+  const snapshot = currentSnapshot;
+  const tier = snapshot ? snapshot.tier : TIERS.NORMAL;
+  const limited = _hostLimits && _hostLimits.isLimited;
+  let ms = baseMs;
+  if (tier === TIERS.PROTECT) ms = Math.max(ms, 18000);      // 18s+ min per Codex "PROTECT-tier pauses (20s+ on >70%...)"
+  else if (tier === TIERS.REDUCED) ms = Math.max(ms, limited ? 6500 : 4200);
+  else if (limited) ms = Math.max(ms, 2200);
+  // Voice or critical context gets shorter breath (prioritize)
+  if (context.priority === 'voice' || context.critical) ms = Math.min(ms, 1200);
+  // Jitter to avoid thundering herd
+  const jitter = Math.floor(Math.random() * 600);
+  await new Promise(r => setTimeout(r, ms + jitter));
+  return ms + jitter;
 }

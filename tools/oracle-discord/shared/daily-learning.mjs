@@ -3,6 +3,8 @@
  * This file defines the "Main Purpose" of each AI in the ecosystem.
  */
 
+import { recordMetric } from './metrics-store.mjs';
+
 export const LEARNING_TRACKS = {
   "Analyst": {
     domain: "Strategic Operations & Business Support",
@@ -48,6 +50,7 @@ export async function runDailyWorkSession(botName, workerFn, hardwareStats = nul
   if (!track) return [];
 
   console.log(`[${botName}/Work] Departmental session starting: ${track.domain}`);
+  recordMetric('proof-task', 'started', 1, { task: 'daily-work-session', bot: botName });
   
   const logSnippet = recentLogs.length > 0 
     ? `[RECENT SYSTEM LOGS]\n${JSON.stringify(recentLogs.slice(-5))}`
@@ -74,7 +77,7 @@ TASK: Perform a deep audit or research update on this area.
     const output = await workerFn(prompt, `You are a specialist in the ${track.domain} department of the Victus Core. Prioritize real telemetry over theoretical models.`);
     if (output) phases.push({ phase: focusItem, output });
   }
-  
+  recordMetric('proof-task', 'completed', phases.length, { task: 'daily-work-session', bot: botName });
   return phases;
 }
 

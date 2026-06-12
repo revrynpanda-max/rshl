@@ -5,7 +5,13 @@ param(
     [switch]$ConfigureMain,
     [Parameter(Mandatory=$false)]
     [switch]$ConfigureSpeakers,
-    [switch]$ConfigureVoice
+    [switch]$ConfigureVoice,
+    [switch]$FullFleet,
+    [switch]$NoPhoneBridge,
+    [string]$PhoneHost = "0.0.0.0",
+    [int]$PhonePort = 8787,
+    [ValidateSet("local", "tailnet", "any")]
+    [string]$PhoneAllowSource = "tailnet"
 )
 
 # Force UTF-8 so Unicode characters display correctly in PowerShell
@@ -13,6 +19,21 @@ param(
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
 $ErrorActionPreference = "Stop"
+
+# === FORCE PERSISTENT PHONE SENSOR TOKEN (never regenerate on restart) ===
+# Load from saved state file so the token stays the same across restarts of run-oracle-discord.ps1
+$phoneStatePath = Join-Path $PSScriptRoot "state\phone_sensor_connection.json"
+if (Test-Path $phoneStatePath) {
+    try {
+        $phoneConn = Get-Content $phoneStatePath -Raw | ConvertFrom-Json
+        if ($phoneConn.token -and -not $env:KAI_PHONE_SENSOR_TOKEN) {
+            $env:KAI_PHONE_SENSOR_TOKEN = [string]$phoneConn.token
+            Write-Host "[Phone] Loaded persistent token from saved state (will not change on restart)."
+        }
+    } catch {
+        Write-Warning "Could not load phone token from state file."
+    }
+}
 $ConfigPath = Join-Path $PSScriptRoot ".oracle-discord.local.xml"
 $ParticipantTokenNames = @(
     @{ Name = "KAI";          Env = "ORACLE_DISCORD_TOKEN_KAI" },
@@ -357,6 +378,81 @@ function Stop-ExistingDiscordGateways {
     }
 }
 
+function New-PhoneBridgeToken {
+    $bytes = New-Object byte[] 32
+    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    try {
+        $rng.GetBytes($bytes)
+    } finally {
+        $rng.Dispose()
+    }
+    return ([Convert]::ToBase64String($bytes)).TrimEnd('=').Replace('+','-').Replace('/','_')
+}
+
+function Get-TailscaleIPv4 {
+    $ts = Get-Command tailscale -ErrorAction SilentlyContinue
+    if ($ts) {
+        try {
+            $ip = (& $ts.Source ip -4 2>$null | Select-Object -First 1).Trim()
+            if ($ip -match '^100\.') { return $ip }
+        } catch {}
+    }
+    $net = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+        Where-Object { $_.IPAddress -match '^100\.' } |
+        Select-Object -First 1
+    if ($net) { return $net.IPAddress }
+    return "100.70.177.87"
+}
+
+function Initialize-PhoneSensorBridgeConfig {
+    param([string]$RepoRoot)
+
+    $tailscaleIp = Get-TailscaleIPv4
+    $stateDir = Join-Path $PSScriptRoot "state"
+    New-Item -ItemType Directory -Force -Path $stateDir | Out-Null
+    $connectionPath = Join-Path $stateDir "phone_sensor_connection.json"
+    $tokenSource = "environment"
+    if (-not $env:KAI_PHONE_SENSOR_TOKEN -and (Test-Path $connectionPath)) {
+        try {
+            $existing = Get-Content $connectionPath -Raw | ConvertFrom-Json
+            if ($existing.token) {
+                $env:KAI_PHONE_SENSOR_TOKEN = [string]$existing.token
+                $tokenSource = "state"
+            }
+        } catch {
+            $tokenSource = "generated"
+        }
+    }
+    if (-not $env:KAI_PHONE_SENSOR_TOKEN) {
+        $env:KAI_PHONE_SENSOR_TOKEN = New-PhoneBridgeToken
+        $tokenSource = "generated"
+    }
+
+    [pscustomobject]@{
+        updatedAt = (Get-Date).ToUniversalTime().ToString("o")
+        bridgeUrl = "http://${tailscaleIp}:${PhonePort}/phone"
+        phyphoxUrl = "http://${tailscaleIp}:${PhonePort}/phyphox"
+        healthUrl = "http://127.0.0.1:${PhonePort}/health"
+        latestUrl = "http://127.0.0.1:${PhonePort}/latest"
+        tailscaleIp = $tailscaleIp
+        bindHost = $PhoneHost
+        port = $PhonePort
+        allowSource = $PhoneAllowSource
+        token = $env:KAI_PHONE_SENSOR_TOKEN
+        tokenSource = $tokenSource
+        note = "Keep this token private. Oracle can DM these details to the authorized owner."
+    } | ConvertTo-Json -Depth 5 | Set-Content -Path $connectionPath -Encoding UTF8
+
+    Write-Host "[Phone] Sensor bridge prepared: http://${tailscaleIp}:${PhonePort}/phone (allow-source=$PhoneAllowSource)"
+    Write-Host "        Phyphox-friendly: http://${tailscaleIp}:${PhonePort}/phyphox"
+    Write-Host "        Health: http://127.0.0.1:${PhonePort}/health   Latest: http://127.0.0.1:${PhonePort}/latest"
+    Write-Host "        Token (for phone POSTs): $env:KAI_PHONE_SENSOR_TOKEN"
+    Write-Host "        On your PHONE (via Tailscale + Phyphox or custom sender): POST JSON telemetry to the /telemetry or /phyphox URL above."
+    Write-Host "        Example minimal payload: { 'device_id':'phone-main', 'location':{'lat':xx,'lon':yy}, 'sensors':{ 'battery_pct':xx, 'accelerometer':{...} } }"
+    Write-Host "        KAI will ingest it into the lattice for real-time awareness / protection."
+    Write-Host "[Phone] Connection state saved to $connectionPath"
+}
+
 Push-Location $PSScriptRoot
 try {
     $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..\..")
@@ -375,6 +471,26 @@ try {
     }
     Ensure-DiscordConfig
 
+    if (-not $FullFleet) {
+        # ESSENTIALS MODE: Leo + core (Oracle, KAI, Dashboard) + helpers online.
+        # Social bots start ASLEEP so they can't fight Leo for the GPU.
+        # Wake any of them in Discord: "wake groq", "wake up all", etc.
+        $env:ORACLE_START_SLEEP_BOTS = "Gemini,Claudey,X,Groq"
+        $env:ORACLE_LOW_CPU_PHONE_MODE = "1"
+        Write-Host "[Power] Essentials mode: Leo + core + helpers online; social bots (Gemini, Claudey, X, Groq) start asleep." -ForegroundColor Yellow
+        Write-Host "[Power] Wake them via Oracle in Discord ('wake groq') or boot with -FullFleet for everyone." -ForegroundColor DarkYellow
+    } else {
+        Remove-Item "Env:ORACLE_START_SLEEP_BOTS" -ErrorAction SilentlyContinue
+        Remove-Item "Env:ORACLE_LOW_CPU_PHONE_MODE" -ErrorAction SilentlyContinue
+        Write-Host "[Power] Full fleet mode requested. No startup sleep list applied." -ForegroundColor Yellow
+    }
+
+    if (-not $NoPhoneBridge) {
+        Initialize-PhoneSensorBridgeConfig -RepoRoot $repoRoot
+    } else {
+        Write-Host "[Phone] -NoPhoneBridge set; phone sensor bridge will not be launched by watchdog." -ForegroundColor Yellow
+    }
+
     if (-not (Test-Path (Join-Path $PSScriptRoot "node_modules"))) {
         Write-Host "[Init] Installing Discord gateway dependencies..."
         npm install
@@ -388,10 +504,14 @@ try {
 
     # ── Step 2: Kill existing gateway processes ───────────────────────────
     Write-Host "[Init] Hard-resetting environment to prevent port conflicts..." -ForegroundColor Yellow
-    Stop-Process -Name kai -Force -ErrorAction SilentlyContinue
     Stop-Process -Name node -Force -ErrorAction SilentlyContinue
-    $port3334 = Get-NetTCPConnection -LocalPort 3334 -ErrorAction SilentlyContinue
-    if ($port3334) { $port3334 | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue } }
+    if (-not $NoStartKai) {
+        Stop-Process -Name kai -Force -ErrorAction SilentlyContinue
+        $port3334 = Get-NetTCPConnection -LocalPort 3334 -ErrorAction SilentlyContinue
+        if ($port3334) { $port3334 | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue } }
+    } else {
+        Write-Host "[Init] -NoStartKai set; preserving any existing KAI/CNS process on port 3334."
+    }
     $port3001 = Get-NetTCPConnection -LocalPort 3001 -ErrorAction SilentlyContinue
     if ($port3001) { $port3001 | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue } }
     Start-Sleep -Seconds 2
@@ -424,40 +544,157 @@ try {
     Write-Host "[Startup] Phase 1.5 - Launching Sensory Layer (RF + IR)..." -ForegroundColor Magenta
     
     # Kill any leftover sensor processes
+    Get-CimInstance Win32_Process -Filter "Name='powershell.exe' OR Name='pwsh.exe'" -ErrorAction SilentlyContinue | ForEach-Object {
+        try {
+            if ($_.CommandLine -like "*sensor_watchdog.ps1*") {
+                $_.Terminate() | Out-Null
+            }
+        } catch {}
+    }
     Get-WmiObject Win32_Process -Filter "Name='python.exe' OR Name='python3.exe'" -ErrorAction SilentlyContinue | ForEach-Object {
         try {
-            if ($_.CommandLine -like "*tinysa_bridge*" -or $_.CommandLine -like "*ir_bridge*" -or $_.CommandLine -like "*sensor_watchdog*") {
+            if ($_.CommandLine -like "*tinysa_bridge*" -or $_.CommandLine -like "*tinysa_discord_bridge*" -or $_.CommandLine -like "*tinysa_fusion_bridge*" -or $_.CommandLine -like "*ir_bridge*" -or $_.CommandLine -like "*sensor_watchdog*" -or $_.CommandLine -like "*phone_sensor_bridge*") {
                 $_.Terminate() | Out-Null
             }
         } catch {}
     }
 
-    Write-Host "      [RF] Starting TinySA Ultra bridge on COM6..." -ForegroundColor DarkGray
+    Write-Host "      [RF] Starting KAI RF Fusion Bridge on COM6..." -ForegroundColor DarkGray
     Start-Process -FilePath "python" `
-                  -ArgumentList "C:\KAI\tools\tinysa_bridge.py --headless --port COM6" `
+                  -ArgumentList "C:\KAI\tools\tinysa_fusion_bridge.py --headless --port COM6 --discord-channel 1513582425446289658" `
                   -WindowStyle Hidden `
                   -ErrorAction SilentlyContinue
 
-    Write-Host "      [IR] Starting IR camera bridge..." -ForegroundColor DarkGray
-    Start-Process -FilePath "python" `
-                  -ArgumentList "C:\KAI\tools\ir_bridge.py --headless" `
-                  -WindowStyle Hidden `
-                  -ErrorAction SilentlyContinue
+    # [DISABLED 2026-06-10] ir_bridge.py loops cv2.VideoCapture every 10s when no IR camera
+    # is connected, which triggers the Windows device/permission sound endlessly.
+    # This was already disabled in sensor_watchdog.ps1 but this launcher still started it.
+    # Re-enable by uncommenting when an actual IR/thermal camera is plugged in.
+    # Write-Host "      [IR] Starting IR camera bridge..." -ForegroundColor DarkGray
+    # Start-Process -FilePath "python" `
+    #               -ArgumentList "C:\KAI\tools\ir_bridge.py --headless" `
+    #               -WindowStyle Hidden `
+    #               -ErrorAction SilentlyContinue
 
     Write-Host "      [WD] Starting Sensor Watchdog..." -ForegroundColor DarkGray
+
+    # Explicitly release phone sensor port (8787) and others to guarantee no duplicates.
+    # This is critical for reliable real-time phone telemetry (location, accel, battery, etc.)
+    # that feeds KAI's lattice for protection awareness and future device adaptability (robot body, wearables, etc.).
+    Write-Host "      Releasing sensor ports (especially 8787 for phone data) to prevent duplicate bindings..."
+    powershell -Command "& { $ports = @(8787,3333,3334,3400,3401); foreach($p in $ports){ netstat -ano | findstr \":$p\" | ForEach-Object { $id = ($_ -split '\s+')[-1]; if($id -match '^\d+$'){ taskkill /F /PID $id 2>$null } } } }" | Out-Null
+
+    $watchdogArgs = @(
+        "-WindowStyle", "Hidden",
+        "-ExecutionPolicy", "Bypass",
+        "-File", "C:\KAI\tools\sensors\sensor_watchdog.ps1"
+    )
+    if (-not $NoPhoneBridge) {
+        $watchdogArgs += @(
+            "-EnablePhoneBridge",
+            "-PhoneHost", $PhoneHost,
+            "-PhonePort", "$PhonePort",
+            "-PhoneAllowSource", $PhoneAllowSource,
+            "-PhoneToken", $env:KAI_PHONE_SENSOR_TOKEN
+        )
+    }
     Start-Process -FilePath "powershell" `
-                  -ArgumentList "-WindowStyle Hidden -ExecutionPolicy Bypass -File C:\KAI\tools\sensors\sensor_watchdog.ps1" `
+                  -ArgumentList $watchdogArgs `
                   -WindowStyle Hidden `
                   -ErrorAction SilentlyContinue
 
-    Write-Host "      Sensory layer online: RF vision + IR thermal awareness active." -ForegroundColor DarkGray
+    Write-Host "      Sensory layer online: RF Discord vision + IR thermal awareness active." -ForegroundColor DarkGray
 
     # ── Step 4: Start Discord gateway ─────────────────────────────────────
     Write-Host ""
     Write-Host "[Startup] Phase 2 - Backends online. Starting microservices ecosystem..."
     Write-Host ""
-    .\run-ecosystem.ps1
+
+    # Support easy "essentials" mode for your workflow (live Leo + Oracle + KAI core + learning pipeline).
+    # Set this env BEFORE running the script (or export it) to sleep the heavy specialists:
+    #   $env:ORACLE_START_SLEEP_BOTS = 'Analyst,Researcher,"Kai Coder",Gemini,Claudey,X,Groq'
+    # This keeps CPU/RAM headroom for Leo voice, Oracle orchestration, the sovereign KAI lattice,
+    # and your overnight_pipeline.py learning without the machine going crazy.
+    if ($env:ORACLE_START_SLEEP_BOTS) {
+        Write-Host "[Essentials] ORACLE_START_SLEEP_BOTS active: $($env:ORACLE_START_SLEEP_BOTS)" -ForegroundColor Yellow
+    }
+
+    .\run-ecosystem.ps1 -HealthWaitSec 60
 } finally {
     Pop-Location
+}
+
+function New-PhoneBridgeToken {
+    $bytes = New-Object byte[] 32
+    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    try {
+        $rng.GetBytes($bytes)
+    } finally {
+        $rng.Dispose()
+    }
+    return ([Convert]::ToBase64String($bytes)).TrimEnd('=').Replace('+','-').Replace('/','_')
+}
+
+function Get-TailscaleIPv4 {
+    $ts = Get-Command tailscale -ErrorAction SilentlyContinue
+    if ($ts) {
+        try {
+            $ip = (& $ts.Source ip -4 2>$null | Select-Object -First 1).Trim()
+            if ($ip -match '^100\.') { return $ip }
+        } catch {}
+    }
+    $net = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+        Where-Object { $_.IPAddress -match '^100\.' } |
+        Select-Object -First 1
+    if ($net) { return $net.IPAddress }
+    return "100.70.177.87"
+}
+
+function Initialize-PhoneSensorBridgeConfig {
+    param([string]$RepoRoot)
+
+    $tailscaleIp = Get-TailscaleIPv4
+    $stateDir = Join-Path $PSScriptRoot "state"
+    New-Item -ItemType Directory -Force -Path $stateDir | Out-Null
+    $connectionPath = Join-Path $stateDir "phone_sensor_connection.json"
+    $tokenSource = "environment"
+    if (-not $env:KAI_PHONE_SENSOR_TOKEN -and (Test-Path $connectionPath)) {
+        try {
+            $existing = Get-Content $connectionPath -Raw | ConvertFrom-Json
+            if ($existing.token) {
+                $env:KAI_PHONE_SENSOR_TOKEN = [string]$existing.token
+                $tokenSource = "state"
+            }
+        } catch {
+            $tokenSource = "generated"
+        }
+    }
+    if (-not $env:KAI_PHONE_SENSOR_TOKEN) {
+        $env:KAI_PHONE_SENSOR_TOKEN = New-PhoneBridgeToken
+        $tokenSource = "generated"
+    }
+
+    [pscustomobject]@{
+        updatedAt = (Get-Date).ToUniversalTime().ToString("o")
+        bridgeUrl = "http://${tailscaleIp}:${PhonePort}/phone"
+        phyphoxUrl = "http://${tailscaleIp}:${PhonePort}/phyphox"
+        healthUrl = "http://127.0.0.1:${PhonePort}/health"
+        latestUrl = "http://127.0.0.1:${PhonePort}/latest"
+        tailscaleIp = $tailscaleIp
+        bindHost = $PhoneHost
+        port = $PhonePort
+        allowSource = $PhoneAllowSource
+        token = $env:KAI_PHONE_SENSOR_TOKEN
+        tokenSource = $tokenSource
+        note = "Keep this token private. Oracle can DM these details to the authorized owner."
+    } | ConvertTo-Json -Depth 5 | Set-Content -Path $connectionPath -Encoding UTF8
+
+    Write-Host "[Phone] Sensor bridge prepared: http://${tailscaleIp}:${PhonePort}/phone (allow-source=$PhoneAllowSource)"
+    Write-Host "        Phyphox-friendly: http://${tailscaleIp}:${PhonePort}/phyphox"
+    Write-Host "        Health: http://127.0.0.1:${PhonePort}/health   Latest: http://127.0.0.1:${PhonePort}/latest"
+    Write-Host "        Token (for phone POSTs): $env:KAI_PHONE_SENSOR_TOKEN"
+    Write-Host "        On your PHONE (via Tailscale + Phyphox or custom sender): POST JSON telemetry to the /telemetry or /phyphox URL above."
+    Write-Host "        Example minimal payload: { 'device_id':'phone-main', 'location':{'lat':xx,'lon':yy}, 'sensors':{ 'battery_pct':xx, 'accelerometer':{...} } }"
+    Write-Host "        KAI will ingest it into the lattice for real-time awareness / protection."
+    Write-Host "[Phone] Connection state saved to $connectionPath"
 }
 

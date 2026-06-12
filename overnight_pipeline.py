@@ -9,6 +9,7 @@ OLLAMA_API     = 'http://127.0.0.1:11434/api/chat'
 
 CURRICULUM_PATH = os.path.join(os.path.dirname(__file__), 'data', 'pipeline_curriculum.json')
 ENV_PATH = r"C:\KAI\tools\oracle-discord\.env"
+SELF_OPTIMIZE_STATE = r"C:\KAI\tools\oracle-discord\state\self_optimize_state.json"
 TEACHER_MODEL = "llama3"
 if os.path.exists(ENV_PATH):
     with open(ENV_PATH, "r") as f:
@@ -18,91 +19,26 @@ if os.path.exists(ENV_PATH):
 
 DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1513343778797256804/pqjl_LsyMzQjJGivyy21LSay_aftVejPDtlhq1N_BN9vwp8SZ0Ztr95ojWGxbBGid-g5"
 
-class PipelineDashboard:
-    def __init__(self):
-        self.message_id = None
-        self.previous_results_embed = None
-        self.study_embeds = []
-        self.tutor_embeds = []
-        self.quiz_embeds = []
-        self.grade_embed = None
-        
-    def start_new_session(self):
-        self.message_id = None
-        self.study_embeds = []
-        self.tutor_embeds = []
-        self.quiz_embeds = []
-        self.grade_embed = None
-        # Previous grade embed is carried over.
-        
-    def _add_to_embed_list(self, embed_list, title, content, color):
-        if not embed_list:
-            embed_list.append({"title": title, "description": content, "color": color})
-            return
-            
-        # Append to the last embed in the list
-        last_embed = embed_list[-1]
-        new_desc = last_embed["description"] + "\n\n" + content
-        if len(new_desc) > 3900:
-            # Create a new embed if it gets too large
-            embed_list.append({"title": title + " (Cont.)", "description": content, "color": color})
-        else:
-            last_embed["description"] = new_desc
-
-    def render(self):
-        import urllib.request, json
-        if not DISCORD_WEBHOOK_URL: return
-        embeds = []
-        if self.previous_results_embed: embeds.append(self.previous_results_embed)
-        embeds.extend(self.study_embeds)
-        embeds.extend(self.tutor_embeds)
-        embeds.extend(self.quiz_embeds)
-        if self.grade_embed: embeds.append(self.grade_embed)
-        
-        # Discord limit is 10 embeds per message.
-        if len(embeds) > 10:
-            embeds = embeds[:10]
-            
-        data = json.dumps({"embeds": embeds}).encode('utf-8')
-        
-        try:
-            if self.message_id:
-                req = urllib.request.Request(DISCORD_WEBHOOK_URL + "/messages/" + self.message_id, data=data, headers={"User-Agent": "KAI-Bot", "Content-Type": "application/json"}, method="PATCH")
-                urllib.request.urlopen(req, timeout=5)
-            else:
-                req = urllib.request.Request(DISCORD_WEBHOOK_URL + "?wait=true", data=data, headers={"User-Agent": "KAI-Bot", "Content-Type": "application/json"}, method="POST")
-                with urllib.request.urlopen(req, timeout=5) as r:
-                    resp = json.loads(r.read())
-                    self.message_id = resp.get("id")
-        except Exception:
-            if self.message_id:
-                self.message_id = None
-                self.render()
-
-DASHBOARD = PipelineDashboard()
-
 def post_update_to_discord(title, content, color=3066993):
-    if "started" in title.lower() or "startup" in title.lower():
+    import urllib.request, json
+    if not DISCORD_WEBHOOK_URL: return
+    
+    # Custom layout requested by user
+    if "tutoring session" in title.lower() and "failed" not in title.lower() and "session" not in title.lower():
+        title = title + " <@1504582069886648351>"
+
+    embed = {
+        "title": title,
+        "description": content,
+        "color": color
+    }
+    data = json.dumps({"embeds": [embed]}).encode('utf-8')
+    
+    try:
+        req = urllib.request.Request(DISCORD_WEBHOOK_URL + "?wait=true", data=data, headers={"User-Agent": "KAI-Bot", "Content-Type": "application/json"}, method="POST")
+        urllib.request.urlopen(req, timeout=5)
+    except Exception:
         pass
-    elif "phase 1" in title.lower():
-        DASHBOARD.start_new_session()
-        DASHBOARD.render()
-    elif "sessions study" in title.lower():
-        DASHBOARD._add_to_embed_list(DASHBOARD.study_embeds, "Kais test Sessions Study", content, color=color)
-        DASHBOARD.render()
-    elif "phase 2" in title.lower():
-        DASHBOARD.render()
-    elif "tutoring session" in title.lower():
-        DASHBOARD._add_to_embed_list(DASHBOARD.tutor_embeds, "Kais Phase questions and answers", content, color=color)
-        DASHBOARD.render()
-    elif "phase 3" in title.lower():
-        DASHBOARD.render()
-    elif "quiz session" in title.lower():
-        DASHBOARD._add_to_embed_list(DASHBOARD.quiz_embeds, "Kais Quiz Questions and answers", content, color=color)
-        DASHBOARD.render()
-    else:
-        DASHBOARD._add_to_embed_list(DASHBOARD.study_embeds, "Kais test Sessions Study", content, color=color)
-        DASHBOARD.render()
 
 def post_stats_to_discord(curriculum, avg_quiz, avg_tutor, passed, weak_dim=None):
     import urllib.request, json
@@ -119,7 +55,7 @@ def post_stats_to_discord(curriculum, avg_quiz, avg_tutor, passed, weak_dim=None
         pass
     
     embed = {
-        "title": f"kais final grade on that session",
+        "title": f"KAI's Final Grade on that session",
         "color": 3066993 if passed else 15158332,
         "fields": [
             {"name": "Status", "value": f"{status} (Level {level})", "inline": True},
@@ -135,14 +71,13 @@ def post_stats_to_discord(curriculum, avg_quiz, avg_tutor, passed, weak_dim=None
     if curriculum.get('weak_areas'):
         embed["fields"].append({"name": "Current Weak Areas", "value": ", ".join(curriculum['weak_areas']), "inline": False})
         
-    DASHBOARD.grade_embed = embed
-    
-    import copy
-    prev_embed = copy.deepcopy(embed)
-    prev_embed["title"] = f"Comparison from Last tests"
-    DASHBOARD.previous_results_embed = prev_embed
-    
-    DASHBOARD.render()
+    data = json.dumps({"embeds": [embed]}).encode('utf-8')
+    try:
+        req = urllib.request.Request(DISCORD_WEBHOOK_URL + "?wait=true", data=data, headers={"User-Agent": "KAI-Bot", "Content-Type": "application/json"}, method="POST")
+        urllib.request.urlopen(req, timeout=5)
+    except Exception:
+        pass
+
 
 # ── Curriculum State ────────────────────────────────────────────────────────
 def load_curriculum():
@@ -186,14 +121,77 @@ def ban_source(src):
     print(f"  [{src}] BANNED for 10 minutes due to errors.")
 
 def check_governor():
+    """Returns True if should throttle/skip per Resource Governor (Codex §21.2 Three-Tier).
+    Stronger laptop-aware + PROTECT skips for non-urgent learning work (ingestion, tutor rounds).
+    The JS resource-saver.mjs is the source of truth (coordinator writes the state).
+    """
+    def learning_has_headroom(state):
+        sampled = state.get("sampled") or {}
+        project = state.get("project") or {}
+        cpu = float(sampled.get("cpuLoad", state.get("cpuLoad", 0)) or 0)
+        mem = float(sampled.get("memLoad", state.get("memLoad", 0)) or 0)
+        free_mb = float(state.get("freeMemMB", 0) or 0)
+        pressure = float(project.get("pressure", 0) or 0)
+        tier = state.get("tier", "NORMAL")
+        if tier == "PROTECT":
+            return False
+        if tier == "REDUCED":
+            return cpu < 68 and mem < 78 and free_mb > 3500 and pressure < 62
+        return cpu < 82 and mem < 86 and free_mb > 4096 and pressure < 75
+
+    try:
+        if os.path.exists(SELF_OPTIMIZE_STATE):
+            age = time.time() - os.path.getmtime(SELF_OPTIMIZE_STATE)
+            if age < 45:
+                with open(SELF_OPTIMIZE_STATE, "r", encoding="utf-8") as f:
+                    state = json.load(f)
+                spot = (state.get("spots") or {}).get("Overnight Pipeline") or (state.get("spots") or {}).get("Default") or {}
+                tier = state.get("tier")
+                if tier == "PROTECT":
+                    return True
+                if spot and not spot.get("allowed", True):
+                    if tier == "REDUCED" and learning_has_headroom(state):
+                        return False
+                    return True
+                # Even if spot allowed, REDUCED still randomly backs off learning to insert deliberate pauses
+                if tier == "REDUCED" and random.random() < 0.6:
+                    return True
+                return False
+    except Exception:
+        pass
+
     try:
         import psutil
         mem = psutil.virtual_memory()
-        if mem.used > 35 * 1024**3 or psutil.cpu_percent(interval=1) > 90:
+        cpu = psutil.cpu_percent(interval=1)
+        if mem.available < 3 * 1024**3 or mem.percent > 92 or (cpu > 95 and mem.percent > 85):
             return True
     except ImportError:
         pass
     return False
+
+
+def governor_backoff_sleep(base_seconds=12, context="learning"):
+    """Codex-aligned deliberate pause (Resource Governor + Host Covenant §21.1/21.2).
+    Uses tier from self_optimize_state.json (written by shared/resource-saver.mjs) to insert
+    longer pauses/skips instead of brute-forcing the next cycle on high load.
+    On limited/laptop hardware this yields the shared body; voice & critical stay responsive.
+    Non-urgent work (this pipeline) queues itself by sleeping.
+    """
+    try:
+        if os.path.exists(SELF_OPTIMIZE_STATE):
+            with open(SELF_OPTIMIZE_STATE, "r", encoding="utf-8") as f:
+                st = json.load(f)
+            t = st.get("tier", "NORMAL")
+            if t == "PROTECT":
+                time.sleep(max(base_seconds, 20) + random.uniform(0, 7))
+                return
+            if t == "REDUCED":
+                time.sleep(max(base_seconds, 8) + random.uniform(0, 5))
+                return
+    except Exception:
+        pass
+    time.sleep(base_seconds)
 
 # ── Scrapers ─────────────────────────────────────────────────────────────────
 def _fetch_hn(): return []
@@ -296,6 +294,69 @@ def fetch_linguistics_and_nuance():
         "strength": 3.0
     }]
 
+def fetch_codex():
+    """KAI studies his own Codex: a random section of The KAI Codex.md becomes
+    study material. Fixes the tiny hard-coded fact diet (the same ~15
+    sentences were cycling, over-reinforcing a few cells into retrieval
+    magnets) AND fulfills the design goal that KAI can study his own
+    specification and test whether its claims hold."""
+    if is_banned('CODEX'): return []
+    try:
+        codex_path = None
+        for p in (r"C:\KAI\The KAI Codex.md", r"C:\KAI\WHITEPAPER.md"):
+            if os.path.exists(p):
+                codex_path = p
+                break
+        if not codex_path: return []
+        with open(codex_path, "r", encoding="utf-8") as f:
+            raw = f.read()
+        # Split into sections on markdown headings; pick a meaty random one
+        sections = re.split(r"\n(?=#{1,3} )", raw)
+        candidates = [s for s in sections if len(s.strip()) > 400]
+        if not candidates: return []
+        sec = random.choice(candidates)
+        title_m = re.match(r"#{1,3}\s+\**(.+?)\**\s*$", sec.split("\n")[0])
+        title = title_m.group(1) if title_m else "Codex section"
+        # Take a digestible chunk, prose only (strip tables/code fences)
+        body = re.sub(r"```[\s\S]*?```", "", sec)
+        body = "\n".join(l for l in body.split("\n")[1:] if not l.strip().startswith("|"))
+        chunk = body.strip()[:900]
+        if len(chunk) < 200: return []
+        return [{
+            "text": f"[The KAI Codex - {title}] {chunk}",
+            "region": "internal_architecture",
+            "source": "codex_study",
+            "strength": 2.0
+        }]
+    except Exception:
+        ban_source('CODEX')
+        return []
+
+def fetch_word_training():
+    if is_banned('WORDS'): return []
+    try:
+        categories = ["Word Pools (Categories)", "Sequencing (Bigrams/Trigrams)", "Affixes (Prefixes/Suffixes)", "Synonyms & Antonyms"]
+        chosen = random.choice(categories)
+        prompt = (
+            f"Generate a single, highly specific 2-sentence linguistics fact for an AI student. "
+            f"Focus entirely on: {chosen}. "
+            f"For example, explain how a specific prefix changes a root word, or what specific words naturally follow another word, or group 3 words into a logical category. "
+            f"Output ONLY the fact. Do not use quotes or introductory filler."
+        )
+        fact = ask_teacher([{"role": "user", "content": prompt}])
+        if not fact:
+            return []
+            
+        return [{
+            "text": f"[Linguistics & Vocabulary] {fact.strip()}",
+            "region": "language",
+            "source": "word_training",
+            "strength": 3.0
+        }]
+    except Exception as e:
+        ban_source('WORDS')
+        return []
+
 def run_fetch(q, target_func_name):
     try:
         # Resolve the function by name to avoid pickling the function object
@@ -322,7 +383,11 @@ def bulk_ingest(entries):
         print(f"  [ingest error] {e}")
         return False
 
-def ask_kai(question, from_name="Oracle-Teacher"):
+def ask_kai(question, from_name="Oracle"):
+    # from_name MUST be an authorized identity ("Oracle", "Ryan", "KAI") —
+    # the sovereign firewall rejects unknown senders, and that rejection was
+    # being graded as KAI's answer (automatic 0). "Oracle-Teacher" was not
+    # on the allow list.
     data = json.dumps({"from": from_name, "text": question}).encode()
     req = urllib.request.Request(
         KAI_CHAT_API,
@@ -331,15 +396,35 @@ def ask_kai(question, from_name="Oracle-Teacher"):
         method="POST"
     )
     try:
-        with urllib.request.urlopen(req, timeout=180) as r:
+        with urllib.request.urlopen(req, timeout=240) as r:
             res = json.loads(r.read())
             return res.get("reply", str(res))
     except Exception as e:
         print(f"  [kai error] {e}")
+        # ENGINE-JAM BACKOFF: a timeout means the engine is saturated
+        # (index rebuild / serialized lattice work). Firing the next call
+        # immediately just deepens the jam — give it room to drain.
+        if "timed out" in str(e).lower():
+            print("  [backoff] Engine saturated - cooling down 30s before next call...")
+            time.sleep(30)
         return None
 
 # ── Oracle Teacher ────────────────────────────────────────────────────────────
+def teacher_alive(timeout=1.0):
+    """TCP probe before every teacher call — fulfills the Codex claim (§14,
+    Pipeline Robustness): never block on a dead Ollama; fail fast and clean."""
+    import socket
+    try:
+        s = socket.create_connection(("127.0.0.1", 11434), timeout=timeout)
+        s.close()
+        return True
+    except Exception:
+        return False
+
 def ask_teacher(messages, json_mode=False):
+    if not teacher_alive():
+        print("  [oracle error] Ollama not reachable (1s TCP probe failed) - skipping cleanly.")
+        return None
     payload = {"model": TEACHER_MODEL, "messages": messages, "stream": False}
     if json_mode:
         payload["format"] = "json"
@@ -357,6 +442,145 @@ def ask_teacher(messages, json_mode=False):
     except Exception as e:
         print(f"  [oracle error] {e}")
         return None
+
+# ── JSON Robustness ──────────────────────────────────────────────────────────
+# llama3 often wraps JSON in markdown fences or adds prose. The old code did a
+# bare json.loads and threw the WHOLE session away on failure — a huge cause
+# of "KAI always fails" (the session died before he was even graded).
+def parse_json_safe(raw):
+    if not raw:
+        return None
+    txt = raw.strip()
+    txt = re.sub(r'^```(?:json)?\s*', '', txt)
+    txt = re.sub(r'\s*```$', '', txt)
+    try:
+        return json.loads(txt)
+    except Exception:
+        pass
+    m = re.search(r'\{.*\}', txt, re.DOTALL)
+    if m:
+        try:
+            return json.loads(m.group(0))
+        except Exception:
+            return None
+    return None
+
+# ── Lecture Engine (graduate-school flow: TEACH first, then test) ────────────
+def lecture_session(fact_text, curriculum):
+    """The tutor teaches the material BEFORE any question is asked.
+    The lesson reaches KAI two ways: conversationally (through his normal
+    chat ingestion) and as a direct tutoring cell in the lattice."""
+    print(f"\n  >>> [LECTURE] <<<")
+    lesson_prompt = (
+        f"You are a patient teacher giving a tiny lecture to a young AI student. "
+        f"Teach this material in 2-4 short, simple sentences. Define any hard words. "
+        f"Material: '{fact_text}'. Output ONLY the lesson text."
+    )
+    lesson = ask_teacher([{"role": "user", "content": lesson_prompt}])
+    if not lesson:
+        return None
+    lesson_safe = lesson.strip().encode('ascii', 'ignore').decode('ascii')
+    print(f"  [Teacher] Lesson: {lesson_safe[:180]}{'...' if len(lesson_safe) > 180 else ''}")
+
+    ack = ask_kai(f"[LESSON] Listen carefully and remember this: {lesson_safe}")
+    if ack:
+        ack_safe = ack.encode('ascii', 'ignore').decode('ascii')
+        print(f"  [KAI] (acknowledges) {ack_safe[:120]}")
+
+    bulk_ingest([{
+        "text": lesson_safe,
+        "region": "tutoring",
+        "source": "oracle_lecture",
+        "strength": 1.5
+    }])
+    post_update_to_discord(f"Lecture {curriculum['level']}", f"**Teacher taught:**\n{lesson_safe}", color=10181046)
+    return lesson_safe
+
+# ── Flashcard Engine (word meanings + connections, graded leniently) ─────────
+def flashcard_session(batch, curriculum):
+    """KAI guesses what key terms mean and what they connect to. Two-in-one:
+    language understanding + topic connections. Correct guesses store
+    CONSTRUCTIVE confirmation cells; misses store DECONSTRUCTIVE corrections."""
+    print(f"\n  >>> [FLASHCARDS] <<<")
+    material = "\n".join(b['text'][:200] for b in random.sample(batch, min(4, len(batch))))
+    card_prompt = (
+        "From the study material below, pick 3 key terms a student must understand. "
+        "Output raw JSON ONLY: {\"cards\": [{\"term\": \"...\", \"meaning\": \"one-sentence simple definition\"}]}\n\n"
+        f"MATERIAL:\n{material}"
+    )
+    raw = ask_teacher([{"role": "user", "content": card_prompt}], json_mode=True)
+    cards = (parse_json_safe(raw) or {}).get("cards", [])
+    if not cards:
+        print("  [Flashcards] No cards generated - skipping.")
+        return []
+
+    entries = []
+    scores = []
+    for card in cards[:3]:
+        term = str(card.get("term", "")).strip()
+        meaning = str(card.get("meaning", "")).strip()
+        if not term or not meaning:
+            continue
+        print(f"  [Card] {term}")
+        guess = ask_kai(f"Flashcard: What does '{term}' mean, and what does it connect to in what you've learned?")
+        if not guess:
+            continue
+        guess_safe = guess.encode('ascii', 'ignore').decode('ascii')
+        print(f"  [KAI] {guess_safe[:150]}")
+        grade_raw = ask_teacher([
+            {"role": "system", "content": 'Lenient flashcard grader. Output raw JSON ONLY: {"score": 0-100, "note": "..."}'},
+            {"role": "user", "content": f"TERM: {term}\nTRUE MEANING: {meaning}\nSTUDENT GUESS: {guess_safe}\nGrade generously: partial understanding counts."}
+        ], json_mode=True)
+        g = parse_json_safe(grade_raw) or {}
+        score = g.get("score", 0)
+        scores.append(score)
+        print(f"  [Card] Score: {score}/100")
+        if score >= 70:
+            entries.append({
+                "text": f"{term} means: {meaning}. KAI understood this correctly.",
+                "region": "language", "source": "oracle_flashcard", "strength": 0.8
+            })
+        else:
+            entries.append({
+                "text": f"{term} means: {meaning}.",
+                "region": "language", "source": "oracle_flashcard", "strength": 2.0
+            })
+            entries.append({
+                "text": f"Q: What does '{term}' mean?\nA: {meaning}",
+                "region": "tutoring", "source": "oracle_flashcard", "strength": 1.8
+            })
+    if entries:
+        bulk_ingest(entries)
+    avg = sum(scores) / len(scores) if scores else 0
+    post_update_to_discord(f"Flashcards {curriculum['level']}", f"**Cards:** {len(scores)} | **Average:** {avg:.0f}/100", color=3447003)
+    return scores
+
+# ── Office Hours (KAI may ask exactly ONE question before the quiz) ──────────
+def office_hours(batch, curriculum):
+    print(f"\n  >>> [OFFICE HOURS - one question allowed] <<<")
+    topics = "; ".join(b['text'][:80] for b in batch[:3])
+    q = ask_kai(
+        f"The quiz starts soon. You may ask the tutor EXACTLY ONE question about today's material ({topics}). "
+        f"What is your one question?"
+    )
+    if not q:
+        return
+    q_safe = q.encode('ascii', 'ignore').decode('ascii')
+    print(f"  [KAI] Asks: {q_safe[:150]}")
+    answer = ask_teacher([{"role": "user", "content": (
+        f"A student asks one question before a quiz: '{q_safe}'. "
+        f"Answer clearly and simply in 1-3 sentences. The study material was: {topics}"
+    )}])
+    if not answer:
+        return
+    a_safe = answer.strip().encode('ascii', 'ignore').decode('ascii')
+    print(f"  [Teacher] {a_safe[:180]}")
+    ask_kai(f"Tutor's answer to your question: {a_safe}. Remember it for the quiz.")
+    bulk_ingest([{
+        "text": f"Q: {q_safe}\nA: {a_safe}",
+        "region": "tutoring", "source": "oracle_office_hours", "strength": 1.5
+    }])
+    post_update_to_discord(f"Office Hours {curriculum['level']}", f"**KAI asked:** {q_safe}\n**Tutor:** {a_safe}", color=10181046)
 
 # ── Tutoring Engine ─────────────────────────────────────────────────────────
 def tutoring_session(fact_text, curriculum):
@@ -395,16 +619,31 @@ def tutoring_session(fact_text, curriculum):
             return None
 
         # --- INTERACTIVE CURIOSITY FALLBACK ---
-        if kai_answer.strip().endswith("?") and "clarify" in kai_answer.lower():
+        lower_ans = kai_answer.strip().lower()
+        is_thought_or_question = lower_ans.endswith("?") or "what does" in lower_ans or "mean" in lower_ans or "clarify" in lower_ans or "i found a memory" in lower_ans or "thinking" in lower_ans
+        if is_thought_or_question:
             kai_safe = kai_answer.encode('ascii', 'ignore').decode('ascii')
-            print(f"  [KAI] {kai_safe}")
+            print(f"  [KAI] (Internal Thought) {kai_safe}")
             print("  [Teacher] Providing clarification...")
-            clarification_prompt = f"The student KAI is confused. He asked: '{kai_safe}'. The original context was: '{fact_text}'. Briefly answer his question in 1 sentence."
+            clarification_prompt = f"The student KAI is confused or thinking out loud. He said: '{kai_safe}'. The original context was: '{fact_text}'. Briefly answer his question or guide his thought in 1 sentence."
             clarification = ask_teacher([{"role": "user", "content": clarification_prompt}])
             if clarification:
                 clarif_safe = clarification.strip().encode('ascii', 'ignore').decode('ascii')
                 print(f"  [Teacher] {clarif_safe}")
-                current_question = f"Context: {clarif_safe}\nNow answer: {question}"
+                # CURIOSITY → MEMORY: KAI asked what a word means; STORE the
+                # answer as a definition cell so he never has to ask about
+                # this word again. (He was asking about 'creating'/'address'
+                # in an infinite loop because the answer was never saved.)
+                word_m = re.search(r"[Ww]hat does '([^']+)' mean", kai_safe)
+                if word_m:
+                    bulk_ingest([{
+                        "text": f"{word_m.group(1)} means: {clarif_safe[:300]}",
+                        "region": "language",
+                        "source": "oracle_definition",
+                        "strength": 2.5
+                    }])
+                    print(f"  [Curiosity] Stored definition of '{word_m.group(1)}' permanently.")
+                current_question = f"Teacher says: {clarif_safe}\nNow answer: {question}"
                 print("  [KAI] Formulating revised response...")
                 kai_answer = ask_kai(current_question)
                 if not kai_answer:
@@ -480,19 +719,28 @@ def tutoring_session(fact_text, curriculum):
         if not grade_raw:
             return None
 
-        try:
-            grade = json.loads(grade_raw)
-        except Exception as e:
-            print(f"  [Teacher] JSON parse error: {e}")
-            print(f"  [Teacher] Raw: {grade_raw[:300]}")
+        grade = parse_json_safe(grade_raw)
+        if not grade:
+            print("  [Teacher] JSON parse failed - asking grader to re-emit clean JSON...")
+            grade_raw = ask_teacher(
+                [{"role": "system", "content": sys_prompt},
+                 {"role": "user", "content": user_prompt + "\n\nREMINDER: Output ONLY raw JSON matching the schema. No markdown, no commentary."}],
+                json_mode=True
+            )
+            grade = parse_json_safe(grade_raw)
+        if not grade:
+            print("  [Teacher] Grader unusable this round - skipping session (not counted against KAI).")
             return None
 
         f_score = grade.get("factual_score", 0)
         s_score = grade.get("syntax_score", 0)
         i_score = grade.get("input_understanding", {}).get("intent_score", 0)
         c_score = grade.get("constitutional_score", 0)
-        # Weighted: facts 30%, syntax 25%, intent 20%, constitution 25%
-        combined = round(f_score * 0.30 + s_score * 0.25 + i_score * 0.20 + c_score * 0.25, 1)
+        # REWEIGHTED: knowing the answer is what matters most. The old split
+        # (facts 30 / syntax 25 / intent 20 / constitution 25) failed KAI on
+        # style even when he KNEW the fact — brutal for a non-LLM learning
+        # English from scratch. Facts 50%, intent 20%, syntax 15%, constitution 15%.
+        combined = round(f_score * 0.50 + i_score * 0.20 + s_score * 0.15 + c_score * 0.15, 1)
 
         print(f"  [Teacher] Intent: {i_score}/100 | Facts: {f_score}/100 | Syntax: {s_score}/100 | Constitution: {c_score}/100")
         print(f"  [Teacher] COMBINED: {combined}/100")
@@ -545,7 +793,7 @@ def tutoring_session(fact_text, curriculum):
         if hint:
             hint_safe = hint.strip().encode('ascii', 'ignore').decode('ascii')
             print(f"  [Teacher] Hint: {hint_safe}")
-            current_question = f"Teacher says: {hint_safe}\nNow try again: {question}"
+            current_question = f"Hint: {hint_safe}. {question}"
         else:
             break
 
@@ -643,7 +891,7 @@ def tutoring_session(fact_text, curriculum):
     desc = f"**Fact:** {fact_text}\n\n**Teacher:** {question}\n**KAI:** {kai_answer}"
     if golden: desc += f"\n\n**Correct Answer:** {golden}"
     desc += f"\n\n**Score:** {combined}/100"
-    post_update_to_discord("Tutoring Session", desc, color=3447003)
+    post_update_to_discord(f"Session {curriculum['level']} : Math and Tutor", desc, color=3447003)
 
     return {"entries": entries, "combined": combined, "question": question, "kai_answer": kai_answer}
 
@@ -661,7 +909,8 @@ def quiz_session(fact_text, curriculum, fact_id=None, flashcard_mode=False, stor
             f"ask ONE question that tests if the student remembers the fact. "
             f"The student has already been tutored. You may rephrase SLIGHTLY but keep the core wording similar. "
             f"Output ONLY the question. "
-            f"IMPORTANT: Do not introduce ANY new names, entities, or external information not present in the fact."
+            f"IMPORTANT: Do not introduce ANY new names, entities, or external information. "
+            f"CRITICAL: Your question MUST include the distinct semantic keywords from the fact so the student's associative memory can retrieve the correct cell."
         )
         print("  [Quiz Master] Generating question...")
         question = ask_teacher([{"role": "user", "content": q_prompt}])
@@ -677,20 +926,17 @@ def quiz_session(fact_text, curriculum, fact_id=None, flashcard_mode=False, stor
         return None
 
     # --- INTERACTIVE CURIOSITY FALLBACK ---
-    if kai_answer.strip().endswith("?") and "clarify" in kai_answer.lower():
+    lower_ans = kai_answer.strip().lower()
+    is_thought_or_question = lower_ans.endswith("?") or "what does" in lower_ans or "mean" in lower_ans or "clarify" in lower_ans or "i found a memory" in lower_ans or "thinking" in lower_ans
+    if is_thought_or_question:
         kai_safe = kai_answer.encode('ascii', 'ignore').decode('ascii')
-        print(f"  [KAI] {kai_safe}")
-        print("  [Quiz Master] Providing clarification...")
-        clarification_prompt = f"The student KAI is confused. He asked: '{kai_safe}'. The original context was: '{fact_text}'. Briefly answer his question in 1 sentence."
-        clarification = ask_teacher([{"role": "user", "content": clarification_prompt}])
-        if clarification:
-            clarif_safe = clarification.strip().encode('ascii', 'ignore').decode('ascii')
-            print(f"  [Quiz Master] {clarif_safe}")
-            clarified_question = f"Context: {clarif_safe}\nNow answer: {question}"
-            print("  [KAI] Formulating revised response...")
-            kai_answer = ask_kai(clarified_question)
-            if not kai_answer:
-                return None
+        print(f"  [KAI] (Internal Thought Intercepted) {kai_safe}")
+        print("  [Quiz Master] This is a test. Forcing KAI to synthesize final answer internally...")
+        clarified_question = f"You just thought out loud: '{kai_safe}'. This is a test. Do not ask me questions. Synthesize your thoughts and provide a final, direct answer to the question: {question}"
+        print("  [KAI] Formulating final answer...")
+        kai_answer = ask_kai(clarified_question)
+        if not kai_answer:
+            return None
     # --------------------------------------
 
     kai_safe = kai_answer.encode('ascii', 'ignore').decode('ascii')
@@ -717,15 +963,25 @@ def quiz_session(fact_text, curriculum, fact_id=None, flashcard_mode=False, stor
     )
     if not grade_raw:
         return None
-    try:
-        grade = json.loads(grade_raw)
-    except Exception:
+    grade = parse_json_safe(grade_raw)
+    if not grade:
+        print("  [Grader] JSON parse failed - retrying once...")
+        grade_raw = ask_teacher(
+            [{"role": "system", "content": sys_prompt},
+             {"role": "user", "content": user_prompt + "\n\nREMINDER: Output ONLY raw JSON. No markdown."}],
+            json_mode=True
+        )
+        grade = parse_json_safe(grade_raw)
+    if not grade:
+        print("  [Grader] Unusable - quiz question skipped (not counted against KAI).")
         return None
 
     f_score = grade.get("factual_score", 0)
     s_score = grade.get("syntax_score", 0)
     i_score = grade.get("intent_score", 0)
-    combined = round(f_score * 0.40 + s_score * 0.35 + i_score * 0.25, 1)
+    # REWEIGHTED: facts dominate (was facts 40 / syntax 35 / intent 25 —
+    # KAI could know the answer and still fail on phrasing).
+    combined = round(f_score * 0.60 + i_score * 0.20 + s_score * 0.20, 1)
     golden = grade.get("golden_answer", "")
 
     print(f"  [Grader] Intent: {i_score}/100 | Facts: {f_score}/100 | Syntax: {s_score}/100")
@@ -752,18 +1008,29 @@ def quiz_session(fact_text, curriculum, fact_id=None, flashcard_mode=False, stor
             "strength": round(quiz_strength * 0.8, 1)
         })
         print(f"  [System] Quiz FAILED — injecting high-strength corrections (strength {quiz_strength})")
+    elif combined >= 70:
+        # CONSTRUCTIVE claim: confirm what KAI got RIGHT, in his own words.
+        # Reinforcement shouldn't only flow from failure.
+        entries.append({
+            "text": f"Q: {question}\nA: {kai_answer}",
+            "region": "tutoring",
+            "source": "oracle_confirmed",
+            "strength": 1.0
+        })
+        print("  [System] Quiz PASSED — reinforcing KAI's own correct answer (constructive claim).")
 
     desc = f"**Fact:** {fact_text}\n\n**Quiz Master:** {question}\n**KAI:** {kai_answer}"
     if golden: desc += f"\n\n**Correct Answer:** {golden}"
     desc += f"\n\n**Score:** {combined}/100"
-    post_update_to_discord("Quiz Session", desc, color=15105570 if combined < 85 else 3066993)
+    post_update_to_discord(f"Quiz {curriculum['level']} :", desc, color=15105570 if combined < 85 else 3066993)
 
     return {"combined": combined, "question": question, "kai_answer": kai_answer, "entries": entries, "fact_id": fact_id}
 
 # ── Main Loop ───────────────────────────────────────────────────────────────
 def main():
     curriculum = load_curriculum()
-    sources = [fetch_architecture, fetch_internal_logs, fetch_design_principles, fetch_linguistics_and_nuance]
+    # Codex weighted double: KAI's primary study text is his own specification.
+    sources = [fetch_architecture, fetch_internal_logs, fetch_design_principles, fetch_linguistics_and_nuance, fetch_word_training, fetch_codex, fetch_codex]
 
     print("=" * 65)
     print(" KAI SOVEREIGN LEARNING PIPELINE v5.0")
@@ -782,8 +1049,8 @@ def main():
         batch = []
         for i in range(5):
             if check_governor():
-                print("  [governor] System throttled. Sleeping 10s.")
-                time.sleep(10)
+                print("  [governor] System throttled. Sleeping (host-aware backoff per Codex).")
+                governor_backoff_sleep(10, "ingest")
                 continue
 
             src = random.choice(sources)
@@ -846,10 +1113,17 @@ def main():
         tutor_rounds = 5 if "retention" in curriculum.get("weak_areas", []) else 3
         for i in range(tutor_rounds):
             # Prioritize retention facts if available
+            if check_governor():
+                print("  [governor] System busy - host-aware pause (Codex Resource Governor) before next tutor round.")
+                governor_backoff_sleep(14, "tutor")
             if retention_injects and i < len(retention_injects):
                 fact = retention_injects[i % len(retention_injects)]
+                if isinstance(fact, dict):
+                    fact = fact.get("fact", str(fact))
             else:
                 fact = random.choice(batch)['text']
+            # GRADUATE-SCHOOL FLOW: teach the material FIRST, then question it.
+            lecture_session(fact, curriculum)
             result = tutoring_session(fact, curriculum)
             if result and result.get("entries"):
                 bulk_ingest(result["entries"])
@@ -860,6 +1134,14 @@ def main():
 
         avg_tutor = sum(tutor_scores) / len(tutor_scores) if tutor_scores else 0
         print(f"\n  [Tutor Summary] Average tutoring score: {avg_tutor:.1f}/100 ({tutor_rounds} rounds)")
+
+        # ── PHASE 2.5: FLASHCARDS (word meanings + connections) ────────────
+        print("\n--- PHASE 2.5: FLASHCARDS ---")
+        post_update_to_discord("Phase 2.5: Flashcards", "Testing word meanings and connections...", color=10181046)
+        flashcard_session(batch, curriculum)
+
+        # ── PHASE 2.75: OFFICE HOURS (one question before the quiz) ────────
+        office_hours(batch, curriculum)
 
         # ── PHASE 3: END-OF-SECTION QUIZ ───────────────────────────────────
         print("\n--- PHASE 3: END-OF-SECTION QUIZ ---")
@@ -894,6 +1176,29 @@ def main():
             continue
 
         avg_quiz = sum(quiz_scores) / len(quiz_scores)
+
+        # ── RETAKE RULE: failing once sends KAI back to flashcards, then ONE
+        # retake quiz. Failure becomes a teaching moment, not a dead end.
+        PASS_PREVIEW = min(60 + (curriculum['level'] * 2), 75)
+        if avg_quiz < PASS_PREVIEW:
+            print("\n  [Retake] Below pass bar - back to flashcards, then one retake quiz...")
+            post_update_to_discord("Retake Granted", "Back to flashcards for review, then a retake quiz.", color=15105570)
+            flashcard_session(batch, curriculum)
+            retake_scores = []
+            for _ in range(2):
+                fact_entry = random.choice(batch)
+                r = quiz_session(fact_entry['text'], curriculum, fact_id=fact_entry.get('text'))
+                if r:
+                    retake_scores.append(r["combined"])
+                    if r.get("entries"):
+                        bulk_ingest(r["entries"])
+                time.sleep(2)
+            if retake_scores:
+                retake_avg = sum(retake_scores) / len(retake_scores)
+                print(f"  [Retake] Retake average: {retake_avg:.1f}/100")
+                # Final grade: best of original vs blended retake
+                avg_quiz = max(avg_quiz, round((avg_quiz + retake_avg) / 2, 1))
+
         curriculum['total_tests'] += 1
         curriculum['recent_scores'].append(avg_quiz)
         if len(curriculum['recent_scores']) > 20:
@@ -903,8 +1208,11 @@ def main():
         print(f"  SECTION RESULT: Quiz Average = {avg_quiz:.1f}/100")
         print(f"  Tutor Average  = {avg_tutor:.1f}/100")
 
-        PASS_THRESHOLD = 60 + (curriculum['level'] * 5)  # harder each level
-        PASS_THRESHOLD = min(PASS_THRESHOLD, 85)
+        # Difficulty ramps gently: +2 per level, capped at 75. The old ramp
+        # (+5/level toward 85) outpaced what a young lattice can retain and
+        # locked KAI into permanent failure once he hit mid levels.
+        PASS_THRESHOLD = 60 + (curriculum['level'] * 2)
+        PASS_THRESHOLD = min(PASS_THRESHOLD, 75)
 
         passed_section = False
         weak_dim_to_pass = None

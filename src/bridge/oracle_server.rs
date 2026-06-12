@@ -27,6 +27,54 @@ const SESSION_PATH: &str = "data/oracle_session.json";
 // interleave JSONL lines and corrupt the training file.
 static CORPUS_LOG_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
+// ── QUERY ADMISSION CONTROL (Host Covenant, Codex §21.1) ────────────────────
+// Caps concurrent lattice queries so external demand can't pin host CPU.
+// Default 8 = the measured comfort zone (p95 ≈ 4s at 8-way in the June 2026
+// stress test); override with env KAI_MAX_CONCURRENT_QUERIES.
+static QUERY_ACTIVE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+struct QueryAdmission;
+
+impl QueryAdmission {
+    fn limit() -> usize {
+        std::env::var("KAI_MAX_CONCURRENT_QUERIES")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .filter(|&n| n > 0)
+            .unwrap_or(8)
+    }
+
+    /// Try to take a slot. Returns a guard that releases on drop, or None
+    /// if the engine is already at its concurrency limit.
+    fn acquire() -> Option<QueryAdmissionGuard> {
+        use std::sync::atomic::Ordering;
+        let limit = Self::limit();
+        let mut current = QUERY_ACTIVE.load(Ordering::Relaxed);
+        loop {
+            if current >= limit {
+                return None;
+            }
+            match QUERY_ACTIVE.compare_exchange_weak(
+                current,
+                current + 1,
+                Ordering::AcqRel,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => return Some(QueryAdmissionGuard),
+                Err(actual) => current = actual,
+            }
+        }
+    }
+}
+
+struct QueryAdmissionGuard;
+
+impl Drop for QueryAdmissionGuard {
+    fn drop(&mut self) {
+        QUERY_ACTIVE.fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
+    }
+}
+
 /// Truncate a string to `max` characters at a character boundary.
 #[inline]
 fn truncate(s: &str, max: usize) -> String {
@@ -357,6 +405,26 @@ pub fn start_oracle_server(universe: Arc<Mutex<Universe>>, synaptic_layer: Arc<M
     let s_hb = Arc::clone(&roundtable_session);
     std::thread::spawn(move || run_heartbeat_loop(u_hb, s_hb));
 
+    // Autonomous Auto-Save Loop: Ensure synapses and cells are persisted every 60 seconds
+    let u_save = Arc::clone(&universe);
+    let sl_save = Arc::clone(&synaptic_layer);
+    std::thread::spawn(move || {
+        let base_dir = std::env::current_dir().map(|p| p.to_string_lossy().to_string()).unwrap_or_else(|_| ".".into());
+        loop {
+            std::thread::sleep(Duration::from_secs(60));
+            // Clone the state so we don't hold locks during the heavy file I/O operations
+            let mut u = u_save.lock().unwrap().clone();
+            let sl = sl_save.lock().unwrap().clone();
+            let tick = sl.tick;
+            
+            // In headless mode we don't track drive/candidates actively here, so supply empty ones
+            let candidates = crate::cognition::candidates::CandidateBuffer::new();
+            let drive = crate::drive::Drive::default();
+            
+            let _ = crate::persistence::save_compact(&base_dir, &mut u, &candidates, &drive, &sl, tick, 0);
+        }
+    });
+
     if std::env::args().any(|a| a == "--oracle" || a == "oracle-server" || a == "--oracle-server") {
         let u_ingest = Arc::clone(&universe);
         let s_ingest = Arc::clone(&roundtable_session);
@@ -438,8 +506,30 @@ fn handle_client(
         "/api/public-chat"   => handle_public_chat_turn(stream, body, universe, synaptic_layer, public_session),
         "/api/kai-turn"      => handle_kai_turn(stream, body, universe, synaptic_layer, roundtable_session),
         "/api/ai-turn"       => handle_ai_turn(stream, body, universe, synaptic_layer, roundtable_session),
-        "/api/rshl/query"         => handle_rshl_query(stream, body, universe, synaptic_layer),
-        "/api/rshl/query-multi-hop" => handle_rshl_query_multi_hop(stream, body, universe, synaptic_layer),
+        // ── ADMISSION CONTROL (Host Covenant, Codex §21.1) ───────────────
+        // Query serving previously had no brake: a flood of external queries
+        // could pin host CPU at 95%+ regardless of the resource governor
+        // (measured in the June 2026 stress test at 24-way concurrency).
+        // A simple semaphore caps concurrent lattice queries; excess callers
+        // get 429 + Retry-After instead of stacking unbounded CPU load.
+        "/api/rshl/query" => {
+            match QueryAdmission::acquire() {
+                Some(_permit) => handle_rshl_query(stream, body, universe, synaptic_layer),
+                None => write_json(stream, 429, "Too Many Requests", &serde_json::json!({
+                    "error": "query concurrency limit reached",
+                    "retry_after_ms": 250
+                })),
+            }
+        }
+        "/api/rshl/query-multi-hop" => {
+            match QueryAdmission::acquire() {
+                Some(_permit) => handle_rshl_query_multi_hop(stream, body, universe, synaptic_layer),
+                None => write_json(stream, 429, "Too Many Requests", &serde_json::json!({
+                    "error": "query concurrency limit reached",
+                    "retry_after_ms": 250
+                })),
+            }
+        }
         "/api/rshl/reason"        => handle_rshl_reason(stream, body, universe, synaptic_layer, roundtable_session),
         "/api/agents/get"    => handle_get_agent(stream, query_str, universe),
         "/api/rshl/store"    => handle_rshl_store(stream, body, universe),
@@ -1485,11 +1575,13 @@ fn handle_discord_turn(
                 let is_authorized = from == "Ryan@Discord" 
                     || from == "NasterModx" 
                     || from == "Oracle"
+                    || from == "KAI"
                     || from.contains("Ryan")
-                    || from.contains("NasterModx");
+                    || from.contains("NasterModx")
+                    || from.contains("KAI");
                     
                 if !is_authorized {
-                    ("Oracle".to_string(), "system".to_string(), "Analyst: Access denied. I only accept instructions from Oracle or Ryan.".to_string(), false)
+                    ("Oracle".to_string(), "system".to_string(), "Analyst: Access denied. I only accept instructions from Oracle, Ryan, or KAI.".to_string(), false)
                 } else {
                     let (reply, committed) = generate_direct_ai_reply("Analyst", session.clone(), universe.clone(), synaptic_layer.clone(), &full_prompt_with_vision);
                     ("Analyst".to_string(), "ai".to_string(), reply, committed)
@@ -3938,13 +4030,13 @@ fn run_active_synaptogenesis_loop(
 ) {
     static POOL: std::sync::OnceLock<rayon::ThreadPool> = std::sync::OnceLock::new();
     let pool = POOL.get_or_init(|| {
-        let num_cores = (num_cpus::get() as f32 * 0.75).round().max(1.0) as usize;
+        let num_cores = ((num_cpus::get() as f32 * 0.35).round() as usize).clamp(1, 4);
         rayon::ThreadPoolBuilder::new().num_threads(num_cores).build().unwrap()
     });
 
     loop {
-        // 50ms sleep — keeps API responsive without wasting cycles
-        std::thread::sleep(Duration::from_millis(50));
+        // 250ms sleep — allows the host PC's CPU to breathe and prevents 100% thread locking
+        std::thread::sleep(Duration::from_millis(250));
 
         let (seeds, phi_g, chi, p, throttle) = {
             let u = universe.lock().unwrap();
@@ -4129,9 +4221,10 @@ fn run_night_consolidation_loop(
             println!("[NightConsolidation] Step: compact-save");
             let mut u = universe.lock().unwrap();
             let sl = synaptic_layer.lock().unwrap();
+            let tick = sl.tick;
             let candidates = crate::cognition::candidates::CandidateBuffer::new();
             let drive = crate::drive::Drive::default();
-            let _ = crate::persistence::save_compact(&base_dir, &mut *u, &candidates, &drive, &sl, 0, 0);
+            let _ = crate::persistence::save_compact(&base_dir, &mut *u, &candidates, &drive, &sl, tick, 0);
         }
 
         // 1.5. AUTONOMOUS RESEARCH — KAI searches the web for self-improvement
@@ -5596,16 +5689,23 @@ fn execute_tool_action(action: &ToolExecutionRequest) -> Result<String, String> 
         "cargo_check" => Ok(run_safe_command("cargo check")),
         "cargo_test" => Ok(run_safe_command("cargo test")),
         "ls" | "dir" => Ok(run_safe_command("dir")),
-        "file_read" => {
+        "file_read" | "oracle.read_file" => {
             let path = action.input.trim();
             match std::fs::read_to_string(path) {
                 Ok(c) => Ok(c),
                 Err(e) => Err(format!("Error reading {}: {}", path, e))
             }
         }
-        "list_dir" => {
+        "list_dir" | "oracle.list_directory" => {
             let path = if action.input.trim().is_empty() { "." } else { action.input.trim() };
             Ok(run_safe_command(&format!("dir {}", path)))
+        }
+        "oracle.search_code" => {
+            let term = action.input.trim();
+            if term.is_empty() { return Err("Search term cannot be empty".into()); }
+            let term = term.replace("\"", "\\\""); // escape quotes
+            // Windows-native findstr for recursive code search
+            Ok(run_safe_command(&format!("findstr /s /i /c:\"{}\" *.*", term)))
         }
         "oracle.web_search" => {
             Ok(web_search_duckduckgo(&action.input))
@@ -5697,9 +5797,10 @@ fn handle_lattice_compact_save(
     let base_dir = std::env::current_dir().map(|p| p.to_string_lossy().to_string()).unwrap_or_else(|_| ".".into());
     let mut u = universe.lock().unwrap();
     let sl = synaptic_layer.lock().unwrap();
+    let tick = sl.tick;
     let candidates = crate::cognition::candidates::CandidateBuffer::new();
     let drive = crate::drive::Drive::default();
-    let res = crate::persistence::save_compact(&base_dir, &mut *u, &candidates, &drive, &sl, 0, 0);
+    let res = crate::persistence::save_compact(&base_dir, &mut *u, &candidates, &drive, &sl, tick, 0);
     drop(sl);
     let msg = if res.ok {
         format!("Compact save OK: {} cells ({:.2} KB)", res.cells, res.bytes as f64 / 1024.0)

@@ -246,35 +246,40 @@ impl SparseVec {
             .map(|(&i, &v)| (i as usize, v))
     }
 
-    /// Hebbian update: move this vector toward / away from `other` by `delta`.
     pub fn hebbian_update(&self, other: &SparseVec, delta: f32) -> Self {
         if delta.abs() < 0.001 {
             return self.clone();
         }
-        // Accumulate into a dense f32 buffer, then ternarize.
-        let mut accum: Vec<f32> = vec![0.0; DIM];
+        // Accumulate sparsely using a HashMap to avoid allocating 65KB dense buffers on every update
+        let mut accum: HashMap<u16, f32> = HashMap::with_capacity(self.nz.len() + other.nz.len());
         for (i, v) in self.iter() {
-            accum[i] = v as f32;
+            accum.insert(i as u16, v as f32);
         }
         for (i, v) in other.iter() {
-            let other_f = v as f32;
-            let current = accum[i];
-            accum[i] = current + delta * other_f;
+            let val = accum.entry(i as u16).or_insert(0.0);
+            *val += delta * (v as f32);
         }
-        let target_nnz = ((DIM as f32) * 0.04).ceil() as usize;
-        let mut indexed: Vec<(usize, f32)> =
-            accum.iter().enumerate().map(|(i, &v)| (i, v)).collect();
+        let target_nnz = ((DIM as f32) * SPARSITY).ceil() as usize;
+        
+        let mut indexed: Vec<(u16, f32)> = accum.into_iter().collect();
         indexed.sort_by(|a, b| {
             b.1.abs()
                 .partial_cmp(&a.1.abs())
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
 
-        let mut data = vec![0i8; DIM];
-        for (i, v) in indexed.into_iter().take(target_nnz) {
-            data[i] = if v >= 0.0 { 1 } else { -1 };
-        }
-        Self::from_raw(data)
+        let mut pairs: Vec<(u16, i8)> = indexed.into_iter().take(target_nnz).filter_map(|(idx, v)| {
+            if v != 0.0 {
+                Some((idx, if v > 0.0 { 1 } else { -1 }))
+            } else {
+                None
+            }
+        }).collect();
+        
+        pairs.sort_by_key(|p| p.0);
+        let (nz, vals): (Vec<u16>, Vec<i8>) = pairs.into_iter().unzip();
+        let cached_norm = (nz.len() as f32).sqrt();
+        Self { nz, vals, cached_norm }
     }
 
     /// Encode a text string into a sparse ternary vector.
@@ -483,10 +488,8 @@ impl SparseVec {
         self.cosine(other)
     }
 
-    /// Sparse dot product between two ternary vectors.
-    /// Two-pointer merge on the sorted nz arrays — O(NNZ) instead of O(DIM).
-    #[inline(always)]
-    pub fn dot(&self, other: &SparseVec) -> i32 {
+    /// The old, naive dot product (baseline) without Bounds Elision.
+    pub fn dot_unoptimized(&self, other: &SparseVec) -> i32 {
         let (a_nz, a_vals) = (&self.nz, &self.vals);
         let (b_nz, b_vals) = (&other.nz, &other.vals);
         let mut i = 0usize;
@@ -497,6 +500,37 @@ impl SparseVec {
             let bj = b_nz[j];
             if ai == bj {
                 dot += a_vals[i] as i32 * b_vals[j] as i32;
+                i += 1;
+                j += 1;
+            } else if ai < bj {
+                i += 1;
+            } else {
+                j += 1;
+            }
+        }
+        dot
+    }
+
+    /// Sparse dot product between two ternary vectors.
+    /// Two-pointer merge on the sorted nz arrays — optimized with bounds elision.
+    #[inline(always)]
+    pub fn dot(&self, other: &SparseVec) -> i32 {
+        let mut i = 0usize;
+        let mut j = 0usize;
+        let mut dot: i32 = 0;
+        let a_len = self.nz.len();
+        let b_len = other.nz.len();
+        let a_nz = &self.nz[..];
+        let a_vals = &self.vals[..];
+        let b_nz = &other.nz[..];
+        let b_vals = &other.vals[..];
+
+        while i < a_len && j < b_len {
+            // SAFETY: i < a_len and j < b_len checked by the while loop condition.
+            let ai = unsafe { *a_nz.get_unchecked(i) };
+            let bj = unsafe { *b_nz.get_unchecked(j) };
+            if ai == bj {
+                dot += unsafe { *a_vals.get_unchecked(i) as i32 * *b_vals.get_unchecked(j) as i32 };
                 i += 1;
                 j += 1;
             } else if ai < bj {

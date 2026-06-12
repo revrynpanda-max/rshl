@@ -1,0 +1,1 @@
+﻿import urllib.request, json; req = urllib.request.Request("http://127.0.0.1:3334/api/oracle-turn", data=json.dumps({"from": "ryan", "text": "KAI, how are you feeling today?"}).encode("utf-8"), headers={"Content-Type": "application/json"}); print(urllib.request.urlopen(req).read().decode("utf-8"))

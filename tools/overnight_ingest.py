@@ -33,8 +33,28 @@ print("Focus: Continuous discovery of new concepts and weaving them into dialogu
 print("Script will terminate automatically after 3 hours.")
 
 END_TIME = time.time() + (3.0 * 3600) # 3 hours from now
+import os
+def adaptive_sleep():
+    try:
+        path = 'c:/KAI/tools/oracle-discord/state/self_optimize_state.json'
+        if os.path.exists(path):
+            with open(path, 'r') as f:
+                state = json.load(f)
+                tier = state.get('tier', 'NORMAL')
+                if tier == 'PROTECT':
+                    time.sleep(15)
+                elif tier == 'REDUCED':
+                    time.sleep(6)
+                else:
+                    time.sleep(1)
+        else:
+            time.sleep(1)
+    except:
+        time.sleep(1)
+
 count = 0
 while time.time() < END_TIME:
+    adaptive_sleep()
     topic = fetch_random_topic()
     print(f"\n[{count}] Discovered new concept: {topic}")
     

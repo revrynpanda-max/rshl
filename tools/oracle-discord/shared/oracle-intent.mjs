@@ -13,6 +13,96 @@
 
 import { queryLattice, storeLattice } from './lattice-bridge.mjs';
 import { chatWithOpenJarvis } from './openjarvis.mjs';
+import fs from 'fs';
+import { buildKnowledgeContext, isKaiTopic } from './codex.mjs';
+import {
+  canOracleDelegateTo,
+  hasExplicitWorkIntent,
+  isCasualConversation,
+  INDUSTRIAL_WORKERS,
+} from './fleet-registry.mjs';
+import { getResilienceBrief } from './resilience-status.mjs';
+import {
+  getIntentHints,
+  recordOracleLearning,
+  recordIntentPattern,
+  hydrateConvoMemory,
+  persistConvoMemory,
+} from './conversation-learning.mjs';
+
+// ── ORACLE WORKING MEMORY ───────────────────────────────────────────────────
+// Oracle was stateless: every reply forgot the entire conversation ("input
+// alive, output, memory dead"). Now he keeps a rolling per-user transcript
+// (last 14 turns, 2h freshness) and feeds it into every conversational reply.
+const CONVO_MEMORY = new Map(); // requesterId -> [{who, text, ts}]
+hydrateConvoMemory(CONVO_MEMORY);
+
+export function rememberTurn(requesterId, who, text) {
+  if (!requesterId || !text) return;
+  const buf = CONVO_MEMORY.get(requesterId) || [];
+  buf.push({ who, text: String(text).slice(0, 500), ts: Date.now() });
+  while (buf.length > 14) buf.shift();
+  CONVO_MEMORY.set(requesterId, buf);
+  persistConvoMemory(CONVO_MEMORY);
+}
+function recallConversation(requesterId) {
+  const buf = (CONVO_MEMORY.get(requesterId) || []).filter(t => Date.now() - t.ts < 2 * 3600_000);
+  return buf.map(t => `${t.who}: ${t.text}`).join('\n');
+}
+function lastOracleReply(requesterId) {
+  const buf = (CONVO_MEMORY.get(requesterId) || []).filter(t => Date.now() - t.ts < 2 * 3600_000);
+  for (let i = buf.length - 1; i >= 0; i--) {
+    if (buf[i].who === 'Oracle') return buf[i].text;
+  }
+  return '';
+}
+
+export { isCasualConversation, hasExplicitWorkIntent };
+
+// ── LIVE SYSTEM AWARENESS ───────────────────────────────────────────────────
+// Cheap file reads (no HTTP): governor tier, fleet roster, KAI's memory and
+// school report. Injected into every conversational reply so Oracle answers
+// "what's going on with the server" with FACTS instead of vibes.
+function liveSystemBrief() {
+  const parts = [];
+  try {
+    const wc = JSON.parse(fs.readFileSync('c:/KAI/tools/oracle-discord/state/world-clock.json', 'utf8'));
+    if (wc.updatedAt) parts.push(`World tick #${wc.tickSeq ?? '?'} @ ${wc.updatedAt}`);
+  } catch (_) {}
+  try {
+    const s = JSON.parse(fs.readFileSync('c:/KAI/tools/oracle-discord/state/self_optimize_state.json', 'utf8'));
+    parts.push(`Governor: tier=${s.tier}, drift=${s.project?.drift}, KAI footprint=${s.project?.memoryMB}MB`);
+  } catch (_) {}
+  try {
+    const m = JSON.parse(fs.readFileSync('c:/KAI/tools/oracle-discord/state/ecosystem-manager.json', 'utf8'));
+    const up = (m.children || []).filter(c => c.pid && !c.sleeping).map(c => c.name);
+    const asleep = (m.children || []).filter(c => c.sleeping).map(c => c.name);
+    const ageS = Math.round((Date.now() - new Date(m.updatedAt).getTime()) / 1000);
+    parts.push(`Fleet (as of ${ageS}s ago): ONLINE=[${up.join(', ')}]${asleep.length ? ` ASLEEP=[${asleep.join(', ')}]` : ''}`);
+    parts.push(`Workers ONLY: Oracle, KAI, Researcher, Analyst, Kai Coder. Social plaza: Leo, Gemini, Claudey, Groq, X.`);
+    if (ageS > 120) parts.push(`⚠ Manager state is ${ageS}s stale — the ecosystem manager may be down.`);
+  } catch (_) { parts.push('⚠ Ecosystem manager state unreadable.'); }
+  try {
+    const h = JSON.parse(fs.readFileSync('c:/KAI/data/hippocampus_status.json', 'utf8'));
+    parts.push(`KAI memory: ${h.patterns} short-term patterns, ${h.pending_consolidations} queued, ${h.promoted_total} promoted to Universe`);
+  } catch (_) {}
+  try {
+    const c = JSON.parse(fs.readFileSync('c:/KAI/data/pipeline_curriculum.json', 'utf8'));
+    parts.push(`Training: level ${c.level}, ${c.total_passed}/${c.total_tests} sections passed, recent quizzes=[${(c.recent_scores || []).slice(-4).map(x => Math.round(x)).join(', ')}]`);
+  } catch (_) {}
+  const resilience = getResilienceBrief();
+  if (resilience) parts.push(resilience);
+  return parts.join('\n');
+}
+
+const ORACLE_COMMAND_POWERS = `[YOUR REAL COMMAND POWERS — these exact phrases from Ryan trigger REAL actions through your deterministic handlers. If Ryan asks for one of these, tell him the exact phrase (or confirm it's already happening):]
+- "restart <botname>" — surgical single-bot restart
+- "wake <botname>" / "sleep <botname>" / "wake up all" / "quiet mode"
+- "restart the whole show" (also: restart the entire server/everything) — FULL infrastructure reboot: engine, backends, fleet
+- "stop the whole system" — total shutdown (everything dies, including you)
+- "leo voices" — list Leo's voices | "set leo's voice to <name>" — change + auto-restart Leo
+- "!teach <bot> <rule>" / "!role <bot> <persona>" / "!prune <bot>"
+Never claim you cannot restart or control the system — you CAN, via the phrases above.`;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  1. Intent Registry — what Oracle can do
@@ -36,21 +126,21 @@ const INTENT_REGISTRY = {
   research: {
     label: "Research / web search / docs",
     agent: "Researcher",
-    keywords: ["search", "find", "research", "look up", "docs", "documentation", "what is", "how to", "explain", "information"],
+    keywords: ["search for", "look up", "research", "documentation", "find information", "web search"],
     tools: ["web_search", "read_url", "query_docs"],
     prompt_template: "Research {target} thoroughly. Search the web, read relevant documentation, and summarize findings."
   },
   analyze: {
     label: "Analyze / audit / inspect",
     agent: "Analyst",
-    keywords: ["analyze", "audit", "check", "inspect", "review", "scan", "monitor", "logs", "performance", "security", "health"],
+    keywords: ["analyze", "audit", "inspect", "review", "scan logs", "monitor", "performance audit", "security scan"],
     tools: ["read_logs", "scan_files", "run_audit", "check_metrics"],
     prompt_template: "Analyze {target}. Perform a thorough inspection, identify issues or anomalies, and report findings."
   },
   system_restart: {
     label: "Restart bot / service",
     agent: "Oracle",
-    keywords: ["restart", "reboot", "cycle", "reset", "stop", "start", "kill", "refresh"],
+    keywords: ["restart", "reboot", "cycle", "reset bot", "refresh bot"],
     tools: ["restart_bot", "restart_all"],
     prompt_template: "Restart {target} cleanly. Preserve state where possible."
   },
@@ -64,7 +154,7 @@ const INTENT_REGISTRY = {
   conversation: {
     label: "General chat / question",
     agent: "Oracle",
-    keywords: ["hello", "hi", "hey", "what", "why", "how", "tell me", "chat", "talk"],
+    keywords: ["hello", "hi", "hey", "chat", "talk", "what's on your mind"],
     tools: [],
     prompt_template: "Respond naturally to: {target}"
   },
@@ -105,9 +195,38 @@ const INTENT_REGISTRY = {
  *
  * Returns: { intent, target, agent, confidence, tools, reasoning }
  */
-export async function classifyIntent(text) {
+export async function classifyIntent(text, requesterId = '') {
   if (!text || text.trim().length < 3) {
     return { intent: "conversation", target: text || "", agent: "Oracle", confidence: 0.0, tools: [], reasoning: "empty input" };
+  }
+
+  if (isCasualConversation(text)) {
+    return {
+      intent: "conversation",
+      target: text,
+      agent: "Oracle",
+      confidence: 0.95,
+      tools: [],
+      reasoning: "casual conversation — no delegation",
+    };
+  }
+
+  // Phase 0: Learn from past Ryan↔Oracle intent patterns (same user)
+  if (requesterId) {
+    const hints = getIntentHints(requesterId, text, 2);
+    if (hints.length > 0 && hints[0].overlap >= 2 && hints[0].confidence > 0.4) {
+      const meta = INTENT_REGISTRY[hints[0].intent] || INTENT_REGISTRY.conversation;
+      if (hints[0].intent === 'conversation' || hasExplicitWorkIntent(text)) {
+        return {
+          intent: hints[0].intent,
+          target: text,
+          agent: meta.agent,
+          confidence: Math.min(0.85, (hints[0].confidence || 0.5) + 0.1),
+          tools: meta.tools,
+          reasoning: `intent memory: prior ${hints[0].intent} (${hints[0].overlap} keyword overlap)`,
+        };
+      }
+    }
   }
 
   const lower = text.toLowerCase();
@@ -143,13 +262,26 @@ export async function classifyIntent(text) {
   // If keyword score is strong (>10), skip lattice
   if (bestScore > 10) {
     const meta = INTENT_REGISTRY[bestIntent];
+    let intent = bestIntent;
+    let agent = meta.agent;
+    // Never delegate social bots; research/analyze need explicit work intent
+    if (!INDUSTRIAL_WORKERS.has(agent)) {
+      intent = 'conversation';
+      agent = 'Oracle';
+    } else if ((intent === 'research' || intent === 'analyze') && !hasExplicitWorkIntent(text)) {
+      intent = 'conversation';
+      agent = 'Oracle';
+    } else if (intent === 'system_restart' && !/\b(restart|reboot|wake|sleep|stop the whole|cycle)\b/i.test(lower)) {
+      intent = 'conversation';
+      agent = 'Oracle';
+    }
     return {
-      intent: bestIntent,
+      intent,
       target: bestTarget,
-      agent: meta.agent,
+      agent,
       confidence: Math.min(bestScore / 20, 0.95),
-      tools: meta.tools,
-      reasoning: `keyword match (score ${bestScore})`
+      tools: intent === bestIntent ? meta.tools : [],
+      reasoning: intent === bestIntent ? `keyword match (score ${bestScore})` : `demoted from ${bestIntent} — not explicit work`,
     };
   }
 
@@ -383,6 +515,12 @@ export async function executeIntent(intentResult, context = {}) {
   const { intent, target, agent, tools } = intentResult;
   const meta = INTENT_REGISTRY[intent] || INTENT_REGISTRY.conversation;
 
+  // Even action commands enter working memory, so follow-up conversation
+  // ("did that work?", "yes please") has context.
+  if (intent !== 'conversation') {
+    rememberTurn(context.requesterId, 'Ryan', `[command: ${intent}] ${target}`);
+  }
+
   // Single-step: direct tool execution
   if (tools.length === 1 && TOOL_REGISTRY[tools[0]]) {
     const tool = TOOL_REGISTRY[tools[0]];
@@ -406,31 +544,82 @@ export async function executeIntent(intentResult, context = {}) {
     }
   }
 
-  // Multi-step or agent delegation
-  if (agent !== "Oracle" && context.sendBotSignal) {
-    // Delegate to industrial agent via IPC
-    const port = context.botPorts?.[agent];
-    if (port) {
-      context.sendBotSignal(port, {
-        channelId: context.channelId,
-        requesterId: context.requesterId,
-        type: 'DYNAMIC_TASK',
-        silent: false,
-        context: `[ORACLE/NATURAL] ${meta.prompt_template.replace('{target}', target)}`
-      });
-      return {
-        success: true,
-        delegated: true,
-        agent,
-        message: `Delegated to ${agent}: ${target}`
-      };
+  // Multi-step or agent delegation — industrial workers only, explicit tasks only
+  if (agent !== "Oracle" && context.sendBotSignal && canOracleDelegateTo(agent)) {
+    const shouldDelegate = hasExplicitWorkIntent(target) || (intentResult.confidence >= 0.65 && ['research', 'analyze', 'code_fix', 'code_create'].includes(intent));
+    if (shouldDelegate) {
+      const port = context.botPorts?.[agent];
+      if (port) {
+        context.sendBotSignal(port, {
+          channelId: context.channelId,
+          requesterId: context.requesterId,
+          type: 'DYNAMIC_TASK',
+          silent: false,
+          originAgent: 'Oracle',
+          workflowId: context.workflowId,
+          context: `[ORACLE/NATURAL] ${meta.prompt_template.replace('{target}', target)}`
+        });
+        recordIntentPattern(context.requesterId, target, intentResult).catch(() => {});
+        return {
+          success: true,
+          delegated: true,
+          agent,
+          message: `Delegated to ${agent}: ${target}`
+        };
+      }
     }
   }
 
-  // Oracle handles it directly (conversation, simple tasks)
+  // Oracle handles it directly (conversation, simple tasks) — WITH memory,
+  // live system state, command awareness, and Codex/lattice grounding.
   const prompt = meta.prompt_template.replace('{target}', target);
+  const memory = recallConversation(context.requesterId);
+  const prevOracle = lastOracleReply(context.requesterId);
+  let grounding = '';
   try {
-    const reply = await chatWithOpenJarvis('Oracle', target, prompt, 'Oracle-Sovereign', 0.4, { isWorkChannel: false });
+    if (isKaiTopic(target)) grounding = (await buildKnowledgeContext(target, 1800)) || '';
+  } catch (_) {}
+
+  const isChat = intent === 'conversation' || isCasualConversation(target);
+  const systemBlock = isChat
+    ? `[MODE: CONVERSATION — Ryan is talking with you like a person, NOT assigning work unless he explicitly asks you to DO something (fix code, restart a bot, research a topic, audit logs).
+- Match his energy: gaming venting, jokes, "hey you okay?", opinions = talk back naturally like a friend who runs the fleet.
+- Do NOT open with "You know I'm always ready for a chat" or "How can I assist you today?" — vary your tone and answer what he actually said.
+- Do NOT dump system health, drift, footprint, or tier unless he asks about the system/KAI/fleet.
+- Workers are ONLY: Oracle, KAI, Researcher, Analyst, Kai Coder. Leo/Groq/Gemini/Claudey/X are SOCIAL bots in plaza chat — never delegate tasks to them.
+- If he states fleet facts ("only X are workers"), acknowledge and remember — do not spawn Researcher tasks.
+- Game rage / hyperbole ("kill everyone" about Overwatch) is NOT a restart command.
+- Keep replies concise unless he asks for detail.
+- You learn from every turn: patterns go to KAI's lattice so future replies get sharper. Use conversation history — if Ryan clarified workers vs social bots, honor that forever in this session.]`
+    : `[MODE: TASK — Ryan issued a work request. Be precise and action-oriented.]`;
+
+  const fullSystem = `${prompt}
+
+${systemBlock}
+
+[IDENTITY] You are ORACLE — sovereign coordinator of the KAI kaiverse. You remember this conversation. Ryan controls the system through you when he asks; otherwise you're just present with him.
+
+[LIVE SYSTEM STATE — use ONLY when Ryan asks about status/health/fleet; otherwise ignore]
+${liveSystemBrief() || '(state files unavailable)'}
+
+${ORACLE_COMMAND_POWERS}
+
+[CONVERSATION SO FAR — remember and use this context]
+${memory || '(first message of this conversation)'}
+${prevOracle ? `\n[ANTI-REPEAT: your last reply was "${prevOracle.slice(0, 120)}..." — do NOT repeat that opener or phrasing.]` : ''}
+${grounding ? `\n[GROUNDED KNOWLEDGE]\n${grounding}` : ''}`;
+
+  try {
+    const reply = await chatWithOpenJarvis('Oracle', target, fullSystem, 'Oracle-Sovereign', 0.4, { isWorkChannel: false });
+    rememberTurn(context.requesterId, 'Ryan', target);
+    rememberTurn(context.requesterId, 'Oracle', reply || '(no reply)');
+    recordOracleLearning({
+      requesterId: context.requesterId,
+      userText: target,
+      intentResult,
+      oracleReply: reply,
+      channelId: context.channelId,
+    }).catch(() => {});
     return {
       success: true,
       result: reply,
@@ -454,7 +643,11 @@ export async function executeIntent(intentResult, context = {}) {
  *   { intent: "system_restart", target: "server" }
  * ]
  */
-export async function parseMultiStep(text) {
+export async function parseMultiStep(text, requesterId = '') {
+  if (isCasualConversation(text)) {
+    return [await classifyIntent(text, requesterId)];
+  }
+
   const steps = [];
 
   // Split on conjunctions
@@ -463,13 +656,13 @@ export async function parseMultiStep(text) {
   for (const part of parts) {
     const trimmed = part.trim();
     if (trimmed.length < 3) continue;
-    const classification = await classifyIntent(trimmed);
+    const classification = await classifyIntent(trimmed, requesterId);
     steps.push(classification);
   }
 
   // If no clear split, treat as single task
   if (steps.length === 0) {
-    steps.push(await classifyIntent(text));
+    steps.push(await classifyIntent(text, requesterId));
   }
 
   return steps;

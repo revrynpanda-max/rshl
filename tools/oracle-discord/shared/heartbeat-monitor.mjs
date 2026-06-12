@@ -19,8 +19,29 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import http from 'http';
+import fs from 'fs';
 import { recordMetric } from './metrics-store.mjs';
 import { suppressBot } from './remediation-state.mjs';
+
+// ── SLEEP AWARENESS ─────────────────────────────────────────────────────────
+// The ecosystem manager writes which bots are intentionally ASLEEP to
+// state/ecosystem-manager.json. A sleeping bot is not dead — skip it instead
+// of "isolating" it and dispatching pointless diagnostics every boot.
+const MANAGER_STATE_FILE = 'c:/KAI/tools/oracle-discord/state/ecosystem-manager.json';
+let _sleepCache = { set: new Set(), at: 0 };
+function isBotAsleep(name) {
+  const now = Date.now();
+  if (now - _sleepCache.at > 10_000) {
+    _sleepCache.at = now;
+    try {
+      const data = JSON.parse(fs.readFileSync(MANAGER_STATE_FILE, 'utf8'));
+      _sleepCache.set = new Set(
+        (data.children || []).filter(c => c.sleeping).map(c => String(c.name).toLowerCase())
+      );
+    } catch (_) { /* keep last known set */ }
+  }
+  return _sleepCache.set.has(String(name).toLowerCase());
+}
 
 const TICK_MS    = 15_000;
 const TIMEOUT_MS = 3_000;
@@ -53,6 +74,18 @@ function probe(port) {
 }
 
 async function tickOne(name, port) {
+  // Intentionally sleeping bot: not dead, not isolated, no diagnostics.
+  if (isBotAsleep(name)) {
+    const sleeper = STATE.get(name);
+    sleeper.missedBeats = 0;
+    if (sleeper.isolated) {
+      sleeper.isolated = false;
+      console.log(`😴 [heartbeat-monitor] ${name} is ASLEEP by design — isolation lifted, monitoring paused.`);
+    }
+    recordMetric('heartbeat-monitor', 'bot_alive', 1, { bot: name, sleeping: true });
+    return;
+  }
+
   const r = await probe(port);
   const s = STATE.get(name);
 

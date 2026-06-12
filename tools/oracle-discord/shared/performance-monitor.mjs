@@ -73,8 +73,10 @@ export async function getHardwareStats() {
         const content = fs.readFileSync(STATE_PATH, 'utf8');
         const snapshot = JSON.parse(content);
         if (snapshot && typeof snapshot.cpuLoad === 'number') {
-          const totalMem = Math.round((snapshot.totalMemMB || 0) / 1024 * 10) / 10;
-          const freeMem = Math.round((snapshot.freeMemMB || 0) / 1024 * 10) / 10;
+          const totalMemMB = snapshot.totalMemMB || (os.totalmem() / 1024 / 1024);
+          const freeMemMB = snapshot.freeMemMB || snapshot.headroom?.ramMB || (os.freemem() / 1024 / 1024);
+          const totalMem = Math.round(totalMemMB / 1024 * 10) / 10;
+          const freeMem = Math.round(freeMemMB / 1024 * 10) / 10;
           const usedMem = Math.round((totalMem - freeMem) * 10) / 10;
           
           cachedStats = {

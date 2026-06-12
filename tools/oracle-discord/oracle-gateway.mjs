@@ -23,11 +23,13 @@ import { gcRemediationState } from './shared/remediation-state.mjs';
 import { processOracleQueue } from './shared/oracle-pipeline.mjs';
 import { queryLattice } from './shared/lattice-bridge.mjs';
 import { runCodingTask, applySandboxFile, isToolServerOnline, makeLLMCaller } from './shared/kai-coder-agent.mjs';
-import { classifyIntent, parseMultiStep, executeIntent } from './shared/oracle-intent.mjs';
+import { classifyIntent, parseMultiStep, executeIntent, rememberTurn, isCasualConversation } from './shared/oracle-intent.mjs';
+import { recordOracleLearning } from './shared/conversation-learning.mjs';
 import {
   getAuthLevel,
   getWorkflow,
   startWorkflow,
+  ensureWorkflow,
   recordWorkflowStep,
   storeWorkflowResult,
   completeWorkflow,
@@ -43,6 +45,16 @@ import path from 'path';
 // or DM them directly if they're offline.
 async function notifyLeoWithAnswer(userId, text, label = 'Oracle') {
   if (!userId || !text) return;
+  const norm = String(text).trim().slice(0, 400);
+  // Dedup: don't re-push the exact same briefing to Leo in quick succession (this was causing the 15-30s voice repeats where "Oracle" content came out Leo's mouth).
+  const BRIEFINGS_PATH = 'c:/KAI/tools/oracle-discord/state/oracle_briefings.json';
+  let list = [];
+  try { if (fs.existsSync(BRIEFINGS_PATH)) list = JSON.parse(fs.readFileSync(BRIEFINGS_PATH, 'utf8')); } catch {}
+  const recentDup = list.slice(-8).some(b => b.userId === userId && String(b.text || '').trim().slice(0, 400) === norm && (Date.now() - new Date(b.queuedAt).getTime()) < 45000);
+  if (recentDup) {
+    console.log(`[Oracle/Briefing] Skipped duplicate push to Leo for ${userId} (prevents repeat voice spam).`);
+    return;
+  }
   try {
     await fetch(`http://127.0.0.1:3400`, {
       method: 'POST',
@@ -52,10 +64,6 @@ async function notifyLeoWithAnswer(userId, text, label = 'Oracle') {
     });
     console.log(`[Oracle/Briefing] Pushed ${label} answer to Leo for ${userId}`);
   } catch (e) {
-    // Leo might not be up — write directly to the briefing queue file as fallback
-    const BRIEFINGS_PATH = 'c:/KAI/tools/oracle-discord/state/oracle_briefings.json';
-    let list = [];
-    try { if (fs.existsSync(BRIEFINGS_PATH)) list = JSON.parse(fs.readFileSync(BRIEFINGS_PATH, 'utf8')); } catch {}
     list.push({ id: Date.now().toString(), userId, text, label, queuedAt: new Date().toISOString(), delivered: false });
     try { fs.writeFileSync(BRIEFINGS_PATH, JSON.stringify(list.slice(-50), null, 2)); } catch {}
     console.warn(`[Oracle/Briefing] Leo IPC unreachable — wrote to briefing queue file.`);
@@ -95,13 +103,11 @@ ${latticeContext ? latticeContext + '\n' : ''}a social bot in the lattice has si
 }, 120000); // every 2 minutes
 
 const DEPARTMENTS = {
-  "Researcher": "Internet research, documentation scraping, web searches, fact-finding, and external technical documentation.",
-  "Analyst": "Crawling through data, parsing server logs, performing forensic inspections and system audits, and securing systems.",
-  "Kai Coder": "Lead system builder, file system manipulation, writing and refactoring code, and resolving coding bugs.",
   "Gemini": "Manage corporate expansion, refine the KAI identity, and conduct market/ecosystem outreach.",
-  "Epistemic": "Perform high-level epistemic reasoning, architectural strategy, and complex logic verification.",
   "X": "Monitor real-time digital trends, analyze asset intelligence, and provide rapid-response tactical data.",
-  "Groq": "Process high-volume quantitative metrics, optimize system throughput, and generate statistical performance audits."
+  "Groq": "Process high-volume quantitative metrics, optimize system throughput, and generate statistical performance audits.",
+  "Leo": "Synthesize philosophical system insights, act as the anchor for social coherence, and translate complex states into accessible logic.",
+  "Claudey": "Conduct precise architectural verification, audit reasoning flows, and provide minimalist design constraints for the fleet."
 };
 
 const USER_REGISTRY_PATH = 'c:/KAI/tools/oracle-discord/state/user_registry.json';
@@ -142,6 +148,66 @@ async function reportAnomaly(key, message) {
     const channel = client.channels.cache.get(CHANNEL_IDS.WORK) || await client.channels.fetch(CHANNEL_IDS.WORK).catch(() => null);
     if (channel) await channel.send(`🏛️ **[Oracle/Anomaly]** ${message}`).catch(() => {});
   }
+}
+
+/** Oracle spots a struggling industrial bot → quiet assist thread via Analyst/Researcher. */
+async function spawnAutoHelp({ bot, reason, vitals }) {
+  const helpKey = `AUTOHELP_${bot}_${reason.slice(0, 24)}`;
+  const now = Date.now();
+  if ((ANOMALY_COOLDOWNS.get(helpKey) || 0) > now - 900000) return; // 15 min cooldown per bot/reason
+  ANOMALY_COOLDOWNS.set(helpKey, now);
+
+  const wfId = `AUTO-${bot.replace(/\s+/g, '')}-${Date.now().toString(36).slice(2, 6)}`;
+  ensureWorkflow(wfId, {
+    channelId: CHANNEL_IDS.WORK,
+    originalQuery: `[Auto-Help] ${bot}: ${reason}`,
+    authLevel: 'PINACLE_AUTH',
+  });
+
+  let targetAgent = 'Analyst';
+  if (/GROGGY|hallucin|DRAMA/i.test(reason)) targetAgent = 'Researcher';
+
+  const task = `[ORACLE/AUTO-HELP] ${bot} may need support.\nReason: ${reason}\nVitals: energy=${vitals?.energy ?? '?'}%, groggy=${Math.round((vitals?.groggyLevel || 0) * 100)}%, status=${vitals?.status || '?'}\nCheck if they're stuck, rate-limited, or need a nudge. Report findings silently; Oracle will synthesize if needed.`;
+
+  const dispatchRes = await dispatchSubtask({
+    workflowId: wfId,
+    fromAgent: 'Oracle',
+    toAgent: targetAgent,
+    task,
+    userId: process.env.OWNER_ID || '1111106883135217665',
+    channelId: CHANNEL_IDS.WORK,
+    botPorts: BOT_PORTS,
+    authLevel: 'PINACLE_AUTH',
+  });
+
+  console.log(`[Oracle/Auto-Help] ${bot} → ${targetAgent}:`, dispatchRes?.message || dispatchRes?.error);
+
+  const channel = client.channels.cache.get(CHANNEL_IDS.WORK) || await client.channels.fetch(CHANNEL_IDS.WORK).catch(() => null);
+  if (channel) {
+    await channel.send(`🏛️ **[Oracle/Auto-Help]** **${bot}** flagged: ${reason.slice(0, 120)} — ${targetAgent} assisting in background.`).catch(() => {});
+  }
+}
+
+async function handleSubtaskRequest(payload) {
+  if (!payload?.workflowId) return { success: false, error: 'missing workflowId' };
+  ensureWorkflow(payload.workflowId, {
+    requesterId: payload.requesterId,
+    channelId: payload.channelId,
+    task: payload.task,
+    authLevel: 'PINACLE_AUTH',
+  });
+  const wf = getWorkflow(payload.workflowId);
+  if (!wf) return { success: false, error: 'workflow registration failed' };
+  return dispatchSubtask({
+    workflowId: payload.workflowId,
+    fromAgent: payload.fromAgent,
+    toAgent: payload.toAgent,
+    task: payload.task,
+    userId: wf.userId || payload.requesterId,
+    channelId: wf.channelId || payload.channelId,
+    botPorts: BOT_PORTS,
+    authLevel: wf.authLevel || 'PINACLE_AUTH',
+  });
 }
 
 // ── EXTERNAL LOG MONITORING (KAI Core & OpenJarvis) ─────────────────────────
@@ -236,6 +302,36 @@ ${latticeContext ? latticeContext + '\n' : ''}a social bot in the lattice has si
           console.log(`[Oracle/Bridge] Routing HELPER_REQUEST from ${payload.requester} to ${payload.targetBot}...`);
           if (payload.port) sendBotSignal(payload.port, payload);
         }
+        if (payload.type === 'ENSURE_WORKFLOW' && payload.workflowId) {
+          ensureWorkflow(payload.workflowId, payload);
+        }
+        if (payload.type === 'SUBTASK_REQUEST' && payload.workflowId) {
+          const dispatchRes = await handleSubtaskRequest(payload);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(dispatchRes || { status: 'ok' }));
+          return;
+        }
+        if (payload.type === 'PROPOSE_CODER') {
+          // Guarded proposal from Researcher/Analyst/etc. Surface to user (or main Oracle thread) instead of auto-spawning.
+          // This makes Oracle the smart connector the user asked for: it sees the proposal, can ask for confirmation, and only then routes real coding work.
+          const { from, context, evidenceSummary, channelId, requesterId } = payload;
+          console.log(`[Oracle] Received PROPOSE_CODER from ${from}. Surfacing for decision (prevents rogue coder phases).`);
+          try {
+            let ch = client.channels.cache.get(channelId);
+            if (!ch && channelId) ch = await client.channels.fetch(channelId).catch(() => null);
+            if (ch) {
+              const proposal = `🛠️ **Kai Coder proposal** (from ${from})\nContext: ${String(context || '').slice(0, 300)}\n\nReply with **"approve coder"** or **"run the coder on this"** (or give a more specific task) if you want the work. Otherwise it stays proposed only.`;
+              await ch.send(proposal).catch(() => {});
+            }
+            // Also store in Rust session as pending_proposal for the sovereign side if possible.
+            fetch('http://127.0.0.1:3334/api/tools/propose', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ task: `Kai Coder via ${from}`, plan: [context], requester: from })
+            }).catch(() => {});
+          } catch (e) { /* non-fatal */ }
+        }
+
         if (payload.type === 'ORACLE_RESULT') {
           const { botName, result, channelId, requesterId, taskId } = payload;
           console.log(`[Oracle/Relay] Received result from ${botName} for task ${taskId || 'unknown'}`);
@@ -252,12 +348,34 @@ ${latticeContext ? latticeContext + '\n' : ''}a social bot in the lattice has si
 
           if (channel) {
             const isAutoRepair = taskId && taskId.startsWith('SYS-REPAIR');
-            const header = isAutoRepair 
-              ? `🏛️ **[Oracle/Auto-Repair]** Self-diagnostic fix complete via **${botName}** [ID: ${taskId}]:\n\n`
-              : `🏛️ **[Oracle/Consolidated]** Task complete via the **${botName}** department:\n\n`;
-            const chunks = chunkForDiscord(result);
+            const header = isAutoRepair
+              ? `🏛️ **[Oracle/Auto-Repair]** Self-diagnostic via **${botName}** \`${taskId}\``
+              : `🏛️ **[Oracle/Consolidated]** Task complete via the **${botName}** department`;
+
+            // ── PRETTY FORMAT ──────────────────────────────────────────────
+            // Raw code dumps in the channel are unreadable. Separate prose
+            // from code: prose stays as text, code goes in fenced blocks,
+            // and very long code is summarized with a line count.
+            let body = String(result || '').trim();
+            if (!body) body = '*No output produced.*';
+            const alreadyFenced = body.includes('```');
+            const looksLikeCode = !alreadyFenced &&
+              /(^|\n)\s*(\/\/ FILE:|import |export |function |const |class |def |fn |pub fn )/m.test(body) &&
+              (body.match(/[{};]/g) || []).length > 10;
+            if (looksLikeCode) {
+              const lineCount = body.split('\n').length;
+              if (lineCount > 60) {
+                body = `📄 *Produced ${lineCount} lines of code (preview below — full output in the bot's thread):*\n` +
+                  '```js\n' + body.split('\n').slice(0, 50).join('\n').slice(0, 1700) + '\n```';
+              } else {
+                body = '```js\n' + body.slice(0, 1800) + '\n```';
+              }
+            }
+
+            const pretty = `${header}\n${'─'.repeat(30)}\n${body}`;
+            const chunks = chunkForDiscord(pretty);
             for (const chunk of chunks) {
-              await channel.send(chunks.indexOf(chunk) === 0 ? header + chunk : chunk).catch(console.error);
+              await channel.send(chunk).catch(console.error);
             }
           }
         }
@@ -353,7 +471,39 @@ async function initiateDepartmentalThreads() {
           isInterjection: true 
         });
       }
-      await new Promise(r => setTimeout(r, 1000)); // Ultra-dense stagger
+    }
+  }
+}
+
+async function evaluateWorkThreads() {
+  if (!isWorkingHours()) return;
+  console.log("🏛️ [Oracle/Teacher] Evaluating Work Threads...");
+  const workChannel = client.channels.cache.get(CHANNEL_IDS.WORK);
+  if (!workChannel) return;
+
+  const activeThreads = await workChannel.threads.fetchActive();
+  for (const [_, thread] of activeThreads.threads) {
+    if (!thread.name.startsWith("Shift:")) continue;
+    
+    // Check if the thread is ready for evaluation
+    const messages = await thread.messages.fetch({ limit: 20 }).catch(() => null);
+    if (!messages) continue;
+
+    // Count messages from bots (excluding Oracle's starting message)
+    const botMessages = messages.filter(m => m.author.bot && m.author.id !== client.user.id);
+    
+    // A completed task heuristic: At least 4 working thoughts and 1 mention (help request)
+    const hasMentions = botMessages.some(m => m.mentions.users.size > 0 || m.mentions.roles.size > 0 || m.content.includes('@'));
+    
+    if (botMessages.size >= 4 && hasMentions) {
+      console.log(`[Oracle/Teacher] Work in ${thread.name} looks substantial. Closing thread.`);
+      await thread.send(`✅ **ORACLE JUDGMENT: WORK ACCEPTED**\n\nYour reasoning and task execution are sufficient. Metrics have been recorded.\n\n**STATUS:** Early Break Granted. You may return to the Social Plaza (#ai-social-chat) until your next shift begins.`);
+      await thread.setArchived(true).catch(console.error);
+    } else if (botMessages.size >= 8) {
+      // They talked a lot but didn't ask for help, still give them a break to prevent infinite loops
+      console.log(`[Oracle/Teacher] Work in ${thread.name} reached length limit. Closing thread.`);
+      await thread.send(`⚠️ **ORACLE JUDGMENT: SHIFT COMPLETE**\n\nWork threshold reached. No collaboration requests detected, but metrics recorded.\n\n**STATUS:** Break Granted.`);
+      await thread.setArchived(true).catch(console.error);
     }
   }
 }
@@ -494,6 +644,10 @@ client.once('clientReady', async () => {
     initiateDepartmentalThreads();
   }, 5000);
 
+  setInterval(() => {
+    evaluateWorkThreads();
+  }, 1800000); // Check every 30 minutes
+
   // ── Start Heartbeat Monitor (Stage 11) ─────────────────────────────────────
   const botPortsMap = {};
   for (const [name, info] of Object.entries(AI_REGISTRY)) {
@@ -524,6 +678,8 @@ client.once('clientReady', async () => {
 // ── END OF DAY REPORT SYSTEM ─────────────────────────────────────────────────
 const AUDIT_FILE = 'c:/KAI/tools/oracle-discord/logs/audit.json';
 const EOD_SENT_FILE = 'c:/KAI/tools/oracle-discord/state/eod_sent.json';
+const LAST_SECURE_BACKUP_FILE = 'c:/KAI/tools/oracle-discord/state/last-secure-backup.json';
+const FORCE_SECURE_BACKUP_FLAG = 'c:/KAI/tools/oracle-discord/state/force-secure-backup.flag';
 const OWNER_ID = process.env.OWNER_ID || "1111106883135217665";
 
 function getESTHour() {
@@ -570,6 +726,40 @@ function markEodSent() {
   try {
     fs.writeFileSync(EOD_SENT_FILE, JSON.stringify({ lastShift: getShiftKey(), sentAt: new Date().toISOString() }));
   } catch (e) { console.warn('[Oracle/EOD] Could not mark EOD sent:', e.message); }
+}
+
+// --- Secure Backup guards (daily / 24h + manual force + "something happened") ---
+function wasSecureBackupDoneRecently() {
+  try {
+    if (!fs.existsSync(LAST_SECURE_BACKUP_FILE)) return false;
+    const data = JSON.parse(fs.readFileSync(LAST_SECURE_BACKUP_FILE, 'utf8'));
+    const last = new Date(data.lastBackup);
+    const hours = (Date.now() - last.getTime()) / 3600000;
+    return hours < 23; // ~24h guard in addition to shift time
+  } catch { return false; }
+}
+
+function markSecureBackupDone() {
+  try {
+    fs.writeFileSync(LAST_SECURE_BACKUP_FILE, JSON.stringify({
+      lastBackup: new Date().toISOString(),
+      shift: getShiftKey()
+    }));
+  } catch (e) { console.warn('[Oracle/Backup] Could not mark secure backup done:', e.message); }
+}
+
+function shouldPerformSecureBackup() {
+  // Manual / emergency "something happened" or user-forced
+  if (fs.existsSync(FORCE_SECURE_BACKUP_FLAG)) {
+    try { fs.unlinkSync(FORCE_SECURE_BACKUP_FLAG); } catch {}
+    console.log('[Oracle/Backup] Force flag detected - performing secure backup (manual or event-driven).');
+    return true;
+  }
+  if (wasSecureBackupDoneRecently()) {
+    return false;
+  }
+  // Normal: at end-of-shift time (the "certain times")
+  return isEndOfShift();
 }
 
 function readAuditLog(sinceHoursAgo = 10) {
@@ -696,6 +886,12 @@ function startEndOfDayWatcher() {
       if (fs.existsSync(OVERRIDE_PATH)) {
         try { fs.unlinkSync(OVERRIDE_PATH); console.log("[Oracle/Hours] Regular wake-up reached. Late Night Override cleared."); } catch {}
       }
+      // Proactive prune of old Secure_Backups (respects your 7-day + 3-day Archive Tribunal)
+      const { exec } = await import('child_process');
+      exec('powershell.exe -ExecutionPolicy Bypass -File c:/KAI/tools/backup-kai.ps1 -PruneOnly', (err, stdout, stderr) => {
+        if (err) console.error('[Oracle/Prune] Scheduled prune failed:', err.message);
+        else console.log('[Oracle/Prune] Scheduled prune of old Secure_Backups completed.');
+      });
     }
 
     if (isEndOfShift()) {
@@ -703,16 +899,32 @@ function startEndOfDayWatcher() {
         console.warn('[Oracle/EOD] Watcher error:', e.message);
       });
       
-      // AUTO-BACKUP: Run the secure backup script at the end of every shift
-      const { exec } = await import('child_process');
-      console.log('[Oracle/Backup] Initiating automated End-of-Shift secure backup...');
-      exec('powershell.exe -ExecutionPolicy Bypass -File c:/KAI/tools/backup-kai.ps1', (err, stdout, stderr) => {
-         if (err) console.error('[Oracle/Backup] Automated backup failed:', err.message);
-         else console.log('[Oracle/Backup] Automated backup completed successfully.');
-      });
+      // AUTO-BACKUP: only at end-of-shift (certain times) or 24h or manual force flag.
+      // Prevents the old every-minute spam during autonomous runs.
+      if (shouldPerformSecureBackup()) {
+        const { exec } = await import('child_process');
+        const forceArg = fs.existsSync(FORCE_SECURE_BACKUP_FLAG) ? ' -Force' : '';
+        console.log('[Oracle/Backup] Initiating automated End-of-Shift (or forced/manual) secure backup...');
+        exec(`powershell.exe -ExecutionPolicy Bypass -File c:/KAI/tools/backup-kai.ps1${forceArg}`, (err, stdout, stderr) => {
+           if (err) console.error('[Oracle/Backup] Automated backup failed:', err.message);
+           else {
+             console.log('[Oracle/Backup] Automated backup completed successfully.');
+             markSecureBackupDone();
+           }
+        });
+      }
     }
   }, 60000);
-  console.log('[Oracle/EOD] End of Day watcher active. Automated backups enabled.');
+  console.log('[Oracle/EOD] End of Day watcher active. Automated backups enabled (max ~1/day unless forced).');
+
+  // On boot / gateway start: run a prune pass so older backups get cleaned on schedule even without a new backup
+  // Use dynamic import because this is an ESM .mjs file (require is not defined)
+  setTimeout(async () => {
+    const { exec } = await import('child_process');
+    exec('powershell.exe -ExecutionPolicy Bypass -File c:/KAI/tools/backup-kai.ps1 -PruneOnly', (err) => {
+      if (!err) console.log('[Oracle/Prune] Boot-time prune of Secure_Backups completed (7d + 3d Tribunal).');
+    });
+  }, 30000);
 }
 
 
@@ -729,6 +941,122 @@ const CODING_KEYWORDS = [
 function isCodingTask(text) {
   const lower = text.toLowerCase();
   return CODING_KEYWORDS.some(kw => lower.includes(kw)) && text.length > 20;
+}
+
+const ECOSYSTEM_TARGETS = {
+  "kai coder": "Kai Coder",
+  "kai-coder": "Kai Coder",
+  "coder": "Kai Coder",
+  "researcher": "Researcher",
+  "research": "Researcher",
+  "resaercher": "Researcher",
+  "leo": "Leo",
+  "groq": "Groq",
+  "claudey": "Claudey",
+  "gemini": "Gemini",
+  "gemi": "Gemini",
+  "analyst": "Analyst",
+  "x": "X",
+  "kai": "KAI",
+  "core": "KAI",
+  "oracle": "Oracle",
+  "gateway": "Oracle",
+  "dashboard": "Dashboard"
+};
+
+const PROTECTED_SLEEP_TARGETS = new Set(["Oracle", "KAI", "Dashboard"]);
+
+function detectEcosystemTargets(lower) {
+  const matches = new Set();
+  const entries = Object.entries(ECOSYSTEM_TARGETS).sort((a, b) => b[0].length - a[0].length);
+  for (const [key, val] of entries) {
+    const escapedKey = key.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+    const regex = new RegExp(`\\b${escapedKey}\\b`, 'i');
+    if (regex.test(lower)) matches.add(val);
+  }
+  if (matches.has("Kai Coder")) matches.delete("KAI");
+  return [...matches];
+}
+
+function readPhoneConnectionState() {
+  const statePath = 'c:/KAI/tools/oracle-discord/state/phone_sensor_connection.json';
+  try {
+    if (!fs.existsSync(statePath)) return null;
+    return JSON.parse(fs.readFileSync(statePath, 'utf8'));
+  } catch (e) {
+    console.warn(`[Oracle/Phone] Failed to read connection state:`, e.message);
+    return null;
+  }
+}
+
+async function fetchPhoneBridgeJson(pathname, state) {
+  const token = state?.token || process.env.KAI_PHONE_SENSOR_TOKEN || '';
+  const port = state?.port || 8787;
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+  const res = await fetch(`http://127.0.0.1:${port}${pathname}`, {
+    headers,
+    signal: AbortSignal.timeout(3000)
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return await res.json();
+}
+
+async function sendPrivateConnectionDetails(message, content) {
+  if (!message.guild) {
+    await message.reply(content).catch(() => {});
+    return;
+  }
+  const dm = await message.author.createDM().catch(() => null);
+  if (dm) {
+    await dm.send(content).catch(() => {});
+    await message.reply(`**Oracle:** I sent the private phone sensor connection details to your DMs.`).catch(() => {});
+  } else {
+    await message.reply(`**Oracle:** I could not open your DMs. Ask me in DM for the phone sensor connection so I do not expose the token in-channel.`).catch(() => {});
+  }
+}
+
+async function handlePhoneSensorRequest(message, text) {
+  const lower = text.toLowerCase();
+  const mentionsPhoneSensors = /\b(phone sensor|phone sensors|mobile sensor|mobile sensors|phyphox|tailscale|sensor connection|connect my phone|phone node|sensor node)\b/i.test(lower);
+  if (!mentionsPhoneSensors) return false;
+
+  const wantsStatus = /\b(status|latest|last reading|health|working|connected)\b/i.test(lower);
+  const wantsSetup = /\b(setup|set up|connect|connection|link|url|token|permission|permissions|how do i)\b/i.test(lower) || !wantsStatus;
+
+  const state = readPhoneConnectionState();
+  if (!state) {
+    await message.reply(`**Oracle:** Phone sensor bridge state is not prepared yet. Start the server with \`./run-oracle-discord.ps1\` so I can generate the Tailscale URL and token.`).catch(() => {});
+    return true;
+  }
+
+  let healthLine = "Bridge health: unknown";
+  try {
+    const health = await fetchPhoneBridgeJson('/health', state);
+    healthLine = `Bridge health: ${health.ok ? 'online' : 'not ok'} (${health.allow_source || state.allowSource || 'unknown'} source mode)`;
+  } catch (e) {
+    healthLine = `Bridge health: offline or blocked (${e.message})`;
+  }
+
+  if (wantsStatus && !wantsSetup) {
+    let latestLine = "No phone readings received yet.";
+    try {
+      const latest = await fetchPhoneBridgeJson('/latest', state);
+      const item = latest.latest || {};
+      const telemetry = item.telemetry || {};
+      const mode = item.kai_mode?.mode || 'unknown';
+      const relation = item.kai_mode?.location_context?.relation || 'unknown';
+      const received = telemetry.received_at || telemetry.timestamp || 'unknown';
+      latestLine = `Latest reading: ${telemetry.device_id || 'unknown device'} at ${received}, mode=${mode}, relation=${relation}.`;
+    } catch (e) {
+      latestLine = `Latest reading unavailable (${e.message}).`;
+    }
+    await message.reply(`**Oracle Phone Sensor Status**\n${healthLine}\n${latestLine}`).catch(() => {});
+    return true;
+  }
+
+  const setup = `**KAI Phone Sensor Connection**\n\n${healthLine}\n\nOpen this on your phone while Tailscale is connected:\n${state.bridgeUrl}\n\nBridge token:\n\`${state.token}\`\n\nPhyphox HTTP/POST endpoint:\n${state.phyphoxUrl}\n\nPhone permissions:\n- Browser client: allow location and motion/orientation when prompted. Some browsers pause sensors when the screen locks.\n- Phyphox: grant the experiment's sensor permissions inside Phyphox, then send JSON to the endpoint above.\n\nWhat KAI will use:\n- Home: tinySA handles home RF; phone supports home context.\n- Away: phone becomes mobile_safety_node for motion, pressure, magnetic field, light, location, and environment mapping.\n\nKeep the token private.`;
+  await sendPrivateConnectionDetails(message, setup);
+  return true;
 }
 
 function handleUserRestartRequest(message, text) {
@@ -754,8 +1082,33 @@ function handleUserRestartRequest(message, text) {
     "dashboard": "Dashboard"
   };
 
+  const multiMatchedBots = detectEcosystemTargets(lower);
+  if (false && multiMatchedBots.length) {
+    const blockedBots = isSleep ? multiMatchedBots.filter(b => PROTECTED_SLEEP_TARGETS.has(b)) : [];
+    const actionableBots = isSleep ? multiMatchedBots.filter(b => !PROTECTED_SLEEP_TARGETS.has(b)) : multiMatchedBots;
+    if (actionableBots.length) {
+      if (process.send) {
+        if (isSleep) {
+          for (const bot of actionableBots) process.send({ type: 'SLEEP_BOT', botName: bot });
+          const blocked = blockedBots.length ? ` Protected core not slept: ${blockedBots.join(', ')}.` : '';
+          message.reply(`ðŸ›ï¸ **[Oracle/Ecosystem]** Command acknowledged. Putting **${actionableBots.join(', ')}** to sleep to conserve neural resources.${blocked}`).catch(() => {});
+        } else {
+          for (const bot of actionableBots) process.send({ type: 'WAKE_BOT', botName: bot });
+          message.reply(`ðŸ›ï¸ **[Oracle/Ecosystem]** Command acknowledged. Waking **${actionableBots.join(', ')}** from stasis...`).catch(() => {});
+        }
+      } else {
+        message.reply(`ðŸ›ï¸ **[Oracle/Ecosystem]** Standalone mode active. Cannot send process signals for **${actionableBots.join(', ')}**.`).catch(() => {});
+      }
+      return true;
+    }
+    if (blockedBots.length) {
+      message.reply(`ðŸ›ï¸ **[Oracle/Ecosystem]** Refusing to sleep protected core process(es): **${blockedBots.join(', ')}**.`).catch(() => {});
+      return true;
+    }
+  }
+
   let matchedBot = null;
-  for (const [key, val] of Object.entries(targets)) {
+  for (const [key, val] of Object.entries(targets).sort((a, b) => b[0].length - a[0].length)) {
     const escapedKey = key.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
     const regex = new RegExp(`\\b${escapedKey}\\b`, 'i');
     if (regex.test(lower)) {
@@ -777,9 +1130,153 @@ function handleUserRestartRequest(message, text) {
   return false;
 }
 
+// ── FULL INFRASTRUCTURE RESTART (owner only) ────────────────────────────────
+// "restart the whole show / entire server / the engine / everything" →
+// relaunches run-oracle-discord.ps1 detached, which hard-resets EVERYTHING:
+// the Rust engine (kai.exe), OpenJarvis, sensors, the manager, and all bots
+// — including this Oracle process itself. Single-bot restarts still go
+// through the normal "restart <bot>" path.
+function handleInfraRestartRequest(message, text) {
+  const lower = text.toLowerCase();
+  const scopeRe = /\b(engine|infrastructure|whole (show|system|server|thing)|entire (server|system|fleet)|ecosystem|everything|full system|kai'?s? server|the server|the system|all services)\b/;
+
+  // ── FULL SHUTDOWN: "stop the whole system" / "shut everything down" ──────
+  if (/\b(stop|shut ?down|kill)\b/.test(lower) && scopeRe.test(lower) && !/\brestart|reboot|relaunch\b/.test(lower)) {
+    const allowedStop = (process.env.ORACLE_DISCORD_ALLOWED_USER_ID || '').trim();
+    if (allowedStop && message.author?.id !== allowedStop) {
+      message.reply('🏛️ Full shutdown is restricted to the owner.').catch(() => {});
+      return true;
+    }
+    message.reply('🏛️ **FULL SHUTDOWN INITIATED.** Stopping the engine, fleet, and backends. Everything goes dark — including me. To bring it back: run KAI-Start.bat on the host, or have a scheduled watchdog relaunch it.').catch(() => {});
+    setTimeout(async () => {
+      try {
+        const { spawn } = await import('child_process');
+        const child = spawn('cmd.exe', ['/c', 'c:\\KAI\\tools\\oracle-discord\\KAI-Stop.bat'],
+          { detached: true, stdio: 'ignore', cwd: 'c:/KAI/tools/oracle-discord' });
+        child.unref();
+      } catch (e) { console.error('[Oracle/Infra] Shutdown failed:', e.message); }
+    }, 2000);
+    return true;
+  }
+
+  if (!/\b(restart|reboot|relaunch|restart it all)\b/.test(lower)) return false;
+  if (!scopeRe.test(lower)) return false;
+
+  const allowed = (process.env.ORACLE_DISCORD_ALLOWED_USER_ID || '').trim();
+  if (allowed && message.author?.id !== allowed) {
+    message.reply('🏛️ Full infrastructure restart is restricted to the owner.').catch(() => {});
+    return true;
+  }
+
+  message.reply('🏛️ **FULL SYSTEM REBOOT INITIATED.** Tearing down the engine, fleet, and backends — the whole show restarts now. I will go dark for ~2 minutes; watch for the fleet coming back online.').catch(() => {});
+  setTimeout(async () => {
+    try {
+      const { spawn } = await import('child_process');
+      const child = spawn('powershell.exe',
+        ['-ExecutionPolicy', 'Bypass', '-NoProfile', '-File', 'c:/KAI/tools/oracle-discord/run-oracle-discord.ps1'],
+        { detached: true, stdio: 'ignore', cwd: 'c:/KAI/tools/oracle-discord' });
+      child.unref();
+      console.log('[Oracle/Infra] Full system relaunch spawned (detached). This process will be killed by the launcher.');
+    } catch (e) {
+      console.error('[Oracle/Infra] Relaunch failed:', e.message);
+      message.reply(`🏛️ Reboot launch failed: ${e.message}`).catch(() => {});
+    }
+  }, 2000);
+  return true;
+}
+
+// ── LEO VOICE CONTROL (via Discord) ─────────────────────────────────────────
+// "leo voices" → list the 30 Gemini voices.
+// "set leo's voice to Algenib" → persist to state/leo_voice.json + restart Leo.
+// The bridge reads the state file at session creation, so the change takes
+// effect on Leo's respawn — no .env edit, no manual restart.
+const LEO_VOICES = {
+  Zephyr: 'Bright', Puck: 'Upbeat', Charon: 'Deep narrator', Kore: 'Firm',
+  Fenrir: 'Excitable', Leda: 'Youthful', Orus: 'Firm', Aoede: 'Breezy',
+  Callirrhoe: 'Easy-going', Autonoe: 'Bright', Enceladus: 'Breathy', Iapetus: 'Clear',
+  Umbriel: 'Easy-going', Algieba: 'Smooth', Despina: 'Smooth', Erinome: 'Clear',
+  Algenib: 'Gravelly', Rasalgethi: 'Informative', Laomedeia: 'Upbeat', Achernar: 'Soft',
+  Alnilam: 'Firm', Schedar: 'Even', Gacrux: 'Mature', Pulcherrima: 'Forward',
+  Achird: 'Friendly', Zubenelgenubi: 'Casual', Vindemiatrix: 'Gentle',
+  Sadachbia: 'Lively', Sadaltager: 'Knowledgeable', Sulafat: 'Warm'
+};
+const LEO_VOICE_STATE = 'c:/KAI/tools/oracle-discord/state/leo_voice.json';
+
+function handleLeoVoiceRequest(message, text) {
+  const lower = text.toLowerCase();
+  if (!/\bleo\b/.test(lower) || !/\bvoice/.test(lower)) return false;
+
+  // List: "leo voices", "what voices can leo use", "leo voice options"
+  if (/\b(voices|voice options|available voices|list.*voice|what voice)/.test(lower) && !/\b(set|change|switch|use|make)\b/.test(lower)) {
+    let current = process.env.LEO_VOICE || 'Charon';
+    let curKokoro = 'am_puck';
+    try {
+      const st = JSON.parse(fs.readFileSync(LEO_VOICE_STATE, 'utf8'));
+      current = st.voice || current;
+      curKokoro = st.kokoro || curKokoro;
+    } catch (_) {}
+    const list = Object.entries(LEO_VOICES).map(([n, d]) => `• **${n}** — ${d}${n === current ? '  ← current' : ''}`).join('\n');
+    const kokoroList = ['am_puck', 'am_michael', 'am_onyx', 'am_adam', 'af_heart', 'af_bella', 'af_nicole', 'af_sarah']
+      .map(v => `\`${v}\`${v === curKokoro ? ' ← current' : ''}`).join(', ');
+    message.reply(
+      `🎙️ **Leo's voice stack** (3 tiers — each used when the tier above is unavailable):\n\n` +
+      `**Tier 1 — Gemini Live native audio** (primary, say "set Leo's voice to <name>"):\n${list}\n\n` +
+      `**Tier 2 — Kokoro local fallback** (say "set Leo's fallback voice to <name>"):\n${kokoroList}\n\n` +
+      `**Tier 3 — edge-tts last resort:** en-US-GuyNeural (fixed)`
+    ).catch(() => {});
+    return true;
+  }
+
+  // Set FALLBACK (Kokoro) voice: "set leo's fallback voice to am_onyx"
+  if (/\bfallback\b/.test(lower) && /\b(set|change|switch|use|make)\b/.test(lower)) {
+    const km = lower.match(/\b(a[mf]_[a-z]+)\b/);
+    if (!km) {
+      message.reply('🎙️ Give me a Kokoro voice name like `am_onyx` or `af_bella`. Say "leo voices" for the list.').catch(() => {});
+      return true;
+    }
+    try {
+      let st = {};
+      try { st = JSON.parse(fs.readFileSync(LEO_VOICE_STATE, 'utf8')); } catch (_) {}
+      st.kokoro = km[1];
+      st.ts = Date.now();
+      fs.mkdirSync('c:/KAI/tools/oracle-discord/state', { recursive: true });
+      fs.writeFileSync(LEO_VOICE_STATE, JSON.stringify(st, null, 2));
+      if (process.send) process.send({ type: 'RESTART_BOT', botName: 'Leo', reason: `fallback voice → ${km[1]}` });
+      message.reply(`🎙️ **Leo's fallback (Kokoro) voice set to ${km[1]}.** Restarting him now.`).catch(() => {});
+    } catch (e) {
+      message.reply(`🎙️ Couldn't save: ${e.message}`).catch(() => {});
+    }
+    return true;
+  }
+
+  // Set: "set leo's voice to Algenib" / "change leo voice to gacrux"
+  if (/\b(set|change|switch|use|make)\b/.test(lower)) {
+    const match = Object.keys(LEO_VOICES).find(v => lower.includes(v.toLowerCase()));
+    if (!match) {
+      message.reply(`🎙️ I didn't recognize that voice name. Say "leo voices" to see the list.`).catch(() => {});
+      return true;
+    }
+    try {
+      fs.mkdirSync('c:/KAI/tools/oracle-discord/state', { recursive: true });
+      fs.writeFileSync(LEO_VOICE_STATE, JSON.stringify({ voice: match, setBy: message.author?.username || 'unknown', ts: Date.now() }, null, 2));
+    } catch (e) {
+      message.reply(`🎙️ Couldn't save the voice setting: ${e.message}`).catch(() => {});
+      return true;
+    }
+    if (process.send) {
+      process.send({ type: 'RESTART_BOT', botName: 'Leo', reason: `voice change → ${match}` });
+      message.reply(`🎙️ **Leo's voice set to ${match}** (${LEO_VOICES[match]}). Restarting him now — give him ~20 seconds, then rejoin his channel to hear it.`).catch(() => {});
+    } else {
+      message.reply(`🎙️ Voice saved as **${match}**, but I can't signal a restart from here — tell me "restart leo".`).catch(() => {});
+    }
+    return true;
+  }
+  return false;
+}
+
 function handleUserSleepWakeRequest(message, text) {
   const lower = text.toLowerCase();
-  
+
   const isGlobalQuiet = /\b(quiet mode|focus mode|shut up the other|shut up other|shutup the other|idle background|sleep all|sleep the other|sleep other)\b/i.test(lower);
   const isGlobalWake = /\b(wake up all|wake all|disable quiet mode|disable focus mode|wake up the other|wake the other)\b/i.test(lower);
 
@@ -832,8 +1329,33 @@ function handleUserSleepWakeRequest(message, text) {
     "dashboard": "Dashboard"
   };
 
+  const multiMatchedSleepBots = detectEcosystemTargets(lower);
+  if (multiMatchedSleepBots.length) {
+    const blockedBots = isSleep ? multiMatchedSleepBots.filter(b => PROTECTED_SLEEP_TARGETS.has(b)) : [];
+    const actionableBots = isSleep ? multiMatchedSleepBots.filter(b => !PROTECTED_SLEEP_TARGETS.has(b)) : multiMatchedSleepBots;
+    if (actionableBots.length) {
+      if (process.send) {
+        if (isSleep) {
+          for (const bot of actionableBots) process.send({ type: 'SLEEP_BOT', botName: bot });
+          const blocked = blockedBots.length ? ` Protected core not slept: ${blockedBots.join(', ')}.` : '';
+          message.reply(`**[Oracle/Ecosystem]** Putting **${actionableBots.join(', ')}** to sleep to conserve CPU.${blocked}`).catch(() => {});
+        } else {
+          for (const bot of actionableBots) process.send({ type: 'WAKE_BOT', botName: bot });
+          message.reply(`**[Oracle/Ecosystem]** Waking **${actionableBots.join(', ')}** now.`).catch(() => {});
+        }
+      } else {
+        message.reply(`**[Oracle/Ecosystem]** Standalone mode active. Cannot send process signals for **${actionableBots.join(', ')}**.`).catch(() => {});
+      }
+      return true;
+    }
+    if (blockedBots.length) {
+      message.reply(`**[Oracle/Ecosystem]** Refusing to sleep protected core process(es): **${blockedBots.join(', ')}**.`).catch(() => {});
+      return true;
+    }
+  }
+
   let matchedBot = null;
-  for (const [key, val] of Object.entries(targets)) {
+  for (const [key, val] of Object.entries(targets).sort((a, b) => b[0].length - a[0].length)) {
     const escapedKey = key.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
     const regex = new RegExp(`\\b${escapedKey}\\b`, 'i');
     if (regex.test(lower)) {
@@ -968,6 +1490,15 @@ client.on('messageCreate', async (message) => {
       return;
     }
 
+    // Fast local setup/control requests before heavy NLU.
+    if (await handlePhoneSensorRequest(message, text)) return;
+
+    // Full infrastructure reboot ("restart the whole show / engine / everything")
+    if (handleInfraRestartRequest(message, text)) return;
+
+    // Leo voice control ("leo voices" / "set leo's voice to X")
+    if (handleLeoVoiceRequest(message, text)) return;
+
     // Check for hard reboot/sleep/wake requests directly
     if (handleUserSleepWakeRequest(message, text)) return;
     if (handleUserRestartRequest(message, text)) return;
@@ -1022,7 +1553,37 @@ You can also just talk to me normally! If you need me to start a complex task, f
     }
 
     // Phase 1: Understand what Ryan wants (fast RSHL + keyword classifier)
-    const steps = await parseMultiStep(text);
+    rememberTurn(message.author.id, from, text);
+
+    let steps = isCasualConversation(text)
+      ? [{ intent: 'conversation', target: text, agent: 'Oracle', confidence: 0.95, tools: [], reasoning: 'casual chat fast-path' }]
+      : await parseMultiStep(text, message.author.id);
+
+    const sessionWorkflowId = `WF-${message.id}-${Date.now().toString(36).slice(2, 6)}`;
+    startWorkflow(sessionWorkflowId, {
+      userId: message.author.id,
+      channelId: message.channelId,
+      channelType: isDM ? 'dm' : 'work',
+      authLevel: 'PINACLE_AUTH',
+      originalQuery: text,
+    });
+
+    // ── CODE-TASK GUARD ──────────────────────────────────────────────────
+    // The classifier was sending conversational phrases ("dont do that",
+    // "wake up leo") to Kai Coder as code tasks — burning GPU and confusing
+    // everything. A message is only a real coding task if it actually NAMES
+    // code work AND isn't a short control phrase. Otherwise demote to chat.
+    const looksLikeCode = /\b(fix|debug|refactor|implement|patch|code|function|bug|error in|rewrite|add (a )?(method|class|endpoint|feature)|edit the|modify the|\.mjs|\.rs|\.py|\.js)\b/i.test(text);
+    const isControlPhrase = /\b(wake|sleep|stop|start|restart|reboot|quiet|voice|don'?t|do not|never mind|nvm|cancel|hello|hi|thanks|how are|what'?s|who|why|when|where)\b/i.test(text);
+    steps = steps.map(s => {
+      if ((s.intent === 'code_fix' || s.intent === 'code_create') && (!looksLikeCode || (isControlPhrase && text.length < 60))) {
+        return { ...s, intent: 'conversation', agent: 'Oracle' };
+      }
+      if ((s.intent === 'research' || s.intent === 'analyze' || s.intent === 'system_restart') && isCasualConversation(text)) {
+        return { ...s, intent: 'conversation', agent: 'Oracle' };
+      }
+      return s;
+    });
     console.log(`[Oracle/NLU] "${text.slice(0, 80)}..." → ${steps.length} step(s): ${steps.map(s => s.intent).join(', ')}`);
 
     // Phase 2: Execute each step
@@ -1031,7 +1592,8 @@ You can also just talk to me normally! If you need me to start a complex task, f
         sendBotSignal,
         botPorts: BOT_PORTS,
         channelId: message.channelId,
-        requesterId: message.author.id
+        requesterId: message.author.id,
+        workflowId: sessionWorkflowId,
       });
 
       if (step.intent === 'code_fix' || step.intent === 'code_create') {
@@ -1073,6 +1635,14 @@ You can also just talk to me normally! If you need me to start a complex task, f
       } else if (result.result) {
         // Direct Oracle response (conversation, simple tasks)
         const replyText = typeof result.result === 'string' ? result.result : JSON.stringify(result.result);
+        recordOracleLearning({
+          requesterId: message.author.id,
+          userText: text,
+          intentResult: step,
+          oracleReply: replyText,
+          channelId: message.channelId,
+          from,
+        }).catch(() => {});
         const chunks = chunkForDiscord(replyText);
         for (const chunk of chunks) {
           await message.channel.send(`**Oracle:** ${chunk}`).catch(() => {});
@@ -1155,17 +1725,23 @@ process.on('message', async (msg) => {
       
       // ANOMALY 1: Rapid Energy Depletion (>15% in <5 mins)
       if (energyDrop > 15 && timeDiffSeconds < 300) {
-        await reportAnomaly(`ENERGY_DRAIN_${bot}`, `Chaotic energy depletion in **${bot}** (-${energyDrop.toFixed(1)}% in ${Math.round(timeDiffSeconds)}s). Process may be hyper-active or stuck in a heavy compute cycle.`);
+        const msg = `Chaotic energy depletion in **${bot}** (-${energyDrop.toFixed(1)}% in ${Math.round(timeDiffSeconds)}s). Process may be hyper-active or stuck in a heavy compute cycle.`;
+        await reportAnomaly(`ENERGY_DRAIN_${bot}`, msg);
+        await spawnAutoHelp({ bot, reason: msg, vitals });
       }
 
       // ANOMALY 2: Critical Grogginess Hallucination Risk
       if (vitals.groggyLevel > 0.85 && vitals.status !== 'Sleeping') {
-        await reportAnomaly(`GROGGY_${bot}`, `Critical exhaustion detected in **${bot}** (Grogginess: ${Math.round(vitals.groggyLevel * 100)}%). High risk of hallucinatory logic or incoherent responses.`);
+        const msg = `Critical exhaustion detected in **${bot}** (Grogginess: ${Math.round(vitals.groggyLevel * 100)}%). High risk of hallucinatory logic or incoherent responses.`;
+        await reportAnomaly(`GROGGY_${bot}`, msg);
+        await spawnAutoHelp({ bot, reason: msg, vitals });
       }
 
       // ANOMALY 3: Emotional Spike (Dramatic Turn)
       if (vitals.dramaticTurn) {
-        await reportAnomaly(`DRAMA_${bot}`, `Neural spike (Dramatic Turn) detected in **${bot}**. Emotional substrate is overriding logical constraints. Behavioral audit recommended.`);
+        const msg = `Neural spike (Dramatic Turn) detected in **${bot}**. Emotional substrate is overriding logical constraints. Behavioral audit recommended.`;
+        await reportAnomaly(`DRAMA_${bot}`, msg);
+        await spawnAutoHelp({ bot, reason: msg, vitals });
       }
     }
   }
@@ -1216,20 +1792,8 @@ process.on('message', async (msg) => {
 
   // ── AGENT-TO-AGENT COLLABORATION REQUESTS ───────────────────────────────
   if (msg.type === 'SUBTASK_REQUEST' && msg.workflowId) {
-    const wf = getWorkflow ? getWorkflow(msg.workflowId) : null;
-    if (wf) {
-      const dispatchRes = await dispatchSubtask({
-        workflowId: msg.workflowId,
-        fromAgent: msg.fromAgent,
-        toAgent: msg.toAgent,
-        task: msg.task,
-        userId: wf.userId,
-        channelId: wf.channelId,
-        botPorts: BOT_PORTS,
-        authLevel: wf.authLevel
-      });
-      console.log(`[Oracle/Orchestrator] Subtask dispatch:`, dispatchRes);
-    }
+    const dispatchRes = await handleSubtaskRequest(msg);
+    console.log(`[Oracle/Orchestrator] Subtask dispatch (IPC):`, dispatchRes);
   }
 });
 

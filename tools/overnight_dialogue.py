@@ -31,11 +31,31 @@ DIALOGUE_SEEDS = [
     "how do you stay positive", "i feel stuck", "what is your purpose"
 ]
 
+import os
+def adaptive_sleep():
+    try:
+        path = 'c:/KAI/tools/oracle-discord/state/self_optimize_state.json'
+        if os.path.exists(path):
+            with open(path, 'r') as f:
+                state = json.load(f)
+                tier = state.get('tier', 'NORMAL')
+                if tier == 'PROTECT':
+                    time.sleep(15)
+                elif tier == 'REDUCED':
+                    time.sleep(6)
+                else:
+                    time.sleep(1)
+        else:
+            time.sleep(1)
+    except:
+        time.sleep(1)
+
 END_TIME = time.time() + (5.5 * 3600)
 count = 0
 while time.time() < END_TIME: # Run until limit
     random.shuffle(DIALOGUE_SEEDS)
     for seed in DIALOGUE_SEEDS:
+        adaptive_sleep()
         try:
             req = urllib.request.Request(
                 f"{BASE}/api/oracle-turn",

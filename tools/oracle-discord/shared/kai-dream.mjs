@@ -6,6 +6,8 @@ import os from 'os';
 import Database from 'better-sqlite3';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { shouldRunSpot } from './resource-saver.mjs';
+import { recordMetric } from './metrics-store.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -41,6 +43,14 @@ export function hasTodaysBriefing() {
 export async function performDreamCycle() {
   isDreaming = true;
   console.log('[KAI/Dream] Starting consolidation cycle...');
+
+  const allowed = await shouldRunSpot('KAI', 'background');
+  if (!allowed) {
+    console.warn('[KAI/Dream] Governor deferred consolidation cycle.');
+    recordMetric('proof-task', 'deferred', 1, { task: 'dream-cycle', spot: 'KAI' });
+    isDreaming = false;
+    return;
+  }
 
   const load = os.loadavg()[0];
   const cpus = os.cpus().length;
@@ -162,8 +172,10 @@ export async function performDreamCycle() {
     }
 
     console.log('[KAI/Dream] Cycle complete.');
+    recordMetric('proof-task', 'completed', 1, { task: 'dream-cycle', spot: 'KAI' });
   } catch (err) {
     console.error('[KAI/Dream] Error during synthesis:', err);
+    recordMetric('proof-task', 'failure', 1, { task: 'dream-cycle', spot: 'KAI', error: String(err.message || err).slice(0, 120) });
   } finally {
     isDreaming = false;
   }

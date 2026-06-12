@@ -403,6 +403,18 @@ impl Engine {
 
         let heal_report = crate::cognition::bone_heal_pass(&mut universe);
         println!("[BoneHeal] Startup scan: {}", heal_report);
+        let bone_status = serde_json::json!({
+            "updated_at": chrono::Utc::now().to_rfc3339(),
+            "quarantined": heal_report.quarantined,
+            "reinforced": heal_report.reinforced,
+            "weakened": heal_report.weakened,
+            "already_inert": heal_report.already_inert,
+            "source": "engine_startup",
+        });
+        let _ = std::fs::write(
+            "C:\\KAI\\data\\bone_heal_status.json",
+            bone_status.to_string(),
+        );
 
         let log_file_path = std::env::var("KAI_TICK_LOG")
             .unwrap_or_else(|_| "C:\\KAI\\data\\kai_ticks.csv".to_string());
@@ -673,12 +685,84 @@ impl Engine {
         }
     }
 
+    /// Seed KAI's moral anchor layer from `data/moral_anchors.json`.
+    ///
+    /// Moral anchors are stored at LAYER_ANCHOR (layer 6) — the highest trust tier.
+    /// They represent KAI's core ethical principles and identity truths.
+    /// The epistemic immune system rejects any incoming claim that directly
+    /// contradicts an anchor (cosine similarity < -0.15 against anchor vec).
+    ///
+    /// Anchors are idempotent — re-seeding only reinforces, never duplicates.
+    pub fn seed_moral_anchors(&mut self, base_dir: &str) {
+        use crate::core::claim::LAYER_ANCHOR;
+
+        #[derive(serde::Deserialize)]
+        struct AnchorEntry {
+            text: String,
+            region: String,
+            strength: f32,
+            label: String,
+        }
+        #[derive(serde::Deserialize)]
+        struct AnchorFile {
+            anchors: Vec<AnchorEntry>,
+        }
+
+        let path = format!("{}/data/moral_anchors.json", base_dir);
+        let content = match std::fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(_) => {
+                eprintln!("[MoralAnchors] data/moral_anchors.json not found — skipping anchor seed");
+                return;
+            }
+        };
+        let file: AnchorFile = match serde_json::from_str(&content) {
+            Ok(f) => f,
+            Err(e) => {
+                eprintln!("[MoralAnchors] Failed to parse moral_anchors.json: {}", e);
+                return;
+            }
+        };
+
+        let mut seeded = 0usize;
+        for anchor in &file.anchors {
+            let vec = crate::core::SparseVec::encode(&anchor.text);
+            // store_or_reinforce ensures no duplicates — re-seeding just raises confidence
+            let created = self.universe.store_or_reinforce_with_vec(
+                &anchor.label,
+                &anchor.region,
+                "moral-anchor",
+                anchor.strength.min(5.0),
+                Some(vec),
+                Some(9.9), // max convergence — these are never contested
+                "",
+            );
+            if created {
+                // Tag as LAYER_ANCHOR so the immune system can find them fast
+                if let Some(cell) = self.universe.cells_mut()
+                    .iter_mut()
+                    .find(|c| c.label == anchor.label)
+                {
+                    cell.claim.layer = LAYER_ANCHOR;
+                }
+                seeded += 1;
+            }
+        }
+        if seeded > 0 {
+            eprintln!("[MoralAnchors] Seeded {} new moral anchors (LAYER_ANCHOR)", seeded);
+        } else {
+            eprintln!("[MoralAnchors] All {} moral anchors already present — reinforced", file.anchors.len());
+        }
+    }
+
+
     pub fn tick(&mut self, is_responding: bool) -> FieldState {
         self.tick += 1;
 
         if self.tick % 500 == 0 {
             self.synaptic_layer.write().unwrap().ltd_sweep();
         }
+
 
         // ── Hardware Vitals (Phase 4) ───────────────────────────────
         self.sys.refresh_cpu_all();

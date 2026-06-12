@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KAI Mechanistic Interpretability</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #0f111a; color: #fff; margin: 0; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        h1 { color: #00f0ff; text-align: center; }
+        .panel { background-color: #1e2133; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        input[type="text"] { width: calc(100% - 22px); padding: 10px; margin-bottom: 15px; border-radius: 4px; border: 1px solid #333; background: #0f111a; color: #fff; font-size: 16px; }
+        button { background-color: #00f0ff; color: #000; border: none; padding: 10px 20px; font-size: 16px; font-weight: bold; border-radius: 4px; cursor: pointer; transition: 0.2s; margin-right: 10px; }
+        button:hover { background-color: #00b0ff; }
+        button:disabled { background-color: #444; color: #888; cursor: not-allowed; }
+        #log { background: #000; padding: 15px; border-radius: 4px; font-family: monospace; height: 300px; overflow-y: auto; color: #0f0; margin-top: 15px; }
+        .concept { display: inline-block; background: rgba(0, 240, 255, 0.2); border: 1px solid #00f0ff; padding: 5px 10px; border-radius: 15px; margin: 5px; font-size: 14px; }
+        .status-badge { display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: bold; margin-left: 10px; }
+        .status-badge.ready { background: rgba(0, 255, 0, 0.2); color: #0f0; border: 1px solid #0f0; }
+        .status-badge.building { background: rgba(255, 200, 0, 0.2); color: #ff0; border: 1px solid #ff0; }
+        .status-badge.missing { background: rgba(255, 0, 0, 0.2); color: #f00; border: 1px solid #f00; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Mechanistic Interpretability Viewer</h1>
+
+        <div class="panel">
+            <h3>1. Initialize Semantic Map <span id="mapStatus" class="status-badge missing">Not Built</span></h3>
+            <p>Scan KAI's 16,384-dimensional lattice to extract concepts for each dimension using TF-IDF.</p>
+            <button id="buildBtn" onclick="buildMap()">Build Feature Map (Takes ~5 seconds)</button>
+        </div>
+
+        <div class="panel">
+            <h3>2. Thought Decoder</h3>
+            <p>Type a phrase to see which concepts light up inside KAI's vector space.</p>
+            <input type="text" id="query" placeholder="e.g., Golden Gate Bridge" onkeypress="if(event.key === 'Enter') decodeThought()">
+            <button id="decodeBtn" onclick="decodeThought()">Decode Thought</button>
+
+            <div id="log"></div>
+        </div>
+    </div>
+
+    <script>
+        const logEl = document.getElementById('log');
+        const buildBtn = document.getElementById('buildBtn');
+        const decodeBtn = document.getElementById('decodeBtn');
+        const mapStatus = document.getElementById('mapStatus');
+        let pollInterval = null;
+
+        function appendLog(html) {
+            logEl.innerHTML += html + "<br/>";
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        function setStatus(state) {
+            if (state === 'building') {
+                mapStatus.textContent = 'Building...';
+                mapStatus.className = 'status-badge building';
+                buildBtn.disabled = true;
+                buildBtn.textContent = 'Building... please wait';
+            } else if (state === 'ready') {
+                mapStatus.textContent = 'Ready';
+                mapStatus.className = 'status-badge ready';
+                buildBtn.disabled = false;
+                buildBtn.textContent = 'Rebuild Feature Map';
+            } else {
+                mapStatus.textContent = 'Not Built';
+                mapStatus.className = 'status-badge missing';
+                buildBtn.disabled = false;
+                buildBtn.textContent = 'Build Feature Map (Takes ~5 seconds)';
+            }
+        }
+
+        async function checkStatus() {
+            try {
+                const res = await fetch('http://127.0.0.1:3334/api/interpret/status');
+                if (!res.ok) return;
+                const data = await res.json();
+                if (data.built) {
+                    setStatus('ready');
+                    if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+                } else if (data.building) {
+                    setStatus('building');
+                } else {
+                    setStatus('missing');
+                    if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+                }
+            } catch (err) {
+                // backend not reachable — leave current state
+            }
+        }
+
+        // Check status on page load
+        checkStatus();
+
+        async function buildMap() {
+            setStatus('building');
+            appendLog("<span style='color:#ff0;'>Building feature map... please wait.</span>");
+            try {
+                const res = await fetch('http://127.0.0.1:3334/api/interpret/build');
+                const data = await res.json();
+                if (data.status === 'already_building') {
+                    appendLog("<span style='color:#ff0;'>Build already running — waiting for it to finish...</span>");
+                } else {
+                    appendLog("<span style='color:#0f0;'>Build started.</span>");
+                }
+                // Start polling every 1s until ready
+                if (!pollInterval) {
+                    pollInterval = setInterval(checkStatus, 1000);
+                }
+            } catch (err) {
+                appendLog(`<span style='color:#f00;'>Error: ${err.message}</span>`);
+                setStatus('missing');
+            }
+        }
+
+        async function decodeThought() {
+            const query = document.getElementById('query').value;
+            if (!query) return;
+
+            // Quick guard — decode will fail server-side anyway, but this gives immediate UX feedback
+            if (mapStatus.className.includes('missing')) {
+                appendLog("<span style='color:#f00;'>Feature map not built yet. Click 'Build Feature Map' first.</span>");
+                return;
+            }
+
+            appendLog(`\n<span style='color:#fff;'>Decoding: "${query}"...</span>`);
+            try {
+                const res = await fetch('http://127.0.0.1:3334/api/interpret/decode', {
+                    method: 'POST',
+                    body: JSON.stringify({ text: query }),
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                const textResp = await res.text();
+                let data;
+                try {
+                    data = JSON.parse(textResp);
+                } catch(e) {
+                    appendLog(`<span style='color:#f00;'>Error: ${textResp || "Failed to parse response"}</span>`);
+                    return;
+                }
+
+                if (data.error || res.status !== 200) {
+                    appendLog(`<span style='color:#f00;'>Error: ${data.error || data}</span>`);
+                    return;
+                }
+
+                let conceptsHtml = "";
+                data.active_concepts.forEach(c => {
+                    conceptsHtml += `<span class='concept'>${c}</span>`;
+                });
+
+                appendLog(conceptsHtml);
+            } catch (err) {
+                appendLog(`<span style='color:#f00;'>Error: ${err.message}</span>`);
+            }
+        }
+    </script>
+</body>
+</html>

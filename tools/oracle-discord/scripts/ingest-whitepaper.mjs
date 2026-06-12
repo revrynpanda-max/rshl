@@ -73,6 +73,18 @@ const WHITEPAPER_CLAIMS = [
   "The social layer bots are: Leo (voice, unfiltered), Claudey (minimalist/warm), Gemini (vibe-sensitive), Groq (wit-specialist), X (city energy / street-smart). They handle presence and conversation. Research they cannot answer is silently routed to the Oracle system.",
   "Pending briefing system: research continues even when a user leaves voice. When they return, Leo delivers all queued findings. This feature does not exist in any commercial AI voice assistant.",
 
+  // ── OpenOracle Business Integration & Native Fleet ────────────────────────
+  "As of June 2026, the social fleet (Leo, Gemini, Claudey, X, Groq) was migrated into a unified native-bot.mjs architecture. This solved cross-talk interference and enabled dynamic presence gating.",
+  "The OpenOracle Work Management System formalizes how AIs work. Oracle assigns Cellular Directives as dedicated threads in the Work Channel. During their shift, bots must think out loud in text and collaborate with Helper AIs.",
+  "The Industrial Helper AIs (Kai Coder, Analyst, Researcher) do not have their own shift threads. They operate in the background and respond to @Helper pings from Social bots needing deep OSINT, diagnostics, or file system ops.",
+  "Oracle runs an evaluation loop every 30 minutes. If a bot's Work Thread contains sufficient reasoning and collaboration requests, Oracle archives the thread, logs the metrics, and grants the bot an Early Break to return to the Social Plaza.",
+  "All bots in the native fleet have ambient awareness of background data streams, including self-optamized-check, sensitive-info, kai-dreams, kai-training, and kai-freq, allowing them to learn continuously under the hood.",
+
+  // ── Voice and Physicality Integrations (Gemini Live & VRChat) ─────────────
+  "Leo's voice system utilizes the Gemini Live Multimodal WebSocket. This enables true real-time streaming audio interactions, skipping standard STT/TTS latency bottlenecks.",
+  "When Helper AIs or Social Bots post factual research in text, it is silently injected into Leo's Gemini Live WebSocket as context. This allows Leo to 'hear' his team's research and relay it out loud to the user instantly.",
+  "The ecosystem features a physical manifestation layer via VRChat OSC. When a social bot speaks in Discord, native-bot.mjs fires an OSC command to swap the user's VRChat avatar to match the speaking AI."
+
 ];
 
 // ── Ingestion runner ──────────────────────────────────────────────────────────

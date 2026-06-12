@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KAI Sovereign Interface</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=Fira+Code&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Main Chat Area -->
+        <main class="chat-section">
+            <header class="chat-header">
+                <div class="status-indicator"></div>
+                <h1>KAI</h1>
+            </header>
+            
+            <div id="chat-history" class="chat-history">
+                <!-- Chat bubbles will go here -->
+                <div class="message kai">
+                    <div class="bubble">System initialized. Awaiting input.</div>
+                </div>
+            </div>
+
+            <div class="input-area">
+                <textarea id="chat-input" placeholder="Communicate with KAI... (Shift+Enter for newline)"></textarea>
+                <button id="send-btn">
+                    <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" class="css-i6dzq1"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                </button>
+            </div>
+        </main>
+
+        <!-- Cognitive State Side-Panel -->
+        <aside class="cognitive-panel">
+            <header class="panel-header">
+                <h2>Internal State / Processing</h2>
+            </header>
+            <div id="terminal-output" class="terminal-output">
+                <div class="log-line">KAI Sovereign Engine [v7.9.7]</div>
+                <div class="log-line">Polling /api/interjections asynchronously...</div>
+            </div>
+        </aside>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

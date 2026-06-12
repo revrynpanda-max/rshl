@@ -5,6 +5,11 @@ import { WorldClock } from './shared/simulation.mjs';
 const clock = new WorldClock();
 
 const LOG_FILE = 'c:/KAI/tools/oracle-discord/logs/ecosystem.log';
+const MANAGER_STATE_FILE = 'c:/KAI/tools/oracle-discord/state/ecosystem-manager.json';
+try {
+  fs.mkdirSync('c:/KAI/tools/oracle-discord/logs', { recursive: true });
+  fs.mkdirSync('c:/KAI/tools/oracle-discord/state', { recursive: true });
+} catch (_) {}
 const originalLog = console.log;
 const originalWarn = console.warn;
 const originalError = console.error;
@@ -32,8 +37,94 @@ console.error = (...args) => {
 import 'dotenv/config';
 
 const BOTS = ["Gemini", "Claudey", "X", "Groq", "Analyst", "Researcher", "Kai Coder"];
+const KNOWN_PROCESSES = ["Dashboard", "Oracle", "KAI", "Leo", ...BOTS];
 const processes = new Map(); // name -> child process
+const processMeta = new Map(); // name -> startup and exit metadata
 const sleepingBots = new Set(); // name -> true (prevents auto-respawn)
+
+function normalizeProcessName(name) {
+  if (!name) return null;
+  const needle = String(name).trim().toLowerCase().replace(/[_-]+/g, ' ');
+  const aliases = {
+    "kai coder": "Kai Coder",
+    "coder": "Kai Coder",
+    "research": "Researcher",
+    "researcher": "Researcher",
+    "leo": "Leo",
+    "kai": "KAI",
+    "core": "KAI",
+    "oracle": "Oracle",
+    "dashboard": "Dashboard"
+  };
+  if (aliases[needle]) return aliases[needle];
+  return KNOWN_PROCESSES.find(n => n.toLowerCase() === needle) || null;
+}
+
+function scriptForProcess(name) {
+  if (name === "Oracle") return "oracle-gateway.mjs";
+  if (name === "Leo") return "bots/leo.mjs"; // Leo still uses his original file or native-bot if preferred
+  if (name === "X" || name === "Claudey" || name === "Groq") return "bots/native-bot.mjs";
+  if (name === "KAI") return "bots/kai.mjs";
+  if (name === "Dashboard") return "dashboard-server.mjs";
+  return "bots/start-bot.mjs";
+}
+
+function argsForProcess(name) {
+  return ["Oracle", "Leo", "KAI", "Dashboard"].includes(name) ? [] : [name];
+}
+
+for (const raw of (process.env.ORACLE_START_SLEEP_BOTS || "").split(",")) {
+  const name = normalizeProcessName(raw);
+  if (name && !["Oracle", "KAI", "Dashboard"].includes(name)) {
+    sleepingBots.add(name);
+  }
+}
+if (sleepingBots.size) {
+  console.log(`[Ecosystem] Startup sleep list active: ${[...sleepingBots].join(', ')}`);
+}
+
+function writeManagerState() {
+  const children = [];
+  for (const [name, child] of processes) {
+    const meta = processMeta.get(name) || {};
+    children.push({
+      name,
+      pid: child?.pid || null,
+      connected: Boolean(child?.connected),
+      killed: Boolean(child?.killed),
+      sleeping: sleepingBots.has(name),
+      script: meta.script || null,
+      args: meta.args || [],
+      startedAt: meta.startedAt || null,
+      lastExitCode: meta.lastExitCode ?? null,
+      lastExitedAt: meta.lastExitedAt || null
+    });
+  }
+  for (const name of sleepingBots) {
+    if (processes.has(name)) continue;
+    const meta = processMeta.get(name) || {};
+    children.push({
+      name,
+      pid: null,
+      connected: false,
+      killed: true,
+      sleeping: true,
+      script: meta.script || scriptForProcess(name),
+      args: meta.args || argsForProcess(name),
+      startedAt: meta.startedAt || null,
+      lastExitCode: meta.lastExitCode ?? null,
+      lastExitedAt: meta.lastExitedAt || null
+    });
+  }
+  const payload = {
+    managerPid: process.pid,
+    updatedAt: new Date().toISOString(),
+    uptimeMs: Math.round(process.uptime() * 1000),
+    childCount: children.length,
+    children
+  };
+  try { fs.writeFileSync(MANAGER_STATE_FILE, JSON.stringify(payload, null, 2)); } catch (_) {}
+}
 
 function broadcast(msg) {
   for (const [name, child] of processes) {
@@ -50,17 +141,28 @@ import { execSync } from 'child_process';
 const KAI_PORTS = [3001, 3333, 3400, 3401, 3402, 3403, 3404, 3405, 3406, 3407, 3408, 3410, 3420];
 console.log(`[Ecosystem] Running pre-boot Port-Assassination...`);
 let killedAny = false;
-for (const port of KAI_PORTS) {
+// FIX: only kill processes LISTENING on these ports (local address match).
+// The old `findstr :port` matched OUTBOUND connections too — it killed the
+// launcher PowerShell mid-health-check (its poll of :3001 appeared in netstat),
+// which is why run-oracle-discord.ps1 died with exit code 1.
+if (process.platform === 'win32') {
   try {
-    if (process.platform === 'win32') {
-      const output = execSync(`netstat -ano | findstr :${port}`).toString();
-      const pids = [...new Set(output.split('\n').filter(l=>l.trim()).map(l=>l.trim().split(/\s+/).pop()))];
-      for (const pid of pids) {
-        if (pid && pid !== "0" && pid !== process.pid.toString()) {
-          console.log(`[Ecosystem] Killing ghost process ${pid} on port ${port}...`);
-          try { execSync(`taskkill /F /PID ${pid}`); killedAny = true; } catch(e) {}
-        }
+    const protectedPids = new Set(["0", String(process.pid), String(process.ppid)]);
+    const output = execSync(`netstat -ano -p tcp`).toString();
+    const killTargets = new Map(); // pid -> port
+    for (const line of output.split('\n')) {
+      const parts = line.trim().split(/\s+/);
+      // [proto, localAddr, foreignAddr, state, pid]
+      if (parts.length < 5 || parts[3] !== 'LISTENING') continue;
+      const localPort = Number(parts[1].split(':').pop());
+      const pid = parts[4];
+      if (KAI_PORTS.includes(localPort) && !protectedPids.has(pid)) {
+        killTargets.set(pid, localPort);
       }
+    }
+    for (const [pid, port] of killTargets) {
+      console.log(`[Ecosystem] Killing ghost listener ${pid} on port ${port}...`);
+      try { execSync(`taskkill /F /PID ${pid}`); killedAny = true; } catch(e) {}
     }
   } catch (e) {}
 }
@@ -74,12 +176,39 @@ if (killedAny) {
 import os from 'os';
 
 function startProcess(name, script, args = []) {
+  if (sleepingBots.has(name)) {
+    console.log(`[Ecosystem] ${name} is marked ASLEEP. Skipping startup.`);
+    processMeta.set(name, {
+      script: script || scriptForProcess(name),
+      args: args?.length ? args : argsForProcess(name),
+      startedAt: null,
+      lastExitCode: null,
+      lastExitedAt: null
+    });
+    writeManagerState();
+    return null;
+  }
+
   if (processes.has(name)) {
     const old = processes.get(name);
-    if (old && old.connected) old.kill();
+    if (old) {
+      // FIX: detach the old instance's close handler BEFORE killing it.
+      // Otherwise its close event fires after the new child is registered,
+      // deletes the NEW child from the map, and schedules a duplicate
+      // respawn — two copies then fight over the same IPC port.
+      old.removeAllListeners('close');
+      try { old.kill('SIGKILL'); } catch (_) {}
+    }
   }
 
   console.log(`[Ecosystem] Starting ${name}...`);
+  processMeta.set(name, {
+    script,
+    args,
+    startedAt: new Date().toISOString(),
+    lastExitCode: null,
+    lastExitedAt: null
+  });
   
   // OPTIMIZATION: Removed memory caps to prevent startup JIT / garbage collection thrashing in Node 22
   const nodeArgs = []; 
@@ -129,8 +258,10 @@ function startProcess(name, script, args = []) {
 
         const oracle = processes.get("Oracle");
         if (oracle && oracle.connected && name !== "Oracle") {
-          // MUZZLE: Do not report billing, quota, or known TTS failures to Oracle
-          const isQuotaError = errorMsg.includes('401') || errorMsg.includes('429') || errorMsg.includes('ElevenLabs') || errorMsg.includes('OpenAI');
+          // MUZZLE: Do not report billing, quota, provider-fallback, or known
+          // TTS failures to Oracle — they are not codable and were spawning
+          // auto-repair tickets that burned the GPU and starved KAI's engine.
+          const isQuotaError = /401|429|ElevenLabs|OpenAI|Null-fallback|returned null|skipping turn|Failing over|unavailable|cooldown|timed? out|aborted/i.test(errorMsg);
           if (!isQuotaError) {
             oracle.send({ type: 'SYSTEM_ERROR', bot: name, error: errorMsg });
           }
@@ -170,17 +301,21 @@ function startProcess(name, script, args = []) {
       }
       if (msg.type === 'RESTART_BOT' && (name === 'Oracle' || name === 'KAI' || name === 'Kai Coder')) {
         const target = msg.botName;
-        const properName = [...processes.keys()].find(k => k.toLowerCase() === target.toLowerCase()) || 
-                           [...BOTS, "Leo", "KAI", "Oracle", "Dashboard"].find(k => k.toLowerCase() === target.toLowerCase());
+        const properName = normalizeProcessName(target);
         if (properName) {
           console.log(`[Ecosystem] ${name} requested restart of ${properName}. Applying...`);
-          startProcess(properName, properName === "Oracle" ? "oracle-gateway.mjs" : (properName === "Leo" ? "bots/leo.mjs" : (properName === "KAI" ? "bots/kai.mjs" : "bots/start-bot.mjs")), [properName]);
+          sleepingBots.delete(properName);
+          startProcess(properName, scriptForProcess(properName), argsForProcess(properName));
         }
       }
       if (msg.type === 'SLEEP_BOT' && name === 'Oracle') {
         const target = msg.botName;
-        const properName = [...processes.keys()].find(k => k.toLowerCase() === target.toLowerCase());
+        const properName = normalizeProcessName(target);
         if (properName) {
+          if (["Oracle", "KAI", "Dashboard"].includes(properName)) {
+            console.log(`[Ecosystem] Refusing sleep request for protected core process ${properName}.`);
+            return;
+          }
           console.log(`[Ecosystem] Oracle requested SLEEP for ${properName}. Stopping process...`);
           sleepingBots.add(properName);
           const child = processes.get(properName);
@@ -189,18 +324,44 @@ function startProcess(name, script, args = []) {
              if (child.connected) child.kill('SIGKILL');
              processes.delete(properName);
              console.log(`[Ecosystem] ${properName} is now ASLEEP.`);
+             writeManagerState();
           }
+          writeManagerState();
         }
       }
       if (msg.type === 'WAKE_BOT' && name === 'Oracle') {
         const target = msg.botName;
-        const allKnown = [...BOTS, "Leo", "KAI", "Oracle", "Dashboard"];
-        const properName = allKnown.find(k => k.toLowerCase() === target.toLowerCase());
+        const properName = normalizeProcessName(target);
         if (properName) {
-          console.log(`[Ecosystem] Oracle requested WAKE for ${properName}...`);
           sleepingBots.delete(properName);
-          startProcess(properName, properName === "Oracle" ? "oracle-gateway.mjs" : (properName === "Leo" ? "bots/leo.mjs" : (properName === "KAI" ? "bots/kai.mjs" : "bots/start-bot.mjs")), [properName]);
+          // FIX: waking an already-running bot must be a no-op, not a
+          // kill-and-restart (that caused duplicate processes + port fights).
+          const existing = processes.get(properName);
+          if (existing && existing.exitCode === null && !existing.killed) {
+            console.log(`[Ecosystem] ${properName} is already awake. WAKE ignored.`);
+            writeManagerState();
+          } else {
+            console.log(`[Ecosystem] Oracle requested WAKE for ${properName}...`);
+            startProcess(properName, scriptForProcess(properName), argsForProcess(properName));
+          }
         }
+      }
+      if (msg.type === 'PHOENIX_PROTOCOL' && (name === 'KAI' || name === 'Oracle')) {
+        // ── PHOENIX: full infrastructure relaunch requested from inside ──
+        // KAI's failsafe (mass fleet death) or Oracle (owner command) can
+        // demand a complete rebirth: engine, backends, sensors, manager,
+        // fleet. We spawn the launcher detached — it will kill THIS process
+        // too, and the system rises clean from the ashes.
+        console.log(`🔥 [Ecosystem] PHOENIX PROTOCOL invoked by ${name}: ${msg.reason || 'no reason given'}. Relaunching the entire system...`);
+        try {
+          const phoenix = spawn('powershell.exe',
+            ['-ExecutionPolicy', 'Bypass', '-NoProfile', '-File', 'c:/KAI/tools/oracle-discord/run-oracle-discord.ps1'],
+            { detached: true, stdio: 'ignore', cwd: 'c:/KAI/tools/oracle-discord' });
+          phoenix.unref();
+        } catch (e) {
+          console.error('[Ecosystem] Phoenix relaunch failed:', e.message);
+        }
+        return;
       }
       if (msg.type === 'RESTART_ALL' && name === 'KAI') {
         console.log(`🌌 [Ecosystem] KAI triggered QUANTUM RESET! Wiping locks and hard-rebooting fleet...`);
@@ -250,26 +411,38 @@ function startProcess(name, script, args = []) {
   });
 
   child.on('close', (code) => {
+    const meta = processMeta.get(name) || {};
+    processMeta.set(name, {
+      ...meta,
+      lastExitCode: code,
+      lastExitedAt: new Date().toISOString()
+    });
+    // FIX: if a newer instance already replaced this child in the registry,
+    // this close belongs to a stale process — never respawn from it.
+    if (processes.get(name) !== child) {
+      console.log(`[Ecosystem] Stale ${name} instance closed (code ${code}). Newer instance active — no respawn.`);
+      writeManagerState();
+      return;
+    }
     if (sleepingBots.has(name)) {
       console.log(`[Ecosystem] ${name} process closed, but is ASLEEP. Suppressing auto-respawn.`);
+      writeManagerState();
       return;
     }
     console.log(`[Ecosystem] ${name} exited with code ${code}. Re-spawning in 5s...`);
     processes.delete(name);
+    writeManagerState();
     if (fs.existsSync('c:/KAI/tools/oracle-discord/state/test_failsafe.flag')) {
       console.log(`[Ecosystem] Failsafe testing flag detected. Suppressing auto-respawn for ${name} to allow collapse simulation.`);
       return;
     }
     setTimeout(() => {
-      if (name === "Oracle") startProcess("Oracle", "oracle-gateway.mjs");
-      else if (name === "Leo") startProcess("Leo", "bots/leo.mjs");
-      else if (name === "KAI") startProcess("KAI", "bots/kai.mjs");
-      else if (name === "Dashboard") startProcess("Dashboard", "dashboard-server.mjs");
-      else startProcess(name, "bots/start-bot.mjs", [name]);
+      startProcess(name, scriptForProcess(name), argsForProcess(name));
     }, 5000);
   });
 
   processes.set(name, child);
+  writeManagerState();
 }
 
 // Core Ignition: Start mission-critical bots with a safe Discord Gateway stagger (5.5s)
@@ -302,40 +475,84 @@ for (const bot of BOTS) {
   }
 }
 
-// Global World Clock Heartbeat
+// Global World Clock Heartbeat — 30s keeps every agent aligned to real time (second precision)
+const WORLD_TICK_MS = parseInt(process.env.KAI_WORLD_TICK_MS || '30000', 10);
 setInterval(() => {
+  clock.tick();
   const worldState = clock.getCurrentState();
   broadcast({ type: 'WORLD_TICK', worldState });
-}, 60000);
+}, WORLD_TICK_MS);
+// Immediate tick on boot so agents get time before first interval
+clock.tick();
+broadcast({ type: 'WORLD_TICK', worldState: clock.getCurrentState() });
+
+setInterval(writeManagerState, 15000);
+writeManagerState();
+
+// ── FILE-QUEUED RESTART REQUESTS ────────────────────────────────────────────
+// Processes without an IPC channel to us (e.g. Oracle's standalone ToolServer)
+// queue restart requests in this file. Poll it every 5s and act on them —
+// closes the "patch applied but bot never restarted" gap.
+const RESTART_QUEUE_FILE = 'c:/KAI/tools/oracle-discord/state/restart_requests.json';
+setInterval(() => {
+  let queue = [];
+  try { queue = JSON.parse(fs.readFileSync(RESTART_QUEUE_FILE, 'utf8')); } catch (_) { return; }
+  if (!Array.isArray(queue) || queue.length === 0) return;
+  try { fs.unlinkSync(RESTART_QUEUE_FILE); } catch (_) {}
+  for (const req of queue) {
+    // Stale guard: ignore requests older than 10 minutes
+    if (!req?.botName || (Date.now() - (req.ts || 0)) > 600_000) continue;
+    const properName = normalizeProcessName(req.botName);
+    if (!properName) continue;
+    console.log(`[Ecosystem] File-queued restart: ${properName} (${req.reason || 'no reason'})`);
+    sleepingBots.delete(properName);
+    startProcess(properName, scriptForProcess(properName), argsForProcess(properName));
+  }
+}, 5000);
 
 // CLI Interface
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout,
-  prompt: 'Ecosystem> '
-});
+if (process.stdin.isTTY) {
+  // FIX: when the launching console closes, reads from the dead TTY emit
+  // EPIPE. Without these handlers the 'error' event was unhandled and
+  // crashed the whole ecosystem manager (orphaning every bot).
+  process.stdin.on('error', () => {});
 
-rl.prompt();
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+    prompt: 'Ecosystem> '
+  });
 
-rl.on('line', (line) => {
-  const cmd = line.trim().toLowerCase();
-  if (cmd.startsWith('restart ')) {
-    const name = line.split(' ')[1];
-    if (name) {
-      const properName = [...processes.keys()].find(k => k.toLowerCase() === name.toLowerCase());
-      if (properName) {
-        startProcess(properName, properName === "Oracle" ? "oracle-gateway.mjs" : (properName === "Leo" ? "bots/leo.mjs" : (properName === "KAI" ? "bots/kai.mjs" : "bots/start-bot.mjs")), [properName]);
-      } else {
-        console.log(`[Ecosystem] Unknown bot: ${name}`);
-      }
-    }
-  } else if (cmd === 'list') {
-    console.log("[Ecosystem] Active processes:");
-    for (const [name, child] of processes) {
-      console.log(` - ${name} (PID: ${child.pid}, Connected: ${child.connected})`);
-    }
-  } else if (cmd === 'help') {
-    console.log("[Ecosystem] Commands: list, restart <bot>, help");
-  }
+  rl.on('error', () => {
+    console.log('[Ecosystem] Console detached. CLI disabled; manager continues headless.');
+    try { rl.close(); } catch (_) {}
+  });
+
   rl.prompt();
-});
+
+  rl.on('line', (line) => {
+    const cmd = line.trim().toLowerCase();
+    if (cmd.startsWith('restart ')) {
+      const name = line.split(' ')[1];
+      if (name) {
+        const properName = normalizeProcessName(name);
+        if (properName) {
+          sleepingBots.delete(properName);
+          startProcess(properName, scriptForProcess(properName), argsForProcess(properName));
+        } else {
+          console.log(`[Ecosystem] Unknown bot: ${name}`);
+        }
+      }
+    } else if (cmd === 'list') {
+      console.log("[Ecosystem] Active processes:");
+      for (const [name, child] of processes) {
+        console.log(` - ${name} (PID: ${child.pid}, Connected: ${child.connected})`);
+      }
+    } else if (cmd === 'help') {
+      console.log("[Ecosystem] Commands: list, restart <bot>, help");
+    }
+    rl.prompt();
+  });
+} else {
+  console.log('[Ecosystem] Non-interactive mode detected. CLI disabled; manager state is written to state/ecosystem-manager.json.');
+}

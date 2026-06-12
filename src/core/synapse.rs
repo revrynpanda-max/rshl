@@ -52,10 +52,10 @@ const MIN_WEIGHT: f32 = 0.01;
 const BASE_LTP: f32 = 0.035;
 
 /// Base LTD loss per idle sweep tick
-const BASE_LTD: f32 = 0.003;
+const BASE_LTD: f32 = 0.0002;
 
 /// Ticks of inactivity before LTD begins on a synapse
-const LTD_IDLE_TICKS: u64 = 80;
+const LTD_IDLE_TICKS: u64 = 2500;
 
 /// Maximum outgoing synapses per neuron (axon fan-out limit)
 pub fn dynamic_fan_out(lattice_size: usize) -> usize {
