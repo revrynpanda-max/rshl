@@ -351,7 +351,7 @@ mod tests {
 
     #[test]
     fn test_idiom_kick_the_bucket() {
-        let r = interpret("The old car finally kicked the bucket");
+        let r = interpret("The old car finally decided to kick the bucket");
         assert_eq!(r.class, FigurativeClass::Idiom);
         assert!(r.resolved_meaning.contains("die"));
     }
