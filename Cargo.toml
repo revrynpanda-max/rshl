@@ -14,11 +14,6 @@ path = "src/lib.rs"
 name = "kai"
 path = "src/main.rs"
 
-[[bin]]
-name = "rshl_hw_bench"
-path = "src/bin/rshl_hw_bench.rs"
-required-features = ["gpu"]
-
 [dependencies]
 ratatui = "0.29"
 crossterm = "0.28"
