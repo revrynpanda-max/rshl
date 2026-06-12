@@ -3514,7 +3514,7 @@ mod tests {
 
     #[test]
     fn test_no_hardcoded_responses_for_real_queries() {
-        let brain = BrainSignals { alertness: 1.0, cortical_gain: 1.0, ..BrainSignals::default() };
+        let brain = BrainSignals { alertness: 1.0, cortical_gain: 1.0, arousal: 1.0, confidence: 1.0, dopamine: 1.0, ..BrainSignals::default() };
         let hits = vec![hit("My friend is KAI.", 0.90)];
         let u = Universe::new();
         let mut u = u;
