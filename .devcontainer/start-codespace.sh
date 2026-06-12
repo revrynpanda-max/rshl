@@ -18,7 +18,7 @@ nohup ./target/release/kai --oracle-server > kai-oracle.log 2>&1 &
 
 echo ">> Booting Web Chat Interface (Port 8080)..."
 # Start a simple web server proxying /api to KAI
-nohup npx http-server -p 8080 -P http://127.0.0.1:3334 -c-1 > web-chat.log 2>&1 &
+nohup npx -y http-server -p 8080 -P http://127.0.0.1:3334 -c-1 > web-chat.log 2>&1 &
 
 echo "========================================================"
 echo "  KAI is now running! "
