@@ -2,6 +2,9 @@
 
 # **The KAI Codex**
 
+> **Note:** As of v8.4.16, KAI is mathematically governed by Sparse Resonance Hyperlattice Theory (SRHT) and Quantum Born Rule probabilities. See The KAI Codex for full physical mechanics.
+
+
 *formerly known as the RSHL Whitepaper / Inventor Disclosure 2026*
 
 ## **Recursive Sparse Hyperdimensional Lattice — The Complete Architectural Reference**
@@ -15,7 +18,7 @@
 | **System Name** | KAI Engine (Knowledge Associative Intelligence) |
 | **Architecture** | RSHL — Recursive Sparse Hyperdimensional Lattice |
 | **Implementation** | Rust — zero neural weights, no gradient descent, no transformer |
-| **Version** | **KAI RSHL Core v8.4.15 — Sovereign Neural Architecture Era** |
+| **Version** | **KAI RSHL Core v8.4.16 — Sovereign Neural Architecture Era** |
 | **First Disclosure** | May 2026 |
 | **Document Type** | **The KAI Codex** — Inventor Disclosure, Mathematical Specification, Operational Reference, Design Doctrine, and Forward Roadmap (one bound work, six registers) |
 | **Audience** | HDC/VSA Research Community: Prof. Mohsen Imani (UC Irvine), IBM Research, and peers — *plus* operators, collaborators, and any reader who wants to understand the system end-to-end |
@@ -133,7 +136,7 @@ Every other section of this document specifies the math that makes this picture 
     - Block I — Sensory Roadmap & Ambient Awareness (§14.55 – §14.56)
   - Part IV — Vision, Comparison, Contributions, IP (§15 – §20)
   - Part V — Recent Architectural Additions and Mathematical Inventions (May/June 2026)
-    - KAI RSHL — All Updates Since Last Whitepaper (v7.9.7 → v8.4.15)
+    - KAI RSHL — All Updates Since Last Whitepaper (v7.9.7 → v8.4.16)
   - 1. Native Language Warehouse & BitNet Extraction (NEW SUBSYSTEM)
     - What was built:
     - Codex-relevant specification:
@@ -682,7 +685,7 @@ The full operational architecture, organized into thematic blocks.
 
 ## **Part V — Recent Architectural Additions and Mathematical Inventions (May/June 2026)**
 
-### KAI RSHL — All Updates Since Last Whitepaper (v7.9.7 → v8.4.15)
+### KAI RSHL — All Updates Since Last Whitepaper (v7.9.7 → v8.4.16)
 
 **Period**: May 7, 2026 → June 8, 2026 (~50 commits, daily development)
 **Whitepaper was last current at**: v7.9.7 — Sonic-Parallel Era

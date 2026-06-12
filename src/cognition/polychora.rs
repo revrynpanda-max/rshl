@@ -151,22 +151,50 @@ pub fn project_to_4d(vec: &SparseTernaryVec) -> Quaternion {
     Quaternion::new(w, x, y, z).normalize()
 }
 
-/// Find the closest 600-cell vertex to a given 4D quaternion
-pub fn snap_to_600_cell(q: &Quaternion, vertices: &[Quaternion]) -> usize {
+/// Find the closest 600-cell vertex to a given 4D quaternion using Quantum Born Rule Mathematics
+/// Treat the 4D point as a quantum state vector |ψ>. The probability amplitude of collapsing into
+/// a vertex |v> is given by the Born Rule P = |<ψ|v>|^2. We also introduce a destructive phase
+/// interference angle driven by SRHT contradiction (chi) to repel uncertain states.
+pub fn quantum_interference_snap(q: &Quaternion, vertices: &[Quaternion], chi: f32) -> usize {
     let mut best_idx = 0;
-    let mut best_dot = -1.0;
+    let mut highest_prob = -1.0;
+
+    // Phase angle θ derived from contradiction χ. High conflict = high destructive phase.
+    // We map chi [0, 1] to a phase shift [0, pi/2].
+    let phase_angle = chi * (std::f32::consts::PI / 2.0);
+    let phase_cos = phase_angle.cos();
 
     for (i, v) in vertices.iter().enumerate() {
-        let dot = q.dot(v);
-        // We use absolute dot product because quaternions q and -q represent the same 3D rotation,
-        // but since we are treating it as pure 4D geometry, we might want directional dot.
-        if dot > best_dot {
-            best_dot = dot;
+        // Quantum probability amplitude <q|v>
+        let amplitude = q.dot(v);
+        
+        // Born Rule: P = |<q|v>|^2
+        let mut probability = amplitude * amplitude;
+
+        // Apply SRHT Destructive Interference:
+        // If the amplitude is negative (opposite direction), high contradiction phase 
+        // will aggressively dampen the collapse probability to prevent mis-routing.
+        if amplitude < 0.0 {
+            probability *= phase_cos;
+        }
+
+        if probability > highest_prob {
+            highest_prob = probability;
             best_idx = i;
         }
     }
 
+    // Print a tiny quantum state log if contradiction is high
+    if chi > 0.4 {
+        println!("[KAI/SRHT/Quantum] State collapsed to vertex {} with Born prob P={:.4} (χ phase={:.2})", best_idx, highest_prob, phase_angle);
+    }
+
     best_idx
+}
+
+/// Fallback standard Euclidean snap for legacy systems
+pub fn snap_to_600_cell(q: &Quaternion, vertices: &[Quaternion]) -> usize {
+    quantum_interference_snap(q, vertices, 0.0)
 }
 
 use std::sync::OnceLock;

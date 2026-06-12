@@ -1013,6 +1013,11 @@ fn generate_response_predictive_inner(
                     if let Some(start_idx) = cleaned.find("<think>") {
                         if let Some(end_idx) = cleaned.find("</think>") {
                             if end_idx > start_idx {
+                                let thought_content = cleaned[start_idx + 7..end_idx].trim();
+                                if !thought_content.is_empty() {
+                                    universe.store_or_reinforce(thought_content, "internal-monologue", "cognitive-loop", 0.85);
+                                    println!("[KAI/Cognition] Internal thought saved: {}", &thought_content.chars().take(50).collect::<String>());
+                                }
                                 cleaned = &cleaned[end_idx + 8..].trim_start();
                             }
                         }
@@ -1023,8 +1028,24 @@ fn generate_response_predictive_inner(
                     }
                     // Guard 3: catch any bad content BitNet itself might produce
                     if !is_bad_output(cleaned, is_conversational_qt, input) {
+                        let final_text = cleaned.to_string();
+                        
+                        // 🌟 System 2 Reflection Loop 🌟
+                        if is_factual_qt && final_text.len() > 30 {
+                            let verification_hits = universe.query_full_scan(&final_text, 3);
+                            if let Some(top_verify) = verification_hits.first() {
+                                if top_verify.score > 0.85 && top_verify.text.to_lowercase().contains("false") {
+                                    let rewrite_prompt = format!("Correction needed. You drafted: '{}', but your deep memory says: '{}'. Rewrite to be accurate and confident.", final_text, top_verify.text);
+                                    if let Some(rewritten) = bv.speak(&rewrite_prompt, recent_context, false) {
+                                        println!("[KAI/System2] Caught hallucination via Reflection Loop, self-corrected.");
+                                        return identity_safety_filter(rewritten, query_type);
+                                    }
+                                }
+                            }
+                        }
+                        
                         // 🛑 Guard 3: Identity & Safety override 🛑
-                        return identity_safety_filter(cleaned.to_string(), query_type);
+                        return identity_safety_filter(final_text, query_type);
                     }
                     // BitNet produced bad content — fall through to return raw
                 }

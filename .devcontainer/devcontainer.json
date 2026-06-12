@@ -1,0 +1,35 @@
+{
+  "name": "KAI Sovereign Architecture",
+  "image": "mcr.microsoft.com/devcontainers/rust:1",
+  
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "latest"
+    }
+  },
+  
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "tamasfe.even-better-toml",
+        "esbenp.prettier-vscode"
+      ]
+    }
+  },
+  
+  "forwardPorts": [3334, 8080],
+  "portsAttributes": {
+    "3334": {
+      "label": "KAI Oracle API",
+      "onAutoForward": "notify"
+    },
+    "8080": {
+      "label": "KAI Web Chat",
+      "onAutoForward": "notify"
+    }
+  },
+
+  "postCreateCommand": "cargo build --release --no-default-features",
+  "postStartCommand": "bash .devcontainer/start-codespace.sh"
+}

@@ -32,9 +32,9 @@ sysinfo = "0.31"
 hnsw_rs = "0.3"
 anndists = "0.1"
 roaring = { version = "0.10", features = ["serde"] }
-wgpu = "22.1"
-pollster = "0.3"
-bytemuck = { version = "1", features = ["derive"] }
+wgpu = { version = "22.1", optional = true }
+pollster = { version = "0.3", optional = true }
+bytemuck = { version = "1", features = ["derive"], optional = true }
 zstd = "0.13"
 memmap2 = "0.9"
 candle-core = "0.10.2"
@@ -49,5 +49,7 @@ lto = true
 codegen-units = 1
 
 [features]
+default = ["gpu"]
+gpu = ["wgpu", "pollster", "bytemuck"]
 sparsity_010 = []
 

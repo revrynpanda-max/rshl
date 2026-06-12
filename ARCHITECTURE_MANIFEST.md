@@ -1,4 +1,4 @@
-# 🏛️ KAI RSHL: Architectural Manifest (v51.2.0)
+# 🏛️ KAI RSHL: Architectural Manifest (v8.4.16)
 
 This manifest aligns the KAI RSHL ecosystem with industrial-grade autonomous standards, following a 6-layer cognitive and service-oriented hierarchy.
 

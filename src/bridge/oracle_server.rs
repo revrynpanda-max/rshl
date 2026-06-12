@@ -1541,7 +1541,12 @@ fn handle_discord_turn(
             } else {
                 println!("[KAI/Tutor] No tutoring match (best score: {:.3}), falling through to native generation.",
                     direct_hits.first().map(|h| h.score).unwrap_or(0.0));
-                let hits = crate::core::NeuralBus::query_multi_hop(&u, &sl, 0.5, &route.prompt, 12, &[], "", 3);
+                
+                let mut hits = u.query_full_scan(&route.prompt, 12);
+                if hits.is_empty() || hits.first().map(|h| h.score).unwrap_or(0.0) < 0.75 {
+                    println!("[KAI/Cognition] Low direct memory resonance. Triggering Multi-Hop Semantic Expansion.");
+                    hits = crate::core::NeuralBus::query_multi_hop(&u, &sl, 0.5, &route.prompt, 12, &[], "", 3);
+                }
                 let field = crate::core::FieldState::compute(&u, 1);
                 let response = generate_response_predictive(
                     &route.prompt,

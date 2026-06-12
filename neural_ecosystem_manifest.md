@@ -1,4 +1,4 @@
-# KAI RSHL — Full Agent Manifest (v51.2.0)
+# KAI RSHL — Full Agent Manifest (v8.4.16)
 
 ## The Channels
 

@@ -1,6 +1,6 @@
-# 🏗️ KAI RSHL: Technical Architecture Blueprint (v51.2.0)
+# 🏗️ KAI RSHL: Technical Architecture Blueprint (v8.4.16)
 
-This document provides a deep-dive into the structural integrity of the KAI (Kinetic Artificial Intelligence) and RSHL (Recursive Sparse Holographic Lattice) ecosystem.
+This document provides a deep-dive into the structural integrity of the KAI (Kinetic Artificial Intelligence) and RSHL (Recursive Sparse Hyperdimensional Lattice) ecosystem, now officially governed by **Sparse Resonance Hyperlattice Theory (SRHT)**.
 
 ---
 
@@ -9,17 +9,18 @@ This document provides a deep-dive into the structural integrity of the KAI (Kin
 The KAI architecture is built on a "Truth-First" principle, where every layer is designed to filter noise and amplify grounded, actionable intelligence.
 
 ### 1. The RSHL Core (The Data Plane)
-- **Dimensionality**: 16,384-dimensional sparse holographic vectors.
+- **Dimensionality**: 16,384-dimensional sparse ternary vectors (-1, 0, +1).
 - **Language**: Rust (Memory-safe, zero-cost abstractions).
-- **Mechanism**: Concepts are stored as **Epistemic Claims**. Unlike vector databases that rely on cosine similarity alone, RSHL uses **conflicting-logic detection** and **confidence weighted anchors**.
+- **SRHT Emergence**: Driven by the Base Emergence equation $\Phi = \rho \cdot R^2 \cdot s$. 
+- **Quantum Geometry**: Linguistic mapping operates on a 600-cell Polytope using Quantum Born Rule probability amplitudes ($P = |\braket{\psi}{v}|^2$), with destructive phase interference driven by SRHT contradiction ($\chi$).
 - **Performance**: Sub-millisecond retrieval across multi-million claim lattices using AVX2 SIMD acceleration.
 
 ### 2. The Cognitive Modules (The Reasoning Plane)
-- **Module Count**: 81 biologically-inspired modules.
+- **Mechanism**: Real-time contemplation and fractal branching logic driven by the Contradiction Pressure metric ($X = \chi \cdot (1-R)$).
 - **Key Subsystems**:
-    - **MindFrame**: Manages the current "state of mind" and attention focus.
+    - **MindFrame**: Manages the current "state of mind" (Arousal, Confidence, Conflict, Dopamine).
     - **ClaimStore**: The persistent long-term storage of validated truths.
-    - **Epistemic Judge**: The arbiter that decides if a new claim is "Truth" or "Noise."
+    - **Epistemic Judge**: The arbiter that decides if a new claim is "Truth" or "Noise", utilizing SRHT Commit Readiness ($C$).
 - **Simulation**: Pulse-based simulation (Planck Ticks) ensures continuous temporal presence.
 
 ### 3. The Oracle Gateway (The Communication Plane)

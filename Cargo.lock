@@ -1594,7 +1594,7 @@ dependencies = [
 
 [[package]]
 name = "kai"
-version = "8.4.15"
+version = "8.4.16"
 dependencies = [
  "anndists",
  "bincode",

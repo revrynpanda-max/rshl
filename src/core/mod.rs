@@ -12,7 +12,9 @@ pub mod deep_vault;
 pub mod lexicon;
 pub mod memory;
 pub mod mind_frame;
+#[cfg(feature = "gpu")]
 pub mod gpu_compute;
+#[cfg(feature = "gpu")]
 pub mod gpu_kernel;
 pub mod normalize;
 pub mod oscillator;
@@ -47,6 +49,7 @@ pub use oscillator::{NeuralOscillator, OscillatorOutput};
 pub use predictive::ConversationTrace;
 pub use reasoning::{ContextSlot, Reasoner};
 pub use sparse_vec::{SparseVec, DenseMask, PackedMask};
+#[cfg(feature = "gpu")]
 pub use gpu_kernel::GpuKernel;
 pub use stat_lexicon::StatLexicon;
 pub use pos_dict::{PosDictionary, SemanticEntry};

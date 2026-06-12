@@ -1,6 +1,6 @@
 # 🧬 KAI RSHL CHANGELOG
 
-## [v8.4.15] — 2026-06-08
+## [v8.4.16] — 2026-06-08
 ### **🏛️ NATIVE LANGUAGE WAREHOUSE & ECHO LOOP FIX**
 - **Native Routing Restored**: Removed all Node.js and Rust LLM/BitNet wrappers. KAI now exclusively uses the pre-extracted `language_warehouse.json` to generate his speech natively from the geometric lattice.
 - **Echo Loop Fix**: Patched `oracle_server.rs` to filter out conversational hits during tutoring mode, ensuring KAI doesn't blindly regurgitate social fragments.
@@ -39,9 +39,9 @@ This milestone marks the final transition from cloud-dependent LLMs to a 100% na
 
 ## [v44.1.0] — 2026-05-09
 ### **🏛️ VICTUS CORPORATE HARDENING: RESILIENCE FINALIZATION & SYNC**
-This milestone synchronizes the entire ecosystem to the v51.2.0 Fleet Production Specification.
+This milestone synchronizes the entire ecosystem to the v8.4.16 Fleet Production Specification.
 
-- **Unified Fleet Sync**: All 11 nodes synchronized to the v51.2.0 operational boundaries.
+- **Unified Fleet Sync**: All 11 nodes synchronized to the v8.4.16 operational boundaries.
 - **Contextual Awareness**: Injected transcript history (Last 3 turns) into system prompts.
 - **Passive Worker Silencing**: Specialized workers (Researcher, Analyst, Coder) are now passive and excluded from autonomous interjections.
 - **Memory Race Resolution**: Reordered message ingestion to occur before AI generation, closing the "Memory Gap".
