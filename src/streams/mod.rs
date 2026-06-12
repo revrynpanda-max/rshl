@@ -5,7 +5,8 @@
 // Stream 2 (CPU/Logic): Reasoning, dreaming, drive, inner voice
 // Stream 3 (RAM/Memory): Cell storage, pruning, persistence, intake
 pub mod cpu_stream;
-#[cfg(feature = \"gpu\")]\r\npub mod gpu_stream;
+#[cfg(feature = "gpu")]
+pub mod gpu_stream;
 pub mod ram_stream;
 pub mod shared_bus;
 pub use shared_bus::SharedBus;
