@@ -208,8 +208,7 @@ struct App {
     /// `None` when Ollama is not reachable at startup (system runs pure-lattice).
     /// Set KAI_OLLAMA_MODEL env var to override the default model (mistral:7b).
     candle_voice: Option<kai::cognition::CandleVoice>,
-    bitnet_voice: Option<kai::cognition::BitnetVoice>,
-    /// True while process_input() is running — shows thinking indicator in TUI.
+        /// True while process_input() is running — shows thinking indicator in TUI.
     is_thinking: bool,
     /// Background embedding learning receiver
     embedding_rx: Option<std::sync::mpsc::Receiver<Embeddings>>,
@@ -288,12 +287,9 @@ impl App {
                     .unwrap_or_default()
                     .as_secs()
             ),
-            // Default to CandleVoice for Native "Skin Suit" integration
-            candle_voice: kai::cognition::CandleVoice::new(
-                "models/Phi-3-mini-4k-instruct-q4.gguf",
-                "models/tokenizer.json",
-            ),
-            bitnet_voice: None,
+            // Default to None for CandleVoice to allow BitNet to serve as KAI's primary native brain
+            candle_voice: None,
+
             is_thinking: false,
             embedding_rx: None,
             is_learning_embeddings: false,
@@ -499,34 +495,32 @@ impl App {
         // Trigger summarization every 10 turns
         let turns_len = self.turns.len();
         if turns_len > 0 && turns_len % 10 == 0 && !self.is_summarizing && self.last_summarize_turn_count != turns_len {
-            if let Some(ref bv) = self.bitnet_voice {
-                self.is_summarizing = true;
-                self.last_summarize_turn_count = turns_len;
-                let api_url = bv.api_url().to_string();
-                let recent_turns: Vec<String> = self.turns.iter().rev().take(10).rev().map(|t| format!("{}: {}", t.role, t.text)).collect();
-                let (tx, rx) = std::sync::mpsc::channel();
-                self.summarize_rx = Some(rx);
-                std::thread::spawn(move || {
-                    let system_prompt = "You are an episodic memory summarizer for a geometric AI. Summarize the provided conversation segment into exactly ONE concise sentence representing the core insights, facts, or topics discussed. Do not include introductory text, just the summary. You must use the <think> ... </think> block to reason before generating the single sentence summary.";
-                    let user_prompt = format!("Conversation to summarize:\n{}", recent_turns.join("\n"));
-                    let body = serde_json::json!({
-                        "messages": [
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": user_prompt}
-                        ],
-                        "temperature": 0.2,
-                        "max_tokens": 250,
-                        "stream": false
-                    });
-                    if let Ok(resp) = ureq::post(&api_url).set("Content-Type", "application/json").send_json(body) {
-                        if let Ok(json) = resp.into_json::<serde_json::Value>() {
-                            if let Some(content) = json["choices"][0]["message"]["content"].as_str() {
-                                let _ = tx.send(content.trim().to_string());
-                            }
+            self.last_summarize_turn_count = turns_len;
+            self.is_summarizing = true;
+            let recent_turns: Vec<String> = self.turns.iter().rev().take(10).map(|t| format!("{}: {}", t.role, t.text)).collect();
+            let (tx, rx) = std::sync::mpsc::channel();
+            self.summarize_rx = Some(rx);
+            std::thread::spawn(move || {
+                let api_url = "http://localhost:11434/api/chat";
+                let system_prompt = "You are an episodic memory summarizer for a geometric AI. Summarize the provided conversation segment into exactly ONE concise sentence representing the core insights, facts, or topics discussed. Do not include introductory text, just the summary. You must use the <think> ... </think> block to reason before generating the single sentence summary.";
+                let user_prompt = format!("Conversation to summarize:\n{}", recent_turns.join("\n"));
+                let body = serde_json::json!({
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    "temperature": 0.2,
+                    "max_tokens": 250,
+                    "stream": false
+                });
+                if let Ok(resp) = ureq::post(&api_url).set("Content-Type", "application/json").send_json(body) {
+                    if let Ok(json) = resp.into_json::<serde_json::Value>() {
+                        if let Some(content) = json["choices"][0]["message"]["content"].as_str() {
+                            let _ = tx.send(content.trim().to_string());
                         }
                     }
-                });
-            }
+                }
+            });
         }
 
         // ── IDLE LEARNING — passive ingest of data/ingest/*.txt ──
@@ -5269,7 +5263,6 @@ impl App {
                     &mut self.engine.universe,
                     &self.engine.conv_trace,
                     self.candle_voice.as_ref(),
-                    self.bitnet_voice.as_ref(),
                     kai::cognition::voice::get_lexicon(),
                     Some(&self.engine.last_field),
                     Some(&self.engine.pos_dict), None, true)
@@ -5345,7 +5338,6 @@ impl App {
                 &mut self.engine.universe,
                 &self.engine.conv_trace,
                 self.candle_voice.as_ref(),
-                self.bitnet_voice.as_ref(),
                 kai::cognition::voice::get_lexicon(),
                 Some(&self.engine.last_field),
                 Some(&self.engine.pos_dict), None, true);
@@ -8941,7 +8933,7 @@ fn render_header(f: &mut Frame, app: &App, area: Rect) {
     let title = if w >= 80 {
         Line::from(vec![
             Span::styled(
-                format!(" KAI v{} ", env!("CARGO_PKG_VERSION")),
+                format!(" KAI v{}+{} ", env!("CARGO_PKG_VERSION"), option_env!("KAI_GIT_HASH").unwrap_or("dev")),
                 Style::default()
                     .fg(Color::Cyan)
                     .add_modifier(Modifier::BOLD),
@@ -9029,7 +9021,7 @@ fn render_messages(f: &mut Frame, app: &App, area: Rect) {
                     .add_modifier(Modifier::BOLD),
             ),
             Span::styled(
-                format!("KAI v{}", env!("CARGO_PKG_VERSION")),
+                format!("KAI v{} (build {} · {})", env!("CARGO_PKG_VERSION"), option_env!("KAI_BUILD_STAMP").unwrap_or("dev"), option_env!("KAI_GIT_HASH").unwrap_or("dev")),
                 Style::default()
                     .fg(Color::White)
                     .add_modifier(Modifier::BOLD),
@@ -9405,10 +9397,92 @@ fn render_input(f: &mut Frame, app: &App, area: Rect) {
 /// strength)` for every cell (which re-encodes at the current DIM),
 /// restores `last_fired`, and saves the new state.
 ///
-/// `continuation` vectors are deliberately left at zero — their old
-/// 4096-dim values were random-projection bundles that have no
-/// mathematical meaning in the new 16384-dim space. Re-warming from
-/// the transcript is the follow-up step.
+fn verify_meta_command() {
+    let base_dir = std::env::current_dir()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| ".".to_string());
+    println!("[Verify Meta] Phase 1: Loading current compact state (expecting old v3)...");
+    
+    let (universe, candidates, drive, tick, dream_count, synaptic_layer) = kai::persistence::load_compact(&base_dir)
+        .expect("Failed to load current compact state");
+        
+    let synapse_count = synaptic_layer.synapses.len();
+    let sum_weight: f32 = synaptic_layer.synapses.iter().map(|s| s.weight).sum();
+    let sum_fire_count: u64 = synaptic_layer.synapses.iter().map(|s| s.fire_count).sum();
+    let total_ltp = synaptic_layer.total_ltp;
+    let total_ltd = synaptic_layer.total_ltd;
+    let total_pruned = synaptic_layer.total_pruned;
+    
+    println!("[Verify Meta] Recorded metrics from loaded state:");
+    println!("  Synapse Count: {}", synapse_count);
+    println!("  Sum of Weights: {:.6}", sum_weight);
+    println!("  Sum of Fire Counts: {}", sum_fire_count);
+    println!("  Total LTP: {}", total_ltp);
+    println!("  Total LTD: {}", total_ltd);
+    println!("  Total Pruned: {}", total_pruned);
+    
+    println!("[Verify Meta] Phase 2: Saving as v4 (.json.zst)...");
+    let mut universe_clone = universe.clone();
+    let save_res = kai::persistence::save_compact_full(
+        &base_dir,
+        &universe_clone,
+        &candidates,
+        &drive,
+        &synaptic_layer,
+        tick,
+        dream_count,
+    );
+    if !save_res.ok {
+        panic!("Failed to save state in v4 compact format");
+    }
+    println!("[Verify Meta] Saved v4 compact format successfully");
+    
+    println!("[Verify Meta] Phase 3: Loading saved v4 (.json.zst) into a fresh Universe...");
+    let (universe_v4, candidates_v4, drive_v4, tick_v4, dream_count_v4, synaptic_layer_v4) = kai::persistence::load_compact(&base_dir)
+        .expect("Failed to load saved v4 compact state");
+        
+    let synapse_count_v4 = synaptic_layer_v4.synapses.len();
+    let sum_weight_v4: f32 = synaptic_layer_v4.synapses.iter().map(|s| s.weight).sum();
+    let sum_fire_count_v4: u64 = synaptic_layer_v4.synapses.iter().map(|s| s.fire_count).sum();
+    let total_ltp_v4 = synaptic_layer_v4.total_ltp;
+    let total_ltd_v4 = synaptic_layer_v4.total_ltd;
+    let total_pruned_v4 = synaptic_layer_v4.total_pruned;
+    
+    println!("[Verify Meta] Metrics from loaded v4 state:");
+    println!("  Synapse Count: {}", synapse_count_v4);
+    println!("  Sum of Weights: {:.6}", sum_weight_v4);
+    println!("  Sum of Fire Counts: {}", sum_fire_count_v4);
+    println!("  Total LTP: {}", total_ltp_v4);
+    println!("  Total LTD: {}", total_ltd_v4);
+    println!("  Total Pruned: {}", total_pruned_v4);
+    
+    assert_eq!(synapse_count, synapse_count_v4, "Synapse count mismatch!");
+    assert!((sum_weight - sum_weight_v4).abs() < 1e-4, "Sum of weights mismatch: {} vs {}", sum_weight, sum_weight_v4);
+    assert_eq!(sum_fire_count, sum_fire_count_v4, "Sum of fire counts mismatch!");
+    assert_eq!(total_ltp, total_ltp_v4, "Total LTP mismatch!");
+    assert_eq!(total_ltd, total_ltd_v4, "Total LTD mismatch!");
+    assert_eq!(total_pruned, total_pruned_v4, "Total Pruned mismatch!");
+    
+    for synapse in &synaptic_layer_v4.synapses {
+        assert!(!synapse.pre_label.is_empty(), "Empty pre_label found in v4!");
+        assert!(!synapse.post_label.is_empty(), "Empty post_label found in v4!");
+    }
+    
+    println!("[Verify Meta] ALL METRIC ASSERTS PASSED!");
+    
+    let meta_path = format!("{}/data/kai-meta.json", base_dir);
+    let meta_path_zst = format!("{}/data/kai-meta.json.zst", base_dir);
+    let old_size = std::fs::metadata(&meta_path).map(|m| m.len()).unwrap_or(0);
+    let new_size = std::fs::metadata(&meta_path_zst).map(|m| m.len()).unwrap_or(0);
+    
+    println!("[Verify Meta] File size comparison:");
+    println!("  Old v3 meta.json size: {} bytes ({:.2} MB)", old_size, old_size as f64 / 1_048_576.0);
+    println!("  New v4 meta.json.zst size: {} bytes ({:.2} MB)", new_size, new_size as f64 / 1_048_576.0);
+    
+    assert!(new_size < old_size || old_size == 0, "New size is not smaller than old size!");
+    println!("[Verify Meta] Verification round-trip complete and successful!");
+}
+
 fn migrate_from_manifest() {
     let base_dir = std::env::current_dir()
         .map(|p| p.to_string_lossy().to_string())
@@ -10015,9 +10089,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(pos) = args.iter().position(|a| a == "--chat") {
         if pos + 1 < args.len() {
             let msg = &args[pos + 1];
+            println!("[Startup] Initializing Language Warehouse...");
+            kai::cognition::init_language_warehouse("data/language_warehouse.json");
             let mut app = App::new();
             println!("\nUser: {}", msg);
-            let hits = app.engine.universe.query(msg, 12);
+            let mut hits = app.engine.universe.query(msg, 12);
+            let query_type = kai::cognition::voice::detect_query_type(msg);
+            let lower = msg.to_lowercase();
+            let academic_terms = ["calculate", "equation", "theory", "paper", "research", "physics", "math", "chemistry", "science"];
+            let is_research_query = academic_terms.iter().any(|t| lower.contains(t));
+
+            let is_conversational = matches!(
+                query_type,
+                kai::cognition::voice::QueryType::Greeting | kai::cognition::voice::QueryType::Gratitude | kai::cognition::voice::QueryType::SelfQuestion
+                    | kai::cognition::voice::QueryType::Statement | kai::cognition::voice::QueryType::Contemplation | kai::cognition::voice::QueryType::IdentityQuestion | kai::cognition::voice::QueryType::ExplanationQuestion | kai::cognition::voice::QueryType::RequestForInfo
+            );
+            if is_conversational && !is_research_query {
+                let math_regions = ["advanced_math", "concept", "physics", "chemistry", "arxiv", "academic", "paper", "document", "pubmed", "biology", "computer_science", "science", "abstract", "literature", "book", "fiction", "novel", "story", "gutenberg"];
+                let has_non_math = hits.iter().any(|h| !math_regions.contains(&h.region.as_str()));
+                if has_non_math {
+                    hits.retain(|h| !math_regions.contains(&h.region.as_str()));
+                }
+            }
+            hits.truncate(5);
+
             let brain = kai::cognition::voice::BrainSignals::default();
             let trace = kai::core::ConversationTrace::new();
             let response = kai::cognition::voice::generate_response_predictive(
@@ -10029,11 +10124,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 &mut app.engine.universe,
                 &trace,
                 app.candle_voice.as_ref(), // CandleVoice
-                app.bitnet_voice.as_ref(), // BitnetVoice
                 kai::cognition::voice::get_lexicon(),
-                None,
-                None, None, true);
+                None, // field
+                None, // pos_dict
+                None, // synaptic_layer
+                true);
             println!("\nKAI: {}", response);
+            // app.save_state_sync(); // Removed: takes 3 mins to write 376k cells, use --server for persistent memory
             return Ok(());
         }
     }
@@ -10196,6 +10293,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // ── `kai --migrate-from-manifest` — re-encode all cells at new DIM ──
     if args.iter().any(|a| a == "--migrate-from-manifest") {
         migrate_from_manifest();
+        return Ok(());
+    }
+
+    // ── `kai --verify-meta` — run compact meta storage verification ──
+    if args.iter().any(|a| a == "--verify-meta") {
+        verify_meta_command();
         return Ok(());
     }
 
@@ -10608,6 +10711,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let base_dir = std::env::current_dir()
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_else(|_| ".".to_string());
+
+        println!("[Startup] Initializing Language Warehouse...");
+        kai::cognition::init_language_warehouse("data/language_warehouse.json");
+
         // Load persistence in a thread with 8MB stack to avoid overflow on 132MB JSON
         let (mut universe, synaptic_layer) = {
             let base = base_dir.clone();
@@ -10636,16 +10743,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("--- KAI ORACLE HEADLESS MODE ---");
         println!("Oracle HTTP API: http://127.0.0.1:3334");
         println!("Use /api/oracle-turn or /api/discord-turn with {{from,text}}.");
-        let bitnet_voice = kai::cognition::BitnetVoice::new(
-            "bitnet/build/bin/Release/llama-server.exe",
-            "models/BitNet/bitnet-b1.58-2B-4T.gguf",
-            8080,
-        ).map(|b| std::sync::Arc::new(std::sync::Mutex::new(b)));
+        
 
         kai::bridge::oracle_server::start_oracle_server(
             std::sync::Arc::new(std::sync::Mutex::new(universe)),
             std::sync::Arc::new(std::sync::Mutex::new(synaptic_layer)),
-        );
+            );
         return Ok(());
     }
 
@@ -10653,6 +10756,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let base_dir = std::env::current_dir()
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_else(|_| ".".to_string());
+
+        println!("[Startup] Initializing Language Warehouse...");
+        kai::cognition::init_language_warehouse("data/language_warehouse.json");
+
         let (mut universe, mut candidates, mut drive, _, _, mut synaptic_layer) =
             if kai::persistence::state_exists(&base_dir) {
                 match kai::persistence::load(&base_dir) {
@@ -10669,29 +10776,58 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 (u, CandidateBuffer::new(), Drive::default(), 0, 0, SynapticLayer::new())
             };
         let candle_voice = None;
-        let bitnet_voice = kai::cognition::BitnetVoice::new(
-            "bitnet/build/bin/Release/llama-server.exe",
-            "models/BitNet/bitnet-b1.58-2B-4T.gguf",
-            8080,
-        );
+        
         kai::bridge::ipc_server::run_server(
             &mut universe,
             &mut candidates,
             &mut drive,
             candle_voice.as_ref(),
-            bitnet_voice.as_ref(),
-        );
+            );
         return Ok(());
     }
 
-    // ── `--native-only` — force pure-lattice generation, no Ollama ───
-    if args.iter().any(|a| a == "--native-only") {
+    // ── `--native-only` (or KAI_NATIVE_ONLY=1) — pure-lattice generation ───
+    // Bypasses BOTH the live BitNet Llama AND Ollama; KAI generates from his own
+    // lattice + the extracted ternary embeddings (the design goal: the mind is
+    // loaded as ternary geometry, not a separate model being called). Reversible:
+    // unset to restore the live model.
+    if args.iter().any(|a| a == "--native-only")
+        || std::env::var("KAI_NATIVE_ONLY").map(|v| v == "1" || v.eq_ignore_ascii_case("true")).unwrap_or(false)
+    {
         use std::sync::atomic::Ordering;
         kai::cognition::voice::NATIVE_ONLY.store(true, Ordering::Relaxed);
-        eprintln!("[KAI] NATIVE ONLY MODE — Lattice speaks without Ollama.");
+        eprintln!("[KAI] NATIVE ONLY MODE — Lattice speaks from its own ternary weights (no Llama, no Ollama).");
+    }
+
+    // ── Surprise-Gated Plasticity (KAI_SURPRISE_GATED=1) — opt-in, off by default ──
+    // KAI-native adaptation of the Titans "test-time memory via surprise" idea.
+    // Reuses the existing prediction-error signal to modulate synaptic imprint and
+    // forgetting. The engine is unchanged unless this flag is set.
+    if std::env::var("KAI_SURPRISE_GATED")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+    {
+        use std::sync::atomic::Ordering;
+        kai::core::synapse::SURPRISE_GATED.store(true, Ordering::Relaxed);
+        eprintln!("[KAI] SURPRISE-GATED PLASTICITY — surprising co-firings imprint harder; low-surprise bonds fade faster.");
+    }
+
+    // ── Attention-Weighted Hop Bundling (KAI_ATTN_RESIDUAL=1) — opt-in, off by default ──
+    // Weights each component of a multi-hop residual by its goal-alignment so
+    // on-topic evidence dominates. The engine is unchanged unless this flag is set.
+    if std::env::var("KAI_ATTN_RESIDUAL")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+    {
+        use std::sync::atomic::Ordering;
+        kai::core::reasoning::ATTN_RESIDUAL.store(true, Ordering::Relaxed);
+        eprintln!("[KAI] ATTENTION-WEIGHTED HOP BUNDLING ENABLED");
     }
 
     // ── Normal TUI mode ─────────────────────────────────────────────
+    println!("[Startup] Initializing Language Warehouse...");
+    kai::cognition::init_language_warehouse("data/language_warehouse.json");
+
     enable_raw_mode()?;
     let mut stdout = std::io::stdout();
     execute!(stdout, EnterAlternateScreen)?;
@@ -10741,14 +10877,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         let oracle_universe = std::sync::Arc::new(std::sync::Mutex::new(app.engine.universe.clone()));
         let oracle_synapses = std::sync::Arc::new(std::sync::Mutex::new(app.engine.synaptic_layer.read().unwrap().clone()));
-        let oracle_bitnet = kai::cognition::BitnetVoice::new(
-            "bitnet/build/bin/Release/llama-server.exe",
-            "models/BitNet/bitnet-b1.58-2B-4T.gguf",
-            8081, // Different port to avoid conflict if both running somehow
-        ).map(|b| std::sync::Arc::new(std::sync::Mutex::new(b)));
+        
         
         std::thread::spawn(move || {
-            kai::bridge::oracle_server::start_oracle_server(oracle_universe, oracle_synapses);
+            kai::bridge::oracle_server::start_oracle_server(oracle_universe, oracle_synapses, );
         });
     }
 

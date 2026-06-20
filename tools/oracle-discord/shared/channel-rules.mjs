@@ -42,13 +42,14 @@ export const TRANSCRIPT_USER_INFO = {
 };
 
 export const CHANNEL_SPEAKER_RULES = {
-  // oracle-chat: Work bots + KAI (master proxy)
-  [CHANNEL_IDS.WORK]: new Set(["Analyst", "Researcher", "Kai Coder", "Oracle Coder", "KAI"]),
+  // oracle-chat (WORK): social bots + helpers + KAI do PRODUCTIVE WORK here,
+  // in the threads Oracle assigns. NO Leo. Oracle is the silent moderator.
+  [CHANNEL_IDS.WORK]: new Set(["KAI", "Gemini", "Claudey", "X", "Groq", "Analyst", "Researcher", "Kai Coder", "Oracle Coder"]),
 
-  // over-all-chat: Leo + KAI (public host)
-  [CHANNEL_IDS.PUBLIC]: new Set(["Leo", "KAI"]),
+  // over-all-chat: Leo ONLY (public host)
+  [CHANNEL_IDS.PUBLIC]: new Set(["Leo"]),
 
-  // game-with-leo: All social bots + KAI (spectator/commentary)
+  // game-with-leo: Leo + KAI + social bots (spectator/commentary)
   [CHANNEL_IDS.GAME]: new Set(["Leo", "KAI", "Gemini", "Claudey", "X", "Groq"]),
 
   // sensitive-info: SYSTEM ONLY — no bots ever respond here.
@@ -56,8 +57,8 @@ export const CHANNEL_SPEAKER_RULES = {
   // that was accidentally exposed in public channels. This is a sink, not a conversation.
   [CHANNEL_IDS.SENSITIVE]: new Set([]),
 
-  // ai-social-chat: All social bots + KAI
-  [CHANNEL_IDS.SUNDAY]: new Set(["Claudey", "Gemini", "Groq", "X", "Leo", "KAI"]),
+  // ai-social-chat (SUNDAY): social bots only — banter on break, no work bots, no Leo
+  [CHANNEL_IDS.SUNDAY]: new Set(["Claudey", "Gemini", "Groq", "X"]),
 
   // kai-dreams: KAI's internal thought stream. KAI ONLY — autonomous spectate feed from the TUI.
   [CHANNEL_IDS.KAI_DREAMS]: new Set(["KAI", "Analyst"]),

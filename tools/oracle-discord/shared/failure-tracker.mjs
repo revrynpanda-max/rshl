@@ -167,11 +167,12 @@ export function recordProviderFailure(provider, errorStatus, errorMessage = "") 
  */
 export function recordProviderSuccess(provider) {
   recordMetric('failure-tracker', 'provider_recovery', 1, { provider });
-  if (PROVIDER_FAILURE_STREAK.has(provider)) {
-    PROVIDER_FAILURE_STREAK.set(provider, 0);
-    PROVIDER_COOLDOWNS.delete(provider);
-    clearPersistedCooldown(provider);
-    logAudit('NEURAL_RECOVERY', { provider, message: "Provider verified stable. Resetting failure streak." });
+  const hadFailureState = PROVIDER_FAILURE_STREAK.has(provider) || PROVIDER_COOLDOWNS.has(provider);
+  PROVIDER_FAILURE_STREAK.set(provider, 0);
+  PROVIDER_COOLDOWNS.delete(provider);
+  clearPersistedCooldown(provider);
+  if (hadFailureState) {
+    logAudit('NEURAL_RECOVERY', { provider, message: "Provider verified stable. Resetting failure streak/cooldown." });
   }
 }
 

@@ -65,10 +65,14 @@ export async function sendBotSignal(port, payload) {
     return;
   }
   try {
+    // GUARD: a 4s timeout so a hung/half-open bot socket can't keep this fetch
+    // open indefinitely. Without it, repeated signaling to a wedged bot piled
+    // up outbound connections (a slow resource leak under any signal storm).
     await fetch(`http://127.0.0.1:${port}/trigger`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(4000)
     });
   } catch (e) {
     const transient = /fetch failed|ECONNREFUSED|connection refused|ECONNRESET|socket hang up/i;

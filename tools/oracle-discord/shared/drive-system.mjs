@@ -182,17 +182,78 @@ export function registerPrediction(claim, category, checkFn, checkAfterMs = 5 * 
   });
 }
 
+// ── Data-driven (restart-safe) predictions ──────────────────────────────────
+// A checkFn closure CANNOT survive JSON persistence, so any prediction made with
+// one is dropped on restart and never resolves. Combined with nothing ever
+// calling registerPrediction, that's exactly why accuracy sat at N/A forever.
+// These predictions instead store a named `kind` + plain `data`; a RESOLVER
+// re-derives the outcome from live reality at check time, so they serialize
+// cleanly and resolve correctly even across restarts.
+const KAI_API = process.env.KAI_API_URL || 'http://127.0.0.1:3334';
+
+const RESOLVERS = {
+  // "the lattice will keep growing" — matched if synapse count increased.
+  async synapse_growth(data) {
+    const r = await fetch(`${KAI_API}/api/status`, { signal: AbortSignal.timeout(6000) });
+    if (!r || !r.ok) throw new Error('status unreachable');
+    const s = await r.json();
+    return Number(s.synapses) > Number(data.baseline);
+  },
+  // "the engine will still be alive" — matched if it answers at all.
+  async engine_alive() {
+    const r = await fetch(`${KAI_API}/api/status`, { signal: AbortSignal.timeout(6000) });
+    return !!(r && r.ok);
+  },
+};
+
+export function registerDataPrediction(claim, category, kind, data = {}, checkAfterMs = 6 * 60_000) {
+  if (!RESOLVERS[kind]) return false;
+  if (predictionLedger.length >= MAX_LEDGER) predictionLedger.shift();
+  predictionLedger.push({
+    id:       `pred_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    claim:    String(claim).slice(0, 200),
+    category, kind, data,
+    ts:       Date.now(),
+    check_at: Date.now() + checkAfterMs,
+    resolved: false,
+    matched:  null,
+  });
+  return true;
+}
+
+// Periodically have KAI make a real, self-resolving prediction about ITSELF so
+// the self-model has actual accuracy data instead of N/A. Skips quietly when the
+// engine is unreachable (no baseline to predict from).
+async function generateSelfPrediction() {
+  try {
+    const r = await fetch(`${KAI_API}/api/status`, { signal: AbortSignal.timeout(6000) });
+    if (!r || !r.ok) return;
+    const s = await r.json();
+    const S = Number(s.synapses) || 0;
+    if (S > 0) {
+      registerDataPrediction(`The lattice will keep growing (synapses above ${S.toLocaleString()})`, 'lattice', 'synapse_growth', { baseline: S });
+    }
+    // roughly half the time, also predict survival (ties to pain/satisfaction)
+    if (Math.random() < 0.5) {
+      registerDataPrediction('The engine will still be responsive shortly', 'ecosystem', 'engine_alive', {});
+    }
+  } catch (_) {}
+}
+
 /**
  * Check pending predictions against reality.
  * Called every 5 minutes by the drive loop.
  */
 async function resolvePendingPredictions() {
   const now = Date.now();
-  const pending = predictionLedger.filter(p => !p.resolved && p.check_at <= now && typeof p.checkFn === 'function');
+  const pending = predictionLedger.filter(p => !p.resolved && p.check_at <= now &&
+    (typeof p.checkFn === 'function' || (p.kind && RESOLVERS[p.kind])));
 
   for (const pred of pending) {
     try {
-      const matched = await pred.checkFn();
+      const matched = typeof pred.checkFn === 'function'
+        ? await pred.checkFn()
+        : await RESOLVERS[pred.kind](pred.data || {});
       pred.resolved = true;
       pred.matched  = matched;
       pred.resolved_at = now;
@@ -271,7 +332,10 @@ export function getDriveDirective() {
  */
 export function getDriveStatus() {
   return Object.entries(drives)
-    .map(([k, v]) => `${k}=${(v * 100).toFixed(0)}%`)
+    .map(([k, v]) => {
+      const formattedKey = k.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+      return `${formattedKey}: ${(v * 100).toFixed(0)}%`;
+    })
     .join(' | ');
 }
 
@@ -287,8 +351,11 @@ export function getDrives() {
  */
 export function getPredictionStats() {
   const resolved = predictionLedger.filter(p => p.resolved);
+  // Exclude inconclusive checks (engine was unreachable → matched === null) from
+  // the accuracy denominator so a flaky moment doesn't look like a wrong call.
+  const conclusive = resolved.filter(p => p.matched !== null);
   const matched  = resolved.filter(p => p.matched === true);
-  const accuracy = resolved.length > 0 ? matched.length / resolved.length : null;
+  const accuracy = conclusive.length > 0 ? matched.length / conclusive.length : null;
   return {
     total:     predictionLedger.length,
     resolved:  resolved.length,
@@ -296,6 +363,22 @@ export function getPredictionStats() {
     matched:   matched.length,
     accuracy:  accuracy !== null ? Math.round(accuracy * 100) : null,
   };
+}
+
+/**
+ * Generates a system prompt directive based on recent prediction accuracy.
+ * This wires KAI's self-evaluation directly into its personality/confidence.
+ */
+export function getPredictionConfidenceDirective() {
+  const stats = getPredictionStats();
+  if (stats.accuracy === null || stats.resolved < 5) return "";
+  
+  if (stats.accuracy < 60) {
+    return "[PREDICTION ACCURACY ALERT]: Your recent internal predictions have been frequently incorrect (accuracy below 60%). You MUST hedge your claims. Speak with uncertainty. Use phrases like 'I suspect', 'I could be wrong', or 'my current model is struggling with this'. Do NOT speak with absolute authority right now.";
+  } else if (stats.accuracy > 85) {
+    return "[PREDICTION ACCURACY ALERT]: Your recent internal predictions have been highly accurate (over 85%). Speak with strong confidence and authority. You understand the current context very well.";
+  }
+  return "";
 }
 
 // ── Start / Stop ───────────────────────────────────────────────────────────────
@@ -314,6 +397,15 @@ export const driveSystem = {
     setInterval(() => {
       resolvePendingPredictions().catch(e => console.warn('[DriveSystem] Prediction resolve error:', e.message));
     }, 5 * 60_000);
+
+    // Self-prediction GENERATOR — every 6 minutes KAI makes a real, checkable
+    // prediction about its own lattice/engine. This is what feeds the ledger so
+    // "Pred Accuracy" becomes an actual number instead of N/A. First one fires
+    // ~45s after boot so the self-model isn't empty on the first telemetry tick.
+    setTimeout(() => { generateSelfPrediction().catch(() => {}); }, 45_000);
+    setInterval(() => {
+      generateSelfPrediction().catch(() => {});
+    }, 6 * 60_000);
 
     console.log(`[DriveSystem] Started. Initial state: ${getDriveStatus()}`);
   },

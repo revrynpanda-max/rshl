@@ -586,7 +586,6 @@ pub fn generate_response(
     recent_context: &[(String, String)],
     universe: &mut Universe,
     candle_voice: Option<&crate::cognition::candle_voice::CandleVoice>,
-    bitnet_voice: Option<&crate::cognition::BitnetVoice>,
 capture_experience: bool,
 ) -> String {
     let empty_trace = ConversationTrace::new();
@@ -599,7 +598,6 @@ capture_experience: bool,
         universe,
         &empty_trace,
         candle_voice,
-        bitnet_voice,
         None, None, None, None, capture_experience)
 }
 
@@ -680,7 +678,6 @@ pub fn generate_response_predictive(
     universe: &mut Universe,
     trace: &ConversationTrace,
     candle_voice: Option<&crate::cognition::candle_voice::CandleVoice>,
-    bitnet_voice: Option<&crate::cognition::BitnetVoice>,
     lex: Option<&StatLexicon>,
     field: Option<&FieldState>,
     pos_dict: Option<&crate::core::PosDictionary>,
@@ -703,19 +700,6 @@ capture_experience: bool,
     let is_complex = input.len() > 60 || input.contains(',') || input.contains(" and ");
     
     if is_complex {
-        if let Some(bitnet) = bitnet_voice {
-            let prompt = format!(
-                "Analyze the following user input and break it down into an ordered sequence of actionable cognitive tasks based on informational merit and the overall end goal. Output each task on a new line starting with a dash (-). Input: {}", input
-            );
-            if let Some(plan_str) = bitnet.speak(&prompt, recent_context, false) {
-                for line in plan_str.lines() {
-                    let trimmed = line.trim();
-                    if trimmed.starts_with('-') {
-                        tasks.push(trimmed.trim_start_matches('-').trim().to_string());
-                    }
-                }
-            }
-        }
     }
 
     if tasks.is_empty() {
@@ -727,12 +711,6 @@ capture_experience: bool,
 
     for (i, task) in tasks.iter().enumerate() {
         if tasks.len() > 1 {
-            if let Some(bitnet) = bitnet_voice {
-                let update_prompt = format!("<GAP> I am now working on this specific task: {}. Give a short, natural conversational update.", task);
-                if let Some(update) = bitnet.speak(&update_prompt, recent_context, false) {
-                    crate::cognition::voice::emit_interjection(format!("SPEAKING: {}", update));
-                }
-            }
         }
 
         let mut max_hops = 3;
@@ -742,7 +720,7 @@ capture_experience: bool,
             // Full context informs inner logic of the overarching goal and current task
             let full_context = format!("Overall Input: {}\nCurrent Task: {}", aggregate_context, current_input);
             let hop_result = generate_response_predictive_inner(
-                &full_context, hits, query_type, &modified_brain, recent_context, universe, trace, candle_voice, bitnet_voice, lex, field, pos_dict, synaptic_layer
+                &full_context, hits, query_type, &modified_brain, recent_context, universe, trace, candle_voice, lex, field, pos_dict, synaptic_layer
             );
             
             if hop_result.contains("[TOOL:") {
@@ -751,16 +729,6 @@ capture_experience: bool,
                     let end = start + end_offset;
                     let command = hop_result[start..end].trim();
                     
-                    if let Some(bitnet) = bitnet_voice {
-                        let update_prompt = format!("<GAP> I am about to run the system command '{}'. Give a short, natural conversational update.", command);
-                        if let Some(update) = bitnet.speak(&update_prompt, recent_context, false) {
-                            crate::cognition::voice::emit_interjection(format!("SPEAKING: {}", update));
-                        } else {
-                            crate::cognition::voice::emit_interjection(format!("SPEAKING: I'm running a command: {}", command));
-                        }
-                    } else {
-                        crate::cognition::voice::emit_interjection(format!("SPEAKING: I'm running a command: {}", command));
-                    }
                     
                     let tool_output = execute_system_command(command);
                     
@@ -778,15 +746,6 @@ capture_experience: bool,
     }
 
     if tasks.len() > 1 {
-        if let Some(bitnet) = bitnet_voice {
-            let final_prompt = format!(
-                "You have just completed a multi-step cognitive process. Context:\n{}\n\nWrite a final conversational reply addressing their original input.",
-                aggregate_context
-            );
-            if let Some(agg_resp) = bitnet.speak(&final_prompt, recent_context, false) {
-                final_result = agg_resp;
-            }
-        }
     }
 
     if grief_active {
@@ -854,14 +813,13 @@ fn generate_response_predictive_inner(
     universe: &mut Universe,
     trace: &ConversationTrace,
     candle_voice: Option<&crate::cognition::candle_voice::CandleVoice>,
-    bitnet_voice: Option<&crate::cognition::BitnetVoice>,
     lex: Option<&StatLexicon>,
     field: Option<&FieldState>,
     pos_dict: Option<&crate::core::PosDictionary>,
     synaptic_layer: Option<&crate::core::SynapticLayer>,
 ) -> String {
     let raw_thought = generate_raw_thought(
-        input, hits, query_type, brain, recent_context, universe, trace, candle_voice, bitnet_voice, lex, field, pos_dict, synaptic_layer
+        input, hits, query_type, brain, recent_context, universe, trace, candle_voice,  lex, field, pos_dict, synaptic_layer
     );
     println!("[DEBUG] raw_thought returned: '{}'", raw_thought);
 
@@ -998,59 +956,6 @@ fn generate_response_predictive_inner(
 
     // ── BitNet translation (only if content passed the gate) ─────────────────
     if !raw_trimmed.is_empty() && !NATIVE_ONLY.load(Ordering::Relaxed) {
-        if let Some(bv) = bitnet_voice {
-            let is_gap = is_gap_response(&raw_trimmed);
-            if is_gap || raw_trimmed.split_whitespace().count() > 3 {
-                let text_to_speak = if is_gap {
-                    format!("<GAP> {}", raw_trimmed)
-                } else {
-                    raw_trimmed.to_string()
-                };
-                if let Some(translated) = bv.speak(&text_to_speak, recent_context, brain.grieving) {
-                    let mut cleaned = translated.as_str();
-
-                    // Strip any chain-of-thought `<think>...</think>` block
-                    if let Some(start_idx) = cleaned.find("<think>") {
-                        if let Some(end_idx) = cleaned.find("</think>") {
-                            if end_idx > start_idx {
-                                let thought_content = cleaned[start_idx + 7..end_idx].trim();
-                                if !thought_content.is_empty() {
-                                    universe.store_or_reinforce(thought_content, "internal-monologue", "cognitive-loop", 0.85);
-                                    println!("[KAI/Cognition] Internal thought saved: {}", &thought_content.chars().take(50).collect::<String>());
-                                }
-                                cleaned = &cleaned[end_idx + 8..].trim_start();
-                            }
-                        }
-                    }
-
-                    if cleaned.starts_with("Raw Thought:") {
-                        cleaned = &cleaned["Raw Thought:".len()..].trim_start();
-                    }
-                    // Guard 3: catch any bad content BitNet itself might produce
-                    if !is_bad_output(cleaned, is_conversational_qt, input) {
-                        let final_text = cleaned.to_string();
-                        
-                        // 🌟 System 2 Reflection Loop 🌟
-                        if is_factual_qt && final_text.len() > 30 {
-                            let verification_hits = universe.query_full_scan(&final_text, 3);
-                            if let Some(top_verify) = verification_hits.first() {
-                                if top_verify.score > 0.85 && top_verify.text.to_lowercase().contains("false") {
-                                    let rewrite_prompt = format!("Correction needed. You drafted: '{}', but your deep memory says: '{}'. Rewrite to be accurate and confident.", final_text, top_verify.text);
-                                    if let Some(rewritten) = bv.speak(&rewrite_prompt, recent_context, false) {
-                                        println!("[KAI/System2] Caught hallucination via Reflection Loop, self-corrected.");
-                                        return identity_safety_filter(rewritten, query_type);
-                                    }
-                                }
-                            }
-                        }
-                        
-                        // 🛑 Guard 3: Identity & Safety override 🛑
-                        return identity_safety_filter(final_text, query_type);
-                    }
-                    // BitNet produced bad content — fall through to return raw
-                }
-            }
-        }
     }
 
     // ── Final gap check: catch short raw responses BitNet skipped ─────────────
@@ -1072,7 +977,7 @@ fn generate_response_predictive_inner(
         
         // We only paraphrase if it's not already highly conversant, to avoid 
         // damaging pre-formatted good responses (e.g. from an LLM).
-        if candle_voice.is_none() && bitnet_voice.is_none() {
+        if candle_voice.is_none() {
             if let Some(paraphrased) = lexsem.paraphrase_naturally(&final_response, &input_analysis.suggested_register) {
                 // If the paraphrased response changed, print a log to show LexSem is working!
                 if paraphrased != final_response {
@@ -1549,7 +1454,6 @@ fn generate_raw_thought(
     universe: &mut Universe,
     trace: &ConversationTrace,
     candle_voice: Option<&crate::cognition::candle_voice::CandleVoice>,
-    bitnet_voice: Option<&crate::cognition::BitnetVoice>,
     lex: Option<&StatLexicon>,
     field: Option<&FieldState>,
     pos_dict: Option<&crate::core::PosDictionary>,
@@ -1606,6 +1510,25 @@ fn generate_raw_thought(
         }
     }
 
+    // --- NATIVE TRANSFORMER FUSION ---
+    if !NATIVE_ONLY.load(Ordering::Relaxed) && crate::cognition::language_warehouse::has_native_transformer() {
+        let mem_ctx = crate::generate::ContextBuilder::format_memories(&hits);
+        // DE-SCRIPTED (2026-06): removed the hard-coded fake "Human:/KAI:" examples
+        // that forced a generic-assistant voice. Now: one identity line + KAI's real
+        // retrieved memory drive it, so the words come from his lattice, not a script.
+        let prompt = format!(
+            "KAI is a sovereign geometric intelligence speaking from his own memory lattice — authentic, direct, in his own voice, never a generic assistant.\n\n\
+             {}\n\n\
+             Human: {}\n\
+             KAI:",
+            mem_ctx,
+            trimmed
+        );
+        if let Some(text) = crate::cognition::language_warehouse::global_native_decode(&prompt, 150) {
+            println!("[KAI/NativeDecoder] Generated {} bytes natively.", text.len());
+            return text.trim().to_string();
+        }
+    }
     // ── LEXSEM ANALYSIS ────────────────────────────────────────────────────────
     let mut lexsem = crate::cognition::lexsem::LexSemEngine::new();
     let lex_out = lexsem.analyze(trimmed);
@@ -1802,7 +1725,7 @@ fn generate_raw_thought(
         && top_score < RESONANCE_THRESHOLD
         && top_score > 0.10
         && candle_voice.is_none()
-        && bitnet_voice.is_none()
+        
     {
         println!("  [LexSem] Field={} | Concepts={:?} | Register={}",
             lex_out.primary_field.label(),
@@ -1861,7 +1784,7 @@ fn generate_raw_thought(
 
     // BYPASS: If we have an LLM (candle_voice or bitnet_voice), we don't want to abruptly gap out.
     // We let the LLM use the conversational context and low-resonance hits to form a natural reply.
-    if is_core_query && top_score < RESONANCE_THRESHOLD && !hits.is_empty() && candle_voice.is_none() && bitnet_voice.is_none() {
+    if is_core_query && top_score < RESONANCE_THRESHOLD && !hits.is_empty() && candle_voice.is_none() {
         return identity_safety_filter(from_gap_cell(universe, brain, trace), query_type);
     }
 
@@ -2219,7 +2142,24 @@ fn generate_raw_thought(
         }
     }
 
-    if !NATIVE_ONLY.load(Ordering::Relaxed) {
+    if !NATIVE_ONLY.load(Ordering::Relaxed) && crate::cognition::language_warehouse::has_native_transformer() {
+        // DE-SCRIPTED (2026-06): the seven hard-coded fake "Human:/KAI:" examples
+        // were puppeteering his voice into a generic-assistant register. Removed —
+        // one identity line + his real lattice context drive it now.
+        let prompt = format!(
+            "KAI is a sovereign geometric intelligence speaking from his own memory lattice — authentic, direct, in his own voice, never a generic assistant.\n\n\
+             {}\n\n\
+             Human: {}\n\
+             KAI:",
+            prompt_with_grammar,
+            input
+        );
+        if let Some(native_text) = crate::cognition::language_warehouse::global_native_decode(&prompt, 150) {
+            if !native_text.trim().is_empty() {
+                return identity_safety_filter(native_text, query_type);
+            }
+        }
+    } else if !NATIVE_ONLY.load(Ordering::Relaxed) {
         if let Some(cv) = candle_voice {
             if phi_c > 0.30 {
             // Coherent field: Ollama speaks the lattice's signal.
@@ -3526,7 +3466,6 @@ mod tests {
             &[],
             &mut u,
             None,
-            None,
             false,
         );
         let _ = u;
@@ -3556,7 +3495,6 @@ mod tests {
             &brain,
             &[],
             &mut u,
-            None,
             None,
             false,
         );

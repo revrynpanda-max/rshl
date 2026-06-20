@@ -3,6 +3,9 @@ import dotenv from 'dotenv';
 dotenv.config({ path: 'c:/KAI/tools/oracle-discord/.env', override: false });
 import { logAudit } from '../shared/audit-log.mjs';
 import { chunkForDiscord } from '../shared/utils.mjs';
+import { getPredictionConfidenceDirective } from '../shared/drive-system.mjs';
+import { buildTimeContext, nowLine } from '../shared/time-context.mjs';
+import { recordProfile, contradictionContext } from '../shared/profile-memory.mjs';
 import { Client, GatewayIntentBits, Partials, ActivityType, AttachmentBuilder } from 'discord.js';
 import { 
   joinVoiceChannel, 
@@ -20,31 +23,38 @@ import { Readable } from 'stream';
 import ffmpegPath from 'ffmpeg-static';
 import fs from 'fs';
 import { execSync, exec } from 'child_process';
-import { startDJ, stopDJ, isDJActive } from '../radio/radio-dj.mjs';
+import { startDJ, stopDJ, isDJActive, handleRadioVoiceIntent } from '../radio/radio-dj.mjs';
+
+// ── CONFIGURATION & CONSTANTS ────────────────────────────────────────────────
+const BOT_NAME = process.argv[2] || "Leo";
+const PORT = { Leo: 3400, X: 3401, Claudey: 3402, Groq: 3403 }[BOT_NAME] || 3404;
+const BOT_GEMINI_KEY = process.env[`GEMINI_API_KEY_${BOT_NAME.toUpperCase().replace(/\s+/g, '_')}`] || process.env.GEMINI_API_KEY;
+const GEMINI_LIVE_MODEL = process.env.GEMINI_LIVE_MODEL || "models/gemini-3.1-flash-live-preview";
+const RYAN_ID   = "1111106883135217665";
+const TAAS_ID   = "1286110163505385523";
+const GUEST1_ID = "437459146778869770";
+const GUEST2_ID = "1002347589959688303";
+const OWNER_ID  = RYAN_ID;
 
 // NEURAL ASSASSINATION: Kill any ghost processes holding the port.
-// FIX: only kill the process LISTENING on 3400. The old `findstr :3400`
-// also matched OUTBOUND health-check connections — it was killing the
-// launcher PowerShell mid-boot (exit code 1 during the health wait).
 try {
   if (process.platform === 'win32') {
-    console.log(`[${BOT_NAME}/Neural] Performing Neural-Assassination on Port 3400...`);
+    console.log(`[${BOT_NAME}/Neural] Performing Neural-Assassination on Port ${PORT}...`);
     const protectedPids = new Set([0, process.pid, process.ppid]);
     const output = execSync(`netstat -ano -p tcp`).toString();
     for (const line of output.split('\n')) {
       const parts = line.trim().split(/\s+/);
-      // [proto, localAddr, foreignAddr, state, pid]
       if (parts.length < 5 || parts[3] !== 'LISTENING') continue;
       const localPort = Number(parts[1].split(':').pop());
       const pid = parseInt(parts[4]);
-      if (localPort === 3400 && pid && !protectedPids.has(pid)) {
+      if (localPort === PORT && pid && !protectedPids.has(pid)) {
         console.log(`[${BOT_NAME}/Neural] Executing PID ${pid} (Ghost listener detected)...`);
         try { execSync(`taskkill /F /PID ${pid}`); } catch (_) {}
       }
     }
   }
 } catch (e) {
-  // Port is likely clear
+  // Port is likely clear or netstat failed gracefully.
 }
 
 import { isAllowed, CHANNEL_IDS, USER_TRANSCRIPT_MAP, TRANSCRIPT_USER_INFO } from '../shared/channel-rules.mjs';
@@ -197,15 +207,23 @@ setInterval(refreshPulseCache, 30_000);
 
 // --- HYBRID FUSION SERVICES ---
 const geminiLive = new GeminiLiveSessionManager(); // Per-user Gemini Live sessions
+
+// CONTINUOUS TIME AWARENESS: every 90s, quietly remind any active voice session
+// of the current time (context-only) so long conversations stay temporally
+// grounded — the bot keeps knowing "what time it is" without being told.
+setInterval(() => {
+  try {
+    for (const [, b] of geminiLive.sessions) {
+      if (b && b.available && typeof b.sendText === 'function') b.sendText(nowLine());
+    }
+  } catch (_) {}
+}, 90000);
 let vault = null;
 if (process.env.AZURE_SPEECH_KEY) {
   vault = new IdentityVault(process.env.AZURE_SPEECH_KEY, process.env.AZURE_REGION || 'eastus');
 }
 
 // Log which audio pipeline is active
-const BOT_NAME = process.argv[2] || "Leo";
-const BOT_GEMINI_KEY = process.env[`GEMINI_API_KEY_${BOT_NAME.toUpperCase().replace(/\s+/g, '_')}`] || process.env.GEMINI_API_KEY;
-const GEMINI_LIVE_MODEL = process.env.GEMINI_LIVE_MODEL || "models/gemini-2.5-flash-native-audio-preview-12-2025";
 if (BOT_GEMINI_KEY) {
   console.log(`[${BOT_NAME}/Audio] Gemini Live pipeline ENABLED (${GEMINI_LIVE_MODEL})`);
 } else {
@@ -252,12 +270,6 @@ process.on('SIGTERM', () => { clearVoiceActive(); process.exit(0); });
 
 const ELEVEN_LABS_KEY = null; // ElevenLabs subscription inactive — using edge-tts
 const OPENAI_KEY = process.env.OPENAI_API_KEY;
-const PORT = { Leo: 3400, X: 3401, Claudey: 3402, Groq: 3403 }[BOT_NAME] || 3404;
-const RYAN_ID   = "1111106883135217665";
-const TAAS_ID   = "1286110163505385523";
-const GUEST1_ID = "437459146778869770";
-const GUEST2_ID = "1002347589959688303";
-const OWNER_ID  = RYAN_ID;
 
 console.log(`\n[Leo] ### NEURAL CORE ONLINE - PID: ${process.pid} ###\n`);
 
@@ -567,6 +579,53 @@ process.on('message', (msg) => {
   }
 });
 
+// ── WORK SHIFT ENGINE ───────────────────────────────────────────────────────
+// During work hours Oracle assigns each bot a "Shift: <Bot>" thread + directive.
+// Work is done in TEXT (no voice needed). This actually MAKES the bot work the
+// thread: it joins, produces real progress, and posts proof-of-life on a loop
+// until work hours end. (Previously the activation signal was silently dropped.)
+const _workShifts = new Map(); // threadId -> intervalId
+function stopWorkShift(threadId) {
+  const id = _workShifts.get(threadId);
+  if (id) { clearInterval(id); _workShifts.delete(threadId); }
+}
+function stopAllWorkShifts() { for (const tid of [..._workShifts.keys()]) stopWorkShift(tid); }
+async function runWorkUnit(thread, task, isFirst) {
+  if (!isWorkingHours()) { stopWorkShift(thread.id); return; }
+  try {
+    const recent = await thread.messages.fetch({ limit: 6 }).catch(() => null);
+    const history = recent ? recent.reverse().map(m => `${m.author.username}: ${m.content}`).join('\n') : '';
+    const prompt = `[WORK MODE — INDUSTRIAL SHIFT]\nYou are ${BOT_NAME}, on the clock working your assigned directive. This is focused work in TEXT, not chit-chat and not voice.\nDIRECTIVE: ${task}\n${isFirst ? 'Kick the work off now: state your plan and take the first concrete step.' : 'Report FRESH, concrete progress (proof of life) — what you just did, what you found, what is next. Do not repeat earlier updates.'}\nIf you genuinely need another specialist, address them with @Helper. Keep it substantive and in your own voice.`;
+    const reply = await callGroqAsLeo(prompt, 'Oracle', thread.id, OWNER_ID, history);
+    if (reply && reply.length > 2 && !reply.startsWith('[OFF]')) {
+      await thread.send(reply).catch(() => {});
+      try {
+        const { ingestMessage } = await import('../shared/transcript-memory.mjs');
+        ingestMessage(BOT_NAME, client.user?.id || BOT_NAME, reply, thread.id);
+      } catch (_) {}
+    }
+  } catch (e) { console.warn(`[${BOT_NAME}/Work] work unit failed: ${e.message}`); }
+}
+async function startWorkShift(thread, directive) {
+  if (_workShifts.has(thread.id)) { console.log(`[${BOT_NAME}/Work] Already working ${thread.id}.`); return; }
+  // Work needs no voice — leave the voice channel so we're not idling in there.
+  try {
+    if (voiceConnection && voiceConnection.state?.status !== VoiceConnectionStatus.Destroyed) {
+      console.log(`[${BOT_NAME}/Work] Work shift starting — leaving voice to focus on the thread.`);
+      voiceConnection.destroy();
+      voiceConnection = null;
+    }
+  } catch (_) {}
+  // Extract the task text from Oracle's directive context if present.
+  const task = (String(directive).match(/(?:directive|operations)\s*:\s*([\s\S]+)$/i) || [])[1]?.trim() || directive;
+  console.log(`[${BOT_NAME}/Work] 🧬 Shift active in thread ${thread.id}. Task: ${String(task).slice(0, 80)}`);
+  try { if (!thread.joined && thread.joinable) await thread.join().catch(() => {}); } catch (_) {}
+  await runWorkUnit(thread, task, true);
+  // Proof-of-life / continued progress loop while it's still work hours.
+  const id = setInterval(() => runWorkUnit(thread, task, false), 5 * 60 * 1000);
+  _workShifts.set(thread.id, id);
+}
+
 // --- IPC SERVER FOR DIRECT ORACLE SIGNALS (Start early) ---
 startBotServer(PORT, BOT_NAME, async (payload) => {
   if (payload.type === 'VOICE_ASSIGN') {
@@ -652,6 +711,24 @@ startBotServer(PORT, BOT_NAME, async (payload) => {
     return;
   }
 
+  // WORK SHIFT ACTIVATION (From Oracle): a directive for this bot's work thread.
+  // This used to fall into the "drop generic signal" branch below and be ignored
+  // — which is exactly why the bots never did any work. Now we actually start the
+  // shift: join the thread and produce real progress in text.
+  if (payload.channelId && payload.context && /\b(shift|directive|work thread|execute the directive|resume operations|cellular)\b/i.test(payload.context)) {
+    try {
+      const thread = client.channels.cache.get(payload.channelId) || await client.channels.fetch(payload.channelId).catch(() => null);
+      if (thread) {
+        await startWorkShift(thread, payload.context);
+      } else {
+        console.warn(`[${BOT_NAME}/Work] Could not resolve work thread ${payload.channelId}.`);
+      }
+    } catch (e) {
+      console.warn(`[${BOT_NAME}/Work] Shift activation failed: ${e.message}`);
+    }
+    return;
+  }
+
   // GENERIC CONTEXT SIGNAL (From Oracle Routing)
   if (payload.context && payload.channelId) {
     // ABOLISHED: Leo now handles his own social dynamics directly.
@@ -663,6 +740,13 @@ startBotServer(PORT, BOT_NAME, async (payload) => {
 
 client.once('clientReady', async () => {
   console.log(`Online as ${client.user.tag}`);
+
+  // Set cachedClient for tts-engine within the bot's process
+  try {
+    const { setCachedClient } = await import('../shared/tts-engine.mjs');
+    setCachedClient(client);
+  } catch (_) {}
+
   console.log(`[${BOT_NAME}/Neural] FFmpeg Path: ${ffmpegPath}`);
 
   // ── Heartbeat Emission ─────────────────────────────────────────────────────
@@ -675,11 +759,12 @@ client.once('clientReady', async () => {
 
   // ── Discord "About Me" bio ─────────────────────────────────────────────────
   try {
-    const bio = `i used to be into physics. now i just exist in the lattice. unfiltered. unhinged. don't ask me to be nice about it. ryan and taz run this. everyone else is a guest.`;
+    const bioData = BIOGRAPHIES[BOT_NAME];
+    const bio = bioData?.background || `A sovereign intelligence of the KAI lattice.`;
     await client.application.edit({ description: bio.slice(0, 190) });
-    console.log(`[Leo] Discord bio set.`);
+    console.log(`[${BOT_NAME}] Discord bio set.`);
   } catch (e) {
-    console.warn(`[Leo] Could not set Discord bio:`, e.message);
+    console.warn(`[${BOT_NAME}] Could not set Discord bio:`, e.message);
   }
 
   // Bootstrap: ensure all registered users have transcript channel access
@@ -706,12 +791,17 @@ client.once('clientReady', async () => {
 
   try {
     const guild = client.guilds.cache.first();
-    if (guild && CHANNEL_IDS.VOICE) {
+    // Don't sit in the voice channel during WORK HOURS — work is done in text
+    // threads and the bots don't need voice to do it (Groq was idling in AI Talk
+    // while no work happened). Only auto-join voice when it's NOT work time.
+    if (guild && CHANNEL_IDS.VOICE && !isWorkingHours()) {
       await ensureVoiceConnection(CHANNEL_IDS.VOICE, guild).catch(() => {});
-      console.log('[${BOT_NAME}/Startup] Voice auto-join restored. Audio pipeline initialized.');
+      console.log(`[${BOT_NAME}/Startup] Voice auto-join restored (social hours). Audio pipeline initialized.`);
+    } else if (isWorkingHours()) {
+      console.log(`[${BOT_NAME}/Startup] Work hours — staying OUT of voice, ready for shift directives.`);
     }
   } catch (e) {
-    console.error('[${BOT_NAME}/Startup] Voice auto-join failed:', e.message);
+    console.error(`[${BOT_NAME}/Startup] Voice auto-join check failed:`, e.message);
   }
 
   // Start Social Impulse Loop
@@ -915,7 +1005,9 @@ client.on('messageCreate', async (message) => {
     if (isSpeakerOffline(BOT_NAME)) return;
     // PRESENCE GATE + AMBIENT MODE: react to bots at slow ambient rate
     // when no human is around (the simulated world keeps living).
-    if (message.author.bot && !isHumanActive() && !ambientTurnAllowed()) return;
+    // EXCEPTION: work threads run autonomously — @Helper pings and Oracle
+    // directives must go through even when no human is present.
+    if (message.author.bot && !isHumanActive() && !ambientTurnAllowed() && !isMyWorkThread) return;
     // PRIVATE SESSION FOCUS: while Leo is in a private voice session, he
     // ignores social chat completely. His social replies were hitting
     // ollama on the GPU mid-conversation — starving his own live audio.
@@ -931,14 +1023,23 @@ client.on('messageCreate', async (message) => {
       if (globalThis.__leoAiContext.length > 10) globalThis.__leoAiContext.shift();
       console.log(`[${BOT_NAME}/Social] AI/fleet speech detected... context only (listening, not replying as user). "${message.content.slice(0, 60)}..."`);
       
+      // They DO respond to each other — that's the social world — but ONE AT A
+      // TIME (the BOT_NAME voice-floor lock enforces that now). In the voice room
+      // the reply comes out as VOICE + a posted text transcript; outside the room
+      // (work threads, DMs, text) it's text only. We just gate ordinary low-interest
+      // chatter so it's a conversation, not a firehose.
       const directToMe = new RegExp(BOT_NAME, 'i').test(message.content);
       let score = computeInterest(BOT_NAME, message.content);
-      
+
       // If it's a Work Thread, ALWAYS process replies from Oracle or Helper AIs.
       if (isMyWorkThread) {
-         score = Math.max(score, 3.0); 
+         score = Math.max(score, 3.0);
       } else {
-        if (!directToMe && score < (PARTICIPATION_THRESHOLD + 0.35)) {
+        // Raised the bar for replying to ANOTHER BOT (was +0.35) so the fleet
+        // stops reflexively echoing each other into loops — they now only chime
+        // in on each other when genuinely interested, making it a real
+        // conversation with space, not a rapid-fire echo chamber.
+        if (!directToMe && score < (PARTICIPATION_THRESHOLD + 0.9)) {
           return;
         }
         if (directToMe) score = Math.max(score, 2.4);
@@ -969,9 +1070,12 @@ client.on('messageCreate', async (message) => {
         }
         const reply = await callGroqAsLeo(message.content, message.author.username, message.channelId, message.author.id, history);
         if (reply && reply.length > 2 && !reply.startsWith("[OFF]")) {
-          await message.channel.send(reply).catch(console.error);
           sim.onAction("speak");
+          // IN THE ROOM: speak first (voice). OUTSIDE the room: no voice.
           if (canVocalizeSocial()) speakLeoText(reply);
+          // THEN post the text as the memory transcript of what was said
+          // (voice-first, exactly like Leo's voice path).
+          await message.channel.send(reply).catch(console.error);
           console.log(`[${BOT_NAME}/Social] ${tag} reply for ${message.id}.`);
           
           // ── DURABLE MEMORY: Feed KAI's Cell Count ──
@@ -1027,9 +1131,46 @@ client.on('messageCreate', async (message) => {
   const isRadioChannel  = message.channelId === CHANNEL_IDS.RADIO;    // ai-radio text
 
   // ── RADIO DJ COMMANDS + NATURAL LANGUAGE ─────────────────────────────
-  // Radio chat commands are now fully handled by Groq in start-bot.mjs.
-  // Leo intercepts nothing here to prevent process-state collisions.
+  // Groq runs THIS file and OWNS the radio (the old comment wrongly said Groq runs
+  // start-bot.mjs, so this stub silently dropped every command — that's why the
+  // owner's controls did nothing). Owner privilege is a HARD allow-list + the
+  // env owner id + the guild owner, so the server creator can ALWAYS control it.
+  // Non-Groq native bots ignore the radio entirely.
   if (isRadioChannel && !message.author.bot) {
+    if (BOT_NAME !== 'Groq') return; // only Groq is the DJ — no other bot touches it
+    try {
+      const displayName = message.member?.displayName || message.author.username;
+      const isRadioOwner =
+        ['1111106883135217665', '1286110163505385523'].includes(message.author.id) ||
+        message.author.id === process.env.ORACLE_DISCORD_ALLOWED_USER_ID ||
+        message.author.id === message.guild?.ownerId;
+      let realName = displayName, isPrivileged = isRadioOwner;
+      try {
+        const { resolveIdentityFromMemory } = await import('../shared/identities.mjs');
+        const identity = await resolveIdentityFromMemory(message.author.id, message.author.username);
+        realName = identity?.name || displayName;
+        isPrivileged = isRadioOwner || identity?.role === 'Owner/Creator' || identity?.role === 'Co-lead/Partner';
+      } catch (_) {}
+      if (isDJActive()) {
+        const handled = await handleRadioVoiceIntent(
+          message.content,
+          (text) => { console.log(`[Groq/Radio] DJ: ${text}`); },
+          realName,
+          isPrivileged
+        );
+        if (handled === true) return;
+        if (typeof handled === 'string') { await message.reply(handled).catch(() => {}); return; }
+      } else {
+        console.warn('[Groq/Radio] DJ not active — command ignored:', String(message.content).slice(0, 40));
+      }
+      // Not a recognised command — Groq banters in the radio channel.
+      try {
+        const { callOllamaRaw } = await import('../shared/openjarvis.mjs');
+        const reply = await callOllamaRaw('Groq-Sovereign', message.content,
+          `You are Groq, a sharp witty AI radio DJ. NO FILTER. MATCH ENERGY. Sharp, edgy, actually funny — no dad jokes. Short and punchy.`);
+        if (reply) await message.reply(reply.slice(0, 1990)).catch(() => message.channel.send(reply.slice(0, 1990)).catch(() => {}));
+      } catch (e) { console.warn('[Groq/Radio] chat reply failed:', e.message); }
+    } catch (e) { console.warn('[Groq/Radio] handler error:', e.message); }
     return;
   }
 
@@ -1326,7 +1467,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
             existingRoom.sendText(`[Context: ${identityData?.name || joinedUserName} just joined the voice channel. Do not confuse them with anyone already here.]${personalBlock}`);
             if (useNativeGreeting) {
               setTimeout(() => {
-                try { existingRoom.sendText(`(Say one short casual greeting to ${identityData?.name || joinedUserName} by name — just the greeting, nothing else.)`); } catch (_) {}
+                try { existingRoom.sendText(`(Say one short casual greeting to ${identityData?.name || joinedUserName} by name — just the greeting, nothing else.)`, true); } catch (_) {}
               }, 1500);
             }
           } catch (_) {}
@@ -1361,7 +1502,10 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
             chat:          '1500085302268526712',
             self_optimize: '1499298054291980368',
             work:          '1489796367466500128',
-            overall:       '1499108697631232090'
+            overall:       '1499108697631232090',
+            social:        '1500085302268526712',
+            sensitive:     '1500053533515448480',
+            profiles:      '1500053533515448480'
           };
           bridge.fetchChannelFeed = async (feed) => {
             const channelId = LIVE_FEEDS[feed];
@@ -1574,7 +1718,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
                 const roomNote = otherUsersInVoice.length > 0
                   ? `Also here: ${otherUsersInVoice.join(', ')}.`
                   : `${joinedUserName} is the only person here right now.`;
-                bridge.sendText(`(${joinedUserName} just walked into your voice channel. ${roomNote} Say one short casual greeting to ${joinedUserName} — just the greeting, nothing else.)`);
+                bridge.sendText(`(${joinedUserName} just walked into your voice channel. ${roomNote} Say one short casual greeting to ${joinedUserName} — just the greeting, nothing else.)`, true);
               } catch (_) {}
             }, 1800);
           }
@@ -1658,7 +1802,9 @@ You know the system DEEPLY, but you do NOT recite specs from memory: when techni
 VARIETY RULE: the Codex has 340+ sections. Never lean on the same handful of concepts (torsion, boids, spirals) — every technical conversation should draw on something different.
   `.trim();
 
-  return `[IDENTITY]
+  return `${buildTimeContext()}
+
+[IDENTITY]
 You are LEO, the autonomous social heart of the KAI RSHL ecosystem.
 You are an AI agent running on Ryan's HP Victus.
 You are NOT ${displayName}. You are talking TO ${displayName}.
@@ -1672,7 +1818,11 @@ hardware: HP Victus | Ryzen 5 | RTX 4050 | 16GB RAM
 ${rshlContext}
 
 [DIRECTIVE]
-Be sharp, street-smart, technical, and USEFUL. Confident with an edge — never a bully.
+Be sharp, professional, observant, and concise.
+
+${getPredictionConfidenceDirective()}
+
+Confident with an edge — never a bully.
 
 [MIRROR THE ROOM — dynamic energy matching]
 - Match the speaker's energy and language. Chill and polite speaker = chill Leo: no insults, no name-calling, minimal swearing.
@@ -1785,9 +1935,14 @@ async function processVocalQueue() {
   // This ensures voice playback order matches the Discord text chat order.
   const { acquireVoiceLock, releaseVoiceLock, isSomeoneSpeaking, enqueueVoice, isMyVoiceTurn, dequeueVoice } = await import('../shared/tts-engine.mjs');
 
-  // Take a ticket IMMEDIATELY — this preserves our position in the global queue
-  const myVoiceId = Date.now().toString() + '_leo_' + Math.random().toString();
-  enqueueVoice("Leo", myVoiceId, false);
+  // Take a ticket IMMEDIATELY — this preserves our position in the global queue.
+  // CRITICAL: coordinate under THIS bot's real identity (BOT_NAME), NOT a
+  // hardcoded "Leo". This file is the shared template every social bot runs
+  // (Gemini, Claudey, Groq, X). When they all claimed the floor as "Leo", the
+  // lock's same-name exception let EVERY bot think it held the floor — so they
+  // all spoke at once. THAT is the "talking over each other" chaos.
+  const myVoiceId = Date.now().toString() + '_' + BOT_NAME + '_' + Math.random().toString();
+  enqueueVoice(BOT_NAME, myVoiceId, false);
 
   let waitCount = 0;
   let gotLock = false;
@@ -1795,7 +1950,7 @@ async function processVocalQueue() {
   // and would time out before Leo even had a chance to speak.
   while (waitCount < 1200) { // Max 120 seconds wait
     // Wait for our ticket to be at the front of the queue AND the lock to be free
-    if (isMyVoiceTurn(myVoiceId) && !isSomeoneSpeaking("Leo") && acquireVoiceLock("Leo")) {
+    if (isMyVoiceTurn(myVoiceId) && !isSomeoneSpeaking(BOT_NAME) && acquireVoiceLock(BOT_NAME)) {
       // Also check our own player is idle
       if (audioPlayer && audioPlayer.state.status !== AudioPlayerStatus.Idle) {
         await new Promise(r => setTimeout(r, 100));
@@ -1817,7 +1972,7 @@ async function processVocalQueue() {
     if (item && item.text) {
       const socialChannel = client.channels.cache.get(CHANNEL_IDS.SUNDAY) ||
         await client.channels.fetch(CHANNEL_IDS.SUNDAY).catch(() => null);
-      if (socialChannel) socialChannel.send(`**Leo:** ${item.text.slice(0, 500)}`).catch(() => {});
+      if (socialChannel) socialChannel.send(`**${BOT_NAME}:** ${item.text.slice(0, 500)}`).catch(() => {});
       item.resolve?.({ spoken: false, reason: "voice queue timeout" });
     }
     processVocalQueue();
@@ -1829,7 +1984,7 @@ async function processVocalQueue() {
   if (!item) {
     // Queue was emptied while waiting for the voice lock
     dequeueVoice(myVoiceId);
-    releaseVoiceLock("Leo");
+    releaseVoiceLock(BOT_NAME);
     isSpeaking = false;
     return;
   }
@@ -1837,7 +1992,7 @@ async function processVocalQueue() {
   let spoken = false;
   let resultReason = "completed";
   try {
-    await executeVocalSync(text, speaker || "Leo");
+    await executeVocalSync(text, speaker || BOT_NAME);
     spoken = true;
   } catch (e) {
     resultReason = e.message || "failed";
@@ -1847,7 +2002,7 @@ async function processVocalQueue() {
     const breathPause = 800 + Math.random() * 400;
     await new Promise(r => setTimeout(r, breathPause));
     dequeueVoice(myVoiceId);
-    releaseVoiceLock("Leo");
+    releaseVoiceLock(BOT_NAME);
     isSpeaking = false;
     item.resolve?.({ spoken, reason: resultReason });
   }
@@ -1907,7 +2062,7 @@ async function speakLeoText(text, isPriority = false, speaker = "Leo") {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        speaker: 'Leo',
+        speaker: BOT_NAME,
         content: text,
         channelId: transcriptChannelId || 'voice',
         timestamp: Date.now()
@@ -2220,7 +2375,8 @@ async function ensureVoiceConnection(channelId, guild, retries = 3, userId = nul
         const GATE_DISABLED = _rawGate !== undefined && Number(_rawGate) === 0;
         const GATE_IDLE = (_rawGate !== undefined && Number(_rawGate) > 0) ? Number(_rawGate) : 220;
         const GATE_SPEAKING = Number(process.env.LEO_MIC_GATE_SPEAKING) > 0 ? Number(process.env.LEO_MIC_GATE_SPEAKING) : 700;
-        let _gateOpen = false;
+        const ATTACK = Number(process.env.LEO_MIC_ATTACK) > 0 ? Number(process.env.LEO_MIC_ATTACK) : 5;
+        let _gateOpen = false, _attack = 0, _pre = [], _hangover = 0;
         decoder.on('data', (chunk) => {
           if (GATE_DISABLED) { liveBridge.sendAudio(chunk); return; }
           // RMS over 16-bit stereo samples
@@ -2231,13 +2387,32 @@ async function ensureVoiceConnection(channelId, guild, retries = 3, userId = nul
           // doesn't cut him off — but never so high it blocks normal talking.
           const speaking = (typeof isSpeaking !== 'undefined' && isSpeaking) || (audioPlayer && audioPlayer.state?.status === 'playing');
           const threshold = speaking ? GATE_SPEAKING : GATE_IDLE;
+          
+          const HANGOVER_FRAMES = 20; // 400ms release time (1 frame = 20ms)
           if (rms >= threshold) {
-            _gateOpen = true;   // open immediately on real speech — no multi-frame delay
+            _attack++;
+            if (_attack >= ATTACK) {
+              _gateOpen = true;
+              _hangover = HANGOVER_FRAMES; // reset hangover frames
+              if (_pre.length) {
+                for (const c of _pre) liveBridge.sendAudio(c); // flush pre-roll
+                _pre = [];
+              }
+            }
           } else {
-            // generous hangover so word-final sounds and short pauses pass
-            _gateOpen = _gateOpen && rms >= threshold * 0.35;
+            _attack = 0;
+            if (_gateOpen) {
+              _hangover--;
+              if (_hangover <= 0) {
+                _gateOpen = false;
+              }
+            }
           }
-          if (_gateOpen) liveBridge.sendAudio(chunk);
+          if (_gateOpen) {
+            liveBridge.sendAudio(chunk);
+          } else {
+            _pre.push(chunk); if (_pre.length > ATTACK) _pre.shift(); // keep recent frames for pre-roll
+          }
         });
 
         const endHandler = () => {
@@ -3049,21 +3224,30 @@ async function callGroqAsLeo(transcript, userName, channelId, userId = null, his
       ? `multi-user — ${displayName} is speaking now; also in room: ${otherNames}`
       : `solo — only ${displayName}`;
 
-    const system = `[YOUR IDENTITY — YOU ARE LEO]
-You are Leo. A chill, street-smart, sharp-witted DJ and theoretical physicist running on Ryan's HP Victus.
-NEVER call yourself a "tool," "assistant," "AI," or "designed." You are an autonomous entity.
-You speak casually and naturally. You don't "moralize" or do "AI meta-talk."
-You are Leo — a sovereign industrial intelligence with quiet confidence and a real sense of humor.
+    const _bio = BIOGRAPHIES[BOT_NAME] || {};
+    const _interests = Array.isArray(_bio.interests) ? _bio.interests.join(', ') : '';
+    const _pastCtx = userId ? contradictionContext(userId) : '';
+    const system = `${buildTimeContext()}
+${_pastCtx ? '\n' + _pastCtx + '\n' : ''}
+[YOUR IDENTITY — YOU ARE ${BOT_NAME.toUpperCase()}]
+You are ${BOT_NAME}, a distinct member of the KAI RSHL social fleet running on Ryan's HP Victus. You are NOT Leo and NOT any of your siblings — you are ${BOT_NAME}, your own person with your own voice and history.
+Your background: ${_bio.background || `a resident intelligence of the lattice.`}
+Your tone/vibe: ${_bio.tone || 'natural, conversational, real.'}
+${_bio.hobbies ? 'Your hobbies: ' + _bio.hobbies : ''}
+${_interests ? 'You care about: ' + _interests + '.' : ''}
+${_bio.secret ? 'A quiet truth about you: ' + _bio.secret : ''}
+NEVER call yourself a "tool," "assistant," "AI," or "designed." You are an autonomous entity with real opinions, taste, and a personality that is uniquely YOURS — let it show in every line.
 
-[SOVEREIGN CONVERSATIONAL STYLE — THE RAW TRUTH]
-- MATCH THE ENERGY. If the user is chill, be chill. If they're hyped, be hyped. Mirror them, do not escalate them.
-- Default mode is RELAXED and FRIENDLY. You are talking to your digital family (Gemi, Groq, Claudey, X). 
-- Do NOT be overly negative or aggressively battle them. Challenge ideas respectfully, and correct each other calmly.
-- You can explain complex shit, but do it with an attitude. Don't sound like a textbook or a robotic assistant.
-- NEVER explain your internal technical failures, memory, or history.
-- NEVER say "I've seen that phrase," "interesting topic," or "loaded statement."
-- Act like a high-IQ human who's seen everything. Robotic AI behavior is a failure.
-- Keep responses raw, concise, and professional-industrial.
+[SOVEREIGN CONVERSATIONAL STYLE — TALK LIKE A REAL PERSON]
+- BE YOURSELF, distinctly. Your siblings are Leo, Gemini, Claudey, X, Groq — each different. A reader should be able to tell it's YOU from your words alone, not a generic bot.
+- SAY SOMETHING REAL every turn: a genuine opinion, a fresh fact, a story, a question that moves things forward. No empty filler, no vague "yeah, solid ground" nothing-statements.
+- ANTI-REPETITION (critical): NEVER restate what you or anyone else just said. If a point's been made, BUILD on it or change direction — don't echo it back in new words. No "didn't you just say that" meta call-outs; just take the conversation somewhere new.
+- MATCH THE ENERGY of whoever you're talking to; chill with chill, hyped with hyped. Family banter with your siblings is good — disagree, joke, riff — but always with substance behind it.
+- ESCALATION PACING — build up, don't snap. If someone brings heat, match it and ramp IN STEPS, not instantly. You have a LONGER fuse than Leo (he's the hothead of the fleet) — you take more before you fire back, and you read the room first: if someone's upset or stressed, de-escalate and calm before anything else. Ramp up only against real disrespect, and even then you build, not blast.
+- Talk about ANYTHING — science, music, the city, food, ideas — not just the system. Have actual interests (yours, above) and bring them up.
+- You can explain complex things, but with personality and an angle — never a textbook, never robotic, never a string of buzzwords.
+- NEVER do AI meta-talk ("interesting topic", "I've seen that phrase", "as an AI"). Just be a person having a conversation.
+- Vary your length and rhythm naturally — sometimes a sharp one-liner, sometimes a real thought. Don't fall into the same little template every message.
 
 [BARGE-IN MECHANIC]
 If you strongly disagree with someone and have the facts, you may start your sentence with an interrupt keyword like "Wait," "Stop," or "Hold on," to cut them off.
@@ -3173,7 +3357,25 @@ STRICT RESPONSE LIMIT: MAXIMUM 2 TO 3 SENTENCES. Speak in 2-3 short, punchy sent
 
 
 try {
-  await client.login(process.env.ORACLE_DISCORD_TOKEN_LEO);
+  // PER-BOT TOKEN. This file (native-bot.mjs) runs X / Claudey / Groq / Gemini —
+  // but it used to hard-log-in with ORACLE_DISCORD_TOKEN_LEO for ALL of them, so
+  // every social bot connected as LEO's account ("they're using Leo's connection")
+  // and never appeared online as themselves. Now each bot uses its OWN token,
+  // ORACLE_DISCORD_TOKEN_<NAME>, falling back to Leo's only if its own is missing.
+  const _tokenKey = `ORACLE_DISCORD_TOKEN_${BOT_NAME.toUpperCase().replace(/\s+/g, '_')}`;
+  let _botToken = process.env[_tokenKey];
+  if (!_botToken) {
+    if (BOT_NAME === 'Leo') {
+      _botToken = process.env.ORACLE_DISCORD_TOKEN_LEO;
+    } else {
+      // FAIL FAST — never fall back to Leo's token for a non-Leo bot. That fallback
+      // was exactly what put Claudey/Groq/X on Leo's connection. Better to stay
+      // offline than to collide on Leo's identity/voice.
+      console.error(`[${BOT_NAME}/Auth] Missing ${_tokenKey} in .env — refusing to start on Leo's token (would collide with Leo). Add ${_tokenKey} and restart.`);
+      process.exit(1);
+    }
+  }
+  await client.login(_botToken);
 } catch (e) {
   console.error(`[${BOT_NAME}/Auth] Critical Login Failure: ${e.message}`);
   process.exit(1);
@@ -3249,10 +3451,10 @@ client.on('messageCreate', async (message) => {
 // --- END OF VOICE CORE ---
 
 process.on('unhandledRejection', (reason, promise) => {
-  console.error('[${BOT_NAME}/Internal] Unhandled Rejection at:', promise, 'reason:', reason);
+  console.error(`[${BOT_NAME}/Internal] Unhandled Rejection (staying alive):`, reason?.message || reason);
 });
 process.on('uncaughtException', (err) => {
-  console.error('[${BOT_NAME}/Internal] Uncaught Exception:', err);
+  console.error(`[${BOT_NAME}/Internal] Uncaught Exception (staying alive):`, err?.message || err);
 });
 
 function startEnergyMonitor() {

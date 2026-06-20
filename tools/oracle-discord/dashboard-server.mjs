@@ -3,6 +3,17 @@ import fs from 'fs';
 import path from 'path';
 import { buildProofSummary, renderProofMarkdown, proofPaths } from './shared/proof-metrics.mjs';
 
+// ── CRASH GUARD ──────────────────────────────────────────────────────────────
+// When the engine (:3334) faults, fetches from here emit unhandled 'error'
+// events → Node throws → "Dashboard exited with code 1" crash loop. Log and
+// stay alive; the dashboard just shows stale data until the engine returns.
+process.on('uncaughtException', (err) => {
+  console.error('[Dashboard/Internal] Uncaught Exception (staying alive):', err?.message || err);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[Dashboard/Internal] Unhandled Rejection (staying alive):', reason?.message || reason);
+});
+
 const PORT = 3001;
 const DASHBOARD_FILE = 'c:\\KAI\\oracle.html';
 

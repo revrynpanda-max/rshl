@@ -405,6 +405,8 @@ let djState = {
   botName:           'Groq',  // Identity of the active DJ
   lastSkipTime:      0,       // debounce rapid skips
   socialMessages:    [],      // buffer for ai-social-chat events
+  recentlyPlayed:    [],      // rolling "title|artist" keys — auto-picker skips these (NO-REPEAT)
+  artistWeights:     {},      // artist(lowercase) → request count — biases auto-pick toward what the room asks for
 };
 
 // ── Exported API ──────────────────────────────────────────────────────────────
@@ -505,6 +507,13 @@ export function stopDJ() {
 /** Add a song request (from a user) */
 export async function addRequest(title, artist = '', requestedBy = 'someone', isPriority = false) {
   const song = { title, artist, requestedBy };
+  // ARTIST PREFERENCE: remember who the room asks for, so when the queue runs dry the
+  // auto-picker leans toward those artists instead of a fixed list. Builds a living
+  // sense of the room's taste across the session.
+  if (artist && artist.trim()) {
+    const k = artist.toLowerCase().trim();
+    djState.artistWeights[k] = (djState.artistWeights[k] || 0) + 1;
+  }
 
   if (djState.requestWindowOpen && !isPriority) {
     // Window is open — goes to pool for poll
@@ -630,6 +639,26 @@ async function _djSpeak(text) {
  * @param {object} preloaded - { resource, ytdlpProc }
  * @param {object} preselectedSong - The song object already picked by _onSongEnd
  */
+// ── DYNAMIC AUTO-PICK — no-repeat + artist-weighted ──────────────────────────
+function _songKey(s) { return `${(s.title || '').toLowerCase().trim()}|${(s.artist || '').toLowerCase().trim()}`; }
+
+// Pick the next playlist song so the station stays FRESH and leans into what the room
+// asks for, instead of cycling the same fixed list: (1) skip anything recently played,
+// (2) weight toward artists people have requested, (3) keep randomness so it's never a
+// deterministic loop. This is the fix for "same songs over and over."
+function _pickFreshSong(list) {
+  const recent = new Set(djState.recentlyPlayed || []);
+  const weights = djState.artistWeights || {};
+  let pool = list.filter(s => !recent.has(_songKey(s)));
+  if (pool.length === 0) { pool = list.slice(); djState.recentlyPlayed = []; } // all recent → reset history
+  const scored = pool.map(s => {
+    const aw = weights[(s.artist || '').toLowerCase().trim()] || 0;
+    return { s, w: 1 + aw * 2.5 + Math.random() * 1.5 }; // base + requested-artist bonus + jitter
+  });
+  scored.sort((a, b) => b.w - a.w);
+  return scored[0].s;
+}
+
 async function _playNextSong(preloaded = null, preselectedSong = null) {
   if (!djState.active) return;
   if (djState.transitioning) {
@@ -647,8 +676,8 @@ async function _playNextSong(preloaded = null, preselectedSong = null) {
   if (!song && djState.playlistMode) {
     const list = getPlaylist(djState.playlistName);
     if (list.length > 0) {
-      song = list[djState.playlistIndex % list.length];
-      djState.playlistIndex++;
+      song = _pickFreshSong(list);   // no-repeat + artist-weighted (was a static index cycle)
+      djState.playlistIndex++;       // kept for save-state continuity
     }
   }
 
@@ -658,6 +687,11 @@ async function _playNextSong(preloaded = null, preselectedSong = null) {
   }
 
   djState.lastArtist = song.artist || null;
+
+  // NO-REPEAT: remember what's playing so the auto-picker skips it for the next ~15 songs.
+  djState.recentlyPlayed = djState.recentlyPlayed || [];
+  djState.recentlyPlayed.push(_songKey(song));
+  if (djState.recentlyPlayed.length > 15) djState.recentlyPlayed.shift();
 
   // Build search query
   const query = `${song.title} ${song.artist || ''}`.trim();

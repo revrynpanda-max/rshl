@@ -25,14 +25,11 @@ The ecosystem is anchored to the **MemPalace Bridge**. Identities are no longer 
 
 ## 🚀 Key Features
 
-- **Multi-Agent Sovereign Podcast**: A natural voice ecosystem where bots engage in high-intensity debates, acknowledge each other, and respond in real-time.
-- **Global Interruption System**: Simulates human conversation by allowing agents to "cut each other off" when a new thought begins, eliminating overlapping audio.
-- **Real-Time Web Grounding**: Social bots are anchored to the **OpenJarvis Search Engine**, using verified web data to back up their claims and arguments.
-- **Natural Conversational Flow**: Implements human-like listening delays (1s) and proactive turn-taking.
-- **Groq Voice Proxying**: Seamless audio routing where KAI acts as the vocal interface for Groq in shared voice channels.
 - **Departmental Autonomy**: Bots perform **Proactive Industrial Labor** during their work shifts, scanning history for unfinished tasks and auditing the core.
+- **Collaborative Blueprinting**: Oracle collaborates with the Owner in DMs to finalize a strategic blueprint before igniting a departmental mission.
+- **Strategic Mission Hub**: All project missions are contained within dedicated threads in the **#oracle-chat** channel.
 - **Sonic-Parallel Voice (Leo)**: High-speed vocal processing with parallel STT, Biometric DNA verification, and real-time lattice memory recall.
-- **Zero-Hardcode Identity**: Pure database-led social interaction via the RSHL Lattice.
+- **Zero-Hardcode Identity**: Pure database-led social interaction. No static name placeholders.
 
 ---
 

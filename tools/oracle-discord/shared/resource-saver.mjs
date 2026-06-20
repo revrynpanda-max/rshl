@@ -42,8 +42,14 @@ const _calProtectFree = Math.max(1536, Math.round(_totalMemMB * 0.07));
 function detectLimitedHostSync() {
   const cores = os.cpus().length || 4;
   const ramGB = _totalMemMB / 1024;
-  const isLimited = cores <= 6 || ramGB < 20;
+  // KAI_FORCE_LIMITED=1 forces the tighter, RAM-protective baselines on hosts
+  // that don't trip the auto-thresholds (e.g. a laptop with many logical cores
+  // and >=20GB RAM, like the Ryzen 5 8645HS / 40GB rig). Set this overnight so
+  // KAI backs off learning/ingest EARLY and the machine never reaches a bad point.
+  const forced = process.env.KAI_FORCE_LIMITED === '1';
+  const isLimited = forced || cores <= 6 || ramGB < 20;
   if (isLimited) {
+    if (forced) console.log('[ResourceGovernor] KAI_FORCE_LIMITED=1 → forcing tighter RAM/CPU baselines (overnight-safe).');
     console.log(`[ResourceGovernor] LIMITED HOST DETECTED (laptop-aware per Codex §21.1/§21.2): cores=${cores} RAM=${ramGB.toFixed(1)}GB (battery check deferred) → tighter baseline (earlier throttle, longer pauses, non-urgent skip). Voice prioritized.`);
   }
   return { isLimited, cores, ramGB, batteryCheckPending: true };
@@ -54,7 +60,7 @@ const _hostLimits = detectLimitedHostSync();
 async function probeBatteryForLimits() {
   if (!_hostLimits.batteryCheckPending) return _hostLimits;
   try {
-    const { stdout } = await execAsync('powershell -NoProfile -Command "Get-CimInstance Win32_Battery | Select-Object -First 1 BatteryStatus,EstimatedChargeRemaining | ConvertTo-Json -Compress"', { timeout: 3000 });
+    const { stdout } = await execAsync('powershell -NoProfile -Command "Get-CimInstance Win32_Battery | Select-Object -First 1 BatteryStatus,EstimatedChargeRemaining | ConvertTo-Json -Compress"', { timeout: 3000, windowsHide: true });
     const trimmed = (stdout || '').trim();
     if (trimmed && trimmed !== 'null') {
       const b = JSON.parse(trimmed);
@@ -98,9 +104,9 @@ export const BUDGET_PROFILES = {
   },
   overnight: {
     name: 'overnight',
-    reducedCpu: 78,
+    reducedCpu: 75,
     protectCpu: 90,
-    reducedMem: 82,
+    reducedMem: 78,
     protectMem: 92,
     reducedGpu: 75,
     protectGpu: 92,
@@ -193,6 +199,39 @@ function isUserInteracting() {
     const stats = fs.statSync(flagPath);
     return (now - stats.mtimeMs) < 1800000;
   } catch (e) {
+    return false;
+  }
+}
+
+// ── VOICE-PRIORITY GATE (Codex §21.1/§21.2: "Voice prioritized") ────────────
+// Leo's realtime audio is the most latency-sensitive thing the fleet does. When
+// Leo is actively on voice with a human (or mid-read), the WORK bots' autonomous
+// consult_oracle / departmental loops must BACK OFF hard so CPU/RAM is freed for
+// realtime voice. leo.mjs writes state/leo_voice_active.flag (a Date.now() stamp)
+// while a voice session is live and unlinks it when the session ends; we treat a
+// recent stamp (or recent mtime, crash-safe) as "Leo is on voice right now".
+// Env-tunable, additive, default ON: KAI_VOICE_PRIORITY=1.
+const LEO_VOICE_FLAG_PATH = 'c:/KAI/tools/oracle-discord/state/leo_voice_active.flag';
+const VOICE_FLAG_FRESH_MS = (Number(process.env.KAI_VOICE_FLAG_FRESH_MS) > 0)
+  ? Number(process.env.KAI_VOICE_FLAG_FRESH_MS)
+  : 120000; // 2 min: the flag is refreshed continuously while voice is live
+
+export function isVoicePriorityEnabled() {
+  // Default ON; only an explicit '0' disables the gate.
+  return String(process.env.KAI_VOICE_PRIORITY ?? '1') !== '0';
+}
+
+export function isLeoVoiceActive() {
+  try {
+    if (!fs.existsSync(LEO_VOICE_FLAG_PATH)) return false;
+    const now = Date.now();
+    const raw = fs.readFileSync(LEO_VOICE_FLAG_PATH, 'utf8').trim();
+    const ts = parseInt(raw, 10);
+    if (Number.isFinite(ts) && (now - ts) < VOICE_FLAG_FRESH_MS) return true;
+    // Crash-safe fallback: trust the file mtime if the contents are stale/garbled.
+    const stats = fs.statSync(LEO_VOICE_FLAG_PATH);
+    return (now - stats.mtimeMs) < VOICE_FLAG_FRESH_MS;
+  } catch (_) {
     return false;
   }
 }
@@ -411,24 +450,62 @@ async function getGpuLoad() {
       return Math.max(...loads, 0);
     }
 
-    const { stdout } = await execFileAsync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', "Get-Counter '\\GPU Engine(*)\\Utilization Percentage' | Select-Object -ExpandProperty CounterSamples | Measure-Object -Property CookedValue -Max | Select-Object -ExpandProperty Maximum"], { timeout: 5000, killSignal: 'SIGKILL' }).catch(() => ({ stdout: '0' }));
+    const { stdout } = await execFileAsync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', "Get-Counter '\\GPU Engine(*)\\Utilization Percentage' | Select-Object -ExpandProperty CounterSamples | Measure-Object -Property CookedValue -Max | Select-Object -ExpandProperty Maximum"], { timeout: 5000, killSignal: 'SIGKILL', windowsHide: true }).catch(() => ({ stdout: '0' }));
     return Math.round(parseFloat(stdout.trim()) || 0);
   } catch {
     return 0;
   }
 }
 
+// NATIVE CPU SAMPLER (governor rework): the old path spawned powershell.exe on
+// EVERY snapshot just to read LoadPercentage — and a process whose JOB is to keep
+// the PC calm was itself paying a ~150-300ms PowerShell cold-start each sweep.
+// os.cpus() exposes cumulative per-core busy/idle times on Windows too, so the
+// delta between two reads gives true average utilization over the interval with
+// ZERO subprocess spawn. More representative (whole-interval average) and free.
+let _prevCpuSample = null; // { idle, total } from the last call
+function _cpuTimes() {
+  let idle = 0, total = 0;
+  for (const c of os.cpus()) {
+    for (const k in c.times) total += c.times[k];
+    idle += c.times.idle;
+  }
+  return { idle, total };
+}
 async function getCpuLoad() {
   try {
-    const { stdout } = await execFileAsync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', '(Get-CimInstance Win32_Processor).LoadPercentage'], { timeout: 5000, killSignal: 'SIGKILL' }).catch(() => ({ stdout: '0' }));
-    return parseInt(stdout.trim(), 10) || 0;
+    const cur = _cpuTimes();
+    if (!_prevCpuSample) {
+      // First call: take a short 180ms window so we still return a real number.
+      await new Promise(r => setTimeout(r, 180));
+      const cur2 = _cpuTimes();
+      _prevCpuSample = cur2;
+      const dIdle = cur2.idle - cur.idle, dTotal = cur2.total - cur.total;
+      return dTotal > 0 ? clamp(Math.round((1 - dIdle / dTotal) * 100)) : 0;
+    }
+    const dIdle = cur.idle - _prevCpuSample.idle, dTotal = cur.total - _prevCpuSample.total;
+    _prevCpuSample = cur;
+    return dTotal > 0 ? clamp(Math.round((1 - dIdle / dTotal) * 100)) : 0;
   } catch {
     const cpus = os.cpus().length || 1;
     return clamp(Math.round(((os.loadavg()[0] || 0) / cpus) * 100));
   }
 }
 
+// The Win32_Process WMI query (with CommandLine) is the heaviest probe in the
+// governor — a slow WMI join that can take seconds. Process MEMBERSHIP and memory
+// change slowly, so re-running it every snapshot is wasteful. Cache it for 45s;
+// CPU/GPU/mem still refresh every snapshot, only this expensive list is reused.
+let _procCache = { rows: null, ts: 0 };
+const PROC_CACHE_TTL = Number(process.env.KAI_PROC_CACHE_MS) > 0 ? Number(process.env.KAI_PROC_CACHE_MS) : 45000;
 async function getProjectProcesses() {
+  const now = Date.now();
+  if (_procCache.rows && (now - _procCache.ts) < PROC_CACHE_TTL) return _procCache.rows;
+  const rows = await _getProjectProcessesLive();
+  _procCache = { rows, ts: now };
+  return rows;
+}
+async function _getProjectProcessesLive() {
   const query = `
 $procs = Get-CimInstance Win32_Process |
   Where-Object {
@@ -441,7 +518,7 @@ $procs | ConvertTo-Json -Compress
 
   try {
     const args = ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(query, 'utf16le').toString('base64')];
-    const { stdout } = await execFileAsync('powershell.exe', args, { maxBuffer: 1024 * 1024, timeout: 8000, killSignal: 'SIGKILL' });
+    const { stdout } = await execFileAsync('powershell.exe', args, { maxBuffer: 1024 * 1024, timeout: 8000, killSignal: 'SIGKILL', windowsHide: true });
     const trimmed = stdout.trim();
     if (!trimmed) return [];
     const parsed = JSON.parse(trimmed);
@@ -536,7 +613,7 @@ function rememberActions(snapshot, previousSnapshot = null) {
 
 export async function getSelfOptimizeSnapshot(force = false, injected = null) {
   const now = Date.now();
-  if (!force && !injected && currentSnapshot && now - lastCheck < 10000) return currentSnapshot;
+  if (!force && !injected && currentSnapshot && now - lastCheck < 20000) return currentSnapshot;
   lastCheck = now;
 
   // Kick off (or await once) the battery probe for accurate laptop detection on first samples.

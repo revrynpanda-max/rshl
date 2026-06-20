@@ -21,6 +21,9 @@ Command Interface (via Discord or KAI API):
 
 import sys
 import os
+from dotenv import load_dotenv
+load_dotenv(r'c:\KAI\tools\oracle-discord\.env')
+import os
 import time
 import json
 import urllib.request

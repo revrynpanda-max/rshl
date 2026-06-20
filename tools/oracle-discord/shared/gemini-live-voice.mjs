@@ -219,6 +219,15 @@ export async function speakWithNativeFallback(text, botName) {
     return;
   }
 
+  // THIS bot must actually BE in a voice channel (have a player) to speak out
+  // loud. The text-only social bots (Gemini, Claudey, X) never join voice, so
+  // without this they ran the whole floor-acquire -> generate -> "Player never
+  // entered" -> release cycle for NOTHING (phantom voice) every time a human was
+  // in some OTHER voice channel. No player => text only, no floor, no phantom voice.
+  if (!getBotPlayer(botName)) {
+    console.log(`[${botName}/Live] Not in a voice channel (no player) — text only, skipping voice broadcast + floor.`);
+    return;
+  }
   if (!(await isHumanInVoiceChannel())) {
     console.log(`[${botName}/Live] No human in voice — text only.`);
     return;
@@ -269,7 +278,8 @@ export async function speakWithNativeFallback(text, botName) {
     wirePlaybackHandlers(bridge, botName);
 
     bridge.sendText(
-      `[SPEAK OUT LOUD — ${botName}] Say this naturally in your own voice and personality. First person. No intro, no sign-off, no speaker tags: "${cleaned}"`
+      `[SPEAK OUT LOUD — ${botName}] Say this naturally in your own voice and personality. First person. No intro, no sign-off, no speaker tags: "${cleaned}"`,
+      true
     );
 
     await waitForPlaybackEnd(bridge, botName);

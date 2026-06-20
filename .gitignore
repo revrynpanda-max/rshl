@@ -115,3 +115,17 @@ query.json
 req.json
 oracle_test_response.json
 *.bin.zst
+
+# -- Auto-Safety Exclusions --
+*.mp4
+*.pdf
+*.tmp
+*.bak
+*.bak*
+*.patch
+_ai_damage_backup*
+_grok_backup*
+.fuse_hidden*
+sandbox/
+oracle_keys.json
+*.BACKUP*

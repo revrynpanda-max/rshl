@@ -324,7 +324,7 @@ impl NeuralVsaMapper {
     /// so a training loop can log convergence without a second forward
     /// pass).
     pub fn train_step(&mut self, dense_embedding: &[f32], target: &SparseVec) -> f32 {
-        assert_eq!(DIM, DIM, "target SparseVec length must match DIM");
+        assert_eq!(dense_embedding.len(), self.d_in, "dense embedding length must match d_in");
 
         let h = self.forward_hidden(dense_embedding);
         let z = self.forward_output(&h);

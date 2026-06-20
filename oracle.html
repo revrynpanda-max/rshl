@@ -313,7 +313,7 @@ body::before {
 
   <!-- Transcript -->
   <div class="col-transcript">
-    <div class="tab-bar">
+    <div class="tab-bar" id="tab-bar">
       <div class="tab active" onclick="setTab('global')">🌐 GLOBAL <span class="tab-count" id="count-global">0</span></div>
       <div class="tab" onclick="setTab('voice')">🎙️ VOICE <span class="tab-count" id="count-voice">0</span></div>
       <div class="tab" onclick="setTab('dreams')">💭 DREAMS <span class="tab-count" id="count-dreams">0</span></div>
@@ -640,14 +640,14 @@ function startPolling() {
       const s = await api("/api/session");
       if (s) {
         updateUI(s);
-        $("connection-status").textContent = "SYNCHRONIZED";
-        $("connection-status").style.color = "var(--primary)";
+        $("status").textContent = "SYNCHRONIZED";
+        $("status").style.color = "var(--good)";
       } else {
         throw new Error("Offline");
       }
     } catch (e) {
-      $("connection-status").textContent = "CONNECTING...";
-      $("connection-status").style.color = "var(--danger)";
+      $("status").textContent = "CONNECTING...";
+      $("status").style.color = "var(--bad)";
     }
     setTimeout(poll, autoRunning ? 8000 : 3000);
   };

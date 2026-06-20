@@ -17,6 +17,14 @@
 //! captures the RELATIONSHIP between them. Bundling accumulates
 //! evidence. The chain naturally gravitates toward coherent thought.
 use crate::core::{SparseVec, Universe};
+use std::sync::atomic::{AtomicBool, Ordering};
+
+/// Opt-in (env KAI_ATTN_RESIDUAL=1): Attention-Weighted Hop Bundling.
+/// When enabled, the multi-hop reasoner weights each component of a hop's
+/// accumulated thought by its goal-alignment (cosine to the original goal),
+/// so on-topic evidence dominates the residual. Off by default → behavior
+/// is byte-for-byte identical to the original equal-weight bundle.
+pub static ATTN_RESIDUAL: AtomicBool = AtomicBool::new(false);
 
 /// A context slot from working memory — injected into reasoning.
 #[derive(Clone, Debug)]
@@ -351,6 +359,13 @@ impl Reasoner {
         let mut nodes: Vec<TreeBranch> = Vec::new();
         // Queue: (current_vector, step, parent_path, accumulated_weight)
         let mut queue: Vec<(SparseVec, usize, Vec<usize>, f32)> = Vec::new();
+        // Capture the goal vector ONLY when Attention-Weighted Hop Bundling is on,
+        // so the default (flag-off) path pays zero extra cost — truly unchanged.
+        let goal = if ATTN_RESIDUAL.load(Ordering::Relaxed) {
+            current.clone()
+        } else {
+            SparseVec::zero()
+        };
         queue.push((current, 0, Vec::new(), 1.0));
 
         let mut best_leaf: Option<usize> = None;
@@ -397,7 +412,14 @@ impl Reasoner {
                     if step + 1 < self.config.max_depth && phi_g < self.config.phi_threshold {
                         // Derive next what-if thought by binding
                         let bound = vec.bind(&cell.claim.vec);
-                        let bundled = SparseVec::bundle(&[&vec, &bound, &cell.claim.vec]);
+                        let bundled = if ATTN_RESIDUAL.load(Ordering::Relaxed) {
+                            let comps: [&SparseVec; 3] = [&vec, &bound, &cell.claim.vec];
+                            let weights: Vec<f32> =
+                                comps.iter().map(|c| 0.1 + goal.cosine(c).max(0.0)).collect();
+                            SparseVec::bundle_weighted(&comps, &weights)
+                        } else {
+                            SparseVec::bundle(&[&vec, &bound, &cell.claim.vec])
+                        };
                         next_queue.push((bundled, step + 1, new_path, branch_weight));
                     }
                 }

@@ -168,10 +168,14 @@ export function streamSong(query, banter = null, urlOrId = null) {
   // Aggressively filtering out podcasts, interviews, vlogs, and long videos (>15 mins)
   // Prioritize high-fidelity versions but don't be TOO restrictive (e.g. allow radio edits)
   // Tightened filters to ensure STUDIO quality and NO PODCASTS
-  const isLongRequested = /10 hours|12 hours|sleep|rain|nature|ambient|long|meditation/i.test(query);
-  const searchQuery = urlOrId || (`${query} official lyrics audio` 
-    + ' -live -concert -podcast -vlog -interview -episode -news -talk -review -reaction'
-    + (isLongRequested ? '' : ' -compilation -mashup -"top 10" -"top 50" -"top 100"'));
+  const isLongRequested = /\d+\s*hour|sleep|rain|nature|ambient|meditation|white noise|asmr|lofi|study|focus|fireplace|ocean|waves|thunder/i.test(query);
+  // For AMBIENT/LONG content (rain, sleep, nature, "10 hours"...), search the query
+  // EXACTLY as asked — appending "official lyrics audio" sent yt-dlp hunting for a SONG
+  // and missed the actual 10-hour rain video (a big "plays the wrong thing" cause). Only
+  // real music tracks get the studio-quality suffix + the podcast/live exclusions.
+  const searchQuery = urlOrId || (isLongRequested
+    ? `${query} -podcast -interview -episode -news -talk -reaction`
+    : `${query} official lyrics audio -live -concert -podcast -vlog -interview -episode -news -talk -review -reaction -compilation -mashup -"top 10" -"top 50" -"top 100"`);
   
   if (existsSync(cachePath) && !banter && !urlOrId) {
     console.log(`[Radio/Player] Cache Hit: ${query}`);
@@ -215,15 +219,20 @@ export function streamSong(query, banter = null, urlOrId = null) {
   if (banter && banter.buffer) {
     ffmpegArgs.push('-f', 's16le', '-ar', '48000', '-ac', '2', '-i', 'pipe:3'); // Input 1: DJ Banter
     
-    // Complex Filter: 
-    // 1. Music is SILENT while DJ talks
-    // 2. Music 'Kicks In' 0.5 seconds before DJ finishes (Immediate punch)
-    // 3. Music hits 100% volume EXACTLY as DJ stops
+    // RADIO-STYLE DUCKING (rewritten): a real radio doesn't go SILENT under the
+    // DJ — it keeps a LOW MUSIC BED playing while he talks, then swells back up to
+    // full when he's done. So:
+    //   1. Music plays at a low bed (~18%) while the DJ talks over it
+    //   2. ~0.6s before the DJ finishes it swells to ~55% (the "here comes the song")
+    //   3. Then fades up to full as the DJ stops, so the track hits clean.
+    // Tune the bed/swell with LEO_RADIO_DUCK / LEO_RADIO_SWELL.
     const d = banter.duration.toFixed(2);
-    const kickIn = Math.max(0, banter.duration - 0.5).toFixed(2);
-    
-    filter = `[0:a]aresample=async=1, volume=0.0:enable='between(t,0,${kickIn})', volume=0.5:enable='between(t,${kickIn},${d})'[d0]; ` +
-             `[d0]afade=t=in:st=${d}:d=0.2[f0]; ` +
+    const kickIn = Math.max(0, banter.duration - 0.6).toFixed(2);
+    const bed   = (Number(process.env.LEO_RADIO_DUCK)  > 0 ? Number(process.env.LEO_RADIO_DUCK)  : 0.18).toFixed(2);
+    const swell = (Number(process.env.LEO_RADIO_SWELL) > 0 ? Number(process.env.LEO_RADIO_SWELL) : 0.55).toFixed(2);
+
+    filter = `[0:a]aresample=async=1, volume=${bed}:enable='between(t,0,${kickIn})', volume=${swell}:enable='between(t,${kickIn},${d})'[d0]; ` +
+             `[d0]afade=t=in:st=${d}:d=0.3[f0]; ` +
              `[1:a]aresample=async=1[b1]; ` +
              `[f0][b1]amix=inputs=2:duration=first:dropout_transition=0:weights='1 1', ` +
              `loudnorm=I=-16:TP=-1.5:LRA=11`;

@@ -172,3 +172,26 @@ export const proofPaths = {
   latestJson: LATEST_JSON,
   latestMarkdown: LATEST_MD
 };
+
+/**
+ * Detects if the global phi (phi_g) has plateaued over the last N readings.
+ * Useful for the RSI loop to know when to stop aggressive optimization and focus on consolidation.
+ */
+export function detectPhiPlateau(windowTicks = 10, varianceThreshold = 0.0001) {
+  const recent = queryMetrics({
+    source: 'rust-engine',
+    metric: 'phi_g',
+    limit: windowTicks
+  });
+  
+  if (!recent || recent.length < windowTicks) return false;
+  
+  const values = recent.map(r => r.value).filter(v => Number.isFinite(v));
+  if (values.length < windowTicks) return false;
+  
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  const variance = values.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / values.length;
+  
+  // If variance is extremely low, we've flatlined
+  return variance < varianceThreshold;
+}

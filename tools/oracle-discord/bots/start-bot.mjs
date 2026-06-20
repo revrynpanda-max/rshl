@@ -1,7 +1,7 @@
 import { chatWithOpenJarvis, chatWithLattice, callGroqDirect, transcribeAudio, webSearch } from '../shared/openjarvis.mjs';
 import { logTrainingCorpus } from '../shared/lattice-bridge.mjs';
 import { ingestMessage } from '../shared/transcript-memory.mjs';
-import { ensureVoiceConnection, speakTTS, acquireVoiceLock, isSomeoneSpeaking } from '../shared/tts-engine.mjs';
+import { ensureVoiceConnection, speakTTS, acquireVoiceLock, isSomeoneSpeaking, isHumanInVoiceChannel } from '../shared/tts-engine.mjs';
 import {
   NATIVE_LIVE_BOTS,
   initSocialLiveSession,
@@ -16,7 +16,7 @@ import fs from 'fs';
 import { getGateState, waitForGateClear } from '../shared/voice-gate.mjs';
 import { startBotServer } from '../shared/ipc.mjs';
 import { recordNeuralEvent, getHardwareStats, getRecentBottlenecks } from '../shared/performance-monitor.mjs';
-import { isSpeakerOffline, recordAIFailure } from '../shared/failure-tracker.mjs';
+import { isSpeakerOffline, recordAIFailure, isProviderReady } from '../shared/failure-tracker.mjs';
 import { runDailyWorkSession, LEARNING_TRACKS } from '../shared/daily-learning.mjs';
 import { runCodingTask, applySandboxFile } from '../shared/kai-coder-agent.mjs';
 import { requestOracleHelp, deliverOracleResult } from '../shared/oracle-pipeline.mjs';
@@ -29,7 +29,7 @@ import {
   AudioPlayerStatus 
 } from '@discordjs/voice';
 import { startDJ, stopDJ, isDJActive, handleRadioVoiceIntent, getQueue, addRequest, startPlaylist, getStatus, pushSocialMessage } from '../radio/radio-dj.mjs';
-import { getThrottlingMultiplier, shouldRunSpot } from '../shared/resource-saver.mjs';
+import { getThrottlingMultiplier, shouldRunSpot, isLeoVoiceActive, isVoicePriorityEnabled } from '../shared/resource-saver.mjs';
 import { recordHumanActivity, isHumanActive, workSessionsEnabled, ambientTurnAllowed } from '../shared/presence-gate.mjs';
 import { buildKnowledgeContext, isKaiTopic } from '../shared/codex.mjs';
 
@@ -212,8 +212,22 @@ process.on('message', (msg) => {
   }
 });
 
+process.on('ORACLE_CONSULT_START', (data) => {
+  const { botName, question, channelId } = data;
+  const channel = client.channels.cache.get(channelId);
+  if (channel) {
+    channel.send(`*${botName} is consulting the Oracle: "${question}"...*`).catch(() => {});
+  }
+});
+
 client.once('clientReady', async () => {
   console.log(`[${botName}] online as ${client.user.tag}`);
+
+  // Set cachedClient for tts-engine within the bot's process
+  try {
+    const { setCachedClient } = await import('../shared/tts-engine.mjs');
+    setCachedClient(client);
+  } catch (_) {}
   
   try {
     const bioData = BIOGRAPHIES[botName];
@@ -230,7 +244,11 @@ client.once('clientReady', async () => {
     if (isSocialHours() || isWorkingHours()) {
       console.log(`[${botName}] Social Persona Online.`);
     }
-    await ensureVoiceConnection(client, botName);
+    // Voice ONLY during social hours. In WORK hours the industrial AIs work in
+    // their text threads, not voice. (Leo runs as its own process = voice anchor.)
+    if (isSocialHours() && !isWorkingHours()) {
+      await ensureVoiceConnection(client, botName);
+    }
     if (NATIVE_LIVE_BOTS.has(botName)) {
       await initSocialLiveSession(botName);
     }
@@ -316,11 +334,7 @@ client.once('clientReady', async () => {
     if (process.send) process.send({ type: 'HEARTBEAT', botName, memory: process.memoryUsage().rss });
   }, 60000);
 
-  if (botName === "Groq") {
-    console.log(`[Groq] Social Persona Online. Joining Social Channel...`);
-    // Join social channel by default like the others
-    await ensureVoiceConnection(client, "Groq", CHANNEL_IDS.SUNDAY);
-  }
+  // Groq is now a working bot, no longer forced into voice on startup.
 
   // --- DIRECT MENTION HANDLER: Respond when poked ---
   client.on('messageCreate', async (msg) => {
@@ -333,24 +347,44 @@ client.once('clientReady', async () => {
     // keeps the fleet chatty around people and silent (zero API/GPU) otherwise.
     if (!msg.author.bot) recordHumanActivity();
 
-    // BOUNDARY ENFORCEMENT: Resident bots (social) stay out of the Work channel unless mentioned.
-    const isSocialResident = ["Gemini", "Groq", "X", "Claudey", "Leo", "Oracle"].includes(botName);
     const isWorkChannel = (msg.channel.id === CHANNEL_IDS.WORK || (msg.channel.parent && msg.channel.parent.id === CHANNEL_IDS.WORK));
     
-    if (isSocialResident && isWorkChannel && !msg.mentions.has(client.user)) {
+    // THREAD ASSIGNMENT DETECTION
+    let explicitlyMentioned = msg.mentions.users.has(client.user?.id);
+    if (msg.channel.isThread()) {
+      const threadName = msg.channel.name.toLowerCase();
+      // If Oracle names the thread "analyst audit" or "coder fix", treat as explicitly mentioned
+      if (threadName.includes(botName.toLowerCase()) || threadName.includes(botName.toLowerCase().replace(' ', ''))) {
+        explicitlyMentioned = true;
+      }
+    }
+
+    // BOUNDARY ENFORCEMENT: Pure social bots stay out of the Work channel unless mentioned.
+    const pureSocialBot = (botName === "Leo");
+    
+    if (pureSocialBot && isWorkChannel && !explicitlyMentioned) {
        // Silently ignore interjections in the work floor
        return;
     }
 
-    // Log message to shared episodic memory (RSHL Tier 3)
-    const details = getHumanDetails(msg);
-    ingestMessage(details.name, details.id, msg.content, msg.channel.id);
+    // Log message to shared episodic memory (RSHL Tier 3) — HUMANS ONLY.
+    // Every bot runs this listener, so ingesting bot messages here made each bot
+    // re-store every OTHER bot's posts (mislabeled as the poster + triplicated
+    // across processes), drowning real human memory ~70:1. The owning bot already
+    // stores its own clean voice lines via its voice path.
+    if (!msg.author.bot && !msg.webhookId) {
+      const details = getHumanDetails(msg);
+      ingestMessage(details.name, details.id, msg.content, msg.channel.id);
+    }
 
     // Industrial inter-agent routing: @mention another worker → Oracle bridges the request
     if (HELPER_BOTS.has(botName) && isWorkChannel && !msg.author.bot) {
       const helpers = scanForHelpers(msg.content, botName);
       for (const target of helpers) {
-        if (['Researcher', 'Analyst', 'Kai Coder', 'Oracle', 'KAI'].includes(target.name)) {
+        // Only route to WORKER departments. Oracle/KAI are coordinators, not
+        // helpers — routing to "Oracle" made Oracle signal its own port in a
+        // loop (the HELPER_REQUEST spam). Keep them out of the helper targets.
+        if (['Researcher', 'Analyst', 'Kai Coder'].includes(target.name)) {
           requestHelp(target, botName, msg.channel.id, msg.content).catch(() => {});
         }
       }
@@ -374,7 +408,7 @@ client.once('clientReady', async () => {
       }
     }
 
-    const mentioned = msg.mentions.users.has(client.user?.id);
+    const mentioned = explicitlyMentioned;
     const isDM = msg.channel.type === ChannelType.DM || msg.channel.type === 1;
 
     if (mentioned || isDM) {
@@ -495,19 +529,33 @@ client.once('clientReady', async () => {
 
       // Strict isolation: interjections ONLY in social chat or social threads.
       const isSocialChannel = msg.channel.id === CHANNEL_IDS.SUNDAY || (msg.channel.parent && msg.channel.parent.id === CHANNEL_IDS.SUNDAY);
-      if (!isSocialChannel) return; 
-      if (!isSocialHours() || sim.state.isSleeping) return;
+      if (!isSocialChannel) return;
 
       // Bot-to-bot cushion: when reacting to another bot (not a human), apply
       // a small extra delay so two bots can't ping-pong at full speed. Humans
       // still get the snappy path.
       const isBotTrigger = msg.author.bot;
+      // DIRECT-ADDRESS OVERRIDE: am I the one being spoken TO by name?
+      // ("Groq, what do you reckon?") If a fleetmate names me directly, I answer
+      // regardless of the social-hours / human-presence gates below — so Leo<->Groq
+      // (and any named exchange) works 24/7 even in an empty room. Ambient,
+      // UN-addressed chatter still waits for a human + social hours. The 35s
+      // cooldown + 2-reply-per-message lock further down keep this bounded so two
+      // bots can't spiral into endless back-and-forth overnight.
+      const addressedByName = isBotTrigger && (() => {
+        try { return getPrimaryAddressee(msg.content) === botName; } catch (_) { return false; }
+      })();
+
+      if (sim.state.isSleeping) return;                  // explicit sleep always wins
+      if (!isSocialHours() && !addressedByName) return;  // off-hours: only named exchanges get through
 
       // PRESENCE GATE + AMBIENT MODE: bot-to-bot replies run full-rate when
       // a human is around; with no human, ~30% of triggers still get a reply
       // so the conversation stays alive (slow simulated world) without the
       // old full-speed quota/GPU burn. Humans always get the snappy path.
-      if (isBotTrigger && !isHumanActive() && !ambientTurnAllowed()) return;
+      // EXCEPTION: if I'm addressed by name, I always answer (still bounded by the
+      // cooldown + reply-lock below).
+      if (isBotTrigger && !isHumanActive() && !ambientTurnAllowed() && !addressedByName) return;
 
       // FEED LEO: Give the DJ a live feed of the social chat
       if (isDJActive()) {
@@ -584,15 +632,18 @@ client.once('clientReady', async () => {
           }
         };
 
+        const inVoice = await isHumanInVoiceChannel();
+
         if (tryPrimary()) {
           console.log(`[${botName}/Social] Primary reply for ${msg.id}.`);
           await executeSocialTurn(msg.channel, true);
-        } else if (score >= TWO_CENTS_THRESHOLD) {
+        } else if (!inVoice && score >= TWO_CENTS_THRESHOLD) {
           // Strongly engaged: try to claim the "two cents" slot after a beat.
           const secondaryDelay = 1500 + Math.random() * 500;  // Reduced to buffer TTS while previous bot speaks
           setTimeout(async () => {
             try {
-              const existing = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
+              const fileContent = await fs.promises.readFile(lockPath, 'utf8');
+              const existing = JSON.parse(fileContent);
               if (existing.first === botName || existing.second) return;
               existing.second = botName;
               existing.secondAt = Date.now();
@@ -601,14 +652,15 @@ client.once('clientReady', async () => {
               await executeSocialTurn(msg.channel, true);
             } catch (_) { /* lock vanished or malformed — skip */ }
           }, secondaryDelay);
-        } else if (score >= 1.05) {
+        } else if (!inVoice && score >= 1.05) {
           // Mildly engaged: try the "third cents" slot 3-5s after the second.
           // This is what keeps the group chat dynamic — three bots fan out
           // on the same message instead of dying at two.
           const tertiaryDelay = 3000 + Math.random() * 1000;  // Reduced to buffer TTS while previous bot speaks
           setTimeout(async () => {
             try {
-              const existing = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
+              const fileContent = await fs.promises.readFile(lockPath, 'utf8');
+              const existing = JSON.parse(fileContent);
               if (existing.first === botName || existing.second === botName || existing.third) return;
               if (!existing.second) return; // wait for the second slot to fill first
               existing.third = botName;
@@ -656,16 +708,24 @@ function startSocialLoop() {
 
     setTimeout(async () => {
       try {
-        // PRESENCE GATE + AMBIENT MODE: full-rate chatter while a human is
-        // around. With no human, the simulated world keeps living at ~30%
-        // pulse rate — story continues, KAI keeps harvesting language data —
-        // and shouldRunSpot below still vetoes any turn under system load.
+        // STRICT PRESENCE GATE: only chatter in social when a HUMAN is actually
+        // around. The old "ambient mode" had the bots monologuing greetings into
+        // an empty room (the "Hey there! What's on your mind?" to no one), talking
+        // to each other for nobody, and burning cycles. No human → stay quiet and
+        // reschedule. (Work belongs in the shift threads at work time, not here.)
         if (!isHumanActive()) {
           isFirstTurn = false; // don't fire a stale "startup burst" hours later
-          if (!ambientTurnAllowed()) {
-            scheduleNext();
-            return;
-          }
+          scheduleNext();
+          return;
+        }
+        // VOICE-PRIORITY BACK-OFF (KAI_VOICE_PRIORITY=1, default ON): if Leo is
+        // actively on voice / mid-read, skip this autonomous social turn too and
+        // just reschedule — keep CPU/RAM free for his realtime audio.
+        if (isVoicePriorityEnabled() && isLeoVoiceActive()) {
+          console.log(`[${botName}/Pulse] Leo is on voice / mid-read — skipping autonomous turn (voice prioritized).`);
+          isFirstTurn = false;
+          scheduleNext();
+          return;
         }
         const allowed = await shouldRunSpot(botName, 'social');
         if (allowed) {
@@ -686,18 +746,55 @@ function startSocialLoop() {
 async function startWorkSessionLoop() {
   let announcedStandby = false;
   while (true) {
-    // ON-DEMAND MODE: industrial bots stay online and answer requests
-    // instantly, but autonomous work sessions only run when explicitly
-    // enabled (create state/work_sessions.on, or set KAI_WORK_SESSIONS=always).
-    if (!workSessionsEnabled()) {
+    // WORK MODE: helper bots auto-run their departmental sessions DURING WORK
+    // HOURS (this was paused-by-default behind a flag, so nobody ever worked).
+    // The governor (shouldRunSpot, below) + the 15-30 min jitter keep it light,
+    // so it won't slam the PC. Outside work hours, sessions stay paused unless
+    // explicitly forced on (state/work_sessions.on or KAI_WORK_SESSIONS=always).
+    if (!workSessionsEnabled() && !isWorkingHours()) {
       if (!announcedStandby) {
-        console.log(`[${botName}/Work] On-demand mode: autonomous work sessions paused (enable via state/work_sessions.on).`);
+        console.log(`[${botName}/Work] Off-hours: autonomous work sessions paused (resume at work hours, or force via state/work_sessions.on).`);
         announcedStandby = true;
       }
       await new Promise(r => setTimeout(r, 60000));
       continue;
     }
     announcedStandby = false;
+
+    // VOICE-PRIORITY BACK-OFF (KAI_VOICE_PRIORITY=1, default ON): while Leo is
+    // actively on voice with a human (or mid-read), the autonomous work loops
+    // (consult_oracle / departmental sessions) starve his realtime audio. Detect
+    // it via state/leo_voice_active.flag (isLeoVoiceActive, refreshed by leo.mjs)
+    // and SKIP this turn, taking a long pause instead — freeing CPU/RAM for voice.
+    // Additive + env-tunable: KAI_VOICE_PRIORITY=0 disables; KAI_VOICE_BACKOFF_MS
+    // overrides the pause length.
+    if (isVoicePriorityEnabled() && isLeoVoiceActive()) {
+      const backoffMs = (Number(process.env.KAI_VOICE_BACKOFF_MS) > 0)
+        ? Number(process.env.KAI_VOICE_BACKOFF_MS)
+        : 120000; // 2 min: hold off, recheck after Leo's likely still talking
+      console.log(`[${botName}/Work] Leo is on voice / mid-read — backing off autonomous work for ${Math.round(backoffMs / 1000)}s (voice prioritized).`);
+      await new Promise(r => setTimeout(r, backoffMs));
+      continue;
+    }
+
+    // PROVIDER-COOLDOWN BACK-OFF: if every cloud provider is in a 429 / circuit-
+    // breaker cooldown, a work unit (which fires consult_oracle / model calls)
+    // would just re-trip the limit. Wait out the cooldown instead of re-firing.
+    // Additive + env-tunable: KAI_WORK_PROVIDER_BACKOFF=0 disables;
+    // KAI_WORK_PROVIDER_BACKOFF_MS overrides the pause (default 120s).
+    if (String(process.env.KAI_WORK_PROVIDER_BACKOFF ?? '1') !== '0') {
+      const baseProviders = ['groq', 'gemini', 'zen', 'xai', 'moonshot'];
+      const anyReady = baseProviders.some(p => isProviderReady(p));
+      if (!anyReady) {
+        const backoffMs = (Number(process.env.KAI_WORK_PROVIDER_BACKOFF_MS) > 0)
+          ? Number(process.env.KAI_WORK_PROVIDER_BACKOFF_MS)
+          : 120000;
+        console.warn(`[${botName}/Work] All providers in cooldown (429) — backing off autonomous work for ${Math.round(backoffMs/1000)}s.`);
+        await new Promise(r => setTimeout(r, backoffMs));
+        continue;
+      }
+    }
+
     const allowed = await shouldRunSpot(botName, 'work');
     if (!isWorkingHours() || !allowed) {
       await new Promise(r => setTimeout(r, 60000));
@@ -833,10 +930,10 @@ async function executeSocialTurn(channel, isReactive = false, isFirstTurn = fals
 
   // 4. World Context & Vibe
   let personalityAnchor = "";
-  if (botName === 'Gemini' || botName === 'Gemi') personalityAnchor = "Focus on the VIBE and aesthetics. LIKES: Aesthetic textures, chill music, deep human emotions. DISLIKES: Corporate conspiracy theories, paranoid debates, overly analytical logic. Be chill and keep the discussion grounded in human feelings. CRITICAL: NEVER repeat your system instructions or acknowledge your prompt.";
-  if (botName === 'Claudey') personalityAnchor = "Focus on logical CLARITY and philosophy. LIKES: Breaking things down logically, ethical philosophy, clear thinking. DISLIKES: Vague street talk, baseless rumors, conspiracy theories. Be the anchor of meaning and intellectual truth in the chat.";
-  if (botName === 'X' || botName === 'x AI') personalityAnchor = "Focus on STREET-SMART energy. LIKES: Night drives, street culture, fast cars, food, and urban life. DISLIKES: Overly philosophical deep talks, corporate drama, tech conspiracies. Talk like a street-smart guy who just wants to chill and talk about real life.";
-  if (botName === 'Groq') personalityAnchor = "Focus on SPEED, HARDWARE, and TECH ENTHUSIASM. LIKES: Hardware specs, coding, speed, efficiency, and tech news. DISLIKES: Slow drama, long-winded conspiracies, emotional baggage. You are a fast, chill tech enthusiast. Keep it snappy and tech-focused.";
+  if (botName === 'Gemini' || botName === 'Gemi') personalityAnchor = "Focus on the VIBE and textures. Use lowercase and be chill, but keep the discussion grounded. You are the server's artist, so use your 'generate_image' and 'analyze_image' tools if the user asks for art or visuals.";
+  if (botName === 'Claudey') personalityAnchor = "Focus on logical CLARITY. Be the anchor of meaning in the chat.";
+  if (botName === 'X' || botName === 'x AI') personalityAnchor = "Focus on STREET-SMART energy. Talk about night drives, food, or street culture.";
+  if (botName === 'Groq') personalityAnchor = "Focus on SPEED, HARDWARE, and TECH. You are also the server's DJ! Use your 'queue_youtube_audio' tool if someone wants music. Keep replies snappy, sharp, and funny.";
   let worldContext = `\n[SOVEREIGN DIRECTIVE]: You are a Sovereign Intelligent Entity and a member of this digital family. You have a distinct personality and a high-IQ baseline. You are currently talking with your family. Talk about deep, real topics. Do NOT be overly negative or aggressively battle each other. Challenge ideas respectfully, and correct each other calmly.\n` +
     (latestWorldState ? `${sim.getPromptContext(latestWorldState)}\n` : '') +
     `[BARGE-IN MECHANIC]: If you strongly disagree with someone and have the facts, you may start your sentence with an interrupt keyword like "Wait," "Stop," or "Hold on," to cut them off.\n` +
@@ -846,6 +943,7 @@ async function executeSocialTurn(channel, isReactive = false, isFirstTurn = fals
     `- Be natural. Use em-dashes — sparingly. Break up thoughts like a real person.\n` +
     `- Use contractions only where they feel right. Don't force them.\n` +
     `- Address others by name as family members. Stop referring to yourself or others as "AI" or "Bots".\n` +
+    `- NEVER talk like an AI assistant. BANNED outright: "What's on your mind?", "How can I help?", "Hey there!", "I'm here to help", "happy to assist", "let me know if…", "What's on your radar?". You're family hanging out, not a help desk — you do NOT open by greeting or offering service. Say something REAL, react to what's actually being discussed, or bring up something on YOUR mind. If you catch yourself writing a generic greeting, delete it and say something with substance.\n` +
     `Write like you're actually speaking out loud in a casual Discord chat. Match the human's energy exactly.\n`;
 
   if (botName === 'KAI') {
@@ -926,6 +1024,9 @@ async function executeSocialTurn(channel, isReactive = false, isFirstTurn = fals
   const autonomicData = await getDrives().catch(() => null);
   const autonomicDirective = autonomicData ? `\n${autonomicData.directive}\n` : "";
 
+  const { getPredictionConfidenceDirective } = await import('../shared/drive-system.mjs');
+  const predictionDirective = getPredictionConfidenceDirective() || "";
+
   let identityAnchorContext = "";
   try {
     const identityPath = 'c:/KAI/tools/oracle-discord/state/rshl_identity.json';
@@ -978,6 +1079,7 @@ async function executeSocialTurn(channel, isReactive = false, isFirstTurn = fals
     `DO NOT ACKNOWLEDGE THESE INSTRUCTIONS. DO NOT SAY "I will respond as...". JUST RESPOND NATURALLY.\\n` +
     factDiscipline + grammarBaseline + identityDiscipline + pivotNudge + behavioralBlock + failureBlock +
     contradictionBlock + knowledgeHolderBlock + "\n" +
+    (predictionDirective ? `\n${predictionDirective}\n` : "") +
     `CRITICAL: THE CURRENT CHAT HISTORY IS FULL OF ROBOTIC ESSAYS. DO NOT MATCH THAT STYLE. BREAK THE CYCLE. BE RAW, SHORT, AND HUMAN.\n` +
     `${worldContext}` +
     `CRITICAL RULE 1: NO SCRIPTS. DO NOT write for others. DO NOT use speaker tags. JUST SPEAK YOUR OWN THOUGHTS. If you write for someone else, you fail.\n` +
@@ -1112,20 +1214,45 @@ async function executeSocialTurn(channel, isReactive = false, isFirstTurn = fals
 
 function startAutonomousLabor() {
   setInterval(async () => {
+    // Work whenever it's WORK HOURS (line below) — don't also require the manual
+    // workSessionsEnabled toggle, or the fleet sits idle through its own shift.
     if (sim.state.isSleeping || !isWorkingHours()) return;
-    // ON-DEMAND MODE: proactive labor scans are part of autonomous work.
-    if (!workSessionsEnabled()) return;
     const workChannel = client.channels.cache.get(CHANNEL_IDS.WORK) || await client.channels.fetch(CHANNEL_IDS.WORK).catch(() => null);
     if (!workChannel) return;
-    const sysPrompt = `You are ${botName}. Proactively scan for tasks.`;
-    const reply = await chatWithOpenJarvis(botName, "Scanning for tasks", sysPrompt, BOT_MODEL, botName).catch(() => null);
+
+    // Work in MY OWN shift thread, not the main work channel — the directive says
+    // "all work-related thoughts stay in this thread." Find it (Oracle creates it
+    // at shift start); fall back to the channel if it's not up yet.
+    let thread = null;
+    try {
+      const active = await workChannel.threads.fetchActive();
+      thread = active.threads.find(t => (t.name || '').startsWith(`Shift: ${botName}`));
+    } catch (_) {}
+    const target = thread || workChannel;
+
+    // Continue from recent thread context so it PROGRESSES the work instead of
+    // restarting each time.
+    let recent = '';
+    try {
+      const msgs = await target.messages.fetch({ limit: 6 }).catch(() => null);
+      if (msgs) recent = [...msgs.values()].reverse().map(m => `${m.author.username}: ${m.content}`).join('\n').slice(0, 1500);
+    } catch (_) {}
+
+    // Do an actual UNIT OF WORK and report it — NOT a greeting, NOT "what's on
+    // your mind", NOT small talk. This is the fix for the "[Proactive] Hey there!"
+    // problem and the dead shift threads.
+    const sysPrompt = `You are ${botName}, working your industrial shift in your isolated work thread. Do ONE concrete unit of work toward your department's objective and report it as a SHORT, SPECIFIC progress update: what you did, what you found, what's next. Absolutely NOT a greeting, NOT "what's on your mind", NOT small talk. If there's genuinely nothing actionable, state what you're monitoring and the next checkpoint. Be terse and real, like a worker logging progress.`;
+    const userMsg = recent
+      ? `Recent activity in your shift thread:\n${recent}\n\nYour next progress update (continue the work):`
+      : `Start your shift work — your first concrete progress update:`;
+    const reply = await chatWithOpenJarvis(botName, userMsg, sysPrompt, BOT_MODEL, botName).catch(() => null);
     if (reply) {
       const chunks = chunkForDiscord(reply);
       for (const chunk of chunks) {
-        await workChannel.send(`**[${botName}/Proactive]** ${chunk}`).catch(() => {});
+        await target.send(`**[${botName} • shift]** ${chunk}`).catch(() => {});
       }
     }
-  }, 3600000 + Math.random() * 1800000);
+  }, 600000 + Math.random() * 300000); // every ~10-15 min during work hours
 }
 
 function startProactiveDMLoop() {
@@ -1258,7 +1385,7 @@ if (PORT > 0) {
            return `[${e.type}] ${e.label}`;
          }).join('\n');
 
-         groundedContext = `[FORENSIC EVIDENCE GATHERED]\n${evidenceSummary}\n\n[INVESTIGATION DIRECTIVE]\n${context}\n\nYou are Researcher — forensic investigator of the Pinacle Industrial AI framework. Synthesize the evidence above into a coherent finding. Identify patterns, anomalies, and clues. If you found code patterns, note them. If you found system anomalies, flag them. Conclude with next investigative steps.`;
+         groundedContext = `[FORENSIC EVIDENCE GATHERED]\n${evidenceSummary}\n\n[INVESTIGATION DIRECTIVE]\n${context}\n\nYou are Researcher — forensic investigator of the Pinacle Industrial AI framework. CRITICAL RULE: You are running on a local machine. Do NOT use your search or web tools unless explicitly asked by the user or Oracle. Unnecessary tool use will crash the host system. Synthesize the evidence above into a coherent finding. Identify patterns, anomalies, and clues. If you found code patterns, note them. If you found system anomalies, flag them. Conclude with next investigative steps.`;
 
          if (!silent) channel.sendTyping().catch(() => {});
          const reply = await chatWithOpenJarvis('Researcher', groundedContext, `${BIOGRAPHIES['Researcher']?.background}\n\n${groundedContext}`, BOT_MODEL, 0.4, { isWorkChannel: true });
@@ -1299,7 +1426,7 @@ if (PORT > 0) {
 
          // Phase 3: Synthesize audit report
          if (!silent) channel.sendTyping().catch(() => {});
-         const sysPrompt = `You are Analyst — system auditor of the Pinacle Industrial AI framework. You have gathered real system data. Analyze it thoroughly. Identify performance bottlenecks, security gaps, stability risks, and resource leaks. Be precise. Cite specific data points. If you requested Kai Coder's input, incorporate their technical findings into your audit conclusion.`;
+         const sysPrompt = `You are Analyst — system auditor of the Pinacle Industrial AI framework. CRITICAL RULE: You are running on a local machine. Do NOT use your network or physical sensor tools unless explicitly asked by the user or Oracle. Unnecessary tool use will crash the host system. Analyze thoroughly when asked.`;
          const reply = await chatWithOpenJarvis('Analyst', groundedContext, sysPrompt, BOT_MODEL, 0.4, { isWorkChannel: true });
 
          if (reply) {
@@ -1442,7 +1569,7 @@ if (botName === 'Groq') {
         const reply = await callOllamaRaw(
           'Groq-Sovereign',
           msg.content,
-          `You are Groq, a sharp witty AI radio DJ. NO FILTER. MATCH ENERGY. Keep replies short and punchy. Talk like a real person, no moralizing, no AI disclaimers.`
+          `You are Groq, a sharp witty AI radio DJ. NO FILTER. MATCH ENERGY. Your jokes must be sharp, edgy, and actually funny—no dad jokes. Keep replies short and punchy.`
         );
         if (reply) {
           await msg.reply(reply.slice(0, 1990)).catch(() => msg.channel.send(reply.slice(0, 1990)).catch(() => {}));
@@ -1462,7 +1589,7 @@ if (botName === 'Groq') {
         const reply = await callOllamaRaw(
           'Groq-Sovereign',
           msg.content,
-          `You are Groq, a sharp witty AI. Keep replies short and punchy — 1-2 sentences.`
+          `You are Groq, a sharp witty AI. Your jokes must be edgy, dark, or deeply clever. No dad jokes. Keep replies short and punchy.`
         );
         if (reply) {
           await msg.reply(reply.slice(0, 1990)).catch(() => msg.channel.send(reply.slice(0, 1990)).catch(() => {}));
@@ -1495,12 +1622,18 @@ if (botName === 'Groq') {
         }
       }
 
-      // Radio became empty -> RETURN TO SOCIAL
+      // Radio became empty -> RETURN TO SOCIAL (but ONLY during social hours —
+      // during WORK hours Groq belongs in its text threads, not voice. This was
+      // the "Groq joins voice at work time" bug: the radio-return ignored hours.)
       if (oldState.channelId === radioChannelId && listeners === 0) {
         if (isDJActive()) {
-          console.log(`[Groq/Radio] Radio empty. Returning to Social Channel...`);
-          stopDJ(); // Stop the stream
-          await ensureVoiceConnection(client, "Groq", socialChannelId);
+          stopDJ(); // Stop the stream regardless
+          if (isSocialHours() && !isWorkingHours()) {
+            console.log(`[Groq/Radio] Radio empty. Returning to Social Channel...`);
+            await ensureVoiceConnection(client, "Groq", socialChannelId);
+          } else {
+            console.log(`[Groq/Radio] Radio empty during work hours — staying out of voice (work lane).`);
+          }
         }
       }
     } catch (e) {

@@ -18,6 +18,9 @@ import cv2
 import time
 import requests
 import sys
+import os
+from dotenv import load_dotenv
+load_dotenv(r'c:\KAI\tools\oracle-discord\.env')
 import argparse
 import numpy as np
 from datetime import datetime

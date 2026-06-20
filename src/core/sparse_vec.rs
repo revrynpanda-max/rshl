@@ -586,6 +586,52 @@ impl SparseVec {
         Self { nz, vals, cached_norm }
     }
 
+    /// Attention-weighted bundle — forged from the same accumulate-then-threshold
+    /// HD math as `bundle`/`bind_creative`, but each input contributes in
+    /// proportion to its weight instead of equally. Used by Attention-Weighted
+    /// Hop Bundling so the reasoning components most relevant to the GOAL stay
+    /// prominent rather than being buried in an equal-weight superposition
+    /// ("buffet, not soup"). With all weights = 1.0 this reduces to `bundle`.
+    pub fn bundle_weighted(vecs: &[&SparseVec], weights: &[f32]) -> Self {
+        if vecs.is_empty() {
+            return Self::zero();
+        }
+        let mut acc: HashMap<u16, f32> =
+            HashMap::with_capacity(vecs[0].nz.len() * vecs.len());
+        let mut total_w = 0.0f32;
+        for (i, v) in vecs.iter().enumerate() {
+            let w = weights.get(i).copied().unwrap_or(1.0).max(0.0);
+            total_w += w;
+            for (&idx, &val) in v.nz.iter().zip(v.vals.iter()) {
+                *acc.entry(idx).or_insert(0.0) += val as f32 * w;
+            }
+        }
+        // Threshold scales with total weight so the result stays bounded and
+        // sparse like the equal-weight bundle (a dimension must win a weighted
+        // majority). A strict `> (total_w - 1) / 2` exactly reproduces the
+        // integer `(n + 1) / 2` majority rule of `bundle` when every weight is
+        // 1.0 (total_w == n), so weights == [1,1,..] is byte-for-byte `bundle`,
+        // including for an even number of vectors.
+        let threshold = (total_w - 1.0) * 0.5;
+        let mut pairs: Vec<(u16, i8)> = acc
+            .into_iter()
+            .filter_map(|(idx, sum)| {
+                let v = if sum > threshold {
+                    1
+                } else if sum < -threshold {
+                    -1
+                } else {
+                    0
+                };
+                if v != 0 { Some((idx, v)) } else { None }
+            })
+            .collect();
+        pairs.sort_by_key(|p| p.0);
+        let (nz, vals): (Vec<u16>, Vec<i8>) = pairs.into_iter().unzip();
+        let cached_norm = (nz.len() as f32).sqrt();
+        Self { nz, vals, cached_norm }
+    }
+
     /// Creative binding: V_creative = tau(alpha * V_A + beta * V_B)
     pub fn bind_creative(a: &SparseVec, b: &SparseVec, alpha: f32, beta: f32, threshold: f32) -> Self {
         let mut acc: HashMap<u16, f32> = HashMap::with_capacity(a.nz.len() + b.nz.len());
@@ -748,13 +794,26 @@ impl SparseVec {
     }
 
     /// Phase angle derived from the geometric position of this vector.
+    /// Phase angle derived from the holographic geometric position of active micro-features.
     pub fn phase_angle(&self) -> f32 {
-        let (pos, _neg) = self.ternary_balance();
-        if pos == 0 {
+        if self.nz.is_empty() {
             return 0.0;
         }
         const GOLDEN_ANGLE: f32 = 2.399_963_1_f32;
-        (pos as f32 * GOLDEN_ANGLE) % std::f32::consts::TAU
+        let mut sum_re = 0.0;
+        let mut sum_im = 0.0;
+        for (&idx, &sign) in self.nz.iter().zip(self.vals.iter()) {
+            let theta = (idx as f32) * GOLDEN_ANGLE;
+            let val = sign as f32;
+            sum_re += val * theta.cos();
+            sum_im += val * theta.sin();
+        }
+        let angle = sum_im.atan2(sum_re);
+        if angle < 0.0 {
+            angle + std::f32::consts::TAU
+        } else {
+            angle
+        }
     }
 
     /// Seeded Fisher-Yates permutation. VSA "role" projection.
@@ -1016,12 +1075,28 @@ impl DenseMask {
         }
     }
 
-    /// Popcount-based cosine similarity. Scalar path (works on all CPUs).
+    /// Popcount-based cosine similarity. Dispatches to an AVX-512 VPOPCNTDQ kernel
+    /// when the CPU supports it (Zen4 / recent Intel), else the portable scalar path.
+    /// Both produce identical results (proven by the `avx512_matches_scalar` test) —
+    /// the AVX-512 path only changes SPEED, not the value. Ported-forward idea from
+    /// the KAI-polyglot Zig hw-bridge, done in pure Rust (no FFI, no format change).
     #[inline]
     pub fn cosine(&self, other: &DenseMask) -> f32 {
         if self.norm == 0.0 || other.norm == 0.0 {
             return 0.0;
         }
+        #[cfg(target_arch = "x86_64")]
+        {
+            if std::is_x86_feature_detected!("avx512f") && std::is_x86_feature_detected!("avx512vpopcntdq") {
+                return unsafe { self.cosine_avx512(other) };
+            }
+        }
+        self.cosine_scalar(other)
+    }
+
+    /// Portable scalar popcount cosine (the original; works on all CPUs).
+    #[inline]
+    pub fn cosine_scalar(&self, other: &DenseMask) -> f32 {
         let mut dot: i32 = 0;
         let n = self.pos.len();
         let chunks = n / 4;
@@ -1054,6 +1129,60 @@ impl DenseMask {
             dot -= (a_neg[i] & b_pos[i]).count_ones() as i32;
         }
         dot as f32 / (self.norm * other.norm)
+    }
+
+    /// AVX-512 VPOPCNTDQ popcount cosine — same math as `cosine_scalar`, 8 u64 words
+    /// per instruction. Caller MUST have verified avx512f + avx512vpopcntdq (the
+    /// `cosine` dispatcher does). 256 words / 8 = 32 iterations, no remainder.
+    #[cfg(target_arch = "x86_64")]
+    #[target_feature(enable = "avx512f,avx512vpopcntdq")]
+    unsafe fn cosine_avx512(&self, other: &DenseMask) -> f32 {
+        use core::arch::x86_64::*;
+        let a_pos = self.pos.as_ptr();
+        let a_neg = self.neg.as_ptr();
+        let b_pos = other.pos.as_ptr();
+        let b_neg = other.neg.as_ptr();
+        let mut agree = _mm512_setzero_si512();    // popcount(ap&bp) + popcount(an&bn)
+        let mut disagree = _mm512_setzero_si512();  // popcount(ap&bn) + popcount(an&bp)
+        let mut i = 0usize;
+        while i < 256 {
+            let ap = _mm512_loadu_epi64(a_pos.add(i) as *const i64);
+            let an = _mm512_loadu_epi64(a_neg.add(i) as *const i64);
+            let bp = _mm512_loadu_epi64(b_pos.add(i) as *const i64);
+            let bn = _mm512_loadu_epi64(b_neg.add(i) as *const i64);
+            let pp = _mm512_popcnt_epi64(_mm512_and_si512(ap, bp));
+            let nn = _mm512_popcnt_epi64(_mm512_and_si512(an, bn));
+            agree = _mm512_add_epi64(agree, _mm512_add_epi64(pp, nn));
+            let pn = _mm512_popcnt_epi64(_mm512_and_si512(ap, bn));
+            let np = _mm512_popcnt_epi64(_mm512_and_si512(an, bp));
+            disagree = _mm512_add_epi64(disagree, _mm512_add_epi64(pn, np));
+            i += 8;
+        }
+        let dot = _mm512_reduce_add_epi64(agree) - _mm512_reduce_add_epi64(disagree);
+        (dot as f32) / (self.norm * other.norm)
+    }
+}
+
+#[cfg(test)]
+mod dense_mask_avx_tests {
+    use super::*;
+    #[test]
+    fn avx512_matches_scalar() {
+        let a = SparseVec::encode("the lattice resonates with goal directed emergence and memory");
+        let b = SparseVec::encode("memory resonance drives the goal directed lattice emergence pattern");
+        let ma = DenseMask::from_sparse(&a);
+        let mb = DenseMask::from_sparse(&b);
+        let scalar = ma.cosine_scalar(&mb);
+        // The public dispatcher must equal the scalar value on every CPU.
+        assert!((ma.cosine(&mb) - scalar).abs() < 1e-5, "dispatcher {} != scalar {}", ma.cosine(&mb), scalar);
+        // Where AVX-512 is available, the SIMD kernel must match the scalar bit-for-value.
+        #[cfg(target_arch = "x86_64")]
+        {
+            if std::is_x86_feature_detected!("avx512f") && std::is_x86_feature_detected!("avx512vpopcntdq") {
+                let avx = unsafe { ma.cosine_avx512(&mb) };
+                assert!((avx - scalar).abs() < 1e-5, "avx512 {} != scalar {}", avx, scalar);
+            }
+        }
     }
 }
 
@@ -1421,5 +1550,40 @@ mod tests {
     #[test]
     fn test_unbind_inverts_bind_on_key_support() {
         let _a = random_sparse(0x9E37_79B9);
+    }
+
+    #[test]
+    fn attention_weighted_bundle_favors_heavy_vector() {
+        // Two distinct ternary vectors.
+        let a = random_sparse(0x1234_5678);
+        let b = random_sparse(0x9ABC_DEF0);
+
+        // Equal-weight bundle vs. a bundle weighted heavily toward A.
+        let eq = SparseVec::bundle(&[&a, &b]);
+        let heavy_a = SparseVec::bundle_weighted(&[&a, &b], &[5.0, 1.0]);
+
+        // Weighting toward A should make the bundle lean MORE toward A than
+        // equal weighting does.
+        let heavy_sim = heavy_a.cosine(&a);
+        let eq_sim = eq.cosine(&a);
+        assert!(
+            heavy_sim >= eq_sim,
+            "weighting toward A should lean the bundle at least as much toward A \
+             as equal weighting: heavy_a.cosine(a)={:.4} should be >= eq.cosine(a)={:.4}",
+            heavy_sim,
+            eq_sim
+        );
+
+        // weights == [1,1] must be identical to plain bundle (same nz + vals).
+        let unit = SparseVec::bundle_weighted(&[&a, &b], &[1.0, 1.0]);
+        let plain = SparseVec::bundle(&[&a, &b]);
+        assert_eq!(
+            unit.nz, plain.nz,
+            "bundle_weighted with unit weights must have identical nz to bundle"
+        );
+        assert_eq!(
+            unit.vals, plain.vals,
+            "bundle_weighted with unit weights must have identical vals to bundle"
+        );
     }
 }

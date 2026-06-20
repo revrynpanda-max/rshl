@@ -12,6 +12,7 @@ pub mod deep_vault;
 pub mod lexicon;
 pub mod memory;
 pub mod mind_frame;
+pub mod neural_memory;
 #[cfg(feature = "gpu")]
 pub mod gpu_compute;
 

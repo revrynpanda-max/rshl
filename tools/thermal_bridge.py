@@ -27,6 +27,32 @@ def post_to_kai(message):
     except Exception as e:
         print(f"Error communicating with KAI: {e}")
 
+    # Also post to Discord channel 1513582425446289658
+    try:
+        from pathlib import Path
+        token = None
+        env_path = Path("C:/KAI/tools/oracle-discord/.env")
+        if env_path.exists():
+            for line in env_path.read_text().splitlines():
+                if line.startswith("ORACLE_DISCORD_TOKEN_KAI="):
+                    token = line.split("=", 1)[1].strip().strip('"').strip("'")
+                    break
+        
+        if token:
+            discord_url = "https://discord.com/api/v10/channels/1513582425446289658/messages"
+            discord_req = urllib.request.Request(
+                discord_url,
+                data=json.dumps({"content": f"🌡️ **Thermal Sensor**: {message}"}).encode(),
+                headers={
+                    "Authorization": f"Bot {token}",
+                    "Content-Type": "application/json"
+                },
+                method="POST"
+            )
+            urllib.request.urlopen(discord_req, timeout=5)
+    except Exception as e:
+        print(f"Error posting to Discord: {e}")
+
 print("========================================================")
 print("  KAI Sovereign Mode - Infiray Thermal Bridge (Index 0)  ")
 print("========================================================")

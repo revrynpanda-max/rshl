@@ -266,6 +266,12 @@ pub fn run_boid_iteration(state: &mut BoidState, settings: &BoidSettings, field:
         }
 
         let mut vel = state.velocities[i].clone();
+        // DAMPING (friction): bleed off carried momentum each tick so the swarm
+        // SETTLES into stable clusters instead of drifting at full speed forever.
+        // With forces present it reaches a calm terminal velocity; when forces fade
+        // it comes to rest. The max-speed clamp below still caps the top end.
+        const BOID_DAMPING: f32 = 0.6; // Reduced from 0.9 to encourage rapid settling
+        for k in 0..super::sparse_vec::DIM { vel[k] *= BOID_DAMPING; }
         if neighbor_count > 0 {
             let n_f = neighbor_count as f32;
             let speed_factor = layer_settings.movement_speed;
@@ -279,7 +285,10 @@ pub fn run_boid_iteration(state: &mut BoidState, settings: &BoidSettings, field:
         // Clamp speed
         let speed = vel.iter().map(|v| v * v).sum::<f32>().sqrt();
         let max_speed = 5.0 * layer_settings.scale_factor;
-        if speed > max_speed {
+        if speed < 0.05 {
+            // Snap to zero to prevent infinite micro-drifting
+            for k in 0..super::sparse_vec::DIM { vel[k] = 0.0; }
+        } else if speed > max_speed {
             for k in 0..super::sparse_vec::DIM { vel[k] *= max_speed / speed; }
         }
         (pos, vel, new_vitality, current_layer)

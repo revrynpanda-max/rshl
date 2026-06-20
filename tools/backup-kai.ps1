@@ -42,6 +42,7 @@ if ($PruneOnly) {
                 $criticalFiles = @(
                     "kai-cells.bin.zst",
                     "kai-meta.json",
+                    "kai-meta.json.zst",
                     "kai-texts.bin",
                     "kai-mind.json",
                     "..\tools\oracle-discord\.env"
@@ -64,6 +65,7 @@ if ($PruneOnly) {
             $criticalFiles = @(
                 "kai-cells.bin.zst",
                 "kai-meta.json",
+                "kai-meta.json.zst",
                 "kai-texts.bin",
                 "kai-mind.json",
                 "..\tools\oracle-discord\.env"
@@ -94,11 +96,27 @@ if (-not (Test-Path $archiveTrash)) {
     New-Item -ItemType Directory -Force -Path $archiveTrash | Out-Null
 }
 
-# 1. Annihilation (Recycle): Destroy data in the Trash that is older than 3 days
-$trashedBackups = Get-ChildItem -Path $archiveTrash -Directory | Where-Object { $_.CreationTime -lt (Get-Date).AddDays(-3) }
-foreach ($trash in $trashedBackups) {
-    Remove-Item -Path $trash.FullName -Recurse -Force
-    Write-Host "[KAI Archive] Annihilated (recycled into energy): $($trash.Name)"
+# 1. Annihilation (Recycle): Destroy data in the Trash that is older than 3 days after scoring
+$THRESHOLD = 0.5
+$engine = "http://127.0.0.1:3334/api/judge-snapshot"
+foreach ($trash in (Get-ChildItem $archiveTrash -Directory | Where-Object { $_.CreationTime -lt (Get-Date).AddDays(-3) })) {
+    $verdict = "annihilate"; $score = $null
+    try {
+        $resp = Invoke-RestMethod -Uri $engine -Method POST -TimeoutSec 30 `
+            -ContentType "application/json" -Body (@{ path = $trash.FullName } | ConvertTo-Json)
+        $score = $resp.score; $verdict = $resp.verdict
+    } catch {
+        # Engine unreachable -> SAFE FALLBACK: keep current behavior (annihilate >3d), log it.
+        Write-Host "[KAI Judgment] Engine unavailable; default annihilation for $($trash.Name)."
+        $verdict = "annihilate"
+    }
+    if ($verdict -eq "reprieve") {
+        New-Item -ItemType File -Path (Join-Path $trash.FullName "REPRIEVED.flag") -Force | Out-Null
+        Write-Host "[KAI Judgment] REPRIEVED ($([math]::Round($score,3))): $($trash.Name)"
+    } else {
+        Remove-Item $trash.FullName -Recurse -Force
+        Write-Host "[KAI Judgment] Annihilated ($(if($null -ne $score){[math]::Round($score,3)}else{'no-score'})): $($trash.Name)"
+    }
 }
 
 # 2. Decay (Judgment): Move backups older than 7 days into the Archive_Trash bin

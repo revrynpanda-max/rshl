@@ -25,6 +25,9 @@ import time
 import json
 import sys
 import os
+from dotenv import load_dotenv
+load_dotenv(r'c:\KAI\tools\oracle-discord\.env')
+import os
 import csv
 import math
 import urllib.request
@@ -288,21 +291,16 @@ def get_discord_token() -> str:
     """Get KAI bot token from environment."""
     token = os.environ.get("ORACLE_DISCORD_TOKEN_KAI")
     if not token:
-        # Fallback: try loading from config file
-        config_path = Path("C:/KAI/tools/oracle-discord/.oracle-discord.local.xml")
-        if config_path.exists():
+        # Fallback: try loading from .env file
+        env_path = Path("C:/KAI/tools/oracle-discord/.env")
+        if env_path.exists():
             try:
-                import xml.etree.ElementTree as ET
-                tree = ET.parse(config_path)
-                root = tree.getroot()
-                # The XML is Clixml format, not simple XML
-                # Try reading as text
-                content = config_path.read_text()
-                if "ORACLE_DISCORD_TOKEN_KAI" in content:
-                    # Extract token (this is a best-effort)
-                    pass
-            except:
-                pass
+                for line in env_path.read_text().splitlines():
+                    if line.startswith("ORACLE_DISCORD_TOKEN_KAI="):
+                        token = line.split("=", 1)[1].strip().strip('"').strip("'")
+                        break
+            except Exception as e:
+                print(f"[Discord] Error reading .env: {e}")
     return token
 
 def post_discord_embed(channel_id: str, embed: Dict, token: str) -> bool:

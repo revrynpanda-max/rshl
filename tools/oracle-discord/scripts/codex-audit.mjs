@@ -8,6 +8,9 @@
 // Usage:  node scripts/codex-audit.mjs
 //         node scripts/codex-audit.mjs --fix-trivial   (apply safe whitespace/heading fixes)
 import fs from 'fs';
+// Reuse the SAME relatedness math the live fleet search uses, so the persisted
+// "related" edges in codex_index.json never drift from the runtime graph.
+import { computeRelatedGraph } from '../shared/codex.mjs';
 
 const CODEX = ['c:/KAI/The KAI Codex.md', 'c:/KAI/WHITEPAPER.md'].find(p => fs.existsSync(p));
 const OUT_REPORT = 'c:/KAI/scratch/codex-audit-report.md';
@@ -95,6 +98,45 @@ const index = sections.map((s, i) => ({
   chars: s.lines.join('\n').length,
   preview: s.lines.join(' ').replace(/\s+/g, ' ').trim().slice(0, 120)
 }));
+
+// ── BRANCHING RELATED-TOPICS GRAPH ──────────────────────────────────────────
+// Populate a "related" field on every index entry: an ordered list of the most-
+// related sections (strongest edge first). This forms the branch graph a search
+// follows to surface a hit PLUS its connected topics. Computed with the exact
+// same algorithm the live fleet search uses (shared/codex.mjs::computeRelatedGraph)
+// so the stored index and the runtime graph stay identical, and regenerated here
+// on every re-index so the branches stay current as the Codex grows.
+try {
+  // Extract a §-number from each heading (mirrors loadCodexSections() in codex.mjs).
+  const numFor = (title) => {
+    const cleaned = String(title || '').replace(/[*\\]/g, '').replace(/§/g, '').trim();
+    let num = (cleaned.match(/^(\d+(?:\.\d+)*)/) || [])[1] || null;
+    if (!num) { const inl = String(title || '').match(/§\s*(\d+(?:\.\d+)*)/); if (inl) num = inl[1]; }
+    return num;
+  };
+  const graphInput = sections.map((s, i) => ({
+    title: s.title,
+    text: s.lines.join('\n'),
+    num: numFor(s.title),
+    index: i
+  }));
+  const graph = computeRelatedGraph(graphInput, 6);
+  index.forEach((entry, i) => {
+    const edges = graph.get(i) || [];
+    // Store both the neighbour index (n) and its §/title for human readability,
+    // plus the edge weight + reason so the strongest relations rank first.
+    entry.related = edges.map(e => ({
+      n: e.to,
+      num: graphInput[e.to].num,
+      title: sections[e.to].title,
+      weight: e.score,
+      why: e.why
+    }));
+  });
+  console.log(`  Related edges: built for ${index.filter(e => e.related && e.related.length).length}/${index.length} sections`);
+} catch (e) {
+  console.warn(`  [related-graph] skipped: ${e.message}`);
+}
 
 // ── Trivial auto-fixes (opt-in) ─────────────────────────────────────────────
 let fixed = 0;

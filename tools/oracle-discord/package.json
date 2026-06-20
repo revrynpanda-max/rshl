@@ -1,22 +1,19 @@
 {
   "name": "oracle-discord-gateway",
-  "version": "7.9.7",
+  "version": "7.9.6",
   "private": true,
   "type": "module",
   "description": "Minimal Ryan-only Discord gateway for the local KAI Oracle API.",
   "main": "index.mjs",
   "scripts": {
-    "start": "node -r dotenv/config index.mjs",
-    "check": "node --check index.mjs",
-    "proof": "node scripts/proof-suite.mjs",
-    "proof:summary": "node scripts/proof-suite.mjs --summary",
-    "proof:report": "node scripts/proof-report.mjs",
-    "health": "node scripts/system-health.mjs",
-    "self-optimize:test": "node scripts/self-optimize-sandbox.mjs"
+    "start": "node index.mjs",
+    "check": "node --check index.mjs"
   },
   "dependencies": {
     "@discordjs/opus": "^0.10.0",
     "@discordjs/voice": "^0.19.2",
+    "@google/genai": "^2.8.0",
+    "@ricky0123/vad-node": "^0.0.3",
     "@snazzah/davey": "^0.1.11",
     "better-sqlite3": "^12.9.0",
     "discord.js": "^14.26.4",
@@ -25,6 +22,7 @@
     "libsodium-wrappers": "^0.8.4",
     "microsoft-cognitiveservices-speech-sdk": "^1.49.0",
     "node-osc": "^11.5.0",
+    "onnxruntime-node": "^1.27.0",
     "openai": "^6.36.0",
     "opusscript": "^0.0.8",
     "prism-media": "^1.3.5",

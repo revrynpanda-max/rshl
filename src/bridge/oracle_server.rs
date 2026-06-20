@@ -378,7 +378,10 @@ struct ToolPlanRequest {
 
 // ── Server Entry Point ───────────────────────────────────────────────────────
 
-pub fn start_oracle_server(universe: Arc<Mutex<Universe>>, synaptic_layer: Arc<Mutex<SynapticLayer>>) {
+pub fn start_oracle_server(
+    universe: Arc<Mutex<Universe>>,
+    synaptic_layer: Arc<Mutex<SynapticLayer>>,
+    ) {
     // ── Warm up semantic dictionary ──────────────────────────────────
     // Force-load word definitions at startup so the first request doesn't
     // pay the JSON parse cost. KAI needs to know what words mean.
@@ -405,24 +408,77 @@ pub fn start_oracle_server(universe: Arc<Mutex<Universe>>, synaptic_layer: Arc<M
     let s_hb = Arc::clone(&roundtable_session);
     std::thread::spawn(move || run_heartbeat_loop(u_hb, s_hb));
 
-    // Autonomous Auto-Save Loop: Ensure synapses and cells are persisted every 60 seconds
+    // Autonomous Auto-Save Loop: persist synapses and cells every 3 minutes.
+    // (60s pinned disk rewriting the whole brain; 600s lost up to 10 min of
+    // in-memory growth on a hard restart — that's how ~3.5M afternoon synapses
+    // vanished. 180s caps the worst-case loss to ~3 min, and the graceful
+    // shutdown-save below makes a *clean* stop lose nothing at all. Writes are
+    // atomic [tmp+rename] so an interrupted save can never truncate the brain.)
     let u_save = Arc::clone(&universe);
     let sl_save = Arc::clone(&synaptic_layer);
     std::thread::spawn(move || {
         let base_dir = std::env::current_dir().map(|p| p.to_string_lossy().to_string()).unwrap_or_else(|_| ".".into());
+        // RAM-relief switch: when KAI_STREAMING_SAVE=1, serialize the brain UNDER the
+        // lock (compact bytes + texts only) and write OUTSIDE the lock — no
+        // whole-Universe clone, which is what pins the engine's RSS high. Default
+        // (unset / not "1") keeps the original, proven clone path byte-for-byte, so a
+        // fresh build behaves exactly like before until you opt in.
+        let streaming_save = std::env::var("KAI_STREAMING_SAVE")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
         loop {
-            std::thread::sleep(Duration::from_secs(60));
-            // Clone the state so we don't hold locks during the heavy file I/O operations
-            let mut u = u_save.lock().unwrap().clone();
-            let sl = sl_save.lock().unwrap().clone();
-            let tick = sl.tick;
-            
+            std::thread::sleep(Duration::from_secs(180));
             // In headless mode we don't track drive/candidates actively here, so supply empty ones
             let candidates = crate::cognition::candidates::CandidateBuffer::new();
             let drive = crate::drive::Drive::default();
-            
-            let _ = crate::persistence::save_compact(&base_dir, &mut u, &candidates, &drive, &sl, tick, 0);
+
+            if streaming_save {
+                // Serialize under the lock (no clone), then release and write.
+                let sl = sl_save.lock().unwrap().clone(); // synaptic layer is small relative to cells
+                let tick = sl.tick;
+                let serialized = {
+                    let u = u_save.lock().unwrap();
+                    crate::persistence::serialize_brain(&u)
+                    // universe lock dropped here — never held during disk I/O, never cloned whole
+                };
+                if let Some((cell_bytes, texts)) = serialized {
+                    let _ = crate::persistence::write_brain_streamed(
+                        &base_dir, &cell_bytes, &texts, &candidates, &drive, &sl, tick, 0,
+                    );
+                }
+            } else {
+                // ── Original proven path (unchanged) ──
+                // Clone the state so we don't hold locks during the heavy file I/O operations
+                let mut u = u_save.lock().unwrap().clone();
+                let sl = sl_save.lock().unwrap().clone();
+                let tick = sl.tick;
+                let _ = crate::persistence::save_compact(&base_dir, &mut u, &candidates, &drive, &sl, tick, 0);
+            }
         }
+    });
+
+    // GRACEFUL SHUTDOWN-SAVE: on Ctrl+C, flush the FULL in-memory brain before
+    // exiting so a clean stop (e.g. stopping to rebuild) never drops growth that
+    // hasn't autosaved yet. Runs its own tiny tokio runtime on a dedicated thread,
+    // so it works regardless of how main() is structured.
+    let u_sd = Arc::clone(&universe);
+    let sl_sd = Arc::clone(&synaptic_layer);
+    std::thread::spawn(move || {
+        let rt = match tokio::runtime::Runtime::new() { Ok(r) => r, Err(_) => return };
+        rt.block_on(async move {
+            if tokio::signal::ctrl_c().await.is_ok() {
+                eprintln!("[persistence] Shutdown signal received — flushing brain before exit...");
+                let base_dir = std::env::current_dir().map(|p| p.to_string_lossy().to_string()).unwrap_or_else(|_| ".".into());
+                let u = u_sd.lock().unwrap().clone();
+                let sl = sl_sd.lock().unwrap().clone();
+                let tick = sl.tick;
+                let candidates = crate::cognition::candidates::CandidateBuffer::new();
+                let drive = crate::drive::Drive::default();
+                let r = crate::persistence::save_compact_full(&base_dir, &u, &candidates, &drive, &sl, tick, 0);
+                eprintln!("[persistence] Brain flushed on shutdown (ok={}, cells={}, synapses={}). Exiting.", r.ok, r.cells, sl.synapses.len());
+                std::process::exit(0);
+            }
+        });
     });
 
     if std::env::args().any(|a| a == "--oracle" || a == "oracle-server" || a == "--oracle-server") {
@@ -465,7 +521,7 @@ fn handle_client(
     synaptic_layer: Arc<Mutex<SynapticLayer>>,
     roundtable_session: Arc<Mutex<Session>>,
     public_session: Arc<Mutex<Session>>,
-) -> std::io::Result<()> {
+    ) -> std::io::Result<()> {
     let mut buf = Vec::new();
     let mut chunk = [0u8; 65536];
     let n = stream.read(&mut chunk)?;
@@ -588,6 +644,7 @@ fn handle_client(
         // ── Lattice Management ──────────────────────────────────────────────
         "/api/lattice/compact-save" => handle_lattice_compact_save(stream, universe, &synaptic_layer, roundtable_session),
         "/api/lattice/rebuild-index" => handle_lattice_rebuild_index(stream, universe),
+        "/api/judge-snapshot" => handle_judge_snapshot(stream, body, universe),
         "/api/lattice/warm-continuations" => handle_lattice_warm_continuations(stream, universe, roundtable_session),
         "/api/lattice/force-reseed" => handle_lattice_force_reseed(stream, universe, roundtable_session),
         "/api/lattice/reset-continuations" => handle_lattice_reset_continuations(stream, universe, roundtable_session),
@@ -1330,7 +1387,7 @@ fn handle_discord_turn(
     universe: Arc<Mutex<Universe>>,
     synaptic_layer: Arc<Mutex<SynapticLayer>>,
     session: Arc<Mutex<Session>>,
-) -> std::io::Result<()> {
+    ) -> std::io::Result<()> {
     if check_maintenance(stream, &session)? { return Ok(()); }
     let req: HumanTurnRequest = match serde_json::from_slice(body) {
         Ok(r) => r,
@@ -1445,6 +1502,7 @@ fn handle_discord_turn(
         DiscordTurnTarget::Kai => {
             // Native sovereign path: generate_response_predictive speaks directly
             // from the RSHL lattice. No LLM wrapper, no Broca's Area polish.
+
             let (recent_context, trace): (Vec<(String, String)>, ConversationTrace) = {
                 let mut s = session.lock().unwrap();
                 let rc: Vec<(String, String)> = s.turns.iter().filter(|t| t.kind != "system").rev().take(6).map(|t| (t.kind.clone(), t.text.clone())).collect::<Vec<_>>().into_iter().rev().collect();
@@ -1557,7 +1615,6 @@ fn handle_discord_turn(
                     &mut u,
                     &trace,
                     None, // candle_voice — no LLM
-                    None, // bitnet_voice — no LLM
                     get_lexicon(),
                     Some(&field),
                     None, // pos_dict
@@ -3890,12 +3947,29 @@ fn generate_oracle_kai_reply(
         25, // max 25 tokens for final reply
     );
     
-    // 5. Broca's Area (LLM Synthesis)
+    // 5. Broca's Area (Synthesis) — SOVEREIGN-FIRST.
     let synthesis_prompt = format!(
         "User: {}\n\nYour internal retrieved context:\n{}\n{}\n\nRespond to the user naturally and directly as KAI.",
         user_query, attentive_reply, ar_reply
     );
-    
+
+    // 5a. PREFER KAI'S OWN NATIVE BITNET BRAIN. This is what makes KAI sovereign:
+    // the same retrieved context + system prompt are synthesized by his loaded
+    // BitNet b1.58 decoder, NOT an external Ollama model. Ollama is now only a
+    // fallback for when the native brain isn't mounted.
+    if crate::cognition::language_warehouse::has_native_transformer() {
+        let full_prompt = format!("{}\n\n{}", system_prompt, synthesis_prompt);
+        if let Some(text) = crate::cognition::language_warehouse::global_native_decode(&full_prompt, 150) {
+            let cleaned = text.trim().to_string();
+            if !cleaned.is_empty() {
+                return cleaned;
+            }
+        }
+    }
+
+    // 5b. Fallback to Ollama ONLY if the native brain is unavailable/empty and
+    // native-only mode isn't forced. If neither is available, KAI still speaks via
+    // his raw lattice autoregressive reply (ar_reply) — never a hard dependency.
     if !crate::cognition::voice::NATIVE_ONLY.load(std::sync::atomic::Ordering::Relaxed) {
         if let Ok(synthesized) = call_ollama("KAI-Sovereign:latest", &synthesis_prompt, &system_prompt) {
             let cleaned = synthesized.trim().to_string();
@@ -3904,7 +3978,7 @@ fn generate_oracle_kai_reply(
             }
         }
     }
-    
+
     ar_reply
 }
 
@@ -4035,13 +4109,14 @@ fn run_active_synaptogenesis_loop(
 ) {
     static POOL: std::sync::OnceLock<rayon::ThreadPool> = std::sync::OnceLock::new();
     let pool = POOL.get_or_init(|| {
-        let num_cores = ((num_cpus::get() as f32 * 0.35).round() as usize).clamp(1, 4);
+        // SMARTER NOT HARDER: Cap at strictly 2 threads to prevent resource fighting with Sovereign LLMs.
+        let num_cores = ((num_cpus::get() as f32 * 0.20).round() as usize).clamp(1, 2);
         rayon::ThreadPoolBuilder::new().num_threads(num_cores).build().unwrap()
     });
 
     loop {
-        // 250ms sleep — allows the host PC's CPU to breathe and prevents 100% thread locking
-        std::thread::sleep(Duration::from_millis(250));
+        // 500ms sleep — very gentle background heartbeat to keep CPU ultra-low
+        std::thread::sleep(Duration::from_millis(500));
 
         let (seeds, phi_g, chi, p, throttle) = {
             let u = universe.lock().unwrap();
@@ -4068,7 +4143,8 @@ fn run_active_synaptogenesis_loop(
             let ease = p_scaled * p_scaled * (3.0 - 2.0 * p_scaled);
             let throttle: f32 = 1.0 + max_boost * ease;
             
-            let batch_size = throttle.max(1.0).round() as usize;
+            // Gentle Throttling: Hard limit on background processing to prevent PC freezing
+            let batch_size = (throttle.max(1.0).round() as usize).min(15);
 
             let mut seeds: Vec<String> = get_ungrounded_concepts(&u, &sl, batch_size);
             if seeds.is_empty() {
@@ -4114,8 +4190,9 @@ fn run_active_synaptogenesis_loop(
             };
             hits_list.extend(chunk_hits);
             
-            // Yield the thread to allow pending API requests to grab the Universe lock
-            std::thread::sleep(Duration::from_millis(10));
+            // Yield the thread heavily to allow pending API requests to grab the Universe lock
+            // and keep CPU usage low (Smarter not harder)
+            std::thread::sleep(Duration::from_millis(250));
         }
 
         // Now that the heavy parallel read is done, we lock once to write the results
@@ -4807,7 +4884,39 @@ fn handle_status(
     };
     let reasoning_count = cells.iter().filter(|c| c.region.as_ref() == "reasoning").count();
     let chi = if lattice_size == 0 { 0.0 } else { reasoning_count as f32 / lattice_size as f32 };
-    
+
+    // ── ACTIVATION ENTROPY (KAI's analog of transformer "attention entropy") ──
+    // Measures how SPREAD-OUT the lattice's activity is across cells, using each
+    // cell's confidence as its activity weight. Normalized 0..1:
+    //   ~1.0 = activity broadly distributed (healthy, integrating widely)
+    //   ~0.0 = activity collapsed onto a few cells (FIXATION — KAI's equivalent
+    //          of attention-entropy collapse, an early-warning of runaway /
+    //          rumination before output quality visibly degrades).
+    // One-pass Shannon entropy:  H = ln(S) - (1/S)·Σ w·ln(w),  S = Σ w.
+    let mut w_sum = 0.0f64;
+    let mut w_lnw = 0.0f64;
+    let mut active_cells = 0usize;
+    for c in cells.iter() {
+        let w = (c.claim.confidence as f64).max(0.0);
+        if w > 0.0 {
+            w_sum += w;
+            w_lnw += w * w.ln();
+            active_cells += 1;
+        }
+    }
+    let activation_entropy_norm = if w_sum > 0.0 && active_cells > 1 {
+        let h = w_sum.ln() - (w_lnw / w_sum);          // entropy in nats
+        (h / (active_cells as f64).ln()).clamp(0.0, 1.0) // normalize by ln(N)
+    } else { 0.0 };
+    // Fixation early-warning. Only meaningful once the lattice has real mass.
+    let fixation_risk = active_cells > 256 && activation_entropy_norm < 0.35;
+    if fixation_risk {
+        eprintln!(
+            "[KAI/Stability] \u{26A0} Activation-entropy collapse risk: norm={:.3} over {} active cells. Lattice activity is concentrating on too few cells (fixation/rumination analog of attention collapse).",
+            activation_entropy_norm, active_cells
+        );
+    }
+
     drop(u);
 
     static SYS: std::sync::OnceLock<std::sync::Mutex<sysinfo::System>> = std::sync::OnceLock::new();
@@ -4832,6 +4941,8 @@ fn handle_status(
         "synapses": synapse_count,
         "phi_g": phi_g,
         "chi": chi,
+        "activation_entropy": activation_entropy_norm,
+        "fixation_risk": fixation_risk,
         "status": "Operational",
         "uptime_note": "KAI Oracle running 24/7"
     }))
@@ -4928,7 +5039,9 @@ fn handle_inspect(stream: &mut TcpStream, query_str: &str) -> std::io::Result<()
         || path_str.starts_with("C:/KAI")
         || path_str.starts_with("src/")
         || path_str.starts_with("tools/")
-        || path_str.starts_with("OpenJarvis");
+        || path_str.starts_with("OpenJarvis")
+        || path_str.starts_with("src-CLI code/")
+        || path_str.starts_with("legacy/");
 
     if !allowed {
         return write_simple(stream, 403, "Forbidden", "Path must be within KAI project");
@@ -5162,7 +5275,7 @@ fn handle_chat(
         }
     };
 
-    match kai_chat(universe, None, &req) {
+    match kai_chat(universe, &req) {
         Ok(resp) => write_json(stream, 200, "OK", &serde_json::to_value(resp).unwrap()),
         Err(e) => write_json(stream, 503, "Generation Failed", &json!({"error": e})),
     }
@@ -5189,21 +5302,42 @@ fn handle_rshl_query(
     };
     let limit = req.n.unwrap_or(5);
     
-    let hits = {
-        let u = universe.lock().unwrap();
-        let sl = synaptic_layer.lock().unwrap();
-        
-        if let Some(dv) = req.dense_vec {
-            // THE CRUSHER: Project dense floats into 16,384-dim ternary space
-            let query_vec = crate::core::SparseVec::from_dense_floats(&dv);
-            // Query using the crushed vector
-            u.query_vec(&query_vec, limit).into_iter().map(|(c, s)| crate::core::QueryHit::from_cell(&c, s)).collect()
-        } else {
-            let field = crate::core::FieldState::compute(&u, 1);
-            crate::core::NeuralBus::query_associative(&u, &sl, field.phi_g, &req.query, limit, &[], "")
-        }
+    // DEADLOCK FIX (June 2026 stress test): the lattice query below runs
+    // CPU-bound parallel work (FieldState::compute / query scans dispatch onto
+    // the shared global Rayon pool, and query_vec may block on the GPU via
+    // pollster::block_on). Previously both the `universe` and `synaptic_layer`
+    // std::sync::Mutex guards were held across that entire region. Under load a
+    // Rayon worker (or a second request thread) would park waiting for one of
+    // these locks while the lock holder was itself parked inside the pool/GPU
+    // wait — a classic lock-held-across-blocking-work deadlock that, once hit,
+    // never recovered (the next request would block on the still-held lock).
+    //
+    // The fix mirrors the established pattern in this file (see the helper that
+    // does `drop(u); drop(sl);` before any further work): keep the lock scope as
+    // tight as possible, take the two locks in the codebase-wide consistent order
+    // (universe THEN synaptic_layer), and recover from a poisoned lock instead of
+    // unwrapping — a panic in one request must not wedge every request that
+    // follows. The query path is read-only on the lattice, so reading through a
+    // poisoned guard is safe here.
+    let hits: Vec<crate::core::QueryHit> = if let Some(dv) = req.dense_vec {
+        // THE CRUSHER: Project dense floats into 16,384-dim ternary space.
+        // Only the `universe` lock is needed for the vector path.
+        let query_vec = crate::core::SparseVec::from_dense_floats(&dv);
+        let u = universe.lock().unwrap_or_else(|e| e.into_inner());
+        let raw = u.query_vec(&query_vec, limit);
+        drop(u); // release before any further work / socket write
+        raw.into_iter().map(|(c, s)| crate::core::QueryHit::from_cell(&c, s)).collect()
+    } else {
+        // Associative path needs both lattice + synapses. Take the locks in the
+        // canonical order (universe -> synaptic_layer), run the query, and let
+        // both guards drop at the end of this block — before write_json's
+        // blocking socket write below.
+        let u = universe.lock().unwrap_or_else(|e| e.into_inner());
+        let sl = synaptic_layer.lock().unwrap_or_else(|e| e.into_inner());
+        let field = crate::core::FieldState::compute(&u, 1);
+        crate::core::NeuralBus::query_associative(&u, &sl, field.phi_g, &req.query, limit, &[], "")
     };
-    
+
     write_json(stream, 200, "OK", &serde_json::to_value(hits).unwrap())
 }
 
@@ -5822,6 +5956,119 @@ fn handle_lattice_rebuild_index(
     let mut u = universe.lock().unwrap();
     u.rebuild_index(0.0);
     write_json(stream, 200, "OK", &json!({ "ok": true, "message": "Index rebuilt" }))
+}
+
+fn handle_judge_snapshot(
+    stream: &mut TcpStream,
+    body: &[u8],
+    live_universe: Arc<Mutex<Universe>>,
+) -> std::io::Result<()> {
+    #[derive(serde::Deserialize)]
+    struct Req {
+        path: String,
+    }
+
+    let req: Req = match serde_json::from_slice(body) {
+        Ok(r) => r,
+        Err(e) => {
+            return write_json(stream, 200, "OK", &json!({
+                "score": 0.0,
+                "verdict": "annihilate",
+                "factors": { "used": 0.0, "novelty": 0.0, "resonance": 0.0 },
+                "sampled": 0,
+                "error": format!("Invalid JSON: {}", e)
+            }));
+        }
+    };
+
+    // 1. Load temp snapshot cells (heavy file read - done outside of locking the live universe!)
+    let loaded = crate::persistence::load_compact(&req.path);
+    let (temp_universe, _, _, _, _, _) = match loaded {
+        Some(parts) => parts,
+        None => {
+            return write_json(stream, 200, "OK", &json!({
+                "score": 0.0,
+                "verdict": "annihilate",
+                "factors": { "used": 0.0, "novelty": 0.0, "resonance": 0.0 },
+                "sampled": 0,
+                "error": "unreadable"
+            }));
+        }
+    };
+
+    let temp_cells = temp_universe.get_cells();
+    let m = temp_cells.len();
+    if m == 0 {
+        return write_json(stream, 200, "OK", &json!({
+            "score": 0.0,
+            "verdict": "annihilate",
+            "factors": { "used": 0.0, "novelty": 0.0, "resonance": 0.0 },
+            "sampled": 0
+        }));
+    }
+
+    // 2. Sample up to N = 256 cells (deterministic stride)
+    let n_sample = 256;
+    let stride = (m / n_sample).max(1);
+    let mut sampled_cells = Vec::new();
+    let mut i = 0;
+    while i < m && sampled_cells.len() < n_sample {
+        sampled_cells.push(&temp_cells[i]);
+        i += stride;
+    }
+    let sampled_count = sampled_cells.len();
+
+    // 3. used = mean over sampled of min(confidence/5.0, 1.0) blended with access/fire signals
+    let mut sum_used = 0.0;
+    for cell in &sampled_cells {
+        let conf_val = (cell.claim.confidence / 5.0).min(1.0).max(0.0);
+        let fire_val = if cell.last_fired > 0 { 1.0 } else { 0.0 };
+        let cell_used = conf_val * 0.8 + fire_val * 0.2;
+        sum_used += cell_used;
+    }
+    let used_score = sum_used / sampled_count as f32;
+
+    // 4. novelty = fraction of sampled cells whose top-1 cosine vs the live universe is < 0.92
+    let mut novel_count = 0;
+    for cell in &sampled_cells {
+        let top_cosine = {
+            let live_u = live_universe.lock().unwrap();
+            let hits = live_u.query_vec(&cell.claim.vec, 1);
+            hits.first().map(|(_, score)| *score).unwrap_or(0.0)
+        };
+        if top_cosine < 0.92 {
+            novel_count += 1;
+        }
+    }
+    let novelty_score = novel_count as f32 / sampled_count as f32;
+
+    // 5. resonance = mean phasor_coherence(cell, live drive.goal_vector) clamped to [0,1]
+    let live_goal_vector = crate::persistence::load_live_goal_vector(".");
+    let resonance_score = if let Some(ref gv) = live_goal_vector {
+        let mut sum_res = 0.0;
+        for cell in &sampled_cells {
+            let res_val = cell.claim.vec.phasor_coherence(gv).clamp(0.0, 1.0);
+            sum_res += res_val;
+        }
+        sum_res / sampled_count as f32
+    } else {
+        0.5
+    };
+
+    // 6. Calculate total score and verdict
+    let score = 0.4 * novelty_score + 0.35 * used_score + 0.25 * resonance_score;
+    let verdict = if score >= 0.5 { "reprieve" } else { "annihilate" };
+
+    write_json(stream, 200, "OK", &json!({
+        "score": score,
+        "verdict": verdict,
+        "factors": {
+            "used": used_score,
+            "novelty": novelty_score,
+            "resonance": resonance_score
+        },
+        "sampled": sampled_count as u32
+    }))
 }
 
 fn handle_lattice_warm_continuations(

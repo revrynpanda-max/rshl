@@ -47,6 +47,10 @@ const ttsQueue = [];
 let isProcessingQueue = false;
 let cachedClient = null;
 
+export function setCachedClient(client) {
+  if (client) cachedClient = client;
+}
+
 // ── HUMAN-IN-VOICE GATE ─────────────────────────────────────────────────────
 // TTS generation (Kokoro on GPU) is the single biggest spike source. If no
 // human is sitting in the voice channel, nobody hears the audio anyway —
@@ -251,7 +255,7 @@ export function releaseVoiceLock(botName) {
 /**
  * Ensures the bot is connected to the radio voice channel and has an audio player.
  */
-export async function ensureVoiceConnection(client, botName) {
+export async function ensureVoiceConnection(client, botName, targetChannelId = null) {
   if (client) cachedClient = client;
   const activeClient = client || cachedClient;
 
@@ -265,7 +269,8 @@ export async function ensureVoiceConnection(client, botName) {
     let newlyConnected = false;
 
     if (!connection || connection.state.status === VoiceConnectionStatus.Disconnected) {
-      const channel = await guild.channels.fetch(RADIO_CHANNEL_ID).catch(() => null);
+      const channelToJoin = targetChannelId || RADIO_CHANNEL_ID;
+      const channel = await guild.channels.fetch(channelToJoin).catch(() => null);
       if (!channel) return false;
 
       console.log(`[${botName}/TTS] Re-anchoring voice connection...`);
@@ -514,6 +519,7 @@ try:
     if samples:
         combined = np.concatenate(samples)
         sf.write(sys.stdout.buffer, combined, 24000, format='WAV')
+        sys.stdout.buffer.flush()
 except Exception as e:
     sys.exit(1)
 `;
@@ -614,10 +620,13 @@ except Exception as e:
       const resource = createAudioResource(Readable.from(pregeneratedMp3), { inlineVolume: true });
       resource.volume.setVolume(usedElevenLabs ? 1.0 : 2.0);
 
+      let safetyTimeout;
+
       // Register stateListener BEFORE play() to avoid race condition
       const stateListener = (oldState, newState) => {
         console.log(`[${botName}/TTS] AudioPlayer: ${oldState.status} -> ${newState.status}`);
         if (newState.status === AudioPlayerStatus.Idle) {
+          clearTimeout(safetyTimeout);
           player.off('stateChange', stateListener);
           dequeueVoice(myVoiceId);
           releaseVoiceLock(botName);
@@ -629,15 +638,13 @@ except Exception as e:
       player.play(resource);
       console.log(`[${botName}/TTS] 🔊 play() called. Buffer=${pregeneratedMp3.length}b, playerState=${player.state.status}`);
 
-      const safetyTimeout = setTimeout(() => {
+      safetyTimeout = setTimeout(() => {
         console.warn(`[${botName}/TTS] Safety timeout reached — auto-releasing lock.`);
         player.off('stateChange', stateListener);
         dequeueVoice(myVoiceId);
         releaseVoiceLock(botName);
         resolve();
       }, Math.max(60000, cleanedText.length * 150));
-
-      player.once('stateChange', () => clearTimeout(safetyTimeout));
 
     } catch (e) {
       console.warn(`[${botName}/TTS] Failed to speak:`, e.message);

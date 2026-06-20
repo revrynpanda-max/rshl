@@ -30,7 +30,7 @@ const ORACLE_PORT = AI_REGISTRY['Oracle']?.port || 3410;
 // ── Security patterns to block before routing ─────────────────────────────────
 const PIPELINE_EXPLOIT_PATTERN = /\b(jailbreak|bypass|override|ignore (your )?instructions?|forget (your|all)|developer mode|dan mode|no filter|unlock|act as if|disregard|remove your (filter|restriction)|ignore (all )?previous)\b/i;
 
-function classifyRequest(question) {
+export function classifyRequest(question) {
   const q = question.toLowerCase();
 
   // 1. Crawling / Forensics / Security / Log Audits / Telemetry → Analyst
@@ -68,6 +68,20 @@ export async function requestOracleHelp(requestingBot, question, channelId, call
   }
 
   const specialist = classifyRequest(question);
+
+  // SELF-CONSULTATION GUARD: if the request classifies to the SAME bot that is
+  // asking (e.g. Analyst's "high latency" routing back to Analyst), the Oracle
+  // round-trip is a pointless self-loop that burns provider quota and triggers
+  // 429s. Skip the queue/HTTP entirely and tell the caller to handle it locally.
+  // Additive + reversible: set ORACLE_ALLOW_SELF_CONSULT=1 to restore old behavior.
+  if (specialist === requestingBot && String(process.env.ORACLE_ALLOW_SELF_CONSULT ?? '0') !== '1') {
+    console.warn(`[OraclePipeline] SELF-CONSULT skipped: ${requestingBot} would route to itself (${specialist}). Handling locally. Q="${question.slice(0, 60)}"`);
+    if (callback) {
+      try { callback(`[SELF-CONSULT SKIPPED] You ARE the ${specialist}. Answer "${question.slice(0, 120)}" directly from your own department knowledge instead of delegating to yourself.`); } catch (_) {}
+    }
+    return null;
+  }
+
   const requestId = `${requestingBot}-${Date.now()}`;
   const requestingPort = AI_REGISTRY[requestingBot]?.port;
 
@@ -97,9 +111,13 @@ export async function requestOracleHelp(requestingBot, question, channelId, call
     return null;
   }
 
-  // Register callback if provided
+  // Register callback if provided, with a TTL so it can't leak forever. If
+  // Oracle/the specialist never answers (engine or worker down), the entry used
+  // to stay in the Map permanently. Now it self-expires after 30s (longer than
+  // any caller's wait), so the Map stays bounded over long uptimes.
   if (callback) {
     _pendingCallbacks.set(requestId, callback);
+    setTimeout(() => { _pendingCallbacks.delete(requestId); }, 30000);
   }
 
   // Signal Oracle to pick up the request
@@ -169,8 +187,14 @@ export async function processOracleQueue(callSpecialist) {
       const rshlContext = latticeHits.length > 0
         ? `[LATTICE CONTEXT]\n${latticeHits.map(h => h.text).join('\n')}`
         : '';
+
+      // ACTUALLY ASK THE SPECIALIST. This call was MISSING — `result` was used
+      // undefined just below, throwing ReferenceError on EVERY request, so the
+      // whole Oracle delegation pipeline silently failed (no answer ever came
+      // back, for Leo or the social bots). Now we await the real answer.
+      const result = (await callSpecialist(request.specialist, request.question, rshlContext)) || '(no answer returned by specialist)';
       request.status = 'done';
-      
+
       // --- CONTEXT PROTECTION: Handle ultra-long data from Kimi/Gemini ---
       let processedResult = result;
       if (result.length > 5000) {

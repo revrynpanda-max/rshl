@@ -22,13 +22,13 @@ Get-WmiObject Win32_Process -Filter "Name='python.exe' OR Name='python3.exe'" -E
 }
 
 # Force-kill port 3333 or 3334 if still stuck
-$port3333 = Get-NetTCPConnection -LocalPort 3333 -ErrorAction SilentlyContinue
+$port3333 = Get-NetTCPConnection -LocalPort 3333 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique
 if ($port3333) {
-    Stop-Process -Id $port3333.OwningProcess -Force -ErrorAction SilentlyContinue
+    Stop-Process -Id $port3333 -Force -ErrorAction SilentlyContinue
 }
-$port3334 = Get-NetTCPConnection -LocalPort 3334 -ErrorAction SilentlyContinue
+$port3334 = Get-NetTCPConnection -LocalPort 3334 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique
 if ($port3334) {
-    Stop-Process -Id $port3334.OwningProcess -Force -ErrorAction SilentlyContinue
+    Stop-Process -Id $port3334 -Force -ErrorAction SilentlyContinue
 }
 Start-Sleep -Seconds 2
 
@@ -93,7 +93,37 @@ Write-Host "  [IR]  Thermal/IR camera -> presence + motion detection" -Foregroun
 Write-Host "  [WD]  Sensor watchdog -> auto-restart on crash" -ForegroundColor DarkGray
 Write-Host ""
 
+# START OPENJARVIS
+Write-Host "      Starting OpenJarvis on port 8080..." -ForegroundColor DarkGray
+$JarvisDir = "C:\KAI\OpenJarvis-main"
+$scratch = "C:\KAI\scratch"
+$logOut = "$scratch\openjarvis.out.log"
+$logErr = "$scratch\openjarvis.err.log"
+$env:OPENJARVIS_CONFIG = "$JarvisDir\configs\openjarvis\config.toml"
+$uvPath = "C:\Users\revry\miniconda3\Scripts\uv.exe"
+$defaultConfigDir = "$env:USERPROFILE\.openjarvis"
+New-Item -ItemType Directory -Force -Path $defaultConfigDir | Out-Null
+Copy-Item -Path $env:OPENJARVIS_CONFIG -Destination "$defaultConfigDir\config.toml" -Force
+$env:KAI_LOCAL_ONLY = "1"
+$oracleKeysFile = "C:\KAI\data\oracle_keys.json"
+if (Test-Path $oracleKeysFile) {
+    $oracleKeys = Get-Content $oracleKeysFile -Raw | ConvertFrom-Json
+    if ($oracleKeys.groq)   { $env:GROQ_API_KEY   = $oracleKeys.groq }
+    if ($oracleKeys.google) { $env:GOOGLE_API_KEY = $oracleKeys.google }
+    if ($oracleKeys.openai) { $env:OPENAI_API_KEY = $oracleKeys.openai }
+    if ($oracleKeys.xai)    { $env:XAI_API_KEY    = $oracleKeys.xai }
+}
+$env:OPENJARVIS_API_KEY = ""
+if (-not $env:KAI_MODEL) { $env:KAI_MODEL = "kai-next:latest" }
+Start-Process -FilePath $uvPath -ArgumentList "run", "jarvis", "serve", "--host", "127.0.0.1", "--port", "8080", "--engine", "ollama" -WorkingDirectory $JarvisDir -WindowStyle Hidden -RedirectStandardOutput $logOut -RedirectStandardError $logErr
+
 # Run the FULL ecosystem manager (Social Time, Work Time, Fun Time)
 Push-Location "C:\KAI\tools\oracle-discord"
 .\run-ecosystem.ps1
 Pop-Location
+
+Write-Host "Starting log watcher..." -ForegroundColor Cyan
+& "C:\KAI\tools\oracle-discord\watch-logs.ps1"
+
+# The terminal watcher will auto-open your browser to the full rich web GUI (panels, easy mouse/scrolling, like this chat interface).
+# Use that for the best "Grok GUI" experience with all logs, vitals, etc. The console one is a simple side-by-side log cameras view.

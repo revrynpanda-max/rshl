@@ -1,6 +1,6 @@
 [package]
 name = "kai"
-version = "8.4.16"
+version = "9.9.0"
 edition = "2021"
 authors = ["Ryan Ervin <PandaProductionsLogo>"]
 description = "KAI RSHL UI — Geometric Intelligence Engine"
@@ -13,6 +13,10 @@ path = "src/lib.rs"
 [[bin]]
 name = "kai"
 path = "src/main.rs"
+
+[[bin]]
+name = "test_gguf"
+path = "src/bin/test_gguf.rs"
 
 [dependencies]
 ratatui = "0.29"
@@ -42,14 +46,21 @@ candle-nn = "0.10.2"
 candle-transformers = "0.10.2"
 tokenizers = "0.23.1"
 num_cpus = "1.17.0"
+tracing = "0.1.44"
 
 [profile.release]
 opt-level = 3
-lto = true
-codegen-units = 1
+lto = false
+codegen-units = 16
 
 [features]
 default = ["gpu"]
 gpu = ["wgpu", "bytemuck"]
 sparsity_010 = []
+# Put the BitNet LLM on an NVIDIA GPU via Candle's CUDA backend. OFF by default
+# so the normal build needs no CUDA toolkit. Once the CUDA toolkit is installed,
+# build with `--features llm-cuda` and the LLM auto-selects the GPU (CPU fallback
+# stays intact). Pairs with the cuda_if_available device selection in
+# language_warehouse.rs.
+llm-cuda = ["candle-core/cuda", "candle-nn/cuda", "candle-transformers/cuda"]
 

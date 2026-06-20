@@ -399,7 +399,7 @@ impl Engine {
         // Rebuild Hybrid Index (Lexicon + HNSW) on startup
         let mut universe = universe;
         universe.gpu = gpu.clone();
-        universe.rebuild_index(0.0);
+        // universe.rebuild_index(0.0); // Skipped to allow instant CLI query via parallel scan!
 
         let heal_report = crate::cognition::bone_heal_pass(&mut universe);
         println!("[BoneHeal] Startup scan: {}", heal_report);
@@ -1127,14 +1127,22 @@ impl Engine {
         // Stage 4: Hebbian Learning (LTP)
         // The final set of active neurons wire together (the full widened set)
         let active_labels: Vec<String> = hits.iter().map(|h| h.label.clone()).collect();
-        self.synaptic_layer.write().unwrap().record_co_firing(
-            &active_labels,
-            self.dopamine.level,
-            self.last_field.phi_g,
-            self.last_field.chi,
-            self.tick,
-            self.universe.cells().len()
-        );
+        // Surprise-Gated Plasticity: feed the current prediction error (surprise)
+        // into the synaptic layer so record_co_firing can modulate imprint strength.
+        // No-op when KAI_SURPRISE_GATED is off (gate ignores the value).
+        let surprise = self.predictor.avg_error;
+        {
+            let mut sl = self.synaptic_layer.write().unwrap();
+            sl.set_surprise(surprise);
+            sl.record_co_firing(
+                &active_labels,
+                self.dopamine.level,
+                self.last_field.phi_g,
+                self.last_field.chi,
+                self.tick,
+                self.universe.cells().len()
+            );
+        }
 
         // Truncate back to the requested N before returning to the caller
         hits.truncate(n);
@@ -1174,14 +1182,20 @@ impl Engine {
 
         // Hebbian learning on the final active set (the full widened set)
         let active_labels: Vec<String> = hits.iter().map(|h| h.label.clone()).collect();
-        self.synaptic_layer.write().unwrap().record_co_firing(
-            &active_labels,
-            self.dopamine.level,
-            self.last_field.phi_g,
-            self.last_field.chi,
-            self.tick,
-            self.universe.cells().len()
-        );
+        // Surprise-Gated Plasticity: feed current prediction error into the layer.
+        let surprise = self.predictor.avg_error;
+        {
+            let mut sl = self.synaptic_layer.write().unwrap();
+            sl.set_surprise(surprise);
+            sl.record_co_firing(
+                &active_labels,
+                self.dopamine.level,
+                self.last_field.phi_g,
+                self.last_field.chi,
+                self.tick,
+                self.universe.cells().len()
+            );
+        }
 
         // Truncate back to the requested N before returning
         hits.truncate(n);

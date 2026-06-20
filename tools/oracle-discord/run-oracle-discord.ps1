@@ -7,33 +7,56 @@ param(
     [switch]$ConfigureSpeakers,
     [switch]$ConfigureVoice,
     [switch]$FullFleet,
-    [switch]$NoPhoneBridge,
-    [string]$PhoneHost = "0.0.0.0",
-    [int]$PhonePort = 8787,
-    [ValidateSet("local", "tailnet", "any")]
-    [string]$PhoneAllowSource = "tailnet"
+    [switch]$NoSensors
 )
+
+# -- BOOT MODE -----------------------------------------------------------------
+#  Default (no flag): ESSENTIALS MODE - Leo + core (Oracle, KAI, Dashboard)
+#    and helpers boot online; the social bots (Gemini, Claudey, X, Groq) start
+#    ASLEEP to keep CPU/GPU light. Wake them anytime via Oracle in Discord
+#    ("wake groq", "wake up all") - the engine reads ORACLE_START_SLEEP_BOTS.
+#  -FullFleet : boot EVERY agent immediately (no sleep list).
+if ($FullFleet) {
+    Remove-Item "Env:ORACLE_START_SLEEP_BOTS" -ErrorAction SilentlyContinue
+    Write-Host "[Power] FULL FLEET mode - every agent boots online." -ForegroundColor Yellow
+} else {
+    # NIGHT / ESSENTIALS: only Leo + core (Oracle, KAI, Dashboard) boot online.
+    # The social bots start ASLEEP (this was previously set to "" by mistake, so
+    # they booted online anyway). Wake any of them via Oracle in Discord.
+    # Groq stays AWAKE — he owns the radio/DJ room. With Groq asleep the radio was
+    # unowned and Leo (always-on voice) wrongly filled the vacuum and "ran" it. The
+    # other social bots still start asleep for resources; wake them via Oracle.
+    $env:ORACLE_START_SLEEP_BOTS = "Gemini,Claudey,X"
+    # Overnight-safe: force the RAM-protective governor baselines so KAI backs off
+    # learning/ingest early and the machine never reaches a bad point while you sleep.
+    $env:KAI_FORCE_LIMITED = "1"
+    Write-Host "[Power] Essentials mode: Leo + Oracle + KAI core + Groq (radio DJ) online; Gemini/Claudey/X start ASLEEP." -ForegroundColor Yellow
+    Write-Host "[Power] Overnight RAM guard ON (KAI_FORCE_LIMITED=1) - learning backs off early to protect the machine." -ForegroundColor DarkYellow
+    Write-Host "[Power] Wake them via Oracle ('wake groq' / 'wake up all'), or use -FullFleet to boot everyone." -ForegroundColor DarkYellow
+}
 
 # Force UTF-8 so Unicode characters display correctly in PowerShell
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
-$ErrorActionPreference = "Stop"
+# -- CPU GOVERNOR --------------------------------------------------------------
+# Ryzen 5 7600 = 6 cores / 12 threads. Cap KAI's Rust (rayon) global thread pool
+# to the 6 physical cores so it can't saturate all 12 and freeze the machine.
+# Leaves the SMT threads free for Leo's voice, the LLMs, and the OS.
+if (-not $env:RAYON_NUM_THREADS) { $env:RAYON_NUM_THREADS = "6" }
 
-# === FORCE PERSISTENT PHONE SENSOR TOKEN (never regenerate on restart) ===
-# Load from saved state file so the token stays the same across restarts of run-oracle-discord.ps1
-$phoneStatePath = Join-Path $PSScriptRoot "state\phone_sensor_connection.json"
-if (Test-Path $phoneStatePath) {
-    try {
-        $phoneConn = Get-Content $phoneStatePath -Raw | ConvertFrom-Json
-        if ($phoneConn.token -and -not $env:KAI_PHONE_SENSOR_TOKEN) {
-            $env:KAI_PHONE_SENSOR_TOKEN = [string]$phoneConn.token
-            Write-Host "[Phone] Loaded persistent token from saved state (will not change on restart)."
-        }
-    } catch {
-        Write-Warning "Could not load phone token from state file."
-    }
-}
+# -- OLLAMA RAM GOVERNOR -------------------------------------------------------
+# The "llama server" RAM you've seen pile up = ollama holding several Sovereign
+# models in memory at once (each is GBs) + large parallel KV caches. These caps
+# keep it lean: at most 2 models resident, 1 request at a time, and idle models
+# unload after 3 min so RAM frees between uses. NOTE: ollama runs as its own
+# background server, so for these to truly bite you must ALSO set them for the
+# ollama service once (see the setx commands I gave you) and restart ollama.
+if (-not $env:OLLAMA_MAX_LOADED_MODELS) { $env:OLLAMA_MAX_LOADED_MODELS = "2" }
+if (-not $env:OLLAMA_NUM_PARALLEL)      { $env:OLLAMA_NUM_PARALLEL = "1" }
+if (-not $env:OLLAMA_KEEP_ALIVE)        { $env:OLLAMA_KEEP_ALIVE = "3m" }
+
+$ErrorActionPreference = "Stop"
 $ConfigPath = Join-Path $PSScriptRoot ".oracle-discord.local.xml"
 $ParticipantTokenNames = @(
     @{ Name = "KAI";          Env = "ORACLE_DISCORD_TOKEN_KAI" },
@@ -42,10 +65,10 @@ $ParticipantTokenNames = @(
     @{ Name = "Researcher";   Env = "ORACLE_DISCORD_TOKEN_RESEARCHER" },
     @{ Name = "Groq";         Env = "ORACLE_DISCORD_TOKEN_GROQ" },
     @{ Name = "X";            Env = "ORACLE_DISCORD_TOKEN_X" },
-    @{ Name = "Claudey";       Env = "ORACLE_DISCORD_TOKEN_CLAUDEY" },
     @{ Name = "Gemini";       Env = "ORACLE_DISCORD_TOKEN_GEMINI" },
     @{ Name = "GPT";          Env = "ORACLE_DISCORD_TOKEN_GPT" },
-    @{ Name = "Oracle Coder"; Env = "ORACLE_DISCORD_TOKEN_ORACLE_CODER" }
+    @{ Name = "Oracle Coder"; Env = "ORACLE_DISCORD_TOKEN_ORACLE_CODER" },
+    @{ Name = "Claudey";      Env = "ORACLE_DISCORD_TOKEN_CLAUDEY" }
 )
 
 function ConvertFrom-SecureStringPlain {
@@ -69,7 +92,7 @@ function Import-DiscordConfig {
             $config.Token = $secure
             Save-DiscordConfig $config
         }
-        if ($config.Token -and -not $env:ORACLE_DISCORD_TOKEN) {
+        if ($config.Token) {
             $env:ORACLE_DISCORD_TOKEN = (ConvertFrom-SecureStringPlain $config.Token).Trim()
         }
         if ($config.AllowedUserId) {
@@ -208,7 +231,7 @@ function Ensure-DiscordConfig {
         Write-Host "Public chat channel set to $env:ORACLE_DISCORD_PUBLIC_CHAT_CHANNEL_ID"
     }
     if (-not $env:ORACLE_DISCORD_LEO_VOICE_CHANNEL_ID) {
-        $env:ORACLE_DISCORD_LEO_VOICE_CHANNEL_ID = "1505088473307283517"
+        $env:ORACLE_DISCORD_LEO_VOICE_CHANNEL_ID = "1489796367466500129"
         Write-Host "Leo voice channel set to $env:ORACLE_DISCORD_LEO_VOICE_CHANNEL_ID"
     }
     if (-not $env:ELEVENLABS_LEO_VOICE_ID) {
@@ -278,6 +301,17 @@ function Start-KaiOracle {
     $stdout = Join-Path $scratch "oracle-discord-kai.out.log"
     $stderr = Join-Path $scratch "oracle-discord-kai.err.log"
 
+    # Preserve the previous run's stderr before it gets overwritten -- a Rust
+    # abort (0xc0000409) prints "thread '...' panicked at ..." or "memory
+    # allocation of N bytes failed" here. Archiving it leaves a readable
+    # post-mortem after a crash instead of losing it on the next launch.
+    if ((Test-Path $stderr) -and (Get-Item $stderr).Length -gt 0) {
+        $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+        Copy-Item $stderr (Join-Path $scratch "kai-crash-$stamp.err.log") -ErrorAction SilentlyContinue
+    }
+    # Rust backtrace on panic -> the .err.log names the exact file:line that aborted.
+    $env:RUST_BACKTRACE = "1"
+
     Write-Host "Oracle is not reachable. Starting KAI in the background..."
     Start-Process -FilePath $kaiExe `
         -ArgumentList "--oracle" `
@@ -305,7 +339,7 @@ function Start-OpenJarvis {
         return
     }
 
-    # Already running — nothing to do
+    # Already running - nothing to do
     try {
         Invoke-RestMethod -Uri "http://127.0.0.1:8080/" -Method Get -TimeoutSec 2 | Out-Null
         Write-Host "[OpenJarvis] Already running at http://127.0.0.1:8080"
@@ -321,8 +355,7 @@ function Start-OpenJarvis {
 
     $env:OPENJARVIS_CONFIG = Join-Path $JarvisDir "configs\openjarvis\config.toml"
     $uvPath = (Get-Command uv -ErrorAction SilentlyContinue).Source
-    if (-not $uvPath) { $uvPath = "C:\Users\$env:USERNAME\miniconda3\Scripts\uv.exe" }
-    if (-not (Test-Path $uvPath)) { $uvPath = "$env:USERPROFILE\.local\bin\uv.exe" }
+    if (-not $uvPath) { $uvPath = "$env:USERPROFILE\.local\bin\uv.exe" }
     if (-not (Test-Path $uvPath)) { $uvPath = "C:\Users\$env:USERNAME\.local\bin\uv.exe" }
 
     $defaultConfigDir = Join-Path $env:USERPROFILE ".openjarvis"
@@ -332,35 +365,47 @@ function Start-OpenJarvis {
     $env:KAI_LOCAL_ONLY = "1"
     # Load oracle_keys.json and pass them as env vars to OpenJarvis so it uses them natively
     $oracleKeys = Get-Content (Join-Path $repoRoot "data\oracle_keys.json") -Raw | ConvertFrom-Json
-    
+
     $env:OPENJARVIS_API_KEY = ""
     $env:OPENJARVIS_CONFIG = $env:OPENJARVIS_CONFIG
     $env:KAI_LOCAL_ONLY = "1"
     if (-not $env:KAI_MODEL) { $env:KAI_MODEL = "kai-next:latest" }
-    
+
     if ($oracleKeys.groq)   { $env:GROQ_API_KEY   = $oracleKeys.groq }
     if ($oracleKeys.google) { $env:GOOGLE_API_KEY = $oracleKeys.google }
     if ($oracleKeys.openai) { $env:OPENAI_API_KEY = $oracleKeys.openai }
     if ($oracleKeys.xai)    { $env:XAI_API_KEY    = $oracleKeys.xai }
 
+    # FUSION (brain vs memory — kept SEPARATE on purpose): OpenJarvis's MEMORY is
+    # already the KAI lattice (rshl backend -> :3334), which is the real fusion. Its
+    # LANGUAGE brain stays on Ollama 'kai-next:latest' — the ready, coherent model
+    # Oracle has always spoken with. We do NOT route the talking through KAI's NATIVE
+    # lattice generation yet, because that generation isn't ready and would make Oracle
+    # dumb / talk like raw KAI. When the native brain IS ready, flip the engine with:
+    #   $env:OPENJARVIS_ENGINE = "kai"
+    $ojEngine = if ($env:OPENJARVIS_ENGINE) { $env:OPENJARVIS_ENGINE } else { "ollama" }
     Start-Process -FilePath $uvPath `
-        -ArgumentList "run", "jarvis", "serve", "--port", "8080", "--engine", "ollama" `
+        -ArgumentList "run", "jarvis", "serve", "--host", "127.0.0.1", "--port", "8080", "--engine", $ojEngine `
         -WorkingDirectory $JarvisDir `
         -WindowStyle Hidden `
         -RedirectStandardOutput $logOut `
         -RedirectStandardError $logErr
 
-    Write-Host "[OpenJarvis] Process launched. Waiting for it to become available at http://127.0.0.1:8080..."
-    
-    for ($i = 0; $i -lt 120; $i++) {
+    # TRULY FIRE-AND-FORGET. The old code blocked the WHOLE system boot in a silent
+    # 60s poll loop here -- and on a first run (uv syncing deps + Ollama warming the
+    # model) that takes minutes, so startup just sat at "Waiting..." looking frozen.
+    # OpenJarvis is an optional backend; nothing downstream needs it before booting.
+    # So: quick courtesy check (in case it's already warm), then RETURN and let the
+    # rest of the fleet boot while OpenJarvis finishes coming up in the background.
+    Write-Host "[OpenJarvis] Launched in background. First run is SLOW (syncing deps + warming the model) -- it'll be live on http://127.0.0.1:8080 in a minute or two."
+    for ($i = 0; $i -lt 6; $i++) {   # ~3s optimistic check only
         if (Test-JarvisReachable) {
             Write-Host "[OpenJarvis] Online and ready!"
             return
         }
         Start-Sleep -Milliseconds 500
     }
-    
-    Write-Host "[OpenJarvis] Warning: Did not become reachable in time. Check $logErr"
+    Write-Host "[OpenJarvis] Still warming up in the background -- NOT blocking boot. It'll appear on :8080 shortly (logs: $logErr). Continuing startup..."
 }
 
 function Stop-ExistingDiscordGateways {
@@ -378,119 +423,18 @@ function Stop-ExistingDiscordGateways {
     }
 }
 
-function New-PhoneBridgeToken {
-    $bytes = New-Object byte[] 32
-    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
-    try {
-        $rng.GetBytes($bytes)
-    } finally {
-        $rng.Dispose()
-    }
-    return ([Convert]::ToBase64String($bytes)).TrimEnd('=').Replace('+','-').Replace('/','_')
-}
-
-function Get-TailscaleIPv4 {
-    $ts = Get-Command tailscale -ErrorAction SilentlyContinue
-    if ($ts) {
-        try {
-            $ip = (& $ts.Source ip -4 2>$null | Select-Object -First 1).Trim()
-            if ($ip -match '^100\.') { return $ip }
-        } catch {}
-    }
-    $net = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
-        Where-Object { $_.IPAddress -match '^100\.' } |
-        Select-Object -First 1
-    if ($net) { return $net.IPAddress }
-    return "100.70.177.87"
-}
-
-function Initialize-PhoneSensorBridgeConfig {
-    param([string]$RepoRoot)
-
-    $tailscaleIp = Get-TailscaleIPv4
-    $stateDir = Join-Path $PSScriptRoot "state"
-    New-Item -ItemType Directory -Force -Path $stateDir | Out-Null
-    $connectionPath = Join-Path $stateDir "phone_sensor_connection.json"
-    $tokenSource = "environment"
-    if (-not $env:KAI_PHONE_SENSOR_TOKEN -and (Test-Path $connectionPath)) {
-        try {
-            $existing = Get-Content $connectionPath -Raw | ConvertFrom-Json
-            if ($existing.token) {
-                $env:KAI_PHONE_SENSOR_TOKEN = [string]$existing.token
-                $tokenSource = "state"
-            }
-        } catch {
-            $tokenSource = "generated"
-        }
-    }
-    if (-not $env:KAI_PHONE_SENSOR_TOKEN) {
-        $env:KAI_PHONE_SENSOR_TOKEN = New-PhoneBridgeToken
-        $tokenSource = "generated"
-    }
-
-    [pscustomobject]@{
-        updatedAt = (Get-Date).ToUniversalTime().ToString("o")
-        bridgeUrl = "http://${tailscaleIp}:${PhonePort}/phone"
-        phyphoxUrl = "http://${tailscaleIp}:${PhonePort}/phyphox"
-        healthUrl = "http://127.0.0.1:${PhonePort}/health"
-        latestUrl = "http://127.0.0.1:${PhonePort}/latest"
-        tailscaleIp = $tailscaleIp
-        bindHost = $PhoneHost
-        port = $PhonePort
-        allowSource = $PhoneAllowSource
-        token = $env:KAI_PHONE_SENSOR_TOKEN
-        tokenSource = $tokenSource
-        note = "Keep this token private. Oracle can DM these details to the authorized owner."
-    } | ConvertTo-Json -Depth 5 | Set-Content -Path $connectionPath -Encoding UTF8
-
-    Write-Host "[Phone] Sensor bridge prepared: http://${tailscaleIp}:${PhonePort}/phone (allow-source=$PhoneAllowSource)"
-    Write-Host "        Phyphox-friendly: http://${tailscaleIp}:${PhonePort}/phyphox"
-    Write-Host "        Health: http://127.0.0.1:${PhonePort}/health   Latest: http://127.0.0.1:${PhonePort}/latest"
-    Write-Host "        Token (for phone POSTs): $env:KAI_PHONE_SENSOR_TOKEN"
-    Write-Host "        On your PHONE (via Tailscale + Phyphox or custom sender): POST JSON telemetry to the /telemetry or /phyphox URL above."
-    Write-Host "        Example minimal payload: { 'device_id':'phone-main', 'location':{'lat':xx,'lon':yy}, 'sensors':{ 'battery_pct':xx, 'accelerometer':{...} } }"
-    Write-Host "        KAI will ingest it into the lattice for real-time awareness / protection."
-    Write-Host "[Phone] Connection state saved to $connectionPath"
-}
-
+# === MAIN ===
 Push-Location $PSScriptRoot
 try {
-    $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..\..")
+    $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 
-    # ── Step 0: Flush session environment ────────────────────────────────
-    Clear-DiscordEnvConfig
-
-    # ── Step 1: Load environment ──────────────────────────────────────────
-    $envFile = Join-Path $PSScriptRoot ".env"
-    if (Test-Path $envFile) {
-        Write-Host "[Init] Loading .env..."
-        Get-Content $envFile | Where-Object { $_ -match '^\s*[A-Za-z0-9_]+\s*=' } | ForEach-Object {
-            $name, $value = $_.Split('=', 2)
-            Set-Item "Env:$($name.Trim())" $value.Trim()
-        }
+    if ($CheckOnly) {
+        Write-Host "[CheckOnly] Validating configuration without starting anything."
     }
+
     Ensure-DiscordConfig
 
-    if (-not $FullFleet) {
-        # ESSENTIALS MODE: Leo + core (Oracle, KAI, Dashboard) + helpers online.
-        # Social bots start ASLEEP so they can't fight Leo for the GPU.
-        # Wake any of them in Discord: "wake groq", "wake up all", etc.
-        $env:ORACLE_START_SLEEP_BOTS = "Gemini,Claudey,X,Groq"
-        $env:ORACLE_LOW_CPU_PHONE_MODE = "1"
-        Write-Host "[Power] Essentials mode: Leo + core + helpers online; social bots (Gemini, Claudey, X, Groq) start asleep." -ForegroundColor Yellow
-        Write-Host "[Power] Wake them via Oracle in Discord ('wake groq') or boot with -FullFleet for everyone." -ForegroundColor DarkYellow
-    } else {
-        Remove-Item "Env:ORACLE_START_SLEEP_BOTS" -ErrorAction SilentlyContinue
-        Remove-Item "Env:ORACLE_LOW_CPU_PHONE_MODE" -ErrorAction SilentlyContinue
-        Write-Host "[Power] Full fleet mode requested. No startup sleep list applied." -ForegroundColor Yellow
-    }
-
-    if (-not $NoPhoneBridge) {
-        Initialize-PhoneSensorBridgeConfig -RepoRoot $repoRoot
-    } else {
-        Write-Host "[Phone] -NoPhoneBridge set; phone sensor bridge will not be launched by watchdog." -ForegroundColor Yellow
-    }
-
+    # -- Step 1: Ensure Node dependencies are installed --------------------
     if (-not (Test-Path (Join-Path $PSScriptRoot "node_modules"))) {
         Write-Host "[Init] Installing Discord gateway dependencies..."
         npm install
@@ -502,23 +446,11 @@ try {
         return
     }
 
-    # ── Step 2: Kill existing gateway processes ───────────────────────────
-    Write-Host "[Init] Hard-resetting environment to prevent port conflicts..." -ForegroundColor Yellow
-    Stop-Process -Name node -Force -ErrorAction SilentlyContinue
-    if (-not $NoStartKai) {
-        Stop-Process -Name kai -Force -ErrorAction SilentlyContinue
-        $port3334 = Get-NetTCPConnection -LocalPort 3334 -ErrorAction SilentlyContinue
-        if ($port3334) { $port3334 | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue } }
-    } else {
-        Write-Host "[Init] -NoStartKai set; preserving any existing KAI/CNS process on port 3334."
-    }
-    $port3001 = Get-NetTCPConnection -LocalPort 3001 -ErrorAction SilentlyContinue
-    if ($port3001) { $port3001 | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue } }
-    Start-Sleep -Seconds 2
+    # -- Step 2: Kill existing gateway processes ---------------------------
     Stop-ExistingDiscordGateways
 
-    # ── Step 3: Launch KAI + OpenJarvis in PARALLEL ───────────────────────
-    # OpenJarvis is fire-and-forget. KAI is required — we wait for it.
+    # -- Step 3: Launch KAI + OpenJarvis in PARALLEL ----------------------
+    # OpenJarvis is fire-and-forget. KAI is required - we wait for it.
     $jarvisDir = Join-Path $repoRoot "OpenJarvis-main"
     Write-Host ""
     Write-Host "[Startup] Phase 1 - Launching backends in parallel..."
@@ -535,166 +467,90 @@ try {
         }
     }
 
-    # Wait for KAI CNS to initialize before attaching sensors
-    Write-Host "      Waiting 3s for CNS to initialize..." -ForegroundColor DarkGray
-    Start-Sleep -Seconds 3
-
-    # ── Step 3.5: START SENSORY LAYER (RF + IR) ───────────────────────────
+    # -- Step 3.5: Autonomous Pre-Boot Codebase Scanner -------------------
     Write-Host ""
-    Write-Host "[Startup] Phase 1.5 - Launching Sensory Layer (RF + IR)..." -ForegroundColor Magenta
-    
-    # Kill any leftover sensor processes
-    Get-CimInstance Win32_Process -Filter "Name='powershell.exe' OR Name='pwsh.exe'" -ErrorAction SilentlyContinue | ForEach-Object {
-        try {
-            if ($_.CommandLine -like "*sensor_watchdog.ps1*") {
-                $_.Terminate() | Out-Null
+    Write-Host "[Startup] Phase 1.5 - KAI is autonomously scanning the codebase..."
+
+    # READINESS GATE (additive): the scanner's deeper / LLM-assisted checks need
+    # OpenJarvis (the cognitive core on :8080). OpenJarvis is launched fire-and-
+    # forget above, so on a cold boot it may still be warming when we get here --
+    # running the scan now would degrade it to "OpenJarvis core offline". So we
+    # WAIT for :8080 to answer before scanning, polling every 2s up to a timeout.
+    # Configurable via KAI_OJ_WAIT_SEC (default 120s). NON-FATAL: if it times out
+    # we log a clear warning and continue anyway so boot never hangs forever.
+    $ojWaitSec = 120
+    if ($env:KAI_OJ_WAIT_SEC) {
+        $parsed = 0
+        if ([int]::TryParse($env:KAI_OJ_WAIT_SEC, [ref]$parsed) -and $parsed -gt 0) {
+            $ojWaitSec = $parsed
+        }
+    }
+    Write-Host "[Startup] Waiting up to $ojWaitSec s for OpenJarvis core (http://127.0.0.1:8080) before scanning..."
+    $ojDeadline = (Get-Date).AddSeconds($ojWaitSec)
+    $ojOnline = $false
+    while ((Get-Date) -lt $ojDeadline) {
+        if (Test-JarvisReachable) { $ojOnline = $true; break }
+        Start-Sleep -Seconds 2
+    }
+    if ($ojOnline) {
+        Write-Host "[Startup] OpenJarvis core online - running full scan."
+    } else {
+        Write-Host "[Startup] WARNING: OpenJarvis core did not come online within $ojWaitSec s - running scanner in DEGRADED mode (deeper/LLM-assisted checks will report 'OpenJarvis core offline'). Continuing boot." -ForegroundColor DarkYellow
+    }
+
+    $scannerScript = Join-Path $repoRoot "tools\oracle-discord\scripts\kai-scanner.mjs"
+    node $scannerScript
+    $scanExit = $LASTEXITCODE
+    if ($scanExit -eq 2 -or $scanExit -ge 3) {
+        # CORE-SAFE MODE -- a file had a syntax error Kai Coder couldn't auto-fix.
+        # Instead of leaving you locked out (especially if you're not home), we
+        # bring up ONLY KAI + Oracle + Dashboard so you can still talk to Oracle
+        # and ask it to restart once the file is fixed. Everything else stays
+        # asleep so a broken bot can't crash-loop. (Core can't sleep.)
+        Write-Host ""
+        Write-Host "[CORE-SAFE MODE] A file couldn't be auto-fixed. Starting ONLY KAI + Oracle + core." -ForegroundColor Yellow
+        Write-Host "    You can DM Oracle to 'restart <bot>' or 'wake <bot>' once it's fixed." -ForegroundColor Yellow
+        Write-Host ""
+        $env:ORACLE_START_SLEEP_BOTS = "Gemini,Claudey,X,Groq,Analyst,Researcher,Kai Coder,Leo"
+    }
+    # exit 0 = all clear (or auto-fixed). We never fully halt anymore -- core
+    # (KAI + Oracle) always comes up so you're never locked out remotely.
+
+    # -- Step 3.9: Start sensor bridges (TinySA RF + Infiray IR) -----------
+    # These were NEVER launched: the old sovereign-start referenced a
+    # non-existent 'tinysa_bridge.py', and this launcher started nothing. The
+    # real, working scripts are tinysa_discord_bridge.py (RF) and
+    # thermal_bridge.py (Infiray IR). The engine is up by now, so they can feed
+    # it on :3334 and post to the #frequencies channel. Skip with -NoSensors.
+    if (-not $NoSensors) {
+        $rfBridge = "C:\KAI\tools\tinysa_discord_bridge.py"
+        $irBridge = "C:\KAI\tools\thermal_bridge.py"
+        if (Test-Path $rfBridge) {
+            $rfRunning = Get-CimInstance Win32_Process -Filter "Name='python.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like '*tinysa_discord_bridge*' }
+            if ($rfRunning) {
+                Write-Host "[Sensors] TinySA RF bridge already running." -ForegroundColor DarkGray
+            } else {
+                Write-Host "[Sensors] Starting TinySA RF bridge (COM6 -> #frequencies)..." -ForegroundColor Magenta
+                Start-Process -FilePath "python" -ArgumentList "`"$rfBridge`" --headless" -WorkingDirectory "C:\KAI\tools" -WindowStyle Hidden -ErrorAction SilentlyContinue
             }
-        } catch {}
-    }
-    Get-WmiObject Win32_Process -Filter "Name='python.exe' OR Name='python3.exe'" -ErrorAction SilentlyContinue | ForEach-Object {
-        try {
-            if ($_.CommandLine -like "*tinysa_bridge*" -or $_.CommandLine -like "*tinysa_discord_bridge*" -or $_.CommandLine -like "*tinysa_fusion_bridge*" -or $_.CommandLine -like "*ir_bridge*" -or $_.CommandLine -like "*sensor_watchdog*" -or $_.CommandLine -like "*phone_sensor_bridge*") {
-                $_.Terminate() | Out-Null
+        } else { Write-Host "[Sensors] TinySA bridge missing at $rfBridge" -ForegroundColor DarkYellow }
+        if (Test-Path $irBridge) {
+            $irRunning = Get-CimInstance Win32_Process -Filter "Name='python.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like '*thermal_bridge*' }
+            if ($irRunning) {
+                Write-Host "[Sensors] Infiray IR bridge already running." -ForegroundColor DarkGray
+            } else {
+                Write-Host "[Sensors] Starting Infiray IR/thermal bridge..." -ForegroundColor Magenta
+                Start-Process -FilePath "python" -ArgumentList "`"$irBridge`"" -WorkingDirectory "C:\KAI\tools" -WindowStyle Hidden -ErrorAction SilentlyContinue
             }
-        } catch {}
+        } else { Write-Host "[Sensors] Thermal bridge missing at $irBridge" -ForegroundColor DarkYellow }
     }
 
-    Write-Host "      [RF] Starting KAI RF Fusion Bridge on COM6..." -ForegroundColor DarkGray
-    Start-Process -FilePath "python" `
-                  -ArgumentList "C:\KAI\tools\tinysa_fusion_bridge.py --headless --port COM6 --discord-channel 1513582425446289658" `
-                  -WindowStyle Hidden `
-                  -ErrorAction SilentlyContinue
-
-    # [DISABLED 2026-06-10] ir_bridge.py loops cv2.VideoCapture every 10s when no IR camera
-    # is connected, which triggers the Windows device/permission sound endlessly.
-    # This was already disabled in sensor_watchdog.ps1 but this launcher still started it.
-    # Re-enable by uncommenting when an actual IR/thermal camera is plugged in.
-    # Write-Host "      [IR] Starting IR camera bridge..." -ForegroundColor DarkGray
-    # Start-Process -FilePath "python" `
-    #               -ArgumentList "C:\KAI\tools\ir_bridge.py --headless" `
-    #               -WindowStyle Hidden `
-    #               -ErrorAction SilentlyContinue
-
-    Write-Host "      [WD] Starting Sensor Watchdog..." -ForegroundColor DarkGray
-
-    # Explicitly release phone sensor port (8787) and others to guarantee no duplicates.
-    # This is critical for reliable real-time phone telemetry (location, accel, battery, etc.)
-    # that feeds KAI's lattice for protection awareness and future device adaptability (robot body, wearables, etc.).
-    Write-Host "      Releasing sensor ports (especially 8787 for phone data) to prevent duplicate bindings..."
-    powershell -Command "& { $ports = @(8787,3333,3334,3400,3401); foreach($p in $ports){ netstat -ano | findstr \":$p\" | ForEach-Object { $id = ($_ -split '\s+')[-1]; if($id -match '^\d+$'){ taskkill /F /PID $id 2>$null } } } }" | Out-Null
-
-    $watchdogArgs = @(
-        "-WindowStyle", "Hidden",
-        "-ExecutionPolicy", "Bypass",
-        "-File", "C:\KAI\tools\sensors\sensor_watchdog.ps1"
-    )
-    if (-not $NoPhoneBridge) {
-        $watchdogArgs += @(
-            "-EnablePhoneBridge",
-            "-PhoneHost", $PhoneHost,
-            "-PhonePort", "$PhonePort",
-            "-PhoneAllowSource", $PhoneAllowSource,
-            "-PhoneToken", $env:KAI_PHONE_SENSOR_TOKEN
-        )
-    }
-    Start-Process -FilePath "powershell" `
-                  -ArgumentList $watchdogArgs `
-                  -WindowStyle Hidden `
-                  -ErrorAction SilentlyContinue
-
-    Write-Host "      Sensory layer online: RF Discord vision + IR thermal awareness active." -ForegroundColor DarkGray
-
-    # ── Step 4: Start Discord gateway ─────────────────────────────────────
+    # -- Step 4: Start Discord gateway ------------------------------------
     Write-Host ""
-    Write-Host "[Startup] Phase 2 - Backends online. Starting microservices ecosystem..."
+    Write-Host "[Startup] Phase 2 - Backends online and codebase CLEARED. Starting microservices ecosystem..."
+    Write-Host "[Startup] You will see individual console windows for each bot."
     Write-Host ""
-
-    # Support easy "essentials" mode for your workflow (live Leo + Oracle + KAI core + learning pipeline).
-    # Set this env BEFORE running the script (or export it) to sleep the heavy specialists:
-    #   $env:ORACLE_START_SLEEP_BOTS = 'Analyst,Researcher,"Kai Coder",Gemini,Claudey,X,Groq'
-    # This keeps CPU/RAM headroom for Leo voice, Oracle orchestration, the sovereign KAI lattice,
-    # and your overnight_pipeline.py learning without the machine going crazy.
-    if ($env:ORACLE_START_SLEEP_BOTS) {
-        Write-Host "[Essentials] ORACLE_START_SLEEP_BOTS active: $($env:ORACLE_START_SLEEP_BOTS)" -ForegroundColor Yellow
-    }
-
-    .\run-ecosystem.ps1 -HealthWaitSec 60
+    .\run-ecosystem.ps1
 } finally {
     Pop-Location
 }
-
-function New-PhoneBridgeToken {
-    $bytes = New-Object byte[] 32
-    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
-    try {
-        $rng.GetBytes($bytes)
-    } finally {
-        $rng.Dispose()
-    }
-    return ([Convert]::ToBase64String($bytes)).TrimEnd('=').Replace('+','-').Replace('/','_')
-}
-
-function Get-TailscaleIPv4 {
-    $ts = Get-Command tailscale -ErrorAction SilentlyContinue
-    if ($ts) {
-        try {
-            $ip = (& $ts.Source ip -4 2>$null | Select-Object -First 1).Trim()
-            if ($ip -match '^100\.') { return $ip }
-        } catch {}
-    }
-    $net = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
-        Where-Object { $_.IPAddress -match '^100\.' } |
-        Select-Object -First 1
-    if ($net) { return $net.IPAddress }
-    return "100.70.177.87"
-}
-
-function Initialize-PhoneSensorBridgeConfig {
-    param([string]$RepoRoot)
-
-    $tailscaleIp = Get-TailscaleIPv4
-    $stateDir = Join-Path $PSScriptRoot "state"
-    New-Item -ItemType Directory -Force -Path $stateDir | Out-Null
-    $connectionPath = Join-Path $stateDir "phone_sensor_connection.json"
-    $tokenSource = "environment"
-    if (-not $env:KAI_PHONE_SENSOR_TOKEN -and (Test-Path $connectionPath)) {
-        try {
-            $existing = Get-Content $connectionPath -Raw | ConvertFrom-Json
-            if ($existing.token) {
-                $env:KAI_PHONE_SENSOR_TOKEN = [string]$existing.token
-                $tokenSource = "state"
-            }
-        } catch {
-            $tokenSource = "generated"
-        }
-    }
-    if (-not $env:KAI_PHONE_SENSOR_TOKEN) {
-        $env:KAI_PHONE_SENSOR_TOKEN = New-PhoneBridgeToken
-        $tokenSource = "generated"
-    }
-
-    [pscustomobject]@{
-        updatedAt = (Get-Date).ToUniversalTime().ToString("o")
-        bridgeUrl = "http://${tailscaleIp}:${PhonePort}/phone"
-        phyphoxUrl = "http://${tailscaleIp}:${PhonePort}/phyphox"
-        healthUrl = "http://127.0.0.1:${PhonePort}/health"
-        latestUrl = "http://127.0.0.1:${PhonePort}/latest"
-        tailscaleIp = $tailscaleIp
-        bindHost = $PhoneHost
-        port = $PhonePort
-        allowSource = $PhoneAllowSource
-        token = $env:KAI_PHONE_SENSOR_TOKEN
-        tokenSource = $tokenSource
-        note = "Keep this token private. Oracle can DM these details to the authorized owner."
-    } | ConvertTo-Json -Depth 5 | Set-Content -Path $connectionPath -Encoding UTF8
-
-    Write-Host "[Phone] Sensor bridge prepared: http://${tailscaleIp}:${PhonePort}/phone (allow-source=$PhoneAllowSource)"
-    Write-Host "        Phyphox-friendly: http://${tailscaleIp}:${PhonePort}/phyphox"
-    Write-Host "        Health: http://127.0.0.1:${PhonePort}/health   Latest: http://127.0.0.1:${PhonePort}/latest"
-    Write-Host "        Token (for phone POSTs): $env:KAI_PHONE_SENSOR_TOKEN"
-    Write-Host "        On your PHONE (via Tailscale + Phyphox or custom sender): POST JSON telemetry to the /telemetry or /phyphox URL above."
-    Write-Host "        Example minimal payload: { 'device_id':'phone-main', 'location':{'lat':xx,'lon':yy}, 'sensors':{ 'battery_pct':xx, 'accelerometer':{...} } }"
-    Write-Host "        KAI will ingest it into the lattice for real-time awareness / protection."
-    Write-Host "[Phone] Connection state saved to $connectionPath"
-}
-

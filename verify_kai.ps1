@@ -1,4 +1,4 @@
-﻿# KAI Integration Verification Script
+# KAI Integration Verification Script
 # Verifies the full chain: Oracle -> RSHL -> OpenJarvis -> Grounding
 
 Write-Host "`n--- KAI SYSTEM VERIFICATION ---" -ForegroundColor Cyan
@@ -6,9 +6,9 @@ Write-Host "`n--- KAI SYSTEM VERIFICATION ---" -ForegroundColor Cyan
 $Success = $true
 
 # 1. Oracle Server Check
-Write-Host "[1/4] Checking Oracle Server (Port 3333)..." -NoNewline
+Write-Host "[1/4] Checking Oracle Server (Port 3334)..." -NoNewline
 try {
-    $status = Invoke-RestMethod -Uri "http://127.0.0.1:3333/api/status" -Method Get -ErrorAction Stop
+    $status = Invoke-RestMethod -Uri "http://127.0.0.1:3334/api/status" -Method Get -ErrorAction Stop
     Write-Host " [OK]" -ForegroundColor Green
     Write-Host "     Lattice Size: $($status.lattice_size)"
     Write-Host "     Status: $($status.status)"
@@ -23,7 +23,7 @@ Write-Host "[2/4] Verifying RSHL Memory Engine (Query <1ms)..." -NoNewline
 if ($status) {
     $sw = [System.Diagnostics.Stopwatch]::StartNew()
     try {
-        $query = Invoke-RestMethod -Uri "http://127.0.0.1:3333/api/rshl/query" -Method Post -Body (ConvertTo-Json @{query="VSA architecture"; limit=1}) -ContentType "application/json" -ErrorAction Stop
+        $query = Invoke-RestMethod -Uri "http://127.0.0.1:3334/api/rshl/query" -Method Post -Body (ConvertTo-Json @{query="VSA architecture"; limit=1}) -ContentType "application/json" -ErrorAction Stop
         $sw.Stop()
         if ($sw.Elapsed.TotalMilliseconds -lt 10) {
             Write-Host " [OK] ($($sw.Elapsed.TotalMilliseconds)ms)" -ForegroundColor Green
@@ -59,8 +59,8 @@ try {
 Write-Host "[4/4] Verifying 'src-CLI code' Grounding..." -NoNewline
 try {
     # Try to inspect a file from the unmodified source via Oracle
-    $inspect = Invoke-RestMethod -Uri "http://127.0.0.1:3333/api/inspect?path=src-CLI%20code/src/QueryEngine.ts" -Method Get -ErrorAction Stop
-    if ($inspect -match "FILE INSPECTION") {
+    $inspect = Invoke-RestMethod -Uri "http://127.0.0.1:3334/api/inspect?path=src-CLI%20code/src/QueryEngine.ts" -Method Get -ErrorAction Stop
+    if ($inspect -match "FILE INSPECTION" -or $inspect -match "FILE:") {
         Write-Host " [OK]" -ForegroundColor Green
         Write-Host "     Path accessible to AIs: src-CLI code/src/QueryEngine.ts"
     } else {

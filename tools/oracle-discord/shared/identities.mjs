@@ -112,8 +112,12 @@ export async function resolveIdentityFromMemory(userId, username) {
  * Returns the identity data for a given Discord User ID.
  */
 export function getIdentityById(userId) {
-  const human = Object.values(HUMAN_REGISTRY).find(h => h.id === userId);
-  if (human) return { type: "human", ...human };
+  // BUGFIX: the registry is keyed BY NAME, so the value has no `name` field.
+  // Returning `{...human}` left `.name` undefined, so every speaker — including
+  // the OWNER — resolved to "Someone" and lost their role/clearance. Attach the
+  // key as `name` so Ryan reads as Ryan (Owner/Creator), not an anonymous guest.
+  const humanEntry = Object.entries(HUMAN_REGISTRY).find(([, h]) => h.id === userId);
+  if (humanEntry) return { type: "human", name: humanEntry[0], ...humanEntry[1] };
 
   const ai = Object.entries(AI_REGISTRY).find(([name, data]) => data.id === userId);
   if (ai) return { type: "ai", name: ai[0], ...ai[1] };

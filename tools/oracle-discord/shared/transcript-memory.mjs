@@ -147,17 +147,20 @@ export function recallMemory(query, limit = 5) {
  * Fetch the last N messages to establish recent context.
  * @param {number} limit - Number of messages to retrieve
  */
-export function getRecentContext(limit = 10) {
+export function getRecentContext(limit = 10, channelId = null) {
   const db = getDB();
-  const stmt = db.prepare(`
-    SELECT speaker, user_id, content, channel_id, timestamp 
-    FROM transcript_fts 
-    ORDER BY timestamp DESC 
-    LIMIT ?
-  `);
-  // FTS doesn't have an auto-incrementing ID easily accessible for ORDER BY unless rowid is used.
-  // We use timestamp DESC. Then reverse to get chronological order.
-  return stmt.all(limit).reverse();
+  // SCOPE TO ONE CHANNEL when given. Without this, recall returned the globally
+  // newest rows — which were mostly other bots' cross-channel chatter and Leo's
+  // own re-posts — instead of THIS conversation. Pass the user's transcript
+  // channel to get the real back-and-forth.
+  const stmt = channelId
+    ? db.prepare(`SELECT speaker, user_id, content, channel_id, timestamp
+                  FROM transcript_fts WHERE channel_id = ?
+                  ORDER BY timestamp DESC LIMIT ?`)
+    : db.prepare(`SELECT speaker, user_id, content, channel_id, timestamp
+                  FROM transcript_fts ORDER BY timestamp DESC LIMIT ?`);
+  const rows = channelId ? stmt.all(channelId, limit) : stmt.all(limit);
+  return rows.reverse();
 }
 
 /**
@@ -217,4 +220,83 @@ export function recallProfileMemories(userId, filters = {}) {
     console.error('[TranscriptMemory/ProfileMemories] Recall failed:', e.message);
     return [];
   }
+}
+
+/**
+ * MEMORY CONSOLIDATION (not pruning) — compress OLD verbatim messages into
+ * compact per-person, per-day digests that keep the gist (names, facts,
+ * decisions, reminders, preferences) and drop the filler. The active DB shrinks
+ * and stays searchable; nothing is lost because every raw row is archived to a
+ * cold file BEFORE it's removed. This is KAI's hippocampus model applied to the
+ * chat log: recent = verbatim, older = consolidated.
+ *
+ * @param {(username:string, dayStr:string, joinedText:string)=>Promise<string>} summarizeFn
+ *        Produces the digest for one person-day (you supply a local LLM).
+ * @param {{olderThanDays?:number, minGroup?:number, dryRun?:boolean}} opts
+ * @returns {Promise<object>} report
+ */
+export async function consolidateOldMemories(summarizeFn, opts = {}) {
+  const { olderThanDays = 30, minGroup = 3, dryRun = false } = opts;
+  const db = getDB();
+  const cutoff = Date.now() - olderThanDays * 86400000;
+  const dayKey = (ts) => new Date(Number(ts)).toISOString().slice(0, 10); // YYYY-MM-DD
+  const archivePath = 'c:/KAI/data/transcript_archive.jsonl';
+  const report = { groups: 0, messagesCompressed: 0, digestsCreated: 0, skippedSmall: 0, dryRun };
+
+  // Old, non-digest profile memories (the rich per-person store).
+  let rows = [];
+  try {
+    rows = db.prepare(
+      `SELECT id, userId, username, content, timestamp FROM user_profile_memories
+        WHERE timestamp < ? AND content NOT LIKE '[DIGEST]%' ORDER BY userId, timestamp`
+    ).all(cutoff);
+  } catch (e) { return { ...report, error: e.message }; }
+
+  // Group by person + day.
+  const groups = new Map();
+  for (const r of rows) {
+    const key = `${r.userId}|${dayKey(r.timestamp)}`;
+    if (!groups.has(key)) groups.set(key, { userId: r.userId, username: r.username, day: dayKey(r.timestamp), items: [] });
+    groups.get(key).items.push(r);
+  }
+
+  const fs = await import('fs');
+  for (const g of groups.values()) {
+    if (g.items.length < minGroup) { report.skippedSmall += g.items.length; continue; }
+    report.groups++;
+    report.messagesCompressed += g.items.length;
+    if (dryRun) continue;
+
+    let digest;
+    try { digest = await summarizeFn(g.username || 'user', g.day, g.items.map(it => it.content).join('\n')); }
+    catch (e) { console.warn('[Consolidate] summarize failed for', g.day, e.message); continue; }
+    if (!digest || !digest.trim()) continue;
+
+    // 1) Archive raw rows to cold storage BEFORE any delete — nothing is lost.
+    try {
+      for (const it of g.items) fs.appendFileSync(archivePath, JSON.stringify(it) + '\n');
+    } catch (e) { console.warn('[Consolidate] archive failed — skipping group to stay safe:', e.message); continue; }
+
+    // 2) Atomic: insert the digest, delete the originals from BOTH tables.
+    const dayTs = new Date(g.day + 'T12:00:00Z').getTime();
+    const dayStart = new Date(g.day + 'T00:00:00Z').getTime();
+    const dayEnd = dayStart + 86400000;
+    const digestContent = `[DIGEST] ${g.day} — ${digest.trim()}`;
+    const ids = g.items.map(it => it.id);
+    try {
+      db.transaction(() => {
+        db.prepare(`INSERT INTO user_profile_memories (id, userId, username, channelId, timestamp, content, previousContent, previousSpeaker, intent, tags, metadata)
+          VALUES (?, ?, ?, '', ?, ?, '', '', 'digest', 'digest,consolidated', '')`)
+          .run(`${g.userId}_digest_${dayTs}`, g.userId, g.username || '', dayTs, digestContent);
+        db.prepare(`INSERT INTO transcript_fts (speaker, user_id, content, context, channel_id, timestamp)
+          VALUES (?, ?, ?, ?, '', ?)`).run(g.username || 'user', g.userId, digestContent, digestContent, dayTs);
+        const ph = ids.map(() => '?').join(',');
+        db.prepare(`DELETE FROM user_profile_memories WHERE id IN (${ph})`).run(...ids);
+        db.prepare(`DELETE FROM transcript_fts WHERE user_id = ? AND timestamp >= ? AND timestamp < ? AND content NOT LIKE '[DIGEST]%'`)
+          .run(g.userId, dayStart, dayEnd);
+      })();
+      report.digestsCreated++;
+    } catch (e) { console.warn('[Consolidate] transaction failed for', g.day, e.message); }
+  }
+  return report;
 }

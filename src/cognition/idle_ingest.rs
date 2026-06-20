@@ -539,9 +539,11 @@ impl IdleIngest {
         if to_process > 0 {
             let chunk = &buffer[cursor.next_line .. cursor.next_line + to_process];
             
-            // 85% CPU Ceiling for background ingest to avoid 100% lockups
+            // ~33% CPU ceiling for background ingest so it stays gentle and never
+            // freezes the machine (was 0.85 = ~10 of 12 threads, which pinned the CPU).
+            // On a 6c/12t Ryzen this yields ~4 threads; heavy work belongs to nightly consolidation.
             let cpus = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
-            let core_cap = (cpus as f32 * 0.85).max(1.0) as usize;
+            let core_cap = (cpus as f32 * 0.34).max(1.0) as usize;
             let pool = rayon::ThreadPoolBuilder::new().num_threads(core_cap).build().unwrap();
             
             let results: Vec<Vec<IngestedCell>> = pool.install(|| {

@@ -1,10 +1,13 @@
 pub mod algebra;
 pub mod bone_heal;
 pub mod candle_voice;
-pub mod bitnet_voice;
+pub mod word_calculus;  // Ryan's "word calculus": carry-weight operators + hierarchical consolidation (flag-gated, off by default)
+pub mod rshl_feedback;  // RSHL feedback binding: bind(wrong ⊕ correct) for instant retrain-free correction recall (flag-gated, off by default)
+
 pub mod semantic_dict;
 pub mod math_engine;
-pub use bitnet_voice::BitnetVoice;
+pub mod ternary_math;
+
 pub use candle_voice::CandleVoice;
 pub mod acc;
 pub mod amygdala;
@@ -48,6 +51,9 @@ pub mod nucleus_accumbens;
 pub mod ofc;
 pub mod ollama_voice;
 pub mod oxytocin;
+pub mod bitnet_inference;
+pub mod bitnet_llama;
+pub mod bitnet_brain;
 pub mod pag;
 pub mod pcc;
 pub mod persona;
@@ -91,7 +97,7 @@ pub mod language_warehouse;
 
 pub use experience::{ExperienceRecord, store_experience, build_experiential_vector};
 pub use engram::{Engram, EngramSystem, store_sparse_experience, retrieve_linked_memories, pattern_completion, ENGRAM_SPARSITY, TEMPORAL_LINK_WINDOW_SECS};
-pub use language_warehouse::{LanguageWarehouse, SparseTernaryVec, init_language_warehouse, query_language_warehouse, suggest_words, warehouse_status, has_word};
+pub use language_warehouse::{LanguageWarehouse, SparseTernaryVec, init_language_warehouse, query_language_warehouse, suggest_words, warehouse_status, has_word, has_native_transformer, global_native_decode};
 
 pub use acc::AccMonitor;
 pub use amygdala::{score_emotional_charge, AmygdalaGate};

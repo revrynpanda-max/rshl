@@ -4,8 +4,12 @@
 # PILLAR 1: Intelligence -- The Model
 # =========================================================================================
 [intelligence]
-default_model = "kai-next:latest"
+default_model = "Oracle-Sovereign:latest"
 fallback_model = "kai-fast:latest"
+# BRAIN: keep the ready Ollama model (kai-next:latest) as the language brain. The
+# fusion with KAI is via MEMORY (rshl backend -> :3334), NOT by routing generation
+# through KAI's native lattice brain, which isn't ready yet (it would make Oracle
+# talk like raw, unready KAI). Switch to "kai" only when native generation is ready.
 preferred_engine = "ollama"
 provider = "local"
 quantization = "none"
@@ -42,12 +46,12 @@ context_from_memory = true
 # =========================================================================================
 [tools.storage]
 default_backend = "rshl"
-oracle_url = "http://127.0.0.1:3333"
+oracle_url = "http://127.0.0.1:3334"
 db_path = "~/.openjarvis/memory.db"
 
 [memory]
 default_backend = "rshl"
-oracle_url = "http://127.0.0.1:3333"
+oracle_url = "http://127.0.0.1:3334"
 db_path = "~/.openjarvis/memory.db"
 context_top_k = 5
 context_min_score = 0.1

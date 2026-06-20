@@ -35,10 +35,22 @@
 //!   Cells don't have stable integer IDs (Vec position changes on insert).
 //!   We key synapses by (pre_label, post_label) — the label is a stable
 //!   text fingerprint derived from the claim text, equivalent to a neuron address.
-
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::hash::{Hash, Hasher};
+use std::collections::hash_map::DefaultHasher;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+// -- Surprise-Gated Plasticity (opt-in) --
+// KAI-native adaptation of the Titans "test-time memory via surprise" idea.
+// When enabled (env KAI_SURPRISE_GATED=1), synaptic imprint strength is modulated
+// by the CURRENT surprise signal -- KAI's EXISTING prediction error
+// (PredictiveEngine::avg_error, an EMA in [0,1]). Surprising co-firings imprint
+// harder (up to 2.5x); known/zero-surprise events imprint exactly as before (1.0x).
+// Forgetting is also mildly accelerated for low-surprise, rarely-used synapses.
+// OFF BY DEFAULT -- the engine is unchanged unless the flag is set.
+pub static SURPRISE_GATED: AtomicBool = AtomicBool::new(false);
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -95,7 +107,10 @@ pub struct SynapticLayer {
     pub synapses: Vec<Synapse>,
     /// pre_label → indices into self.synapses (fast fan-out lookup)
     #[serde(default)]
-    index: HashMap<Arc<str>, Vec<usize>>,
+    pub index: HashMap<Arc<str>, Vec<usize>>,
+    /// Latent Trace Map: Hashed essences of pruned synapses (Savings in Relearning)
+    #[serde(default)]
+    pub latent_traces: HashSet<u64>,
     /// Current tick counter
     pub tick: u64,
     /// Total LTP events applied
@@ -104,11 +119,21 @@ pub struct SynapticLayer {
     pub total_ltd: u64,
     /// Total synapses pruned
     pub total_pruned: u64,
+    /// Current surprise level (0-1), mirror of the predictor's prediction error.
+    /// Only consulted when SURPRISE_GATED is enabled. Set via set_surprise.
+    #[serde(default)]
+    pub surprise_level: f32,
 }
 
 impl SynapticLayer {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Set the current surprise level (clamped to [0,1]). Mirror of the
+    /// predictor's prediction error. Used only when SURPRISE_GATED is on.
+    pub fn set_surprise(&mut self, s: f32) {
+        self.surprise_level = s.clamp(0.0, 1.0);
     }
 
     /// Record that a set of cells co-fired in the same query window.
@@ -132,10 +157,17 @@ impl SynapticLayer {
         let chi_gate = (1.0 - chi * 0.8).max(0.05);
 
         // LTP magnitude: base × dopamine boost × emergence boost × contradiction gate
-        let ltp_gain = BASE_LTP
+        let mut ltp_gain = BASE_LTP
             * (1.0 + dopamine * 0.8)
             * (1.0 + phi_g * 0.5)
             * chi_gate;
+
+        // Surprise-Gated Plasticity (opt-in): surprising co-firings imprint harder.
+        // surprise=1.0 -> 2.5x imprint; surprise=0.0 -> 1.0x (unchanged from baseline).
+        if SURPRISE_GATED.load(Ordering::Relaxed) {
+            let surprise_mult = 1.0 + 1.5 * self.surprise_level;
+            ltp_gain *= surprise_mult;
+        }
 
         // Apply to all pairs (bidirectional)
         for i in 0..labels.len() {
@@ -180,13 +212,21 @@ impl SynapticLayer {
         self.tick += 1;
         let tick = self.tick;
 
+        // Surprise-Gated forgetting (opt-in): low-surprise, rarely-reinforced
+        // associations decay a touch faster. Conservative and only active when on.
+        let surprise_gated = SURPRISE_GATED.load(Ordering::Relaxed);
+        let surprise_level = self.surprise_level;
+
         let mut to_prune: Vec<usize> = Vec::new();
 
         for (idx, syn) in self.synapses.iter_mut().enumerate() {
             let idle = tick.saturating_sub(syn.last_fire_tick);
             if idle > LTD_IDLE_TICKS {
                 let idle_factor = ((idle - LTD_IDLE_TICKS) as f32 / 200.0).min(3.0);
-                let loss = BASE_LTD * (1.0 + idle_factor);
+                let mut loss = BASE_LTD * (1.0 + idle_factor);
+                if surprise_gated && syn.fire_count <= 2 && surprise_level < 0.25 {
+                    loss *= 1.5;
+                }
                 syn.weight = (syn.weight - loss).max(0.0);
                 self.total_ltd += 1;
                 if syn.weight < MIN_WEIGHT {
@@ -198,6 +238,22 @@ impl SynapticLayer {
         // Prune weakest synapses (reverse order to preserve indices)
         for idx in to_prune.into_iter().rev() {
             let syn = self.synapses.remove(idx);
+            
+            // Generate latent trace before deleting.
+            // BOUND (RAM leak guard): latent_traces otherwise grows forever — one hash
+            // per pruned synapse, never evicted. Over long uptime that's an unbounded
+            // HashSet. Cap it at a generous ceiling: once full we stop adding NEW traces
+            // (we never clear existing ones, so all currently-tracked LTD memory is
+            // preserved — only growth is bounded). At ~16 bytes/entry this caps the set
+            // near ~32 MB instead of climbing without limit.
+            const LATENT_TRACES_CAP: usize = 2_000_000;
+            let mut hasher = DefaultHasher::new();
+            syn.pre_label.hash(&mut hasher);
+            syn.post_label.hash(&mut hasher);
+            if self.latent_traces.len() < LATENT_TRACES_CAP {
+                self.latent_traces.insert(hasher.finish());
+            }
+
             // Remove from index
             if let Some(indices) = self.index.get_mut(&syn.pre_label) {
                 indices.retain(|&i| i != idx);
@@ -283,10 +339,23 @@ impl SynapticLayer {
         let idx = self.synapses.len();
         let pre_arc: Arc<str> = pre.into();
         let post_arc: Arc<str> = post.into();
+        
+        // Check Latent Trace Map for the "Oh yeah, I remember!" multiplier
+        let mut hasher = DefaultHasher::new();
+        pre.hash(&mut hasher);
+        post.hash(&mut hasher);
+        let trace_hash = hasher.finish();
+        
+        let actual_gain = if self.latent_traces.contains(&trace_hash) {
+            gain * 15.0 // Massive relearning multiplier
+        } else {
+            gain
+        };
+
         self.synapses.push(Synapse {
             pre_label: pre_arc.clone(),
             post_label: post_arc,
-            weight: gain,
+            weight: actual_gain,
             last_fire_tick: tick,
             fire_count: 1,
         });
@@ -648,5 +717,78 @@ mod tests {
         assert!(effective > base,
             "synaptic boost should raise score: base={:.3} effective={:.3}", base, effective);
         assert!(effective <= 1.0, "score should be capped at 1.0: {:.3}", effective);
+    }
+
+    // -- Surprise-Gated Plasticity --
+    // SURPRISE_GATED is a global flag, so all assertions live in ONE test that
+    // sets it, exercises high/low/off cases, and restores it before exit.
+    #[test]
+    fn test_surprise_gated_plasticity() {
+        let prev = SURPRISE_GATED.load(Ordering::Relaxed);
+
+        // Case 1: flag ON -- high surprise imprints harder than zero surprise.
+        SURPRISE_GATED.store(true, Ordering::Relaxed);
+
+        let mut sl_high = SynapticLayer::new();
+        sl_high.set_surprise(0.9);
+        sl_high.record_co_firing(&make_labels(&["key", "valueA"]), 0.5, 0.5, 0.2, 1, 400_000);
+        let gain_high = sl_high.weight("key", "valueA");
+
+        let mut sl_zero = SynapticLayer::new();
+        sl_zero.set_surprise(0.0);
+        sl_zero.record_co_firing(&make_labels(&["key", "valueA"]), 0.5, 0.5, 0.2, 1, 400_000);
+        let gain_zero = sl_zero.weight("key", "valueA");
+
+        assert!(gain_high > gain_zero,
+            "flag ON: high-surprise should exceed zero-surprise: high={:.4} zero={:.4}",
+            gain_high, gain_zero);
+
+        // Case 2: flag OFF -- surprise_level has NO effect.
+        SURPRISE_GATED.store(false, Ordering::Relaxed);
+
+        let mut sl_off_high = SynapticLayer::new();
+        sl_off_high.set_surprise(0.9);
+        sl_off_high.record_co_firing(&make_labels(&["key", "valueA"]), 0.5, 0.5, 0.2, 1, 400_000);
+        let gain_off_high = sl_off_high.weight("key", "valueA");
+
+        let mut sl_off_zero = SynapticLayer::new();
+        sl_off_zero.set_surprise(0.0);
+        sl_off_zero.record_co_firing(&make_labels(&["key", "valueA"]), 0.5, 0.5, 0.2, 1, 400_000);
+        let gain_off_zero = sl_off_zero.weight("key", "valueA");
+
+        assert!((gain_off_high - gain_off_zero).abs() < 1e-6,
+            "flag OFF: surprise_level must not change imprint: {:.6} vs {:.6}",
+            gain_off_high, gain_off_zero);
+        assert!((gain_off_zero - gain_zero).abs() < 1e-6,
+            "flag-ON zero-surprise should equal flag-OFF baseline: {:.6} vs {:.6}",
+            gain_zero, gain_off_zero);
+
+        SURPRISE_GATED.store(prev, Ordering::Relaxed);
+    }
+
+    // Spec-named test: a high-surprise novel association must imprint with a
+    // larger final weight than a low-surprise one when the flag is ON.
+    #[test]
+    fn surprise_gating_boosts_novel_associations() {
+        let prev = SURPRISE_GATED.load(Ordering::Relaxed);
+        SURPRISE_GATED.store(true, Ordering::Relaxed);
+
+        let mut sl = SynapticLayer::new();
+
+        // Maximally surprising association.
+        sl.set_surprise(1.0);
+        sl.record_co_firing(&make_labels(&["novel_pre", "novel_post"]), 0.5, 0.5, 0.2, 1, 400_000);
+        let w_high = sl.weight("novel_pre", "novel_post");
+
+        // Known / zero-surprise association (distinct labels, same layer).
+        sl.set_surprise(0.0);
+        sl.record_co_firing(&make_labels(&["known_pre", "known_post"]), 0.5, 0.5, 0.2, 2, 400_000);
+        let w_low = sl.weight("known_pre", "known_post");
+
+        assert!(w_high > w_low,
+            "high-surprise novel association should imprint stronger: high={:.4} low={:.4}",
+            w_high, w_low);
+
+        SURPRISE_GATED.store(prev, Ordering::Relaxed);
     }
 }

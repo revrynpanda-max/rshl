@@ -4,6 +4,7 @@ use crate::cognition::{
     candidates::CandidateBuffer, EpisodicStore, GlobalWorkspace, SelfStateHub, WorkingMemory,
 };
 use std::io::Read;
+use std::sync::Arc;
 /// Persistence — Save and restore KAI's full cognitive state.
 ///
 /// Biology analog: Long-term memory consolidation to permanent substrate.
@@ -118,7 +119,16 @@ pub fn save_mind(
         episodic: episodic.clone(),
         global_workspace: global_workspace.clone(),
         self_state_hub: self_state_hub.clone(),
-        synaptic_layer: synaptic_layer.clone(),
+        synaptic_layer: crate::core::SynapticLayer {
+            synapses: Vec::new(),
+            index: std::collections::HashMap::new(),
+            latent_traces: synaptic_layer.latent_traces.clone(),
+            tick: synaptic_layer.tick,
+            total_ltp: synaptic_layer.total_ltp,
+            total_ltd: synaptic_layer.total_ltd,
+            total_pruned: synaptic_layer.total_pruned,
+            surprise_level: 0.0,
+        },
     };
 
     match serde_json::to_string(&snapshot) {
@@ -416,6 +426,164 @@ pub fn save_compact_full(
     }
 }
 
+// ── Streaming save (RAM-relief, opt-in) ─────────────────────────────────────────
+// The 180s autosave normally CLONES the entire Universe so it can write to disk
+// without holding the lock — but on a big brain that clone is ~2-3 GB and Windows
+// keeps the freed pages, which is the bulk of the engine's RAM bloat. These two
+// helpers let the caller instead SERIALIZE under the lock (producing only the
+// compact ~650 MB byte buffer + a ~240 MB text vec) and then WRITE outside the
+// lock — no whole-Universe clone. The on-disk result is byte-for-byte the same
+// format as save_compact_full (same compact::serialize_cells, same TextStore::build,
+// same atomic tmp+rename, same save_compact_meta). This is wired behind the
+// KAI_STREAMING_SAVE flag and is OFF unless explicitly enabled.
+
+/// Serialize the brain to (compact cell bytes, per-cell texts) while the caller
+/// holds the Universe lock. Returns None on serialization error (caller skips the
+/// save and tries again next cycle — never writes partial/garbage). Mirrors exactly
+/// what save_compact_full + save_text_store read, so output is identical.
+pub fn serialize_brain(universe: &Universe) -> Option<(Vec<u8>, Vec<String>)> {
+    let cells = universe.get_cells();
+    let cell_bytes = match compact::serialize_cells(cells) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("persistence: streamed serialize_cells failed: {:?} — skipping this save", e);
+            return None;
+        }
+    };
+    let texts: Vec<String> = cells.iter().map(|c| c.claim.text.clone()).collect();
+    Some((cell_bytes, texts))
+}
+
+/// Write a pre-serialized brain to disk WITHOUT holding any lock. Same atomic
+/// writes and same files as save_compact_full; the only difference is the data was
+/// produced by serialize_brain under the lock rather than from a full clone.
+pub fn write_brain_streamed(
+    base_dir: &str,
+    cell_bytes: &[u8],
+    texts: &[String],
+    candidates: &CandidateBuffer,
+    drive: &Drive,
+    synaptic_layer: &crate::core::SynapticLayer,
+    tick: u64,
+    dream_count: u64,
+) -> SaveResult {
+    let cells_path = format!("{}/{}", base_dir, COMPACT_CELLS_FILE);
+    let delta_path = format!("{}/{}", base_dir, COMPACT_DELTA_FILE);
+    if let Some(parent) = Path::new(&cells_path).parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+
+    // 1) Atomic cell write (tmp + rename — an interrupted write can never truncate
+    //    the live brain file). Bail without touching anything else on failure.
+    let tmp_cells = format!("{}.tmp", cells_path);
+    if fs::write(&tmp_cells, cell_bytes).is_err() {
+        eprintln!("persistence: streamed cell write failed — brain NOT modified this cycle");
+        return SaveResult { ok: false, cells: 0, candidates: 0, bytes: 0 };
+    }
+    let _ = fs::rename(&tmp_cells, &cells_path);
+
+    // 2) Rebuild the mmap text store from the captured texts (mirrors save_text_store).
+    let text_path = Path::new(base_dir).join(TEXT_STORE_FILE);
+    if let Ok(store) = crate::core::text_store::TextStore::build(&text_path, texts) {
+        println!("persistence: text store built ({} entries) [streamed]", store.len());
+    }
+
+    // 3) A full save merges the delta into the base — safe to drop it.
+    let _ = fs::remove_file(&delta_path);
+
+    // 4) Metadata (tick, candidates, drive, synapse meta).
+    save_compact_meta(base_dir, candidates, drive, synaptic_layer, tick, dream_count);
+
+    SaveResult {
+        ok: true,
+        cells: texts.len(),
+        candidates: candidates.entries.len(),
+        bytes: cell_bytes.len(),
+    }
+}
+
+#[derive(Serialize)]
+struct InternedSynapse {
+    p: u32,
+    q: u32,
+    w: f32,
+    t: u32,
+    c: u32,
+}
+
+#[derive(Serialize)]
+struct SynapticLayerV4 {
+    label_table: Vec<String>,
+    synapses: Vec<InternedSynapse>,
+    index: std::collections::HashMap<String, Vec<usize>>,
+    latent_traces: std::collections::HashSet<u64>,
+    tick: u64,
+    total_ltp: u64,
+    total_ltd: u64,
+    total_pruned: u64,
+}
+
+#[derive(Serialize)]
+struct MetaV4 {
+    version: u32,
+    tick: u64,
+    dream_count: u64,
+    candidates: CandidateBuffer,
+    drive: Drive,
+    synaptic_layer: SynapticLayerV4,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum SynapseOrInterned {
+    Interned {
+        p: u32,
+        q: u32,
+        w: f32,
+        t: u32,
+        c: u32,
+    },
+    Full {
+        pre_label: String,
+        post_label: String,
+        weight: f32,
+        last_fire_tick: u64,
+        fire_count: u64,
+    }
+}
+
+#[derive(Deserialize)]
+struct SynapticLayerDeserializer {
+    #[serde(default)]
+    label_table: Option<Vec<String>>,
+    #[serde(default)]
+    synapses: Vec<SynapseOrInterned>,
+    #[serde(default)]
+    index: std::collections::HashMap<String, Vec<usize>>,
+    #[serde(default)]
+    latent_traces: std::collections::HashSet<u64>,
+    #[serde(default)]
+    tick: u64,
+    #[serde(default)]
+    total_ltp: u64,
+    #[serde(default)]
+    total_ltd: u64,
+    #[serde(default)]
+    total_pruned: u64,
+}
+
+#[derive(Deserialize)]
+struct MetaDeserializer {
+    #[serde(default)]
+    version: Option<u32>,
+    tick: u64,
+    #[serde(default)]
+    dream_count: u64,
+    candidates: CandidateBuffer,
+    drive: Drive,
+    synaptic_layer: SynapticLayerDeserializer,
+}
+
 fn save_compact_meta(
     base_dir: &str,
     candidates: &CandidateBuffer,
@@ -424,14 +592,44 @@ fn save_compact_meta(
     tick: u64,
     dream_count: u64,
 ) {
-    let meta_path = format!("{}/{}", base_dir, COMPACT_META_FILE);
-    #[derive(Serialize)]
-    struct Meta { version: u32, tick: u64, dream_count: u64, candidates: CandidateBuffer, drive: Drive, synaptic_layer: crate::core::SynapticLayer }
-    let meta = Meta { version: 3, tick, dream_count, candidates: candidates.clone(), drive: drive.clone(), synaptic_layer: synaptic_layer.clone() };
+    let meta_path_zst = format!("{}/{}.zst", base_dir, COMPACT_META_FILE);
+    let synapses_path = format!("{}/data/kai-synapses.bin.zst", base_dir);
+    
+    // Save synapses in binary format
+    if let Ok(bin) = compact::serialize_synapses(&synaptic_layer.synapses) {
+        let tmp_syn = format!("{}.tmp", synapses_path);
+        if fs::write(&tmp_syn, &bin).is_ok() {
+            let _ = fs::rename(&tmp_syn, &synapses_path);
+        }
+    }
+
+    let synaptic_layer_v4 = SynapticLayerV4 {
+        label_table: Vec::new(),
+        synapses: Vec::new(),
+        index: std::collections::HashMap::new(),
+        latent_traces: synaptic_layer.latent_traces.clone(),
+        tick: synaptic_layer.tick,
+        total_ltp: synaptic_layer.total_ltp,
+        total_ltd: synaptic_layer.total_ltd,
+        total_pruned: synaptic_layer.total_pruned,
+    };
+    
+    let meta = MetaV4 {
+        version: 4,
+        tick,
+        dream_count,
+        candidates: candidates.clone(),
+        drive: drive.clone(),
+        synaptic_layer: synaptic_layer_v4,
+    };
+    
     if let Ok(json) = serde_json::to_string(&meta) {
-        let tmp_meta = format!("{}.tmp", meta_path);
-        let _ = fs::write(&tmp_meta, json);
-        let _ = fs::rename(&tmp_meta, meta_path);
+        if let Ok(compressed) = compact::compress(json.as_bytes()) {
+            let tmp_meta = format!("{}.tmp", meta_path_zst);
+            if fs::write(&tmp_meta, &compressed).is_ok() {
+                let _ = fs::rename(&tmp_meta, &meta_path_zst);
+            }
+        }
     }
 }
 
@@ -439,13 +637,27 @@ fn save_compact_meta(
 /// Applies any pending delta file on top of the base cells.
 #[inline(never)]
 pub fn load_compact(base_dir: &str) -> Option<(Universe, CandidateBuffer, Drive, u64, u64, crate::core::SynapticLayer)> {
-    let cells_path = format!("{}/{}", base_dir, COMPACT_CELLS_FILE);
-    let meta_path = format!("{}/{}", base_dir, COMPACT_META_FILE);
-    let delta_path = format!("{}/{}", base_dir, COMPACT_DELTA_FILE);
+    let (cells_path, meta_path, meta_path_zst, delta_path) = if Path::new(&format!("{}/{}", base_dir, COMPACT_CELLS_FILE)).exists() {
+        (
+            format!("{}/{}", base_dir, COMPACT_CELLS_FILE),
+            format!("{}/{}", base_dir, COMPACT_META_FILE),
+            format!("{}/{}.zst", base_dir, COMPACT_META_FILE),
+            format!("{}/{}", base_dir, COMPACT_DELTA_FILE),
+        )
+    } else {
+        let cells_file = COMPACT_CELLS_FILE.strip_prefix("data/").unwrap_or(COMPACT_CELLS_FILE);
+        let meta_file = COMPACT_META_FILE.strip_prefix("data/").unwrap_or(COMPACT_META_FILE);
+        let delta_file = COMPACT_DELTA_FILE.strip_prefix("data/").unwrap_or(COMPACT_DELTA_FILE);
+        (
+            format!("{}/{}", base_dir, cells_file),
+            format!("{}/{}", base_dir, meta_file),
+            format!("{}/{}.zst", base_dir, meta_file),
+            format!("{}/{}", base_dir, delta_file),
+        )
+    };
 
-    // println!("[load_compact] checking cells_path={} meta_path={}", cells_path, meta_path);
-    if !Path::new(&cells_path).exists() || !Path::new(&meta_path).exists() {
-        // println!("[load_compact] missing files — falling back to legacy JSON");
+    let has_meta = Path::new(&meta_path_zst).exists() || Path::new(&meta_path).exists();
+    if !Path::new(&cells_path).exists() || !has_meta {
         return None;
     }
 
@@ -453,18 +665,12 @@ pub fn load_compact(base_dir: &str) -> Option<(Universe, CandidateBuffer, Drive,
     let cell_bytes = match fs::read(&cells_path) {
         Ok(b) => b,
         Err(e) => {
-            // println!("[load_compact] failed to read cells file: {}", e);
             return None;
         }
     };
-    // println!("[load_compact] read {} bytes from cells file", cell_bytes.len());
     let cells = match compact::deserialize_cells(&cell_bytes) {
-        Ok(c) => {
-            // println!("[load_compact] deserialized {} cells", c.len());
-            c
-        }
+        Ok(c) => c,
         Err(e) => {
-            // println!("[load_compact] deserialize_cells failed: {:?}", e);
             return None;
         }
     };
@@ -478,9 +684,6 @@ pub fn load_compact(base_dir: &str) -> Option<(Universe, CandidateBuffer, Drive,
             repaired += 1;
         }
         valid_cells.push(cell);
-    }
-    if repaired > 0 {
-        // println!("persistence: repaired {} corrupted cells on load", repaired);
     }
 
     let mut universe = Universe::new();
@@ -519,8 +722,6 @@ pub fn load_compact(base_dir: &str) -> Option<(Universe, CandidateBuffer, Drive,
         }
     }
 
-    // NOTE: Index rebuild deferred to first query to reduce RAM on load.
-    // For large lattices (>100K cells) this saves 3-5 GB of HNSW + KMeans RAM.
     if universe.cells().len() < 50_000 {
         universe.rebuild_index(0.0);
     } else {
@@ -530,27 +731,170 @@ pub fn load_compact(base_dir: &str) -> Option<(Universe, CandidateBuffer, Drive,
     // 3. Attach text store for lazy full-text retrieval
     load_text_store(base_dir, &mut universe);
 
-    // 4. Load metadata from JSON
-    let meta_raw = match fs::read_to_string(&meta_path) {
-        Ok(s) => s,
-        Err(e) => {
-            // println!("[load_compact] failed to read meta file: {}", e);
-            return None;
-        }
+    // 4. Load metadata from JSON (zst preferred, fallback to uncompressed)
+    let reader: Box<dyn Read> = if Path::new(&meta_path_zst).exists() {
+        let file = match fs::File::open(&meta_path_zst) {
+            Ok(f) => f,
+            Err(e) => {
+                eprintln!("persistence: failed to open {}: {}", meta_path_zst, e);
+                return None;
+            }
+        };
+        let decoder = match zstd::stream::read::Decoder::new(file) {
+            Ok(d) => d,
+            Err(e) => {
+                eprintln!("persistence: failed to initialize zstd decoder for {}: {}", meta_path_zst, e);
+                return None;
+            }
+        };
+        Box::new(std::io::BufReader::new(decoder))
+    } else {
+        let file = match fs::File::open(&meta_path) {
+            Ok(f) => f,
+            Err(e) => {
+                eprintln!("persistence: failed to open {}: {}", meta_path, e);
+                return None;
+            }
+        };
+        Box::new(std::io::BufReader::new(file))
     };
-    #[derive(Deserialize)]
-    struct Meta { tick: u64, #[serde(default)] dream_count: u64, candidates: CandidateBuffer, drive: Drive, synaptic_layer: crate::core::SynapticLayer }
-    let meta: Meta = match serde_json::from_str(&meta_raw) {
+
+    let deserializer: MetaDeserializer = match serde_json::from_reader(reader) {
         Ok(m) => m,
         Err(e) => {
-            // println!("[load_compact] meta JSON deserialize failed: {}", e);
+            eprintln!("persistence: failed to parse metadata JSON: {}", e);
             return None;
         }
     };
-    /* println!("[load_compact] loaded meta: tick={} dream_count={} candidates={} synapses={}",
-             meta.tick, meta.dream_count, meta.candidates.entries.len(), meta.synaptic_layer.synapses.len()); */
 
-    Some((universe, meta.candidates, meta.drive, meta.tick, meta.dream_count, meta.synaptic_layer))
+    let version = deserializer.version.unwrap_or(3);
+
+    // Reconstruct synaptic layer
+    let synapses_path = format!("{}/data/kai-synapses.bin.zst", base_dir);
+    let mut reconstructed_synaptic_layer = if Path::new(&synapses_path).exists() {
+        if let Ok(bin) = fs::read(&synapses_path) {
+            if let Ok(mut sl) = compact::deserialize_synapses(&bin) {
+                sl.latent_traces = deserializer.synaptic_layer.latent_traces.clone();
+                sl.tick = deserializer.synaptic_layer.tick;
+                sl.total_ltp = deserializer.synaptic_layer.total_ltp;
+                sl.total_ltd = deserializer.synaptic_layer.total_ltd;
+                sl.total_pruned = deserializer.synaptic_layer.total_pruned;
+                sl
+            } else {
+                eprintln!("persistence: failed to deserialize binary synapses");
+                return None;
+            }
+        } else {
+            eprintln!("persistence: failed to read binary synapses file");
+            return None;
+        }
+    } else {
+        // Fallback to legacy JSON deserialization
+        if version >= 4 {
+            let label_table = match deserializer.synaptic_layer.label_table {
+                Some(tbl) => tbl,
+                None => {
+                    eprintln!("persistence: error loading version >= 4 synaptic layer: label_table is missing");
+                    return None;
+                }
+            };
+
+            let synapses: Vec<crate::core::synapse::Synapse> = deserializer.synaptic_layer.synapses.into_iter().map(|s| {
+                match s {
+                    SynapseOrInterned::Interned { p, q, w, t, c } => {
+                        let pre_label = label_table.get(p as usize).map(|s| s.as_str()).unwrap_or("").into();
+                        let post_label = label_table.get(q as usize).map(|s| s.as_str()).unwrap_or("").into();
+                        crate::core::synapse::Synapse {
+                            pre_label,
+                            post_label,
+                            weight: w,
+                            last_fire_tick: t as u64,
+                            fire_count: c as u64,
+                        }
+                    }
+                    SynapseOrInterned::Full { .. } => {
+                        crate::core::synapse::Synapse {
+                            pre_label: "".into(),
+                            post_label: "".into(),
+                            weight: 0.0,
+                            last_fire_tick: 0,
+                            fire_count: 0,
+                        }
+                    }
+                }
+            }).collect();
+
+            let mut index = std::collections::HashMap::new();
+            for (k, v) in deserializer.synaptic_layer.index {
+                if let Ok(idx) = k.parse::<usize>() {
+                    if let Some(label) = label_table.get(idx) {
+                        index.insert(Arc::from(label.as_str()), v);
+                    }
+                }
+            }
+
+            let mut sl = crate::core::SynapticLayer {
+                synapses,
+                index,
+                latent_traces: deserializer.synaptic_layer.latent_traces,
+                tick: deserializer.synaptic_layer.tick,
+                total_ltp: deserializer.synaptic_layer.total_ltp,
+                total_ltd: deserializer.synaptic_layer.total_ltd,
+                total_pruned: deserializer.synaptic_layer.total_pruned,
+                surprise_level: 0.0,
+            };
+            if sl.index.is_empty() && !sl.synapses.is_empty() {
+                for (idx, syn) in sl.synapses.iter().enumerate() {
+                    sl.index.entry(syn.pre_label.clone()).or_default().push(idx);
+                }
+            }
+            sl
+        } else {
+            let synapses: Vec<crate::core::synapse::Synapse> = deserializer.synaptic_layer.synapses.into_iter().map(|s| {
+                match s {
+                    SynapseOrInterned::Full { pre_label, post_label, weight, last_fire_tick, fire_count } => {
+                        crate::core::synapse::Synapse {
+                            pre_label: pre_label.into(),
+                            post_label: post_label.into(),
+                            weight,
+                            last_fire_tick,
+                            fire_count,
+                        }
+                    }
+                    SynapseOrInterned::Interned { .. } => {
+                        crate::core::synapse::Synapse {
+                            pre_label: "".into(),
+                            post_label: "".into(),
+                            weight: 0.0,
+                            last_fire_tick: 0,
+                            fire_count: 0,
+                        }
+                    }
+                }
+            }).collect();
+
+            let index = deserializer.synaptic_layer.index.into_iter().map(|(k, v)| (Arc::from(k), v)).collect();
+
+            let mut sl = crate::core::SynapticLayer {
+                synapses,
+                index,
+                latent_traces: deserializer.synaptic_layer.latent_traces,
+                tick: deserializer.synaptic_layer.tick,
+                total_ltp: deserializer.synaptic_layer.total_ltp,
+                total_ltd: deserializer.synaptic_layer.total_ltd,
+                total_pruned: deserializer.synaptic_layer.total_pruned,
+                surprise_level: 0.0,
+            };
+            if sl.index.is_empty() && !sl.synapses.is_empty() {
+                for (idx, syn) in sl.synapses.iter().enumerate() {
+                    sl.index.entry(syn.pre_label.clone()).or_default().push(idx);
+                }
+            }
+            sl
+        }
+    };
+
+    Some((universe, deserializer.candidates, deserializer.drive, deserializer.tick, deserializer.dream_count, reconstructed_synaptic_layer))
 }
 
 fn chrono_now() -> String {
@@ -582,8 +926,14 @@ pub fn save_text_store(base_dir: &str, universe: &crate::core::Universe) {
 /// Then optionally clear in-RAM text for non-atomic (Layer 2+) cells to reclaim RAM.
 pub fn load_text_store(base_dir: &str, universe: &mut crate::core::Universe) {
     let path = std::path::Path::new(base_dir).join(TEXT_STORE_FILE);
-    if path.exists() {
-        if let Ok(store) = crate::core::text_store::TextStore::open(&path) {
+    let path_fallback = std::path::Path::new(base_dir).join(TEXT_STORE_FILE.strip_prefix("data/").unwrap_or(TEXT_STORE_FILE));
+    let resolved_path = if path.exists() {
+        path
+    } else {
+        path_fallback
+    };
+    if resolved_path.exists() {
+        if let Ok(store) = crate::core::text_store::TextStore::open(&resolved_path) {
             let count = store.len();
             universe.text_store = Some(store);
             // Assign text_ids and reclaim RAM for parent cells (Layer 2+)
@@ -613,6 +963,36 @@ pub fn load_text_store(base_dir: &str, universe: &mut crate::core::Universe) {
             println!("persistence: text store attached ({} entries)", count);
         }
     }
+}
+
+/// Load the goal vector of the live drive directly from metadata.
+pub fn load_live_goal_vector(base_dir: &str) -> Option<crate::core::SparseVec> {
+    let (meta_path_zst, meta_path) = if Path::new(&format!("{}/{}.zst", base_dir, COMPACT_META_FILE)).exists() || Path::new(&format!("{}/{}", base_dir, COMPACT_META_FILE)).exists() {
+        (
+            format!("{}/{}.zst", base_dir, COMPACT_META_FILE),
+            format!("{}/{}", base_dir, COMPACT_META_FILE),
+        )
+    } else {
+        let meta_file = COMPACT_META_FILE.strip_prefix("data/").unwrap_or(COMPACT_META_FILE);
+        (
+            format!("{}/{}.zst", base_dir, meta_file),
+            format!("{}/{}", base_dir, meta_file),
+        )
+    };
+    
+    let reader: Box<dyn Read> = if Path::new(&meta_path_zst).exists() {
+        let file = fs::File::open(&meta_path_zst).ok()?;
+        let decoder = zstd::stream::read::Decoder::new(file).ok()?;
+        Box::new(std::io::BufReader::new(decoder))
+    } else if Path::new(&meta_path).exists() {
+        let file = fs::File::open(&meta_path).ok()?;
+        Box::new(std::io::BufReader::new(file))
+    } else {
+        return None;
+    };
+    
+    let deserializer: MetaDeserializer = serde_json::from_reader(reader).ok()?;
+    deserializer.drive.goal_vector
 }
 
 #[cfg(test)]
@@ -692,6 +1072,7 @@ mod tests {
             text_id: 0,
             is_archived: false,
             activation_heat: 0.0,
+            resonance_signature: 0,
         };
 
         let bytes = compact::serialize_cells(&[cell.clone()]).expect("serialize should succeed");
@@ -753,6 +1134,7 @@ mod tests {
                 text_id: 0,
                 is_archived: false,
                 activation_heat: 0.0,
+                resonance_signature: 0,
             }
         }
 

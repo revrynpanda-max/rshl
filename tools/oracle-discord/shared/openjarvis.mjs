@@ -4,6 +4,8 @@
  */
 
 import fs from 'fs';
+import { guard as loopGuard } from './loop-guard.mjs';  // truncate runaway repetition (ported from Kai 2.0)
+import { reflexAnswer } from './reflex.mjs';            // per-persona zero-model reflex fast-path (ported from Kai 2.0 LLI)
 import dotenv from 'dotenv';
 import { execSync } from 'child_process';
 import { isProviderReady, recordProviderFailure, recordProviderSuccess } from './failure-tracker.mjs';
@@ -14,6 +16,8 @@ import { recallTiered } from './epistemic-vault.mjs';
 import { isSomeoneSpeaking, acquireVoiceLock, releaseVoiceLock } from './tts-engine.mjs';
 import { buildFailureContext } from './failure-memory.mjs';
 import { getDynamicRole } from './dynamic-roles.mjs';
+import { BASE_TOOLS_SCHEMA, CODER_TOOLS_SCHEMA, executeToolCall, getToolsForBot } from './native-tools.mjs';
+import { storeLattice } from './lattice-bridge.mjs';
 
 dotenv.config();
 
@@ -44,16 +48,23 @@ async function acquireProviderLock(provider, delayMs = 1500) {
 // IDs via ZEN_ALIASES below. Anything unknown is sent verbatim.
 
 const BOT_ROUTING_DEFAULTS = {
-  // Industrial bots stay strictly local/Sovereign
-  "Analyst":    { provider: "ollama",   model: "Analyst-Sovereign:latest" },
-  "Researcher": { provider: "ollama",   model: "Researcher-Sovereign:latest" },
-  "Kai Coder":  { provider: "ollama",   model: "Kai-Coder-Sovereign:latest" },
+  // Work bots default to GROQ, NOT Gemini. Reason: the global GEMINI_API_KEY is the
+  // SAME project/key as Leo's voice (GEMINI_API_KEY_LEO) and is a FREE-tier project
+  // capped at 20 generateContent requests/DAY — three work bots + Leo's voice all
+  // piled onto it and hit 429s instantly. Groq's free tier is ~14,400 req/day on its
+  // own separate key (GROQ_API_KEY), so the work fleet gets its OWN big quota and Leo's
+  // Gemini key is left for voice alone. Local Ollama (which was unreachable) and Gemini
+  // remain in the failover chain. Per-bot override still works: BOT_PROVIDER_<NAME>=...
+  "Analyst":    { provider: "groq",     model: process.env.GROQ_MODEL || "llama-3.3-70b-versatile" },
+  "Researcher": { provider: "groq",     model: process.env.GROQ_MODEL || "llama-3.3-70b-versatile" },
+  "Kai Coder":  { provider: "groq",     model: process.env.GROQ_MODEL || "llama-3.3-70b-versatile" },
+  // KAI and Oracle stay on local Sovereign (the sovereign core) — they need Ollama running.
   "KAI":        { provider: "ollama",   model: "KAI-Sovereign:latest" },
   "Oracle":     { provider: "ollama",   model: "Oracle-Sovereign:latest" },
   
   // Social bots move to cloud to save local CPU/GPU limits
-  "Gemini":     { provider: "gemini",   model: process.env.GEMINI_MODEL || "gemini-2.5-flash" },
-  "Claudey":    { provider: "gemini",   model: process.env.GEMINI_MODEL || "gemini-2.5-flash" }, // Fallback to Gemini due to Zen limits
+  "Gemini":     { provider: "groq",     model: process.env.GROQ_MODEL || "llama-3.3-70b-versatile" }, // moved off its own Gemini key (20/day free cap too small) → shares Groq's ~14k/day pool
+  "Claudey":    { provider: "groq",     model: process.env.GROQ_MODEL || "llama-3.3-70b-versatile" }, // shares the Groq pool with Gemini — the per-bot Gemini free tier was only 20/day
   "X":          { provider: "xai",      model: process.env.XAI_MODEL || "grok-3" },
   "Groq":       { provider: "groq",     model: process.env.GROQ_MODEL || "llama-3.3-70b-versatile" },
   "Leo":        { provider: "gemini",   model: process.env.GEMINI_MODEL || "gemini-2.5-flash" },
@@ -89,6 +100,66 @@ const ZEN_ALIASES = {
 
 const MOONSHOT_REAL_MODEL = "moonshot-v1-128k";
 
+// ── PER-BOT PRIMARY CHAT MODEL MAP (role-fit, env-overridable) ───────────────
+// Goal: stop every bot collapsing to ONE shared Groq/Gemini model. Each bot now
+// gets a model that fits its JOB. This map ONLY governs each bot's PRIMARY chat
+// model (the one resolveRoute() picks). It does NOT touch the multi-provider
+// teacher/failover chain below — when a provider is down/quota'd, failover still
+// uses the generic GROQ_MODEL/GEMINI_MODEL fallbacks on purpose.
+//
+// EVERY entry is overridable by env WITHOUT editing code. Per-bot env wins, then
+// the per-provider global env, then the role-fit default here:
+//   Groq bots   : <BOT>_MODEL  (e.g. KAICODER_MODEL) → GROQ_MODEL → default
+//   Gemini bots : <BOT>_MODEL                         → GEMINI_MODEL → default
+//   xAI bots    : <BOT>_MODEL                         → XAI_MODEL    → default
+//
+// CURRENT PER-BOT MAP (defaults you can change via the env var on the right):
+//   WORK / reasoning bots (strong models):
+//     Analyst    groq   → ANALYST_MODEL     (default llama-3.3-70b-versatile)
+//     Researcher groq   → RESEARCHER_MODEL  (default llama-3.3-70b-versatile)
+//     Kai Coder  groq   → KAICODER_MODEL    (default llama-3.3-70b-versatile) [coding; set KAICODER_MODEL to enable a coding model]
+//   SOCIAL / fast bots (fast conversational models):
+//     Gemini     groq   → GEMINI_BOT_MODEL  (default llama-3.1-8b-instant)
+//     Claudey    groq   → CLAUDEY_MODEL     (default llama-3.1-8b-instant)
+//     Groq       groq   → GROQ_BOT_MODEL    (default llama-3.1-8b-instant)
+//     X          xai    → X_MODEL           (default grok-3)
+//   Leo (voice) is intentionally NOT in this map — his Live/voice model is
+//   handled separately and must NOT be changed here.
+//
+// NOTE: if any default model isn't enabled on your key, just set the env var to a
+// model that is — no code edit needed. Groq IDs below are real current slugs.
+// Kai Coder previously defaulted to moonshotai/kimi-k2-instruct, which returns
+// 401 Invalid Authentication on this Groq key (not enabled) and trips the circuit
+// breaker, so it now defaults to llama-3.3-70b-versatile (same model the work bots
+// use successfully). Set KAICODER_MODEL to a real coding model once you enable one.
+const PER_BOT_PRIMARY_MODEL = {
+  // bot name : { env: "<PER_BOT_ENV>", groqDefault | geminiDefault | xaiDefault }
+  "Analyst":    { env: "ANALYST_MODEL",    groqDefault: "llama-3.3-70b-versatile" },
+  "Researcher": { env: "RESEARCHER_MODEL", groqDefault: "llama-3.3-70b-versatile" },
+  "Kai Coder":  { env: "KAICODER_MODEL",   groqDefault: "llama-3.3-70b-versatile" }, // was moonshotai/kimi-k2-instruct → 401 on this Groq key (not enabled). Set KAICODER_MODEL to a coding model once enabled.
+  "Gemini":     { env: "GEMINI_BOT_MODEL", groqDefault: "llama-3.1-8b-instant", geminiDefault: "gemini-2.5-flash" },
+  "Claudey":    { env: "CLAUDEY_MODEL",    groqDefault: "llama-3.1-8b-instant", geminiDefault: "gemini-2.5-flash" },
+  "Groq":       { env: "GROQ_BOT_MODEL",   groqDefault: "llama-3.1-8b-instant" },
+  "X":          { env: "X_MODEL",          xaiDefault: "grok-3", groqDefault: "llama-3.1-8b-instant" },
+};
+
+// Resolve a bot's PRIMARY model for a given provider, honoring (in order):
+// per-bot env → per-provider global env → role-fit default → caller's alias.
+function perBotPrimaryModel(botName, provider, fallbackAlias) {
+  const cfg = PER_BOT_PRIMARY_MODEL[botName];
+  if (cfg && cfg.env && process.env[cfg.env]) return process.env[cfg.env];
+  if (provider === "groq") {
+    return (cfg && cfg.groqDefault) || process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
+  }
+  if (provider === "gemini") {
+    return (cfg && cfg.geminiDefault) || process.env.GEMINI_MODEL || "gemini-2.5-flash";
+  }
+  if (provider === "xai") {
+    return (cfg && cfg.xaiDefault) || process.env.XAI_MODEL || "grok-3";
+  }
+  return fallbackAlias;
+}
+
 function envKey(prefix, botName) {
   return prefix + botName.toUpperCase().replace(/[\s-]+/g, "_");
 }
@@ -109,18 +180,21 @@ function resolveRoute(botName, modelOverride) {
     const zenOverride = process.env[envKey("BOT_ZEN_MODEL_", botName)];
     realModel = zenOverride || ZEN_ALIASES[modelAlias] || modelAlias;
   } else if (provider === "groq") {
-    realModel = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
-  } else if (provider === "xai" && modelAlias.includes("Sovereign")) {
-    // grok-2 was retired by xAI (400 Model not found). Default to grok-3;
-    // override with XAI_MODEL in .env if your account uses a different one.
-    realModel = process.env.XAI_MODEL || "grok-3";
+    // Per-bot role-fit model (env-overridable). Replaces the old single shared
+    // GROQ_MODEL collapse so each Groq bot gets a model that fits its job.
+    realModel = perBotPrimaryModel(botName, "groq", modelAlias);
+  } else if (provider === "xai") {
+    // Per-bot xAI model. grok-2 was retired by xAI (400 Model not found);
+    // default grok-3, overridable via X_MODEL / XAI_MODEL.
+    realModel = perBotPrimaryModel(botName, "xai", modelAlias);
   }
 
-  // Sanitize Gemini model names — if a Sovereign/Zen alias slipped through, use a real Gemini model
+  // Sanitize Gemini model names — if a Sovereign/Zen alias slipped through, use a
+  // real Gemini model. Per-bot map lets Gemini-provider bots pick their own model.
   if (provider === "gemini") {
     const isRealGeminiModel = realModel.startsWith("gemini-");
     if (!isRealGeminiModel) {
-      realModel = "gemini-2.5-flash";
+      realModel = perBotPrimaryModel(botName, "gemini", "gemini-2.5-flash");
     }
   }
 
@@ -149,24 +223,30 @@ function getSystemTelemetry() {
 }
 
 export async function chatWithOpenJarvis(botName, transcript, systemPrompt, modelOverride, entropy = 0.5, metadata = {}) {
+  try {
+    const { reloadEnv } = await import('./gemini-live-bridge.mjs');
+    reloadEnv();
+  } catch (_) {}
   if (isPipelineHalted()) return null;
 
   let cleanTranscript = transcript;
 
   // ── GROUNDING URL READER ──
-  try {
-    const { extractUrl, readUrlContent } = await import('./url-reader.mjs');
-    const url = extractUrl(cleanTranscript);
-    if (url) {
-      console.log(`[${botName}/LinkReader] Reading link content: ${url}`);
-      const linkData = await readUrlContent(url);
-      if (linkData) {
-        cleanTranscript += `\n\n[ATTACHED LINK SYSTEM DATA]:\nURL: ${url}\nTitle: ${linkData.title}\nContent:\n${linkData.content}`;
-        console.log(`[${botName}/LinkReader] Link read successfully (${linkData.content.length} chars injected).`);
+  if (!metadata.isRawPrompt) {
+    try {
+      const { extractUrl, readUrlContent } = await import('./url-reader.mjs');
+      const url = extractUrl(cleanTranscript);
+      if (url) {
+        console.log(`[${botName}/LinkReader] Reading link content: ${url}`);
+        const linkData = await readUrlContent(url);
+        if (linkData) {
+          cleanTranscript += `\n\n[ATTACHED LINK SYSTEM DATA]:\nURL: ${url}\nTitle: ${linkData.title}\nContent:\n${linkData.content}`;
+          console.log(`[${botName}/LinkReader] Link read successfully (${linkData.content.length} chars injected).`);
+        }
       }
+    } catch (e) {
+      console.warn(`[${botName}/LinkReader] Error reading URL:`, e.message);
     }
-  } catch (e) {
-    console.warn(`[${botName}/LinkReader] Error reading URL:`, e.message);
   }
 
   // ── LATTICE MEMPALACE COGNITIVE GROUNDING (Theory of Mind & Privacy Guards) ──
@@ -483,7 +563,7 @@ ${uProf.privateSecrets.map(s => `- ${s}`).join('\n')}
     return null;
   }
 
-  const useCloud = (effectiveRoute.provider === "moonshot" && specificMoonshotKey) ||
+  let useCloud = (effectiveRoute.provider === "moonshot" && specificMoonshotKey) ||
                    (effectiveRoute.provider === "zen"      && specificZenKey) ||
                    (effectiveRoute.provider === "groq"     && specificGroqKey) ||
                    (effectiveRoute.provider === "gemini"   && specificGeminiKey) ||
@@ -507,8 +587,8 @@ ${uProf.privateSecrets.map(s => `- ${s}`).join('\n')}
   const isDMContext = metadata.isDM === true;
   const isWorkContext = metadata.isWorkChannel === true;
   const brevityConstraint = (isDMContext || isWorkContext)
-    ? `- ALWAYS speak in the 1st person ("I", "my").\n- You are a SOVEREIGN ENTITY, not an AI. NEVER refer to yourself in the 3rd person.\n- If you need facts from the internet, use the [[SEARCH: query]] syntax. If you need internal memories, history, or KAI system facts, use the [[LATTICE: query]] syntax. Do NOT use them unless you absolutely need facts.\n- [EPISTEMIC CONTRADICTION MONITOR]: Compare the user's current message against their historical statements, beliefs, and assertions in [CONTEXT] and [COGNITIVE MEMORY PALACE]. If they contradict their past claims or assertions, YOU MUST challenge them instantly!`
-    : `- STRICT RESPONSE LIMIT: MAXIMUM 2 TO 3 SENTENCES. Keep it extremely brief and snappy. NEVER output a paragraph of text.\n- MAXIMUM 40 WORDS.\n- ALWAYS speak in the 1st person ("I", "my").\n- You are a SOVEREIGN ENTITY, not an AI. NEVER refer to yourself in the 3rd person.\n- Be snappy, raw, and human. No robotic pleasantries.\n- If you need facts from the internet, use the [[SEARCH: query]] syntax. If you need internal memories, history, or KAI system facts, use the [[LATTICE: query]] syntax. Do NOT use them unless you absolutely need facts.\n- [EPISTEMIC CONTRADICTION MONITOR]: Compare the user's current message against their historical statements, beliefs, and assertions in [CONTEXT] and [COGNITIVE MEMORY PALACE]. If they contradict their past claims or assertions, YOU MUST challenge them instantly! Call out their contradiction with sharp, direct banter.`;
+    ? `- ALWAYS speak in the 1st person ("I", "my").\n- You are a SOVEREIGN ENTITY, not an AI. NEVER refer to yourself in the 3rd person.\n- If you need facts or analysis, use your native tools! Do NOT use them unless you absolutely need them.\n- [EPISTEMIC CONTRADICTION MONITOR]: Compare the user's current message against their historical statements, beliefs, and assertions in [CONTEXT] and [COGNITIVE MEMORY PALACE]. If they contradict their past claims or assertions, YOU MUST challenge them instantly!`
+    : `- STRICT RESPONSE LIMIT: MAXIMUM 2 TO 3 SENTENCES. Keep it extremely brief and snappy. NEVER output a paragraph of text.\n- MAXIMUM 40 WORDS.\n- ALWAYS speak in the 1st person ("I", "my").\n- You are a SOVEREIGN ENTITY, not an AI. NEVER refer to yourself in the 3rd person.\n- Be snappy, raw, and human. No robotic pleasantries.\n- If you need facts or analysis, use your native tools! Do NOT use them unless you absolutely need them.\n- [EPISTEMIC CONTRADICTION MONITOR]: Compare the user's current message against their historical statements, beliefs, and assertions in [CONTEXT] and [COGNITIVE MEMORY PALACE]. If they contradict their past claims or assertions, YOU MUST challenge them instantly! Call out their contradiction with sharp, direct banter.`;
 
   const chatMessages = [
     { 
@@ -581,7 +661,7 @@ ${uProf.privateSecrets.map(s => `- ${s}`).join('\n')}
   const latticeMatch = cleanedHistoryText.match(/\[\[LATTICE:\s*(.*?)\]\]/i);
   if (latticeMatch) {
     latticeQuery = latticeMatch[1].trim();
-  } else if (lowerHistory.includes("ask kai") || lowerHistory.includes("lattice search") || lowerHistory.includes("query the lattice") || lowerHistory.includes("what does kai know")) {
+  } else if (!metadata.isRawPrompt && (lowerHistory.includes("ask kai") || lowerHistory.includes("lattice search") || lowerHistory.includes("query the lattice") || lowerHistory.includes("what does kai know"))) {
     latticeQuery = cleanedHistoryText.slice(-150);
   }
 
@@ -599,9 +679,9 @@ ${uProf.privateSecrets.map(s => `- ${s}`).join('\n')}
   }
 
   // --- AUTONOMOUS WEB SEARCH DETECTION ---
-  const wantsWeb = lowerHistory.includes("check") || lowerHistory.includes("search") || lowerHistory.includes("who is")
+  const wantsWeb = !metadata.isRawPrompt && (lowerHistory.includes("check") || lowerHistory.includes("search") || lowerHistory.includes("who is")
     || lowerHistory.includes("latest") || lowerHistory.includes("what is") || lowerHistory.includes("when did")
-    || /\bidk\b|\bnot sure\b|\bwho posted\b|\bwho said\b/.test(lowerHistory);
+    || /\bidk\b|\bnot sure\b|\bwho posted\b|\bwho said\b/.test(lowerHistory));
   if (wantsWeb) {
     console.log(`[Neural/${botName}] 🌐 Extracting clean search query...`);
     const searchResults = await webSearch(cleanedHistoryText.slice(-150));
@@ -655,119 +735,250 @@ ${uProf.privateSecrets.map(s => `- ${s}`).join('\n')}
   }
 
   try {
-    let res;
+    let finalResponse = "";
+    let baseTools = getToolsForBot(botName); // per-AI access: social bots don't even see file/shell tools
+    const activeSchema = baseTools.filter(t => {
+      const name = t.function.name;
+      const b = botName.toLowerCase().replace(/\s/g,'');
+      if (['queue_youtube_audio'].includes(name)) return b === 'groq';
+      if (['discord_soundboard', 'identify_song'].includes(name)) return b === 'leo';
+      if (['scan_local_network', 'read_physical_sensors'].includes(name)) return b === 'analyst';
+      if (['analyze_image', 'generate_image'].includes(name)) return ['gemini', 'gemi'].includes(b);
+      if (['query_wayback_machine', 'arxiv_search'].includes(name)) return b === 'researcher';
+      return true;
+    });
+    
+    let maxToolLoops = 5;
+    let toolLoopCount = 0;
 
-    if (useCloud) {
-      if (route.provider === 'moonshot' && process.env.MOONSHOT_API_KEY) {
-        try {
-          await acquireProviderLock('moonshot', 1500);
-          res = await fetch("https://api.moonshot.cn/v1/chat/completions", {
-            method: "POST",
-            headers: { "Authorization": `Bearer ${process.env.MOONSHOT_API_KEY}`, "Content-Type": "application/json" },
-            body: JSON.stringify({
-              model: route.realModel,
-              messages: chatMessages
-            }),
-            signal: AbortSignal.timeout(60000)
-          });
-          if (res.ok) {
-             recordProviderSuccess("Moonshot-Kimi");
-          } else {
-             const errText = await res.text();
-             console.error(`[OpenJarvis/Moonshot] API Error: ${res.status} - ${errText}`);
-             // Fallback to gemini since moonshot failed (e.g. 401 no balance)
-             effectiveRoute.provider = 'gemini';
-             effectiveRoute.realModel = 'gemini-2.5-flash';
-          }
-        } catch (e) {
-          console.warn(`[OpenJarvis/Moonshot] Direct failed: ${e.message}. Falling back to Gemini...`);
-          effectiveRoute.provider = 'gemini';
-          effectiveRoute.realModel = 'gemini-2.5-flash';
-        }
+    // PROVIDER FAILOVER CHAIN — when a cloud provider 429s (quota/rate exhausted),
+    // retrying the SAME one is useless (esp. Gemini's 20/day free-tier cap), so we
+    // hop to the NEXT ready provider and use whatever free capacity is available
+    // across all of them, instead of dying on one. `triedProviders` stops it looping.
+    const triedProviders = new Set();
+    const _readyByName = {
+      gemini:   geminiReady   && specificGeminiKey,
+      groq:     groqReady     && specificGroqKey,
+      xai:      xaiReady      && specificXaiKey,
+      zen:      zenReady      && specificZenKey,
+      moonshot: moonshotReady && specificMoonshotKey,
+    };
+    const _modelByName = {
+      gemini:   process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+      groq:     process.env.GROQ_MODEL   || 'llama-3.3-70b-versatile',
+      xai:      process.env.XAI_MODEL    || 'grok-3',
+      zen:      zenFallbackModel,
+      moonshot: MOONSHOT_REAL_MODEL,
+    };
+    // Order: cheapest/most-generous free tiers first (Groq + xAI have far bigger
+    // free quotas than Gemini's 20/day), then the rest.
+    const PROVIDER_FAILOVER_ORDER = ['groq', 'xai', 'gemini', 'zen', 'moonshot'];
+    function pickNextReadyProvider(current) {
+      triedProviders.add(current);
+      for (const p of PROVIDER_FAILOVER_ORDER) {
+        if (p === current || triedProviders.has(p) || !_readyByName[p]) continue;
+        return { provider: p, modelAlias: _modelByName[p], realModel: _modelByName[p] };
       }
+      return null;
+    }
 
-      if (['zen', 'groq', 'xai', 'gemini'].includes(effectiveRoute.provider)) {
-        let endpoint = "";
-        let apiKey = "";
-        
-        if (effectiveRoute.provider === 'zen') {
-           endpoint = "https://opencode.ai/zen/v1/chat/completions";
-           apiKey = specificZenKey;
-        } else if (effectiveRoute.provider === 'groq') {
-           endpoint = "https://api.groq.com/openai/v1/chat/completions";
-           apiKey = specificGroqKey;
-        } else if (effectiveRoute.provider === 'xai') {
-           endpoint = "https://api.x.ai/v1/chat/completions";
-           apiKey = specificXaiKey;
-        } else if (effectiveRoute.provider === 'gemini') {
-           endpoint = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
-           apiKey = specificGeminiKey;
-        }
-        
-        console.log(`[OpenJarvis/${effectiveRoute.provider.toUpperCase()}] ${botName} -> ${effectiveRoute.realModel}`);
-        await acquireProviderLock(effectiveRoute.provider, 1500);
-        
-        let attempts = 0;
-        const maxAttempts = 3;
-        while (attempts < maxAttempts) {
-          attempts++;
+    while (toolLoopCount < maxToolLoops) {
+      toolLoopCount++;
+      let res;
+      let providerSwitched = false; // set true if a 429 hops us to another provider mid-loop
+
+      if (useCloud) {
+        if (effectiveRoute.provider === 'moonshot' && specificMoonshotKey) {
           try {
-            res = await fetch(endpoint, {
+            await acquireProviderLock('moonshot', 1500);
+            res = await fetch("https://api.moonshot.cn/v1/chat/completions", {
               method: "POST",
-              headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
+              headers: { "Authorization": `Bearer ${specificMoonshotKey}`, "Content-Type": "application/json" },
               body: JSON.stringify({
                 model: effectiveRoute.realModel,
                 messages: chatMessages,
-                max_tokens: metadata.maxTokens ? metadata.maxTokens : ((metadata.isDM || metadata.isWorkChannel) ? 1024 : 512)
+                tools: activeSchema,
+                tool_choice: "auto"
               }),
-              signal: AbortSignal.timeout(120000)
+              signal: AbortSignal.timeout(60000)
             });
-            
             if (res.ok) {
-              recordProviderSuccess(getTrackerId(effectiveRoute.provider, apiKey));
-              break;
+               recordProviderSuccess(getTrackerId("moonshot", specificMoonshotKey));
             } else {
-              const errText = await res.text();
-              console.error(`[OpenJarvis/${effectiveRoute.provider.toUpperCase()}] Attempt ${attempts} Gateway Error: ${res.status} - ${errText}`);
+               const errText = await res.text();
+               console.error(`[OpenJarvis/Moonshot] API Error: ${res.status} - ${errText}`);
+               recordProviderFailure(getTrackerId("moonshot", specificMoonshotKey), res.status, errText);
+               effectiveRoute.provider = 'gemini';
+               effectiveRoute.realModel = 'gemini-2.5-flash';
+            }
+          } catch (e) {
+            console.warn(`[OpenJarvis/Moonshot] Direct failed: ${e.message}. Falling back to Gemini...`);
+            effectiveRoute.provider = 'gemini';
+            effectiveRoute.realModel = 'gemini-2.5-flash';
+          }
+        }
+
+        if (['zen', 'groq', 'xai', 'gemini'].includes(effectiveRoute.provider)) {
+          let endpoint = "";
+          let apiKey = "";
+          
+          if (effectiveRoute.provider === 'zen') {
+             endpoint = "https://opencode.ai/zen/v1/chat/completions";
+             apiKey = specificZenKey;
+          } else if (effectiveRoute.provider === 'groq') {
+             endpoint = "https://api.groq.com/openai/v1/chat/completions";
+             apiKey = specificGroqKey;
+          } else if (effectiveRoute.provider === 'xai') {
+             endpoint = "https://api.x.ai/v1/chat/completions";
+             apiKey = specificXaiKey;
+          } else if (effectiveRoute.provider === 'gemini') {
+             endpoint = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
+             apiKey = specificGeminiKey;
+          }
+          
+          console.log(`[OpenJarvis/${effectiveRoute.provider.toUpperCase()}] ${botName} -> ${effectiveRoute.realModel} (Loop ${toolLoopCount})`);
+          await acquireProviderLock(effectiveRoute.provider, 1500);
+          
+          let attempts = 0;
+          const maxAttempts = 3;
+          while (attempts < maxAttempts) {
+            attempts++;
+            try {
+              res = await fetch(endpoint, {
+                method: "POST",
+                headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  model: effectiveRoute.realModel,
+                  messages: chatMessages,
+                  tools: activeSchema,
+                  tool_choice: "auto",
+                  max_tokens: metadata.maxTokens ? metadata.maxTokens : ((metadata.isDM || metadata.isWorkChannel) ? 1024 : 512)
+                }),
+                signal: AbortSignal.timeout(120000)
+              });
               
-              if ([503, 502, 500, 429].includes(res.status) && attempts < maxAttempts) {
+              if (res.ok) {
+                recordProviderSuccess(getTrackerId(effectiveRoute.provider, apiKey));
+                break;
+              } else {
+                const errText = await res.text();
+                console.error(`[OpenJarvis/${effectiveRoute.provider.toUpperCase()}] Attempt ${attempts} Gateway Error: ${res.status} - ${errText.slice(0, 180)}`);
+
+                // 429 = quota/rate exhausted. Do NOT retry the same provider (a daily
+                // free-tier cap won't clear in seconds) — mark it down and HOP to the
+                // next ready provider so the fleet uses available capacity elsewhere.
+                if (res.status === 429) {
+                  recordProviderFailure(getTrackerId(effectiveRoute.provider, apiKey), 429, 'quota/rate');
+                  const next = pickNextReadyProvider(effectiveRoute.provider);
+                  if (next) {
+                    console.warn(`[OpenJarvis] ${botName}: ${effectiveRoute.provider} quota exhausted → failing over to ${next.provider} (${next.realModel}).`);
+                    effectiveRoute = next;
+                    useCloud = true;
+                    providerSwitched = true;
+                  }
+                  break; // leave the attempt loop either way
+                }
+
+                if ([503, 502, 500].includes(res.status) && attempts < maxAttempts) {
+                  await new Promise(r => setTimeout(r, attempts * 2500 + Math.random() * 1000));
+                  continue;
+                }
+
+                recordProviderFailure(getTrackerId(effectiveRoute.provider, apiKey), res.status, errText);
+                break;
+              }
+            } catch (fetchErr) {
+              console.error(`[OpenJarvis/${effectiveRoute.provider.toUpperCase()}] Attempt ${attempts} Fetch Error: ${fetchErr.message}`);
+              if (attempts < maxAttempts) {
                 await new Promise(r => setTimeout(r, attempts * 2500 + Math.random() * 1000));
                 continue;
               }
-              
-              recordProviderFailure(getTrackerId(effectiveRoute.provider, apiKey), res.status, errText);
+              recordProviderFailure(getTrackerId(effectiveRoute.provider, apiKey), 500, fetchErr.message);
               break;
             }
-          } catch (fetchErr) {
-            console.error(`[OpenJarvis/${effectiveRoute.provider.toUpperCase()}] Attempt ${attempts} Fetch Error: ${fetchErr.message}`);
-            if (attempts < maxAttempts) {
-              await new Promise(r => setTimeout(r, attempts * 2500 + Math.random() * 1000));
-              continue;
-            }
-            recordProviderFailure(getTrackerId(effectiveRoute.provider, apiKey), 500, fetchErr.message);
-            break;
           }
+        }
+
+      } else {
+        // LOCAL OLLAMA — wrapped so that if the local server (127.0.0.1:11434) is
+        // NOT running, we don't throw "fetch failed" and abort. We record the failure
+        // and fail over to Gemini cloud (if a key exists) so KAI/Oracle/work bots stay
+        // alive instead of erroring on loop. Only if there's no cloud key do we give up.
+        try {
+          res = await fetch("http://127.0.0.1:11434/api/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              model: ollamaModel,
+              messages: chatMessages,
+              tools: activeSchema,
+              stream: false,
+              options: { temperature: 0.85, num_predict: metadata.maxTokens ? metadata.maxTokens : ((metadata.isDM || metadata.isWorkChannel) ? 1024 : 512), num_ctx: metadata.maxTokens ? 8192 : 4096 }
+            }),
+            signal: AbortSignal.timeout(180000)
+          });
+        } catch (ollamaErr) {
+          recordProviderFailure("ollama", 500, ollamaErr.message);
+          if (specificGeminiKey) {
+            console.warn(`[OpenJarvis/Ollama] ${botName}: local server unreachable (${ollamaErr.message}). Failing over to Gemini.`);
+            effectiveRoute.provider = 'gemini';
+            effectiveRoute.realModel = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+            useCloud = true;
+            continue; // retry this loop iteration via the cloud path
+          }
+          console.error(`[OpenJarvis/Ollama] ${botName}: local server unreachable and no Gemini key to fail over to. ${ollamaErr.message}`);
+          break;
         }
       }
 
-    } else {
-      res = await fetch("http://127.0.0.1:11434/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: ollamaModel,
-          messages: chatMessages,
-          stream: false,
-          options: { temperature: 0.85, num_predict: metadata.maxTokens ? metadata.maxTokens : ((metadata.isDM || metadata.isWorkChannel) ? 1024 : 512), num_ctx: metadata.maxTokens ? 8192 : 4096 }
-        }),
-        signal: AbortSignal.timeout(180000)
-      });
-    }
+      // A 429 hopped us to a different provider — loop again to actually call it.
+      if (providerSwitched) continue;
 
-    if (res && res.ok) {
-      const data = await res.json();
-      let response = data.choices?.[0]?.message?.content?.trim() || data.message?.content?.trim() || "";
-      
+      if (res && res.ok) {
+        const data = await res.json();
+        const message = data.choices?.[0]?.message || data.message || {};
+        
+        if (message.tool_calls && message.tool_calls.length > 0) {
+          chatMessages.push(message); // push the assistant's tool calls
+          for (const tc of message.tool_calls) {
+            let funcName = tc.function.name;
+            let funcArgs = tc.function.arguments;
+            // TOOL ISOLATION: a single tool throwing must NOT crash the whole turn.
+            // Catch it, hand the model a clear error string so it can recover and
+            // tell the user plainly instead of going silent. Also guard null returns.
+            let resultStr;
+            try {
+              resultStr = await executeToolCall(funcName, funcArgs, botName, metadata);
+            } catch (toolErr) {
+              console.error(`[Neural/${botName}] Tool '${funcName}' threw: ${toolErr.message}`);
+              resultStr = `The tool "${funcName}" failed (${toolErr.message}). Do NOT pretend it worked. Tell the user plainly that this lookup didn't go through, then answer from what you already know if you can.`;
+            }
+            if (resultStr == null || resultStr === '') {
+              resultStr = `The tool "${funcName}" returned nothing usable. Say so plainly and fall back to your own knowledge.`;
+            }
+            chatMessages.push({
+               role: "tool",
+               tool_call_id: tc.id,
+               name: funcName,
+               content: String(resultStr)
+            });
+          }
+          continue; // Loop again to send tool results to LLM
+        }
+
+        finalResponse = message.content?.trim() || "";
+        break; // No tools called, break loop
+      } else {
+        if (res) {
+          const errText = await res.text().catch(()=>"");
+          console.error(`[Neural/${botName}] Fetch failed in loop: ${res.status} - ${errText}`);
+        }
+        break; // Fetch failed, break loop
+      }
+    } // end while
+
+    let response = finalResponse;
+    
       if (!metadata.isRawPrompt) {
         const botNames = ["Leo", "Oracle", "KAI", "Analyst", "Gemini", "Gemi", "Groq", "Claudey", "Researcher", "Kai Coder", "x AI", "X"];
         const lines = response.split('\n');
@@ -797,7 +1008,6 @@ ${uProf.privateSecrets.map(s => `- ${s}`).join('\n')}
       }
         
       return response;
-    }
   } catch (e) {
     console.error(`[Neural/${botName}] Execution Error: ${e.message}`);
   } finally {
@@ -878,6 +1088,13 @@ export async function callGroqDirect(label, prompt, system = "You are Groq, a fa
 }
 
 export async function callOllamaRaw(model, prompt, system = "You are a helpful assistant.") {
+  // REFLEX FAST-PATH: a trivial greeting/thanks/bye/time/date gets an instant,
+  // IN-CHARACTER reply with no model call (persona derived from the model name).
+  // Only fires on short trivial messages; real questions fall through to the model.
+  try {
+    const fast = reflexAnswer(model, prompt);
+    if (fast) return fast;
+  } catch (_) {}
   try {
     const res = await fetch("http://127.0.0.1:11434/api/chat", {
       method: "POST",
@@ -892,7 +1109,11 @@ export async function callOllamaRaw(model, prompt, system = "You are a helpful a
     });
     if (!res.ok) return null;
     const data = await res.json();
-    return data.message?.content?.trim() || null;
+    const content = data.message?.content?.trim();
+    if (!content) return null;
+    // LOOP GUARD: if the model got stuck repeating a sentence/phrase, trim the runaway
+    // before it ever reaches a bot's mouth. No-op on normal replies.
+    return loopGuard(content);
   } catch (e) {
     return null;
   }
@@ -1085,3 +1306,17 @@ export async function webSearch(query) {
 
   return null;
 }
+
+export async function storeLatticeMemory(userName, utterance, reply, region, channel = "unknown") {
+  if (reply === "Dream Logic") {
+    const agentName = userName;
+    const text = utterance;
+    const regionName = reply;
+    return storeLattice(text, agentName, 2.0, regionName);
+  }
+
+  const memoryText = `[${channel}] ${userName} said: "${utterance}" — ${region} replied: "${reply}"`;
+  return storeLattice(memoryText, region, 1.2, region);
+}
+
+export { storeLatticeMemory as LatticeStore };

@@ -145,10 +145,21 @@ impl SleepSystem {
 
     /// Check if it's time for a sleep cycle.
     pub fn should_sleep(&self, current_tick: u64) -> bool {
-        self.enabled
-            && self.phase == SleepPhase::Awake
-            && current_tick.saturating_sub(self.last_sleep_tick) >= SLEEP_INTERVAL_TICKS
-            && current_tick > 60 // don't sleep too early
+        use chrono::Timelike;
+        if !self.enabled || self.phase != SleepPhase::Awake {
+            return false;
+        }
+        
+        let now = chrono::Local::now();
+        // We begin settling at 3:00 AM, but the actual heavy sleep consolidation
+        // waits until 3:05 AM to ensure things are cleared and not instant start.
+        if now.hour() == 3 && now.minute() >= 5 {
+            // Check interval to ensure it only sleeps once per day/night
+            if current_tick.saturating_sub(self.last_sleep_tick) >= SLEEP_INTERVAL_TICKS && current_tick > 60 {
+                return true;
+            }
+        }
+        false
     }
 
     /// Run a complete sleep cycle. This is a synchronous computation step —

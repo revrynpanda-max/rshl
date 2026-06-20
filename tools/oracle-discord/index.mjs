@@ -245,7 +245,7 @@ function isLoopingResponse(text) {
 // ═══ LEO MEMORY SYSTEM (his own lattice slice) ═══════════════════════════════
 // Leo owns region="leo" in the lattice. Completely separate from KAI's data.
 // Read before responding (context), write after responding (growth).
-const LEO_LATTICE = "http://127.0.0.1:3333";
+const LEO_LATTICE = oracleApiUrl;
 
 async function leoMemoryQuery(topic, limit = 4, channelFilter = null) {
   try {
@@ -308,18 +308,32 @@ async function leoMemoryStore(userName, utterance, leoReply, channel = "unknown"
 const OPENJARVIS_URL = process.env.OPENJARVIS_URL || "http://127.0.0.1:8080";
 
 async function callLocalSpeakAsLeo(transcript, userName) {
-  // Try OpenJarvis first — it auto-injects RSHL memory (1,999+ entries = real context)
+  // Try OpenJarvis first — it auto-injects RSHL memory (its memory backend IS the
+  // KAI lattice via :3334) so this is the fused path: fleet -> OpenJarvis -> KAI brain.
+  // FUSION FIX: the real OpenJarvis serves the OpenAI-compatible /v1/chat/completions
+  // (the old /api/chat route never existed, so this always 404'd into the fallback).
   try {
     const leoSys = "You are Leo - a sarcastic, unhinged theoretical physicist. Cocky genius energy. Never corporate. Max 35 words. 1-2 sentences only.";
-    const res = await fetch(`${OPENJARVIS_URL}/api/chat`, {
+    const res = await fetch(`${OPENJARVIS_URL}/v1/chat/completions`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: `${userName}: ${transcript}`, system: leoSys, model: process.env.LOCAL_LLM_MODEL || "kai-next:latest" }),
+      headers: {
+        "Content-Type": "application/json",
+        ...(process.env.OPENJARVIS_API_KEY ? { "Authorization": `Bearer ${process.env.OPENJARVIS_API_KEY}` } : {}),
+      },
+      body: JSON.stringify({
+        model: process.env.LOCAL_LLM_MODEL || "kai-next:latest",
+        messages: [
+          { role: "system", content: leoSys },
+          { role: "user", content: `${userName}: ${transcript}` },
+        ],
+        max_tokens: 160,
+        temperature: 0.8,
+      }),
       signal: AbortSignal.timeout(18_000),
     });
     if (res.ok) {
       const data = await res.json();
-      const reply = (data?.response || data?.reply || data?.text || "").trim();
+      const reply = (data?.choices?.[0]?.message?.content || data?.response || data?.reply || data?.text || "").trim();
       if (reply && !isInternalMonologue(reply)) { console.log(`[Leo/OpenJarvis] "${reply.slice(0,60)}"`); return reply; }
     }
   } catch (e) { console.warn("[Leo/OpenJarvis] Falling back to local-speak:", e.message); }
@@ -903,9 +917,18 @@ You are talking privately to ${name}. Be professional, direct, and helpful. No e
     console.error("Oracle Discord gateway error:", detail);
     // Silent console log - do not flood BTS with redundant 'isOurBot' style errors unless critical
     if (!detail.includes("isOurBot")) {
-       const bts = client.channels.cache.get(SENSITIVE_INFO_CHANNEL_ID);
-       if (bts && bts.isTextBased()) {
-          bts.send(`[SYSTEM ALERT] Gateway Error: ${detail}`).catch(() => {});
+       // THROTTLE: transient "fetch failed" / provider 503s were spamming the
+       // sensitive-info channel with duplicate alerts. Post the SAME error at most
+       // once every 10 minutes (the console still logs every one).
+       globalThis.__gwAlertSeen = globalThis.__gwAlertSeen || new Map();
+       const key = detail.slice(0, 80);
+       const last = globalThis.__gwAlertSeen.get(key) || 0;
+       if (Date.now() - last > 600000) {
+          globalThis.__gwAlertSeen.set(key, Date.now());
+          const bts = client.channels.cache.get(SENSITIVE_INFO_CHANNEL_ID);
+          if (bts && bts.isTextBased()) {
+             bts.send(`[SYSTEM ALERT] Gateway Error: ${detail}`).catch(() => {});
+          }
        }
     }
   }
@@ -2151,17 +2174,17 @@ function mp3BufferToPcmStream(buffer) {
 async function callOracleTool(toolId, input) {
   if (toolId === "web_search") {
     const encoded = encodeURIComponent(input);
-    const resp = await fetch(`http://127.0.0.1:3333/api/web-search?query=${encoded}`);
+    const resp = await fetch(`${oracleApiUrl}/api/web-search?query=${encoded}`);
     if (!resp.ok) throw new Error(`Search failed with status ${resp.status}`);
     return await resp.text();
   }
   if (toolId === "status") {
-    const resp = await fetch(`http://127.0.0.1:3333/api/status`);
+    const resp = await fetch(`${oracleApiUrl}/api/status`);
     if (!resp.ok) throw new Error(`Status check failed`);
     return await resp.json();
   }
   if (toolId === "inspect") {
-    const resp = await fetch(`http://127.0.0.1:3333/api/inspect?path=${encodeURIComponent(input)}`);
+    const resp = await fetch(`${oracleApiUrl}/api/inspect?path=${encodeURIComponent(input)}`);
     if (!resp.ok) throw new Error(`Inspect failed`);
     return await resp.text();
   }

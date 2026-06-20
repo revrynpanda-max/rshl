@@ -18,6 +18,38 @@ import fs from 'fs';
 import { recordHumanActivity } from './presence-gate.mjs';
 
 const GATE_PATH = 'c:/KAI/tools/oracle-discord/state/voice_gate.json';
+const SHORT_REAL_UTTERANCES = new Set([
+  'yes', 'yeah', 'yep', 'no', 'nope', 'stop', 'wait', 'okay', 'ok', 'go'
+]);
+
+const NOISE_TRANSCRIPTS = new Set([
+  'you', 'um', 'uh', 'hmm', 'mm', 'mmm', 'oh', 'ah', 'the', 'a',
+  'bye', 'thanks', 'thank you', '[music]', '[applause]', '[laughter]',
+  '(music)', '(sound)', '...'
+]);
+
+function normalizeTranscript(text) {
+  return String(text || '')
+    .toLowerCase()
+    .replace(/[^\w\s'[\]()]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isLikelyHumanWords(transcript) {
+  const normalized = normalizeTranscript(transcript);
+  if (!normalized) return false;
+  if (NOISE_TRANSCRIPTS.has(normalized)) return false;
+  if (SHORT_REAL_UTTERANCES.has(normalized)) return true;
+
+  const words = normalized
+    .split(/\s+/)
+    .filter(w => /[a-z0-9]/i.test(w) && w.replace(/[^a-z0-9]/gi, '').length > 1);
+
+  if (words.length < 2) return false;
+  if (normalized.length < 8) return false;
+  return true;
+}
 const GATE_STALE_MS = 30000; // 30s — if Leo crashes mid-speech, auto-clear
 
 /**
@@ -46,12 +78,9 @@ export function setHumanSpeaking(speakerId, speakerName) {
  * Optionally includes the transcript so waiting bots can update their replies.
  */
 export function clearHumanSpeaking(transcript = null, speakerName = null) {
-  // Ignore very short/noisy transcripts (e.g. 3-36 chars from VAD glitches, "um", partial words, mic noise).
-  // These cause loops of false "user input" -> interruptions -> short responses or tool calls (like kai_status on noise).
-  const MIN_TRANSCRIPT_CHARS = 12; // require at least a short word/phrase to count as real input
   let cleanTranscript = transcript;
-  if (transcript && transcript.trim().length < MIN_TRANSCRIPT_CHARS) {
-    console.log(`[VoiceGate] Ignoring short/noisy transcript (${transcript.length} chars) as likely VAD artifact or partial word.`);
+  if (transcript && !isLikelyHumanWords(transcript)) {
+    console.log(`[VoiceGate] Ignoring noisy/non-word transcript "${String(transcript).slice(0, 40)}".`);
     cleanTranscript = null;
   }
 

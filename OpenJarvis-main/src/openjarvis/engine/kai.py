@@ -1,4 +1,4 @@
-﻿"""KAI (Recursive Sparse Hyperdimensional Lattice) Engine backend.
+"""KAI (Recursive Sparse Hyperdimensional Lattice) Engine backend.
 
 Bridges OpenJarvis reasoning to KAI's Oracle server.
 """
@@ -28,7 +28,7 @@ class KAIEngine(InferenceEngine):
     """Engine that delegates reasoning to KAI's Oracle server."""
 
     engine_id = "kai"
-    _DEFAULT_HOST = "http://localhost:3333"
+    _DEFAULT_HOST = "http://localhost:3334"
 
     def __init__(
         self,
@@ -73,7 +73,6 @@ class KAIEngine(InferenceEngine):
             resp = self._client.post(
                 "/api/oracle-turn",
                 json={"input": input_text},
-                timeout=timeout,
             )
             resp.raise_for_status()
             data = resp.json()

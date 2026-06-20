@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KAIVERSE — SRHT Resonance Field</title>
+<style>
+  :root{
+    --bg:#05060c; --panel:#0c0f1a; --ink:#e8ecff; --muted:#8b93b8;
+    --gold:#ffcf6b; --cyan:#56e0ff; --mag:#ff6bd0; --line:#1b2236;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:radial-gradient(1200px 800px at 30% -10%, #0b1226 0%, var(--bg) 60%);
+    color:var(--ink); font:14px/1.5 ui-sans-serif,system-ui,Segoe UI,Roboto,Arial;
+    display:flex; min-height:100vh; gap:16px; padding:16px;
+  }
+  .stage{flex:1 1 auto; display:flex; flex-direction:column; gap:10px; min-width:0}
+  h1{font-size:18px; margin:0; letter-spacing:.3px}
+  h1 b{color:var(--gold)}
+  .sub{color:var(--muted); font-size:12px; margin:-4px 0 2px}
+  .canvas-wrap{
+    position:relative; border:1px solid var(--line); border-radius:12px; overflow:hidden;
+    background:#000; box-shadow:0 0 40px rgba(86,224,255,.06) inset;
+  }
+  canvas{display:block; width:100%; height:auto; image-rendering:auto}
+  .overlay{position:absolute; left:12px; top:10px; font-size:12px; color:var(--muted);
+    text-shadow:0 1px 3px #000; pointer-events:none}
+  .overlay b{color:var(--cyan)}
+  .controls{display:flex; flex-wrap:wrap; gap:8px; align-items:center}
+  button{
+    background:#121830; color:var(--ink); border:1px solid var(--line); border-radius:8px;
+    padding:7px 14px; cursor:pointer; font-weight:600; font-size:13px;
+  }
+  button:hover{border-color:#34406b}
+  button.primary{background:linear-gradient(180deg,#1c2banner,#16203c); border-color:#2c3a63}
+  button.primary{background:#17223f}
+  .seg{display:flex; border:1px solid var(--line); border-radius:8px; overflow:hidden}
+  .seg button{border:0; border-radius:0; background:#0e1322; padding:7px 12px}
+  .seg button.on{background:#1d2950; color:var(--gold)}
+  label.rng{display:flex; align-items:center; gap:8px; color:var(--muted); font-size:12px}
+  input[type=range]{accent-color:var(--cyan)}
+  .panel{
+    width:330px; flex:0 0 330px; background:var(--panel); border:1px solid var(--line);
+    border-radius:12px; padding:16px; height:fit-content; align-self:flex-start;
+  }
+  .panel h2{font-size:12px; text-transform:uppercase; letter-spacing:1.4px; color:var(--muted); margin:0 0 10px}
+  .metrics{display:grid; grid-template-columns:1fr 1fr; gap:8px 12px; margin-bottom:16px}
+  .m{background:#0a0e1a; border:1px solid var(--line); border-radius:8px; padding:8px 10px}
+  .m .k{font-size:10.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.6px}
+  .m .v{font-size:18px; font-weight:700; font-variant-numeric:tabular-nums}
+  .m .v small{font-size:11px; color:var(--muted); font-weight:500}
+  .eq{background:#080b14; border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin-bottom:6px}
+  .eq .lbl{font-size:11px; color:var(--gold); margin-bottom:2px}
+  .eq code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12.5px; color:#cdd6ff}
+  .legend{display:flex; gap:14px; font-size:11px; color:var(--muted); margin-top:10px; flex-wrap:wrap}
+  .dot{display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:5px; vertical-align:middle}
+  .note{font-size:11px; color:var(--muted); margin-top:14px; border-top:1px solid var(--line); padding-top:10px}
+  .bar{height:6px; border-radius:4px; background:#0a0e1a; overflow:hidden; margin-top:6px}
+  .bar > i{display:block; height:100%; width:0%}
+</style>
+</head>
+<body>
+  <div class="stage">
+    <div>
+      <h1>KAIVERSE — <b>SRHT Resonance Field</b></h1>
+      <div class="sub">A live simulation of KAI's own Sparse Resonance Hyperlattice Theory. The lattice self-structures as a wave: resonance survives, contradiction collapses.</div>
+    </div>
+    <div class="canvas-wrap">
+      <canvas id="c" width="760" height="494"></canvas>
+      <div class="overlay" id="ov"></div>
+    </div>
+    <div class="controls">
+      <button class="primary" id="play">⏸ Pause</button>
+      <button id="reset">↺ Reset lattice</button>
+      <div class="seg" id="view">
+        <button data-v="field" class="on">Resonance field</button>
+        <button data-v="chi">Contradiction χ</button>
+        <button data-v="R">Resonance R</button>
+      </div>
+      <label class="rng">Speed
+        <input id="speed" type="range" min="1" max="6" value="2">
+      </label>
+    </div>
+  </div>
+
+  <aside class="panel">
+    <h2>Lattice state · live</h2>
+    <div class="metrics">
+      <div class="m"><div class="k">Spiral time τ</div><div class="v" id="mTau">0.0</div></div>
+      <div class="m"><div class="k">Step</div><div class="v" id="mStep">0</div></div>
+      <div class="m"><div class="k">Density ρ</div><div class="v" id="mRho">0%</div></div>
+      <div class="m"><div class="k">Mean resonance R</div><div class="v" id="mR">0.00</div></div>
+      <div class="m"><div class="k">Mean contradiction χ</div><div class="v" id="mChi">0.00</div></div>
+      <div class="m"><div class="k">Pressure X</div><div class="v" id="mX">0.00</div></div>
+      <div class="m"><div class="k">Committed</div><div class="v" id="mCommit">0<small> cells</small></div></div>
+      <div class="m"><div class="k">Collapsed</div><div class="v" id="mPrune">0<small> cells</small></div></div>
+    </div>
+    <div class="bar"><i id="barRho" style="background:linear-gradient(90deg,#56e0ff,#ffcf6b)"></i></div>
+
+    <h2 style="margin-top:18px">The equations it runs</h2>
+    <div class="eq"><div class="lbl">Lattice density</div><code>ρ = |A| / d</code></div>
+    <div class="eq"><div class="lbl">Resonance (local coherence)</div><code>R = max(0.01, 1 − ‖V‖/GS)</code></div>
+    <div class="eq"><div class="lbl">Contradiction pressure</div><code>X = χ · (1 − R)</code></div>
+    <div class="eq"><div class="lbl">Born-rule phase interference</div><code>P = C · cos(χ·π/2)</code></div>
+    <div class="eq"><div class="lbl">Commit readiness</div><code>C = ρ·R²·1/(2−R)·(1−χ)²·τ</code></div>
+    <div class="eq"><div class="lbl">Collapse rule</div><code>prune if X &gt; 0.8 or P &lt; 1e−10</code></div>
+
+    <div class="legend">
+      <span><i class="dot" style="background:#ffcf6b"></i>committed (resonant)</span>
+      <span><i class="dot" style="background:#56e0ff"></i>active wave</span>
+      <span><i class="dot" style="background:#11131c;border:1px solid #2a2f44"></i>collapsed (contradiction)</span>
+    </div>
+    <div class="note">SRHT is Ryan's framework (KAI Engine Mathematics Group). This is his math run literally on a 2-D projection of the hyperlattice — resonance constructively survives, contradiction destructively prunes. The φ/12-fold seed mirrors KAI's dodecahedral + golden-ratio geometry.</div>
+  </aside>
+
+<script>
+(() => {
+  const PHI = (1 + Math.sqrt(5)) / 2;
+  const GOLDEN = 2 * Math.PI * (1 - 1/PHI);     // golden angle ≈ 137.5°
+  const GW = 230, GH = 150;                       // hyperlattice projection (cells)
+  const N = GW * GH;
+
+  // wave amplitude (complex), contradiction landscape, resonance, cell state
+  let re = new Float32Array(N), im = new Float32Array(N);
+  let re2 = new Float32Array(N), im2 = new Float32Array(N);
+  let chi0 = new Float32Array(N);                 // static contradiction landscape χ
+  let Rf = new Float32Array(N);                   // resonance field R
+  let st = new Uint8Array(N);                     // 0 active, 1 committed, 2 collapsed
+  let tau = 0, step = 0, rho = 0.001;
+
+  const cvs = document.getElementById('c'), ctx = cvs.getContext('2d');
+  const off = document.createElement('canvas'); off.width = GW; off.height = GH;
+  const octx = off.getContext('2d');
+  const img = octx.createImageData(GW, GH);
+  let view = 'field', running = true, speed = 2;
+
+  function idx(x,y){ return y*GW + x; }
+
+  // ---- build the contradiction landscape χ₀ from KAI geometry (φ-spiral + 12-fold dodeca + resonance shells)
+  function buildLandscape(){
+    const cx = GW/2, cy = GH/2;
+    for(let y=0;y<GH;y++) for(let x=0;x<GW;x++){
+      const dx=(x-cx)/cx, dy=(y-cy)/cy;
+      const r=Math.hypot(dx,dy), th=Math.atan2(dy,dx);
+      const shells  = 0.5+0.5*Math.cos(2*Math.PI*4*r);              // concentric resonance modes
+      const dodeca  = 0.5+0.5*Math.cos(12*th);                       // 12-fold dodecahedral symmetry
+      const spiral  = 0.5+0.5*Math.cos(5*th - 13*r + PHI);           // golden log-spiral arms
+      let resonant = 0.45*spiral + 0.30*shells + 0.25*dodeca;        // where structure WANTS to be
+      resonant *= Math.exp(-0.35*r*r);                               // fade to edge
+      let chi = 1 - resonant;                                        // contradiction = anti-structure
+      chi += (Math.random()-0.5)*0.06;                              // quantum noise
+      chi0[idx(x,y)] = Math.min(1, Math.max(0, chi));
+    }
+  }
+
+  function reset(){
+    buildLandscape();
+    for(let i=0;i<N;i++){
+      // seed a faint incoherent wave everywhere, brighter where contradiction is low
+      const a = 0.12 + 0.5*(1-chi0[i]);
+      const ph = Math.random()*2*Math.PI;
+      re[i]=a*Math.cos(ph); im[i]=a*Math.sin(ph);
+      Rf[i]=0.5; st[i]=0;
+    }
+    tau=0; step=0; rho=0.001;
+  }
+
+  // ---- one SRHT propagation + collapse step
+  function tick(){
+    tau += 0.02;
+    const D = 0.14;                 // wave coupling (propagation through lattice)
+    const tauC = Math.min(1, tau*0.05);   // commit-readiness time factor (bounded)
+    let committed=0, pruned=0, sumR=0, sumChi=0, sumX=0, active=0;
+
+    for(let y=0;y<GH;y++){
+      for(let x=0;x<GW;x++){
+        const c = idx(x,y);
+        const xm=(x-1+GW)%GW, xp=(x+1)%GW, ym=(y-1+GH)%GH, yp=(y+1)%GH;
+        const cL=idx(xm,y),cR=idx(xp,y),cU=idx(x,ym),cD=idx(x,yp);
+
+        // neighbour mean (for propagation + resonance coherence)
+        const nre=(re[cL]+re[cR]+re[cU]+re[cD])*0.25;
+        const nim=(im[cL]+im[cR]+im[cU]+im[cD])*0.25;
+
+        // 1) wave propagation: discrete Laplacian coupling
+        let rr = re[c] + D*(re[cL]+re[cR]+re[cU]+re[cD]-4*re[c]);
+        let ii = im[c] + D*(im[cL]+im[cR]+im[cU]+im[cD]-4*im[c]);
+
+        // 2) Resonance R = local phase coherence with the neighbourhood (∈[0.01,1])
+        const mag=Math.hypot(rr,ii), nmag=Math.hypot(nre,nim);
+        let align = (mag>1e-6 && nmag>1e-6) ? (rr*nre+ii*nim)/(mag*nmag) : 0;
+        let R = Math.max(0.01, Math.min(1, 0.5*(align+1)));
+        Rf[c]=R;
+
+        const chi = chi0[c];
+
+        // 3) SRHT operators
+        const C = rho * R*R * (1/(2-R)) * (1-chi)*(1-chi) * tauC;
+        const X = chi*(1-R);
+        const P = C * Math.cos(chi*Math.PI/2);
+
+        // 4) phase interference: resonant cells advance phase coherently; contradiction detunes
+        const omega = 0.18*(1-chi) + 0.05*R;
+        const cs=Math.cos(omega), sn=Math.sin(omega);
+        let pr = rr*cs - ii*sn, pi = rr*sn + ii*cs;
+
+        // 5) collapse / commit
+        let state = 0;
+        if (X > 0.8 || P < 1e-10){          // destructive interference -> prune
+          pr*=0.82; pi*=0.82; state=2;
+        } else if (P > 0.05 && R > 0.6){     // constructive -> commit (lock in)
+          const g=1.015; pr*=g; pi*=g; state=1;
+        }
+        // gentle amplitude cap so it stays bounded
+        const m2=Math.hypot(pr,pi);
+        if(m2>1.6){ pr*=1.6/m2; pi*=1.6/m2; }
+        // re-injection: keep low-contradiction resonant seeds alive (the substrate breathes)
+        if(chi<0.18){ pr += 0.015*Math.cos(tau*1.7); pi += 0.015*Math.sin(tau*1.7); }
+
+        re2[c]=pr; im2[c]=pi; st[c]=state;
+
+        if(state===1)committed++; else if(state===2)pruned++; else active++;
+        sumR+=R; sumChi+=chi; sumX+=X;
+      }
+    }
+    // swap buffers
+    let t; t=re; re=re2; re2=t; t=im; im=im2; im2=t;
+    rho = committed / N;                 // lattice density ρ = |assigned| / d
+    step++;
+    return {committed,pruned,active,mR:sumR/N,mChi:sumChi/N,mX:sumX/N};
+  }
+
+  // ---- render
+  function paint(){
+    const d=img.data;
+    for(let i=0;i<N;i++){
+      let r,g,b;
+      if(view==='chi'){
+        const v=chi0[i]; r=20+v*230; g=20+(1-v)*120; b=60+(1-v)*180;
+      } else if(view==='R'){
+        const v=Rf[i]; r=v*255; g=v*200+30; b=120*(1-v);
+      } else {
+        const mag=Math.min(1,Math.hypot(re[i],im[i]));
+        const ph=Math.atan2(im[i],re[i]);              // phase -> hue
+        let hue=(ph+Math.PI)/(2*Math.PI);              // 0..1
+        // committed cells pulled toward gold, collapsed toward black
+        let L=mag;
+        const [rr,gg,bb]=hsl(hue, 0.85, 0.18+0.45*L);
+        r=rr; g=gg; b=bb;
+        if(st[i]===1){ r=Math.min(255,r+90*L+40); g=Math.min(255,g+70*L+30); b=b*0.6; } // gold glow
+        if(st[i]===2){ r*=0.18; g*=0.18; b*=0.22; }                                      // collapsed dark
+      }
+      const k=i*4; d[k]=r; d[k+1]=g; d[k+2]=b; d[k+3]=255;
+    }
+    octx.putImageData(img,0,0);
+    ctx.imageSmoothingEnabled=true;
+    ctx.drawImage(off,0,0,cvs.width,cvs.height);
+  }
+  function hsl(h,s,l){
+    let r,g,b; const q=l<0.5?l*(1+s):l+s-l*s, p=2*l-q;
+    const hk=h; const t=[hk+1/3,hk,hk-1/3];
+    for(let i=0;i<3;i++){let c=t[i]; if(c<0)c++; if(c>1)c--;
+      r= c<1/6? p+(q-p)*6*c : c<1/2? q : c<2/3? p+(q-p)*(2/3-c)*6 : p;
+      t[i]=r;}
+    return [t[0]*255,t[1]*255,t[2]*255];
+  }
+
+  // ---- UI
+  const ov=document.getElementById('ov');
+  function frame(){
+    if(running){ for(let s=0;s<speed;s++) var st_=tick(); updateUI(st_||lastStats); }
+    paint();
+    requestAnimationFrame(frame);
+  }
+  let lastStats={committed:0,pruned:0,active:N,mR:0,mChi:0,mX:0};
+  function updateUI(s){
+    lastStats=s;
+    document.getElementById('mTau').textContent=tau.toFixed(1);
+    document.getElementById('mStep').textContent=step.toLocaleString();
+    document.getElementById('mRho').textContent=(rho*100).toFixed(1)+'%';
+    document.getElementById('mR').textContent=s.mR.toFixed(2);
+    document.getElementById('mChi').textContent=s.mChi.toFixed(2);
+    document.getElementById('mX').textContent=s.mX.toFixed(2);
+    document.getElementById('mCommit').innerHTML=s.committed.toLocaleString()+'<small> cells</small>';
+    document.getElementById('mPrune').innerHTML=s.pruned.toLocaleString()+'<small> cells</small>';
+    document.getElementById('barRho').style.width=Math.min(100,rho*100*2.2)+'%';
+    ov.innerHTML=`τ <b>${tau.toFixed(1)}</b> · step <b>${step}</b> · ρ <b>${(rho*100).toFixed(1)}%</b> committed · view: <b>${view}</b>`;
+  }
+
+  document.getElementById('play').onclick=e=>{running=!running; e.target.textContent=running?'⏸ Pause':'▶ Play';};
+  document.getElementById('reset').onclick=()=>{reset();};
+  document.getElementById('speed').oninput=e=>{speed=+e.target.value;};
+  document.querySelectorAll('#view button').forEach(b=>b.onclick=()=>{
+    view=b.dataset.v; document.querySelectorAll('#view button').forEach(x=>x.classList.remove('on')); b.classList.add('on');
+  });
+
+  reset(); frame();
+})();
+</script>
+</body>
+</html>

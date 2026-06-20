@@ -109,6 +109,13 @@ pub struct Cell {
     /// Axon Whorls: firing frequency heat to trigger refractory knots.
     #[serde(default)]
     pub activation_heat: f32,
+    /// Holographic Resonance Signature for O(1) bitwise metadata pre-filtering
+    #[serde(default = "default_resonance")]
+    pub resonance_signature: u64,
+}
+
+fn default_resonance() -> u64 {
+    0xFFFFFFFFFFFFFFFF // Old cells match all queries until re-encoded
 }
 
 impl<'de> Deserialize<'de> for Cell {
@@ -155,6 +162,8 @@ impl<'de> Deserialize<'de> for Cell {
             is_archived: bool,
             #[serde(default)]
             activation_heat: f32,
+            #[serde(default = "default_resonance")]
+            resonance_signature: u64,
         }
 
         fn default_strength() -> f32 {
@@ -210,8 +219,45 @@ impl<'de> Deserialize<'de> for Cell {
             text_id: raw.text_id,
             is_archived: raw.is_archived,
             activation_heat: raw.activation_heat,
+            resonance_signature: raw.resonance_signature,
         })
     }
+}
+
+pub fn compute_resonance_signature(layer: u8, user_id: &str, source: &str, region: &str) -> u64 {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    let mut mask: u64 = 0;
+    
+    // Layer mask (0-7)
+    mask |= 1u64 << (layer % 8);
+    
+    // User ID mask (hash into bits 8-23)
+    if !user_id.is_empty() {
+        let mut h = DefaultHasher::new();
+        user_id.hash(&mut h);
+        let bit = 8 + (h.finish() % 16);
+        mask |= 1u64 << bit;
+    }
+    
+    // Source mask (hash into bits 24-39)
+    if !source.is_empty() && source != "unknown" {
+        let mut h = DefaultHasher::new();
+        source.hash(&mut h);
+        let bit = 24 + (h.finish() % 16);
+        mask |= 1u64 << bit;
+    }
+    
+    // Region mask (hash into bits 40-55)
+    if !region.is_empty() {
+        let mut h = DefaultHasher::new();
+        region.hash(&mut h);
+        let bit = 40 + (h.finish() % 16);
+        mask |= 1u64 << bit;
+    }
+    
+    mask
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -285,6 +331,8 @@ pub struct Universe {
     cells: Vec<Cell>,
     #[serde(default)]
     pub lexicon: super::index::LatticeLexicon,
+    #[serde(default)]
+    pub neural_memory: super::neural_memory::NeuralMemory,
     #[serde(skip)]
     pub hnsw: Option<hnsw_rs::prelude::Hnsw<'static, SparseVec, super::index::TernaryDistance>>,
     #[serde(skip)]
@@ -323,6 +371,7 @@ impl Clone for Universe {
         Self {
             cells: self.cells.clone(),
             lexicon: self.lexicon.clone(),
+            neural_memory: self.neural_memory.clone(),
             hnsw: None,
             exact_match_index: std::collections::HashMap::new(),
             user_equations: self.user_equations.clone(),
@@ -715,6 +764,7 @@ impl Universe {
         Self {
             cells: Vec::new(),
             lexicon: super::index::LatticeLexicon::new(),
+            neural_memory: super::neural_memory::NeuralMemory::new(),
             hnsw: None,
             exact_match_index: std::collections::HashMap::new(),
             user_equations: HashMap::new(),
@@ -1056,6 +1106,8 @@ impl Universe {
         claim.layer = initial_layer;
         claim.user_id = Arc::from(user_id);
 
+        let res_sig = compute_resonance_signature(initial_layer, user_id, source, region);
+
         let idx = self.cells.len();
         self.cells.push(Cell {
             label: text.to_string(),
@@ -1071,11 +1123,17 @@ impl Universe {
             text_id: 0,
             is_archived: false,
             activation_heat: 0.0,
+            resonance_signature: res_sig,
         });
         self.mark_dirty(idx);
 
         // --- Life Equation Accumulator ---
         self.update_life_equation(user_id, &vec);
+
+        // --- Synaptic Retraining Neural Memory (Test-Time Training) ---
+        // Dynamically bake this memory into the structural weights.
+        // Surprise factor scales with strength (high strength = high surprise/learning rate).
+        self.neural_memory.memorize(&vec, &vec, strength.clamp(0.1, 5.0) / 5.0);
 
         // --- Mirror Neurons (Connectome Upgrade) ---
         // Automatically spawn a perfect opposite perspective for high-strength cells.
@@ -1090,6 +1148,8 @@ impl Universe {
             self.lexicon.index_cell(m_id, &mirror_label, &[region.to_string(), format!("source:{}", source), format!("user:{}", user_id)]);
             self.exact_match_index.insert(hash_label(&mirror_label), m_id);
             let m_pos_vec = SparseVec::project_vogel_spiral(m_id as usize, user_seed(user_id));
+
+            let m_res_sig = compute_resonance_signature(initial_layer, user_id, source, region);
 
             let m_idx = self.cells.len();
             self.cells.push(Cell {
@@ -1106,8 +1166,12 @@ impl Universe {
                 text_id: 0,
                 is_archived: false,
                 activation_heat: 0.0,
+                resonance_signature: m_res_sig,
             });
             self.mark_dirty(m_idx);
+
+            // Train the mirror neuron into the Synaptic Retraining Neural Memory as well.
+            self.neural_memory.memorize(&mirror_vec, &mirror_vec, (strength * 0.9).clamp(0.1, 5.0) / 5.0);
         }
     }
 
@@ -1182,6 +1246,7 @@ impl Universe {
 
         self.update_life_equation(&claim.user_id, &claim.vec);
         
+        let res_sig = compute_resonance_signature(claim.layer, &claim.user_id, &claim.source, region);
         let idx = self.cells.len();
         self.cells.push(Cell {
             label: claim.text.clone(),
@@ -1197,6 +1262,7 @@ impl Universe {
             text_id: 0,
             is_archived: false,
             activation_heat: 0.0,
+            resonance_signature: res_sig,
         });
         self.mark_dirty(idx);
     }
@@ -1584,6 +1650,25 @@ impl Universe {
         let mag_q = q.nnz() as f32;
         let mag_q_sqrt = mag_q.sqrt();
 
+        // Compute Resonance Signatures (Bloom Filter Bitmasks) for O(1) Pre-Filtering
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        
+        let mut user_bits = 0u64;
+        if !user_id.is_empty() {
+            let mut h = DefaultHasher::new();
+            user_id.hash(&mut h);
+            user_bits = 1u64 << (8 + (h.finish() % 16));
+        }
+
+        let mut h1 = DefaultHasher::new(); "user-echo".hash(&mut h1); 
+        let ue_bit = 1u64 << (24 + (h1.finish() % 16));
+        
+        let mut h2 = DefaultHasher::new(); "conversation".hash(&mut h2); 
+        let c_bit = 1u64 << (24 + (h2.finish() % 16));
+        let bad_source_bits = ue_bit | c_bit;
+        let layer_cellular_bit = 1u64 << (super::claim::LAYER_CELLULAR % 8);
+
         // ── GPU-Accelerated Path (RTX 4050 POPCNT cascade) ──────────────────
         // For large lattices (>10K cells), dispatch to the GPU compute shader.
         // The shader uses bitpacked POPCNT cosine — identical math, ~10x faster.
@@ -1591,13 +1676,23 @@ impl Universe {
         const GPU_THRESHOLD: usize = 10_000;
         if let Some(ref gpu) = self.gpu {
             if self.cells.len() >= GPU_THRESHOLD {
-                // Collect eligible cell refs and their original indices
                 let eligible: Vec<(usize, &Cell)> = self.cells.iter().enumerate()
                     .filter(|(_, cell)| {
-                        cell.claim.source.as_ref() != "user-echo"
-                            && cell.claim.source.as_ref() != "conversation"
-                            && (cell.claim.layer != super::claim::LAYER_CELLULAR
-                                || cell.claim.user_id.as_ref() == user_id)
+                        // O(1) Resonance Signature Fast-Path Filtering
+                        if (cell.resonance_signature & bad_source_bits) != 0 {
+                            if cell.claim.source.as_ref() == "user-echo" || cell.claim.source.as_ref() == "conversation" {
+                                return false;
+                            }
+                        }
+                        if (cell.resonance_signature & layer_cellular_bit) != 0 {
+                            if user_bits != 0 && (cell.resonance_signature & user_bits) == 0 {
+                                return false;
+                            }
+                            if cell.claim.layer == super::claim::LAYER_CELLULAR && cell.claim.user_id.as_ref() != user_id {
+                                return false;
+                            }
+                        }
+                        true
                     })
                     .collect();
 
@@ -1628,12 +1723,18 @@ impl Universe {
             .par_iter()
             .enumerate()
             .filter(|(_, cell)| {
-                if cell.claim.source.as_ref() == "user-echo" || cell.claim.source.as_ref() == "conversation" {
-                    return false;
-                }
-                if cell.claim.layer == super::claim::LAYER_CELLULAR {
-                    if cell.claim.user_id.as_ref() != user_id {
+                // O(1) Resonance Signature Fast-Path Filtering
+                if (cell.resonance_signature & bad_source_bits) != 0 {
+                    if cell.claim.source.as_ref() == "user-echo" || cell.claim.source.as_ref() == "conversation" {
                         return false;
+                    }
+                }
+                if (cell.resonance_signature & layer_cellular_bit) != 0 {
+                    if user_bits != 0 && (cell.resonance_signature & user_bits) == 0 {
+                        return false; // Fast reject
+                    }
+                    if cell.claim.layer == super::claim::LAYER_CELLULAR && cell.claim.user_id.as_ref() != user_id {
+                        return false; // Strict fallback
                     }
                 }
                 true
@@ -1858,11 +1959,20 @@ impl Universe {
             }
 
             // For non-bridge cells:
-            // 1. Must meet minimum strength
+            // SRHT canonical prune gate (SRHT_MASTER_PAPER §2.1, §2.4): prune iff the
+            // normalized commit score is below a single floor theta. Here
+            // `convergence_score` is the engine's C-hat (normalized commit) proxy and is
+            // the AUTHORITATIVE gate. `confidence` is a correlated strength floor kept for
+            // stability; the convergence_score (C-hat) condition is the canonical one.
+            // NOTE: no hard X>0.8 / P<1e-10 / cosine "Born" gates here — X is diagnostic
+            // only (SRHT_MASTER_PAPER §2.3.1). Behavior is unchanged; this only documents
+            // the alignment of the existing soft thresholds with the single C-hat floor.
+            // 1. Must meet minimum strength (correlated strength floor).
             if c.claim.confidence < min_strength {
                 return false;
             }
-            // 2. High-chi pruning: if strength is mediocre (< 1.5) and Φg is low (< 1.2), it's noise.
+            // 2. Canonical C-hat floor: low normalized commit (convergence_score < 1.2)
+            //    on a mediocre-strength cell (< 1.5) => below theta => prune as noise.
             if c.claim.confidence < 1.5 && c.convergence_score < 1.2 {
                 return false;
             }
@@ -2035,21 +2145,35 @@ impl Universe {
             return 0;
         }
 
-        let n = self.cells.len();
+        // 1. Group cells into blocks by their semantic region (Block Attention mechanism)
+        // This prevents the system from doing an O(N^2) brute-force scan across the entire universe,
+        // reducing the workload exponentially by only comparing cells within their local block.
+        use std::collections::HashMap;
+        let mut blocks: HashMap<&str, Vec<usize>> = HashMap::new();
+        for (i, cell) in self.cells.iter().enumerate() {
+            blocks.entry(cell.region.as_ref()).or_default().push(i);
+        }
 
-        // Parallelized duplicate scan
-        let duplicates: std::collections::HashSet<usize> = (0..n)
+        let cells = &self.cells;
+
+        // 2. Parallelized intra-block duplicate scan
+        let duplicates: std::collections::HashSet<usize> = blocks
             .into_par_iter()
-            .flat_map(|i| {
+            .flat_map(|(_, block_indices)| {
                 let mut local_dupes = Vec::new();
-                for j in (i + 1)..n {
-                    let sim = self.cells[i].claim.vec.cosine(&self.cells[j].claim.vec);
-                    if sim > 0.90 {
-                        // Near-duplicate! Compare strength.
-                        if self.cells[i].claim.confidence >= self.cells[j].claim.confidence {
-                            local_dupes.push(j);
-                        } else {
-                            local_dupes.push(i);
+                let k = block_indices.len();
+                for i_idx in 0..k {
+                    for j_idx in (i_idx + 1)..k {
+                        let i = block_indices[i_idx];
+                        let j = block_indices[j_idx];
+                        let sim = cells[i].claim.vec.cosine(&cells[j].claim.vec);
+                        if sim > 0.90 {
+                            // Near-duplicate! Compare strength.
+                            if cells[i].claim.confidence >= cells[j].claim.confidence {
+                                local_dupes.push(j);
+                            } else {
+                                local_dupes.push(i);
+                            }
                         }
                     }
                 }
@@ -3291,6 +3415,7 @@ impl Universe {
                 text_id: 0,
                 is_archived: false,
                 activation_heat: 0.0,
+                resonance_signature: compute_resonance_signature(layer, &user_id, &source, &region),
             });
             self.mark_dirty(m_idx);
         }

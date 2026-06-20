@@ -36,11 +36,55 @@ if (Test-Path $statePath) {
     if ($age.TotalMinutes -lt 5) { $managerAlive = $true }
 }
 
-if ($engineAlive -or $managerAlive) {
-    # At least one heart beats — the inner layers (manager respawn, KAI
-    # failsafe, Oracle commands) can handle partial failures. Stand down.
+# ── UPGRADED DECISION: crash-loop aware ──────────────────────────────────────
+# Count recent bot exits in the ecosystem log. A burst of "exited with code"
+# lines = a respawn storm (the crash loop). The classic cause is the engine
+# dying: bots can't reach :3334, crash, get respawned straight back into the
+# void, forever — all while the MANAGER stays alive, so the old "manager alive
+# → stand down" rule never fired. That was the gap that let it loop unattended.
+$recentExits = 0
+$ecoLog = "C:\KAI\tools\oracle-discord\logs\ecosystem.log"
+if (Test-Path $ecoLog) {
+    try { $recentExits = (Get-Content $ecoLog -Tail 150 -EA SilentlyContinue | Select-String 'exited with code' -EA SilentlyContinue).Count } catch {}
+}
+$crashLooping = $recentExits -ge 15
+
+# Healthy: engine + manager both beating AND no respawn storm → stand down.
+if ($engineAlive -and $managerAlive -and -not $crashLooping) { exit 0 }
+
+# PARTIAL FAILURE with the manager still ALIVE — either the engine is down
+# (bots crash-looping on it) or a respawn storm is underway. Restarting the
+# engine fixes both: bots reconnect to a fresh :3334 and the loop ends. We do
+# NOT full-relaunch here (that would duplicate the live manager). Guard against
+# restarting more than once per ~8 min so we don't thrash.
+if ($managerAlive) {
+    $engMarker = "C:\KAI\scratch\phoenix-engine-restart.txt"
+    if ((Test-Path $engMarker) -and (((Get-Date) - (Get-Item $engMarker).LastWriteTime).TotalMinutes -lt 8)) {
+        Log "Partial failure (engineAlive=$engineAlive, recentExits=$recentExits) but engine was restarted <8m ago — waiting for it to settle."
+        exit 0
+    }
+    Set-Content -Path $engMarker -Value (Get-Date -Format 'o') -ErrorAction SilentlyContinue
+    $scratch = "C:\KAI\scratch"
+    $stderr  = "$scratch\oracle-discord-kai.err.log"
+    if ((Test-Path $stderr) -and (Get-Item $stderr).Length -gt 0) {
+        Copy-Item $stderr "$scratch\kai-crash-$(Get-Date -Format 'yyyyMMdd-HHmmss').err.log" -ErrorAction SilentlyContinue
+    }
+    Stop-Process -Name kai -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 2
+    $env:RUST_BACKTRACE = "1"
+    $kaiExe = "C:\KAI\target\release\kai.exe"
+    if (Test-Path $kaiExe) {
+        Start-Process -FilePath $kaiExe -ArgumentList "--oracle" -WorkingDirectory "C:\KAI" -WindowStyle Hidden `
+            -RedirectStandardOutput "$scratch\oracle-discord-kai.out.log" -RedirectStandardError $stderr | Out-Null
+        Log "Partial failure (engineAlive=$engineAlive, manager ALIVE, recentExits=$recentExits). Restarted engine to break the crash loop; archived prior stderr for post-mortem."
+    } else {
+        Log "Engine restart needed but kai.exe missing at $kaiExe."
+    }
     exit 0
 }
+
+# Manager is DOWN (engine up or down) → genuine total/structural death.
+# Fall through to the storm-guarded full relaunch below.
 
 # TOTAL DEATH detected. Guard against relaunch storms: only fire if we
 # haven't fired in the last 10 minutes.
@@ -95,13 +139,11 @@ $event = [pscustomobject]@{
 }
 try { $event | ConvertTo-Json -Compress | Add-Content -Path $recoveryLog } catch {}
 
-# Relaunch using the detached hidden launcher (no visible cmd/ps window flash)
-$detached = "C:\KAI\tools\oracle-discord\launch-detached.ps1"
-if (Test-Path $detached) {
-    Start-Process -FilePath "powershell" -ArgumentList "-WindowStyle Hidden -ExecutionPolicy Bypass -File `"$detached`"" -WindowStyle Hidden
-    Log "Relaunch spawned via launch-detached (fully hidden)."
+# Spawn the interactive prompt to ask the user
+$promptScript = "C:\KAI\tools\oracle-discord\phoenix-prompt.ps1"
+if (Test-Path $promptScript) {
+    Start-Process -FilePath "powershell" -ArgumentList "-ExecutionPolicy Bypass -NoProfile -File `"$promptScript`"" -WindowStyle Normal
+    Log "Spawned interactive Phoenix prompt for user input."
 } else {
-    # Fallback - still try to be hidden
-    Start-Process -FilePath "powershell" -ArgumentList "-WindowStyle Hidden -ExecutionPolicy Bypass -Command `"cd 'C:\KAI\tools\oracle-discord'; .\run-oracle-discord.ps1`"" -WindowStyle Hidden
-    Log "Relaunch spawned (fallback hidden)."
+    Log "Could not find phoenix-prompt.ps1. Standing down to prevent unauthorized looping."
 }

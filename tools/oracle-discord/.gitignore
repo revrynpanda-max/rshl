@@ -8,5 +8,13 @@ temp/
 .DS_Store
 dist/
 build/
+
+# Google Cloud service-account credentials — NEVER commit these (private keys)
+gen-lang-client-*.json
+*service-account*.json
+*-compute@*.json
+*credentials*.json
+gcp-*.json
+*.serviceaccount.json
 scratch/
 !scratch/probe_test.mjs

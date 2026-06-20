@@ -126,6 +126,8 @@ impl HierarchyBuilder {
             let mut claim = Claim::new(&synthetic_text, "hierarchy-cluster", avg_confidence.min(3.0), parent_vec.clone());
             claim.layer = parent_layer;
 
+            let res_sig = crate::core::universe::compute_resonance_signature(parent_layer, "", "hierarchy-cluster", &dominant_region);
+
             let parent_cell = Cell {
                 label: synthetic_text.clone(),
                 region: Arc::from(dominant_region),
@@ -140,6 +142,7 @@ impl HierarchyBuilder {
                 text_id: parent_idx as u32,
                 is_archived: false,
                 activation_heat: 0.0,
+                resonance_signature: res_sig,
             };
 
             universe.cells_mut().push(parent_cell);

@@ -42,8 +42,7 @@ pub fn run_server(
     candidates: &mut CandidateBuffer,
     drive: &mut Drive,
     candle_voice: Option<&crate::cognition::candle_voice::CandleVoice>,
-    bitnet_voice: Option<&crate::cognition::BitnetVoice>,
-) {
+    ) {
     let mut sys = sysinfo::System::new_all();
     let stdin = std::io::stdin();
     let stdout = std::io::stdout();
@@ -76,7 +75,6 @@ pub fn run_server(
             drive,
             &mut recent_context,
             candle_voice,
-            bitnet_voice,
             &mut sys,
         );
         let _ = writeln!(out, "{}", response);
@@ -91,7 +89,6 @@ fn handle_command(
     drive: &mut Drive,
     recent_context: &mut Vec<(String, String)>,
     candle_voice: Option<&crate::cognition::candle_voice::CandleVoice>,
-    bitnet_voice: Option<&crate::cognition::BitnetVoice>,
     sys: &mut sysinfo::System,
 ) -> String {
     let val: serde_json::Value = match serde_json::from_str(json_line) {
@@ -143,8 +140,7 @@ fn handle_command(
                 recent_context,
                 universe,
                 candle_voice,
-                bitnet_voice,
-            true);
+                true);
 
             recent_context.push(("user".to_string(), text.to_string()));
             recent_context.push(("kai".to_string(), reply.clone()));
@@ -441,13 +437,16 @@ fn chat_hits(
     // They have artificially high strength (5.0) from bulk ingestion and win social
     // queries they have no business answering.  Keep them only when a topic question
     // specifically matches (ExplanationQuestion / RequestForInfo) with no KAI-directed flag.
+    let academic_terms = ["calculate", "equation", "theory", "paper", "research", "physics", "math", "chemistry", "science"];
+    let is_research_query = academic_terms.iter().any(|t| lower.contains(t));
+
     let is_conversational = matches!(
         query_type,
         QueryType::Greeting | QueryType::Gratitude | QueryType::SelfQuestion
-            | QueryType::Statement | QueryType::Contemplation
+            | QueryType::Statement | QueryType::Contemplation | QueryType::IdentityQuestion | QueryType::ExplanationQuestion | QueryType::RequestForInfo
     );
-    if is_conversational {
-        let math_regions = ["advanced_math", "concept", "physics", "chemistry"];
+    if is_conversational && !is_research_query {
+        let math_regions = ["advanced_math", "concept", "physics", "chemistry", "arxiv", "academic", "paper", "document", "pubmed", "biology", "computer_science", "science", "abstract", "literature", "book", "fiction", "novel", "story", "gutenberg"];
         // Keep a math hit only if no non-math hit is available at all
         let has_non_math = hits.iter().any(|h| !math_regions.contains(&h.region.as_str()));
         if has_non_math {

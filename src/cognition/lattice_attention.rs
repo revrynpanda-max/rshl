@@ -608,7 +608,15 @@ pub fn generate_autoregressive_response(
             current_text.push_str(best_word);
         }
 
-        let final_text = generated_words.join(" ");
+        // WORD-CALCULUS (flag-gated, off by default): the lattice path emits only
+        // space-joined words with NO punctuation. When enabled, render the word list
+        // into structured sentences (operators + capitalization) so KAI speaks in
+        // real sentences instead of a run-on. Unchanged when the flag is off.
+        let final_text = if crate::cognition::word_calculus::enabled() {
+            crate::cognition::word_calculus::render(&generated_words)
+        } else {
+            generated_words.join(" ")
+        };
         let thought_vec = SparseVec::encode(&final_text);
         let reflection_score = topic_vec.cosine(&thought_vec);
         

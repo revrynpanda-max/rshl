@@ -8,9 +8,9 @@ import { isWorkingHours } from '../shared/hours.mjs';
 import { queryLattice, storeLattice, logTrainingCorpus, chatWithKaiNative } from '../shared/lattice-bridge.mjs';
 import { ensureVoiceConnection, speakTTS } from '../shared/tts-engine.mjs';
 import { worldModel, getWorldSnapshot, recordWorldEvent, recordChannelMessage } from '../shared/world-model.mjs';
-import { driveSystem, getDriveDirective, onMessageProcessed, onEcosystemFailure, onEcosystemRecovery, getDriveStatus } from '../shared/drive-system.mjs';
+import { driveSystem, getDriveDirective, onMessageProcessed, onEcosystemFailure, onEcosystemRecovery, getDriveStatus, getPredictionStats } from '../shared/drive-system.mjs';
 import { causalEngine, getCausalContext } from '../shared/causal-engine.mjs';
-import { startMetacognition, getMetacognitiveContext, updateBotModel } from '../shared/metacognition.mjs';
+import { startMetacognition, getMetacognitiveContext, updateBotModel, getSelfReport } from '../shared/metacognition.mjs';
 import { classifyEntity, humanCount, botCount } from '../shared/entity-classifier.mjs';
 
 import fs from 'fs';
@@ -104,10 +104,10 @@ client.once('clientReady', async () => {
       // Back off if KAI backend has been consistently unreachable (suppress log spam)
       if (vitalsFailCount >= 3 && (Date.now() - vitalsLastLog) < 300_000) { vitalsRunning = false; return; }
 
-      // Run both fetches in parallel with an 8s timeout each (was 15s sequential)
+      // Run both fetches in parallel with a 30s timeout each (to allow for startup index rebuild)
       const [res, resSyn] = await Promise.all([
-        fetch('http://127.0.0.1:3334/api/status', { signal: AbortSignal.timeout(8_000) }),
-        fetch('http://127.0.0.1:3334/api/synapse/status', { signal: AbortSignal.timeout(8_000) }).catch(() => null),
+        fetch('http://127.0.0.1:3334/api/status', { signal: AbortSignal.timeout(30_000) }),
+        fetch('http://127.0.0.1:3334/api/synapse/status', { signal: AbortSignal.timeout(30_000) }).catch(() => null),
       ]);
       if (vitalsFailCount > 0) {
         console.log("[KAI] Vitals broadcast recovered.");
@@ -180,6 +180,11 @@ client.once('clientReady', async () => {
  • **Geometric Bridges (Grounded):** ${synStats.neurons_with_outgoing.toLocaleString()}
  • **Fractal State Space (4D):** ~ 10^${permutations4D} Potential Sub-Networks
  • **Fractal State Space (16,384D):** ~ 10^${permutations16k} Potential Sub-Networks
+
+**[Drive System & Metacognition]**
+ • **Drives:** ${(() => { try { return getDriveStatus(); } catch (_) { return 'offline'; } })()}
+ • **Predictions:** ${(() => { try { const p = getPredictionStats(); return p.accuracy !== null ? `${p.accuracy}% Accuracy (${p.resolved} resolved, ${p.pending} pending)` : `${p.pending} pending (0 resolved)`; } catch (_) { return 'Offline'; } })()}
+ • **Self-Model:** ${(() => { try { return getSelfReport(); } catch (_) { return 'offline'; } })()}
 
 *(Updated: ${nowStr} | Tick: ${vitalsUpdateTick})*`;
 

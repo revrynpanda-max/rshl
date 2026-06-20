@@ -237,7 +237,7 @@ function runPolychoraProof() {
               : failLane('Polychora comparison ran, but one or more evidence thresholds failed.', result);
 }
 
-async function probe(name, url, timeoutMs = 5000) {
+async function probe(name, url, timeoutMs = 15000) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   const started = Date.now();

@@ -318,9 +318,10 @@ export function getMetacognitiveContext() {
 export function getSelfReport() {
   const predStats = getPredictionStats();
   const biasStr = Object.entries(selfModel.biases)
-    .map(([k, v]) => `${k.split('_')[0]}=${(v*100).toFixed(0)}%`)
-    .join(' ');
-  return `biases=[${biasStr}] pred_accuracy=${predStats.accuracy ?? '?'}% meta_drives=[accuracy=${(selfModel.meta_drives.accuracy*100).toFixed(0)}% useful=${(selfModel.meta_drives.usefulness*100).toFixed(0)}%]`;
+    .map(([k, v]) => `${k.charAt(0).toUpperCase() + k.slice(1)}: ${(v*100).toFixed(0)}%`)
+    .join(', ');
+  const predStr = predStats.accuracy !== null ? `${predStats.accuracy}%` : 'N/A';
+  return `Biases (${biasStr}) | Pred Accuracy: ${predStr} | Meta-Drives (Accuracy: ${(selfModel.meta_drives.accuracy*100).toFixed(0)}%, Usefulness: ${(selfModel.meta_drives.usefulness*100).toFixed(0)}%)`;
 }
 
 // ── Init ───────────────────────────────────────────────────────────────────────

@@ -49,6 +49,12 @@ use crate::core::regions::{
 };
 use serde::{Deserialize, Serialize};
 
+/// Resonance floor epsilon for the canonical SRHT kernel g(R)=R^2/(2-R).
+/// R is clamped to [R_EPS, 1] so 2-R stays in [1,2) (no division issue; the
+/// only pole of g is at R=2, outside the operating domain). Mirrors the
+/// emergent floor R_min in SRHT_MASTER_PAPER §2.1.
+const R_EPS: f32 = 1e-3;
+
 /// Clamp a value to [0, 1].
 fn clamp01(n: f32) -> f32 {
     if !n.is_finite() {
@@ -271,10 +277,15 @@ impl FieldState {
             ))
         };
 
-        // ── Emergence cascade (BRAIN-INSPIRED VERSION) ──────────────────
-        // Formula: phi_g = rho * R^2 * (1 - chi) * g * Gamma * f(sigma)
-        
-        // 0. Recycling Efficiency (gamma) - Mean vitality of source claims
+        // ── Emergence cascade (SRHT CANONICAL + ENGINE MODULATORS) ──────
+        // Reconciled with SRHT_MASTER_PAPER.md §2: the canonical ranking core
+        // is C_hat_core = g(R) * (1 - chi)^2  ∈ [0,1] (the score on which the
+        // master-paper proofs — Theorems 1 & 2, boundedness — hold). The engine
+        // extensions rho, gamma (vitality), f(sigma) (layer scale) and tau are
+        // POSITIVE MODULATORS layered on top; being positive scalars they do not
+        // change WITHIN-layer ranking, so the proven core is left intact.
+
+        // 0. Recycling Efficiency (gamma) - Mean vitality of source claims (engine modulator)
         let gamma = if input.source_vecs.is_empty() {
             0.0
         } else {
@@ -282,25 +293,43 @@ impl FieldState {
             sum_vit / (input.source_vecs.len() as f32)
         };
 
-        // 1. Scale Adjustment f(sigma)
+        // 1. Scale Adjustment f(sigma) (engine modulator)
         let scale_settings = super::scale_manager::get_settings_for_layer(input.layer_id);
         let f_sigma = scale_settings.scale_factor;
 
-        // 2. Non-linear resonance (R^2)
-        let r_sq = r_val * r_val;
+        // 2. Canonical resonance kernel.
+        // g(R)=R^2/(2-R), canonical SRHT kernel (SRHT_MASTER_PAPER §2).
+        // R is rank-based in (0,1]; clamp to [eps,1] so 2-R stays in [1,2) and
+        // there is never a division issue (the only pole of g is at R=2, outside
+        // the domain). Replaces the bare R^2 term.
+        let r_clamped = r_val.clamp(R_EPS, 1.0);
+        let g_kernel = (r_clamped * r_clamped) / (2.0 - r_clamped);
 
-        // 3. Contradiction Penalty (1 - chi)
-        // We use the dynamic sigmoid chi from Officer Gemini for smoother transitions
+        // 3. Continuous contradiction term (1 - chi)^2.
+        // We keep the sigmoid smoothing of chi (chi_dynamic) — that smoothing IS
+        // the "continuous chi" the master paper requires (SRHT_MASTER_PAPER §2.1).
+        // The contradiction factor is applied ONCE, squared, as (1 - chi)^2;
+        // it is no longer split between phi_g and C (which previously produced an
+        // implicit ~(1-chi)^2). Careful to avoid an accidental (1-chi)^3.
         let phi_base = clamp01(rho * r_val * s);
         let k = 15.0; // Slope steepness
         let threshold = 0.05; // Resonance threshold for friction drop
         let sigmoid_factor = 1.0 / (1.0 + ((phi_base - threshold) * k).exp());
         let chi_dynamic = chi * sigmoid_factor;
-        let chi_penalty = (1.0 - chi_dynamic).max(0.0);
+        let chi_penalty = (1.0 - chi_dynamic).max(0.0); // (1 - chi), continuous
+        let contradiction_sq = chi_penalty * chi_penalty; // (1 - chi)^2, canonical
 
-        // 4. Final superposed emergence
-        let phi_g = clamp01(rho * r_sq * chi_penalty * g * gamma * f_sigma);
-        
+        // 4. CANONICAL RANKING CORE — C_hat_core = g(R) * (1 - chi)^2 ∈ [0,1].
+        // This is the value on which SRHT_MASTER_PAPER proofs hold (§2.2).
+        let c_hat_core = clamp01(g_kernel * contradiction_sq);
+
+        // 5. Engine-modulated emergence (phi_g). The canonical core scaled by the
+        // engine's positive modulators rho, gamma, f(sigma), and g (goal alignment).
+        // g_kernel already carries the (1-chi)^2 contradiction term, so it is NOT
+        // multiplied again here. All modulators are positive scalars and therefore
+        // do not alter within-layer ranking of c_hat_core.
+        let phi_g = clamp01(c_hat_core * rho * gamma * f_sigma * g);
+
         // Raw phi for legacy reasons
         let phi_raw = clamp01(rho * r_val * s);
         let phi_c = clamp01(phi_raw * chi_penalty);
@@ -309,9 +338,17 @@ impl FieldState {
         let m_val = phi_g - input.prev_phi_g;
 
         // Derived metrics
+        // X = chi*(1-R): DIAGNOSTIC-ONLY (SRHT_MASTER_PAPER §2.1, §2.3.1).
+        // It MUST NOT be used as a prune gate anywhere — pruning routes through
+        // the normalized commit (c / convergence_score) instead.
         let x = clamp01(chi * (1.0 - r_val));
         let q = clamp01(1.0 - r_val);
-        let c = clamp01(phi_g * (1.0 - chi) * tau);
+        // Commit (normalized commit score). Canonical core times the engine
+        // modulators rho*gamma*f(sigma)*g (carried in phi_g) and tau:
+        //   Commit = C_hat_core * rho * gamma * f(sigma) * g * tau   (SRHT_MASTER_PAPER §2).
+        // The contradiction term is already squared inside c_hat_core/phi_g, so we
+        // do NOT multiply by (1 - chi) again here (that would yield (1-chi)^3).
+        let c = clamp01(phi_g * tau);
         let wm = clamp01(phi_g * r);
         let pr = clamp01(((1.0 - phi_g) + chi + q) / 3.0);
 

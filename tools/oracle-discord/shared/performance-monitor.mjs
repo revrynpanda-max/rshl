@@ -130,8 +130,8 @@ export async function getHardwareStats() {
 
   try {
     const [cpuRes, memRes] = await Promise.all([
-      execAsync('powershell -Command "Get-CimInstance Win32_Processor | Select-Object -ExpandProperty LoadPercentage"', { timeout: 4000 }),
-      execAsync('powershell -Command "Get-CimInstance Win32_OperatingSystem | Select-Object FreePhysicalMemory,TotalVisibleMemorySize | ConvertTo-Json"', { timeout: 4000 })
+      execAsync('powershell -Command "Get-CimInstance Win32_Processor | Select-Object -ExpandProperty LoadPercentage"', { timeout: 4000, windowsHide: true }),
+      execAsync('powershell -Command "Get-CimInstance Win32_OperatingSystem | Select-Object FreePhysicalMemory,TotalVisibleMemorySize | ConvertTo-Json"', { timeout: 4000, windowsHide: true })
     ]);
     
     const cpu = parseInt(cpuRes.stdout.trim()) || 0;
