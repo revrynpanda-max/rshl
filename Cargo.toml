@@ -1,6 +1,6 @@
 [package]
 name = "kai"
-version = "9.9.0"
+version = "9.10.15"
 edition = "2021"
 authors = ["Ryan Ervin <PandaProductionsLogo>"]
 description = "KAI RSHL UI — Geometric Intelligence Engine"
@@ -17,6 +17,19 @@ path = "src/main.rs"
 [[bin]]
 name = "test_gguf"
 path = "src/bin/test_gguf.rs"
+
+# Benchmark / evaluation harness (Pass 3). Separate bin so it is NEVER compiled
+# by `cargo build --release --bin kai` — a break here cannot break the engine.
+# Run with: cargo run --release --bin kai-bench
+[[bin]]
+name = "kai-bench"
+path = "src/bin/kai_bench.rs"
+
+# KAIVERSE — native 3D universe explorer. Separate binary so it never touches
+# the core engine build. Run with: cargo run --release --bin kaiverse --features gpu
+[[bin]]
+name = "kaiverse"
+path = "src/bin/kaiverse/main.rs"
 
 [dependencies]
 ratatui = "0.29"
@@ -47,6 +60,11 @@ candle-transformers = "0.10.2"
 tokenizers = "0.23.1"
 num_cpus = "1.17.0"
 tracing = "0.1.44"
+winit = "0.30"
+glam = { version = "0.29", features = ["bytemuck"] }
+egui = { version = "0.29", optional = true }
+egui-wgpu = { version = "0.29", optional = true }
+egui-winit = { version = "0.29", optional = true }
 
 [profile.release]
 opt-level = 3
@@ -55,7 +73,7 @@ codegen-units = 16
 
 [features]
 default = ["gpu"]
-gpu = ["wgpu", "bytemuck"]
+gpu = ["wgpu", "bytemuck", "egui", "egui-wgpu", "egui-winit"]
 sparsity_010 = []
 # Put the BitNet LLM on an NVIDIA GPU via Candle's CUDA backend. OFF by default
 # so the normal build needs no CUDA toolkit. Once the CUDA toolkit is installed,

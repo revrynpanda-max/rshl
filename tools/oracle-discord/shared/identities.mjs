@@ -9,7 +9,10 @@ export const HUMAN_REGISTRY = {
     role: "Owner/Creator",
     username: process.env.OWNER_USERNAME || "nastermodx",
     transcriptChannelId: "1500527640107417783",
-    voiceSlot: 0
+    voiceSlot: 0,
+    // bio: editable owner bio. Seeded with a sensible default; can be overridden
+    // via OWNER_BIO env or the gated /api/owner-profile write (CC_CONTROL_TOKEN).
+    bio: process.env.OWNER_BIO || "Owner & architect of KAI. Creator of the Recursive Sparse Holographic Lattice (RSHL) and the Oracle command center. Drives the cognitive roundtables."
   },
   "Taz": {
     id: "1286110163505385523",

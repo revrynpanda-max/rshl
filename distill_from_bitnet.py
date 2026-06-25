@@ -205,7 +205,8 @@ def kai_rationale_for(prompt, golden):
     ask = (
         f"{prompt}\n\n"
         f"The correct answer is: {golden}\n"
-        f"In 1-3 short sentences, explain WHY that answer is correct (your reasoning). "
+        f"In 1-3 short sentences, explain WHY that answer is correct. "
+        f"IMPORTANT: If you have any related memories or context, use them to form a connection that helps you understand this better, rather than just guessing. "
         f"Reasoning:"
     )
     reply = ask_kai(ask)
@@ -325,6 +326,22 @@ def run_distill(prompts, dry_run=True, use_star=True, pace=1.0,
         all_entries.extend(entries)
         taught += 1
         print(f"  [TEACH] +{len(entries)} ingest entries")
+
+        # LIVE SESSION: expose the current step so the dashboard classroom reflects the REAL
+        # prompt/answer happening now (not canned). Atomic write so the reader never sees a
+        # partial file. Never raises — telemetry must not break the pipeline.
+        try:
+            import json as _json, time as _time, os as _os
+            _live = {"phase": "weave", "n": n, "total": total,
+                     "prompt": str(prompt)[:200], "answer": ans_safe[:280],
+                     "rationale": (rationale or "")[:200], "teach": len(entries),
+                     "ts": int(_time.time())}
+            _lp = _os.path.join("C:\\KAI", "data", "kai_live_session.json")
+            with open(_lp + ".tmp", "w", encoding="utf-8") as _f:
+                _json.dump(_live, _f)
+            _os.replace(_lp + ".tmp", _lp)
+        except Exception:
+            pass
 
         if not dry_run:
             # Commit incrementally so a long run isn't lost if interrupted, and so

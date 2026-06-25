@@ -650,6 +650,20 @@ const server = http.createServer(async (req, res) => {
   res.end(JSON.stringify({ error: 'Not found' }));
 });
 
+// Make startup failures EXPLICIT instead of throwing an unhandled 'error' event
+// (which exits with no useful message). The supervisor in oracle-gateway.mjs
+// reads this stderr line to know WHY the tool server died. EADDRINUSE means a
+// previous tool-server instance still holds :3420 — exit non-zero so it's clearly
+// a failure, and let the supervisor's crash-loop guard back off / suspend.
+server.on('error', (err) => {
+  if (err && err.code === 'EADDRINUSE') {
+    console.error(`[KaiCoderTools] FATAL: port ${PORT} already in use (EADDRINUSE). A stale tool-server instance is likely still running. Exiting.`);
+    process.exit(1);
+  }
+  console.error(`[KaiCoderTools] FATAL server error: ${err?.message || err}`);
+  process.exit(1);
+});
+
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`[KaiCoderTools] Tool server online at port ${PORT}`);
   console.log(`[KaiCoderTools] Project root (read): ${PROJECT_ROOT}`);

@@ -41,6 +41,24 @@ const KNOWN_PROCESSES = ["Dashboard", "Oracle", "KAI", "Leo", ...BOTS];
 const processes = new Map(); // name -> child process
 const processMeta = new Map(); // name -> startup and exit metadata
 const sleepingBots = new Set(); // name -> true (prevents auto-respawn)
+const wedgedBots = new Set(); // name -> true (port-collision/clean-exit storm; respawn suspended)
+const exitHistory = new Map(); // name -> [timestamps of recent exits]
+
+// Respawn-loop guard: if a bot exits repeatedly within a short window it is
+// almost certainly WEDGED (e.g. a port collision making it exit 0 every time).
+// Tight-respawning it every 5s forever just floods the log and burns CPU.
+// After WEDGE_EXIT_THRESHOLD exits inside WEDGE_WINDOW_MS we suspend its
+// auto-respawn and log that it is wedged. A manual/Oracle restart clears it.
+const WEDGE_WINDOW_MS = Math.max(10000, parseInt(process.env.KAI_WEDGE_WINDOW_MS || '60000', 10) || 60000);
+const WEDGE_EXIT_THRESHOLD = Math.max(2, parseInt(process.env.KAI_WEDGE_EXIT_THRESHOLD || '3', 10) || 3);
+
+function recordExitAndCheckWedged(name) {
+  const now = Date.now();
+  const hist = (exitHistory.get(name) || []).filter(t => now - t < WEDGE_WINDOW_MS);
+  hist.push(now);
+  exitHistory.set(name, hist);
+  return hist.length >= WEDGE_EXIT_THRESHOLD;
+}
 
 function normalizeProcessName(name) {
   if (!name) return null;
@@ -65,7 +83,7 @@ function scriptForProcess(name) {
   if (name === "Leo") return "bots/leo.mjs"; // Leo still uses his original file or native-bot if preferred
   if (name === "X" || name === "Claudey" || name === "Groq") return "bots/native-bot.mjs";
   if (name === "KAI") return "bots/kai.mjs";
-  if (name === "Dashboard") return "dashboard-server.mjs";
+  if (name === "Dashboard") return "command-center-server.mjs";
   return "bots/start-bot.mjs";
 }
 
@@ -176,6 +194,10 @@ if (killedAny) {
 import os from 'os';
 
 function startProcess(name, script, args = []) {
+  // An explicit (re)start clears any wedge suspension and exit history so the
+  // bot gets a clean chance — e.g. after the port map has been fixed.
+  wedgedBots.delete(name);
+  exitHistory.delete(name);
   if (sleepingBots.has(name)) {
     console.log(`[Ecosystem] ${name} is marked ASLEEP. Skipping startup.`);
     processMeta.set(name, {
@@ -384,7 +406,7 @@ function startProcess(name, script, args = []) {
           }
           setTimeout(() => {
             console.log(`🌌 [Ecosystem] Quantum Reignition Phase 1: Spawning Dashboard & Oracle...`);
-            startProcess("Dashboard", "dashboard-server.mjs");
+            startProcess("Dashboard", "command-center-server.mjs");
             startProcess("Oracle", "oracle-gateway.mjs");
           }, 2000);
 
@@ -429,13 +451,22 @@ function startProcess(name, script, args = []) {
         writeManagerState();
         return;
       }
-      console.log(`[Ecosystem] ${name} exited with code ${code}. Re-spawning in 5s...`);
       processes.delete(name);
       writeManagerState();
       if (fs.existsSync('c:/KAI/tools/oracle-discord/state/test_failsafe.flag')) {
         console.log(`[Ecosystem] Failsafe testing flag detected. Suppressing auto-respawn for ${name} to allow collapse simulation.`);
         return;
       }
+      // RESPAWN-LOOP GUARD (Fix 4): a bot that exits repeatedly in a short window
+      // is wedged (most likely a PORT COLLISION — it exits 0 every boot). Stop
+      // tight-respawning it; a manual restart / Oracle WAKE clears the wedge.
+      if (recordExitAndCheckWedged(name)) {
+        wedgedBots.add(name);
+        console.error('[Ecosystem] ' + name + ' exited ' + WEDGE_EXIT_THRESHOLD + '+ times within ' + Math.round(WEDGE_WINDOW_MS / 1000) + 's (code ' + code + '). It looks WEDGED — likely a port collision (check shared/identities.mjs). SUSPENDING auto-respawn. Use Oracle/CLI restart to retry after fixing.');
+        writeManagerState();
+        return;
+      }
+      console.log(`[Ecosystem] ${name} exited with code ${code}. Re-spawning in 5s...`);
       setTimeout(() => {
         startProcess(name, scriptForProcess(name), argsForProcess(name));
       }, 5000);
@@ -456,7 +487,7 @@ function startProcess(name, script, args = []) {
 // Core Ignition: Start mission-critical bots with a safe Discord Gateway stagger (5.5s)
 console.log(`[Ecosystem] Initializing core ignition. Starting KAI, Oracle, and Dashboard.`);
 
-startProcess("Dashboard", "dashboard-server.mjs");
+startProcess("Dashboard", "command-center-server.mjs");
 startProcess("Oracle", "oracle-gateway.mjs");
 
 setTimeout(() => {
@@ -483,7 +514,11 @@ for (const bot of INDUSTRIAL_ORDER) {
 }
 for (const bot of SOCIAL_ORDER) {
   const currentBot = bot;
-  const file = currentBot === "Leo" ? "bots/leo.mjs" : "bots/start-bot.mjs";
+  // Use the CANONICAL mapping (Leo→leo.mjs, X/Claudey/Groq→native-bot.mjs) instead of
+  // hardcoding start-bot.mjs. The boot loop was launching the OLD runtime for the social
+  // fleet while the migrated voice/mic code lives in native-bot.mjs — so fixes never ran.
+  // This finishes the migration: each social bot runs ONE runtime (the intended one).
+  const file = scriptForProcess(currentBot);
   const args = currentBot === "Leo" ? [] : [currentBot];
   setTimeout(() => {
     console.log(`[Ecosystem] Spawning social AI: ${currentBot}...`);

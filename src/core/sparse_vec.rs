@@ -21,6 +21,28 @@ pub const SPARSITY: f32 = 0.10;
 #[cfg(not(feature = "sparsity_010"))]
 pub const SPARSITY: f32 = 0.04;
 
+/// Cached gate for the legacy popcount-only `phase_angle()` behavior.
+/// `KAI_PHASE_LEGACY=1` restores the original Hamming-weight proxy; otherwise
+/// the new structural golden-angle phasor (the default) is used. Read once and
+/// cached so the per-call cost on the hot retrieval path is a single relaxed
+/// atomic load.
+#[inline]
+fn phase_legacy_enabled() -> bool {
+    use std::sync::atomic::{AtomicU8, Ordering};
+    static STATE: AtomicU8 = AtomicU8::new(0); // 0 = unread, 1 = off, 2 = on
+    match STATE.load(Ordering::Relaxed) {
+        1 => false,
+        2 => true,
+        _ => {
+            let on = std::env::var("KAI_PHASE_LEGACY")
+                .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+                .unwrap_or(false);
+            STATE.store(if on { 2 } else { 1 }, Ordering::Relaxed);
+            on
+        }
+    }
+}
+
 /// A sparse ternary vector in 16384 dimensions.
 /// Values are -1, 0, or +1.  Only nonzero entries are stored:
 ///   * `nz`   – sorted ascending u16 indices of active dimensions
@@ -793,13 +815,34 @@ impl SparseVec {
         (pos, neg)
     }
 
-    /// Phase angle derived from the geometric position of this vector.
-    /// Phase angle derived from the holographic geometric position of active micro-features.
+    /// Phase angle derived from the holographic geometric position of active
+    /// micro-features.
+    ///
+    /// DEFAULT (structural, golden-angle phasor): every active (index, sign)
+    /// pair contributes a unit phasor at angle `idx * GOLDEN_ANGLE`, scaled by
+    /// its sign. The resultant phasor's argument is the vector's phase. Because
+    /// the angle depends on WHICH indices are active and their signs — not just
+    /// HOW MANY — two vectors with identical popcount but different active-index
+    /// patterns get DIFFERENT phases. This is what lets `phasor_coherence()`
+    /// carry semantic/structural information instead of a bare bit-count proxy.
+    /// Deterministic, O(nnz), dependency-free.
+    ///
+    /// LEGACY (env `KAI_PHASE_LEGACY=1`): the original popcount-only proxy
+    /// `2.39996 * nnz (mod 2π)` — a Hamming-weight signal that ignores index
+    /// structure. Kept one flag away for reversibility / A-B testing.
     pub fn phase_angle(&self) -> f32 {
         if self.nz.is_empty() {
             return 0.0;
         }
         const GOLDEN_ANGLE: f32 = 2.399_963_1_f32;
+
+        // Legacy popcount-only path (opt-in, reversible). The new structural
+        // path is the DEFAULT so phasor coherence finally carries structure.
+        if phase_legacy_enabled() {
+            let angle = (self.nz.len() as f32) * GOLDEN_ANGLE;
+            return angle.rem_euclid(std::f32::consts::TAU);
+        }
+
         let mut sum_re = 0.0;
         let mut sum_im = 0.0;
         for (&idx, &sign) in self.nz.iter().zip(self.vals.iter()) {

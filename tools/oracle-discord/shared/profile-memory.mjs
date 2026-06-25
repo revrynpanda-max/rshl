@@ -3,7 +3,15 @@
 // transcript memory, so the fleet can recall who said/did what — and catch
 // contradictions ("you said the opposite before") with the right context.
 
-import { ingestMessage, recallProfileMemories } from './transcript-memory.mjs';
+import {
+  ingestMessage, recallProfileMemories,
+  captureEntityFacts, getEntityProfile, setEntityFact, recallFromEngine
+} from './transcript-memory.mjs';
+
+// Re-export the structured-memory + engine-recall API so callers can pull
+// "who this person is" (categorized facts) and deep/bulk lattice recall through
+// the profile layer they already import.
+export { getEntityProfile, setEntityFact, recallFromEngine };
 
 export const SENSITIVE_CHANNEL = '1500053533515448480';
 
@@ -38,7 +46,14 @@ export async function recordProfile(client, person, userId, content, channelId) 
   if (!text || !person) return;
   const emotion = inferEmotion(text);
   const intent = inferIntent(text);
-  try { ingestMessage(person, userId, text, channelId); } catch (_) {}
+  // Stamp the channel as the thread_id fallback (a flat-channel message's
+  // "thread" is the channel itself). A true Discord thread id is captured at the
+  // bot listener layer which has the message object; here we only have channelId.
+  try { ingestMessage(person, userId, text, channelId, { threadId: channelId }); } catch (_) {}
+  // CHEAP structured-fact capture (regex only, no LLM/network) — builds the small
+  // categorized "who is this person" store as a side-effect of recording. Humans
+  // and AIs alike; misses are fine, only clear self-statements are captured.
+  try { captureEntityFacts(userId, person, text); } catch (_) {}
   try {
     const ch = client?.channels?.cache?.get(SENSITIVE_CHANNEL) || await client?.channels?.fetch?.(SENSITIVE_CHANNEL).catch(() => null);
     if (ch) {
@@ -62,5 +77,19 @@ export function contradictionContext(userId, n = 6) {
       return `  - (${when}) ${String(p.content || '').replace(/\s+/g, ' ').slice(0, 100)}`;
     });
     return `[WHAT THIS PERSON HAS SAID BEFORE — check it; if they now contradict this without a reason, call it out gently]:\n${lines.join('\n')}`;
+  } catch (_) { return ''; }
+}
+
+/**
+ * Compact "who this person is" block for prompt injection — the STRUCTURED
+ * categorized facts (likes/dislikes/patterns/…), NOT the raw transcript. Loads
+ * on demand so Leo/Oracle can know a person without replaying their history.
+ * Returns '' when nothing is known yet.
+ */
+export function entityProfileContext(entityId) {
+  try {
+    const prof = getEntityProfile(entityId);
+    if (!prof || !prof.summary) return '';
+    return `[WHO THIS PERSON IS — structured memory, load on demand]:\n  ${prof.summary}`;
   } catch (_) { return ''; }
 }

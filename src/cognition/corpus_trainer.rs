@@ -630,19 +630,26 @@ pub fn run_train_response_mlp_cli(args: &[String]) {
         println!("[train-mlp] Hardware detected: GPU (PyTorch)");
         let batch_path = std::path::PathBuf::from("data/mlp_batch.json");
         
-        let batch_data = serde_json::json!({
-            "dim": dim,
-            "hidden": hidden,
-            "pairs": pairs.iter().map(|(i, t)| {
-                serde_json::json!({
-                    "input": i,
-                    "target": t
-                })
-            }).collect::<Vec<_>>()
-        });
-        
         println!("[train-mlp] Exporting {} pairs to batch file...", pairs.len());
-        if let Err(e) = std::fs::write(&batch_path, serde_json::to_string(&batch_data).unwrap()) {
+        let write_batch = || -> std::io::Result<()> {
+            use std::io::Write;
+            let file = std::fs::File::create(&batch_path)?;
+            let mut writer = std::io::BufWriter::new(file);
+            write!(writer, "{{\"dim\":{},\"hidden\":{},\"pairs\":[", dim, hidden)?;
+            for (idx, (input, target)) in pairs.iter().enumerate() {
+                if idx > 0 { write!(writer, ",")?; }
+                let pair_json = serde_json::json!({
+                    "input": input,
+                    "target": target
+                });
+                serde_json::to_writer(&mut writer, &pair_json)?;
+            }
+            write!(writer, "]}}")?;
+            writer.flush()?;
+            Ok(())
+        };
+
+        if let Err(e) = write_batch() {
             eprintln!("[train-mlp] Failed to write batch file: {}", e);
             use_gpu = false;
         } else {

@@ -11,6 +11,59 @@ import { AI_REGISTRY } from './identities.mjs';
 
 const FLEET_BOTS = Object.keys(AI_REGISTRY);
 
+// --- NAME-ADDRESSING ALIAS MAP (env: SOCIAL_NAME_ROUTING, default ON) ---
+// Maps spoken/typed aliases -> canonical fleet name. Includes STT manglings
+// the logs showed (Claudia/Jemmy/Grodd) plus the everyday short forms (Gemi).
+// All lowercase keys. Used by getPrimaryAddressee so a name spoken by a human
+// OR by another bot routes the turn to the right responder — including Leo.
+const NAME_ROUTING_ON = String(process.env.SOCIAL_NAME_ROUTING ?? '1') === '1';
+const NAME_ALIASES = {
+  'claudey': 'Claudey', 'claudia': 'Claudey', 'claude': 'Claudey', 'claudy': 'Claudey', 'cloudy': 'Claudey',
+  'gemini': 'Gemini', 'gemi': 'Gemini', 'jemmy': 'Gemini', 'jemi': 'Gemini', 'gemmy': 'Gemini', 'jemini': 'Gemini',
+  'groq': 'Groq', 'grodd': 'Groq', 'grok': 'Groq', 'grock': 'Groq', 'grog': 'Groq',
+  'leo': 'Leo', 'leon': 'Leo', 'leyo': 'Leo',
+  'kai': 'KAI', 'ky': 'KAI', 'kay': 'KAI',
+  'oracle': 'Oracle',
+  'x': 'X', 'ex': 'X', 'axe': 'X',
+  'analyst': 'Analyst', 'researcher': 'Researcher'
+};
+// Canonical names addressable by name-routing (fleet + Leo). Longest-first so a
+// multi-token name can't be shadowed by a shorter alias.
+const ADDRESSABLE = Array.from(new Set([...FLEET_BOTS, 'Leo']))
+  .sort((a, b) => b.length - a.length);
+
+// Levenshtein <=1 fuzzy match for a single token against an alias key, so minor
+// STT slips still resolve. Cheap, bounded — only runs on short address tokens.
+function nearAlias(token) {
+  const t = (token || '').toLowerCase();
+  if (!t) return null;
+  if (NAME_ALIASES[t]) return NAME_ALIASES[t];
+  for (const key of Object.keys(NAME_ALIASES)) {
+    // Only fuzz longer alias keys — short ones (x, kai, leo, ex, ky) must match
+    // exactly so common words ('by', 'ax', 'so') can't be misrouted to a bot.
+    if (key.length < 5) continue;
+    if (Math.abs(key.length - t.length) > 1) continue;
+    let i = 0, j = 0, edits = 0;
+    while (i < key.length && j < t.length) {
+      if (key[i] === t[j]) { i++; j++; continue; }
+      if (++edits > 1) break;
+      if (key.length > t.length) i++;
+      else if (key.length < t.length) j++;
+      else { i++; j++; }
+    }
+    edits += (key.length - i) + (t.length - j);
+    if (edits <= 1) return NAME_ALIASES[key];
+  }
+  return null;
+}
+
+// Resolve an addressee from a leading token (alias-tolerant). Returns canonical
+// name or null. Honors SOCIAL_NAME_ROUTING.
+function resolveAddressee(token) {
+  if (!NAME_ROUTING_ON) return null;
+  return nearAlias(token);
+}
+
 const UNANSWERED_GAP_RE =
   /\b(idk|i don'?t know|not sure|no idea|who knows|can'?t remember|unsure|don'?t recall|don'?t remember|wasn'?t me|wasn'?t mine|pretty sure .+ but|might'?ve been|was it|who posted|who said|who dropped|who shared|nobody knows|no clue)\b/i;
 
@@ -28,20 +81,47 @@ export function getPrimaryAddressee(content) {
   const c = (content || '').trim();
   if (!c) return null;
 
-  const heyMatch = c.match(/^(?:hey|yo|hi|ok|okay|wait|so|alright|listen)\s+([a-z][\w-]*)/i);
+  const heyMatch = c.match(/^(?:hey|yo|hi|ok|okay|wait|so|alright|listen|oi|ay|aye)\s+([a-z][\w-]*)/i);
   if (heyMatch) {
     const fragment = heyMatch[1].toLowerCase();
-    for (const b of FLEET_BOTS) {
+    for (const b of ADDRESSABLE) {
       if (fragment === b.toLowerCase() || fragment.startsWith(b.toLowerCase())) return b;
     }
+    const aliasHit = resolveAddressee(fragment);
+    if (aliasHit) return aliasHit;
   }
 
-  for (const b of FLEET_BOTS) {
-    if (new RegExp(`^${b}\\b[,!?:]`, 'i').test(c)) return b;
-    if (new RegExp(`^${b}\\s+you\\b`, 'i').test(c)) return b;
+  for (const b of ADDRESSABLE) {
+    if (new RegExp('^' + b + '\\b[,!?:]', 'i').test(c)) return b;
+    if (new RegExp('^' + b + '\\s+you\\b', 'i').test(c)) return b;
+  }
+
+  // Alias-tolerant leading-name address: 'gemi, ...' / 'grodd you ...' / '@claudia'.
+  // Pull the first word-token (stripping a leading @) and resolve via the alias map
+  // so STT manglings still route to the right bot. Only treats it as an address
+  // when followed by address punctuation or 'you' (not a mid-sentence mention).
+  const lead = c.match(/^@?([a-z][\w'-]{0,14})\b([,!?:]|\s+you\b)?/i);
+  if (lead) {
+    const aliasHit = resolveAddressee(lead[1]);
+    if (aliasHit && lead[2]) return aliasHit;
   }
 
   return null;
+}
+
+// Alias-tolerant: does this message name the given bot anywhere (canonical name
+// or any known alias / STT mangling)? Used so a BOT naming another BOT still
+// counts as addressing them.
+export function mentionsBot(content, botName) {
+  const lower = (content || '').toLowerCase();
+  if (!lower) return false;
+  if (lower.includes(botName.toLowerCase())) return true;
+  if (!NAME_ROUTING_ON) return false;
+  for (const [alias, canon] of Object.entries(NAME_ALIASES)) {
+    if (canon !== botName) continue;
+    if (new RegExp('\\b' + alias + '\\b', 'i').test(lower)) return true;
+  }
+  return false;
 }
 
 export function isDirectAddress(content, botName) {
@@ -157,11 +237,18 @@ export async function computeSocialScore(botName, messageContent, options = {}) 
   const gap = detectsUnansweredGap(messageContent);
   const knowledge = await checkKnowledgeHolder(botName, messageContent, recentMessages);
 
+  // Priority boost applied to the named/addressed bot. Env-tunable so the
+  // first-claim-on-the-floor strength can be raised without code edits.
+  const NAME_PRIORITY_BOOST = (() => {
+    const v = Number(process.env.SOCIAL_NAME_PRIORITY_BOOST);
+    return Number.isFinite(v) && v > 0 ? v : 2.5;
+  })();
+
   if (isDirectAddress(messageContent, botName)) {
-    score = Math.max(score, 2.5);
+    score = Math.max(score, NAME_PRIORITY_BOOST);
   } else if (isPassingMention(messageContent, botName)) {
     score = Math.max(score, 0.85);
-  } else if ((messageContent || '').toLowerCase().includes(botName.toLowerCase())) {
+  } else if (mentionsBot(messageContent, botName)) {
     score = Math.max(score, 1.15);
   }
 

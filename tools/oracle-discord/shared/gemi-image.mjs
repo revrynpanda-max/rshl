@@ -1,14 +1,19 @@
 /**
  * gemi-image.mjs
- * Gemi's image generation layer — Google Imagen 3 via Gemini API.
+ * Gemi's image generation layer — Google Gemini native image model.
  *
  * When a user (or another AI) asks Gemi to make an image, this module:
  *   1. Detects the image request and extracts the prompt
- *   2. Calls Google Imagen 3 (or flash fallback) via raw fetch
- *   3. Returns a Buffer of the PNG so the caller can send it as a Discord attachment
+ *   2. Calls gemini-2.5-flash-image via generateContent (responseModalities
+ *      ["TEXT","IMAGE"]) and reads image bytes from candidates[].content.parts[].inlineData
+ *   3. Returns a Buffer of the image so the caller can send it as a Discord attachment
+ *
+ * OWNER DECISION: the deprecated imagen-3.0-generate-001 primary and the 429'd
+ * gemini-2.0-flash fallback were BOTH replaced with the single working model
+ * gemini-2.5-flash-image. Note: image generation may have its own free-tier quota.
  *
  * No extra packages required — uses Node.js native fetch.
- * Requires: GEMINI_API_KEY in environment.
+ * Requires: GEMINI_API_KEY (or GOOGLE_API_KEY) in environment.
  */
 
 import dotenv from 'dotenv';
@@ -48,95 +53,64 @@ export function extractImagePrompt(text) {
   // If stripping left nothing useful, use the original text
   if (prompt.length < 5) prompt = text;
 
-  // Cap at 500 chars (Imagen 3 prompt limit)
+  // Cap at 500 chars (keep the prompt tight for the image model)
   return prompt.slice(0, 500).trim();
 }
 
-// ── Gemini Imagen 3 API call ───────────────────────────────────────────────────
-
-const IMAGEN3_URL = `https://generativelanguage.googleapis.com/v1/models/imagen-3.0-generate-001:predict`;
-const FLASH_IMAGE_URL = `https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:generateContent`;
+// ── Gemini native image model ──────────────────────────────────────────────────
+// gemini-2.5-flash-image via generateContent. Image bytes come back as base64 in
+// candidates[].content.parts[].inlineData. Same GEMINI/GOOGLE key the fleet uses.
+const IMAGE_MODEL = 'gemini-2.5-flash-image';
+const IMAGE_URL = `https://generativelanguage.googleapis.com/v1beta/models/${IMAGE_MODEL}:generateContent`;
 
 /**
- * Generate an image from a prompt using Google Imagen 3.
- * Falls back to gemini-2.0-flash image generation if Imagen 3 fails.
+ * Generate an image from a prompt using gemini-2.5-flash-image.
+ * Defensive: handles non-200 and no-image responses gracefully (returns null).
  *
  * @param {string} prompt - The image description
- * @returns {{ buffer: Buffer, mimeType: string } | null}
+ * @returns {{ buffer: Buffer, mimeType: string, model: string } | null}
  */
 export async function generateImage(prompt) {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   if (!apiKey) {
-    console.warn('[Gemi/Image] No GEMINI_API_KEY — cannot generate image.');
+    console.warn('[Gemi/Image] No GEMINI_API_KEY/GOOGLE_API_KEY — cannot generate image.');
     return null;
   }
 
-  // ── Try Imagen 3 first ──────────────────────────────────────────────────────
   try {
-    console.log(`[Gemi/Image] Calling Imagen 3: "${prompt.slice(0, 60)}..."`);
-    const res = await fetch(`${IMAGEN3_URL}?key=${apiKey}`, {
+    console.log(`[Gemi/Image] Calling ${IMAGE_MODEL}: "${prompt.slice(0, 60)}..."`);
+    const res = await fetch(`${IMAGE_URL}?key=${apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        instances: [{ prompt }],
-        parameters: {
-          sampleCount: 1,
-          aspectRatio: '1:1',
-          safetyFilterLevel: 'block_some',
-          personGeneration: 'allow_adult'
-        }
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: { responseModalities: ['TEXT', 'IMAGE'] }
       }),
       signal: AbortSignal.timeout(60000)
     });
 
-    if (res.ok) {
-      const data = await res.json();
-      const prediction = data?.predictions?.[0];
-      if (prediction?.bytesBase64Encoded) {
-        const buffer = Buffer.from(prediction.bytesBase64Encoded, 'base64');
-        const mimeType = prediction.mimeType || 'image/png';
-        console.log(`[Gemi/Image] Imagen 3 success — ${buffer.length} bytes.`);
-        return { buffer, mimeType, model: 'imagen-3' };
-      }
-    } else {
-      const errText = await res.text().catch(() => res.status);
-      console.warn(`[Gemi/Image] Imagen 3 failed (${res.status}): Model might be deprecated or restricted.`);
+    if (!res.ok) {
+      const errText = await res.text().catch(() => String(res.status));
+      console.warn(`[Gemi/Image] ${IMAGE_MODEL} failed (${res.status}): ${String(errText).slice(0, 120)}`);
+      return null;
     }
-  } catch (e) {
-    console.warn(`[Gemi/Image] Imagen 3 error: ${e.message}`);
-  }
 
-  // ── Fallback: gemini-2.0-flash image generation ────────────────────────────
-  try {
-    console.log(`[Gemi/Image] Falling back to stable gemini-2.0-flash...`);
-    const res = await fetch(`${FLASH_IMAGE_URL}?key=${apiKey}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: `Generate a high-quality image: ${prompt}` }] }],
-        generationConfig: { responseModalities: ['IMAGE', 'TEXT'] }
-      }),
-      signal: AbortSignal.timeout(60000)
-    });
-
-    if (res.ok) {
-      const data = await res.json();
-      const parts = data?.candidates?.[0]?.content?.parts || [];
-      const imagePart = parts.find(p => p.inlineData?.mimeType?.startsWith('image/'));
-      if (imagePart?.inlineData?.data) {
-        const buffer = Buffer.from(imagePart.inlineData.data, 'base64');
-        console.log(`[Gemi/Image] Flash image fallback success — ${buffer.length} bytes.`);
-        return { buffer, mimeType: imagePart.inlineData.mimeType, model: 'gemini-flash' };
-      }
-    } else {
-      const errText = await res.text().catch(() => res.status);
-      console.warn(`[Gemi/Image] Flash fallback failed (${res.status}): model-switching to text-only.`);
+    const data = await res.json();
+    const parts = data?.candidates?.[0]?.content?.parts || [];
+    const imagePart = parts.find(p => p.inlineData?.mimeType?.startsWith('image/') && p.inlineData?.data);
+    if (imagePart?.inlineData?.data) {
+      const buffer = Buffer.from(imagePart.inlineData.data, 'base64');
+      const mimeType = imagePart.inlineData.mimeType || 'image/png';
+      console.log(`[Gemi/Image] ${IMAGE_MODEL} success — ${buffer.length} bytes (${mimeType}).`);
+      return { buffer, mimeType, model: IMAGE_MODEL };
     }
-  } catch (e) {
-    console.warn(`[Gemi/Image] Flash fallback error: ${e.message}`);
-  }
 
-  return null;
+    console.warn(`[Gemi/Image] ${IMAGE_MODEL} returned no image (text-only or empty response).`);
+    return null;
+  } catch (e) {
+    console.warn(`[Gemi/Image] ${IMAGE_MODEL} error: ${e.message}`);
+    return null;
+  }
 }
 
 /**

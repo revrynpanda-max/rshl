@@ -20,6 +20,7 @@ import { queryLattice } from './shared/lattice-bridge.mjs';
 import { runCodingTask, applySandboxFile, isToolServerOnline, makeLLMCaller } from './shared/kai-coder-agent.mjs';
 import { fork } from 'child_process';
 import path from 'path';
+import { listVoices, describeVoice, validateVoice, setReadingVoice, getReadingVoice, parseVoiceQuery } from './shared/edge-reading-tts.mjs';
 
 // ── CRASH GUARD ──────────────────────────────────────────────────────────────
 // When kai.exe (the engine on :3334) faults, every socket/fetch to it emits an
@@ -183,6 +184,14 @@ ${latticeContext ? latticeContext + '\n' : ''}a social bot in the lattice has si
             const prefix = requesterId ? `<@${requesterId}>, ` : "";
             await channel.send(`${prefix}🏛️ **[Oracle/Relay]** Analysis from the **${botName}** department:\n\n${text.slice(0, 1800)}`).catch(console.error);
           }
+        }
+        if (payload.type === 'DM') {
+          const who = payload.from || 'NasterModx';
+          const sysPrompt = `You are Oracle — the central intelligence and moderator of the KAI RSHL ecosystem. You are speaking privately with ${who}. Be direct, concise, and genuinely helpful; you can help run and explain commands and the lattice. No emojis.`;
+          const reply = await chatWithOpenJarvis('Oracle', String(payload.text || ''), sysPrompt, 'Oracle-Sovereign', 0.4, { isWorkChannel: false }).catch(() => null);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ status: 'ok', from: 'Oracle', reply: reply || '' }));
+          return;
         }
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ status: 'ok' }));
@@ -478,13 +487,109 @@ client.once('clientReady', async () => {
 
   resetFailureTracker();
 
-  // ── Start Kai Coder Tool Server ────────────────────────────────────────────
-  // Forked as a child process so it survives independently
+  // ── Start Kai Coder Tool Server (with AUTO-RESTART) ─────────────────────────
+  // Forked as a child process so it survives independently. The tool server (port
+  // 3420) gives Oracle its file/exec/grep/build tools; if it dies and is NOT
+  // respawned, Oracle silently loses every capability. So we supervise it here:
+  // respawn on unexpected exit with exponential backoff + a cap, a crash-loop
+  // guard (if it dies too many times in a short window we STOP and log loudly
+  // rather than hot-loop), and a shuttingDown flag so intentional teardown does
+  // not trigger a respawn. A crash-looping tool server can never take down Oracle:
+  // it runs in its own process and all failures here are caught + logged.
   const toolServerPath = path.resolve('c:/KAI/tools/oracle-discord/tools/kai-coder-toolserver.mjs');
-  const toolServer = fork(toolServerPath, [], { silent: false });
-  toolServer.on('error', e => console.warn('[Oracle/ToolServer] Launch error:', e.message));
-  toolServer.on('exit', code => console.warn(`[Oracle/ToolServer] Exited with code ${code}. Auto-restart not configured.`));
-  console.log('[Oracle/ToolServer] Kai Coder tool server launched (port 3420).');
+
+  let toolServer = null;
+  let toolServerRespawning = false;
+  let toolServerShuttingDown = false;
+  let toolServerLastStderr = '';
+  let toolServerBackoffMs = 1000;            // starts at 1s
+  const TS_BACKOFF_MAX_MS = 30000;           // cap backoff at 30s
+  const TS_CRASH_WINDOW_MS = 60000;          // 60s crash-loop window
+  const TS_CRASH_THRESHOLD = 5;              // >5 deaths in window = wedged
+  let toolServerCrashTimes = [];             // timestamps of recent unexpected exits
+  let toolServerWedged = false;
+
+  function spawnToolServer() {
+    if (toolServerShuttingDown || toolServerWedged) return;
+    try {
+      toolServer = fork(toolServerPath, [], { silent: true });
+    } catch (e) {
+      console.error('[Oracle/ToolServer] fork() threw (staying alive):', e?.message || e);
+      scheduleToolServerRestart('fork-error');
+      return;
+    }
+
+    // Re-wire stdout/stderr on every (re)spawn. silent:true gives us the pipes so
+    // we can capture the last stderr line — invaluable for seeing WHY it exited
+    // (e.g. EADDRINUSE on :3420 when a stale instance still holds the port).
+    if (toolServer.stdout) toolServer.stdout.on('data', d => process.stdout.write(`[ToolServer] ${d}`));
+    if (toolServer.stderr) toolServer.stderr.on('data', d => {
+      const s = d.toString();
+      toolServerLastStderr = s.trim().split('\n').slice(-1)[0] || toolServerLastStderr;
+      process.stderr.write(`[ToolServer] ${s}`);
+    });
+
+    toolServer.on('error', e => console.warn('[Oracle/ToolServer] Launch/runtime error:', e?.message || e));
+
+    toolServer.on('exit', (code, signal) => {
+      if (toolServerShuttingDown) {
+        console.log('[Oracle/ToolServer] Exited during shutdown (code ' + code + ') — not restarting.');
+        return;
+      }
+      // Clean exit code 0 with no signal can still mean a wedge (e.g. it bound the
+      // port, found it taken, and process.exit(0)'d) — treat ANY unplanned exit as
+      // a candidate for restart, but the crash-loop guard stops tight looping.
+      console.warn('[Oracle/ToolServer] Exited unexpectedly (code=' + code + ', signal=' + (signal || 'none') + ').'
+        + (toolServerLastStderr ? ' Last stderr: ' + toolServerLastStderr : ' (no stderr captured)'));
+
+      const now = Date.now();
+      toolServerCrashTimes = toolServerCrashTimes.filter(t => now - t < TS_CRASH_WINDOW_MS);
+      toolServerCrashTimes.push(now);
+      if (toolServerCrashTimes.length > TS_CRASH_THRESHOLD) {
+        toolServerWedged = true;
+        console.error('[Oracle/ToolServer] CRASH-LOOP DETECTED: died ' + toolServerCrashTimes.length
+          + ' times in ' + Math.round(TS_CRASH_WINDOW_MS / 1000) + 's. SUSPENDING auto-restart to avoid a hot-loop.'
+          + ' Likely cause: PORT 3420 already in use (EADDRINUSE — a stale toolserver still holds it) or a startup error.'
+          + ' Last stderr: ' + (toolServerLastStderr || '(none)') + '. Fix the cause, then restart Oracle to retry.');
+        return;
+      }
+      scheduleToolServerRestart('exit code ' + code);
+    });
+
+    console.log('[Oracle/ToolServer] Kai Coder tool server launched (port 3420).');
+  }
+
+  function scheduleToolServerRestart(reason) {
+    if (toolServerShuttingDown || toolServerWedged || toolServerRespawning) return;
+    toolServerRespawning = true;
+    const delay = toolServerBackoffMs;
+    console.warn('[Oracle/ToolServer] Respawning in ' + Math.round(delay / 1000) + 's (reason: ' + reason + ').');
+    setTimeout(() => {
+      toolServerRespawning = false;
+      // Exponential backoff with a cap; resets to 1s once the server survives.
+      toolServerBackoffMs = Math.min(toolServerBackoffMs * 2, TS_BACKOFF_MAX_MS);
+      spawnToolServer();
+    }, delay);
+  }
+
+  // After a healthy uptime window, reset the backoff so a single death weeks later
+  // doesn't inherit a maxed-out delay. (Cheap heartbeat; no extra deps.)
+  setInterval(() => {
+    if (toolServer && toolServer.connected && !toolServerRespawning) {
+      toolServerBackoffMs = 1000;
+    }
+  }, 60000).unref?.();
+
+  spawnToolServer();
+
+  // Stop respawning the tool server when Oracle itself is shutting down.
+  const stopToolServer = () => {
+    toolServerShuttingDown = true;
+    try { if (toolServer && toolServer.connected) toolServer.kill(); } catch {}
+  };
+  process.once('SIGINT', stopToolServer);
+  process.once('SIGTERM', stopToolServer);
+  process.once('exit', stopToolServer);
 
   // WIPE NEURAL LOCK: Clear ghost locks from previous crashes
   const lockPath = "c:/KAI/tools/oracle-discord/state/neural_lock.json";
@@ -500,6 +605,13 @@ client.once('clientReady', async () => {
   // Checks every minute whether it's end-of-shift (11pm EST Mon-Fri / 2pm or midnight Sat).
   // When shift just ended, generates a full report and DMs Ryan.
   startEndOfDayWatcher();
+
+  // ── Overnight Orchestrator ─────────────────────────────────────────────────
+  // At the nightly dead-zone Oracle sleeps every other bot (incl. Researcher &
+  // Analyst), keeps itself awake to oversee KAI's BitNet ingest+weave, holds the
+  // fleet asleep until KAI signals completion, then wakes the normal roster near
+  // morning. Fully idempotent and env-tunable. See startOvernightOrchestrator().
+  startOvernightOrchestrator();
 });
 
 // ── END OF DAY REPORT SYSTEM ─────────────────────────────────────────────────
@@ -703,6 +815,44 @@ const AUTHORIZED_IDS = new Set([
 
 const activeCodingTasks = new Map(); // messageId -> true  (prevent double-run)
 
+// ── VOICE PICKER SESSIONS (paginated, confirm-before-apply) ───────────────────
+// Per-user in-memory state for the interactive "list voices" -> next/back ->
+// pick number -> yes flow. Keyed by `${userId}:${channelId}` so a user can have
+// one live picker per channel. Sessions auto-expire so stale state doesn't linger.
+const voiceSessions = new Map();
+const VOICE_SESSION_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+function voiceSessionKey(message) {
+  return message.author.id + ':' + message.channelId;
+}
+function clearVoiceSession(key) {
+  const s = voiceSessions.get(key);
+  if (s && s._timer) { try { clearTimeout(s._timer); } catch (_) {} }
+  voiceSessions.delete(key);
+}
+function touchVoiceSession(key) {
+  const s = voiceSessions.get(key);
+  if (!s) return;
+  if (s._timer) { try { clearTimeout(s._timer); } catch (_) {} }
+  s._timer = setTimeout(() => voiceSessions.delete(key), VOICE_SESSION_TTL_MS);
+}
+
+// Build the page text for the current session state (PAGE 1..Y, 10 per page,
+// numbered 1-10 within the page). Avoids backticks inside the template.
+function renderVoicePage(session) {
+  const { voices, page, pageSize, targetBot, filter } = session;
+  const totalPages = Math.max(1, Math.ceil(voices.length / pageSize));
+  const start = page * pageSize;
+  const slice = voices.slice(start, start + pageSize);
+  let out = '**Oracle — pick ' + targetBot + "'s reading voice** (filter: " + (filter || 'en-*') + ', ' + voices.length + ' voices)\n\n';
+  slice.forEach((v, i) => {
+    out += (i + 1) + '. ' + describeVoice(v) + '\n';
+  });
+  out += '\nPage ' + (page + 1) + '/' + totalPages +
+    " - say 'next' or 'back' to move, a number (1-" + slice.length + ") to pick, or 'cancel'.";
+  return out;
+}
+
 client.on('messageCreate', async (message) => {
   if (message.author.id === client.user.id) return; // Prevent self-looping
   const isMentioningOracle = message.mentions.has(client.user);
@@ -740,6 +890,177 @@ client.on('messageCreate', async (message) => {
   const lower  = text.toLowerCase();
   const isDM   = !message.guild;
   const isAuthorized = AUTHORIZED_IDS.has(message.author.id);
+
+  // ── LEO READING VOICE COMMANDS (edge-tts) ─────────────────────────────────
+  // Leo reads long docs (book/Codex/papers) via FREE edge-tts. The voice is
+  // user-selectable on the fly and persisted in state/leo-reading-voice.json so
+  // it survives the restart. Commands (authorized users, DM or oracle-chat):
+  //   - "list voices" / "voices" / "list leo voices"  -> show English edge-tts voices
+  //   - "set leo voice <ShortName>" / "change leo voice to <X>" / "leo voice <X>"
+  //        -> validate, persist, then RESTART Leo so the new voice takes effect.
+  if (isAuthorized && (isDM || message.channelId === CHANNEL_IDS.WORK)) {
+    const voiceCmdText = lower
+      .replace(/<@!?\d+>/g, '')
+      .replace(/^\s*(hey\s+)?(oracle|please|yo)[,\s]+/i, '')
+      .trim();
+
+    // ── INTERACTIVE VOICE PICKER ─────────────────────────────────────────────
+    const vKey = voiceSessionKey(message);
+    const vSession = voiceSessions.get(vKey);
+
+    // PENDING CONFIRM: a number was picked; we asked "are you sure?". Only yes/no
+    // count here so a stray word doesn't accidentally apply the voice.
+    if (vSession && vSession.pendingVoice) {
+      if (/^(yes|y|confirm|confirmed|do it|apply)\s*$/.test(voiceCmdText)) {
+        const chosen = vSession.pendingVoice;
+        const bot = vSession.targetBot || 'Leo';
+        const saved = setReadingVoice(chosen);
+        if (!saved) {
+          await message.channel.send('**Oracle:** Found "' + chosen + '" but could not write the voice state file. Check permissions on state/leo-reading-voice.json.').catch(() => {});
+          clearVoiceSession(vKey);
+          return;
+        }
+        console.log('[Oracle/Command] ' + from + ' -> set ' + bot + ' reading voice = ' + chosen + ' (restarting ' + bot + ').');
+        await message.channel.send('**Oracle:** ' + bot + "'s reading voice set to **" + chosen + '** and saved. Restarting ' + bot + ' so it takes effect…').catch(() => {});
+        if (typeof process.send === 'function') {
+          process.send({ type: 'RESTART_BOT', botName: bot });
+        } else {
+          await message.channel.send('**Oracle:** (Heads up: I could not reach the process manager to restart ' + bot + ' — restart it manually for the new voice.)').catch(() => {});
+        }
+        clearVoiceSession(vKey);
+        return;
+      }
+      if (/^(no|n|cancel|abort|stop|nevermind|never mind)\s*$/.test(voiceCmdText)) {
+        await message.channel.send('**Oracle:** Cancelled — voice unchanged.').catch(() => {});
+        clearVoiceSession(vKey);
+        return;
+      }
+      // Anything else while a confirm is pending: re-prompt, do nothing.
+      await message.channel.send('**Oracle:** Awaiting confirmation for **' + vSession.pendingVoice + "** — reply 'yes' or 'no'.").catch(() => {});
+      return;
+    }
+
+    // NAVIGATION: next / back — edit the same message, clamped at first/last page.
+    if (vSession && /^(next|n|forward|more|back|b|prev|previous)\s*$/.test(voiceCmdText)) {
+      const totalPages = Math.max(1, Math.ceil(vSession.voices.length / vSession.pageSize));
+      if (/^(next|n|forward|more)\s*$/.test(voiceCmdText)) vSession.page = Math.min(totalPages - 1, vSession.page + 1);
+      else vSession.page = Math.max(0, vSession.page - 1);
+      touchVoiceSession(vKey);
+      try {
+        if (vSession.messageRef) await vSession.messageRef.edit(renderVoicePage(vSession));
+        else vSession.messageRef = await message.channel.send(renderVoicePage(vSession));
+      } catch (_) {
+        vSession.messageRef = await message.channel.send(renderVoicePage(vSession)).catch(() => null);
+      }
+      return;
+    }
+
+    // SELECTION: bare number, "pick N", "select N" -> map to CURRENT page, confirm.
+    if (vSession) {
+      const pickMatch = voiceCmdText.match(/^(?:pick|select|choose|number)?\s*(\d{1,2})\s*$/);
+      if (pickMatch) {
+        const n = parseInt(pickMatch[1], 10);
+        const start = vSession.page * vSession.pageSize;
+        const slice = vSession.voices.slice(start, start + vSession.pageSize);
+        if (n < 1 || n > slice.length) {
+          await message.channel.send('**Oracle:** Pick a number between 1 and ' + slice.length + ' for this page (or say "next"/"back").').catch(() => {});
+          return;
+        }
+        const v = slice[n - 1];
+        vSession.pendingVoice = v.shortName;
+        touchVoiceSession(vKey);
+        await message.channel.send("**Oracle:** Are you sure you want '" + v.shortName + "' as " + (vSession.targetBot || 'Leo') + "'s reading voice? (yes / no)").catch(() => {});
+        return;
+      }
+    }
+
+    // LIST VOICES — start a new paginated picker. Accepts NATURAL-LANGUAGE filters
+    // that COMBINE (gender AND region), e.g.:
+    //   "list voices", "voices en-US", "voices all", "list voices for leo",
+    //   "list male british voices", "female american voices", "list aussie voices".
+    // The whole trailing phrase is captured and parsed by parseVoiceQuery().
+    const listMatch = voiceCmdText.match(/^(?:list\s+|show\s+)?(?:leo\s+)?voices?(?:\s+for\s+(leo))?\s*(.*)$/);
+    if (listMatch && /\bvoices?\b/.test(voiceCmdText)) {
+      let targetBot = 'Leo';
+      if (listMatch[1] && /^leo$/i.test(listMatch[1])) targetBot = 'Leo';
+      // Strip filler words from the captured phrase before parsing the filter.
+      const phrase = (listMatch[2] || '')
+        .replace(/\b(voices?|please|for\s+leo|leo)\b/g, ' ')
+        .trim();
+      const vq = parseVoiceQuery(phrase);
+      const localePrefix = vq.all ? '' : vq.prefix; // 'all' => every locale; else region or en-*
+      await message.reply('**Oracle:** Fetching edge-tts voices…').catch(() => {});
+      let voices = [];
+      try { voices = await listVoices({ localePrefix }); } catch (_) {}
+      if (!voices.length) {
+        await message.channel.send('**Oracle:** Could not list edge-tts voices (is the edge-tts CLI installed and on PATH?).').catch(() => {});
+        return;
+      }
+
+      // Apply the COMBINED filter (gender AND region) to the fetched set.
+      let filtered = voices;
+      if (vq.gender) {
+        filtered = filtered.filter(v => String(v.gender || '').toLowerCase() === vq.gender.toLowerCase());
+      }
+      if (vq.locale) {
+        filtered = filtered.filter(v => String(v.locale || '').toLowerCase() === vq.locale.toLowerCase());
+      }
+
+      let activeFilter = vq.label;
+      let usedFallback = false;
+      // If the filter yields zero, say so and fall back to the unfiltered English list.
+      if (!filtered.length && (vq.gender || vq.locale)) {
+        usedFallback = true;
+        let english = voices;
+        if (!localePrefix || localePrefix === '') {
+          try { english = await listVoices({ localePrefix: 'en-' }); } catch (_) { english = voices; }
+        }
+        filtered = english;
+        activeFilter = 'en-* (no matches for ' + vq.label + ')';
+        await message.channel.send('**Oracle:** No voices matched **' + vq.label + '** — showing the full English list instead.').catch(() => {});
+      }
+
+      clearVoiceSession(vKey);
+      const session = {
+        voices: filtered, filter: activeFilter, page: 0, pageSize: 10,
+        targetBot, messageRef: null, pendingVoice: null, _timer: null,
+      };
+      voiceSessions.set(vKey, session);
+      session.messageRef = await message.channel.send(renderVoicePage(session)).catch(() => null);
+      touchVoiceSession(vKey);
+      return;
+    }
+
+    // SET / CHANGE LEO VOICE — capture the requested ShortName from several phrasings.
+    const setMatch = voiceCmdText.match(/^(?:set|change|switch|make)\s+leo(?:'s)?\s+(?:reading\s+)?voice(?:\s+to)?\s+(\S+)\s*$/)
+      || voiceCmdText.match(/^leo(?:'s)?\s+(?:reading\s+)?voice(?:\s+to)?\s+(\S+)\s*$/);
+    if (setMatch) {
+      const requested = setMatch[1].trim();
+      await message.reply('**Oracle:** Checking "' + requested + '" against the edge-tts voice list…').catch(() => {});
+      let result;
+      try { result = await validateVoice(requested); } catch (_) { result = { valid: false, match: null, suggestions: [] }; }
+      if (!result.valid) {
+        const hint = result.suggestions.length
+          ? ' Closest matches: ' + result.suggestions.join(', ') + '.'
+          : ' Say "list voices" to see the options.';
+        await message.channel.send('**Oracle:** "' + requested + '" is not a valid edge-tts voice.' + hint).catch(() => {});
+        return;
+      }
+      const saved = setReadingVoice(result.match);
+      if (!saved) {
+        await message.channel.send('**Oracle:** Found "' + result.match + '" but could not write the voice state file. Check permissions on state/leo-reading-voice.json.').catch(() => {});
+        return;
+      }
+      console.log('[Oracle/Command] ' + from + ' -> set Leo reading voice = ' + result.match + ' (restarting Leo).');
+      await message.channel.send('**Oracle:** Leo\'s reading voice set to **' + result.match + '** and saved. Restarting Leo so it takes effect…').catch(() => {});
+      if (typeof process.send === 'function') {
+        process.send({ type: 'RESTART_BOT', botName: 'Leo' });
+      } else {
+        await message.channel.send('**Oracle:** (Heads up: I could not reach the process manager to restart Leo — restart him manually for the new voice.)').catch(() => {});
+      }
+      return;
+    }
+  }
 
   // ── POWER COMMANDS: wake / sleep / restart ────────────────────────────────
   // These were NEVER wired — "wake groq", "restart leo", "sleep all" fell
@@ -957,5 +1278,168 @@ client.on('messageCreate', async (message) => {
     if (port) sendBotSignal(port, { channelId: message.channelId, context: `[${from}] ${message.content}` });
   }
 });
+
+// ── OVERNIGHT ORCHESTRATOR ───────────────────────────────────────────────────
+// Additive, non-destructive automation that runs the nightly cycle without a
+// human:
+//   1) At OVERNIGHT_SLEEP_HOUR (default 3, EST) Oracle sleeps the fleet — Leo,
+//      Gemini, Claudey, X, Groq, Researcher, Analyst, Kai Coder — EXCLUDING both
+//      Oracle (the overseer) AND KAI, who STAY AWAKE. KAI is the one doing the night
+//      consolidation (ingest -> weave -> training) so he is never slept. It also
+//      drops state/overnight_active.flag so the drive system suppresses negative
+//      scoring (overnight failures don't penalize KAI).
+//   2) It confirms KAI's ingest is triggered (the pipeline auto-fires at 3am and
+//      drops data/overnight_ingest.lock) and watches for KAI's completion flag
+//      state/overnight_complete.flag.
+//   3) It HOLDS the fleet asleep until MORNING_WAKE_HOUR (default = the normal
+//      day-start), then wakes the normal roster exactly once.
+// Idempotent: a small phase machine (SLEEPING -> HELD -> AWAKE) plus per-day keys
+// guarantees it never re-sleeps or re-wakes repeatedly. Reuses the existing
+// SLEEP_BOT/WAKE_BOT IPC the manual command path already uses.
+function startOvernightOrchestrator() {
+  const ON = String(process.env.OVERNIGHT_ORCHESTRATOR ?? 'on').toLowerCase();
+  if (['0', 'off', 'false', 'no'].includes(ON)) {
+    console.log('[Oracle/Overnight] Orchestrator disabled (OVERNIGHT_ORCHESTRATOR=off).');
+    return;
+  }
+
+  // Tunable thresholds (all EST hours). OVERNIGHT_SLEEP_HOUR reuses the existing
+  // dead-zone / KAI_INGEST_START_HOUR (default 3). MORNING_WAKE_HOUR defaults to
+  // 9 — the top of the existing 3am-9am dead zone, i.e. the normal day-start.
+  const SLEEP_HOUR = parseInt(process.env.OVERNIGHT_SLEEP_HOUR || process.env.KAI_INGEST_START_HOUR || '3', 10);
+  const WAKE_HOUR  = parseInt(process.env.MORNING_WAKE_HOUR || '9', 10);
+  // KAI's "ingest+weave complete" flag (Oracle reads it; KAI/pipeline writes it).
+  const COMPLETE_FLAG = process.env.KAI_OVERNIGHT_COMPLETE_FLAG
+    || 'c:/KAI/tools/oracle-discord/state/overnight_complete.flag';
+  const INGEST_LOCK = process.env.KAI_INGEST_LOCKFILE || 'c:/KAI/data/overnight_ingest.lock';
+  // The sleep/wake roster = the normal managed fleet, EXCLUDING both Oracle (the
+  // overseer, stays awake) AND KAI (does the night consolidation/ingest+weave, stays
+  // awake). KAI must NEVER be slept overnight — he is the one doing the work. We
+  // hard-exclude Oracle/KAI even if an OVERNIGHT_ROSTER override accidentally lists
+  // them, so the invariant ("Oracle + KAI stay awake") can't be broken by config.
+  const ROSTER_EXCLUDE = new Set(['oracle', 'kai']);
+  const OVERNIGHT_ROSTER = (process.env.OVERNIGHT_ROSTER
+    || 'Leo,Gemini,Claudey,X,Groq,Researcher,Analyst,Kai Coder')
+    .split(',').map(s => s.trim()).filter(Boolean)
+    .filter(b => !ROSTER_EXCLUDE.has(b.toLowerCase()));
+  // Flag the drive/metacognition system reads to SKIP negative scoring (pain /
+  // failed-prediction penalties) while KAI is in the overnight state — so a
+  // connection loss or training glitch overnight never docks KAI's drives.
+  const ACTIVE_FLAG = process.env.KAI_OVERNIGHT_ACTIVE_FLAG
+    || 'c:/KAI/tools/oracle-discord/state/overnight_active.flag';
+  const STATE_FILE = 'c:/KAI/tools/oracle-discord/state/overnight_orchestrator.json';
+
+  function estHour() {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York', hour: 'numeric', hour12: false
+    }).formatToParts(new Date());
+    return parseInt(parts.find(p => p.type === 'hour').value, 10);
+  }
+  function estDateKey() {
+    // Calendar day in EST — used so each night's sleep/wake fires exactly once.
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit'
+    }).format(new Date());
+  }
+  function loadState() {
+    try { return JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')); } catch { return {}; }
+  }
+  function saveState(s) {
+    try { fs.writeFileSync(STATE_FILE, JSON.stringify(s, null, 2)); } catch (_) {}
+  }
+  function isOvernightWindow(h) {
+    // [SLEEP_HOUR, WAKE_HOUR). Handles the normal 3->9 case and any wrap (e.g. 23->9).
+    if (SLEEP_HOUR === WAKE_HOUR) return false;
+    if (SLEEP_HOUR < WAKE_HOUR) return h >= SLEEP_HOUR && h < WAKE_HOUR;
+    return h >= SLEEP_HOUR || h < WAKE_HOUR; // wraps midnight
+  }
+
+  function setActiveFlag(on) {
+    // Drop/clear the overnight-active flag the drive system checks before applying
+    // pain / failed-prediction penalties. Never throws — a flag I/O error must not
+    // disturb the sleep/wake itself.
+    try {
+      if (on) {
+        fs.mkdirSync(path.dirname(ACTIVE_FLAG), { recursive: true });
+        fs.writeFileSync(ACTIVE_FLAG, JSON.stringify({
+          active: true, since: new Date().toISOString(),
+          reason: 'overnight: KAI consolidating, suppress negative drive scoring'
+        }));
+      } else if (fs.existsSync(ACTIVE_FLAG)) {
+        fs.unlinkSync(ACTIVE_FLAG);
+      }
+    } catch (_) {}
+  }
+
+  function sleepFleet(reason) {
+    if (typeof process.send !== 'function') return false;
+    setActiveFlag(true);  // enter overnight: suppress KAI's negative drive scoring
+    for (const b of OVERNIGHT_ROSTER) process.send({ type: 'SLEEP_BOT', botName: b });
+    console.log(`[Oracle/Overnight] Dead-zone reached — sleeping fleet (${reason}): ${OVERNIGHT_ROSTER.join(', ')}. Oracle + KAI stay awake (KAI runs the ingest/weave/training).`);
+    return true;
+  }
+  function wakeFleet(reason) {
+    if (typeof process.send !== 'function') return false;
+    setActiveFlag(false); // exit overnight: restore normal drive scoring
+    for (const b of OVERNIGHT_ROSTER) process.send({ type: 'WAKE_BOT', botName: b });
+    console.log(`[Oracle/Overnight] Morning wake (${reason}) — waking normal roster: ${OVERNIGHT_ROSTER.join(', ')}.`);
+    return true;
+  }
+
+  function tick() {
+    try {
+      const h = estHour();
+      const today = estDateKey();
+      const st = loadState();
+      const inWindow = isOvernightWindow(h);
+
+      // ── ENTER overnight: sleep everyone but Oracle (once per night) ──────────
+      if (inWindow && st.sleptDate !== today) {
+        if (sleepFleet('OVERNIGHT_SLEEP_HOUR=' + SLEEP_HOUR)) {
+          st.sleptDate = today;
+          st.phase = 'SLEEPING';
+          st.wokeDate = st.wokeDate === today ? null : st.wokeDate; // allow this night's wake
+          st.completeSeen = false;
+          saveState(st);
+          // Confirm KAI's ingest is firing: the pipeline auto-triggers at 3am and
+          // drops the ingest lockfile. We only OBSERVE (never launch) — the
+          // pipeline + supervisor own that. Log the state so the audit is honest.
+          setTimeout(() => {
+            const triggered = fs.existsSync(INGEST_LOCK);
+            console.log(`[Oracle/Overnight] KAI overnight ingest ${triggered ? 'CONFIRMED running (lockfile present)' : 'not yet detected — pipeline should auto-fire at ' + SLEEP_HOUR + ':00. Oracle does not launch it; the standalone pipeline does.'}`);
+          }, 60000);
+        }
+      }
+
+      // ── HOLD: watch for KAI's completion flag; keep fleet asleep regardless ──
+      if (inWindow && st.phase === 'SLEEPING') {
+        if (!st.completeSeen && fs.existsSync(COMPLETE_FLAG)) {
+          st.completeSeen = true;
+          st.phase = 'HELD';
+          saveState(st);
+          console.log(`[Oracle/Overnight] KAI signalled ingest+weave COMPLETE (${COMPLETE_FLAG}). Holding fleet asleep until morning wake (${WAKE_HOUR}:00).`);
+        }
+      }
+
+      // ── EXIT overnight: wake the normal roster (once per morning) ────────────
+      if (!inWindow && st.sleptDate && st.wokeDate !== today) {
+        if (wakeFleet('MORNING_WAKE_HOUR=' + WAKE_HOUR)) {
+          st.wokeDate = today;
+          st.phase = 'AWAKE';
+          saveState(st);
+          // Tidy KAI's completion flag so it's fresh for the next night.
+          try { if (fs.existsSync(COMPLETE_FLAG)) fs.unlinkSync(COMPLETE_FLAG); } catch (_) {}
+        }
+      }
+    } catch (e) {
+      console.warn('[Oracle/Overnight] tick error (continuing):', e.message);
+    }
+  }
+
+  // Run on boot (in case Oracle restarts mid-overnight) then every 60s.
+  setTimeout(tick, 8000);
+  setInterval(tick, 60000);
+  console.log(`[Oracle/Overnight] Orchestrator active: sleep@${SLEEP_HOUR}:00 EST (all but Oracle), watch ${COMPLETE_FLAG.split('/').pop()}, wake@${WAKE_HOUR}:00. Roster: ${OVERNIGHT_ROSTER.join(', ')}.`);
+}
 
 client.login(process.env.ORACLE_DISCORD_TOKEN);

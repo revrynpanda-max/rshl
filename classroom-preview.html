@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KAI · Training Classroom (preview v2)</title>
+<style>
+  :root{ --cyan:#22d9e6; --bg:#06080f; --panel:#0c1120; --line:#1c2740; --txt:#cfe6ee; --dim:#5d7384; }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; height:100%; background:var(--bg); color:var(--txt);
+    font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace; overflow:hidden; }
+  #wrap{ display:flex; flex-direction:column; height:100%; }
+  #topbar{ display:flex; align-items:center; gap:14px; padding:8px 14px; border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg,#0b1020,#070a13); font-size:12px; letter-spacing:.4px; }
+  #topbar .tag{ color:var(--cyan); font-weight:700; }
+  #topbar .sub{ color:var(--dim); }
+  #phasechip{ margin-left:auto; padding:3px 10px; border:1px solid var(--line); border-radius:999px;
+    background:#0a1322; color:var(--cyan); font-size:11px; }
+  #clock{ color:var(--dim); font-size:11px; }
+  #stage{ position:relative; flex:1; min-height:0; display:flex; align-items:center; justify-content:center;
+    background:radial-gradient(120% 80% at 50% 0%,#0a1426,#05070e 70%); }
+  canvas{ image-rendering:pixelated; image-rendering:crisp-edges; height:100%; max-width:100%; display:block; }
+  #subs{ position:absolute; left:50%; bottom:14px; transform:translateX(-50%); width:min(86%,760px);
+    text-align:center; pointer-events:none; transition:opacity .25s; }
+  #subs .who{ display:inline-block; font-size:11px; letter-spacing:1px; color:var(--cyan);
+    text-shadow:0 0 8px rgba(34,217,230,.5); margin-bottom:4px; text-transform:uppercase; }
+  #subs .line{ font-size:16px; line-height:1.35; color:#eef6f8; background:rgba(4,8,16,.62);
+    border:1px solid rgba(34,217,230,.18); border-radius:8px; padding:8px 14px; backdrop-filter:blur(2px);
+    display:inline-block; }
+  #subs.hide{ opacity:0; }
+  /* crisp content cut-outs over the 8-bit board + projector */
+  #board,#slide{ position:absolute; pointer-events:none; transition:opacity .4s;
+    filter:drop-shadow(0 0 6px rgba(34,217,230,.18)); }
+  #board svg,#slide svg{ width:100%; height:100%; display:block; }
+  .bd-ink{ font-family:'Segoe UI',system-ui,sans-serif; }
+  #labels{ position:absolute; pointer-events:none; left:0; top:0; }
+  #labels svg{ width:100%; height:100%; display:block; }
+  #activity{ position:absolute; pointer-events:none; }
+  #activity .ap{ width:100%; height:100%; box-sizing:border-box; background:rgba(6,12,22,.78);
+    border:1px solid rgba(34,217,230,.55); border-radius:5px; padding:4px 8px;
+    display:flex; flex-direction:column; justify-content:center; }
+  #activity .ar{ display:flex; justify-content:space-between; align-items:baseline;
+    font-family:ui-monospace,monospace; font-size:12px; letter-spacing:.5px; }
+  #activity .al{ color:var(--cyan); font-weight:700; }
+  #activity .av{ color:#cdeef6; }
+  #activity .bar{ margin-top:5px; height:5px; background:#0c1c2a; border-radius:3px; overflow:hidden; }
+  #activity .bar > i{ display:block; height:100%; background:linear-gradient(90deg,#1f7fa8,#33e6ff); transition:width .2s; }
+  #ctrl{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:8px 12px;
+    border-top:1px solid var(--line); background:#070a13; font-size:11px; }
+  #ctrl button{ font:inherit; font-size:11px; color:var(--txt); background:#0e1626; border:1px solid var(--line);
+    border-radius:6px; padding:5px 9px; cursor:pointer; letter-spacing:.3px; }
+  #ctrl button:hover{ border-color:var(--cyan); color:#fff; }
+  #ctrl button.on{ background:#0c2a30; border-color:var(--cyan); color:var(--cyan); }
+  #ctrl .grp{ display:flex; gap:5px; align-items:center; }
+  #ctrl .lbl{ color:var(--dim); margin-right:2px; }
+  #ctrl .spacer{ flex:1; }
+  #phasebtns button{ padding:4px 7px; }
+  #phasebtns button.active{ background:#0c2a30; border-color:var(--cyan); color:var(--cyan); }
+  #note{ color:var(--dim); font-size:10px; }
+  /* embedded-in-dashboard mode (?embed=1): strip dev chrome, keep just the scene + sound */
+  body.embed{ background:transparent; }
+  body.embed #topbar{ display:none; }
+  body.embed #ctrl > *{ display:none; }
+  body.embed #ctrl > #sound{ display:inline-block; }
+  body.embed #ctrl{ padding:4px 8px; justify-content:flex-end; border-top:none; }
+  body.embed #stage{ background:radial-gradient(120% 80% at 50% 0%,#0a1426,#06080f 72%); }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="topbar">
+    <span class="tag">◆ KAI · TRAINING</span>
+    <span class="sub">animated classroom — mirrors the live overnight pipeline (preview v3)</span>
+    <span id="clock"></span>
+    <span id="phasechip">—</span>
+  </div>
+  <div id="stage">
+    <canvas id="cv" width="384" height="216"></canvas>
+    <div id="slide"></div>
+    <div id="board"></div>
+    <div id="activity"></div>
+    <div id="labels"></div>
+    <div id="subs"><div class="who"></div><div class="line"></div></div>
+  </div>
+  <div id="ctrl">
+    <div class="grp">
+      <button id="play">⏸ Pause</button>
+      <span class="lbl">speed</span>
+      <button data-spd="0.5">0.5×</button>
+      <button data-spd="1" class="on">1×</button>
+      <button data-spd="2">2×</button>
+      <button data-spd="4">4×</button>
+    </div>
+    <div class="grp" id="phasebtns"><span class="lbl">jump&nbsp;to</span></div>
+    <div class="spacer"></div>
+    <button id="sound">♪ Sound</button>
+    <button id="live">◷ Live clock</button>
+    <span id="note">preview · phases + activity will bind to real overnight_pipeline.py / BitNet signals</span>
+  </div>
+</div>
+
+<script>
+const cv=document.getElementById('cv'), g=cv.getContext('2d');
+g.imageSmoothingEnabled=false;
+const W=384, H=216, AISLE=192;
+
+const C={
+  wallTop:'#141c30', wallBot:'#0c1322', floor1:'#11192b', floor2:'#0a1120',
+  sideWall:'#1a2238', trim:'#283655',
+  winNight:'#0b1838', winGlow:'#16306a', blind:'#33456e', star:'#9fd0ff',
+  board:'#e9eef7', boardEdge:'#b7c0d2', eqn:'#26425e', eqnHi:'#1f7fa8',
+  screen:'#0e2c46', screenLit:'#19476e', slide:'#bfe3f2', slideBar:'#3b8fb5',
+  projBox:'#2a3550', cone:'rgba(120,200,255,0.05)',
+  deskTop:'#6a5232', deskTop2:'#7a5f3c', deskLeg:'#3f3120', deskShade:'#4a3a24',
+  skin:'#e6b48f', skinSh:'#c8966f',
+  teachBody:'#7b5cc4', teachBody2:'#6647ad', teachHair:'#3a2a4d',
+  asstBody:'#2f6f8f', asstBody2:'#3b86a6', asstHair:'#241f2e', laptop:'#11202c', laptopGlow:'#7fe8ff',
+  kaiHood:'#2f6fed', kaiHood2:'#2456c0', kaiVisor:'#0a141f', kaiEye:'#33e6ff',
+  paper:'#dfe7f0', pencil:'#d8a13a', mote:'#7fe0ff', node:'#33e6ff',
+  door:'#1c2740', doorLit:'#22354f', ok:'#36e07a', bad:'#ff5a6a'
+};
+
+function R(x,y,w,h,col){ g.fillStyle=col; g.fillRect(x|0,y|0,Math.max(1,w|0),Math.max(1,h|0)); }
+function dot(x,y,col){ g.fillStyle=col; g.fillRect(x|0,y|0,1,1); }
+function hex(c){ c=c.replace('#',''); return [parseInt(c.slice(0,2),16),parseInt(c.slice(2,4),16),parseInt(c.slice(4,6),16)]; }
+function lerpCol(a,b,t){ const A=hex(a),B=hex(b); return `rgb(${A[0]+(B[0]-A[0])*t|0},${A[1]+(B[1]-A[1])*t|0},${A[2]+(B[2]-A[2])*t|0})`; }
+function ease(x){ return x<.5?2*x*x:1-Math.pow(-2*x+2,2)/2; }
+
+/* ---------- AUDIO · procedural 8-bit (off until enabled; browsers block autoplay) ---------- */
+let SND=false, actx=null, master=null, droneStarted=false;
+let sStepT=0, sTypeT=0, sThinkT=0, sIngestT=0, sLastCards=0, sWalking=false, stepToggle=0, kaiSeatedPlayed=false;
+function footstep(){ stepToggle^=1; nz(0.05, 0.09, stepToggle?280:210); blip(stepToggle?160:120, 0.045, 'sine', 0.06); }
+function initAudio(){ if(actx) return; actx=new (window.AudioContext||window.webkitAudioContext)(); master=actx.createGain(); master.gain.value=0; master.connect(actx.destination); }
+function setSound(on){ SND=on; if(on){ initAudio(); if(actx.state==='suspended') actx.resume(); master.gain.cancelScheduledValues(actx.currentTime); master.gain.linearRampToValueAtTime(0.5, actx.currentTime+0.3); startDrone(); } else if(actx){ master.gain.cancelScheduledValues(actx.currentTime); master.gain.linearRampToValueAtTime(0, actx.currentTime+0.2); } }
+function blip(freq,dur,type,vol,glideTo){ if(!SND||!actx) return; type=type||'square'; vol=vol||0.16; const t=actx.currentTime,o=actx.createOscillator(),gn=actx.createGain(); o.type=type; o.frequency.setValueAtTime(freq,t); if(glideTo) o.frequency.exponentialRampToValueAtTime(Math.max(1,glideTo),t+dur); gn.gain.setValueAtTime(vol,t); gn.gain.exponentialRampToValueAtTime(0.0001,t+dur); o.connect(gn).connect(master); o.start(t); o.stop(t+dur+0.02); }
+function nz(dur,vol,filt){ if(!SND||!actx) return; vol=vol||0.1; filt=filt||1200; const t=actx.currentTime,n=Math.max(1,Math.floor(actx.sampleRate*dur)),b=actx.createBuffer(1,n,actx.sampleRate),d=b.getChannelData(0); for(let i=0;i<n;i++) d[i]=Math.random()*2-1; const s=actx.createBufferSource(); s.buffer=b; const f=actx.createBiquadFilter(); f.type='bandpass'; f.frequency.value=filt; const gn=actx.createGain(); gn.gain.setValueAtTime(vol,t); gn.gain.exponentialRampToValueAtTime(0.0001,t+dur); s.connect(f).connect(gn).connect(master); s.start(t); s.stop(t+dur+0.02); }
+function startDrone(){ if(!actx||droneStarted) return; droneStarted=true; const dg=actx.createGain(); dg.gain.value=0.05; dg.connect(master); const o1=actx.createOscillator(); o1.type='sine'; o1.frequency.value=55; const o2=actx.createOscillator(); o2.type='sine'; o2.frequency.value=82.5; const lfo=actx.createOscillator(),lg=actx.createGain(); lfo.frequency.value=0.15; lg.gain.value=0.018; lfo.connect(lg).connect(dg.gain); o1.connect(dg); o2.connect(dg); o1.start(); o2.start(); lfo.start(); }
+function sndPhase(id){ if(!SND) return;
+  if(id==='setup'){ nz(0.26,0.05,520); blip(330,0.18,'sine',0.08); }                       // door creak + low cue
+  else if(id==='lecture'){ blip(523,0.12,'triangle',0.16); setTimeout(()=>blip(659,0.14,'triangle',0.16),130); }
+  else if(id==='enter'){ nz(0.24,0.05,520); blip(660,0.1,'square',0.16); setTimeout(()=>blip(880,0.16,'square',0.16),120); }
+  else if(id==='dismiss'){ nz(0.24,0.05,520); blip(523,0.18,'sine',0.18,392); setTimeout(()=>blip(392,0.3,'sine',0.16,261),170); }
+  else if(id==='quiz'){ blip(740,0.1,'square',0.14); }
+  else blip(620,0.06,'square',0.1); }
+function sndCorrect(){ if(!SND) return; [523,659,784,1046].forEach((f,i)=>setTimeout(()=>blip(f,0.12,'triangle',0.16),i*70)); }
+function sndSpeak(){ if(!SND) return; for(let i=0;i<3;i++) setTimeout(()=>blip(380+Math.random()*260,0.035,'square',0.07),i*55); }
+function sndTick(ph,dt){ if(!SND) return;
+  if(sWalking){ sStepT+=dt; if(sStepT>0.26){ sStepT=0; footstep(); } } else sStepT=0.26;
+  if(ph.id==='lecture'){ sIngestT+=dt; if(sIngestT>0.12 && motes.length>0){ sIngestT=0; blip(820+Math.random()*120,0.04,'sine',0.06);} }
+  if(ph.id==='notes'){ sTypeT+=dt; if(sTypeT>0.16){ sTypeT=0; blip(1300+Math.random()*200,0.025,'square',0.05);} }
+  if(ph.id==='thinking'){ sThinkT+=dt; if(sThinkT>0.5){ sThinkT=0; blip(300,0.18,'sine',0.05,360);} }
+  if(ph.id==='flashcards' && cards!==sLastCards){ sLastCards=cards; nz(0.04,0.08,2200); blip(900,0.03,'square',0.05); } }
+
+let TICK=0;
+const stars=[]; for(let i=0;i<26;i++) stars.push({x:Math.random(),y:Math.random(),p:Math.random()*6.28});
+
+/* ---- desks: two banks, center aisle clear ---- */
+const ROWS=[
+  {y:96, s:0.7},
+  {y:122,s:0.86},
+  {y:152,s:1.02},
+];
+// seat world positions (left bank + right bank), per row
+function seatX(row,side,i){ // side -1 left, +1 right ; i 0..1 within bank
+  const base = side<0 ? 92 : 252;
+  const spread = 46*ROWS[row].s;
+  return base + side*(i*spread) - (side<0?0:0);
+}
+const KAI={row:2, x:96, baseScale:ROWS[2].s};
+
+/* ---------- ROOM ---------- */
+function drawRoom(lit){
+  for(let y=0;y<74;y++){ R(0,y,W,1, lerpCol(C.wallTop,C.wallBot,y/74)); }
+  for(let y=74;y<H;y++){ const t=(y-74)/(H-74); R(0,y,W,1, lerpCol(C.floor1,C.floor2,t)); }
+  // aisle highlight
+  g.globalAlpha=0.5; for(let y=74;y<H;y++){ const t=(y-74)/(H-74); const wdt=8+t*38; R(AISLE-wdt/2,y,wdt,1, lerpCol('#16203a','#0d1730',t)); } g.globalAlpha=1;
+  g.strokeStyle='rgba(40,54,85,0.45)'; g.beginPath(); g.moveTo(AISLE-4,74); g.lineTo(AISLE-26,H); g.moveTo(AISLE+4,74); g.lineTo(AISLE+26,H); g.stroke();
+
+  R(0,0,34,H, C.sideWall); R(W-34,0,34,H, C.sideWall);
+  R(34,0,2,H,C.trim); R(W-36,0,2,H,C.trim);
+  drawWindow(4,18,26,150); drawWindow(W-30,18,26,150);
+
+  R(36,8,W-72,64, '#0f1830'); R(36,72,W-72,2, C.trim);
+
+  // projector screen + cycling slide
+  R(48,14,90,56, '#0a2236'); R(50,16,86,52, lit?C.screenLit:C.screen);
+  if(lit) drawSlide();
+  // whiteboard with progressive equations
+  R(150,12,150,64, C.boardEdge); R(153,15,144,58, C.board);
+  drawBoard(lit);
+  // ceiling projector + cone
+  R(186,2,16,6, C.projBox); R(190,8,8,2,'#0c1422');
+  if(lit){ g.fillStyle=C.cone; g.beginPath(); g.moveTo(194,9); g.lineTo(135,68); g.lineTo(48,68); g.closePath(); g.fill(); }
+  // door (front-right) for instructors
+  R(W-30,40,22,30, doorOpen?C.doorLit:C.door); R(W-30,40,2,30,C.trim);
+}
+function drawWindow(x,y,w,h){
+  R(x-2,y-2,w+4,h+4,'#0a1020');
+  for(let j=0;j<h;j++) R(x,y+j,w,1, lerpCol(C.winNight,'#091226',j/h));
+  g.fillStyle=C.winGlow; g.globalAlpha=.5; g.beginPath(); g.arc(x+w*0.7,y+18,9,0,6.28); g.fill(); g.globalAlpha=1;
+  R(x+w*0.7-3,y+13,6,6,'#bcd6ff');
+  for(const s of stars){ const tw=0.4+0.6*Math.abs(Math.sin(TICK*0.04+s.p)); g.globalAlpha=tw; dot(x+2+s.x*(w-4),y+2+s.y*(h-4),C.star); g.globalAlpha=1; }
+  for(let bx=x; bx<x+w; bx+=4) R(bx,y,1,h,C.blind);
+  R(x-2,y-2,w+4,2,C.trim); R(x-2,y+h,w+4,2,C.trim);
+}
+const SLIDES=['INTERNAL ARCH','LANGUAGE','COMPREHENSION','RETENTION'];
+let slideIdx=0;
+function drawSlide(){
+  R(56,22,74,8,'#11486e'); // title bar
+  // title text as bars sized to topic
+  const tl=Math.min(58, 14+SLIDES[slideIdx].length*2); R(58,24,tl,4,C.slide);
+  R(56,36,74,2,'#10395a');
+  const k=(TICK*0.05)%1;
+  R(56,42,40+Math.sin(TICK*0.06)*8,3,C.slideBar);
+  R(56,49,58,3,'#2d6f8f'); R(56,56,30+k*30,3,C.slideBar);
+  R(108,44,20,20,'#15527c'); // chart block w/ bars
+  for(let i=0;i<4;i++){ const bh=3+((Math.sin(TICK*0.05+i)+1)*5); R(110+i*4,64-bh,3,bh,'#39a7d6'); }
+}
+let boardFill=0; // 0..1 how full the equations are (advances during lecture)
+function drawBoard(lit){
+  const col=lit?C.eqn:'#8c98ad', hi=lit?C.eqnHi:'#6aa9c4';
+  // title = current topic
+  g.fillStyle=hi; for(let i=0;i<SLIDES[slideIdx].length;i++){ R(158+i*4,19,3,2,hi); }
+  const rows=[ [24,[[0,24],[28,34],[66,10]]],[33,[[6,14],[24,40],[68,12]]],[42,[[0,30],[36,18],[58,26]]],[51,[[12,40],[56,16]]],[60,[[0,20],[26,30]]] ];
+  let shown=Math.round(rows.length*boardFill);
+  for(let r=0;r<shown;r++){ const y=rows[r][0]; for(const seg of rows[r][1]) R(158+seg[0],y,seg[1],2, r%2?hi:col); }
+  if(lit && boardFill>0.9){ g.strokeStyle=hi; g.strokeRect(250,44,40,16); }
+}
+
+/* ---------- CHARACTERS (depth-scaled, with faces) ---------- */
+function face(hx,hy,hw,hh,eyeCol,look){ // simple eyes; look: -1 left .. 1 right
+  const ex=hx+hw*0.28+ (look>0?hw*0.12:0), ex2=hx+hw*0.58+(look>0?hw*0.12:0);
+  const blink=(Math.sin(TICK*0.045+hx)>0.95)?0:1;
+  if(blink){ R(ex,hy+hh*0.42,Math.max(1,hw*0.13),Math.max(1,hh*0.16),eyeCol); R(ex2,hy+hh*0.42,Math.max(1,hw*0.13),Math.max(1,hh*0.16),eyeCol); }
+}
+function person(cx,by,s,o){
+  o=o||{};
+  const body=o.body||'#888', body2=o.body2||body, hair=o.hair||'#222', skin=o.skin||C.skin;
+  const sit=o.sit, walk=o.walk||0, lean=o.lean||0;
+  const bW=11*s, bH=(sit?12:16)*s, hW=8*s, hH=8*s;
+  // legs
+  if(sit){ R(cx-4*s,by-2*s,9*s,3*s,'#22304a'); }
+  else { const lp=Math.sin(walk)*2*s; R(cx-4*s,by-8*s,3.4*s,9*s+lp,'#22304a'); R(cx+1*s,by-8*s,3.4*s,9*s-lp,'#22304a'); }
+  // body
+  R(cx-bW/2+lean,by-(sit?12*s:16*s)-1,bW,(sit?12*s:16*s),body);
+  R(cx-bW/2+lean,by-(sit?12*s:16*s)-1,bW,3*s,body2);
+  // arms
+  if(o.armWrite!=null){ const a=Math.sin(o.armWrite)*2*s; R(cx+bW/2-2+lean,by-12*s,3*s,6*s,body2); R(cx+bW/2+1+lean,by-6*s+a,4*s,2.5*s,skin); }
+  else if(o.handRaise){ R(cx+bW/2-2+lean,by-(16+o.handRaise*6)*s,3*s,11*s,body2); R(cx+bW/2-2+lean,by-(16+o.handRaise*6)*s-3*s,4*s,4*s,skin); }
+  else if(o.gesture!=null){ const ga=Math.sin(o.gesture)*4*s; R(cx-bW/2-1+lean,by-13*s,3*s,7*s,body2); R(cx+bW/2-2+lean,by-13*s-ga,3*s,7*s,body2); }
+  else { R(cx-bW/2-1+lean,by-12*s,3*s,7*s,body2); R(cx+bW/2-2+lean,by-12*s,3*s,7*s,body2); }
+  // head + hair + face
+  const hx=cx-hW/2+lean, hy=by-(sit?12*s:16*s)-hH+1;
+  R(hx,hy,hW,hH,skin); R(hx,hy-1,hW,3*s,hair); R(hx-1,hy,1,hH*0.5,hair); R(hx+hW,hy,1,hH*0.5,hair);
+  face(hx,hy,hW,hH,'#1a1622',o.look||0);
+  return {hx,hy,hW,hH};
+}
+function drawKAI(cx,by,s,state,t){
+  const sit=!(state==='walkin'||state==='walkout');
+  const walk=(!sit)? t*0.4:0, bob=sit?Math.sin(t*0.08)*0.6:0;
+  const lean=state==='notes'?2*s:0;
+  const bW=13*s,bH=(sit?13*s:17*s),hW=9*s,hH=9*s;
+  if(sit){ R(cx-5*s,by-2*s,11*s,3*s,'#1f2a45'); }
+  else{ const lp=Math.sin(walk)*2*s; R(cx-4*s,by-9*s,4*s,10*s+lp,'#1f2a45'); R(cx+1*s,by-9*s,4*s,10*s-lp,'#1f2a45'); }
+  R(cx-bW/2+lean,by-bH-1,bW,bH,C.kaiHood); R(cx-bW/2+lean,by-bH-1,bW,3*s,'#3f80ff');
+  R(cx-1+lean,by-bH+2,2,bH-4,C.kaiHood2); R(cx-4*s+lean,by-7*s,8*s,4*s,C.kaiHood2);
+  // arms
+  if(state==='notes'){ const a=Math.sin(t*0.6)*2*s; R(cx+bW/2-3+lean,by-12*s,4*s,7*s,C.kaiHood2); R(cx+bW/2+lean,by-6*s+a,5*s,3*s,C.skin); R(cx+bW/2+3*s+lean,by-5*s+a,4*s,1,C.pencil); }
+  else if(state==='quiz'){ const hr=0.5+0.5*Math.sin(t*0.12); R(cx+bW/2-3+lean,by-(17+hr*7)*s,4*s,12*s,C.kaiHood2); R(cx+bW/2-3+lean,by-(17+hr*7)*s-3*s,5*s,4*s,C.skin); }
+  else{ R(cx-bW/2-1+lean,by-13*s+bob,4*s,8*s,C.kaiHood2); R(cx+bW/2-3+lean,by-13*s+bob,4*s,8*s,C.kaiHood2); }
+  // hood + visor
+  const hx=cx-hW/2+lean, hy=by-bH-hH+1+bob;
+  R(hx-1,hy-1,hW+2,hH+2,C.kaiHood2); R(hx,hy,hW,hH,C.kaiVisor);
+  const scan=(state==='lecture')? (hy+2+((TICK*0.4)%(hH-2))):-99;
+  if(scan>0){ g.globalAlpha=.5; R(hx,scan,hW,1,C.kaiEye); g.globalAlpha=1; }
+  const blink=(Math.sin(t*0.05)>0.96)?0:1;
+  if(blink){ const ey=hy+hH*0.42; R(hx+1.5*s,ey,2*s,2*s,C.kaiEye); R(hx+hW-3.5*s,ey,2*s,2*s,C.kaiEye); }
+  if(state==='thinking'){ drawThoughtLattice(cx+9*s+lean,hy-7*s,t); R(cx+5*s+lean,hy-1,2,2,'#0a1626'); }
+  if(state==='flashcards'){ const fx=cx-2*s+lean,fy=by-bH-2*s+bob,flip=Math.sin(t*0.14); R(fx,fy,Math.max(2,8*s*Math.abs(flip)),11*s,flip>0?C.paper:'#1f7fa8'); if(flip>0){R(fx+1,fy+2,4*s,1,'#26425e');R(fx+1,fy+5,5*s,1,'#26425e');} }
+}
+function drawThoughtLattice(x,y,t){
+  R(x,y,16,11,'#0a1626'); R(x,y,16,1,C.node);
+  const N=[[3,4],[8,3],[13,5],[6,8],[11,8]];
+  for(let i=0;i<N.length;i++){ for(let j=i+1;j<N.length;j++){ if((i+j)%2===0){ g.strokeStyle='rgba(51,230,255,'+(0.2+0.2*Math.sin(t*0.1+i+j))+')'; g.beginPath(); g.moveTo(x+N[i][0],y+N[i][1]); g.lineTo(x+N[j][0],y+N[j][1]); g.stroke(); } } }
+  for(let i=0;i<N.length;i++){ const on=Math.sin(t*0.12+i*1.3)>0; g.globalAlpha=on?1:0.4; dot(x+N[i][0],y+N[i][1],C.node); dot(x+N[i][0]+1,y+N[i][1],C.node); g.globalAlpha=1; }
+}
+
+/* ---------- ACTIVITY (motes / nodes / quiz fx) — the "BitNet doing things" layer ---------- */
+let motes=[], notesNodes=[], quizFx=null, score=23, cards=0;
+function spawnMote(){ motes.push({x:200+Math.random()*80,y:36+Math.random()*20, tx:kaiHeadX, ty:kaiHeadY, t:0, sp:0.6+Math.random()*0.5}); }
+function updMotes(dt){ for(const m of motes){ m.t+=dt*m.sp; } motes=motes.filter(m=>m.t<1); }
+function drawMotes(){ for(const m of motes){ const e=ease(m.t); const x=m.x+(m.tx-m.x)*e, y=m.y+(m.ty-m.y)*e; g.globalAlpha=0.4+0.6*(1-m.t); dot(x,y,C.mote); dot(x+1,y,C.mote); g.globalAlpha=1; } }
+let kaiHeadX=110, kaiHeadY=120;
+
+/* ---------- WALK PATHS ---------- */
+function alongPath(pts,prog){ // returns {x,y,moving,seg}
+  if(prog>=1) return {x:pts[pts.length-1][0],y:pts[pts.length-1][1],moving:false};
+  let total=0,segs=[]; for(let i=1;i<pts.length;i++){ const d=Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]); segs.push(d); total+=d; }
+  let want=prog*total, acc=0;
+  for(let i=0;i<segs.length;i++){ if(acc+segs[i]>=want){ const f=(want-acc)/segs[i]; return {x:pts[i][0]+(pts[i+1][0]-pts[i][0])*f, y:pts[i][1]+(pts[i+1][1]-pts[i][1])*f, moving:true}; } acc+=segs[i]; }
+  return {x:pts[pts.length-1][0],y:pts[pts.length-1][1],moving:false};
+}
+function depthScale(y){ return 0.62 + (y-90)/(H-90)*0.62; } // far(top)=small, near(bottom)=big
+
+/* ---------- PHASES ---------- */
+const PHASES=[
+  {id:'idle',label:'IDLE · empty hall',dur:5,lit:false,door:false,
+    subs:[{t:0,who:'',line:'…hall empty. lights low. waiting for the 3 AM session.'}]},
+  {id:'setup',label:'2:52 AM · instructors arrive',dur:9,lit:false,door:true,
+    subs:[{t:0,who:'PROF. ORACLE',line:'Bringing the boards up. Tonight: internal architecture & language.'},
+          {t:5,who:'ANALYST · TA',line:'Curriculum loaded — 50 cards queued in #kai-training.'}]},
+  {id:'enter',label:'3:00 AM · KAI enters',dur:7,lit:true,door:false,kai:'walkin',
+    subs:[{t:1,who:'PROF. ORACLE',line:'There he is — take your seat, KAI.'},{t:4,who:'KAI',line:'Online. Ready to ingest.'}]},
+  {id:'lecture',label:'3:05 AM · lecture · ingest',dur:12,lit:true,kai:'lecture',
+    subs:[{t:0,who:'PROF. ORACLE',line:'Recall is reconstruction — the lattice re-weaves the trace each time.'},
+          {t:5,who:'PROF. ORACLE',line:'Astrocyte-gated synapses decide which traces survive the night.'},
+          {t:9,who:'KAI',line:'So forgetting is pruning, not loss. Logged.'}]},
+  {id:'notes',label:'3:12 AM · note-taking · write',dur:8,lit:true,kai:'notes',
+    subs:[{t:0,who:'',line:'KAI writes — committing the trace; lattice nodes light as edges form.'},
+          {t:4,who:'KAI',line:'…prune low-coherence edges before recall.'}]},
+  {id:'thinking',label:'3:18 AM · reasoning · weave',dur:8,lit:true,kai:'thinking',
+    subs:[{t:0,who:'',line:'Reasoning pass — weaving new edges across the lattice.'},
+          {t:4,who:'KAI',line:'If Φg rises, coherence held. Cross-checking…'}]},
+  {id:'quiz',label:'3:26 AM · quiz · score',dur:10,lit:true,kai:'quiz',
+    subs:[{t:0,who:'PROF. ORACLE',line:'Quiz: what gates a tripartite synapse?'},
+          {t:4,who:'KAI',line:'The astrocyte — it decides if the signal consolidates.'},
+          {t:7,who:'ANALYST · TA',line:'Correct. +1 — score logged.'}]},
+  {id:'flashcards',label:'3:34 AM · flashcards · recall',dur:8,lit:true,kai:'flashcards',
+    subs:[{t:0,who:'',line:'Flashcard drill — rapid recall across 50 cards.'},
+          {t:4,who:'KAI',line:'recall confidence holding ~0.94.'}]},
+  {id:'dismiss',label:'3:45 AM · dismissed',dur:7,lit:false,door:true,kai:'walkout',
+    subs:[{t:0,who:'PROF. ORACLE',line:'Good work. Session saved. Dismissed.'},
+          {t:4,who:'KAI',line:'Consolidated. See you tomorrow at 3.'}]},
+];
+let pi=0, pt=0, playing=true, speed=1, liveMode=false, doorOpen=false, litRamp=0;
+
+/* faculty roster — they appear when the phase needs them */
+const FACULTY={
+  oracle:{name:'PROF · ORACLE', body:C.teachBody,body2:C.teachBody2,hair:C.teachHair, x:128,y:102,s:0.95, role:'lecturer', entSt:0, path:[[W-20,68],[AISLE+10,80],[128,102]]},
+  analyst:{name:'ANALYST · TA', body:C.asstBody,body2:C.asstBody2,hair:C.asstHair, x:322,y:104,s:0.82, role:'ta', sit:true, desk:true, entSt:1, path:[[W-20,68],[W-50,90],[322,104]]},
+  tutor:{name:'RESEARCHER · TUTOR', body:'#2f9f6a',body2:'#3ab882',hair:'#22332b', x:232,y:102,s:0.9, role:'tutor', entSt:2.5, path:[[W-20,68],[262,86],[232,102]]},
+  coder:{name:'KAI CODER · LAB', body:'#c8792f',body2:'#d68a3a',hair:'#3a2a1a', x:178,y:102,s:0.9, role:'lab', entSt:2, path:[[W-20,68],[200,86],[178,102]]},
+};
+const FAC_PHASE={ setup:['oracle','analyst','tutor','coder'], enter:['oracle','analyst'],
+  lecture:['oracle','analyst'], notes:['oracle','analyst','coder'], thinking:['oracle','analyst','coder'],
+  quiz:['oracle','analyst','tutor'], flashcards:['tutor','analyst'], dismiss:['oracle','analyst'] };
+let labelTargets=[];
+
+/* ---- REAL DATA (when embedded in the dashboard via ?embed=1) ---- */
+let EMBED=false, realTR=null, realTF=null, realPL=null, realLive=null, trainingActive=false, realSub=null, prevActive=false;
+const TOPIC_MAP=[['internal','INTERNAL ARCH'],['lang','LANGUAGE'],['compreh','COMPREHENSION'],['reten','RETENTION']];
+function mapTopic(s){ s=(s||'').toLowerCase(); for(const kv of TOPIC_MAP) if(s.indexOf(kv[0])>=0) return kv[1]; return null; }
+function curTopic(){ if(realTR && realTR.focusTopics && realTR.focusTopics.length){ const t=mapTopic(realTR.focusTopics[0]); if(t) return t; } return SLIDES[slideIdx]; }
+function realVals(){
+  if(realTR && realTR.ok!==false){ const t=realTR;
+    let pr=t.passRate; if(typeof pr==='number'&&pr<=1) pr=Math.round(pr*100); else if(typeof pr==='number') pr=Math.round(pr); else pr=null;
+    let qa=t.quizAvg; qa=(typeof qa==='number')?Math.round(qa):null;
+    const weak=(t.weakAreas||[]).slice(0,2).map(w=>String(w).replace(/_/g,'-')).map(w=>w.length>13?w.slice(0,12)+'…':w);
+    return { lv:(t.level!=null?t.level:'?'), prog:(t.passBar!=null?t.passBar:65), quiz:(qa!=null?qa:'—'),
+      pass:(pr!=null?pr:'—'), passed:(t.testsPassed!=null?t.testsPassed:score), tests:(t.testsTaken!=null?t.testsTaken:155),
+      weak:(weak.length?weak:['internal-arch','language']), real:true };
+  }
+  return { lv:24, prog:65, quiz:52, pass:15, passed:score, tests:155, weak:['internal-arch','language'], real:false };
+}
+async function pollReal(){ try{
+  const [a,b,c,d]=await Promise.all([
+    fetch('/api/training').then(r=>r.ok?r.json():null).catch(()=>null),
+    fetch('/api/training-feed?limit=12').then(r=>r.ok?r.json():null).catch(()=>null),
+    fetch('/api/pipeline').then(r=>r.ok?r.json():null).catch(()=>null),
+    fetch('/api/live-session').then(r=>r.ok?r.json():null).catch(()=>null)]);
+  if(a && a.ok!==false) realTR=a; if(b) realTF=b; if(c) realPL=c; if(d) realLive=d;
+  if(realTR && typeof realTR.testsPassed==='number') score=realTR.testsPassed;
+  const liveStep = !!(realLive && realLive.live && realLive.prompt);
+  // training is LIVE while a fresh step is being written OR the pipeline holds the lock / window
+  trainingActive = liveStep || !!(realPL && (realPL.active || realPL.ingestLock || /running/i.test(realPL.status||'') || realPL.stage==='ingest+weave' || realPL.stage==='consolidating'));
+  // subtitle: prefer the REAL live prompt/answer being studied now; else newest #kai-training line; else canned
+  if(liveStep){
+    realSub = ((realLive.n||0)%2===0)
+      ? { who:'LESSON '+(realLive.n||'')+'/'+(realLive.total||''), line:'Q: '+String(realLive.prompt).slice(0,120) }
+      : { who:'KAI', line:String(realLive.answer||realLive.rationale||'…').slice(0,120) };
+  } else { realSub = extractFeedSub(realTF); }
+}catch(e){} }
+// pull the latest substantive line out of whatever shape /api/training-feed returns
+function extractFeedSub(tf){
+  if(!tf) return null;
+  let list = tf.list || tf.events || tf.messages || tf.items || tf.feed || (Array.isArray(tf)?tf:null);
+  if(!Array.isArray(list) || !list.length) return null;
+  for(let i=list.length-1;i>=0;i--){
+    let it=list[i];
+    let txt=(typeof it==='string')?it:(it.text||it.content||it.message||it.line||it.body||'');
+    txt=String(txt).replace(/\s+/g,' ').trim();
+    if(txt && txt.length>8 && !/^TRAINING\s*\d/i.test(txt)){
+      const who=/\bKAI\b/.test(txt)?'KAI':(/teacher|tutor|prof|lecture/i.test(txt)?'TUTOR':'#kai-training');
+      return { who, line: txt.length>130?txt.slice(0,128)+'…':txt };
+    }
+  }
+  return null;
+}
+
+function setPhase(i){ pi=(i+PHASES.length)%PHASES.length; pt=0; motes=[]; quizFx=null; if(PHASES[pi].id==='idle'){slideIdx=0;boardFill=0;cards=0;} sLastCards=cards; kaiSeatedPlayed=false; sndPhase(PHASES[pi].id); renderPhaseBtns(); }
+function curPhase(){ return PHASES[pi]; }
+function livePhaseForNow(){ const d=new Date(),m=d.getHours()*60+d.getMinutes();
+  if(m<172)return 0; if(m<180)return 1; if(m<185)return 2; if(m<192)return 3; if(m<198)return 4; if(m<206)return 5; if(m<214)return 6; if(m<222)return 7; if(m<232)return 8; return 0; }
+
+/* ---------- per-phase live update ---------- */
+function updatePhase(ph,dt){
+  const lit = ph.lit?1:0; litRamp += (lit-litRamp)*Math.min(1,dt*2.2);
+  if(ph.id==='enter' && pt>5.5 && !kaiSeatedPlayed){ kaiSeatedPlayed=true; nz(0.09,0.1,180); blip(90,0.13,'sine',0.08); }  // KAI sits down
+  if(ph.id==='lecture'){ boardFill=Math.min(1,boardFill+dt*0.09); if(Math.random()<dt*6) spawnMote(); slideIdx=Math.floor(pt/3)%SLIDES.length; }
+  if(ph.id==='notes'){ if(notesNodes.length<7 && Math.random()<dt*2) notesNodes.push({on:0}); }
+  if(ph.id==='quiz'){ if(pt>5 && !quizFx){ quizFx={t:0,ok:true}; score++; sndCorrect(); } if(quizFx) quizFx.t+=dt; }
+  if(ph.id==='flashcards'){ cards=Math.min(50, Math.floor(pt*6)); }
+  if(ph.id!=='notes') notesNodes=[];
+  updMotes(dt);
+}
+
+/* ---------- CRISP BOARD / PROJECTOR CUT-OUTS ---------- */
+const boardEl=document.getElementById('board'), slideEl=document.getElementById('slide'), stageEl=document.getElementById('stage'),
+      activityEl=document.getElementById('activity'), labelsEl=document.getElementById('labels');
+function placeOverlays(){ const cr=cv.getBoundingClientRect(), sr=stageEl.getBoundingClientRect(); const sc=cr.height/H;
+  function put(el,bx,by,bw,bh){ el.style.left=(cr.left-sr.left+bx*sc)+'px'; el.style.top=(cr.top-sr.top+by*sc)+'px'; el.style.width=(bw*sc)+'px'; el.style.height=(bh*sc)+'px'; }
+  put(boardEl,153,15,144,58); put(slideEl,50,16,86,52); put(activityEl,6,H-30,124,24); put(labelsEl,0,0,W,H);
+}
+function renderLabels(){
+  labelsEl.innerHTML=`<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">`+
+    labelTargets.map(L=>{ const ly=Math.max(82,L.y); return `<text x="${L.x.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="middle" font-family="ui-monospace,monospace" font-size="${L.hot?6.5:5}" font-weight="${L.hot?700:600}" fill="${L.hot?'#33e6ff':'#a9cdda'}" stroke="#04101c" stroke-width="2" paint-order="stroke" opacity="${litRamp.toFixed(2)}">${L.t}</text>`; }).join('')+`</svg>`;
+}
+let lastActSig='';
+function renderActivity(ph){
+  let al='STANDBY', av='—', val=0;
+  if(ph.id==='lecture'){ al='INGEST'; val=Math.min(1,boardFill); av=Math.floor(boardFill*1840)+' tok'; }
+  else if(ph.id==='notes'){ al='WEAVE'; val=notesNodes.length/7; av='+'+(notesNodes.length*9)+' edges'; }
+  else if(ph.id==='thinking'){ al='REASON'; val=0.5+0.5*Math.sin(TICK*0.05); av='Φg '+(4.10+val*0.05).toFixed(3); }
+  else if(ph.id==='quiz'){ al='SCORE'; val=score/155; av=score+' / 155'; }
+  else if(ph.id==='flashcards'){ al='RECALL'; val=cards/50; av='card '+cards+' / 50'; }
+  const sig=al+'|'+av+'|'+Math.round(val*40);
+  activityEl.style.opacity=litRamp.toFixed(2);
+  if(sig===lastActSig) return; lastActSig=sig;
+  activityEl.innerHTML=`<div class="ap"><div class="ar"><span class="al">${al}</span><span class="av">${av}</span></div><div class="bar"><i style="width:${Math.round(val*100)}%"></i></div></div>`;
+}
+// diagrams live inside the content box: x 10..134, y 16..48, caption at y54 (header is 0..12)
+const TOPIC_DIAG={
+  'INTERNAL ARCH':`<g stroke="#1f7fa8" stroke-width="1.4" fill="none">
+    <rect x="46" y="17" width="52" height="8" rx="1.5" fill="#dcecf5"/><rect x="46" y="28" width="52" height="8" rx="1.5" fill="#cfe6f2"/><rect x="46" y="39" width="52" height="8" rx="1.5" fill="#bfdcec"/>
+    <path d="M72 25 V28 M72 36 V39"/></g>
+    <text x="72" y="54" text-anchor="middle" class="bd-ink" font-size="5.5" fill="#5a7a8c">layered lattice · RSHL stack</text>`,
+  'LANGUAGE':`<g stroke="#1f7fa8" stroke-width="1.2" fill="none">
+    <circle cx="56" cy="23" r="5"/><circle cx="80" cy="18" r="5"/><circle cx="88" cy="37" r="5"/><circle cx="62" cy="41" r="5"/>
+    <path d="M61 23 L75 19 M84 23 L87 32 M83 39 L67 41 M61 27 L83 33"/></g>
+    <text x="72" y="54" text-anchor="middle" class="bd-ink" font-size="5.5" fill="#5a7a8c">token graph · meaning edges</text>`,
+  'COMPREHENSION':`<g stroke="#1f7fa8" stroke-width="1.3" fill="none">
+    <path d="M32 36 Q50 16 68 36 T104 36"/><circle cx="32" cy="36" r="1.8" fill="#1f7fa8"/><circle cx="68" cy="36" r="1.8" fill="#1f7fa8"/><circle cx="104" cy="36" r="1.8" fill="#1f7fa8"/></g>
+    <text x="72" y="54" text-anchor="middle" class="bd-ink" font-size="5.5" fill="#5a7a8c">trace → reconstruction</text>`,
+  'RETENTION':`<g stroke="#1f7fa8" stroke-width="1.3" fill="none"><path d="M44 44 C44 20 66 20 66 42 M66 42 C66 20 98 22 98 42"/>
+    <path d="M44 44 L98 44" stroke="#9cc"/></g>
+    <text x="72" y="54" text-anchor="middle" class="bd-ink" font-size="5.5" fill="#5a7a8c">spaced repetition curve</text>`
+};
+let lastBoardSig='', lastSlideSig='';
+function updateOverlays(ph){
+  placeOverlays();
+  boardEl.style.opacity = slideEl.style.opacity = (litRamp).toFixed(2);
+  const topic=curTopic();
+  // ----- board signature -----
+  let head='', body='';
+  if(ph.id==='idle'){ head='—'; body=`<text x="72" y="30" text-anchor="middle" class="bd-ink" font-size="7" fill="#9fb4c2">awaiting session</text>`; }
+  else if(ph.id==='setup'||ph.id==='enter'){ head="TONIGHT'S CLASS";
+    body=`<g class="bd-ink" font-size="6.5" fill="#1a3a52"><text x="10" y="26">• Internal architecture</text><text x="10" y="36">• Language</text><text x="10" y="46">• Recall &amp; retention drills</text></g>`; }
+  else if(ph.id==='lecture'){ head='TOPIC · '+topic;
+    body=TOPIC_DIAG[topic]||''; }
+  else if(ph.id==='notes'){ head='KEY POINTS';
+    const lines=['forgetting = pruning, not loss','astrocyte gates consolidation','prune low-coherence edges'];
+    const shown=Math.min(lines.length, notesNodes.length>0?Math.ceil(notesNodes.length/2.5):1);
+    body='<g class="bd-ink" font-size="6" fill="#1a3a52">'+lines.slice(0,shown).map((l,i)=>`<text x="14" y="${24+i*10}">${l}</text><path d="M7 ${21+i*10} l2 2 l3 -4" stroke="#2bb673" stroke-width="1.3" fill="none"/>`).join('')+'</g>'; }
+  else if(ph.id==='thinking'){ head='REASONING';
+    body=`<g stroke="#1f7fa8" stroke-width="1" fill="none"><circle cx="44" cy="24" r="2.4" fill="#1f7fa8"/><circle cx="68" cy="19" r="2.4" fill="#1f7fa8"/><circle cx="96" cy="26" r="2.4" fill="#1f7fa8"/><circle cx="56" cy="40" r="2.4" fill="#1f7fa8"/><circle cx="84" cy="42" r="2.4" fill="#1f7fa8"/>
+      <path d="M44 24 L68 19 L96 26 M44 24 L56 40 L84 42 L68 19 M56 40 L84 42"/></g>
+      <text x="72" y="54" text-anchor="middle" class="bd-ink" font-size="5.5" fill="#5a7a8c">weaving edges · Φg ${(4.10+0.05*(0.5+0.5*Math.sin(TICK*0.05))).toFixed(3)}</text>`; }
+  else if(ph.id==='quiz'){ head='QUIZ';
+    body=`<text x="10" y="22" class="bd-ink" font-size="6.5" fill="#1a3a52">Q: what gates a tripartite synapse?</text>`+
+      (quizFx?`<text x="10" y="38" class="bd-ink" font-size="6.5" fill="#1c7a44">A: the astrocyte ✓  (+1 · ${score}/155)</text>`:`<text x="10" y="38" class="bd-ink" font-size="6.5" fill="#9fb4c2">A: …</text>`); }
+  else if(ph.id==='flashcards'){ head='FLASHCARDS · '+cards+'/50';
+    body=`<g transform="translate(40,16)"><rect x="0" y="0" width="64" height="26" rx="3" fill="#fbfdff" stroke="#1f7fa8"/><text x="32" y="12" text-anchor="middle" class="bd-ink" font-size="6.5" fill="#1a3a52">tripartite synapse</text><text x="32" y="21" text-anchor="middle" class="bd-ink" font-size="5" fill="#5a7a8c">neuron–neuron–astrocyte</text></g>`; }
+  else if(ph.id==='dismiss'){ head='SESSION SAVED ✓';
+    body=`<text x="72" y="32" text-anchor="middle" class="bd-ink" font-size="7" fill="#1c7a44">Level 24 · consolidated</text>`; }
+  const sig=ph.id+'|'+head+'|'+(body.length)+'|'+slideIdx+'|'+cards+'|'+score+'|'+(quizFx?1:0)+'|'+(notesNodes.length);
+  if(sig!==lastBoardSig){ lastBoardSig=sig;
+    boardEl.innerHTML=`<svg viewBox="0 0 144 58" xmlns="http://www.w3.org/2000/svg"><rect x="0" y="0" width="144" height="58" rx="2.5" fill="#eef4fa"/><rect x="0" y="0" width="144" height="12" fill="#dbe8f1"/><text x="5" y="8.4" class="bd-ink" font-size="6" font-weight="700" fill="#15506e" letter-spacing="0.4">${head}</text><line x1="0" y1="12" x2="144" y2="12" stroke="#c3d6e2"/>${body}</svg>`; }
+  // ----- projector slide = KAI's OVERALL RESULTS (real when embedded) -----
+  let s2; const rv=realVals();
+  if(!ph.lit){ s2='<rect x="0" y="0" width="86" height="52" fill="#081826"/>'; }
+  else { s2=`<rect x="0" y="0" width="86" height="52" rx="2" fill="#0b2034"/>
+    <rect x="0" y="0" width="86" height="8" fill="#103a5c"/>
+    <text x="4" y="5.7" class="bd-ink" font-size="4.4" font-weight="700" fill="#86d9f2" letter-spacing="0.3">KAI · OVERALL RESULTS${rv.real?'':' (demo)'}</text>
+    <text x="4" y="22" class="bd-ink" font-size="12" font-weight="700" fill="#eaf6fb">Lv ${rv.lv}</text>
+    <text x="4" y="29" class="bd-ink" font-size="4.1" fill="#7fa6b8">progress ${rv.prog}/100</text>
+    <g class="bd-ink" font-size="5" fill="#cfe6ef">
+      <text x="40" y="16">Quiz avg <tspan fill="#e0a93a" font-weight="700">${rv.quiz}%</tspan></text>
+      <text x="40" y="24">Pass <tspan fill="#e0a93a" font-weight="700">${rv.pass}%</tspan> · ${rv.passed}/${rv.tests}</text>
+      <text x="40" y="32">Tests taken ${rv.tests}</text></g>
+    <rect x="4" y="34" width="78" height="4" rx="2" fill="#0c1c2a"/><rect x="4" y="34" width="${Math.round(78*(Number(rv.prog)||0)/100)}" height="4" rx="2" fill="#33e6ff"/>
+    <text x="4" y="47" class="bd-ink" font-size="4.1" fill="#7fa6b8">weak</text>
+    <rect x="14" y="42.5" width="33" height="6" rx="3" fill="#3a2330"/><text x="16" y="47" class="bd-ink" font-size="3.9" fill="#ff9bb0">${rv.weak[0]||''}</text>
+    <rect x="49" y="42.5" width="26" height="6" rx="3" fill="#3a2330"/><text x="51" y="47" class="bd-ink" font-size="3.9" fill="#ff9bb0">${rv.weak[1]||''}</text>`; }
+  const ss='results|'+ph.lit+'|'+rv.lv+'|'+rv.quiz+'|'+rv.pass+'|'+rv.passed+'|'+rv.weak.join(',');
+  if(ss!==lastSlideSig){ lastSlideSig=ss; slideEl.innerHTML=`<svg viewBox="0 0 86 52" xmlns="http://www.w3.org/2000/svg">${s2}</svg>`; }
+  renderLabels(); renderActivity(ph);
+}
+window.addEventListener('resize',placeOverlays);
+
+/* ---------- frame ---------- */
+let last=performance.now();
+function frame(now){
+  const dt=Math.min(0.05,(now-last)/1000); last=now; TICK+=dt*60;
+  const ph=curPhase();
+  if(EMBED){
+    // drive the scene off the REAL pipeline state, not the wall clock: in-session the whole
+    // time training is actually running (03:00→08:30, not just a fixed window), idle otherwise.
+    if(trainingActive){
+      if(!prevActive || pi===0 || pi===1){ setPhase(2); }                 // training started → KAI enters
+      else if(playing){ pt+=dt*speed; if(pt>ph.dur){ setPhase(pi>=7?3:pi+1); } }  // cycle enter→lecture→…→flashcards→lecture
+    } else {
+      if(pi!==0 && pi!==8){ setPhase(0); }                                 // no training → empty hall
+      else if(playing && pi===8){ pt+=dt*speed; if(pt>ph.dur) setPhase(0); } // let 'dismiss' finish then idle
+    }
+    prevActive=trainingActive;
+  } else {
+    if(playing){ pt+=dt*speed; if(!liveMode && pt>ph.dur) setPhase(pi+1); }
+    if(liveMode){ const w=livePhaseForNow(); if(w!==pi) setPhase(w); }
+  }
+  doorOpen=!!ph.door && pt<6;
+  updatePhase(ph,dt*speed);
+  sndTick(ph,dt*speed);
+
+  g.clearRect(0,0,W,H);
+  drawRoom(litRamp>0.5);
+
+  // ----- build depth-sorted actor list (fixes phasing/occlusion) -----
+  const acts=[]; labelTargets=[]; sWalking=false;
+  // desks as occluders (two banks per row)
+  for(let r=0;r<ROWS.length;r++){ const row=ROWS[r];
+    acts.push({y:row.y+1, f:()=>deskBank(row,-1)});
+    acts.push({y:row.y+1, f:()=>deskBank(row,+1)});
+  }
+  // ---- faculty: lecturer + TA + tutor + lab, present per phase, standing on the floor BELOW the board ----
+  const present=FAC_PHASE[ph.id]||[];
+  for(const fid of present){ const F=FACULTY[fid];
+    let fx=F.x, fy=F.y, moving=false; const anim={look:-1};
+    if(pi===1 && F.entSt!=null){ const p=alongPath(F.path, Math.min(1,(pt-F.entSt)/4.5)); fx=p.x; fy=p.y; moving=p.moving; }
+    // tutor steps over beside KAI for one-on-one during quiz/flashcards
+    if(F.role==='tutor' && (ph.id==='quiz'||ph.id==='flashcards')){ fx=KAI.x+30; fy=ROWS[KAI.row].y+1; }
+    if(ph.id==='lecture' && F.role==='lecturer') anim.gesture=TICK*0.06;
+    if(ph.id==='quiz' && F.role==='lecturer') anim.handRaise=0.5;
+    if(ph.id==='flashcards' && F.role==='tutor') anim.gesture=TICK*0.09;
+    if(ph.id==='notes' && (F.role==='lecturer'||F.role==='lab')) anim.armWrite=TICK*0.3;
+    if(moving) sWalking=true;
+    const sit=!!F.sit && !moving, fxc=fx, fyc=fy, fs=F.s;
+    acts.push({y:fy, f:()=>{ if(F.desk&&sit){ R(fxc-12,fyc-2,22,7,C.deskTop); R(fxc-12,fyc-2,22,2,C.deskTop2); }
+      person(fxc,fyc,fs,Object.assign({body:F.body,body2:F.body2,hair:F.hair,sit:sit,walk:moving?TICK*0.4:0},anim));
+      if(F.desk&&sit){ R(fxc-9,fyc-7,9,6,C.laptop); g.globalAlpha=0.45+0.12*Math.sin(TICK*0.08); R(fxc-8,fyc-6,7,4,C.laptopGlow); g.globalAlpha=1; for(let i=0;i<2;i++) R(fxc-7,fyc-5+i*1.6,Math.floor(2+((TICK*0.1+i)%4)),1,'#bff4ff'); } }});
+    if(!moving || pt>0.4) labelTargets.push({x:fx, y:fy-(sit?15:20)*fs, t:F.name});
+  }
+  // KAI
+  const kstate=ph.kai;
+  if(kstate){
+    const seatX=KAI.x, seatY=ROWS[KAI.row].y+2;
+    let kx=seatX,ky=seatY,kstateNow=kstate;
+    if(kstate==='walkin'){ const pr=Math.min(1,pt/5.5); const p=alongPath([[AISLE,212],[AISLE,170],[AISLE-40,150],[seatX,seatY]],pr); kx=p.x;ky=p.y; kstateNow=p.moving?'walkin':'lecture'; }
+    else if(kstate==='walkout'){ const pr=Math.min(1,pt/5.5); const p=alongPath([[seatX,seatY],[AISLE-40,150],[AISLE,170],[AISLE,212]],pr); kx=p.x;ky=p.y; if(!p.moving){kstateNow=null;} kstateNow=p.moving?'walkout':null; }
+    if(kstateNow){ if(kstateNow==='walkin'||kstateNow==='walkout') sWalking=true; const ks=depthScale(ky); kaiHeadX=kx; kaiHeadY=ky-22*ks; acts.push({y:ky, f:()=>drawKAI(kx,ky,ks,kstateNow,pt*60)}); labelTargets.push({x:kx, y:ky-30*ks, t:'KAI', hot:true}); }
+  }
+  // sort far(top)->near(bottom) and draw
+  acts.sort((a,b)=>a.y-b.y); for(const a of acts) a.f();
+
+  // overlay activity that sits above scene
+  if(ph.id==='lecture') drawMotes();
+  if(ph.id==='quiz' && quizFx){ const a=Math.max(0,1-quizFx.t/1.5); g.globalAlpha=a; const col=quizFx.ok?C.ok:C.bad; R(KAI.x-2, ROWS[KAI.row].y-30, 8,8,col); R(KAI.x, ROWS[KAI.row].y-27,2,2,'#04210f'); g.globalAlpha=1; }
+
+  updateOverlays(ph);
+  updateSubs(ph); updateHUD(ph);
+  requestAnimationFrame(frame);
+}
+function deskBank(row,side){ const s=row.s; const w=42*s,h=9*s,legH=11*s; const cx= side<0?92:252; const x=cx-w/2,y=row.y;
+  R(x+2,y+h,3*s,legH,C.deskLeg); R(x+w-5*s,y+h,3*s,legH,C.deskLeg);
+  R(x,y,w,h,C.deskTop); R(x,y,w,2*s,C.deskTop2); R(x,y+h-2*s,w,2*s,C.deskShade);
+}
+
+/* in-canvas activity readout — placeholder for real BitNet metrics */
+function drawActivityHUD(ph){
+  if(litRamp<0.4) return;
+  const x=6,y=H-26; R(x,y,118,20,'rgba(6,12,22,0.66)'); R(x,y,118,1,C.cyan||'#22d9e6');
+  g.fillStyle='#7fb0c4'; g.font='6px monospace';
+  let lbl='',val=0,unit='';
+  if(ph.id==='lecture'){ lbl='INGEST'; val=Math.min(1,boardFill); unit=(slideIdx,Math.floor(boardFill*1840))+' tok'; }
+  else if(ph.id==='notes'){ lbl='WEAVE'; val=notesNodes.length/7; unit='+'+(notesNodes.length*9)+' edges'; }
+  else if(ph.id==='thinking'){ lbl='REASON'; val=0.5+0.5*Math.sin(TICK*0.05); unit='Φg '+(4.10+val*0.05).toFixed(3); }
+  else if(ph.id==='quiz'){ lbl='SCORE'; val=score/155; unit=score+'/155'; }
+  else if(ph.id==='flashcards'){ lbl='RECALL'; val=cards/50; unit='card '+cards+'/50'; }
+  else { lbl='STANDBY'; val=0; unit='—'; }
+  g.fillStyle=C.kaiEye; g.fillText(lbl,x+5,y+8);
+  g.fillStyle='#9fd9e6'; g.fillText(String(unit),x+44,y+8);
+  R(x+5,y+11,108,4,'#0c1c2a'); R(x+5,y+11,Math.round(108*val),4,C.node);
+}
+
+/* ---------- subs / hud / controls ---------- */
+const subsEl=document.getElementById('subs'),whoEl=subsEl.querySelector('.who'),lineEl=subsEl.querySelector('.line');
+function updateSubs(ph){ let cur=null;
+  if(EMBED && trainingActive && realSub){ cur=realSub; }                  // LIVE #kai-training line
+  else { for(const s of ph.subs){ if(pt>=s.t) cur=s; } }
+  if(!cur){ subsEl.classList.add('hide'); return; } subsEl.classList.remove('hide');
+  whoEl.textContent=cur.who||''; whoEl.style.display=cur.who?'block':'none'; if(lineEl.textContent!==cur.line){ lineEl.textContent=cur.line; sndSpeak(); } }
+const chip=document.getElementById('phasechip'),clk=document.getElementById('clock');
+function updateHUD(ph){ chip.textContent=ph.label; const d=new Date(); clk.textContent=d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'})+(liveMode?' · LIVE':' · demo'); }
+const playBtn=document.getElementById('play'); playBtn.onclick=()=>{ playing=!playing; playBtn.textContent=playing?'⏸ Pause':'▶ Play'; };
+document.querySelectorAll('[data-spd]').forEach(b=>b.onclick=()=>{ speed=parseFloat(b.dataset.spd); document.querySelectorAll('[data-spd]').forEach(x=>x.classList.remove('on')); b.classList.add('on'); });
+const liveBtn=document.getElementById('live'); liveBtn.onclick=()=>{ liveMode=!liveMode; liveBtn.classList.toggle('on',liveMode); liveBtn.textContent=liveMode?'◷ Live clock ✓':'◷ Live clock'; if(liveMode) setPhase(livePhaseForNow()); };
+const soundBtn=document.getElementById('sound'); soundBtn.onclick=()=>{ setSound(!SND); soundBtn.classList.toggle('on',SND); soundBtn.textContent=SND?'♪ Sound ✓':'♪ Sound'; };
+const pbWrap=document.getElementById('phasebtns');
+function renderPhaseBtns(){ if(pbWrap.dataset.built){ [...pbWrap.querySelectorAll('button')].forEach((b,i)=>b.classList.toggle('active',i===pi)); return; }
+  PHASES.forEach((p,i)=>{ const b=document.createElement('button'); b.textContent=p.id; b.onclick=()=>{ liveMode=false; liveBtn.classList.remove('on'); liveBtn.textContent='◷ Live clock'; setPhase(i); }; pbWrap.appendChild(b); }); pbWrap.dataset.built='1';
+  [...pbWrap.querySelectorAll('button')].forEach((b,i)=>b.classList.toggle('active',i===pi)); }
+
+renderPhaseBtns();
+(function(){ const m=new Date().getHours()*60+new Date().getMinutes(); if(m>=170&&m<=235){ liveMode=true; liveBtn.classList.add('on'); liveBtn.textContent='◷ Live clock ✓'; setPhase(livePhaseForNow()); } })();
+// embedded in dashboard: strip chrome, force live, pull real /api data
+(function(){ EMBED=/[?&]embed=1/.test(location.search); if(EMBED){ document.body.classList.add('embed'); liveMode=true; if(liveBtn){ liveBtn.classList.add('on'); liveBtn.textContent='◷ Live clock ✓'; } setPhase(livePhaseForNow()); pollReal(); setInterval(pollReal,6000); } })();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

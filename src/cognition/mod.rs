@@ -62,6 +62,7 @@ pub mod sequence_chain;
 pub mod pfc;
 pub mod precuneus;
 pub mod predictor;
+pub mod world_model;  // VSA-native state→action→next-state world model (flag-gated KAI_WORLDMODEL, off by default)
 pub mod promotion;
 pub mod raphe;
 pub mod ras;
@@ -87,7 +88,11 @@ pub mod transcript;
 pub mod ventral_pallidum;
 pub mod vmpfc;
 pub mod voice;
-pub mod polychora;
+// pub mod polychora;  // EXCLUDED FROM BUILD (dead): only used by
+// language_warehouse::forward_pass_polychora, which has zero callers anywhere
+// in the crate (verified by grep across src/tests/benches/examples). The
+// method is itself neutralized below. Re-enable both to restore. The file is
+// kept on disk (reversible) — the compiler will flag any missed reference.
 pub mod self_reflection;
 pub mod vta;
 pub mod working_memory;
@@ -147,6 +152,7 @@ pub use pcc::{NarrativeThread, SelfRelevance, PCC};
 pub use pfc::{Goal, PfcVerdict, PrefrontalCortex};
 pub use precuneus::{Precuneus, PrecuneusOutput, ReflectionLevel};
 pub use predictor::PredictiveEngine;
+pub use world_model::{predict_next as world_predict_next, observe_transition as world_observe_transition, link_continuation as world_link_continuation, blend_continuation as world_blend_continuation, WorldModelConfig};
 pub use promotion::{run_promotion, PromotionThresholds};
 pub use raphe::{RapheEvent, RapheMode, RapheNuclei, RapheOutput};
 pub use ras::{RASEvent, RASOutput, ReticuloActivatingSystem};

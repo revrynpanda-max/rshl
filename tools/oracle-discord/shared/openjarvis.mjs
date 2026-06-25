@@ -8,7 +8,7 @@ import { guard as loopGuard } from './loop-guard.mjs';  // truncate runaway repe
 import { reflexAnswer } from './reflex.mjs';            // per-persona zero-model reflex fast-path (ported from Kai 2.0 LLI)
 import dotenv from 'dotenv';
 import { execSync } from 'child_process';
-import { isProviderReady, recordProviderFailure, recordProviderSuccess } from './failure-tracker.mjs';
+import { isProviderReady, recordProviderFailure, recordProviderSuccess, PROVIDER_COOLDOWNS } from './failure-tracker.mjs';
 import { isPipelineHalted } from './sentinel.mjs';
 import { isWorkingHours } from './hours.mjs';
 import { recallMemory } from './transcript-memory.mjs';
@@ -26,6 +26,8 @@ const LOCK_FILE = "c:/KAI/tools/oracle-discord/state/neural_lock.json";
 // ── Global API Rate Limiter ──────────────────────────────────────────────────
 // Ensures cloud APIs are not hammered simultaneously by multiple bots.
 const providerLocks = new Map();
+// Short-lived dedupe cache for the per-message contradiction scan (churn fix).
+const _contraDedupCache = new Map();
 async function acquireProviderLock(provider, delayMs = 1500) {
   if (!providerLocks.has(provider)) {
     providerLocks.set(provider, Promise.resolve());
@@ -63,11 +65,15 @@ const BOT_ROUTING_DEFAULTS = {
   "Oracle":     { provider: "ollama",   model: "Oracle-Sovereign:latest" },
   
   // Social bots move to cloud to save local CPU/GPU limits
-  "Gemini":     { provider: "groq",     model: process.env.GROQ_MODEL || "llama-3.3-70b-versatile" }, // moved off its own Gemini key (20/day free cap too small) → shares Groq's ~14k/day pool
-  "Claudey":    { provider: "groq",     model: process.env.GROQ_MODEL || "llama-3.3-70b-versatile" }, // shares the Groq pool with Gemini — the per-bot Gemini free tier was only 20/day
-  "X":          { provider: "xai",      model: process.env.XAI_MODEL || "grok-3" },
-  "Groq":       { provider: "groq",     model: process.env.GROQ_MODEL || "llama-3.3-70b-versatile" },
-  "Leo":        { provider: "gemini",   model: process.env.GEMINI_MODEL || "gemini-2.5-flash" },
+  // OWNER (Tier 1 project "Kai fleet"): each social bot uses its OWN Gemini key
+  // (GEMINI_API_KEY_<NAME>) on gemini-2.5-flash-lite — UNLIMITED requests/day + 4K RPM —
+  // so they stop sharing the capped gemini-2.5-flash pool and the (mismatched) Groq key,
+  // and never 429 → storm Ollama. Per-bot key resolution already prefers GEMINI_API_KEY_<NAME>.
+  "Gemini":     { provider: "gemini",   model: "gemini-2.5-flash-lite" },
+  "Claudey":    { provider: "gemini",   model: "gemini-2.5-flash-lite" },
+  "X":          { provider: "gemini",   model: "gemini-2.5-flash-lite" },
+  "Groq":       { provider: "gemini",   model: "gemini-2.5-flash-lite" },
+  "Leo":        { provider: "gemini",   model: process.env.GEMINI_MODEL || "gemini-2.5-flash-lite" },
 };
 
 // User-friendly aliases → real OpenCode Zen model IDs. Update as Zen's
@@ -137,8 +143,8 @@ const PER_BOT_PRIMARY_MODEL = {
   "Analyst":    { env: "ANALYST_MODEL",    groqDefault: "llama-3.3-70b-versatile" },
   "Researcher": { env: "RESEARCHER_MODEL", groqDefault: "llama-3.3-70b-versatile" },
   "Kai Coder":  { env: "KAICODER_MODEL",   groqDefault: "llama-3.3-70b-versatile" }, // was moonshotai/kimi-k2-instruct → 401 on this Groq key (not enabled). Set KAICODER_MODEL to a coding model once enabled.
-  "Gemini":     { env: "GEMINI_BOT_MODEL", groqDefault: "llama-3.1-8b-instant", geminiDefault: "gemini-2.5-flash" },
-  "Claudey":    { env: "CLAUDEY_MODEL",    groqDefault: "llama-3.1-8b-instant", geminiDefault: "gemini-2.5-flash" },
+  "Gemini":     { env: "GEMINI_BOT_MODEL", groqDefault: "llama-3.1-8b-instant", geminiDefault: "gemini-2.5-flash-lite" },
+  "Claudey":    { env: "CLAUDEY_MODEL",    groqDefault: "llama-3.1-8b-instant", geminiDefault: "gemini-2.5-flash-lite" },
   "Groq":       { env: "GROQ_BOT_MODEL",   groqDefault: "llama-3.1-8b-instant" },
   "X":          { env: "X_MODEL",          xaiDefault: "grok-3", groqDefault: "llama-3.1-8b-instant" },
 };
@@ -152,12 +158,53 @@ function perBotPrimaryModel(botName, provider, fallbackAlias) {
     return (cfg && cfg.groqDefault) || process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
   }
   if (provider === "gemini") {
-    return (cfg && cfg.geminiDefault) || process.env.GEMINI_MODEL || "gemini-2.5-flash";
+    return (cfg && cfg.geminiDefault) || process.env.GEMINI_MODEL || "gemini-2.5-flash-lite";
   }
   if (provider === "xai") {
     return (cfg && cfg.xaiDefault) || process.env.XAI_MODEL || "grok-3";
   }
   return fallbackAlias;
+}
+
+// ── GEMINI MODEL-LEVEL FALLBACK (text/neural brain) ───────────────────────────
+// Gemini exposes several free-tier text models, each with its OWN quota. When the
+// current model hits a 429 / RESOURCE_EXHAUSTED (RPD/RPM exceeded), we rotate to
+// the NEXT model in this ordered list (same provider, same key) BEFORE failing
+// over to another provider. Per-MODEL cooldowns are keyed as
+// 'gemini_<keytail>::<model>' in the existing failure-tracker so one exhausted
+// model never sidelines the others. Ordered = priority. Env-overridable.
+// SINGLE-QUOTED concatenation only — NO backticks anywhere in this block.
+// OWNER DECISION (trimmed): ONLY the two models that return 200 on the FREE key.
+// gemini-2.0-flash, gemini-2.0-flash-lite, and gemini-2.5-pro all 429 on the free
+// key, so they were REMOVED from the text fallback list to stop wasted round-trips.
+const GEMINI_TEXT_MODELS_DEFAULT = [
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
+];
+function resolveGeminiTextModels(firstModel) {
+  var list = [];
+  var raw = process.env.GEMINI_TEXT_MODELS;
+  if (raw) {
+    String(raw).split(',').forEach(function (m) {
+      var v = String(m).trim();
+      if (v) list.push(v);
+    });
+  }
+  if (!list.length) list = GEMINI_TEXT_MODELS_DEFAULT.slice();
+  // Keep the bot's resolved primary as the FIRST candidate (preserve its routing).
+  if (firstModel) {
+    list = [firstModel].concat(list.filter(function (m) { return m !== firstModel; }));
+  }
+  // De-dupe, preserve order.
+  var seen = {};
+  var out = [];
+  list.forEach(function (m) { if (m && !seen[m]) { seen[m] = 1; out.push(m); } });
+  return out;
+}
+// Per-model cooldown window before a model re-enters rotation (env-tunable).
+function geminiModelCooldownMs() {
+  var v = Number(process.env.GEMINI_MODEL_COOLDOWN_MS);
+  return v > 0 ? v : 10 * 60 * 1000; // default 10 min
 }
 
 function envKey(prefix, botName) {
@@ -194,7 +241,7 @@ function resolveRoute(botName, modelOverride) {
   if (provider === "gemini") {
     const isRealGeminiModel = realModel.startsWith("gemini-");
     if (!isRealGeminiModel) {
-      realModel = perBotPrimaryModel(botName, "gemini", "gemini-2.5-flash");
+      realModel = perBotPrimaryModel(botName, "gemini", "gemini-2.5-flash-lite");
     }
   }
 
@@ -312,7 +359,29 @@ ${uProf.privateSecrets.map(s => `- ${s}`).join('\n')}
   // Works for humans AND fleet AIs — anyone who contradicts themselves in-thread.
   let profileMemoryContext = "";
   let cleanedHistoryText = cleanTranscript;
+  // CHURN FIX (contradiction-check dedupe): the contradiction scan + SQLite recall
+  // used to run on EVERY message, then feed a model call that often just re-hit a
+  // cooled provider — wasted round-trips on the shared free key. We now (a) DEDUPE:
+  // skip the scan if this exact transcript tail was already analysed within a short
+  // window, and (b) SKIP entirely when every cloud provider for this bot is already
+  // cooled (the call can't land, so spending compute on contradiction grounding is
+  // pointless). Env-tunable; set CONTRADICTION_DEDUP_MS=0 to disable the dedupe.
+  const _contraDedupMs = Number(process.env.CONTRADICTION_DEDUP_MS) >= 0
+    ? Number(process.env.CONTRADICTION_DEDUP_MS) : 8000;
+  const _contraTail = String(cleanedHistoryText).slice(-240);
+  const _contraKey = botName + '::' + _contraTail;
+  const _contraNow = Date.now();
+  let _skipContradiction = false;
+  if (_contraDedupMs > 0) {
+    const _prev = _contraDedupCache.get(_contraKey);
+    if (_prev && (_contraNow - _prev) < _contraDedupMs) _skipContradiction = true;
+    else _contraDedupCache.set(_contraKey, _contraNow);
+    if (_contraDedupCache.size > 200) {
+      for (const [k, v] of _contraDedupCache) { if (_contraNow - v > _contraDedupMs) _contraDedupCache.delete(k); }
+    }
+  }
   try {
+    if (_skipContradiction) throw new Error('contradiction-dedup-skip');
     const { detectTranscriptContradiction, buildContradictionPrompt } = await import('./contradiction-detector.mjs');
     const anyHit = detectTranscriptContradiction(cleanedHistoryText);
     if (anyHit) {
@@ -320,6 +389,7 @@ ${uProf.privateSecrets.map(s => `- ${s}`).join('\n')}
       console.log(`[Neural/${botName}] Contradiction flagged for ${anyHit.speaker}`);
     }
   } catch (_) {}
+  if (_skipContradiction) { /* dedupe: skip the heavier self-contradiction scan below too */ } else
   try {
     const lines = cleanedHistoryText.split('\n');
     let latestUserIndex = -1;
@@ -522,13 +592,21 @@ ${uProf.privateSecrets.map(s => `- ${s}`).join('\n')}
     return null;
   }
 
-  const localFallbackModel = BOT_ROUTING_DEFAULTS[botName]?.model || "llama3:latest";
+  // Local Ollama fallback must be a model that is ACTUALLY pulled. For ollama bots
+  // (KAI/Oracle) the routing default IS an installed Sovereign model, but for the
+  // work bots BOT_ROUTING_DEFAULTS[botName].model is a Groq slug (e.g.
+  // llama-3.3-70b-versatile) which would 404 if sent to Ollama. So: use the bot's
+  // ollama default only when it is genuinely an ollama route; otherwise use a known
+  // installed base model (env OLLAMA_FALLBACK_MODEL, default llama3:latest).
+  const _botDef = BOT_ROUTING_DEFAULTS[botName];
+  const _ollamaBaseModel = process.env.OLLAMA_FALLBACK_MODEL || "llama3:latest";
+  const localFallbackModel = (_botDef && _botDef.provider === "ollama" && _botDef.model) ? _botDef.model : _ollamaBaseModel;
   const localFallback = { provider: "ollama", modelAlias: localFallbackModel, realModel: localFallbackModel };
   
   const groqFallbackModel = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
   const groqFallback = { provider: "groq", modelAlias: groqFallbackModel, realModel: groqFallbackModel };
   
-  const geminiFallbackModel = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+  const geminiFallbackModel = process.env.GEMINI_MODEL || "gemini-2.5-flash-lite";
   const geminiFallback = { provider: "gemini", modelAlias: geminiFallbackModel, realModel: geminiFallbackModel };
   
   const zenFallbackModel = process.env.ZEN_MODEL || ZEN_ALIASES[`${botName}-Sovereign`] || "kimi-k2.6";
@@ -542,12 +620,13 @@ ${uProf.privateSecrets.map(s => `- ${s}`).join('\n')}
   if (route.provider === "moonshot") currentKey = specificMoonshotKey;
 
   if (route.provider !== "ollama" && !isProviderReady(getTrackerId(route.provider, currentKey))) {
+    // OWNER DECISION — ACTIVE cloud failover is ONLY gemini -> groq (-> local ollama).
+    // REMOVED entirely: moonshot + xAI (gone, never tried). SILENCED (keys kept,
+    // never auto-tried, never log errors): zen + openai + cerebras. Re-enable a
+    // silenced provider later by adding it back to this list AND PROVIDER_FAILOVER_ORDER.
     const choice = firstReady([
-      { ready: geminiReady && route.provider !== "gemini", route: geminiFallback },
-      { ready: xaiReady && route.provider !== "xai", route: { provider: "xai", modelAlias: process.env.XAI_MODEL || "grok-3", realModel: process.env.XAI_MODEL || "grok-3" } },
       { ready: groqReady && route.provider !== "groq", route: groqFallback },
-      { ready: zenReady && route.provider !== "zen", route: zenFallback },
-      { ready: moonshotReady && route.provider !== "moonshot", route: { provider: "moonshot", modelAlias: MOONSHOT_REAL_MODEL, realModel: MOONSHOT_REAL_MODEL } },
+      { ready: geminiReady && route.provider !== "gemini", route: geminiFallback },
       { ready: route.provider !== "ollama" && isProviderReady("ollama"), route: localFallback },
     ]);
 
@@ -563,11 +642,44 @@ ${uProf.privateSecrets.map(s => `- ${s}`).join('\n')}
     return null;
   }
 
-  let useCloud = (effectiveRoute.provider === "moonshot" && specificMoonshotKey) ||
-                   (effectiveRoute.provider === "zen"      && specificZenKey) ||
-                   (effectiveRoute.provider === "groq"     && specificGroqKey) ||
-                   (effectiveRoute.provider === "gemini"   && specificGeminiKey) ||
-                   (effectiveRoute.provider === "xai"      && specificXaiKey);
+  // SELECTION-TIME GEMINI PER-MODEL SKIP (rotation that STICKS across calls).
+  // The 429 handler below trips a PER-MODEL cooldown keyed gemini_<key>::<model>,
+  // but effectiveRoute resets to the bot's primary (gemini-2.5-flash) every call,
+  // so without this block the selector would re-pick the cooled primary and waste
+  // a 429 round-trip before rotating EVERY reply. Here we consult the SAME per-model
+  // cooldown up-front and advance realModel to the FIRST READY Gemini model on this
+  // key, so a cooled model is never retried while cooled. Falls through to provider
+  // failover (and ultimately Ollama) only when EVERY Gemini model is cooled.
+  if (effectiveRoute.provider === 'gemini' && specificGeminiKey) {
+    const _selKeyId = getTrackerId('gemini', specificGeminiKey);
+    const _selModels = resolveGeminiTextModels(effectiveRoute.realModel);
+    let _readyModel = null;
+    for (let _i = 0; _i < _selModels.length; _i++) {
+      if (isProviderReady(_selKeyId + '::' + _selModels[_i])) { _readyModel = _selModels[_i]; break; }
+    }
+    if (_readyModel && _readyModel !== effectiveRoute.realModel) {
+      console.warn('[OpenJarvis] ' + botName + ': primary Gemini model ' + effectiveRoute.realModel + ' still cooled at selection -> starting on ready model ' + _readyModel + ' (same key).');
+      effectiveRoute = { provider: 'gemini', modelAlias: _readyModel, realModel: _readyModel };
+    } else if (!_readyModel) {
+      // Every Gemini text model on this key is cooled. Skip Gemini entirely now and
+      // fail over to the next ready provider (or Ollama) instead of burning a 429.
+      // OWNER DECISION — ACTIVE order only: groq -> local ollama. (zen/openai/cerebras
+      // silenced; moonshot/xAI removed.)
+      const _selFallback = firstReady([
+        { ready: groqReady, route: groqFallback },
+        { ready: isProviderReady('ollama'), route: localFallback },
+      ]);
+      if (_selFallback) {
+        console.warn('[OpenJarvis] ' + botName + ': ALL Gemini models cooled at selection -> failing over to ' + _selFallback.provider + ' (' + _selFallback.modelAlias + ').');
+        effectiveRoute = _selFallback;
+      }
+    }
+  }
+
+  // OWNER DECISION — ACTIVE cloud providers only: groq + gemini. moonshot/xAI removed,
+  // zen/openai/cerebras silenced, so effectiveRoute.provider can only be groq/gemini/ollama.
+  let useCloud = (effectiveRoute.provider === "groq"   && specificGroqKey) ||
+                   (effectiveRoute.provider === "gemini" && specificGeminiKey);
 
 
   let hasLock = true;
@@ -756,28 +868,47 @@ ${uProf.privateSecrets.map(s => `- ${s}`).join('\n')}
     // hop to the NEXT ready provider and use whatever free capacity is available
     // across all of them, instead of dying on one. `triedProviders` stops it looping.
     const triedProviders = new Set();
+    // OWNER DECISION — only the ACTIVE providers participate in 429-hop rotation.
+    // SILENCED (zen/openai/cerebras) and REMOVED (moonshot/xAI) are NOT listed here,
+    // so they are never auto-tried and never log errors.
     const _readyByName = {
       gemini:   geminiReady   && specificGeminiKey,
       groq:     groqReady     && specificGroqKey,
-      xai:      xaiReady      && specificXaiKey,
-      zen:      zenReady      && specificZenKey,
-      moonshot: moonshotReady && specificMoonshotKey,
     };
     const _modelByName = {
       gemini:   process.env.GEMINI_MODEL || 'gemini-2.5-flash',
       groq:     process.env.GROQ_MODEL   || 'llama-3.3-70b-versatile',
-      xai:      process.env.XAI_MODEL    || 'grok-3',
-      zen:      zenFallbackModel,
-      moonshot: MOONSHOT_REAL_MODEL,
     };
-    // Order: cheapest/most-generous free tiers first (Groq + xAI have far bigger
-    // free quotas than Gemini's 20/day), then the rest.
-    const PROVIDER_FAILOVER_ORDER = ['groq', 'xai', 'gemini', 'zen', 'moonshot'];
+    // ACTIVE cloud failover order: Groq (big free quota) -> Gemini free key.
+    // Local Ollama is the final fallback handled elsewhere. To re-enable a silenced
+    // provider, add it back to _readyByName, _modelByName, and this array.
+    const PROVIDER_FAILOVER_ORDER = ['groq', 'gemini'];
     function pickNextReadyProvider(current) {
       triedProviders.add(current);
       for (const p of PROVIDER_FAILOVER_ORDER) {
         if (p === current || triedProviders.has(p) || !_readyByName[p]) continue;
         return { provider: p, modelAlias: _modelByName[p], realModel: _modelByName[p] };
+      }
+      return null;
+    }
+
+    // GEMINI MODEL-LEVEL FALLBACK: ordered list of Gemini text models to try on
+    // this same key before hopping to another provider. The bot's resolved model
+    // stays first. Each model has its own per-model cooldown (keyed by model name)
+    // so an exhausted model never sidelines the others.
+    const _geminiTextModels = resolveGeminiTextModels(
+      effectiveRoute.provider === 'gemini' ? effectiveRoute.realModel : (process.env.GEMINI_MODEL || 'gemini-2.5-flash')
+    );
+    function geminiModelTrackerId(model) {
+      return getTrackerId('gemini', specificGeminiKey) + '::' + model;
+    }
+    // Pick the next Gemini model (after currentModel) that is NOT in cooldown.
+    function pickNextGeminiModel(currentModel) {
+      const idx = _geminiTextModels.indexOf(currentModel);
+      for (let i = idx + 1; i < _geminiTextModels.length; i++) {
+        if (isProviderReady(geminiModelTrackerId(_geminiTextModels[i]))) {
+          return _geminiTextModels[i];
+        }
       }
       return null;
     }
@@ -868,6 +999,29 @@ ${uProf.privateSecrets.map(s => `- ${s}`).join('\n')}
                 // free-tier cap won't clear in seconds) — mark it down and HOP to the
                 // next ready provider so the fleet uses available capacity elsewhere.
                 if (res.status === 429) {
+                  // GEMINI MODEL-LEVEL FALLBACK FIRST: a 429 / RESOURCE_EXHAUSTED
+                  // is a PER-MODEL quota (RPD/RPM). Trip a per-MODEL cooldown and
+                  // rotate to the next un-cooled Gemini model on the SAME key before
+                  // hopping providers. Only when EVERY Gemini model is cooled down do
+                  // we fall through to the next provider. (1011/billing is handled as
+                  // a key/project-level failure elsewhere; 429 prefers rotating MODEL.)
+                  if (effectiveRoute.provider === 'gemini') {
+                    const _curModel = effectiveRoute.realModel;
+                    const _mid = geminiModelTrackerId(_curModel);
+                    // Per-model cooldown. Pass RESOURCE_EXHAUSTED so the tracker logs it
+                    // as a quota event; force a sane window via env GEMINI_MODEL_COOLDOWN_MS.
+                    recordProviderFailure(_mid, 429, 'RESOURCE_EXHAUSTED quota/rate (per-model)');
+                    PROVIDER_COOLDOWNS.set(_mid, Date.now() + geminiModelCooldownMs());
+                    const _nextModel = pickNextGeminiModel(_curModel);
+                    if (_nextModel) {
+                      console.warn('[OpenJarvis] ' + botName + ': gemini model ' + _curModel + ' quota exhausted (429) -> rotating to next Gemini model ' + _nextModel + ' (same key).');
+                      effectiveRoute.realModel = _nextModel;
+                      effectiveRoute.modelAlias = _nextModel;
+                      useCloud = true;
+                      break; // re-enter the loop with the new model
+                    }
+                    console.warn('[OpenJarvis] ' + botName + ': ALL Gemini text models cooled down -> failing over to next provider.');
+                  }
                   recordProviderFailure(getTrackerId(effectiveRoute.provider, apiKey), 429, 'quota/rate');
                   const next = pickNextReadyProvider(effectiveRoute.provider);
                   if (next) {
@@ -905,6 +1059,7 @@ ${uProf.privateSecrets.map(s => `- ${s}`).join('\n')}
         // and fail over to Gemini cloud (if a key exists) so KAI/Oracle/work bots stay
         // alive instead of erroring on loop. Only if there's no cloud key do we give up.
         try {
+          const _ollamaOpts = { temperature: 0.85, num_predict: metadata.maxTokens ? metadata.maxTokens : ((metadata.isDM || metadata.isWorkChannel) ? 1024 : 512), num_ctx: metadata.maxTokens ? 8192 : 4096 };
           res = await fetch("http://127.0.0.1:11434/api/chat", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -913,10 +1068,29 @@ ${uProf.privateSecrets.map(s => `- ${s}`).join('\n')}
               messages: chatMessages,
               tools: activeSchema,
               stream: false,
-              options: { temperature: 0.85, num_predict: metadata.maxTokens ? metadata.maxTokens : ((metadata.isDM || metadata.isWorkChannel) ? 1024 : 512), num_ctx: metadata.maxTokens ? 8192 : 4096 }
+              options: _ollamaOpts
             }),
             signal: AbortSignal.timeout(180000)
           });
+          // MODEL-NOT-PULLED RECOVERY: if the Sovereign alias was never pulled,
+          // Ollama returns 404 ('model not found'). Retry ONCE with the installed
+          // base model (localFallbackModel) so KAI/Oracle/Analyst/Kai Coder stay
+          // alive instead of erroring. Pull the real Sovereign model to restore it.
+          if (res && res.status === 404 && ollamaModel !== localFallbackModel) {
+            console.warn('[OpenJarvis/Ollama] ' + botName + ': model ' + ollamaModel + ' not pulled (404). Retrying with installed base model ' + localFallbackModel + '.');
+            res = await fetch("http://127.0.0.1:11434/api/chat", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                model: localFallbackModel,
+                messages: chatMessages,
+                tools: activeSchema,
+                stream: false,
+                options: _ollamaOpts
+              }),
+              signal: AbortSignal.timeout(180000)
+            });
+          }
         } catch (ollamaErr) {
           recordProviderFailure("ollama", 500, ollamaErr.message);
           if (specificGeminiKey) {
@@ -1160,6 +1334,15 @@ export async function transcribeAudio(url, messageId = null) {
     const formData = new FormData();
     formData.append("file", new Blob([buffer], { type: "audio/ogg" }), "voice.ogg");
     formData.append("model", "whisper-large-v3-turbo");
+    // BUG 2 GUARD: respect the fleet-wide Groq STT token bucket so attachment
+    // transcription can't blow the shared 20 RPM key either. (messageId caching
+    // above already dedups the same attachment across bots.)
+    const { acquireSttSlot } = await import('./groq-stt-limiter.mjs');
+    const ok = await acquireSttSlot();
+    if (!ok) {
+      console.warn("[OpenJarvis/Voice] Groq STT at RPM ceiling — skipping to avoid 429 storm.");
+      return null;
+    }
     const groqRes = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
       method: "POST",
       headers: { "Authorization": `Bearer ${apiKey}` },

@@ -42,6 +42,32 @@ const elevenLabsSttModelId = process.env.ELEVENLABS_STT_MODEL_ID || "scribe_v2";
 const openAiApiKey = process.env.OPENAI_API_KEY || "";
 const openAiTtsVoice = process.env.OPENAI_TTS_VOICE || "onyx"; // onyx = deep male, fits Leo
 
+// ── OWNER-ONLY ecosystem restart (additive; mirrors command-center-server.mjs) ─
+// Destructive/irreversible actions ALWAYS require an explicit confirm. Restart
+// intents from the owner trigger a confirm prompt; the owner must reply "yes"
+// within ~60s before we spawn the SAME detached stop+relaunch used by the dashboard.
+const OWNER_ID = process.env.OWNER_ID || process.env.ORACLE_DISCORD_ALLOWED_USER_ID || "";
+const KAI_STOP_BAT = process.env.CC_STOP_BAT || "C:\\KAI\\tools\\oracle-discord\\KAI-Stop.bat";
+const START_KAI_PS1 = process.env.CC_START_PS1 || "C:\\KAI\\Start-KAI.ps1";
+const pendingRestart = new Map(); // userId -> { scope:'server'|'fleet', at:number }
+function spawnEcosystemRestart(scope) {
+  const fleet = scope === "fleet";
+  const cmdLine =
+    `"${KAI_STOP_BAT}" & timeout /t 5 /nobreak & ` +
+    `powershell -ExecutionPolicy Bypass -File "${START_KAI_PS1}"` +
+    (fleet ? " -fullfleet" : "");
+  spawn("cmd", ["/c", cmdLine], { detached: true, stdio: "ignore", windowsHide: false }).unref();
+}
+// Returns 'server' | 'fleet' | null for a restart phrase.
+function matchRestartIntent(t) {
+  const s = (t || "").toLowerCase().trim();
+  if (/\b(restart|reboot)\b.*\b(all|fleet|everything|ecosystem)\b/.test(s)
+      || /\b(restart|reboot) the (fleet|ecosystem|everything)\b/.test(s)) return "fleet";
+  if (/\brestart (the )?server\b/.test(s) || /\b(restart|reboot) the ecosystem\b/.test(s)
+      || /\brestart server\b/.test(s)) return "server";
+  return null;
+}
+
 const participantTokens = new Map([
   ["KAI", process.env.ORACLE_DISCORD_TOKEN_KAI || ""],          // KAI — single entry, no duplicates
   // ["Leo", process.env.ORACLE_DISCORD_TOKEN_LEO || ""], // DEACTIVATED: Leo handles himself in leo.mjs
@@ -751,6 +777,36 @@ client.on("messageCreate", async (message) => {
     const isGuest = roles.includes("guest");
     const isRyan = message.author?.id === allowedUserId || message.author?.username === 'NasterModx';
     const isDM = message.channel.type === ChannelType.DM;
+
+    // ── OWNER-ONLY ecosystem restart (confirm-gated, additive) ──────────────
+    // Sits early so it never interferes with existing routing below. Only the
+    // owner can trigger; everyone else is declined. Restart ALWAYS confirms.
+    if (!message.author?.bot && text) {
+      const isOwner = (OWNER_ID && message.author?.id === OWNER_ID) || isRyan;
+      // 1) Resolve a pending confirm first ("yes"/"confirm" within 60s)
+      if (isOwner && pendingRestart.has(message.author.id)) {
+        const pend = pendingRestart.get(message.author.id);
+        if (Date.now() - pend.at > 60000) { pendingRestart.delete(message.author.id); }
+        else if (/^\s*(yes|confirm|do it|proceed)\s*$/i.test(text)) {
+          pendingRestart.delete(message.author.id);
+          await safeReply(message, `🔄 Confirmed. Restarting the **${pend.scope === "fleet" ? "FULL FLEET" : "server"}** now — Oracle and the dashboard will drop and reconnect in ~30s.`).catch(() => {});
+          try { spawnEcosystemRestart(pend.scope); } catch (e) { console.error("Oracle restart spawn failed:", e.message); }
+          return;
+        } else if (/^\s*(no|cancel|stop|abort)\s*$/i.test(text)) {
+          pendingRestart.delete(message.author.id);
+          await safeReply(message, "Restart cancelled.").catch(() => {});
+          return;
+        }
+      }
+      // 2) New restart intent
+      const scope = matchRestartIntent(text);
+      if (scope) {
+        if (!isOwner) { await safeReply(message, "Oracle: Restarting the ecosystem is restricted to the owner.").catch(() => {}); return; }
+        pendingRestart.set(message.author.id, { scope, at: Date.now() });
+        await safeReply(message, `⚠️ Confirm FULL ecosystem restart (**${scope === "fleet" ? "fleet" : "server"}**)? This stops the engine, Oracle, all bots and the dashboard. Reply "yes" to proceed (expires in 60s).`).catch(() => {});
+        return;
+      }
+    }
 
     if (!isRyan && !isContributor && !isGuest && !isOurBot && !isDM) {
        // Only allow interaction if user has a valid role or is Ryan
@@ -3465,7 +3521,12 @@ setInterval(syncRealmToBackbone, 15 * 60 * 1000);
 // ══════════════════════════════════════════════════════════════════════════
 // TRANSCRIPTION BRIDGE (Listen for agents to post STT)
 // ══════════════════════════════════════════════════════════════════════════
-const ORACLE_PORT = 3401;
+// PORT COLLISION FIX: this legacy monolith Oracle previously bound the STT
+// bridge on 3401 — KAI's IPC port. At runtime index.mjs is normally only run
+// as 'node index.mjs --check-config' (exits before here), but if it is ever run
+// directly it would squat KAI's port. Moved to a dedicated free slot (3420 in
+// the KAI_PORTS pool), overridable via ORACLE_TRANSCRIPT_PORT.
+const ORACLE_PORT = parseInt(process.env.ORACLE_TRANSCRIPT_PORT || '3420', 10) || 3420;
 http.createServer((req, res) => {
   if (req.method === "POST") {
     let body = "";

@@ -31,9 +31,39 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { latestMetric, aggregateMetric } from './metrics-store.mjs';
+import { updateSelfBias } from './metacognition.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const STATE_PATH = path.join(__dirname, '..', '..', '..', 'state', 'drives.json');
+
+// ── Overnight penalty suppression ────────────────────────────────────────────
+// While KAI is in the overnight consolidation/ingest+weave/training state, the
+// Oracle orchestrator drops state/overnight_active.flag. During that window any
+// failure (connection loss, training glitch, provider down) is EXTERNAL/expected
+// and must NOT be scored as KAI's "pain" or "failed prediction" — otherwise the
+// drives get docked for infra hiccups KAI didn't cause. This guard reads the flag
+// (cached briefly) and, when set, the penalty paths below skip the negative adjust.
+const OVERNIGHT_ACTIVE_FLAG = process.env.KAI_OVERNIGHT_ACTIVE_FLAG
+  || path.join(__dirname, '..', '..', '..', 'state', 'overnight_active.flag');
+let _overnightFlagCache = { val: false, at: 0 };
+function _overnightActive() {
+  const now = Date.now();
+  if (now - _overnightFlagCache.at < 15000) return _overnightFlagCache.val;
+  let val = false;
+  try { val = fs.existsSync(OVERNIGHT_ACTIVE_FLAG); } catch (_) { val = false; }
+  _overnightFlagCache = { val, at: now };
+  return val;
+}
+
+// ── Env-overridable thresholds for engine-fed drive mapping ───────────────────
+// How "fresh" a rust-engine metric must be (ms) for us to trust it as a live
+// signal. Older than this and we fall back to gentle decay only.
+const ENGINE_FRESH_MS  = parseInt(process.env.KAI_DRIVE_ENGINE_FRESH_MS  || '90000', 10);
+// How strongly engine signals pull a drive toward its target each tick (0..1).
+const ENGINE_PULL      = parseFloat(process.env.KAI_DRIVE_ENGINE_PULL     || '0.25');
+// Window over which we average engine vitals (ms).
+const ENGINE_WINDOW_MS = parseInt(process.env.KAI_DRIVE_ENGINE_WINDOW_MS || '120000', 10);
 
 // ── Drive Defaults ─────────────────────────────────────────────────────────────
 const DEFAULTS = {
@@ -46,13 +76,16 @@ const DEFAULTS = {
 };
 
 // ── Drive Decay/Restore Rates (per 2-minute tick) ────────────────────────────
+// GENTLE fallback only — applied when no fresh engine signal is available, and
+// at a fraction of the old magnitude so values no longer rail to 0/100. Real
+// movement now comes from engine signals (applyEngineSignals) + outcome events.
 const DECAY = {
-  prediction_error: -0.05,  // naturally fades as time passes (uncertainty decays without new evidence)
-  curiosity:        +0.04,  // naturally builds when idle (boredom drives exploration)
-  pain:             -0.08,  // pain fades quickly when ecosystem stabilizes
-  fatigue:          -0.06,  // rest restores energy
-  satisfaction:     -0.03,  // satisfaction fades — can't rest on laurels
-  social:           +0.03,  // loneliness builds when quiet
+  prediction_error: -0.02,  // uncertainty slowly fades without new evidence
+  curiosity:        +0.015, // boredom builds slowly when idle
+  pain:             -0.04,  // pain eases when nothing reports failure
+  fatigue:          -0.03,  // rest slowly restores energy
+  satisfaction:     -0.01,  // very slow drift — outcomes dominate, not the clock
+  social:           +0.015, // loneliness builds slowly when quiet
 };
 
 // ── Drive Bounds ───────────────────────────────────────────────────────────────
@@ -112,9 +145,89 @@ function adjust(key, delta) {
   drives[key] = clamp(drives[key] + delta);
 }
 
+// Pull a drive toward `target` by ENGINE_PULL fraction of the gap (smooth, no rail).
+function pullToward(key, target) {
+  const cur = drives[key];
+  drives[key] = clamp(cur + (clamp(target) - cur) * ENGINE_PULL);
+}
+
+// ── Engine-fed reality snapshot (via rust-engine-bridge → metrics store) ──────
+// The bridge already polls /api/session every 15s and writes vitals as
+// source='rust-engine'. We read those back here instead of making our own
+// flaky /api/status call. Returns null when no fresh signal exists.
+function readEngineState() {
+  const reach = latestMetric('rust-engine', 'reachable');
+  const fresh = reach && (Date.now() - reach.ts) <= ENGINE_FRESH_MS;
+  if (!fresh || Number(reach.value) !== 1) return null;
+
+  const valence = aggregateMetric('rust-engine', 'valence', ENGINE_WINDOW_MS);
+  const chi     = aggregateMetric('rust-engine', 'chi',     ENGINE_WINDOW_MS);
+  const phi_g   = aggregateMetric('rust-engine', 'phi_g',   ENGINE_WINDOW_MS);
+  const rho     = aggregateMetric('rust-engine', 'rho',     ENGINE_WINDOW_MS);
+  const tick    = latestMetric('rust-engine', 'tick');
+  return { valence, chi, phi_g, rho, tick, ts: reach.ts };
+}
+
+// Map real engine vitals onto drives. Each maps a signal → target, then we pull
+// gently toward it so drives MOVE with activity instead of pinning at extremes.
+function applyEngineSignals() {
+  const e = readEngineState();
+  if (!e) return false; // no fresh signal → caller falls back to gentle decay
+
+  // satisfaction ← valence (engine drive valence, -1..+1) blended with coherence.
+  // High valence + low contradiction (chi) = the engine "feels good".
+  if (e.valence) {
+    const valNorm = clamp((e.valence.avg + 1) / 2);          // -1..1 → 0..1
+    const coherence = e.chi ? clamp(1 - Math.min(1, e.chi.avg)) : valNorm;
+    pullToward('satisfaction', 0.6 * valNorm + 0.4 * coherence);
+  }
+
+  // prediction_error ← contradiction/friction (chi). More friction = more "wrong".
+  if (e.chi) {
+    pullToward('prediction_error', clamp(Math.min(1, e.chi.avg)));
+  }
+
+  // curiosity ← goal-aligned emergence (phi_g) as a novelty/exploration proxy:
+  //   little emergence → lots still unexplored → curiosity rises.
+  if (e.phi_g) {
+    // phi_g is the heartbeat's mean cell claim.confidence, which is f32 ∈ [0,5]
+    // (confidence is clamped at 5.0 engine-side; cf. `confidence / 5.0` in
+    // oracle_server.rs). Normalize into 0..1 by /PHI_G_MAX BEFORE inverting —
+    // otherwise Math.min(1, phi_g) saturated for any phi_g>1 and pinned curiosity to 0.
+    const PHI_G_MAX = 5.0;
+    const phiNorm = clamp(e.phi_g.avg / PHI_G_MAX);
+    pullToward('curiosity', clamp(1 - phiNorm));
+  }
+
+  // pain ← contradiction spikes (chi) — sustained friction reads as discomfort.
+  if (e.chi) {
+    pullToward('pain', clamp(Math.max(0, e.chi.avg - 0.4)));
+  }
+
+  // fatigue ← host load if the resource governor is reporting it; else derive
+  // from cognitive density (rho) as a processing-load proxy.
+  const cpu = latestMetric('performance-monitor', 'cpu_pct') ||
+              latestMetric('resource-governor', 'cpu_pct');
+  if (cpu && (Date.now() - cpu.ts) <= ENGINE_FRESH_MS) {
+    pullToward('fatigue', clamp(Number(cpu.value) / 100));
+  } else if (e.rho) {
+    pullToward('fatigue', clamp(Math.min(1, e.rho.avg)));
+  }
+
+  return true;
+}
+
 function applyDecay() {
-  for (const [key, rate] of Object.entries(DECAY)) {
-    adjust(key, rate);
+  // Prefer real engine signals; only gently decay drives the engine didn't set.
+  const engineDriven = applyEngineSignals();
+  if (!engineDriven) {
+    for (const [key, rate] of Object.entries(DECAY)) {
+      adjust(key, rate);
+    }
+  } else {
+    // Even with engine signals, let social drift up slowly when no fresh message
+    // resets it (engine vitals say nothing about chat recency).
+    adjust('social', DECAY.social);
   }
   saveState();
 }
@@ -126,6 +239,12 @@ function applyDecay() {
  * Called by failure-tracker or world-model events.
  */
 export function onEcosystemFailure(severity = 1.0) {
+  // During the overnight state, treat failures as external (infra/connection) and
+  // do NOT dock KAI's drives — a glitch while KAI consolidates is not "pain".
+  if (_overnightActive()) {
+    console.log('[DriveSystem] overnight active — ecosystem failure logged but NOT penalizing (no pain).');
+    return;
+  }
   adjust('pain',             +0.15 * severity);
   adjust('prediction_error', +0.08 * severity);
   adjust('satisfaction',     -0.05 * severity);
@@ -191,18 +310,23 @@ export function registerPrediction(claim, category, checkFn, checkAfterMs = 5 * 
 // cleanly and resolve correctly even across restarts.
 const KAI_API = process.env.KAI_API_URL || 'http://127.0.0.1:3334';
 
+// Resolvers now read the engine's truth from the SAME metrics store that
+// rust-engine-bridge already populates every 15s (source='rust-engine'),
+// instead of issuing a separate /api/status call that was timing out / 500ing
+// and freezing every prediction at matched:null. Return null = inconclusive
+// (no fresh signal) so a quiet moment doesn't count as a wrong call.
 const RESOLVERS = {
-  // "the lattice will keep growing" — matched if synapse count increased.
+  // "the lattice will keep growing" — matched if cell count rose above baseline.
   async synapse_growth(data) {
-    const r = await fetch(`${KAI_API}/api/status`, { signal: AbortSignal.timeout(6000) });
-    if (!r || !r.ok) throw new Error('status unreachable');
-    const s = await r.json();
-    return Number(s.synapses) > Number(data.baseline);
+    const m = latestMetric('rust-engine', 'cells');
+    if (!m || (Date.now() - m.ts) > ENGINE_FRESH_MS) return null;
+    return Number(m.value) > Number(data.baseline);
   },
-  // "the engine will still be alive" — matched if it answers at all.
+  // "the engine will still be alive" — matched if the bridge's last poll reached it.
   async engine_alive() {
-    const r = await fetch(`${KAI_API}/api/status`, { signal: AbortSignal.timeout(6000) });
-    return !!(r && r.ok);
+    const m = latestMetric('rust-engine', 'reachable');
+    if (!m || (Date.now() - m.ts) > ENGINE_FRESH_MS) return null;
+    return Number(m.value) === 1;
   },
 };
 
@@ -226,15 +350,20 @@ export function registerDataPrediction(claim, category, kind, data = {}, checkAf
 // engine is unreachable (no baseline to predict from).
 async function generateSelfPrediction() {
   try {
-    const r = await fetch(`${KAI_API}/api/status`, { signal: AbortSignal.timeout(6000) });
-    if (!r || !r.ok) return;
-    const s = await r.json();
-    const S = Number(s.synapses) || 0;
-    if (S > 0) {
-      registerDataPrediction(`The lattice will keep growing (synapses above ${S.toLocaleString()})`, 'lattice', 'synapse_growth', { baseline: S });
+    // Baseline comes from the metrics store (populated by rust-engine-bridge),
+    // not a fresh /api/status call. Skip quietly if the engine isn't reporting.
+    const cells = latestMetric('rust-engine', 'cells');
+    const reach = latestMetric('rust-engine', 'reachable');
+    const fresh = (m) => m && (Date.now() - m.ts) <= ENGINE_FRESH_MS;
+
+    if (fresh(cells)) {
+      const C = Number(cells.value) || 0;
+      if (C > 0) {
+        registerDataPrediction(`The lattice will keep growing (cells above ${C.toLocaleString()})`, 'lattice', 'synapse_growth', { baseline: C });
+      }
     }
     // roughly half the time, also predict survival (ties to pain/satisfaction)
-    if (Math.random() < 0.5) {
+    if (fresh(reach) && Math.random() < 0.5) {
       registerDataPrediction('The engine will still be responsive shortly', 'ecosystem', 'engine_alive', {});
     }
   } catch (_) {}
@@ -254,24 +383,43 @@ async function resolvePendingPredictions() {
       const matched = typeof pred.checkFn === 'function'
         ? await pred.checkFn()
         : await RESOLVERS[pred.kind](pred.data || {});
+
+      // matched === null → inconclusive (no fresh engine signal). Leave the
+      // prediction UNRESOLVED so it retries on the next loop instead of being
+      // permanently frozen at matched:null (the old freeze bug).
+      if (matched === null) {
+        console.log(`[DriveSystem] ⋯ Prediction inconclusive (no fresh signal), will retry: "${pred.claim.slice(0, 50)}"`);
+        continue;
+      }
+
       pred.resolved = true;
       pred.matched  = matched;
       pred.resolved_at = now;
 
       if (matched) {
-        adjust('satisfaction',     +0.08);
+        adjust('satisfaction',     +0.08);  // OUTCOME hit → satisfaction up
         adjust('prediction_error', -0.06);
         console.log(`[DriveSystem] ✓ Prediction confirmed: "${pred.claim.slice(0, 60)}"`);
+      } else if (_overnightActive()) {
+        // Overnight: a missed prediction is almost always an infra/connection
+        // hiccup while KAI consolidates — keep the curiosity nudge but DON'T dock
+        // prediction_error/satisfaction, so overnight failures never penalize KAI.
+        adjust('curiosity', +0.06);
+        console.log(`[DriveSystem] ✗ Prediction missed (overnight — NOT penalized): "${pred.claim.slice(0, 60)}"`);
       } else {
         adjust('prediction_error', +0.10);
-        adjust('satisfaction',     -0.04);
-        adjust('curiosity',        +0.06); // mismatch → explore why
+        adjust('satisfaction',     -0.04);  // OUTCOME miss → satisfaction down
+        adjust('curiosity',        +0.06);  // mismatch → explore why
         console.log(`[DriveSystem] ✗ Prediction failed: "${pred.claim.slice(0, 60)}" → triggers curiosity`);
       }
+
+      // Feed the outcome into metacognition so biases + meta-drives move off
+      // their hardcoded seeds (recency_bias, accuracy, etc.).
+      try { updateSelfBias(pred.kind || pred.category || 'general', matched); } catch (_) {}
     } catch (e) {
-      pred.resolved = true;
-      pred.matched  = null; // inconclusive
-      console.warn(`[DriveSystem] Prediction check error: ${e.message}`);
+      // A real error (not just inconclusive) — keep it unresolved for retry
+      // rather than freezing it forever.
+      console.warn(`[DriveSystem] Prediction check error (will retry): ${e.message}`);
     }
   }
   if (pending.length > 0) saveState();

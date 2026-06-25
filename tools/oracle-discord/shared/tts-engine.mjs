@@ -35,7 +35,7 @@ const EDGE_VOICES = {
   "Claudey": "en-GB-SoniaNeural",
   "X": "en-US-BrianNeural",
   "KAI": "en-US-ChristopherNeural",
-  "Leo": "en-US-GuyNeural",
+  "Leo": "en-GB-RyanNeural",
   "Groq": "en-US-EricNeural",
   "Analyst": "en-US-SteffanNeural",
   "Researcher": "en-US-EricNeural",
@@ -134,6 +134,23 @@ const botConnections = new Map();
 
 export function getBotPlayer(botName) {
   return botPlayers.get(botName) || null;
+}
+
+// Allow a bot that manages its OWN voice connection + audio player (native-bot.mjs
+// runs X / Claudey / Groq with a local audioPlayer) to register that player here so
+// the shared /Live broadcast path (gemini-live-voice.mjs -> getBotPlayer) can find it.
+// Without this the social bots were "Not in a voice channel (no player) — text only"
+// even while anchored, because tts-engine only knew about players it created itself.
+export function registerBotPlayer(botName, player, connection = null) {
+  if (!botName || !player) return false;
+  botPlayers.set(botName, player);
+  if (connection) botConnections.set(botName, connection);
+  return true;
+}
+
+export function unregisterBotPlayer(botName) {
+  botPlayers.delete(botName);
+  botConnections.delete(botName);
 }
 const ttsTokens = new Map(); // name -> timestamp (for interruption logic)
 

@@ -7,7 +7,9 @@
   "main": "index.mjs",
   "scripts": {
     "start": "node index.mjs",
-    "check": "node --check index.mjs"
+    "check": "node --check index.mjs",
+    "command-center": "node command-center-server.mjs",
+    "cc": "node command-center-server.mjs"
   },
   "dependencies": {
     "@discordjs/opus": "^0.10.0",
@@ -26,6 +28,7 @@
     "openai": "^6.36.0",
     "opusscript": "^0.0.8",
     "prism-media": "^1.3.5",
+    "puppeteer-core": "^25.2.1",
     "ws": "^8.20.0"
   },
   "engines": {

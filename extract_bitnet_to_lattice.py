@@ -374,7 +374,9 @@ def main():
     seen = set()
     total_nz = 0
 
-    with open(args.out_bin, "wb") as out_f:
+    tmp_bin = args.out_bin + ".tmp"
+    tmp_json = args.out_json + ".tmp"
+    with open(tmp_bin, "wb") as out_f:
         b = max(1, args.batch)
         for start in range(0, n_vocab, b):
             end = min(start + b, n_vocab)
@@ -411,11 +413,19 @@ def main():
             "tokens": embeddings_meta,
         },
     }
-    with open(args.out_json, "w", encoding="utf-8") as f:
+    with open(tmp_json, "w", encoding="utf-8") as f:
         json.dump(structure, f, ensure_ascii=False, separators=(",", ":"))
 
-    bin_mb = os.path.getsize(args.out_bin) / 1e6
-    json_mb = os.path.getsize(args.out_json) / 1e6
+    try:
+        os.replace(tmp_bin, args.out_bin)
+        os.replace(tmp_json, args.out_json)
+        bin_mb = os.path.getsize(args.out_bin) / 1e6
+        json_mb = os.path.getsize(args.out_json) / 1e6
+    except PermissionError:
+        print(f"\n[lattice] WARNING: Could not atomically replace files.")
+        print("[lattice] The Rust engine likely has the file locked. Skipping overwrite.")
+        bin_mb = os.path.getsize(tmp_bin) / 1e6
+        json_mb = os.path.getsize(tmp_json) / 1e6
     avg_nz = (total_nz / len(embeddings_meta)) if embeddings_meta else 0
     print("\n[lattice] DONE")
     print(f"  tokens written : {len(embeddings_meta)}")

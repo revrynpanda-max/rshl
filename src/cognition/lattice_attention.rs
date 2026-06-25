@@ -670,7 +670,6 @@ pub fn run_train_ternary_mlp_cli(args: &[String]) {
         Ok(rd) => rd.filter_map(|e| e.ok()).collect(),
         Err(_) => Vec::new(),
     };
-    let mut topic_cache: std::collections::HashMap<String, crate::core::SparseVec> = std::collections::HashMap::new();
 
     for epoch in 1..=epochs {
         println!("Epoch {}/{}", epoch, epochs);
@@ -704,15 +703,8 @@ pub fn run_train_ternary_mlp_cli(args: &[String]) {
                 let words: Vec<&str> = reply_text.split_whitespace().take(20).collect();
                 if words.is_empty() { continue; }
                 
-                // Compute topic vector ONCE per reply (using cache)
-                let query_context = crate::core::SparseVec::encode(&last_user_text);
-                let topic_vec = if let Some(v) = topic_cache.get(&last_user_text) {
-                    v.clone()
-                } else {
-                    let v = query_context.clone(); // Bypass multi_hop_attend for massive training speedup
-                    topic_cache.insert(last_user_text.clone(), v.clone());
-                    v
-                };
+                // Compute topic vector ONCE per reply
+                let topic_vec = crate::core::SparseVec::encode(&last_user_text);
                 
                 let mut current_grammar = String::new();
                 

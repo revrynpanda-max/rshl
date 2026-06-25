@@ -123,15 +123,19 @@ export function isAllowed(identifier, channelId) {
  */
 export function detectNamedBot(content) {
   const c = content.toLowerCase();
-  if (/\b(leo|leah|lia|leyo|lee)\b/.test(c)) return "Leo";
-  if (/\b(kai)\b/.test(c) && !c.includes("coder")) return "KAI";
-  if (c.includes("gemini")) return "Gemini";
-  if (c.includes("claudey") || c.includes("epistemic")) return "Claudey";
-  if (c.includes("groq")) return "Groq";
+  // Alias-tolerant: includes the STT manglings the live logs showed
+  // (Claudia->Claudey, Jemmy/Gemi->Gemini, Grodd/Grok->Groq, Leon->Leo) so a
+  // SPOKEN name still routes to the right bot. 'coder' is matched before generic
+  // 'kai' so Kai Coder isn't swallowed by KAI.
+  if (c.includes("kai coder") || c.includes("kai_coder") || c.includes("coder")) return "Kai Coder";
+  if (/\b(leo|leon|leah|lia|leyo|lee)\b/.test(c)) return "Leo";
+  if (/\b(kai|kay|ky)\b/.test(c)) return "KAI";
+  if (c.includes("gemini") || /\b(gemi|jemmy|jemi|gemmy|jemini)\b/.test(c)) return "Gemini";
+  if (c.includes("claudey") || c.includes("epistemic") || /\b(claudia|claude|claudy|cloudy)\b/.test(c)) return "Claudey";
+  if (c.includes("groq") || /\b(grodd|grok|grock|grog)\b/.test(c)) return "Groq";
   if (c.includes("analyst")) return "Analyst";
   if (c.includes("researcher")) return "Researcher";
-  if (c.includes("kai coder") || c.includes("kai_coder") || c.includes("coder")) return "Kai Coder";
-  if (/\b(x|xai|x ai)\b/.test(c)) return "X";
+  if (/\b(x|xai|x ai|ex|axe)\b/.test(c)) return "X";
   return null;
 }
 

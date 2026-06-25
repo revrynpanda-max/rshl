@@ -52,6 +52,79 @@ export function loadCodexSections() {
   return _codexSections;
 }
 
+// ── RECENCY-AWARE "RECENT UPDATES" PATH ─────────────────────────────────────
+// The CHANGELOG block at the bottom of the Codex is maintained NEWEST-FIRST
+// (v9.9.0 / June 19 sits at the top, descending from there). Relevance / full-
+// text search has NO recency awareness, so it surfaces whichever dates are most
+// heavily clustered (the June-15 SRHT + backfill entries) instead of the actual
+// newest entries. This helper reads the HEAD of the changelog directly — it does
+// NOT do a date/relevance search — so "what's new / latest updates" always leads
+// with the genuinely newest entry.
+//
+// Matches headings like:  "## CHANGELOG  -  v9.9.0  (June 19, 2026  -  recorded …)"
+const CHANGELOG_HEAD_RE = /^#{1,4}\s*CHANGELOG\b/i;
+// Pull a version + date out of a changelog heading line.
+function _parseChangelogHeading(line) {
+  const s = String(line || '');
+  const ver = (s.match(/\bv?(\d+(?:\.\d+){0,3})\b/) || [])[1] || null;
+  // Date inside the first parenthetical, e.g. "(June 19, 2026 - recorded …)"
+  let date = null;
+  const paren = (s.match(/\(([^)]*)\)/) || [])[1] || '';
+  const dm = paren.match(/([A-Z][a-z]+\s+\d{1,2}(?:[–-]\d{1,2})?,?\s*\d{4})/);
+  if (dm) date = dm[1].trim();
+  return { version: ver, date };
+}
+
+// getRecentUpdates(n): the TOP n changelog sections in DOCUMENT ORDER (newest
+// first). Returns { version, date, title, summary } for each. Reads the head of
+// the changelog only — no scoring, no date search.
+export function getRecentUpdates(n = 5) {
+  const sections = loadCodexSections();
+  if (!sections.length) return [];
+  const out = [];
+  for (const sec of sections) {
+    const firstLine = (sec.text || '').split(/\r?\n/).find(l => l.trim().length) || sec.title || '';
+    if (!CHANGELOG_HEAD_RE.test(firstLine) && !CHANGELOG_HEAD_RE.test('# ' + (sec.title || ''))) continue;
+    const { version, date } = _parseChangelogHeading(firstLine.includes('CHANGELOG') ? firstLine : '# ' + (sec.title || ''));
+    // Short summary: the first descriptive line after the heading (a ### Session
+    // line or the first prose sentence), trimmed.
+    const lines = (sec.text || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    let summary = '';
+    for (const l of lines.slice(1)) {
+      const clean = l.replace(/^#{1,4}\s*/, '').replace(/^\*+|\*+$/g, '').trim();
+      if (clean && !/^---$/.test(clean)) { summary = clean; break; }
+    }
+    out.push({
+      version,
+      date,
+      title: (sec.title || '').replace(/\s{2,}/g, ' ').trim(),
+      summary: summary.slice(0, 240)
+    });
+    if (out.length >= n) break;
+  }
+  return out;
+}
+
+// Detect "recent / latest / what's new" intent so the codex query path can route
+// to getRecentUpdates() instead of a relevance search that surfaces old clusters.
+const RECENT_INTENT_RE = /\b(recent updates?|recent changes?|latest updates?|latest changes?|what'?s new|whats new|newest|most recent|recently (?:added|updated|changed)|what (?:did|have) you (?:just )?(?:update|updated|change|changed|add|added)|any updates?|new updates?)\b/i;
+export function isRecentUpdatesIntent(text) {
+  return RECENT_INTENT_RE.test(String(text || ''));
+}
+
+// Format the recent updates as a labeled block for tool/codex output.
+export function formatRecentUpdates(n = 5) {
+  const items = getRecentUpdates(n);
+  if (!items.length) return null;
+  const lines = items.map((it, i) => {
+    const head = `${i + 1}. ${it.version ? 'v' + it.version : it.title}${it.date ? '  (' + it.date + ')' : ''}`;
+    return `${head}\n   ${it.summary || it.title}`;
+  });
+  return `MOST RECENT UPDATES (newest first — straight from the top of the CHANGELOG):\n` +
+    lines.join('\n') +
+    `\n\n(The CHANGELOG is maintained newest-first; entry #1 above is the most recent. Do NOT infer recency from how often a date appears in search results.)`;
+}
+
 // ── Plain-language → technical alias map ────────────────────────────────────
 // The Codex is full of jargon (hippocampus, phasor coherence, polychora). Someone
 // who DOESN'T know the terms — "how does it remember?", "is it conscious?", "what
@@ -244,6 +317,18 @@ export function relatedBranch(seedIndices, depth = 1, size = 5) {
 export function consultCodex(query, maxChars = 12000) {
   const sections = loadCodexSections();
   if (!sections.length) return null;
+
+  // RECENCY INTENT ("recent / latest / what's new / newest / what did you
+  // update"): route to the HEAD of the CHANGELOG (newest-first) instead of a
+  // relevance search. Full-text scoring has no recency awareness and surfaces
+  // the heavily-clustered June-15 entries (SRHT papers + backfill) over the
+  // genuinely newest v9.9.0 / June-19 entry. Return the newest entries FIRST,
+  // clearly labeled, then still append a few relevance hits for extra context.
+  if (isRecentUpdatesIntent(query)) {
+    const n = Number(process.env.CODEX_RECENT_N) || 5;
+    const recent = formatRecentUpdates(n);
+    if (recent) return recent.slice(0, maxChars);
+  }
 
   if (/\b(random|another|something (new|else)|surprise)\b/i.test(String(query))) {
     const picks = [];

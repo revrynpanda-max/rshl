@@ -335,38 +335,32 @@ impl LanguageWarehouse {
         Some(&mmap[start..start + byte_size])
     }
 
+    // forward_pass_polychora: EXCLUDED FROM BUILD (dead — zero callers anywhere
+    // in the crate; verified by grep). It was the ONLY consumer of the
+    // `polychora` module, which is now mod-excluded in cognition/mod.rs. Its body
+    // was a self-described placeholder ("simulate structural resonance"). Kept
+    // here commented for reversibility; re-enable alongside `pub mod polychora;`.
+    /*
     pub fn forward_pass_polychora(&self, input: &SparseTernaryVec) -> SparseTernaryVec {
         if self.neural_structure.is_none() {
             return input.clone();
         }
-        
-        // Project to 4D Quaternion
         let q = crate::cognition::polychora::project_to_4d(input);
-        
-        // Snap to nearest 600-cell vertex
         let vertices = crate::cognition::polychora::get_600_cell_vertices();
         let vertex_id = crate::cognition::polychora::snap_to_600_cell(&q, vertices);
-        
-        // Normally here we would extract the specific structural tensor based on `vertex_id`
-        // and do a geometric sparse transformation.
-        // For now, we simulate structural resonance by projecting back!
-        
-        // Let's just create a modified output vector as a placeholder for the actual transform
         let mut out_indices = input.indices.clone();
-        let mut out_signs = input.signs.clone();
-        
-        // Shift a few indices deterministically based on the 600-cell vertex_id
+        let out_signs = input.signs.clone();
         if !out_indices.is_empty() {
             let shift = (vertex_id % 16) as u16;
             out_indices[0] = out_indices[0].wrapping_add(shift);
         }
-
         SparseTernaryVec {
             indices: out_indices,
             signs: out_signs,
             dim: input.dim,
         }
     }
+    */
 
     pub fn from_json(path: &str) -> Self {
         let raw = match std::fs::read_to_string(path) {

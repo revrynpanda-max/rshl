@@ -156,7 +156,17 @@ export function recordProviderFailure(provider, errorStatus, errorMessage = "") 
     persistCooldowns();
   }
   
-  logAudit('NEURAL_FAILURE', { provider, errorStatus, streak, cooldownMs, isPermanent });
+  // CLASSIFICATION (errors/min churn fix): a 429 / RESOURCE_EXHAUSTED quota-or-rate
+  // event, or a normal short provider/model cooldown, is a HANDLED transient — the
+  // per-model / per-provider rotation absorbs it and the fleet keeps working. Mark
+  // such events handled:true so the command center renders them as 'warn' (amber)
+  // instead of 'error' (red), and they don't inflate errors/min. Only un-recoverable
+  // states (permanent billing/auth, daily TPD lockout) stay handled:false → red.
+  const errText429 = errorText.includes('429') || errorText.includes('RESOURCE_EXHAUSTED') ||
+                     errorText.includes('QUOTA') || errorText.includes('RATE');
+  const isShortCooldown = cooldownMs <= 600000; // <=10m = transient breather, not a hard outage
+  const handled = !isPermanent && !isTPD && (errorStatus === 429 || errText429 || isShortCooldown);
+  logAudit('NEURAL_FAILURE', { provider, errorStatus, streak, cooldownMs, isPermanent, handled });
   if (!isPermanent && !isTPD) {
     console.warn(`[CircuitBreaker] Provider ${provider} STREAK ${streak}. COOLDOWN for ${Math.round(cooldownMs/60000)}m due to error ${errorStatus}`);
   }

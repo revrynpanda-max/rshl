@@ -17,8 +17,21 @@ const CAPABILITY_FILES = ['native-tools.mjs', 'gemini-live-bridge.mjs', 'leo.mjs
 // can't fix it — so a file is never left worse than we found it. Only attempts
 // files small enough for the model to rewrite whole.
 const MAX_AUTOFIX_BYTES = 60000;
+// CORE-SAFE files: NEVER hand these to the local LLM for a whole-file rewrite.
+// They are large and dense with template literals, and the local model reliably
+// mangles backticks/`${}` when rewriting the whole file — which is the ACTUAL
+// cause of the old "one backtick = CORE-SAFE MODE" lockouts (not backticks per
+// se: `node --check` parses valid template literals fine). For these files we
+// rely on `node --check` as the gate and leave any real error for a manual fix,
+// so a flaky auto-rewrite can never corrupt them. This retires the no-backticks
+// authoring rule — normal template literals are safe to write here again.
+const NEVER_AUTOFIX = new Set(['leo.mjs', 'gemini-live-bridge.mjs']);
 async function attemptAutoFix(file, errorDetail, checkCmd, checkName) {
   const original = fs.readFileSync(file, 'utf8');
+  if (NEVER_AUTOFIX.has(path.basename(file))) {
+    console.log(`[KaiScanner] 🛡️ ${file.replace(ROOT_DIR, '')} is CORE-SAFE — not whole-file-rewriting (node --check is the gate). Leaving any real error for manual fix.`);
+    return false;
+  }
   if (Buffer.byteLength(original) > MAX_AUTOFIX_BYTES) {
     console.log(`[KaiScanner] ⚠️ ${file.replace(ROOT_DIR, '')} is too large (${Math.round(Buffer.byteLength(original) / 1024)}KB) to auto-fix safely — leaving for manual fix.`);
     return false;

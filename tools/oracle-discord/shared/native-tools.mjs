@@ -11,7 +11,7 @@ import { extractUrl, readUrlContent } from './url-reader.mjs';
 import { webSearch } from './openjarvis.mjs';
 import { requestOracleHelp, classifyRequest } from './oracle-pipeline.mjs';
 import { isProviderReady } from './failure-tracker.mjs';
-import { searchDocs, readDocLines, listDocs } from './codex.mjs';
+import { searchDocs, readDocLines, listDocs, getRecentUpdates, formatRecentUpdates } from './codex.mjs';
 
 // Global Event Emitter for tool side-effects (e.g. playing audio in the bot's process)
 export const ToolEvents = new EventEmitter();
@@ -262,6 +262,20 @@ export const BASE_TOOLS_SCHEMA = [
           file: { type: "string", description: "Optional doc name or path to search. Omit to search the main project docs." }
         },
         required: ["query"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "recent_updates",
+      description: "Get KAI's MOST RECENT updates / latest changes / what's new — read straight from the TOP of the CHANGELOG (which is maintained NEWEST-FIRST), NOT a relevance/date search. The FIRST entry returned is the most recent (currently v9.9.0 / June 19, 2026, which is NEWER than the June 15 entries). Use this for any 'recent/latest/newest updates', 'what's new', or 'what did you just change' question. Do NOT use search_docs for that — full-text search has no recency awareness and surfaces older, heavily-clustered June-15 entries instead of the genuinely newest ones.",
+      parameters: {
+        type: "object",
+        properties: {
+          n: { type: "number", description: "How many of the newest changelog entries to return (default 5)." }
+        },
+        required: []
       }
     }
   },
@@ -531,6 +545,12 @@ export async function executeToolCall(toolName, argsStr, botName = "", metadata 
       case "read_doc_lines": {
         const r = readDocLines(args.file, args.startLine, args.endLine);
         return JSON.stringify(r);
+      }
+
+      case "recent_updates": {
+        const n = Number(args.n) > 0 ? Number(args.n) : 5;
+        const text = formatRecentUpdates(n);
+        return JSON.stringify({ entries: getRecentUpdates(n), formatted: text || 'No changelog entries found.' });
       }
 
       case "list_docs": {

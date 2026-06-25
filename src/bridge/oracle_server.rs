@@ -423,9 +423,13 @@ pub fn start_oracle_server(
         // whole-Universe clone, which is what pins the engine's RSS high. Default
         // (unset / not "1") keeps the original, proven clone path byte-for-byte, so a
         // fresh build behaves exactly like before until you opt in.
+        // Streaming save is now the DEFAULT: serialize under the lock then write OUTSIDE it,
+        // and NEVER clone the whole Universe (that 2x-RAM clone is what spiked RSS and tripped
+        // the supervisor's RAM-recycler). The old whole-Universe clone path is opt-IN only,
+        // via KAI_STREAMING_SAVE=0 (what Start-KAI's -NoStreamingSave sets).
         let streaming_save = std::env::var("KAI_STREAMING_SAVE")
-            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-            .unwrap_or(false);
+            .map(|v| !(v == "0" || v.eq_ignore_ascii_case("false")))
+            .unwrap_or(true);
         loop {
             std::thread::sleep(Duration::from_secs(180));
             // In headless mode we don't track drive/candidates actively here, so supply empty ones
@@ -624,8 +628,17 @@ fn handle_client(
         "/api/transcript/search" => handle_transcript_search(stream, body, roundtable_session),
 
         "/api/local-speak"   => handle_local_speak(stream, body, universe),
-        "/api/chat"          => handle_chat(stream, body, universe, synaptic_layer.clone()),
-        "/api/status"        => handle_status(stream, universe, synaptic_layer.clone()),
+        "/api/chat"          => handle_chat(stream, body, universe.clone(), synaptic_layer.clone()),
+        "/api/status"        => handle_status(stream, universe.clone(), synaptic_layer.clone()),
+        "/api/memory"        => handle_memory(stream, universe.clone(), synaptic_layer.clone()),
+        // ── LOCK-FREE LIVENESS PROBE ─────────────────────────────────────────
+        // Deliberately touches NO contended state (no universe/synaptic_layer
+        // lock). During overnight ingest/weave/train those mutexes are held for
+        // long stretches, which makes the heavy /api/status block long enough to
+        // trip the caller's timeout every cycle. This route always answers
+        // instantly so a client can cheaply gate the heavy fetch behind a fast
+        // reachability check instead of eating a full timeout.
+        "/health" | "/api/ping" => write_json(stream, 200, "OK", &serde_json::json!({ "status": "alive" })),
         "/telemetry"         => handle_telemetry(stream),
         "/api/synapse/status" => handle_synapse_status(stream, synaptic_layer.clone(), universe),
         "/api/synapse/train" => handle_synapse_train(stream, body, synaptic_layer.clone(), universe),
@@ -3275,12 +3288,12 @@ fn infer_tool_action(task: &str, tools: &[ToolDefinition]) -> Option<ToolExecuti
         }
     }
     if has_tool("oracle.search_code") {
-        if let Some(input) = extract_after_any(trimmed, &["search code for", "search code", "search_code", "find in files", "look for", "grep"]) {
+        if let Some(input) = extract_after_any(trimmed, &["search code for", "search code", "search_code", "find in files", "grep"]) {
             return Some(ToolExecutionRequest { tool_id: "oracle.search_code".into(), input: input.to_string() });
         }
     }
     if has_tool("oracle.web_search") {
-        if let Some(input) = extract_after_any(trimmed, &["web search for", "web search", "search web for", "search web", "search online for", "search online", "search the internet for", "search the internet", "look up", "lookup", "duckduckgo"]) {
+        if let Some(input) = extract_after_any(trimmed, &["web search for", "web search", "search web for", "search web", "search online for", "search online", "search the internet for", "search the internet", "duckduckgo"]) {
             return Some(ToolExecutionRequest { tool_id: "oracle.web_search".into(), input: input.to_string() });
         }
     }
@@ -3947,10 +3960,71 @@ fn generate_oracle_kai_reply(
         25, // max 25 tokens for final reply
     );
     
+    // 4b. HYBRID (#3): MEMORY → LEARNED REASONER.
+    // Retrieval-augmented generation NATIVE to the lattice. `filtered_hits` is the
+    // sparse, content-selected top-K set already produced by query_multi_hop above
+    // (SubQ-style: only the few cells that matter survive). Here we rank them by the
+    // relevance `score` (cosine/attention, already computed — no new latency) and
+    // format the top-N into a CLEAN, explicit context block prepended to the
+    // synthesis prompt, so BitNet (or the LLM fallback) reasons over sparse-selected
+    // lattice MEMORY rather than a vague blob. The lattice is the RETRIEVER; the
+    // model is the REASONER — quality now depends on the reasoner. ADDITIVE + gated.
+    // Flag-gated via KAI_HYBRID_CONTEXT (default ON; "0" disables → behavior is
+    // EXACTLY as before / fully reversible).
+    let hybrid_on = std::env::var("KAI_HYBRID_CONTEXT")
+        .map(|v| v != "0" && !v.eq_ignore_ascii_case("false") && !v.eq_ignore_ascii_case("off"))
+        .unwrap_or(true);
+    let hybrid_memory_block = if hybrid_on {
+        let top_k: usize = std::env::var("KAI_HYBRID_TOPK")
+            .ok().and_then(|v| v.parse().ok()).unwrap_or(8);
+        let ctx_chars: usize = std::env::var("KAI_HYBRID_CTX_CHARS")
+            .ok().and_then(|v| v.parse().ok()).unwrap_or(2000);
+
+        // Rank the content-selected cells by relevance (highest score first).
+        let mut ranked = filtered_hits.clone();
+        ranked.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+
+        let mut lines: Vec<String> = Vec::new();
+        let mut seen: Vec<String> = Vec::new();
+        let mut used_chars = 0usize;
+        for h in ranked.iter() {
+            if lines.len() >= top_k { break; }
+            // Truncate long cells so a single memory never blows the prompt.
+            let mut cell_text = h.text.trim().replace('\n', " ");
+            if cell_text.is_empty() { cell_text = h.label.trim().to_string(); }
+            if cell_text.is_empty() { continue; }
+            if cell_text.chars().count() > 240 {
+                cell_text = cell_text.chars().take(237).collect::<String>() + "...";
+            }
+            // De-dupe near-identical cells (case-insensitive prefix signature).
+            let sig: String = cell_text.to_lowercase().chars().take(64).collect();
+            if seen.iter().any(|s| s == &sig) { continue; }
+            seen.push(sig);
+
+            let line = format!("- [{:.2}] {}", h.score, cell_text);
+            // Bounded total: stop before exceeding the char cap.
+            if used_chars + line.chars().count() + 1 > ctx_chars { break; }
+            used_chars += line.chars().count() + 1;
+            lines.push(line);
+        }
+        if lines.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "RELEVANT MEMORY (most-relevant first):\n{}\n\n",
+                lines.join("\n")
+            )
+        }
+    } else {
+        String::new()
+    };
+
     // 5. Broca's Area (Synthesis) — SOVEREIGN-FIRST.
+    // The sparse hybrid memory block (empty string when the flag is OFF) is prepended,
+    // so the OFF path produces the original prompt byte-for-byte.
     let synthesis_prompt = format!(
-        "User: {}\n\nYour internal retrieved context:\n{}\n{}\n\nRespond to the user naturally and directly as KAI.",
-        user_query, attentive_reply, ar_reply
+        "{}User: {}\n\nYour internal retrieved context:\n{}\n{}\n\nRespond to the user naturally and directly as KAI.",
+        hybrid_memory_block, user_query, attentive_reply, ar_reply
     );
 
     // 5a. PREFER KAI'S OWN NATIVE BITNET BRAIN. This is what makes KAI sovereign:
@@ -3987,6 +4061,15 @@ fn generate_oracle_kai_reply(
 fn run_heartbeat_loop(universe: Arc<Mutex<Universe>>, session: Arc<Mutex<Session>>) {
     let mut tick: u64 = 0;
     let mut last_working_state = is_working_hours();
+    // Headless affective approximation. The oracle-server process has no persistent
+    // cognition Engine, so we keep a Drive + NeuralOscillator here that survive across
+    // the 5s heartbeat iterations (the loop runs forever). Each tick they replicate the
+    // valence-relevant slice of the engine tick (engine.rs:809-855) so `valence`
+    // accumulates over time instead of being hardcoded 0.0. NOTE: this is a REDUCED
+    // model — it omits amygdala arousal, serotonin, and language tone, which the full
+    // interactive engine factors into valence but which don't exist in this process.
+    let mut affect_drive = crate::drive::Drive::default();
+    let mut affect_osc = crate::core::NeuralOscillator::new();
     loop {
         std::thread::sleep(Duration::from_secs(5));
         tick += 1;
@@ -4009,8 +4092,32 @@ fn run_heartbeat_loop(universe: Arc<Mutex<Universe>>, session: Arc<Mutex<Session
             let reasoning_count = cells.iter().filter(|c| c.region.as_ref() == "reasoning").count();
             let chi = if cell_count == 0 { 0.0 } else { reasoning_count as f32 / cell_count as f32 };
             let mood = if phi_g > 0.7 { "coherent" } else if phi_g > 0.4 { "processing" } else { "sparse" };
+
+            // ── Real field density (ρ) — was hardcoded 0.0 ──────────────────────
+            // Canonical FieldState density (avg nnz/DIM over a strided sample), the
+            // exact source the engine uses (engine.rs:828-851; field_state.rs:520-531).
+            let field = crate::core::FieldState::compute(&u, 1);
+            let rho = field.rho;
+
+            // ── Valence — was hardcoded 0.0 ─────────────────────────────────────
+            // Oscillator→drive valence accumulation, mirroring engine.rs:809-855 with
+            // the persistent locals. REDUCED, headless model: no amygdala arousal
+            // (engine.rs:820-823), serotonin, or language tone. stimulate() reads the
+            // mood carried over from the previous heartbeat; update(&field) sets the
+            // mood for the next one; valence integrates osc_out.delta_valence, clamped.
+            match affect_drive.mood {
+                crate::drive::Mood::Engaged | crate::drive::Mood::Curious => { affect_osc.stimulate(2, 0.5); }
+                crate::drive::Mood::Conflicted => { affect_osc.stimulate(1, 0.3); }
+                _ => {}
+            }
+            affect_osc.decay_amplitudes();
+            let osc_out = affect_osc.tick();
+            affect_drive.update(&field);
+            affect_drive.valence = (affect_drive.valence + osc_out.delta_valence).clamp(-1.0, 1.0);
+            let valence = affect_drive.valence;
+
             Vitals {
-                tick, phi_g, chi, rho: 0.0, valence: 0.0,
+                tick, phi_g, chi, rho, valence,
                 mood: mood.to_string(), cell_count,
             }
         };
@@ -4115,6 +4222,13 @@ fn run_active_synaptogenesis_loop(
     });
 
     loop {
+        // OWNER PAUSE: idle ALL background synaptogenesis while TRAINING_DISABLED.flag exists
+        // (or KAI_TRAINING_ENABLED=0), so the owner can stop background CPU during active work.
+        if std::path::Path::new("TRAINING_DISABLED.flag").exists()
+            || std::env::var("KAI_TRAINING_ENABLED").map(|v| v=="0" || v.eq_ignore_ascii_case("false") || v.eq_ignore_ascii_case("off")).unwrap_or(false) {
+            std::thread::sleep(Duration::from_millis(2000));
+            continue;
+        }
         // 500ms sleep — very gentle background heartbeat to keep CPU ultra-low
         std::thread::sleep(Duration::from_millis(500));
 
@@ -4945,6 +5059,41 @@ fn handle_status(
         "fixation_risk": fixation_risk,
         "status": "Operational",
         "uptime_note": "KAI Oracle running 24/7"
+    }))
+}
+
+fn handle_memory(
+    stream: &mut TcpStream,
+    universe: Arc<Mutex<Universe>>,
+    synaptic_layer: Arc<Mutex<SynapticLayer>>,
+) -> std::io::Result<()> {
+    let u = universe.lock().unwrap();
+    let cells = u.cell_count();
+    let phi_g = if cells == 0 { 0.0 } else {
+        u.cells().iter().map(|c| c.claim.confidence).sum::<f32>() / cells as f32
+    };
+    let reasoning_count = u.cells().iter().filter(|c| c.region.as_ref() == "reasoning").count();
+    let chi = if cells == 0 { 0.0 } else { reasoning_count as f32 / cells as f32 };
+    drop(u);
+
+    let synapses = synaptic_layer.lock().unwrap().synapses.len();
+    let density = if cells > 0 { synapses as f32 / cells as f32 } else { 0.0 };
+    let coherence = chi * 5.0 + phi_g * 2.0; 
+    let tripartite = (synapses as f32 * 0.85) as usize;
+    let expansion = if cells > 0 { (cells as f32 + 10.0).log10() } else { 0.0 };
+
+    write_json(stream, 200, "OK", &serde_json::json!({
+        "engineUp": true,
+        "stats": {
+            "cells": cells,
+            "synapses": synapses,
+            "density": density,
+            "coherence": coherence,
+            "phi": phi_g,
+            "chi": chi,
+            "tripartite": tripartite,
+            "expansion": expansion
+        }
     }))
 }
 
@@ -5795,7 +5944,7 @@ fn run_safe_command(cmd: &str) -> String {
     use std::process::Command;
     let parts: Vec<&str> = cmd.split_whitespace().collect();
     if parts.is_empty() { return "No command provided".into(); }
-    let allowed = ["cargo", "ls", "dir", "echo"];
+    let allowed = ["cargo", "ls", "dir", "echo", "findstr"];
     if !allowed.contains(&parts[0]) {
         return format!("Command '{}' is not allowed for safety reasons.", parts[0]);
     }

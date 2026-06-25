@@ -242,13 +242,23 @@ export function getBotEmpathy(botName) {
  */
 export function updateSelfBias(predictionType, wasCorrect) {
   // If KAI keeps making predictions in a certain domain and getting them wrong,
-  // recency bias is likely inflating confidence
+  // recency/confirmation bias is likely inflating confidence; correct calls earn
+  // it back. These move the biases AND meta-drives off their hardcoded seeds so
+  // the self-model reflects real prediction outcomes instead of static numbers.
   if (!wasCorrect) {
-    selfModel.biases.recency_bias = Math.min(0.8, selfModel.biases.recency_bias + 0.03);
-    selfModel.meta_drives.accuracy = Math.max(0.5, selfModel.meta_drives.accuracy - 0.02);
+    selfModel.biases.recency_bias      = Math.min(0.8,  selfModel.biases.recency_bias      + 0.03);
+    selfModel.biases.confirmation_bias = Math.min(0.6,  selfModel.biases.confirmation_bias + 0.02);
+    selfModel.biases.exploration_pull  = Math.min(0.95, selfModel.biases.exploration_pull  + 0.02); // wrong → explore more
+    selfModel.meta_drives.accuracy     = Math.max(0.5,  selfModel.meta_drives.accuracy     - 0.02);
+    selfModel.meta_drives.usefulness   = Math.max(0.5,  selfModel.meta_drives.usefulness   - 0.01);
+    selfModel.meta_drives.coherence    = Math.max(0.5,  selfModel.meta_drives.coherence    - 0.01);
   } else {
-    selfModel.biases.recency_bias = Math.max(0.05, selfModel.biases.recency_bias - 0.01);
-    selfModel.meta_drives.accuracy = Math.min(1.0, selfModel.meta_drives.accuracy + 0.01);
+    selfModel.biases.recency_bias      = Math.max(0.05, selfModel.biases.recency_bias      - 0.01);
+    selfModel.biases.confirmation_bias = Math.max(0.05, selfModel.biases.confirmation_bias - 0.01);
+    selfModel.biases.exploration_pull  = Math.max(0.3,  selfModel.biases.exploration_pull  - 0.005); // confident → exploit a bit
+    selfModel.meta_drives.accuracy     = Math.min(1.0,  selfModel.meta_drives.accuracy     + 0.01);
+    selfModel.meta_drives.usefulness   = Math.min(1.0,  selfModel.meta_drives.usefulness   + 0.005);
+    selfModel.meta_drives.coherence    = Math.min(1.0,  selfModel.meta_drives.coherence    + 0.005);
   }
 }
 

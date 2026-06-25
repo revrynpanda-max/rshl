@@ -611,3 +611,92 @@ impl FieldState {
         self.phi_g = (self.phi_g * 0.8 + bridge * 0.2).clamp(0.0, 1.0);
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CAPACITY / HEADROOM GAUGE  (Pass 3, ADDITIVE — changes NO existing value)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// HONEST FRAMING. The owner's "fractal state-space" number is a COMBINATORIAL
+// CAPACITY CEILING — a count of how many distinct sub-network configurations the
+// lattice COULD in principle hold (his "score of space that can be filled with
+// potential subnetworks"). It is astronomically large by construction and is NOT
+// a performance score: a ternary lattice of `cells` cells, each a 16384-dim
+// vector with values in {-1,0,+1}, has on the order of 3^(cells * active_dims)
+// reachable configurations. We KEEP that ceiling untouched.
+//
+// What was missing was a *gauge*: of that ceiling, how much is actually FILLED
+// right now, and how much HEADROOM remains. `CapacityGauge` provides exactly
+// that — `utilization` in [0,1] = current active cells / a meaningful cell
+// budget, plus the remaining headroom and (optionally) a recent growth rate.
+// This is a fill-level gauge, NOT a quality/performance metric.
+
+/// A small, honest capacity/headroom gauge for the lattice. Additive: it sits
+/// ALONGSIDE the existing combinatorial "fractal state-space" ceiling and never
+/// modifies any of the 17+ field metrics above.
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
+pub struct CapacityGauge {
+    /// Active cells currently in the lattice.
+    pub active_cells: u64,
+    /// The cell budget this gauge measures against (the lattice's working
+    /// ceiling — e.g. the 1,000,000-cell hard cap in universe.rs, or a tuned
+    /// soft target). A *gauge denominator*, not the combinatorial ceiling.
+    pub cell_budget: u64,
+    /// Fraction of the budget filled, in [0,1]. = active_cells / cell_budget.
+    pub utilization: f32,
+    /// Cells still available before the budget is reached (saturating).
+    pub headroom_cells: u64,
+    /// Optional recent growth rate in cells/observation (caller-supplied delta
+    /// since the last sample). 0.0 when unknown. Cheap, no history kept here.
+    pub growth_rate: f32,
+    /// log10 of the combinatorial CAPACITY CEILING (how many subnetwork
+    /// configurations COULD exist) — kept as a magnitude so it never overflows.
+    /// This is the owner's "fractal state-space" number, preserved as context,
+    /// NOT a performance score. ~= active_cells * active_dims * log10(3).
+    pub ceiling_log10: f64,
+}
+
+impl CapacityGauge {
+    /// Build the gauge from current counts. `active_cells` is `universe.count()`,
+    /// `cell_budget` is the working ceiling to measure against (pass the engine's
+    /// 1_000_000 cap, or a tuned soft target). `avg_active_dims` is the mean nnz
+    /// per cell (~655 at 4% of 16384); used only to express the combinatorial
+    /// ceiling's magnitude. `growth_rate` is an optional cells/sample delta
+    /// (pass 0.0 if not tracked). PURE: no allocation, no side effects.
+    pub fn new(
+        active_cells: u64,
+        cell_budget: u64,
+        avg_active_dims: f32,
+        growth_rate: f32,
+    ) -> Self {
+        let budget = cell_budget.max(1);
+        let utilization = clamp01(active_cells as f32 / budget as f32);
+        let headroom_cells = budget.saturating_sub(active_cells);
+        // Combinatorial ceiling magnitude: each active dim is one of 3 states.
+        // log10(3^(cells*dims)) = cells*dims*log10(3). Stored as a log so the
+        // (astronomical) ceiling is representable without overflow.
+        const LOG10_3: f64 = 0.477_121_254_719_662_4; // log10(3)
+        let ceiling_log10 = (active_cells as f64) * (avg_active_dims as f64) * LOG10_3;
+        Self {
+            active_cells,
+            cell_budget: budget,
+            utilization,
+            headroom_cells,
+            growth_rate,
+            ceiling_log10,
+        }
+    }
+
+    /// Convenience: build straight from a `Universe` count and a budget. Keeps
+    /// the engine decoupled (we only need the cell count + a budget), so this is
+    /// safe to call from any status/HUD path without touching runtime behavior.
+    pub fn from_counts(active_cells: usize, cell_budget: usize) -> Self {
+        // Default mean active-dims at the engine's 4% sparsity of DIM=16384.
+        let avg_active_dims = (super::sparse_vec::DIM as f32) * super::sparse_vec::SPARSITY;
+        Self::new(
+            active_cells as u64,
+            cell_budget as u64,
+            avg_active_dims,
+            0.0,
+        )
+    }
+}

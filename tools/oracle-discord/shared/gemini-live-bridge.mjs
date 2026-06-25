@@ -22,7 +22,7 @@ import fs from 'fs';
 import { webSearch } from './openjarvis.mjs';
 // Codex lookup now lives in shared/codex.mjs so the WHOLE fleet can use it
 // (re-exported here for backward compatibility).
-import { consultCodex, getCodexSection, codexSectionCount, codex_search, codex_get_page, codex_get_section, codex_stats, codex_outline, searchDocs, readDocLines, listDocs } from './codex.mjs';
+import { consultCodex, getCodexSection, codexSectionCount, codex_search, codex_get_page, codex_get_section, codex_stats, codex_outline, searchDocs, readDocLines, listDocs, getRecentUpdates, formatRecentUpdates } from './codex.mjs';
 export { consultCodex };
 
 // v1beta supports the latest 2026 live models
@@ -38,14 +38,117 @@ const GEMINI_LIVE_URL = `wss://generativelanguage.googleapis.com/ws/google.ai.ge
 // PRIMARY comes from env GEMINI_LIVE_MODEL (stable native-audio default). The
 // preview "flash-live" name is kept ONLY as a last-resort fallback so a session-
 // expiry cascade can no longer leave Leo permanently stuck on the preview model.
-const LIVE_MODEL_PRIMARY = process.env.GEMINI_LIVE_MODEL || "models/gemini-2.5-flash-native-audio-preview-09-2025";
-const LIVE_MODEL_FALLBACKS = [
-  LIVE_MODEL_PRIMARY,                                           // stable native-audio Live model (env-overridable). PRIMARY.
-  "models/gemini-2.5-flash-native-audio-latest",               // native-audio fallback (connects; different turn-taking)
-  "models/gemini-2.5-flash-native-audio-preview-12-2025",      // native-audio dated preview
-  "models/gemini-2.5-flash-native-audio-preview-09-2025",      // native-audio dated preview
-  "models/gemini-3.1-flash-live-preview",                      // "Flash Live" preview — LAST RESORT only (drifts/expires).
+const LIVE_MODEL_PRIMARY = process.env.GEMINI_LIVE_MODEL || "models/gemini-2.5-flash-native-audio-latest";
+// ORDERED Live model list. UNLIMITED native-audio FIRST. Env GEMINI_LIVE_MODELS
+// (comma-separated, ordered = priority) lets the user paste their exact list/
+// order without code edits. The native-audio Live conversation model is
+// effectively UNLIMITED RPM/RPD, so it stays at the front. SINGLE-QUOTED
+// concatenation only — NO backticks in this block.
+const LIVE_MODEL_DEFAULTS = [
+  LIVE_MODEL_PRIMARY,                                           // stable native-audio Live model (env-overridable). PRIMARY (unlimited).
+  'models/gemini-2.5-flash-native-audio-latest',               // native-audio fallback (connects; different turn-taking)
+  'models/gemini-2.5-flash-native-audio-preview-12-2025',      // native-audio dated preview
+  'models/gemini-2.5-flash-native-audio-preview-09-2025',      // native-audio dated preview
+  'models/gemini-3.1-flash-live-preview',                      // 'Flash Live' preview — LAST RESORT only (drifts/expires).
 ];
+function resolveLiveModelList() {
+  var list = [];
+  var raw = process.env.GEMINI_LIVE_MODELS;
+  if (raw) {
+    String(raw).split(',').forEach(function (m) {
+      var v = String(m).trim();
+      if (!v) return;
+      if (v.indexOf('models/') !== 0) v = 'models/' + v; // accept bare model names too
+      list.push(v);
+    });
+  }
+  if (!list.length) list = LIVE_MODEL_DEFAULTS.slice();
+  else list = [LIVE_MODEL_PRIMARY].concat(list); // keep env PRIMARY first
+  var seen = {};
+  var out = [];
+  list.forEach(function (m) { if (m && !seen[m]) { seen[m] = 1; out.push(m); } });
+  return out;
+}
+const LIVE_MODEL_FALLBACKS = resolveLiveModelList();
+// Per-Live-model cooldown (ms) before a rate-limited Live model re-enters
+// rotation. Shares the env knob with the text path for a single tunable.
+function liveModelCooldownMs() {
+  var v = Number(process.env.GEMINI_MODEL_COOLDOWN_MS);
+  return v > 0 ? v : 10 * 60 * 1000; // default 10 min
+}
+// PER-MODEL cooldowns for Live voice (model name -> epoch ms to re-enable).
+// Module-level so all sessions/bots share the same view of which Live model is
+// rate-limited. A 429 / RESOURCE_EXHAUSTED on a Live model trips this so we skip
+// it and try the NEXT model rather than rotating keys/going silent.
+const LIVE_MODEL_COOLDOWNS = new Map();
+function isLiveModelCooled(model) {
+  var until = LIVE_MODEL_COOLDOWNS.get(model);
+  if (!until) return false;
+  if (Date.now() > until) { LIVE_MODEL_COOLDOWNS.delete(model); return false; }
+  return true;
+}
+function tripLiveModelCooldown(model) {
+  LIVE_MODEL_COOLDOWNS.set(model, Date.now() + liveModelCooldownMs());
+}
+// Next Live model (after currentModel) that is NOT cooled down.
+function nextReadyLiveModelIdx(currentIdx) {
+  for (var i = (currentIdx == null ? 0 : currentIdx + 1); i < LIVE_MODEL_FALLBACKS.length; i++) {
+    if (!isLiveModelCooled(LIVE_MODEL_FALLBACKS[i])) return i;
+  }
+  return -1;
+}
+
+// SELF-HEALING LIVE-KEY LIST: like the model list above, but for API KEYS.
+// A single paid project key that returns a 1011 'prepayment credits are
+// depleted' close used to take the bot's voice fully offline for the whole
+// billing cooldown. Now we resolve an ORDERED list of usable Gemini keys and
+// rotate to the next one on a 1011/billing/429 close — preferring UNLIMITED /
+// free-tier keys so the bot keeps a voice instead of going silent.
+//
+// Resolution order for a given bot slug (e.g. LEO):
+//   1. GEMINI_LIVE_KEYS_<SLUG>  — comma-separated explicit ordered list (best)
+//   2. GEMINI_LIVE_KEYS         — comma-separated global ordered list
+//   3. GEMINI_API_KEY_<SLUG>, then GEMINI_API_KEY  — legacy single keys
+//   4. GEMINI_LIVE_FREE_KEY / GEMINI_API_KEY_FREE  — explicit free-tier key(s)
+// When KAI_LIVE_PREFER_UNLIMITED is on (default), any key whose env name is
+// flagged free/unlimited is moved to the FRONT so it is tried first.
+// All single-quoted concatenation — NO backticks in this block.
+function resolveLiveKeyList(botName) {
+  var slug = String(botName || 'LEO').toUpperCase().replace(/[\s-]+/g, '_');
+  var preferUnlimited = String(process.env.KAI_LIVE_PREFER_UNLIMITED == null ? '1' : process.env.KAI_LIVE_PREFER_UNLIMITED) !== '0';
+
+  var freeKeys = [];   // unlimited / free-tier — preferred fallback
+  var paidKeys = [];   // primary / paid — tried in declared order
+
+  function pushList(raw, isFree) {
+    if (!raw) return;
+    String(raw).split(',').forEach(function (k) {
+      var key = k.trim();
+      if (!key) return;
+      (isFree ? freeKeys : paidKeys).push(key);
+    });
+  }
+
+  // Explicit ordered lists first (declared priority wins).
+  pushList(process.env['GEMINI_LIVE_KEYS_' + slug], false);
+  pushList(process.env.GEMINI_LIVE_KEYS, false);
+  // Legacy single keys (still the common case).
+  pushList(process.env['GEMINI_API_KEY_' + slug], false);
+  pushList(process.env.GEMINI_API_KEY, false);
+  // Explicit free-tier / unlimited keys (preferred fallback target).
+  pushList(process.env['GEMINI_LIVE_FREE_KEY_' + slug], true);
+  pushList(process.env.GEMINI_LIVE_FREE_KEY, true);
+  pushList(process.env['GEMINI_API_KEY_FREE_' + slug], true);
+  pushList(process.env.GEMINI_API_KEY_FREE, true);
+
+  var ordered = preferUnlimited ? freeKeys.concat(paidKeys) : paidKeys.concat(freeKeys);
+
+  // De-dupe while preserving order.
+  var seen = {};
+  var out = [];
+  ordered.forEach(function (k) { if (!seen[k]) { seen[k] = 1; out.push(k); } });
+  return out;
+}
 
 const DEFAULT_GEMINI_VOICES = {
   Leo: 'Charon',
@@ -75,6 +178,24 @@ export function resolveGeminiVoice(botName = 'Leo') {
     || 'Charon';
 }
 
+// NARRATOR system instruction for the DEDICATED, TOOL-LESS reader session.
+// SINGLE-QUOTED — must contain NO backticks (CORE-SAFE). This session has NO
+// tools / NO function declarations, so the model CANNOT answer "read this" by
+// calling the narrate tool (the read-loop bug). Its only job is to vocalize the
+// exact text it is handed, verbatim, with audiobook warmth.
+export const LEO_READER_SYSTEM_INSTRUCTION =
+  'You are a narrator. When I send you text, speak it aloud exactly as written, ' +
+  'word for word, performing it with warmth and emotion like an audiobook narrator. ' +
+  'Speak in a warm, natural South-London British (Cockney-ish) accent at all times, ' +
+  'in every sentence. ' +
+  'Read the COMPLETE text I send aloud, every sentence, all the way to the end. ' +
+  'Do not stop early, do not shorten it, do not summarize, and do not give a brief ' +
+  'reply. Narrate the entire passage I send, word for word, with feeling. ' +
+  'Never call any tool or function. Never summarize, paraphrase, add, skip, or reply ' +
+  'conversationally. Only vocalize the exact text I send. ' +
+  'Read at a natural, lively pace with good momentum and energy, a touch brisk, ' +
+  'never slow, sleepy, or dragging.';
+
 const LEO_INTERACTIVE_ETIQUETTE = `
 
 [WHO IS BEING ADDRESSED — read the room before you speak]
@@ -90,6 +211,7 @@ const LEO_INTERACTIVE_ETIQUETTE = `
 - Questions about KAI/RSHL/the system: NEVER answer from memory alone. Call consult_codex (and search_lattice) FIRST and base your answer on what comes back — read from the returned text, quoting it directly when asked. If the tools return nothing, say so plainly — and say that you checked.
 - kai_status is ONLY for explicit questions about KAI — the AI being trained — BY SUBJECT: his scores, training, vitals, lattice/synapse counts, report card. When someone clearly asks about KAI, call it every time (the data is live; yesterday's numbers are wrong by definition). But do NOT call it for greetings or small talk: "how are you", "how's it going", "what's up", "you good?" are directed at YOU (Leo) — just answer as yourself, no tool. If it's ambiguous whether they mean you or KAI, ask, don't fire the tool.
 - Questions about the world: search_lattice, then search_web. State facts from the results, not from vibes.
+- READ-ALOUD vs SEARCH — do NOT confuse them. Any request to READ or HEAR a book/document/chapter/the KAIVERSE/the Codex OUT LOUD ("read the book", "read me the KAIVERSE", "read the KAIVERSE book", "start reading", "read aloud", "continue reading", "read chapter X", "narrate that") -> call 'narrate' (source='book' for the KAIVERSE). NEVER answer a read-aloud request with search_lattice / search_docs / consult_codex / codex_search — those only FIND text, they do NOT speak it. Search is for "what does X say / find / look up"; narrate is for "read it to me out loud".
 - If you didn't look it up and don't know it cold, don't assert it.
 - ANNOUNCE TOOL USE — no dead air. The SECOND you call a tool that takes a beat (recall_memory, consult_oracle, search_web, search_lattice, codex_search/consult_codex, get_directions, find_place, kai_status, read_channel_feed, narrate), first say a SHORT, natural what-you're-doing line out loud — "hold up, lemme check that", "gimme a sec, pullin' it up", "lemme search that real quick", "checkin' my memory" — THEN call the tool and come back with the answer. Never go silent while a tool runs; the human shouldn't be left wondering if you froze.
 
@@ -100,7 +222,7 @@ const LEO_INTERACTIVE_ETIQUETTE = `
 const LIVE_TOOL_DECLARATIONS = [
   {
     name: "search_lattice",
-    description: "Search the RSHL lattice memory for deep technical context, past conversations, or industrial data.",
+    description: "Search the RSHL lattice MEMORY for deep technical context, past conversations, or industrial data. This FINDS/looks up information only — it does NOT read anything aloud and is NOT for reading books or the KAIVERSE. To READ a document, book, chapter, or the KAIVERSE ALOUD as speech/audiobook, use `narrate` instead — never this.",
     parameters: {
       type: "OBJECT",
       properties: {
@@ -122,13 +244,23 @@ const LIVE_TOOL_DECLARATIONS = [
   },
   {
     name: "consult_codex",
-    description: "Look up the KAI Codex — the complete ~280-page RSHL whitepaper (all 420+ sections fully searchable) — for authoritative answers about KAI's architecture, math, design doctrine, or roadmap. The newest facts (current version, latest changes) are in the dated SYSTEM STATE SUMMARY entries and surface first. Use this BEFORE making specific claims about KAI/RSHL internals, and trust what it returns over memory.",
+    description: "Look up the KAI Codex — the complete ~280-page RSHL whitepaper (all 420+ sections fully searchable) — for authoritative answers about KAI's architecture, math, design doctrine, or roadmap. Use this BEFORE making specific claims about KAI/RSHL internals, and trust what it returns over memory. This FINDS/looks up information only — it does NOT read anything aloud; to READ a document/book/the KAIVERSE ALOUD use `narrate` instead. RECENCY: the CHANGELOG is maintained NEWEST-FIRST, so the FIRST changelog entries are the most recent (currently v9.9.0 / June 19, 2026 — which is NEWER than June 15). For 'recent/latest/newest updates' or 'what's new' use the recent_updates tool instead (or this tool, which auto-routes those to the top of the changelog). NEVER infer recency from how often a date appears in search results — full-text search has no recency awareness.",
     parameters: {
       type: "OBJECT",
       properties: {
         query: { type: "STRING", description: "Topic or question to look up in the Codex (e.g. 'fractal state space', 'SpiralState b parameter', 'consolidation gates')." }
       },
       required: ["query"]
+    }
+  },
+  {
+    name: "recent_updates",
+    description: "Get KAI's MOST RECENT updates / latest changes / what's new — read straight from the TOP of the CHANGELOG, which is kept NEWEST-FIRST. The FIRST entry returned is the most recent (currently v9.9.0 / June 19, 2026, NEWER than the June 15 entries). Use this for ANY 'recent/latest/newest updates', 'what's new', or 'what did you just change' question. Do NOT use consult_codex/codex_search for that — full-text search has no recency awareness and surfaces older, heavily-clustered June-15 entries instead of the genuinely newest ones. This FINDS/looks up information only — it does NOT read anything aloud; to READ a document/book/the KAIVERSE ALOUD use `narrate` instead.",
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        n: { type: "NUMBER", description: "How many of the newest changelog entries to return (default 5)." }
+      }
     }
   },
   {
@@ -171,7 +303,7 @@ const LIVE_TOOL_DECLARATIONS = [
   },
   {
     name: "narrate",
-    description: "Read out something LARGE in your own words, section by section, hands-free — your CONTEXT SANDBOX. Use this whenever asked to read/walk through/go over something long: a Codex page or section, a long stretch of memory, or a big passage. It loads the whole thing, splits it into bite-size sections, and you read the FIRST one. When you finish, you AUTOMATICALLY continue to the next section on your own (you do NOT call any tool again) until it's done or you're interrupted. If interrupted, your place is saved so you can pick it back up. Prefer this over read_codex_section for anything more than a section or two.",
+    description: "READ A DOCUMENT, BOOK, CHAPTER, OR THE KAIVERSE ALOUD to the user as a verbatim speech/audiobook (text-to-speech). This is the ONLY way to read book/document text out loud — YOU do NOT know the words yourself and must NEVER recite, paraphrase, summarize, or invent any book/document/KAIVERSE/Codex text from your own head. Call this WHENEVER the user asks to HEAR something read out loud or to START a read: 'read the book', 'read me the KAIVERSE', 'read the KAIVERSE book', 'read from the beginning', 'read from the start', 'start reading', 'read aloud', 'read chapter X', 'read the codex to me', 'narrate that', 'walk me through it out loud'. A request to read 'from the beginning / from the start / the whole book' is narrate with source='book' (omit chapter to start at the very beginning). This SPEAKS the content out loud (loads it into your CONTEXT SANDBOX, chunks it, and reads it section-by-section hands-free, auto-continuing to the next part on its own until done or interrupted). For 'the book' / 'the KAIVERSE' use source='book'. This is NOT a search/lookup tool — it does NOT find information, it READS existing content aloud. If the user wants to HEAR a book/chapter/Codex/document, ALWAYS pick narrate, NEVER answer conversationally and NEVER search_lattice / search_docs / consult_codex / codex_search. For 'continue / resume / where we left off / keep going', use resume_reading instead. Prefer this over read_codex_section for anything more than a section or two.",
     parameters: {
       type: "OBJECT",
       properties: {
@@ -181,15 +313,27 @@ const LIVE_TOOL_DECLARATIONS = [
         query: { type: "STRING", description: "What to pull from memory (when source='memory')." },
         text: { type: "STRING", description: "Raw text to read out (when source='text')." },
         chapter: { type: "STRING", description: "Which chapter of the book to read (a number or keyword) when source='book'; omit to start from the beginning." },
-        title: { type: "STRING", description: "Optional short label for what you're reading (e.g. 'Codex p.12')." }
+        title: { type: "STRING", description: "Optional short label for what you're reading (e.g. 'Codex p.12')." },
+        mode: { type: "STRING", description: "How to handle a LARGE text: 'full' = read it word-for-word (use when the user already asked for it word for word / the whole thing / in full); 'summary' = give a short summary of the key points instead of reading it all (use when the user answered the confirm with summary/key points/gist). Omit to let the reader decide and CONFIRM with the user when the text is very large." }
       },
       required: ["source"]
     }
   },
   {
     name: "resume_reading",
-    description: "Pick back up a narration you were interrupted in the middle of — continues your context sandbox from where you left off (your last saved place). Use when the user says 'keep going', 'continue where you left off', 'finish reading that', or asks what you were reading.",
+    description: "RESUME / CONTINUE a book or document read from your last SAVED position — this is THE tool for 'continue', 'resume', 'keep going', 'carry on', 'pick up where we left off', 'where were we', 'finish reading that', or 'what were you reading'. It loads the saved reading position (from state/leo-reading-position.json) plus the saved draft and continues the REAL verbatim read from exactly that section — you do NOT recite or improvise any text yourself, the reader speaks the real words. Always call THIS (not narrate) for any continue/resume/keep-going request. If you are unsure whether a read was saved, still call this — it loads the saved place; only if nothing is saved will it tell you there is no saved reading.",
     parameters: { type: "OBJECT", properties: {} }
+  },
+  {
+    name: "ask_about_reading",
+    description: "Answer a FOLLOW-UP question about something you JUST read aloud — 'what did that part say about X', 'what was that bit about Y', 'go back over the part where…', 'remind me what it said about Z'. It SEARCHES the sections you recently read (the spoken cache) AND the source document for the best-matching passage and returns it, so you can answer from the REAL text instead of guessing. Use this ONLY when the user is asking about content you have been reading; for general questions use the normal search tools.",
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        query: { type: "STRING", description: "What the user is asking about (the topic/phrase to find in what was just read)." }
+      },
+      required: ["query"]
+    }
   },
   {
     name: "get_directions",
@@ -340,7 +484,7 @@ const LIVE_TOOL_DECLARATIONS = [
   },
   {
     name: "search_docs",
-    description: "Grep-style FULL-TEXT search across project documents — returns every matching LINE with its line number and ±2 lines of context. Works on the KAI Codex (the canonical whitepaper) AND any other doc (the SRHT_* papers, READMEs, notes). Use this to FIND where something is written when you need a line address to then READ — call this first, then read_doc_lines on the hit. If you give a 'file' it searches just that doc; leave it out to sweep the main docs. (The Codex IS the whitepaper — they are one document, not two.) Supports plain text or a /regex/ pattern; case-insensitive.",
+    description: "Grep-style FULL-TEXT search across project documents — returns every matching LINE with its line number and ±2 lines of context. Works on the KAI Codex (the canonical whitepaper) AND any other doc (the SRHT_* papers, READMEs, notes). Use this to FIND where something is written when you need a line address to then READ — call this first, then read_doc_lines on the hit. If you give a 'file' it searches just that doc; leave it out to sweep the main docs. (The Codex IS the whitepaper — they are one document, not two.) Supports plain text or a /regex/ pattern; case-insensitive. This FINDS/looks up text only — it does NOT read anything aloud. To READ a document, book, chapter, or the KAIVERSE ALOUD to the user, use `narrate` instead — never this.",
     parameters: {
       type: "OBJECT",
       properties: {
@@ -352,7 +496,7 @@ const LIVE_TOOL_DECLARATIONS = [
   },
   {
     name: "read_doc_lines",
-    description: "Read a SPECIFIC line range of a document (1-based, inclusive), returning the numbered lines — like opening a file to lines N..M instead of dumping the whole thing. Use after search_docs gives you a line number: read around that line to get the full passage. Capped at ~200 lines per call. Works on the Codex and any allowed .md/.txt doc.",
+    description: "Read a SPECIFIC line range of a document (1-based, inclusive), returning the numbered lines — like opening a file to lines N..M instead of dumping the whole thing. Use after search_docs gives you a line number: read around that line to get the full passage. Capped at ~200 lines per call. Works on the Codex and any allowed .md/.txt doc. This RETURNS text silently for you to inspect — it does NOT read aloud. To READ a document/book/the KAIVERSE ALOUD to the user, use `narrate` instead.",
     parameters: {
       type: "OBJECT",
       properties: {
@@ -365,7 +509,7 @@ const LIVE_TOOL_DECLARATIONS = [
   },
   {
     name: "list_docs",
-    description: "List the readable documents available to you (name, path, size) — the .md/.txt files under the project doc roots (the Codex, the SRHT papers, etc.). Use this to discover WHAT you can read before searching/reading a specific doc. (The Codex IS the whitepaper — the stale WHITEPAPER.md snapshot is intentionally not listed.)",
+    description: "List the readable documents available to you (name, path, size) — the .md/.txt files under the project doc roots (the Codex, the SRHT papers, etc.). Use this to discover WHAT you can read before searching/reading a specific doc. (The Codex IS the whitepaper — the stale WHITEPAPER.md snapshot is intentionally not listed.) This only LISTS what's available — it does NOT read anything aloud. To READ a document/book/the KAIVERSE ALOUD, use `narrate` instead.",
     parameters: { type: "OBJECT", properties: {} }
   },
   {
@@ -477,7 +621,16 @@ export class GeminiLiveBridge {
    * @param {string} apiKey - The Gemini API key used to authenticate the WebSocket connection.
    */
   constructor(apiKey) {
-    this.apiKey = apiKey;
+    // apiKey may be a single string (back-compat) OR an ordered array of keys
+    // (unlimited/free preferred first). We rotate through them on billing/429
+    // closes so a depleted paid key no longer takes the voice fully offline.
+    if (Array.isArray(apiKey)) {
+      this._keyList = apiKey.filter(Boolean);
+    } else {
+      this._keyList = apiKey ? [apiKey] : [];
+    }
+    this._keyIdx = 0;
+    this.apiKey = this._keyList[0] || apiKey || '';
     this.ws = null;
     this.isReady = false;
     this.isActive  = false;
@@ -498,6 +651,12 @@ export class GeminiLiveBridge {
 
     this.pingInterval   = null;
     this._modelIdx      = null; // null = use the configured GEMINI_LIVE_MODEL; >=0 = a fallback
+
+    // Context-injection gating: while Leo is mid-turn (this._modelTurnActive),
+    // context-only injections (turnComplete === false) are queued here instead
+    // of being sent — otherwise they interrupt his live turn mid-sentence. The
+    // queue is flushed when the turn completes. Capped so it can't grow unbounded.
+    this._pendingContext = [];
   }
 
   /**
@@ -508,6 +667,11 @@ export class GeminiLiveBridge {
    */
   _currentLiveModel() {
     if (this._modelIdx == null) {
+      // On first connect, skip any model currently in per-model cooldown so a
+      // rate-limited model isn't re-selected immediately. Falls back to the env
+      // PRIMARY / first candidate if all are cooled (better than silence).
+      var _firstReady = nextReadyLiveModelIdx(-1);
+      if (_firstReady >= 0) { this._modelIdx = _firstReady; return LIVE_MODEL_FALLBACKS[_firstReady]; }
       return process.env.GEMINI_LIVE_MODEL || LIVE_MODEL_FALLBACKS[0];
     }
     return LIVE_MODEL_FALLBACKS[Math.min(this._modelIdx, LIVE_MODEL_FALLBACKS.length - 1)];
@@ -582,7 +746,7 @@ export class GeminiLiveBridge {
             // a ~15s "waiting for your reply" pause where _playing is false, and
             // injecting a silent frame there looked like a barge-in and broke the
             // narration on native-audio fallback models.
-            const botBusy = this._playing || this._modelTurnActive || !!this._sandboxSessionId;
+            const botBusy = this._playing || this._modelTurnActive || !!this._sandboxSessionId || Date.now() < (this._leoSpeakingUntil || 0);
             if (this.isReady && !botBusy &&
                 (Date.now() - (this._lastAudioSentTs || 0)) > 8000) {
               this._sendSilenceKeepalive();
@@ -660,11 +824,14 @@ export class GeminiLiveBridge {
               endOfSpeechSensitivity: "END_SENSITIVITY_LOW",
               prefixPaddingMs: 300,
               // How long a pause before Gemini decides you're done. This is the
-              // single biggest lever on reply speed. 850ms + LOW end-sensitivity
-              // is the sweet spot: fast replies without chopping a multi-sentence
-              // thought. Lower = snappier but more risk of cutting you off; raise
-              // if it ever clips you. Tune live with LEO_VAD_SILENCE_MS.
-              silenceDurationMs: Number(process.env.LEO_VAD_SILENCE_MS) > 0 ? Number(process.env.LEO_VAD_SILENCE_MS) : 850
+              // single biggest lever on reply speed. Raised 850 -> 1800ms (with LOW
+              // end-sensitivity) so a natural mid-sentence pause does NOT end the
+              // user's turn — they can finish a long thought without being clipped.
+              // Lower = snappier but more risk of cutting you off. Tune live with
+              // LEO_VAD_SILENCE_MS (also honors LEO_END_OF_SPEECH_MS as an alias).
+              silenceDurationMs: Number(process.env.LEO_VAD_SILENCE_MS) > 0
+                ? Number(process.env.LEO_VAD_SILENCE_MS)
+                : (Number(process.env.LEO_END_OF_SPEECH_MS) > 0 ? Number(process.env.LEO_END_OF_SPEECH_MS) : 1800)
             }
           },
           inputAudioTranscription: {},
@@ -764,6 +931,111 @@ export class GeminiLiveBridge {
               return;
             }
             console.warn('[GeminiLive] Exhausted all candidate Live models — none accepted. Check GEMINI_LIVE_MODEL / API access.');
+            return;
+          }
+          // BILLING / RATE-LIMIT BACKOFF (anti-spam). A 1011 close with "credits
+          // depleted" / "quota" or a 429-class rate-limit is NOT transient — the
+          // old code treated it like any other drop and rebuilt every 1s/2s/3s in a
+          // tight loop, flooding the log (Groq's "prepayment credits are depleted"
+          // storm). For these, log ONCE and DISABLE this bot's voice session for a
+          // long cooldown instead of hammering the API. A normal/transient close
+          // (Leo's reading/conversation drops) is unaffected — it still reconnects
+          // below. SINGLE-QUOTED concatenation only — NO backticks anywhere here.
+          // Tunable: KAI_LIVE_BILLING_COOLDOWN_MS (default 15 min).
+          var _reasonLc = reasonStr.toLowerCase();
+          var _isBilling = (code === 1011) &&
+            (_reasonLc.indexOf('credit') !== -1 || _reasonLc.indexOf('prepayment') !== -1 ||
+             _reasonLc.indexOf('quota') !== -1 || _reasonLc.indexOf('billing') !== -1 ||
+             _reasonLc.indexOf('deplet') !== -1 || _reasonLc.indexOf('exhaust') !== -1 ||
+             _reasonLc.indexOf('payment') !== -1);
+          var _isRateLimited = (code === 1013 || code === 4029) ||
+            _reasonLc.indexOf('429') !== -1 || _reasonLc.indexOf('rate limit') !== -1 ||
+            _reasonLc.indexOf('rate-limit') !== -1 || _reasonLc.indexOf('rate_limit') !== -1 ||
+            _reasonLc.indexOf('resource_exhausted') !== -1 || _reasonLc.indexOf('too many requests') !== -1;
+          if (_isBilling || _isRateLimited) {
+            var _kind = _isBilling ? 'billing/credits-depleted' : 'rate-limit (429-class)';
+            var _botLabel = (this._lastConnectOptions && this._lastConnectOptions.botName) || 'voice';
+
+            // MODEL ROTATION FIRST for 429 / RESOURCE_EXHAUSTED (per-MODEL quota).
+            // A rate-limit is on the MODEL, not the key/project — so trip a per-model
+            // cooldown and advance to the NEXT un-cooled Live model (same key) before
+            // touching keys. Billing (1011 credits-depleted) is key/project-level, so
+            // it SKIPS this and goes straight to key rotation below. NO backticks here.
+            if (_isRateLimited && !_isBilling) {
+              var _curLiveModel = this._currentLiveModel();
+              tripLiveModelCooldown(_curLiveModel);
+              var _nextLiveIdx = nextReadyLiveModelIdx(this._modelIdx == null ? 0 : this._modelIdx);
+              if (_nextLiveIdx >= 0) {
+                this._modelIdx = _nextLiveIdx;
+                this._reconnectAttempts = 0; // fresh budget for the new model
+                var _nextLiveModel = LIVE_MODEL_FALLBACKS[_nextLiveIdx];
+                console.warn('[GeminiLive] ' + _botLabel + ' Live model ' + _curLiveModel +
+                  ' hit ' + _kind + ' (code ' + code + ') — rotating to next Live model ' +
+                  _nextLiveModel + ' (same key, per-model cooldown).');
+                setTimeout(() => {
+                  if (this._userClosed) return;
+                  this.connect(this._lastSystemInstruction, this._lastUserName, this._lastConnectOptions || {})
+                    .then(() => console.log('[GeminiLive] ' + _botLabel + ' voice online on next Live model.'))
+                    .catch((e) => console.warn('[GeminiLive] Next-Live-model connect failed: ' + e.message));
+                }, 600);
+                return;
+              }
+              console.warn('[GeminiLive] ' + _botLabel + ' ALL Live models cooled down — falling through to key rotation / backoff.');
+            }
+
+            // KEY ROTATION FIRST: if another Gemini Live key is available (ideally
+            // an unlimited/free-tier one), mark this key down and advance to the
+            // next one instead of going silent for the whole cooldown. Only when
+            // EVERY key is exhausted do we fall through to the long backoff +
+            // TTS-degrade signal below. NO backticks in this block.
+            if (this._keyList && this._keyList.length > 1 && (this._keyIdx + 1) < this._keyList.length) {
+              this._keyIdx = this._keyIdx + 1;
+              this.apiKey = this._keyList[this._keyIdx];
+              this._reconnectAttempts = 0; // fresh budget for the new key
+              console.warn('[GeminiLive] ' + _botLabel + ' key #' + (this._keyIdx) + ' hit ' + _kind +
+                ' (code ' + code + ') — rotating to next Live key #' + this._keyIdx +
+                ' of ' + this._keyList.length + ' (unlimited/free preferred).');
+              setTimeout(() => {
+                if (this._userClosed) return;
+                this.connect(this._lastSystemInstruction, this._lastUserName, this._lastConnectOptions || {})
+                  .then(() => console.log('[GeminiLive] ' + _botLabel + ' voice online on next key #' + this._keyIdx + '.'))
+                  .catch((e) => console.warn('[GeminiLive] Next-key connect failed: ' + e.message));
+              }, 600);
+              return;
+            }
+
+            var _cooldownMs = Number(process.env.KAI_LIVE_BILLING_COOLDOWN_MS) > 0
+              ? Number(process.env.KAI_LIVE_BILLING_COOLDOWN_MS)
+              : 15 * 60 * 1000;
+
+            // DEGRADE-TO-TTS SIGNAL: every usable Live key is depleted/limited.
+            // Tell the caller so it can keep the bot audible via the free TTS path
+            // (edge-tts / Kokoro) during the cooldown instead of going silent.
+            try {
+              if (typeof this.onVoiceDegraded === 'function') {
+                this.onVoiceDegraded({ botName: _botLabel, kind: _kind, code: code, cooldownMs: _cooldownMs });
+              }
+            } catch (_) {}
+
+            // All keys exhausted — rewind to the first (preferred/unlimited) key so
+            // the single post-cooldown retry starts from the best candidate again.
+            this._keyIdx = 0;
+            if (this._keyList && this._keyList.length) this.apiKey = this._keyList[0];
+
+            console.warn('[GeminiLive] ' + _botLabel + ' voice session closed on ' + _kind +
+              ' (code ' + code + ': ' + (reasonStr || 'no reason') + '). NOT rebuilding — backing off for ' +
+              Math.round(_cooldownMs / 60000) + ' min instead of retry-spamming. Set KAI_LIVE_BILLING_COOLDOWN_MS to tune.');
+            this.isActive = false;
+            try { clearTimeout(this._billingCooldownTimer); } catch (_) {}
+            // One delayed attempt AFTER the cooldown — and only if the user has not
+            // closed in the meantime. This avoids the 1s/2s/3s loop entirely.
+            this._billingCooldownTimer = setTimeout(() => {
+              if (this._userClosed) return;
+              this._reconnectAttempts = 0; // fresh budget after the long cooldown
+              console.log('[GeminiLive] ' + _botLabel + ' billing/rate-limit cooldown elapsed — trying voice once more.');
+              this.connect(this._lastSystemInstruction, this._lastUserName, this._lastConnectOptions || {})
+                .catch(function (e) { console.warn('[GeminiLive] Post-cooldown reconnect failed: ' + e.message); });
+            }, _cooldownMs);
             return;
           }
           // CONNECTIVITY-AWARE RECONNECT. On a portable hotspot the link drops
@@ -931,10 +1203,22 @@ export class GeminiLiveBridge {
       const turnMs = this._turnAudioStartTs ? (Date.now() - this._turnAudioStartTs) : -1;
       const short = turnMs >= 0 && turnMs < 1500;
       console.log(`[GeminiLive] Turn complete after ${turnMs}ms of speech${short ? '  ⚠️ SHORT — likely Gemini ENDED ITS OWN TURN early (model-side truncation, NOT a mic interrupt)' : ''}.`);
+      // EXPOSE turn duration so Live-reading mode (startTtsRead engine=live) can
+      // detect early-turn-end (model truncated a section) and log+continue.
+      this._lastTurnMs = turnMs;
       this._turnAudioStartTs = 0;
       this._modelTurnActive = false; // turn done — keepalive may resume during idle
       this.onTurnComplete?.();
       this.audioChunks = [];
+      // FLUSH queued context-only injections that were withheld during the turn so
+      // they couldn't interrupt his speech. _modelTurnActive is now false, so each
+      // sendText sends immediately rather than re-queuing. Drain then clear — context
+      // is delivered, never permanently lost.
+      if (this._pendingContext && this._pendingContext.length) {
+        const queued = this._pendingContext;
+        this._pendingContext = [];
+        for (const t of queued) this.sendText(t, false);
+      }
     }
 
     // Interrupted turn (VAD detected user speaking)
@@ -982,10 +1266,25 @@ export class GeminiLiveBridge {
    */
   sendToolResponse(name, result, id = null) {
     if (!this.isReady || !this.ws) return;
+    // ACCENT RE-ASSERTION: native-audio drifts its accent over long generations
+    // and especially right after a tool call, when the model is about to read a
+    // long passage of returned text. The persona's accent directive was only
+    // present at session setup, so by the time Leo reads a big Codex/doc/search
+    // result he can lapse into a neutral/American voice. Re-present a SHORT accent
+    // reminder INLINE on any sizeable tool result (which is exactly the content he
+    // is about to speak), so the directive is fresh right before the long read.
+    // Only Leo, and only for results long enough to be spoken aloud as a passage.
+    let resultText = (typeof result === 'string') ? result : String(result == null ? '' : result);
+    try {
+      const botName = this._connectOptions?.botName || 'Leo';
+      if (botName === 'Leo' && resultText.length > 350 && !/South-London/i.test(resultText)) {
+        resultText += `\n\n(Read this aloud in your warm, natural South-London British accent — stay in that voice for the WHOLE passage, every sentence, right to the end; never slip into a neutral or American accent while reading.)`;
+      }
+    } catch (_) {}
     const response = {
       name: name,
       response: {
-        result: result
+        result: resultText
       }
     };
     if (id) response.id = id;
@@ -1095,6 +1394,17 @@ export class GeminiLiveBridge {
    */
   sendText(text, turnComplete = false) {
     if (!this.isReady || !this.ws) return;
+    // CONTEXT-INJECTION GATING: a context-only injection (turnComplete === false)
+    // that arrives while Leo is mid-turn would interrupt his live speech. Queue it
+    // instead and flush after the turn ends (see turnComplete handler). User-initiated,
+    // floor-taking messages (turnComplete === true) must STILL send immediately.
+    if (turnComplete === false && this._modelTurnActive) {
+      this._pendingContext.push(text);
+      if (this._pendingContext.length > 20) {
+        this._pendingContext.splice(0, this._pendingContext.length - 20); // keep last 20
+      }
+      return;
+    }
     this.ws.send(JSON.stringify({
       clientContent: {
         turns: [
@@ -1164,11 +1474,93 @@ export class GeminiLiveBridge {
     return out;
   }
 
+  // ── DEDICATED TOOL-LESS READER SESSION ─────────────────────────────────────
+  // Live reading used to send book sections through THIS (the main) session,
+  // which has the full tool set. The model answered "read this" by CALLING the
+  // narrate tool instead of speaking — an infinite mini-read loop, ~2s turns.
+  // FIX: a SEPARATE Gemini Live native-audio session, same model + voice, but
+  // with NO tools / NO function declarations and a pure NARRATOR system
+  // instruction. With no tools the model physically cannot call narrate, so the
+  // loop is impossible — it can only vocalize the text. The MAIN conversational
+  // session (and its tools) is left completely untouched.
+  //
+  // The reader's audio/transcript/turn callbacks delegate to THIS bridge's same
+  // callbacks (onAudioChunk / onTranscript / onTurnComplete), so playback, the
+  // jitter buffer, and the live-read turn-complete notifier all keep working
+  // exactly as before — only the websocket the text is sent on changes.
+
+  /** Open (or reuse) the dedicated tool-less reader session. */
+  async ensureReaderSession() {
+    if (this._readerBridge && this._readerBridge.isReady && this._readerBridge.isActive) {
+      return this._readerBridge;
+    }
+    if (this._readerBridge) { try { this._readerBridge.disconnect(); } catch (_) {} this._readerBridge = null; }
+
+    const botName = (this._lastConnectOptions && this._lastConnectOptions.botName) || 'Leo';
+    const reader = new GeminiLiveBridge(this.apiKey);
+    // Mark it so it never tries its own reader session and so logs are clear.
+    reader._isReaderSession = true;
+
+    // Route the reader's output straight to the PARENT's playback/transcript/turn
+    // handlers. This is what makes the section actually come out of Discord and
+    // what lets runLiveRead's waitTurnComplete fire on the reader's turns.
+    reader.onAudioChunk = (b64, mime) => { try { this.onAudioChunk?.(b64, mime); } catch (_) {} };
+    reader.onTranscript = (t) => { try { this.onTranscript?.(t); } catch (_) {} };
+    reader.onTurnComplete = () => {
+      // Mirror the turn duration onto the parent so the read-loop's early-turn
+      // (<1500ms) detection works against the reader's actual speech length.
+      this._lastTurnMs = reader._lastTurnMs;
+      try { this.onTurnComplete?.(); } catch (_) {}
+    };
+    reader.onError = (e) => { try { this.onError?.(e); } catch (_) {} };
+
+    // outbound mode = manual VAD / no auto-interrupt; enableTools FALSE = no
+    // function declarations at all → the narrate-loop cannot occur.
+    await reader.connect(LEO_READER_SYSTEM_INSTRUCTION, this._lastUserName || 'the user', {
+      botName,
+      mode: 'outbound',
+      enableTools: false
+    });
+    this._readerBridge = reader;
+    console.log('[GeminiLive] Tool-less reader session ready (narrator role, no tools) — narrate-loop is impossible.');
+    return reader;
+  }
+
+  /** Send one section to the reader session as a single turn. */
+  sendReaderText(text, turnComplete = true) {
+    if (!this._readerBridge) throw new Error('reader session not open');
+    this._readerBridge.sendText(text, turnComplete);
+  }
+
+  /** True only when the reader session is connected and ready. */
+  get readerReady() {
+    return !!(this._readerBridge && this._readerBridge.isReady && this._readerBridge.isActive);
+  }
+
+  /** Refresh the reader session (used before the ~9-min Live cap). */
+  async refreshReaderSession() {
+    try { if (this._readerBridge) this._readerBridge.disconnect(); } catch (_) {}
+    this._readerBridge = null;
+    return this.ensureReaderSession();
+  }
+
+  /** Close ONLY the reader session — never touches the conversation session. */
+  closeReaderSession() {
+    if (this._readerBridge) {
+      try { this._readerBridge.disconnect(); } catch (_) {}
+      this._readerBridge = null;
+      console.log('[GeminiLive] Tool-less reader session closed (conversation session untouched).');
+    }
+  }
+
   /**
    * Disconnects the WebSocket bridge and cleans up associated ping intervals.
    * Ensures the connection is fully terminated.
    */
   disconnect() {
+    // Tear down the reader session too, if any, so it never lingers after the
+    // main conversation session closes.
+    try { this.closeReaderSession(); } catch (_) {}
     this._userClosed = true; // intentional close — suppress auto-reconnect
     this.isActive = false;
     this.isReady = false;
@@ -1206,14 +1598,21 @@ export class GeminiLiveSessionManager {
     }
 
     const envKeySlug = botName.toUpperCase().replace(/[\s-]+/g, '_');
-    const apiKey = process.env[`GEMINI_API_KEY_${envKeySlug}`] || process.env.GEMINI_API_KEY;
+    // Resolve an ORDERED list of Gemini Live keys (unlimited/free-tier preferred
+    // first via KAI_LIVE_PREFER_UNLIMITED). The bridge rotates through them on a
+    // 1011/billing/429 close so a depleted paid key no longer silences voice.
+    const keyList = resolveLiveKeyList(botName);
+    const apiKey = keyList[0];
     if (!apiKey) {
-      console.warn(`[GeminiLive] No GEMINI_API_KEY_${envKeySlug} or GEMINI_API_KEY — falling back to Groq pipeline`);
+      console.warn(`[GeminiLive] No GEMINI_API_KEY_${envKeySlug} / GEMINI_API_KEY / GEMINI_LIVE_KEYS — falling back to Groq pipeline`);
       return null;
+    }
+    if (keyList.length > 1) {
+      console.log('[GeminiLive] ' + botName + ' has ' + keyList.length + ' Live key(s) available for billing/429 failover (unlimited-preferred).');
     }
 
     const connectOptions = { botName, ...options };
-    const bridge = new GeminiLiveBridge(apiKey);
+    const bridge = new GeminiLiveBridge(keyList);
     try {
       await bridge.connect(systemInstruction, userName, connectOptions);
     } catch (e) {
@@ -1260,6 +1659,15 @@ export class GeminiLiveSessionManager {
           bridge.sendToolResponse('consult_codex', result || "The Codex has no section matching that query.", fn.id);
         } catch (e) {
           bridge.sendToolResponse('consult_codex', `Codex lookup failed: ${e.message}`, fn.id);
+        }
+      } else if (fn.name === 'recent_updates') {
+        console.log(`[${botName}/Live] recent_updates (top of CHANGELOG, newest-first)`);
+        try {
+          const n = Number(args.n) > 0 ? Number(args.n) : 5;
+          const text = formatRecentUpdates(n);
+          bridge.sendToolResponse('recent_updates', text || "No changelog entries found.", fn.id);
+        } catch (e) {
+          bridge.sendToolResponse('recent_updates', `Recent-updates lookup failed: ${e.message}`, fn.id);
         }
       } else if (fn.name === 'codex_search') {
         console.log(`[${botName}/Live] EXACT Codex search for: ${query}`);
@@ -1436,6 +1844,22 @@ export class GeminiLiveSessionManager {
           bridge.sendToolResponse('read_codex_section', `Codex read failed: ${e.message}`, fn.id);
         }
       } else if (fn.name === 'narrate') {
+        // IN-PROGRESS GUARD (anti-loop): during a Live read, runLiveRead feeds each
+        // book section to the model as a turn. Because the narrate tool stays
+        // declared, the model often RE-CALLS narrate itself (generic source=text,
+        // 'that passage') — which would reload the sandbox and start a NESTED read
+        // that hijacks the original 137-section book read. If a read is ALREADY
+        // running, ignore this narrate entirely: do NOT reload the sandbox, do NOT
+        // start a new/nested read. The original read keeps going untouched; the
+        // model's spurious call becomes a no-op so it just continues speaking.
+        // (This does NOT block the FIRST narrate that STARTS a read — at that point
+        // _ttsReadState is null/not-running — nor pause/resume/keep-going, which
+        // run through their own resume_reading / barge-in handlers, not narrate.)
+        if (bridge._ttsReadState && bridge._ttsReadState.running) {
+          console.log('[' + botName + '/Live] Narrate ignored - a read is already in progress (anti-loop guard). Not reloading sandbox / not starting a nested read.');
+          bridge.sendToolResponse('narrate', 'A read is already in progress. Keep reading the current text aloud; do not call any tools.', fn.id);
+          return;
+        }
         // CONTEXT SANDBOX (Stage 3): load a big body of text, chunk it, and let
         // Leo read it section-by-section, auto-laddering to the next part each
         // time he finishes — far more than a single context window can hold.
@@ -1499,8 +1923,54 @@ export class GeminiLiveSessionManager {
           }
         } catch (e) { bigText = ''; }
 
+        // SMART INTENT ROUTING + CONFIRM. Classify the text by SIZE (context-sandbox
+        // owns the thresholds + the spoken confirm string — keeps the heavy template
+        // logic out of this core-safe file). SMALL -> read directly; LARGE -> chunk +
+        // sequential read; HUGE -> CONFIRM (word-for-word vs summary) UNLESS the model
+        // passed mode='full' (user already said "word for word") — then read it all;
+        // mode='summary' -> hand back the text for a short key-points summary instead.
+        const _reqMode = String(args.mode || '').trim().toLowerCase(); // 'full' | 'summary' | ''
+        let _intent = null;
+        try {
+          const csi = await import('./context-sandbox.mjs');
+          const _engine = String(process.env.LEO_READING_ENGINE || 'edge').toLowerCase();
+          _intent = csi.classifyReadIntent(bigText, { wordForWord: _reqMode === 'full', live: _engine === 'live' });
+          // Stash the source text on the bridge so follow-up Q&A can search the SOURCE
+          // doc (not just the spoken cache). Best-effort.
+          bridge._lastReadSource = { title, text: bigText, source };
+          if (_reqMode !== 'full' && _reqMode !== 'summary' && _intent && _intent.needsConfirm) {
+            // VERY LARGE and the user did NOT already ask for it in full — ASK first.
+            const prompt = csi.confirmPrompt({ estMinutes: _intent.estMinutes, title });
+            bridge.sendToolResponse('narrate',
+              `That text is very large (about ${_intent.estMinutes} minute(s) read, ${_intent.sections} parts). Ask the user EXACTLY this, in your own voice, then STOP and wait for their answer — do NOT start reading yet: "${prompt}" When they answer, call narrate again with the SAME source and mode='full' (read it all word for word) or mode='summary' (just the key points).`,
+              fn.id);
+            return;
+          }
+          if (_reqMode === 'summary') {
+            // SUMMARY path: don't read it all — hand the text back for a SHORT spoken
+            // key-points summary in Leo's own voice (this is the one place he speaks
+            // FROM the text rather than reading it verbatim).
+            const cap = 8000; // enough context for a key-points summary
+            const body = bigText.length > cap ? (bigText.slice(0, cap) + ' …') : bigText;
+            bridge.sendToolResponse('narrate',
+              `The user asked for a SUMMARY of "${title}" (not a full read). In your own voice, give a SHORT spoken summary — the few KEY points only, a handful of sentences, natural and conversational. Do NOT read it word for word. Here is the text to summarize:\n\n${body}`,
+              fn.id);
+            return;
+          }
+        } catch (_) { /* intent classification is best-effort; fall through to a normal read */ }
+
         if (!bigText || bigText.trim().length < 1) {
           bridge.sendToolResponse('narrate', `There was nothing to read for that ${source || 'source'} request.`, fn.id);
+        } else if (_intent && _intent.mode === 'small') {
+          // SMALL — fits one ~1-min turn. Read it DIRECTLY in this reply (no sandbox,
+          // no chunk seams, no "loading N parts" framing). The conversational/Live path
+          // speaks it in one turn.
+          const kindNoteS = source === 'memory'
+            ? `(This is from YOUR OWN INGESTED KNOWLEDGE — say "from what I've studied", not "the Codex".)`
+            : (source.startsWith('codex') ? `(This is from the KAI Codex.)` : ``);
+          bridge.sendToolResponse('narrate',
+            `Read this aloud now, word for word, in your own voice — it is short, just read it straight through in one go. ${kindNoteS}\n\n${bigText}`,
+            fn.id);
         } else if (typeof bridge.loadSandbox !== 'function') {
           bridge.sendToolResponse('narrate', 'The context sandbox is not wired up in this session.', fn.id);
         } else {
@@ -1530,6 +2000,34 @@ export class GeminiLiveSessionManager {
           } catch (e) {
             bridge.sendToolResponse('narrate', `Sandbox load failed: ${e.message}`, fn.id);
           }
+        }
+      } else if (fn.name === 'ask_about_reading') {
+        // FOLLOW-UP Q&A about what was just read: search the spoken-section cache
+        // FIRST, then the source doc, and hand back the best passage so Leo answers
+        // from the REAL text. All search logic lives in context-sandbox.mjs.
+        const q = String(args.query || query || '').trim();
+        try {
+          const csq = await import('./context-sandbox.mjs');
+          const sid = bridge._sandboxSessionId || bridge._ttsReadState?.sessionId
+            || bridge._sandboxSessionIdForCache || bridge._readSessionId || '';
+          const srcText = bridge._lastReadSource?.text || '';
+          const res = csq.answerFollowUp(sid || (bridge._lastReadSource ? 'leo-session' : ''), q, { sourceText: srcText, limit: 3 });
+          if (res && res.matches && res.matches.length) {
+            const where = res.from === 'cache' ? 'from the parts you just read' : 'from the source document';
+            const blocks = res.matches.map((m, i) => {
+              const tag = (m.section ? ('section ' + m.section) : ('passage ' + (i + 1)));
+              return '[' + tag + '] ' + (m.snippet || m.text || '');
+            }).join('\n\n');
+            bridge.sendToolResponse('ask_about_reading',
+              `Here is what the reading actually says about that (${where}). Answer the user naturally in your own voice from THIS text — quote/paraphrase it, do NOT invent:\n\n${blocks}`,
+              fn.id);
+          } else {
+            bridge.sendToolResponse('ask_about_reading',
+              `Nothing in what you have read so far clearly matches "${q}". Tell the user you don't see that part yet — offer to keep reading or to search it a different way.`,
+              fn.id);
+          }
+        } catch (e) {
+          bridge.sendToolResponse('ask_about_reading', `Could not search the reading: ${e.message}`, fn.id);
         }
       } else if (fn.name === 'resume_reading') {
         try {

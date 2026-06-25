@@ -35,6 +35,7 @@ param(
     [switch]$NoStreamingSave,
     [switch]$NoSupervisor,
     [switch]$NoOllama,
+    [switch]$NoPipeline,
     [switch]$CheckOnly,
     [int]$EngineTimeoutSec = 300
 )
@@ -101,10 +102,17 @@ if ($NoOllama) {
     Write-Host "[1/4] Ollama already serving on :11434." -ForegroundColor Green
 } else {
     if (Get-Command ollama -ErrorAction SilentlyContinue) {
-        Write-Host "[1/4] Starting Ollama (ollama serve)..." -ForegroundColor Yellow
-        Start-Process -FilePath "ollama" -ArgumentList "serve" -WindowStyle Hidden | Out-Null
+        Write-Host "[1/4] Starting Ollama (ollama serve, throttled)..." -ForegroundColor Yellow
+        # Keep local inference from pegging the box: load ONE model at a time, no parallel
+        # inference, and UNLOAD models ~30s after idle so they don't sit resident in RAM
+        # (Owner: KAI/Ollama spiking CPU + holding GBs of RAM, starving the engine outside 3am).
+        $env:OLLAMA_MAX_LOADED_MODELS = '1'
+        $env:OLLAMA_NUM_PARALLEL      = '1'
+        $env:OLLAMA_KEEP_ALIVE        = '30s'
+        $oll = Start-Process -FilePath "ollama" -ArgumentList "serve" -WindowStyle Hidden -PassThru
+        try { if ($oll) { $oll.PriorityClass = [System.Diagnostics.ProcessPriorityClass]::BelowNormal } } catch {}
         for ($i = 0; $i -lt 30 -and -not (Test-Port 11434); $i++) { Start-Sleep -Seconds 1 }
-        if (Test-Port 11434) { Write-Host "[1/4] Ollama up on :11434." -ForegroundColor Green }
+        if (Test-Port 11434) { Write-Host "[1/4] Ollama up on :11434 (1 model, no-parallel, 30s keep-alive, BelowNormal)." -ForegroundColor Green }
         else { Write-Host "[1/4] Ollama did not answer in 30s - continuing. KAI is native-first; Ollama is only a fallback." -ForegroundColor DarkYellow }
     } else {
         Write-Host "[1/4] Ollama not installed - skipping. KAI answers via native BitNet; Ollama is only a fallback." -ForegroundColor DarkYellow
@@ -165,6 +173,24 @@ if ($NoSupervisor) {
     Write-Host "[3/4] Starting the RAM-ceiling watchdog (kai_supervisor.py)..." -ForegroundColor Yellow
     Start-Process -FilePath "python" -ArgumentList "`"$Root\kai_supervisor.py`"" -WindowStyle Minimized | Out-Null
     Write-Host "[3/4] Supervisor up - recycles the engine above 9GB and self-heals dead services." -ForegroundColor Green
+}
+
+# Stage 3.5: Overnight learning pipeline keeper. Runs overnight_pipeline.py, which fires
+# KAI's 3am ingest -> weave -> train and writes the lockfile + completion flag the Oracle
+# overnight orchestrator coordinates with. Start-KAI must launch it so the 3am cycle can
+# actually trigger. Stays hidden + BelowNormal so it never fights the live fleet.
+if ($NoPipeline) {
+    Write-Host "[3.5/4] Overnight pipeline keeper: skipped (-NoPipeline)." -ForegroundColor DarkGray
+} else {
+    $pipeKeeper = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+        Where-Object { $_.CommandLine -like '*keep_pipeline_alive*' -or $_.CommandLine -like '*overnight_pipeline*' }
+    if ($pipeKeeper) {
+        Write-Host "[3.5/4] Overnight pipeline keeper already running." -ForegroundColor Green
+    } else {
+        Write-Host "[3.5/4] Starting overnight pipeline keeper (keep_pipeline_alive.ps1) for KAI's 3am ingest/weave/train..." -ForegroundColor Yellow
+        Start-Process -FilePath "powershell" -ArgumentList "-NoProfile","-ExecutionPolicy","Bypass","-File","`"$Root\keep_pipeline_alive.ps1`"" -WindowStyle Hidden | Out-Null
+        Write-Host "[3.5/4] Pipeline keeper up (hidden) - overnight_pipeline.py will trigger at 3am." -ForegroundColor Green
+    }
 }
 
 # Stage 4: Fleet - engine is up, so delegate with -NoStartKai (this BLOCKS, by design).

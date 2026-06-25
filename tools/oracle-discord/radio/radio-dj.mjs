@@ -64,8 +64,30 @@ export function parseRadioIntent(text) {
     return { intent: 'skip' };
   }
 
-  // Stop / Pause
-  if (/\b(stop (the )?(music|radio|song)|pause|turn (it|the music) off|cut (it|the music))\b/.test(t)) {
+  // Resume / Unpause (check BEFORE pause so "resume"/"unpause" don't fall into pause)
+  if (/\b(resume|unpause|un-pause|keep (it )?going|play( it)? again|continue (the )?(music|song))\b/.test(t)) {
+    return { intent: 'resume' };
+  }
+
+  // Pause (hold the current track — NOT a full stop/teardown)
+  if (/\b(pause|hold (it|on|the music)|freeze (it|the music))\b/.test(t)) {
+    return { intent: 'pause' };
+  }
+
+  // Volume — "turn it up", "volume to 50", "louder", "quieter"
+  const volMatch = t.match(/\b(?:set\s+)?(?:the\s+)?volume\s+(?:to\s+)?(\d{1,3})\b/);
+  if (volMatch) {
+    return { intent: 'volume', level: Math.max(0, Math.min(100, parseInt(volMatch[1], 10))) / 100 };
+  }
+  if (/\b(turn it up|louder|crank it|volume up|pump it up)\b/.test(t)) {
+    return { intent: 'volume', delta: +0.2 };
+  }
+  if (/\b(turn it down|quieter|lower the volume|volume down|softer)\b/.test(t)) {
+    return { intent: 'volume', delta: -0.2 };
+  }
+
+  // Stop (full stop / teardown)
+  if (/\b(stop (the )?(music|radio|song)|turn (it|the music) off|cut (it|the music)|kill (the )?(music|radio))\b/.test(t)) {
     return { intent: 'stop' };
   }
 
@@ -274,6 +296,31 @@ export async function handleRadioVoiceIntent(text, speakFn, requestedBy = 'someo
       stopDJ();
       return true;
     }
+    case 'pause': {
+      if (!isOwner) { await safeSpeak(`only ryan or taz can pause.`); return true; }
+      djState.paused = true;
+      djState.audioPlayer?.pause();
+      await _djAcknowledge(`paused. say resume when you want it back.`, safeSpeak);
+      return true;
+    }
+    case 'resume': {
+      if (!isOwner) { await safeSpeak(`only ryan or taz can do that.`); return true; }
+      djState.paused = false;
+      djState.audioPlayer?.unpause();
+      await _djAcknowledge(`back on.`, safeSpeak);
+      return true;
+    }
+    case 'volume': {
+      if (!isOwner) { await safeSpeak(`only ryan or taz can change the volume.`); return true; }
+      let v = djState.baseVolume ?? 1.0;
+      if (typeof intent.level === 'number') v = intent.level;
+      else if (typeof intent.delta === 'number') v = v + intent.delta;
+      v = Math.max(0, Math.min(1.5, v));
+      djState.baseVolume = v;
+      try { djState.currentResource?.volume?.setVolume(v); } catch (_) {}
+      await _djAcknowledge(`volume at ${Math.round(v * 100)}%.`, safeSpeak);
+      return true;
+    }
     case 'nowplaying': {
       await safeSpeak(getStatus());
       return true;
@@ -373,10 +420,15 @@ export async function handleRadioVoiceIntent(text, speakFn, requestedBy = 'someo
   return false;
 }
 
-const REQUEST_WINDOW_BEFORE_END_MS = 40_000; // open window 40s before song ends
-const POLL_DURATION_SECONDS        = 20;      // Discord poll lives 20s
+// ── Tunable knobs (env-overridable) ───────────────────────────────────────────
+const REQUEST_WINDOW_BEFORE_END_MS = Number(process.env.RADIO_REQUEST_WINDOW_MS) || 40_000; // open window 40s before song ends
+const POLL_DURATION_SECONDS        = Number(process.env.RADIO_POLL_SECONDS)      || 20;      // Discord poll lives 20s
 const DIM_DELAY_MS                 = 800;     // brief pause after dimming before speech
 const MIN_SONG_DURATION_FOR_WINDOW = 60;      // don't open window on songs < 60s
+// RADIO_DEFAULT_PLAYLIST: which playlist boots the station (default|hype|chill|late-night)
+const DEFAULT_PLAYLIST             = process.env.RADIO_DEFAULT_PLAYLIST || 'default';
+// RADIO_RECENT_MEMORY: how many recent tracks the no-repeat guard remembers
+const RECENT_MEMORY                = Number(process.env.RADIO_RECENT_MEMORY) || 15;
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let djState = {
@@ -407,6 +459,8 @@ let djState = {
   socialMessages:    [],      // buffer for ai-social-chat events
   recentlyPlayed:    [],      // rolling "title|artist" keys — auto-picker skips these (NO-REPEAT)
   artistWeights:     {},      // artist(lowercase) → request count — biases auto-pick toward what the room asks for
+  baseVolume:        1.0,     // user-controlled station volume (0..1) — applied on top of fades
+  paused:            false,   // true while the user has paused the track
 };
 
 // ── Exported API ──────────────────────────────────────────────────────────────
@@ -423,10 +477,11 @@ export async function startDJ(voiceChannel, textChannel, guild, botName = "Groq"
   
   djState.botName = botName;
 
+  djState.playlistName = DEFAULT_PLAYLIST;
   // Restore previous session state if available
   const saved = _loadState();
   if (saved) {
-    djState.playlistName  = saved.playlistName  || 'default';
+    djState.playlistName  = saved.playlistName  || DEFAULT_PLAYLIST;
     djState.playlistIndex = saved.playlistIndex || 0;
     djState.songQueue     = saved.songQueue     || [];
     // We NO LONGER unshift the last song, as it causes duplicates on restart.
@@ -500,6 +555,7 @@ export function stopDJ() {
     fadeTimer: null, transitioning: false,
     pollMessage: null, textChannel: null, guild: null,
     playingTTS: false, nextAnnounced: false,
+    baseVolume: 1.0, paused: false,
   });
   console.log('[Radio] DJ mode stopped');
 }
@@ -659,7 +715,7 @@ function _pickFreshSong(list) {
   return scored[0].s;
 }
 
-async function _playNextSong(preloaded = null, preselectedSong = null) {
+async function _playNextSong(preloaded = null, preselectedSong = null, knownDuration = null) {
   if (!djState.active) return;
   if (djState.transitioning) {
     console.log(`[Radio] Transition already in progress. Ignoring duplicate call.`);
@@ -691,14 +747,18 @@ async function _playNextSong(preloaded = null, preselectedSong = null) {
   // NO-REPEAT: remember what's playing so the auto-picker skips it for the next ~15 songs.
   djState.recentlyPlayed = djState.recentlyPlayed || [];
   djState.recentlyPlayed.push(_songKey(song));
-  if (djState.recentlyPlayed.length > 15) djState.recentlyPlayed.shift();
+  while (djState.recentlyPlayed.length > RECENT_MEMORY) djState.recentlyPlayed.shift();
 
   // Build search query
   const query = `${song.title} ${song.artist || ''}`.trim();
 
-  // If preloaded stream matches this song, skip the yt-dlp meta + stream calls
-  // (saves ~5-10s of sequential yt-dlp latency)
-  let duration = 240;
+  // DURATION RESOLUTION — this is the fix for the "songs skip themselves" bug.
+  // Previously: when a song was preloaded (every song after the first), duration was
+  // hardcoded to 240s, so the fade-out/stop timer chopped EVERY track at ~3:50 no
+  // matter its real length. Now _onSongEnd resolves the real duration during preload
+  // and passes it in via knownDuration; we only fall back to a meta lookup or a safe
+  // default when we genuinely don't know it.
+  let duration = (knownDuration && knownDuration >= 30) ? knownDuration : 240;
   if (!preloaded) {
     const meta = await resolveSongMeta(query);
     if (!meta) {
@@ -933,18 +993,16 @@ async function _onSongEnd() {
   if (!nextSong && djState.playlistMode) {
     const list = getPlaylist(djState.playlistName);
     if (list.length > 0) {
-      // Pick next in sequence or random, but DO NOT pick a random one again later
-      let index = djState.playlistIndex % list.length;
-      nextSong = list[index];
-      
-      // Secondary duplicate guard for playlist sequence
+      // FRESH PICK — the old code did `list[playlistIndex % list.length]` against the
+      // ORIGINAL ordered playlist, so it cycled the same fixed list in the same order
+      // forever (this is the "replays the same songs for months" bug). Use the
+      // no-repeat + artist-weighted picker so the station stays varied.
+      nextSong = _pickFreshSong(list);
+      // Extra guard: never the track we just played.
       if (prev && nextSong.title === prev.title && nextSong.artist === prev.artist) {
-        index = (djState.playlistIndex + 1) % list.length;
-        nextSong = list[index];
-        djState.playlistIndex++;
+        nextSong = _pickFreshSong(list);
       }
-      
-      djState.playlistIndex++; 
+      djState.playlistIndex++; // kept only for save-state continuity
     }
   }
 
@@ -969,23 +1027,31 @@ async function _onSongEnd() {
     }
   }
 
-  // Pre-launch the yt-dlp stream NOW — it runs while Leo talks (saves 5-10s latency)
+  // Pre-launch the yt-dlp stream NOW — it runs while Leo talks (saves 5-10s latency).
+  // Resolve the REAL duration in parallel so the fade/stop timer matches the actual
+  // track length instead of a hardcoded 240s (the self-skip fix).
   let preloaded = null;
+  let nextDuration = null;
   if (nextSong) {
     console.log(`[Radio] Pre-loading next song: ${nextSong.title}`);
     const q = `${nextSong.title} ${nextSong.artist || ''}`.trim();
     preloaded = streamSong(q);
+    const meta = await resolveSongMeta(q).catch(() => null);
+    if (meta?.duration && meta.duration >= 30) nextDuration = meta.duration;
   }
 
   // Skip transition talk if user explicitly skipped — they already heard "skipping."
+  // The transition line already names the next song ("that was X, next up Y"), so
+  // mark it announced to stop _playNextSong from speaking a SECOND redundant intro.
   if (!wasSkip) {
     const prev = djState.currentSong;
     const djLine = _buildTransitionLine(prev, nextSong);
     await _djSpeak(djLine);
+    djState.nextAnnounced = true;
   }
 
   djState.transitioning = false;
-  await _playNextSong(preloaded, nextSong);
+  await _playNextSong(preloaded, nextSong, nextDuration);
 }
 
 function _buildTransitionLine(prev, next) {
@@ -1024,25 +1090,27 @@ function _sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 async function _fadeOut() {
   const STEPS = 20, DURATION_MS = 4_000;
   const stepMs = DURATION_MS / STEPS;
+  const ceil = djState.baseVolume ?? 1.0;
   for (let i = STEPS - 1; i >= 0; i--) {
-    if (!djState.active || djState.playingTTS || djState.transitioning) return;
-    try { djState.currentResource?.volume?.setVolume(i / STEPS); } catch (_) {}
+    if (!djState.active || djState.playingTTS || djState.transitioning || djState.paused) return;
+    try { djState.currentResource?.volume?.setVolume((i / STEPS) * ceil); } catch (_) {}
     await _sleep(stepMs);
   }
   // Once silent, stop the player — triggers _onSongEnd via stateChange
-  if (djState.active && !djState.playingTTS && !djState.transitioning) {
+  if (djState.active && !djState.playingTTS && !djState.transitioning && !djState.paused) {
     console.log('[Radio] Fade-out complete — stopping stream');
     djState.audioPlayer?.stop();
   }
 }
 
-/** Ramp current music resource from 0 → 1.0 over ~2s after song starts. */
+/** Ramp current music resource from 0 → baseVolume over ~2s after song starts. */
 async function _fadeIn() {
   const STEPS = 20, DURATION_MS = 2_000;
   const stepMs = DURATION_MS / STEPS;
+  const ceil = djState.baseVolume ?? 1.0;
   for (let i = 1; i <= STEPS; i++) {
     if (!djState.active || djState.playingTTS) return;
-    try { djState.currentResource?.volume?.setVolume(i / STEPS); } catch (_) {}
+    try { djState.currentResource?.volume?.setVolume((i / STEPS) * ceil); } catch (_) {}
     await _sleep(stepMs);
   }
 }

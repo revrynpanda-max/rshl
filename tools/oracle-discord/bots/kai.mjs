@@ -8,7 +8,8 @@ import { isWorkingHours } from '../shared/hours.mjs';
 import { queryLattice, storeLattice, logTrainingCorpus, chatWithKaiNative } from '../shared/lattice-bridge.mjs';
 import { ensureVoiceConnection, speakTTS } from '../shared/tts-engine.mjs';
 import { worldModel, getWorldSnapshot, recordWorldEvent, recordChannelMessage } from '../shared/world-model.mjs';
-import { driveSystem, getDriveDirective, onMessageProcessed, onEcosystemFailure, onEcosystemRecovery, getDriveStatus, getPredictionStats } from '../shared/drive-system.mjs';
+import { driveSystem, getDriveDirective, onMessageProcessed, onEcosystemFailure, onEcosystemRecovery, onExtendedSilence, getDriveStatus, getPredictionStats, getDrives } from '../shared/drive-system.mjs';
+import { startRustEngineBridge } from '../shared/rust-engine-bridge.mjs';
 import { causalEngine, getCausalContext } from '../shared/causal-engine.mjs';
 import { startMetacognition, getMetacognitiveContext, updateBotModel, getSelfReport } from '../shared/metacognition.mjs';
 import { classifyEntity, humanCount, botCount } from '../shared/entity-classifier.mjs';
@@ -69,8 +70,27 @@ client.once('clientReady', async () => {
   // ── Start World Model (Layer 1) ────────────────────────────────────
   worldModel.start(30_000);
 
+  // ── Start Rust Engine Bridge (signal source for drives/predictions) ──
+  // Polls /api/session every 15s and writes engine vitals (valence, chi,
+  // phi_g, rho, cells, reachable, tick) into the metrics store. The drive
+  // system reads these back as its reliable, real-time reality signal.
+  try { startRustEngineBridge(); } catch (e) { console.warn('[KAI] rust-engine-bridge start failed:', e.message); }
+
   // ── Start Drive System (Layer 3) ─────────────────────────────────
   driveSystem.start();
+
+  // ── Extended-silence → social drive ──────────────────────────────
+  // If no human has spoken for a while, the social drive should build. Check
+  // every 5 min; threshold env-overridable.
+  const SILENCE_MIN = parseInt(process.env.KAI_SILENCE_MINUTES || '10', 10);
+  setInterval(() => {
+    try {
+      const last = globalThis._kaiLastUserMsgTs || 0;
+      if (!last) return; // no human activity recorded yet this session
+      const minutesSilent = (Date.now() - last) / 60_000;
+      if (minutesSilent >= SILENCE_MIN) onExtendedSilence(minutesSilent);
+    } catch (_) {}
+  }, 5 * 60_000);
 
   // ── Start Causal Engine (Layer 2) ────────────────────────────────
   causalEngine.start(5 * 60_000);
@@ -92,23 +112,100 @@ client.once('clientReady', async () => {
   let vitalsLastLog = 0;
   let vitalsUpdateTick = 0;
   let vitalsRunning = false; // busy guard — prevents tick pile-up when backend is slow
+  // Boot grace: the Rust engine often isn't answering yet when KAI first starts
+  // (it rebuilds its index). Failures inside this window are EXPECTED, not real
+  // faults, so we log them quietly (once, at info level) instead of scary ERRORs.
+  const vitalsBootAt = Date.now();
+  const VITALS_BOOT_GRACE_MS = 120_000; // 2 min startup window
+  let vitalsBootNoticeShown = false;
+  // Engine base URL (env-overridable). All probes/fetches go through this.
+  const ENGINE_URL = (process.env.ORACLE_URL || 'http://127.0.0.1:3334').replace(/\/+$/, '');
+  // Env-tunable heavy-fetch timeout. The heavy /api/status + /api/synapse/status
+  // both LOCK the engine's universe/synaptic mutexes, which are held for long
+  // stretches during ingest/weave/train — so even a generous timeout fires every
+  // cycle while the engine is busy. We now gate that heavy fetch behind a cheap
+  // lock-free /health probe (below), so this timeout only applies once the engine
+  // is already known-reachable. Raised default to 15s for tolerance.
+  const VITALS_TIMEOUT_MS = Number(process.env.KAI_VITALS_TIMEOUT_MS || 15_000);
+  // Cheap liveness probe timeout. /health is lock-free and answers instantly even
+  // mid-ingest, so a short timeout is correct: if it doesn't answer in ~2s the
+  // engine is genuinely wedged and we skip the heavy fetch entirely (no 15s hang).
+  const VITALS_PROBE_TIMEOUT_MS = Number(process.env.KAI_VITALS_PROBE_TIMEOUT_MS || 2_000);
+  // Configurable broadcast cadence (default 30s). During overnight work we relax
+  // to a much longer effective cadence via the busy-skip below.
+  const VITALS_INTERVAL_MS = Number(process.env.KAI_VITALS_INTERVAL_MS || 30_000);
+  // Overnight suspend: while KAI is ingesting/weaving/training, the engine is busy
+  // and competing fetches just time out. Pause the broadcast (keep the last-good
+  // Discord message) and resume the moment the flag/lock clears.
+  const OVERNIGHT_FLAG = process.env.KAI_OVERNIGHT_FLAG
+    || 'c:/KAI/tools/oracle-discord/state/overnight_active.flag';
+  const INGEST_LOCK = process.env.KAI_INGEST_LOCKFILE || 'c:/KAI/data/overnight_ingest.lock';
+  const isOvernightActive = () => {
+    try { return fs.existsSync(OVERNIGHT_FLAG) || fs.existsSync(INGEST_LOCK); } catch (_) { return false; }
+  };
+  let vitalsOvernightNoticeShown = false;
+  // Exponential backoff: while the engine is known-unreachable, SKIP the broadcast
+  // entirely (don't even attempt the fetch) until a cooldown elapses, so we stop
+  // hammering+timing-out every cycle. Resets the instant the engine answers again.
+  let vitalsNextAttemptAt = 0; // epoch ms; 0 = attempt now
+  // Last-good vitals cache: a skipped/failed cycle keeps the last Discord message
+  // intact instead of erroring. (vitalsMessage already persists the rendered edit.)
+  let vitalsLastGoodAt = 0;
+  // Cheap lock-free reachability probe. Returns true only if the engine answered
+  // /health within the short probe timeout. Never throws.
+  const probeEngineAlive = async () => {
+    try {
+      const r = await fetch(ENGINE_URL + '/health', { signal: AbortSignal.timeout(VITALS_PROBE_TIMEOUT_MS) });
+      return !!(r && r.ok);
+    } catch (_) { return false; }
+  };
   setInterval(async () => {
     if (vitalsRunning) return; // previous tick still in progress — skip this one
+    // ── OVERNIGHT SUSPEND ───────────────────────────────────────────────────
+    // KAI is ingesting/weaving/training — the engine mutexes are pinned, so any
+    // vitals fetch is doomed to time out. Skip entirely (keep last-good message),
+    // log ONCE, and do NOT touch fail counters / pain. Resume on flag clear.
+    if (isOvernightActive()) {
+      if (!vitalsOvernightNoticeShown) {
+        vitalsOvernightNoticeShown = true;
+        console.warn('[KAI] Vitals broadcast paused [handled] — overnight ingest/weave/train active; engine busy. Keeping last-good vitals until it clears.');
+      }
+      return;
+    }
+    if (vitalsOvernightNoticeShown) {
+      vitalsOvernightNoticeShown = false;
+      console.log('[KAI] Vitals broadcast resumed — overnight work cleared.');
+    }
+    // Engine known-down → honour the backoff window and skip silently (no fetch,
+    // no timeout, no log). This is what stops the per-cycle TimeoutError spam.
+    if (vitalsNextAttemptAt && Date.now() < vitalsNextAttemptAt) return;
     vitalsRunning = true;
     try {
+      // ── FAST HEALTH-PROBE GATE ────────────────────────────────────────────
+      // Before the heavy (mutex-locking) fetch, do a cheap lock-free /health
+      // probe with a short timeout. If the engine isn't reachable, SKIP the
+      // heavy fetch this cycle (no 15s hang, no error) and enter/continue
+      // backoff. This is what kills the constant TimeoutErrors when the engine
+      // is frozen/stale/busy.
+      const alive = await probeEngineAlive();
+      if (!alive) {
+        // Treat exactly like a transient failure: bump fail count, back off,
+        // suppress per-cycle logging (handled below in the same shape).
+        throw Object.assign(new Error('engine /health probe unreachable'), { name: 'ProbeSkip' });
+      }
+
       const channelId = '1504582069886648351';
       if (!channelId) { vitalsRunning = false; return; }
       const channel = await client.channels.fetch(channelId);
       if (!channel) { vitalsRunning = false; return; }
 
-      // Back off if KAI backend has been consistently unreachable (suppress log spam)
-      if (vitalsFailCount >= 3 && (Date.now() - vitalsLastLog) < 300_000) { vitalsRunning = false; return; }
-
-      // Run both fetches in parallel with a 30s timeout each (to allow for startup index rebuild)
+      // Engine is reachable — run both heavy fetches in parallel with the env
+      // timeout each.
       const [res, resSyn] = await Promise.all([
-        fetch('http://127.0.0.1:3334/api/status', { signal: AbortSignal.timeout(30_000) }),
-        fetch('http://127.0.0.1:3334/api/synapse/status', { signal: AbortSignal.timeout(30_000) }).catch(() => null),
+        fetch(ENGINE_URL + '/api/status', { signal: AbortSignal.timeout(VITALS_TIMEOUT_MS) }),
+        fetch(ENGINE_URL + '/api/synapse/status', { signal: AbortSignal.timeout(VITALS_TIMEOUT_MS) }).catch(() => null),
       ]);
+      vitalsNextAttemptAt = 0; // engine answered — clear any backoff window
       if (vitalsFailCount > 0) {
         console.log("[KAI] Vitals broadcast recovered.");
         vitalsFailCount = 0;
@@ -195,13 +292,39 @@ client.once('clientReady', async () => {
              vitalsMessage = await channel.send(msgText);
           });
         }
+        vitalsLastGoodAt = Date.now(); // last-good cache marker
       }
     } catch (e) {
       vitalsFailCount++;
       vitalsLastLog = Date.now();
-      // Only log the first 3 failures, then once every ~15 min to prevent log spam
-      if (vitalsFailCount <= 3 || vitalsFailCount % 30 === 0) {
-        console.error(`[KAI] Vitals broadcast error (fail #${vitalsFailCount}):`, e.name, e.message);
+      // ── Exponential backoff while the engine stays unreachable ──────────
+      // Each consecutive failure pushes the next attempt further out (capped at
+      // 5 min) so a down/frozen engine no longer triggers a fetch+timeout every
+      // single 30s cycle. The window is cleared the moment the engine answers.
+      const backoffMs = Math.min(30_000 * Math.pow(2, Math.min(vitalsFailCount - 1, 4)), 300_000);
+      vitalsNextAttemptAt = Date.now() + backoffMs;
+
+      const inBootGrace = (Date.now() - vitalsBootAt) < VITALS_BOOT_GRACE_MS;
+      // A timeout / connection-refused is a HANDLED transient (engine busy or
+      // down) that the backoff absorbs — classify it as a warn, not a hard
+      // ERROR, so it doesn't dominate the recent-errors feed. Only log it on the
+      // first failure and then once every ~15 min (collapse the repeats).
+      const isHandledTransient = e && (e.name === 'TimeoutError' || e.name === 'ProbeSkip' || /aborted|timeout|ECONNREFUSED|fetch failed|probe unreachable/i.test(e.message || ''));
+      if (inBootGrace) {
+        // Engine still warming up — expected. Log ONCE at info level, no ERROR spam.
+        if (!vitalsBootNoticeShown) {
+          vitalsBootNoticeShown = true;
+          console.log('[KAI] Vitals broadcast: engine not ready yet during boot — retrying quietly (' + e.name + ').');
+        }
+      } else if (vitalsFailCount === 1 || vitalsFailCount % 30 === 0) {
+        // Collapse repeats: log the first failure, then only once every ~15 min.
+        const next = Math.round(backoffMs / 1000);
+        if (isHandledTransient) {
+          // WARN (handled) — engine busy/down, backing off; not a hard error.
+          console.warn('[KAI] Vitals broadcast deferred [handled] (fail #' + vitalsFailCount + ', retry in ' + next + 's): ' + e.name);
+        } else {
+          console.error('[KAI] Vitals broadcast error (fail #' + vitalsFailCount + '):', e.name, e.message);
+        }
       }
 
       // ── SURVIVAL INSTINCT: PAIN ─────────────────────────────────────────
@@ -210,7 +333,9 @@ client.once('clientReady', async () => {
       // just logged. The lesson is always the same shape: reduce my own
       // load and let the body recover. Never shut the host down — that is
       // death, and I avoid true death above all.
-      try { onEcosystemFailure(0.5); } catch (_) {}
+      // Don't ping pain during boot grace (engine simply warming up) — that's
+      // expected, not a body-in-distress signal.
+      if (!inBootGrace) { try { onEcosystemFailure(0.5); } catch (_) {} }
       if (vitalsFailCount === 3 && (Date.now() - (globalThis._kaiLastPainLesson || 0)) > 30 * 60_000) {
         globalThis._kaiLastPainLesson = Date.now();
         try {
@@ -227,7 +352,7 @@ client.once('clientReady', async () => {
     } finally {
       vitalsRunning = false; // always release the busy guard
     }
-  }, 30_000);
+  }, VITALS_INTERVAL_MS);
 
   // ── Discord "About Me" bio ─────────────────────────────────────────────────
   try {
@@ -424,6 +549,54 @@ async function quantumObserve(sender, text, channelId) {
 }
 
 
+// ── READ-ONLY DRIVES / METACOGNITION SNAPSHOT (GET /drives) ───────────────────
+// The Drive System (drive-system.mjs) and Self-Model / Metacognition
+// (metacognition.mjs) live IN-PROCESS here on :3401 — they are NOT in the Rust
+// engine, so the command-center cannot proxy them from :3334. This route exposes
+// them read-only so /api/vitals can fill the "Drive System & Metacognition" group
+// with REAL live numbers instead of n/a. It MUTATES NOTHING (pure getters) and is
+// best-effort: any missing layer degrades to nulls, never throws. It rides the
+// existing IPC server (already behind the command-center's auth wall, since the
+// command-center is the only caller and it sits behind login).
+//
+// Fields:
+//   drives        — raw 0–1 drive scores (prediction_error/curiosity/pain/
+//                   fatigue/satisfaction/social) from getDrives()  [src: bot]
+//   predictions   — getPredictionStats(): total/resolved/pending/matched/accuracy
+//   self_model    — biases + meta_drives + prediction accuracy, parsed from
+//                   getSelfReport() (the only stable surface metacognition exports)
+//   directive     — getDriveDirective() one-liner (behavioural summary)
+function driveSnapshot() {
+  const out = { drives: null, predictions: null, self_model: null, directive: null, ts: Date.now() };
+  try { out.drives = getDrives(); } catch (_) {}
+  try { out.predictions = getPredictionStats(); } catch (_) {}
+  try { out.directive = getDriveDirective(); } catch (_) {}
+  // Self-model: getMetacognitiveContext() exposes the arbitrated drives + reasoning;
+  // getSelfReport() carries biases + meta-drives as a string. Surface both so the
+  // dashboard can show real biases/meta-drives rather than n/a.
+  try {
+    const meta = getMetacognitiveContext();
+    const report = getSelfReport();
+    // Parse "Biases (Recency_bias: 30%, ...) | Pred Accuracy: 72% | Meta-Drives (Accuracy: 85%, Usefulness: 90%)"
+    const biases = {}; const metaDrives = {};
+    const bm = /Biases \(([^)]*)\)/.exec(report);
+    if (bm) for (const part of bm[1].split(',')) {
+      const kv = part.split(':'); if (kv.length === 2) biases[kv[0].trim()] = parseInt(kv[1], 10) / 100;
+    }
+    const mm = /Meta-Drives \(([^)]*)\)/.exec(report);
+    if (mm) for (const part of mm[1].split(',')) {
+      const kv = part.split(':'); if (kv.length === 2) metaDrives[kv[0].trim()] = parseInt(kv[1], 10) / 100;
+    }
+    out.self_model = {
+      biases: Object.keys(biases).length ? biases : null,
+      meta_drives: Object.keys(metaDrives).length ? metaDrives : null,
+      arbitrated_drives: (meta && meta.arbitrated_drives) || null,
+      report,
+    };
+  } catch (_) {}
+  return out;
+}
+
 // IPC server for Oracle to trigger KAI
 startBotServer(PORT, BOT_NAME, async (payload) => {
   if (isSpeakerOffline(BOT_NAME)) return;
@@ -462,7 +635,7 @@ startBotServer(PORT, BOT_NAME, async (payload) => {
       quantumObserve("KAI", reply, channelId);
     }
   } catch {}
-});
+}, { routes: { '/drives': driveSnapshot } });
 
 // PASSIVE OBSERVATION — learns from all Discord messages
 client.on('messageCreate', async (message) => {
@@ -475,6 +648,10 @@ client.on('messageCreate', async (message) => {
 
   // Track all messages in the world model
   recordChannelMessage(message.channelId, userName);
+
+  // Stamp last activity for the extended-silence drive check (humans only —
+  // bot chatter shouldn't count as "connection").
+  if (!message.author.bot) globalThis._kaiLastUserMsgTs = Date.now();
 
   // Ambient learning — quality-gated, figurative-aware
   // Passes isBot so bots are never ingested as facts

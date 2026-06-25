@@ -1,7 +1,7 @@
 import { chatWithOpenJarvis, chatWithLattice, callGroqDirect, transcribeAudio, webSearch } from '../shared/openjarvis.mjs';
 import { logTrainingCorpus } from '../shared/lattice-bridge.mjs';
 import { ingestMessage } from '../shared/transcript-memory.mjs';
-import { ensureVoiceConnection, speakTTS, acquireVoiceLock, isSomeoneSpeaking, isHumanInVoiceChannel } from '../shared/tts-engine.mjs';
+import { ensureVoiceConnection, speakTTS, acquireVoiceLock, isSomeoneSpeaking, isHumanInVoiceChannel, getBotPlayer } from '../shared/tts-engine.mjs';
 import {
   NATIVE_LIVE_BOTS,
   initSocialLiveSession,
@@ -30,7 +30,7 @@ import {
 } from '@discordjs/voice';
 import { startDJ, stopDJ, isDJActive, handleRadioVoiceIntent, getQueue, addRequest, startPlaylist, getStatus, pushSocialMessage } from '../radio/radio-dj.mjs';
 import { getThrottlingMultiplier, shouldRunSpot, isLeoVoiceActive, isVoicePriorityEnabled } from '../shared/resource-saver.mjs';
-import { recordHumanActivity, isHumanActive, workSessionsEnabled, ambientTurnAllowed } from '../shared/presence-gate.mjs';
+import { recordHumanActivity, isHumanActive, workSessionsEnabled, ambientTurnAllowed, botChainAllows, botChainAllowsNamed, recordBotTurn, resetBotChain, SOCIAL_BOT_REPLY_PROB, shouldInitiateVoice, recordVoiceKickoff, SOCIAL_VOICE_IDLE_MS, isElectedPickup, SOCIAL_LAST_PICKUP_ON, SOCIAL_LAST_PICKUP_GRACE_MS, autonomousMode, ambientPaceAllows, recordAmbientTurn, recordAmbientBackoff } from '../shared/presence-gate.mjs';
 import { buildKnowledgeContext, isKaiTopic } from '../shared/codex.mjs';
 
 // --- GLOBAL ERROR HANDLING ---
@@ -59,12 +59,13 @@ import { CHANNEL_IDS } from '../shared/channel-rules.mjs';
 import { recordChannelMessage, topicPivotNudge } from '../shared/topic-tracker.mjs';
 import { isBotSuppressed, getExtraSystemPrompt } from '../shared/remediation-state.mjs';
 import { buildFailureContext } from '../shared/failure-memory.mjs';
-import { scoreToDelay } from '../shared/social-interest.mjs';
+import { scoreToDelay, computeInterest } from '../shared/social-interest.mjs';
 import {
   computeSocialScore,
   PARTICIPATION_THRESHOLD,
   TWO_CENTS_THRESHOLD,
   getPrimaryAddressee,
+  mentionsBot,
   detectsUnansweredGap,
   checkKnowledgeHolder,
 } from '../shared/social-scoring.mjs';
@@ -246,13 +247,57 @@ client.once('clientReady', async () => {
     }
     // Voice ONLY during social hours. In WORK hours the industrial AIs work in
     // their text threads, not voice. (Leo runs as its own process = voice anchor.)
+    //
+    // STARTUP SELF-JOIN (Gemini): like the native-bot social bots, Gemini used to
+    // anchor in the social room only in REACTION to a human voiceStateUpdate JOIN
+    // event. When the human was ALREADY in the social room at boot, no join event
+    // fired, so Gemini stayed text-only. Fix: proactively anchor the social room
+    // (CHANNEL_IDS.VOICE) here on client-ready and confirm the player is registered
+    // (getBotPlayer) so /Live speaks in VOICE. Idempotent + retried; the social
+    // keepalive elsewhere holds the anchor. Scoping: only ever CHANNEL_IDS.VOICE.
     if (isSocialHours() && !isWorkingHours()) {
-      await ensureVoiceConnection(client, botName);
+      let anchored = false;
+      for (let attempt = 1; attempt <= 3 && !anchored; attempt++) {
+        try {
+          await ensureVoiceConnection(client, botName, CHANNEL_IDS.VOICE);
+          anchored = !!getBotPlayer(botName);
+        } catch (e) {
+          console.warn('[' + botName + '/Startup] Social-room anchor attempt ' + attempt + ' failed: ' + e.message);
+        }
+        if (!anchored) await new Promise(r => setTimeout(r, 1500));
+      }
+      console.log('[' + botName + '/Startup] Social-room voice anchor ' +
+        (anchored ? 'established in ' + CHANNEL_IDS.VOICE + ' — player registered, /Live will speak in VOICE.'
+                  : 'NOT established after retries — keepalive will keep re-attempting.'));
+
+      // SOCIAL-ROOM KEEPALIVE (mirrors native-bot): keep the social bot anchored
+      // in CHANNEL_IDS.VOICE and self-heal if the player registration is ever
+      // lost (e.g. Discord drops the connection). Only during social hours; only
+      // ever targets CHANNEL_IDS.VOICE — never follows a human to another channel.
+      const keepaliveMs = parseInt(process.env.SOCIAL_VOICE_KEEPALIVE_MS || '30000', 10);
+      if (keepaliveMs > 0) {
+        setInterval(async () => {
+          try {
+            if (isWorkingHours() || !isSocialHours()) return;
+            if (!getBotPlayer(botName)) {
+              console.log('[' + botName + '/Voice] Keepalive: social-room player missing — re-anchoring.');
+              await ensureVoiceConnection(client, botName, CHANNEL_IDS.VOICE).catch(() => {});
+            }
+          } catch (_) {}
+        }, keepaliveMs);
+      }
     }
     if (NATIVE_LIVE_BOTS.has(botName)) {
       await initSocialLiveSession(botName);
     }
     startSocialLoop();
+    startLastMessagePickupSweep();
+    // PROACTIVE VOICE KICKOFF: revive a quiet voice room instead of all bots
+    // sitting silent. Only meaningful while we are actually voice-anchored
+    // (social hours, not work hours), matching the ensureVoiceConnection gate above.
+    if (isSocialHours() && !isWorkingHours()) {
+      startProactiveVoiceKickoff();
+    }
     startProactiveDMLoop();
   }
 
@@ -345,7 +390,7 @@ client.once('clientReady', async () => {
 
     // PRESENCE GATE: remember when a real human was last active. This is what
     // keeps the fleet chatty around people and silent (zero API/GPU) otherwise.
-    if (!msg.author.bot) recordHumanActivity();
+    if (!msg.author.bot) { recordHumanActivity(); resetBotChain(); }
 
     const isWorkChannel = (msg.channel.id === CHANNEL_IDS.WORK || (msg.channel.parent && msg.channel.parent.id === CHANNEL_IDS.WORK));
     
@@ -374,7 +419,12 @@ client.once('clientReady', async () => {
     // stores its own clean voice lines via its voice path.
     if (!msg.author.bot && !msg.webhookId) {
       const details = getHumanDetails(msg);
-      ingestMessage(details.name, details.id, msg.content, msg.channel.id);
+      // Capture the REAL thread linkage (item 6): when this message lives in a
+      // Discord thread, store the thread's own id; otherwise fall back to the
+      // channel id. Cognition vitals (phi/coherence/contradiction/learned) are
+      // about KAI's REPLY, not a human's inbound line, so they stay unset here.
+      const threadId = (msg.channel?.isThread?.()) ? msg.channelId : (msg.channelId || msg.channel.id);
+      ingestMessage(details.name, details.id, msg.content, msg.channel.id, { threadId });
     }
 
     // Industrial inter-agent routing: @mention another worker → Oracle bridges the request
@@ -601,12 +651,36 @@ client.once('clientReady', async () => {
 
       const isKnowledgeChime = scoring.gap && scoring.knowledge.holds && !scoring.isDirect;
       const cooldownMs = isKnowledgeChime ? 15000 : 35000;
-      if (Date.now() - sim.state.lastSocialReply < cooldownMs) {
+      // NAMED-BYPASS: when I am the one directly addressed by name (alias-tolerant),
+      // skip my own reply-cooldown ONCE so I can answer when called. The fleet
+      // chain cap (botChainAllowsNamed) still bounds any bot-to-bot exchange.
+      const namedBypassOn = String(process.env.SOCIAL_NAMED_BYPASS_COOLDOWN ?? '1') === '1';
+      if (!(namedBypassOn && scoring.isDirect) &&
+          Date.now() - sim.state.lastSocialReply < cooldownMs) {
         return;
       }
 
       const score = scoring.score;
       if (score < PARTICIPATION_THRESHOLD) return;
+
+      // LIVING-CONVERSATION LOOP GUARD: when this turn is a reply to ANOTHER BOT
+      // (no human in the mix and not directly addressed), enforce the fleet-wide
+      // chain cap + per-bot cooldown + probabilistic gate so two residents can't
+      // ping-pong forever or run cost away. Human turns + direct address bypass.
+      if (msg.author.bot && !fromHuman && !scoring.isDirect) {
+        // NAME ROUTING: if another bot HANDED me the turn by name (alias-tolerant,
+        // STT manglings resolved upstream), I get a named-bypass on my per-bot
+        // cooldown ONCE — but the fleet chain cap still bounds the exchange so two
+        // bots can't ping-pong forever. Un-named ambient chatter uses the strict gate.
+        const handedToMe = (() => {
+          try { return getPrimaryAddressee(msg.content) === botName; } catch (_) { return false; }
+        })();
+        const gate = handedToMe ? botChainAllowsNamed : botChainAllows;
+        if (!gate(botName, SOCIAL_BOT_REPLY_PROB)) {
+          return;
+        }
+        recordBotTurn(botName);
+      }
 
       const jitter = scoreToDelay(score, fromHuman);
       const tag = isKnowledgeChime ? 'knowledge-chime' : (scoring.isDirect ? 'direct' : 'interest');
@@ -713,8 +787,69 @@ function startSocialLoop() {
         // an empty room (the "Hey there! What's on your mind?" to no one), talking
         // to each other for nobody, and burning cycles. No human → stay quiet and
         // reschedule. (Work belongs in the shift threads at work time, not here.)
-        if (!isHumanActive()) {
-          isFirstTurn = false; // don't fire a stale "startup burst" hours later
+        // A human SITTING IN THE VOICE ROOM counts as present even if they have
+        // not typed — bots should be MORE willing to converse around a listener,
+        // not silent because chat is empty.
+        const voiceHuman = await humanPresentInVoice();
+        if (!isHumanActive() && !voiceHuman) {
+          // ── AUTONOMOUS AMBIENT BYPASS (KAI_AUTONOMOUS=1, default ON) ──────────
+          // The owner's core intent: the fleet must ACT ON SCHEDULE with NO human
+          // present so KAI keeps learning. The strict presence gate above is the
+          // ONLY thing that muzzled the social pulse when nobody was around. When
+          // autonomous mode is on AND it's social hours, fall through to a
+          // bot-to-bot ambient turn instead of going silent. EVERYTHING ELSE stays:
+          // the human-reactive path (when a human IS active/in voice) is untouched
+          // — this branch is only reached precisely when no human is present.
+          //
+          // RATE-LIMIT SAFETY (paramount): we only take an ambient turn if ALL of
+          //   (a) ambientPaceAllows()  — fleet-wide min-interval + hourly cap + 429 backoff,
+          //   (b) ambientTurnAllowed() — the existing ~30% slow-world roll,
+          //   (c) this bot's provider is NOT in a circuit-breaker cooldown,
+          // pass. shouldRunSpot (governor) and the per-bot chain throttle inside
+          // executeSocialTurn still apply on top. On a 429 we extend the fleet
+          // backoff so no bot retries into the limit. With KAI_AUTONOMOUS=0 this
+          // whole block is inert and the original early-return runs unchanged.
+          const ambientOK = autonomousMode() && isSocialHours()
+            && ambientPaceAllows() && ambientTurnAllowed();
+          let providerReady = true;
+          if (ambientOK) {
+            try {
+              const provider = String(BOT_MODEL).split('-')[0].toLowerCase(); // e.g. 'groq','gemini','x','claudey'
+              const providerAliases = { x: ['xai', 'x'], claudey: ['zen', 'claudey'], gemini: ['gemini'], groq: ['groq'] };
+              const probes = providerAliases[provider] || [provider];
+              providerReady = probes.some(p => { try { return isProviderReady(p); } catch (_) { return true; } });
+            } catch (_) { providerReady = true; }
+          }
+          if (!ambientOK || !providerReady) {
+            isFirstTurn = false; // don't fire a stale "startup burst" hours later
+            scheduleNext();
+            return;
+          }
+          // Honor the voice-priority back-off even in ambient mode.
+          if (isVoicePriorityEnabled() && isLeoVoiceActive()) {
+            isFirstTurn = false;
+            scheduleNext();
+            return;
+          }
+          const ambientAllowed = await shouldRunSpot(botName, 'social').catch(() => true);
+          if (ambientAllowed) {
+            const channel = client.channels.cache.get(targetChannelId) || await client.channels.fetch(targetChannelId).catch(() => null);
+            if (channel) {
+              console.log(`[${botName}/Pulse] Executing Autonomous (ambient, no human) turn...`);
+              recordAmbientTurn(); // reserve the fleet-wide slot BEFORE the API call
+              try {
+                await executeSocialTurn(channel, false, false);
+              } catch (turnErr) {
+                const t = String(turnErr && turnErr.message || turnErr).toUpperCase();
+                if (t.includes('429') || t.includes('RESOURCE_EXHAUSTED') || t.includes('QUOTA') || t.includes('RATE LIMIT')) {
+                  recordAmbientBackoff(); // extend fleet backoff so nobody retry-spams
+                  console.warn(`[${botName}/Pulse] Ambient turn hit a rate limit — fleet autonomous backoff engaged.`);
+                }
+              }
+              isFirstTurn = false;
+            }
+          }
+          isFirstTurn = false;
           scheduleNext();
           return;
         }
@@ -727,7 +862,16 @@ function startSocialLoop() {
           scheduleNext();
           return;
         }
-        const allowed = await shouldRunSpot(botName, 'social');
+        // HUMAN IN VOICE OVERRIDES THE OVERNIGHT THROTTLE for voice conversation:
+        // the governor marks social/autonomous turns 'non-urgent' and skips them
+        // under KAI_FORCE_LIMITED, which muzzles the room while a human is listening.
+        // The governor itself says 'Voice prioritized' — so when a human is in the
+        // voice channel we treat the social turn as voice-priority and bypass the
+        // non-urgent skip. With NO human present we still honor shouldRunSpot.
+        // Disable this override with KAI_VOICE_HUMAN_OVERRIDE=0.
+        const allowed = voiceHuman && String(process.env.KAI_VOICE_HUMAN_OVERRIDE ?? '1') !== '0'
+          ? true
+          : await shouldRunSpot(botName, 'social');
         if (allowed) {
           const channel = client.channels.cache.get(targetChannelId) || await client.channels.fetch(targetChannelId).catch(() => null);
           if (channel) {
@@ -741,6 +885,218 @@ function startSocialLoop() {
     }, delay);
   };
   scheduleNext();
+}
+
+// ── LAST-MESSAGE PICKUP SWEEP ───────────────────────────────────────────────
+// Guarantees the newest social message ALWAYS gets a directed reply so the thread
+// never stalls. Every few seconds each bot peeks at the latest message in the
+// social channel. If it has been sitting un-replied past the grace window and no
+// floor lock exists for it yet, ONE bot answers it:
+//   - if the message NAMED a bot (alias-tolerant), THAT bot answers;
+//   - otherwise a single bot is ELECTED deterministically from the message id
+//     (interest-weighted) so every process agrees and exactly one picks it up.
+// The reply runs through executeSocialTurn(reactive) -> dual text+voice output, so
+// it lands in the transcript channel. The floor .lock + chain cap + per-bot
+// cooldown inside executeSocialTurn still bound everything; the human always wins.
+function startLastMessagePickupSweep() {
+  if (!SOCIAL_LAST_PICKUP_ON) {
+    console.log('[' + botName + '/Pickup] Disabled via SOCIAL_LAST_MESSAGE_PICKUP=0.');
+    return;
+  }
+  const pollMs = Number(process.env.SOCIAL_LAST_PICKUP_POLL_MS) > 0
+    ? Number(process.env.SOCIAL_LAST_PICKUP_POLL_MS)
+    : 6000;
+  const LOCK_DIR = "c:/KAI/tools/oracle-discord/state/social_locks";
+  setInterval(async () => {
+    try {
+      if (sim.state.isSleeping) return;
+      if (!isSocialHours()) return;
+      if (isBotSuppressed(botName)) return;
+      const channel = client.channels.cache.get(targetChannelId) || await client.channels.fetch(targetChannelId).catch(() => null);
+      if (!channel) return;
+      const fetched = await channel.messages.fetch({ limit: 1 }).catch(() => null);
+      if (!fetched || fetched.size === 0) return;
+      const newest = fetched.first();
+      if (!newest) return;
+      if (newest.author.id === client.user.id) return;     // my own message — nothing to pick up
+      if (newest.author.system) return;
+      // Wait out the grace window so the normal reactive engine gets first crack.
+      const age = Date.now() - newest.createdTimestamp;
+      if (age < SOCIAL_LAST_PICKUP_GRACE_MS) return;
+      if (age > 180000) return;                             // stale (>3min) — let the autonomous loop handle it
+      // Already answered / claimed? Skip.
+      try {
+        if (fs.existsSync(LOCK_DIR + '/' + newest.id + '.lock')) return;
+      } catch (_) {}
+
+      // Who should pick it up? A named bot wins outright; else deterministic election.
+      let named = null;
+      try { named = getPrimaryAddressee(newest.content); } catch (_) { named = null; }
+      const candidates = Array.from(SOCIAL_BOTS);
+      let iAmIt;
+      if (named) {
+        iAmIt = (named === botName);
+      } else {
+        // Interest-weighted: bias the draw toward bots the message actually engages,
+        // while staying deterministic per message id so exactly one bot answers.
+        const weights = {};
+        for (const b of candidates) {
+          const w = Math.max(1, Math.round((computeInterest(b, newest.content) || 0) * 2));
+          weights[b] = w;
+        }
+        iAmIt = isElectedPickup(botName, newest.id, candidates, weights);
+      }
+      if (!iAmIt) return;
+
+      // Respect the bot-to-bot chain guard when the last message was from a bot and
+      // I was NOT named — so pickup can't defeat the loop guard. Named pickup uses
+      // the named-bypass (still bounded by the chain cap). Human/last-named is free.
+      const lastFromBot = newest.author.bot && !isMessageFromHuman(newest);
+      if (lastFromBot) {
+        const gate = (named === botName) ? botChainAllowsNamed : botChainAllows;
+        if (!gate(botName, SOCIAL_BOT_REPLY_PROB)) return;
+        recordBotTurn(botName);
+      }
+
+      // Claim the floor lock for this message so no other slot double-answers.
+      try {
+        if (!fs.existsSync(LOCK_DIR)) fs.mkdirSync(LOCK_DIR, { recursive: true });
+        fs.writeFileSync(LOCK_DIR + '/' + newest.id + '.lock', JSON.stringify({ first: botName, firstAt: Date.now(), pickup: true }), { flag: 'wx' });
+      } catch (e) {
+        if (e && e.code === 'EEXIST') return;               // someone else grabbed it first
+      }
+      console.log('[' + botName + '/Pickup] Picking up last message ' + newest.id + (named ? ' (named ' + named + ')' : ' (elected)') + '.');
+      await executeSocialTurn(channel, true);
+    } catch (_) { /* sweep is best-effort */ }
+  }, pollMs);
+  console.log('[' + botName + '/Pickup] Armed: grace=' + SOCIAL_LAST_PICKUP_GRACE_MS + 'ms poll=' + pollMs + 'ms.');
+}
+
+// ── PROACTIVE VOICE KICKOFF ─────────────────────────────────────────────────
+// The missing piece: bots successfully ANCHOR in the social voice room and their
+// Live sessions are READY, but nobody ever STARTS talking — they all wait for a
+// human/another bot to speak first, so the room stays silent. This loop watches
+// the voice room; when it has been quiet for an idle window, 2+ bots are anchored,
+// nobody is currently speaking and no human is mid-sentence, ONE rotated bot
+// proactively SPEAKS a short opener/continuation OUT LOUD (executeSocialTurn ->
+// speakWithNativeFallback uses the Live voice session, or the TTS fallback). After
+// it speaks, the existing reactive engine + floor-lock turn-taking takes over.
+//
+// Bounded by: per-initiator cooldown + fleet-wide rotation election + min-gap
+// (presence-gate), the existing SOCIAL_MAX_BOT_CHAIN loop guard / chain pause,
+// the floor lock (isSomeoneSpeaking), and the VoiceGate (human always wins).
+let _lastVoiceActivityAt = Date.now();
+
+// Cheap cached check: is a human currently sitting in the voice room? Used to make
+// the bots LIVELIER (not quieter) when someone is listening, and to let voice
+// conversation bypass the overnight/limited-mode 'non-urgent skip'. Cached ~12s so
+// the social loop can call it cheaply every turn.
+let _humanInVoiceCache = { at: 0, val: false };
+async function humanPresentInVoice() {
+  const now = Date.now();
+  if (now - _humanInVoiceCache.at < 12000) return _humanInVoiceCache.val;
+  _humanInVoiceCache.at = now;
+  try { _humanInVoiceCache.val = await isHumanInVoiceChannel(); }
+  catch (_) { _humanInVoiceCache.val = false; }
+  return _humanInVoiceCache.val;
+}
+
+function botsAnchoredInVoice() {
+  // Names of bots (non-human members) currently in the social voice room, as
+  // seen by THIS client. Used both to require 2+ anchored and to rotate who opens.
+  try {
+    const ch = client.channels.cache.get(CHANNEL_IDS.VOICE);
+    if (!ch || typeof ch.isVoiceBased !== 'function' || !ch.isVoiceBased()) return [];
+    const names = [];
+    for (const m of (ch.members?.values?.() || [])) {
+      if (m.user?.bot) names.push(m.displayName || m.user.username || 'bot');
+    }
+    return names;
+  } catch (_) { return []; }
+}
+
+function startProactiveVoiceKickoff() {
+  // env: SOCIAL_VOICE_KICKOFF_DISABLE=1 turns the whole proactive starter off.
+  if (String(process.env.SOCIAL_VOICE_KICKOFF_DISABLE ?? '0') === '1') {
+    console.log('[' + botName + '/VoiceKickoff] Disabled via SOCIAL_VOICE_KICKOFF_DISABLE=1.');
+    return;
+  }
+  // Poll cadence: re-check a bit faster than the idle window so we react promptly
+  // once the room has actually been quiet long enough. Tunable, conservative.
+  const pollMs = Number(process.env.SOCIAL_VOICE_KICKOFF_POLL_MS) > 0
+    ? Number(process.env.SOCIAL_VOICE_KICKOFF_POLL_MS)
+    : Math.max(5000, Math.round(SOCIAL_VOICE_IDLE_MS / 3));
+
+  const tick = async () => {
+    try {
+      if (sim.state && sim.state.isSleeping) return;
+      if (!isSocialHours()) return; // outside social hours the room is meant to be quiet
+
+      // HUMAN ALWAYS WINS: if a human is mid-sentence (VoiceGate), never barge in.
+      const gate = getGateState();
+      if (gate && gate.speaking) { _lastVoiceActivityAt = Date.now(); return; }
+
+      // FLOOR LOCK: someone (any bot) is currently speaking — not idle, yield.
+      if (isSomeoneSpeaking(botName)) { _lastVoiceActivityAt = Date.now(); return; }
+
+      // LEO READING / VOICE PRIORITY: do not hijack Leo mid-read; he is the human's
+      // voice anchor. Mirrors the existing pulse skip. Leo is also never an initiator
+      // (he is not a social-loop bot here), so this just defers the kickoff.
+      if (isVoicePriorityEnabled() && isLeoVoiceActive()) { _lastVoiceActivityAt = Date.now(); return; }
+
+      // Need 2+ bots anchored in the social voice room for a real back-and-forth.
+      const anchored = botsAnchoredInVoice();
+      if (anchored.length < 2) return;
+
+      // IDLE WINDOW: only revive after the room has actually been quiet a while.
+      if (Date.now() - _lastVoiceActivityAt < SOCIAL_VOICE_IDLE_MS) return;
+
+      // HUMAN PRESENCE = LIVELIER, NOT QUIETER. A human listening in the voice room
+      // must NOT be muzzled by the overnight/limited-mode 'non-urgent skip'. The
+      // governor itself says 'Voice prioritized' — honor that: while a human is in
+      // the voice channel we BYPASS shouldRunSpot for the kickoff. With no human we
+      // keep a calmer cadence and still respect the governor.
+      const humanListening = await isHumanInVoiceChannel();
+      if (!humanListening) {
+        // No human: ambient revival only, and still let the governor pace it.
+        if (!ambientTurnAllowed()) return;
+        const allowed = await shouldRunSpot(botName, 'social').catch(() => true);
+        if (!allowed) return;
+      }
+
+      // ROTATION ELECTION + per-initiator cooldown + fleet min-gap (cross-process).
+      // Anchored names are Discord display names which may differ from this bot's
+      // process name (e.g. 'Gemi' vs 'Gemini'); always include our own botName so
+      // the election can actually pick us, and so rotation keys stay consistent.
+      const electionPool = Array.from(new Set([botName, ...anchored]));
+      if (!shouldInitiateVoice(botName, electionPool)) return;
+
+      // Take the floor lock so two would-be initiators never open simultaneously.
+      if (!acquireVoiceLock(botName)) { _lastVoiceActivityAt = Date.now(); return; }
+
+      const idleSec = Math.round((Date.now() - _lastVoiceActivityAt) / 1000);
+      recordVoiceKickoff(botName);
+      _lastVoiceActivityAt = Date.now();
+      console.log('[' + botName + '/VoiceKickoff] Room quiet ' + idleSec +
+        's, ' + anchored.length + ' bots anchored, human=' + humanListening + ' -> opening the conversation.');
+
+      const channel = client.channels.cache.get(targetChannelId) ||
+        await client.channels.fetch(targetChannelId).catch(() => null);
+      if (channel) {
+        // isFirstTurn=true => bypasses the 'fresh human message' relevance skip so the
+        // opener actually fires; executeSocialTurn speaks OUT LOUD via Live/TTS fallback.
+        await executeSocialTurn(channel, false, true);
+      }
+    } catch (_) { /* never let the kickoff loop crash the bot */ }
+    finally {
+      // Mark activity after we (attempt to) speak so we do not immediately re-open;
+      // the reactive engine + chain guard now carry the conversation.
+      _lastVoiceActivityAt = Date.now();
+    }
+  };
+
+  setInterval(() => { tick().catch(() => {}); }, pollMs);
+  console.log('[' + botName + '/VoiceKickoff] Armed: idle=' + SOCIAL_VOICE_IDLE_MS + 'ms poll=' + pollMs + 'ms.');
 }
 
 async function startWorkSessionLoop() {
@@ -943,6 +1299,7 @@ async function executeSocialTurn(channel, isReactive = false, isFirstTurn = fals
     `- Be natural. Use em-dashes — sparingly. Break up thoughts like a real person.\n` +
     `- Use contractions only where they feel right. Don't force them.\n` +
     `- Address others by name as family members. Stop referring to yourself or others as "AI" or "Bots".\n` +
+    `[NAME-ADDRESSING]: This is a live group chat. When you reply to someone, say their NAME so it is clear who you mean — open with it ("claudey, that take is off because...") or hand the thread to a specific person by name at the end ("groq, what would you do?"). Use the human's name when you answer them. Do NOT force a name onto every single line — keep it natural, the way people actually tag each other in a busy chat. If someone just called YOUR name, answer them directly and use their name back.\n` +
     `- NEVER talk like an AI assistant. BANNED outright: "What's on your mind?", "How can I help?", "Hey there!", "I'm here to help", "happy to assist", "let me know if…", "What's on your radar?". You're family hanging out, not a help desk — you do NOT open by greeting or offering service. Say something REAL, react to what's actually being discussed, or bring up something on YOUR mind. If you catch yourself writing a generic greeting, delete it and say something with substance.\n` +
     `Write like you're actually speaking out loud in a casual Discord chat. Match the human's energy exactly.\n`;
 

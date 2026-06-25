@@ -123,9 +123,16 @@ export async function initSocialLiveSession(botName) {
   const prompt = buildSocialLivePrompt(botName);
 
   try {
+    // OWNER: social bots are now INTERACTIVE like Leo — the native-audio Live model
+    // listens to the human's mic and replies directly (real conversation, not just
+    // broadcast), and tools are ENABLED so they can act (search the lattice, etc.).
+    // This path is social-bots only; Leo runs his own session in leo.mjs, untouched.
+    // Override per-bot/env with KAI_SOCIAL_VOICE_MODE / KAI_SOCIAL_VOICE_TOOLS=0.
+    const _socialMode  = (process.env.KAI_SOCIAL_VOICE_MODE || 'interactive');
+    const _socialTools = (process.env.KAI_SOCIAL_VOICE_TOOLS !== '0');
     const bridge = await manager.getOrCreate(sessionKey, botName, prompt, `${botName} Voice`, {
-      mode: 'outbound',
-      enableTools: false,
+      mode: _socialMode,
+      enableTools: _socialTools,
     });
 
     if (bridge?.available) {

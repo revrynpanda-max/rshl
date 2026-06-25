@@ -1188,6 +1188,63 @@ impl App {
                     .store_or_reinforce(insight, "dream", "sleep-rem", 1.1);
             }
 
+            // ── SLEEP-LEARNING — populate the world model from real experience ──
+            // While asleep, walk CONSECUTIVE episodic memories from the SAME
+            // conversation (session_id) and teach the transition-KV world model
+            // "state A tended to be followed by state B". This is how KAI builds
+            // its world model from lived experience rather than only at ingest.
+            // Gated behind KAI_SLEEP_LEARN (default ON; set =0 to disable) AND the
+            // world model's own KAI_WORLDMODEL flag. Bounded by WM mem_cap (eviction
+            // handled inside observe_transition) and a per-cycle pair budget.
+            {
+                let learn_on = std::env::var("KAI_SLEEP_LEARN")
+                    .map(|v| {
+                        let v = v.trim();
+                        v != "0" && !v.eq_ignore_ascii_case("false") && !v.eq_ignore_ascii_case("off")
+                    })
+                    .unwrap_or(true);
+                let wm_cfg = kai::cognition::world_model::WorldModelConfig::from_env();
+                if learn_on && wm_cfg.enabled {
+                    // Recent episodic events, oldest→newest, so adjacency = temporal order.
+                    let mut evs: Vec<(String, String)> = self
+                        .engine
+                        .episodic
+                        .recent(500)
+                        .iter()
+                        .map(|e| (e.session_id.clone(), e.text.clone()))
+                        .collect();
+                    evs.reverse(); // recent() yields newest-first; flip to chronological
+                    // Neutral/empty action: sleep has no explicit action token.
+                    let empty_action = kai::core::SparseVec::default();
+                    const MAX_PAIRS: usize = 256; // per-cycle budget (bounded work)
+                    let mut learned = 0usize;
+                    for w in evs.windows(2) {
+                        if learned >= MAX_PAIRS {
+                            break;
+                        }
+                        let (sid_a, text_a) = &w[0];
+                        let (sid_b, text_b) = &w[1];
+                        // Only link adjacent pairs from the SAME conversation stream.
+                        if sid_a != sid_b || text_a == text_b {
+                            continue;
+                        }
+                        let prev = kai::core::SparseVec::encode(text_a);
+                        let next = kai::core::SparseVec::encode(text_b);
+                        if prev.nnz() == 0 || next.nnz() == 0 {
+                            continue;
+                        }
+                        kai::cognition::world_model::observe_transition(
+                            &prev,
+                            &empty_action,
+                            &next,
+                            &mut self.engine.universe,
+                            &wm_cfg,
+                        );
+                        learned += 1;
+                    }
+                }
+            }
+
             // Show sleep report in conversation and spectate
             let _target_energy = self.engine.amygdala.arousal() * 0.18;
             let sleep_summary = format!(

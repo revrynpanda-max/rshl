@@ -39,6 +39,14 @@ COOLDOWN       = 180         # min seconds between two restarts of the SAME serv
 ENGINE_GRACE   = 90          # after launching the engine, don't judge it for this long (warmup)
 DEAD_STREAK    = 2           # require N consecutive 'dead' reads before restarting (ignores transient blips)
 DISCORD_WEBHOOK = ""         # optional: paste a webhook URL to get self-heal notices
+# ── OVERNIGHT BITNET INGEST LOCK ─────────────────────────────────────────────
+# The overnight BitNet ingest+weave (overnight_pipeline.py) needs the engine on
+# :3334 STABLE for the whole 3 AM window. While this lockfile exists, the RAM
+# recycler below MUST NOT kill/restart the engine mid-weave (that would abort the
+# distillation and drop the lattice writes). The ingest creates this file when it
+# starts and removes it when it stops for consolidation. Override path to match
+# overnight_pipeline's KAI_INGEST_LOCKFILE if you change it there.
+INGEST_LOCKFILE = os.environ.get("KAI_INGEST_LOCKFILE", r"C:\KAI\data\overnight_ingest.lock")
 
 # ── Engine memory ceiling (RAM relief, no Rust rebuild needed) ──────────────────
 # The engine deep-clones the WHOLE Universe every 180s to autosave, which roughly
@@ -193,6 +201,11 @@ def heal_engine_memory():
     corrupts. Disabled when RESTART_RSS_MB <= 0."""
     global _last_rss_restart, _engine_launched_at
     if RESTART_RSS_MB <= 0:
+        return
+    # RECONCILE: while the overnight BitNet ingest holds its lock, do NOT recycle the
+    # engine for RAM — a mid-weave restart aborts the distillation. The ingest releases
+    # the lock when it stops for consolidation, after which normal recycling resumes.
+    if os.path.exists(INGEST_LOCKFILE):
         return
     if (time.time() - _engine_launched_at) < ENGINE_GRACE:   # just (re)launched — let it settle
         return

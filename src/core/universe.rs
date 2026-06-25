@@ -20,6 +20,59 @@ use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 
+/// Retrieval-scoring gate for the PHASOR-COHERENCE term in the text-query paths
+/// (`query` / `query_in_regions` / `query_kmeans` / `query_full_scan` /
+/// `query_region`). The seeded benchmark (kai-bench (b)/(b-HARD)) showed plain
+/// cosine matches or beats phasor coherence on BOTH easy and near-duplicate
+/// retrieval, so phase on the SCORING path can only hurt. Default OFF ⇒ the
+/// `raw` blend uses plain cosine, which is the bench-proven-best scorer. Set
+/// `KAI_PHASOR_RETRIEVAL=1` to restore the legacy `cosine*cos(Δθ)` modulation
+/// for A/B testing on real data. This gate is read ONCE and cached for the whole
+/// process (a single relaxed load thereafter). NOTE: this ONLY changes the
+/// retrieval SCORER — `phase_angle()`/`phasor_coherence()` machinery is left
+/// fully intact for sequence/binding and predictive uses.
+fn phasor_retrieval_on() -> bool {
+    use std::sync::atomic::{AtomicU8, Ordering};
+    static GATE: AtomicU8 = AtomicU8::new(2); // 2 = uninitialised
+    let cached = GATE.load(Ordering::Relaxed);
+    if cached != 2 {
+        return cached == 1;
+    }
+    let on = std::env::var("KAI_PHASOR_RETRIEVAL")
+        .map(|v| v.trim() == "1" || v.trim().eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+    GATE.store(if on { 1 } else { 0 }, Ordering::Relaxed);
+    on
+}
+
+/// Cosine-vs-phasor retrieval term. Returns the value to multiply by 0.3 in the
+/// `raw` blend. Default (gate OFF) = plain cosine (bench-best). Gate ON = the
+/// legacy phasor-coherence modulation `cosine * cos(theta_q - theta_c)`.
+#[inline]
+fn retrieval_sim_term(cosine: f32, theta_q: f32, theta_c: f32) -> f32 {
+    if phasor_retrieval_on() {
+        cosine * (theta_q - theta_c).cos()
+    } else {
+        cosine
+    }
+}
+
+/// Continuation / predictive-scoring similarity. The benchmark showed plain
+/// cosine matches or beats phasor coherence for SCORING too, so we default the
+/// predictive paths (predict-from-continuation, multi-head, etc.) to cosine for
+/// consistency with the main retrieval scorer. Reuses the SAME reversible flag:
+/// `KAI_PHASOR_RETRIEVAL=1` restores the legacy `phasor_coherence` behaviour
+/// across BOTH retrieval and continuation scoring. The phasor machinery itself
+/// is untouched — this only swaps which metric the scorer reads.
+#[inline]
+fn predictive_sim(a: &SparseVec, b: &SparseVec) -> f32 {
+    if phasor_retrieval_on() {
+        a.phasor_coherence(b)
+    } else {
+        a.cosine(b)
+    }
+}
+
 #[derive(Debug, Serialize)]
 struct RejectionLogEntry<'a> {
     ts: u64,
@@ -1127,6 +1180,35 @@ impl Universe {
         });
         self.mark_dirty(idx);
 
+        // --- World Model: continuation population on ingest (ADDITIVE + GATED) ---
+        // Only when KAI_WORLDMODEL=1. Sequential-linking rule: link the new
+        // cell's vector into the `continuation` of the most recent PRIOR cell
+        // that shares the SAME source AND user_id (i.e. the same conversation
+        // stream), so the prior cell learns "what tends to follow me". We never
+        // link across sources/users or to mirror cells. Conservative: a single
+        // backward scan over a small recent window, no behaviour when gated off.
+        {
+            let wm = crate::cognition::world_model::WorldModelConfig::from_env();
+            if wm.enabled {
+                // Find the most recent prior cell with matching source + user.
+                // Scan back a bounded window (cheap; avoids O(n) on huge lattices).
+                const WM_LINK_WINDOW: usize = 64;
+                let lo = idx.saturating_sub(WM_LINK_WINDOW);
+                let mut prior: Option<usize> = None;
+                for j in (lo..idx).rev() {
+                    let c = &self.cells[j];
+                    if c.label.starts_with("[MIRROR]") { continue; }
+                    if c.claim.source.as_ref() == source && c.claim.user_id.as_ref() == user_id {
+                        prior = Some(j);
+                        break;
+                    }
+                }
+                if let Some(p) = prior {
+                    crate::cognition::world_model::link_continuation(self, p, &vec, &wm);
+                }
+            }
+        }
+
         // --- Life Equation Accumulator ---
         self.update_life_equation(user_id, &vec);
 
@@ -1310,9 +1392,10 @@ impl Universe {
                     dot as f32 / (mag_q_sqrt * mag_c.sqrt())
                 } else { 0.0 };
                 let theta_c = cell.claim.vec.phase_angle();
-                let phasor_coherence = cosine * (theta_q - theta_c).cos();
+                // Gate: cosine by default (bench-best); phasor only if KAI_PHASOR_RETRIEVAL=1.
+                let sim = retrieval_sim_term(cosine, theta_q, theta_c);
                 let kw = keyword_overlap_score(&query_words, &cell.claim.text);
-                let raw = 0.3 * phasor_coherence + 0.7 * kw;
+                let raw = 0.3 * sim + 0.7 * kw;
                 let boosted = if raw > 0.15 {
                     let s = if cell.claim.confidence >= 2.9 { 0.85 } else { 0.5 };
                     raw * (s + 0.6 * cell.claim.confidence.min(5.0))
@@ -1365,8 +1448,9 @@ impl Universe {
                 let cell = &self.cells[i];
                 let kw = keyword_overlap_score(&query_words, &cell.claim.text);
                 let theta_c = cell.claim.vec.phase_angle();
-                let phasor_coherence = cosine * (theta_q - theta_c).cos();
-                let raw = 0.3 * phasor_coherence + 0.7 * kw;
+                // Gate: cosine by default (bench-best); phasor only if KAI_PHASOR_RETRIEVAL=1.
+                let sim = retrieval_sim_term(cosine, theta_q, theta_c);
+                let raw = 0.3 * sim + 0.7 * kw;
                 let boosted = if raw > 0.15 {
                     let s = if cell.claim.confidence >= 2.9 { 0.85 } else { 0.5 };
                     raw * (s + 0.6 * cell.claim.confidence.min(5.0))
@@ -1524,13 +1608,16 @@ impl Universe {
                     let cell = &self.cells[i];
                     let kw = keyword_overlap_score(&query_words, &cell.claim.text);
                     let theta_c = cell.claim.vec.phase_angle();
-                let phasor_coherence = cosine * (theta_q - theta_c).cos();
-                let raw = 0.3 * phasor_coherence + 0.7 * kw;
+                // Gate: cosine by default (bench-best); phasor only if KAI_PHASOR_RETRIEVAL=1.
+                let sim = retrieval_sim_term(cosine, theta_q, theta_c);
+                let raw = 0.3 * sim + 0.7 * kw;
                     // Phasor coherence bonus: cells phase-aligned with the query
-                    // get a small boost (whitepaper Section 6.3, Contribution 6)
+                    // get a small boost (whitepaper Section 6.3, Contribution 6).
+                    // Also gated OFF by default so phase is fully off the scorer.
                     const PHASOR_WEIGHT: f32 = 0.05;
-                    let phasor_bonus = PHASOR_WEIGHT *
-                        (1.0 + (q_phase - cell.claim.vec.phase_angle()).cos()) / 2.0;
+                    let phasor_bonus = if phasor_retrieval_on() {
+                        PHASOR_WEIGHT * (1.0 + (q_phase - cell.claim.vec.phase_angle()).cos()) / 2.0
+                    } else { 0.0 };
                     let boosted = if raw > 0.15 {
                         let strength_bonus = if cell.claim.confidence >= 2.9 { 0.85 } else { 0.5 };
                         (raw + phasor_bonus) * (strength_bonus + 0.6 * cell.claim.confidence.min(5.0))
@@ -1586,15 +1673,18 @@ impl Universe {
                 let kw = keyword_overlap_score(&query_words, &cell.claim.text);
                 // Hybrid: 60% cosine similarity (semantic) + 40% keyword overlap (exact match)
                 let theta_c = cell.claim.vec.phase_angle();
-                let phasor_coherence = cosine * (theta_q - theta_c).cos();
-                let raw = 0.3 * phasor_coherence + 0.7 * kw;
+                // Gate: cosine by default (bench-best); phasor only if KAI_PHASOR_RETRIEVAL=1.
+                let sim = retrieval_sim_term(cosine, theta_q, theta_c);
+                let raw = 0.3 * sim + 0.7 * kw;
 
                 // Phasor coherence bonus: cells phase-aligned with the query
-                // get a small boost (whitepaper Section 6.3, Contribution 6)
+                // get a small boost (whitepaper Section 6.3, Contribution 6).
+                // Also gated OFF by default so phase is fully off the scorer.
                 const PHASOR_WEIGHT: f32 = 0.05;
-                let phasor_bonus = PHASOR_WEIGHT *
-                    (1.0 + (q_phase - cell.claim.vec.phase_angle()).cos()) / 2.0;
-                
+                let phasor_bonus = if phasor_retrieval_on() {
+                    PHASOR_WEIGHT * (1.0 + (q_phase - cell.claim.vec.phase_angle()).cos()) / 2.0
+                } else { 0.0 };
+
                 // --- ANTI-BLEED LOGIC ---
                 let boosted = if raw > 0.15 {
                     let strength_bonus = if cell.claim.confidence >= 2.9 { 0.85 } else { 0.5 };
@@ -1790,9 +1880,10 @@ impl Universe {
                 let kw = keyword_overlap_score(&query_words, &cell.claim.text);
                 // Hybrid: 60% cosine similarity (semantic) + 40% keyword overlap (exact match)
                 let theta_c = cell.claim.vec.phase_angle();
-                let phasor_coherence = cosine * (theta_q - theta_c).cos();
-                let raw = 0.3 * phasor_coherence + 0.7 * kw;
-                
+                // Gate: cosine by default (bench-best); phasor only if KAI_PHASOR_RETRIEVAL=1.
+                let sim = retrieval_sim_term(cosine, theta_q, theta_c);
+                let raw = 0.3 * sim + 0.7 * kw;
+
                 // Anti-bleed: only boost if there is semantic relevance.
                 let boosted = if raw > 0.15 {
                     raw * (0.6 + 0.5 * cell.claim.confidence.min(5.0))
@@ -2816,8 +2907,10 @@ impl Universe {
             .par_iter()
             .map(|&i| {
                 let cell = &self.cells[i];
-                let sim = state.phasor_coherence(&cell.claim.vec).max(0.0);
-                let predict_match = cell.continuation.as_ref().map_or(0.0, |c| prediction_anchor.phasor_coherence(c).max(0.0));
+                // Gate: cosine by default (bench-best, consistent with retrieval);
+                // phasor only if KAI_PHASOR_RETRIEVAL=1.
+                let sim = predictive_sim(&state, &cell.claim.vec).max(0.0);
+                let predict_match = cell.continuation.as_ref().map_or(0.0, |c| predictive_sim(&prediction_anchor, c).max(0.0));
                 let mh = predictive::multi_head_consensus(
                     &state,
                     &cell.claim.vec,
@@ -2934,8 +3027,10 @@ impl Universe {
             .par_iter()
             .map(|&i| {
                 let cell = &self.cells[i];
-                let sim = state.phasor_coherence(&cell.claim.vec).max(0.0);
-                let predict_match = cell.continuation.as_ref().map_or(0.0, |c| prediction_anchor.phasor_coherence(c).max(0.0));
+                // Gate: cosine by default (bench-best, consistent with retrieval);
+                // phasor only if KAI_PHASOR_RETRIEVAL=1.
+                let sim = predictive_sim(&state, &cell.claim.vec).max(0.0);
+                let predict_match = cell.continuation.as_ref().map_or(0.0, |c| predictive_sim(&prediction_anchor, c).max(0.0));
                 let mh = predictive::multi_head_consensus(
                     &state,
                     &cell.claim.vec,
@@ -3056,8 +3151,10 @@ impl Universe {
             .par_iter()
             .map(|&i| {
                 let cell = &self.cells[i];
-                let sim = state.phasor_coherence(&cell.claim.vec).max(0.0);
-                let predict_match = cell.continuation.as_ref().map_or(0.0, |c| prediction_anchor.phasor_coherence(c).max(0.0));
+                // Gate: cosine by default (bench-best, consistent with retrieval);
+                // phasor only if KAI_PHASOR_RETRIEVAL=1.
+                let sim = predictive_sim(&state, &cell.claim.vec).max(0.0);
+                let predict_match = cell.continuation.as_ref().map_or(0.0, |c| predictive_sim(&prediction_anchor, c).max(0.0));
                 let mh = predictive::multi_head_consensus(
                     &state,
                     &cell.claim.vec,
@@ -3192,8 +3289,10 @@ impl Universe {
             .par_iter()
             .map(|&i| {
                 let cell = &self.cells[i];
-                let sim = state.phasor_coherence(&cell.claim.vec).max(0.0);
-                let predict_match = cell.continuation.as_ref().map_or(0.0, |c| prediction_anchor.phasor_coherence(c).max(0.0));
+                // Gate: cosine by default (bench-best, consistent with retrieval);
+                // phasor only if KAI_PHASOR_RETRIEVAL=1.
+                let sim = predictive_sim(&state, &cell.claim.vec).max(0.0);
+                let predict_match = cell.continuation.as_ref().map_or(0.0, |c| predictive_sim(&prediction_anchor, c).max(0.0));
                 let mh = predictive::multi_head_consensus(
                     &state,
                     &cell.claim.vec,

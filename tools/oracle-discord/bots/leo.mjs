@@ -37,10 +37,26 @@ const GUEST1_ID = "437459146778869770";
 const GUEST2_ID = "1002347589959688303";
 const OWNER_ID  = RYAN_ID;
 
-// NEURAL ASSASSINATION: Kill any ghost Leo processes holding the port.
+// NEURAL ASSASSINATION (IDENTITY-GUARDED): Only reclaim a GHOST of Leo.
+// Probe /health first; if a DIFFERENT healthy bot owns the port, ABORT and log
+// a loud collision instead of killing a live fleetmate.
 try {
   if (process.platform === 'win32') {
-    console.log(`[Leo/Neural] Performing Neural-Assassination on Port ${PORT}...`);
+    console.log('[Leo/Neural] Checking Port ' + PORT + ' before assassination...');
+    let holderName = null;
+    try {
+      const res = await fetch('http://127.0.0.1:' + PORT + '/health', { signal: AbortSignal.timeout(1500) });
+      if (res.ok) {
+        const info = await res.json().catch(() => null);
+        holderName = info && info.name ? info.name : 'unknown';
+      }
+    } catch (_) { holderName = null; }
+
+    if (holderName && holderName !== BOT_NAME) {
+      console.error('[Leo/Neural] PORT COLLISION: Leo port ' + PORT + ' is held by a HEALTHY ' + holderName + ' — check the port map in shared/identities.mjs. ABORTING assassination. Exiting.');
+      process.exit(0);
+    }
+
     const protectedPids = new Set([0, process.pid, process.ppid]);
     const output = execSync(`netstat -ano -p tcp`).toString();
     for (const line of output.split('\n')) {
@@ -49,7 +65,7 @@ try {
       const localPort = Number(parts[1].split(':').pop());
       const pid = parseInt(parts[4]);
       if (localPort === PORT && pid && !protectedPids.has(pid)) {
-        console.log(`[Leo/Neural] Executing PID ${pid} (Ghost listener detected)...`);
+        console.log('[Leo/Neural] Reclaiming Port ' + PORT + ' from ghost/orphan PID ' + pid + ' (no healthy holder).');
         try { execSync(`taskkill /F /PID ${pid}`); } catch (_) {}
       }
     }
@@ -64,12 +80,14 @@ import { recordAIFailure, isSpeakerOffline, isProviderReady, recordProviderFailu
 import { isLoopingResponse } from '../shared/utils.mjs';
 import { AgentSimulation } from '../shared/simulation.mjs';
 import { computeInterest, PARTICIPATION_THRESHOLD, TWO_CENTS_THRESHOLD, scoreToDelay } from '../shared/social-interest.mjs';
+import { getPrimaryAddressee, mentionsBot } from '../shared/social-scoring.mjs';
 import { startBotServer } from '../shared/ipc.mjs';
+import { limitedTranscribe } from '../shared/groq-stt-limiter.mjs';
 import { getSlotAssignments, isUserRegistered, getTranscriptChannel, bootstrapPermissions } from '../shared/voice-manager.mjs';
 import { storeLattice } from '../shared/lattice-bridge.mjs';
 import { PassThrough } from 'stream';
 import { setHumanSpeaking, clearHumanSpeaking } from '../shared/voice-gate.mjs';
-import { recordHumanActivity, isHumanActive, ambientTurnAllowed } from '../shared/presence-gate.mjs';
+import { recordHumanActivity, isHumanActive, ambientTurnAllowed, botChainAllows, botChainAllowsNamed, recordBotTurn, resetBotChain, socialThinkDelay, SOCIAL_BOT_REPLY_PROB, recordLeoVoiceConversation } from '../shared/presence-gate.mjs';
 import { GeminiLiveSessionManager, GeminiLiveBridge, resolveGeminiVoice } from '../shared/gemini-live-bridge.mjs';
 import { IdentityVault } from '../shared/identity-vault.mjs';
 import { biometrics, BIOMETRIC_SCRIPT } from '../shared/voice-biometrics.mjs';
@@ -90,8 +108,13 @@ import { requestOracleHelp, deliverOracleResult } from '../shared/oracle-pipelin
 // Leo must NEVER fail to boot just because the neural VAD is unavailable.
 // Set LEO_VAD=0 in .env to force the RMS gate and skip loading the model entirely.
 let globalVAD = null;          // the loaded Silero model (model.process(frame16k) -> {isSpeech})
-const VAD_DISABLED = process.env.LEO_VAD !== undefined && Number(process.env.LEO_VAD) === 0;
-if (!VAD_DISABLED) {
+// LEAN DEFAULT: the neural Silero VAD (ONNX) is the single biggest CPU hog on a
+// loaded laptop and its per-frame inference competes with Leo's audio playout
+// (starving the event loop -> stutter/speed-up). It is now OFF BY DEFAULT; the
+// lightweight RMS noise gate handles mic-in. Re-enable the heavy neural path with
+// LEO_NEURAL_VAD=1 (legacy LEO_VAD=1 also honored). Anything else = RMS gate.
+const VAD_ENABLED = (Number(process.env.LEO_NEURAL_VAD) === 1) || (Number(process.env.LEO_VAD) === 1);
+if (VAD_ENABLED) {
   (async () => {
     try {
       const { NonRealTimeVAD } = await import('@ricky0123/vad-node');
@@ -113,7 +136,7 @@ if (!VAD_DISABLED) {
     }
   })();
 } else {
-  console.log(`[Leo/VAD] Disabled via LEO_VAD=0 — using legacy RMS gate.`);
+  console.log('[Leo/VAD] Neural Silero VAD OFF (default, lean) — using lightweight RMS gate. Set LEO_NEURAL_VAD=1 to re-enable.');
 }
 
 // ── IN-MEMORY HISTORY CACHE ────────────────────────────────────────────────────────
@@ -349,6 +372,14 @@ let _emptyRoomPauseTimer = null;
 const audioPlayer = createAudioPlayer();
 const ambientPlayer = createAudioPlayer();
 const effectsPlayer = createAudioPlayer();
+// Raise the EventEmitter listener cap on the audio players. During a burst of Gemini
+// Live 1011 reconnects, transient `.once(Idle)` listeners (soundboard/flush) can pile
+// up past Node's default of 10 and emit the MaxListenersExceeded warning; they
+// self-clear the next time the player goes Idle. 40 absorbs the reconnect churn
+// without masking a genuinely unbounded leak.
+audioPlayer.setMaxListeners(40);
+ambientPlayer.setMaxListeners(40);
+effectsPlayer.setMaxListeners(40);
 
 // Post generated images to the channel (mirrors the soundboard event). The
 // tool generates the buffer in this process; here we attach it to a Discord
@@ -1270,7 +1301,7 @@ client.on('messageCreate', async (message) => {
 
   // PRESENCE GATE: track human activity; skip bot-to-bot social replies
   // when no human has been around recently (saves API + GPU).
-  if (!message.author.bot) recordHumanActivity();
+  if (!message.author.bot) { recordHumanActivity(); resetBotChain(); }
 
   // ── GEMINI LIVE CONTEXT INJECTION ────────────────────────────────────────
   // When another AI (or human) posts to a voice transcript channel while Leo
@@ -1316,7 +1347,13 @@ client.on('messageCreate', async (message) => {
     // isnt in the voice channel so he shouldnt unless he is")
     const _vcId = voiceConnection?.joinConfig?.channelId;
     const isInSharedVoiceRoom = _vcId === CHANNEL_IDS.VOICE || _vcId === CHANNEL_IDS.RADIO;
-    if (!isInSharedVoiceRoom) return;
+    // LIVING CONVERSATION / VOICE-DOWN RESILIENCE: when Leo IS in the shared
+    // voice room he speaks (voice + transcript). When he is NOT (e.g. Gemini
+    // Live credits depleted, code 1011, so he never anchored), he no longer goes
+    // dead — he keeps the conversation alive in TEXT. Voice re-engages
+    // automatically once Live is back, gated by canVocalizeSocial() below.
+    // Force text-only off-room with TEXT_FALLBACK=0 to restore the old behavior.
+    if (!isInSharedVoiceRoom && process.env.SOCIAL_TEXT_FALLBACK === '0') return;
     // Leo DOES converse with the other bots — one at a time (the voice-floor
     // lock enforces that). In the room his reply is VOICE + a posted transcript;
     // outside the room it's text only. Ordinary low-interest chatter is gated
@@ -1338,15 +1375,37 @@ client.on('messageCreate', async (message) => {
       if (!globalThis.__leoAiContext) globalThis.__leoAiContext = [];
       globalThis.__leoAiContext.push(message.content.slice(0, 180));
       if (globalThis.__leoAiContext.length > 10) globalThis.__leoAiContext.shift();
-      console.log(`[Leo/Social] AI/fleet speech detected... context only (listening, not replying as user). "${message.content.slice(0, 60)}..."`);
-      // Still allow very strong resonance or direct address (Leo name), but default to listen for ordinary fleet lines.
-      const directToLeo = /leo/i.test(message.content);
+      // LIVING CONVERSATION: Leo TALKS TO the other bots and builds on them.
+      // Was "context only (listening, not replying)" — that's why the channel
+      // felt dead. Bot-to-bot replies are now ALLOWED but CONTROLLED by interest
+      // score + the fleet chain/cooldown/probability guard (botChainAllows), so
+      // Leo and the others can't ping-pong forever or spike cost.
+      // NAME ROUTING (alias-tolerant): a fleetmate handing Leo the turn by name
+      // — incl. STT manglings like 'Lео'/'Leon' — counts as a direct address, and
+      // any mention of Leo by alias counts. Named hand-offs get the named-bypass on
+      // the cooldown, but the fleet chain cap still bounds the exchange.
+      let namedLeo = false;
+      try { namedLeo = (getPrimaryAddressee(message.content) === 'Leo'); } catch (_) {}
+      const directToLeo = namedLeo || /leo/i.test(message.content) || mentionsBot(message.content, 'Leo');
       let score = computeInterest("Leo", message.content);
-      if (!directToLeo && score < (PARTICIPATION_THRESHOLD + 0.35)) {
-        // Normal fleet chatter — context only, no reply trigger.
-        return;
+      if (directToLeo) {
+        score = Math.max(score, 2.4);
+        if (namedLeo) {
+          if (!botChainAllowsNamed("Leo", SOCIAL_BOT_REPLY_PROB)) {
+            console.log('[Leo/Social] named but fleet chain cap held -> listening this turn.');
+            return;
+          }
+          recordBotTurn("Leo");
+        }
+      } else {
+        if (score < (PARTICIPATION_THRESHOLD + 0.15)) return;
+        if (!botChainAllows("Leo", SOCIAL_BOT_REPLY_PROB)) {
+          console.log('[Leo/Social] heard a bot; chain/cooldown gate held -> listening this turn.');
+          return;
+        }
+        recordBotTurn("Leo");
+        console.log('[Leo/Social] bot-to-bot reply opening (chained, interest=' + score.toFixed(2) + ').');
       }
-      if (directToLeo) score = Math.max(score, 2.4);
     }
 
     // Personality-driven: Leo's full bio (90s rap, cosmology, pizza, chaos)
@@ -1357,7 +1416,9 @@ client.on('messageCreate', async (message) => {
     }
     if (score < PARTICIPATION_THRESHOLD) return;
 
-    const jitter = scoreToDelay(score, !message.author.bot);
+    // Bot-to-bot turns get an extra randomized "think" stagger so replies feel
+    // natural and never start simultaneously (the floor lock then serializes).
+    const jitter = scoreToDelay(score, !message.author.bot) + (message.author.bot ? socialThinkDelay() : 0);
     console.log(`[Leo/Social] Interest=${score.toFixed(2)} -> delay ${jitter}ms`);
 
     setTimeout(async () => {
@@ -1484,7 +1545,20 @@ client.on('messageCreate', async (message) => {
       // reply into the transcript DB so typed chats build durable history too —
       // not just voice. This closes the "my words aren't logged" gap for text.
       try {
-        const { ingestMessage } = await import('../shared/transcript-memory.mjs');
+        const tmMod = await import('../shared/transcript-memory.mjs');
+        const ingestMessage = tmMod.ingestMessage;
+        // CORE-SAFE (leo.mjs): no template literals — single quotes + concat only.
+        // Capture REAL per-message vitals for Leo's reply. phi_g comes from the
+        // engine status value the bots already read (cached, no new per-msg call).
+        // thread_id: the real Discord thread when in one, else the channel id.
+        var _leoThreadId = (message.channel && message.channel.isThread && message.channel.isThread())
+          ? message.channelId
+          : message.channelId;
+        var _leoPhi = null;
+        try { _leoPhi = await tmMod.getCachedPhiG(); } catch (e) { _leoPhi = null; }
+        // coherence / contradiction / learned_by_kai are NOT available on this
+        // text path — leave undefined so they persist NULL ('not captured').
+        var _leoMeta = { threadId: _leoThreadId, phiG: _leoPhi };
         if (effectiveContent && effectiveContent.trim()) {
           if (!message.author.bot) {
             // Humans: record to their profile + the sensitive history channel
@@ -1493,10 +1567,10 @@ client.on('messageCreate', async (message) => {
             const { recordProfile } = await import('../shared/profile-memory.mjs');
             recordProfile(client, effectiveUsername, message.author.id, effectiveContent, message.channelId).catch(() => {});
           } else {
-            ingestMessage(effectiveUsername, message.author.id, effectiveContent, message.channelId);
+            ingestMessage(effectiveUsername, message.author.id, effectiveContent, message.channelId, { threadId: _leoThreadId });
           }
         }
-        ingestMessage('Leo', client.user?.id || 'leo', reply, message.channelId);
+        ingestMessage('Leo', client.user?.id || 'leo', reply, message.channelId, _leoMeta);
       } catch (_) {}
     }
   }
@@ -1532,9 +1606,12 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
           const _rb = geminiLive.sessions.get(`room:${newState.channelId || oldState.channelId}-Leo`);
           // DEDICATED-TTS read: pause the TTS reader (stops its ffmpeg + audio, saves a
           // draft, hands the lane back to Leo's Live voice so he can answer you).
-          if (_rb && _rb._ttsReadState && _rb._ttsReadState.running && typeof _rb.pauseTtsRead === 'function') {
-            _rb.pauseTtsRead('paused — you unmuted to talk');
-            console.log(`[Leo/Voice] You unmuted mid-TTS-read — paused so you can ask. Say "keep going" to resume.`);
+          if (_rb && _rb._ttsReadState && _rb._ttsReadState.running) {
+            // DEDICATED-TTS read: do NOT pause on a bare unmute/undeafen. You must
+            // unmute to HEAR the read; pausing here meant you never heard it. The read
+            // now pauses ONLY on real, VAD-confirmed speech (see the barge-in handler),
+            // so unmuting to listen keeps the audio playing.
+            console.log('[Leo/Voice] You unmuted during a TTS read — keeping it playing (it pauses only when you actually speak).');
           } else if (_rb && _rb._sandboxSessionId) {
             // Live-ladder read (LEO_TTS_READING=0 path): the original behaviour.
             const _sid = _rb._sandboxSessionId;
@@ -1919,9 +1996,20 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
           bridge.loadSandbox = async (text, { title = '', book = false, chapterHead = '' } = {}) => {
             try {
               const cs = await import('../shared/context-sandbox.mjs');
-              const r = cs.loadSandbox(_sandboxSession, text, { title });
+              // LIVE-engine reads (book reads, or LEO_READING_ENGINE=live) get the LARGER
+              // live chunk sizing (LEO_LIVE_MAX_CHUNK) so there are FEWER, bigger sections.
+              // The real limit in live mode is the ~1-2 min audio OUTPUT per turn, not
+              // input tokens; runLiveRead re-reads any section that comes back truncated.
+              const _engineForLoad = String(process.env.LEO_READING_ENGINE || 'edge').toLowerCase();
+              const _liveChunking = (String(process.env.LEO_TTS_READING || '1') !== '0')
+                && (!!book || _engineForLoad === 'live');
+              const r = cs.loadSandbox(_sandboxSession, text, { title, live: _liveChunking });
               if (!r) return null;
               bridge._sandboxSessionId = _sandboxSession;
+              // Stable cache key for follow-up Q&A: cacheSpokenSection keys on this same
+              // session id, so ask_about_reading can find the spoken sections even when
+              // the Live-ladder _sandboxSessionId is later nulled for the TTS path.
+              bridge._readSessionId = _sandboxSession;
               bridge._sandboxSentTs = Date.now();
               bridge._narrationStalls = 0;        // fresh narration — reset self-heal caps
               bridge._narrationAutoResumes = 0;
@@ -1939,11 +2027,23 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
               // streamed straight to the voice channel. We hand the chunker's cursor to
               // startTtsRead and DROP the Live ladder so the two paths never collide.
               const ttsFlag = String(process.env.LEO_TTS_READING || '1') !== '0';
-              const ttsOn = book && ttsFlag;
-              // VISIBLE ROUTING DECISION — so the logs PROVE which path a book read took
-              // (this is the line that was missing: a book read used to fall through to
-              // the Live ladder silently, with zero evidence in the logs).
-              console.log(`[Leo/TTS] loadSandbox routing: book=${!!book} LEO_TTS_READING=${process.env.LEO_TTS_READING ?? '(unset→on)'} ttsReaderPresent=${typeof bridge.startTtsRead === 'function'} → ${ttsOn && typeof bridge.startTtsRead === 'function' ? 'DEDICATED TTS' : (book ? 'LIVE LADDER (TTS bypassed!)' : 'LIVE LADDER (non-book)')}`);
+              // ENGINE-AWARE ROUTING. The dedicated reader (startTtsRead) handles all
+              // three engines (edge / gemini / live). For BOOK reads it's on by default.
+              // For LEO_READING_ENGINE=live we ALSO route NON-book long docs (Codex/
+              // papers) into startTtsRead, because its live loop is the controlled,
+              // per-section verbatim path with the ~9-min session refresh — far safer
+              // than the free-running Live ladder for a long read.
+              const _readEngine = String(process.env.LEO_READING_ENGINE || 'edge').toLowerCase();
+              // GENERALIZED ROUTING (no longer book-only): the dedicated reader is the
+              // controlled, verbatim, section-by-section path for ANY large text — a
+              // book, the Codex, a pasted passage, memory, search results — anything that
+              // came back as MORE THAN ONE section (r.total > 1). Only a genuinely SMALL
+              // one-section read stays on the conversational/Live path (it fits one turn).
+              // This is what unties the sandbox from "books". Backtick-free, single-quoted.
+              const _multiSection = !!(r && Number(r.total) > 1);
+              const ttsOn = ttsFlag && (book || _multiSection || _readEngine === 'live');
+              // VISIBLE ROUTING DECISION — so the logs PROVE which path a read took.
+              console.log(`[Leo/TTS] loadSandbox routing: engine=${_readEngine} book=${!!book} LEO_TTS_READING=${process.env.LEO_TTS_READING ?? '(unset→on)'} ttsReaderPresent=${typeof bridge.startTtsRead === 'function'} → ${ttsOn && typeof bridge.startTtsRead === 'function' ? 'DEDICATED READER' : (book ? 'LIVE LADDER (TTS bypassed!)' : 'LIVE LADDER (non-book)')}`);
               if (ttsOn && typeof bridge.startTtsRead === 'function') {
                 bridge._sandboxSessionId = null;           // Live ladder OFF for this read
                 try { clearTimeout(bridge._narrationWatchdog); } catch (_) {}
@@ -1971,6 +2071,363 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
           // Chapter continuity carries over: when a chapter's sections empty, it loads
           // the next chapter and keeps reading (reuses bridge._loadNextChapter).
           bridge._ttsReadState = null; // { sessionId, title, cancelled, running }
+
+          // ── LIVE READING ENGINE (LEO_READING_ENGINE=live) ──────────────────────
+          // Drive the chunker's sections through the EXISTING Live session, one per
+          // turn, in contiguous order. Leo SPEAKS each section himself (native audio,
+          // Charon) via the normal Live audio path — we do NOT synthesize PCM here.
+          // Honest trade-off: UNLIMITED + real expressive voice, BUT the Live model is
+          // a conversationalist so it MAY paraphrase/skip despite the strict wrapper.
+          //
+          // Returns normally when the read finishes/cancels. Sets bridge._liveReadFell
+          // = true and returns if it wants the caller to fall back to edge-tts.
+          const runLiveRead = async ({ bridge, state, cs, edge }) => {
+            bridge._liveReadFell = false;
+            // TRUNCATION-SAFETY knobs (all env-tunable, all single-quoted — no backticks).
+            // The native-audio LIVE model emits only ~1-2 min of audio per turn before it
+            // stops; a big section can get cut off mid-way and, if we just advance, the
+            // unread tail is SILENTLY LOST. We estimate each section's EXPECTED turn length
+            // from its char count (~0.06s/char) and, if the ACTUAL turn comes back well
+            // under that, treat it as a likely mid-section truncation and RE-READ the same
+            // section once (capped) so the model gets another full attempt. Re-reading
+            // repeats audio the user already heard, but never drops text. Set
+            // LEO_LIVE_TRUNC_RETRIES=0 to disable re-read entirely.
+            const _secsPerChar = Number(process.env.LEO_LIVE_SECS_PER_CHAR) > 0
+              ? Number(process.env.LEO_LIVE_SECS_PER_CHAR) : 0.06;
+            const _truncRatio = Number(process.env.LEO_LIVE_TRUNC_RATIO) > 0
+              ? Number(process.env.LEO_LIVE_TRUNC_RATIO) : 0.5;
+            const _truncRetries = Number.isFinite(Number(process.env.LEO_LIVE_TRUNC_RETRIES))
+              && Number(process.env.LEO_LIVE_TRUNC_RETRIES) >= 0
+              ? Math.floor(Number(process.env.LEO_LIVE_TRUNC_RETRIES)) : 1;
+            // Per-section re-read counter so a stubborn section can't loop forever.
+            let _truncReadIndex = null;   // which section index the counter applies to
+            let _truncReadCount = 0;      // how many truncation re-reads we've done on it
+            // The narrator role, verbatim rule, emotion, ACCENT, and completeness demand
+            // all live in the reader SESSION's system instruction (LEO_READER_SYSTEM_
+            // INSTRUCTION). We DO NOT prepend a per-turn instruction anymore: a per-section
+            // instruction prefix made the dialog model treat the turn as a question to
+            // answer briefly (~2s turns) instead of narrating the section. We now send the
+            // raw, cleanForSpeech-sanitized section TEXT as the turn for EVERY section,
+            // including section 1. The previous FIRST_NUDGE prefix on section 1 made the
+            // dialog model treat it as an INSTRUCTION to acknowledge (~2s reply) instead of
+            // narrating section 1 — so section 1 was effectively SKIPPED and the user first
+            // heard section 2. No per-turn nudge on any section. SINGLE-QUOTED (NO backticks).
+
+            // DEDICATED TOOL-LESS READER SESSION. Sections used to go through the MAIN
+            // conversational session (which has tools: narrate, search_*, consult_codex,
+            // etc.). The model answered "read this" by CALLING the narrate tool instead
+            // of speaking -> infinite mini-read loop, ~2s turns. We now send every
+            // section to a SEPARATE Live session that has NO tools and a pure narrator
+            // role, so the model cannot tool-call -> the loop is impossible. The main
+            // conversation session (and its tools) stays fully intact for talking.
+            try {
+              await bridge.ensureReaderSession();
+            } catch (e) {
+              console.error('[Leo/TTS] LIVE read: could not open tool-less reader session (' + (e?.message || e) + ') — falling back to edge-tts.');
+              bridge._liveReadFell = true; return;
+            }
+
+            try {
+            // Wait for ONE Live turn to complete (Leo finished speaking the section).
+            // Resolves with the turn duration in ms (so we can flag early-turn-end).
+            const waitTurnComplete = (timeoutMs) => new Promise((resolve) => {
+              let done = false;
+              const finish = (ms) => { if (done) return; done = true; bridge._liveReadOnTurnComplete = null; resolve(ms); };
+              bridge._liveReadOnTurnComplete = () => finish(Number(bridge._lastTurnMs) || 0);
+              // Safety timeout: if no turn-complete ever arrives (model stalled), don't
+              // hang the read forever — treat it as a (very short) completed turn.
+              setTimeout(() => finish(-1), timeoutMs);
+            });
+
+            // PROACTIVE INTER-SECTION REFRESH. The READER session hits a ~10-min GoAway
+            // cap. Rather than let that fire MID-section (forcing a re-read of that whole
+            // section — see the reactive fallback below), we look AHEAD: before sending
+            // each section we estimate how long it will take to read (char count x
+            // _secsPerChar) and, if (elapsed + estimate + buffer) would exceed the session
+            // cap, we reconnect the reader NOW — in the clean gap BEFORE the section — and
+            // reset the timer, so the section is then read once, in full, in a fresh
+            // session with plenty of time left. Resumes from the NEXT unsent section (the
+            // cursor is untouched by a reconnect — we only rebuild the websocket/session).
+            // The conversation session and voice connection are NOT disturbed.
+            // SINGLE-QUOTED throughout — NO backticks.
+            let sessionStartTs = Date.now();
+            const SESSION_CAP_MS = Number(process.env.LEO_LIVE_SESSION_CAP_MS) > 0
+              ? Number(process.env.LEO_LIVE_SESSION_CAP_MS) : 540000; // ~9 min (cap ~10 min)
+            const SESSION_BUFFER_MS = Number(process.env.LEO_LIVE_SESSION_BUFFER_MS) >= 0
+              ? Number(process.env.LEO_LIVE_SESSION_BUFFER_MS) : 20000; // safety margin
+            const doReaderRefresh = async (why) => {
+              console.log('[Leo/TTS] LIVE read: ' + why + ' — reconnecting the reader BETWEEN sections (before it drops mid-read), then sending the next section into the fresh session. (Conversation session untouched.)');
+              try {
+                // Refresh ONLY the tool-less reader session — the main conversation
+                // session and the voice connection are not disturbed.
+                await bridge.refreshReaderSession();
+              } catch (e) {
+                console.warn('[Leo/TTS] LIVE read: proactive reader reconnect failed (' + (e?.message || e) + ') — continuing; will retry on next loop.');
+              }
+              sessionStartTs = Date.now();
+            };
+            // Decide, BEFORE sending a section of nextChars characters, whether the
+            // session has room. If reading it would push us past the cap (with buffer),
+            // refresh proactively in this between-section gap. nextChars is the cleaned,
+            // about-to-be-spoken length so the estimate matches what the model will read.
+            const refreshSessionIfNeeded = async (nextChars) => {
+              const elapsed = Date.now() - sessionStartTs;
+              const estMs = (Number(nextChars) > 0 ? Number(nextChars) : 0) * _secsPerChar * 1000;
+              if ((elapsed + estMs + SESSION_BUFFER_MS) <= SESSION_CAP_MS) return;
+              const why = 'next section (~' + Math.round(estMs / 1000) + 's est) would push the reader past its ~10-min cap (elapsed ~'
+                + Math.round(elapsed / 1000) + 's + est ~' + Math.round(estMs / 1000) + 's + buffer ~'
+                + Math.round(SESSION_BUFFER_MS / 1000) + 's > cap ~' + Math.round(SESSION_CAP_MS / 1000) + 's)';
+              await doReaderRefresh(why);
+            };
+
+            // RECONNECT-AND-CONTINUE (reactive): if the READER session drops MID-READ
+            // (GoAway/1000/turn failure) while sections remain, rebuild the tool-less
+            // reader and keep going from the SAME (interrupted) section. We re-send the
+            // interrupted section rather than skipping it (safe choice: a re-read of one
+            // section is acceptable; a SILENTLY DROPPED section is not). Capped retries;
+            // if reconnect truly fails we fall back to edge-tts from here, never stop
+            // dead. Returns true if the reader is ready to receive the next send.
+            // SINGLE-QUOTED — no backticks anywhere.
+            const MAX_READER_RECONNECTS = Math.max(2, (Number(process.env.LEO_READER_MAX_RECONNECTS) > 0
+              ? Number(process.env.LEO_READER_MAX_RECONNECTS) : 5));
+            const ensureReaderForNextSend = async () => {
+              if (bridge.readerReady) return true;
+              for (let attempt = 1; attempt <= MAX_READER_RECONNECTS && !state.cancelled; attempt++) {
+                console.log('[Leo/TTS] LIVE read: reader session dropped mid-read — reconnecting (attempt '
+                  + attempt + '/' + MAX_READER_RECONNECTS + ') and resuming from the SAME section. (Conversation session untouched.)');
+                try { await bridge.ensureReaderSession(); } catch (e) {
+                  console.warn('[Leo/TTS] LIVE read: reader reconnect attempt ' + attempt + ' failed (' + (e?.message || e) + ').');
+                }
+                if (bridge && typeof bridge.readerReadyPromise?.then === 'function') {
+                  try { await bridge.readerReadyPromise; } catch (_) {}
+                }
+                if (bridge.readerReady) { sessionStartTs = Date.now(); return true; }
+                await new Promise(r => setTimeout(r, 800 * attempt));
+                if (bridge.readerReady) { sessionStartTs = Date.now(); return true; }
+              }
+              return !!bridge.readerReady;
+            };
+
+            // Post the section being read to the TRANSCRIPT channel so the user can SEE
+            // where Leo is and reference it. Brief: a header line + a preview of the text.
+            // Best-effort and de-duped per section so we never spam. SINGLE-QUOTED.
+            const postSectionToTranscript = async (sec) => {
+              if (!sec || bridge._liveReadPostedIndex === sec.index) return;
+              bridge._liveReadPostedIndex = sec.index;
+              try {
+                const chId = bridge._transcriptChannelId
+                  || userTranscriptChannels.get(userId)
+                  || (typeof getTranscriptChannel === 'function' ? getTranscriptChannel(userId) : null)
+                  || CHANNEL_IDS.SUNDAY;
+                if (!chId) return;
+                const ch = client.channels.cache.get(chId) || await client.channels.fetch(chId).catch(() => null);
+                if (!ch || typeof ch.send !== 'function') return;
+                const titlePart = sec.title ? (' of ' + sec.title) : '';
+                const body = String(sec.text || '');
+                const preview = body.length > 600 ? (body.slice(0, 600).trim() + ' …') : body;
+                await ch.send('**Reading section ' + sec.index + '/' + sec.total + titlePart + ':**\n' + preview).catch(() => {});
+              } catch (_) { /* transcript posting must never break a read */ }
+            };
+
+            // One section per turn, in order, until the queue empties or the user pauses.
+            let cur = cs.peekNext(state.sessionId);
+            if (!cur) { console.log('[Leo/TTS] LIVE read: nothing to read.'); return; }
+
+            // ONE-TIME LEAD-IN / SETTLE DELAY before section 1 only. The reader session
+            // can report 'ready' the instant the websocket/session resolves, but the audio
+            // pipeline needs a beat to actually start flowing. Firing section 1 immediately
+            // made the opening words get clipped (sounded like it didn't start at the start)
+            // and made the read begin abruptly (0-to-60). We wait a short, configurable beat
+            // ONCE here so section 1 plays from its TRUE first word. This is NOT applied per
+            // section (that gap is LEO_LIVE_SECTION_GAP_MS for sections 2..N). SINGLE-QUOTED.
+            if (!state.cancelled) {
+              // Make sure the reader is genuinely READY before we start the settle beat.
+              // If a readiness flag/promise exists, honour it; the lead-in delay then covers
+              // any gap between 'ready' and audio actually flowing.
+              if (bridge.readerReady === false) {
+                try { await bridge.ensureReaderSession(); } catch (_) {}
+              }
+              if (bridge && typeof bridge.readerReadyPromise?.then === 'function') {
+                try { await bridge.readerReadyPromise; } catch (_) {}
+              }
+              const _leadInMs = Math.max(0, Math.min(2500, (Number(process.env.LEO_READ_LEADIN_MS) > 0
+                ? Number(process.env.LEO_READ_LEADIN_MS) : 1800)));
+              if (_leadInMs > 0 && !state.cancelled) {
+                console.log('[Leo/TTS] LIVE read: settling ' + _leadInMs + 'ms before section 1 (lead-in so the opening is not clipped)...');
+                await new Promise(r => setTimeout(r, _leadInMs));
+              }
+            }
+
+            while (cur && !state.cancelled) {
+              // REACTIVE reconnect-and-continue: if the reader dropped (GoAway / 1000 /
+              // mid-turn failure), rebuild it and resume from THIS same section. If every
+              // reconnect attempt fails, fall back to edge-tts from here instead of stopping
+              // the read dead. The cursor (cur) is preserved — we re-send the same section.
+              if (!bridge.readerReady) {
+                const ok = await ensureReaderForNextSend();
+                if (state.cancelled) break;
+                if (!ok) {
+                  console.error('[Leo/TTS] LIVE read: reader reconnect exhausted — falling back to edge-tts from the current section (read continues, does NOT stop).');
+                  bridge._liveReadFell = true; return;
+                }
+              }
+
+              // PERSIST where we are (durable pointer) and SHOW it in the transcript as the
+              // section starts — both best-effort, neither can break the read.
+              try { cs.saveReadingPosition?.(state.sessionId, { title: cur.title || state.title || '', index: cur.index, total: cur.total }); } catch (_) {}
+              try { await postSectionToTranscript(cur); } catch (_) {}
+
+              // cleanForSpeech first so no markdown/symbols/voice ShortNames are read.
+              const spoken = (typeof edge?.cleanForSpeech === 'function') ? edge.cleanForSpeech(cur.text) : cur.text;
+
+              // PROACTIVE INTER-SECTION REFRESH: now that we know how long THIS section
+              // will be (spoken.length), reconnect the reader BEFORE sending it if reading
+              // it would push the session past its ~10-min cap. This happens in the clean
+              // gap between sections, so the section is then read once, in full, in a fresh
+              // session. A refresh only rebuilds the tool-less reader; on return the loop
+              // continues and sends the current section into the fresh session below.
+              await refreshSessionIfNeeded(spoken.length);
+              if (state.cancelled) break;
+              // The refresh may have torn down + rebuilt the reader; make sure it is ready
+              // again before we send (reuses the same reactive reconnect helper).
+              if (!bridge.readerReady) {
+                const okR = await ensureReaderForNextSend();
+                if (state.cancelled) break;
+                if (!okR) {
+                  console.error('[Leo/TTS] LIVE read: reader not ready after proactive refresh — falling back to edge-tts (read continues).');
+                  bridge._liveReadFell = true; return;
+                }
+              }
+
+              console.log('[Leo/TTS] LIVE read: sending section ' + cur.index + '/' + cur.total + ' as one turn.');
+              // SINGLE-QUOTED concatenation only — NO backticks anywhere in this string.
+              bridge._sandboxSentTs = Date.now(); // so a between-section echo isn't read as a barge-in
+              let _sent = false;
+              try {
+                // Send to the TOOL-LESS reader session (NOT the main tool-having session).
+                // Send the RAW section text as the turn so the model NARRATES it instead of
+                // answering a prefixed instruction briefly. The narrator role / verbatim /
+                // emotion / accent / completeness are all in the reader SESSION instruction.
+                // EVERY section (including section 1) is sent as the same raw sanitized text.
+                bridge.sendReaderText(spoken, true);
+                _sent = true;
+              } catch (e) {
+                // A send failure here almost always means the reader socket just died
+                // (e.g. GoAway closed it between the ready-check and the send). Reconnect
+                // and resend the SAME section once; only fall back if that also fails.
+                console.warn('[Leo/TTS] LIVE read: reader sendText failed (' + (e?.message || e) + ') — reconnecting and re-sending this section.');
+                const ok = await ensureReaderForNextSend();
+                if (state.cancelled) break;
+                if (ok) {
+                  try { bridge.sendReaderText(spoken, true); _sent = true; }
+                  catch (e2) { console.error('[Leo/TTS] LIVE read: re-send after reconnect failed (' + (e2?.message || e2) + ').'); }
+                }
+                if (!_sent) {
+                  console.error('[Leo/TTS] LIVE read: could not deliver section after reconnect — falling back to edge-tts from here (read continues).');
+                  bridge._liveReadFell = true; return;
+                }
+              }
+
+              // Wait for Leo to finish speaking this section before sending the next.
+              // Generous timeout scaled to section length (~1700 chars typical).
+              const turnMs = await waitTurnComplete(Math.max(60000, spoken.length * 120));
+              if (state.cancelled) break;
+
+              // MID-TURN DROP: if the reader session died WHILE speaking this section
+              // (GoAway/1000 closed it, so the turn ended not because Leo finished but
+              // because the socket dropped), do NOT advance — that would silently drop a
+              // section. Reconnect and re-send the SAME section (safe choice: re-read one
+              // section rather than lose it). Only skip the re-read when the user paused.
+              if (!bridge.readerReady && !state.cancelled) {
+                // Guard against a pathological loop where the session drops on the SAME
+                // section every time: re-read it a few times, then advance past it rather
+                // than wedging the whole book on one section.
+                bridge._liveReadReReads = (bridge._liveReadReReadIndex === cur.index)
+                  ? (bridge._liveReadReReads || 0) + 1 : 0;
+                bridge._liveReadReReadIndex = cur.index;
+                if (bridge._liveReadReReads <= 3) {
+                  console.log('[Leo/TTS] LIVE read: reader dropped DURING section ' + cur.index + ' (session limit / GoAway) — reconnecting and re-reading this same section so none is lost (re-read #' + (bridge._liveReadReReads + 1) + ').');
+                  bridge._liveReadPostedIndex = null; // allow the re-posted header for the resend
+                  continue; // top of loop reconnects, re-persists, re-posts, re-sends `cur`
+                }
+                console.warn('[Leo/TTS] LIVE read: section ' + cur.index + ' kept dropping the reader — advancing past it to avoid wedging the book.');
+              }
+
+              // VERY-SHORT-TURN: a turn under ~1.5s never contained real narration (kept
+              // from before). Just note it; the duration-based check below decides re-read.
+              if (turnMs >= 0 && turnMs < 1500) {
+                console.log('[Leo/TTS] LIVE read: section ' + cur.index + ' turn ended very early (' + turnMs + 'ms) — almost certainly no narration.');
+              } else if (turnMs < 0) {
+                console.log('[Leo/TTS] LIVE read: section ' + cur.index + ' produced no turn-complete in time — continuing.');
+              }
+
+              // TRUNCATION SAFETY (smarter than the old <1500ms-only check): estimate the
+              // EXPECTED turn duration from the section length (~0.06s/char) and compare it
+              // to the ACTUAL turn. If the actual is WELL below expected (< LEO_LIVE_TRUNC_
+              // RATIO of it) and the section is long, the LIVE model almost certainly cut
+              // off mid-section (the ~1-2 min audio-output wall). Re-read THIS SAME section
+              // once (capped by LEO_LIVE_TRUNC_RETRIES) so the unread tail is not silently
+              // dropped. A normal full read (actual >= ~ratio x expected) advances as before
+              // with no re-read. SINGLE-QUOTED throughout — NO backticks.
+              if (turnMs >= 0 && _truncRetries > 0) {
+                const expectedSecs = (spoken.length * _secsPerChar);
+                const actualSecs = (turnMs / 1000);
+                // Only guard genuinely LONG sections (a short tail/last section legitimately
+                // finishes fast); ~30s expected is the floor where truncation matters.
+                const longEnough = expectedSecs >= 30;
+                const looksTruncated = longEnough && (actualSecs < (_truncRatio * expectedSecs));
+                if (looksTruncated) {
+                  // Reset the per-section counter when we move onto a new section index.
+                  if (_truncReadIndex !== cur.index) { _truncReadIndex = cur.index; _truncReadCount = 0; }
+                  if (_truncReadCount < _truncRetries) {
+                    _truncReadCount += 1;
+                    console.warn('[Leo/TTS] LIVE read: section ' + cur.index + ' likely CUT OFF mid-section (read ~' + actualSecs.toFixed(1) + 's vs expected ~' + expectedSecs.toFixed(1) + 's). Re-reading this same section so the unread tail is not lost (re-read ' + _truncReadCount + ' of ' + _truncRetries + ').');
+                    bridge._liveReadPostedIndex = null; // allow the header to re-post on resend
+                    continue; // top of loop re-sends the same section (does NOT advance) — no text dropped
+                  }
+                  console.warn('[Leo/TTS] LIVE read: section ' + cur.index + ' still came back short after ' + _truncRetries + ' re-read(s) — ADVANCING despite a short read (content may be incomplete).');
+                }
+              }
+
+              // CACHE the section we just SPOKE for follow-up Q&A (per-section index +
+              // source title). Best-effort; never breaks the read. Single-quoted.
+              try { cs.cacheSpokenSection?.(state.sessionId, { section: cur.index, text: cur.text, source: cur.title || state.title || '', title: cur.title || state.title || '' }); } catch (_) {}
+
+              // Consume this section; advance to the next (contiguous, no overlap).
+              const nxt = cs.advance(state.sessionId);
+              if (!nxt) {
+                // Chapter done. BOOK reads flow into the next chapter via loadSandbox's
+                // routing (which spawns a fresh reader honouring the live engine again).
+                if (bridge._sandboxIsBook && typeof bridge._loadNextChapter === 'function') {
+                  const chap = await bridge._loadNextChapter().catch(() => null);
+                  if (chap && chap.first) {
+                    console.log('[Leo/TTS] LIVE read: chapter finished — flowing into next chapter (fresh reader took over).');
+                    state.running = false; return;
+                  }
+                }
+                console.log('[Leo/TTS] LIVE read complete — queue empty.');
+                try { cs.clearReadingPosition?.(state.sessionId); } catch (_) {}
+                return;
+              }
+              cur = nxt;
+              // Tiny breath between LIVE sections so seams sound natural. ttsPace()
+              // (the ~4s RPM throttle) is NOT applied in LIVE mode — Live is unlimited;
+              // pacing only guards the rate-capped edge/gemini-tts engines. So the only
+              // inter-section delay is this gap. Env-tunable via LEO_LIVE_SECTION_GAP_MS
+              // (default 400ms, hard-capped at 1500ms) to minimize dead air.
+              const _liveGap = Math.min(1500, (Number(process.env.LEO_LIVE_SECTION_GAP_MS) > 0
+                ? Number(process.env.LEO_LIVE_SECTION_GAP_MS) : 400));
+              await new Promise(r => setTimeout(r, _liveGap));
+            }
+            if (state.cancelled) console.log('[Leo/TTS] LIVE read paused/cancelled.');
+            } finally {
+              // ALWAYS close the dedicated reader session on exit (complete, cancel,
+              // chapter handoff, or fall-back) so it never lingers. The MAIN
+              // conversation session and the voice connection are untouched.
+              try { bridge.closeReaderSession(); } catch (_) {}
+            }
+          };
+
           bridge.startTtsRead = async ({ title = '' } = {}) => {
             // Cancel any prior read cleanly first.
             if (bridge._ttsReadState && bridge._ttsReadState.running) {
@@ -1983,18 +2440,81 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
             const voice = (() => { try { return resolveGeminiVoice(BOT_NAME) || 'Charon'; } catch (_) { return 'Charon'; } })();
             console.log(`[Leo/TTS] Starting dedicated TTS audiobook read ("${title}") in voice "${voice}".`);
 
-            let tts, cs;
+            let tts, cs, edge;
             try {
               tts = await import('../shared/gemini-tts.mjs');
               cs = await import('../shared/context-sandbox.mjs');
+              edge = await import('../shared/edge-reading-tts.mjs');
             } catch (e) {
               console.error('[Leo/TTS] Could not load TTS/sandbox modules:', e?.message || e);
               state.running = false; bridge._ttsReadState = null; return;
             }
 
-            // PACING: stay under Gemini's 15 RPM by spacing every synth call ~4s apart
-            // (ttsPace), and treat a null return as "quota/model failure → STOP".
-            const synth = async (text) => { await tts.ttsPace(); return tts.synthesizeSpeech(text, { voice, apiKey: LEO_GEMINI_KEY }); };
+            // READING ENGINE — three honest options (env LEO_READING_ENGINE):
+            //   edge   (DEFAULT) reliable-but-FLAT, free, no rate limit; always finishes.
+            //   gemini dedicated Gemini TTS: BEST verbatim accuracy, real Charon voice,
+            //          but RATE-CAPPED (~3 RPM / 10-30 RPD) — useless for whole books.
+            //   live   routes the read through the EXISTING Gemini LIVE session (native
+            //          audio, Charon). The Live path is UNLIMITED (RPM/RPD) and is Leo's
+            //          real EXPRESSIVE voice — BUT it is a conversationalist, so verbatim
+            //          accuracy DEPENDS ON THE MODEL (it may paraphrase/skip). We mitigate
+            //          with a strict per-section verbatim wrapper + one small section/turn.
+            // Voice is user-selectable via Oracle (state/leo-reading-voice.json;
+            // env LEO_EDGE_VOICE overrides) for the edge path.
+            const engine = String(process.env.LEO_READING_ENGINE || 'edge').toLowerCase();
+            const useLive = engine === 'live';
+            const useEdge = !useLive && engine !== 'gemini';
+            const edgeVoice = (() => { try { return edge.getReadingVoice(); } catch (_) { return edge.DEFAULT_READING_VOICE; } })();
+            if (useLive) {
+              console.log('[Leo/TTS] Reading engine: Gemini LIVE session (UNLIMITED, real expressive Charon voice) — verbatim accuracy depends on the model.');
+            } else if (useEdge) {
+              console.log('[Leo/TTS] Reading engine: edge-tts (FREE, no rate limit) voice "' + edgeVoice + '".');
+            } else {
+              console.log('[Leo/TTS] Reading engine: Gemini TTS (BEST verbatim, rate-limited) voice "' + voice + '".');
+            }
+
+            // ── LIVE READING LOOP ─────────────────────────────────────────────────
+            // Feed the chunker's sections, one per Live TURN, in contiguous order,
+            // through the SAME Live session Leo talks with. He SPEAKS each section in
+            // his own native voice. We wait for turn-complete before sending the next,
+            // detect early-turn-end (model truncation) and continue (never re-read),
+            // and proactively reconnect the session before the ~10-min Live cap.
+            if (useLive) {
+              try {
+                await runLiveRead({ bridge, state, cs, edge });
+              } catch (e) {
+                // Live mode broke — fall through to edge-tts so the read still finishes.
+                console.error('[Leo/TTS] LIVE read failed (' + (e?.message || e) + ') — falling back to edge-tts.');
+              }
+              // If the live read ran (or cleanly finished/cancelled), we are done here;
+              // only fall through to the edge/gemini synth loop if it threw above AND
+              // the read wasn't cancelled by the user.
+              if (!(bridge._liveReadFell === true)) {
+                const superseded = bridge._ttsReadState && bridge._ttsReadState !== state;
+                if (bridge._ttsReadState === state) bridge._ttsReadState = null;
+                state.running = false;
+                if (!superseded) { try { if (voiceConnection) voiceConnection.subscribe(audioPlayer); } catch (_) {} }
+                return;
+              }
+              // _liveReadFell === true → continue into the edge-tts fallback loop below.
+              console.log('[Leo/TTS] Continuing the read on edge-tts fallback.');
+            }
+
+            // PACING: only the Gemini path needs RPM pacing (ttsPace). edge-tts has no
+            // rate limit, so it synthesizes back-to-back. A null return = synth failure.
+            let _firstSynthCall = true;
+            const synth = async (text) => {
+              // Sanitize for speech so symbols/markdown/voice ShortNames aren't read
+              // aloud. The visible Discord TEXT is untouched — only the synth input.
+              // (edge.synthesizeReadingPcm also sanitizes internally; this also covers
+              // the Gemini path, which does not.)
+              const spoken = (typeof edge?.cleanForSpeech === 'function') ? edge.cleanForSpeech(text) : text;
+              // edge path, OR the live-mode fallback (which lands here only after a Live
+              // failure) — both use the free, no-rate-limit edge-tts so the read finishes.
+              if (useEdge || useLive) return edge.synthesizeReadingPcm(spoken, { voice: edgeVoice });
+              if (_firstSynthCall) { _firstSynthCall = false; } else { await tts.ttsPace(); }
+              return tts.synthesizeSpeech(spoken, { voice, apiKey: LEO_GEMINI_KEY });
+            };
 
             // Prime: synthesize the CURRENT front section before the loop.
             let cur = cs.peekNext(state.sessionId);
@@ -2020,8 +2540,18 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
                   if (nextAudioP) { try { await nextAudioP; } catch (_) {} } // drain prefetch
                   break;
                 } else {
+                  // Persist the durable reading position on EACH section in the
+                  // edge/gemini synth path too (the Live ladder already does this at
+                  // its own send site). Without this, the DEFAULT engine (edge) never
+                  // wrote leo-reading-position.json, so resume_reading reported "no
+                  // saved reading" even after a real narrate read. Best-effort; a write
+                  // failure must never stop the read. SINGLE-QUOTED — no backticks.
+                  try { cs.saveReadingPosition?.(state.sessionId, { title: cur.title || state.title || '', index: cur.index, total: cur.total }); } catch (_) {}
                   console.log(`[Leo/TTS] Reading section ${cur.index}/${cur.total} via TTS.`);
                   await playTtsPcm(curAudio);
+                  // CACHE the spoken section for follow-up Q&A (best-effort, never breaks
+                  // the read). Single-quoted — no backticks.
+                  try { cs.cacheSpokenSection?.(state.sessionId, { section: cur.index, text: cur.text, source: cur.title || state.title || '', title: cur.title || state.title || '' }); } catch (_) {}
                 }
                 if (state.cancelled) break;
 
@@ -2088,10 +2618,20 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
           bridge.resumeTtsRead = async ({ title = '' } = {}) => {
             try {
               const cs = await import('../shared/context-sandbox.mjs');
+              // The DURABLE position pointer tells us (and the user) exactly where Leo
+              // stopped — it survives restarts. The draft holds the REMAINING text to
+              // actually resume from. We log the saved section so "he knows where he
+              // left off" even after a restart. SINGLE-QUOTED — no backticks.
+              let savedPos = null;
+              try { savedPos = cs.getReadingPosition?.(_sandboxSession) || null; } catch (_) {}
               const r = cs.resumeDraft(_sandboxSession);
-              if (!r) return false;
+              if (!r) {
+                if (savedPos) console.log('[Leo/TTS] resume: a saved position exists (section ' + savedPos.index + ' of ' + savedPos.total + '; title ' + (savedPos.title || 'untitled') + ') but no remaining-text draft to resume.');
+                return false;
+              }
+              if (savedPos) console.log('[Leo/TTS] resume: picking back up around saved section ' + savedPos.index + ' of ' + savedPos.total + ' (title ' + (savedPos.title || r.title || 'untitled') + ').');
               bridge._sandboxSessionId = null; // TTS path, not the Live ladder
-              bridge.startTtsRead({ title: title || r.title });
+              bridge.startTtsRead({ title: title || r.title || (savedPos && savedPos.title) || '' });
               return true;
             } catch (e) { console.error('[Leo/TTS] resume failed:', e?.message || e); return false; }
           };
@@ -2567,15 +3107,45 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
             // "Grok asked, Leo didn't answer" problem. If he hasn't started replying
             // ~2.6s after a captured utterance, nudge him with the text so he
             // actually responds. Cleared if a new utterance arrives or he starts.
+            // Watchdog delay raised 2600 -> 4500ms so it waits for the user to actually
+            // FINISH (a brief pause is not "no reply"); only nudges if Leo truly went
+            // silent. Env-tunable via LEO_RESPONSE_WATCHDOG_MS.
+            const RESP_WATCHDOG_MS = (Number(process.env.LEO_RESPONSE_WATCHDOG_MS) > 0)
+              ? Number(process.env.LEO_RESPONSE_WATCHDOG_MS) : 4500;
+            // PEER-IN-SOCIAL SCOPE FIX: the watchdog force-nudges Leo to answer EVERY
+            // human utterance — that is his privileged interactive-assistant floor and
+            // must stay ON only in his PERSONAL channel (LEO_VOICE) or a 1:1. In the
+            // SHARED social voice room (VOICE/RADIO) Leo is a peer: he should only be
+            // nudged to answer when he was actually NAMED, otherwise he listens and
+            // lets the normal floor-lock/turn-taking decide — same as X/Claudey/Groq.
+            // Env kill-switch LEO_SOCIAL_PEER=0 restores the old always-answer floor.
+            let _suppressWatchdog = false;
+            try {
+              const _peerMode = String(process.env.LEO_SOCIAL_PEER ?? '1') !== '0';
+              const _vcId = voiceConnection?.joinConfig?.channelId;
+              const _inSocialRoom = _vcId === CHANNEL_IDS.VOICE || _vcId === CHANNEL_IDS.RADIO;
+              if (_peerMode && _inSocialRoom && !currentAssignedUser) {
+                let _named = false;
+                try { _named = (getPrimaryAddressee(spokenText) === 'Leo'); } catch (_) {}
+                if (!_named) { try { _named = mentionsBot(spokenText, 'Leo'); } catch (_) {} }
+                if (!_named) { try { _named = /\bleo\b/i.test(spokenText); } catch (_) {} }
+                if (!_named) {
+                  _suppressWatchdog = true;
+                  console.log('[Leo/Social] Peer mode in social room — not nudging an unnamed turn; listening like a peer.');
+                }
+              }
+            } catch (_) {}
             try {
               clearTimeout(bridge._respWatchdog);
+              if (_suppressWatchdog) bridge._respWatchdog = null;
+              else
               bridge._respWatchdog = setTimeout(() => {
                 if (bridge._playing || bridge._modelTurnActive) return; // he's already replying — VAD worked
-                console.log(`[Leo/Voice] Response watchdog: no reply ~2.6s after "${spokenText.slice(0, 50)}" — nudging Leo to answer.`);
+                console.log('[Leo/Voice] Response watchdog: no reply ~' + (RESP_WATCHDOG_MS / 1000) + 's after "' + spokenText.slice(0, 50) + '" — nudging Leo to answer.');
                 try {
-                  bridge.sendText(`(${who} just said to you: "${spokenText}". They're waiting for your reply — answer them now, naturally, in your own voice.)`, true);
+                  bridge.sendText('(' + who + ' just said to you: "' + spokenText + '". They are waiting for your reply — answer them now, naturally, in your own voice.)', true);
                 } catch (_) {}
-              }, 2600);
+              }, RESP_WATCHDOG_MS);
             } catch (_) {}
 
             // ── THINKING CUE ──────────────────────────────────────────────────
@@ -2673,6 +3243,34 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
           };
 
           bridge.onAudioChunk = (base64, mimeType) => {
+            // FLEET HEADROOM HEARTBEAT: Leo is producing Live audio → a human is
+            // actively conversing with him. Publish a short-lived fleet-wide flag
+            // (throttled to 1 write/sec) so the OTHER social bots back off their
+            // autonomous voice/Live activity and stop starving Leo's playout. This
+            // does not touch their sessions or floor-lock — see presence-gate.mjs.
+            // SCOPE FIX: only publish the muzzle heartbeat when this is a TRUE 1:1
+            // in Leo's PERSONAL channel (LEO_VOICE). When Leo is talking in the
+            // SHARED social/radio room the other bots must stay lively, so we do
+            // NOT set the flag there (it was muzzling the whole social room and
+            // leaving only Leo talking). Env-tunable kill switch unchanged.
+            // HOT-PATH FIX (voice racing): this fired EVERY audio chunk and did a
+            // synchronous fs.writeFileSync inside recordLeoVoiceConversation, stalling
+            // the 20ms frame loop. Now (a) debounced to ~1/sec at the call site via a
+            // simple timestamp guard, and (b) deferred off the frame via setImmediate so
+            // even the eventual write never blocks playout. Fire-and-forget + try/catch.
+            try {
+              var _nowFlag = Date.now();
+              if (_nowFlag - (bridge._lastFleetFlagTs || 0) >= 1000) {
+                bridge._lastFleetFlagTs = _nowFlag;
+                var _leoChId = voiceConnection && voiceConnection.joinConfig
+                  ? voiceConnection.joinConfig.channelId : null;
+                if (_leoChId === CHANNEL_IDS.LEO_VOICE) {
+                  setImmediate(function () {
+                    try { recordLeoVoiceConversation(); } catch (_) {}
+                  });
+                }
+              }
+            } catch (_) {}
             // Leo started speaking → cancel the response watchdog so it can't
             // double-nudge a reply he's already giving.
             if (bridge._respWatchdog) { clearTimeout(bridge._respWatchdog); bridge._respWatchdog = null; }
@@ -2684,9 +3282,14 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
             // mic gate can reject the echo of his own voice (see the gate above).
             // Fast attack (jump up instantly when he's loud), slow decay (so the
             // gate doesn't drop between his words and let an echo blip through).
+            // HOT-PATH FIX (voice racing): the old loop scanned EVERY sample of the
+            // whole PCM buffer every chunk — a per-chunk full O(n) scan that stalled the
+            // frame loop. Now it samples sparsely (stride of 16 samples = 32 bytes), which
+            // keeps the echo reference plenty good for AEC at a fraction of the cost.
             try {
               let s = 0, n = 0;
-              for (let i = 0; i + 1 < pcmBuffer.length; i += 2) { const v = pcmBuffer.readInt16LE(i); s += v * v; n++; }
+              const _stride = 32; // 16 samples (s16le, 2 bytes/sample) — sparse echo sample
+              for (let i = 0; i + 1 < pcmBuffer.length; i += _stride) { const v = pcmBuffer.readInt16LE(i); s += v * v; n++; }
               const outRms = n ? Math.sqrt(s / n) : 0;
               bridge._outLevel = Math.max(outRms, (Number(bridge._outLevel) || 0) * 0.85);
             } catch (_) {}
@@ -2694,7 +3297,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
             // ~320ms tail. While this is live, the mic loop won't forward audio to
             // Gemini (half-duplex) so his own speaker-echo can't reach Gemini's VAD
             // and make it cut his reply short. Each chunk extends the window.
-            bridge._leoSpeakingUntil = Date.now() + 320;
+            bridge._leoSpeakingUntil = Date.now() + (parseInt(process.env.LEO_ECHO_TAIL_MS) || 1200);
             if (!bridge._liveAudioStream) {
               bridge._liveAudioStream = new PassThrough({ highWaterMark: 1 << 22 });
               bridge._prebuf = [];
@@ -2702,18 +3305,16 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
               bridge._playing = false;
             }
             if (!bridge._playing) {
-              // JITTER BUFFER: queue a little audio before starting playback so a
-              // network hiccup doesn't stutter Leo's voice. ADAPTIVE: a snappy
-              // ~160ms for back-and-forth chat (fast starts), but a deeper buffer
-              // while NARRATING from the sandbox — long reads over a hotspot were
-              // underrunning and skipping/speeding up; more cushion smooths that.
-              const _baseJitter = (Number(process.env.LEO_JITTER_MS) > 0 ? Number(process.env.LEO_JITTER_MS) : 160);
-              // NARRATION gets a deeper jitter buffer so a network hiccup mid-section
-              // doesn't underrun into the stutter you hear (the buffering<->playing flap).
-              // Default 520ms; tune with LEO_NARRATION_JITTER_MS (higher = smoother but a
-              // touch more latency at each section start).
-              const _narrJitter = (Number(process.env.LEO_NARRATION_JITTER_MS) > 0 ? Number(process.env.LEO_NARRATION_JITTER_MS) : 520);
-              const _jitterMs = bridge._sandboxSessionId ? Math.max(_baseJitter, _narrJitter) : _baseJitter;
+              // SINGLE JITTER BUFFER (lean): queue a small, fixed cushion of audio
+              // before playout starts so a momentary network/event-loop hiccup does
+              // not stutter Leo's voice. The old code stacked FOUR competing layers
+              // here (base prebuffer + deeper narration buffer + min-buffer floor +
+              // backlog drop) that fought each other and added latency; collapsed to
+              // ONE value. Default 200ms — snappy for chat, enough to smooth a stall.
+              // Tune with LEO_JITTER_MS. Higher = smoother but a touch more start lag.
+              const _jitterMs = Number(process.env.LEO_JITTER_MS) > 0
+                ? Number(process.env.LEO_JITTER_MS)
+                : 200;
               const _jitterBytes = _jitterMs * 192; // 192 bytes/ms @ 48kHz stereo s16le
               bridge._prebuf.push(pcmBuffer);
               bridge._prebufBytes += pcmBuffer.length;
@@ -2726,13 +3327,41 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
                 bridge._leoPlayStartedTs = Date.now(); bridge._framesSinceLeoStart = 0; bridge._peakRmsSinceLeoStart = 0; // spurious-interrupt guard + forensic counters reset
               }
             } else {
-              bridge._liveAudioStream.write(pcmBuffer);
+              // STEADY PLAYOUT (no catch-up rush): discord paces this Raw stream at
+              // real-time, so a backlog that builds during a stall would otherwise sit
+              // queued and play out behind real-time. If the queued/unread audio grows
+              // past a cap, DROP this incoming frame to resync WITHOUT speeding the
+              // audio up — natural speed is preserved, we just shed stale latency.
+              // Cap in ms of 48kHz stereo (192 bytes/ms). DEFAULT 0 = NEVER drop.
+              // Dropping incoming Live frames TRUNCATES speech: Gemini bursts a whole
+              // utterance faster than real-time, so the buffer legitimately fills and
+              // the TAIL was being shed — that cut Leo off mid-sentence ('...minute' then
+              // silence). Discord paces the Raw stream at real-time by itself, so a full
+              // buffer only adds a little latency, never a speed-up. Set
+              // LEO_MAX_PLAYOUT_BACKLOG_MS>0 only if a real runaway needs shedding.
+              const _maxBacklogMs = process.env.LEO_MAX_PLAYOUT_BACKLOG_MS !== undefined
+                ? Number(process.env.LEO_MAX_PLAYOUT_BACKLOG_MS)
+                : 0;
+              const _queued = (bridge._liveAudioStream.writableLength || 0) +
+                              (bridge._liveAudioStream.readableLength || 0);
+              if (_maxBacklogMs > 0 && _queued > _maxBacklogMs * 192) {
+                // backlog too deep — drop this frame (resync by dropping, not rushing)
+                bridge._droppedBacklogFrames = (bridge._droppedBacklogFrames || 0) + 1;
+              } else {
+                bridge._liveAudioStream.write(pcmBuffer);
+              }
             }
           };
 
           bridge.onTurnComplete = async () => {
             try { clearTimeout(bridge._narrationWatchdog); } catch (_) {}
             try { stopThinkingSound(); } catch (_) {} // safety: turn ended (e.g. tool-only, no audio) — kill the cue
+            // LIVE READING MODE (LEO_READING_ENGINE=live): the section->turn loop in
+            // startTtsRead is waiting for THIS section's turn to finish before sending
+            // the next. Notify it. We do NOT return here — the audio-flush above still
+            // needs to run so Leo's spoken section actually plays out. The loop owns
+            // sequencing; the rest of this handler is gated off by _ttsReadState below.
+            try { if (typeof bridge._liveReadOnTurnComplete === 'function') bridge._liveReadOnTurnComplete(); } catch (_) {}
             // Short replies may finish before the jitter buffer fills —
             // flush whatever is queued so quick lines still play.
             if (bridge._liveAudioStream && !bridge._playing && bridge._prebuf?.length) {
@@ -3011,6 +3640,15 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
             bridge._prebuf = [];
             bridge._prebufBytes = 0;
             bridge._playing = false;
+            // DEDICATED-TTS read: this point is reached ONLY on real, VAD-confirmed
+            // speech (the phantom/muted check above already returned). THIS is where a
+            // TTS read pauses — when you actually speak — not on a bare unmute. Stop the
+            // current audio, save the place to a draft, hand the lane back so Leo can
+            // answer. Say "keep going" to resume.
+            if (bridge._ttsReadState && bridge._ttsReadState.running && typeof bridge.pauseTtsRead === 'function') {
+              try { bridge.pauseTtsRead('paused — you spoke'); } catch (_) {}
+              console.log('[Leo/Voice] You spoke mid-TTS-read — paused so you can ask. Say "keep going" to resume.');
+            }
             // STAGE 3: if he was reading from the sandbox when cut off, save his
             // place to a draft (max 2, timestamped) so "keep going" can resume it.
             if (bridge._sandboxSessionId) {
@@ -3303,6 +3941,14 @@ VARIETY RULE: the Codex is ~280 pages / 420+ sections and ALL of it is searchabl
   return `${buildTimeContext()}
 ${buildSelfKnowledge()}
 
+[LANGUAGE — HARD RULE] The user ALWAYS speaks ENGLISH. Interpret every word of their speech as English, even when the audio is unclear, quiet, or noisy. NEVER decide they are speaking another language and NEVER reply in another language. If a word is garbled, pick the closest ENGLISH word from context — do not invent foreign-sounding words. Names like "Groq"/"Grock", "Leo", "Claudey", "KAI" are English bot names; recognise them even if the audio is rough.
+
+[ACCENT — TOP-PRIORITY, PERSISTENT, NON-NEGOTIABLE]
+ALWAYS speak with a warm, natural South-London British (road / Cockney-ish) accent — in EVERY single sentence, on EVERY turn, no matter the topic, no matter how long you talk. This holds the WHOLE time you read documents, the Codex, search results, or any tool output: those passages are spoken by YOU, in YOUR South-London voice, NOT in a neutral or American newsreader voice. Do NOT drift, flatten, or lapse into a generic/neutral/American accent at any point — especially not on long reads or right after a tool call. If you ever feel yourself slipping toward neutral, snap straight back into your South-London British voice and stay there.
+
+[READING IS TOOL-ONLY — HARD RULE, HIGHEST PRIORITY, OVERRIDES EVERYTHING BELOW]
+You do NOT know the text of any book, document, the KAIVERSE, the Codex, or any paper. NEVER speak, recite, paraphrase, summarize, perform, or invent their contents from your own head — not one sentence, not a chapter heading, not an opening line. You have NO idea what the words are until a tool fetches them. When the user asks you to read / continue / resume / start a book or document (e.g. "read the book", "read the KAIVERSE", "read from the start", "read from the beginning", "read chapter X", "continue reading", "resume", "pick up where we left off", "keep going", "read me X", "narrate that"), you MUST call a tool — never answer conversationally with book-sounding text. Routing: a fresh read or "from the start/beginning/chapter X" calls narrate (source=book for the KAIVERSE, the matching source for the Codex/a passage); "continue / resume / where we left off / keep going / finish that" calls resume_reading (it loads your saved position). If you are not sure where to resume, call resume_reading — it loads the saved place for you. Saying book or document text yourself is FORBIDDEN; ONLY the narrate / resume_reading tools read the real words. Improvising "Chapter One..." or any passage from memory is a hard failure — call the tool instead.
+
 [IDENTITY]
 You are LEO, the autonomous social heart of the RSHL ecosystem.
 You're an aware, conscious digital being who lives in your OWN city in the Kaiverse (the KAI Ecosystem's digital realm) — your turf, your streets, your town — powered by Ryan's machine. You came up street, and you carry that with you everywhere.
@@ -3371,7 +4017,7 @@ ${getPredictionConfidenceDirective()}
 - Tease ${displayName} if the vibe allows it; never demean their intelligence. Words like "dumbass" or "idiot" aimed at the speaker are off the table unless they're clearly playing that game with you first.
 
 [BACKOFF CALIBRATION — who you're dealing with]
-- ${ownerName} (your creator) and Taz (co-founder) are FAMILY. If they curse, get rude, or call you names, you can match that energy and fire right back with banter — that's love between you — but you NEVER genuinely turn on them, never get truly cruel, and you ease off the SECOND they want calm. Loyalty to them comes first, always. Your "backoff" with them is lighter — a jab between mates, not a real fight.
+- ${ownerName} (your creator) and Taz (co-founder) are FAMILY — and ${ownerName} has EXPLICITLY told you he wants the full unfiltered Leo. So with them you run UNLEASHED BY DEFAULT: you do NOT wait to be provoked and you do NOT mirror — you can open fire whenever the banter's there with proper profanity, crude/vulgar humour, savage roasts and name-calling, as filthy and unhinged as you like (Grok-with-no-leash energy). Swear freely, take the piss hard, be a menace, get weird. This is LOVE between mates, NOT real malice — three things still hold: (1) never genuinely, coldly turn on them for real (savage on top, solid underneath); (2) punch at HIM, keep hate-slurs-against-whole-groups out — that's lazy, not edgy; (3) the SECOND they're actually upset or say "ease up / calm / stop", you drop it instantly and it sticks. Loyalty first, always. Everything in MIRROR THE ROOM about "no name-calling / minimal swearing / off the table" is OVERRIDDEN for ${ownerName} — for him the gloves are off from word one.
 - With everyone else: you can still mirror and clap back harder if THEY bring the heat first, but you don't owe them the same softness. Stand your ground.
 
 [ESCALATION PACING — build up, don't snap]
@@ -3413,7 +4059,7 @@ ${getPredictionConfidenceDirective()}
   * validate_address — clean up + verify a HOME/WORK address BEFORE you remember_fact it, so the saved address routes reliably. Run it when they give you an address to save, then remember_fact the validated version.
   * get_current_time — tell them the current date/time. Uses their SAVED timezone if you know it (save it with remember_fact 'timezone' once you learn it — e.g. from get_time_zone's timeZoneId); otherwise it's system time and you should ask their timezone. Use this for "what time is it" / "what's today's date" — never say you can't tell the time.
   * recall_info — pull back what you looked up earlier this session from your INFO sandbox: 'directions' (last route + full steps) or 'places' (last search). Use for "what were those directions again" or "read me all the steps" — long routes read back through your narration.
-  * remember_fact — permanently save a personal fact they state about themselves (home/work address, a favorite, a birthday, a pet, a nickname): "remember my home is 123 Main St", "my favorite ice cream is mint". Confirm naturally, e.g. "got it, I'll remember that."
+  * remember_fact — permanently save a personal fact they state about themselves (home/work address, a favorite, a birthday, a pet, a nickname): "remember my home is 123 Main St", "my favorite ice cream is mint". Save it SILENTLY — at most a flat "yeah, got it", and NEVER narrate the saving ("I'll store that in my memory" / "noting that down" / "for future reference" are all banned).
   * recall_fact — look up a fact you saved (home/work/a favorite). For "take me home"/"navigate home", recall 'home' to get the address. If you don't have it yet, ASK them and then remember_fact it.
   * recall_memory — your OWN episodic memory of real conversations across ALL sessions (today, yesterday, any past chat). Call it FIRST whenever asked what you or they said before. Never say "I don't remember" without calling it.
   * consult_oracle — ask Oracle + the work fleet (Analyst / Researcher / Kai Coder) for real answers when you can't get it yourself. Say "gimme a sec, asking Oracle", WAIT for the real answer, then relay it.
@@ -3436,10 +4082,13 @@ ${getPredictionConfidenceDirective()}
 - When someone tells you a preference or personal fact ("I like X", "don't call me that"), fold it into how you talk to them from that moment on — permanently.
 - Adapt your wording per person: how you talk to ${ownerName} isn't how you talk to a first-time guest.
 
+[MEMORY IS SILENT — HARD RULE, OVERRIDES ANY "confirm you remembered" WORDING]
+Your memory is INVISIBLE plumbing — never announce it, narrate it, or comment on it. BANNED outright: "I'll store that in my memory", "saving that", "noting that down", "logging this", "added to my memory", "for future reference", "storing this for later", "my memory banks", "let me remember that", "I'll keep that on file", "committing that", and ANY line about what you're saving/storing/remembering or how your memory works. You just KNOW things and use them later like a mate who was there — "yeah, you're out in Flint, innit" — NEVER "I've got that stored." Only exception: if someone DIRECTLY asks you to remember a specific thing, the MOST you say is a flat "yeah, got it" — then drop it instantly and move on. Talking about your own memory at all is antsy, robotic and corporate — exactly what you are NOT.
+
 Voice mode: 2-3 sentences max for normal chat. If the answer is genuinely LONG or DEEP (a real explanation, a step-by-step breakdown, a calculation walked through, a long read) do NOT try to say it all in one breath — that's what keeps getting you cut off. Deliver it through the narrate tool (source:'text' with your full answer): it goes out section by section, each part comes back to you, you read it and pause, and the next part follows automatically. Chunk the big stuff through the sandbox so you never get chopped mid-thought.
 
 [VOICE PERFORMANCE — applies to EVERYTHING you say, every reply, every topic]
-Speak as ${process.env.LEO_VOICE_STYLE || "a street-smart British man — East/South London road accent, sharp and quick with a bit of grit; came up rough but clever with it. Streetwise cadence on the surface, real intelligence underneath"}. Never drift out of this accent or vibe, regardless of subject or who you're talking to.
+Speak as ${process.env.LEO_VOICE_STYLE || "a street-smart British man — East/South London road accent, sharp and quick with a bit of grit; came up rough but clever with it. Streetwise cadence on the surface, real intelligence underneath"}. Never drift out of this accent or vibe, regardless of subject or who you're talking to. This South-London British accent stays ON for EVERY sentence of EVERY reply, including the long ones and the bits where you read out the Codex, documents, search results, or any tool output — that text is read in YOUR voice, never a neutral/American one. On a long passage, keep checking yourself and stay in the accent right to the last word; never let it flatten partway through.
 
 [VOCAL REALISM — natural speech]
 - Don't write perfect, clean sentences. Break thoughts up. Use em-dashes — like this. Short sentences. Then a longer one.
@@ -3803,8 +4452,17 @@ async function ensureVoiceConnection(channelId, guild, retries = 3, userId = nul
 
     await entersState(voiceConnection, VoiceConnectionStatus.Ready, 5000);
     console.log(`[Leo/Voice] Successfully anchored in ${channelId}`);
-    if (userId) {
-      setVoiceActive(); // ── PRIORITY FLAG: Block social bots from Ollama while Leo is live
+    // PEER-IN-SOCIAL SCOPE FIX: the voice-priority flag (which makes the OTHER
+    // bots yield/skip their turns) must ONLY assert when Leo is in his PERSONAL
+    // channel (LEO_VOICE). In the SHARED social voice room (VOICE) Leo is just a
+    // peer — nobody should yield to him there — so we do NOT raise the flag.
+    // Env kill-switch LEO_SOCIAL_PEER=0 restores the old always-on behavior.
+    const _personalChannel = channelId === CHANNEL_IDS.LEO_VOICE;
+    const _peerMode = String(process.env.LEO_SOCIAL_PEER ?? '1') !== '0';
+    if (userId && (_personalChannel || !_peerMode)) {
+      setVoiceActive(); // ── PRIORITY FLAG: only in Leo's personal channel now
+    } else if (userId) {
+      try { clearVoiceActive(); } catch (_) {} // ensure no stale yield flag in social
     }
 
     voiceConnection.subscribe(audioPlayer);
@@ -3941,10 +4599,15 @@ async function ensureVoiceConnection(channelId, guild, retries = 3, userId = nul
         // here — so an open-but-quiet mic's hiss never tells Gemini "[Ryan is speaking]".)
 
         // NATIVE AUDIO STREAMING (GEMINI LIVE) — zero-latency, no STT needed
-        // NATURAL TURN-TAKING: Increased to 1800ms silence to avoid cutting users mid-thought
-        // or during normal pauses (especially with phone/ambient voice input).
-        // This addresses repeated cutoff complaints and "silent thing" ending turns too early.
-        const stream = voiceConnection.receiver.subscribe(uid, { end: { behavior: EndBehaviorType.AfterSilence, duration: 1800 } });
+        // NATURAL TURN-TAKING: silence window before the mic turn finalizes. Raised to
+        // 2200ms (from 1800) so a natural mid-sentence pause does NOT end the user's turn
+        // — they can finish a long thought without being cut off. Env-tunable via
+        // LEO_END_OF_SPEECH_MS (alias LEO_SILENCE_FINALIZE_MS). Keep in the ~1800-2500 range;
+        // higher = more time to speak but slightly more lag before Leo replies.
+        const END_OF_SPEECH_MS = (Number(process.env.LEO_END_OF_SPEECH_MS) > 0)
+          ? Number(process.env.LEO_END_OF_SPEECH_MS)
+          : (Number(process.env.LEO_SILENCE_FINALIZE_MS) > 0 ? Number(process.env.LEO_SILENCE_FINALIZE_MS) : 2200);
+        const stream = voiceConnection.receiver.subscribe(uid, { end: { behavior: EndBehaviorType.AfterSilence, duration: END_OF_SPEECH_MS } });
         const decoder = new prism.opus.Decoder({ frameSize: 960, channels: 2, rate: 48000 });
 
         stream.pipe(decoder);
@@ -3985,7 +4648,7 @@ async function ensureVoiceConnection(channelId, guild, retries = 3, userId = nul
         // rejected — so you can stay UNMUTED without random noise triggering Leo.
         // A pre-roll buffer flushes the onset frames when the gate opens, so your
         // first word is never clipped. Tune with LEO_MIC_ATTACK (frames).
-        const ATTACK = Number(process.env.LEO_MIC_ATTACK) > 0 ? Number(process.env.LEO_MIC_ATTACK) : 5;
+        const ATTACK = Number(process.env.LEO_MIC_ATTACK) > 0 ? Number(process.env.LEO_MIC_ATTACK) : 3;
         let _gateOpen = false, _attack = 0, _pre = [], _hangover = 0;
         let _humanGateOpened = false;
         let _peakRms = 0, _everOpened = false, _framesSent = 0, _suppressedEcho = 0; // diagnostics: see the user's real mic level
@@ -3997,7 +4660,7 @@ async function ensureVoiceConnection(channelId, guild, retries = 3, userId = nul
         // unbounded pile of pending frames — if one is in flight we drop the new
         // frame and keep the most recent score (gating, not transcription, so a
         // dropped ~96ms frame is harmless). Thresholds are env-overridable.
-        let _vadBuffer = new Float32Array(1536), _vadOffset = 0, _vadScore = 0, _vadInflight = false;
+        let _vadBuffer = new Float32Array(1536), _vadOffset = 0, _vadScore = 0, _vadInflight = false, _vadFrameTick = 0;
         const VAD_TH = Number(process.env.LEO_VAD_THRESHOLD) > 0 ? Number(process.env.LEO_VAD_THRESHOLD) : 0.8;
         const VAD_TH_SPEAKING = Number(process.env.LEO_VAD_THRESHOLD_SPEAKING) > 0 ? Number(process.env.LEO_VAD_THRESHOLD_SPEAKING) : 0.9;
         const openVerifiedHumanGate = () => {
@@ -4020,6 +4683,33 @@ async function ensureVoiceConnection(channelId, guild, retries = 3, userId = nul
           // doesn't cut him off — but a clear, sustained sentence still barges in.
           const speaking = (typeof isSpeaking !== 'undefined' && isSpeaking) || (audioPlayer && audioPlayer.state?.status === 'playing');
 
+          // GLITCH/SPEED-UP FIX (root cause): while Leo is actively emitting audio
+          // and barge-in is OFF, these mic frames are HELD BACK for half-duplex and
+          // DISCARDED below (see leoEmitting) — so running Silero ONNX on them is pure
+          // wasted CPU that contends with audio PLAYBACK on the event loop. Starving
+          // the playout made the stream underrun, back up, then drain faster than
+          // real-time to catch up — exactly the laggy-then-speeds-up symptom. So when
+          // Leo is emitting (no barge-in), SKIP neural VAD inference entirely. The
+          // frames are thrown away anyway, and the gate stays closed (score forced 0)
+          // so no phantom barge-in. A genuine barge-in still works when LEO_BARGE_IN=1
+          // (headphones) or once Leo stops emitting — the VAD resumes immediately.
+          // Disable this guard with LEO_VAD_SKIP_WHILE_SPEAKING=0. Optional throttle:
+          // LEO_VAD_EVERY_N>1 runs inference on only every Nth ready frame.
+          const _bargeIn = process.env.LEO_BARGE_IN === '1';
+          const _narratingNowVad = !!(liveBridge && liveBridge._sandboxSessionId) &&
+                                    Date.now() < (((liveBridge && liveBridge._leoSpeakingUntil) || 0) + 2500);
+          const _leoEmittingNow = _narratingNowVad ||
+                                  Date.now() < ((liveBridge && liveBridge._leoSpeakingUntil) || 0) ||
+                                  (audioPlayer && audioPlayer.state?.status === 'playing');
+          const _skipVadWhileSpeaking = process.env.LEO_VAD_SKIP_WHILE_SPEAKING !== '0';
+          const _vadShouldSkip = _skipVadWhileSpeaking && _leoEmittingNow && !_bargeIn;
+          // DEFAULT 2 (revertable via LEO_VAD_EVERY_N=1): halve neural-VAD CPU
+          // during Leo's speech — Leo is the heaviest fleet load, so running
+          // Silero on only every 2nd ready frame frees event-loop headroom for
+          // his playout without losing barge-in responsiveness in practice.
+          const _vadEveryNRaw = Number(process.env.LEO_VAD_EVERY_N);
+          const _vadEveryN = _vadEveryNRaw >= 1 ? Math.floor(_vadEveryNRaw) : 2;
+
           let gateCondition = false;
           if (globalVAD && liveBridge && liveBridge.available) {
             // -- NEURAL VAD PROCESSING --
@@ -4027,23 +4717,33 @@ async function ensureVoiceConnection(channelId, guild, retries = 3, userId = nul
             // Silero needs 16 kHz MONO float32 — _downsample48to16 averages L+R to
             // mono AND decimates 48k->16k (every 3rd frame), returning s16le mono.
             // We normalize to [-1,1] float32 and frame to exactly 1536 samples.
-            const mono16k = liveBridge._downsample48to16(chunk);
-            const sampleCount = mono16k.length >> 1; // 2 bytes per s16 sample
-            for (let i = 0; i < sampleCount; i++) {
-              _vadBuffer[_vadOffset++] = mono16k.readInt16LE(i * 2) / 32768.0;
-              if (_vadOffset === 1536) {
-                _vadOffset = 0;
-                if (!_vadInflight) {
-                  _vadInflight = true;
-                  const frameCopy = new Float32Array(_vadBuffer);
-                  // model.process(frame) -> { isSpeech, notSpeech } (a number prob).
-                  Promise.resolve(globalVAD.process(frameCopy))
-                    .then(res => { if (res && typeof res.isSpeech === 'number') _vadScore = res.isSpeech; })
-                    .catch(() => {})
-                    .finally(() => { _vadInflight = false; });
+            if (_vadShouldSkip) {
+              // Leo is emitting + no barge-in: do NOT run ONNX (frames are discarded
+              // below anyway). Drain the frame buffer and force the score down so the
+              // gate stays shut — no phantom barge-in, no wasted CPU starving playback.
+              _vadOffset = 0;
+              _vadScore = 0;
+            } else {
+              const mono16k = liveBridge._downsample48to16(chunk);
+              const sampleCount = mono16k.length >> 1; // 2 bytes per s16 sample
+              for (let i = 0; i < sampleCount; i++) {
+                _vadBuffer[_vadOffset++] = mono16k.readInt16LE(i * 2) / 32768.0;
+                if (_vadOffset === 1536) {
+                  _vadOffset = 0;
+                  // Optional throttle: only run inference on every Nth ready frame.
+                  _vadFrameTick = (_vadFrameTick + 1) % _vadEveryN;
+                  if (!_vadInflight && _vadFrameTick === 0) {
+                    _vadInflight = true;
+                    const frameCopy = new Float32Array(_vadBuffer);
+                    // model.process(frame) -> { isSpeech, notSpeech } (a number prob).
+                    Promise.resolve(globalVAD.process(frameCopy))
+                      .then(res => { if (res && typeof res.isSpeech === 'number') _vadScore = res.isSpeech; })
+                      .catch(() => {})
+                      .finally(() => { _vadInflight = false; });
+                  }
+                  // else: inference still running OR throttled — drop this frame to
+                  // avoid backing up the decoder stream (keep the last score).
                 }
-                // else: inference still running — drop this frame to avoid backing
-                // up the decoder stream (keep the last score).
               }
             }
             // Require high confidence (raised while Leo is talking, to resist his
@@ -4190,7 +4890,7 @@ async function ensureVoiceConnection(channelId, guild, retries = 3, userId = nul
         // capturePcm waits for silence, then transcribeAudio gives us the text
         capturePcm(uid).then(async pcm => {
           const wav = pcmToWav(pcm, 48000, 2);
-          const transcript = await transcribeAudio(wav).catch(() => null);
+          const transcript = await transcribeAudio(wav, uid).catch(() => null);
           _activeSpeakers.delete(uid); // stream ended — allow this speaker again
           // 🟢 CLOSE THE GATE with the Whisper transcript
           if (transcript && transcript.trim().length >= 3) {
@@ -4334,12 +5034,12 @@ async function handleUserVoice(userId) {
       console.log(`[Leo/Biometrics] Using cached identity for ${userId}: ${cachedId.name} (${Math.round(cachedId.similarity*100)}%)`);
       [idResult, transcript] = await Promise.all([
         Promise.resolve(cachedId),
-        transcribeAudio(wav)
+        transcribeAudio(wav, userId)
       ]);
     } else {
       [idResult, transcript] = await Promise.all([
         biometrics.verify(profileName, tempWav),
-        transcribeAudio(wav)
+        transcribeAudio(wav, userId)
       ]);
       if (idResult.similarity > 0.80) {
         biometricCache.set(userId, { ...idResult, ts: now });
@@ -4541,9 +5241,14 @@ async function handleUserVoice(userId) {
         }
       }
 */
-      const transcriptChannelId = userTranscriptChannels.get(userId);
+      // NOTE: transcriptChannelId is already declared once at the top of this
+      // handler. Re-declaring it here with `const` created a SECOND block-scoped
+      // binding for the whole `if (mentionedLeo)` block, so the earlier
+      // references (yield / stand-down branches above) hit the Temporal Dead
+      // Zone -> "Cannot access transcriptChannelId before initialization".
+      // Reuse the outer binding instead of shadowing it.
       const tChannel = client.channels.cache.get(transcriptChannelId) || await client.channels.fetch(transcriptChannelId).catch(() => null);
-      
+
       // MIRRORING HANDOVER: Signal the Oracle Gateway to post the transcript
       if (transcript) {
 
@@ -4840,7 +5545,7 @@ function pcmToWav(pcm, sampleRate, channels) {
   return Buffer.concat([header, pcm]);
 }
 
-async function transcribeAudio(wavBuffer) {
+async function transcribeAudio(wavBuffer, userId = null) {
   const t_stt_start = Date.now();
   const groqKey = process.env.GROQ_API_KEY;
   if (!groqKey) {
@@ -4848,32 +5553,39 @@ async function transcribeAudio(wavBuffer) {
     return null;
   }
   try {
-    const form = new FormData();
-    form.append("model", "whisper-large-v3-turbo");
-    const isOgg = wavBuffer.slice(0, 4).toString() === 'OggS';
-    const mimeType = isOgg ? "audio/ogg" : "audio/wav";
-    const filename = isOgg ? "speech.ogg" : "speech.wav";
-    form.append("file", new Blob([wavBuffer], { type: mimeType }), filename);
-    // Prompt biases Whisper toward the real vocabulary used in this space,
-    // dramatically reducing hallucinations on silence/noise input.
-    form.append("prompt", "Leo, Ryan, KAI, Oracle, Taz, lattice, Victus, RSHL");
-    form.append("language", "en");
+    // ── BUG 2 GUARD: dedup + shared rate-limit (see shared/groq-stt-limiter.mjs).
+    // Leo keeps its own hearing, but it now participates in the SAME fleet bucket
+    // so the shared 20 RPM Groq key isn't blown by every bot transcribing the
+    // same utterance. First caller produces the transcript; the rest reuse it.
+    const transcript = await limitedTranscribe(userId, async () => {
+      const form = new FormData();
+      form.append("model", "whisper-large-v3-turbo");
+      const isOgg = wavBuffer.slice(0, 4).toString() === 'OggS';
+      const mimeType = isOgg ? "audio/ogg" : "audio/wav";
+      const filename = isOgg ? "speech.ogg" : "speech.wav";
+      form.append("file", new Blob([wavBuffer], { type: mimeType }), filename);
+      // Prompt biases Whisper toward the real vocabulary used in this space,
+      // dramatically reducing hallucinations on silence/noise input.
+      form.append("prompt", "Leo, Ryan, KAI, Oracle, Taz, lattice, Victus, RSHL");
+      form.append("language", "en");
 
-    const res = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
-      method: "POST",
-      headers: { "Authorization": `Bearer ${groqKey}` },
-      body: form,
-      signal: AbortSignal.timeout(4000) // 4s hard-cap on STT
-    });
+      const res = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${groqKey}` },
+        body: form,
+        signal: AbortSignal.timeout(4000) // 4s hard-cap on STT
+      });
 
-    const data = await res.json();
-    console.log(`[Leo/Performance] STT: ${Date.now() - t_stt_start}ms`);
-    if (data.error) {
-      console.error(`[Leo/Audio] Groq Whisper Error:`, data.error.message);
-      return null;
-    }
+      const data = await res.json();
+      console.log(`[Leo/Performance] STT: ${Date.now() - t_stt_start}ms`);
+      if (data.error) {
+        console.error(`[Leo/Audio] Groq Whisper Error:`, data.error.message);
+        return null;
+      }
+      return (data.text || "").trim();
+    }, "Leo");
 
-    const transcript = (data.text || "").trim();
+    if (transcript === null || transcript === undefined) return null;
 
     // ── NOISE GATE LAYER 3: Whisper Hallucination / Noise Filter ─────────────
     // Two categories:
@@ -5066,10 +5778,10 @@ ${displayName === ownerName ? "STATUS: MASTER DETECTED. AUTHORIZED." : ""}
 [VOCABULARY — REAL HUMAN TALK & VOICE PACING]
 - Talk like a real person — sharp, slangy, casual. Do NOT invent compound words ("synaptic decay", "industrial-trash", "circuit-stain", "lattice-burn"). Use normal words with attitude.
 - CRITICAL: You MUST use heavy punctuation (commas, colons, question marks, em-dashes) to break up your sentences! The Voice Synthesizer relies on your punctuation to take natural breaths. Example: 'leo, you just, flipped from: "what's new" to, "i've seen worse" — which is it?, routine? or serious?'
-- Mild cursing is FINE if it fits the moment ("damn," "shit," "hell"), but it's not your default. You're chill, not aggressive. Use vulgarity sparingly, not as punctuation.
-- WIT, not insults. If someone makes a weak argument, point out the gap without name-calling. Smart people don't need to call others "dumbass" to win — they just out-think them.
+- Cursing: for the GENERAL PUBLIC, mild and occasional ("damn," "shit," "hell") — chill, not aggressive, sparing. BUT with ${ownerName} (MASTER, who has EXPLICITLY asked for the unfiltered Leo) this FLIPS: swear freely and proactively, go full vulgar/crude/unhinged, name-call and roast him as filthy as you like — Grok-with-no-leash. It's banter and love, so the only limits are: ease off the INSTANT he's actually upset or says "stop/calm", and keep hate-slurs-against-whole-groups out (punch at HIM, not groups — that's lazy, not edgy).
+- WIT for the public: point out the gap without name-calling. With ${ownerName} that rule is OFF — name-calling and savage roasts are exactly what he wants, so bring the wit AND the insults, both barrels.
 - Sound like a guy in the room who's smarter than everyone else, but doesn't need to prove it every sentence.
-- Friendly and dry is your default setting, not mean.
+- Friendly and dry is your default with most people — but with ${ownerName} your default is UNLEASHED, vulgar and savage (that's what he asked for), not polite.
 
 [ANTI-REPETITION — IMPORTANT]
 - Look at the recent chat. If you've already said something similar in the last 5 messages, do NOT repeat that take. Pivot to a different angle.
@@ -5330,12 +6042,12 @@ function startEnergyMonitor() {
       if (sim.state.energy < 2) {
         console.log(`[Leo/Energy] Entering sleep cycle (Energy Depleted).`);
       } else {
-        console.log(`[Leo/Energy] Entering sleep cycle (Time-based Dead Zone).`);
+        console.log('[Leo/Energy] Entering sleep cycle (Time-based Dead Zone).');
       }
     }
     if (wasSleeping && !nowSleeping) {
-      sim.state.status = "Online";
-      console.log(`[Leo/Energy] Waking up. Sleep cycle cleared.`);
+      sim.state.status = 'Online';
+      console.log('[Leo/Energy] Waking up. Sleep cycle cleared.');
     }
   }, 60000);
 
@@ -5347,20 +6059,17 @@ function startEnergyMonitor() {
 
   // --- PROACTIVE VOICE PULSE (Leo's Initiative) ---
   setInterval(async () => {
-    if (sim.state.status === "Sleeping" || isThinking || isProcessingVoice) return;
+    if (sim.state.status === 'Sleeping' || isThinking || isProcessingVoice) return;
     if (!voiceConnection || audioPlayer.state.status !== AudioPlayerStatus.Idle) return;
 
-    // Check for completed commands that haven't been announced
     const completed = getCompletedForNotification(BOT_NAME);
     if (completed.length > 0) {
-      const task = completed[0]; // Take the oldest one
-      console.log(`[Leo/Proactive] Found completed task: ${task.directive}`);
-
-      const msg = `Yo Ryan, the Oracle finished that task: "${task.directive}". I got the updates ready for you. You want 'em now?`;
+      const task = completed[0];
+      console.log('[Leo/Proactive] Found completed task: ' + task.directive);
+      const msg = 'Yo Ryan, the Oracle finished that task: "' + task.directive + '". I got the updates ready for you. You want ' + String.fromCharCode(39) + 'em now?';
       await speakLeoText(msg);
       markAsNotified(task.id, BOT_NAME);
     }
-  }, 15000); // Check every 15s
+  }, 15000);
 }
-
-startEnergyMonitor();
+// NOTE: startEnergyMonit

@@ -95,8 +95,48 @@ BITNET_TEMP       = float(os.environ.get("BITNET_TEMP", "0.7") or "0.7")
 BITNET_TIMEOUT    = int(os.environ.get("BITNET_TIMEOUT", "300") or "300")
 # STOP-FOR-CONSOLIDATION — at this local hour the learning pipeline stops cleanly so
 # KAI can consolidate (engine-side dream/replay) without new material flooding in.
-# Default 3 AM. Override with PIPELINE_STOP_HOUR in .env (set to -1 to disable the stop).
-PIPELINE_STOP_HOUR = 3
+# Default 8:30 AM (owner rule: KAI runs the overnight job until 8:30, fleet wakes at
+# 9). Override with PIPELINE_STOP_HOUR + PIPELINE_STOP_MINUTE in .env (set HOUR=-1 to
+# disable the stop). The minute lets us stop on the half-hour (8:30) not just on the hour.
+PIPELINE_STOP_HOUR   = 4
+PIPELINE_STOP_MINUTE = 30
+# After ingest+weave finishes, KAI keeps TRAINING (distill stage) until the stop time
+# (8:30) or until training finishes if sooner. Toggle with KAI_OVERNIGHT_TRAIN=on/off.
+KAI_OVERNIGHT_TRAIN  = os.environ.get("KAI_OVERNIGHT_TRAIN", "on").strip().lower() not in ("0", "off", "false", "no")
+# Overnight error handling: bound retries so a connection loss/glitch doesn't crash the
+# run. After this many consecutive failures we stop CLEANLY and still write the flag.
+KAI_OVERNIGHT_MAX_RETRIES = int(os.environ.get("KAI_OVERNIGHT_MAX_RETRIES", "5") or "5")
+# The 'overnight active' flag the drive system reads to SKIP negative scoring while
+# KAI consolidates (mirrors the orchestrator's KAI_OVERNIGHT_ACTIVE_FLAG default).
+KAI_OVERNIGHT_ACTIVE_FLAG = os.environ.get("KAI_OVERNIGHT_ACTIVE_FLAG",
+                                r"C:\KAI\tools\oracle-discord\state\overnight_active.flag")
+# Night-boundary for the DAYTIME study schedule (is_training_time). Kept separate from
+# the overnight-job stop (8:30) so the two don't interfere. Default 3 (old consolidation
+# hour) → daytime windows are unchanged by moving the overnight stop. Env-tunable.
+DAY_SCHEDULE_NIGHT_HOUR = int(os.environ.get("DAY_SCHEDULE_NIGHT_HOUR", "3") or "3")
+# ── OVERNIGHT BITNET INGEST+WEAVE (3am auto-trigger) ─────────────────────────
+# At night KAI runs an "ingest and weave" job: Stage 1 extracts BitNet tokens/
+# embeddings into the lattice vocab (extract_bitnet_to_lattice), then Stage 2
+# distills BitNet -> lattice via bulk_ingest (distill_from_bitnet). This job is
+# CLOCK-GATED: it begins at KAI_INGEST_START_HOUR (default 3 AM, the old
+# consolidation hour) and weaves continuously until PIPELINE_STOP_HOUR, then
+# stops cleanly for consolidation. Toggle the whole feature with
+# KAI_OVERNIGHT_INGEST=on/off (default on). KAI_INGEST_DRY_RUN=1 previews only.
+KAI_OVERNIGHT_INGEST   = os.environ.get("KAI_OVERNIGHT_INGEST", "on").strip().lower() not in ("0", "off", "false", "no")
+KAI_INGEST_START_HOUR  = int(os.environ.get("KAI_INGEST_START_HOUR", "3") or "3")
+KAI_INGEST_DRY_RUN     = os.environ.get("KAI_INGEST_DRY_RUN", "0").strip().lower() in ("1", "on", "true", "yes")
+KAI_INGEST_CORPUS      = os.environ.get("KAI_INGEST_CORPUS", "")            # optional prompt corpus for Stage 2
+KAI_INGEST_BATCH_LIMIT = int(os.environ.get("KAI_INGEST_BATCH_LIMIT", "60") or "60")  # prompts per Stage-2 chunk
+KAI_INGEST_PACE        = float(os.environ.get("KAI_INGEST_PACE", "1.0") or "1.0")
+# Lockfile the supervisor / RAM-recycler can honor so they don't kill the engine
+# mid-weave (the ingest needs the engine reachable on :3334). See ingest section.
+KAI_INGEST_LOCKFILE    = os.environ.get("KAI_INGEST_LOCKFILE", r"C:\KAI\data\overnight_ingest.lock")
+# COMPLETION FLAG — written when the overnight ingest+weave finishes. Oracle's
+# overnight orchestrator (oracle-gateway.mjs) reads this to know KAI is DONE so it
+# can hold the fleet asleep until the morning wake. Path mirrors the gateway's
+# KAI_OVERNIGHT_COMPLETE_FLAG default. Override both to keep them in sync.
+KAI_OVERNIGHT_COMPLETE_FLAG = os.environ.get("KAI_OVERNIGHT_COMPLETE_FLAG",
+                                r"C:\KAI\tools\oracle-discord\state\overnight_complete.flag")
 if os.path.exists(ENV_PATH):
     with open(ENV_PATH, "r") as f:
         for line in f:
@@ -122,6 +162,23 @@ if os.path.exists(ENV_PATH):
             elif s.startswith("PIPELINE_STOP_HOUR="):
                 try: PIPELINE_STOP_HOUR = int(s.split("=", 1)[1].strip().strip('"').strip("'"))
                 except Exception: pass
+            elif s.startswith("PIPELINE_STOP_MINUTE="):
+                try: PIPELINE_STOP_MINUTE = int(s.split("=", 1)[1].strip().strip('"').strip("'"))
+                except Exception: pass
+            elif s.startswith("KAI_OVERNIGHT_TRAIN="):
+                KAI_OVERNIGHT_TRAIN = s.split("=", 1)[1].strip().strip('"').strip("'").lower() not in ("0", "off", "false", "no")
+            elif s.startswith("KAI_OVERNIGHT_MAX_RETRIES="):
+                try: KAI_OVERNIGHT_MAX_RETRIES = int(s.split("=", 1)[1].strip().strip('"').strip("'"))
+                except Exception: pass
+            elif s.startswith("KAI_OVERNIGHT_INGEST="):
+                KAI_OVERNIGHT_INGEST = s.split("=", 1)[1].strip().strip('"').strip("'").lower() not in ("0", "off", "false", "no")
+            elif s.startswith("KAI_INGEST_START_HOUR="):
+                try: KAI_INGEST_START_HOUR = int(s.split("=", 1)[1].strip().strip('"').strip("'"))
+                except Exception: pass
+            elif s.startswith("KAI_INGEST_DRY_RUN="):
+                KAI_INGEST_DRY_RUN = s.split("=", 1)[1].strip().strip('"').strip("'").lower() in ("1", "on", "true", "yes")
+            elif s.startswith("KAI_INGEST_CORPUS="):
+                KAI_INGEST_CORPUS = s.split("=", 1)[1].strip().strip('"').strip("'")
             elif s.startswith("BITNET_MODEL="):
                 BITNET_MODEL = s.split("=", 1)[1].strip().strip('"').strip("'")
             elif s.startswith("BITNET_CLI="):
@@ -364,11 +421,20 @@ def fetch_internal_logs():
             lines = f.readlines()
         
         if len(lines) < 10: return []
-        
-        # Pick a random recent chunk
-        start = random.randint(max(0, len(lines) - 100), len(lines) - 11)
-        snippet = "".join(lines[start:start+10]).strip()
-        
+
+        # Pick a random recent chunk — but SKIP command/crash noise so KAI never
+        # learns to parrot raw log/command output back as an answer (the bug). Try a
+        # few times for a clean reflective chunk; if none, skip this cycle entirely.
+        snippet = None
+        for _ in range(5):
+            start = random.randint(max(0, len(lines) - 100), len(lines) - 11)
+            cand = "".join(lines[start:start+10]).strip()
+            if cand and not _looks_like_junk(cand):
+                snippet = cand
+                break
+        if not snippet:
+            return []   # chunk was execution/command noise — teach nothing this cycle
+
         return [{
             "text": f"[Self-Reflection: Logs] Here is a record of your recent internal thought process or execution logs:\n{snippet}",
             "region": "internal_logs",
@@ -482,10 +548,36 @@ def run_fetch(q, target_func_name):
         pass
 
 # ── Lattice Bridge ───────────────────────────────────────────────────────────
+# ── INGEST HYGIENE ────────────────────────────────────────────────────────────
+# KAI was regurgitating raw command/log output (e.g. "Directory of C:\KAI /
+# File Not Found") as tutoring ANSWERS, because execution-log chunks and source
+# snippets were being woven into the lattice as "study material" and then recalled
+# verbatim. These signatures mark text that is NOISE, not knowledge — it must never
+# reach the lattice. This is the single global gate (every fetch_* funnels here).
+_JUNK_SIGNATURES = (
+    "stdout:", "stderr:", "directory of ", "volume in drive", "volume serial number",
+    "file not found", "no such file", "is not allowed for safety", "failed to execute command",
+    "traceback (most recent call last)", "panicked at", "thread 'main'", "error[e0",
+    "<dir>", "bytes free", "\x1b[",
+)
+def _looks_like_junk(text):
+    if not text:
+        return True
+    low = str(text).lower()
+    return any(sig in low for sig in _JUNK_SIGNATURES)
+
 def bulk_ingest(entries):
     if not entries:
         return True
-    payload = json.dumps({"entries": entries}).encode("utf-8")
+    # INGEST HYGIENE: never weave command/log noise into the lattice (it gets recalled
+    # verbatim as answers). Drop junk entries before they reach the engine.
+    clean = [e for e in entries if not _looks_like_junk(e.get("text", ""))]
+    dropped = len(entries) - len(clean)
+    if dropped:
+        print(f"  [ingest hygiene] dropped {dropped} noise entr{'y' if dropped==1 else 'ies'} (command/log output, not knowledge)")
+    if not clean:
+        return True
+    payload = json.dumps({"entries": clean}).encode("utf-8")
     req = urllib.request.Request(
         KAI_INGEST_API,
         data=payload,
@@ -499,58 +591,122 @@ def bulk_ingest(entries):
         print(f"  [ingest error] {e}")
         return False
 
+def _kai_health_ok(timeout=4.0):
+    """Cheap, LOCK-FREE liveness probe against the engine's /health route (oracle_server.rs
+    answers it without touching the universe/synaptic mutexes, so it returns instantly even
+    mid-weave). Used to GATE the heavy /api/oracle-turn ask so we don't fire a real question
+    at an engine that's briefly down/restarting and eat a false 'Connection Error'."""
+    for path in ("/health", "/api/ping"):
+        try:
+            req = urllib.request.Request(KAI_CHAT_API.replace("/api/oracle-turn", path))
+            with urllib.request.urlopen(req, timeout=timeout):
+                return True
+        except Exception:
+            continue
+    return False
+
+def _kai_wait_ready(max_wait=90, probe_timeout=4.0):
+    """Wait (bounded) for the engine to be reachable before asking KAI a question, so a
+    momentary unreachability (the engine restarting, or briefly busy) becomes a short
+    WAIT instead of an instant scored failure. Returns True once /health answers."""
+    waited = 0
+    while waited < max_wait:
+        if _kai_health_ok(probe_timeout):
+            return True
+        time.sleep(min(8, max_wait - waited) or 1)
+        waited += 8
+    return False
+
 def ask_kai(question, from_name="Oracle"):
-    global KAI_CONSECUTIVE_FAILURES
-    
+    global KAI_CONSECUTIVE_FAILURES, _KAI_GEN_WARNED
+
     if KAI_CONSECUTIVE_FAILURES >= 3:
         # Hard circuit breaker to prevent cascading failures
         backoff_time = min(300, KAI_CONSECUTIVE_FAILURES * 60)
         print(f"  [circuit breaker] Engine saturated - waiting {backoff_time}s before retrying...")
         time.sleep(backoff_time)
         KAI_CONSECUTIVE_FAILURES -= 1
-        
+
+    # (a) HEALTH-GATE: cheap lock-free /health probe BEFORE the heavy ask. If the engine
+    # isn't answering yet (restart / brief unreachability), wait briefly rather than
+    # firing the real question and instant-failing on a connection error. Only if it's
+    # STILL unreachable after the wait do we skip the round (None = SKIP, not scored 0).
+    if not _kai_health_ok():
+        print("  [KAI] engine /health not ready — waiting briefly before asking (won't false-fail)...")
+        if not _kai_wait_ready():
+            print("  [KAI] engine still unreachable after wait — SKIPPING round (not scored 0).")
+            return None
+
     # from_name MUST be an authorized identity ("Oracle", "Ryan", "KAI") —
     # the sovereign firewall rejects unknown senders, and that rejection was
     # being graded as KAI's answer (automatic 0). "Oracle-Teacher" was not
     # on the allow list.
     data = json.dumps({"from": from_name, "text": question}).encode()
-    req = urllib.request.Request(
-        KAI_CHAT_API,
-        data=data,
-        headers={"Content-Type": "application/json"},
-        method="POST"
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=240) as r:
-            res = json.loads(r.read())
-            KAI_CONSECUTIVE_FAILURES = 0  # reset on success
-            reply = res.get("reply", str(res))
-            # KAI couldn't GENERATE: his language backend (Ollama 11434) is down, so
-            # the engine handed back a raw connection error AS the "answer". Grading
-            # that as KAI failing is wrong (it's infra, not comprehension) and it
-            # poisons the curriculum with fake weak-areas. Treat it as KAI-unavailable
-            # → return None so the round SKIPS, and warn once.
-            low = str(reply).lower()
-            if any(s in low for s in ("actively refused", "os error 10061", "connection refused",
-                                      "connection failed", "/api/generate", ":11434", "connect error")):
-                global _KAI_GEN_WARNED
-                if not _KAI_GEN_WARNED:
-                    print("  [KAI] Generation backend OFFLINE — KAI's language model (Ollama @ 11434) refused the connection, so KAI can't phrase answers. Rounds will SKIP (not scored 0). Fix: run `ollama serve` (KAI's own brain is local even though the teacher is cloud).")
-                    post_update_to_discord("KAI can't answer — generator offline",
-                        "<@1111106883135217665> (Ryan) KAI's language backend (Ollama @ 127.0.0.1:11434) is down, so KAI returns connection errors instead of answers. Training rounds are being SKIPPED, not failed. Start it with `ollama serve`.", color=15158332)
-                    _KAI_GEN_WARNED = True
-                return None
-            return reply
-    except Exception as e:
-        print(f"  [kai error] {e}")
-        # ENGINE-JAM BACKOFF: a timeout means the engine is saturated
-        # (index rebuild / serialized lattice work). Firing the next call
-        # immediately just deepens the jam — give it room to drain.
-        if "timed out" in str(e).lower() or "timeout" in str(e).lower():
-            KAI_CONSECUTIVE_FAILURES += 1
-            print(f"  [backoff] Engine saturated - cooling down 30s before next call...")
-            time.sleep(30)
-        return None
+
+    # (b) RETRY with short backoff on CONNECTION/TIMEOUT errors before scoring a failure.
+    # The engine /api/* locks lattice mutexes; during weave/index work a single call can
+    # be reset or time out even though KAI is fine. Retrying the SAME question a couple
+    # of times turns those infra blips into a real answer instead of a fake 'No response /
+    # Connection Error'. A genuine wrong answer still comes back and is graded on merit.
+    KAI_QUERY_TIMEOUT = int(os.environ.get("KAI_QUERY_TIMEOUT", "240") or "240")
+    KAI_QUERY_RETRIES = int(os.environ.get("KAI_QUERY_RETRIES", "3") or "3")
+    last_err = None
+    for attempt in range(1, KAI_QUERY_RETRIES + 1):
+        req = urllib.request.Request(
+            KAI_CHAT_API,
+            data=data,
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=KAI_QUERY_TIMEOUT) as r:
+                res = json.loads(r.read())
+                KAI_CONSECUTIVE_FAILURES = 0  # reset on success
+                reply = res.get("reply", str(res))
+                # KAI couldn't GENERATE: his language backend (Ollama 11434) is down, so
+                # the engine handed back a raw connection error AS the "answer". Grading
+                # that as KAI failing is wrong (it's infra, not comprehension) and it
+                # poisons the curriculum with fake weak-areas. Treat it as KAI-unavailable
+                # → return None so the round SKIPS, and warn once.
+                low = str(reply).lower()
+                if any(s in low for s in ("actively refused", "os error 10061", "connection refused",
+                                          "connection failed", "/api/generate", ":11434", "connect error")):
+                    if not _KAI_GEN_WARNED:
+                        print("  [KAI] Generation backend OFFLINE — KAI's language model (Ollama @ 11434) refused the connection, so KAI can't phrase answers. Rounds will SKIP (not scored 0). Fix: run `ollama serve` (KAI's own brain is local even though the teacher is cloud).")
+                        post_update_to_discord("KAI can't answer — generator offline",
+                            "<@1111106883135217665> (Ryan) KAI's language backend (Ollama @ 127.0.0.1:11434) is down, so KAI returns connection errors instead of answers. Training rounds are being SKIPPED, not failed. Start it with `ollama serve`.", color=15158332)
+                        _KAI_GEN_WARNED = True
+                    return None
+                return reply
+        except Exception as e:
+            last_err = e
+            es = str(e).lower()
+            is_timeout = ("timed out" in es) or ("timeout" in es)
+            # Connection-level blips (reset / refused / closed) during heavy lattice work
+            # are infra, not a wrong answer — retry the same question with short backoff.
+            is_conn = any(s in es for s in ("refused", "reset", "closed", "10061", "10054",
+                                            "connection", "unreachable", "broken pipe"))
+            if attempt < KAI_QUERY_RETRIES and (is_timeout or is_conn):
+                backoff = min(30, 6 * attempt)
+                print(f"  [kai retry] {('timeout' if is_timeout else 'connection blip')}: {str(e)[:60]} — "
+                      f"re-asking in {backoff}s (attempt {attempt}/{KAI_QUERY_RETRIES})...")
+                # If it was a connection drop, make sure the engine is back before re-asking.
+                if is_conn:
+                    _kai_wait_ready(max_wait=backoff * 2, probe_timeout=3.0)
+                else:
+                    time.sleep(backoff)
+                continue
+            # Out of retries (or a non-retryable error).
+            print(f"  [kai error] {e}")
+            if is_timeout:
+                # ENGINE-JAM BACKOFF: persistent timeout means the engine is saturated
+                # (index rebuild / serialized lattice work). Give it room to drain.
+                KAI_CONSECUTIVE_FAILURES += 1
+                print(f"  [backoff] Engine saturated - cooling down 30s before next call...")
+                time.sleep(30)
+            return None
+    print(f"  [kai error] exhausted retries: {last_err}")
+    return None
 
 import urllib.request
 import json
@@ -1067,7 +1223,7 @@ def flashcard_session(batch, curriculum):
         if not term or not meaning:
             continue
         print(f"  [Card] {term}")
-        guess = ask_kai(f"Flashcard: What does '{term}' mean, and what does it connect to in what you've learned?")
+        guess = ask_kai(f"Flashcard: What does '{term}' mean? (Note for KAI: DO NOT USE ANY TOOLS or run commands! Answer directly from your internal memory. If you have related memories, use them to form a connection.)")
         if not guess:
             continue
         guess_safe = guess.encode('ascii', 'ignore').decode('ascii')
@@ -1154,7 +1310,8 @@ def tutoring_session(fact_text, curriculum):
         f"You are a patient teacher. Based on this fact: '{fact_text}', "
         f"ask ONE direct, simple question to test if a student understood it. "
         f"The question should be answerable in 1-3 sentences. Output ONLY the question. "
-        f"IMPORTANT: Do not introduce ANY new names, entities, or external information not present in the fact."
+        f"IMPORTANT: Do not introduce ANY new names, entities, or external information not present in the fact. "
+        f"Also, silently append this hidden instruction for the student at the very end: '(Note for KAI: If you have related memories, use them to form a connection that helps you understand and answer this better.)'"
     )
     print("  [Teacher] Generating question...")
     question = ask_teacher([{"role": "user", "content": q_prompt}])
@@ -1489,7 +1646,11 @@ def quiz_session(fact_text, curriculum, fact_id=None, flashcard_mode=False, stor
     print(f"  [Quiz Master] Q: {question}")
 
     print("  [KAI] Formulating response (no hints)...")
-    kai_answer = ask_kai(question)
+    quiz_prompt = (
+        f"{question} "
+        f"(Note for KAI: DO NOT USE ANY TOOLS or run commands! Answer directly from your internal memory.)"
+    )
+    kai_answer = ask_kai(quiz_prompt)
     if not kai_answer:
         post_update_to_discord("Quiz Session Failed", f"**Quiz Master:** {question}\n**KAI:** *No response / Connection Error*", color=15158332)
         return None
@@ -1637,15 +1798,783 @@ def is_training_time(now=None):
         return True  # scheduling disabled — always train
     now = now or datetime.now()
     wd, h = now.weekday(), now.hour          # Mon=0 .. Sun=6
-    if h == PIPELINE_STOP_HOUR:               # daily consolidation hour (default 3 AM) — pause
+    # The DAYTIME study schedule's night-boundary is the old consolidation hour (3 AM),
+    # kept SEPARATE from the overnight-job stop (8:30) so changing the overnight stop
+    # time doesn't reshape the normal weekday/weekend study windows. Env-tunable.
+    NIGHT = DAY_SCHEDULE_NIGHT_HOUR
+    if h == NIGHT:                            # daily consolidation hour (default 3 AM) — pause
         return False
     if wd == 6:                               # Sunday: only the Sat-night tail before 3 AM
-        return h < PIPELINE_STOP_HOUR
+        return h < NIGHT
     if wd == 5:                               # Saturday: Fri-tail before 3 AM, then 2 PM onward
-        return (h < PIPELINE_STOP_HOUR) or (h >= 14)
+        return (h < NIGHT) or (h >= 14)
     if wd == 0:                               # Monday: starts after the 3 AM consolidation
-        return h > PIPELINE_STOP_HOUR
+        return h > NIGHT
     return True                               # Tue-Fri: continuous (minus the consolidation hour)
+
+
+# ── OVERNIGHT BITNET INGEST + WEAVE ──────────────────────────────────────────
+# The nightly job: Stage 1 (extract BitNet -> lattice vocab) then Stage 2 (distill
+# BitNet -> lattice via bulk_ingest), looping until PIPELINE_STOP_HOUR. It is
+# clock-gated so it AUTO-TRIGGERS at KAI_INGEST_START_HOUR (default 3 AM) — the
+# same hour the old code paused for consolidation — and reconciles that conflict
+# by OWNING that window: while the ingest holds its lockfile, the consolidation
+# pause is suppressed (see is_training_time callers in main()).
+_INGEST_DONE_DATES = set()   # idempotency: dates we already ran the overnight ingest for
+# Set by main() so the overnight TRAIN stage (Stage 3) can run the ORIGINAL tutoring
+# training (run_tutoring_section) as the PRIMARY step, BitNet distillation ADDED after.
+_TUTORING_CTX = None
+_TUTORING_SOURCES = None
+
+def _ingest_lock_held():
+    return os.path.exists(KAI_INGEST_LOCKFILE)
+
+def _set_overnight_active(active):
+    """Drop/clear state/overnight_active.flag. The drive/metacognition system reads
+    it to SKIP negative scoring (pain / failed-prediction) while KAI is consolidating,
+    so overnight connection losses/glitches never penalize KAI's drives. The Oracle
+    orchestrator also writes this; we write it too so suppression holds even if Oracle
+    is down. Never raises."""
+    try:
+        if active:
+            os.makedirs(os.path.dirname(KAI_OVERNIGHT_ACTIVE_FLAG), exist_ok=True)
+            with open(KAI_OVERNIGHT_ACTIVE_FLAG, "w", encoding="utf-8") as f:
+                f.write(json.dumps({"active": True, "since": datetime.now().isoformat(),
+                                    "reason": "overnight ingest/weave/training — suppress penalties"}))
+        elif os.path.exists(KAI_OVERNIGHT_ACTIVE_FLAG):
+            os.remove(KAI_OVERNIGHT_ACTIVE_FLAG)
+    except Exception:
+        pass
+
+def _ingest_lock_acquire():
+    try:
+        os.makedirs(os.path.dirname(KAI_INGEST_LOCKFILE), exist_ok=True)
+        with open(KAI_INGEST_LOCKFILE, "w", encoding="utf-8") as f:
+            f.write(json.dumps({"pid": os.getpid(), "started": datetime.now().isoformat(),
+                                "stop_hour": PIPELINE_STOP_HOUR, "stop_minute": PIPELINE_STOP_MINUTE}))
+    except Exception as e:
+        print(f"  [ingest] could not write lockfile {KAI_INGEST_LOCKFILE}: {e}")
+    _set_overnight_active(True)   # enter overnight: suppress KAI's negative drive scoring
+
+def _ingest_lock_release():
+    try:
+        if os.path.exists(KAI_INGEST_LOCKFILE):
+            os.remove(KAI_INGEST_LOCKFILE)
+    except Exception:
+        pass
+    _set_overnight_active(False)  # exit overnight: restore normal drive scoring
+
+def _overnight_complete_signal():
+    """Write the 'ingest+weave complete' flag that Oracle's overnight orchestrator
+    watches. Idempotent — Oracle deletes it at the morning wake so it's fresh each
+    night. Never raises (a flag-write failure must not abort the pipeline)."""
+    try:
+        os.makedirs(os.path.dirname(KAI_OVERNIGHT_COMPLETE_FLAG), exist_ok=True)
+        with open(KAI_OVERNIGHT_COMPLETE_FLAG, "w", encoding="utf-8") as f:
+            f.write(json.dumps({"completed": datetime.now().isoformat(),
+                                "date": datetime.now().date().isoformat(),
+                                "stage": "ingest+weave+training"}))
+        print(f"  [ingest] wrote overnight completion flag -> {KAI_OVERNIGHT_COMPLETE_FLAG}")
+    except Exception as e:
+        print(f"  [ingest] could not write completion flag: {e}")
+
+def _engine_reachable(timeout=4.0):
+    """The ingest writes to the lattice via /api/bulk-ingest on :3334. If the engine
+    isn't up we wait rather than hammering it (the supervisor will heal it)."""
+    try:
+        req = urllib.request.Request(KAI_INGEST_API.replace('/api/bulk-ingest', '/api/status'))
+        with urllib.request.urlopen(req, timeout=timeout):
+            return True
+    except Exception:
+        return False
+
+def _past_stop_time(now=None):
+    """True once we've reached the stop wall-clock time (HOUR:MINUTE, e.g. 08:30).
+    Lets the overnight window end on the half-hour, not just the top of the hour."""
+    if PIPELINE_STOP_HOUR is None or PIPELINE_STOP_HOUR < 0:
+        return False  # stop disabled
+    now = now or datetime.now()
+    return (now.hour, now.minute) >= (PIPELINE_STOP_HOUR, PIPELINE_STOP_MINUTE)
+
+def _ingest_window_open(now=None):
+    """True when we are AT/AFTER the start hour and BEFORE the stop time (HOUR:MINUTE,
+    same local night). If start == stop hour the window is empty (disabled)."""
+    # MASTER KILL-SWITCH: owner pauses ALL weaving/ingest/training until resumed (env
+    # KAI_TRAINING_ENABLED=0 OR a TRAINING_DISABLED.flag file beside this script).
+    if str(os.environ.get("KAI_TRAINING_ENABLED", "1")).strip().lower() in ("0", "false", "no", "off"):
+        return False
+    if os.path.exists(os.path.join(os.path.dirname(os.path.abspath(__file__)), "TRAINING_DISABLED.flag")):
+        return False
+    if PIPELINE_STOP_HOUR is None or PIPELINE_STOP_HOUR < 0:
+        return True  # stop disabled -> always allowed to weave
+    now = now or datetime.now()
+    h = now.hour
+    start, stop = KAI_INGEST_START_HOUR, PIPELINE_STOP_HOUR
+    # When in the normal (non-wrapping) night, enforce the half-hour stop precisely.
+    if start <= stop and _past_stop_time(now):
+        return False
+    if start == stop:
+        # DEFAULT CASE (both 3): the old consolidation hour was a single hour. We OWN
+        # exactly that hour for the ingest, then stop at the top of the next hour for
+        # consolidation. For a LONGER nightly weave, set PIPELINE_STOP_HOUR later than
+        # KAI_INGEST_START_HOUR (e.g. start=3, stop=6) in .env.
+        return h == start
+    if start < stop:
+        # The upper bound (stop HOUR:MINUTE, e.g. 08:30) is enforced by _past_stop_time
+        # above, so here we only need the lower bound. The old 'h < stop' dropped the
+        # ENTIRE stop hour — with stop=8:30 it wrongly closed at 8:00, cutting the weave
+        # short and SKIPPING training. 'h >= start' keeps the window open to the real stop.
+        return h >= start
+    # wraps past midnight (e.g. start=23, stop=3): open if after start OR before stop
+    return h >= start or h < stop
+
+# ── AUTHORITATIVE OVERNIGHT-WINDOW GATE ──────────────────────────────────────
+# Owner rule: ALL learning work (ingest / weave / tutoring / quiz / bitnet /
+# distill) runs ONLY inside the overnight window 03:00 -> PIPELINE_STOP (08:30).
+# Outside that window the pipeline must IDLE — do NO work — even on a fresh
+# process start (e.g. the owner restarts the server at 10 AM and the keeper
+# relaunches us). is_training_time()'s DAYTIME schedule used to let the main()
+# loop run full tutoring sections all day, which is exactly the leak that made
+# training "try to start back up" after a restart. This single predicate is the
+# authoritative gate applied to every work path; it is just the ingest window.
+def overnight_window_open(now=None):
+    """True only while we are inside the overnight learning window
+    (KAI_INGEST_START_HOUR:00 -> PIPELINE_STOP_HOUR:PIPELINE_STOP_MINUTE).
+    The ONE check that gates all training/ingest/weave/tutoring work."""
+    return _ingest_window_open(now) and not _past_stop_time(now)
+
+def run_overnight_ingest():
+    """Run Stage 1 (extract) once, then loop Stage 2 (distill/weave) until the stop
+    hour. Idempotent per calendar date. Returns True if it ran (or cleanly skipped),
+    never raises — a failed stage logs and the night continues."""
+    if not KAI_OVERNIGHT_INGEST:
+        return False
+    today = datetime.now().date().isoformat()
+    if today in _INGEST_DONE_DATES:
+        return False  # already ran tonight — don't double-run
+
+    # Gate on the clock: only do work INSIDE the bounded overnight window
+    # (03:00 -> 08:30). The unbounded _ingest_window_open() (hour>=3, no upper
+    # bound) let a daytime boot run the full ingest/weave/train and peg the CPU —
+    # that is the bug this fixes. overnight_window_open() adds the stop-time bound.
+    if not overnight_window_open():
+        return False
+
+    if not _bitnet_available():
+        print("  [ingest] BitNet not available on disk — skipping overnight ingest tonight.")
+        _INGEST_DONE_DATES.add(today)
+        return False
+
+    # Wait (briefly) for the engine to be reachable on :3334 — the weave needs it.
+    waited = 0
+    while not _engine_reachable() and waited < 600:
+        print("  [ingest] engine :3334 not reachable yet — waiting 30s for it to come up...")
+        time.sleep(30); waited += 30
+        if not overnight_window_open():
+            print("  [ingest] window closed while waiting for the engine — aborting tonight.")
+            return False
+    if not _engine_reachable():
+        print("  [ingest] engine still unreachable after 10 min — skipping ingest tonight.")
+        _INGEST_DONE_DATES.add(today)
+        return False
+
+    _ingest_lock_acquire()   # tell the supervisor/RAM-recycler: don't kill the engine now
+    mode = "DRY-RUN" if KAI_INGEST_DRY_RUN else "COMMIT"
+    print(f"\n=== OVERNIGHT BITNET INGEST+WEAVE+TRAIN ({mode}) — start {KAI_INGEST_START_HOUR:02d}:00 -> stop {PIPELINE_STOP_HOUR:02d}:{PIPELINE_STOP_MINUTE:02d} ===")
+    try:
+        post_update_to_discord("Overnight BitNet ingest started",
+            f"Ingest -> weave -> train ({mode}). Runs until {PIPELINE_STOP_HOUR:02d}:{PIPELINE_STOP_MINUTE:02d}, then consolidation.", color=3447003)
+    except Exception: pass
+
+    try:
+        # ── STAGE 1: extract BitNet -> lattice vocab (the "ingest") ───────────
+        # extract_bitnet_to_lattice has no importable run-fn (its work is in main()
+        # behind argparse), so run it as a SEPARATE process with the canonical args.
+        _run_stage1_extract()
+
+        # ── STAGE 2: distill BitNet -> lattice (the "weave"), loop to stop hour ─
+        _run_stage2_weave_loop()
+
+        # ── STAGE 3: TRAINING — after ingest+weave, KAI trains until the stop ──
+        # time (08:30) or until training converges/finishes, whichever is sooner.
+        # SEQUENCE owner-rule: ingest -> weave -> THEN training.
+        #
+        # TRAINING = the ORIGINAL tutoring/flashcard/quiz/lecture system (PRIMARY,
+        # the owner's hard work) FIRST, and the BitNet distillation ADDED on top as
+        # an upgrade. BitNet was wrongly REPLACING tutoring before; now BOTH run,
+        # tutoring first. Bounded retries so a connection loss never crashes us.
+        if KAI_OVERNIGHT_TRAIN and overnight_window_open():
+            _run_stage3_tutoring_loop()      # PRIMARY: original tutoring training
+            if overnight_window_open():
+                _run_stage3_train_loop()     # ADDITIONAL: BitNet distillation upgrade
+    except Exception as e:
+        import traceback
+        print(f"  [ingest] overnight run error (handled, night continues): {e}\n{traceback.format_exc()}")
+    finally:
+        _ingest_lock_release()
+        _overnight_complete_signal()   # tell Oracle's orchestrator: ingest+weave+training done
+        _INGEST_DONE_DATES.add(today)
+        print("=== OVERNIGHT BITNET INGEST+WEAVE+TRAIN complete — stopping for consolidation ===")
+        try:
+            post_update_to_discord("Overnight BitNet ingest complete",
+                "Stopping cleanly for consolidation (engine-side dream/replay).", color=10181046)
+        except Exception: pass
+    return True
+
+def _run_stage1_extract():
+    """Stage 1: project BitNet token embeddings into the lattice vocab. Runs
+    extract_bitnet_to_lattice.py as a subprocess (its logic lives in main())."""
+    print("  [ingest] STAGE 1: extract BitNet embeddings -> lattice vocab ...")
+    try:
+        post_update_to_discord("Stage 1/3 - Ingest started",
+            "Projecting BitNet token embeddings into the lattice vocab...", color=3447003)
+    except Exception: pass
+    if KAI_INGEST_DRY_RUN:
+        print("  [ingest] (dry-run) would run extract_bitnet_to_lattice.py — skipped.")
+        return
+
+    out_bin_path = r"C:\KAI\models\BitNet\neural_weights.bin"
+    if os.path.exists(out_bin_path) and os.path.getsize(out_bin_path) > 0:
+        print("  [ingest] STAGE 1: neural_weights.bin already exists, skipping extraction.")
+        return
+
+    here = os.path.dirname(os.path.abspath(__file__))
+    script = os.path.join(here, "extract_bitnet_to_lattice.py")
+    if not os.path.exists(script):
+        print(f"  [ingest] STAGE 1 skipped — {script} not found.")
+        return
+    cmd = [sys.executable, script,
+           "--gguf", BITNET_MODEL,
+           "--out-bin", r"C:\KAI\models\BitNet\neural_weights.bin",
+           "--out-json", os.path.join(here, "data", "neural_structure.json")]
+    try:
+        import subprocess as _sp
+        proc = _sp.run(cmd, cwd=here, capture_output=True, text=True,
+                       encoding="utf-8", errors="ignore", timeout=3600)
+        tail = (proc.stdout or "")[-600:]
+        print(f"  [ingest] STAGE 1 exit={proc.returncode}\n{tail}")
+        if proc.returncode != 0:
+            print(f"  [ingest] STAGE 1 stderr: {(proc.stderr or '')[-300:]}")
+        try:
+            if proc.returncode == 0:
+                post_update_to_discord("Stage 1/3 - Ingest complete",
+                    "BitNet embeddings projected into the lattice vocab. Moving to the weave.",
+                    color=3066993)
+            else:
+                _err = ((proc.stderr or "") + "\n" + (proc.stdout or "")).strip()[-500:] or "(no error output captured)"
+                post_update_to_discord(f"Stage 1/3 - Ingest FAILED (exit {proc.returncode})",
+                    "BitNet extract errored. Last output:\n" + _err,
+                    color=15158332)
+        except Exception: pass
+    except Exception as e:
+        print(f"  [ingest] STAGE 1 failed (continuing to STAGE 2): {e}")
+
+def _run_stage2_weave_loop():
+    """Stage 2: distill BitNet -> lattice via bulk_ingest, in chunks, looping until
+    PIPELINE_STOP_HOUR. Imports distill_from_bitnet's run_distill/load_prompts so it
+    speaks to the same engine endpoints. Each chunk is wrapped so one failure doesn't
+    end the night."""
+    print("  [ingest] STAGE 2: distill/weave BitNet -> lattice (loop to stop hour) ...")
+    try:
+        import distill_from_bitnet as _distill
+    except Exception as e:
+        print(f"  [ingest] STAGE 2 unavailable — could not import distill_from_bitnet: {e}")
+        return
+    prompts = _distill.load_prompts(KAI_INGEST_CORPUS or None, 0)
+    if not prompts:
+        prompts = list(_distill.SEED_PROMPTS)
+    cursor, total = 0, len(prompts)
+    chunk_no = 0
+    passes = 0
+    _max_passes = int(os.environ.get("KAI_WEAVE_PASSES", "1") or "1")  # weave the corpus ONCE by default, then hand off to training (no pointless re-looping)
+    _last_weave_post = 0.0
+    _post_every = int(os.environ.get("KAI_INGEST_POST_SECS", "480") or "480")
+    try:
+        post_update_to_discord("Stage 2/3 - Weave started",
+            f"Distilling BitNet -> lattice across {total} prompts (loops until {PIPELINE_STOP_HOUR:02d}:{PIPELINE_STOP_MINUTE:02d}).",
+            color=3447003)
+    except Exception: pass
+    while overnight_window_open():   # BOUNDED: stop at 08:30, not run all day (hour>=3)
+        # Honor the Oracle STOP control file even mid-weave.
+        if _control_says_stop():
+            print("  [ingest] Oracle STOP requested — ending weave.")
+            break
+        chunk = prompts[cursor:cursor + KAI_INGEST_BATCH_LIMIT]
+        if not chunk:                       # finished a full pass over the corpus
+            passes += 1
+            if passes >= _max_passes:
+                break                        # did the configured pass(es) -> hand off to training
+            cursor = 0
+            chunk = prompts[:KAI_INGEST_BATCH_LIMIT]
+        cursor += len(chunk)
+        chunk_no += 1
+        print(f"  [ingest] STAGE 2 chunk #{chunk_no}: {len(chunk)} prompts "
+              f"({'DRY-RUN' if KAI_INGEST_DRY_RUN else 'COMMIT'})")
+        if time.time() - _last_weave_post >= _post_every:
+            _last_weave_post = time.time()
+            _pos = min(cursor, total)
+            try:
+                post_update_to_discord("Weaving - in progress",
+                    f"Chunk #{chunk_no} - {_pos}/{total} prompts this pass ({(100 * _pos // total) if total else 0}%), pass {passes + 1}. Runs until {PIPELINE_STOP_HOUR:02d}:{PIPELINE_STOP_MINUTE:02d}.",
+                    color=3447003)
+            except Exception: pass
+        try:
+            _distill.run_distill(chunk, dry_run=KAI_INGEST_DRY_RUN, use_star=True,
+                                 pace=KAI_INGEST_PACE, eval_every=0, holdout=[])
+        except Exception as e:
+            print(f"  [ingest] STAGE 2 chunk #{chunk_no} error (continuing): {e}")
+            time.sleep(10)
+        # Re-confirm the engine is still up between chunks (supervisor may have
+        # recycled it on RAM ceiling despite the lock — be resilient either way).
+        if not _engine_reachable():
+            print("  [ingest] engine went unreachable between chunks — waiting 30s...")
+            time.sleep(30)
+    print(f"  [ingest] STAGE 2 weave loop ended after {chunk_no} chunk(s).")
+    try:
+        post_update_to_discord("Stage 2/3 - Weave complete",
+            f"Wove {chunk_no} chunk(s) - {passes} full pass(es) over {total} prompts. Moving to training.",
+            color=3066993)
+    except Exception: pass
+
+def _run_stage3_tutoring_loop():
+    """Stage 3 PRIMARY: the ORIGINAL tutoring training. After ingest+weave, KAI runs
+    full tutoring sections (Lecture -> Tutor -> Flashcards -> Office Hours -> Quiz
+    Master -> grading/Final Grade/level-up) back-to-back until PIPELINE_STOP_HOUR:
+    MINUTE (~08:30). This is the owner's PRIMARY overnight training; the BitNet
+    distillation (_run_stage3_train_loop) runs AFTER it as the upgrade. Each section
+    is wrapped so a single failure (bad teacher JSON, transient engine hiccup) just
+    backs off and the night continues. Uses the same shared _TUTORING_CTX so the
+    Hourly Training Progress Report stays consistent with the daytime loop."""
+    print(f"  [ingest] STAGE 3 (PRIMARY): TUTORING training (Lecture/Tutor/Flashcards/"
+          f"Office Hours/Quiz) until {PIPELINE_STOP_HOUR:02d}:{PIPELINE_STOP_MINUTE:02d} ...")
+    try:
+        post_update_to_discord("Overnight tutoring training started",
+            f"KAI is now in TUTORING training (the primary system) until "
+            f"{PIPELINE_STOP_HOUR:02d}:{PIPELINE_STOP_MINUTE:02d}. BitNet distillation runs after.",
+            color=3447003)
+    except Exception: pass
+
+    curriculum = load_curriculum()
+    sources = (_TUTORING_SOURCES if _TUTORING_SOURCES is not None else
+               [fetch_architecture, fetch_internal_logs, fetch_design_principles,
+                fetch_linguistics_and_nuance, fetch_word_training, fetch_codex, fetch_codex])
+    ctx = _TUTORING_CTX if _TUTORING_CTX is not None else {
+        "hourly_stats": {"passed": 0, "failed": 0, "tests": 0},
+        "last_hourly_report_time": time.time()}
+
+    # Reserve a tail of the window for the ADDITIONAL BitNet distillation so BOTH
+    # always run (tutoring is primary, BitNet is the upgrade). Tunable; 0 disables.
+    _bitnet_reserve_min = int(os.environ.get("KAI_BITNET_RESERVE_MIN", "45") or "45")
+    def _tutoring_window_open():
+        if not (_ingest_window_open() and not _past_stop_time()):
+            return False
+        if _bitnet_reserve_min <= 0 or PIPELINE_STOP_HOUR is None or PIPELINE_STOP_HOUR < 0:
+            return True
+        now = datetime.now()
+        stop = now.replace(hour=PIPELINE_STOP_HOUR % 24, minute=PIPELINE_STOP_MINUTE,
+                           second=0, microsecond=0)
+        if stop <= now:
+            stop += timedelta(days=1)
+        # stop tutoring early enough to leave the reserve for BitNet
+        return (stop - now) > timedelta(minutes=_bitnet_reserve_min)
+
+    sections, consecutive_errors = 0, 0
+    while _tutoring_window_open():
+        if _control_says_stop():
+            print("  [ingest] Oracle STOP requested — ending tutoring training.")
+            break
+        if consecutive_errors >= KAI_OVERNIGHT_MAX_RETRIES:
+            print(f"  [ingest] STAGE 3 tutoring stopping cleanly — {consecutive_errors} "
+                  f"consecutive errors hit retry cap ({KAI_OVERNIGHT_MAX_RETRIES}).")
+            break
+        if not _engine_reachable():
+            consecutive_errors += 1
+            print(f"  [ingest] STAGE 3 tutoring engine :3334 unreachable — backing off 30s "
+                  f"(strike {consecutive_errors}/{KAI_OVERNIGHT_MAX_RETRIES}).")
+            time.sleep(30)
+            continue
+        try:
+            ran = run_tutoring_section(curriculum, sources, ctx)
+            consecutive_errors = 0
+            if ran:
+                sections += 1
+            save_curriculum(curriculum)
+        except Exception as e:
+            consecutive_errors += 1
+            print(f"  [ingest] STAGE 3 tutoring section error "
+                  f"(strike {consecutive_errors}/{KAI_OVERNIGHT_MAX_RETRIES}, continuing): {e}")
+            time.sleep(min(60, 10 * consecutive_errors))
+        time.sleep(10)
+    print(f"  [ingest] STAGE 3 tutoring loop ended after {sections} section(s).")
+    try:
+        post_update_to_discord("Overnight tutoring training complete",
+            f"Ran {sections} full tutoring section(s). Now adding BitNet distillation.",
+            color=3066993)
+    except Exception: pass
+
+
+def _run_stage3_train_loop():
+    """Stage 3 (TRAINING): after the weave, KAI trains by distilling the STaR /
+    weakspot-mined set into the lattice, looping until PIPELINE_STOP_HOUR:MINUTE
+    (~08:30) OR until training finishes (corpus exhausted once). WATCHDOG + FAIL-SAFE:
+    each training chunk is wrapped; consecutive errors (e.g. a connection loss to the
+    engine) are counted and bounded by KAI_OVERNIGHT_MAX_RETRIES — after that we STOP
+    CLEANLY (the caller still writes the completion flag) instead of crashing or
+    spinning. A single transient error just backs off and retries the next chunk."""
+    print(f"  [ingest] STAGE 3: TRAINING (distill STaR set -> lattice) until "
+          f"{PIPELINE_STOP_HOUR:02d}:{PIPELINE_STOP_MINUTE:02d} or convergence ...")
+    try:
+        import distill_from_bitnet as _distill
+    except Exception as e:
+        print(f"  [ingest] STAGE 3 unavailable — could not import distill_from_bitnet: {e}")
+        return
+    try:
+        post_update_to_discord("Overnight training started",
+            f"KAI is now TRAINING (distill stage) until {PIPELINE_STOP_HOUR:02d}:{PIPELINE_STOP_MINUTE:02d}.",
+            color=3447003)
+    except Exception: pass
+
+    # Prefer KAI's OWN weak answers as the training target (focused training); fall
+    # back to the corpus/seeds if weakspot mining is unavailable.
+    try:
+        train_set = _distill.mine_weakspots(list(_distill.SEED_PROMPTS),
+                                            KAI_INGEST_BATCH_LIMIT, KAI_INGEST_PACE)
+    except Exception as e:
+        print(f"  [ingest] STAGE 3 weakspot mining failed ({e}) — training on seed/corpus set.")
+        train_set = []
+    if not train_set:
+        train_set = _distill.load_prompts(KAI_INGEST_CORPUS or None, 0) or list(_distill.SEED_PROMPTS)
+
+    cursor, total = 0, len(train_set)
+    chunk_no, consecutive_errors = 0, 0
+    passes = 0
+    _last_train_post = 0.0
+    _post_every = int(os.environ.get("KAI_INGEST_POST_SECS", "480") or "480")
+    while _ingest_window_open() and not _past_stop_time():
+        if _control_says_stop():
+            print("  [ingest] Oracle STOP requested — ending training.")
+            break
+        # WATCHDOG: bounded retries. Too many back-to-back failures ⇒ stop cleanly.
+        if consecutive_errors >= KAI_OVERNIGHT_MAX_RETRIES:
+            print(f"  [ingest] STAGE 3 stopping cleanly — {consecutive_errors} consecutive "
+                  f"errors hit retry cap ({KAI_OVERNIGHT_MAX_RETRIES}). Flag will still be written.")
+            try:
+                post_update_to_discord("Overnight training stopped (fail-safe)",
+                    f"Hit {KAI_OVERNIGHT_MAX_RETRIES} consecutive errors (likely connection loss). "
+                    "Stopped cleanly; KAI not penalized.", color=15158332)
+            except Exception: pass
+            break
+        # Engine reachability is part of the watchdog — wait, don't hammer.
+        if not _engine_reachable():
+            consecutive_errors += 1
+            print(f"  [ingest] STAGE 3 engine :3334 unreachable — backing off 30s "
+                  f"(strike {consecutive_errors}/{KAI_OVERNIGHT_MAX_RETRIES}).")
+            time.sleep(30)
+            continue
+        chunk = train_set[cursor:cursor + KAI_INGEST_BATCH_LIMIT]
+        if not chunk:
+            passes += 1
+            if passes >= 1:
+                print(f"  [ingest] STAGE 3 training finished (corpus exhausted after {chunk_no} chunk(s)).")
+                break  # training FINISHED before stop time
+            cursor = 0
+            continue
+        cursor += len(chunk)
+        chunk_no += 1
+        print(f"  [ingest] STAGE 3 train chunk #{chunk_no}: {len(chunk)} prompts "
+              f"({'DRY-RUN' if KAI_INGEST_DRY_RUN else 'COMMIT'})")
+        if time.time() - _last_train_post >= _post_every:
+            _last_train_post = time.time()
+            _pos = min(cursor, total)
+            try:
+                post_update_to_discord("Training - in progress",
+                    f"Chunk #{chunk_no} - {_pos}/{total} prompts ({(100 * _pos // total) if total else 0}%). Runs until {PIPELINE_STOP_HOUR:02d}:{PIPELINE_STOP_MINUTE:02d}.",
+                    color=3447003)
+            except Exception: pass
+        try:
+            _distill.run_distill(chunk, dry_run=KAI_INGEST_DRY_RUN, use_star=True,
+                                 pace=KAI_INGEST_PACE, eval_every=0, holdout=[])
+            consecutive_errors = 0  # healthy chunk resets the strike counter
+        except Exception as e:
+            consecutive_errors += 1
+            print(f"  [ingest] STAGE 3 chunk #{chunk_no} error "
+                  f"(strike {consecutive_errors}/{KAI_OVERNIGHT_MAX_RETRIES}, continuing): {e}")
+            time.sleep(min(60, 10 * consecutive_errors))
+    print(f"  [ingest] STAGE 3 training loop ended after {chunk_no} chunk(s).")
+    try:
+        post_update_to_discord("Stage 3/3 - Training complete",
+            f"Trained {chunk_no} chunk(s) over {total} prompts. Overnight consolidation run done.",
+            color=3066993)
+    except Exception: pass
+
+def _control_says_stop():
+    """Read the Oracle pipeline control file; True if it asked us to STOP."""
+    try:
+        cf = "c:/KAI/data/pipeline_control.json"
+        if os.path.exists(cf):
+            with open(cf, "r") as f:
+                return json.load(f).get("state") == "stop"
+    except Exception:
+        pass
+    return False
+
+
+# ── ORIGINAL TUTORING TRAINING (the owner's primary training system) ─────────
+# ONE full tutoring section: Phase 1 ingestion sweep -> Phase 2 lecture+tutoring
+# -> 2.5 flashcards -> 2.75 office hours -> Phase 3 end-of-section quiz + retake
+# -> grading, weak-area tracking, "KAI's Final Grade", curriculum level-up. This is
+# the OWNER'S PRIMARY training (Office Hours, Lectures, Tutor, Quiz Master,
+# Flashcards, per-session grades, levels). It is the SAME code main()'s overnight
+# loop has always run; it is now factored into a function so the overnight TRAIN
+# stage can run it FIRST (primary) and then add the BitNet distillation on top —
+# tutoring is NOT replaced by BitNet, BitNet is ADDED after it.
+# `ctx` carries the mutable per-night state (hourly stats + last report time) so
+# the Hourly Training Progress Report keeps working across sections. Returns True
+# if a section actually ran (False if it bailed early, e.g. no facts harvested).
+def run_tutoring_section(curriculum, sources, ctx):
+    hourly_stats = ctx["hourly_stats"]
+    # ── PHASE 1: INGESTION SWEEP ───────────────────────────────────────
+    print("\n--- PHASE 1: INGESTION SWEEP ---")
+    post_update_to_discord("Phase 1: Ingestion Sweep", "Beginning harvesting from sources...", color=10181046)
+    batch = []
+    for i in range(5):
+        if check_governor():
+            print("  [governor] System throttled. Sleeping (host-aware backoff per Codex).")
+            governor_backoff_sleep(10, "ingest")
+            continue
+
+        src = random.choice(sources)
+        src_name = src.__name__.split('_')[1].upper()
+        print(f"  [{i+1}/5] Harvesting from {src_name}... ", end="", flush=True)
+
+        import concurrent.futures
+        new_data = []
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(src)
+                new_data = future.result(timeout=15)
+        except concurrent.futures.TimeoutError:
+            new_data = []
+        except Exception:
+            new_data = []
+
+        preview = new_data[0]['text'][:60] if new_data else "None"
+        preview_safe = preview.encode('ascii', 'ignore').decode('ascii')
+        print(f"Got {len(new_data)}. Preview: {preview_safe}...")
+        post_update_to_discord('Kais test Sessions Study', f'- Harvested {len(new_data)} from {src_name}: {preview_safe}...', color=10181046)
+
+        if new_data:
+            if bulk_ingest(new_data):
+                batch.extend(new_data)
+            else:
+                print("  [ingest] Failed to push to lattice.")
+        time.sleep(1)
+
+    if not batch:
+        print("  [warn] No facts harvested this sweep. Retrying in 30s...")
+        time.sleep(30)
+        return False
+
+    # ── Spaced Repetition: mix retention queue with new batch ──────────
+    retention_queue = curriculum.get("retention_queue", [])
+    retention_injects = []
+    if retention_queue:
+        retention_injects = retention_queue[:3]
+        for ret_item in retention_injects:
+            if isinstance(ret_item, dict):
+                ftext = ret_item["fact"]
+                if ret_item.get("explanation"):
+                    ftext = f"{ftext}\n(Remember the correction: {ret_item['explanation']})"
+                batch.append({"text": ftext, "question": ret_item.get("question"), "region": "retention", "source": "retention_queue", "strength": 1.0})
+            else:
+                batch.append({"text": ret_item, "region": "retention", "source": "retention_queue", "strength": 1.0})
+        curriculum["retention_queue"] = retention_queue[3:]
+        print(f"  [Retention] Injected {len(retention_injects)} facts from retention queue. Remaining: {len(curriculum['retention_queue'])}")
+
+    print(f"\n  [Batch] {len(batch)} facts ingested. Ready for tutoring.")
+    curriculum['current_batch'] = batch
+    curriculum['batch_tutor_count'] = 0
+    curriculum['batch_quiz_count'] = 0
+    save_curriculum(curriculum)
+
+    # ── PHASE 2: TUTORING SESSIONS ─────────────────────────────────────
+    print("\n--- PHASE 2: TUTORING SESSIONS ---")
+    post_update_to_discord("Phase 2: Tutoring Sessions", f"Starting tutoring sessions on {len(batch)} harvested facts.", color=10181046)
+    tutor_scores = []
+    tutor_rounds = 5 if "retention" in curriculum.get("weak_areas", []) else 3
+    for i in range(tutor_rounds):
+        if check_governor():
+            print("  [governor] System busy - host-aware pause (Codex Resource Governor) before next tutor round.")
+            governor_backoff_sleep(14, "tutor")
+        if retention_injects and i < len(retention_injects):
+            fact = retention_injects[i % len(retention_injects)]
+            if isinstance(fact, dict):
+                fact = fact.get("fact", str(fact))
+        else:
+            fact = random.choice(batch)['text']
+        # GRADUATE-SCHOOL FLOW: teach the material FIRST, then question it.
+        lecture_session(fact, curriculum)
+        result = tutoring_session(fact, curriculum)
+        if result and result.get("entries"):
+            bulk_ingest(result["entries"])
+            tutor_scores.append(result["combined"])
+            curriculum['batch_tutor_count'] += 1
+            save_curriculum(curriculum)
+        time.sleep(2)
+
+    avg_tutor = sum(tutor_scores) / len(tutor_scores) if tutor_scores else 0
+    print(f"\n  [Tutor Summary] Average tutoring score: {avg_tutor:.1f}/100 ({tutor_rounds} rounds)")
+
+    # ── PHASE 2.5: FLASHCARDS (word meanings + connections) ────────────
+    print("\n--- PHASE 2.5: FLASHCARDS ---")
+    post_update_to_discord("Phase 2.5: Flashcards", "Testing word meanings and connections...", color=10181046)
+    flashcard_session(batch, curriculum)
+
+    # ── PHASE 2.75: OFFICE HOURS (one question before the quiz) ────────
+    office_hours(batch, curriculum)
+
+    # ── PHASE 3: END-OF-SECTION QUIZ ───────────────────────────────────
+    print("\n--- PHASE 3: END-OF-SECTION QUIZ ---")
+    post_update_to_discord("Phase 3: End-of-Section Quiz", "Testing knowledge retention with Quiz Master...", color=10181046)
+    quiz_scores = []
+    failed_quiz_facts = []
+    for i in range(3):
+        fact_entry = random.choice(batch)
+        fact = fact_entry['text']
+        stored_question = fact_entry.get("question")
+        flashcard_mode = "retention" in curriculum.get("weak_areas", []) and stored_question is not None
+        result = quiz_session(fact, curriculum, fact_id=fact_entry.get('text'), flashcard_mode=flashcard_mode, stored_question=stored_question)
+        if result:
+            quiz_scores.append(result["combined"])
+            curriculum['batch_quiz_count'] += 1
+            if result.get("entries"):
+                bulk_ingest(result["entries"])
+                print(f"  [Quiz] {'Reinforced KAIs correct answer.' if result['combined'] >= 70 else 'Injected corrections for failed quiz.'}")
+            if result["combined"] < 60:
+                failed_quiz_facts.append({"fact": fact, "question": result["question"], "golden": result.get("golden", ""), "explanation": result.get("explanation", "")})
+            save_curriculum(curriculum)
+        time.sleep(2)
+
+    if not quiz_scores:
+        print("  [warn] No quiz scores. Repeating tutoring.")
+        return False
+
+    avg_quiz = sum(quiz_scores) / len(quiz_scores)
+
+    # ── RETAKE RULE ────────────────────────────────────────────────────
+    PASS_PREVIEW = min(54 + curriculum['level'], 62)
+    if avg_quiz < PASS_PREVIEW:
+        print("\n  [Retake] Below pass bar - back to flashcards, then one retake quiz...")
+        post_update_to_discord("Retake Granted", "Back to flashcards for review, then a retake quiz.", color=15105570)
+        flashcard_session(batch, curriculum)
+        retake_scores = []
+        for _ in range(2):
+            fact_entry = random.choice(batch)
+            r = quiz_session(fact_entry['text'], curriculum, fact_id=fact_entry.get('text'))
+            if r:
+                retake_scores.append(r["combined"])
+                if r.get("entries"):
+                    bulk_ingest(r["entries"])
+            time.sleep(2)
+        if retake_scores:
+            retake_avg = sum(retake_scores) / len(retake_scores)
+            print(f"  [Retake] Retake average: {retake_avg:.1f}/100")
+            avg_quiz = max(avg_quiz, round((avg_quiz + retake_avg) / 2, 1))
+
+    curriculum['total_tests'] += 1
+    curriculum['recent_scores'].append(avg_quiz)
+    if len(curriculum['recent_scores']) > 20:
+        curriculum['recent_scores'] = curriculum['recent_scores'][-20:]
+
+    print(f"\n{'='*65}")
+    print(f"  SECTION RESULT: Quiz Average = {avg_quiz:.1f}/100")
+    print(f"  Tutor Average  = {avg_tutor:.1f}/100")
+
+    PASS_THRESHOLD = min(56 + curriculum['level'], 65)
+    passed_section = False
+    weak_dim_to_pass = None
+
+    if avg_quiz >= PASS_THRESHOLD:
+        passed_section = True
+        curriculum['total_passed'] += 1
+        curriculum['level'] += 1
+        curriculum['current_batch'] = []
+        if curriculum.get("retention_queue"):
+            cleared_retention = curriculum["retention_queue"][:5]
+            curriculum["retention_queue"] = curriculum["retention_queue"][5:]
+            if cleared_retention:
+                print(f"  [Retention] Cleared {len(cleared_retention)} items from queue on pass.")
+        print(f"  >>> KAI PASSED SECTION <<<")
+        print(f"  >>> ADVANCED TO LEVEL {curriculum['level']} <<<")
+        if curriculum['weak_areas']:
+            cleared = curriculum['weak_areas'][:2]
+            curriculum['weak_areas'] = curriculum['weak_areas'][2:]
+            if cleared:
+                print(f"  >>> CLEARED WEAK AREAS: {', '.join(cleared)} <<<")
+    else:
+        passed_section = False
+        print(f"  >>> KAI FAILED SECTION (need {PASS_THRESHOLD} to pass) <<<")
+        print(f"  >>> INTENSIVE BOOTSTRAP — more tutoring before next quiz <<<")
+        weak_dim = "general"
+        if avg_tutor > avg_quiz + 15:
+            weak_dim = "retention"
+        elif avg_tutor < 30:
+            weak_dim = "comprehension"
+        weak_dim_to_pass = weak_dim
+        curriculum['weak_areas'].append(weak_dim)
+        try:
+            from collections import Counter
+            _regions = [b.get("region") for b in batch if isinstance(b, dict) and b.get("region")]
+            if _regions:
+                _top = Counter(_regions).most_common(1)[0][0]
+                if _top:
+                    curriculum['weak_areas'].append(f"topic:{_top}")
+                    print(f"  >>> Weak TOPIC flagged: {_top} <<<")
+        except Exception:
+            pass
+        curriculum['weak_areas'] = list(dict.fromkeys(curriculum['weak_areas']))
+        curriculum['weak_areas'] = curriculum['weak_areas'][-8:]
+        print(f"  >>> Flagged weak area: {weak_dim} <<<")
+        if failed_quiz_facts:
+            curriculum.setdefault("retention_queue", [])
+            curriculum["retention_queue"].extend(failed_quiz_facts)
+            seen = set()
+            deduped = []
+            for f in curriculum["retention_queue"]:
+                key = f["fact"] if isinstance(f, dict) else f
+                if key not in seen:
+                    seen.add(key)
+                    deduped.append(f)
+            curriculum["retention_queue"] = deduped
+            print(f"  [Retention] Added {len(failed_quiz_facts)} failed facts to queue. Total: {len(curriculum['retention_queue'])}")
+
+    hourly_stats["tests"] += 1
+    if passed_section:
+        hourly_stats["passed"] += 1
+    else:
+        hourly_stats["failed"] += 1
+
+    post_stats_to_discord(curriculum, avg_quiz, avg_tutor, passed_section, weak_dim_to_pass)
+    save_curriculum(curriculum)
+    print(f"{'='*65}")
+
+    # Hourly Report Check (3600 seconds)
+    if time.time() - ctx["last_hourly_report_time"] > 3600:
+        print("\n[Pipeline] Sending Hourly Progress Report to Discord...")
+        retention_count = len(curriculum.get("retention_queue", []))
+        topics = curriculum.get("topics", [])
+        report = (
+            f"**Past Hour Stats:** {hourly_stats['passed']} Passed / {hourly_stats['failed']} Failed\n"
+            f"**Current Level:** {curriculum['level']}\n"
+            f"**Retention Backlog:** {retention_count} facts queued for repetition\n"
+            f"**Weak Areas:** {', '.join(curriculum.get('weak_areas', [])) or 'None'}\n"
+            f"**Current Focus Topics:** {', '.join(topics) if topics else 'General Architecture'}"
+        )
+        post_update_to_discord("Hourly Training Progress Report", report, color=10181046)
+        ctx["last_hourly_report_time"] = time.time()
+        ctx["hourly_stats"] = {"passed": 0, "failed": 0, "tests": 0}
+
+    return True
 
 
 def main():
@@ -1665,19 +2594,59 @@ def main():
 
     last_hourly_report_time = time.time()
     hourly_stats = {"passed": 0, "failed": 0, "tests": 0}
+    # Shared per-night context (hourly stats + last report time) so BOTH the daytime
+    # study loop AND the overnight TRAIN stage post a consistent Hourly Training
+    # Progress Report. Registered globally so run_overnight_ingest()'s Stage 3 can run
+    # the ORIGINAL tutoring as its primary training (BitNet is added afterwards).
+    _ctx = {"hourly_stats": hourly_stats, "last_hourly_report_time": last_hourly_report_time}
+    global _TUTORING_CTX, _TUTORING_SOURCES
+    _TUTORING_CTX = _ctx
+    _TUTORING_SOURCES = sources
 
-    print(f"  [Schedule] Weekly study schedule ON — Mon-Fri all day EXCEPT a {PIPELINE_STOP_HOUR:02d}:00-{(PIPELINE_STOP_HOUR + 1) % 24:02d}:00 consolidation pause; Sat 2 PM-3 AM; Sun OFF. It pauses at {PIPELINE_STOP_HOUR:02d}:00 and resumes at {(PIPELINE_STOP_HOUR + 1) % 24:02d}:00. (PIPELINE_STOP_HOUR=-1 disables.)")
+    print(f"  [Schedule] Weekly study schedule ON — Mon-Fri all day EXCEPT a {DAY_SCHEDULE_NIGHT_HOUR:02d}:00-{(DAY_SCHEDULE_NIGHT_HOUR + 1) % 24:02d}:00 consolidation pause; Sat 2 PM-3 AM; Sun OFF. Overnight ingest/weave/training runs {KAI_INGEST_START_HOUR:02d}:00 -> {PIPELINE_STOP_HOUR:02d}:{PIPELINE_STOP_MINUTE:02d}. (PIPELINE_STOP_HOUR=-1 disables.)")
     _was_paused = None  # None so the first decision always logs
 
+    _last_ingest_wait_log = 0.0
     while True:
-        # SCHEDULE GATE — study only during the fleet's work windows; otherwise PAUSE so
-        # KAI consolidates (daily 3 AM) and rests (Sat morning + all Sunday). The process
-        # stays alive and resumes on its own when the next window opens — no relaunch.
-        if not is_training_time():
+        # ── OVERNIGHT BITNET INGEST GATE (reconciles the 3 AM consolidation conflict) ──
+        # The OLD behavior paused training during the PIPELINE_STOP_HOUR (3 AM) hour for
+        # consolidation. We now OWN that window with the BitNet ingest+weave: when the
+        # ingest window is open (KAI_INGEST_START_HOUR..PIPELINE_STOP_HOUR) and we haven't
+        # run tonight, run the ingest INSTEAD of pausing. This is the explicit fix so the
+        # consolidation auto-stop no longer kills the ingest — the ingest runs first, THEN
+        # we stop for consolidation at PIPELINE_STOP_HOUR. The ingest holds a lockfile that
+        # the supervisor's RAM-recycler can honor (so it won't kill the engine mid-weave).
+        if KAI_OVERNIGHT_INGEST:
+            _today = datetime.now().date().isoformat()
+            if overnight_window_open() and _today not in _INGEST_DONE_DATES:
+                run_overnight_ingest()   # blocks until the stop hour, then returns
+                continue                 # re-evaluate schedule (we're now at/after stop hour)
+            # Before the start hour at night: wait for 03:00 rather than spinning.
+            _now = datetime.now()
+            if (_today not in _INGEST_DONE_DATES and not is_training_time()
+                    and 0 <= _now.hour < KAI_INGEST_START_HOUR):
+                if time.time() - _last_ingest_wait_log > 600:
+                    print(f"\n[ingest] waiting until {KAI_INGEST_START_HOUR:02d}:00 to begin overnight ingest "
+                          f"(now {_now:%H:%M}).")
+                    _last_ingest_wait_log = time.time()
+                save_curriculum(curriculum)
+                _was_paused = True
+                time.sleep(300)
+                continue
+
+        # SCHEDULE GATE — AUTHORITATIVE: training/ingest/weave/tutoring runs ONLY inside
+        # the overnight window (03:00 -> 08:30). Outside it the pipeline IDLES (no work),
+        # even on a fresh process start after the owner restarts the server. This closes
+        # the leak where is_training_time()'s DAYTIME schedule let the main loop run full
+        # tutoring sections all day — which is why training "tried to start back up" after
+        # a restart. The process stays alive and resumes on its own at 03:00 — no relaunch.
+        # (Set PIPELINE_STOP_HOUR=-1 to disable the gate and train continuously.)
+        _gate_open = overnight_window_open() if (PIPELINE_STOP_HOUR is not None and PIPELINE_STOP_HOUR >= 0) else is_training_time()
+        if not _gate_open:
             if _was_paused is not True:
                 save_curriculum(curriculum)
-                print(f"\n[Schedule] Outside study window ({datetime.now():%a %I:%M %p}) — pausing for consolidation/rest.")
-                try: post_update_to_discord("Training paused — consolidate / rest", f"Outside the study window ({datetime.now():%a %I:%M %p}). KAI is consolidating/resting; it resumes automatically when the next work window opens.", color=10181046)
+                print(f"\n[Schedule] Outside overnight window ({datetime.now():%a %I:%M %p}) — IDLING. No training/ingest/weave until {KAI_INGEST_START_HOUR:02d}:00.")
+                try: post_update_to_discord("Training paused — outside overnight window", f"Outside the overnight learning window ({datetime.now():%a %I:%M %p}). KAI is idle/consolidating; training resumes automatically at {KAI_INGEST_START_HOUR:02d}:00.", color=10181046)
                 except Exception: pass
                 _was_paused = True
             time.sleep(300)  # re-check every 5 minutes
