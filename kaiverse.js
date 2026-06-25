@@ -2514,15 +2514,9 @@ function nsRenderBloom(){
         var _comp=new THREE.EffectComposer(R);
         _comp.addPass(new THREE.RenderPass(NS.scene,NS.camera));
         
-        // --- PHASE 1: SSAO (Screen Space Ambient Occlusion) ---
-        if (typeof THREE.SSAOPass === 'function') {
-          var _ssao = new THREE.SSAOPass(NS.scene, NS.camera, _cw, _ch);
-          _ssao.kernelRadius = 12; // Radius of shadows
-          _ssao.minDistance = 0.001; // Depth threshold
-          _ssao.maxDistance = 0.1;
-          _comp.addPass(_ssao);
-          NS._composerSSAO = _ssao;
-        }
+        // --- SSAO DISABLED: kernelRadius=12 on scenes spanning 100k+ units
+        // causes GPU stalls / context loss. The depth precision is too low for
+        // the KAIVERSE scale. Bloom + cinematic pass are sufficient. ---
 
         var _str=(typeof window!=='undefined'&&+window.KAIVERSE_BLOOM_STRENGTH)||1.1;
         var _rad=(typeof window!=='undefined'&&+window.KAIVERSE_BLOOM_RADIUS)||0.5;
@@ -3903,7 +3897,7 @@ function nsTerrainHeightJS(nx,ny,nz,sharp,sea){
 // STANDARD material via onBeforeCompile, so real mountains/canyons rise from the surface as
 // you descend, with recomputed normals that catch the sun. Keeps Three's lighting + depth,
 // so a GLSL error only leaves the terrain smooth (NOT a black screen like a raw shader would).
-function nsApplyDisplacement(material, dna, amp){
+function nsApplyDisplacement(material, dna, amp, dispTex){
   const sharp=(dna&&dna.sharpness)||1.0, sea=(dna&&dna.sea)||0.45;
   material.onBeforeCompile=function(shader){
     shader.uniforms.uDispAmp={value:amp};
