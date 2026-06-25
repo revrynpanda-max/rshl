@@ -2668,14 +2668,14 @@ function nsBuildBodies(){
     if(n.kind==='bot' || n.kind==='channels'){
       // bots read as PROCEDURAL WORLDS: noise-texture surface tinted to bot color
       const tex=nsMakePlanetTexture(nsHashStr(n.name), n.kind==='channels'?'exotic':'rock');
-      mat=new THREE.MeshStandardMaterial({map:tex, bumpMap:tex, bumpScale:22.0, color:col, roughness:0.85, metalness:0.04, emissive:col, emissiveIntensity:0.02});
+      mat=new THREE.MeshStandardMaterial({map:tex, bumpMap:tex, bumpScale:22.0, color:col, roughness:0.85, metalness:0.04, emissive:col, emissiveIntensity:0.08});
       // atmosphere rim glow in the body's color + dynamic clouds
       const atmo=nsMakeAtmosphere(n.r, n.color); atmo.position.copy(n.pos); NS.scene.add(atmo); n.atmo=atmo;
       const clouds=nsMakeClouds(n.r); clouds.position.copy(n.pos); NS.scene.add(clouds); n.clouds=clouds;
       const asteroids=nsBuildPlanetaryAsteroids(n.r, n.color); asteroids.position.copy(n.pos); NS.scene.add(asteroids); n.asteroids=asteroids;
     } else if(n.kind==='provider'){
       const tex=nsMakePlanetTexture(nsHashStr('prov-'+n.name), 'gas');
-      mat=new THREE.MeshStandardMaterial({map:tex, bumpMap:tex, bumpScale:12.0, color:col, emissive:col, emissiveIntensity:n.active?0.5:0.06, roughness:0.4, metalness:0.1});
+      mat=new THREE.MeshStandardMaterial({map:tex, bumpMap:tex, bumpScale:12.0, color:col, emissive:col, emissiveIntensity:n.active?0.5:0.12, roughness:0.4, metalness:0.1});
       if(!n.active){ mat.opacity=0.55; mat.transparent=true; }
       else { const atmo=nsMakeAtmosphere(n.r, n.color); atmo.position.copy(n.pos); NS.scene.add(atmo); n.atmo=atmo; }
     } else {
@@ -2932,7 +2932,8 @@ function nsUpdateCamera(dt){
     else {
       // gentle auto-orbit: slowly drift the framing offset around the body ("in orbit")
       if(c.followOff){ const aa=dt*0.06, ca=Math.cos(aa), sa=Math.sin(aa);
-        const ox=c.followOff.x, oz=c.followOff.z; c.followOff.x=ox*ca-oz*sa; c.followOff.z=ox*sa+oz*ca; }
+        const ox=c.followOff.x, oz=c.followOff.z; c.followOff.x=ox*ca-oz*sa; c.followOff.z=ox*sa+oz*ca; 
+        const _mr = (node.r||1)*1.5; if(c.followOff.lengthSq() < _mr*_mr) c.followOff.setLength(_mr); }
       const want=node.pos.clone().add(c.followOff||new THREE.Vector3(0,0,1));
       cam.position.lerp(want, Math.min(1, dt*3.2));      // smooth chase
       c.target.copy(node.pos); cam.up.set(0,1,0); 
@@ -4515,7 +4516,7 @@ function nsUpdatePlanetDescent(){
   // when terrain shows, drop the base sphere's glow/emissive so the lit surface shows
   if(near.mesh) {
     near.mesh.visible = true; // KEEP visible (fixes invisible planet ball)
-    if(near.mesh.material && !near._realTex) {
+    if(near.mesh.material) {
        if (_showTer && _terReady) {
            near.mesh.material.emissiveIntensity = 0; // fixes glowing dot when close
        } else {
@@ -5596,7 +5597,7 @@ function nsQuestUpdate(dt){
       if('wasdqe '.indexOf(k)>=0){ if(!NS.keys) NS.keys={}; if(k!=='') intoFly(); NS.keys[k===' '?' ':k]=true; if(e.cancelable) e.preventDefault(); }
       else if(k==='shift'){ if(!NS.keys) NS.keys={}; NS.keys['shift']=true; }
       else if(k==='h'){ if(typeof window.nsReturnToCore==='function') window.nsReturnToCore(); }
-      else if(k==='f'){ if(NS.cam){ var _c=NS.cam; if(_c.mode==='follow'||_c.mode==='orbit'){ _c.yaw=(_c.theta||0)+Math.PI; _c.pitch=0; _c.mode='fly'; NS.flyTo=null; NS.followNid=null; } else { var _t=NS._nearPlanet||(NS.nodeById&&NS.nodeById['core']); if(_t&&_t.pos&&NS.camera){ NS.followNid=_t.id; _c.followOff=NS.camera.position.clone().sub(_t.pos); _c.mode='follow'; NS.flyTo=null; var _dir = _t.pos.clone().sub(NS.camera.position).normalize(); _c.yaw=Math.atan2(_dir.x, _dir.z); _c.pitch=Math.asin(_dir.y); } } } }
+      else if(k==='f'){ if(NS.cam){ var _c=NS.cam; if(_c.mode==='follow'||_c.mode==='orbit'){ _c.yaw=(_c.theta||0)+Math.PI; _c.pitch=0; _c.mode='fly'; NS.flyTo=null; NS.followNid=null; } else { var _t=NS._nearPlanet||(NS.nodeById&&NS.nodeById['core']); if(_t&&_t.pos&&NS.camera){ NS.followNid=_t.id; _c.followOff=NS.camera.position.clone().sub(_t.pos); var _min=(_t.r||1)*1.5; if(_c.followOff.lengthSq() < _min*_min) _c.followOff.normalize().multiplyScalar(_min); _c.mode='follow'; NS.flyTo=null; var _dir = _t.pos.clone().sub(NS.camera.position).normalize(); _c.yaw=Math.atan2(_dir.x, _dir.z); _c.pitch=Math.asin(_dir.y); } } } }
       else if(k==='v'){ NS._thirdPerson=!NS._thirdPerson; NS._chasePos=null; var _s=document.getElementById('ns-status'); if(_s) _s.textContent=(NS._thirdPerson?'3rd person':'1st person'); }
     });
     window.addEventListener('keyup', function(e){
