@@ -4285,12 +4285,12 @@ function nsBuildDescent(n){
     );
     shader.fragmentShader = shader.fragmentShader.replace(
       '#include <normal_fragment_maps>',
-      ['#include <normal_fragment_maps>',
+       ['#include <normal_fragment_maps>',
        '{',
-       '  float dist = length(vWorldPos - cameraPosition);',
-       '  float lodScale = mix(32.0, 1.0, clamp(dist / (uBaseR*2.0), 0.0, 1.0));',
+       '  float distN = length(vWorldPos - cameraPosition);',
+       '  float lodScaleN = mix(32.0, 1.0, clamp(distN / (uBaseR*2.0), 0.0, 1.0));',
        '  vec3 bwn = abs(normalize(vTriNrm)); bwn = bwn/max(bwn.x+bwn.y+bwn.z,1e-4);',
-       '  vec3 tpn = vTriPos * uDetailScale * lodScale;',
+       '  vec3 tpn = vTriPos * uDetailScale * lodScaleN;',
        '  vec3 nXa = texture2D(uDetailN, tpn.yz).xyz*2.0-1.0;',
        '  vec3 nYa = texture2D(uDetailN, tpn.xz).xyz*2.0-1.0;',
        '  vec3 nZa = texture2D(uDetailN, tpn.xy).xyz*2.0-1.0;',
