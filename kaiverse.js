@@ -46,7 +46,7 @@ const NS_LY_PER_UNIT = 4.0;
 // and are easy to spot + click. Motion stays alive, just calm. Bots were the
 // worst offenders (orbSpeed 0.018–0.042); 0.18 makes them drift ~5.5x slower.
 const NS_ORBIT_SLOW = 0.01;   // orbital/drift angular velocity multiplier (drastically slowed down so planets don't run away)
-const NS_SPIN_SLOW  = 0.005;  // body self-spin multiplier (drastically slowed down so landing is easy)
+const NS_SPIN_SLOW  = 0.0005;  // body self-spin multiplier (drastically slowed down so landing is easy)
 function nsUnitsToLy(distUnits){ return (distUnits/NS_SCALE)*NS_LY_PER_UNIT; }
 // Surface-relative distance with adaptive units so sitting ON a body reads ~0 (km),
 // not tens of light-years. ly when far → AU when sub-light-year → km when close → "surface".
@@ -2935,7 +2935,11 @@ function nsUpdateCamera(dt){
         const ox=c.followOff.x, oz=c.followOff.z; c.followOff.x=ox*ca-oz*sa; c.followOff.z=ox*sa+oz*ca; }
       const want=node.pos.clone().add(c.followOff||new THREE.Vector3(0,0,1));
       cam.position.lerp(want, Math.min(1, dt*3.2));      // smooth chase
-      c.target.copy(node.pos); cam.up.set(0,1,0); cam.lookAt(c.target);
+      c.target.copy(node.pos); cam.up.set(0,1,0); 
+      // Free look override: instead of forcing lookAt(c.target), use yaw/pitch
+      const cp=Math.cos(c.pitch), sp=Math.sin(c.pitch), cy=Math.cos(c.yaw), sy=Math.sin(c.yaw);
+      const fwd=new THREE.Vector3(cp*cy,sp,cp*sy);
+      cam.lookAt(cam.position.clone().add(fwd));
     }
   } else if(c.mode==='fly'){
     // ── free-fly: build basis from yaw/pitch, thrust with keys. Speed EASES IN
@@ -2960,6 +2964,22 @@ function nsUpdateCamera(dt){
     if(!NS._up) NS._up=_upT.clone();
     NS._up.lerp(_upT,Math.min(1,dt*0.3));   // ease toward target; super slow-moving
     if(NS._up.lengthSq()>1e-9) NS._up.normalize(); else NS._up.set(0,1,0);
+    
+    // ── SURFACE GRAVITY ROTATION LOCK ──
+    // Rotate the camera around the planet center so we move with the surface
+    if (NS._nearPlanet && NS._nearPlanet.mesh && NS._surfMin != null && NS._rNear != null && NS._surfMin < NS._rNear * 2.0) {
+      const curRot = NS._nearPlanet.mesh.rotation.y;
+      if (NS._nearPlanet._lastRot !== undefined) {
+         const deltaRot = curRot - NS._nearPlanet._lastRot;
+         const rel = cam.position.clone().sub(NS._nearPlanet.pos);
+         rel.applyAxisAngle(new THREE.Vector3(0,1,0), deltaRot);
+         cam.position.copy(NS._nearPlanet.pos).add(rel);
+         if(c.vel) c.vel.applyAxisAngle(new THREE.Vector3(0,1,0), deltaRot);
+         c.yaw -= deltaRot; 
+      }
+      NS._nearPlanet._lastRot = curRot;
+    }
+    
     const lUp=NS._up;
     const _ref=Math.abs(lUp.y)<0.985?new THREE.Vector3(0,1,0):new THREE.Vector3(1,0,0);
     const _east=new THREE.Vector3().crossVectors(_ref,lUp).normalize();
@@ -4221,11 +4241,15 @@ function nsBuildDescent(n){
     // VERTEX: pass object-space position + normal so the fragment can do TRIPLANAR projection.
     shader.vertexShader = shader.vertexShader.replace(
       'void main() {',
-      'varying vec3 vTriPos;\nvarying vec3 vTriNrm;\nvoid main() {'
+      'varying vec3 vTriPos;\nvarying vec3 vTriNrm;\nvarying vec3 vWorldPos;\nvoid main() {'
     );
     shader.vertexShader = shader.vertexShader.replace(
       '#include <beginnormal_vertex>',
       '#include <beginnormal_vertex>\n  vTriNrm = normalize(objectNormal);'
+    );
+    shader.vertexShader = shader.vertexShader.replace(
+      '#include <worldpos_vertex>',
+      '#include <worldpos_vertex>\n  vWorldPos = worldPosition.xyz;'
     );
     shader.vertexShader = shader.vertexShader.replace(
       '#include <begin_vertex>',
@@ -4235,15 +4259,17 @@ function nsBuildDescent(n){
     // so steep slopes/cliffs get crisp grain instead of a stretched smear (NMS-style).
     shader.fragmentShader = shader.fragmentShader.replace(
       'void main() {',
-      'uniform sampler2D uDetail;\nuniform sampler2D uDetailN;\nuniform float uDetailScale;\nuniform float uBumpStr;\nuniform float uBaseR;\nuniform vec3 uBiomeLow;\nuniform vec3 uBiomeHigh;\nuniform vec3 uBiomeRock;\nvarying vec3 vTriPos;\nvarying vec3 vTriNrm;\nvoid main() {'
+      'uniform sampler2D uDetail;\nuniform sampler2D uDetailN;\nuniform float uDetailScale;\nuniform float uBumpStr;\nuniform float uBaseR;\nuniform vec3 uBiomeLow;\nuniform vec3 uBiomeHigh;\nuniform vec3 uBiomeRock;\nvarying vec3 vTriPos;\nvarying vec3 vTriNrm;\nvarying vec3 vWorldPos;\nvoid main() {'
     );
     shader.fragmentShader = shader.fragmentShader.replace(
       '#include <map_fragment>',
       ['#include <map_fragment>',
        '{',
+       '  float dist = length(vWorldPos - cameraPosition);',
+       '  float lodScale = mix(32.0, 1.0, clamp(dist / (uBaseR*2.0), 0.0, 1.0));',
        '  vec3 bw = abs(normalize(vTriNrm)); bw = bw / max(bw.x+bw.y+bw.z, 0.0001);',
-       '  vec3 tp = vTriPos * uDetailScale;',
-       '  vec3 tp2 = vTriPos * (uDetailScale*4.0);',
+       '  vec3 tp = vTriPos * uDetailScale * lodScale;',
+       '  vec3 tp2 = vTriPos * (uDetailScale*4.0 * lodScale);',
        '  vec4 det = texture2D(uDetail, tp.yz)*bw.x + texture2D(uDetail, tp.xz)*bw.y + texture2D(uDetail, tp.xy)*bw.z;',
        '  vec4 fdet = texture2D(uDetail, tp2.yz)*bw.x + texture2D(uDetail, tp2.xz)*bw.y + texture2D(uDetail, tp2.xy)*bw.z;',
        '  float detL = dot(det.rgb, vec3(0.3,0.5,0.2));',
@@ -4261,8 +4287,10 @@ function nsBuildDescent(n){
       '#include <normal_fragment_maps>',
       ['#include <normal_fragment_maps>',
        '{',
+       '  float dist = length(vWorldPos - cameraPosition);',
+       '  float lodScale = mix(32.0, 1.0, clamp(dist / (uBaseR*2.0), 0.0, 1.0));',
        '  vec3 bwn = abs(normalize(vTriNrm)); bwn = bwn/max(bwn.x+bwn.y+bwn.z,1e-4);',
-       '  vec3 tpn = vTriPos * uDetailScale;',
+       '  vec3 tpn = vTriPos * uDetailScale * lodScale;',
        '  vec3 nXa = texture2D(uDetailN, tpn.yz).xyz*2.0-1.0;',
        '  vec3 nYa = texture2D(uDetailN, tpn.xz).xyz*2.0-1.0;',
        '  vec3 nZa = texture2D(uDetailN, tpn.xy).xyz*2.0-1.0;',
@@ -4485,10 +4513,16 @@ function nsUpdatePlanetDescent(){
   if(g.patch){ g.patch.visible = _terReady && _showTer && surf < r*0.6 && !g._bake; }   // patch only near the surface
   g.water.visible=false;
   // when terrain shows, drop the base sphere's glow/emissive so the lit surface shows
-  if(near.mesh && near.mesh.material && ('emissiveIntensity' in near.mesh.material) && !near._realTex){
-    near.mesh.material.emissiveIntensity = 0.05 + (1-aTer)*0.13;
+  if(near.mesh) {
+    near.mesh.visible = true; // KEEP visible (fixes invisible planet ball)
+    if(near.mesh.material && !near._realTex) {
+       if (_showTer && _terReady) {
+           near.mesh.material.emissiveIntensity = 0; // fixes glowing dot when close
+       } else {
+           near.mesh.material.emissiveIntensity = 0.05 + (1-aTer)*0.13;
+       }
+    }
   }
-  if(near.mesh) near.mesh.visible = !(_showTer && _terReady);   // base sphere OR baked terrain (kept on base until bake done)
   // ── 4) SKY DOME — follows the camera, fades in on the surface ──
   if(g.sky){
     const skyFade = 1-sstep(r*0.03, r*0.4, surf);   // sky only when basically landed (no bleed over approach)
@@ -5562,7 +5596,7 @@ function nsQuestUpdate(dt){
       if('wasdqe '.indexOf(k)>=0){ if(!NS.keys) NS.keys={}; if(k!=='') intoFly(); NS.keys[k===' '?' ':k]=true; if(e.cancelable) e.preventDefault(); }
       else if(k==='shift'){ if(!NS.keys) NS.keys={}; NS.keys['shift']=true; }
       else if(k==='h'){ if(typeof window.nsReturnToCore==='function') window.nsReturnToCore(); }
-      else if(k==='f'){ if(NS.cam){ var _c=NS.cam; if(_c.mode==='follow'||_c.mode==='orbit'){ _c.yaw=(_c.theta||0)+Math.PI; _c.pitch=0; _c.mode='fly'; NS.flyTo=null; NS.followNid=null; } else { var _t=NS._nearPlanet||(NS.nodeById&&NS.nodeById['core']); if(_t&&_t.pos&&NS.camera){ NS.followNid=_t.id; _c.followOff=NS.camera.position.clone().sub(_t.pos); _c.mode='follow'; NS.flyTo=null; } } } }
+      else if(k==='f'){ if(NS.cam){ var _c=NS.cam; if(_c.mode==='follow'||_c.mode==='orbit'){ _c.yaw=(_c.theta||0)+Math.PI; _c.pitch=0; _c.mode='fly'; NS.flyTo=null; NS.followNid=null; } else { var _t=NS._nearPlanet||(NS.nodeById&&NS.nodeById['core']); if(_t&&_t.pos&&NS.camera){ NS.followNid=_t.id; _c.followOff=NS.camera.position.clone().sub(_t.pos); _c.mode='follow'; NS.flyTo=null; var _dir = _t.pos.clone().sub(NS.camera.position).normalize(); _c.yaw=Math.atan2(_dir.x, _dir.z); _c.pitch=Math.asin(_dir.y); } } } }
       else if(k==='v'){ NS._thirdPerson=!NS._thirdPerson; NS._chasePos=null; var _s=document.getElementById('ns-status'); if(_s) _s.textContent=(NS._thirdPerson?'3rd person':'1st person'); }
     });
     window.addEventListener('keyup', function(e){
