@@ -2893,8 +2893,14 @@ function nsUpdateCamera(dt){
   let prevPos = NS._prevCamPos || (NS._prevCamPos=new THREE.Vector3());
   prevPos.copy(cam.position);
 
-  // smooth the throttle toward its scroll target every frame
-  NS.throttle += (NS.throttleT - NS.throttle) * Math.min(1, dt*6);
+  // Dynamic Auto-Throttle: ramps up automatically when thrusting forward or in autopilot.
+  const isFwdThrust = NS.keys['w'] || (NS._gpKeys && NS._gpKeys.includes('w')) || NS._autopilot;
+  if (isFwdThrust) {
+    NS.throttle = Math.min(1.0, NS.throttle + dt * 0.4); // ~2.5s to max
+  } else {
+    NS.throttle = Math.max(0.02, NS.throttle - dt * 0.6); // quick ramp down
+  }
+  NS.throttleT = NS.throttle; // Sync for HUD
 
   // ── accelerated fly-to (slow start → accelerate → ease-in), now FOLLOWS a
   //    moving body: the destination is recomputed each frame from the live node
@@ -2964,9 +2970,14 @@ function nsUpdateCamera(dt){
     const right=new THREE.Vector3().crossVectors(fwd,lUp).normalize();
     const up=lUp.clone();
     const K=NS.keys; const acc=new THREE.Vector3();
-    if(K['w']) acc.add(fwd); if(K['s']) acc.addScaledVector(fwd,-1);
-    if(K['d']) acc.addScaledVector(right,0.25); if(K['a']) acc.addScaledVector(right,-0.25);
-    if(K['e']||K[' ']) acc.add(up); if(K['q']||K['shift']) acc.addScaledVector(up,-1);
+    let fwdAmt = (K['w']?1:0) - (K['s']?1:0);
+    if(NS._autopilot) fwdAmt = Math.max(fwdAmt, 1.0); // Autopilot forces forward thrust
+    const latAmt = (K['d']?0.1:0) - (K['a']?0.1:0); // Lateral inertia: much weaker force
+    const upAmt = (K['e']||K[' ']?0.1:0) - (K['q']||K['shift']?0.1:0);
+    
+    if(fwdAmt!==0) acc.addScaledVector(fwd, fwdAmt);
+    if(latAmt!==0) acc.addScaledVector(right, latAmt);
+    if(upAmt!==0) acc.addScaledVector(up, upAmt);
     let topSpeed=nsThrottleSpeed();
     // ── PROXIMITY DECELERATION (sell the scale) ── the closer the camera gets to
     //    a big body's SURFACE, the lower the effective top speed. Ramps smoothly
@@ -2986,17 +2997,40 @@ function nsUpdateCamera(dt){
       const cruise=nsThrottleSpeed();
       let cap=cruise;
       if(surfMin<Infinity){
-        // 7M km = 14,000,000 engine units (start braking). 4M km = 8,000,000 engine units (hard stop).
-        const startBrakeDist = 14000000;
-        const hardStopDist   = 8000000;
+        // Gravity zone slowdown: extend the braking distance significantly
+        const startBrakeDist = 45000000;
+        const hardStopDist   = 12000000;
         let slow = cruise;
         if (surfMin < startBrakeDist) {
           // Ramp down from cruise to a slow atmospheric speed
           const t = Math.max(0, surfMin) / startBrakeDist;
-          // Floor the speed at 1% of cruise so you can still fall towards the surface
-          slow = Math.max(cruise * 0.01, cruise * t * t); 
+          // Floor the speed at 0.5% of cruise so you can still fall towards the surface
+          slow = Math.max(cruise * 0.005, cruise * t * t); 
         }
         cap = Math.min(cruise, slow);
+      }
+      
+      // Autopilot Aim Assist: gently align vector toward the nearest planet if roughly aimed at it
+      if ((NS._autopilot || isFwdThrust) && rNear > 1 && surfMin < 80000000) {
+         let nearestPlanet = null;
+         let minDist = Infinity;
+         for(let i=0;i<NS.nodes.length;i++){
+           const nn=NS.nodes[i]; if(!nn||!nn.pos) continue;
+           if(!(nn.kind==='core'||nn.kind==='bot'||nn.kind==='engine')) continue;
+           const dist = cam.position.distanceTo(nn.pos);
+           if (dist < minDist) { minDist = dist; nearestPlanet = nn; }
+         }
+         if (nearestPlanet) {
+            const toPlanet = nearestPlanet.pos.clone().sub(cam.position).normalize();
+            // Only assist if we are already pointing roughly towards it (within ~25 degrees)
+            if (fwd.dot(toPlanet) > 0.9) {
+               // Nudge yaw and pitch towards the planet
+               const currentLook = cam.position.clone().add(fwd);
+               const targetLook = cam.position.clone().add(toPlanet);
+               // Simple trick: we let the physics naturally pull the velocity vector
+               acc.addScaledVector(toPlanet, 0.5); 
+            }
+         }
       }
       NS._absCap = NS._absCap==null ? cap : (NS._absCap + (cap-NS._absCap)*Math.min(1,dt*4));
     }
@@ -3010,7 +3044,8 @@ function nsUpdateCamera(dt){
       // exponentially — crawl near surfaces, warp-speed in open space within seconds.
       const speedBoost = 1.0 + Math.min(50.0, cur / (NS_FLY_ACCEL * 0.5));
       const thrAccel=NS_FLY_ACCEL*(0.25+1.5*NS.throttle*NS.throttle) * speedBoost;
-      acc.normalize().multiplyScalar(thrAccel*ramp*dt*analog);
+      if (acc.lengthSq() > 1.0) acc.normalize();
+      acc.multiplyScalar(thrAccel*ramp*dt*analog);
       c.vel.add(acc);
     }
     const damp=Math.exp(-NS_FLY_DAMP*dt); c.vel.multiplyScalar(damp);
@@ -4514,7 +4549,12 @@ function nsPollGamepad(dt){
   // RIGHT STICK = look
   const rx=dz(ax[axesMap[2]]||0), ry=dz(ax[axesMap[3]]||0);
   if(rx||ry){ if(c.mode!=='fly' && c.mode!=='walk'){ c.mode='fly'; NS.flyTo=null; NS.followNid=null; }
-    c.yaw=(c.yaw||0)+rx*2.4*dt; c.pitch=Math.max(-1.45,Math.min(1.45,(c.pitch||0)-ry*2.4*dt)); }
+    let turnScale = 1.0;
+    if (NS.cam && NS.cam.vel) {
+      let ratio = Math.min(1.0, NS.cam.vel.length() / (25000000 * 16 * 80));
+      turnScale = 1.0 - (ratio * 0.9);
+    }
+    c.yaw=(c.yaw||0)+rx*2.4*dt*turnScale; c.pitch=Math.max(-1.45,Math.min(1.45,(c.pitch||0)-ry*2.4*dt*turnScale)); }
   // LEFT STICK = move (drives the same NS.keys WASD uses)
   if(!NS.keys) NS.keys={};
   if(NS._gpKeys){ for(let i=0;i<NS._gpKeys.length;i++) NS.keys[NS._gpKeys[i]]=false; }
@@ -4528,20 +4568,21 @@ function nsPollGamepad(dt){
   }
 
   NS._gpMag=Math.min(1, Math.hypot(lx,ly));   // ANALOG: stick magnitude → proportional thrust (light push = slow cruise)
-  if(lx||ly){ if(c.mode!=='fly' && c.mode!=='walk'){ c.mode='fly'; NS.flyTo=null; } }   // throttle stays where the owner set it
+  if(lx||ly){ if(c.mode!=='fly' && c.mode!=='walk'){ c.mode='fly'; NS.flyTo=null; } NS._autopilot=false; }   // Touch stick cancels autopilot
   if(ly<0){ NS.keys['w']=true; NS._gpKeys.push('w'); } else if(ly>0){ NS.keys['s']=true; NS._gpKeys.push('s'); }
   if(lx<0){ NS.keys['a']=true; NS._gpKeys.push('a'); } else if(lx>0){ NS.keys['d']=true; NS._gpKeys.push('d'); }
   if(btn(5)){ NS.keys['e']=true; NS._gpKeys.push('e'); }   // RB = up
   if(btn(4)){ NS.keys['q']=true; NS._gpKeys.push('q'); }   // LB = down
   if(btn(10)){ NS.keys['shift']=true; NS._gpKeys.push('shift'); }   // L3 (left-stick click) = run
-  if(btn(12)) NS.throttleT=Math.min(1,(NS.throttleT!=null?NS.throttleT:0.3)+0.7*dt);   // D-pad up
-  if(btn(13)) NS.throttleT=Math.max(0,(NS.throttleT!=null?NS.throttleT:0.3)-0.7*dt);   // D-pad down
+  // Manual throttle removed
   if(!NS._gpPrev) NS._gpPrev={};
   const edge=(i)=>{ const p=btn(i), was=NS._gpPrev[i]; NS._gpPrev[i]=p; return p&&!was; };
   const eA=edge(0), eB=edge(1); edge(2); const eY=edge(3);   // X polled; Y = land/walk
+  const eDpadDown=edge(13);
+  if(eDpadDown){ NS._autopilot = !NS._autopilot; } // Toggle Autopilot
   if(eA && NS.cam && NS.cam.mode==='walk'){
     if(NS.keys) NS.keys[' ']=true; if(NS._gpKeys) NS._gpKeys.push(' ');   // A = jump on the surface
-  } else if(eA){
+  } else if(eA && (!NS.cam || NS.cam.mode !== 'fly')){
     try{ const cam=NS.camera, wrap=$('ns-wrap');
       if(cam && wrap){ const r=wrap.getBoundingClientRect(), vv=new THREE.Vector3(); let best=null,bd=1e9;
         for(let i=0;i<NS.nodes.length;i++){ const n=NS.nodes[i]; if(!n.pos) continue;
@@ -5461,8 +5502,13 @@ function nsQuestUpdate(dt){
     });
     function lockedMove(e){
       if(!locked || !NS.active) return; var c=NS.cam; if(!c) return;
-      c.yaw   = (c.yaw||0)   + (e.movementX||0)*0.0028;
-      c.pitch = Math.max(-1.45, Math.min(1.45,(c.pitch||0) - (e.movementY||0)*0.0028));
+      let turnScale = 1.0;
+      if (NS.cam && NS.cam.vel) {
+        let ratio = Math.min(1.0, NS.cam.vel.length() / (25000000 * 16 * 80));
+        turnScale = 1.0 - (ratio * 0.9);
+      }
+      c.yaw   = (c.yaw||0)   + (e.movementX||0)*0.0028*turnScale;
+      c.pitch = Math.max(-1.45, Math.min(1.45,(c.pitch||0) - (e.movementY||0)*0.0028*turnScale));
     }
     document.addEventListener('mousemove', lockedMove);
     // NON-LOCKED drag-look (touchpad / plain mouse): pointer events + capture.
@@ -5479,8 +5525,13 @@ function nsQuestUpdate(dt){
       var c=NS.cam; if(!c) return;
       var dx=e.clientX-lpx, dy=e.clientY-lpy; lpx=e.clientX; lpy=e.clientY;
       if(Math.abs(dx)+Math.abs(dy)>2){ NS._userTook=true; intoFly(); }   // break orbit only on a real drag
-      c.yaw   = (c.yaw||0)   + dx*0.005;
-      c.pitch = Math.max(-1.45, Math.min(1.45,(c.pitch||0) - dy*0.005));
+      let turnScale = 1.0;
+      if (NS.cam && NS.cam.vel) {
+        let ratio = Math.min(1.0, NS.cam.vel.length() / (25000000 * 16 * 80));
+        turnScale = 1.0 - (ratio * 0.9);
+      }
+      c.yaw   = (c.yaw||0)   + dx*0.005*turnScale;
+      c.pitch = Math.max(-1.45, Math.min(1.45,(c.pitch||0) - dy*0.005*turnScale));
     });
     function endDrag(e){ if(!dragging) return; dragging=false; try{ cvs.releasePointerCapture(e.pointerId); }catch(_){} }
     cvs.addEventListener('pointerup', endDrag);
