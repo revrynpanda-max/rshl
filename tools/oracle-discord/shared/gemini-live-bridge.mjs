@@ -1110,10 +1110,11 @@ export class GeminiLiveBridge {
       if (this._modelIdx != null) {
         clearTimeout(this._modelResetTimer);
         this._modelResetTimer = setTimeout(() => {
-          if (this.isReady) {
-            console.log(`[GeminiLive] Stable on fallback #${this._modelIdx}; retrying the primary Live model on next reconnect.`);
-            this._modelIdx = null;
+          if (this._userClosed || !this.isReady) return;
+          if (process.env.GEMINI_LIVE_DEBUG === '1') {
+            console.log(`[GeminiLive] Stable on fallback #${this._modelIdx}; primary Live model will be retried on next reconnect.`);
           }
+          this._modelIdx = null;
         }, 45000);
       }
       connectResolve?.();
@@ -1134,6 +1135,22 @@ export class GeminiLiveBridge {
     // and we avoid the "1008 ... failed to close after GoAway" abort loop.
     const goAway = msg.goAway || msg.go_away;
     if (goAway) {
+      const now = Date.now();
+      const minGap = Math.max(30_000, parseInt(process.env.GEMINI_LIVE_GOAWAY_MIN_MS || '120000', 10) || 120000);
+      if (this._lastGoAwayAt && (now - this._lastGoAwayAt) < minGap) {
+        if (process.env.GEMINI_LIVE_DEBUG === '1') {
+          console.log(`[GeminiLive] GoAway ignored (throttled, ${now - this._lastGoAwayAt}ms since last).`);
+        }
+        return;
+      }
+      this._lastGoAwayAt = now;
+      if (this._connectOptions?.mode === 'outbound' && !this._hadRecentAudio) {
+        console.log(`[GeminiLive] GoAway on idle outbound session — closing without reconnect.`);
+        this._userClosed = true;
+        try { this.ws?.close(1000, 'goaway-idle'); } catch (_) {}
+        this.isActive = false;
+        return;
+      }
       console.log(`[GeminiLive] GoAway — session limit approaching (${goAway.timeLeft || goAway.time_left || '?'} left). Closing now to reconnect cleanly with context preserved.`);
       try { this.ws?.close(1000, 'goaway-graceful'); } catch (_) {}
       return;
@@ -1179,6 +1196,7 @@ export class GeminiLiveBridge {
         const inlineData = part.inlineData || part.inline_data;
         const mimeType = inlineData?.mimeType || inlineData?.mime_type;
         if (mimeType?.startsWith('audio/')) {
+          this._hadRecentAudio = true;
           this.audioChunks.push(inlineData.data);
           this.onAudioChunk?.(inlineData.data, mimeType); // Streaming delivery (rate in mimeType)
         }
@@ -1564,6 +1582,10 @@ export class GeminiLiveBridge {
     this._userClosed = true; // intentional close — suppress auto-reconnect
     this.isActive = false;
     this.isReady = false;
+    if (this._modelResetTimer) {
+      clearTimeout(this._modelResetTimer);
+      this._modelResetTimer = null;
+    }
     if (this.pingInterval) {
       clearInterval(this.pingInterval);
       this.pingInterval = null;

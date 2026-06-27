@@ -18,6 +18,7 @@ import { buildFailureContext } from './failure-memory.mjs';
 import { getDynamicRole } from './dynamic-roles.mjs';
 import { BASE_TOOLS_SCHEMA, CODER_TOOLS_SCHEMA, executeToolCall, getToolsForBot } from './native-tools.mjs';
 import { storeLattice } from './lattice-bridge.mjs';
+import { isGroqBot, cloudFailoverOrder, enforceGroqPrimaryRoute, shouldSkipGeminiFailover } from './groq-routing-policy.mjs';
 
 dotenv.config();
 
@@ -72,7 +73,9 @@ const BOT_ROUTING_DEFAULTS = {
   "Gemini":     { provider: "gemini",   model: "gemini-2.5-flash-lite" },
   "Claudey":    { provider: "gemini",   model: "gemini-2.5-flash-lite" },
   "X":          { provider: "gemini",   model: "gemini-2.5-flash-lite" },
-  "Groq":       { provider: "gemini",   model: "gemini-2.5-flash-lite" },
+  // Groq = radio DJ (text/TTS output). Primary groq → ollama failover; never gemini
+  // (shared Leo voice key / daily quota — was hammering 429 + GoAway session spam).
+  "Groq":       { provider: "groq",     model: "llama-3.1-8b-instant" },
   "Leo":        { provider: "gemini",   model: process.env.GEMINI_MODEL || "gemini-2.5-flash-lite" },
 };
 
@@ -245,7 +248,12 @@ function resolveRoute(botName, modelOverride) {
     }
   }
 
-  return { provider, modelAlias, realModel };
+  const route = { provider, modelAlias, realModel };
+  if (isGroqBot(botName)) {
+    const groqModel = perBotPrimaryModel(botName, 'groq', modelAlias);
+    return { provider: 'groq', modelAlias, realModel: groqModel };
+  }
+  return route;
 }
 
 function getSystemTelemetry() {
@@ -563,7 +571,7 @@ ${uProf.privateSecrets.map(s => `- ${s}`).join('\n')}
     `[CURRENT USER]: ${metadata.human?.name || 'User'}`
   ].filter(Boolean).join('\n\n');
 
-  const route = resolveRoute(botName, modelOverride);
+  const route = enforceGroqPrimaryRoute(botName, resolveRoute(botName, modelOverride));
   const ollamaModel = route.modelAlias; // kept for downstream logs/local-Ollama call
   const isPriority = botName === "Leo" || botName === "Oracle" || botName === "KAI";
 
@@ -581,7 +589,7 @@ ${uProf.privateSecrets.map(s => `- ${s}`).join('\n')}
 
   const getTrackerId = (prov, key) => key ? `${prov}_${key.slice(-4)}` : prov;
 
-  const groqReady = isProviderReady(getTrackerId("groq", specificGroqKey)) && specificGroqKey;
+  const groqReady = specificGroqKey && isProviderReady('groq') && isProviderReady(getTrackerId("groq", specificGroqKey));
   const geminiReady = isProviderReady(getTrackerId("gemini", specificGeminiKey)) && specificGeminiKey;
   const zenReady = isProviderReady(getTrackerId("zen", specificZenKey)) && specificZenKey;
   const xaiReady = isProviderReady(getTrackerId("xai", specificXaiKey)) && specificXaiKey;
@@ -624,9 +632,11 @@ ${uProf.privateSecrets.map(s => `- ${s}`).join('\n')}
     // REMOVED entirely: moonshot + xAI (gone, never tried). SILENCED (keys kept,
     // never auto-tried, never log errors): zen + openai + cerebras. Re-enable a
     // silenced provider later by adding it back to this list AND PROVIDER_FAILOVER_ORDER.
+    // Groq (radio DJ) must not failover into gemini — shares Leo's quota / causes 429 storms.
+    const _skipGeminiFailover = shouldSkipGeminiFailover(botName);
     const choice = firstReady([
       { ready: groqReady && route.provider !== "groq", route: groqFallback },
-      { ready: geminiReady && route.provider !== "gemini", route: geminiFallback },
+      { ready: !_skipGeminiFailover && geminiReady && route.provider !== "gemini", route: geminiFallback },
       { ready: route.provider !== "ollama" && isProviderReady("ollama"), route: localFallback },
     ]);
 
@@ -882,12 +892,15 @@ ${uProf.privateSecrets.map(s => `- ${s}`).join('\n')}
     // ACTIVE cloud failover order: Groq (big free quota) -> Gemini free key.
     // Local Ollama is the final fallback handled elsewhere. To re-enable a silenced
     // provider, add it back to _readyByName, _modelByName, and this array.
-    const PROVIDER_FAILOVER_ORDER = ['groq', 'gemini'];
+    const PROVIDER_FAILOVER_ORDER = cloudFailoverOrder(botName);
     function pickNextReadyProvider(current) {
       triedProviders.add(current);
       for (const p of PROVIDER_FAILOVER_ORDER) {
         if (p === current || triedProviders.has(p) || !_readyByName[p]) continue;
         return { provider: p, modelAlias: _modelByName[p], realModel: _modelByName[p] };
+      }
+      if (!triedProviders.has('ollama') && isProviderReady('ollama')) {
+        return localFallback;
       }
       return null;
     }
@@ -917,6 +930,11 @@ ${uProf.privateSecrets.map(s => `- ${s}`).join('\n')}
       toolLoopCount++;
       let res;
       let providerSwitched = false; // set true if a 429 hops us to another provider mid-loop
+
+      if (useCloud && isGroqBot(botName) && effectiveRoute.provider === 'gemini') {
+        console.warn(`[OpenJarvis] ${botName}: gemini route blocked (radio DJ uses groq only) -> ${groqFallback.realModel}`);
+        effectiveRoute = { ...groqFallback };
+      }
 
       if (useCloud) {
         if (effectiveRoute.provider === 'moonshot' && specificMoonshotKey) {
@@ -1022,7 +1040,8 @@ ${uProf.privateSecrets.map(s => `- ${s}`).join('\n')}
                     }
                     console.warn('[OpenJarvis] ' + botName + ': ALL Gemini text models cooled down -> failing over to next provider.');
                   }
-                  recordProviderFailure(getTrackerId(effectiveRoute.provider, apiKey), 429, 'quota/rate');
+                  const _err429 = (typeof errText === 'string' ? errText : String(errText || ''));
+                  recordProviderFailure(getTrackerId(effectiveRoute.provider, apiKey), 429, _err429 || 'quota/rate');
                   const next = pickNextReadyProvider(effectiveRoute.provider);
                   if (next) {
                     console.warn(`[OpenJarvis] ${botName}: ${effectiveRoute.provider} quota exhausted → failing over to ${next.provider} (${next.realModel}).`);
@@ -1093,7 +1112,13 @@ ${uProf.privateSecrets.map(s => `- ${s}`).join('\n')}
           }
         } catch (ollamaErr) {
           recordProviderFailure("ollama", 500, ollamaErr.message);
-          if (specificGeminiKey) {
+          if (isGroqBot(botName) && groqReady) {
+            console.warn(`[OpenJarvis/Ollama] ${botName}: local server unreachable (${ollamaErr.message}). Failing over to Groq (never Gemini).`);
+            effectiveRoute = { ...groqFallback };
+            useCloud = true;
+            continue;
+          }
+          if (specificGeminiKey && !isGroqBot(botName)) {
             console.warn(`[OpenJarvis/Ollama] ${botName}: local server unreachable (${ollamaErr.message}). Failing over to Gemini.`);
             effectiveRoute.provider = 'gemini';
             effectiveRoute.realModel = process.env.GEMINI_MODEL || 'gemini-2.5-flash';

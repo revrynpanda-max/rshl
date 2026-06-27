@@ -21,6 +21,7 @@ import { runCodingTask, applySandboxFile, isToolServerOnline, makeLLMCaller } fr
 import { fork } from 'child_process';
 import path from 'path';
 import { listVoices, describeVoice, validateVoice, setReadingVoice, getReadingVoice, parseVoiceQuery } from './shared/edge-reading-tts.mjs';
+import { parseOvernightRoster, effectiveOvernightRoster as filterOvernightRoster } from './shared/overnight-roster-policy.mjs';
 
 // ── CRASH GUARD ──────────────────────────────────────────────────────────────
 // When kai.exe (the engine on :3334) faults, every socket/fetch to it emits an
@@ -1317,11 +1318,10 @@ function startOvernightOrchestrator() {
   // awake). KAI must NEVER be slept overnight — he is the one doing the work. We
   // hard-exclude Oracle/KAI even if an OVERNIGHT_ROSTER override accidentally lists
   // them, so the invariant ("Oracle + KAI stay awake") can't be broken by config.
-  const ROSTER_EXCLUDE = new Set(['oracle', 'kai']);
-  const OVERNIGHT_ROSTER = (process.env.OVERNIGHT_ROSTER
-    || 'Leo,Gemini,Claudey,X,Groq,Researcher,Analyst,Kai Coder')
-    .split(',').map(s => s.trim()).filter(Boolean)
-    .filter(b => !ROSTER_EXCLUDE.has(b.toLowerCase()));
+  const OVERNIGHT_ROSTER = parseOvernightRoster(process.env.OVERNIGHT_ROSTER);
+  function effectiveOvernightRoster() {
+    return filterOvernightRoster(OVERNIGHT_ROSTER);
+  }
   // Flag the drive/metacognition system reads to SKIP negative scoring (pain /
   // failed-prediction penalties) while KAI is in the overnight state — so a
   // connection loss or training glitch overnight never docks KAI's drives.
@@ -1373,17 +1373,38 @@ function startOvernightOrchestrator() {
 
   function sleepFleet(reason) {
     if (typeof process.send !== 'function') return false;
+    const roster = effectiveOvernightRoster();
     setActiveFlag(true);  // enter overnight: suppress KAI's negative drive scoring
-    for (const b of OVERNIGHT_ROSTER) process.send({ type: 'SLEEP_BOT', botName: b });
-    console.log(`[Oracle/Overnight] Dead-zone reached — sleeping fleet (${reason}): ${OVERNIGHT_ROSTER.join(', ')}. Oracle + KAI stay awake (KAI runs the ingest/weave/training).`);
+    if (!roster.length) {
+      console.log(`[Oracle/Overnight] Essentials mode — no essentials bots to sleep (${reason}). Leo/Groq/work bots stay online.`);
+      return true;
+    }
+    for (const b of roster) process.send({ type: 'SLEEP_BOT', botName: b });
+    console.log(`[Oracle/Overnight] Dead-zone reached — sleeping fleet (${reason}): ${roster.join(', ')}. Oracle + KAI stay awake (KAI runs the ingest/weave/training).`);
     return true;
+  }
+  function essentialsSleepSet() {
+    const raw = String(process.env.ORACLE_START_SLEEP_BOTS || '');
+    const set = new Set();
+    for (const part of raw.split(',')) {
+      const n = part.trim().toLowerCase();
+      if (n) set.add(n);
+    }
+    return set;
   }
   function wakeFleet(reason) {
     if (typeof process.send !== 'function') return false;
     setActiveFlag(false); // exit overnight: restore normal drive scoring
-    for (const b of OVERNIGHT_ROSTER) process.send({ type: 'WAKE_BOT', botName: b });
-    console.log(`[Oracle/Overnight] Morning wake (${reason}) — waking normal roster: ${OVERNIGHT_ROSTER.join(', ')}.`);
-    return true;
+    const sleepSet = essentialsSleepSet();
+    const roster = effectiveOvernightRoster();
+    const toWake = roster.filter((b) => !sleepSet.has(b.toLowerCase()));
+    const skipped = roster.filter((b) => sleepSet.has(b.toLowerCase()));
+    for (const b of toWake) process.send({ type: 'WAKE_BOT', botName: b });
+    if (skipped.length) {
+      console.log(`[Oracle/Overnight] Morning wake (${reason}) — skipped essentials-sleep bots: ${skipped.join(', ')}.`);
+    }
+    console.log(`[Oracle/Overnight] Morning wake (${reason}) — waking: ${toWake.join(', ') || '(none)'}.`);
+    return toWake.length > 0 || skipped.length > 0;
   }
 
   function tick() {
@@ -1439,7 +1460,7 @@ function startOvernightOrchestrator() {
   // Run on boot (in case Oracle restarts mid-overnight) then every 60s.
   setTimeout(tick, 8000);
   setInterval(tick, 60000);
-  console.log(`[Oracle/Overnight] Orchestrator active: sleep@${SLEEP_HOUR}:00 EST (all but Oracle), watch ${COMPLETE_FLAG.split('/').pop()}, wake@${WAKE_HOUR}:00. Roster: ${OVERNIGHT_ROSTER.join(', ')}.`);
+  console.log(`[Oracle/Overnight] Orchestrator active: sleep@${SLEEP_HOUR}:00 EST (all but Oracle), watch ${COMPLETE_FLAG.split('/').pop()}, wake@${WAKE_HOUR}:00. Roster: ${effectiveOvernightRoster().join(', ')}.`);
 }
 
 client.login(process.env.ORACLE_DISCORD_TOKEN);

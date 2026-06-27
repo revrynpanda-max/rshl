@@ -10,6 +10,31 @@ try {
   fs.mkdirSync('c:/KAI/tools/oracle-discord/logs', { recursive: true });
   fs.mkdirSync('c:/KAI/tools/oracle-discord/state', { recursive: true });
 } catch (_) {}
+const BOOT_MARKER = `[Ecosystem/BOOT] Manager start ${new Date().toISOString()} pid=${process.pid} stderr-routed-to-stdout`;
+try { fs.appendFileSync(LOG_FILE, BOOT_MARKER + '\n'); } catch (_) {}
+console.log(BOOT_MARKER);
+
+function _mgrTransientNet(msg) {
+  return /ENOTFOUND|ECONNRESET|ETIMEDOUT|discord\.media|socket hang up|socket closed|EPIPE|write after end/i.test(msg);
+}
+process.on('uncaughtException', (err) => {
+  const msg = err?.message || String(err);
+  if (_mgrTransientNet(msg)) {
+    console.warn('[Ecosystem/Manager] Transient error (staying alive):', msg);
+    return;
+  }
+  console.error('[Ecosystem/Manager] Uncaught exception (staying alive):', msg);
+  try { fs.appendFileSync(LOG_FILE, `[Ecosystem/CRITICAL] uncaughtException: ${msg}\n`); } catch (_) {}
+});
+process.on('unhandledRejection', (reason) => {
+  const msg = reason instanceof Error ? reason.message : String(reason);
+  if (_mgrTransientNet(msg)) {
+    console.warn('[Ecosystem/Manager] Transient rejection (staying alive):', msg);
+    return;
+  }
+  console.error('[Ecosystem/Manager] Unhandled rejection (staying alive):', msg);
+  try { fs.appendFileSync(LOG_FILE, `[Ecosystem/CRITICAL] unhandledRejection: ${msg}\n`); } catch (_) {}
+});
 const originalLog = console.log;
 const originalWarn = console.warn;
 const originalError = console.error;
@@ -269,8 +294,11 @@ function startProcess(name, script, args = []) {
     if (child.stderr) {
       child.stderr.on('data', (data) => {
         const errorMsg = data.toString();
-        const msg = `[${name}] ERROR: ${errorMsg}`;
-        process.stderr.write(msg);
+        // Route child stderr to stdout + log only — never process.stderr.write.
+        // PowerShell ($ErrorActionPreference=Stop) treats native stderr as terminating
+        // and killed the whole manager (4294967295 fleet death storm).
+        const msg = `[${name}] STDERR: ${errorMsg}`;
+        process.stdout.write(msg);
         try {
           fs.appendFileSync('c:/KAI/tools/oracle-discord/logs/ecosystem.log', msg);
         } catch (e) {}
@@ -552,8 +580,10 @@ setInterval(() => {
   if (!Array.isArray(queue) || queue.length === 0) return;
   try { fs.unlinkSync(RESTART_QUEUE_FILE); } catch (_) {}
   for (const req of queue) {
-    // Stale guard: ignore requests older than 10 minutes
-    if (!req?.botName || (Date.now() - (req.ts || 0)) > 600_000) continue;
+    // Stale guard: ignore requests older than 10 minutes or with invalid/future timestamps
+    const reqTs = Number(req.ts || 0);
+    const reqAge = Date.now() - reqTs;
+    if (!req?.botName || reqTs <= 0 || reqAge < 0 || reqAge > 600_000) continue;
     const properName = normalizeProcessName(req.botName);
     if (!properName) continue;
     console.log(`[Ecosystem] File-queued restart: ${properName} (${req.reason || 'no reason'})`);

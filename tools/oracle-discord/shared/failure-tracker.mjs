@@ -62,6 +62,25 @@ function clearPersistedCooldown(provider) {
   } catch (e) {}
 }
 
+// Base provider id for fleet-wide cooldowns (groq_OriA -> groq; gemini_x::model -> gemini).
+function providerBaseId(provider) {
+  if (!provider) return provider;
+  const head = String(provider).split('::')[0];
+  const us = head.indexOf('_');
+  return us > 0 ? head.slice(0, us) : head;
+}
+
+function cooldownReady(provider) {
+  const until = PROVIDER_COOLDOWNS.get(provider);
+  if (!until) return true;
+  if (Date.now() > until) {
+    PROVIDER_COOLDOWNS.delete(provider);
+    clearPersistedCooldown(provider);
+    return true;
+  }
+  return false;
+}
+
 // Load persisted cooldowns immediately on module import
 loadPersistedCooldowns();
 
@@ -150,6 +169,13 @@ export function recordProviderFailure(provider, errorStatus, errorMessage = "") 
   
   const cooldownUntil = Date.now() + cooldownMs;
   PROVIDER_COOLDOWNS.set(provider, cooldownUntil);
+  // Fleet-wide mirror: TPD / billing on groq_OriA must also park the shared groq
+  // bucket (and likewise for gemini_* keys) so failover does not retry a dead API.
+  const base = providerBaseId(provider);
+  if (base && base !== provider && (isTPD || isPermanent)) {
+    const prev = PROVIDER_COOLDOWNS.get(base);
+    if (!prev || cooldownUntil > prev) PROVIDER_COOLDOWNS.set(base, cooldownUntil);
+  }
 
   // Persist long cooldowns to disk so they survive restarts
   if (cooldownMs > 600000) {
@@ -190,14 +216,10 @@ export function recordProviderSuccess(provider) {
  * Check if a provider is ready (not in cooldown)
  */
 export function isProviderReady(provider) {
-  const cooldownUntil = PROVIDER_COOLDOWNS.get(provider);
-  if (!cooldownUntil) return true;
-  if (Date.now() > cooldownUntil) {
-    PROVIDER_COOLDOWNS.delete(provider);
-    clearPersistedCooldown(provider);
-    return true;
-  }
-  return false;
+  if (!cooldownReady(provider)) return false;
+  const base = providerBaseId(provider);
+  if (base && base !== provider && !cooldownReady(base)) return false;
+  return true;
 }
 
 /**

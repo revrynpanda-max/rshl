@@ -15,6 +15,7 @@ import { handleImageRequest, isImageRequest } from '../shared/gemi-image.mjs';
 import fs from 'fs';
 import { getGateState, waitForGateClear } from '../shared/voice-gate.mjs';
 import { startBotServer } from '../shared/ipc.mjs';
+import { fleetBuildReadyLine } from '../shared/fleet-build.mjs';
 import { recordNeuralEvent, getHardwareStats, getRecentBottlenecks } from '../shared/performance-monitor.mjs';
 import { isSpeakerOffline, recordAIFailure, isProviderReady } from '../shared/failure-tracker.mjs';
 import { runDailyWorkSession, LEARNING_TRACKS } from '../shared/daily-learning.mjs';
@@ -222,6 +223,7 @@ process.on('ORACLE_CONSULT_START', (data) => {
 });
 
 client.once('clientReady', async () => {
+  console.log(fleetBuildReadyLine(botName));
   console.log(`[${botName}] online as ${client.user.tag}`);
 
   // Set cachedClient for tts-engine within the bot's process
@@ -1635,6 +1637,10 @@ function startEnergyMonitor() {
 if (PORT > 0) {
   startBotServer(PORT, botName, async (payload) => {
     if (isSpeakerOffline(botName)) return;
+    if (payload.type === 'TEXT_PROBE') {
+      console.log(`[${botName}/TextProbe] pong nonce=${payload.nonce || 'none'}`);
+      return;
+    }
     if (payload.type === 'POST_SOCIAL_MESSAGE') {
       const channel = client.channels.cache.get(CHANNEL_IDS.SUNDAY) || await client.channels.fetch(CHANNEL_IDS.SUNDAY).catch(() => null);
       if (channel) {
@@ -1994,7 +2000,7 @@ if (botName === 'Groq') {
         }
       }
     } catch (e) {
-      console.warn(`[Groq/Voice] voiceStateUpdate error:`, e.message);
+      console.warn(`[Groq/RadioOut] voiceStateUpdate error:`, e.message);
     }
   });
 }

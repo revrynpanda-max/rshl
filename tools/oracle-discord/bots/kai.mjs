@@ -130,7 +130,7 @@ client.once('clientReady', async () => {
   // Cheap liveness probe timeout. /health is lock-free and answers instantly even
   // mid-ingest, so a short timeout is correct: if it doesn't answer in ~2s the
   // engine is genuinely wedged and we skip the heavy fetch entirely (no 15s hang).
-  const VITALS_PROBE_TIMEOUT_MS = Number(process.env.KAI_VITALS_PROBE_TIMEOUT_MS || 2_000);
+  const VITALS_PROBE_TIMEOUT_MS = Number(process.env.KAI_VITALS_PROBE_TIMEOUT_MS || 3_500);
   // Configurable broadcast cadence (default 30s). During overnight work we relax
   // to a much longer effective cadence via the busy-skip below.
   const VITALS_INTERVAL_MS = Number(process.env.KAI_VITALS_INTERVAL_MS || 30_000);
@@ -316,7 +316,7 @@ client.once('clientReady', async () => {
           vitalsBootNoticeShown = true;
           console.log('[KAI] Vitals broadcast: engine not ready yet during boot — retrying quietly (' + e.name + ').');
         }
-      } else if (vitalsFailCount === 1 || vitalsFailCount % 30 === 0) {
+      } else if ((vitalsFailCount === 1 && e.name !== 'TimeoutError') || vitalsFailCount === 3 || vitalsFailCount % 30 === 0) {
         // Collapse repeats: log the first failure, then only once every ~15 min.
         const next = Math.round(backoffMs / 1000);
         if (isHandledTransient) {
@@ -600,6 +600,11 @@ function driveSnapshot() {
 // IPC server for Oracle to trigger KAI
 startBotServer(PORT, BOT_NAME, async (payload) => {
   if (isSpeakerOffline(BOT_NAME)) return;
+
+  if (payload.type === 'TEXT_PROBE') {
+    console.log(`[${BOT_NAME}/TextProbe] pong nonce=${payload.nonce || 'none'}`);
+    return;
+  }
   
   if (payload.type === 'OBSERVE') {
     try {

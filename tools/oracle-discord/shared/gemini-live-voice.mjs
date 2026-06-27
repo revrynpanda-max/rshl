@@ -28,6 +28,7 @@ import {
   isHumanInVoiceChannel,
   speakTTS,
 } from './tts-engine.mjs';
+import { allowsSocialGeminiLiveSession } from './voice-input-policy.mjs';
 
 export const NATIVE_LIVE_BOTS = new Set(['Gemini', 'Claudey', 'Groq', 'X']);
 
@@ -111,6 +112,9 @@ export function getLiveSession(botName) {
 
 export async function initSocialLiveSession(botName) {
   if (!NATIVE_LIVE_BOTS.has(botName)) return null;
+  if (!allowsSocialGeminiLiveSession(botName)) {
+    return null;
+  }
   if (!hasNativeLiveKey(botName)) {
     console.log(`[${botName}/Live] No Gemini key — local TTS fallback only.`);
     return null;

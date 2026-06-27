@@ -194,6 +194,16 @@ if ($NoPipeline) {
 }
 
 # Stage 4: Fleet - engine is up, so delegate with -NoStartKai (this BLOCKS, by design).
+. (Join-Path $Root 'tools\oracle-discord\shared\fleet-health.ps1')
+foreach ($harnessLock in @(
+    (Join-Path $Root 'tools\oracle-discord\state\.verify-fleet.lock'),
+    (Join-Path $Root 'tools\oracle-discord\state\.capture-fleet.lock')
+)) {
+    if ((Test-Path $harnessLock) -and (Test-FleetManagerPulse)) {
+        Write-Host "[4/4] Fleet harness active and fleet healthy ($harnessLock) - skipping duplicate launch." -ForegroundColor Yellow
+        return
+    }
+}
 Write-Host "[4/4] Starting the fleet (Oracle, Leo, bots, dashboard) - this window stays in the foreground." -ForegroundColor Yellow
 Write-Host ""
 $fleetArgs = @{ NoStartKai = $true }

@@ -12,7 +12,8 @@ param(
     [string]$PhoneAllowSource = "tailnet"
 )
 
-$ErrorActionPreference = "Stop"
+# Continue: fleet child stderr must not terminate the launcher (see tools/oracle-discord/run-oracle-discord.ps1).
+$ErrorActionPreference = "Continue"
 $script = Join-Path $PSScriptRoot "tools\oracle-discord\run-oracle-discord.ps1"
 
 if (-not (Test-Path $script)) {

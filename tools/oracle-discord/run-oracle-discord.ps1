@@ -56,7 +56,9 @@ if (-not $env:OLLAMA_MAX_LOADED_MODELS) { $env:OLLAMA_MAX_LOADED_MODELS = "2" }
 if (-not $env:OLLAMA_NUM_PARALLEL)      { $env:OLLAMA_NUM_PARALLEL = "1" }
 if (-not $env:OLLAMA_KEEP_ALIVE)        { $env:OLLAMA_KEEP_ALIVE = "3m" }
 
-$ErrorActionPreference = "Stop"
+# Continue globally: child bot stderr must never terminate this launcher (see run-ecosystem.ps1).
+# Bootstrap steps below use explicit exit/throw on failure instead of relying on Stop.
+$ErrorActionPreference = "Continue"
 $ConfigPath = Join-Path $PSScriptRoot ".oracle-discord.local.xml"
 $ParticipantTokenNames = @(
     @{ Name = "KAI";          Env = "ORACLE_DISCORD_TOKEN_KAI" },
@@ -408,6 +410,30 @@ function Start-OpenJarvis {
     Write-Host "[OpenJarvis] Still warming up in the background -- NOT blocking boot. It'll appear on :8080 shortly (logs: $logErr). Continuing startup..."
 }
 
+. (Join-Path $PSScriptRoot 'shared\fleet-health.ps1')
+function Test-FleetAlreadyHealthy {
+    $statePath = Join-Path $PSScriptRoot 'state\ecosystem-manager.json'
+    if (Test-FleetManagerPulse -StatePath $statePath) { return $true }
+    # Boot ramp: manager process + :3001 may be up before the first 15s heartbeat write.
+    # Never Stop-ExistingDiscordGateways in that window - overlapping Start-KAI was
+    # SIGKILLing a live fleet (~30-120s post-boot) and leaving zero nodes with no log.
+    if (-not (Test-Path $statePath)) { return $false }
+    try {
+        $st = Get-Content $statePath -Raw | ConvertFrom-Json
+        $mgrUp = $false
+        if ($st.managerPid) {
+            $mgrUp = $null -ne (Get-Process -Id $st.managerPid -ErrorAction SilentlyContinue)
+        }
+        $dashUp = [bool](netstat -ano | Select-String ':3001\s.*LISTENING')
+        $nodeCount = @(Get-Process node -ErrorAction SilentlyContinue).Count
+        if ($mgrUp -and $dashUp -and $nodeCount -ge 4) {
+            Write-Host "[Startup] Fleet boot ramp detected (manager pid=$($st.managerPid), nodes=$nodeCount). Skipping duplicate boot - will attach." -ForegroundColor Yellow
+            return $true
+        }
+    } catch {}
+    return $false
+}
+
 function Stop-ExistingDiscordGateways {
     $currentPid = $PID
     $pRoot = $PSScriptRoot.Replace('\', '\\')
@@ -438,15 +464,26 @@ try {
     if (-not (Test-Path (Join-Path $PSScriptRoot "node_modules"))) {
         Write-Host "[Init] Installing Discord gateway dependencies..."
         npm install
+        if ($LASTEXITCODE -ne 0) { throw "[Init] npm install failed (exit $LASTEXITCODE)" }
     }
 
     node index.mjs --check-config
+    if ($LASTEXITCODE -ne 0) { throw "[Init] index.mjs --check-config failed (exit $LASTEXITCODE)" }
     if ($CheckOnly) {
         Write-Host "Check complete. Exiting without starting gateway."
         return
     }
 
-    # -- Step 2: Kill existing gateway processes ---------------------------
+    # -- Step 2: Kill existing gateway processes (skip if fleet already healthy) --
+    if (Test-FleetAlreadyHealthy) {
+        $st = Get-Content (Join-Path $PSScriptRoot 'state\ecosystem-manager.json') -Raw | ConvertFrom-Json
+        Write-Host "[Startup] Fleet already healthy (manager pid=$($st.managerPid), :3001 up). Skipping duplicate boot — attaching to live manager." -ForegroundColor Green
+        while ($null -ne (Get-Process -Id $st.managerPid -ErrorAction SilentlyContinue)) {
+            Start-Sleep -Seconds 10
+        }
+        Write-Host "[Startup] Live manager exited — this launcher window can close." -ForegroundColor Yellow
+        return
+    }
     Stop-ExistingDiscordGateways
 
     # -- Step 3: Launch KAI + OpenJarvis in PARALLEL ----------------------
@@ -548,7 +585,7 @@ try {
     # -- Step 4: Start Discord gateway ------------------------------------
     Write-Host ""
     Write-Host "[Startup] Phase 2 - Backends online and codebase CLEARED. Starting microservices ecosystem..."
-    Write-Host "[Startup] You will see individual console windows for each bot."
+    Write-Host "[Startup] Bot output streams here (Leo, Oracle, KAI, Groq, ...)."
     Write-Host ""
     .\run-ecosystem.ps1
 } finally {

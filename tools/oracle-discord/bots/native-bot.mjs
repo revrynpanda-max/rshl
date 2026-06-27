@@ -24,6 +24,7 @@ import ffmpegPath from 'ffmpeg-static';
 import fs from 'fs';
 import { execSync, exec } from 'child_process';
 import { startDJ, stopDJ, isDJActive, handleRadioVoiceIntent } from '../radio/radio-dj.mjs';
+import { isGroqBot } from '../shared/groq-routing-policy.mjs';
 
 // ── CONFIGURATION & CONSTANTS ────────────────────────────────────────────────
 const BOT_NAME = process.argv[2] || "Leo";
@@ -93,6 +94,22 @@ import { isLoopingResponse } from '../shared/utils.mjs';
 import { AgentSimulation } from '../shared/simulation.mjs';
 import { computeInterest, PARTICIPATION_THRESHOLD, TWO_CENTS_THRESHOLD, scoreToDelay } from '../shared/social-interest.mjs';
 import { startBotServer } from '../shared/ipc.mjs';
+import {
+  registerShutdownHook,
+  installShutdownHandlers,
+  startModuleInterval,
+} from '../shared/module-lifecycle.mjs';
+import {
+  allowsMicCapture,
+  shouldAttachSpeakingListener,
+  voiceChannelLogTag,
+  isRadioOutputAgent,
+} from '../shared/voice-input-policy.mjs';
+import { decideVoiceAction } from '../shared/voice-connection-policy.mjs';
+import { fleetBuildReadyLine } from '../shared/fleet-build.mjs';
+
+// Gemini Live native-audio is Leo-only (voice input). Social bots use text + radio TTS.
+const GEMINI_LIVE_ACTIVE = Boolean(BOT_GEMINI_KEY && allowsMicCapture(BOT_NAME));
 import { limitedTranscribe } from '../shared/groq-stt-limiter.mjs';
 import { getSlotAssignments, isUserRegistered, getTranscriptChannel, bootstrapPermissions } from '../shared/voice-manager.mjs';
 import { storeLattice } from '../shared/lattice-bridge.mjs';
@@ -242,21 +259,25 @@ const geminiLive = new GeminiLiveSessionManager(); // Per-user Gemini Live sessi
 // CONTINUOUS TIME AWARENESS: every 90s, quietly remind any active voice session
 // of the current time (context-only) so long conversations stay temporally
 // grounded — the bot keeps knowing "what time it is" without being told.
-setInterval(() => {
-  try {
-    for (const [, b] of geminiLive.sessions) {
-      if (b && b.available && typeof b.sendText === 'function') b.sendText(nowLine());
-    }
-  } catch (_) {}
-}, 90000);
+if (GEMINI_LIVE_ACTIVE) {
+  setInterval(() => {
+    try {
+      for (const [, b] of geminiLive.sessions) {
+        if (b && b.available && typeof b.sendText === 'function') b.sendText(nowLine());
+      }
+    } catch (_) {}
+  }, 90000);
+}
 let vault = null;
 if (process.env.AZURE_SPEECH_KEY) {
   vault = new IdentityVault(process.env.AZURE_SPEECH_KEY, process.env.AZURE_REGION || 'eastus');
 }
 
 // Log which audio pipeline is active
-if (BOT_GEMINI_KEY) {
+if (GEMINI_LIVE_ACTIVE) {
   console.log(`[${BOT_NAME}/Audio] Gemini Live pipeline ENABLED (${GEMINI_LIVE_MODEL})`);
+} else if (BOT_GEMINI_KEY && !allowsMicCapture(BOT_NAME)) {
+  console.log(`[${BOT_NAME}/Audio] Gemini Live OFF for ${BOT_NAME} — text/radio only (Leo owns voice input)`);
 } else {
   console.log(`[${BOT_NAME}/Audio] Gemini Live pipeline DISABLED — using Groq Whisper + ElevenLabs`);
 }
@@ -302,7 +323,26 @@ function clearVoiceActive() {
 // Default to the shared social VOICE channel from the canonical config; allow an
 // env override (SOCIAL_VOICE_CHANNEL_ID) without baking in a magic number.
 const IS_LEO = BOT_NAME === 'Leo';
+const VOICE_EVT_TAG = voiceChannelLogTag(BOT_NAME);
 const SOCIAL_VOICE_CHANNEL_ID = process.env.SOCIAL_VOICE_CHANNEL_ID || CHANNEL_IDS.VOICE;
+
+function humanInSocialRoom(guild) {
+  try {
+    const ch = guild?.channels?.cache?.get(CHANNEL_IDS.VOICE);
+    return !!(ch?.members && [...ch.members.values()].some(m => !m.user.bot));
+  } catch (_) { return false; }
+}
+
+function buildVoicePolicyCtx(guild, extra = {}) {
+  const g = guild || client.guilds.cache.first();
+  return {
+    isWorkingHours: isWorkingHours(),
+    humanInRoom: humanInSocialRoom(g),
+    hasActiveShift: !!(_workShifts && _workShifts.size > 0),
+    socialChannelId: CHANNEL_IDS.VOICE,
+    ...extra,
+  };
+}
 
 // Always clean up on exit so the flag doesn't survive a crash
 process.on('exit', clearVoiceActive);
@@ -340,6 +380,24 @@ sim.bio = BIOGRAPHIES[BOT_NAME] || {
 };
 
 let voiceConnection = null;
+
+function getVoiceReceiver() {
+  return (voiceConnection && voiceConnection.receiver) ? voiceConnection.receiver : null;
+}
+
+function teardownVoiceConnection(reason = '') {
+  try {
+    const rx = getVoiceReceiver();
+    if (rx?.speaking) rx.speaking.removeAllListeners('start');
+  } catch (_) {}
+  try { if (voiceConnection) voiceConnection.destroy(); } catch (_) {}
+  voiceConnection = null;
+  if (reason) console.log(`[${BOT_NAME}/${VOICE_EVT_TAG}] Connection torn down (${reason}).`);
+}
+
+registerShutdownHook(() => teardownVoiceConnection('process shutdown'));
+installShutdownHandlers();
+
 const audioPlayer = createAudioPlayer();
 audioPlayer.on('error', (error) => {
   console.error(`[${BOT_NAME}/Speech] AudioPlayer Error (module-level): ${error.message}`);
@@ -666,8 +724,7 @@ async function startWorkShift(thread, directive) {
   try {
     if (voiceConnection && voiceConnection.state?.status !== VoiceConnectionStatus.Destroyed) {
       console.log(`[${BOT_NAME}/Work] Work shift starting — leaving voice to focus on the thread.`);
-      voiceConnection.destroy();
-      voiceConnection = null;
+      teardownVoiceConnection('work shift');
       try { import('../shared/tts-engine.mjs').then(m => m.unregisterBotPlayer?.(BOT_NAME)).catch(() => {}); } catch (_) {}
     }
   } catch (_) {}
@@ -683,6 +740,10 @@ async function startWorkShift(thread, directive) {
 
 // --- IPC SERVER FOR DIRECT ORACLE SIGNALS (Start early) ---
 startBotServer(PORT, BOT_NAME, async (payload) => {
+  if (payload.type === 'TEXT_PROBE') {
+    console.log(`[${BOT_NAME}/TextProbe] pong nonce=${payload.nonce || 'none'}`);
+    return;
+  }
   if (payload.type === 'VOICE_ASSIGN') {
     const { userId, slot, channelId, guildId } = payload;
     console.log(`[${BOT_NAME}/IPC] Assigned to User ${userId} in Slot ${slot} (Channel: ${channelId})`);
@@ -794,6 +855,7 @@ startBotServer(PORT, BOT_NAME, async (payload) => {
 });
 
 client.once('clientReady', async () => {
+  console.log(fleetBuildReadyLine(BOT_NAME));
   console.log(`Online as ${client.user.tag}`);
 
   // Set cachedClient for tts-engine within the bot's process
@@ -822,11 +884,13 @@ client.once('clientReady', async () => {
     console.warn(`[${BOT_NAME}] Could not set Discord bio:`, e.message);
   }
 
-  // Bootstrap: ensure all registered users have transcript channel access
-  try {
-    await bootstrapPermissions(client);
-  } catch (e) {
-    console.warn('[${BOT_NAME}/Bootstrap] Permission bootstrap failed:', e.message);
+  // Bootstrap transcript channel permissions — Leo only (sole voice agent).
+  if (IS_LEO) {
+    try {
+      await bootstrapPermissions(client);
+    } catch (e) {
+      console.warn(`[${BOT_NAME}/Bootstrap] Permission bootstrap failed:`, e.message);
+    }
   }
 
   // RUN TRANSCRIPT DIGEST for persistent memory (your request)
@@ -849,10 +913,8 @@ client.once('clientReady', async () => {
     // Don't sit in the voice channel during WORK HOURS — work is done in text
     // threads and the bots don't need voice to do it (Groq was idling in AI Talk
     // while no work happened). Only auto-join voice when it's NOT work time.
-    const _humanInVoiceRoom = () => { try { const _ch = guild?.channels?.cache?.get(CHANNEL_IDS.VOICE); return !!(_ch?.members && [..._ch.members.values()].some(m => !m.user.bot)); } catch (_) { return false; } };
-    // Work time = text work for X/Claudey/Gemini. EXCEPTION: Groq stays in the
-    // voice room alongside Leo + KAI when a human is actually present (per owner rule).
-    if (guild && CHANNEL_IDS.VOICE && (!isWorkingHours() || (BOT_NAME === 'Groq' && _humanInVoiceRoom()))) {
+    const startupAction = decideVoiceAction(BOT_NAME, buildVoicePolicyCtx(guild, { phase: 'startup' }));
+    if (guild && CHANNEL_IDS.VOICE && startupAction.shouldConnect) {
       // STARTUP SELF-JOIN (modeled on Leo's already-present handler):
       // The social bots used to anchor in the social room only in REACTION to a
       // human voiceStateUpdate JOIN event. When the human was ALREADY in the
@@ -883,42 +945,43 @@ client.once('clientReady', async () => {
             return !!(ch?.members && [...ch.members.values()].some(m => !m.user.bot));
           } catch (_) { return false; }
         })();
-        console.log('[' + BOT_NAME + '/Startup] Anchored in social room ' + CHANNEL_IDS.VOICE +
+        const _ttsOnly = !allowsMicCapture(BOT_NAME);
+        console.log('[' + BOT_NAME + '/Startup] ' + (_ttsOnly ? 'TTS-output anchor (no mic)' : 'Voice anchor') +
+          ' in social room ' + CHANNEL_IDS.VOICE +
           ' on startup (human ' + (humanPresent ? 'ALREADY present' : 'not yet present') +
           '). Player registered — /Live will speak in VOICE. Keepalive will hold the anchor.');
       } else {
         console.warn('[' + BOT_NAME + '/Startup] Could not anchor in social room ' + CHANNEL_IDS.VOICE +
           ' after retries — 30s keepalive will keep re-attempting.');
       }
-    } else if (isWorkingHours()) {
-      console.log(`[${BOT_NAME}/Startup] Work hours — staying OUT of voice, ready for shift directives.`);
+    } else if (!startupAction.shouldConnect) {
+      console.log(`[${BOT_NAME}/Startup] staying OUT of voice (${startupAction.reason}).`);
     }
   } catch (e) {
     console.error(`[${BOT_NAME}/Startup] Voice auto-join check failed:`, e.message);
   }
 
-  // SOCIAL-ROOM KEEPALIVE (non-Leo only): the social bots must STAY anchored in
-  // the social voice room and self-heal if Discord drops the connection or if the
-  // human briefly left and came back. This targets ONLY CHANNEL_IDS.VOICE — it
-  // never follows the human to another channel (Leo owns that). It also re-registers
-  // the audio player so the /Live broadcast path never falls back to "no player".
+  // SOCIAL-ROOM KEEPALIVE (Groq radio/TTS only): Groq must STAY anchored in the
+  // social voice room and self-heal if Discord drops the connection. Gemini/Claudey/X
+  // never proactively join — Leo owns mic input; asleep social bots stay text-only.
   // Disable/tune via SOCIAL_VOICE_KEEPALIVE_MS (default 30000; 0 disables).
-  if (!IS_LEO) {
+  if (isRadioOutputAgent(BOT_NAME)) {
     const keepaliveMs = parseInt(process.env.SOCIAL_VOICE_KEEPALIVE_MS || '30000', 10);
     if (keepaliveMs > 0) {
-      setInterval(async () => {
+      startModuleInterval(async () => {
         try {
           const g = client.guilds.cache.first();
           if (!g || !CHANNEL_IDS.VOICE) return;
-          const _humanHere = (() => { try { const _ch = g?.channels?.cache?.get(CHANNEL_IDS.VOICE); return !!(_ch?.members && [..._ch.members.values()].some(m => !m.user.bot)); } catch (_) { return false; } })();
-          const _groqWorkVoice = (BOT_NAME === 'Groq' && _humanHere); // Groq keeps voice with Leo+KAI during work when a human is present
-          if (isWorkingHours() && !_groqWorkVoice) return; // work lane: others stay out of voice
-          if (_workShifts && _workShifts.size > 0 && !_groqWorkVoice) return; // mid work shift: others stay out
+          const action = decideVoiceAction(BOT_NAME, buildVoicePolicyCtx(g, { phase: 'keepalive' }));
           const connected = voiceConnection &&
             voiceConnection.state.status !== VoiceConnectionStatus.Destroyed &&
             voiceConnection.joinConfig?.channelId === CHANNEL_IDS.VOICE;
+          if (!action.shouldConnect) {
+            if (connected) teardownVoiceConnection(action.reason);
+            return;
+          }
           if (!connected) {
-            console.log('[' + BOT_NAME + '/Voice] Keepalive: not anchored in social room — re-anchoring.');
+            console.log('[' + BOT_NAME + '/' + action.logTag + '] Keepalive: re-anchoring (' + action.reason + ').');
             await ensureVoiceConnection(CHANNEL_IDS.VOICE, g).catch(() => {});
           }
         } catch (_) {}
@@ -1571,12 +1634,12 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
     // summons go through a different path (VOICE_ASSIGN IPC), so this only blocks
     // the passive 'human joined a channel' auto-follow.
     if (!IS_LEO && joinedChannel !== SOCIAL_VOICE_CHANNEL_ID) {
-      console.log('[' + BOT_NAME + '/Voice] ' + (newState.member?.user.username || 'user') + ' joined ' + joinedChannel + ' — not the social room (' + SOCIAL_VOICE_CHANNEL_ID + '). Social bot stays anchored, not following.');
+      console.log('[' + BOT_NAME + '/' + VOICE_EVT_TAG + '] ' + (newState.member?.user.username || 'user') + ' joined ' + joinedChannel + ' — not the social room (' + SOCIAL_VOICE_CHANNEL_ID + '). Social bot stays anchored, not following.');
       return;
     }
 
     if (joinedChannel === CHANNEL_IDS.RADIO) {
-      if (BOT_NAME !== 'Groq') console.log(`[${BOT_NAME}/Voice] Ignoring Radio channel join. That's Groq's territory.`);
+      if (BOT_NAME !== 'Groq') console.log(`[${BOT_NAME}/${VOICE_EVT_TAG}] Ignoring Radio channel join. That's Groq's territory.`);
       return;
     }
     
@@ -1592,11 +1655,11 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
 
     // ── FOLLOW LOGIC: If I am in a different channel, move to the user
     if (voiceConnection && voiceConnection.joinConfig.channelId !== joinedChannel) {
-        console.log(`[${BOT_NAME}/Voice] User joined ${joinedChannel} but I am in ${voiceConnection.joinConfig.channelId}. Moving...`);
+        console.log(`[${BOT_NAME}/${VOICE_EVT_TAG}] User joined ${joinedChannel} but I am in ${voiceConnection.joinConfig.channelId}. Moving...`);
         // The ensureVoiceConnection call below will handle the move/re-anchor
     }
 
-    console.log(`[${BOT_NAME}/Voice] ${newState.member?.user.username} joined ${joinedChannel}`);
+    console.log(`[${BOT_NAME}/${VOICE_EVT_TAG}] ${newState.member?.user.username} joined ${joinedChannel}`);
     
     // ── SOCIAL VS CONCIERGE MODE ──────────────────────────────────────────────
     // Public channels (VOICE, RADIO, etc.) = Social Mode
@@ -1622,9 +1685,9 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
       if (slotIdx !== -1) {
         await updatePermissions(client, userId, slotIdx, true);
         userTranscriptChannels.set(userId, CHANNEL_IDS.LEO_VOICE_SLOTS[slotIdx]);
-        console.log(`[${BOT_NAME}/Voice] Dynamic slot ${slotIdx} assigned to ${userId}`);
+        console.log(`[${BOT_NAME}/${VOICE_EVT_TAG}] Dynamic slot ${slotIdx} assigned to ${userId}`);
       } else {
-        console.log(`[${BOT_NAME}/Voice] No slots available for ${userId}. Ignoring.`);
+        console.log(`[${BOT_NAME}/${VOICE_EVT_TAG}] No slots available for ${userId}. Ignoring.`);
         return;
       }
     } else {
@@ -1671,15 +1734,20 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
       // up below for both modes.
       const skipGreeting = isSocialMode;
       if (isSocialMode) {
-        console.log(`[${BOT_NAME}/Voice] Social voice room — Gemini voice active, greeting skipped.`);
+        console.log(`[${BOT_NAME}/${VOICE_EVT_TAG}] Social voice room — Gemini voice active, greeting skipped.`);
       }
+      const voiceAction = decideVoiceAction(BOT_NAME, buildVoicePolicyCtx(newState.guild, {
+        phase: 'voice_event',
+        channelId: joinedChannel,
+      }));
+      if (!voiceAction.shouldConnect) return;
       await ensureVoiceConnection(joinedChannel, newState.guild, 3, userId);
 
       // NATIVE-FIRST GREETING:
       // When Gemini Live is available, the greeting is spoken by the native
       // audio session itself (instant + in-character). The old Groq->Kokoro
       // greeting is now ONLY a fallback — Kokoro cold-start took 20-60s.
-      const useNativeGreeting = Boolean(BOT_GEMINI_KEY);
+      const useNativeGreeting = GEMINI_LIVE_ACTIVE;
 
       const speakFallbackGreeting = () => {
         callGroqDirect(BOT_NAME, localPrompt, localSystem, "llama-3.1-8b-instant", 80)
@@ -1723,7 +1791,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
       }
 
       // Warm up Gemini Live session in the background (so first response is instant)
-      if (BOT_GEMINI_KEY) {
+      if (GEMINI_LIVE_ACTIVE) {
         const { resolveIdentityFromMemory } = await import('../shared/identities.mjs');
         const identityData = await resolveIdentityFromMemory(userId, joinedUserName).catch(() => null);
 
@@ -1775,7 +1843,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
 
         geminiLive.getOrCreate(roomKey, BOT_NAME, leoSystem, joinedUserName).then(bridge => {
           if (!bridge) {
-            console.warn(`[${BOT_NAME}/Voice] Gemini Live unavailable — using local fallback greeting.`);
+            console.warn(`[${BOT_NAME}/${VOICE_EVT_TAG}] Gemini Live unavailable — using local fallback greeting.`);
             if (useNativeGreeting) speakFallbackGreeting();
             return;
           }
@@ -1842,7 +1910,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
             // 3-36 char bursts were causing the exact loop in the logs (repeated interrupts + short clears + spurious kai_status calls).
             const MIN_CHARS = 10;
             if (spokenText.length < MIN_CHARS || !/[a-z0-9]/i.test(spokenText)) {
-              console.log(`[${BOT_NAME}/Voice] Ignoring short/noisy flushed transcript (${spokenText.length} chars) — not treating as real user input.`);
+              console.log(`[${BOT_NAME}/${VOICE_EVT_TAG}] Ignoring short/noisy flushed transcript (${spokenText.length} chars) — not treating as real user input.`);
               return;
             }
 
@@ -1857,7 +1925,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
             if (looksLikeAI) {
               bridge._aiContext.push(spokenText.slice(0, 220));
               if (bridge._aiContext.length > 12) bridge._aiContext.shift();
-              console.log(`[${BOT_NAME}/Voice] AI/fleet speech detected in transcript ("${spokenText.slice(0, 80)}...") — context only (listening, not replying as user). Added to _aiContext.`);
+              console.log(`[${BOT_NAME}/${VOICE_EVT_TAG}] AI/fleet speech detected in transcript ("${spokenText.slice(0, 80)}...") — context only (listening, not replying as user). Added to _aiContext.`);
               // Still post the transcript line for the room record (humans + other bots need the log), but no "user turn" flush for Leo's own decision path.
               const tChannel = await resolveLiveTranscriptChannel();
               if (tChannel) tChannel.send(`**${who} [Voice/Context]:** ${spokenText}`).catch(console.error);
@@ -2019,18 +2087,18 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
             }, 1800);
           }
         }).catch(() => {
-          console.warn(`[${BOT_NAME}/Voice] Gemini Live session failed — using local fallback greeting.`);
+          console.warn(`[${BOT_NAME}/${VOICE_EVT_TAG}] Gemini Live session failed — using local fallback greeting.`);
           if (useNativeGreeting) speakFallbackGreeting();
         });
       }
     } catch (err) {
-      console.error(`[${BOT_NAME}/Voice] Join handler error:`, err);
+      console.error(`[${BOT_NAME}/${VOICE_EVT_TAG}] Join handler error:`, err);
     }
   }
 
   // ── USER LEAVES ───────────────────────────────────────────────────────────
   if (isLeaving) {
-    console.log(`[${BOT_NAME}/Voice] ${userId} left ${leftChannel}`);
+    console.log(`[${BOT_NAME}/${VOICE_EVT_TAG}] ${userId} left ${leftChannel}`);
 
     // Disconnect legacy per-user sessions (room session survives until empty)
     geminiLive.disconnect(userId, "Leo");
@@ -2055,16 +2123,15 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
         // do NOT chase him into the channel he hopped to. Stay anchored in the social
         // voice room so the proactive-kickoff ambient conversation keeps going.
         if (!IS_LEO && voiceChannel.id === SOCIAL_VOICE_CHANNEL_ID) {
-          console.log('[' + BOT_NAME + '/Voice] Social room ' + voiceChannel.id + ' has no humans — staying anchored (ambient conversation continues), not disconnecting.');
+          console.log('[' + BOT_NAME + '/' + VOICE_EVT_TAG + '] Social room ' + voiceChannel.id + ' has no humans — staying anchored (ambient conversation continues), not disconnecting.');
           usersInVoice.clear();
           currentAssignedUser = null;
           // keep voiceConnection alive; do not touch the Leo priority flag
           return;
         }
-        console.log(`[${BOT_NAME}/Voice] Channel ${voiceChannel.id} empty. Disconnecting...`);
-        geminiLive.disconnect(`room:${voiceChannel.id}`, "Leo"); // room session ends with the room
-        voiceConnection.destroy();
-        voiceConnection = null;
+        console.log(`[${BOT_NAME}/${VOICE_EVT_TAG}] Channel ${voiceChannel.id} empty. Disconnecting...`);
+        geminiLive.disconnect(`room:${voiceChannel.id}`, BOT_NAME);
+        teardownVoiceConnection('empty room');
         try { import('../shared/tts-engine.mjs').then(m => m.unregisterBotPlayer?.(BOT_NAME)).catch(() => {}); } catch (_) {}
         usersInVoice.clear();
         currentAssignedUser = null; // ── End private session: Leo may rejoin social life
@@ -2522,6 +2589,16 @@ except Exception as e:
 
 async function ensureVoiceConnection(channelId, guild, retries = 3, userId = null) {
   try {
+    const connectAction = decideVoiceAction(BOT_NAME, buildVoicePolicyCtx(guild, {
+      phase: 'connect',
+      channelId,
+    }));
+    if (!connectAction.shouldConnect) {
+      if (retries === 3) {
+        console.log(`[${BOT_NAME}/${connectAction.logTag}] Voice connect skipped (${connectAction.reason}).`);
+      }
+      return;
+    }
     if (voiceConnection && voiceConnection.state.status !== VoiceConnectionStatus.Destroyed) {
       if (voiceConnection.joinConfig.channelId === channelId) {
         // ALREADY ANCHORED in the target channel — idempotent. But still make
@@ -2537,10 +2614,11 @@ async function ensureVoiceConnection(channelId, guild, retries = 3, userId = nul
         } catch (_) {}
         return;
       }
-      voiceConnection.destroy();
+      teardownVoiceConnection('channel switch');
     }
 
-    console.log(`[${BOT_NAME}/Voice] Joining ${channelId} (Attempt ${4 - retries}/3)...`);
+    const _vTag = voiceChannelLogTag(BOT_NAME);
+    console.log(`[${BOT_NAME}/${_vTag}] Joining ${channelId} (Attempt ${4 - retries}/3)...`);
     voiceConnection = joinVoiceChannel({
       channelId,
       guildId: guild.id,
@@ -2550,7 +2628,11 @@ async function ensureVoiceConnection(channelId, guild, retries = 3, userId = nul
     });
 
     await entersState(voiceConnection, VoiceConnectionStatus.Ready, 5000);
-    console.log(`[${BOT_NAME}/Voice] Successfully anchored in ${channelId}`);
+    if (allowsMicCapture(BOT_NAME)) {
+      console.log(`[${BOT_NAME}/${VOICE_EVT_TAG}] Successfully anchored in ${channelId}`);
+    } else {
+      console.log(`[${BOT_NAME}/RadioOut] TTS-output anchored in ${channelId} (no mic)`);
+    }
     if (userId) {
       setVoiceActive(); // ── PRIORITY FLAG: Block social bots from Ollama while Leo is live
     }
@@ -2567,6 +2649,12 @@ async function ensureVoiceConnection(channelId, guild, retries = 3, userId = nul
         ttsMod.registerBotPlayer(BOT_NAME, audioPlayer, voiceConnection);
       }
     } catch (_) {}
+    // Voice-input policy: only Leo gets mic ears (AC2 / Codex §14). Social bots keep
+    // radio/TTS output but never subscribe to human mic or VoiceIn/capturePcm.
+    if (!shouldAttachSpeakingListener(BOT_NAME)) {
+      console.log(`[${BOT_NAME}/${VOICE_EVT_TAG}] Mic listener skipped — ${BOT_NAME} is text/radio-output only (Leo owns voice input).`);
+      return;
+    }
     isProcessingVoice = false; 
     currentAssignedUser = userId; 
 
@@ -2578,13 +2666,13 @@ async function ensureVoiceConnection(channelId, guild, retries = 3, userId = nul
     const { resolveIdentityFromMemory } = await import('../shared/identities.mjs');
     const user = await client.users.fetch(userId).catch(() => null);
     if (!user) {
-      console.warn(`[${BOT_NAME}/Voice] Could not fetch user ${userId} from Discord.`);
+      console.warn(`[${BOT_NAME}/${VOICE_EVT_TAG}] Could not fetch user ${userId} from Discord.`);
       return;
     }
     const identityData = await resolveIdentityFromMemory(userId, user.username);
     
     if (!identityData) {
-      console.log(`[${BOT_NAME}/Voice] Suppressing ghost query for ${userId}.`);
+      console.log(`[${BOT_NAME}/${VOICE_EVT_TAG}] Suppressing ghost query for ${userId}.`);
       return;
     }
 
@@ -2592,10 +2680,10 @@ async function ensureVoiceConnection(channelId, guild, retries = 3, userId = nul
     const profileName = user.username === process.env.OWNER_USERNAME ? process.env.OWNER_NAME : user.username;
 
     if (!biometrics.profiles.has(profileName)) {
-      console.log(`[${BOT_NAME}/Voice] Triggering Security Calibration for ${profileName}...`);
+      console.log(`[${BOT_NAME}/${VOICE_EVT_TAG}] Triggering Security Calibration for ${profileName}...`);
       await triggerVoiceLockOnboarding(user, profileName);
     } else {
-      console.log(`[${BOT_NAME}/Voice] Authorized user confirmed: ${realName} (${identityData.role})`);
+      console.log(`[${BOT_NAME}/${VOICE_EVT_TAG}] Authorized user confirmed: ${realName} (${identityData.role})`);
       // Dynamic greeting handled by voiceStateUpdate caller
     }
 
@@ -2633,12 +2721,17 @@ async function ensureVoiceConnection(channelId, guild, retries = 3, userId = nul
       } catch (e) { console.error("[${BOT_NAME}/Memory] Error recalling inquiry:", e); }
     }
 
-    voiceConnection.receiver.speaking.removeAllListeners('start');
+    const _rx = getVoiceReceiver();
+    if (!_rx) {
+      console.warn(`[${BOT_NAME}/${VOICE_EVT_TAG}] No receiver — voice connection torn down before listener attach.`);
+      return;
+    }
+    _rx.speaking.removeAllListeners('start');
     // LISTENER DEDUPE: every re-anchor was ADDING another 'start' listener
     // without removing the old ones — one utterance got processed 2-8x in
     // parallel (duplicate transcripts, audio flooding, spurious interrupts).
-    voiceConnection.receiver.speaking.removeAllListeners('start');
-    voiceConnection.receiver.speaking.on('start', (uid) => {
+    _rx.speaking.removeAllListeners('start');
+    _rx.speaking.on('start', (uid) => {
       // LEO'S OWN VOICE: never process yourself (would cause infinite echo loop)
       if (uid === client.user.id) return;
 
@@ -2713,7 +2806,9 @@ async function ensureVoiceConnection(channelId, guild, retries = 3, userId = nul
         // NATURAL TURN-TAKING: Increased to 1800ms silence to avoid cutting users mid-thought
         // or during normal pauses (especially with phone/ambient voice input).
         // This addresses repeated cutoff complaints and "silent thing" ending turns too early.
-        const stream = voiceConnection.receiver.subscribe(uid, { end: { behavior: EndBehaviorType.AfterSilence, duration: 1800 } });
+        const _rxLive = getVoiceReceiver();
+        if (!_rxLive) { clearHumanSpeaking(null, speakerName); return; }
+        const stream = _rxLive.subscribe(uid, { end: { behavior: EndBehaviorType.AfterSilence, duration: 1800 } });
         const decoder = new prism.opus.Decoder({ frameSize: 960, channels: 2, rate: 48000 });
 
         stream.pipe(decoder);
@@ -2810,8 +2905,11 @@ async function ensureVoiceConnection(channelId, guild, retries = 3, userId = nul
           const transcript = await transcribeAudio(wav, uid).catch(() => null);
           // 🟢 CLOSE THE GATE with the Whisper transcript
           clearHumanSpeaking(transcript || null, speakerName);
-          // Hand off to normal voice handler
-          handleUserVoice(uid).catch(err => console.error(`[${BOT_NAME}/Audio] Voice trigger failed for ${uid}:`, err.message));
+          if (transcript && transcript.trim().length >= 3) {
+            // Reuse captured PCM/transcript — do NOT open a second mic capture (race
+            // with empty-room disconnect was the root cause of receiver=null crashes).
+            handleUserVoice(uid, { pcm, transcript }).catch(err => console.error(`[${BOT_NAME}/Audio] Voice trigger failed for ${uid}:`, err.message));
+          }
         }).catch(err => {
           clearHumanSpeaking(null, speakerName);
           console.error(`[${BOT_NAME}/Audio] capturePcm failed for ${uid}:`, err.message);
@@ -2834,9 +2932,17 @@ async function ensureVoiceConnection(channelId, guild, retries = 3, userId = nul
       console.error(`[${BOT_NAME}/Speech] AudioPlayer Error: ${error.message}`);
     });
   } catch (err) {
-    console.error(`[${BOT_NAME}/Voice] Connection failed:`, err.message);
+    console.error(`[${BOT_NAME}/${VOICE_EVT_TAG}] Connection failed:`, err.message);
     if (retries > 0) {
-      console.log(`[${BOT_NAME}/Voice] Retrying in 1s...`);
+      const retryAction = decideVoiceAction(BOT_NAME, buildVoicePolicyCtx(guild, {
+        phase: 'connect',
+        channelId,
+      }));
+      if (!retryAction.shouldConnect) {
+        console.log(`[${BOT_NAME}/${retryAction.logTag}] Retry aborted (${retryAction.reason}).`);
+        return;
+      }
+      console.log(`[${BOT_NAME}/${VOICE_EVT_TAG}] Retrying in 1s...`);
       await new Promise(r => setTimeout(r, 1000));
       return ensureVoiceConnection(channelId, guild, retries - 1);
     }
@@ -2869,7 +2975,7 @@ async function drainPendingQueue() {
   }
 }
 
-async function handleUserVoice(userId) {
+async function handleUserVoice(userId, preCaptured = null) {
   const now = Date.now();
   if (now - lastVocalReplyTime < 500) return;
   if (activeThoughts.has(userId)) return; // Already processing THIS user — drop duplicate
@@ -2898,7 +3004,11 @@ async function handleUserVoice(userId) {
   try {
     const t_start = Date.now();
     
-    const pcm = await capturePcm(userId);
+    const pcm = preCaptured?.pcm || await capturePcm(userId);
+    if (!preCaptured?.pcm && !getVoiceReceiver()) {
+      console.warn(`[${BOT_NAME}/Audio] handleUserVoice aborted — voice connection gone.`);
+      return;
+    }
 
     // ── NOISE GATE LAYER 1: Duration ─────────────────────────────────────────
     // 48kHz, stereo, s16le = 4 bytes per frame.
@@ -2944,7 +3054,12 @@ async function handleUserVoice(userId) {
     const now = Date.now();
     
     let idResult, transcript;
-    if (cachedId && now - cachedId.ts < BIOMETRIC_TTL && cachedId.similarity > 0.90) {
+    if (preCaptured?.transcript) {
+      idResult = (cachedId && now - cachedId.ts < BIOMETRIC_TTL)
+        ? cachedId
+        : await biometrics.verify(profileName, tempWav);
+      transcript = preCaptured.transcript;
+    } else if (cachedId && now - cachedId.ts < BIOMETRIC_TTL && cachedId.similarity > 0.90) {
       console.log(`[${BOT_NAME}/Biometrics] Using cached identity for ${userId}: ${cachedId.name} (${Math.round(cachedId.similarity*100)}%)`);
       [idResult, transcript] = await Promise.all([
         Promise.resolve(cachedId),
@@ -3139,13 +3254,8 @@ async function handleUserVoice(userId) {
           return;
         }
       }
-      // NOTE: transcriptChannelId is already declared once at the top of this
-      // handler (try-block scope). Re-declaring it here with `const` created a
-      // SECOND block-scoped binding for the whole `if (mentionedLeo)` block,
-      // so the earlier references (yield / stand-down branches above) hit the
-      // Temporal Dead Zone -> "Cannot access transcriptChannelId before
-      // initialization". Reuse the outer binding instead of shadowing it.
-      const tChannel = client.channels.cache.get(transcriptChannelId) || await client.channels.fetch(transcriptChannelId).catch(() => null);
+      // Reuse outer transcriptChannelId + tChannel — inner re-declarations caused TDZ crashes.
+      if (!tChannel) return;
 
       // MIRRORING HANDOVER: Signal the Oracle Gateway to post the transcript
       if (transcript) {
@@ -3364,10 +3474,18 @@ async function processTranscriptResponse(userId, transcript, userName, transcrip
 }
 
 async function capturePcm(userId) {
+  if (!allowsMicCapture(BOT_NAME)) {
+    return Buffer.alloc(0);
+  }
+  const receiver = getVoiceReceiver();
+  if (!receiver) {
+    console.warn(`[${BOT_NAME}/Audio] capturePcm skipped — no voice connection`);
+    return Buffer.alloc(0);
+  }
   return new Promise((resolve) => {
     // Increased silence gap (3000ms) for fallback STT path — ensures naturally slow/paused speech
     // (or phone sensory voice input) isn't prematurely cut off. Leo now waits longer for complete thoughts.
-    const stream = voiceConnection.receiver.subscribe(userId, { end: { behavior: EndBehaviorType.AfterSilence, duration: 3000 } });
+    const stream = receiver.subscribe(userId, { end: { behavior: EndBehaviorType.AfterSilence, duration: 3000 } });
     const decoder = new prism.opus.Decoder({ frameSize: 960, channels: 2, rate: 48000 });
     const chunks = [];
     let resolved = false;
@@ -3706,9 +3824,10 @@ STRICT RESPONSE LIMIT: MAXIMUM 2 TO 3 SENTENCES. Speak in 2-3 short, punchy sent
     nameAddressing += 'If someone just called YOUR name, answer them directly and use their name back.\n';
     const systemFull = system + nameAddressing;
     // ─── NEURAL ORCHESTRATION (PROVIDER-AWARE) ─────────────────────
-    // Respects BOT_PROVIDER_LEO env variable. If ollama, uses Ollama first.
-    // If groq, uses Groq first. Falls back to the other if primary fails.
-    const provider = process.env.BOT_PROVIDER_LEO || "groq";
+    // Per-bot BOT_PROVIDER_<NAME>; Groq radio DJ always groq (never Leo's gemini lane).
+    const _provKey = `BOT_PROVIDER_${BOT_NAME.toUpperCase().replace(/[\s-]+/g, '_')}`;
+    let provider = process.env[_provKey] || (BOT_NAME === 'Leo' ? (process.env.BOT_PROVIDER_LEO || 'groq') : 'groq');
+    if (isGroqBot(BOT_NAME)) provider = 'groq';
     const ollamaModel = process.env.BOT_MODEL_LEO || "Leo-Sovereign";
     console.log(`[${BOT_NAME}/Neural] Provider configured: ${provider}. Engaging...`);
 
@@ -3849,11 +3968,24 @@ client.on('messageCreate', async (message) => {
 
 // --- END OF VOICE CORE ---
 
-process.on('unhandledRejection', (reason, promise) => {
-  console.error(`[${BOT_NAME}/Internal] Unhandled Rejection (staying alive):`, reason?.message || reason);
+function _botTransientNet(msg) {
+  return /ENOTFOUND|ECONNRESET|ETIMEDOUT|discord\.media|socket hang up|socket closed|Cannot perform IP discovery/i.test(msg);
+}
+process.on('unhandledRejection', (reason) => {
+  const msg = reason instanceof Error ? reason.message : String(reason);
+  if (_botTransientNet(msg)) {
+    console.warn(`[${BOT_NAME}/Internal] Transient network error (staying alive):`, msg);
+    return;
+  }
+  console.error(`[${BOT_NAME}/Internal] Unhandled Rejection (staying alive):`, msg);
 });
 process.on('uncaughtException', (err) => {
-  console.error(`[${BOT_NAME}/Internal] Uncaught Exception (staying alive):`, err?.message || err);
+  const msg = err?.message || String(err);
+  if (_botTransientNet(msg)) {
+    console.warn(`[${BOT_NAME}/Internal] Transient network error (staying alive):`, msg);
+    return;
+  }
+  console.error(`[${BOT_NAME}/Internal] Uncaught Exception (staying alive):`, msg);
 });
 
 function startEnergyMonitor() {

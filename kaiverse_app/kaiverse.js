@@ -33,11 +33,9 @@ const NS_SCALE = (typeof window!=='undefined' && +window.KAIVERSE_SCALE) || 16;
                  distance. real-space feel = NS_BODY << NS_SPREAD.
    Net: distances grow ~6x, bodies shrink ~3.4x, so a body that used to fill a
    third of the screen when "zoomed out" is now a point. ──────────────────── */
-// SPREAD bumped 6 → 48 (8x) for the owner's "100,000 LY apart / 500,000 LY out"
-// brief. Neighbouring bodies now sit ~100k LY apart and the cosmos shell reaches
-// ~500k+ LY, with distant belts/gas/holes visible as cheap LOD point-sprites.
-const NS_SPREAD = (typeof window!=='undefined' && +window.KAIVERSE_SPREAD) || 80.0;
-const NS_BODY   = (typeof window!=='undefined' && +window.KAIVERSE_BODY)   || 1.8;
+const NS_SPREAD     = 80.0;   // orbital radii multiplier (vast distances)
+const NS_BODY       = 1.8;    // body radii multiplier (huge planets)
+
 // ── LY READOUT MAPPING ── world-units → light-years for ALL HUD distance text
 // (position readout, dist-from-core, compass). Calibrated so the AI cluster edge
 // reads ~CLUSTER and a fully-pulled-back view reads in the 100k–500k LY band that
@@ -47,34 +45,41 @@ const NS_LY_PER_UNIT = 4.0;
 // Global multipliers that GENTLY slow every moving/clickable body so they glide
 // and are easy to spot + click. Motion stays alive, just calm. Bots were the
 // worst offenders (orbSpeed 0.018–0.042); 0.18 makes them drift ~5.5x slower.
-const NS_ORBIT_SLOW = 0.18;   // orbital/drift angular velocity multiplier (slower)
-const NS_SPIN_SLOW  = 0.05;   // body self-spin multiplier (slower, still alive)
+const NS_ORBIT_SLOW = 0.01;   // orbital/drift angular velocity multiplier (drastically slowed down so planets don't run away)
+const NS_SPIN_SLOW  = 0.0005;  // body self-spin multiplier (drastically slowed down so landing is easy)
 function nsUnitsToLy(distUnits){ return (distUnits/NS_SCALE)*NS_LY_PER_UNIT; }
 // Surface-relative distance with adaptive units so sitting ON a body reads ~0 (km),
 // not tens of light-years. ly when far → AU when sub-light-year → km when close → "surface".
 function nsFmtDist(distUnits, radiusUnits){
   var r = radiusUnits||0;
-  // LOCAL / close: once you're inside a body's region, report km AS IF it were a real
-  // Earth-sized world — surface ≈ 0, low orbit ≈ thousands of km. (A KAIVERSE planet is
-  // literally light-years wide in cosmic units, so "91 ly" up close reads wrong; this
-  // remaps the approach to the intuitive real-planet scale.)
-  if(r>0 && distUnits < r*140){
-    var frac = Math.max(0, distUnits - r) / r;   // 0 at surface → 1 one radius above it
-    var km = frac * 6371;                          // planet treated as Earth radius
+  var rawDist = Math.max(0, distUnits - r);
+  var km = rawDist * 0.5; // 1 cosmic unit = 0.5 physical km
+  
+  // SOLAR SYSTEM SCALE: keep it in km/AU if under 50 Billion km so we don't
+  // print absurd "500 Million LY" labels for local planets.
+  if(km < 50000000000){
     if(km < 0.5) return 'surface';
     if(km < 1000) return Math.round(km).toLocaleString()+' km';
     if(km < 1e6)  return (km/1000).toFixed(km<1e5?1:0)+'k km';
-    return (km/1e6).toFixed(2)+'M km';
+    if(km < 1e9)  return (km/1e6).toFixed(2)+'M km';
+    // over 1B km, switch to AU to look realistic (1 AU = 150M km)
+    var auLocal = km / 150000000;
+    return auLocal.toFixed(2)+' AU';
   }
-  // FAR: true cosmic scale — light-years (→ AU just under 1 ly).
-  var ly = nsUnitsToLy(Math.max(0, distUnits - r));
+  
+  // FAR: true cosmic scale — light-years (only triggers for deep space > 50 Billion km)
+  var ly = nsUnitsToLy(rawDist);
   if(ly >= 1) return Math.round(ly).toLocaleString()+' ly';
-  var au = ly * 63241;                        // 1 ly = 63,241 AU
+  var au = ly * 63241;
   if(au >= 1) return (au>=10 ? Math.round(au).toLocaleString() : au.toFixed(1))+' AU';
   return 'approaching';
 }
 const NS = {
-  built:false, active:false, raf:null,
+  active:false,
+  keys:{},
+  wasmHeightMap: null, // Holds the Rust WASM function
+  _l:null,
+  built:false, raf:null,
   nodes:[], nodeById:{}, edges:[], edgeKey:{},
   pulses:[],                       // active travelling 3D particles
   seen:new Set(), seenOrder:[],    // dedupe ops we've already turned into pulses
@@ -94,13 +99,60 @@ const NS = {
         speed:0 },             // smoothed scalar speed (drives star-streak + FOV)
   keys:{}, fly:null,           // pressed-key map + free-look drag state
   flyTo:null,                  // active accelerated fly-to-node animation
-  baseFov:55, baseFar:40000*NS_SCALE*NS_SPREAD,   // far plane reaches the vast cosmos shell
+  baseFov:55, baseFar:4000000*NS_SCALE*NS_SPREAD,   // far plane reaches the vast cosmos shell
   drag:null, pinch:null, focusNid:null, hoverNid:null,
   lastFrame:0, statSnap:{},
   failed:false, paused:false, ctxLost:false,
 };
 // lightweight Vector3 placeholder so the const above doesn't throw before THREE loads
 function THREE_V0(){ return (typeof THREE!=='undefined') ? new THREE.Vector3() : {x:0,y:0,z:0}; }
+// ── SAVE / RESTORE camera spawn (localStorage) ──────────────────────────────
+function nsSaveSpawn(){
+  try{
+    var cam=NS.camera, c=NS.cam; if(!cam||!c) return;
+    var d={ mode:c.mode, yaw:c.yaw, pitch:c.pitch, throttle:NS.throttleT!=null?NS.throttleT:0.3 };
+    if(cam.position){ d.px=cam.position.x; d.py=cam.position.y; d.pz=cam.position.z; }
+    if(c.target){ d.tx=c.target.x; d.ty=c.target.y; d.tz=c.target.z; }
+    d.theta=c.theta; d.phi=c.phi; d.radius=c.radius;
+    if(NS._walkPlanet) d.walkPlanet=NS._walkPlanet.id||'';
+    localStorage.setItem('kv_spawn', JSON.stringify(d));
+  }catch(_){}
+}
+function nsRestoreSpawn(){
+  try{
+    var raw=localStorage.getItem('kv_spawn'); if(!raw) return false;
+    var d=JSON.parse(raw), cam=NS.camera, c=NS.cam; if(!cam||!c) return false;
+    // Sanity check: if saved position is absurdly far from origin, discard the save
+    if(d.px!=null){
+      var _dist=Math.sqrt(d.px*d.px+d.py*d.py+d.pz*d.pz);
+      var _maxR=(typeof COSMOS!=='undefined'?COSMOS:38400000)*0.8;
+      if(_dist>_maxR){ console.log('[KAIVERSE] Saved position too far ('+(_dist|0)+'), resetting'); localStorage.removeItem('kv_spawn'); return false; }
+      if(_dist < 2000000) { console.log('[KAIVERSE] Saved position is on the Core, resetting for new default spawn'); localStorage.removeItem('kv_spawn'); return false; }
+    }
+    if(d.px!=null) cam.position.set(d.px, d.py, d.pz);
+    if(d.tx!=null) c.target.set(d.tx, d.ty, d.tz);
+    if(d.mode==='fly'||d.mode==='walk') c.mode=d.mode;
+    if(d.yaw!=null) c.yaw=d.yaw;
+    if(d.pitch!=null) c.pitch=d.pitch;
+    if(d.theta!=null){ c.theta=d.theta; c.tTheta=d.theta; }
+    if(d.phi!=null){ c.phi=d.phi; c.tPhi=d.phi; }
+    if(d.radius!=null){ c.radius=d.radius; c.tRadius=d.radius; }
+    if(d.throttle!=null) NS.throttleT=d.throttle;
+    // Zero velocity so you don't spawn flying at warp speed
+    c.vel.set(0,0,0); c.speed=0;
+    // Init 3rd-person tracking from restored position
+    if(d.px!=null && d.mode==='fly'){
+      NS._shipPos=cam.position.clone();
+      NS._chasePos=null;
+    }
+    console.log('[KAIVERSE] Restored spawn position');
+    return true;
+  }catch(_){ return false; }
+}
+// Force-clear any stale deep-space save from before the sanity check existed
+try{ var _ck=localStorage.getItem('kv_spawn'); if(_ck){ var _cd=JSON.parse(_ck); if(_cd.px!=null){ var _dd=Math.sqrt(_cd.px*_cd.px+(_cd.py||0)*(_cd.py||0)+(_cd.pz||0)*(_cd.pz||0)); if(_dd>30000000) localStorage.removeItem('kv_spawn'); } } }catch(_){}
+NS._thirdPerson=false;   // V key toggles 3rd-person ship view (default: 1st person)
+if(typeof window!=='undefined') window.addEventListener('beforeunload', nsSaveSpawn);
 // provider display-name (AI_CONFIG) → provider STATUS key (sysStats.providers)
 const NS_PROVIDER_KEY = {
   'anthropic':'zen', 'google':'gemini', 'groq':'groq', 'xai':'xai',
@@ -157,8 +209,8 @@ function nsBuild(){
   }
   // CORE — glowing central body at the origin (small relative to the vast volume)
   add({id:'core', kind:'core', name:'KAI / ORACLE CORE', sub:'lattice root',
-       px:0,py:0,pz:0, r:12000*BR, color:'#fff2d0'});
-  placedBodies.push({p:new THREE.Vector3(0,0,0), r:12000*BR});
+       px:0,py:0,pz:0, r:60000*BR, color:'#fff2d0'});
+  placedBodies.push({p:new THREE.Vector3(0,0,0), r:60000*BR});
 
   // PLANETS — the 9 bots spread on a Fibonacci sphere at VARIED golden-shell radii.
   // Distances ride NS_SPREAD (vast); radii ride NS_BODY (small specks).
@@ -167,7 +219,7 @@ function nsBuild(){
   bots.forEach((a,i)=>{
     // SOLAR SYSTEM: order planets inner->outer on a near-flat ECLIPTIC disc orbiting the CORE
     // "sun" (was a scattered sphere). Each rides a wider, slower orbit (Kepler-ish).
-    const baseR = (5500 + i*3400) * SP;                    // widening orbits, spread but WITHIN the star field; ordered inner->outer
+    const baseR = (150000 + i*180000) * SP;                    // MATHEMATICALLY CORRECT vast distances; ordered inner->outer
     const ang   = GOLD*i + 0.6;                            // golden-angle fan around the disc
     const incl  = (i%2?1:-1)*(0.05+0.045*((i*PHI)%1));     // gentle tilt off the ecliptic
     const r=8000*BR;
@@ -180,7 +232,7 @@ function nsBuild(){
 
   // ENGINE — a body offset from the core (Rust core broker), pulled out further
   {
-    const r=9000*BR, p=placeBody(new THREE.Vector3(120,300,-90).normalize(), 330*SP, r);
+    const r=9000*BR, p=placeBody(new THREE.Vector3(120,300,-90).normalize(), 20000*SP, r);
     add({id:'engine', kind:'engine', name:'KAI ENGINE', sub:'Rust core · :3334',
          px:p.x,py:p.y,pz:p.z, r, color:'#22d9e6'});
   }
@@ -189,7 +241,7 @@ function nsBuild(){
   // spread + big radius variance so they are scattered, not ringed together.
   NS_PROVIDERS.forEach((p,i)=>{
     const ph=GOLD*i + 0.7;
-    const baseR=(900 + (i%3)*420 + ((i*PHI)%1)*360)*SP;   // much further than bots
+    const baseR=(30000 + (i%3)*10000 + ((i*PHI)%1)*8000)*SP;   // much further than bots
     const yk=1-(i/(NS_PROVIDERS.length-1||1))*2;
     const active=NS_ACTIVE_PROV.has(p.key);
     const r=(active?16:9)*BR;
@@ -432,14 +484,16 @@ function nsInitThree(){
     // near/far ratio doesn't z-fight in practice.
     renderer=new THREE.WebGLRenderer({canvas:cvs, antialias:true, alpha:false,
       powerPreference:'high-performance', failIfMajorPerformanceCaveat:false});
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   }catch(err){
     NS.failed=true; if(fb){ fb.style.display='flex'; $('kv-fb-sub').textContent='WebGL is unavailable or disabled in this browser.'; }
     return false;
   }
   renderer.setClearColor(0x010205, 1);   // true near-black space (#010205), opaque
-  try{ if(THREE.sRGBEncoding!==undefined) renderer.outputEncoding=THREE.sRGBEncoding; if(THREE.ACESFilmicToneMapping!==undefined){ renderer.toneMapping=THREE.ACESFilmicToneMapping; renderer.toneMappingExposure=0.95; } }catch(_){}
+  try{ if(THREE.sRGBEncoding!==undefined) renderer.outputEncoding=THREE.sRGBEncoding; if(THREE.ACESFilmicToneMapping!==undefined){ renderer.toneMapping=THREE.ACESFilmicToneMapping; renderer.toneMappingExposure=1.1; } }catch(_){}
   const scene=new THREE.Scene();
-  scene.background=new THREE.Color(0x010205);   // explicit scene bg — no blue tint
+  scene.background=new THREE.Color(0x000000);   // true pitch black space
   scene.fog=new THREE.FogExp2(0x0a0e16, 0.0);   // ATMOSPHERIC HAZE: density driven by altitude (0 in space)
   // near/far scaled with the universe so we can pull WAY back AND fly far in
   // near plane rides NS_BODY so small bodies stay crisp up close; far rides NS_SPREAD
@@ -447,19 +501,64 @@ function nsInitThree(){
   // Lower ambient so the SUN does the shading (a real lit/dark terminator) instead
   // of everything self-glowing flat. Keep a little fill so dark sides aren't black.
   scene.add(new THREE.AmbientLight(0xffffff, 0.11));
-  const pl=new THREE.PointLight(0xffe9c8, 0.85, 0, 0); pl.position.set(0,0,0); scene.add(pl); NS._sunPL=pl;
+  const pl=new THREE.PointLight(0xffe9c8, 8.5, 0, 0); pl.position.set(0,0,0); scene.add(pl); NS._sunPL=pl;   // was 0.35 — massively increased for the blinding star effect
+  
+  // BLOOM: Add an massive additive plane to simulate a blinding core flare
+  const bloomMat = new THREE.SpriteMaterial({ map: nsMakeGlowTexture(), color: 0xffeedd, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.9 });
+  const bloomSprite = new THREE.Sprite(bloomMat);
+  bloomSprite.scale.set(60000*NS_SCALE*NS_BODY*12, 60000*NS_SCALE*NS_BODY*12, 1);
+  scene.add(bloomSprite);
   // SUN: a directional key light from a fixed angle → planets get a real LIT side
   // and a DARK side. Direction is normalized; we feed the same vector to each
   // atmosphere's uSun so the air brightens on the sun-facing limb.
-  const sun=new THREE.DirectionalLight(0xfff0dc, 1.3);
+  const sun=new THREE.DirectionalLight(0xfff0dc, 1.2);
   NS._sunDir=new THREE.Vector3(0.45,0.78,0.55).normalize();
   sun.position.copy(NS._sunDir).multiplyScalar(1000*NS_SCALE);
+  sun.castShadow = true;
+  sun.shadow.mapSize.width = 4096;
+  sun.shadow.mapSize.height = 4096;
+  const sd = 50000 * NS_SCALE;
+  sun.shadow.camera.left = -sd;
+  sun.shadow.camera.right = sd;
+  sun.shadow.camera.top = sd;
+  sun.shadow.camera.bottom = -sd;
+  sun.shadow.camera.near = 100 * NS_SCALE;
+  sun.shadow.camera.far = 200000 * NS_SCALE;
+  sun.shadow.bias = -0.0005;
   scene.add(sun); NS._sun=sun;
 
   NS.three={renderer,scene,camera, meshes:[], hits:[], glows:[], lines:null, lineGeo:null, starfield:null, sprites:[], starGeo:null, starBase:null};
   NS.renderer=renderer; NS.scene=scene; NS.camera=camera;
   NS.raycaster=new THREE.Raycaster();
 
+  // --- PHASE 3: WASM & WEB WORKER INTEGRATION ---
+  if (typeof window !== 'undefined') {
+    // 1. Load WASM for the main thread (for synchronous collision/height checks)
+    import('./kaiverse-wasm/pkg/kaiverse_wasm.js').then(wasm => {
+      wasm.default().then(() => {
+        NS.wasmHeightMap = wasm.ns_terrain_height_wasm;
+      }).catch(e => console.error(e));
+    }).catch(e => console.error(e));
+
+    // 2. Spawn the background Web Worker for DataTexture generation
+    NS.worker = new Worker('kaiverse_worker.js');
+    NS.workerReady = false;
+    NS.workerCallbacks = {};
+    
+    NS.worker.onmessage = function(e) {
+      if (e.data.type === 'READY') {
+        NS.workerReady = true;
+        console.log("🚀 Kaiverse Web Worker Ready! DataTextures are hardware-accelerated.");
+      } else if (e.data.type === 'RESULT') {
+        const { id, data } = e.data;
+        if (NS.workerCallbacks[id]) {
+          NS.workerCallbacks[id](data);
+          delete NS.workerCallbacks[id];
+        }
+      }
+    };
+  }
+  // ---------------------------------
   // bind WebGL context-loss handlers so a tab return rebuilds GL resources
   nsWireContextEvents(cvs);
 
@@ -469,8 +568,21 @@ function nsInitThree(){
   nsBuildNebula();
   nsInitGravity();      // N-body: seed velocities so massive bodies DRIFT (owner #2)
   nsBuildShips();       // AI inhabitants as spaceships that fly planet→planet (owner #3)
+  nsBuildPlayerShip();  // player's own ship (3rd person flight)
   nsResize();
+  if(!nsRestoreSpawn()){
+    // Default spawn: orbiting the first agent planet (e.g. Gemini) instead of the Core sun
+    const firstBot=NS.nodes.find(n=>n.kind==='bot');
+    if(firstBot){
+      NS.cam.tTargetX=firstBot.pos.x; NS.cam.tTargetY=firstBot.pos.y; NS.cam.tTargetZ=firstBot.pos.z;
+      NS.cam.target.copy(firstBot.pos);
+      NS.cam.tRadius=(firstBot.r||1)*4; NS.cam.radius=NS.cam.tRadius;
+      NS.camera.position.set(firstBot.pos.x+NS.cam.tRadius, firstBot.pos.y, firstBot.pos.z);
+    }
+  }
   if(fb) fb.style.display='none';
+  // Fade out loading overlay after a short delay (let first frame render)
+  var _le=$('kv-loading'); if(_le) setTimeout(function(){ _le.style.opacity='0'; setTimeout(function(){ _le.remove(); },700); }, 200);
   return true;
 }
 /* ── WebGL context lifecycle: survive a tab switch / GPU context loss ─────── */
@@ -539,7 +651,7 @@ function nsRebuildAfterContextLoss(){
    beyond the AI cluster.
    COSMOS = half-extent of the vast volume; ~12x the AI cluster radius so the
    cluster reads as a small bright knot in a huge dark space. ───────────────*/
-const COSMOS = 30000*NS_SCALE*NS_SPREAD;         // vast half-extent: now ENCOMPASSES the spread-out planets so stars surround everything
+const COSMOS = 3000000*NS_SCALE*NS_SPREAD;         // vast half-extent: now ENCOMPASSES the spread-out planets so stars surround everything
 // deterministic PRNG (mulberry32) so the cosmos is identical every restart
 function nsSeededRng(seed){ let a=seed>>>0; return function(){ a|=0; a=(a+0x6D2B79F5)|0; let t=Math.imul(a^(a>>>15),1|a); t=(t+Math.imul(t^(t>>>7),61|t))^t; return ((t^(t>>>14))>>>0)/4294967296; }; }
 function nsHashStr(s){ let h=2166136261>>>0; s=String(s); for(let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,16777619); } return h>>>0; }
@@ -547,6 +659,120 @@ function nsHashStr(s){ let h=2166136261>>>0; s=String(s); for(let i=0;i<s.length
 // vast procedural cosmos backdrop + warp field. counts scale from REAL stats.
 function nsBuildStarfield(){
   const S=NS_SCALE, rng=nsSeededRng(nsHashStr('KAIVERSE-COSMOS'));
+
+  // 0) PROCEDURAL GALACTIC SKYBOX (The Milky Way Band)
+  // A giant inner sphere attached to the camera, rendering a volumetric galaxy band behind everything.
+  const skyGeo = new THREE.SphereGeometry(30000 * S * NS_SPREAD, 64, 64);
+  const skyMat = new THREE.ShaderMaterial({
+    uniforms: { uT: { value: 0 } },
+    side: THREE.BackSide,
+    depthWrite: false,
+    transparent: true,
+    opacity: 1.0,
+    vertexShader: [
+      'varying vec3 vWorldPosition;',
+      'void main() {',
+      '  vec4 worldPosition = modelMatrix * vec4( position, 1.0 );',
+      '  vWorldPosition = worldPosition.xyz;',
+      '  gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );',
+      '}'
+    ].join('\n'),
+    fragmentShader: [
+      'uniform float uT;',
+      'varying vec3 vWorldPosition;',
+      '// Simple 3D noise function',
+      'vec4 permute(vec4 x){return mod(((x*34.0)+1.0)*x, 289.0);}',
+      'vec4 taylorInvSqrt(vec4 r){return 1.79284291400159 - 0.85373472095314 * r;}',
+      'float snoise(vec3 v){ ',
+      '  const vec2  C = vec2(1.0/6.0, 1.0/3.0) ;',
+      '  const vec4  D = vec4(0.0, 0.5, 1.0, 2.0);',
+      '  vec3 i  = floor(v + dot(v, C.yyy) );',
+      '  vec3 x0 = v - i + dot(i, C.xxx) ;',
+      '  vec3 g = step(x0.yzx, x0.xyz);',
+      '  vec3 l = 1.0 - g;',
+      '  vec3 i1 = min( g.xyz, l.zxy );',
+      '  vec3 i2 = max( g.xyz, l.zxy );',
+      '  vec3 x1 = x0 - i1 + 1.0 * C.xxx;',
+      '  vec3 x2 = x0 - i2 + 2.0 * C.xxx;',
+      '  vec3 x3 = x0 - 1.0 + 3.0 * C.xxx;',
+      '  i = mod(i, 289.0); ',
+      '  vec4 p = permute( permute( permute( ',
+      '             i.z + vec4(0.0, i1.z, i2.z, 1.0 ))',
+      '           + i.y + vec4(0.0, i1.y, i2.y, 1.0 )) ',
+      '           + i.x + vec4(0.0, i1.x, i2.x, 1.0 ));',
+      '  float n_ = 1.0/7.0; // N=7',
+      '  vec3  ns = n_ * D.wyz - D.xzx;',
+      '  vec4 j = p - 49.0 * floor(p * ns.z *ns.z);  //  mod(p,N*N)',
+      '  vec4 x_ = floor(j * ns.z);',
+      '  vec4 y_ = floor(j - 7.0 * x_ );    // mod(j,N)',
+      '  vec4 x = x_ *ns.x + ns.yyyy;',
+      '  vec4 y = y_ *ns.x + ns.yyyy;',
+      '  vec4 h = 1.0 - abs(x) - abs(y);',
+      '  vec4 b0 = vec4( x.xy, y.xy );',
+      '  vec4 b1 = vec4( x.zw, y.zw );',
+      '  vec4 s0 = floor(b0)*2.0 + 1.0;',
+      '  vec4 s1 = floor(b1)*2.0 + 1.0;',
+      '  vec4 sh = -step(h, vec4(0.0));',
+      '  vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy ;',
+      '  vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww ;',
+      '  vec3 p0 = vec3(a0.xy,h.x);',
+      '  vec3 p1 = vec3(a0.zw,h.y);',
+      '  vec3 p2 = vec3(a1.xy,h.z);',
+      '  vec3 p3 = vec3(a1.zw,h.w);',
+      '  vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));',
+      '  p0 *= norm.x;',
+      '  p1 *= norm.y;',
+      '  p2 *= norm.z;',
+      '  p3 *= norm.w;',
+      '  vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);',
+      '  m = m * m;',
+      '  return 42.0 * dot( m*m, vec4( dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3) ) );',
+      '}',
+      'float fbm(vec3 x) {',
+      '  float v = 0.0;',
+      '  float a = 0.5;',
+      '  vec3 shift = vec3(100.0);',
+      '  for (int i = 0; i < 5; ++i) {',
+      '    v += a * snoise(x);',
+      '    x = x * 2.0 + shift;',
+      '    a *= 0.5;',
+      '  }',
+      '  return v;',
+      '}',
+      'void main() {',
+      '  vec3 dir = normalize(vWorldPosition);',
+      '  // The galactic plane is tilted slightly',
+      '  float tilt = 0.3;',
+      '  float galacticY = dir.y * cos(tilt) - dir.z * sin(tilt);',
+      '  // Base intensity falls off with distance from the galactic plane',
+      '  float planeDist = abs(galacticY);',
+      '  float baseIntensity = exp(-planeDist * 8.0);',
+      '  // Add swirling noise',
+      '  vec3 noiseScale = dir * 12.0;',
+      '  float n1 = fbm(noiseScale + uT * 0.005);',
+      '  float n2 = fbm(noiseScale * 2.0 - uT * 0.003);',
+      '  float cloud = smoothstep(0.0, 1.0, n1 * 0.5 + 0.5) * smoothstep(-0.2, 0.8, n2 * 0.5 + 0.5);',
+      '  float intensity = baseIntensity * cloud * 1.2;',
+      '  // Color mapping: edge is dark purple, mid is blue/magenta, core is gentle teal/blue',
+      '  vec3 colEdge = vec3(0.02, 0.0, 0.08);',
+      '  vec3 colMid  = vec3(0.05, 0.2, 0.45);',
+      '  vec3 colCore = vec3(0.2, 0.6, 0.7);',
+      '  vec3 color = mix(colEdge, colMid, smoothstep(0.0, 0.4, intensity));',
+      '  color = mix(color, colCore, smoothstep(0.4, 0.9, intensity));',
+      '  color += vec3(0.6, 0.9, 1.0) * smoothstep(0.7, 1.0, intensity) * 0.5;',
+      '  // Add subtle star dust in the band',
+      '  float starNoise = snoise(dir * 150.0);',
+      '  float stars = smoothstep(0.85, 1.0, starNoise * 0.5 + 0.5) * baseIntensity;',
+      '  color += vec3(1.0) * stars * 0.5;',
+      '  gl_FragColor = vec4(color, clamp(intensity * 1.2, 0.0, 1.0));',
+      '}'
+    ].join('\n')
+  });
+  const skyMesh = new THREE.Mesh(skyGeo, skyMat);
+  skyMesh.renderOrder = -9999;
+  NS.scene.add(skyMesh);
+  NS._skyboxMat = skyMat;
+  NS._skyboxMesh = skyMesh;
   // count tuning from REAL lattice stats (set into statSnap before activate;
   // falls back to floor if not yet polled — re-scaled later by nsScaleCosmos)
   const cells=Number(NS.statSnap.cells)||50000;
@@ -561,10 +787,24 @@ function nsBuildStarfield(){
   const pos=new Float32Array(starN*3), scol=new Float32Array(starN*3);
   const starHues=[[0.62,0.78,1.0],[1.0,0.95,0.85],[1.0,0.8,0.6],[0.8,0.85,1.0],[1.0,1.0,1.0]];
   for(let i=0;i<starN;i++){
-    // 60% volumetric (cube), 40% far shell → real depth
-    let x,y,z;
-    if(rng()<0.6){ x=(rng()*2-1)*COSMOS; y=(rng()*2-1)*COSMOS*0.7; z=(rng()*2-1)*COSMOS; }
-    else { const r=(0.7+rng()*0.5)*COSMOS, t=rng()*Math.PI*2, p=Math.acos(2*rng()-1); x=r*Math.sin(p)*Math.cos(t); y=r*Math.cos(p); z=r*Math.sin(p)*Math.sin(t); }
+    // 60% volumetric (spherical), 40% far shell → real depth
+    let r, t, p, x, y, z;
+    if(rng()<0.6){ 
+      r = Math.cbrt(rng())*COSMOS; 
+      t = rng()*Math.PI*2; 
+      p = Math.acos(2*rng()-1); 
+      x = r*Math.sin(p)*Math.cos(t); 
+      y = r*Math.cos(p)*0.7; // slightly flattened galaxy
+      z = r*Math.sin(p)*Math.sin(t); 
+    }
+    else { 
+      r = (0.7+rng()*0.5)*COSMOS; 
+      t = rng()*Math.PI*2; 
+      p = Math.acos(2*rng()-1); 
+      x = r*Math.sin(p)*Math.cos(t); 
+      y = r*Math.cos(p); 
+      z = r*Math.sin(p)*Math.sin(t); 
+    }
     pos[i*3]=x; pos[i*3+1]=y; pos[i*3+2]=z;
     const h=starHues[(rng()*starHues.length)|0], b=0.5+rng()*0.5;
     scol[i*3]=h[0]*b; scol[i*3+1]=h[1]*b; scol[i*3+2]=h[2]*b;
@@ -578,7 +818,7 @@ function nsBuildStarfield(){
   // GPU STAR SHADER — size attenuation + soft round point + subtle twinkle.
   // additive blending so dense regions glow like real star fields. r128-safe.
   const m=new THREE.ShaderMaterial({
-    uniforms:{ uT:{value:0}, uSize:{value:2.4*Math.sqrt(S)*60.0} },
+    uniforms:{ uT:{value:0}, uSize:{value:2.4*Math.sqrt(S)*15.0} },
     vertexShader:[
       'uniform float uT; uniform float uSize; attribute float aPhase;',
       'varying vec3 vC; varying float vTw;',
@@ -877,27 +1117,94 @@ function nsBuildSector(sx,sy,sz){
   const dm=new THREE.PointsMaterial({map:nsMakeGlowTexture(), color:0x8893a8, size:1.3*Math.sqrt(NS_SCALE), sizeAttenuation:true,
     transparent:true, opacity:0.34, depthWrite:false});
   const dp=new THREE.Points(dg,dm); dp.frustumCulled=false; NS.scene.add(dp); grp.push(dp);
-  // 3) OCCASIONAL soft GAS puff (rare) — same soft texture, very low opacity
+  // 3) OCCASIONAL soft GAS puff (rare) — volumetric 3D point cloud nebula
   if(rng()<0.30){
-    const tex=nsMakeGasTexture();
-    const cc=new THREE.Color().setHSL(rng(),0.55,0.6);
-    const gm=new THREE.SpriteMaterial({map:tex, color:cc, transparent:true,
-      opacity:0.05+rng()*0.05, depthWrite:false, blending:THREE.AdditiveBlending});
-    const gs=new THREE.Sprite(gm); gs.frustumCulled=false;
-    const gsz=size*(0.35+rng()*0.4); gs.scale.set(gsz,gsz,1);
-    gs.position.set(ox+rng()*size, oy+rng()*size, oz+rng()*size);
-    NS.scene.add(gs); grp.push(gs);
+    const puffGrp = new THREE.Group();
+    puffGrp.position.set(ox+rng()*size, oy+rng()*size, oz+rng()*size);
+    const nPts = 1200 + (rng()*800)|0;
+    const ppos = new Float32Array(nPts*3);
+    const pcol = new Float32Array(nPts*3);
+    const hue = rng();
+    const gsz = size*(0.15+rng()*0.15);
+    for(let i=0; i<nPts; i++){
+      const r = Math.cbrt(rng())*gsz, t = rng()*6.28, p = Math.acos(2*rng()-1);
+      ppos[i*3] = r*Math.sin(p)*Math.cos(t);
+      ppos[i*3+1] = r*Math.cos(p)*0.6; // slightly flattened
+      ppos[i*3+2] = r*Math.sin(p)*Math.sin(t);
+      const c = new THREE.Color().setHSL(hue + (rng()*0.1 - 0.05), 0.6, 0.5 + rng()*0.2);
+      pcol[i*3]=c.r; pcol[i*3+1]=c.g; pcol[i*3+2]=c.b;
+    }
+    const bg = new THREE.BufferGeometry();
+    bg.setAttribute('position', new THREE.BufferAttribute(ppos,3));
+    bg.setAttribute('color', new THREE.BufferAttribute(pcol,3));
+    const bm = new THREE.PointsMaterial({map:nsMakeGlowTexture(), size: 15.0*Math.sqrt(NS_SCALE), sizeAttenuation:true, vertexColors:true, transparent:true, opacity:0.05, depthWrite:false, blending:THREE.AdditiveBlending});
+    const pts = new THREE.Points(bg, bm);
+    pts.frustumCulled = false;
+    puffGrp.add(pts);
+    NS.scene.add(puffGrp); grp.push(puffGrp);
   }
-  // 4) OCCASIONAL asteroid speckle cluster (rocky belt accent)
-  if(rng()<0.45){
-    const aN=80+((rng()*120)|0), apos=new Float32Array(aN*3);
-    const acx=ox+rng()*size, acy=oy+rng()*size, acz=oz+rng()*size, ar=size*(0.06+rng()*0.10);
-    for(let i=0;i<aN;i++){ const r=Math.cbrt(rng())*ar, t=rng()*6.28, p=Math.acos(2*rng()-1);
-      apos[i*3]=acx+r*Math.sin(p)*Math.cos(t); apos[i*3+1]=acy+r*Math.cos(p)*0.5; apos[i*3+2]=acz+r*Math.sin(p)*Math.sin(t); }
-    const ag=new THREE.BufferGeometry(); ag.setAttribute('position', new THREE.BufferAttribute(apos,3));
-    const am=new THREE.PointsMaterial({map:nsMakeGlowTexture(), color:0x9a8d78, size:1.7*Math.sqrt(NS_SCALE), sizeAttenuation:true,
-      transparent:true, opacity:0.55, depthWrite:false});
-    const ap=new THREE.Points(ag,am); ap.frustumCulled=false; NS.scene.add(ap); grp.push(ap);
+  // 4) OCCASIONAL Procedural Solar System (Deep Space Only)
+  if(rng()<0.25 && (Math.abs(sx)>3 || Math.abs(sy)>3 || Math.abs(sz)>3)){
+    const sysRng = rng; // capture
+    const BR = NS_SCALE * NS_BODY;
+    const sysGrp = new THREE.Group();
+    const cx=ox+rng()*size, cy=oy+rng()*size, cz=oz+rng()*size;
+    sysGrp.position.set(cx, cy, cz);
+    sysGrp.frustumCulled = false;
+    sysGrp._sysSpeed = sysRng() * 0.02 + 0.01;
+    
+    // Central Star
+    const starR = (300 + sysRng()*400) * BR;
+    const starColor = new THREE.Color().setHSL(sysRng()*0.15 + 0.95, 0.9, 0.7);
+    const starMat = new THREE.MeshStandardMaterial({color: starColor, emissive: starColor, emissiveIntensity: 1.5});
+    const starMesh = new THREE.Mesh(new THREE.SphereGeometry(starR, 16, 16), starMat);
+    sysGrp.add(starMesh);
+    
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({map:nsMakeGlowTexture(), color:starColor, transparent:true, opacity:0.8, blending:THREE.AdditiveBlending, depthWrite:false}));
+    glow.scale.set(starR*8, starR*8, 1); glow.frustumCulled = false;
+    sysGrp.add(glow);
+
+    // Orbiting Planets
+    const numPlanets = 1 + Math.floor(sysRng() * 4);
+    const types = ['gas','rock','ice','exotic'];
+    for(let i=0; i<numPlanets; i++) {
+        const type = types[Math.floor(sysRng()*types.length)];
+        const pr = (30 + sysRng()*100) * BR;
+        const orbR = starR * (3 + i*2 + sysRng()*2);
+        const ang = sysRng() * Math.PI * 2;
+        
+        const px = Math.cos(ang) * orbR;
+        const pz = Math.sin(ang) * orbR;
+        
+        const tex = nsMakePlanetTexture(nsSeedHash3(sx,sy,sz) + i, type);
+        const baseHex = type==='gas'?'#7aa0ff':type==='rock'?'#caa178':type==='ice'?'#aee6ff':'#d28cff';
+        const pMat = new THREE.MeshStandardMaterial({map:tex, roughness:0.85, metalness:0.05, emissive:new THREE.Color(baseHex), emissiveIntensity:0.02});
+        const pMesh = new THREE.Mesh(new THREE.SphereGeometry(pr, 16, 16), pMat);
+        pMesh.position.set(px, 0, pz);
+        
+        // Randomly add planetary rings (like Saturn)
+        if (sysRng() < 0.4) {
+            const innerR = pr * 1.3 + sysRng() * pr * 0.2;
+            const outerR = innerR + pr * 0.5 + sysRng() * pr * 0.8;
+            const ringGeo = new THREE.RingGeometry(innerR, outerR, 64);
+            const ringCol = new THREE.Color().setHSL(sysRng(), 0.2, 0.7);
+            const ringMat = new THREE.MeshBasicMaterial({color: ringCol, side: THREE.DoubleSide, transparent: true, opacity: 0.65, depthWrite: false, blending: THREE.AdditiveBlending});
+            const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+            ringMesh.rotation.x = Math.PI / 2 + (sysRng() * 0.8 - 0.4);
+            ringMesh.rotation.y = sysRng() * 0.4 - 0.2;
+            pMesh.add(ringMesh);
+        }
+        
+        sysGrp.add(pMesh);
+        
+        const atmo = nsMakeAtmosphere(pr, baseHex);
+        atmo.position.set(px, 0, pz);
+        sysGrp.add(atmo);
+    }
+    NS.scene.add(sysGrp); grp.push(sysGrp);
+    NS._procSystems = NS._procSystems || [];
+    NS._procSystems.push(sysGrp);
+    grp._procSys = sysGrp;
   }
   // 5) RARE sector STRUCTURE (pulsar) — discoverable push-source out in the field.
   // Deterministic + COLLISION-FREE: rejection-checked against nearby landmarks and
@@ -924,7 +1231,7 @@ function nsBuildSector(sx,sy,sz){
         break; }
     }
   }
-  return { sx,sy,sz, objs:grp, pulsar:grp._sectorPulsar||null };
+  return { sx,sy,sz, objs:grp, pulsar:grp._sectorPulsar||null, _procSys:grp._procSys||null };
 }
 function nsDisposeSector(sec){
   if(!sec) return;
@@ -944,6 +1251,11 @@ function nsDisposeSector(sec){
     if(p.grp && NS.three && NS.three.pulsars){ const pi=NS.three.pulsars.indexOf(p.grp); if(pi>=0) NS.three.pulsars.splice(pi,1); }
     nsDisposePulsar(p);
     sec.pulsar=null;
+  }
+  // tear down procedural system reference
+  if(sec._procSys && NS._procSystems){
+    const ix=NS._procSystems.indexOf(sec._procSys);
+    if(ix>=0) NS._procSystems.splice(ix,1);
   }
 }
 function nsDisposeSectors(){
@@ -1000,16 +1312,27 @@ function nsMakePlanetTexture(seed, type){
   const key=type+':'+(seed%24);
   if(nsPlanetTexCache[key]) return nsPlanetTexCache[key];
   const rng=nsSeededRng(seed||1);
-  const W=1024,H=512, c=document.createElement('canvas'); c.width=W; c.height=H;
+  const W=256, H=128, c=document.createElement('canvas'); c.width=W; c.height=H;
   const ctx=c.getContext('2d');
-  // per-seed base palette (hue family chosen by type)
+  const imgData = ctx.createImageData(W, H);
+  const data = imgData.data;
+
   const hueBase = type==='gas'? 200+rng()*120 : type==='rock'? 18+rng()*40 : type==='ice'? 180+rng()*40 : rng()*360;
   const sat = type==='rock'?30+rng()*25 : 45+rng()*30;
-  // value-noise via layered sines per row → horizontal banding (planet-like)
   const bands=type==='gas'? 7+((rng()*7)|0) : 4+((rng()*5)|0);
   const phase=rng()*6.28, warp=0.4+rng()*1.2;
+
+  const hue2rgb = (p, q, t) => {
+    if (t < 0) t += 1; if (t > 1) t -= 1;
+    if (t < 1/6) return p + (q - p) * 6 * t;
+    if (t < 1/2) return q;
+    if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+    return p;
+  };
+
+  let idx = 0;
   for(let y=0;y<H;y++){
-    const lat=y/H;                                  // 0..1 pole→pole
+    const lat=y/H;
     for(let x=0;x<W;x++){
       const lon=x/W;
       let v=0.5
@@ -1017,44 +1340,88 @@ function nsMakePlanetTexture(seed, type){
         + 0.14*Math.sin(lat*bands*2.3*Math.PI + lon*3.1 + phase*1.7)
         + 0.10*Math.sin(lon*6.28*(2+bands) + Math.sin(lat*9)*1.3);
       v=Math.max(0,Math.min(1,v));
-      const light=40+v*45;                          // lightness
-      // polar caps for ice/rock worlds
-      let L=light, Sv=sat;
+      
+      let L=40+v*45, Sv=sat;
       if(type!=='gas'){ const polar=Math.abs(lat-0.5)*2; if(polar>0.78){ L=82; Sv=12; } }
-      ctx.fillStyle=`hsl(${hueBase + (v-0.5)*30},${Sv}%,${L}%)`;
-      ctx.fillRect(x,y,1,1);
+      
+      let h=(hueBase + (v-0.5)*30)/360, s=Sv/100, l=L/100;
+      let r, g, b;
+      if (s === 0) { r = g = b = l; } else {
+        const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+        const p = 2 * l - q;
+        h = h - Math.floor(h);
+        r = hue2rgb(p, q, h + 1/3);
+        g = hue2rgb(p, q, h);
+        b = hue2rgb(p, q, h - 1/3);
+      }
+      
+      data[idx++] = r * 255;
+      data[idx++] = g * 255;
+      data[idx++] = b * 255;
+      data[idx++] = 255;
     }
   }
+  ctx.putImageData(imgData, 0, 0);
+
   // a few speckle storms / craters
   const spots=(rng()*6)|0;
-  for(let i=0;i<spots;i++){ const sx=rng()*W, sy=H*(0.2+rng()*0.6), sr=2+rng()*7;
+  for(let i=0;i<spots;i++){ const sx=rng()*W, sy=H*(0.2+rng()*0.6), sr=1+rng()*3;
     ctx.beginPath(); ctx.fillStyle=`hsla(${hueBase+ (rng()*40-20)},${sat}%,${30+rng()*40}%,0.5)`; ctx.arc(sx,sy,sr,0,6.28); ctx.fill(); }
   const tex=new THREE.CanvasTexture(c); tex.wrapS=THREE.RepeatWrapping;
   nsPlanetTexCache[key]=tex; return tex;
 }
 // reusable atmosphere fresnel shell (additive back-side glow) for a planet
-function nsMakeAtmosphere(radius, hex){
-  // Realistic atmospheric SHELL: a sphere just larger than the planet whose glow
-  // concentrates at the LIMB via a fresnel/rim term and fades across the disc.
-  // The tint is a SUBTLE, DESATURATED sky color derived from the body color —
-  // we mix the body hue heavily toward a pale blue-white so it reads as air, not
-  // a saturated neon balloon. The sun-facing limb is brightened (uSun in world).
-  const g=new THREE.SphereGeometry(radius*1.20, 96, 64);
-  const body=new THREE.Color(hex);
-  // desaturate: pull toward pale blue-white, keep only a whisper of body identity
-  const sky=body.clone().lerp(new THREE.Color(0xbfe0ff), 0.5);
-  // flatten remaining saturation in HSL so even vivid bodies get an airy rim
-  const hsl={}; sky.getHSL(hsl); sky.setHSL(hsl.h, Math.min(hsl.s,0.62), Math.max(hsl.l,0.6));
-  const m=new THREE.ShaderMaterial({
-    uniforms:{
-      uCol:{value:new THREE.Vector3(sky.r,sky.g,sky.b)},
-      uSun:{value:new THREE.Vector3(0.4,0.7,0.55)}, uFade:{value:1.0}   // world-space sun dir (updated per frame)
-    },
-    vertexShader:'varying vec3 vN; varying vec3 vWN; varying vec3 vP; void main(){ vN=normalize(normalMatrix*normal); vWN=normalize(mat3(modelMatrix)*normal); vec4 mv=modelViewMatrix*vec4(position,1.0); vP=mv.xyz; gl_Position=projectionMatrix*mv; }',
-    fragmentShader:'uniform vec3 uCol; uniform vec3 uSun; uniform float uFade; varying vec3 vN; varying vec3 vWN; varying vec3 vP; void main(){ vec3 v=normalize(-vP); float fres=1.0-max(dot(vN,v),0.0); float halo=smoothstep(0.12,0.46,fres)*(1.0-smoothstep(0.66,1.0,fres)); float sun=0.45+0.55*max(dot(normalize(vWN),normalize(uSun)),0.0); vec3 col=mix(uCol, uCol*vec3(0.78,0.9,1.28), smoothstep(0.35,0.95,fres)); gl_FragColor=vec4(col*sun, halo*sun*0.55*uFade); }',
-    transparent:true, blending:THREE.AdditiveBlending, side:THREE.BackSide, depthWrite:false
+
+
+// Procedural cloud layer for dynamic planetary visuals
+
+
+// Procedural asteroid field (InstancedMesh) generated around the planet
+function nsBuildPlanetaryAsteroids(radius, hex) {
+  const count = 400;
+  const geom = new THREE.DodecahedronGeometry(1.0, 0); // low poly asteroid base
+  const mat = new THREE.MeshStandardMaterial({
+    color: new THREE.Color(hex).lerp(new THREE.Color(0x444444), 0.8),
+    roughness: 0.9,
+    metalness: 0.3
   });
-  return new THREE.Mesh(g,m);
+  const imesh = new THREE.InstancedMesh(geom, mat, count);
+  const dummy = new THREE.Object3D();
+  
+  // Create a massive, sparse debris field
+  for(let i=0; i<count; i++) {
+    // Random spherical coordinates
+    const phi = Math.acos(-1 + (2 * i) / count);
+    const theta = Math.sqrt(count * Math.PI) * phi;
+    
+    // Spread them out to match the 4M km to 8M km range.
+    // Planet r is ~14,400 units (7,200 km). 4M km = 8,000,000 units (~555x radius).
+    // 7M km = 14,000,000 units (~972x radius).
+    const dist = radius * (500.0 + Math.random() * 600.0);
+    dummy.position.setFromSphericalCoords(dist, phi, theta);
+    
+    // Flatten into a ring/belt slightly
+    dummy.position.y *= 0.15;
+    
+    // Asteroids need to be massive to be seen at 4M km away. (10,000 to 50,000 units wide = 5,000 to 25,000 km)
+    const s = NS_SCALE * (500.0 + Math.random() * 2000.0);
+    dummy.scale.set(s, s * (0.5 + Math.random()), s * (0.8 + Math.random()*0.4));
+    
+    // Random rotation
+    dummy.rotation.set(Math.random()*Math.PI, Math.random()*Math.PI, Math.random()*Math.PI);
+    dummy.updateMatrix();
+    imesh.setMatrixAt(i, dummy.matrix);
+  }
+  imesh.instanceMatrix.needsUpdate = true;
+  imesh.castShadow = true;
+  imesh.receiveShadow = true;
+  
+  const grp = new THREE.Group();
+  grp.add(imesh);
+  // Give the group a random slight tilt so the rings aren't all perfectly flat
+  grp.rotation.x = (Math.random()-0.5) * 0.4;
+  grp.rotation.z = (Math.random()-0.5) * 0.4;
+  return grp;
 }
 
 // ── SRHT SECTOR PLACEMENT ──────────────────────────────────────────────────
@@ -1279,6 +1646,8 @@ function nsStepGravity(dt){
     if(nd.halo) nd.halo.position.copy(nd.pos);
     if(nd.hit)  nd.hit.position.copy(nd.pos);
     if(nd.atmo) nd.atmo.position.copy(nd.pos);
+    if(nd.clouds) nd.clouds.position.copy(nd.pos);
+    if(nd.corona) nd.corona.position.copy(nd.pos);
     if(nd.label) nd.label.position.set(nd.pos.x, nd.pos.y+nd.r+(nd.kind==='world'?22:10)*NS_SCALE, nd.pos.z);
     var _frz=(nd===NS._nearPlanet && NS.camera && NS.camera.position.distanceTo(nd.pos) < (nd.r||1)*6) || (NS.cam && NS.cam.mode==='walk' && (nd===NS._nearPlanet||nd===NS._walkPlanet));
     if(!_frz){
@@ -1433,6 +1802,83 @@ function nsStepShips(dt){
     sh.trail.material.opacity = sh.state==='transit'?0.6:0.22;
   }
 }
+// ── PLAYER SHIP (3rd-person flight) ──────────────────────────────────────
+// ── PLAYER SHIP (3rd-person flight view) ─────────────────────────────────
+// Builds once; positioned + chase-cam offset applied per-frame AROUND the
+// render call so movement/controls never see the offset.
+function nsBuildPlayerShip(){
+  if(NS._playerShip) return;
+  var S=NS_SCALE, len=7*S*NS_BODY*4.5;
+  // Fuselage: rotated cone pointing +Z
+  var geo=new THREE.ConeGeometry(len*0.38, len*1.2, 6);
+  geo.rotateX(Math.PI/2);
+  // Wings: flat triangles
+  var wGeo=new THREE.BufferGeometry();
+  var wv=new Float32Array([
+    0,0,len*0.15,  -len*1.1,0,-len*0.35,  0,0,-len*0.45,
+    0,0,len*0.15,   0,0,-len*0.45,  len*1.1,0,-len*0.35
+  ]);
+  var wn=new Float32Array(18); for(var i=0;i<18;i+=3){wn[i]=0;wn[i+1]=1;wn[i+2]=0;}
+  wGeo.setAttribute('position',new THREE.BufferAttribute(wv,3));
+  wGeo.setAttribute('normal',new THREE.BufferAttribute(wn,3));
+  var mat=new THREE.MeshStandardMaterial({color:0x8899aa, emissive:0x000000, emissiveIntensity:0.0, roughness:0.5, metalness:0.6, side:THREE.DoubleSide});
+  var body=new THREE.Mesh(geo, mat);
+  var wings=new THREE.Mesh(wGeo, mat.clone());
+  var grp=new THREE.Group(); grp.add(body); grp.add(wings);
+  // Engine glow sprite
+  var eMat=new THREE.SpriteMaterial({map:nsMakeGlowTexture(), color:0x44ccff, transparent:true, opacity:0.8, blending:THREE.AdditiveBlending, depthWrite:false});
+  var eng=new THREE.Sprite(eMat); eng.scale.set(len*0.5,len*0.5,1); eng.position.set(0,0,-len*0.55);
+  grp.add(eng);
+  grp.visible=false; grp.frustumCulled=false;
+  NS.scene.add(grp);
+  NS._playerShip=grp; NS._playerShipLen=len; NS._playerShipEng=eng;
+}
+// Called BEFORE render: offset camera behind ship for 3rd-person.
+// Called AFTER render: restore camera so movement code is untouched.
+// Gated by NS._thirdPerson (default false). Toggle with V key.
+function nsPlayerShipPre(){
+  var cam=NS.camera, c=NS.cam;
+  if(!cam||!c||!NS._playerShip||!NS._thirdPerson) return;
+  if(c.mode!=='fly'){ NS._playerShip.visible=false; NS._shipRestore=null; return; }
+  var fwd=NS._flyFwd, up=NS._flyUp;
+  if(!fwd||!up) return;
+  // Save real position (= ship position from nsUpdateCamera, UNTOUCHED)
+  NS._shipRestore=cam.position.clone();
+  // Position + orient the ship mesh using the SAME fwd/up as the fly block
+  NS._playerShip.position.copy(cam.position);
+  NS._playerShip.lookAt(cam.position.clone().add(fwd));
+  NS._playerShip.visible=true;
+  // Engine glow intensity scales with speed
+  if(NS._playerShipEng){
+    var spd=c.vel?c.vel.length():0, mx=Math.max(1,(typeof nsThrottleSpeed==='function'?nsThrottleSpeed():1));
+    var sf=Math.min(2.5, 0.3+spd/(mx*0.3+1));
+    NS._playerShipEng.scale.set(NS._playerShipLen*0.5*sf, NS._playerShipLen*0.5*sf, 1);
+    NS._playerShipEng.material.opacity=Math.min(0.9, 0.2+sf*0.3);
+  }
+  // Chase offset: stiff spring behind + above the ship.
+  // Uses fwd (aim direction) so camera stays BEHIND, never swings in front.
+  var spd=c.vel?c.vel.length():0, mx=Math.max(1,(typeof nsThrottleSpeed==='function'?nsThrottleSpeed():1));
+  var ratio=Math.min(1, spd/mx);
+  var chaseD=NS_SCALE*(200+500*ratio);   // further behind when fast
+  var chaseH=NS_SCALE*(60+140*ratio);    // higher when fast
+  var want=NS._shipRestore.clone().addScaledVector(fwd, -chaseD).addScaledVector(up, chaseH);
+  // Stiff spring: dt*10 = snaps behind quickly, no front-facing overshoot
+  if(!NS._chasePos) NS._chasePos=want.clone();
+  var bl=NS._chaseDt?Math.min(1, NS._chaseDt*10):1;
+  NS._chasePos.lerp(want, bl);
+  cam.position.copy(NS._chasePos);
+  // Look AHEAD of the ship (not at it) — prevents the GTA front-view oscillation
+  var lookPt=NS._shipRestore.clone().addScaledVector(fwd, NS_SCALE*40);
+  cam.lookAt(lookPt);
+  cam.up.copy(up);
+}
+function nsPlayerShipPost(){
+  // Restore real position so next frame's movement starts from the ship, not the chase cam
+  if(NS._shipRestore && NS.camera){
+    NS.camera.position.copy(NS._shipRestore);
+    NS._shipRestore=null;
+  }
+}
 function nsDisposeShips(){
   if(NS.ships){ for(const sh of NS.ships){
     [sh.mesh, sh.trail, sh.label].forEach(o=>{ if(!o)return; NS.scene&&NS.scene.remove(o);
@@ -1441,6 +1887,7 @@ function nsDisposeShips(){
   } }
   if(NS._shipGeo){ try{NS._shipGeo.dispose();}catch(_){ } NS._shipGeo=null; }
   NS.ships=[]; NS._shipObs=null;
+  if(NS._playerShip){ NS.scene&&NS.scene.remove(NS._playerShip); NS._playerShip=null; }
 }
 
 function nsBuildCosmosPlanets(rng){
@@ -1558,10 +2005,10 @@ function nsBuildAsteroids(rng){
     const cx=(hsh(cl,'blobX')*2-1)*COSMOS*0.9, cy=(hsh(cl,'blobY')*2-1)*COSMOS*0.7, cz=(hsh(cl,'blobZ')*2-1)*COSMOS*0.9;
     const ctr=new THREE.Vector3(cx,cy,cz), spr=COSMOS*(0.05+hsh(cl,'blobS')*0.06);
     const col=[0x9a8d78,0x7f8497,0xa08a6e,0x8b8472][cl%4];
-    mkPoints(1800+((hsh(cl,'blobN')*1400)|0), col, 1.7, 0.6, (i,n,r)=>{
-      const rad=Math.cbrt(r(0))*spr, t=r(1)*6.28, p=Math.acos(2*r(2)-1);
+    mkPoints(4200, col, 2.2, 0.45, (i,n,r)=>{
+      const rad=Math.cbrt(r(0))*spr*0.8, t=r(1)*6.28, p=Math.acos(2*r(2)-1);
       return new THREE.Vector3(cx+rad*Math.sin(p)*Math.cos(t), cy+rad*Math.cos(p)*0.6, cz+rad*Math.sin(p)*Math.sin(t));
-    }, 'blob'+cl, {c:ctr, near:spr*3.0, far:spr*9.0});
+    }, 'blobpts'+cl, {c:ctr, near:spr*3.0, far:spr*9.0});
     // a few instanced ROCKS inside each blob for parallax/solidity
     mkField(260, col, 0.6, 3.2, (i,n,r)=>{
       const rad=Math.cbrt(r(0))*spr*0.9, t=r(1)*6.28, p=Math.acos(2*r(2)-1);
@@ -1963,32 +2410,35 @@ function nsInitBloom(){
     NS._bloom=b;
   }catch(e){ NS._bloom=null; NS._bloomFail=true; }
 }
-// ── ATMOSPHERIC ENTRY HAZE ── the fog at init (line ~443) was created at density 0
-//    and never driven. Ramp it up + tint it as the camera descends into a body's
-//    atmosphere, clear it back to 0 in open space. Tunable/disable: window.KAIVERSE_FOG
-//    (multiplier, default 1; set 0 to disable, 2 for thicker). Density scales 1/radius
-//    so huge and small planets feel similar.
+// ── VOLUMETRIC FOG ── two-layer system: a subtle deep-space base fog for depth
+//    perception (very distant objects fade into the void) PLUS the atmospheric
+//    entry haze that ramps up as you descend into a planet. The deep-space fog
+//    is extremely subtle (just enough for distant star dimming). Tunable/disable:
+//    window.KAIVERSE_FOG (multiplier, default 1; set 0 to disable, 2 for thicker).
 function nsUpdateAtmoFog(dt){
   var f=NS.scene&&NS.scene.fog, cam=NS.camera; if(!f||!cam||!NS.nodes||typeof THREE==='undefined') return;
   var mult=(typeof window!=='undefined' && window.KAIVERSE_FOG!=null) ? +window.KAIVERSE_FOG : 1;
   var best=null, bestSurf=Infinity, bestR=1;
   for(var i=0;i<NS.nodes.length;i++){ var n=NS.nodes[i]; if(!n||!n.pos) continue;
-    if(!(n.kind==='bot'||n.kind==='core'||n.kind==='engine')) continue;
+    if(!(n.kind==='bot'||n.kind==='engine')) continue;
     var r=n.r||1, surf=cam.position.distanceTo(n.pos)-r;
     if(surf<bestSurf){ bestSurf=surf; best=n; bestR=r; } }
-  var atmoTop=bestR*0.6;                                   // haze starts within ~0.6 radii of the surface
+  var atmoTop=bestR*0.6;
   var t=(best && mult>0) ? (1.0-Math.max(0,Math.min(1, bestSurf/Math.max(1e-3,atmoTop)))) : 0;
-  t=t*t;                                                   // ease in
-  NS._nearT=t;                                            // proximity 0..1 — also used to tame bloom on approach
-  var target=t*(3.0/Math.max(1,bestR))*mult;              // FogExp2 density target
+  t=t*t;
+  NS._nearT=t;
+  // Deep-space baseline fog: extremely subtle depth cueing
+  var deepSpaceBase = 0.0000008 * mult;
+  var atmoTarget=t*(3.0/Math.max(1,bestR))*mult;
+  var target = Math.max(deepSpaceBase, atmoTarget);
   var k=Math.min(1,(dt||0.016)*3.0);
   f.density += (target-f.density)*k;
-  if(f.density<1e-7) f.density=0;
+  if(f.density<1e-9) f.density=0;
   try{
     if(best && t>0.003 && typeof nsColorOf==='function'){
-      var c=new THREE.Color(nsColorOf(best)); c.multiplyScalar(0.5);   // moody tint, not whiteout
+      var c=new THREE.Color(nsColorOf(best)); c.multiplyScalar(0.5);
       f.color.lerp(c, k*0.5*t);
-    } else if(f.color && f.color.lerp){ f.color.lerp(new THREE.Color(0x0a0e16), k*0.4); }
+    } else if(f.color && f.color.lerp){ f.color.lerp(new THREE.Color(0x050810), k*0.4); }
   }catch(_){}
 }
 function nsRenderBloom(){
@@ -2005,17 +2455,33 @@ function nsRenderBloom(){
       if(!NS._composer){
         var _comp=new THREE.EffectComposer(R);
         _comp.addPass(new THREE.RenderPass(NS.scene,NS.camera));
+        
+        // --- SSAO DISABLED: kernelRadius=12 on scenes spanning 100k+ units
+        // causes GPU stalls / context loss. The depth precision is too low for
+        // the KAIVERSE scale. Bloom + cinematic pass are sufficient. ---
+
         var _str=(typeof window!=='undefined'&&+window.KAIVERSE_BLOOM_STRENGTH)||1.1;
         var _rad=(typeof window!=='undefined'&&+window.KAIVERSE_BLOOM_RADIUS)||0.5;
-        var _thr=(typeof window!=='undefined'&&window.KAIVERSE_BLOOM_THRESH!=null)?+window.KAIVERSE_BLOOM_THRESH:0.5;
+        var _thr=(typeof window!=='undefined'&&window.KAIVERSE_BLOOM_THRESH!=null)?+window.KAIVERSE_BLOOM_THRESH:1.0;   // raised to 1.0: only explicitly glowing objects (sun, engines) will bloom.
         var _bp=new THREE.UnrealBloomPass(new THREE.Vector2(_cw,_ch),_str,_rad,_thr);
         _comp.addPass(_bp);
+        if (typeof THREE.ShaderPass === 'function') {
+           const myCinematicShader = {
+             uniforms: { tDiffuse: { value: null }, time: { value: 0.0 } },
+             vertexShader: "varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
+             fragmentShader: "uniform sampler2D tDiffuse; uniform float time; varying vec2 vUv; float rand(vec2 n){return fract(sin(dot(n,vec2(12.9898,4.1414)))*43758.5453);} void main() { vec4 tex = texture2D(tDiffuse, vUv); vec2 uv = (vUv - 0.5) * 1.0; float dist = dot(uv, uv); tex.rgb *= smoothstep(0.8, 0.2 * 0.799, dist * 1.5 + 0.1); tex.rgb += (rand(vUv * time) - 0.5) * 0.04; gl_FragColor = tex; }"
+           };
+           var _cp = new THREE.ShaderPass(myCinematicShader);
+           _comp.addPass(_cp);
+           NS._composerCinematic = _cp;
+        }
         NS._composer=_comp; NS._composerBloom=_bp; NS._composerW=_cw; NS._composerH=_ch; NS._bloomBaseStr=_str;
       }
       if(_cw!==NS._composerW||_ch!==NS._composerH){ NS._composer.setSize(_cw,_ch); NS._composerW=_cw; NS._composerH=_ch; }
       // PROXIMITY-TAMED BLOOM: drop bloom strength as you approach a surface so the
       // atmosphere shell / planet limb doesn't blow out up close (distant stars keep full glow).
       if(NS._composerBloom && NS._bloomBaseStr!=null){ var _np=NS._nearT||0; NS._composerBloom.strength=NS._bloomBaseStr*(1.0-0.72*_np); }
+      if(NS._composerCinematic) { NS._composerCinematic.uniforms.time.value = performance.now()*0.001; }
       R.setRenderTarget(null); NS._composer.render(); return;
     }catch(_e){ NS._composerFail=true; try{ R.setRenderTarget(null); R.autoClear=true; }catch(__){} }
   }
@@ -2144,17 +2610,19 @@ function nsBuildBodies(){
     if(n.kind==='bot' || n.kind==='channels'){
       // bots read as PROCEDURAL WORLDS: noise-texture surface tinted to bot color
       const tex=nsMakePlanetTexture(nsHashStr(n.name), n.kind==='channels'?'exotic':'rock');
-      mat=new THREE.MeshStandardMaterial({map:tex, color:col, roughness:0.85, metalness:0.04, emissive:col, emissiveIntensity:0.06});
-      // atmosphere rim glow in the body's color
+      mat=new THREE.MeshStandardMaterial({map:tex, bumpMap:tex, bumpScale:22.0, color:col, roughness:0.85, metalness:0.04, emissive:col, emissiveIntensity:0.08});
+      // atmosphere rim glow in the body's color + dynamic clouds
       const atmo=nsMakeAtmosphere(n.r, n.color); atmo.position.copy(n.pos); NS.scene.add(atmo); n.atmo=atmo;
+      const clouds=nsMakeClouds(n.r); clouds.position.copy(n.pos); NS.scene.add(clouds); n.clouds=clouds;
+      const asteroids=nsBuildPlanetaryAsteroids(n.r, n.color); asteroids.position.copy(n.pos); NS.scene.add(asteroids); n.asteroids=asteroids;
     } else if(n.kind==='provider'){
       const tex=nsMakePlanetTexture(nsHashStr('prov-'+n.name), 'gas');
-      mat=new THREE.MeshStandardMaterial({map:tex, color:col, emissive:col, emissiveIntensity:n.active?0.5:0.06, roughness:0.4, metalness:0.1});
+      mat=new THREE.MeshStandardMaterial({map:tex, bumpMap:tex, bumpScale:12.0, color:col, emissive:col, emissiveIntensity:n.active?0.5:0.12, roughness:0.4, metalness:0.1});
       if(!n.active){ mat.opacity=0.55; mat.transparent=true; }
       else { const atmo=nsMakeAtmosphere(n.r, n.color); atmo.position.copy(n.pos); NS.scene.add(atmo); n.atmo=atmo; }
     } else {
       // core / engine — bright stellar bodies
-      mat=new THREE.MeshStandardMaterial({color:col, emissive:(n.kind==='core'?new THREE.Color(0xfff2d0):col), emissiveIntensity:(n.kind==='core'?3.6:0.5), roughness:0.4, metalness:0.1});
+      mat=new THREE.MeshStandardMaterial({color:col, emissive:(n.kind==='core'?new THREE.Color(0xfff2d0):col), emissiveIntensity:(n.kind==='core'?10.0:0.5), roughness:0.4, metalness:0.1});
       if(n.kind==='core'){
         const halo=new THREE.Mesh(new THREE.SphereGeometry(n.r*1.6, 64, 48), new THREE.MeshBasicMaterial({color:0x46d6ff, transparent:true, opacity:0.35, blending:THREE.AdditiveBlending, side:THREE.BackSide, depthWrite:false}));
         halo.position.copy(n.pos); NS.scene.add(halo); n.atmo=halo;
@@ -2163,8 +2631,34 @@ function nsBuildBodies(){
         try{ nsBuildCoreFX(n); }catch(_){}
       }
     }
-    if(n.kind==='bot'||n.kind==='channels'||n.kind==='provider'){ try{ nsAttachReliefNormal(mat, nsHashStr(n.name||n.id||'planet'), n); }catch(_){} }
+    if(n.kind==='bot'||n.kind==='channels'||n.kind==='provider'){ 
+      try{ nsAttachReliefNormal(mat, nsHashStr(n.name||n.id||'planet'), n); }catch(_){}
+      
+      // --- PHASE 3: WEB WORKER & DATA TEXTURE DEFORMATION ---
+      if (typeof nsApplyDisplacement === 'function' && typeof nsPlanetDNA === 'function') {
+        const _d = nsPlanetDNA(n);
+        const _amp = (_d.type === 'gas' ? 0 : n.r * 0.022);
+        
+        // Request the hardware-accelerated DataTexture from the background Web Worker
+        if (NS.workerReady && _amp > 0) {
+          NS.workerCallbacks[n.id] = (data) => {
+            const tex = new THREE.DataTexture(data, 512, 512, THREE.RGBAFormat, THREE.FloatType);
+            tex.needsUpdate = true;
+            nsApplyDisplacement(mat, _d, _amp, tex);
+          };
+          NS.worker.postMessage({ type: 'GENERATE_TERRAIN', id: n.id, seed: nsHashStr(n.name||n.id), size: 512, sharp: _d.sharpness, sea: _d.sea });
+        } else {
+           // Fallback to pure procedural GPU math if worker isn't ready
+           nsApplyDisplacement(mat, _d, _amp, null);
+        }
+      }
+      // --------------------------------------------------------
+    }
     const mesh=new THREE.Mesh(geo,mat); mesh.position.copy(n.pos); mesh.userData.nid=n.id;
+    if(n.kind !== 'core' && n.kind !== 'engine') {
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+    }
     NS.scene.add(mesh); n.mesh=mesh; NS.three.meshes.push(mesh);
     // Real equirectangular surface texture if one exists at /textures/<name>.jpg
     // (dropped in by the texture-sourcing task). Falls back silently to procedural.
@@ -2284,10 +2778,10 @@ function nsResize(){
 // Speeds scale with NS_SPREAD so the vast distances are actually traversable and
 // the FULL throttle range is felt. The min..max spread is WIDE (≈20x) so scroll
 // genuinely changes how fast WASD moves (owner #7).
-const NS_FLY_ACCEL = 1400*NS_SCALE*NS_SPREAD;  // units/s^2 base accel while a key is held
-// Top speed cut to ~35% of the old blur-fast value so cruising open space is
-// controllable (owner: "WAY too fast"). Env override still honored.
-const NS_FLY_MAX   = ((typeof window!=='undefined' && +window.KAIVERSE_FLY_MAX) || 1800)*NS_SCALE*NS_SPREAD;  // ABSOLUTE top speed at 100% throttle
+const NS_FLY_ACCEL = 20000*NS_SCALE*NS_SPREAD;  // units/s^2 base accel while a key is held
+// Top speed balanced: fast enough to cross the system in ~1 minute, but not an instant teleport.
+// Cruising open space is controllable via the exponential throttle curve.
+const NS_FLY_MAX   = ((typeof window!=='undefined' && +window.KAIVERSE_FLY_MAX) || 25000000)*NS_SCALE*NS_SPREAD;  // ABSOLUTE top speed at 100% throttle
 const NS_FLY_MIN   = ((typeof window!=='undefined' && +window.KAIVERSE_FLY_MIN) || 180)*NS_SCALE*NS_SPREAD;   // floor speed at 0% throttle (still moves, but slow)
 const NS_FLY_DAMP  = 2.6;            // velocity damping when keys released (smoother)
 // throttle: scroll up → faster, scroll down → slower. Smoothed toward target.
@@ -2341,8 +2835,14 @@ function nsUpdateCamera(dt){
   let prevPos = NS._prevCamPos || (NS._prevCamPos=new THREE.Vector3());
   prevPos.copy(cam.position);
 
-  // smooth the throttle toward its scroll target every frame
-  NS.throttle += (NS.throttleT - NS.throttle) * Math.min(1, dt*6);
+  // Dynamic Auto-Throttle: ramps up automatically when thrusting forward or in autopilot.
+  const isFwdThrust = NS.keys['w'] || (NS._gpKeys && NS._gpKeys.includes('w')) || NS._autopilot;
+  if (isFwdThrust) {
+    NS.throttle = Math.min(1.0, NS.throttle + dt * 0.4); // ~2.5s to max
+  } else {
+    NS.throttle = Math.max(0.02, NS.throttle - dt * 0.6); // quick ramp down
+  }
+  NS.throttleT = NS.throttle; // Sync for HUD
 
   // ── accelerated fly-to (slow start → accelerate → ease-in), now FOLLOWS a
   //    moving body: the destination is recomputed each frame from the live node
@@ -2357,12 +2857,14 @@ function nsUpdateCamera(dt){
     c.target.lerpVectors(f.fromTgt, liveTgt, e);
     cam.lookAt(c.target);
     if(f.t>=1){
-      // arrived → hand to FOLLOW-CAM that tracks the moving body until the owner
-      // flies manually (WASD) or deselects.
-      NS.flyTo=null; c.mode='follow'; NS.followNid=f.nid;
+      // arrived → hand to free-fly so the user retains full manual control
+      // without being forced into an automatic orbit.
+      NS.flyTo=null; c.mode='fly'; NS.followNid=null;
       c.followOff=cam.position.clone().sub(liveTgt);    // keep current framing offset
     }
   } else if(c.mode==='follow'){
+    if(NS._playerShip) NS._playerShip.visible=false;
+    NS._shipPos=null; NS._chasePos=null;
     // ── FOLLOW-CAM: track the selected moving body, keeping it framed. ──
     // thrust (movement keys or a real stick push) breaks the orbit lock back to free-fly.
     const Kf=NS.keys, breakOrbit = Kf['w']||Kf['s']||Kf['a']||Kf['d']||Kf['e']||Kf['q']||Kf[' ']||Kf['shift']||(NS._gpMag!=null&&NS._gpMag>0.12);
@@ -2372,37 +2874,55 @@ function nsUpdateCamera(dt){
     else {
       // gentle auto-orbit: slowly drift the framing offset around the body ("in orbit")
       if(c.followOff){ const aa=dt*0.06, ca=Math.cos(aa), sa=Math.sin(aa);
-        const ox=c.followOff.x, oz=c.followOff.z; c.followOff.x=ox*ca-oz*sa; c.followOff.z=ox*sa+oz*ca; }
+        const ox=c.followOff.x, oz=c.followOff.z; c.followOff.x=ox*ca-oz*sa; c.followOff.z=ox*sa+oz*ca; 
+        const _mr = (node.r||1)*1.5; if(c.followOff.lengthSq() < _mr*_mr) c.followOff.setLength(_mr); }
       const want=node.pos.clone().add(c.followOff||new THREE.Vector3(0,0,1));
       cam.position.lerp(want, Math.min(1, dt*3.2));      // smooth chase
-      c.target.copy(node.pos); cam.up.set(0,1,0); cam.lookAt(c.target);
+      c.target.copy(node.pos); cam.up.set(0,1,0); 
+      // Free look override: instead of forcing lookAt(c.target), use yaw/pitch
+      const cp=Math.cos(c.pitch), sp=Math.sin(c.pitch), cy=Math.cos(c.yaw), sy=Math.sin(c.yaw);
+      const fwd=new THREE.Vector3(cp*cy,sp,cp*sy);
+      cam.lookAt(cam.position.clone().add(fwd));
     }
   } else if(c.mode==='fly'){
     // ── free-fly: build basis from yaw/pitch, thrust with keys. Speed EASES IN
     //    toward the throttle ceiling for an illusion of accelerating across the
     //    vast space (No-Man's-Sky feel). ──
     const cp=Math.cos(c.pitch), sp=Math.sin(c.pitch), cy=Math.cos(c.yaw), sy=Math.sin(c.yaw);
-    // ── SURFACE-RELATIVE BASIS ── far from a planet, up = world Y (normal flight). Near a
-    //    planet, up smoothly becomes the planet RADIAL so WASD moves ALONG the ground and the
-    //    horizon levels out (the walking-on-a-world frame). Reduces to the old basis when far.
+    // ── SURFACE-RELATIVE BASIS ── smoothly level horizon ONLY when extremely close
     let _upT=new THREE.Vector3(0,1,0);
     if(NS._nearPlanet && NS._nearPlanet.pos){
       const _rad=cam.position.clone().sub(NS._nearPlanet.pos), _rr=NS._nearPlanet.r||1;
-      // SMOOTH proximity lean (eased, stored) — 0 beyond ~3 radii, gentle near the surface.
       const _surf=Math.max(0,_rad.length()-_rr);
-      // WIDE handoff band: tilt eases in from ~8 radii out, full lean only near the surface -> no snap at ~10k km
-      const _t0=_rr*0.15, _t1=_rr*8.0;
+      // extremely tight handoff band: only start tilting when practically touching the atmosphere (< 2 radii)
+      const _t0=_rr*0.05, _t1=_rr*2.0;
       let _bt=(_t1-_surf)/Math.max(1e-6,(_t1-_t0)); _bt=_bt<0?0:(_bt>1?1:_bt); _bt=_bt*_bt*(3-2*_bt); _bt=_bt*_bt;
-      const _blMax=0.85;
-      NS._flyTilt = NS._flyTilt==null ? (_bt*_blMax) : (NS._flyTilt + (_bt*_blMax - NS._flyTilt)*Math.min(1,dt*1.5));
+      const _blMax=0.65; // max 65% influence, allows player to still fight it
+      NS._flyTilt = NS._flyTilt==null ? (_bt*_blMax) : (NS._flyTilt + (_bt*_blMax - NS._flyTilt)*Math.min(1,dt*0.1)); // VERY SLOW transition
       const _bl=NS._flyTilt;
       if(_bl>0 && _rad.lengthSq()>1e-9){ _rad.normalize(); _upT=new THREE.Vector3(0,1,0).lerp(_rad,_bl); if(_upT.lengthSq()>1e-9) _upT.normalize(); else _upT.set(0,1,0); }
     } else if(NS._flyTilt!=null && NS._flyTilt>1e-4){
-      NS._flyTilt += (0 - NS._flyTilt)*Math.min(1,dt*1.5);
+      NS._flyTilt += (0 - NS._flyTilt)*Math.min(1,dt*0.1);
     }
     if(!NS._up) NS._up=_upT.clone();
-    NS._up.lerp(_upT,Math.min(1,dt*0.9));   // ease toward target; wide band keeps the target slow-moving
+    NS._up.lerp(_upT,Math.min(1,dt*0.3));   // ease toward target; super slow-moving
     if(NS._up.lengthSq()>1e-9) NS._up.normalize(); else NS._up.set(0,1,0);
+    
+    // ── SURFACE GRAVITY ROTATION LOCK ──
+    // Rotate the camera around the planet center so we move with the surface
+    if (NS._nearPlanet && NS._nearPlanet.mesh && NS._surfMin != null && NS._rNear != null && NS._surfMin < NS._rNear * 2.0) {
+      const curRot = NS._nearPlanet.mesh.rotation.y;
+      if (NS._nearPlanet._lastRot !== undefined) {
+         const deltaRot = curRot - NS._nearPlanet._lastRot;
+         const rel = cam.position.clone().sub(NS._nearPlanet.pos);
+         rel.applyAxisAngle(new THREE.Vector3(0,1,0), deltaRot);
+         cam.position.copy(NS._nearPlanet.pos).add(rel);
+         if(c.vel) c.vel.applyAxisAngle(new THREE.Vector3(0,1,0), deltaRot);
+         c.yaw -= deltaRot; 
+      }
+      NS._nearPlanet._lastRot = curRot;
+    }
+    
     const lUp=NS._up;
     const _ref=Math.abs(lUp.y)<0.985?new THREE.Vector3(0,1,0):new THREE.Vector3(1,0,0);
     const _east=new THREE.Vector3().crossVectors(_ref,lUp).normalize();
@@ -2413,9 +2933,14 @@ function nsUpdateCamera(dt){
     const right=new THREE.Vector3().crossVectors(fwd,lUp).normalize();
     const up=lUp.clone();
     const K=NS.keys; const acc=new THREE.Vector3();
-    if(K['w']) acc.add(fwd); if(K['s']) acc.addScaledVector(fwd,-1);
-    if(K['d']) acc.add(right); if(K['a']) acc.addScaledVector(right,-1);
-    if(K['e']||K[' ']) acc.add(up); if(K['q']||K['shift']) acc.addScaledVector(up,-1);
+    let fwdAmt = (K['w']?1:0) - (K['s']?1:0);
+    if(NS._autopilot) fwdAmt = Math.max(fwdAmt, 1.0); // Autopilot forces forward thrust
+    const latAmt = (K['d']?0.1:0) - (K['a']?0.1:0); // Lateral inertia: much weaker force
+    const upAmt = (K['e']||K[' ']?0.1:0) - (K['q']||K['shift']?0.1:0);
+    
+    if(fwdAmt!==0) acc.addScaledVector(fwd, fwdAmt);
+    if(latAmt!==0) acc.addScaledVector(right, latAmt);
+    if(upAmt!==0) acc.addScaledVector(up, upAmt);
     let topSpeed=nsThrottleSpeed();
     // ── PROXIMITY DECELERATION (sell the scale) ── the closer the camera gets to
     //    a big body's SURFACE, the lower the effective top speed. Ramps smoothly
@@ -2435,10 +2960,40 @@ function nsUpdateCamera(dt){
       const cruise=nsThrottleSpeed();
       let cap=cruise;
       if(surfMin<Infinity){
-        const _band=rNear*16.0, _approach=Math.max(0,Math.min(1, Math.max(0,surfMin)/_band)); const _eased=_approach*_approach*(3-2*_approach); 
-        const _radPerSec=window.KAIVERSE_NEAR_RADII_PER_SEC || [0.005, 0.05];
-        const slow=Math.max(NS_SCALE*5, rNear*(_radPerSec[0] + _radPerSec[1]*_eased), Math.max(0,surfMin)*0.03, cruise*_eased);  // NMS radii-per-second slow-crawl
-        cap=Math.min(cruise, slow);
+        // Gravity zone slowdown: extend the braking distance significantly
+        const startBrakeDist = 45000000;
+        const hardStopDist   = 12000000;
+        let slow = cruise;
+        if (surfMin < startBrakeDist) {
+          // Ramp down from cruise to a slow atmospheric speed
+          const t = Math.max(0, surfMin) / startBrakeDist;
+          // Floor the speed at 0.5% of cruise so you can still fall towards the surface
+          slow = Math.max(cruise * 0.005, cruise * t * t); 
+        }
+        cap = Math.min(cruise, slow);
+      }
+      
+      // Autopilot Aim Assist: gently align vector toward the nearest planet if roughly aimed at it
+      if ((NS._autopilot || isFwdThrust) && rNear > 1 && surfMin < 80000000) {
+         let nearestPlanet = null;
+         let minDist = Infinity;
+         for(let i=0;i<NS.nodes.length;i++){
+           const nn=NS.nodes[i]; if(!nn||!nn.pos) continue;
+           if(!(nn.kind==='core'||nn.kind==='bot'||nn.kind==='engine')) continue;
+           const dist = cam.position.distanceTo(nn.pos);
+           if (dist < minDist) { minDist = dist; nearestPlanet = nn; }
+         }
+         if (nearestPlanet) {
+            const toPlanet = nearestPlanet.pos.clone().sub(cam.position).normalize();
+            // Only assist if we are already pointing roughly towards it (within ~25 degrees)
+            if (fwd.dot(toPlanet) > 0.9) {
+               // Nudge yaw and pitch towards the planet
+               const currentLook = cam.position.clone().add(fwd);
+               const targetLook = cam.position.clone().add(toPlanet);
+               // Simple trick: we let the physics naturally pull the velocity vector
+               acc.addScaledVector(toPlanet, 0.5); 
+            }
+         }
       }
       NS._absCap = NS._absCap==null ? cap : (NS._absCap + (cap-NS._absCap)*Math.min(1,dt*4));
     }
@@ -2448,8 +3003,12 @@ function nsUpdateCamera(dt){
     const analog=(NS._gpMag!=null && NS._gpMag>0) ? Math.max(0.08, NS._gpMag) : 1;
     if(moving){
       const cur=c.vel.length(), ramp=0.4+0.6*Math.min(1,cur/Math.max(1,topSpeed));
-      const thrAccel=NS_FLY_ACCEL*(0.25+1.5*NS.throttle*NS.throttle);
-      acc.normalize().multiplyScalar(thrAccel*ramp*dt*analog);   // ease in proportional to the stick
+      // EXPONENTIAL ACCELERATION: accel scales with current speed so you ramp up
+      // exponentially — crawl near surfaces, warp-speed in open space within seconds.
+      const speedBoost = 1.0 + Math.min(50.0, cur / (NS_FLY_ACCEL * 0.5));
+      const thrAccel=NS_FLY_ACCEL*(0.25+1.5*NS.throttle*NS.throttle) * speedBoost;
+      if (acc.lengthSq() > 1.0) acc.normalize();
+      acc.multiplyScalar(thrAccel*ramp*dt*analog);
       c.vel.add(acc);
     }
     const damp=Math.exp(-NS_FLY_DAMP*dt); c.vel.multiplyScalar(damp);
@@ -2462,14 +3021,21 @@ function nsUpdateCamera(dt){
       if(!(cn.kind==='core'||cn.kind==='bot'||cn.kind==='engine')) continue;
       const rel=cam.position.clone().sub(cn.pos), cd=rel.length(); if(cd<=1e-6) continue;
       const dir=rel.multiplyScalar(1/cd);
-      let minD=(cn.r||1)*1.09;
+      let minD=(cn.r||1)*1.001;
       if(cn._terrAmp){ var _sp=(cn.mesh?cn.mesh.rotation.y:0),_cs=Math.cos(-_sp),_sn=Math.sin(-_sp),_rx=dir.x*_cs-dir.z*_sn,_rz=dir.x*_sn+dir.z*_cs; const lh=nsTerrainHeightJS(_rx,dir.y,_rz,cn._terrSharp,cn._terrSea)*cn._terrAmp;
-        minD=(cn.r||1)*1.005 + lh + Math.max(NS_SCALE*3.0, (cn.r||1)*0.0012); }   // small near-absolute clearance -> get proportionally close to huge surfaces (flat horizon)
+        minD=(cn.r||1)*1.0 + lh + NS_SCALE*0.5; }
       if(cd<minD){ cam.position.copy(cn.pos).addScaledVector(dir, minD);
         const vn=c.vel.dot(dir); if(vn<0) c.vel.addScaledVector(dir, -vn); }
     }
+    // Stash fly vectors for the 3rd-person pre-render (before fwd is mutated)
+    NS._flyFwd=fwd.clone(); NS._flyUp=up.clone();
+    if(!NS._thirdPerson){
+      // ── 1ST PERSON: the camera IS the cockpit — no chase ship, no pull-back. ──
+      if(NS._playerShip) NS._playerShip.visible=false;
+      NS._chasePos=null;
+    }
     c.target.copy(cam.position).add(fwd.multiplyScalar(120*NS_SCALE));
-    cam.up.copy(up);                 // ROLL the view to the planet radial -> ground reads as DOWN, movement looks like walking the surface
+    cam.up.copy(up);
     cam.lookAt(c.target);
     // ── GRAVITY WELL ── nearby bodies TUG the camera. You keep full free-flight at
     //    all times (no mode switch); you just feel the pull — thrust out to climb away,
@@ -2484,14 +3050,15 @@ function nsUpdateCamera(dt){
         if(gb._g==null){ gb._g=(typeof nsPlanetDNA==='function' && nsPlanetDNA(gb).gravity) || 1.0; }   // per-planet G from Planet DNA
         const toB=gb.pos.clone().sub(cam.position); const dist=Math.max(grn*0.8, toB.length()); toB.normalize();
         const k=Math.min(0.20,(grn*grn)/(dist*dist));        // capped so gravity NEVER dominates your thrust
-        const pull=0.0; // GRAVITY DISABLED — it kept pulling you in; re-enable gently once scale feels right
+        const pull=25.0 * k; // GRAVITY ENABLED — gently curves flight paths towards the planet
         c.vel.addScaledVector(toB, pull*dt);                // gravity adds to velocity; thrust still rules
         NS._gravePull=k*gb._g;
       } else NS._gravePull=0;
     }
   } else if(c.mode==='walk'){
-    // ── ON-FOOT ── glued to the planet surface. up = radial, WASD walks tangentially along the
-    //    ground, Space jumps, you fall back under gravity. L takes off back to flight.
+    // ── ON-FOOT (1st person) ── glued to the planet surface. Ship hidden.
+    if(NS._playerShip) NS._playerShip.visible=false;
+    NS._shipPos=null; NS._chasePos=null;
     const planet=NS._walkPlanet||NS._nearPlanet;
     if(!planet || !planet.pos){ c.mode='fly'; }
     else {
@@ -2525,16 +3092,39 @@ function nsUpdateCamera(dt){
       // (continuous noise diverges from the coarse faceted mesh on a huge sphere -> the clipping). Falls
       // back to the noise function if the mesh isn't ready (mid-bake / base sphere). Universal: all planets.
       let gh=rr*1.005, _ghHit=false;
-      var _pat=planet._descent && planet._descent.patch;
-      var _ter=planet._descent && planet._descent.terrain;
-      var _hitObj=(_pat && _pat.visible)?_pat:((_ter && _ter.visible)?_ter:null);   // prefer the high-detail PATCH
-      if(_hitObj){ _hitObj.updateMatrixWorld();
+      // Raycast against highest-detail visible mesh: patch → terrain → base sphere
+      var _rayTargets=[];
+      if(planet._descent){
+        var _pat=planet._descent.patch, _ter=planet._descent.terrain;
+        if(_pat && _pat.visible) _rayTargets.push({m:_pat, off:0});
+        if(_ter && _ter.visible) _rayTargets.push({m:_ter, off:0});
+      }
+      if(planet.mesh && planet.mesh.visible) _rayTargets.push({m:planet.mesh, off:rr*0.005}); // base sphere starts at r, not r*1.005
+      if(_rayTargets.length){
         if(!NS._walkRay) NS._walkRay=new THREE.Raycaster();
-        NS._walkRay.set(center.clone().addScaledVector(nr, rr*1.6), nr.clone().multiplyScalar(-1)); NS._walkRay.far=rr*1.6;
-        var _hh=NS._walkRay.intersectObject(_hitObj, false);
-        if((!_hh||!_hh.length) && _hitObj===_pat && _ter && _ter.visible){ var _hh2=NS._walkRay.intersectObject(_ter,false); if(_hh2&&_hh2.length){ gh=_hh2[0].point.distanceTo(center); _ghHit=true; } }
-        else if(_hh && _hh.length){ gh=_hh[0].point.distanceTo(center); _ghHit=true; } }
-      if(!_ghHit && typeof nsTerrainHeightJS==='function' && planet._terrAmp){ var _wp=(planet.mesh?planet.mesh.rotation.y:0),_wc=Math.cos(-_wp),_ws=Math.sin(-_wp),_nx=nr.x*_wc-nr.z*_ws,_nz=nr.x*_ws+nr.z*_wc; gh+=nsTerrainHeightJS(_nx,nr.y,_nz,planet._terrSharp,planet._terrSea)*planet._terrAmp; }
+        var _rayH=rr*1.1; // well above any peak (max ≈ r*1.062 with displacement map)
+        NS._walkRay.set(center.clone().addScaledVector(nr, _rayH), nr.clone().negate());
+        NS._walkRay.far=_rayH;
+        for(var _ti=0;_ti<_rayTargets.length;_ti++){
+          _rayTargets[_ti].m.updateMatrixWorld(true);
+          var _hh=NS._walkRay.intersectObject(_rayTargets[_ti].m, false);
+          if(_hh && _hh.length){
+            gh=_hh[0].point.distanceTo(center)+_rayTargets[_ti].off;
+            _ghHit=true; break;
+          }
+        }
+      }
+      // Fallback formula: same nsTerrainHeightJS the CPU bake uses (single source of truth)
+      if(!_ghHit && typeof nsTerrainHeightJS==='function'){
+        var _wp=(planet.mesh?planet.mesh.rotation.y:0),_wc=Math.cos(-_wp),_ws=Math.sin(-_wp);
+        var _nx=nr.x*_wc-nr.z*_ws,_nz=nr.x*_ws+nr.z*_wc;
+        gh+=nsTerrainHeightJS(_nx,nr.y,_nz,planet._terrSharp,planet._terrSea)*(planet._terrAmp||0);
+      }
+      // Debug: gated by NS._walkDebug — set via console: NS._walkDebug=true
+      if(NS._walkDebug){
+        var _fh=rr*1.005; if(typeof nsTerrainHeightJS==='function'){var _dwp=(planet.mesh?planet.mesh.rotation.y:0),_dwc=Math.cos(-_dwp),_dws=Math.sin(-_dwp); _fh+=nsTerrainHeightJS(nr.x*_dwc-nr.z*_dws,nr.y,nr.x*_dws+nr.z*_dwc,planet._terrSharp,planet._terrSea)*(planet._terrAmp||0);}
+        console.log('[WALK DBG] rayHit='+_ghHit+' gh='+gh.toFixed(1)+' formula='+_fh.toFixed(1)+' camR='+nl.toFixed(1)+' delta='+(gh-_fh).toFixed(2)+' targets='+_rayTargets.length);
+      }
       const _moving=wv.lengthSq()>0; NS._walkT=(NS._walkT||0)+(_moving?dt*7:0);
       const eyeH=NS_SCALE*4.5;   // eye height above terrain (~128 units, about human scale relative to the planet)
       const standR=gh+eyeH + (_moving?Math.abs(Math.sin(NS._walkT))*NS_SCALE*0.5:0);   // head-bob while walking
@@ -2550,10 +3140,12 @@ function nsUpdateCamera(dt){
       cam.up.copy(lUp); cam.lookAt(c.target);
     }
   } else {
-    // ── orbit (tweened) ──
+    // ── orbit (tweened) ── ship hidden in orbit view
+    if(NS._playerShip) NS._playerShip.visible=false;
+    NS._shipPos=null; NS._chasePos=null;
     const k=Math.min(1, dt*3.0);
     c.radius += (c.tRadius-c.radius)*k;
-    if(!NS._userTook && !NS.flyTo && !NS.followNid && !(NS._nearPlanet && NS.camera && NS.camera.position.distanceTo(NS._nearPlanet.pos) < (NS._nearPlanet.r||1)*6)){ const _d=dt*0.035; c.theta+=_d; c.tTheta+=_d; }   // gentle real orbit at spawn (NOT near a surface)
+    if(!NS._userTook && !NS.flyTo && !NS.followNid && !(NS._nearPlanet && NS.camera && NS.camera.position.distanceTo(NS._nearPlanet.pos) < (NS._nearPlanet.r||1)*6)){ const _d=dt*0.005; c.theta+=_d; c.tTheta+=_d; }   // gentle real orbit at spawn (NOT near a surface)
     c.theta  += (c.tTheta -c.theta )*k;
     c.phi    += (c.tPhi   -c.phi   )*k;
     c.target.x += (c.tTargetX-c.target.x)*k;
@@ -2573,6 +3165,20 @@ function nsUpdateCamera(dt){
   // frame; don't let that fake-spike the speed (it fired the warp-streak "flying backwards" on spawn).
   if(instSpeed > NS_FLY_MAX*4) instSpeed = c.speed;
   c.speed += (instSpeed - c.speed) * Math.min(1, dt*6);   // smoothed
+
+  // WARP FOV DISTORTION & CAMERA SHAKE
+  const warpRatio = Math.min(1.0, Math.max(0.0, c.speed / (NS_FLY_MAX * 0.5)));
+  const targetFov = NS.baseFov + warpRatio * 65.0; // stretches from 55 up to 120
+  if(Math.abs(cam.fov - targetFov) > 0.1) {
+    cam.fov += (targetFov - cam.fov) * Math.min(1, dt*4.0);
+    cam.updateProjectionMatrix();
+  }
+  
+  if (warpRatio > 0.5 && c.mode === 'fly') {
+    const shake = (warpRatio - 0.5) * 2.0;
+    cam.rotateZ((Math.random() - 0.5) * 0.08 * shake);
+    cam.rotateX((Math.random() - 0.5) * 0.04 * shake);
+  }
 }
 function nsEaseInOutCubic(t){ return t<0.5 ? 4*t*t*t : 1-Math.pow(-2*t+2,3)/2; }
 
@@ -2863,6 +3469,7 @@ function nsPaintMarkers(){
   }
   const rect=wrap.getBoundingClientRect(), W=rect.width, H=rect.height;
   if(!NS._mkEls) NS._mkEls={};
+  NS._inOrbitOf = null; // reset every frame
   const seen={}, v=new THREE.Vector3();
   for(let i=0;i<NS.nodes.length;i++){
     const n=NS.nodes[i]; if(!n || !n.pos) continue;
@@ -2894,6 +3501,24 @@ function nsPaintMarkers(){
       el.style.boxShadow=isGps?('0 0 10px '+col):'none';
       el.style.background=isGps?'rgba(10,18,28,0.8)':'rgba(6,12,20,0.5)';
     }
+    
+    // ORBIT NOTIFICATION CARD LOGIC
+    let orbitCard = document.getElementById('kv-orbit-card');
+    if (!orbitCard) {
+      orbitCard = document.createElement('div');
+      orbitCard.id = 'kv-orbit-card';
+      orbitCard.style.cssText = 'position:absolute; right:-300px; top:200px; width:260px; background:rgba(6,12,20,0.85); border-left:4px solid #bfe3ff; border-radius:8px; padding:15px; color:#fff; font-family:var(--mono,monospace); font-size:12px; transition:right 0.4s ease, opacity 1.5s ease; opacity:1; z-index:100; box-shadow:0 0 15px rgba(0,0,0,0.5); backdrop-filter:blur(4px); pointer-events:none;';
+      wrap.appendChild(orbitCard);
+    }
+    
+    const distToCenter = cam.position.distanceTo(n.pos);
+    const inOrbit = (n.r > 0 && distToCenter < n.r * 1.5);
+    if (inOrbit && n.kind !== 'core') {
+       NS._inOrbitOf = n; // keep track
+       el.style.display = 'none'; // hide floating 3D label
+       continue;
+    }
+
     v.copy(n.pos).project(cam);
     const behind=v.z>1;
     let sx=(v.x*0.5+0.5)*W, sy=(-v.y*0.5+0.5)*H;
@@ -2903,24 +3528,95 @@ function nsPaintMarkers(){
     el.style.display='flex';
     if(el._nmTxt!==nm){ el._nm.textContent=nm; el._nmTxt=nm; }
     if(el._col!==col){ el._nm.style.color=col; }
-    if(onScreen){
-      if(el._mode!=='on'||el._col!==col){ el._ic.textContent=''; el._ic.style.cssText='width:7px;height:7px;border-radius:50%;background:'+col+';box-shadow:0 0 6px '+col+';'; el._mode='on'; }
-      const dt1=nsFmtDist(cam.position.distanceTo(n.pos), n.r); if(el._dsTxt!==dt1){ el._ds.textContent=dt1; el._dsTxt=dt1; }
-      el.style.left=Math.max(40,Math.min(W-40,sx))+'px';
-      el.style.top=Math.max(16,Math.min(H-16,sy-20))+'px';
-      el.style.opacity='0.95';
-    } else {
-      let dirX=sx-W/2, dirY=sy-H/2; if(behind){ dirX=-dirX; dirY=-dirY; }
-      const a=Math.atan2(dirY,dirX), pad=40, hw=W/2-pad, hh=H/2-pad;
-      const tx=Math.abs(hw/Math.cos(a)), ty=Math.abs(hh/Math.sin(a)), tt=Math.min(tx,ty);
-      const ex=W/2+Math.cos(a)*tt, ey=H/2+Math.sin(a)*tt;
-      if(el._mode!=='off'||el._col!==col){ el._ic.textContent='➜'; el._ic.style.cssText='display:inline-block;color:'+col+';font-size:12px;'; el._mode='off'; }
-      el._ic.style.transform='rotate('+a+'rad)';
-      const dt2=nsFmtDist(cam.position.distanceTo(n.pos), n.r); if(el._dsTxt!==dt2){ el._ds.textContent=dt2; el._dsTxt=dt2; }
+      let etaStr = '';
+      if (NS.cam && NS.cam.speed > 0) {
+        const d = cam.position.distanceTo(n.pos);
+        if (d > n.r * 2) {
+          const s = d / Math.max(1, NS.cam.speed);
+          if (s < 60) etaStr = ' | ETA: ' + Math.round(s) + 's';
+          else if (s < 3600) etaStr = ' | ETA: ' + Math.floor(s/60) + 'm ' + Math.round(s%60) + 's';
+          else etaStr = ' | ETA: >1h';
+        }
+      }
+      
+      if(onScreen){
+        if(el._mode!=='on'||el._col!==col){ el._ic.textContent=''; el._ic.style.cssText='width:7px;height:7px;border-radius:50%;background:'+col+';box-shadow:0 0 6px '+col+';'; el._mode='on'; }
+        const dt1=nsFmtDist(cam.position.distanceTo(n.pos), n.r) + etaStr; if(el._dsTxt!==dt1){ el._ds.textContent=dt1; el._dsTxt=dt1; }
+        el.style.left=Math.max(40,Math.min(W-40,sx))+'px';
+        el.style.top=Math.max(16,Math.min(H-16,sy-20))+'px';
+        el.style.opacity='0.95';
+      } else {
+        let dirX=sx-W/2, dirY=sy-H/2; if(behind){ dirX=-dirX; dirY=-dirY; }
+        const a=Math.atan2(dirY,dirX), pad=40, hw=W/2-pad, hh=H/2-pad;
+        const tx=Math.abs(hw/Math.cos(a)), ty=Math.abs(hh/Math.sin(a)), tt=Math.min(tx,ty);
+        const ex=W/2+Math.cos(a)*tt, ey=H/2+Math.sin(a)*tt;
+        if(el._mode!=='off'||el._col!==col){ el._ic.textContent='➜'; el._ic.style.cssText='display:inline-block;color:'+col+';font-size:12px;'; el._mode='off'; }
+        el._ic.style.transform='rotate('+a+'rad)';
+        const dt2=nsFmtDist(cam.position.distanceTo(n.pos), n.r) + etaStr; if(el._dsTxt!==dt2){ el._ds.textContent=dt2; el._dsTxt=dt2; }
       el.style.left=ex+'px'; el.style.top=ey+'px'; el.style.opacity='0.85';
     }
     el._col=col;
   }
+  
+  // Orbit Notification Card visibility check & Location Title
+  let orbitCard = document.getElementById('kv-orbit-card');
+  let locTitle = document.getElementById('kv-location-title');
+  if (!locTitle && wrap) {
+    locTitle = document.createElement('div');
+    locTitle.id = 'kv-location-title';
+    locTitle.style.cssText = 'position:absolute; top:80px; left:50%; transform:translateX(-50%); text-align:center; transition:opacity 1s ease; opacity:0; z-index:105; pointer-events:none; font-family:var(--mono,monospace); text-shadow:0 2px 10px rgba(0,0,0,0.8);';
+    wrap.appendChild(locTitle);
+  }
+
+  let currLoc = NS._inOrbitOf ? (NS._inOrbitOf.name || NS._inOrbitOf.id || 'Planet') : 'Deep Space';
+  let pColor = NS._inOrbitOf ? (NS._inOrbitOf.color || '#fff') : '#88ccff';
+  
+  if (locTitle && NS._lastLoc !== currLoc) {
+    NS._lastLoc = currLoc;
+    let ms = performance.now();
+    let day = Math.floor(ms / 60000) + 1;
+    let cycle = (ms % 60000 < 30000) ? 'DAY' : 'NIGHT';
+    if (!NS._inOrbitOf) cycle = 'TRANSIT';
+    
+    locTitle.innerHTML = `<h1 style="margin:0; font-size:36px; font-weight:300; letter-spacing:4px; color:${pColor}; text-transform:uppercase;">${currLoc}</h1>` + 
+                         `<div style="font-size:14px; color:#aaa; margin-top:4px; letter-spacing:2px; text-transform:uppercase;">DAY ${day} &nbsp;|&nbsp; ${cycle} CYCLE</div>`;
+                         
+    locTitle.style.opacity = '1';
+    if(locTitle._timeout) clearTimeout(locTitle._timeout);
+    locTitle._timeout = setTimeout(() => { locTitle.style.opacity = '0'; }, 4000);
+  }
+
+  if (orbitCard) {
+    if (NS._inOrbitOf) {
+      if (orbitCard._nid !== NS._inOrbitOf.id) {
+        orbitCard._nid = NS._inOrbitOf.id;
+        let gravity = (9.8 * (0.8 + Math.random()*0.4)).toFixed(2);
+        orbitCard.style.borderLeftColor = pColor;
+        orbitCard.innerHTML = `<h4 style="margin:0 0 10px 0;color:${pColor};letter-spacing:1px;text-transform:uppercase;">PLANETARY TELEMETRY</h4>` +
+          `<div style="color:#9fb4c8;margin-bottom:5px;">Atmosphere: Analyzed</div>` +
+          `<div style="color:#9fb4c8;margin-bottom:5px;">Gravity: ${gravity} m/s²</div>` +
+          `<div style="color:#9fb4c8;margin-bottom:5px;">Status: Orbit Established</div>`;
+        orbitCard.style.right = '20px';
+        orbitCard.style.opacity = '1';
+        if(orbitCard._timeout) clearTimeout(orbitCard._timeout);
+        orbitCard._timeout = setTimeout(() => { orbitCard.style.opacity = '0'; }, 4000);
+      }
+    } else {
+      if (orbitCard._nid !== 'deep_space') {
+        orbitCard._nid = 'deep_space';
+        orbitCard.style.borderLeftColor = '#88ccff';
+        orbitCard.innerHTML = `<h4 style="margin:0 0 10px 0;color:#88ccff;letter-spacing:1px;text-transform:uppercase;">STELLAR TELEMETRY</h4>` +
+          `<div style="color:#9fb4c8;margin-bottom:5px;">Environment: Vacuum</div>` +
+          `<div style="color:#9fb4c8;margin-bottom:5px;">Gravity: Microgravity</div>` +
+          `<div style="color:#9fb4c8;margin-bottom:5px;">Status: Deep Space Transit</div>`;
+        orbitCard.style.right = '20px';
+        orbitCard.style.opacity = '1';
+        if(orbitCard._timeout) clearTimeout(orbitCard._timeout);
+        orbitCard._timeout = setTimeout(() => { orbitCard.style.opacity = '0'; }, 4000);
+      }
+    }
+  }
+
   for(const id in NS._mkEls){ if(!seen[id]) NS._mkEls[id].style.display='none'; }
 }
 
@@ -3007,6 +3703,7 @@ function nsPaintCompass(){
 function nsUpdateBodyLOD(){
   const cam=NS.camera; if(!cam) return;
   var _coreP=(NS.nodeById&&NS.nodeById['core']&&NS.nodeById['core'].pos)||null; if(_coreP&&NS._sunPL) NS._sunPL.position.copy(_coreP);
+  if(_coreP && NS._sunDir){ NS._sunDir.copy(_coreP).sub(cam.position); if(NS._sunDir.lengthSq()<1e-6) NS._sunDir.set(0,1,0); else NS._sunDir.normalize(); }
   // LOCK the directional sun to a CONSTANT world direction every frame (immune to floating-origin shifts).
   // Without this the light target stays at the old origin and the lit/dark side drifts with your movement.
   if(NS._sun && NS._sunDir){ NS._sun.position.copy(cam.position).addScaledVector(NS._sunDir, 1e7); if(NS._sun.target){ NS._sun.target.position.copy(cam.position); NS._sun.target.updateMatrixWorld(); } }
@@ -3033,8 +3730,8 @@ function nsUpdateBodyLOD(){
       let g=(d-near)/(far-near); g=g<0?0:(g>1?1:g);
       const full=(n.active===false?0.18:0.6);
       // DISTANCE FLOOR: a far planet stays a visible glow DOT (never culls to nothing); small/subtle up close.
-      var _hf=Math.max((n.r||1)*1.35, d*0.011); n.halo.scale.set(_hf,_hf,1);
-      n.halo.material.opacity=Math.max(full*g, d>far?0.5:0); n.halo.visible=n.halo.material.opacity>0.01;
+      var _hf=Math.max((n.r||1)*1.35, Math.min((n.r||1)*4.0, d*0.005)); n.halo.scale.set(_hf,_hf,1);
+      n.halo.material.opacity=Math.max(full*g, d>far*3?0.3:0); n.halo.visible=n.halo.material.opacity>0.01;
       // Stellar bodies (core/engine) STAY bright — they are light sources, not
       // worlds. Only planets (bot/provider/channels) get the emissive cut so the
       // sun shades their surface instead of a painted-on glow.
@@ -3079,95 +3776,10 @@ function nsPlanetDNA(node){
     perfection:Math.floor(rng()*100) };
   return node._dna;
 }
-function nsMakeCloudTexture(seed){
-  if(!NS._cloudTexCache) NS._cloudTexCache={};
-  const key=(seed>>>0)%64; if(NS._cloudTexCache[key]) return NS._cloudTexCache[key];
-  const rng=nsSeededRng((seed>>>0)||7);
-  const W=1024,H=512, c=document.createElement('canvas'); c.width=W; c.height=H; const ctx=c.getContext('2d');
-  ctx.clearRect(0,0,W,H);
-  const img=ctx.createImageData(W,H), d=img.data;
-  const TAU=6.28318530718, ph=[]; for(let i=0;i<8;i++) ph.push(rng()*TAU);
-  // seamless longitude fbm (integer harmonics so the wrap has no seam) + latitude detail
-  function fbm(lon,lat){ let v=0,a=0.55,f=1; for(let o=0;o<6;o++){ const fi=Math.max(1,Math.round(f));
-    v+=a*Math.sin(TAU*fi*lon+ph[o%8]+Math.sin(TAU*Math.max(1,Math.round(f*0.6))*lat*0.5+ph[(o+3)%8])*1.1); a*=0.55; f*=1.95; }
-    return v*0.5+0.5; }
-  const cover=0.62+rng()*0.12;
-  for(let y=0;y<H;y++){ const lat=y/H;
-    for(let x=0;x<W;x++){ const lon=x/W;
-      const wx=(fbm(lon+0.13,lat+0.27)-0.5)*0.05;
-      let v=fbm(lon+wx,lat); v=(v-0.5)*1.7+0.5; v=v<0?0:(v>1?1:v);
-      const cov=v<cover?0:((v-cover)/(1-cover));
-      const a=Math.round(cov*cov*150);
-      const i=(y*W+x)*4; d[i]=d[i+1]=d[i+2]=255; d[i+3]=a;
-    }
-  }
-  ctx.putImageData(img,0,0);
-  const tex=new THREE.CanvasTexture(c); tex.wrapS=THREE.RepeatWrapping;
-  NS._cloudTexCache[key]=tex; return tex;
-}
+
 // per-planet PROCEDURAL world: distinct types (earth/ocean/desert/ice/lava/rock/gas),
 // 6-octave seamless fbm height + domain warp, hi-res — so each AI's planet looks unique.
-function nsMakeTerrainTexture(seed){
-  if(!NS._terrainTexCache) NS._terrainTexCache={};
-  const key=(seed>>>0)%64; if(NS._terrainTexCache[key]) return NS._terrainTexCache[key];
-  const sd=(seed>>>0)||13, rng=nsSeededRng(sd);
-  const W=1024,H=512, c=document.createElement('canvas'); c.width=W; c.height=H; const ctx=c.getContext('2d');
-  const img=ctx.createImageData(W,H), d=img.data;
-  const TAU=6.28318530718, ph=[]; for(let i=0;i<10;i++) ph.push(rng()*TAU);
-  // one base octave of seamless sine noise in -1..1 (integer longitude harmonics -> no seam)
-  function onoise(lon,lat,o){ const fi=Math.max(1,Math.round(Math.pow(1.97,o)));
-    return Math.sin(TAU*fi*lon+ph[o%10]+Math.sin(TAU*Math.max(1,Math.round(fi*0.65))*lat*0.5+ph[(o+4)%10])*1.15); }
-  // smooth fbm for lowlands / oceans (0..1)
-  function fbm(lon,lat){ let v=0,a=0.55; for(let o=0;o<6;o++){ v+=a*onoise(lon,lat,o); a*=0.55; } return v*0.5+0.5; }
-  // RIGID MULTI-FRACTAL (Musgrave): (1-|n|)^2, gain-weighted -> sharp ridges, peaks, canyons (NMS-style)
-  function ridged(lon,lat){ let sum=0,amp=0.5,weight=1; for(let o=0;o<6;o++){ let nn=1.0-Math.abs(onoise(lon,lat,o)); nn*=nn; nn*=weight; weight=Math.min(1,nn*2.0); sum+=nn*amp; amp*=0.5; } return sum; }
-  const hsl=(h,sat,l)=>{ sat/=100; l/=100; const k=n=>(n+h/30)%12, a=sat*Math.min(l,1-l);
-    const f=n=>l-a*Math.max(-1,Math.min(Math.min(k(n)-3,9-k(n)),1)); return [255*f(0),255*f(8),255*f(4)]; };
-  const types=['earth','ocean','desert','ice','lava','rock','gas'];
-  const type=types[(sd>>>3)%types.length];
-  const sea=0.45+rng()*0.07, baseHue=rng()*360, bands=5+((sd>>>4)%6);
-  const sharp=0.55+rng()*0.9, warp=0.05+rng()*0.06;   // per-planet ridge sharpness + domain-warp strength
-  for(let y=0;y<H;y++){ const lat=y/H, polar=Math.abs(lat-0.5)*2;
-    for(let x=0;x<W;x++){ const lon=x/W;
-      const wx=(fbm(lon+0.21,lat+0.11)-0.5)*warp;        // domain-warp the coords -> organic, alien continents
-      const base=fbm(lon+wx, lat), mtn=ridged(lon+wx, lat);
-      let h=base*0.55 + mtn*0.55*sharp; h=h<0?0:(h>1?1:h);   // smooth lowlands + sharp ridged mountains
-      let r,g,b;
-      if(type==='gas'){
-        const band=Math.sin(lat*Math.PI*bands + (fbm(lon,lat*2.2)-0.5)*5.0);
-        const t=band*0.5+0.5; const col=hsl((baseHue+t*45)%360, 42-18*t, 26+40*t); r=col[0];g=col[1];b=col[2];
-      } else if(type==='lava'){
-        const cr=Math.pow(1-h,1.7);
-        if(h>0.6){ const col=hsl(18,14,18+16*(h-0.6)); r=col[0];g=col[1];b=col[2]; }
-        else { r=Math.min(255,255*(0.5+0.5*cr)); g=Math.min(220,140*cr+25); b=30*cr; }
-      } else if(type==='ice'){
-        const col=hsl(198+24*h, 8+14*h, Math.min(97,72+22*h)); r=col[0];g=col[1];b=col[2];
-      } else if(type==='desert'){
-        const col=hsl(28+18*h, 48-16*h, 38+30*h); r=col[0];g=col[1];b=col[2];
-      } else if(type==='rock'){
-        const col=hsl(18+34*h, 9+9*h, 26+34*h); r=col[0];g=col[1];b=col[2];
-      } else if(type==='ocean'){
-        if(h<sea+0.14){ const dep=(sea+0.14-h); const col=hsl(205,62,12+26*(1-dep)); r=col[0];g=col[1];b=col[2]; }
-        else { const land=h-(sea+0.14); const col=hsl(125,40,32+30*land); r=col[0];g=col[1];b=col[2]; }
-      } else {
-        if(h<sea){ const dep=(sea-h)/sea; const col=hsl(205,55,15+24*(1-dep)); r=col[0];g=col[1];b=col[2]; }
-        else { const land=(h-sea)/(1-sea); let hue,sat,lig;
-          if(land<0.10){ hue=48; sat=42; lig=58; }
-          else if(land<0.55){ hue=95+20*land; sat=44-12*land; lig=30+20*land; }
-          else if(land<0.82){ hue=30; sat=22; lig=36+12*land; }
-          else { hue=210; sat=6; lig=80+12*land; }
-          if(polar>0.82){ lig=Math.min(94,lig+24); sat*=0.5; }
-          const col=hsl(hue,sat,lig); r=col[0];g=col[1];b=col[2];
-        }
-      }
-      const i=(y*W+x)*4; d[i]=r; d[i+1]=g; d[i+2]=b; d[i+3]=255;
-    }
-  }
-  ctx.putImageData(img,0,0);
-  const tex=new THREE.CanvasTexture(c); tex.wrapS=THREE.RepeatWrapping;
-  if(THREE.sRGBEncoding!==undefined){ try{ tex.encoding=THREE.sRGBEncoding; }catch(_){} }
-  NS._terrainTexCache[key]=tex; return tex;
-}
+
 // CPU 3D value noise + ridged multifractal. Used to BAKE real terrain geometry into the
 // descent sphere (guaranteed 3D relief with standard lighting) AND for terrain-following
 // collision, so the visible mountains and the thing you can't pass through are the SAME.
@@ -3180,19 +3792,38 @@ function nsNoise3(x,y,z){
 }
 function nsRidged3(x,y,z){ let s=0,a=0.5,wt=1,f=1; for(let o=0;o<5;o++){ let nn=1-Math.abs(nsNoise3(x*f,y*f,z*f)); nn*=nn; nn*=wt; wt=Math.min(1,nn*2); s+=nn*a; a*=0.5; f*=2.03; } return s; }
 function nsFbm3(x,y,z,oct){ let s=0,a=0.5,f=1,n=0; const O=oct||5; for(let o=0;o<O;o++){ s+=a*nsNoise3(x*f,y*f,z*f); n+=a; a*=0.5; f*=2.0; } return s/n; }
-function nsTerrainHeightJS(nx,ny,nz,sharp,sea){ const cont=nsFbm3(nx*2.2,ny*2.2,nz*2.2,5)*0.5+0.5; const hills=nsFbm3(nx*7.0,ny*7.0,nz*7.0,4)*0.5+0.5; const ridge=nsRidged3(nx*5.0,ny*5.0,nz*5.0); const h=cont*0.6+hills*0.25+ridge*0.15*(sharp||1); return Math.max(0,h-(sea||0.45)); }
+function nsTerrainHeightJS(nx,ny,nz,sharp,sea){
+  // --- PHASE 3: HARDWARE ACCELERATION ---
+  // If the Rust WASM module is loaded, bypass JavaScript entirely for blistering fast procedural generation
+  if (NS.wasmHeightMap) {
+    return NS.wasmHeightMap(nx, ny, nz, sharp || 1.0, sea || 0.45, 12345);
+  }
+  
+  // Fallback to JS if WASM is still loading or failed
+  const cont=nsFbm3(nx*2.2,ny*2.2,nz*2.2,5)*0.5+0.5;
+  const hills=nsFbm3(nx*7.0,ny*7.0,nz*7.0,4)*0.5+0.5;
+  const ridge=nsRidged3(nx*5.0,ny*5.0,nz*5.0);
+  const h=cont*0.6+hills*0.25+ridge*0.15*(sharp||1);
+  return Math.max(0,h-(sea||0.45));
+}
 // GPU TERRAIN DISPLACEMENT (quadtree step 1): inject rigid-multifractal relief into a
 // STANDARD material via onBeforeCompile, so real mountains/canyons rise from the surface as
 // you descend, with recomputed normals that catch the sun. Keeps Three's lighting + depth,
 // so a GLSL error only leaves the terrain smooth (NOT a black screen like a raw shader would).
-function nsApplyDisplacement(material, dna, amp){
+function nsApplyDisplacement(material, dna, amp, dispTex){
   const sharp=(dna&&dna.sharpness)||1.0, sea=(dna&&dna.sea)||0.45;
   material.onBeforeCompile=function(shader){
     shader.uniforms.uDispAmp={value:amp};
     shader.uniforms.uSharp={value:sharp};
     shader.uniforms.uSeaLvl={value:sea};
+    const emptyData = new Float32Array([0,0,0,0]);
+    const emptyTex = new THREE.DataTexture(emptyData, 1, 1, THREE.RGBAFormat, THREE.FloatType);
+    emptyTex.needsUpdate = true;
+    shader.uniforms.uDispTex={value:dispTex || emptyTex};
+    shader.uniforms.uHasTex={value:dispTex ? 1.0 : 0.0};
     const noise=[
       'uniform float uDispAmp; uniform float uSharp; uniform float uSeaLvl;',
+      'uniform sampler2D uDispTex; uniform float uHasTex;',
       'vec3 nsHash33(vec3 p){ p=vec3(dot(p,vec3(127.1,311.7,74.7)),dot(p,vec3(269.5,183.3,246.1)),dot(p,vec3(113.5,271.9,124.6))); return -1.0+2.0*fract(sin(p)*43758.5453123); }',
       'float nsVN(vec3 p){ vec3 i=floor(p),f=fract(p),u=f*f*(3.0-2.0*f);',
       ' return mix(mix(mix(dot(nsHash33(i+vec3(0.,0.,0.)),f-vec3(0.,0.,0.)),dot(nsHash33(i+vec3(1.,0.,0.)),f-vec3(1.,0.,0.)),u.x),',
@@ -3201,7 +3832,14 @@ function nsApplyDisplacement(material, dna, amp){
       '             mix(dot(nsHash33(i+vec3(0.,1.,1.)),f-vec3(0.,1.,1.)),dot(nsHash33(i+vec3(1.,1.,1.)),f-vec3(1.,1.,1.)),u.x),u.y),u.z); }',
       'float nsRidged(vec3 p){ float s=0.,a=0.5,w=1.,fr=1.; for(int o=0;o<5;o++){ float nn=1.0-abs(nsVN(p*fr)); nn*=nn; nn*=w; w=clamp(nn*2.0,0.0,1.0); s+=nn*a; a*=0.5; fr*=2.03; } return s; }',
       'float nsFbm(vec3 p, int oct){ float s=0.0,a=0.5,fr=1.0,nrm=0.0; for(int o=0;o<6;o++){ if(o>=oct) break; s+=a*nsVN(p*fr); nrm+=a; a*=0.5; fr*=2.0; } return s/nrm; }',
-      'float nsTerrainH(vec3 dir){ float cont=nsFbm(dir*2.2,5)*0.5+0.5; float hills=nsFbm(dir*7.0,4)*0.5+0.5; float ridge=nsRidged(dir*5.0); float h=cont*0.6+hills*0.25+ridge*0.15*uSharp; return max(0.0,h-uSeaLvl)*uDispAmp; }'
+      '#define PI 3.14159265359',
+      'float nsTerrainH(vec3 dir){',
+      '  if (uHasTex > 0.5) {',
+      '     vec2 uv = vec2(atan(dir.z, dir.x) / (2.0 * PI) + 0.5, asin(dir.y) / PI + 0.5);',
+      '     return texture2D(uDispTex, uv).r * uDispAmp;',
+      '  }',
+      '  float cont=nsFbm(dir*2.2,5)*0.5+0.5; float hills=nsFbm(dir*7.0,4)*0.5+0.5; float ridge=nsRidged(dir*5.0); float h=cont*0.6+hills*0.25+ridge*0.15*uSharp; return max(0.0,h-uSeaLvl)*uDispAmp;',
+      '}'
     ].join('\n');
     shader.vertexShader = shader.vertexShader.replace('void main() {', noise+'\nvoid main() {');
     shader.vertexShader = shader.vertexShader.replace('#include <beginnormal_vertex>',
@@ -3221,89 +3859,8 @@ function nsApplyDisplacement(material, dna, amp){
 // NMS-STYLE DETAIL GROUND TEXTURE: high-frequency procedural texture that tiles many times
 // across the surface. Per planet type (rock/sand/lava/ice/grass/gas). Gives close-up grain
 // so the surface doesn't collapse to a solid color at walking distance.
-function nsMakeDetailTexture(seed){
-  if(!NS._detailTexCache) NS._detailTexCache={};
-  const key=(seed>>>0)%32; if(NS._detailTexCache[key]) return NS._detailTexCache[key];
-  const rng=nsSeededRng((seed>>>0)||17);
-  const W=512, H=512, c=document.createElement('canvas'); c.width=W; c.height=H;
-  const ctx=c.getContext('2d');
-  const img=ctx.createImageData(W,H), d=img.data;
-  // Determine style from seed (same types as nsPlanetDNA)
-  const types=['earth','ocean','desert','ice','lava','rock','gas'];
-  const type=types[((seed>>>0)>>>3)%types.length];
-  // 3D value noise for seamless tiling
-  function hash2(ix,iy){ let n=((ix*374761393+iy*668265263)>>>0); n=((n^(n>>>13))*1274126177)>>>0; return (n^(n>>>16))>>>0; }
-  function vnoise(x,y){ const xi=Math.floor(x),yi=Math.floor(y),xf=x-xi,yf=y-yi;
-    const u=xf*xf*(3-2*xf),v=yf*yf*(3-2*yf);
-    const a=hash2(xi&511,yi&511)/4294967295, b=hash2((xi+1)&511,yi&511)/4294967295;
-    const cc=hash2(xi&511,(yi+1)&511)/4294967295, dd=hash2((xi+1)&511,(yi+1)&511)/4294967295;
-    return a+(b-a)*u + (cc-a+(a-b-cc+dd)*u)*v; }
-  function fbm(x,y,oct){ let v=0,a=0.5,f=1; for(let o=0;o<oct;o++){ v+=a*vnoise(x*f,y*f); a*=0.5; f*=2.17; } return v; }
-  for(let y=0;y<H;y++){
-    for(let x=0;x<W;x++){
-      const nx=x/W*8, ny=y/H*8;   // tile frequency
-      let v;
-      if(type==='rock' || type==='earth'){
-        // rocky cracks + gravel
-        const n1=fbm(nx+rng()*100, ny+rng()*100, 6);
-        const crack=Math.abs(vnoise(nx*3.1+rng()*50, ny*3.1+rng()*50)*2-1);
-        v = n1*0.7 + crack*0.3;
-      } else if(type==='desert'){
-        // sand ripples
-        const ripple=Math.sin(nx*12 + fbm(nx,ny,3)*4)*0.5+0.5;
-        v = fbm(nx,ny,5)*0.4 + ripple*0.6;
-      } else if(type==='lava'){
-        // lava veins — bright cracks in dark rock
-        const base=fbm(nx,ny,4)*0.4;
-        const vein=1-Math.pow(Math.abs(vnoise(nx*2.5, ny*2.5)*2-1), 0.3);
-        v = base + vein*0.6;
-      } else if(type==='ice'){
-        // ice crystals — bright with subtle fracture lines
-        const base=0.7+fbm(nx,ny,5)*0.3;
-        const fracture=Math.pow(Math.abs(vnoise(nx*4, ny*4)*2-1), 2);
-        v = base - fracture*0.15;
-      } else if(type==='ocean'){
-        // seafloor / coral texture
-        const base=fbm(nx,ny,5);
-        v = base*0.6+0.4;
-      } else if(type==='gas'){
-        // swirling bands
-        const band=Math.sin(ny*6 + fbm(nx*0.5,ny*0.5,4)*8)*0.5+0.5;
-        v = band*0.5+0.5;
-      } else {
-        v = fbm(nx,ny,5);
-      }
-      v=Math.max(0,Math.min(1,v));
-      const lum=Math.round(v*255);
-      const i=(y*W+x)*4; d[i]=lum; d[i+1]=lum; d[i+2]=lum; d[i+3]=255;
-    }
-  }
-  ctx.putImageData(img,0,0);
-  const tex=new THREE.CanvasTexture(c);
-  tex.wrapS=THREE.RepeatWrapping; tex.wrapT=THREE.RepeatWrapping;
-  // Kill the high-frequency tiling shimmer ("pixel dancing"): max anisotropic filtering.
-  try{ var _mx=(NS.renderer&&NS.renderer.capabilities&&NS.renderer.capabilities.getMaxAnisotropy)?NS.renderer.capabilities.getMaxAnisotropy():8; tex.anisotropy=_mx||8; tex.generateMipmaps=true; tex.needsUpdate=true; }catch(_){}
-  NS._detailTexCache[key]=tex; return tex;
-}
-function nsMakeDetailNormalTexture(seed){
-  if(!NS._detailNrmCache) NS._detailNrmCache={};
-  const key=(seed>>>0)%32; if(NS._detailNrmCache[key]) return NS._detailNrmCache[key];
-  const dt=nsMakeDetailTexture(seed); const src=dt&&dt.image; if(!src||!src.getContext) return null;
-  const W=src.width, H=src.height; const sctx=src.getContext("2d"); const sd=sctx.getImageData(0,0,W,H).data;
-  const c=document.createElement("canvas"); c.width=W; c.height=H; const ctx=c.getContext("2d");
-  const out=ctx.createImageData(W,H), od=out.data;
-  const L=(x,y)=>{ x=(x+W)%W; y=(y+H)%H; return sd[(y*W+x)*4]/255; };
-  const st=2.4;
-  for(let y=0;y<H;y++){ for(let x=0;x<W;x++){
-    const dx=(L(x+1,y)-L(x-1,y))*st, dy=(L(x,y+1)-L(x,y-1))*st;
-    let nx=-dx, ny=-dy, nz=1.0; const il=1/Math.sqrt(nx*nx+ny*ny+nz*nz); nx*=il; ny*=il; nz*=il;
-    const i=(y*W+x)*4; od[i]=Math.round((nx*0.5+0.5)*255); od[i+1]=Math.round((ny*0.5+0.5)*255); od[i+2]=Math.round((nz*0.5+0.5)*255); od[i+3]=255;
-  } }
-  ctx.putImageData(out,0,0);
-  const tex=new THREE.CanvasTexture(c); tex.wrapS=THREE.RepeatWrapping; tex.wrapT=THREE.RepeatWrapping;
-  try{ var mx=(NS.renderer&&NS.renderer.capabilities&&NS.renderer.capabilities.getMaxAnisotropy)?NS.renderer.capabilities.getMaxAnisotropy():8; tex.anisotropy=mx||8; tex.generateMipmaps=true; tex.needsUpdate=true; }catch(_){}
-  NS._detailNrmCache[key]=tex; return tex;
-}
+
+
 function nsAttachReliefNormal(material, seed, n){
   if(!material) return;
   var dN = nsMakeDetailNormalTexture(seed); if(!dN) return;
@@ -3339,7 +3896,13 @@ function nsAttachReliefNormal(material, seed, n){
        '  float _slpr = 1.0 - clamp(dot(normalize(vRnrm), normalize(vRpos)), 0.0, 1.0);',
        '  vec3 _bior = mix(uBiomeLow, uBiomeHigh, smoothstep(0.4,0.92,_altr));',
        '  _bior = mix(_bior, uBiomeRock, smoothstep(0.45,0.85,_slpr));',
-       '  diffuseColor.rgb *= mix(vec3(1.0), _bior*2.6, 0.5*uApproach);',
+       '  vec3 tpr = vRpos * uReliefScale;',
+       '  vec3 bwr = abs(normalize(vRnrm)); bwr = bwr/max(bwr.x+bwr.y+bwr.z,1e-4);',
+       '  vec3 cX = texture2D(uReliefC, tpr.yz).rgb;',
+       '  vec3 cY = texture2D(uReliefC, tpr.xz).rgb;',
+       '  vec3 cZ = texture2D(uReliefC, tpr.xy).rgb;',
+       '  vec3 detailC = cX*bwr.x + cY*bwr.y + cZ*bwr.z;',
+       '  diffuseColor.rgb *= mix(vec3(1.0), _bior*2.6 * (detailC * 1.6 + 0.2), 0.5 + 0.5*uApproach);',
        '}'].join('\n'));
     shader.fragmentShader = shader.fragmentShader.replace('#include <normal_fragment_maps>',
       ['#include <normal_fragment_maps>',
@@ -3415,15 +3978,15 @@ function nsBuildDescent(n){
   const debris=new THREE.Points(rg,rm); debris.rotation.x=0.5+rng()*0.6; debris.rotation.z=rng()*0.5; debris.visible=false;
   scn.add(debris); grp.debris=debris;
   // ── 2) CLOUD SHELL — soft semi-transparent cloud sphere, own-axis spin ──
-  const cloudMat=new THREE.MeshStandardMaterial({map:(n._realClouds||nsMakeCloudTexture(seed)), color:0xffffff, transparent:true, opacity:0, depthWrite:false, side:THREE.DoubleSide, roughness:1, metalness:0, emissive:0xffffff, emissiveIntensity:0.05});
-  const cloud=new THREE.Mesh(new THREE.SphereGeometry(r*1.05, 48, 48), cloudMat); cloud.visible=false; cloud.frustumCulled=false;
+  const cloudMat=new THREE.MeshStandardMaterial({map:(n._realClouds||nsMakeCloudTexture(seed)), color:0xffffff, transparent:true, opacity:0, depthWrite:false, side:THREE.DoubleSide, roughness:1, metalness:0, emissive:0xffffff, emissiveIntensity:0.55});
+  const cloud=new THREE.Mesh(new THREE.SphereGeometry(r*1.15, 48, 48), cloudMat); cloud.visible=false; cloud.frustumCulled=false;
   scn.add(cloud); grp.cloud=cloud;
   const cloudMat3=cloudMat.clone(); cloudMat3.opacity=0;
-  const cloud3=new THREE.Mesh(new THREE.SphereGeometry(r*1.10, 48, 48), cloudMat3); cloud3.visible=false; cloud3.frustumCulled=false;
+  const cloud3=new THREE.Mesh(new THREE.SphereGeometry(r*1.20, 48, 48), cloudMat3); cloud3.visible=false; cloud3.frustumCulled=false;
   scn.add(cloud3); grp.cloud3=cloud3;
   if(n._isGas){
     const cloudMat2=cloudMat.clone(); cloudMat2.opacity=0; cloudMat2.emissiveIntensity=0.06;
-    const cloud2=new THREE.Mesh(new THREE.SphereGeometry(r*1.028, 40, 40), cloudMat2); cloud2.visible=false; cloud2.frustumCulled=false;
+    const cloud2=new THREE.Mesh(new THREE.SphereGeometry(r*1.12, 40, 40), cloudMat2); cloud2.visible=false; cloud2.frustumCulled=false;
     scn.add(cloud2); grp.cloud2=cloud2;
   }
   // ── 3) TERRAIN RELIEF (high-seg surface) — prefers the downloaded texture ──
@@ -3437,7 +4000,9 @@ function nsBuildDescent(n){
   const _bLow=new THREE.Vector3(_bgc[0],_bgc[1],_bgc[2]);
   const _bHigh=new THREE.Vector3(Math.min(1,_bgc[0]*1.25+0.28),Math.min(1,_bgc[1]*1.25+0.28),Math.min(1,_bgc[2]*1.2+0.34));
   const _bRock=new THREE.Vector3(_bgc[0]*0.5+0.05,_bgc[1]*0.46+0.05,_bgc[2]*0.42+0.05);
-  const terMat=new THREE.MeshStandardMaterial({map:terMap, normalMap:(n._realNormal||null), displacementMap:(n._realHeight||null), displacementScale:r*0.035, color:0xffffff, vertexColors:true, transparent:false, opacity:1.0, side:THREE.FrontSide, roughness:0.92, metalness:0.02, emissive:0x0b0d10, emissiveIntensity:0.0});
+  // PHASE 0 PARITY: NO GPU displacementMap — the CPU bake (nsTerrainHeightJS) is the SOLE
+  // height source so the rendered mesh IS the collision mesh. Raycast + walk + fly all agree.
+  const terMat=new THREE.MeshStandardMaterial({map:terMap, normalMap:(n._realNormal||null), displacementMap:null, displacementScale:0, color:0xffffff, vertexColors:true, transparent:false, opacity:1.0, side:THREE.FrontSide, roughness:0.92, metalness:0.02, emissive:0x0b0d10, emissiveIntensity:0.0});
   // Inject detail-texture blending via onBeforeCompile: the detail texture tiles at UV*80
   // and blends with the base color in the fragment shader, giving close-up surface grain.
   terMat.userData._detailTex = detailTex;
@@ -3453,11 +4018,15 @@ function nsBuildDescent(n){
     // VERTEX: pass object-space position + normal so the fragment can do TRIPLANAR projection.
     shader.vertexShader = shader.vertexShader.replace(
       'void main() {',
-      'varying vec3 vTriPos;\nvarying vec3 vTriNrm;\nvoid main() {'
+      'varying vec3 vTriPos;\nvarying vec3 vTriNrm;\nvarying vec3 vWorldPos;\nvoid main() {'
     );
     shader.vertexShader = shader.vertexShader.replace(
       '#include <beginnormal_vertex>',
       '#include <beginnormal_vertex>\n  vTriNrm = normalize(objectNormal);'
+    );
+    shader.vertexShader = shader.vertexShader.replace(
+      '#include <worldpos_vertex>',
+      '#include <worldpos_vertex>\n  vWorldPos = worldPosition.xyz;'
     );
     shader.vertexShader = shader.vertexShader.replace(
       '#include <begin_vertex>',
@@ -3467,15 +4036,17 @@ function nsBuildDescent(n){
     // so steep slopes/cliffs get crisp grain instead of a stretched smear (NMS-style).
     shader.fragmentShader = shader.fragmentShader.replace(
       'void main() {',
-      'uniform sampler2D uDetail;\nuniform sampler2D uDetailN;\nuniform float uDetailScale;\nuniform float uBumpStr;\nuniform float uBaseR;\nuniform vec3 uBiomeLow;\nuniform vec3 uBiomeHigh;\nuniform vec3 uBiomeRock;\nvarying vec3 vTriPos;\nvarying vec3 vTriNrm;\nvoid main() {'
+      'uniform sampler2D uDetail;\nuniform sampler2D uDetailN;\nuniform float uDetailScale;\nuniform float uBumpStr;\nuniform float uBaseR;\nuniform vec3 uBiomeLow;\nuniform vec3 uBiomeHigh;\nuniform vec3 uBiomeRock;\nvarying vec3 vTriPos;\nvarying vec3 vTriNrm;\nvarying vec3 vWorldPos;\nvoid main() {'
     );
     shader.fragmentShader = shader.fragmentShader.replace(
       '#include <map_fragment>',
       ['#include <map_fragment>',
        '{',
+       '  float dist = length(vWorldPos - cameraPosition);',
+       '  float lodScale = mix(32.0, 1.0, clamp(dist / (uBaseR*2.0), 0.0, 1.0));',
        '  vec3 bw = abs(normalize(vTriNrm)); bw = bw / max(bw.x+bw.y+bw.z, 0.0001);',
-       '  vec3 tp = vTriPos * uDetailScale;',
-       '  vec3 tp2 = vTriPos * (uDetailScale*4.0);',
+       '  vec3 tp = vTriPos * uDetailScale * lodScale;',
+       '  vec3 tp2 = vTriPos * (uDetailScale*4.0 * lodScale);',
        '  vec4 det = texture2D(uDetail, tp.yz)*bw.x + texture2D(uDetail, tp.xz)*bw.y + texture2D(uDetail, tp.xy)*bw.z;',
        '  vec4 fdet = texture2D(uDetail, tp2.yz)*bw.x + texture2D(uDetail, tp2.xz)*bw.y + texture2D(uDetail, tp2.xy)*bw.z;',
        '  float detL = dot(det.rgb, vec3(0.3,0.5,0.2));',
@@ -3491,10 +4062,12 @@ function nsBuildDescent(n){
     );
     shader.fragmentShader = shader.fragmentShader.replace(
       '#include <normal_fragment_maps>',
-      ['#include <normal_fragment_maps>',
+       ['#include <normal_fragment_maps>',
        '{',
+       '  float distN = length(vWorldPos - cameraPosition);',
+       '  float lodScaleN = mix(32.0, 1.0, clamp(distN / (uBaseR*2.0), 0.0, 1.0));',
        '  vec3 bwn = abs(normalize(vTriNrm)); bwn = bwn/max(bwn.x+bwn.y+bwn.z,1e-4);',
-       '  vec3 tpn = vTriPos * uDetailScale;',
+       '  vec3 tpn = vTriPos * uDetailScale * lodScaleN;',
        '  vec3 nXa = texture2D(uDetailN, tpn.yz).xyz*2.0-1.0;',
        '  vec3 nYa = texture2D(uDetailN, tpn.xz).xyz*2.0-1.0;',
        '  vec3 nZa = texture2D(uDetailN, tpn.xy).xyz*2.0-1.0;',
@@ -3547,23 +4120,32 @@ function nsBuildDescent(n){
   // Gives a real "sky" instead of raw space when walking on the surface.
   const ac=_dna.atmoColor||[0.6,0.78,1.0];
   const skyMat=new THREE.ShaderMaterial({
-    uniforms:{ uCol:{value:new THREE.Vector3(ac[0],ac[1],ac[2])}, uSun:{value:new THREE.Vector3(0.45,0.78,0.55)}, uHorizon:{value:0.0} },
+    uniforms:{ uCol:{value:new THREE.Vector3(ac[0],ac[1],ac[2])}, uSun:{value:new THREE.Vector3(0.45,0.78,0.55)}, uHorizon:{value:0.0}, uUp:{value:new THREE.Vector3(0,1,0)} },
     vertexShader:'varying vec3 vDir; void main(){ vDir=normalize(position); gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
     fragmentShader:[
-      'uniform vec3 uCol; uniform vec3 uSun; uniform float uHorizon; varying vec3 vDir;',
+      'uniform vec3 uCol; uniform vec3 uSun; uniform vec3 uUp; uniform float uHorizon; varying vec3 vDir;',
       'void main(){',
       '  vec3 d=normalize(vDir);',
-      '  float up=clamp(d.y,-1.0,1.0);',
+      '  vec3 nUp=normalize(uUp);',
+      '  vec3 nSun=normalize(uSun);',
+      '  float up=clamp(dot(d, nUp),-1.0,1.0);',
+      '  float sunElevation = dot(nUp, nSun);',
+      '  float dayLight = smoothstep(-0.15, 0.1, sunElevation);',
       '  float band=smoothstep(-0.05,0.85,up);',
       '  vec3 horizonC=uCol*1.05;',
       '  vec3 zenithC=uCol*vec3(0.35,0.45,0.72)*0.7;',
       '  vec3 col=mix(horizonC, zenithC, band);',
-      '  float sd=max(dot(d, normalize(uSun)), 0.0);',
+      '  float sd=max(dot(d, nSun), 0.0);',
       '  col += uCol*0.35*pow(sd, 20.0) + vec3(1.0,0.92,0.78)*pow(sd,170.0)*0.5;',
+      '  vec3 sunsetCol = vec3(1.0, 0.4, 0.1);',
+      '  float sunsetMix = smoothstep(0.1, -0.15, sunElevation) * smoothstep(-0.3, -0.1, sunElevation);',
+      '  col = mix(col, col * sunsetCol * 2.0, sunsetMix * (1.0-band));',
       '  float horizonGlow=pow(1.0-abs(up),3.0)*0.35;',
       '  col += uCol*horizonGlow;',
-      '  float aboveFade=smoothstep(-0.18,0.05,up);',
-      '  gl_FragColor=vec4(col, uHorizon*aboveFade);',
+      '  col *= dayLight;',
+      '  float aboveFade=smoothstep(0.0,0.15,up);',
+      '  float skyAlpha = max(0.0, uHorizon * aboveFade * (dayLight * 0.95 + 0.05));',
+      '  gl_FragColor=vec4(col, skyAlpha);',
       '}'
     ].join('\n'),
     transparent:true, side:THREE.BackSide, depthWrite:false, depthTest:true
@@ -3596,7 +4178,7 @@ function nsUpdatePlanetDescent(){
   // ── A) find the single NEAREST planet within build range (~r*10 surface) ──
   let near=null, best=1e30;
   for(let i=0;i<NS.nodes.length;i++){ const n=NS.nodes[i];
-    if(!n.pos || !(n.kind==='bot'||n.kind==='core'||n.kind==='engine')) continue;
+    if(!n.pos || !(n.kind==='bot'||n.kind==='engine'||n.kind==='core')) continue;
     const r=n.r||1, surf=cp.distanceTo(n.pos)-r;
     if(surf<best){ best=surf; near=n; }
   }
@@ -3629,9 +4211,23 @@ function nsUpdatePlanetDescent(){
     var _imm=1-sstep(r*0.04, r*1.8, surf);
     var _deep=1-sstep(r*0.02, r*0.7, surf);   // 0 high up -> 1 at the surface
     var _top=(0.46+0.24*_deep).toFixed(3), _midA=(0.16+0.16*_deep).toFixed(3), _botA=(0.0+0.05*_deep).toFixed(3);
+    
+    // Day/Night Calculation: dim the sky based on whether we are facing the sun
+    var _dirToSun = near.pos.lengthSq() > 1e-6 ? new THREE.Vector3(0,0,0).sub(near.pos).normalize() : new THREE.Vector3(0,1,0);
+    if(near.kind==='core') _dirToSun = new THREE.Vector3(0,1,0); // core is always lit
+    var _dirToCam = cp.clone().sub(near.pos).normalize();
+    var _sunDot = _dirToCam.dot(_dirToSun);
+    // mapped from -0.15 (night) to 0.15 (day)
+    var _dayLight = Math.max(0.02, Math.min(1.0, (_sunDot + 0.15) / 0.3));
+    
+    _R = Math.round(_R * _dayLight);
+    _G = Math.round(_G * _dayLight);
+    _B = Math.round(_B * _dayLight);
+
     _tn.style.background='linear-gradient(to bottom, rgba('+_R+','+_G+','+_B+','+_top+') 0%, rgba('+_R+','+_G+','+_B+','+_midA+') 46%, rgba('+_R+','+_G+','+_B+','+_botA+') 100%)';
     NS._skyProx=_deep;
-    if(NS.scene && NS.scene.fog){ var _fa=1-sstep(r*0.015, r*0.45, surf); var _ft=near._atmoTint||[0.5,0.6,0.8]; NS.scene.fog.color.setRGB((_ft[0]*0.6+0.25),(_ft[1]*0.6+0.27),(_ft[2]*0.55+0.22)); NS.scene.fog.density=_fa*_fa*(7.0/Math.max(1.0,r)); }
+    NS._dayLight=_dayLight;
+    if(NS.scene && NS.scene.fog){ var _fa=1-sstep(r*0.015, r*0.45, surf); var _ft=near._atmoTint||[0.5,0.6,0.8]; NS.scene.fog.color.setRGB((_ft[0]*0.6+0.25)*_dayLight,(_ft[1]*0.6+0.27)*_dayLight,(_ft[2]*0.55+0.22)*_dayLight); NS.scene.fog.density=_fa*_fa*(7.0/Math.max(1.0,r)); }
     _tn.style.opacity=Math.max(_imm*0.5, _deep*0.62).toFixed(3); })();
   // keep every layer riding the live planet position (planets drift)
   g.debris.position.copy(near.pos); g.cloud.position.copy(near.pos);
@@ -3694,10 +4290,16 @@ function nsUpdatePlanetDescent(){
   if(g.patch){ g.patch.visible = _terReady && _showTer && surf < r*0.6 && !g._bake; }   // patch only near the surface
   g.water.visible=false;
   // when terrain shows, drop the base sphere's glow/emissive so the lit surface shows
-  if(near.mesh && near.mesh.material && ('emissiveIntensity' in near.mesh.material) && !near._realTex){
-    near.mesh.material.emissiveIntensity = 0.05 + (1-aTer)*0.13;
+  if(near.mesh) {
+    near.mesh.visible = true; // KEEP visible (fixes invisible planet ball)
+    if(near.mesh.material) {
+       if (_showTer && _terReady) {
+           near.mesh.material.emissiveIntensity = 0; // fixes glowing dot when close
+       } else {
+           near.mesh.material.emissiveIntensity = 0.05 + (1-aTer)*0.13;
+       }
+    }
   }
-  if(near.mesh) near.mesh.visible = !(_showTer && _terReady);   // base sphere OR baked terrain (kept on base until bake done)
   // ── 4) SKY DOME — follows the camera, fades in on the surface ──
   if(g.sky){
     const skyFade = 1-sstep(r*0.03, r*0.4, surf);   // sky only when basically landed (no bleed over approach)
@@ -3705,6 +4307,7 @@ function nsUpdatePlanetDescent(){
     g.sky.visible = skyFade > 0.01;
     if(g.skyMat){
       g.skyMat.uniforms.uHorizon.value = skyFade * 0.7;
+      g.skyMat.uniforms.uUp.value.copy(cp).sub(near.pos).normalize();
       if(NS._sunDir){ g.skyMat.uniforms.uSun.value.copy(NS._sunDir); }
     }
   }
@@ -3757,7 +4360,12 @@ function nsPollGamepad(dt){
   // RIGHT STICK = look
   const rx=dz(ax[axesMap[2]]||0), ry=dz(ax[axesMap[3]]||0);
   if(rx||ry){ if(c.mode!=='fly' && c.mode!=='walk'){ c.mode='fly'; NS.flyTo=null; NS.followNid=null; }
-    c.yaw=(c.yaw||0)+rx*2.4*dt; c.pitch=Math.max(-1.45,Math.min(1.45,(c.pitch||0)-ry*2.4*dt)); }
+    let turnScale = 1.0;
+    if (NS.cam && NS.cam.vel) {
+      let ratio = Math.min(1.0, NS.cam.vel.length() / (25000000 * 16 * 80));
+      turnScale = 1.0 - (ratio * 0.9);
+    }
+    c.yaw=(c.yaw||0)+rx*2.4*dt*turnScale; c.pitch=Math.max(-1.45,Math.min(1.45,(c.pitch||0)-ry*2.4*dt*turnScale)); }
   // LEFT STICK = move (drives the same NS.keys WASD uses)
   if(!NS.keys) NS.keys={};
   if(NS._gpKeys){ for(let i=0;i<NS._gpKeys.length;i++) NS.keys[NS._gpKeys[i]]=false; }
@@ -3771,20 +4379,21 @@ function nsPollGamepad(dt){
   }
 
   NS._gpMag=Math.min(1, Math.hypot(lx,ly));   // ANALOG: stick magnitude → proportional thrust (light push = slow cruise)
-  if(lx||ly){ if(c.mode!=='fly' && c.mode!=='walk'){ c.mode='fly'; NS.flyTo=null; } }   // throttle stays where the owner set it
+  if(lx||ly){ if(c.mode!=='fly' && c.mode!=='walk'){ c.mode='fly'; NS.flyTo=null; } NS._autopilot=false; }   // Touch stick cancels autopilot
   if(ly<0){ NS.keys['w']=true; NS._gpKeys.push('w'); } else if(ly>0){ NS.keys['s']=true; NS._gpKeys.push('s'); }
   if(lx<0){ NS.keys['a']=true; NS._gpKeys.push('a'); } else if(lx>0){ NS.keys['d']=true; NS._gpKeys.push('d'); }
   if(btn(5)){ NS.keys['e']=true; NS._gpKeys.push('e'); }   // RB = up
   if(btn(4)){ NS.keys['q']=true; NS._gpKeys.push('q'); }   // LB = down
   if(btn(10)){ NS.keys['shift']=true; NS._gpKeys.push('shift'); }   // L3 (left-stick click) = run
-  if(btn(12)) NS.throttleT=Math.min(1,(NS.throttleT!=null?NS.throttleT:0.3)+0.7*dt);   // D-pad up
-  if(btn(13)) NS.throttleT=Math.max(0,(NS.throttleT!=null?NS.throttleT:0.3)-0.7*dt);   // D-pad down
+  // Manual throttle removed
   if(!NS._gpPrev) NS._gpPrev={};
   const edge=(i)=>{ const p=btn(i), was=NS._gpPrev[i]; NS._gpPrev[i]=p; return p&&!was; };
   const eA=edge(0), eB=edge(1); edge(2); const eY=edge(3);   // X polled; Y = land/walk
+  const eDpadDown=edge(13);
+  if(eDpadDown){ NS._autopilot = !NS._autopilot; } // Toggle Autopilot
   if(eA && NS.cam && NS.cam.mode==='walk'){
     if(NS.keys) NS.keys[' ']=true; if(NS._gpKeys) NS._gpKeys.push(' ');   // A = jump on the surface
-  } else if(eA){
+  } else if(eA && (!NS.cam || NS.cam.mode !== 'fly')){
     try{ const cam=NS.camera, wrap=$('ns-wrap');
       if(cam && wrap){ const r=wrap.getBoundingClientRect(), vv=new THREE.Vector3(); let best=null,bd=1e9;
         for(let i=0;i<NS.nodes.length;i++){ const n=NS.nodes[i]; if(!n.pos) continue;
@@ -3794,7 +4403,15 @@ function nsPollGamepad(dt){
           const d=Math.hypot(px-r.width/2,py-r.height/2); if(d<bd){ bd=d; best=n; } }
         if(best){ NS.gpsTarget=best.id; if(typeof nsOpenNodePanel==='function') nsOpenNodePanel(best.id); } } }catch(_){}
   }
-  if(eB){ if(typeof window.nsReturnToCore==='function') window.nsReturnToCore(); }
+  if(eB){   // B = BACK / CANCEL (context-dependent, never teleport-to-core)
+    var _bHandled=false;
+    // Close quest board if open
+    if(NS.Quest && NS.Quest.board && typeof nsQuestCloseBoard==='function'){ nsQuestCloseBoard(); _bHandled=true; }
+    // Close node info panel if visible
+    if(!_bHandled){ var _ep=document.getElementById('ns-edge-panel'); if(_ep && _ep.style.display!=='none' && _ep.offsetParent!==null){ _ep.style.display='none'; _bHandled=true; } }
+    // Otherwise: do nothing (no surprise teleport)
+  }
+  if(edge(11)){ NS._thirdPerson=!NS._thirdPerson; NS._chasePos=null; var _vs=document.getElementById('ns-status'); if(_vs) _vs.textContent=(NS._thirdPerson?'3rd person':'1st person'); }   // R3 (right-stick click) = toggle view
   if(eY){   // Y = LAND on the surface / take off again
     if(c.mode==='walk'){ c.mode='fly'; NS._jumpV=0; }
     else if(NS._nearPlanet && NS.camera){ const _pd=NS.camera.position.distanceTo(NS._nearPlanet.pos)-(NS._nearPlanet.r||1);
@@ -3806,13 +4423,43 @@ function nsTick(ts){
   const dt=Math.min(0.05,(ts-(NS.lastFrame||ts))/1000); NS.lastFrame=ts;
   const t=(ts-NS.born)/1000;
 
+  // ── KEPLERIAN ORBITS ── planets and main nodes physically orbit the sun (0,0,0)
+  for(let i=0; i<NS.nodes.length; i++) {
+    const n = NS.nodes[i];
+    if (n && n.pos && (n.kind === 'bot' || n.kind === 'engine' || n.kind === 'provider' || n.kind === 'channels')) {
+      const dist = n.pos.length();
+      if(dist > 1000) { // Don't orbit the core itself
+        const GM = 8e14 * NS_SCALE; // Tuning mass for good visual speeds
+        const w = Math.sqrt(GM / Math.pow(dist, 3));
+        const angleDelta = w * dt;
+        const cosA = Math.cos(angleDelta);
+        const sinA = Math.sin(angleDelta);
+        const nx = n.pos.x * cosA - n.pos.z * sinA;
+        const nz = n.pos.x * sinA + n.pos.z * cosA;
+        n.pos.x = nx;
+        n.pos.z = nz;
+        if(n.mesh) n.mesh.position.copy(n.pos);
+        if(n.label) n.label.position.set(n.pos.x, n.pos.y+(n.r||1)+(n.kind==='world'?22:10)*NS_SCALE, n.pos.z);
+        if(n.halo) n.halo.position.copy(n.pos);
+      }
+    }
+  }
+
   // ── N-BODY GRAVITY (owner #2) ── all massive bodies (core/engine/bots/providers/
   // channels + cosmos worlds) now DRIFT under mutual softened gravity instead of
   // fixed orbits. Black holes pull, white holes push. Bounded + speed-capped so the
   // cosmos never collapses to the core or flings to infinity. Stepped AFTER boids
   // below so it can reuse the per-frame hole list (NS._boidHoles).
   // (bodies NOT in the gravity mesh still get a gentle self-spin here)
-  for(const n of NS.nodes){ if(n.mesh && n.kind!=='bot' && n.kind!=='core' && n.kind!=='engine' && n.kind!=='provider' && n.kind!=='channels'){ n.mesh.rotation.y += dt*0.15*NS_SPIN_SLOW; } }
+  for(const n of NS.nodes){ 
+    if(n.mesh && n.kind!=='bot' && n.kind!=='core' && n.kind!=='engine' && n.kind!=='provider' && n.kind!=='channels'){ 
+      // Do not rotate the planet if the player is currently walking on it (prevents violent spinning camera drift)
+      const isWalkingOnThis = NS.cam && NS.cam.mode === 'walk' && (NS._walkPlanet === n || NS._nearPlanet === n);
+      if (!isWalkingOnThis) {
+        n.mesh.rotation.y += dt*0.15*NS_SPIN_SLOW; 
+      }
+    } 
+  }
   // WHITE HOLES — pulse the ejection shader, decay non-ambient ones out
   if(NS.whiteHoles && NS.whiteHoles.length){
     const keep=[];
@@ -3931,11 +4578,16 @@ function nsTick(ts){
   nsStepShips(dt);
   // twinkle the GPU starfield
   if(NS.three.starMat) NS.three.starMat.uniforms.uT.value=t;
-  { var _sp=NS._skyProx||0;   // ATMOSPHERE: fade space (stars+nebula+bg) as you descend so it reads as real SKY
+  if(NS._skyboxMat) {
+    NS._skyboxMat.uniforms.uT.value = t;
+    if(NS.camera) NS._skyboxMesh.position.copy(NS.camera.position);
+  }
+  { var _sp=(NS._skyProx||0) * (NS._dayLight||1.0);   // ATMOSPHERE: fade space (stars+nebula+bg) ONLY during daytime! Nighttime retains the stars.
     if(NS._starOpBase==null && NS.three.starMat) NS._starOpBase=(NS.three.starMat.opacity!=null?NS.three.starMat.opacity:1);
     if(NS.three.starMat && NS._starOpBase!=null) NS.three.starMat.opacity=NS._starOpBase*(1-_sp);
     if(NS.nebula && NS.nebula.material){ if(NS._nebOpBase==null) NS._nebOpBase=NS.nebula.material.opacity; NS.nebula.material.opacity=NS._nebOpBase*(1-_sp); }
-    if(NS.scene && NS.scene.background && NS.scene.background.isColor){ if(!NS._bgBase){ NS._bgBase=NS.scene.background.clone(); NS._bgSky=new THREE.Color(); } var _ac=(NS._nearPlanet&&NS._nearPlanet._atmoTint)||[0.04,0.06,0.10]; NS._bgSky.setRGB(_ac[0],_ac[1],_ac[2]); NS.scene.background.copy(NS._bgBase).lerp(NS._bgSky, Math.min(0.6,_sp)); } }
+    if(NS._skyboxMat){ if(NS._skyOpBase==null) NS._skyOpBase=NS._skyboxMat.opacity; NS._skyboxMat.opacity=NS._skyOpBase*(1-_sp); }
+  }
   // nebula slow rotation + 4D-time expansion (subtle, real-time)
   if(NS.nebula){
     NS.nebula.rotation.y += dt*0.02;
@@ -3959,7 +4611,10 @@ function nsTick(ts){
   nsUpdateWarp(dt);          // speed-illusion: streak stars + widen FOV at peak speed
   nsStreamAmbient();         // toroidal-wrap star+debris field around the camera (infinite, item 10)
   nsUpdateFieldLOD();        // LOD STREAMING: fade far asteroid/debris/blob/belt fields, gas, planets in by camera distance (no popping)
+  NS._chaseDt=dt;                 // pass dt to the chase-cam lerp
+  nsPlayerShipPre();               // 3rd-person: offset camera behind ship (before render)
   nsRenderBloom();
+  nsPlayerShipPost();              // restore camera to ship position (after render)
 
   // throttled HUD/proximity refresh (position readout + nearest-body info panel)
   NS._reAcc=(NS._reAcc||0)+dt;
@@ -3972,6 +4627,17 @@ function nsTick(ts){
   // AREA MAP / radar — throttled to ~6fps so it's cheap (owner #2)
   NS._radarAcc=(NS._radarAcc||0)+dt;
   if(NS._radarAcc>0.16){ NS._radarAcc=0; nsUpdateRadar(); }
+  
+  // Animate procedural deep-space solar systems
+  if(NS._procSystems){
+    for(const sys of NS._procSystems){
+      if(sys) sys.rotation.y += sys._sysSpeed * dt;
+    }
+  }
+
+  // Auto-save spawn every ~10s
+  NS._saveAcc=(NS._saveAcc||0)+dt;
+  if(NS._saveAcc>10){ NS._saveAcc=0; nsSaveSpawn(); }
   NS.raf=requestAnimationFrame(nsTick);
 }
 
@@ -4449,18 +5115,38 @@ function nsQuestUpdate(dt){
   if(typeof window.nsActivate!=='function'){
     window.nsActivate=function(){
       NS.active=true; NS.paused=false;
-      try{
-        if(!NS.built && typeof nsBuild==='function') nsBuild();
-        if(!NS.three && typeof nsInitThree==='function'){
-          if(!nsInitThree()) return;          // WebGL fallback already shown
-          if(typeof nsRefreshHealth==='function') nsRefreshHealth();
-          if(typeof nsScaleNebula==='function') nsScaleNebula();
-          if(typeof allOps!=='undefined' && allOps && allOps.length && typeof nsIngestOps==='function') nsIngestOps(allOps);
-        }
-        if(typeof nsResize==='function') nsResize();
+      // If already built, just unpause
+      if(NS.three){
+        try{ if(typeof nsResize==='function') nsResize(); }catch(_){}
         NS.lastFrame=0;
         if(!NS.raf && typeof nsTick==='function') NS.raf=requestAnimationFrame(nsTick);
-      }catch(e){ /* never let activation throw out of setView */ }
+        return;
+      }
+      // Show loading screen FIRST, yield to the browser so it paints, THEN run the heavy init
+      var wrap=document.getElementById('ns-wrap');
+      var _ld=document.getElementById('kv-loading');
+      if(!_ld && wrap){ _ld=document.createElement('div'); _ld.id='kv-loading';
+        _ld.style.cssText='position:absolute;inset:0;z-index:999;display:flex;align-items:center;justify-content:center;background:rgba(1,2,5,0.97);color:#4ae080;font:600 22px monospace;letter-spacing:2px;transition:opacity 0.6s;';
+        _ld.innerHTML='<div style="text-align:center">KAIVERSE<br><span style="font-size:13px;color:#6a7a90;font-weight:400">Generating universe\u2026</span></div>';
+        wrap.appendChild(_ld); }
+      // setTimeout(0) yields to the browser — it paints the loading div, THEN we run init
+      setTimeout(function(){
+        try{
+          if(!NS.built && typeof nsBuild==='function') nsBuild();
+          if(!NS.three && typeof nsInitThree==='function'){
+            if(!nsInitThree()) return;
+            if(typeof nsRefreshHealth==='function') nsRefreshHealth();
+            if(typeof nsScaleNebula==='function') nsScaleNebula();
+            if(typeof allOps!=='undefined' && allOps && allOps.length && typeof nsIngestOps==='function') nsIngestOps(allOps);
+          }
+          if(typeof nsResize==='function') nsResize();
+          NS.lastFrame=0;
+          if(!NS.raf && typeof nsTick==='function') NS.raf=requestAnimationFrame(nsTick);
+        }catch(e){
+          console.error(e);
+          if(_ld) _ld.innerHTML = '<div style="color:red;font-size:16px;">ERROR: ' + e.message + '<br>' + e.stack + '</div>';
+        }
+      }, 30);
     };
   }
   // ── DEACTIVATE: leave the view → stop the loop (cheap; keeps scene for re-entry) ──
@@ -4627,8 +5313,13 @@ function nsQuestUpdate(dt){
     });
     function lockedMove(e){
       if(!locked || !NS.active) return; var c=NS.cam; if(!c) return;
-      c.yaw   = (c.yaw||0)   + (e.movementX||0)*0.0028;
-      c.pitch = Math.max(-1.45, Math.min(1.45,(c.pitch||0) - (e.movementY||0)*0.0028));
+      let turnScale = 1.0;
+      if (NS.cam && NS.cam.vel) {
+        let ratio = Math.min(1.0, NS.cam.vel.length() / (25000000 * 16 * 80));
+        turnScale = 1.0 - (ratio * 0.9);
+      }
+      c.yaw   = (c.yaw||0)   + (e.movementX||0)*0.0028*turnScale;
+      c.pitch = Math.max(-1.45, Math.min(1.45,(c.pitch||0) - (e.movementY||0)*0.0028*turnScale));
     }
     document.addEventListener('mousemove', lockedMove);
     // NON-LOCKED drag-look (touchpad / plain mouse): pointer events + capture.
@@ -4645,8 +5336,13 @@ function nsQuestUpdate(dt){
       var c=NS.cam; if(!c) return;
       var dx=e.clientX-lpx, dy=e.clientY-lpy; lpx=e.clientX; lpy=e.clientY;
       if(Math.abs(dx)+Math.abs(dy)>2){ NS._userTook=true; intoFly(); }   // break orbit only on a real drag
-      c.yaw   = (c.yaw||0)   + dx*0.005;
-      c.pitch = Math.max(-1.45, Math.min(1.45,(c.pitch||0) - dy*0.005));
+      let turnScale = 1.0;
+      if (NS.cam && NS.cam.vel) {
+        let ratio = Math.min(1.0, NS.cam.vel.length() / (25000000 * 16 * 80));
+        turnScale = 1.0 - (ratio * 0.9);
+      }
+      c.yaw   = (c.yaw||0)   + dx*0.005*turnScale;
+      c.pitch = Math.max(-1.45, Math.min(1.45,(c.pitch||0) - dy*0.005*turnScale));
     });
     function endDrag(e){ if(!dragging) return; dragging=false; try{ cvs.releasePointerCapture(e.pointerId); }catch(_){} }
     cvs.addEventListener('pointerup', endDrag);
@@ -4677,7 +5373,8 @@ function nsQuestUpdate(dt){
       if('wasdqe '.indexOf(k)>=0){ if(!NS.keys) NS.keys={}; if(k!=='') intoFly(); NS.keys[k===' '?' ':k]=true; if(e.cancelable) e.preventDefault(); }
       else if(k==='shift'){ if(!NS.keys) NS.keys={}; NS.keys['shift']=true; }
       else if(k==='h'){ if(typeof window.nsReturnToCore==='function') window.nsReturnToCore(); }
-      else if(k==='f'){ if(NS.cam){ var _c=NS.cam; if(_c.mode==='follow'||_c.mode==='orbit'){ _c.yaw=(_c.theta||0)+Math.PI; _c.pitch=0; _c.mode='fly'; NS.flyTo=null; NS.followNid=null; } else { var _t=NS._nearPlanet||(NS.nodeById&&NS.nodeById['core']); if(_t&&_t.pos&&NS.camera){ NS.followNid=_t.id; _c.followOff=NS.camera.position.clone().sub(_t.pos); _c.mode='follow'; NS.flyTo=null; } } } }
+      else if(k==='f'){ if(NS.cam){ var _c=NS.cam; if(_c.mode==='follow'||_c.mode==='orbit'){ _c.yaw=(_c.theta||0)+Math.PI; _c.pitch=0; _c.mode='fly'; NS.flyTo=null; NS.followNid=null; } else { var _t=NS._nearPlanet||(NS.nodeById&&NS.nodeById['core']); if(_t&&_t.pos&&NS.camera){ NS.followNid=_t.id; _c.followOff=NS.camera.position.clone().sub(_t.pos); var _min=(_t.r||1)*1.5; if(_c.followOff.lengthSq() < _min*_min) _c.followOff.normalize().multiplyScalar(_min); _c.mode='follow'; NS.flyTo=null; var _dir = _t.pos.clone().sub(NS.camera.position).normalize(); _c.yaw=Math.atan2(_dir.x, _dir.z); _c.pitch=Math.asin(_dir.y); } } } }
+      else if(k==='v'){ NS._thirdPerson=!NS._thirdPerson; NS._chasePos=null; var _s=document.getElementById('ns-status'); if(_s) _s.textContent=(NS._thirdPerson?'3rd person':'1st person'); }
     });
     window.addEventListener('keyup', function(e){
       if(!NS.keys) return; var k=keyName(e);
@@ -4722,6 +5419,114 @@ function nsQuestUpdate(dt){
       }
       for(var i=0;i<defs.length;i++){ pad.appendChild(mkBtn(defs[i][0],defs[i][1],defs[i][2],defs[i][3],defs[i][4])); }
       wrap.appendChild(pad);
+    })();
+
+    // ── PAUSE MENU OVERLAY ───────────────────────────────────────────────────
+    (function kvPauseMenu(){
+      var menuWrap = document.createElement('div');
+      menuWrap.id = 'kv-pause-menu';
+      menuWrap.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(10,12,18,0.7);backdrop-filter:blur(12px);z-index:9999;display:none;flex-direction:column;align-items:center;justify-content:center;color:#c9d1d9;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;user-select:none;';
+      
+      var inner = document.createElement('div');
+      inner.style.cssText = 'background:rgba(22,27,34,0.85);border:1px solid #30363d;border-radius:12px;padding:2.5rem 3rem;width:400px;max-width:90%;box-shadow:0 12px 40px rgba(0,0,0,0.6);text-align:center;position:relative;';
+      
+      var title = document.createElement('h2');
+      title.textContent = 'PAUSED';
+      title.style.cssText = 'margin:0 0 1.5rem;font-size:1.8rem;letter-spacing:0.2em;color:#58a6ff;text-shadow:0 0 10px rgba(88,166,255,0.4);';
+      
+      var btnStyle = 'display:block;width:100%;padding:0.8rem;margin-bottom:0.75rem;background:#21262d;border:1px solid #30363d;border-radius:6px;color:#c9d1d9;font-weight:600;font-size:1rem;cursor:pointer;transition:all 0.2s ease;text-transform:uppercase;letter-spacing:0.05em;';
+      
+      var mainView = document.createElement('div');
+      var optionsView = document.createElement('div');
+      optionsView.style.display = 'none';
+
+      // MAIN MENU BUTTONS
+      var btnResume = document.createElement('button'); btnResume.textContent = 'Resume';
+      var btnOptions = document.createElement('button'); btnOptions.textContent = 'Options';
+      var btnSave = document.createElement('button'); btnSave.textContent = 'Save';
+      var btnLoad = document.createElement('button'); btnLoad.textContent = 'Load';
+      var btnReload = document.createElement('button'); btnReload.textContent = 'Reload / Exit';
+      var btnSaveExit = document.createElement('button'); btnSaveExit.textContent = 'Save & Exit';
+      
+      var btns = [btnResume, btnOptions, btnSave, btnLoad, btnReload, btnSaveExit];
+      btns.forEach(b => {
+        b.style.cssText = btnStyle;
+        b.onmouseover = () => { b.style.background = '#30363d'; b.style.borderColor = '#8b949e'; };
+        b.onmouseout = () => { b.style.background = '#21262d'; b.style.borderColor = '#30363d'; };
+        mainView.appendChild(b);
+      });
+
+      // OPTIONS MENU
+      var optTitle = document.createElement('h3'); optTitle.textContent = 'OPTIONS';
+      optTitle.style.cssText = 'margin:0 0 1rem;font-size:1.2rem;color:#8b949e;';
+      optionsView.appendChild(optTitle);
+
+      var buildSlider = (label) => {
+        var wrap = document.createElement('div');
+        wrap.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;font-size:0.9rem;';
+        var lbl = document.createElement('span'); lbl.textContent = label;
+        var sld = document.createElement('input'); sld.type = 'range'; sld.style.width = '150px';
+        wrap.appendChild(lbl); wrap.appendChild(sld);
+        return wrap;
+      };
+      
+      optionsView.appendChild(buildSlider('Graphics Quality'));
+      optionsView.appendChild(buildSlider('Mouse Sensitivity'));
+      optionsView.appendChild(buildSlider('Controller Sensitivity'));
+      
+      var btnControls = document.createElement('button'); btnControls.textContent = 'Key/Controller Bindings';
+      btnControls.style.cssText = btnStyle;
+      optionsView.appendChild(btnControls);
+
+      var btnBack = document.createElement('button'); btnBack.textContent = 'Back';
+      btnBack.style.cssText = btnStyle + 'margin-top:1.5rem;background:#161b22;';
+      optionsView.appendChild(btnBack);
+
+      inner.appendChild(title);
+      inner.appendChild(mainView);
+      inner.appendChild(optionsView);
+      menuWrap.appendChild(inner);
+      
+      // Delay appending so body exists
+      setTimeout(() => document.body.appendChild(menuWrap), 500);
+
+      // LOGIC
+      var isPaused = false;
+      function toggleMenu(){
+        isPaused = !isPaused;
+        menuWrap.style.display = isPaused ? 'flex' : 'none';
+        if(!isPaused){ mainView.style.display='block'; optionsView.style.display='none'; }
+      }
+      
+      window.addEventListener('keydown', function(e){
+        if(e.key === 'Escape' && NS.active){
+          toggleMenu();
+          if(isPaused && document.pointerLockElement){ try{ document.exitPointerLock(); }catch(_){} }
+        }
+      });
+      
+      // Basic Gamepad poll for Menu button (button 9 usually)
+      var padHeld = false;
+      setInterval(()=>{
+        if(!NS.active) return;
+        var pads = navigator.getGamepads ? navigator.getGamepads() : [];
+        for(let i=0;i<pads.length;i++){
+           let p=pads[i]; if(!p) continue;
+           if(p.buttons && p.buttons[9] && p.buttons[9].pressed){
+             if(!padHeld){ padHeld=true; toggleMenu(); }
+           } else {
+             padHeld=false;
+           }
+        }
+      }, 100);
+
+      btnResume.onclick = toggleMenu;
+      btnOptions.onclick = () => { mainView.style.display='none'; optionsView.style.display='block'; };
+      btnBack.onclick = () => { mainView.style.display='block'; optionsView.style.display='none'; };
+      btnSave.onclick = () => { if(typeof window.nsSaveSpawn === 'function') window.nsSaveSpawn(); btnSave.textContent='Saved!'; setTimeout(()=>btnSave.textContent='Save', 1000); };
+      btnLoad.onclick = () => { if(typeof window.nsRestoreSpawn === 'function') window.nsRestoreSpawn(); toggleMenu(); };
+      btnReload.onclick = () => { window.location.reload(); };
+      btnSaveExit.onclick = () => { if(typeof window.nsSaveSpawn === 'function') window.nsSaveSpawn(); window.location.reload(); };
     })();
   })();
 })();

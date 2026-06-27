@@ -61,6 +61,16 @@ export function setHumanSpeaking(speakerId, speakerName) {
   try { recordHumanActivity(); } catch (_) {}
   try {
     fs.mkdirSync('c:/KAI/tools/oracle-discord/state', { recursive: true });
+    let alreadyOpen = false;
+    try {
+      if (fs.existsSync(GATE_PATH)) {
+        const prev = JSON.parse(fs.readFileSync(GATE_PATH, 'utf8'));
+        alreadyOpen = prev.humanSpeaking === true &&
+          prev.speakerId === speakerId &&
+          (Date.now() - (prev.startedAt || 0)) < GATE_STALE_MS;
+      }
+    } catch (_) {}
+    if (alreadyOpen) return;
     fs.writeFileSync(GATE_PATH, JSON.stringify({
       humanSpeaking: true,
       speakerId,

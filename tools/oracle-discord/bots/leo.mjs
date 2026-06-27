@@ -82,11 +82,27 @@ import { AgentSimulation } from '../shared/simulation.mjs';
 import { computeInterest, PARTICIPATION_THRESHOLD, TWO_CENTS_THRESHOLD, scoreToDelay } from '../shared/social-interest.mjs';
 import { getPrimaryAddressee, mentionsBot } from '../shared/social-scoring.mjs';
 import { startBotServer } from '../shared/ipc.mjs';
+import {
+  startModuleInterval,
+  clearModuleIntervals,
+  registerShutdownHook,
+  installShutdownHandlers,
+} from '../shared/module-lifecycle.mjs';
+import { fleetBuildReadyLine } from '../shared/fleet-build.mjs';
+import {
+  shouldSkipCapturePcm,
+  buildProbePcm,
+  listenerDeliversPreCaptured,
+  activityEndSilenceMs,
+  gateClearGraceMs,
+  shouldHonorLiveBargeIn,
+} from '../shared/voice-path-policy.mjs';
+import { runListenerCapturePipeline } from '../shared/voice-listener-pipeline.mjs';
 import { limitedTranscribe } from '../shared/groq-stt-limiter.mjs';
 import { getSlotAssignments, isUserRegistered, getTranscriptChannel, bootstrapPermissions } from '../shared/voice-manager.mjs';
 import { storeLattice } from '../shared/lattice-bridge.mjs';
 import { PassThrough } from 'stream';
-import { setHumanSpeaking, clearHumanSpeaking } from '../shared/voice-gate.mjs';
+import { setHumanSpeaking, clearHumanSpeaking, getGateState } from '../shared/voice-gate.mjs';
 import { recordHumanActivity, isHumanActive, ambientTurnAllowed, botChainAllows, botChainAllowsNamed, recordBotTurn, resetBotChain, socialThinkDelay, SOCIAL_BOT_REPLY_PROB, recordLeoVoiceConversation } from '../shared/presence-gate.mjs';
 import { GeminiLiveSessionManager, GeminiLiveBridge, resolveGeminiVoice } from '../shared/gemini-live-bridge.mjs';
 import { IdentityVault } from '../shared/identity-vault.mjs';
@@ -262,7 +278,8 @@ function refreshPulseCache() {
   } catch {}
 }
 refreshPulseCache();
-setInterval(refreshPulseCache, 30_000);
+
+startModuleInterval(refreshPulseCache, 30_000);
 
 // --- HYBRID FUSION SERVICES ---
 const geminiLive = new GeminiLiveSessionManager(); // Per-user Gemini Live sessions
@@ -271,7 +288,7 @@ const geminiLive = new GeminiLiveSessionManager(); // Per-user Gemini Live sessi
 // the current date+time (context-only) so long conversations stay temporally
 // grounded and Leo never drifts "stuck in time." nowLine() now carries the full
 // date + year + "this is the present" anchor, not just HH:MM.
-setInterval(() => {
+startModuleInterval(() => {
   try {
     for (const [, b] of geminiLive.sessions) {
       if (b && b.available && typeof b.sendText === 'function') b.sendText(nowLine());
@@ -336,11 +353,6 @@ function clearVoiceActive() {
   try { if (fs.existsSync(LEO_VOICE_FLAG)) fs.unlinkSync(LEO_VOICE_FLAG); } catch (_) {}
 }
 
-// Always clean up on exit so the flag doesn't survive a crash
-process.on('exit', clearVoiceActive);
-process.on('SIGINT', () => { clearVoiceActive(); process.exit(0); });
-process.on('SIGTERM', () => { clearVoiceActive(); process.exit(0); });
-
 const ELEVEN_LABS_KEY = null; // ElevenLabs subscription inactive — using edge-tts
 const OPENAI_KEY = process.env.OPENAI_API_KEY;
 
@@ -366,6 +378,57 @@ sim.bio = {
 };
 
 let voiceConnection = null;
+let _lastIpcProbe = { nonce: null, at: 0 };
+let _lastVoicePathProbe = { nonce: null, at: 0, stage: null, transcript: null, skip_capture: null, from_listener: null, tts_spoken: null };
+let _lastHumanVoice = {
+  speaker: null,
+  speakerId: null,
+  path: null,
+  gateOpenedAt: 0,
+  gateClearedAt: 0,
+  micFrames: 0,
+  transcript: null,
+  transcriptAt: 0,
+  updatedAt: 0,
+};
+
+function recordHumanVoiceEvent(patch) {
+  Object.assign(_lastHumanVoice, patch, { updatedAt: Date.now() });
+}
+
+const _userVoiceMute = new Map();
+
+function isUserVoiceMuted(uid) {
+  return _userVoiceMute.get(uid) === true;
+}
+
+function syncUserVoiceMute(uid, voiceState) {
+  const muted = !!(voiceState?.selfMute || voiceState?.serverMute || voiceState?.selfDeaf);
+  _userVoiceMute.set(uid, muted);
+  return muted;
+}
+
+function getLeoVoiceReceiver() {
+  return (voiceConnection && voiceConnection.receiver) ? voiceConnection.receiver : null;
+}
+
+function teardownLeoVoiceConnection(reason = '') {
+  try { clearTimeout(_emptyRoomPauseTimer); } catch (_) {}
+  _emptyRoomPauseTimer = null;
+  try { clearVoiceActive(); } catch (_) {}
+  try {
+    const rx = getLeoVoiceReceiver();
+    if (rx?.speaking) rx.speaking.removeAllListeners('start');
+  } catch (_) {}
+  try { if (voiceConnection) voiceConnection.destroy(); } catch (_) {}
+  voiceConnection = null;
+  if (reason) console.log(`[Leo/Voice] Connection torn down (${reason}).`);
+}
+
+registerShutdownHook(clearModuleIntervals);
+registerShutdownHook(() => teardownLeoVoiceConnection('process shutdown'));
+installShutdownHandlers();
+
 // One-shot timer that pauses a read if the room stays empty past the grace window
 // (empty-room runaway guard). A rejoin clears it; see the USER-LEAVES handler.
 let _emptyRoomPauseTimer = null;
@@ -818,7 +881,7 @@ async function deliverBriefing(userId, text, label = 'Oracle') {
 }
 
 // Drain pending briefings every 10s
-setInterval(async () => {
+startModuleInterval(async () => {
   if (sim.state.status === 'Sleeping') return;
   let briefings = loadBriefings();
   if (briefings.length === 0) return;
@@ -840,7 +903,7 @@ setInterval(async () => {
 }, 10_000);
 
 // --- BACKGROUND TASK HEARTBEAT ---
-setInterval(async () => {
+startModuleInterval(async () => {
   const now = Date.now();
   if (sim.state.isSleeping) return; // HEARBEAT SILENCE: No proactive checks while sleeping
   if (isThinking || isProcessingVoice) return; // Don't interrupt active flow
@@ -966,8 +1029,76 @@ process.on('message', (msg) => {
   }
 });
 
+function leoVoiceReadySnapshot() {
+  const vc = voiceConnection;
+  const destroyed = !vc || vc.state.status === VoiceConnectionStatus.Destroyed;
+  const rx = getLeoVoiceReceiver();
+  return {
+    bot: BOT_NAME,
+    voice_anchored: !destroyed,
+    receiver_ready: !!rx,
+    channel_id: vc?.joinConfig?.channelId || null,
+    connection_status: destroyed ? 'none' : vc.state.status,
+    users_in_voice: usersInVoice.size,
+    last_ipc_probe_nonce: _lastIpcProbe.nonce,
+    last_ipc_probe_at: _lastIpcProbe.at,
+    last_voice_path_probe_nonce: _lastVoicePathProbe.nonce,
+    last_voice_path_probe_stage: _lastVoicePathProbe.stage,
+    last_voice_path_probe_at: _lastVoicePathProbe.at,
+    last_voice_path_probe_skip_capture: _lastVoicePathProbe.skip_capture,
+    last_voice_path_probe_from_listener: _lastVoicePathProbe.from_listener,
+    last_voice_path_probe_tts_spoken: _lastVoicePathProbe.tts_spoken,
+    last_human_speaker: _lastHumanVoice.speaker,
+    last_human_path: _lastHumanVoice.path,
+    last_human_transcript: _lastHumanVoice.transcript
+      ? String(_lastHumanVoice.transcript).slice(0, 120)
+      : null,
+    last_human_gate_at: _lastHumanVoice.gateOpenedAt,
+    last_human_mic_frames: _lastHumanVoice.micFrames,
+    last_human_voice_at: _lastHumanVoice.updatedAt,
+    owner_voice_muted: isUserVoiceMuted(OWNER_ID),
+    owner_in_voice: usersInVoice.has(OWNER_ID),
+    ts: Date.now(),
+  };
+}
+
 // --- IPC SERVER FOR DIRECT ORACLE SIGNALS (Start early) ---
 startBotServer(PORT, BOT_NAME, async (payload) => {
+  if (payload.type === 'IPC_PROBE') {
+    _lastIpcProbe = { nonce: payload.nonce || String(Date.now()), at: Date.now() };
+    console.log(`[Leo/IPC] Probe acknowledged (nonce=${_lastIpcProbe.nonce})`);
+    return;
+  }
+  if (payload.type === 'VOICE_PATH_PROBE') {
+    const nonce = payload.nonce || String(Date.now());
+    const probeTranscript = String(payload.transcript || 'Leo voice path probe').trim();
+    const probeUserId = payload.userId || OWNER_ID;
+    _lastVoicePathProbe = { nonce, at: Date.now(), stage: 'started', transcript: probeTranscript, skip_capture: null };
+    console.log(`[Leo/VoicePath/Probe] start nonce=${nonce} transcript="${probeTranscript.slice(0, 60)}"`);
+    try {
+      const pipeResult = await runListenerCapturePipeline({
+        userId: probeUserId,
+        speakerName: 'Probe',
+        pathLabel: 'probe-inject',
+        capturePcm: async () => buildProbePcm(),
+        transcribe: async () => probeTranscript,
+        deliver: async (uid, pcm, transcript, meta) => {
+          await deliverListenerCapturedVoice(uid, pcm, transcript, {
+            ...meta,
+            voicePathProbe: { nonce },
+          });
+        },
+      });
+      if (pipeResult.ok && _lastVoicePathProbe.stage !== 'responded') {
+        _lastVoicePathProbe.stage = 'deliverListenerCapturedVoice_complete';
+      }
+      console.log(`[Leo/VoicePath/Probe] complete nonce=${nonce} stage=${_lastVoicePathProbe.stage} pipe_ok=${pipeResult.ok}`);
+    } catch (e) {
+      _lastVoicePathProbe.stage = `error:${e.message}`;
+      console.error(`[Leo/VoicePath/Probe] error:`, e.message);
+    }
+    return;
+  }
   // ORACLE answer coming back: fire the waiting consult_oracle callback so Leo's
   // tool resolves with the real answer (was never handled here, so Leo's Oracle
   // requests silently never completed).
@@ -1065,9 +1196,10 @@ startBotServer(PORT, BOT_NAME, async (payload) => {
     console.log(`[Leo/Neural] Dropping external signal. I handle my own vibes now.`);
     return;
   }
-});
+}, { routes: { '/voice-ready': leoVoiceReadySnapshot } });
 
 client.once('clientReady', async () => {
+  console.log(fleetBuildReadyLine('Leo'));
   console.log(`Online as ${client.user.tag}`);
   
   // Set cachedClient for tts-engine within Leo's process
@@ -1080,7 +1212,7 @@ client.once('clientReady', async () => {
 
   // ── Heartbeat Emission ─────────────────────────────────────────────────────
   // Assures the ecosystem supervisor that Leo's event loop is active
-  setInterval(() => {
+  startModuleInterval(() => {
     if (process.send) {
       process.send({ type: 'HEARTBEAT', botName: 'Leo', memory: process.memoryUsage().rss });
     }
@@ -1201,7 +1333,7 @@ async function startSocialLoop() {
   // Skipped while in an active voice session (voiceConnection check below).
   const targetChannelId = CHANNEL_IDS.SUNDAY;
 
-  setInterval(async () => {
+  startModuleInterval(async () => {
     try {
       // Leo anchors to voice at boot to be ready for human voice users.
       // That anchor was incorrectly gating his social-text participation —
@@ -1590,8 +1722,8 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
   // Gemini's VAD mid-sentence. Stamp every mute/deafen toggle (on globalThis so the
   // voice bridge's onInterrupted forensic line can flag a cut that lands right after).
   try {
-    const wasMuted = !!(oldState.selfMute || oldState.serverMute || oldState.selfDeaf);
-    const nowMuted = !!(newState.selfMute || newState.serverMute || newState.selfDeaf);
+    const wasMuted = syncUserVoiceMute(userId, oldState);
+    const nowMuted = syncUserVoiceMute(userId, newState);
     if (wasMuted !== nowMuted) {
       globalThis.__lastMuteToggleTs = Date.now();
       globalThis.__userMutedNow = nowMuted;
@@ -1718,6 +1850,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
     currentAssignedUser = userId;
     userFocus.set(userId, true);
     usersInVoice.add(userId);
+    syncUserVoiceMute(userId, newState);
 
     // Build multi-user context: who else is in this voice channel?
     const voiceChannel = newState.channel;
@@ -1728,6 +1861,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
         otherUsersInVoice.push(member.user.username);
         userFocus.set(mId, true);
         usersInVoice.add(mId);
+        if (member.voice) syncUserVoiceMute(mId, member.voice);
       }
     }
 
@@ -3012,6 +3146,16 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
               return;
             }
 
+            const liveSpeaker = bridge._currentSpeaker || bridge._lastAudioSpeaker || 'unknown';
+            recordHumanVoiceEvent({
+              speaker: liveSpeaker,
+              speakerId: bridge._currentSpeakerId || bridge._lastAudioSpeakerId || null,
+              path: 'gemini-live',
+              transcript: spokenText,
+              transcriptAt: Date.now(),
+            });
+            console.log(`[Leo/HumanVoice] path=gemini-live speaker=${liveSpeaker} transcript="${spokenText.slice(0, 80)}"`);
+
             // ── SELF-ECHO BY CONTENT (the JBL / acoustic-bridge fix) ────────────
             // If what Leo just "heard" closely matches what HE just SAID, it's his
             // own voice echoing back through the mic — NOT a new speaker. Drop it so
@@ -3611,9 +3755,15 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
             // toggle = the Discord mute/unmute blip. The numbers will tell us which.
             const sinceStart = playStart ? (Date.now() - playStart) : -1;
             const realAfter = lastReal > playStart;
-            console.log(`[Leo/Voice/DIAG] INTERRUPT @ +${sinceStart}ms into speech | realMicAfterStart=${realAfter ? 'YES('+(Date.now()-lastReal)+'ms ago)' : 'NONE'} | framesSinceHeStarted=${bridge._framesSinceLeoStart||0} peakRMS=${bridge._peakRmsSinceLeoStart||0} | muteToggle≤1.5s=${(Date.now()-(globalThis.__lastMuteToggleTs||0))<1500?'YES':'no'} | DECISION=${realAfter ? 'HONOR→CUT' : 'IGNORE(phantom)'}`);
-            if (lastReal <= playStart) {
-              console.log('[Leo/Voice] Ignoring spurious interrupt — no real mic audio since Leo started speaking (you were muted, or echo/VAD noise). Letting him finish.');
+            const honorBarge = shouldHonorLiveBargeIn({
+              lastRealAfterStart: realAfter,
+              sinceStartMs: sinceStart,
+              framesSinceLeoStart: bridge._framesSinceLeoStart || 0,
+              peakRmsSinceLeoStart: bridge._peakRmsSinceLeoStart || 0,
+            });
+            console.log(`[Leo/Voice/DIAG] INTERRUPT @ +${sinceStart}ms into speech | realMicAfterStart=${realAfter ? 'YES('+(Date.now()-lastReal)+'ms ago)' : 'NONE'} | framesSinceHeStarted=${bridge._framesSinceLeoStart||0} peakRMS=${bridge._peakRmsSinceLeoStart||0} | muteToggle≤1.5s=${(Date.now()-(globalThis.__lastMuteToggleTs||0))<1500?'YES':'no'} | DECISION=${honorBarge ? 'HONOR→CUT' : 'IGNORE(phantom/early-weak)'}`);
+            if (!honorBarge) {
+              console.log('[Leo/Voice] Ignoring spurious/early-weak interrupt — no sustained real barge-in since Leo started speaking. Letting him finish.');
               // Mark this section as possibly CUT SHORT by Gemini's phantom VAD (Gemini
               // stops generating server-side even though we ignore the barge-in). The
               // turn-complete handler reads this flag and RE-READS the same section
@@ -3849,11 +3999,9 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
       if (nonBots.size === 0 && !_readingNow) {
         console.log(`[Leo/Voice] Channel ${voiceChannel.id} empty. Disconnecting...`);
         geminiLive.disconnect(`room:${voiceChannel.id}`, "Leo"); // room session ends with the room
-        voiceConnection.destroy();
-        voiceConnection = null;
+        teardownLeoVoiceConnection('empty room');
         usersInVoice.clear();
         currentAssignedUser = null; // ── End private session: Leo may rejoin social life
-        clearVoiceActive(); // ── Release priority flag so social bots can resume
       } else if (nonBots.size === 0 && _readingNow) {
         // TRANSIENT-LEAVE GRACE: keep reading for now (don't chop off a transient
         // leave/rejoin), but arm a one-shot ~45s check. If someone rejoins within the
@@ -3896,10 +4044,9 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
             // Now the room is genuinely empty AND the read is paused — tear down so Leo
             // isn't sat in an empty channel. "keep going" resumes from the saved draft.
             try { geminiLive.disconnect(`room:${_chanId}`, "Leo"); } catch (_) {}
-            try { if (voiceConnection) { voiceConnection.destroy(); voiceConnection = null; } } catch (_) {}
+            teardownLeoVoiceConnection('empty room after read grace');
             usersInVoice.clear();
             currentAssignedUser = null;
-            try { clearVoiceActive(); } catch (_) {}
           } catch (e) { console.error('[Leo/Voice] empty-room pause check failed:', e?.message || e); }
         }, EMPTY_GRACE_MS);
       } else {
@@ -4234,13 +4381,13 @@ async function processVocalQueue() {
   processVocalQueue();
 }
 
-async function speakLeoText(text, isPriority = false, speaker = "Leo") {
+async function speakLeoText(text, isPriority = false, speaker = "Leo", opts = {}) {
   if (!text || text.length < 2) return;
 
   // HUMAN-IN-VOICE GATE: skip GPU TTS when nobody is listening.
   // Scans ALL voice channels (Leo's own channel included).
-  // Override with KAI_TTS_ALWAYS=1.
-  if (process.env.KAI_TTS_ALWAYS !== '1') {
+  // Override with KAI_TTS_ALWAYS=1 or opts.forceTts (fleet verification probe).
+  if (process.env.KAI_TTS_ALWAYS !== '1' && !opts.forceTts) {
     try {
       let hasHuman = false;
       for (const guild of client.guilds.cache.values()) {
@@ -4438,7 +4585,7 @@ async function ensureVoiceConnection(channelId, guild, retries = 3, userId = nul
   try {
     if (voiceConnection && voiceConnection.state.status !== VoiceConnectionStatus.Destroyed) {
       if (voiceConnection.joinConfig.channelId === channelId) return;
-      voiceConnection.destroy();
+      teardownLeoVoiceConnection('channel switch');
     }
 
     console.log(`[Leo/Voice] Joining ${channelId} (Attempt ${4 - retries}/3)...`);
@@ -4532,11 +4679,26 @@ async function ensureVoiceConnection(channelId, guild, retries = 3, userId = nul
       } catch (e) { console.error("[Leo/Memory] Error recalling inquiry:", e); }
     }
 
-    voiceConnection.receiver.speaking.removeAllListeners('start');
+    try {
+      const chId = voiceConnection?.joinConfig?.channelId;
+      const ch = chId ? (client.channels.cache.get(chId) || await client.channels.fetch(chId).catch(() => null)) : null;
+      if (ch?.members) {
+        for (const [mId, member] of ch.members) {
+          if (!member.user.bot && member.voice) syncUserVoiceMute(mId, member.voice);
+        }
+      }
+    } catch (_) {}
+
+    const _rx = getLeoVoiceReceiver();
+    if (!_rx) {
+      console.warn('[Leo/Voice] No receiver — voice connection torn down before listener attach.');
+      return;
+    }
+    _rx.speaking.removeAllListeners('start');
     // LISTENER DEDUPE: every re-anchor was ADDING another 'start' listener
     // without removing the old ones — one utterance got processed 2-8x in
     // parallel (duplicate transcripts, audio flooding, spurious interrupts).
-    voiceConnection.receiver.speaking.removeAllListeners('start');
+    _rx.speaking.removeAllListeners('start');
     // PER-SPEAKER STREAM DEDUPE: Discord re-fires 'speaking start' on brief
     // pauses mid-sentence. Without this, each re-fire opens ANOTHER
     // receiver.subscribe for the same person → two concurrent mic streams,
@@ -4544,9 +4706,15 @@ async function ensureVoiceConnection(channelId, guild, retries = 3, userId = nul
     // audioStreamEnd/interrupt cancels Leo's own reply before it plays
     // ("talked but nothing came back"). One live stream per speaker at a time.
     const _activeSpeakers = new Set();
-    voiceConnection.receiver.speaking.on('start', (uid) => {
+    _rx.speaking.on('start', (uid) => {
       // LEO'S OWN VOICE: never process yourself (would cause infinite echo loop)
       if (uid === client.user.id) return;
+
+      if (isUserVoiceMuted(uid)) {
+        const _dn = client.users?.cache?.get(uid)?.username || uid;
+        console.log(`[Leo/Voice] Ignoring speaking.start for ${_dn} — mic muted/deafened (no gate, no Gemini frames)`);
+        return;
+      }
 
       // Resolve who is speaking — could be human or another AI
       const speakerIdentity = getIdentityById(uid);
@@ -4607,7 +4775,9 @@ async function ensureVoiceConnection(channelId, guild, retries = 3, userId = nul
         const END_OF_SPEECH_MS = (Number(process.env.LEO_END_OF_SPEECH_MS) > 0)
           ? Number(process.env.LEO_END_OF_SPEECH_MS)
           : (Number(process.env.LEO_SILENCE_FINALIZE_MS) > 0 ? Number(process.env.LEO_SILENCE_FINALIZE_MS) : 2200);
-        const stream = voiceConnection.receiver.subscribe(uid, { end: { behavior: EndBehaviorType.AfterSilence, duration: END_OF_SPEECH_MS } });
+        const _rxLive = getLeoVoiceReceiver();
+        if (!_rxLive) { _activeSpeakers.delete(uid); return; }
+        const stream = _rxLive.subscribe(uid, { end: { behavior: EndBehaviorType.AfterSilence, duration: END_OF_SPEECH_MS } });
         const decoder = new prism.opus.Decoder({ frameSize: 960, channels: 2, rate: 48000 });
 
         stream.pipe(decoder);
@@ -4651,6 +4821,9 @@ async function ensureVoiceConnection(channelId, guild, retries = 3, userId = nul
         const ATTACK = Number(process.env.LEO_MIC_ATTACK) > 0 ? Number(process.env.LEO_MIC_ATTACK) : 3;
         let _gateOpen = false, _attack = 0, _pre = [], _hangover = 0;
         let _humanGateOpened = false;
+        let _activityEndPending = false;
+        const _activityEndMs = activityEndSilenceMs();
+        const _gateClearGraceMs = gateClearGraceMs();
         let _peakRms = 0, _everOpened = false, _framesSent = 0, _suppressedEcho = 0; // diagnostics: see the user's real mic level
         // Silero v4 (the bundled @ricky0123/vad-node@0.0.3 model) takes exactly
         // 1536 float32 samples per frame at 16 kHz mono in [-1,1]. We accumulate
@@ -4664,11 +4837,25 @@ async function ensureVoiceConnection(channelId, guild, retries = 3, userId = nul
         const VAD_TH = Number(process.env.LEO_VAD_THRESHOLD) > 0 ? Number(process.env.LEO_VAD_THRESHOLD) : 0.8;
         const VAD_TH_SPEAKING = Number(process.env.LEO_VAD_THRESHOLD_SPEAKING) > 0 ? Number(process.env.LEO_VAD_THRESHOLD_SPEAKING) : 0.9;
         const openVerifiedHumanGate = () => {
-          if (_humanGateOpened) return;
+          if (_humanGateOpened || isUserVoiceMuted(uid)) return;
+          const gs = getGateState();
+          if (gs.speaking && (gs.speakerName === speakerName || gs.speakerId === uid)) {
+            _humanGateOpened = true;
+            return;
+          }
           _humanGateOpened = true;
+          recordHumanVoiceEvent({
+            speaker: speakerName,
+            speakerId: uid,
+            path: 'gemini-live',
+            gateOpenedAt: Date.now(),
+            micFrames: 0,
+            transcript: null,
+          });
           setHumanSpeaking(uid, speakerName);
         };
         decoder.on('data', (chunk) => {
+          if (isUserVoiceMuted(uid)) return;
           if (GATE_DISABLED) {
             openVerifiedHumanGate();
             liveBridge.sendAudio(chunk);
@@ -4779,6 +4966,15 @@ async function ensureVoiceConnection(channelId, guild, retries = 3, userId = nul
               _hangover--;
               if (_hangover <= 0) {
                 _gateOpen = false;
+                if (_everOpened && !_activityEndPending) {
+                  _activityEndPending = true;
+                  if (liveBridge._activityEndTimer) clearTimeout(liveBridge._activityEndTimer);
+                  liveBridge._activityEndTimer = setTimeout(() => {
+                    _activityEndPending = false;
+                    liveBridge._activityEndTimer = null;
+                    try { liveBridge.signalActivityEnd(); } catch (_) {}
+                  }, _activityEndMs);
+                }
               }
             }
           }
@@ -4847,10 +5043,11 @@ async function ensureVoiceConnection(channelId, guild, retries = 3, userId = nul
               // phantom-interrupt the section. A genuine barge-in flows start→audio
               // →end exactly as a normal turn, preserving "stop"/"go back" nav.
               try { liveBridge.signalActivityStart(); } catch (_) {}
-              if (liveBridge._activityEndTimer) clearTimeout(liveBridge._activityEndTimer);
-              liveBridge._activityEndTimer = setTimeout(() => {
-                try { liveBridge.signalActivityEnd(); } catch (_) {}
-              }, 400);
+              if (liveBridge._activityEndTimer) {
+                clearTimeout(liveBridge._activityEndTimer);
+                liveBridge._activityEndTimer = null;
+                _activityEndPending = false;
+              }
               liveBridge.sendAudio(chunk);
             }
           } else {
@@ -4862,7 +5059,24 @@ async function ensureVoiceConnection(channelId, guild, retries = 3, userId = nul
           // DIAGNOSTIC: shows your real mic level vs the gate. If peak < threshold,
           // the gate is too high and is the reason Leo "hears nothing" — lower LEO_MIC_GATE.
           const _thr = ((typeof isSpeaking !== 'undefined' && isSpeaking) || audioPlayer?.state?.status === 'playing') ? GATE_SPEAKING : GATE_IDLE;
-          console.log(`[Leo/MicLevel] peak RMS=${Math.round(_peakRms)} | gate=${_thr} | ${_everOpened ? `OPENED, ${_framesSent} frames sent to Gemini` : 'NEVER opened (your voice stayed below the gate — Leo heard nothing)'}${_suppressedEcho ? ` | ${_suppressedEcho} echo frames held back while Leo spoke (half-duplex)` : ''}`);
+          console.log(`[Leo/MicLevel] path=gemini-live speaker=${speakerName} peak RMS=${Math.round(_peakRms)} | gate=${_thr} | ${_everOpened ? `OPENED, ${_framesSent} frames sent to Gemini` : 'NEVER opened (your voice stayed below the gate — Leo heard nothing)'}${_suppressedEcho ? ` | ${_suppressedEcho} echo frames held back while Leo spoke (half-duplex)` : ''}`);
+          if (_everOpened) {
+            const heardText = liveBridge._inputTranscript?.trim() || liveBridge._lastInputTranscript || null;
+            recordHumanVoiceEvent({
+              gateClearedAt: Date.now(),
+              micFrames: _framesSent,
+              transcript: heardText || _lastHumanVoice.transcript,
+            });
+            if (heardText) {
+              console.log(`[Leo/HumanVoice] path=gemini-live speaker=${speakerName} frames=${_framesSent} transcript="${heardText.slice(0, 80)}"`);
+            }
+          }
+          try { liveBridge.signalActivityEnd(); } catch (_) {}
+          _activityEndPending = false;
+          if (liveBridge._activityEndTimer) {
+            clearTimeout(liveBridge._activityEndTimer);
+            liveBridge._activityEndTimer = null;
+          }
           liveBridge.sendAudioStreamEnd?.();
           try { stream.destroy(); } catch (_) {}
           try { decoder.destroy(); } catch (_) {}
@@ -4873,36 +5087,60 @@ async function ensureVoiceConnection(channelId, guild, retries = 3, userId = nul
           // grace window to land, THEN clear the gate with the real text. The
           // audio stream itself already ended above, so this only delays the
           // cross-process "what did the human say" signal, not Leo's response.
+          const _clearNonce = `${uid}-${Date.now()}`;
+          liveBridge._pendingGateClearNonce = _clearNonce;
           setTimeout(() => {
+            if (liveBridge._pendingGateClearNonce !== _clearNonce) return;
+            if (_activeSpeakers.has(uid)) {
+              console.log(`[Leo/VoiceGate] Deferring GATE CLEAR — ${speakerName} resumed speaking (new stream active).`);
+              return;
+            }
             if (!_humanGateOpened) {
               console.log(`[Leo/VoiceGate] No sustained speech from ${speakerName}; not opening/clearing global gate.`);
               return;
             }
             const heardText = liveBridge._inputTranscript?.trim() || liveBridge._lastInputTranscript || null;
             clearHumanSpeaking(heardText, speakerName);
-          }, 1300);
+          }, _gateClearGraceMs);
         };
         decoder.on('end', endHandler);
         decoder.on('error', endHandler);
         stream.on('error', endHandler);
       } else {
-        // FALLBACK: Whisper STT + Groq LLM (old pipeline, unchanged)
-        // capturePcm waits for silence, then transcribeAudio gives us the text
-        capturePcm(uid).then(async pcm => {
-          const wav = pcmToWav(pcm, 48000, 2);
-          const transcript = await transcribeAudio(wav, uid).catch(() => null);
-          _activeSpeakers.delete(uid); // stream ended — allow this speaker again
-          // 🟢 CLOSE THE GATE with the Whisper transcript
-          if (transcript && transcript.trim().length >= 3) {
-            setHumanSpeaking(uid, speakerName);
-            clearHumanSpeaking(transcript, speakerName);
-          }
-          // Hand off to normal voice handler
-          handleUserVoice(uid).catch(err => console.error(`[Leo/Audio] Voice trigger failed for ${uid}:`, err.message));
-        }).catch(err => {
-          _activeSpeakers.delete(uid); // stream errored — don't leave the speaker locked out
-          clearHumanSpeaking(null, speakerName);
-          console.error(`[Leo/Audio] capturePcm failed for ${uid}:`, err.message);
+        runListenerCapturePipeline({
+          userId: uid,
+          speakerName,
+          pathLabel: 'fallback',
+          capturePcm: () => capturePcm(uid),
+          transcribe: async (pcm) => {
+            const wav = pcmToWav(pcm, 48000, 2);
+            return transcribeAudio(wav, uid).catch(() => null);
+          },
+          onBeforeDeliver: (deliverUid, deliverSpeaker, heardText) => {
+            _activeSpeakers.delete(uid);
+            recordHumanVoiceEvent({
+              speaker: deliverSpeaker,
+              speakerId: deliverUid,
+              path: 'fallback',
+              gateOpenedAt: Date.now(),
+              transcript: heardText,
+              transcriptAt: Date.now(),
+              micFrames: 0,
+            });
+            console.log(`[Leo/HumanVoice] path=fallback speaker=${deliverSpeaker} transcript="${String(heardText || '').slice(0, 80)}"`);
+            setHumanSpeaking(deliverUid, deliverSpeaker);
+            clearHumanSpeaking(heardText, deliverSpeaker);
+          },
+          deliver: (deliverUid, pcm, transcript, meta) =>
+            deliverListenerCapturedVoice(deliverUid, pcm, transcript, meta),
+          onTranscriptRejected: () => {
+            _activeSpeakers.delete(uid);
+            clearHumanSpeaking(null, speakerName);
+          },
+          onCaptureFailed: () => {
+            _activeSpeakers.delete(uid);
+            clearHumanSpeaking(null, speakerName);
+          },
         });
       }
     });
@@ -4957,10 +5195,28 @@ async function drainPendingQueue() {
   }
 }
 
-async function handleUserVoice(userId) {
+async function deliverListenerCapturedVoice(userId, pcm, transcript, opts = {}) {
+  const skip = shouldSkipCapturePcm({ pcm });
+  console.log(`[Leo/Voice] Speaking listener delivered pre-captured pcm uid=${userId} bytes=${pcm?.length || 0} skip_second_capture=${skip}`);
+  if (opts.voicePathProbe) {
+    _lastVoicePathProbe.from_listener = listenerDeliversPreCaptured({ pcm, fromListener: true });
+    _lastVoicePathProbe.skip_capture = skip;
+  }
+  await handleUserVoice(userId, {
+    pcm,
+    transcript,
+    fromListener: true,
+    speakerName: opts.speakerName,
+    voicePathProbe: opts.voicePathProbe || null,
+  });
+}
+
+async function handleUserVoice(userId, preCaptured = null) {
   const now = Date.now();
-  if (now - lastVocalReplyTime < 500) return;
-  if (activeThoughts.has(userId)) return; // Already processing THIS user — drop duplicate
+  const voicePathProbe = preCaptured?.voicePathProbe || null;
+  const isVoicePathProbe = !!voicePathProbe;
+  if (!isVoicePathProbe && now - lastVocalReplyTime < 500) return;
+  if (!isVoicePathProbe && activeThoughts.has(userId)) return; // Already processing THIS user — drop duplicate
 
   // If Leo is busy with SOMEONE ELSE, don't drop — queue for after
   if (isProcessingVoice || isThinking) {
@@ -4970,7 +5226,7 @@ async function handleUserVoice(userId) {
   }
 
   const lastTime = userCooldowns.get(userId) || 0;
-  if (now - lastTime < 5000) return; // Cooldown for stability
+  if (!isVoicePathProbe && now - lastTime < 5000) return; // Cooldown for stability
   
   activeThoughts.add(userId);
   isProcessingVoice = true;
@@ -4984,7 +5240,15 @@ async function handleUserVoice(userId) {
   try {
     const t_start = Date.now();
     
-    const pcm = await capturePcm(userId);
+    const skipCapture = shouldSkipCapturePcm(preCaptured);
+    if (!skipCapture) {
+      console.warn('[Leo/Audio] handleUserVoice requires pre-captured pcm from listener pipeline — refusing second subscribe.');
+      return;
+    }
+    const pcm = preCaptured.pcm;
+    if (preCaptured?.fromListener) {
+      console.log(`[Leo/Voice] handleUserVoice reusing listener pcm skip_capture=${skipCapture} bytes=${pcm?.length || 0}`);
+    }
 
     // ── NOISE GATE LAYER 1: Duration ─────────────────────────────────────────
     // 48kHz, stereo, s16le = 4 bytes per frame.
@@ -5003,6 +5267,12 @@ async function handleUserVoice(userId) {
     if (rms < RMS_THRESHOLD) {
       console.log(`[Leo/NoiseGate] RMS below threshold — treating as ambient noise. Skipping.`);
       return;
+    }
+
+    if (isVoicePathProbe && preCaptured?.transcript) {
+      const probeText = preCaptured.transcript.trim();
+      _lastVoicePathProbe.stage = 'responded';
+      console.log(`[Leo/VoicePath/Probe] responded to input transcript="${probeText.slice(0, 80)}" pipeline=full`);
     }
 
     // --- SOVEREIGN STRIKE: Primary Neural Pipeline ---
@@ -5030,7 +5300,16 @@ async function handleUserVoice(userId) {
     const now = Date.now();
     
     let idResult, transcript;
-    if (cachedId && now - cachedId.ts < BIOMETRIC_TTL && cachedId.similarity > 0.90) {
+    if (preCaptured?.transcript) {
+      if (isVoicePathProbe) {
+        idResult = { success: true, similarity: 1, name: profileName };
+      } else {
+        idResult = (cachedId && now - cachedId.ts < BIOMETRIC_TTL)
+          ? cachedId
+          : await biometrics.verify(profileName, tempWav);
+      }
+      transcript = preCaptured.transcript;
+    } else if (cachedId && now - cachedId.ts < BIOMETRIC_TTL && cachedId.similarity > 0.90) {
       console.log(`[Leo/Biometrics] Using cached identity for ${userId}: ${cachedId.name} (${Math.round(cachedId.similarity*100)}%)`);
       [idResult, transcript] = await Promise.all([
         Promise.resolve(cachedId),
@@ -5065,11 +5344,11 @@ async function handleUserVoice(userId) {
 
     // FUZZY DEDUPLICATION: Anti-Echo Logic
     const fuzzyHash = getFuzzyHash(transcript);
-    if (recentVoiceResponses.has(fuzzyHash)) {
+    if (!isVoicePathProbe && recentVoiceResponses.has(fuzzyHash)) {
       console.log(`[Leo/Dedupe] Suppressing repeat transcript: "${transcript}"`);
       return;
     }
-    recentVoiceResponses.add(fuzzyHash);
+    if (!isVoicePathProbe) recentVoiceResponses.add(fuzzyHash);
     setTimeout(() => recentVoiceResponses.delete(fuzzyHash), 60000); // 60s window
 
     const normalized = transcript.toLowerCase();
@@ -5156,7 +5435,8 @@ async function handleUserVoice(userId) {
       // If he's not interested, he mirrors the transcript to the gateway (so other roundtable bots can hear and reply)
       // and stands down.
       let shouldLeoReply = isAddressedToLeo || (needsOracle && verifiedUser);
-      
+      if (isVoicePathProbe) shouldLeoReply = true;
+
       if (!shouldLeoReply) {
         const score = computeInterest("Leo", transcript);
         if (score >= PARTICIPATION_THRESHOLD) {
@@ -5171,7 +5451,7 @@ async function handleUserVoice(userId) {
       // the slow ~30s local "fallback voice" glitching in over the cloud voice,
       // the lag, and the cutoffs (two mouths fighting for the floor). Stand down
       // here; Gemini Live handles the spoken reply. (STT/biometrics above still ran.)
-      if (shouldLeoReply && hasActiveLiveSession()) {
+      if (shouldLeoReply && hasActiveLiveSession() && !isVoicePathProbe) {
         console.log(`[Leo/Audio] Live Gemini session active — legacy Kokoro reply standing down (cloud voice owns it).`);
         shouldLeoReply = false;
       }
@@ -5295,8 +5575,8 @@ async function handleUserVoice(userId) {
                         normalized.includes('going on');
 
       const [history, proactiveResult] = await Promise.all([
-        getCachedHistory(tChannel),
-        needsInfo
+        isVoicePathProbe ? Promise.resolve('') : getCachedHistory(tChannel),
+        (needsInfo && !isVoicePathProbe)
           ? (async () => {
               console.log(`[Leo/Neural] Proactive Intelligence Triggered...`);
               const [latticeData, webData] = await Promise.all([
@@ -5345,7 +5625,9 @@ async function handleUserVoice(userId) {
 
       // MULTI-USER QUEUE: If Leo is already thinking for someone else, queue this user
       // instead of dropping their message. Leo will handle them right after.
-      if ((isThinking || isProcessingVoice) && currentAssignedUser !== userId) {
+      // currentAssignedUser=null means this IS the in-flight utterance — never self-queue.
+      const busyWithOther = currentAssignedUser && currentAssignedUser !== userId;
+      if (!isVoicePathProbe && busyWithOther && (isThinking || isProcessingVoice)) {
         console.log(`[Leo/Queue] Queuing transcript from ${profileName} (Leo busy with ${currentAssignedUser})`);
         pendingVoiceQueue.set(userId, {
           transcript: contextualTranscript,
@@ -5360,6 +5642,15 @@ async function handleUserVoice(userId) {
       }
 
       currentAssignedUser = userId;
+      if (isVoicePathProbe) {
+        const ttsOpts = { forceTts: true };
+        const ttsResult = await speakLeoText('Voice path structural check.', true, 'Leo', ttsOpts);
+        _lastVoicePathProbe.tts_spoken = ttsResult?.spoken !== false;
+        console.log(`[Leo/VoicePath/Probe] tts_spoken=${_lastVoicePathProbe.tts_spoken} pipeline=listener_chain_plus_tts`);
+        isProcessingVoice = false;
+        activeThoughts.delete(userId);
+        return;
+      }
       const response = await callGroqAsLeo(contextualTranscript, user.username, transcriptChannelId, userId, history, detectedIdentity);
       hasResponded = true;
       
@@ -5386,7 +5677,8 @@ async function handleUserVoice(userId) {
         if (cleanResponse) {
           // ── AUDIO FIRST: Start speech immediately, don't wait for Discord I/O ──
           const t_tts_start = Date.now();
-          const speechPromise = speakLeoText(cleanResponse); // non-blocking fire-and-forget
+          const ttsOpts = isVoicePathProbe ? { forceTts: true } : {};
+          const speechPromise = speakLeoText(cleanResponse, true, 'Leo', ttsOpts);
 
           // ── SOCIAL CHAT BRIDGE ──
           const socialChannel = client.channels.cache.get(CHANNEL_IDS.SUNDAY) || await client.channels.fetch(CHANNEL_IDS.SUNDAY).catch(() => null);
@@ -5422,7 +5714,11 @@ async function handleUserVoice(userId) {
             })
           }).catch(() => {});
 
-          await speechPromise; // wait for audio to finish before releasing the voice lock
+          const ttsResult = await speechPromise;
+          if (isVoicePathProbe) {
+            _lastVoicePathProbe.tts_spoken = ttsResult?.spoken !== false;
+            console.log(`[Leo/VoicePath/Probe] tts_spoken=${_lastVoicePathProbe.tts_spoken}`);
+          }
           const t_tts_dur = Date.now() - t_tts_start;
           console.log(`\n[Leo/Performance] Neural: ${t_neural_dur}ms | TTS: ${t_tts_dur}ms | Total (from capture): ${Date.now() - t_start}ms\n`);
         }
@@ -5443,6 +5739,9 @@ async function handleUserVoice(userId) {
     }
   } catch (err) {
     console.error(`[Leo/Audio] Handler Error:`, err.message);
+    if (isVoicePathProbe) {
+      _lastVoicePathProbe.stage = `error:${err.message}`;
+    }
   } finally {
     activeThoughts.delete(userId);
     isProcessingVoice = false;
@@ -5482,10 +5781,15 @@ async function processTranscriptResponse(userId, transcript, userName, transcrip
 }
 
 async function capturePcm(userId) {
+  const receiver = getLeoVoiceReceiver();
+  if (!receiver) {
+    console.warn('[Leo/Audio] capturePcm skipped — no voice connection');
+    return Buffer.alloc(0);
+  }
   return new Promise((resolve) => {
     // Increased silence gap (3000ms) for fallback STT path — ensures naturally slow/paused speech
     // (or phone sensory voice input) isn't prematurely cut off. Leo now waits longer for complete thoughts.
-    const stream = voiceConnection.receiver.subscribe(userId, { end: { behavior: EndBehaviorType.AfterSilence, duration: 3000 } });
+    const stream = receiver.subscribe(userId, { end: { behavior: EndBehaviorType.AfterSilence, duration: 3000 } });
     const decoder = new prism.opus.Decoder({ frameSize: 960, channels: 2, rate: 48000 });
     const chunks = [];
     let resolved = false;
@@ -5985,11 +6289,24 @@ client.on('messageCreate', async (message) => {
 
 // --- END OF VOICE CORE ---
 
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('[Leo/Internal] Unhandled Rejection at:', promise, 'reason:', reason);
+function _leoTransientNet(msg) {
+  return /ENOTFOUND|ECONNRESET|ETIMEDOUT|discord\.media|socket hang up|socket closed|Cannot perform IP discovery/i.test(msg);
+}
+process.on('unhandledRejection', (reason) => {
+  const msg = reason instanceof Error ? reason.message : String(reason);
+  if (_leoTransientNet(msg)) {
+    console.warn('[Leo/Internal] Transient network error (staying alive):', msg);
+    return;
+  }
+  console.error('[Leo/Internal] Unhandled Rejection (staying alive):', msg);
 });
 process.on('uncaughtException', (err) => {
-  console.error('[Leo/Internal] Uncaught Exception:', err);
+  const msg = err?.message || String(err);
+  if (_leoTransientNet(msg)) {
+    console.warn('[Leo/Internal] Transient network error (staying alive):', msg);
+    return;
+  }
+  console.error('[Leo/Internal] Uncaught Exception (staying alive):', msg);
 });
 
 let _netWatchStarted = false;
@@ -6033,7 +6350,7 @@ function startConnectivityWatch() {
 }
 
 function startEnergyMonitor() {
-  setInterval(async () => {
+  startModuleInterval(async () => {
     const wasSleeping = sim.state.status === "Sleeping";
     const nowSleeping = sim.shouldBeSleeping();
     
@@ -6052,13 +6369,13 @@ function startEnergyMonitor() {
   }, 60000);
 
   // Poll Hardware Vitals for Environmental Sensation (30s Cycle)
-  setInterval(async () => {
+  startModuleInterval(async () => {
     const stats = await getHardwareStats();
     sim.updateEnvironment(stats.cpu);
   }, 30000);
 
   // --- PROACTIVE VOICE PULSE (Leo's Initiative) ---
-  setInterval(async () => {
+  startModuleInterval(async () => {
     if (sim.state.status === 'Sleeping' || isThinking || isProcessingVoice) return;
     if (!voiceConnection || audioPlayer.state.status !== AudioPlayerStatus.Idle) return;
 
