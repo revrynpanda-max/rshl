@@ -512,6 +512,34 @@ impl StatLexicon {
         Some((self.words[best.0].as_str(), best.1))
     }
 
+    /// Push grammar-nominated word ids into an existing candidate pool.
+    ///
+    /// `picks` is a `(word_id, count)` slice from `top_n_by_count`. Each pick
+    /// is scored with the *same* cosine metric the pool was built with, so
+    /// every downstream stage (repetition penalty, bigram/trigram log-prob,
+    /// attention, softmax) operates on one consistent scale and needs no
+    /// changes. Already-present words and out-of-range ids are skipped, so
+    /// the pool never gains a duplicate and a stale prior cannot panic the
+    /// decoder.
+    fn nominate(
+        &self,
+        picks: &[(u32, u32)],
+        peeled: &SparseVec,
+        candidates: &mut Vec<(String, f32)>,
+    ) {
+        for &(id, _) in picks {
+            let idx = id as usize;
+            let (word, vector) = match (self.words.get(idx), self.vectors.get(idx)) {
+                (Some(w), Some(v)) => (w, v),
+                _ => continue,
+            };
+            if candidates.iter().any(|(c, _)| c == word) {
+                continue;
+            }
+            candidates.push((word.clone(), vector.cosine(peeled)));
+        }
+    }
+
     /// Top-K nearest words by cosine similarity.
     pub fn top_k_nearest(&self, target: &SparseVec, k: usize) -> Vec<(String, f32)> {
         if self.is_empty() {
@@ -697,6 +725,29 @@ impl StatLexicon {
         let greedy = params.top_k <= 1 || params.temperature <= 0.0;
         let k_eff = params.top_k.max(1);
 
+        // ── Grammar-proposed candidates (`KAI_GRAMMAR_POOL=N`, default off) ──
+        //
+        // The candidate pool below is selected by **cosine alone**, and only
+        // then does step 3b add `bigram_weight · log P(w | prev)`. So the
+        // grammar prior can re-rank the shortlist but can never *join* it: if
+        // the word the corpus overwhelmingly expects next — "is", "the", "a" —
+        // is not among the top-k cosine neighbours of the peeled latent, it
+        // cannot be emitted at any prior weight. That is a hard ceiling on
+        // word order, and it is why decoded output scores at the uniform-random
+        // baseline on the fluency metric even though the priors are populated.
+        //
+        // When set, we additionally pull the N most frequent observed
+        // successors of the preceding context and union them into the pool,
+        // scored on the same cosine scale so the existing softmax is
+        // unchanged. The prior now gets to nominate, not just veto.
+        //
+        // Unset (default): the pool is byte-identical to before.
+        let grammar_pool: usize = grammar_pool_size();
+
+        // Scratch buffer for the bounded top-N successor selection, hoisted
+        // out of the hot loop so nomination does not reallocate per token.
+        let mut nom_scratch: Vec<(u32, u32)> = Vec::new();
+
         for pos in 0..params.max_tokens {
             // ── 1. role key + peel ───────────────────────────────────
             let pkey = position_key(pos);
@@ -715,6 +766,57 @@ impl StatLexicon {
                 }
                 pool
             };
+
+            // ── 2b. let the grammar prior nominate candidates ────────
+            // See `grammar_pool` above. Strictly additive: this never removes
+            // a cosine candidate, it only widens the pool with words the
+            // corpus actually observed following the current context.
+            //
+            // A prior only gets to nominate when it also gets to *score*
+            // (its `*_weight` is above zero). Nominating from a prior whose
+            // weight is zero would inject low-cosine words that nothing can
+            // then lift, which is strictly noise.
+            //
+            // Position 0 is deliberately left alone: there is no preceding
+            // word to condition on, so the opening token stays purely
+            // semantic (driven by the peeled latent) and grammar only takes
+            // over once there is a context to be grammatical *about*.
+            if grammar_pool > 0 && !greedy {
+                let prev1 = out.last().and_then(|w| self.index.get(w).copied());
+                let prev2 = out
+                    .len()
+                    .checked_sub(2)
+                    .and_then(|i| self.index.get(&out[i]).copied());
+
+                // (i) Trigram nomination — the more specific context. Order
+                //     relative to the bigram pass below is cosmetic: both
+                //     score a pick with the same cosine, so whichever runs
+                //     first only decides the pool's ordering, not any score.
+                if params.trigram_weight > 0.0 && !self.trigram.is_empty() {
+                    if let (Some(p2), Some(p1)) = (prev2, prev1) {
+                        if let Ok(ri) = self
+                            .trigram
+                            .rows
+                            .binary_search_by_key(&(p2 as u32, p1 as u32), |r| (r.prev2, r.prev1))
+                        {
+                            top_n_by_count(
+                                &self.trigram.rows[ri].next_counts,
+                                grammar_pool,
+                                &mut nom_scratch,
+                            );
+                            self.nominate(&nom_scratch, &peeled, &mut candidates);
+                        }
+                    }
+                }
+
+                // (ii) Bigram nomination.
+                if params.bigram_weight > 0.0 && !self.bigram.is_empty() {
+                    if let Some(row) = prev1.and_then(|p| self.bigram.forward.get(p)) {
+                        top_n_by_count(row, grammar_pool, &mut nom_scratch);
+                        self.nominate(&nom_scratch, &peeled, &mut candidates);
+                    }
+                }
+            }
 
             // ── 3a. repetition penalty on the recent window ──────────
             if params.repetition_penalty > 0.0 && params.repetition_window > 0 {
@@ -1445,6 +1547,87 @@ fn from_pairs(p: &SparsePairs) -> SparseVec {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// Grammar-pool helpers.
+// ─────────────────────────────────────────────────────────────────────
+
+/// Test-only, per-thread override for `grammar_pool_size`.
+///
+/// The flag is an environment variable, and Rust runs `#[test]` functions
+/// concurrently in one process — so a test that called `set_var` would leak
+/// the flag into every other test decoding on a sibling thread. A
+/// thread-local keeps the toggle scoped to the test that set it, which is
+/// what makes the flag-on/flag-off assertions below trustworthy rather than
+/// order-dependent. Compiled out entirely in non-test builds.
+#[cfg(test)]
+thread_local! {
+    static GRAMMAR_POOL_OVERRIDE: std::cell::Cell<Option<usize>> =
+        const { std::cell::Cell::new(None) };
+}
+
+/// Resolve `KAI_GRAMMAR_POOL`: how many grammar-proposed successors may join
+/// the cosine candidate pool. `0` (the default, and the value used for any
+/// unparseable setting) disables nomination entirely and reproduces the
+/// pre-flag decoder byte-for-byte. Clamped to 64 so a fat-fingered value
+/// cannot turn every decode step into a full-vocabulary scan.
+fn grammar_pool_size() -> usize {
+    #[cfg(test)]
+    {
+        if let Some(n) = GRAMMAR_POOL_OVERRIDE.with(|c| c.get()) {
+            return n.min(GRAMMAR_POOL_MAX);
+        }
+    }
+    parse_grammar_pool(std::env::var("KAI_GRAMMAR_POOL").ok().as_deref())
+}
+
+/// Pure parse half of `grammar_pool_size`, split out so the parsing rules can
+/// be tested without mutating process-wide environment state (which would
+/// race against every other test decoding on a sibling thread).
+fn parse_grammar_pool(raw: Option<&str>) -> usize {
+    raw.and_then(|v| v.trim().parse::<usize>().ok())
+        .unwrap_or(0)
+        .min(GRAMMAR_POOL_MAX)
+}
+
+/// Upper bound on `KAI_GRAMMAR_POOL`.
+const GRAMMAR_POOL_MAX: usize = 64;
+
+/// Deterministically select the `n` highest-count entries from a
+/// `(word_id, count)` row, writing them into `out` best-first.
+///
+/// Order is **count descending, then word id ascending**. The id tie-break is
+/// load-bearing: bigram rows are dominated by count-1 successors, so ranking
+/// on count alone leaves the choice among thousands of equally-frequent words
+/// up to the sort implementation. `incremental_generate_with` documents that
+/// identical `(state, params)` yields an identical string — an unstable order
+/// here would quietly break that guarantee.
+///
+/// Selection is a bounded insertion pass rather than a clone-and-sort of the
+/// whole row: rows for common words ("the") hold thousands of successors, and
+/// this runs once per prior per emitted token.
+fn top_n_by_count(row: &[(u32, u32)], n: usize, out: &mut Vec<(u32, u32)>) {
+    out.clear();
+    if n == 0 {
+        return;
+    }
+    // `Less` == "ranks better". Sorted ascending by this, `out` is best-first.
+    fn rank(a: &(u32, u32), b: &(u32, u32)) -> std::cmp::Ordering {
+        b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0))
+    }
+    out.reserve(n.min(row.len()));
+    for &entry in row {
+        if out.len() == n {
+            // Cheap reject: no better than the worst entry already kept.
+            if rank(&entry, &out[n - 1]) != std::cmp::Ordering::Less {
+                continue;
+            }
+            out.pop();
+        }
+        let pos = out.partition_point(|kept| rank(kept, &entry) == std::cmp::Ordering::Less);
+        out.insert(pos, entry);
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // Tests
 // ─────────────────────────────────────────────────────────────────────
 #[cfg(test)]
@@ -1667,6 +1850,278 @@ mod tests {
 
         // Seed the decoder with just "the" so pos 1 is the step
 
+    }
+
+    // ── Grammar-pool tests (`KAI_GRAMMAR_POOL`) ─────────────────────
+    //
+    // These cover the documented ceiling: the candidate pool is built by
+    // cosine alone, so before this flag the transition prior could only
+    // re-rank a shortlist it had no way to join. The pair of decoder tests
+    // below is the point of the whole feature — one asserts a
+    // grammatically-correct word is *unreachable* with the flag off, the
+    // other that the very same setup emits it with the flag on.
+
+    /// Scoped setter for the thread-local flag override. Restores the
+    /// previous value on drop so a panicking test cannot leak the flag into
+    /// whatever the test harness reuses this thread for next.
+    struct GrammarPoolGuard(Option<usize>);
+
+    impl GrammarPoolGuard {
+        fn set(n: usize) -> Self {
+            let prev = GRAMMAR_POOL_OVERRIDE.with(|c| c.replace(Some(n)));
+            GrammarPoolGuard(prev)
+        }
+        /// Pin the flag explicitly OFF, so the test does not depend on
+        /// `KAI_GRAMMAR_POOL` being unset in the caller's environment.
+        fn off() -> Self {
+            Self::set(0)
+        }
+    }
+
+    impl Drop for GrammarPoolGuard {
+        fn drop(&mut self) {
+            let prev = self.0;
+            GRAMMAR_POOL_OVERRIDE.with(|c| c.set(prev));
+        }
+    }
+
+    /// Attach a hand-built forward bigram prior to `lex`.
+    ///
+    /// `pairs` are `(prev, next, count)` over words already in the lexicon.
+    /// Rows are sorted by successor id because `BigramPrior::lookup_count`
+    /// binary-searches them.
+    fn with_bigram(mut lex: StatLexicon, pairs: &[(&str, &str, u32)]) -> StatLexicon {
+        let v = lex.words.len();
+        let mut forward: Vec<Vec<(u32, u32)>> = vec![Vec::new(); v];
+        let mut row_totals = vec![0u32; v];
+        let mut unigram = vec![1u32; v];
+        let mut total_tokens = v as u64;
+        for (p, n, c) in pairs {
+            let pi = lex.index[*p];
+            let ni = lex.index[*n];
+            forward[pi].push((ni as u32, *c));
+            row_totals[pi] += *c;
+            unigram[ni] += *c;
+            total_tokens += *c as u64;
+        }
+        for row in forward.iter_mut() {
+            row.sort_unstable_by_key(|&(id, _)| id);
+        }
+        lex.bigram = BigramPrior {
+            forward,
+            row_totals,
+            unigram,
+            total_tokens,
+            vocab_size: v as u32,
+        };
+        lex
+    }
+
+    /// Invented filler words, chosen so none collide with the POS
+    /// dictionary or the decoder's hard-blocked filler list.
+    const FILLER: &[&str] = &[
+        "wug", "blicket", "dax", "fep", "toma", "zav", "modi", "gorp", "nulb", "kiv",
+        "sproz", "yarn3", "quib", "flax7", "vend2", "mizu", "trov", "glark", "pell", "durn",
+        "hask", "onyv", "cruth", "jemp", "loz", "brint", "skave", "welp2", "tarn", "hoig",
+    ];
+
+    /// Vocabulary for the two decoder tests: the two words the state
+    /// actually encodes, the grammar-only target, and enough filler that
+    /// `omega` is nowhere near the top of the cosine ranking.
+    fn grammar_pool_lexicon() -> StatLexicon {
+        let mut words: Vec<&str> = vec!["alpha", "beta", "omega"];
+        words.extend_from_slice(FILLER);
+        let lex = tiny_lexicon(&words);
+        // "alpha" is followed by "omega" 1000 times and by nothing else, so
+        // the prior is overwhelming — but "omega" is semantically unrelated
+        // to the encoded state, which is exactly the case cosine cannot
+        // reach.
+        with_bigram(lex, &[("alpha", "omega", 1000)])
+    }
+
+    /// Decoder settings for the pair of tests. `top_k = 2` keeps the cosine
+    /// pool tight; the heavy `bigram_weight` means that *if* the prior is
+    /// allowed to nominate, its pick wins outright.
+    fn grammar_pool_params(seed: u64) -> DecodeParams {
+        DecodeParams {
+            max_tokens: 2,
+            temperature: 0.05,
+            top_k: 2,
+            repetition_window: 0,
+            repetition_penalty: 0.0,
+            stop_on_immediate_repeat: false,
+            bigram_weight: 3.0,
+            trigram_weight: 0.0,
+            attention_weight: 0.0,
+            seed,
+            context_injects: HashMap::new(),
+            clause_aware_stop: false,
+            expected_pos_sequence: None,
+            sentence_type: None,
+        }
+    }
+
+    #[test]
+    fn grammar_pool_off_cannot_emit_a_cosine_unreachable_word() {
+        let lex = grammar_pool_lexicon();
+        let _guard = GrammarPoolGuard::off();
+
+        // The pool at every position is fixed by the state, not the RNG, so
+        // this holds for any seed; a spread is cheap insurance.
+        for seed in [0u64, 1, 0xC0FFEE, 0x9E3779B97F4A7C15] {
+            let state = lex.encode_sentence("alpha beta");
+            let out = lex.incremental_generate_with(state, grammar_pool_params(seed));
+            assert!(
+                !out.split_whitespace().any(|w| w == "omega"),
+                "flag OFF emitted `omega` (seed {seed}, out {out:?}) — the cosine \
+                 pool already reaches it, so this fixture no longer demonstrates \
+                 the ceiling. Pick filler words that push `omega` further down."
+            );
+        }
+    }
+
+    #[test]
+    fn grammar_pool_on_lets_the_prior_nominate_that_word() {
+        let lex = grammar_pool_lexicon();
+        let _guard = GrammarPoolGuard::set(4);
+
+        for seed in [0u64, 1, 0xC0FFEE, 0x9E3779B97F4A7C15] {
+            let state = lex.encode_sentence("alpha beta");
+            let out = lex.incremental_generate_with(state, grammar_pool_params(seed));
+            assert!(
+                out.split_whitespace().any(|w| w == "omega"),
+                "flag ON failed to emit `omega` (seed {seed}, out {out:?}) — the \
+                 bigram prior should have nominated it into the pool at pos 1"
+            );
+        }
+    }
+
+    #[test]
+    fn grammar_pool_is_additive_never_subtractive() {
+        // Nomination must only widen the pool. Whatever the cosine pool
+        // offered with the flag off must still be offered with it on.
+        let lex = grammar_pool_lexicon();
+        let state = lex.encode_sentence("alpha beta");
+        let peeled = state.unbind(&position_key(1));
+        let cosine_pool = lex.top_k_nearest(&peeled, 2);
+
+        let mut widened = cosine_pool.clone();
+        let mut picks = Vec::new();
+        let alpha = lex.index["alpha"];
+        top_n_by_count(&lex.bigram.forward[alpha], 4, &mut picks);
+        lex.nominate(&picks, &peeled, &mut widened);
+
+        for (w, _) in &cosine_pool {
+            assert!(
+                widened.iter().any(|(c, _)| c == w),
+                "nomination dropped cosine candidate {w:?}"
+            );
+        }
+        assert!(
+            widened.len() > cosine_pool.len(),
+            "nomination added nothing: {widened:?}"
+        );
+        assert!(
+            widened.iter().any(|(w, _)| w == "omega"),
+            "the prior's successor was not nominated: {widened:?}"
+        );
+    }
+
+    #[test]
+    fn nominate_dedupes_and_survives_out_of_range_ids() {
+        let lex = tiny_lexicon(&["alpha", "beta"]);
+        let peeled = seed_vector("alpha");
+        let mut candidates = lex.top_k_nearest(&peeled, 1);
+        assert_eq!(candidates.len(), 1);
+
+        // id 0 duplicates whatever the cosine pool already holds; id 999 is
+        // past the end of the vocabulary (a prior built against a larger
+        // lexicon) and must be skipped rather than panic.
+        lex.nominate(&[(0, 5), (1, 5), (999, 5)], &peeled, &mut candidates);
+
+        assert_eq!(candidates.len(), 2, "expected exactly one new word: {candidates:?}");
+        let mut got: Vec<&str> = candidates.iter().map(|(w, _)| w.as_str()).collect();
+        got.sort_unstable();
+        assert_eq!(got, vec!["alpha", "beta"]);
+    }
+
+    #[test]
+    fn top_n_by_count_ranks_by_count_then_id() {
+        let mut out = Vec::new();
+
+        // Every count equal: the id tie-break must decide, deterministically.
+        // Without it the choice among equally-frequent successors would be
+        // left to the sort implementation, breaking the decoder's documented
+        // "identical (state, params) → identical string" contract.
+        let ties: Vec<(u32, u32)> = vec![(9, 1), (3, 1), (7, 1), (1, 1), (5, 1)];
+        top_n_by_count(&ties, 3, &mut out);
+        assert_eq!(out, vec![(1, 1), (3, 1), (5, 1)]);
+
+        // Count dominates the id tie-break.
+        let mixed: Vec<(u32, u32)> = vec![(9, 5), (3, 1), (7, 9), (1, 1)];
+        top_n_by_count(&mixed, 2, &mut out);
+        assert_eq!(out, vec![(7, 9), (9, 5)]);
+
+        // n beyond the row length returns the whole row, fully ordered.
+        top_n_by_count(&mixed, 99, &mut out);
+        assert_eq!(out, vec![(7, 9), (9, 5), (1, 1), (3, 1)]);
+
+        // Degenerate inputs.
+        top_n_by_count(&mixed, 0, &mut out);
+        assert!(out.is_empty());
+        top_n_by_count(&[], 4, &mut out);
+        assert!(out.is_empty());
+    }
+
+    #[test]
+    fn grammar_pool_flag_parses_and_defaults_off() {
+        assert_eq!(parse_grammar_pool(None), 0, "unset must mean off");
+        assert_eq!(parse_grammar_pool(Some("0")), 0);
+        assert_eq!(parse_grammar_pool(Some("8")), 8);
+        assert_eq!(parse_grammar_pool(Some(" 8 ")), 8);
+        // Anything unparseable falls back to off rather than to a default-on.
+        assert_eq!(parse_grammar_pool(Some("")), 0);
+        assert_eq!(parse_grammar_pool(Some("banana")), 0);
+        assert_eq!(parse_grammar_pool(Some("-1")), 0);
+        // Clamped so a fat-fingered value cannot scan the whole vocabulary.
+        assert_eq!(parse_grammar_pool(Some("99999")), GRAMMAR_POOL_MAX);
+    }
+
+    #[test]
+    fn grammar_pool_off_is_byte_identical_to_the_pre_flag_decoder() {
+        // The contract that lets this ship: with the flag off the decoder
+        // must produce exactly what it produced before the flag existed.
+        // The pre-flag code path is "no nomination", which `grammar_pool = 0`
+        // reproduces by skipping the block entirely — so an off-vs-off
+        // comparison across a lexicon that *has* a fat prior is the check
+        // that no nomination leaked out from behind the guard.
+        let lex = grammar_pool_lexicon();
+        let params = grammar_pool_params(0xC0FFEE);
+
+        let baseline = {
+            let _guard = GrammarPoolGuard::off();
+            lex.incremental_generate_with(lex.encode_sentence("alpha beta"), params.clone())
+        };
+        let again = {
+            let _guard = GrammarPoolGuard::off();
+            lex.incremental_generate_with(lex.encode_sentence("alpha beta"), params.clone())
+        };
+        assert_eq!(baseline, again, "flag-off decoding must be deterministic");
+
+        // And the greedy wrapper — which never consults the pool — must be
+        // unaffected whether the flag is on or off.
+        let greedy_off = {
+            let _guard = GrammarPoolGuard::off();
+            lex.incremental_generate(lex.encode_sentence("alpha beta"), 2)
+        };
+        let greedy_on = {
+            let _guard = GrammarPoolGuard::set(32);
+            lex.incremental_generate(lex.encode_sentence("alpha beta"), 2)
+        };
+        assert_eq!(
+            greedy_off, greedy_on,
+            "greedy path must ignore the grammar pool"
+        );
     }
 }
 
