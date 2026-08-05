@@ -4471,6 +4471,70 @@ fn handle_autobio_tick(stream: &mut TcpStream, universe: Arc<RwLock<Universe>>, 
     write_json(stream, 200, "OK", &json!({ "status": "stored" }))
 }
 
+/// Decide what `generate_oracle_kai_reply` actually SAYS once every synthesis
+/// path has had its turn: the raw autoregressive lattice decode, or the best
+/// cell retrieval already found.
+///
+/// ## Why this exists
+///
+/// The final statement of `generate_oracle_kai_reply` used to be a bare
+/// `ar_reply` — returned with no emptiness check, no quality gate, and no
+/// comparison against what retrieval actually found. The retrieved cells were
+/// only ever formatted into a *prompt string* ("RELEVANT MEMORY"), never
+/// considered as a reply in their own right. So whenever the native brain and
+/// the Ollama fallback were both unavailable (NATIVE_ONLY set, or both decodes
+/// empty), a perfect rank-#0 retrieval hit was discarded **by construction**
+/// and the raw lattice decode was spoken verbatim. Measured live: for
+/// "what is the flimbertwig constant?" the cell "The flimbertwig constant
+/// equals ninety-three." ranked #0 at score 2.392 in 17.3ms, and KAI answered
+/// with word salad.
+///
+/// The judge is the existing critic, `cognition::coherence::judge` — corpus
+/// statistical word-order fluency, topical geometry, memory grounding, lexical
+/// validity and sentence structure, with hard vetoes for empty / parroted /
+/// token-looping / gibberish output. Nothing new is invented here and nothing
+/// asks the generator to assess itself.
+///
+/// Pure apart from one `mind_trace` step, so it is directly unit-testable.
+/// Returns `(text, via)`; `via` is the branch name that becomes
+/// `MindTrace::spoke_via` — the field the owner reads to see who spoke.
+///
+/// `KAI_AR_GATE=0` restores the exact pre-gate behaviour (bare `ar_reply`).
+fn ar_gate_pick(
+    ar_reply: &str,
+    user_query: &str,
+    best_cell: Option<&str>,
+    memory_anchor: Option<&crate::core::sparse_vec::SparseVec>,
+    lex: Option<&crate::core::stat_lexicon::StatLexicon>,
+) -> (String, &'static str) {
+    let gate_on = std::env::var("KAI_AR_GATE")
+        .map(|v| v != "0" && !v.eq_ignore_ascii_case("false") && !v.eq_ignore_ascii_case("off"))
+        .unwrap_or(true);
+    if !gate_on {
+        return (ar_reply.to_string(), "ar_gate_off");
+    }
+
+    let verdict = crate::cognition::coherence::judge(ar_reply, user_query, memory_anchor, lex);
+    crate::cognition::mind_trace::step("synthesis", "ar_judged", || {
+        format!(
+            "ar_reply {} :: {:?}",
+            verdict.explain(),
+            ar_reply.chars().take(120).collect::<String>()
+        )
+    });
+
+    if verdict.accept {
+        return (ar_reply.to_string(), "ar_accepted");
+    }
+
+    match best_cell.map(str::trim).filter(|c| !c.is_empty()) {
+        Some(cell) => (cell.to_string(), "ar_rejected_fell_back_to_cell"),
+        // Retrieval had nothing usable either. Speaking the AR decode is no
+        // worse than the old behaviour, and silence would be strictly worse.
+        None => (ar_reply.to_string(), "ar_rejected_no_cell"),
+    }
+}
+
 fn generate_oracle_kai_reply(
     universe: &Arc<RwLock<Universe>>,
     synaptic_layer: &Arc<RwLock<SynapticLayer>>,
@@ -4759,6 +4823,10 @@ fn generate_oracle_kai_reply(
         if let Some(text) = crate::cognition::language_warehouse::global_native_decode(&full_prompt, 150) {
             let cleaned = text.trim().to_string();
             if !cleaned.is_empty() {
+                crate::cognition::mind_trace::spoke(
+                    "synthesis", "native_decode", "native_decode",
+                    || format!("{} chars", cleaned.len()),
+                );
                 return cleaned;
             }
         }
@@ -4773,12 +4841,63 @@ fn generate_oracle_kai_reply(
         if let Ok(synthesized) = call_ollama(&ollama_model, &synthesis_prompt, &system_prompt) {
             let cleaned = synthesized.trim().to_string();
             if !cleaned.is_empty() {
+                crate::cognition::mind_trace::spoke(
+                    "synthesis", "ollama_fallback", "ollama_fallback",
+                    || format!("model={} {} chars", ollama_model, cleaned.len()),
+                );
                 return cleaned;
             }
         }
     }
 
-    ar_reply
+    // ── 6. AR REPLY GATE — KAI_AR_GATE, default ON ──────────────────────────
+    // Last line of the function, and (with both synthesis paths unavailable)
+    // the one that actually speaks. It used to be a bare `ar_reply`: the raw
+    // 25-token lattice decode, unjudged, while the cell that answered the
+    // question sat unused in `filtered_hits`. Judge it; if it fails, say the
+    // cell instead. See `ar_gate_pick` for the full rationale.
+    //
+    // Rank #0 = highest-scoring surviving hit. Reuses the hits already
+    // retrieved — no second query. Written as a plain strictly-greater scan
+    // rather than `max_by`, deliberately: `max_by` returns the LAST of several
+    // equal-scoring elements, whereas retrieval order is the tiebreak
+    // everywhere else in this function (the hybrid block above stable-sorts),
+    // and a NaN score must never be able to win a `partial_cmp` fallback.
+    let mut best_hit = None;
+    let mut best_score = f32::NEG_INFINITY;
+    for h in filtered_hits.iter() {
+        if !h.score.is_finite() { continue; }
+        if h.score > best_score {
+            best_score = h.score;
+            best_hit = Some(h);
+        }
+    }
+    let best_cell_text = best_hit
+        .map(|h| {
+            let raw = if h.text.trim().is_empty() { h.label.as_str() } else { h.text.as_str() };
+            sanitize_cell_reply(raw.to_string())
+        })
+        // Never "answer" by repeating the question back. `coherence`'s parrot
+        // veto guards the AR decode; it does not see the cell we swap in, and
+        // for conversational queries the top hit is often the user's own stored
+        // utterance. An echo drops through to `ar_rejected_no_cell` instead.
+        .filter(|c| !c.trim().eq_ignore_ascii_case(user_query.trim()));
+
+    let (spoken, via) = ar_gate_pick(
+        &ar_reply,
+        user_query,
+        best_cell_text.as_deref(),
+        best_hit.map(|h| &h.vec),
+        get_lexicon(),
+    );
+    crate::cognition::mind_trace::spoke("synthesis", via, via, || {
+        format!(
+            "{} chars :: {:?}",
+            spoken.len(),
+            spoken.chars().take(120).collect::<String>()
+        )
+    });
+    spoken
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -7958,5 +8077,99 @@ fn handle_interpret_decode(
         }))
     } else {
         write_simple(stream, 400, "Bad Request", "Feature map not built yet. Call /api/interpret/build first.")
+    }
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod ar_gate_tests {
+    use super::ar_gate_pick;
+
+    /// `KAI_AR_GATE` is process-global and cargo runs tests in parallel threads,
+    /// so every test that reads or writes it takes this lock. Without it, the
+    /// gate-off test would flip the flag underneath the others.
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn lock() -> std::sync::MutexGuard<'static, ()> {
+        ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner())
+    }
+
+    /// The EXACT reply the live engine produced for `QUERY`, captured while the
+    /// correct cell (`CELL`) sat at rank #0 with score 2.392, retrieved in
+    /// 17.3ms. This string is the bug; if it ever passes the critic, the gate is
+    /// worthless and this test is the alarm.
+    ///
+    /// These tests deliberately pass `lex: None`, because a test process has no
+    /// built corpus lexicon. That makes them a **lower bound**: `fluency` reports
+    /// its neutral 0.5 for both strings and the gibberish veto is disabled, so
+    /// the separation measured here comes only from topicality and structure —
+    /// `salad 0.33 (top=0.01 str=0.57)` vs `cell 0.49 (top=0.37 str=0.80)`
+    /// against a 0.45 bar. In production `ar_gate_pick` is handed the real
+    /// `get_lexicon()`, where word-order fluency collapses toward 0 for salad and
+    /// the margin widens considerably. If this passes, the live path passes.
+    const OBSERVED_SALAD: &str = "LLM far pub 1e9 c_3 For for app s=1 ATX ice WSS sky why Why way ? 1-3 g(x phi Who who had yes CSS";
+    const QUERY: &str = "what is the flimbertwig constant?";
+    const CELL: &str = "The flimbertwig constant equals ninety-three.";
+
+    #[test]
+    fn observed_salad_is_rejected_and_the_retrieved_cell_is_spoken() {
+        let _g = lock();
+        std::env::remove_var("KAI_AR_GATE");
+
+        let v = crate::cognition::coherence::judge(OBSERVED_SALAD, QUERY, None, None);
+        println!("[ar_gate] salad -> {}", v.explain());
+        assert!(
+            !v.accept,
+            "the observed word salad must NOT pass the critic: {}",
+            v.explain()
+        );
+
+        let (text, via) = ar_gate_pick(OBSERVED_SALAD, QUERY, Some(CELL), None, None);
+        assert_eq!(text, CELL, "rejected AR decode must be replaced by the rank-#0 cell");
+        assert_eq!(via, "ar_rejected_fell_back_to_cell");
+    }
+
+    #[test]
+    fn a_clean_on_topic_sentence_is_accepted() {
+        let _g = lock();
+        std::env::remove_var("KAI_AR_GATE");
+
+        let v = crate::cognition::coherence::judge(CELL, QUERY, None, None);
+        println!("[ar_gate] cell  -> {}", v.explain());
+        assert!(
+            v.accept,
+            "a clean, on-topic sentence must pass the critic: {}",
+            v.explain()
+        );
+
+        // Same sentence arriving as the AR decode: the gate must let it through
+        // untouched rather than substituting the cell.
+        let (text, via) = ar_gate_pick(CELL, QUERY, Some("a different cell entirely"), None, None);
+        assert_eq!(text, CELL);
+        assert_eq!(via, "ar_accepted");
+    }
+
+    #[test]
+    fn gate_off_restores_the_exact_old_behaviour() {
+        let _g = lock();
+        std::env::set_var("KAI_AR_GATE", "0");
+        let (text, via) = ar_gate_pick(OBSERVED_SALAD, QUERY, Some(CELL), None, None);
+        std::env::remove_var("KAI_AR_GATE");
+
+        assert_eq!(text, OBSERVED_SALAD, "KAI_AR_GATE=0 must return the bare ar_reply");
+        assert_eq!(via, "ar_gate_off");
+    }
+
+    #[test]
+    fn no_usable_cell_keeps_the_ar_reply_rather_than_going_silent() {
+        let _g = lock();
+        std::env::remove_var("KAI_AR_GATE");
+
+        for empty in [None, Some(""), Some("   ")] {
+            let (text, via) = ar_gate_pick(OBSERVED_SALAD, QUERY, empty, None, None);
+            assert_eq!(text, OBSERVED_SALAD, "no fallback available => unchanged behaviour");
+            assert_eq!(via, "ar_rejected_no_cell");
+        }
     }
 }
