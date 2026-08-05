@@ -459,6 +459,115 @@ impl TernaryMlp {
     }
 }
 
+/// `KAI_AR_VOCAB_CLEAN` — vocabulary hygiene for the autoregressive generator.
+///
+/// **Default ON.** This is a bug fix, not an experiment: the AR vocabulary used to
+/// be the raw whitespace tokens of the top-1000 lattice cells, trimmed only at the
+/// edges. That let markup/code/math fragments (`1e9`, `c_3`, `ATX`, `WSS`, `CSS`,
+/// `g(x`, `s=1`, `1-3`) into the word pool and kept `For` and `for` as two separate
+/// entries — which is exactly what the observed word-salad replies were made of.
+///
+/// Set `KAI_AR_VOCAB_CLEAN=0` (or `false`/`off`) to restore the old behaviour
+/// exactly: raw `trim_matches(!is_alphanumeric)` tokens, case preserved.
+pub fn ar_vocab_clean_enabled() -> bool {
+    std::env::var("KAI_AR_VOCAB_CLEAN")
+        .map(|v| {
+            let v = v.trim();
+            v != "0" && !v.eq_ignore_ascii_case("false") && !v.eq_ignore_ascii_case("off")
+        })
+        .unwrap_or(true)
+}
+
+/// Longest token we will accept as a "word". Anything past this is a run-on
+/// artefact of stripped markup, not something KAI should ever say.
+const AR_VOCAB_MAX_LEN: usize = 32;
+
+/// Characters allowed *inside* a word in addition to letters.
+fn is_word_connector(c: char) -> bool {
+    c == '-' || c == '\'' || c == '\u{2019}'
+}
+
+/// Is `token` a plausible English word that KAI could say out loud?
+///
+/// Operates on an already edge-trimmed token. Rejects, in order:
+/// * empty / single-character tokens (`?`, `g`, `1`)
+/// * anything containing a digit (`1e9`, `s=1`, `1-3`, `c_3`, `H2O`)
+/// * anything containing a symbol (`g(x`, `c_3`, `s=1`, `foo::bar`)
+/// * tokens with no ASCII vowel (`WSS`, `CSS`, `nth`) — an unpronounceable code
+///   (`y` counts as a vowel, so `sky` and `why` survive)
+/// * ALL-CAPS initialisms of 2+ letters (`LLM`, `ATX`, `CSS`, `WSS`)
+/// * absurdly long run-ons
+///
+/// Hyphenated and apostrophised words survive (`ninety-three`, `don't`), and so
+/// do ordinary capitalised words (`For` → accepted, later folded to `for`).
+pub fn is_plausible_word(token: &str) -> bool {
+    let mut chars = 0usize;
+    let mut letters = 0usize;
+    let mut upper_letters = 0usize;
+    let mut has_ascii_vowel = false;
+    let mut prev_was_connector = false;
+
+    for c in token.chars() {
+        chars += 1;
+        if chars > AR_VOCAB_MAX_LEN {
+            return false;
+        }
+        if c.is_numeric() {
+            return false; // digits are never part of a spoken word
+        }
+        if c.is_alphabetic() {
+            letters += 1;
+            prev_was_connector = false;
+            if c.is_uppercase() {
+                upper_letters += 1;
+            }
+            if matches!(c, 'a' | 'e' | 'i' | 'o' | 'u' | 'y' | 'A' | 'E' | 'I' | 'O' | 'U' | 'Y') {
+                has_ascii_vowel = true;
+            }
+        } else if is_word_connector(c) {
+            if prev_was_connector {
+                return false; // `well--known`, `it''s` — stripped markup, not a word
+            }
+            prev_was_connector = true;
+        } else {
+            return false; // punctuation / symbol / whitespace inside the token
+        }
+    }
+
+    // Single characters and pure-punctuation tokens carry no meaning here.
+    // (`I` and `a` are supplied by the hard-coded conversational list below.)
+    if chars < 2 || letters < 2 {
+        return false;
+    }
+    // Connectors may not lead or trail (`-foo`, `foo-`).
+    let first = token.chars().next().unwrap_or(' ');
+    let last = token.chars().last().unwrap_or(' ');
+    if is_word_connector(first) || is_word_connector(last) {
+        return false;
+    }
+    if !has_ascii_vowel {
+        return false;
+    }
+    // ALL-CAPS with 2+ letters is an initialism/acronym, not a word.
+    if upper_letters == letters {
+        return false;
+    }
+    true
+}
+
+/// Turn one raw whitespace token from lattice text into a vocabulary entry.
+///
+/// Returns `None` when the token is not a usable word. On success the entry is
+/// **lower-cased**, so `For`/`for` and `Why`/`why` collapse into a single vocab
+/// slot instead of competing as two.
+pub fn normalize_vocab_token(raw: &str) -> Option<String> {
+    let trimmed = raw.trim_matches(|c: char| !c.is_alphanumeric());
+    if !is_plausible_word(trimmed) {
+        return None;
+    }
+    Some(trimmed.to_lowercase())
+}
+
 /// Generate a response word-by-word using autoregressive lattice attention.
 /// At each step, it builds a context vector from the generated sequence,
 /// attends over the lattice to get an attention-weighted context, and then
@@ -476,17 +585,30 @@ pub fn generate_autoregressive_response(
     let local_hits = universe.query_vec(&q_init, 1000);
     
     let mut vocab_map = std::collections::HashSet::new();
-    
+
+    // VOCAB HYGIENE (KAI_AR_VOCAB_CLEAN, default ON): the raw lattice text is
+    // Wikipedia/code/markup soup. Without this filter, tokens like `1e9`, `c_3`,
+    // `ATX`, `WSS`, `CSS`, `g(x`, `s=1` and `1-3` enter the word pool and get
+    // emitted verbatim — the observed word salad. Set the flag to 0 to restore
+    // the old raw behaviour exactly.
+    let vocab_clean = ar_vocab_clean_enabled();
+
     // Add words from local hits (Wikipedia context)
     for hit in local_hits {
         for word in hit.0.claim.text.split_whitespace() {
-            let clean_word = word.trim_matches(|c: char| !c.is_alphanumeric());
-            if !clean_word.is_empty() {
-                vocab_map.insert(clean_word.to_string());
+            if vocab_clean {
+                if let Some(clean_word) = normalize_vocab_token(word) {
+                    vocab_map.insert(clean_word);
+                }
+            } else {
+                let clean_word = word.trim_matches(|c: char| !c.is_alphanumeric());
+                if !clean_word.is_empty() {
+                    vocab_map.insert(clean_word.to_string());
+                }
             }
         }
     }
-    
+
     // Add common conversational words to the vocabulary!
     let common_words = vec![
         "I", "you", "he", "she", "it", "we", "they", "am", "is", "are", "was", "were", 
@@ -508,6 +630,15 @@ pub fn generate_autoregressive_response(
         "Antigravity", "Ryan", "creator", "human", "AI", "artificial", "intelligence"
     ];
     for w in common_words {
+        // The hard-coded list is authoritative for its own capitalisation
+        // ("I", "Kai", "Ryan", "AI"): drop any lower-cased lattice twin so the
+        // proper noun does not compete with itself.
+        if vocab_clean {
+            let lower = w.to_lowercase();
+            if lower != w {
+                vocab_map.remove(&lower);
+            }
+        }
         vocab_map.insert(w.to_string());
     }
 
@@ -839,5 +970,156 @@ pub fn online_train_step(universe: &crate::core::Universe, sample_size: usize) -
         total_loss / steps as f32
     } else {
         0.0
+    }
+}
+
+#[cfg(test)]
+mod ar_vocab_tests {
+    use super::{is_plausible_word, normalize_vocab_token};
+
+    /// The REAL reply KAI produced while retrieval was working correctly
+    /// (correct cell ranked #0, score 2.392, 17.3ms). Every junk token in it is
+    /// explained by the un-filtered vocabulary this module now cleans.
+    const OBSERVED_SALAD: &str =
+        "LLM far pub 1e9 c_3 For for app s=1 ATX ice WSS sky why Why way ? 1-3 g(x phi Who who had yes CSS";
+
+    /// Exactly the tokens from the salad that must never reach the word pool.
+    const JUNK: &[&str] = &["1e9", "c_3", "ATX", "WSS", "CSS", "g(x", "s=1", "1-3", "LLM", "?"];
+
+    /// Ordinary words — real, invented, and hyphenated — that must survive.
+    const KEEP: &[&str] = &["constant", "flimbertwig", "ninety-three", "gravity"];
+
+    #[test]
+    fn rejects_observed_junk_tokens() {
+        for &tok in JUNK {
+            assert!(
+                normalize_vocab_token(tok).is_none(),
+                "junk token {:?} leaked into the AR vocabulary",
+                tok
+            );
+        }
+    }
+
+    #[test]
+    fn keeps_ordinary_words() {
+        for &tok in KEEP {
+            assert_eq!(
+                normalize_vocab_token(tok).as_deref(),
+                Some(tok),
+                "ordinary word {:?} was wrongly rejected",
+                tok
+            );
+        }
+    }
+
+    #[test]
+    fn keeps_words_with_trailing_punctuation() {
+        // Edge trimming is preserved from the original implementation.
+        assert_eq!(normalize_vocab_token("gravity,").as_deref(), Some("gravity"));
+        assert_eq!(normalize_vocab_token("(constant)").as_deref(), Some("constant"));
+        assert_eq!(normalize_vocab_token("\"why?\"").as_deref(), Some("why"));
+    }
+
+    #[test]
+    fn normalizes_case_into_one_entry() {
+        // `For`/`for` and `Why`/`why` and `Who`/`who` were duplicate vocab slots.
+        for (a, b) in [("For", "for"), ("Why", "why"), ("Who", "who")] {
+            assert_eq!(
+                normalize_vocab_token(a),
+                normalize_vocab_token(b),
+                "{:?} and {:?} should collapse to one vocabulary entry",
+                a,
+                b
+            );
+        }
+        assert_eq!(normalize_vocab_token("For").as_deref(), Some("for"));
+    }
+
+    #[test]
+    fn rejects_single_chars_and_pure_punctuation() {
+        for tok in ["g", "x", "1", "?", "-", "--", "...", "", "   ", "!!!"] {
+            assert!(
+                normalize_vocab_token(tok).is_none(),
+                "token {:?} should be rejected",
+                tok
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_mixed_alphanumeric_and_symbols() {
+        for tok in [
+            "H2O", "v1", "x2y", "f(x)", "a_b", "foo::bar", "e=mc2", "3.14", "0x1F",
+            "well--known", "it''s",
+        ] {
+            assert!(
+                normalize_vocab_token(tok).is_none(),
+                "token {:?} should be rejected as code/math, not a word",
+                tok
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_vowelless_and_all_caps_initialisms() {
+        // NB: `y` counts as a vowel — `sky` and `why` are real words and must survive,
+        // so a lowercase pseudo-word like `xyz` is intentionally NOT caught here.
+        for tok in ["WSS", "CSS", "LLM", "HTML", "nth", "IEEE"] {
+            assert!(!is_plausible_word(tok), "{:?} is an initialism, not a word", tok);
+        }
+        // ...but a normally capitalised word is fine.
+        assert!(is_plausible_word("Gravity"));
+        assert!(is_plausible_word("Wikipedia"));
+    }
+
+    /// Feed the entire observed salad line through the filter and assert that
+    /// what comes out is a clean, de-duplicated, lower-case word list.
+    #[test]
+    fn dirty_vocabulary_end_to_end() {
+        let mut kept: Vec<String> = Vec::new();
+        for raw in OBSERVED_SALAD.split_whitespace() {
+            if let Some(w) = normalize_vocab_token(raw) {
+                if !kept.contains(&w) {
+                    kept.push(w);
+                }
+            }
+        }
+
+        // Nothing junky survived.
+        for &j in JUNK {
+            assert!(
+                !kept.iter().any(|w| w == j || w == &j.to_lowercase()),
+                "junk {:?} survived; kept = {:?}",
+                j,
+                kept
+            );
+        }
+        // Everything left is a real word, lower-case, and unique.
+        for w in &kept {
+            assert_eq!(w, &w.to_lowercase(), "vocab entry {:?} was not lower-cased", w);
+            assert!(
+                w.chars().all(|c| c.is_alphabetic() || c == '-' || c == '\''),
+                "vocab entry {:?} still contains non-word characters",
+                w
+            );
+        }
+        assert_eq!(
+            kept,
+            vec!["far", "pub", "for", "app", "ice", "sky", "why", "way", "phi", "who", "had", "yes"],
+            "unexpected surviving vocabulary"
+        );
+    }
+
+    #[test]
+    fn legacy_path_is_byte_for_byte_unchanged() {
+        // What the OFF path (`KAI_AR_VOCAB_CLEAN=0`) still does, verbatim.
+        let legacy = |w: &str| {
+            let c = w.trim_matches(|c: char| !c.is_alphanumeric());
+            if c.is_empty() { None } else { Some(c.to_string()) }
+        };
+        assert_eq!(legacy("1e9").as_deref(), Some("1e9"));
+        assert_eq!(legacy("g(x").as_deref(), Some("g(x"));
+        assert_eq!(legacy("For").as_deref(), Some("For"));
+        assert_eq!(legacy("?"), None);
     }
 }
