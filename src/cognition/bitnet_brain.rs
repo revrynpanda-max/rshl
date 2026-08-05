@@ -40,6 +40,42 @@ impl CompressedLayer {
 
         Ok(CompressedLayer { rows, cols, scale, data })
     }
+
+    /// Combines this ternary layer with another (e.g., an adapter or another base)
+    /// using a blend weight, thresholding back to ternary states natively.
+    pub fn combine_parameters(&mut self, other: &CompressedLayer, blend_weight: f32) -> Result<(), &'static str> {
+        if self.rows != other.rows || self.cols != other.cols {
+            return Err("Dimension mismatch during ternary combination.");
+        }
+        
+        // Dequantize to f32
+        let mut base_f32 = crate::cognition::ternary_math::dequantize_row_i2_s(&self.data, self.scale);
+        let other_f32 = crate::cognition::ternary_math::dequantize_row_i2_s(&other.data, other.scale);
+        
+        if base_f32.len() != other_f32.len() {
+            return Err("Data length mismatch during ternary combination.");
+        }
+        
+        // Blend and threshold back to -1, 0, 1
+        for i in 0..base_f32.len() {
+            let blended = base_f32[i] * (1.0 - blend_weight) + other_f32[i] * blend_weight;
+            
+            // Re-ternarize
+            if blended > 0.5 {
+                base_f32[i] = 1.0;
+            } else if blended < -0.5 {
+                base_f32[i] = -1.0;
+            } else {
+                base_f32[i] = 0.0;
+            }
+        }
+        
+        // Requantize back to compressed layer
+        let new_scale = self.scale; // Maintain original scale
+        self.data = crate::cognition::ternary_math::quantize_row_i2_s(&base_f32, new_scale)?;
+        
+        Ok(())
+    }
 }
 
 pub struct FloatLayer {
@@ -143,5 +179,23 @@ impl BitNetBrain {
             output_norm,
             layers,
         })
+    }
+
+    /// Combines parameters of another BitNetBrain into this one.
+    pub fn combine_parameters(&mut self, other: &BitNetBrain, blend_weight: f32) -> Result<(), &'static str> {
+        if self.layers.len() != other.layers.len() {
+            return Err("Layer count mismatch between combined BitNetBrain models.");
+        }
+        for (i, layer) in self.layers.iter_mut().enumerate() {
+            let other_layer = &other.layers[i];
+            layer.attn_q.combine_parameters(&other_layer.attn_q, blend_weight)?;
+            layer.attn_k.combine_parameters(&other_layer.attn_k, blend_weight)?;
+            layer.attn_v.combine_parameters(&other_layer.attn_v, blend_weight)?;
+            layer.attn_output.combine_parameters(&other_layer.attn_output, blend_weight)?;
+            layer.ffn_gate.combine_parameters(&other_layer.ffn_gate, blend_weight)?;
+            layer.ffn_down.combine_parameters(&other_layer.ffn_down, blend_weight)?;
+            layer.ffn_up.combine_parameters(&other_layer.ffn_up, blend_weight)?;
+        }
+        Ok(())
     }
 }

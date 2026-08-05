@@ -22,6 +22,29 @@ impl LatticeLexicon {
         self.keywords.len()
     }
 
+    /// How many cells contain `term` — the document frequency.
+    ///
+    /// v9.10.566. This index already held the answer to "how rare is this
+    /// word", it just had no way to ask: `keywords` maps a token to the
+    /// RoaringBitmap of cells containing it, so `len()` on that bitmap IS the
+    /// document frequency. Exposed so retrieval scoring can weight rare query
+    /// terms above common ones (see `universe::term_specificity`), instead of
+    /// counting every query word equally and letting "constant" outvote
+    /// a word that appears in exactly one cell.
+    pub fn doc_freq(&self, term: &str) -> u64 {
+        self.keywords
+            .get(&term.to_lowercase())
+            .map(|bm| bm.len())
+            .unwrap_or(0)
+    }
+
+    /// `true` when nothing has been indexed yet — callers should fall back to
+    /// unweighted scoring rather than trust a document frequency of zero for
+    /// every term.
+    pub fn is_empty(&self) -> bool {
+        self.keywords.is_empty()
+    }
+
     /// Index a cell's text and metadata.
     pub fn index_cell(&mut self, id: u32, text: &str, tag_list: &[String]) {
         // Index keywords

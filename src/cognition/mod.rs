@@ -1,4 +1,5 @@
 pub mod algebra;
+pub mod audio_model;
 pub mod bone_heal;
 pub mod candle_voice;
 pub mod word_calculus;  // Ryan's "word calculus": carry-weight operators + hierarchical consolidation (flag-gated, off by default)
@@ -17,6 +18,7 @@ pub mod bnst;
 pub mod candidates;
 pub mod cerebellum;
 pub mod claustrum;
+pub mod coherence;
 pub mod compose;
 pub mod corpus_trainer;
 pub mod cortisol;
@@ -26,12 +28,15 @@ pub mod entorhinal;
 pub mod episodic;
 pub mod fusiform;
 pub mod generative;
+pub mod agent_core;      // v9.10.557 — RSHL-native agentic loop (KAI-AGENT-CORE-GOAL.md)
 pub mod global_workspace;
 pub mod habenula;
 pub mod hippocampus;
 pub mod hlv_training;
 pub mod homeostasis;
 pub mod idle_ingest;
+pub mod ingest_filter;
+pub mod mind_trace;
 pub mod inner_voice;
 pub mod insula;
 pub mod ipl;
@@ -58,6 +63,7 @@ pub mod pag;
 pub mod pcc;
 pub mod persona;
 pub mod native_nlg;
+pub mod training_bridge;
 pub mod sequence_chain;
 pub mod pfc;
 pub mod precuneus;
@@ -88,11 +94,8 @@ pub mod transcript;
 pub mod ventral_pallidum;
 pub mod vmpfc;
 pub mod voice;
-// pub mod polychora;  // EXCLUDED FROM BUILD (dead): only used by
-// language_warehouse::forward_pass_polychora, which has zero callers anywhere
-// in the crate (verified by grep across src/tests/benches/examples). The
-// method is itself neutralized below. Re-enable both to restore. The file is
-// kept on disk (reversible) — the compiler will flag any missed reference.
+pub mod polychora;  // 600-cell 4D geometry: projects 16384-dim vectors to 120
+                     // structural vertices for query routing + coherence scoring.
 pub mod self_reflection;
 pub mod vta;
 pub mod working_memory;
@@ -102,7 +105,12 @@ pub mod language_warehouse;
 
 pub use experience::{ExperienceRecord, store_experience, build_experiential_vector};
 pub use engram::{Engram, EngramSystem, store_sparse_experience, retrieve_linked_memories, pattern_completion, ENGRAM_SPARSITY, TEMPORAL_LINK_WINDOW_SECS};
-pub use language_warehouse::{LanguageWarehouse, SparseTernaryVec, init_language_warehouse, query_language_warehouse, suggest_words, warehouse_status, has_word, has_native_transformer, global_native_decode};
+pub use language_warehouse::{
+    LanguageWarehouse, SparseTernaryVec, init_language_warehouse, query_language_warehouse,
+    suggest_words, warehouse_status, has_word, has_native_transformer, has_dense_expert,
+    has_kai_native, global_native_decode, hybrid_brain_status, native_decode_count,
+    dense_decode_count, kai_native_decode_count,
+};
 
 pub use acc::AccMonitor;
 pub use amygdala::{score_emotional_charge, AmygdalaGate};

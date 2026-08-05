@@ -1,5 +1,6 @@
 pub mod ai_peer;
 pub mod code_tools;
+pub mod federation;
 pub mod git_tools;
 pub mod ipc_server;
 pub mod oracle_server;

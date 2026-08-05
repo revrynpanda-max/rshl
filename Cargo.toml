@@ -1,9 +1,9 @@
 [package]
 name = "kai"
-version = "9.10.50"
+version = "9.10.566"
 edition = "2021"
 authors = ["Ryan Ervin <PandaProductionsLogo>"]
-description = "KAI RSHL UI — Geometric Intelligence Engine"
+description = "KAI RSHL UI - Geometric Intelligence Engine"
 license = "MIT"
 
 [lib]
@@ -25,7 +25,14 @@ path = "src/bin/test_gguf.rs"
 name = "kai-bench"
 path = "src/bin/kai_bench.rs"
 
-# KAIVERSE — native 3D universe explorer. Separate binary so it never touches
+# kai-shell — KAI's command terminal: a REPL client to the LIVE :3334 engine.
+# Pure HTTP client (never loads kai-state.json). Separate bin so a break here
+# cannot break the engine. Run with: cargo run --release --bin kai-shell
+[[bin]]
+name = "kai-shell"
+path = "src/bin/kai_shell.rs"
+
+# KAIVERSE — KAI's native 3D universe explorer. Separate binary so it never touches
 # the core engine build. Run with: cargo run --release --bin kaiverse --features gpu
 [[bin]]
 name = "kaiverse"
@@ -81,4 +88,3 @@ sparsity_010 = []
 # stays intact). Pairs with the cuda_if_available device selection in
 # language_warehouse.rs.
 llm-cuda = ["candle-core/cuda", "candle-nn/cuda", "candle-transformers/cuda"]
-

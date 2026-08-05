@@ -405,6 +405,14 @@ pub struct Universe {
     /// Indices of cells modified since the last full save. Enables incremental/delta saves.
     #[serde(skip)]
     pub dirty_indices: std::collections::HashSet<usize>,
+    /// Indices of cells NOT yet folded into the KMeans/mask_pool index — kept SEPARATE
+    /// from `dirty_indices` on purpose (2026-07-03 school failure): saves clear dirty,
+    /// so using dirty as the fast-path merge set meant every autosave silently removed
+    /// just-stored cells from retrieval until the next index rebuild. Only
+    /// rebuild_index() clears THIS set, so new cells stay findable no matter how often
+    /// the engine saves.
+    #[serde(skip)]
+    pub unindexed_indices: std::collections::HashSet<usize>,
     /// Memory-mapped full-text store. Cell.text_id indexes into this for lazy text retrieval.
     #[serde(skip)]
     pub text_store: Option<super::text_store::TextStore>,
@@ -432,6 +440,7 @@ impl Clone for Universe {
             kmeans_index: None,
             mask_pool: vec![],
             dirty_indices: std::collections::HashSet::new(),
+            unindexed_indices: std::collections::HashSet::new(),
             text_store: None,
             calibration_floor: self.calibration_floor,
             recent_contradictions: self.recent_contradictions,
@@ -765,6 +774,93 @@ pub fn extract_query_keywords(text: &str) -> Vec<String> {
 /// Score how many query keywords appear in cell text (0.0—1.0).
 /// Uses morphological prefix matching for words ≥4 chars so "dream" matches "dreaming",
 /// "feel" matches "feelings", "work" matches "working", etc.
+/// How much information one query term carries, in `[0.05, 1.0]`.
+///
+/// v9.10.566. `keyword_overlap_score` counted every query word equally, so a
+/// word appearing in one cell weighed exactly as much as one appearing in
+/// hundreds. Live proof: asking "what is the flimbertwig constant?" — where
+/// "flimbertwig" exists in exactly ONE cell — returned the DISCOMFORT_DECAY
+/// cell, because it matched the common word "constant" and the unique word
+/// contributed nothing extra.
+///
+/// The fix needs a document-frequency signal, and the lattice already carries
+/// one: `Lexicon` is a frequency-RANKED English word list, rank 0 being the
+/// most common word. So rank is a ready-made specificity measure and no new
+/// state, index, or on-disk format is required:
+///
+///   * not in the list at all → 1.0. Coined terms, proper nouns and domain
+///     jargon are the most discriminative things a query can contain.
+///   * rank r → `ln(r + 2) / ln(N + 2)`, rising with rarity. "the" lands near
+///     the 0.05 floor; a rank-5000 word lands near 0.9.
+///
+/// The floor matters: a common word still counts a little, so a query made
+/// entirely of common words does not collapse to a zero denominator.
+pub fn term_specificity(
+    lexicon: &super::index::lexical::LatticeLexicon,
+    total_cells: usize,
+    word: &str,
+) -> f32 {
+    let n = total_cells.max(1) as f32;
+    let df = lexicon.doc_freq(word) as f32;
+    // Textbook smoothed IDF, normalized into [0,1] by its own maximum so the
+    // value stays comparable across lattices of different sizes.
+    //   idf = ln(1 + N / (1 + df));  max at df = 0 is ln(1 + N)
+    let idf = (1.0 + n / (1.0 + df)).ln();
+    let max = (1.0 + n).ln().max(1e-6);
+    (idf / max).clamp(0.05, 1.0)
+}
+
+/// Specificity-weighted keyword overlap.
+///
+/// Identical matching rules to `keyword_overlap_score` (exact token, or a
+/// 4+ char prefix relationship for morphology) — only the *weighting* changes:
+/// each matched term contributes its `term_specificity` instead of 1.0, and the
+/// denominator is the total specificity of the query rather than its word
+/// count. A query's rare words therefore dominate its common ones, which is the
+/// behaviour anyone expects from search and the thing this scorer lacked.
+pub fn keyword_overlap_score_idf(
+    query_words: &[String],
+    cell_text: &str,
+    lexicon: &super::index::lexical::LatticeLexicon,
+    total_cells: usize,
+) -> f32 {
+    if query_words.is_empty() {
+        return 0.0;
+    }
+    let cell_lower = cell_text.to_lowercase();
+    let cell_tokens: Vec<&str> = cell_lower
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|cw| !cw.is_empty())
+        .collect();
+
+    let mut matched = 0.0f32;
+    let mut total = 0.0f32;
+    for qw in query_words {
+        let q = qw.as_str();
+        let w = term_specificity(lexicon, total_cells, q);
+        total += w;
+        let hit = cell_tokens.iter().any(|cw| {
+            *cw == q
+                || (q.len() >= 4 && cw.len() >= 4 && (cw.starts_with(q) || q.starts_with(cw)))
+        });
+        if hit {
+            matched += w;
+        }
+    }
+    if total <= 0.0 {
+        return 0.0;
+    }
+    (matched / total).clamp(0.0, 1.0)
+}
+
+/// Is specificity weighting active? `KAI_IDF_KEYWORDS=0` restores the old
+/// equal-weight scoring.
+pub fn idf_keywords_enabled() -> bool {
+    std::env::var("KAI_IDF_KEYWORDS")
+        .map(|v| v != "0" && !v.eq_ignore_ascii_case("false") && !v.eq_ignore_ascii_case("off"))
+        .unwrap_or(true)
+}
+
 pub fn keyword_overlap_score(query_words: &[String], cell_text: &str) -> f32 {
     if query_words.is_empty() {
        
@@ -812,6 +908,24 @@ impl Default for Universe {
     }
 }
 
+// ── M1 Lattice Scale-Out (v9.10.139) — flag helpers, default OFF ─────────────
+/// KAI_LATTICE_INDEX=1 enables: auto index build at boot for big lattices,
+/// growth-triggered heartbeat rebuilds, and size-scaled probe_n/sec_top in
+/// query_in_regions. OFF (default) keeps every path byte-identical to legacy.
+pub fn lattice_index_enabled() -> bool {
+    static FLAG: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *FLAG.get_or_init(|| std::env::var("KAI_LATTICE_INDEX").ok().as_deref() == Some("1"))
+}
+
+/// Cell count at which the flag-gated auto index build engages (boot + heartbeat).
+/// Below this, persistence::load_compact() already builds the index at load, and
+/// rayon full scan is comfortably real-time anyway. Override: KAI_INDEX_MIN_CELLS.
+pub fn index_min_cells() -> usize {
+    static N: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+    *N.get_or_init(|| std::env::var("KAI_INDEX_MIN_CELLS").ok()
+        .and_then(|s| s.parse().ok()).unwrap_or(50_000))
+}
+
 impl Universe {
     pub fn new() -> Self {
         Self {
@@ -825,6 +939,7 @@ impl Universe {
             kmeans_index: None,
             mask_pool: vec![],
             dirty_indices: std::collections::HashSet::new(),
+            unindexed_indices: std::collections::HashSet::new(),
             text_store: None,
             calibration_floor: 0.40,
             recent_contradictions: 0,
@@ -876,8 +991,11 @@ impl Universe {
         self.hnsw = Some(hnsw);
 
         // 3. Build KMeans sub-lattice index for sub-500 μs cascade queries
-        // Skip when lattice is huge (>200K cells) — mask_pool costs ~4KB per cell
-        // (= 800MB+ RAM).  Fallback parallel scan with Rayon is fast enough.
+        // Cap: 1M cells. mask_pool costs ~4KB/cell (1M ≈ 4GB) on top of the cells
+        // themselves (~6–10GB at 1M), which is the sane ceiling for a 42GB machine.
+        // (An older comment here said 200K — the code has been 1M since before M1;
+        // verified + kept at 1M for the 2026-07-03 scale-out. Above the cap the
+        // rayon full scan is the fallback.)
         let n = self.cells.len();
         if n >= 64 && n <= 1_000_000 {
             let k = (n / 500).max(8).min(1024); // ~500 cells per cluster
@@ -889,6 +1007,8 @@ impl Universe {
             // println!("[KMeans] Built {k}-cluster index over {n} cells");
             self.mask_pool = pool_mask;
             self.kmeans_index = Some(idx);
+            // Every cell is now covered by the fresh index — the merge set resets.
+            self.unindexed_indices.clear();
         } else if n > 1_000_000 {
             // println!("[KMeans] Skipped ({} cells > 1M threshold). Using parallel scan.", n);
         }
@@ -999,6 +1119,12 @@ impl Universe {
     /// Mark a cell index as dirty (modified since last save).
     pub fn mark_dirty(&mut self, idx: usize) {
         self.dirty_indices.insert(idx);
+        // A cell at an index the mask_pool doesn't cover was added AFTER the last
+        // index rebuild — track it so retrieval can still reach it (saves clear
+        // dirty_indices; only rebuild_index() clears unindexed_indices).
+        if idx >= self.mask_pool.len() {
+            self.unindexed_indices.insert(idx);
+        }
     }
 
     /// Mark all non-anchor cells as dirty (e.g. after boid step).
@@ -1144,15 +1270,29 @@ impl Universe {
         
         // Developmental Hierarchy Layers:
         // Layer 0: Quantum (Substrate) - Not used for persistent storage yet
-        // Layer 1: Global Syncytium (Shared Knowledge)
-        // Layer 2: User Cellularization (Isolated Memory)
+        // Layer 1: Global Syncytium (Shared Knowledge) — PUBLIC / shared
+        // Layer 2: User Cellularization (Isolated Memory) — PRIVATE per user_id
         // Layer 3: Agent/Departmental Organs
         // Layer 4: Global Kaiverse Body
-        let initial_layer = match region {
-            "identity" | "memory" => super::claim::LAYER_CELLULAR,
-            "Established-Physics" | "Architecture" => super::claim::LAYER_SYNCYTIUM,
-            "agent" | "organ" => super::claim::LAYER_ORGAN,
-            _ => super::claim::LAYER_SYNCYTIUM,
+        // v9.10.490: any non-empty user_id on private-ish regions → CELLULAR so
+        // 1:1 memories are not readable as shared syncytium. Empty user_id +
+        // region "public"/"language" stay shared. Query with that user_id sees
+        // their cellular bubble + all non-cellular (public) cells.
+        let initial_layer = if !user_id.is_empty()
+            && matches!(
+                region,
+                "identity" | "memory" | "private" | "social" | "discord" | "dm"
+            ) {
+            super::claim::LAYER_CELLULAR
+        } else {
+            match region {
+                "identity" | "memory" | "private" => super::claim::LAYER_CELLULAR,
+                "public" | "language" | "Established-Physics" | "Architecture" => {
+                    super::claim::LAYER_SYNCYTIUM
+                }
+                "agent" | "organ" => super::claim::LAYER_ORGAN,
+                _ => super::claim::LAYER_SYNCYTIUM,
+            }
         };
         
         let mut claim = Claim::new(text, source, strength, vec.clone());
@@ -1352,7 +1492,10 @@ impl Universe {
 
     /// Query for the top-N most similar cells.
     /// Uses rayon parallel iteration — all 12 CPU threads compute cosine simultaneously.
-    /// Scoring = 60% cosine similarity (semantic) + 40% keyword overlap (exact match).
+    /// Scoring = 30% cosine similarity (semantic) + 70% keyword overlap (exact match).
+    /// (v9.10.556 — comment corrected to match the code below; it long claimed 60/40
+    /// the other way. Keyword overlap DOMINATES retrieval today. If the blend ever
+    /// shifts toward geometry, change the weights AND these comments together.)
     /// The keyword layer is the "inverted index" signal: "what is RSHL?" finds the RSHL
     /// cell because "rshl" appears in both, even if the phrase-level cosine is diluted.
     ///
@@ -1377,6 +1520,8 @@ impl Universe {
     pub fn query_full_scan(&self, text: &str, n: usize) -> Vec<QueryHit> {
         let q = SparseVec::encode(text);
         let query_words = extract_query_keywords(text);
+        let cells_n = self.cells.len();
+        let idf_kw = idf_keywords_enabled() && !self.lexicon.is_empty();
         let mag_q = q.nnz() as f32;
         let mag_q_sqrt = mag_q.sqrt();
         let theta_q = q.phase_angle();
@@ -1394,7 +1539,8 @@ impl Universe {
                 let theta_c = cell.claim.vec.phase_angle();
                 // Gate: cosine by default (bench-best); phasor only if KAI_PHASOR_RETRIEVAL=1.
                 let sim = retrieval_sim_term(cosine, theta_q, theta_c);
-                let kw = keyword_overlap_score(&query_words, &cell.claim.text);
+                let kw = if idf_kw { keyword_overlap_score_idf(&query_words, &cell.claim.text, &self.lexicon, cells_n) }
+                          else { keyword_overlap_score(&query_words, &cell.claim.text) };
                 let raw = 0.3 * sim + 0.7 * kw;
                 let boosted = if raw > 0.15 {
                     let s = if cell.claim.confidence >= 2.9 { 0.85 } else { 0.5 };
@@ -1436,6 +1582,8 @@ impl Universe {
         let theta_q = q.phase_angle();
         let q_mask = q.to_dense_mask();
         let query_words = extract_query_keywords(text);
+        let cells_n = self.cells.len();
+        let idf_kw = idf_keywords_enabled() && !self.lexicon.is_empty();
         let idx = self.kmeans_index.as_ref().unwrap();
         let sec_top = (n * 5).max(50).min(200); // sweep: sec_top=50 gives sub-ms at probe_n=3
         let candidates = idx.query(&q_mask, &self.mask_pool, probe_n, sec_top, n * 4);
@@ -1446,7 +1594,8 @@ impl Universe {
             })
             .map(|(i, cosine)| {
                 let cell = &self.cells[i];
-                let kw = keyword_overlap_score(&query_words, &cell.claim.text);
+                let kw = if idf_kw { keyword_overlap_score_idf(&query_words, &cell.claim.text, &self.lexicon, cells_n) }
+                          else { keyword_overlap_score(&query_words, &cell.claim.text) };
                 let theta_c = cell.claim.vec.phase_angle();
                 // Gate: cosine by default (bench-best); phasor only if KAI_PHASOR_RETRIEVAL=1.
                 let sim = retrieval_sim_term(cosine, theta_q, theta_c);
@@ -1563,6 +1712,8 @@ impl Universe {
     pub fn query_in_regions(&self, text: &str, n: usize, regions: &[&str], user_id: &str) -> Vec<QueryHit> {
         let q = SparseVec::encode(text);
         let query_words = extract_query_keywords(text);
+        let cells_n = self.cells.len();
+        let idf_kw = idf_keywords_enabled() && !self.lexicon.is_empty();
         let mag_q = q.nnz() as f32;
         let mag_q_sqrt = mag_q.sqrt();
         let theta_q = q.phase_angle();
@@ -1581,12 +1732,28 @@ impl Universe {
             // production lattice with real semantic clusters will be higher recall.
             let n_probe = 3usize;
             let sec_top = (n * 20).max(100).min(400);
+            // ── M1 (KAI_LATTICE_INDEX=1): scale probe_n/sec_top with lattice size.
+            // The 2026-07-02/03 probe sweeps show fixed probe_n=3/sec_top≤400 decays
+            // recall as the lattice grows (84% @ 10K cells, ~65% @ 50K). Scaling with
+            // cluster count k holds ≥95%: probe_n≈k/4 and sec_top≈cells/16 measured
+            // 100% @ 10K (2.0ms) and 96% @ 50K (10.3ms) vs O(N) full scan 33/167ms.
+            // Flag OFF (default) = exact legacy values above.
+            let (n_probe, sec_top) = if lattice_index_enabled() {
+                let k = idx.centroids.len().max(1);
+                let cells_n = self.cells.len();
+                ((k / 4).clamp(3, 24).min(k), (cells_n / 16).clamp(sec_top, 4096))
+            } else { (n_probe, sec_top) };
             let mut candidates = idx.query(&q_mask, &self.mask_pool, n_probe, sec_top, n * 4);
 
-            // Add all dirty (new/unclustered) indices to candidates to ensure they are scanned
-            // This allows short-term memory (conversation context) to be instantly recallable.
+            // Add all dirty (unsaved) AND unindexed (added-after-rebuild) indices to
+            // candidates so they are scanned. dirty alone was NOT enough: saves clear
+            // dirty, which made every just-taught cell unreachable minutes after an
+            // autosave (the 2026-07-03 "he knows nothing" school failure). unindexed
+            // survives saves and is cleared only by rebuild_index().
+            let mut merge_set: std::collections::HashSet<usize> = self.dirty_indices.clone();
+            merge_set.extend(self.unindexed_indices.iter().copied());
             let candidate_set: std::collections::HashSet<usize> = candidates.iter().map(|(i, _)| *i).collect();
-            for &di in &self.dirty_indices {
+            for &di in &merge_set {
                 if !candidate_set.contains(&di) && di < self.cells.len() {
                     let dot = q.dot(&self.cells[di].claim.vec);
                     let mag_c = self.cells[di].nnz as f32;
@@ -1606,7 +1773,8 @@ impl Universe {
                 })
                 .map(|(i, cosine)| {
                     let cell = &self.cells[i];
-                    let kw = keyword_overlap_score(&query_words, &cell.claim.text);
+                    let kw = if idf_kw { keyword_overlap_score_idf(&query_words, &cell.claim.text, &self.lexicon, cells_n) }
+                          else { keyword_overlap_score(&query_words, &cell.claim.text) };
                     let theta_c = cell.claim.vec.phase_angle();
                 // Gate: cosine by default (bench-best); phasor only if KAI_PHASOR_RETRIEVAL=1.
                 let sim = retrieval_sim_term(cosine, theta_q, theta_c);
@@ -1670,8 +1838,9 @@ impl Universe {
                     0.0
                 };
 
-                let kw = keyword_overlap_score(&query_words, &cell.claim.text);
-                // Hybrid: 60% cosine similarity (semantic) + 40% keyword overlap (exact match)
+                let kw = if idf_kw { keyword_overlap_score_idf(&query_words, &cell.claim.text, &self.lexicon, cells_n) }
+                          else { keyword_overlap_score(&query_words, &cell.claim.text) };
+                // Hybrid: 30% cosine similarity (semantic) + 70% keyword overlap (exact match) [comment fixed v9.10.556]
                 let theta_c = cell.claim.vec.phase_angle();
                 // Gate: cosine by default (bench-best); phasor only if KAI_PHASOR_RETRIEVAL=1.
                 let sim = retrieval_sim_term(cosine, theta_q, theta_c);
@@ -1702,8 +1871,92 @@ impl Universe {
             .collect()
         }; // end kmeans fast-path / brute-force else
 
-
         scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        // Take extra candidates for 600-cell re-ranking (trim to n after)
+        scored.truncate(n * 2);
+
+        // ── 600-CELL STRUCTURAL RE-RANK ──────────────────────────────────────
+        // Project the query through the 120-vertex 600-cell, then boost hits
+        // whose cell vectors snap to the SAME vertex (structurally coherent).
+        // Runs only on the top-2N candidates — negligible cost.
+        {
+            use crate::cognition::polychora;
+            use crate::cognition::language_warehouse::SparseTernaryVec;
+            let q_stv = SparseTernaryVec { indices: q.nz.clone(), signs: q.vals.clone(), dim: super::sparse_vec::DIM };
+            let q_4d = polychora::project_to_4d(&q_stv);
+            let vertices = polychora::get_600_cell_vertices();
+            let q_vertex = polychora::snap_to_600_cell(&q_4d, vertices);
+            for (i, score) in scored.iter_mut() {
+                let cell = &self.cells[*i];
+                let c_stv = SparseTernaryVec { indices: cell.claim.vec.nz.clone(), signs: cell.claim.vec.vals.clone(), dim: super::sparse_vec::DIM };
+                let c_4d = polychora::project_to_4d(&c_stv);
+                let c_vertex = polychora::snap_to_600_cell(&c_4d, vertices);
+                if c_vertex == q_vertex {
+                    *score *= 1.10; // same vertex = structurally aligned → 10% boost
+                } else {
+                    let geodesic = vertices[q_vertex].dot(&vertices[c_vertex]);
+                    if geodesic > 0.5 {
+                        *score *= 1.0 + 0.05 * geodesic; // nearby vertices → up to ~5%
+                    }
+                }
+            }
+            scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        }
+
+        // ── MIND TRACE ───────────────────────────────────────────────────────
+        // Captured BEFORE the truncate below, because the cells that get cut here
+        // are exactly the "silent thoughts" — they fired, they were Hebbian-wired,
+        // and then they were dropped before KAI could say them. A trace taken
+        // after the truncate would show only the survivors and hide the single
+        // most diagnostic fact: whether the right cell was found and discarded,
+        // or never scored at all.
+        if crate::cognition::mind_trace::is_active() {
+            let survivors = n.min(scored.len());
+            let sample: Vec<crate::cognition::mind_trace::ScoredCell> = scored
+                .iter()
+                .take(n.max(25))
+                .enumerate()
+                .map(|(rank, &(i, score))| {
+                    let cell = &self.cells[i];
+                    let kw = if idf_kw {
+                        keyword_overlap_score_idf(&query_words, &cell.claim.text, &self.lexicon, cells_n)
+                    } else {
+                        keyword_overlap_score(&query_words, &cell.claim.text)
+                    };
+                    crate::cognition::mind_trace::ScoredCell {
+                        rank,
+                        label: cell.claim.text.chars().take(160).collect(),
+                        region: cell.region.to_string(),
+                        source: cell.claim.source.to_string(),
+                        confidence: cell.claim.confidence,
+                        cosine: 0.0, // recomputed per-branch above; not re-derived here
+                        keyword: kw,
+                        blend: 0.0,
+                        boost: 1.0,
+                        final_score: score,
+                        survived: rank < survivors,
+                    }
+                })
+                .collect();
+            crate::cognition::mind_trace::data(
+                "retrieval",
+                "retrieval_summary",
+                "candidate set after scoring, before truncation",
+                || {
+                    serde_json::json!({
+                        "query": text,
+                        "query_keywords": query_words,
+                        "idf_weighting": idf_kw,
+                        "lattice_cells": cells_n,
+                        "scored_above_threshold": scored.len(),
+                        "requested_n": n,
+                        "will_truncate_to": survivors,
+                    })
+                },
+            );
+            crate::cognition::mind_trace::scored(sample);
+        }
+
         scored.truncate(n);
 
         scored
@@ -1855,6 +2108,8 @@ impl Universe {
     pub fn query_region(&self, text: &str, region: &str, n: usize) -> Vec<QueryHit> {
         let q = SparseVec::encode(text);
         let query_words = extract_query_keywords(text);
+        let cells_n = self.cells.len();
+        let idf_kw = idf_keywords_enabled() && !self.lexicon.is_empty();
         let mag_q = q.nnz() as f32;
         let mag_q_sqrt = mag_q.sqrt();
         let theta_q = q.phase_angle();
@@ -1877,8 +2132,9 @@ impl Universe {
                     0.0
                 };
 
-                let kw = keyword_overlap_score(&query_words, &cell.claim.text);
-                // Hybrid: 60% cosine similarity (semantic) + 40% keyword overlap (exact match)
+                let kw = if idf_kw { keyword_overlap_score_idf(&query_words, &cell.claim.text, &self.lexicon, cells_n) }
+                          else { keyword_overlap_score(&query_words, &cell.claim.text) };
+                // Hybrid: 30% cosine similarity (semantic) + 70% keyword overlap (exact match) [comment fixed v9.10.556]
                 let theta_c = cell.claim.vec.phase_angle();
                 // Gate: cosine by default (bench-best); phasor only if KAI_PHASOR_RETRIEVAL=1.
                 let sim = retrieval_sim_term(cosine, theta_q, theta_c);
@@ -2920,6 +3176,8 @@ impl Universe {
                     predictive::recency_penalty(tick, cell.last_fired, predictive::RECENCY_WINDOW);
                 let kw = if let Some(q) = raw_query {
                     let query_words = extract_query_keywords(q);
+                    let cells_n = self.cells.len();
+        let idf_kw = idf_keywords_enabled() && !self.lexicon.is_empty();
                     if !query_words.is_empty() {
                         keyword_overlap_score(&query_words, &cell.claim.text)
                     } else { 0.0 }
@@ -3040,6 +3298,8 @@ impl Universe {
                     predictive::recency_penalty(tick, cell.last_fired, predictive::RECENCY_WINDOW);
                 let kw = if let Some(q) = raw_query {
                     let query_words = extract_query_keywords(q);
+                    let cells_n = self.cells.len();
+        let idf_kw = idf_keywords_enabled() && !self.lexicon.is_empty();
                     if !query_words.is_empty() {
                         keyword_overlap_score(&query_words, &cell.claim.text)
                     } else { 0.0 }
@@ -3617,6 +3877,8 @@ impl Universe {
             .map(|w| w.to_lowercase())
             .filter(|w| w.len() > 2)
             .collect();
+        let cells_n = self.cells.len();
+        let idf_kw = idf_keywords_enabled() && !self.lexicon.is_empty();
 
         let mut scored: Vec<(usize, f32)> = self.cells
             .par_iter()
@@ -3631,7 +3893,8 @@ impl Universe {
                 } else {
                     0.0
                 };
-                let kw = keyword_overlap_score(&query_words, &cell.claim.text);
+                let kw = if idf_kw { keyword_overlap_score_idf(&query_words, &cell.claim.text, &self.lexicon, cells_n) }
+                          else { keyword_overlap_score(&query_words, &cell.claim.text) };
                 let hybrid = 0.6 * cosine + 0.4 * kw;
                 (i, hybrid)
             })
@@ -3663,3 +3926,62 @@ impl Universe {
     }
 }
 
+
+#[cfg(test)]
+mod idf_scoring_tests {
+    use super::*;
+    use crate::core::index::lexical::LatticeLexicon;
+
+    /// The live failure this was built for: asking "what is the flimbertwig
+    /// constant?" returned the DISCOMFORT_DECAY cell, because equal weighting
+    /// let the common word "constant" outvote a word occurring in ONE cell.
+    #[test]
+    fn rare_query_term_outweighs_common_one() {
+        let mut lex = LatticeLexicon::new();
+        // 200 cells mentioning "constant"; exactly one mentions "flimbertwig".
+        for i in 0..200u32 {
+            lex.index_cell(i, "the constant value used by this subsystem", &[]);
+        }
+        lex.index_cell(200, "the flimbertwig constant equals ninety-three", &[]);
+        let n = 201usize;
+
+        let q: Vec<String> = vec!["flimbertwig".into(), "constant".into()];
+        let right = keyword_overlap_score_idf(&q, "The flimbertwig constant equals ninety-three.", &lex, n);
+        let wrong = keyword_overlap_score_idf(&q, "The DISCOMFORT_DECAY constant dictates the decay rate.", &lex, n);
+
+        assert!(right > wrong, "correct cell {right:.3} must beat the common-word match {wrong:.3}");
+        // The old equal-weight scorer gave 1.0 vs 0.5. Weighting must widen that
+        // gap, not merely preserve it, or the wrong cell still clears the bar.
+        let old_right = keyword_overlap_score(&q, "The flimbertwig constant equals ninety-three.");
+        let old_wrong = keyword_overlap_score(&q, "The DISCOMFORT_DECAY constant dictates the decay rate.");
+        assert!(
+            (right - wrong) > (old_right - old_wrong),
+            "IDF gap {:.3} should exceed the equal-weight gap {:.3}",
+            right - wrong, old_right - old_wrong
+        );
+    }
+
+    /// A rare term must carry more weight than a ubiquitous one.
+    #[test]
+    fn specificity_tracks_rarity() {
+        let mut lex = LatticeLexicon::new();
+        for i in 0..500u32 {
+            lex.index_cell(i, "the system runs", &[]);
+        }
+        lex.index_cell(500, "zorbulator", &[]);
+        let n = 501usize;
+        let common = term_specificity(&lex, n, "the");
+        let rare = term_specificity(&lex, n, "zorbulator");
+        let unseen = term_specificity(&lex, n, "flimbertwig");
+        assert!(rare > common, "rare {rare:.3} must beat common {common:.3}");
+        assert!(unseen >= rare, "never-seen {unseen:.3} should be at least as specific as rare {rare:.3}");
+        assert!(common >= 0.05, "floor keeps common words contributing something");
+    }
+
+    /// An unindexed lattice must fall back cleanly, never score everything zero.
+    #[test]
+    fn empty_index_is_detectable() {
+        let lex = LatticeLexicon::new();
+        assert!(lex.is_empty(), "callers rely on this to skip IDF weighting");
+    }
+}
