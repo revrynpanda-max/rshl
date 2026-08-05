@@ -50,6 +50,52 @@ impl Config {
             eos_token_id: 128001,
         }
     }
+
+    /// Configuration for Qwen 2.5 32B ternary (27B-class unified generalist+coder).
+    /// Ternary i2_s quantization: ~9.5GB on disk, ~12-14GB RAM at inference.
+    pub fn qwen2_32b_ternary() -> Self {
+        Self {
+            hidden_size: 5120,
+            intermediate_size: 27648,
+            vocab_size: 152064,
+            num_hidden_layers: 64,
+            num_attention_heads: 40,
+            num_key_value_heads: 8,
+            head_dim: 128,
+            rms_norm_eps: 1e-6,
+            rope_theta: 1000000.0,
+            max_position_embeddings: DEFAULT_MAX_SEQ_LEN,
+            bos_token_id: 151643,
+            eos_token_id: 151645,
+        }
+    }
+
+    /// Load config from a JSON file (exported by export_27b_ternary.py).
+    /// Falls back to bitnet_2b_4t() if the file doesn't exist.
+    pub fn from_json(path: &str) -> Self {
+        let data = match std::fs::read_to_string(path) {
+            Ok(d) => d,
+            Err(_) => return Self::bitnet_2b_4t(),
+        };
+        let v: serde_json::Value = match serde_json::from_str(&data) {
+            Ok(v) => v,
+            Err(_) => return Self::bitnet_2b_4t(),
+        };
+        Self {
+            hidden_size: v["hidden_size"].as_u64().unwrap_or(2560) as usize,
+            intermediate_size: v["intermediate_size"].as_u64().unwrap_or(6912) as usize,
+            vocab_size: v["vocab_size"].as_u64().unwrap_or(128256) as usize,
+            num_hidden_layers: v["num_hidden_layers"].as_u64().unwrap_or(30) as usize,
+            num_attention_heads: v["num_attention_heads"].as_u64().unwrap_or(20) as usize,
+            num_key_value_heads: v["num_key_value_heads"].as_u64().unwrap_or(5) as usize,
+            head_dim: v["head_dim"].as_u64().unwrap_or(128) as usize,
+            rms_norm_eps: v["rms_norm_eps"].as_f64().unwrap_or(1e-5),
+            rope_theta: v["rope_theta"].as_f64().unwrap_or(500000.0) as f32,
+            max_position_embeddings: DEFAULT_MAX_SEQ_LEN,
+            bos_token_id: v["bos_token_id"].as_u64().unwrap_or(128000) as u32,
+            eos_token_id: v["eos_token_id"].as_u64().unwrap_or(128001) as u32,
+        }
+    }
 }
 
 // ─── Cache (KV cache + RoPE precomputation) ──────────────────────────────────

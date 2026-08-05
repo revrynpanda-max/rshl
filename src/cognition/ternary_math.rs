@@ -1,7 +1,10 @@
-//! BitNet Experimental Math (I2_S / TL1)
+//! BitNet Experimental Math (I2_S / TL1) + KAI native ternary pack (kai-i2)
 //! This module teaches KAI the native structural logic for encoding and decoding
 //! ternary weights [-1, 0, 1] mapped into highly compressed 2-bit bytes.
 //! This math represents the core structural tensor logic behind BitNet 1.58b.
+//!
+//! Also: `kai_i2` packing used by `tools/train_kai_transformer.py` export
+//! (4 ternary values per byte: 00=0, 01=+1, 10=-1, little-endian nibble order).
 
 /// The BitNet decoding map.
 /// Chunk values (0, 1, 2, 3) are mapped to these floats.
@@ -162,9 +165,99 @@ pub fn bitlinear_matmul_buf(
     Ok(())
 }
 
+// ── KAI native export packing (train_kai_transformer.py) ─────────────────────
+// 4 ternary values per byte: bits (j*2): 00=0, 01=+1, 10=-1
+
+/// Unpack kai-i2 packed bytes → f32 ternary values in {-1,0,+1}.
+/// `n_elems` is the logical weight count (rows * cols).
+pub fn unpack_kai_i2(packed: &[u8], n_elems: usize) -> Vec<f32> {
+    let mut out = vec![0.0f32; n_elems];
+    for i in 0..n_elems {
+        let byte = packed.get(i / 4).copied().unwrap_or(0);
+        let bits = (byte >> ((i % 4) * 2)) & 0x3;
+        out[i] = match bits {
+            1 => 1.0,
+            2 => -1.0,
+            _ => 0.0,
+        };
+    }
+    out
+}
+
+/// y = W @ x  where W is (rows, cols) row-major, stored as kai-i2 packed ternary.
+/// Falls back to unpacked f32 multiply-add (CPU-friendly for ~130M sparse ternary).
+pub fn kai_ternary_matvec(
+    packed_w: &[u8],
+    x: &[f32],
+    rows: usize,
+    cols: usize,
+) -> Result<Vec<f32>, &'static str> {
+    if x.len() != cols {
+        return Err("x length must equal cols");
+    }
+    let n = rows * cols;
+    let need_bytes = (n + 3) / 4;
+    if packed_w.len() < need_bytes {
+        return Err("packed weight buffer too small for rows*cols");
+    }
+    let mut y = vec![0.0f32; rows];
+    for r in 0..rows {
+        let mut sum = 0.0f32;
+        let base = r * cols;
+        for c in 0..cols {
+            let i = base + c;
+            let byte = packed_w[i / 4];
+            let bits = (byte >> ((i % 4) * 2)) & 0x3;
+            // 0 → skip, 1 → add, 2 → sub
+            match bits {
+                1 => sum += x[c],
+                2 => sum -= x[c],
+                _ => {}
+            }
+        }
+        y[r] = sum;
+    }
+    Ok(y)
+}
+
+/// Dense float matvec: y = W @ x, W row-major f32.
+pub fn float_matvec(w: &[f32], x: &[f32], rows: usize, cols: usize) -> Result<Vec<f32>, &'static str> {
+    if w.len() < rows * cols || x.len() != cols {
+        return Err("float_matvec shape mismatch");
+    }
+    let mut y = vec![0.0f32; rows];
+    for r in 0..rows {
+        let mut sum = 0.0f32;
+        let row = &w[r * cols..(r + 1) * cols];
+        for c in 0..cols {
+            sum += row[c] * x[c];
+        }
+        y[r] = sum;
+    }
+    Ok(y)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_kai_i2_roundtrip_and_matvec() {
+        // W = [[1, 0, -1, 0], [0, 1, 0, -1]]  rows=2 cols=4
+        let flat = [1i8, 0, -1, 0, 0, 1, 0, -1];
+        let mut packed = vec![0u8; 2];
+        for (i, &v) in flat.iter().enumerate() {
+            let bits: u8 = if v == 0 { 0 } else if v > 0 { 1 } else { 2 };
+            packed[i / 4] |= bits << ((i % 4) * 2);
+        }
+        let unpacked = unpack_kai_i2(&packed, 8);
+        assert_eq!(unpacked, vec![1.0, 0.0, -1.0, 0.0, 0.0, 1.0, 0.0, -1.0]);
+        let x = vec![2.0, 3.0, 4.0, 5.0];
+        let y = kai_ternary_matvec(&packed, &x, 2, 4).unwrap();
+        // y0 = 2*1 + 0 + 4*(-1) + 0 = -2; y1 = 0 + 3 + 0 + 5*(-1) = -2
+        assert!((y[0] + 2.0).abs() < 1e-5);
+        assert!((y[1] + 2.0).abs() < 1e-5);
+    }
 
     #[test]
     fn test_bitnet_ternary_math_assimilation() {

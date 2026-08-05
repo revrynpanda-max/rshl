@@ -128,6 +128,8 @@ pub fn save_mind(
             total_ltd: synaptic_layer.total_ltd,
             total_pruned: synaptic_layer.total_pruned,
             surprise_level: 0.0,
+            // Save-side snapshot, never swept. See synapse.rs LtdReport.
+            loaded_from_disk: false,
         },
     };
 
@@ -357,14 +359,22 @@ pub fn save_compact(
     // Build text store alongside cells
     save_text_store(base_dir, universe);
 
-    // Atomic write for cells
+    // Atomic write for cells.
+    // BRAIN-SAFETY: surface write/rename failures LOUDLY and report ok=false. A
+    // swallowed error here is how the on-disk snapshot silently lags the live
+    // population; we must never quietly leave the base file stale.
     let tmp_cells = format!("{}.tmp", cells_path);
-    if fs::write(&tmp_cells, &cell_bytes).is_ok() {
-        let _ = fs::rename(&tmp_cells, &cells_path);
+    let mut write_ok = true;
+    if let Err(e) = fs::write(&tmp_cells, &cell_bytes) {
+        eprintln!("[persistence] !! FULL SAVE FAILED writing {}: {} — {} live cells NOT persisted!", tmp_cells, e, total_cells);
+        write_ok = false;
+    } else if let Err(e) = fs::rename(&tmp_cells, &cells_path) {
+        eprintln!("[persistence] !! FULL SAVE FAILED renaming {} -> {}: {} — on-disk brain is STALE!", tmp_cells, cells_path, e);
+        write_ok = false;
     }
-    // After a full save the delta is merged into the base file — safe to remove.
-    // BUT: back it up first with a timestamp so it's recoverable if needed.
-    if Path::new(&delta_path).exists() {
+    // Only merge (rename-away) the delta once the full base was actually written,
+    // so a failed base save never discards the delta that still holds recent growth.
+    if write_ok && Path::new(&delta_path).exists() {
         let ts = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -378,8 +388,8 @@ pub fn save_compact(
     save_compact_meta(base_dir, candidates, drive, synaptic_layer, tick, dream_count);
 
     SaveResult {
-        ok: true,
-        cells: total_cells,
+        ok: write_ok,
+        cells: if write_ok { total_cells } else { 0 },
         candidates: candidates.entries.len(),
         bytes: cell_bytes.len(),
     }
@@ -411,16 +421,29 @@ pub fn save_compact_full(
     // Build text store alongside compact cells
     save_text_store(base_dir, universe);
 
+    // BRAIN-SAFETY: a swallowed write/rename error here means the on-disk cell
+    // snapshot silently lags the live population (the "10k saved vs 397k live"
+    // failure mode). Surface any failure LOUDLY and report ok=false so the caller
+    // and telemetry can see that the live brain did NOT reach disk.
     let tmp_cells = format!("{}.tmp", cells_path);
-    if fs::write(&tmp_cells, &cell_bytes).is_ok() {
-        let _ = fs::rename(&tmp_cells, &cells_path);
+    let mut write_ok = true;
+    if let Err(e) = fs::write(&tmp_cells, &cell_bytes) {
+        eprintln!("[persistence] !! FULL SAVE FAILED writing {}: {} — {} live cells NOT persisted!", tmp_cells, e, cells.len());
+        write_ok = false;
+    } else if let Err(e) = fs::rename(&tmp_cells, &cells_path) {
+        eprintln!("[persistence] !! FULL SAVE FAILED renaming {} -> {}: {} — on-disk brain is STALE!", tmp_cells, cells_path, e);
+        write_ok = false;
     }
-    let _ = fs::remove_file(&delta_path);
+    // Only merge/remove the delta once the full base was actually written, so we
+    // never discard the delta while the base save failed.
+    if write_ok {
+        let _ = fs::remove_file(&delta_path);
+    }
     save_compact_meta(base_dir, candidates, drive, synaptic_layer, tick, dream_count);
 
     SaveResult {
-        ok: true,
-        cells: cells.len(),
+        ok: write_ok,
+        cells: if write_ok { cells.len() } else { 0 },
         candidates: candidates.entries.len(),
         bytes: cell_bytes.len(),
     }
@@ -661,6 +684,11 @@ pub fn load_compact(base_dir: &str) -> Option<(Universe, CandidateBuffer, Drive,
         return None;
     }
 
+    // v9.10.567 — sub-phase timings. This function was a single multi-minute
+    // black box; without knowing whether the cost is disk, decompression,
+    // per-cell validation or the synapse graph, "make boot faster" is guesswork.
+    let t_phase = std::time::Instant::now();
+
     // 1. Load base cells from compact binary
     let cell_bytes = match fs::read(&cells_path) {
         Ok(b) => b,
@@ -668,14 +696,29 @@ pub fn load_compact(base_dir: &str) -> Option<(Universe, CandidateBuffer, Drive,
             return None;
         }
     };
+    println!(
+        "persistence:   [1/4] read cells file — {:.1} MB in {:.1}s",
+        cell_bytes.len() as f32 / (1024.0 * 1024.0),
+        t_phase.elapsed().as_secs_f32()
+    );
+    let _ = std::io::Write::flush(&mut std::io::stdout());
+
+    let t_de = std::time::Instant::now();
     let cells = match compact::deserialize_cells(&cell_bytes) {
         Ok(c) => c,
         Err(e) => {
             return None;
         }
     };
+    println!(
+        "persistence:   [2/4] decompress + deserialize {} cells — {:.1}s",
+        cells.len(),
+        t_de.elapsed().as_secs_f32()
+    );
+    let _ = std::io::Write::flush(&mut std::io::stdout());
 
     // Validate and repair corrupted cells
+    let t_val = std::time::Instant::now();
     let mut valid_cells = Vec::with_capacity(cells.len());
     let mut repaired = 0usize;
     for mut cell in cells {
@@ -685,6 +728,13 @@ pub fn load_compact(base_dir: &str) -> Option<(Universe, CandidateBuffer, Drive,
         }
         valid_cells.push(cell);
     }
+    println!(
+        "persistence:   [3/4] validate {} cells ({} repaired) — {:.1}s",
+        valid_cells.len(),
+        repaired,
+        t_val.elapsed().as_secs_f32()
+    );
+    let _ = std::io::Write::flush(&mut std::io::stdout());
 
     let mut universe = Universe::new();
     *universe.get_cells_mut() = valid_cells;
@@ -723,7 +773,13 @@ pub fn load_compact(base_dir: &str) -> Option<(Universe, CandidateBuffer, Drive,
     }
 
     if universe.cells().len() < 50_000 {
-        universe.rebuild_index(0.0);
+        let t_idx = std::time::Instant::now();
+    universe.rebuild_index(0.0);
+    println!(
+        "persistence:   [4/4] rebuild KMeans + lexical index — {:.1}s",
+        t_idx.elapsed().as_secs_f32()
+    );
+    let _ = std::io::Write::flush(&mut std::io::stdout());
     } else {
         println!("persistence: deferred index rebuild ({} cells). Will build on first query.", universe.cells().len());
     }
@@ -771,6 +827,9 @@ pub fn load_compact(base_dir: &str) -> Option<(Universe, CandidateBuffer, Drive,
 
     // Reconstruct synaptic layer
     let synapses_path = format!("{}/data/kai-synapses.bin.zst", base_dir);
+    let t_syn = std::time::Instant::now();
+    println!("persistence:   loading synapse graph…");
+    let _ = std::io::Write::flush(&mut std::io::stdout());
     let mut reconstructed_synaptic_layer = if Path::new(&synapses_path).exists() {
         if let Ok(bin) = fs::read(&synapses_path) {
             if let Ok(mut sl) = compact::deserialize_synapses(&bin) {
@@ -842,6 +901,8 @@ pub fn load_compact(base_dir: &str) -> Option<(Universe, CandidateBuffer, Drive,
                 total_ltd: deserializer.synaptic_layer.total_ltd,
                 total_pruned: deserializer.synaptic_layer.total_pruned,
                 surprise_level: 0.0,
+                // Came off disk -> arm the one-time idle-clock rebase.
+                loaded_from_disk: true,
             };
             if sl.index.is_empty() && !sl.synapses.is_empty() {
                 for (idx, syn) in sl.synapses.iter().enumerate() {
@@ -884,6 +945,8 @@ pub fn load_compact(base_dir: &str) -> Option<(Universe, CandidateBuffer, Drive,
                 total_ltd: deserializer.synaptic_layer.total_ltd,
                 total_pruned: deserializer.synaptic_layer.total_pruned,
                 surprise_level: 0.0,
+                // Came off disk -> arm the one-time idle-clock rebase.
+                loaded_from_disk: true,
             };
             if sl.index.is_empty() && !sl.synapses.is_empty() {
                 for (idx, syn) in sl.synapses.iter().enumerate() {
@@ -893,6 +956,14 @@ pub fn load_compact(base_dir: &str) -> Option<(Universe, CandidateBuffer, Drive,
             sl
         }
     };
+
+    // v9.10.565 — tell the layer it came off disk. `ltd_sweep` uses this to run
+    // its one-time idle-clock rebase: every persisted synapse currently carries
+    // a `last_fire_tick` written while the clock was stuck at 0, so without the
+    // rebase the first sweep would treat the entire graph as idle at once.
+    // Runtime-only field (`serde(skip)`), so no on-disk format changes.
+    let mut reconstructed_synaptic_layer = reconstructed_synaptic_layer;
+    reconstructed_synaptic_layer.loaded_from_disk = true;
 
     Some((universe, deserializer.candidates, deserializer.drive, deserializer.tick, deserializer.dream_count, reconstructed_synaptic_layer))
 }

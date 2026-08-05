@@ -124,6 +124,12 @@ pub struct Engine {
     pub events: Vec<MindEvent>,
     pub last_dream_text: String,
     pub last_inner_voice_text: String,
+    /// v9.10.556 — J-Space readout: the widened retrieval candidates that fired and
+    /// Hebbian-wired on the LAST query but were truncated away before the answer.
+    /// (label, score, region) per silent hit, plus the query that evoked them.
+    /// This is "what KAI considered but didn't say" — read, never consumed.
+    pub last_silent_thoughts: Vec<(String, f32, String)>,
+    pub last_silent_query: String,
     pub last_input: String,
     pub dominant_band: usize,
     pub oscillator_amplitude: f32,
@@ -385,6 +391,37 @@ impl Engine {
                 match crate::persistence::load_compact(base_dir) {
                     Some((u, c, d, t, dc, sl)) => (u, c, d, t, dc, sl),
                     None => {
+                        // ── BRAIN-SAFETY: LOUD-FAIL-ON-LOAD ──────────────────────────────
+                        // We reach here ONLY when saved state files EXIST (state_exists()==true)
+                        // but could NOT be deserialized. Historically this branch SILENTLY seeded
+                        // a fresh lattice — which is exactly how a rebuild wiped KAI's brain with
+                        // no warning. Never do that by default. Refuse to boot on a fresh lattice
+                        // unless the operator explicitly opts in via KAI_ALLOW_MIND_RESET=1.
+                        let allow_reset = std::env::var("KAI_ALLOW_MIND_RESET")
+                            .ok().as_deref() == Some("1");
+                        if !allow_reset {
+                            eprintln!("\n\n");
+                            eprintln!("################################################################");
+                            eprintln!("#  KAI BRAIN-SAFETY ABORT: existing mind/lattice FAILED TO LOAD #");
+                            eprintln!("################################################################");
+                            eprintln!("# State files EXIST in {}/data but load_compact() could not", base_dir);
+                            eprintln!("# deserialize them. Refusing to boot with a FRESH (empty) brain,");
+                            eprintln!("# because that would silently overwrite/lose the existing mind.");
+                            eprintln!("#");
+                            eprintln!("# Nothing has been written or reset. To recover:");
+                            eprintln!("#   1. Restore kai-cells.bin.zst / kai-synapses.bin.zst / kai-meta.json*");
+                            eprintln!("#      from the most recent C:\\KAI\\data\\_brain-backup-* folder, OR");
+                            eprintln!("#   2. Investigate why the current files won't parse (truncated save?).");
+                            eprintln!("#");
+                            eprintln!("# If — and ONLY if — you INTENTIONALLY want to start from a blank");
+                            eprintln!("# brain, re-launch with the environment variable:");
+                            eprintln!("#       KAI_ALLOW_MIND_RESET=1");
+                            eprintln!("################################################################\n");
+                            std::process::exit(1);
+                        }
+                        eprintln!("\n[BRAIN-SAFETY] KAI_ALLOW_MIND_RESET=1 set — operator EXPLICITLY");
+                        eprintln!("[BRAIN-SAFETY] approved a fresh lattice despite unreadable saved state.");
+                        eprintln!("[BRAIN-SAFETY] Seeding a NEW empty brain now.\n");
                         let mut u = Universe::new();
                         crate::core::seed::seed_universe(&mut u);
                         (u, CandidateBuffer::new(), Drive::default(), 0, 0, crate::core::SynapticLayer::new())
@@ -399,7 +436,22 @@ impl Engine {
         // Rebuild Hybrid Index (Lexicon + HNSW) on startup
         let mut universe = universe;
         universe.gpu = gpu.clone();
-        // universe.rebuild_index(0.0); // Skipped to allow instant CLI query via parallel scan!
+        // ── M1 Lattice Scale-Out (KAI_LATTICE_INDEX=1, default OFF) ─────────────
+        // persistence::load_compact() already builds the KMeans/ANN index for
+        // lattices under 50K cells. Above that it deferred forever ("build on
+        // first query" was never implemented), leaving big lattices on O(N) full
+        // scan — measured ~1.3 µs/cell, i.e. 130 ms/query at 100K cells. With the
+        // flag set, boot pays the one-time index build so queries stay indexed.
+        // Default OFF = byte-identical behavior to before (instant boot).
+        if std::env::var("KAI_LATTICE_INDEX").ok().as_deref() == Some("1")
+            && universe.kmeans_index.is_none()
+            && universe.cells().len() >= crate::core::universe::index_min_cells()
+        {
+            let n = universe.cells().len();
+            let t0 = std::time::Instant::now();
+            universe.rebuild_index(0.0);
+            println!("[M1/LatticeIndex] boot index build: {} cells in {:.1}s", n, t0.elapsed().as_secs_f64());
+        }
 
         let heal_report = crate::cognition::bone_heal_pass(&mut universe);
         println!("[BoneHeal] Startup scan: {}", heal_report);
@@ -565,6 +617,8 @@ impl Engine {
             events: Vec::new(),
             last_dream_text: String::new(),
             last_inner_voice_text: String::new(),
+            last_silent_thoughts: Vec::new(),
+            last_silent_query: String::new(),
             last_input: String::new(),
             dominant_band: 0,
             oscillator_amplitude: 0.0,
@@ -1022,6 +1076,12 @@ impl Engine {
                     crate::core::normalize::truncate(&validation.echo_text, 35),
                     validation.echo_score * 100.0
                 );
+                // v9.10.556 — dream insights compete for conscious broadcast, so an
+                // idle mind's strongest thought can steer the NEXT retrieval
+                // (workspace_mediate_and_capture reads the broadcast it wins).
+                if Self::gws_live() {
+                    self.global_workspace.post("dream", &dream.insight, 0.55);
+                }
             }
 
             self.last_dream_text = format!(
@@ -1096,6 +1156,55 @@ impl Engine {
     /// 1. Geometric Query (Universe)
     /// 2. Synaptic Propagation (Associative Recall)
     /// 3. Hebbian Learning (LTP)
+    /// v9.10.556 — GLOBAL WORKSPACE MEDIATION + SILENT-THOUGHT CAPTURE.
+    ///
+    /// Before this, the GlobalWorkspace broadcast was read in exactly one place
+    /// (contribute_to_mind_frame) as a narrative-strength signal — it steered
+    /// nothing. That fails the causal-mediation bar of the J-Space paper
+    /// ("Verbalizable Representations Form a Global Workspace"): swap the
+    /// broadcast, nothing changes. This helper makes the workspace load-bearing:
+    ///
+    ///   1. MEDIATE — hits resonating with the current broadcast get up to +15%
+    ///      (same magnitude class as the 600-cell re-rank's +10%, so the
+    ///      workspace nudges retrieval without dominating geometry).
+    ///   2. CAPTURE — after the caller's truncation point, the discarded
+    ///      candidates are recorded as last_silent_thoughts: they fired, they
+    ///      Hebbian-wired, they shaped this answer — and were never said.
+    ///   3. FEED BACK — the top hit is posted INTO the workspace, so perception
+    ///      populates consciousness (previously only TUI modules posted).
+    ///
+    /// Gate: KAI_GWS_LIVE (default ON; set 0 to restore pre-mediation behavior).
+    fn gws_live() -> bool {
+        static GATE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        *GATE.get_or_init(|| {
+            std::env::var("KAI_GWS_LIVE").map(|v| v != "0").unwrap_or(true)
+        })
+    }
+    fn workspace_mediate_and_capture(&mut self, query_text: &str, hits: &mut Vec<QueryHit>, n: usize) {
+        if hits.is_empty() { return; }
+        if Self::gws_live() {
+            // 1. Broadcast bias — the conscious content re-ranks retrieval.
+            if let Some(b) = self.global_workspace.broadcast.clone() {
+                for h in hits.iter_mut() {
+                    let res = b.vec.cosine(&h.vec).max(0.0);
+                    if res > 0.05 {
+                        h.score *= 1.0 + 0.15 * res;
+                    }
+                }
+                hits.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+            }
+            // 3. Perception → workspace: the winning memory competes for broadcast.
+            let top = &hits[0];
+            let salience = (0.45 + top.score * 0.1).clamp(0.0, 0.85);
+            self.global_workspace.post("retrieval", &top.label, salience);
+        }
+        // 2. Silent-thought capture — everything past the truncation point.
+        self.last_silent_query = query_text.to_string();
+        self.last_silent_thoughts = hits.iter().skip(n)
+            .map(|h| (h.label.clone(), h.score, h.region.clone()))
+            .collect();
+    }
+
     pub fn query(&mut self, text: &str, n: usize) -> Vec<QueryHit> {
         // Stage 1-3: Perform associative query.
         // WIDEN: We scan up to 30 cells internally to ensure a rich co-firing set for synapse formation.
@@ -1144,6 +1253,8 @@ impl Engine {
             );
         }
 
+        // v9.10.556 — workspace mediation + silent capture, then truncate
+        self.workspace_mediate_and_capture(text, &mut hits, n);
         // Truncate back to the requested N before returning to the caller
         hits.truncate(n);
         hits
@@ -1197,6 +1308,8 @@ impl Engine {
             );
         }
 
+        // v9.10.556 — workspace mediation + silent capture, then truncate
+        self.workspace_mediate_and_capture(text, &mut hits, n);
         // Truncate back to the requested N before returning
         hits.truncate(n);
         hits

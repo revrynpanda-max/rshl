@@ -1,7 +1,7 @@
 use super::shared_bus::{RamState, StreamEvent};
 use crate::core::{Universe, SynapticLayer};
 use crate::core::gpu_compute::GpuCompute;
-use crate::core::boid_engine::{BoidState, BoidSettings, run_boid_iteration, find_near_duplicates};
+use crate::core::boid_engine::{BoidState, BoidSettings, run_boid_iteration, find_near_duplicates, apply_rshl_resonance_boid_boost};
 use crossbeam_channel::{Receiver, Sender};
 use rayon::prelude::*;
 use std::sync::{Arc, RwLock};
@@ -83,6 +83,9 @@ pub fn ram_tick(
                         // ── CPU fallback: Rayon-parallel dot products ────────────
                         let mut state = BoidState::from_universe(&uni);
                         let settings = BoidSettings::default();
+                        // Wire RSHL resonance boid boost (active callsite for smarter learning during RAM/lattice reorganize)
+                        let rshl_res = 0.65f32; // proxy; real could avg lattice cosines
+                        apply_rshl_resonance_boid_boost(&mut state, rshl_res, &settings);
                         for _ in 0..3 {
                             run_boid_iteration(&mut state, &settings, &field);
                         }

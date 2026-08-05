@@ -697,6 +697,29 @@ impl StatLexicon {
         let greedy = params.top_k <= 1 || params.temperature <= 0.0;
         let k_eff = params.top_k.max(1);
 
+        // ── Grammar-proposed candidates (`KAI_GRAMMAR_POOL=N`, default off) ──
+        //
+        // The candidate pool below is selected by **cosine alone**, and only
+        // then does step 3b add `bigram_weight · log P(w | prev)`. So the
+        // grammar prior can re-rank the shortlist but can never *join* it: if
+        // the word the corpus overwhelmingly expects next — "is", "the", "a" —
+        // is not among the top-k cosine neighbours of the peeled latent, it
+        // cannot be emitted at any prior weight. That is a hard ceiling on
+        // word order, and it is why decoded output scores at the uniform-random
+        // baseline on the fluency metric even though the priors are populated.
+        //
+        // When set, we additionally pull the N most frequent observed
+        // successors of the previous word and union them into the pool, scored
+        // on the same cosine scale so the existing softmax is unchanged. The
+        // prior now gets to nominate, not just veto.
+        //
+        // Unset (default): the pool is byte-identical to before.
+        let grammar_pool: usize = std::env::var("KAI_GRAMMAR_POOL")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(0)
+            .min(64);
+
         for pos in 0..params.max_tokens {
             // ── 1. role key + peel ───────────────────────────────────
             let pkey = position_key(pos);
@@ -715,6 +738,34 @@ impl StatLexicon {
                 }
                 pool
             };
+
+            // ── 2b. let the grammar prior nominate candidates ────────
+            // See `grammar_pool` above. Additive: never removes a cosine
+            // candidate, only widens the pool with words the corpus actually
+            // observed following `prev`.
+            if grammar_pool > 0 && !greedy && !self.bigram.is_empty() {
+                if let Some(prev_id) = out.last().and_then(|w| self.index.get(w).copied()) {
+                    if let Some(row) = self.bigram.forward.get(prev_id) {
+                        let mut succ: Vec<(u32, u32)> = row.clone();
+                        // Most-frequent successors first.
+                        succ.sort_unstable_by(|a, b| b.1.cmp(&a.1));
+                        for &(next_id, _) in succ.iter().take(grammar_pool) {
+                            let idx = next_id as usize;
+                            let word = match self.words.get(idx) {
+                                Some(w) => w,
+                                None => continue,
+                            };
+                            if candidates.iter().any(|(c, _)| c == word) {
+                                continue;
+                            }
+                            // Same scale as the cosine pool, so step 3's
+                            // penalties/priors/softmax need no changes.
+                            let s = self.vectors[idx].cosine(&peeled);
+                            candidates.push((word.clone(), s));
+                        }
+                    }
+                }
+            }
 
             // ── 3a. repetition penalty on the recent window ──────────
             if params.repetition_penalty > 0.0 && params.repetition_window > 0 {
@@ -1162,6 +1213,25 @@ impl StatLexicon {
     /// on-disk file; rebuild with `--build-lexicon` to populate it.
     pub fn bigram(&self) -> &BigramPrior {
         &self.bigram
+    }
+
+    /// Read-only view of the forward-transition trigram prior.
+    /// Empty on pre-v3 on-disk files; rebuild with `--build-lexicon`.
+    pub fn trigram(&self) -> &TrigramPrior {
+        &self.trigram
+    }
+
+    /// Vocabulary id for `word` (the index into `words()`/`vectors`),
+    /// or `None` when the word is out-of-vocabulary. Needed by callers
+    /// that want to score a *finished* string against the bigram /
+    /// trigram priors — `log_prob` takes ids, and until now the only
+    /// code that could build them was the decoder itself (the `index`
+    /// map is private). The coherence critic scores emitted text this
+    /// way, so the accessor is now public. Same normalization as
+    /// `get()`, so `word_id` and `get` always agree on membership.
+    pub fn word_id(&self, word: &str) -> Option<usize> {
+        let key = normalize(word);
+        self.index.get(&key).copied()
     }
 
     /// Save the lexicon to disk in a compact sparse-pair JSON format.

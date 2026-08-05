@@ -3,7 +3,7 @@
 // Maps chi / phi_g / anchors to LLM sampling parameters so KAI's
 // internal state directly shapes his voice.
 
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use crate::core::universe::{Universe, QueryHit};
@@ -155,12 +155,12 @@ fn compute_vitals(u: &Universe) -> (f32, f32, usize, usize) {
 
 /// Generate a reply natively using KAI's memory lattice + BitNet 1.58-bit model.
 pub fn kai_chat(
-    universe: Arc<Mutex<Universe>>,
+    universe: Arc<RwLock<Universe>>,
     req: &ChatRequest,
 ) -> Result<ChatResponse, String> {
     // 1. Lock universe, compute vitals, retrieve context
     let (chi, phi_g, anchors, cells, memory_context) = {
-        let u = universe.lock().map_err(|_| "universe lock poisoned")?;
+        let u = universe.read().unwrap_or_else(|e| e.into_inner());
         let (chi, phi_g, anchors, cells) = compute_vitals(&u);
         let hits = ContextBuilder::retrieve(&u, &req.message, 8);
         let mem_ctx = ContextBuilder::format_memories(&hits);
@@ -174,7 +174,9 @@ pub fn kai_chat(
     let raw_thought = format!("{}\n\n{}", memory_context, req.message);
 
     // 4. Call Fused Native Transformer
-    let reply = if crate::cognition::language_warehouse::has_native_transformer() {
+    let reply = if crate::cognition::language_warehouse::has_native_transformer()
+        || crate::cognition::language_warehouse::has_dense_expert()
+    {
         // DE-SCRIPTED (2026-06): the old prompt hard-coded SEVEN fake "Human:/KAI:"
         // example exchanges that puppeteered KAI's voice into a generic-assistant
         // register and drowned out his real lattice-derived self. Removed. The only
@@ -193,24 +195,26 @@ pub fn kai_chat(
         );
         match crate::cognition::language_warehouse::global_native_decode(&prompt, 150) {
             Some(text) => text,
-            None => return Err("Native transformer decoding failed.".to_string()),
+            None => return Err("Hybrid decode failed (BitNet ternary + dense expert both empty).".to_string()),
         }
     } else {
-        return Err("BitNet native voice engine is not available (LanguageWarehouse not loaded).".to_string());
+        return Err("Hybrid voice unavailable (no BitNet ternary and no dense expert mounted).".to_string());
     };
 
     // 5. Store interaction back into KAI's memory
-    if let Ok(mut u) = universe.lock() {
+    if let Ok(mut u) = universe.write() {
         u.store_or_reinforce(&req.message, "conversation", &req.user_id, 1.0);
         u.store_or_reinforce(&reply, "conversation", "kai", 1.0);
     }
 
+    let used_dense = crate::cognition::language_warehouse::dense_decode_count() > 0
+        && !crate::cognition::language_warehouse::has_native_transformer();
     Ok(ChatResponse {
         reply,
         temperature,
         top_p,
         cells_consulted: 8,
-        provider_used: "bitnet-native".to_string(),
-        model_used: "b1.58-2B-4T".to_string(),
+        provider_used: if used_dense { "dense-expert".into() } else { "hybrid-native".into() },
+        model_used: if used_dense { "kai-7b-q4_k_m".into() } else { "bitnet+dense-hybrid".into() },
     })
 }

@@ -5322,7 +5322,7 @@ impl App {
                     self.candle_voice.as_ref(),
                     kai::cognition::voice::get_lexicon(),
                     Some(&self.engine.last_field),
-                    Some(&self.engine.pos_dict), None, true)
+                    Some(&self.engine.pos_dict), None, false, true)
             };
             kai::cognition::transcript::append(
                 &self.base_dir,
@@ -5397,7 +5397,7 @@ impl App {
                 self.candle_voice.as_ref(),
                 kai::cognition::voice::get_lexicon(),
                 Some(&self.engine.last_field),
-                Some(&self.engine.pos_dict), None, true);
+                Some(&self.engine.pos_dict), None, false, true);
 
             // ── Depth label: spectate-only (per directive: don't expose internals) ─
             // In normal chat KAI just speaks. In spectate mode you can see everything.
@@ -10185,6 +10185,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 None, // field
                 None, // pos_dict
                 None, // synaptic_layer
+                false,
                 true);
             println!("\nKAI: {}", response);
             // app.save_state_sync(); // Removed: takes 3 mins to write 376k cells, use --server for persistent memory
@@ -10769,10 +10770,68 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_else(|_| ".".to_string());
 
-        println!("[Startup] Initializing Language Warehouse...");
+        // ── RSHL-NATIVE BY DEFAULT ON THE PRODUCTION PATH TOO (2026-07-03) ──────
+        // The "RSHL-native generation (default ON)" block further down this file
+        // was placed AFTER this --oracle branch's early return, so the 24/7
+        // production KAI never ran it: NATIVE_ONLY stayed false and the oracle
+        // reply path leaned on BitNet/Ollama/web synthesis — an external LLM
+        // spoke for KAI, and his own lattice voice got zero practice. Owner's
+        // directive: KAI's native brain IS the RSHL lattice; LLMs are opt-in
+        // scaffolding, never the default voice. Same policy as interactive:
+        // pure lattice unless KAI_ALLOW_LLM=1 (or --allow-llm) explicitly opts out.
+        {
+            use std::sync::atomic::Ordering;
+            let allow_llm = args.iter().any(|a| a == "--allow-llm")
+                || std::env::var("KAI_ALLOW_LLM")
+                    .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+                    .unwrap_or(false);
+            if !allow_llm {
+                kai::cognition::voice::NATIVE_ONLY.store(true, Ordering::Relaxed);
+                println!("[KAI] RSHL-NATIVE MODE (oracle) — his own lattice speaks: no BitNet, no Ollama, no web fallback. Set KAI_ALLOW_LLM=1 to opt out.");
+            } else {
+                println!("[KAI] LLM-assist ENABLED on the oracle path (KAI_ALLOW_LLM=1) — external models may synthesize replies.");
+            }
+        }
+
+        let boot_t0 = std::time::Instant::now();
+        println!("[Startup] Loading language stack (models) — progress lines will stream…");
         kai::cognition::init_language_warehouse("data/language_warehouse.json");
 
         // Load persistence in a thread with 8MB stack to avoid overflow on 132MB JSON
+        // v9.10.567 — this phase used to print ONE line and then go silent for
+        // minutes. The models above finish in ~0.5s, so every bit of a multi-minute
+        // boot is spent here and in BoneHeal below, with nothing on screen to say
+        // whether it is working or wedged. Emit a heartbeat while the load thread
+        // runs, and report how long each phase actually took, so a slow boot can be
+        // told apart from a hung one without attaching a debugger.
+        println!("[Startup] Loading mind/lattice memory (can take a while; cells + synapses)…");
+        let _ = std::io::Write::flush(&mut std::io::stdout());
+        let load_t0 = std::time::Instant::now();
+        let load_done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let heartbeat = {
+            let done = load_done.clone();
+            std::thread::Builder::new()
+                .name("startup-heartbeat".into())
+                .spawn(move || {
+                    let t0 = std::time::Instant::now();
+                    let mut announced = 0u64;
+                    while !done.load(std::sync::atomic::Ordering::Relaxed) {
+                        std::thread::sleep(std::time::Duration::from_millis(250));
+                        let secs = t0.elapsed().as_secs();
+                        // Every 5s for the first minute, then every 15s — enough to
+                        // prove liveness without burying the rest of the boot log.
+                        let step = if secs < 60 { 5 } else { 15 };
+                        if secs >= announced + step
+                            && !done.load(std::sync::atomic::Ordering::Relaxed)
+                        {
+                            announced = secs;
+                            println!("[Startup]   … still loading mind/lattice — {}s elapsed", secs);
+                            let _ = std::io::Write::flush(&mut std::io::stdout());
+                        }
+                    }
+                })
+                .ok()
+        };
         let (mut universe, synaptic_layer) = {
             let base = base_dir.clone();
             let handle = std::thread::Builder::new()
@@ -10783,9 +10842,53 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .map(|(u, _c, _d, _t, _dc, s)| (u, s))
                 })
                 .expect("failed to spawn persistence load thread");
-            match handle.join() {
+            let joined = handle.join();
+            load_done.store(true, std::sync::atomic::Ordering::Relaxed);
+            if let Some(h) = heartbeat { let _ = h.join(); }
+            match joined {
                 Ok(Some((u, s))) => (u, s),
                 _ => {
+                    // ── BRAIN-SAFETY: LOUD-FAIL-ON-LOAD (headless --oracle path) ──────
+                    // The PRODUCTION launch is `kai.exe --oracle`, which does NOT go
+                    // through Engine::new() (that guard lives in src/core/engine.rs).
+                    // It loads state via persistence::load() above. Reaching THIS arm
+                    // means load() returned None OR the load thread panicked — i.e. the
+                    // load FAILED. Historically this silently seeded a FRESH (empty)
+                    // lattice, which is exactly how a rebuild/restart could wipe KAI's
+                    // brain with no warning. Mirror the Engine::new() guard: if saved
+                    // state files EXIST on disk but load failed, refuse to boot on a
+                    // fresh brain unless the operator explicitly opts in via
+                    // KAI_ALLOW_MIND_RESET=1. Genuine first boot (no state files at all)
+                    // still seeds normally.
+                    let files_exist = kai::persistence::state_exists(&base_dir);
+                    let allow_reset = std::env::var("KAI_ALLOW_MIND_RESET")
+                        .ok().as_deref() == Some("1");
+                    if files_exist && !allow_reset {
+                        eprintln!("\n\n");
+                        eprintln!("################################################################");
+                        eprintln!("#  KAI BRAIN-SAFETY ABORT: existing mind/lattice FAILED TO LOAD #");
+                        eprintln!("################################################################");
+                        eprintln!("# State files EXIST in {}/data but persistence::load() could", base_dir);
+                        eprintln!("# not deserialize them (--oracle headless production path).");
+                        eprintln!("# Refusing to boot with a FRESH (empty) brain, because that would");
+                        eprintln!("# silently overwrite/lose the existing mind.");
+                        eprintln!("#");
+                        eprintln!("# Nothing has been written or reset. To recover:");
+                        eprintln!("#   1. Restore kai-cells.bin.zst / kai-synapses.bin.zst / kai-meta.json*");
+                        eprintln!("#      from the most recent C:\\KAI\\data\\_brain-backup-* folder, OR");
+                        eprintln!("#   2. Investigate why the current files won't parse (truncated save?).");
+                        eprintln!("#");
+                        eprintln!("# If — and ONLY if — you INTENTIONALLY want to start from a blank");
+                        eprintln!("# brain, re-launch with the environment variable:");
+                        eprintln!("#       KAI_ALLOW_MIND_RESET=1");
+                        eprintln!("################################################################\n");
+                        std::process::exit(1);
+                    }
+                    if files_exist {
+                        eprintln!("\n[BRAIN-SAFETY] KAI_ALLOW_MIND_RESET=1 set — operator EXPLICITLY");
+                        eprintln!("[BRAIN-SAFETY] approved a fresh lattice despite unreadable saved state.");
+                        eprintln!("[BRAIN-SAFETY] Seeding a NEW empty brain now.\n");
+                    }
                     let mut u = Universe::new();
                     seed_universe(&mut u);
                     (u, SynapticLayer::new())
@@ -10793,19 +10896,38 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         };
 
-        // BONE HEAL: Clean up any poisoned cells left over by automated ingestion
-        let heal_report = kai::cognition::bone_heal_pass(&mut universe);
-        println!("[BoneHeal] Startup scan: {}", heal_report);
+        println!(
+            "[Startup] Mind/lattice loaded in {:.1}s — {} cells, {} synapses",
+            load_t0.elapsed().as_secs_f32(),
+            universe.count(),
+            synaptic_layer.synapses.len(),
+        );
+        let _ = std::io::Write::flush(&mut std::io::stdout());
 
+        // BONE HEAL: Clean up any poisoned cells left over by automated ingestion
+        let heal_t0 = std::time::Instant::now();
+        println!("[BoneHeal] Startup scan running over {} cells…", universe.count());
+        let _ = std::io::Write::flush(&mut std::io::stdout());
+        let heal_report = kai::cognition::bone_heal_pass(&mut universe);
+        println!(
+            "[BoneHeal] Startup scan: {} ({:.1}s)",
+            heal_report,
+            heal_t0.elapsed().as_secs_f32()
+        );
+
+        println!(
+            "[Startup] TOTAL boot {:.1}s — serving on :3334",
+            boot_t0.elapsed().as_secs_f32()
+        );
         println!("--- KAI ORACLE HEADLESS MODE ---");
         println!("Oracle HTTP API: http://127.0.0.1:3334");
         println!("Use /api/oracle-turn or /api/discord-turn with {{from,text}}.");
         
 
         kai::bridge::oracle_server::start_oracle_server(
-            std::sync::Arc::new(std::sync::Mutex::new(universe)),
-            std::sync::Arc::new(std::sync::Mutex::new(synaptic_layer)),
-            );
+            std::sync::Arc::new(std::sync::RwLock::new(universe)),
+            std::sync::Arc::new(std::sync::RwLock::new(synaptic_layer)),
+        );
         return Ok(());
     }
 
@@ -10843,17 +10965,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
-    // ── `--native-only` (or KAI_NATIVE_ONLY=1) — pure-lattice generation ───
-    // Bypasses BOTH the live BitNet Llama AND Ollama; KAI generates from his own
-    // lattice + the extracted ternary embeddings (the design goal: the mind is
-    // loaded as ternary geometry, not a separate model being called). Reversible:
-    // unset to restore the live model.
-    if args.iter().any(|a| a == "--native-only")
-        || std::env::var("KAI_NATIVE_ONLY").map(|v| v == "1" || v.eq_ignore_ascii_case("true")).unwrap_or(false)
+    // ── RSHL-native generation (default ON) — pure-lattice, no external LLM ───
+    // Bypasses BitNet Llama + Ollama + web fallback. KAI trains and speaks from
+    // his own lattice. Opt OUT with KAI_ALLOW_LLM=1 or omit --native-only only
+    // when explicitly passing --allow-llm.
     {
         use std::sync::atomic::Ordering;
-        kai::cognition::voice::NATIVE_ONLY.store(true, Ordering::Relaxed);
-        eprintln!("[KAI] NATIVE ONLY MODE — Lattice speaks from its own ternary weights (no Llama, no Ollama).");
+        let allow_llm = args.iter().any(|a| a == "--allow-llm")
+            || std::env::var("KAI_ALLOW_LLM")
+                .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+                .unwrap_or(false);
+        let force_native = args.iter().any(|a| a == "--native-only")
+            || std::env::var("KAI_NATIVE_ONLY")
+                .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+                .unwrap_or(false);
+        if force_native || !allow_llm {
+            kai::cognition::voice::NATIVE_ONLY.store(true, Ordering::Relaxed);
+            eprintln!("[KAI] RSHL-NATIVE MODE — lattice only (no Llama, no Ollama, no web fallback). Set KAI_ALLOW_LLM=1 to opt out.");
+        }
     }
 
     // ── Surprise-Gated Plasticity (KAI_SURPRISE_GATED=1) — opt-in, off by default ──
@@ -10882,8 +11011,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // ── Normal TUI mode ─────────────────────────────────────────────
-    println!("[Startup] Initializing Language Warehouse...");
+    println!("[Startup] Loading language stack (models) — progress lines will stream…");
     kai::cognition::init_language_warehouse("data/language_warehouse.json");
+    println!("[Startup] Loading mind/lattice for TUI…");
+    let _ = std::io::Write::flush(&mut std::io::stdout());
 
     enable_raw_mode()?;
     let mut stdout = std::io::stdout();
@@ -10932,8 +11063,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Starts the multi-AI meeting server in a background thread.
     // Open oracle.html in your browser to join the roundtable.
     {
-        let oracle_universe = std::sync::Arc::new(std::sync::Mutex::new(app.engine.universe.clone()));
-        let oracle_synapses = std::sync::Arc::new(std::sync::Mutex::new(app.engine.synaptic_layer.read().unwrap().clone()));
+        let oracle_universe = std::sync::Arc::new(std::sync::RwLock::new(app.engine.universe.clone()));
+        let oracle_synapses = std::sync::Arc::new(std::sync::RwLock::new(app.engine.synaptic_layer.read().unwrap().clone()));
         
         
         std::thread::spawn(move || {

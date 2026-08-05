@@ -119,7 +119,10 @@ pub fn call_kai(message: &str, system: &str) -> Result<PeerResponse, String> {
 }
 
 /// Call the xAI Grok API and get a response.
-/// Uses the high-tier /v1/responses API with Reasoning support.
+/// Uses the documented OpenAI-compatible /v1/chat/completions endpoint. Model defaults to
+/// `grok-code-fast-1` (xAI's fast coding model; as of 2026-05-15 it redirects to grok-4.3) and
+/// is overridable at runtime via the XAI_MODEL env var -- no rebuild needed to change tiers.
+/// The API key is read from XAI_API_KEY (never hardcoded).
 pub fn call_grok(message: &str, system: &str) -> Result<PeerResponse, String> {
     let api_key = std::env::var("XAI_API_KEY").map_err(|_| {
         "XAI_API_KEY not set.\n\
@@ -128,16 +131,19 @@ pub fn call_grok(message: &str, system: &str) -> Result<PeerResponse, String> {
             .to_string()
     })?;
 
-    // The Responses API uses "input" (can be array of messages)
+    // Model is config, not a hardcode: XAI_MODEL overrides; default = grok-code-fast-1.
+    let model_name = std::env::var("XAI_MODEL").unwrap_or_else(|_| "grok-code-fast-1".to_string());
+
+    // OpenAI-compatible chat/completions body.
     let body = serde_json::json!({
-        "model": "grok-4.20-reasoning",
-        "input": [
+        "model": model_name,
+        "messages": [
             { "role": "system", "content": system },
             { "role": "user", "content": message }
         ]
     });
 
-    let response = ureq::post("https://api.x.ai/v1/responses")
+    let response = ureq::post("https://api.x.ai/v1/chat/completions")
         .set("Authorization", &format!("Bearer {}", api_key))
         .set("Content-Type", "application/json")
         .timeout(std::time::Duration::from_secs(60)) // Grok reasoning can take longer
@@ -153,19 +159,14 @@ pub fn call_grok(message: &str, system: &str) -> Result<PeerResponse, String> {
         return Err(format!("API error: {}", err));
     }
 
-    // Responses API structure: output[0].content -> find type == "output_text"
-    let text = json["output"][0]["content"]
-        .as_array()
-        .and_then(|arr| {
-            arr.iter()
-                .find(|c| c["type"] == "output_text")
-                .and_then(|c| c["text"].as_str())
-        })
-        .ok_or_else(|| "No output_text in response. Check API version.".to_string())?
+    // OpenAI-compatible structure: choices[0].message.content
+    let text = json["choices"][0]["message"]["content"]
+        .as_str()
+        .ok_or_else(|| "No content in Grok response. Check XAI_API_KEY / model name.".to_string())?
         .to_string();
 
     let tokens = json["usage"]["completion_tokens"].as_u64().unwrap_or(0) as u32;
-    let model = json["model"].as_str().unwrap_or("grok-4.20").to_string();
+    let model = json["model"].as_str().unwrap_or("grok-code-fast-1").to_string();
 
     Ok(PeerResponse {
         text,
