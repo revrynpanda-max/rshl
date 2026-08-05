@@ -1,6 +1,6 @@
 [package]
 name = "kai"
-version = "9.10.50"
+version = "9.10.568"
 edition = "2021"
 authors = ["Ryan Ervin <PandaProductionsLogo>"]
 description = "KAI RSHL UI — Geometric Intelligence Engine"
