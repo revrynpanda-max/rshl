@@ -803,13 +803,56 @@ impl LanguageWarehouse {
         let max_seq = model.config.max_seq_len.min(512);
         let vocab = model.config.vocab_size;
 
+        // Bounds guard. `kai_native_decode` was unreachable until now, so this
+        // slice arithmetic was never exercised; a short/corrupt embed tensor
+        // would panic the engine rather than fall back. Refuse instead.
+        if dim == 0 || model.embed_weight.len() < vocab.saturating_mul(dim) {
+            eprintln!(
+                "[KaiNative] embed tensor is {} floats but vocab {} x dim {} needs {} — refusing to decode",
+                model.embed_weight.len(),
+                vocab,
+                dim,
+                vocab.saturating_mul(dim)
+            );
+            return None;
+        }
+
+        // The LM head's row count is the AUTHORITATIVE class limit — config.json
+        // is only a label. They agree today (both 32000); prefer the weights.
+        let class_limit = model.head_shape.first().copied().unwrap_or(vocab).max(1);
+        // Single switch for every KAI-native-mouth behaviour change in this fn.
+        let native_mouth_on = kai_use_native_mouth();
+
         // Tokenize
         let mut ids: Vec<u32> = if let Some(tok) = self.kai_native_tokenizer.as_ref() {
             let enc = tok.encode(prompt_str, true).ok()?;
-            enc.get_ids()
-                .iter()
-                .map(|&id| if (id as usize) < vocab { id } else { 1 })
-                .collect()
+            let raw = enc.get_ids();
+            if native_mouth_on {
+                // Re-encode over-cap tokens into in-range pieces instead of
+                // collapsing them all onto id 1 (the character '"').
+                let in_range = kai_native_inrange_vocab(tok, class_limit as u32);
+                let (mapped, repaired) = remap_prompt_ids(
+                    raw,
+                    class_limit as u32,
+                    in_range,
+                    |id| tok.id_to_token(id),
+                );
+                if repaired > 0 {
+                    println!(
+                        "[KaiNative] prompt vocab-cap repair: {}/{} ids were >= {} — \
+                         re-encoded into {} in-range ids (was: replaced by '\"').",
+                        repaired,
+                        raw.len(),
+                        class_limit,
+                        mapped.len()
+                    );
+                }
+                mapped
+            } else {
+                raw.iter()
+                    .map(|&id| if (id as usize) < vocab { id } else { 1 })
+                    .collect()
+            }
         } else {
             // crude char fallback
             let mut v = vec![2u32]; // bos-ish
@@ -867,11 +910,13 @@ impl LanguageWarehouse {
 
             // temperature sample
             let next = sample_logits(&logits, 0.8);
-            if next == 3 || next as usize >= vocab {
-                // eos-ish or OOB
-                if next == 3 {
-                    break;
-                }
+            // NOTE: id 3 is NOT an EOS in this tokenizer — it is the character
+            // '$'. The real <|endoftext|> is id 151643, which the 32000-row head
+            // can never emit, so this model has NO reachable stop token and
+            // always runs to max_tokens. Treating '$' as EOS truncates replies at
+            // the first dollar sign, so the repaired path drops that check.
+            if !native_mouth_on && next == 3 {
+                break;
             }
             ids.push(next);
             generated.push(next);
@@ -1552,6 +1597,388 @@ pub fn has_dense_expert() -> bool {
     w.dense_expert.is_some()
 }
 
+// ── KAI-NATIVE REACHABILITY (unit #8) ────────────────────────────────────────
+//
+// THE PROBLEM THIS SOLVES
+// -----------------------
+// `models/kai-native` (113 MB, 105.9M params, 76.8% ternary) loads at boot and
+// reports `kai_native_model_mounted: true` in /api/status — but NOTHING in the
+// reply path asks `has_kai_native()`. Every gate in front of
+// `global_native_decode()` tests `has_native_transformer()` (the 10 GB BitNet)
+// or `has_dense_expert()` (the 7B GGUF) instead:
+//
+//   src/cognition/voice.rs:2513        gates voice.rs:2526
+//   src/cognition/voice.rs:3188        gates voice.rs:3201
+//   src/bridge/oracle_server.rs:2100   gates oracle_server.rs:2202
+//   src/bridge/oracle_server.rs:4755   gates oracle_server.rs:4759
+//   src/generate/mod.rs:177            gates generate/mod.rs:196
+//   src/bridge/oracle_server.rs:1113   gates oracle_server.rs:1117  (env
+//                                      KAI_NATIVE_PUBLIC_VOICE, default OFF and
+//                                      never set by Start-KAI.ps1)
+//
+// Consequence: the KAI-native model is only ever consulted PARASITICALLY — when
+// the 10 GB BitNet happens to be mounted, its gate opens and
+// `global_native_decode()` (:1607) then tries kai-native FIRST. The 113 MB model
+// therefore cannot speak unless a 10 GB model it does not need is also resident.
+// Turn BitNet off (which the comments at STAGE 3 explicitly recommend) and the
+// KAI-native model becomes completely unreachable.
+//
+// THE ONE-LINE FIX AT EACH CALL SITE
+// ----------------------------------
+// There are TWO shapes of gate, so there are two predicates. Using the wrong one
+// would change behaviour even with the flag off, so match them exactly:
+//
+//   gate today                                  replace with
+//   ------------------------------------------  ----------------------------------
+//   has_native_transformer() || has_dense_expert()   native_mouth_available()
+//     → oracle_server.rs:2100, oracle_server.rs:4755, generate/mod.rs:177
+//
+//   has_native_transformer()   (alone)               native_transformer_or_kai_native()
+//     → voice.rs:2513, voice.rs:3188
+//
+// (oracle_server.rs:1113 is an env gate, not a capability gate — leave it alone;
+// the operator opts in with KAI_NATIVE_PUBLIC_VOICE.)
+//
+// Those files are owned by other units; this module exposes the predicates so the
+// change stays a one-liner and NO behaviour moves until KAI_USE_NATIVE_MOUTH is set.
+
+/// `KAI_USE_NATIVE_MOUTH` — default **OFF**.
+///
+/// When on, the KAI-native ternary transformer counts as a usable mouth for the
+/// reply-path gates (see `native_mouth_available`) and `kai_native_decode`
+/// applies the in-range prompt re-encoding described on `reencode_in_range`.
+pub fn kai_use_native_mouth() -> bool {
+    std::env::var("KAI_USE_NATIVE_MOUTH")
+        .map(|v| v != "0" && !v.eq_ignore_ascii_case("false") && !v.eq_ignore_ascii_case("off"))
+        .unwrap_or(false)
+}
+
+/// Drop-in replacement for gates that read
+/// `has_native_transformer() || has_dense_expert()`.
+///
+/// Byte-identical to those gates while `KAI_USE_NATIVE_MOUTH` is unset — it only
+/// ever ADDS the KAI-native model as an accepted backend.
+pub fn native_mouth_available() -> bool {
+    has_native_transformer()
+        || has_dense_expert()
+        || (kai_use_native_mouth() && has_kai_native())
+}
+
+/// Drop-in replacement for gates that read `has_native_transformer()` ALONE.
+///
+/// Deliberately does NOT fold in `has_dense_expert()`: `voice.rs` checks only the
+/// ternary core, and quietly widening it to the 7B dense expert would change
+/// behaviour even with the flag off.
+pub fn native_transformer_or_kai_native() -> bool {
+    has_native_transformer() || (kai_use_native_mouth() && has_kai_native())
+}
+
+/// Raw, load-time facts about the KAI-native model, split out from the reporting
+/// so the verdict logic is a pure function and testable without touching 113 MB
+/// of weights.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct KaiNativeFacts {
+    pub mounted: bool,
+    /// `vocab_size` as declared in `models/kai-native/config.json`.
+    pub config_vocab_size: usize,
+    /// Rows of the LM head from `weights.bin` — the AUTHORITATIVE class count.
+    /// The model physically cannot emit an id >= this.
+    pub head_vocab_size: usize,
+    /// Rows of the embedding matrix from `weights.bin`.
+    pub embed_rows: usize,
+    /// Number of ids the loaded tokenizer can decode (incl. added tokens).
+    pub tokenizer_vocab_len: usize,
+    pub hidden_size: usize,
+    pub n_layers: usize,
+    pub n_heads: usize,
+    pub max_seq_len: usize,
+}
+
+/// Verdict on whether the tokenizer and the weights agree.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KaiNativeVocabVerdict {
+    NotMounted,
+    NoTokenizer,
+    /// `config.json` disagrees with `weights.bin`. Only a re-export fixes this.
+    WeightsDisagreeWithConfig,
+    /// Tokenizer is exactly the size of the head. Nothing to correct.
+    Aligned,
+    /// Tokenizer is a SUPERSET of the head — the model was trained on a capped
+    /// prefix of this tokenizer. Correctable at inference time, no retraining.
+    TokenizerSupersetCapped,
+    /// Tokenizer cannot name every class the head can emit. Not correctable here.
+    TokenizerTooSmall,
+}
+
+impl KaiNativeVocabVerdict {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::NotMounted => "not_mounted",
+            Self::NoTokenizer => "no_tokenizer",
+            Self::WeightsDisagreeWithConfig => "weights_disagree_with_config",
+            Self::Aligned => "aligned",
+            Self::TokenizerSupersetCapped => "tokenizer_superset_capped",
+            Self::TokenizerTooSmall => "tokenizer_too_small",
+        }
+    }
+    /// Can `KAI_USE_NATIVE_MOUTH` produce sane text from this pairing?
+    pub fn correctable_at_inference(self) -> bool {
+        matches!(self, Self::Aligned | Self::TokenizerSupersetCapped)
+    }
+}
+
+/// PURE. Decide what the (config, weights, tokenizer) triple actually means.
+pub fn kai_native_vocab_verdict(f: &KaiNativeFacts) -> KaiNativeVocabVerdict {
+    if !f.mounted {
+        return KaiNativeVocabVerdict::NotMounted;
+    }
+    // weights.bin is ground truth; config.json is a label that can be stale.
+    if f.head_vocab_size == 0
+        || f.embed_rows != f.head_vocab_size
+        || (f.config_vocab_size != 0 && f.config_vocab_size != f.head_vocab_size)
+    {
+        return KaiNativeVocabVerdict::WeightsDisagreeWithConfig;
+    }
+    if f.tokenizer_vocab_len == 0 {
+        return KaiNativeVocabVerdict::NoTokenizer;
+    }
+    if f.tokenizer_vocab_len == f.head_vocab_size {
+        KaiNativeVocabVerdict::Aligned
+    } else if f.tokenizer_vocab_len > f.head_vocab_size {
+        KaiNativeVocabVerdict::TokenizerSupersetCapped
+    } else {
+        KaiNativeVocabVerdict::TokenizerTooSmall
+    }
+}
+
+/// PURE. Build the health JSON from already-gathered facts.
+/// Split from `kai_native_health()` so tests need no global state and no model.
+pub fn kai_native_health_value(
+    f: &KaiNativeFacts,
+    flag_on: bool,
+    gate_open: bool,
+    decodes: u64,
+) -> serde_json::Value {
+    let verdict = kai_native_vocab_verdict(f);
+    let vocab_match = f.mounted
+        && f.tokenizer_vocab_len != 0
+        && f.tokenizer_vocab_len == f.head_vocab_size;
+    serde_json::json!({
+        "mounted": f.mounted,
+        "model_dir": std::env::var("KAI_NATIVE_MODEL_DIR")
+            .unwrap_or_else(|_| "models/kai-native".to_string()),
+        "config_vocab_size": f.config_vocab_size,
+        "head_vocab_size": f.head_vocab_size,
+        "embed_rows": f.embed_rows,
+        "tokenizer_vocab_len": f.tokenizer_vocab_len,
+        // The headline the owner asked for: do they MATCH?
+        "vocab_match": vocab_match,
+        "vocab_verdict": verdict.as_str(),
+        "correctable_at_inference": verdict.correctable_at_inference(),
+        "hidden_size": f.hidden_size,
+        "n_layers": f.n_layers,
+        "n_heads": f.n_heads,
+        "max_seq_len": f.max_seq_len,
+        // Honest reachability — mounted != used.
+        "reachable_for_replies": gate_open,
+        "kai_native_decode_count": decodes,
+        "flags": {
+            "KAI_USE_NATIVE_MOUTH": flag_on,
+        },
+        // Known costs of switching it on. See kai_native_decode().
+        "known_limitations": {
+            "no_kv_cache": true,
+            "kv_cache_note": "the FULL sequence is re-forwarded for every token \
+                              (O(n^2) work per reply) — see kai_native_decode",
+            "no_reachable_eos": true,
+            "eos_note": "the tokenizer's <|endoftext|> is id 151643, far outside the \
+                         head's class range, so the model can never emit a stop token; \
+                         generation always runs to max_tokens",
+        },
+    })
+}
+
+/// Honest health of the KAI-native ternary transformer, safe to call any time
+/// (returns `mounted: false` cleanly when the warehouse was never initialised).
+///
+/// Intended for `/api/status`; `oracle_server.rs` is owned by another unit, so
+/// wiring it in is a one-liner there:
+///     "kai_native_health": crate::cognition::language_warehouse::kai_native_health(),
+pub fn kai_native_health() -> serde_json::Value {
+    let flag_on = kai_use_native_mouth();
+    let gate_open = native_mouth_available() && has_kai_native();
+    let decodes = kai_native_decode_count();
+
+    let global = match LANGUAGE_WAREHOUSE.get() {
+        Some(g) => g,
+        None => {
+            return kai_native_health_value(&KaiNativeFacts::default(), flag_on, false, decodes)
+        }
+    };
+    let w = global.read().unwrap();
+    let mut facts = KaiNativeFacts {
+        tokenizer_vocab_len: w
+            .kai_native_tokenizer
+            .as_ref()
+            .map(|t| t.get_vocab_size(true))
+            .unwrap_or(0),
+        ..Default::default()
+    };
+    if let Some(m) = w.kai_native.as_ref() {
+        facts.mounted = true;
+        facts.config_vocab_size = m.config.vocab_size;
+        facts.hidden_size = m.config.hidden_size;
+        facts.n_layers = m.config.n_layers;
+        facts.n_heads = m.config.n_heads;
+        facts.max_seq_len = m.config.max_seq_len;
+        facts.head_vocab_size = m.head_shape.first().copied().unwrap_or(0);
+        if m.config.hidden_size > 0 {
+            facts.embed_rows = m.embed_weight.len() / m.config.hidden_size;
+        }
+    }
+    kai_native_health_value(&facts, flag_on, gate_open, decodes)
+}
+
+// ── VOCAB-CAP CORRECTION (no retraining) ─────────────────────────────────────
+//
+// WHAT IS ACTUALLY WRONG (measured, not assumed)
+// ----------------------------------------------
+//   models/kai-native/config.json   vocab_size = 32000
+//   models/kai-native/weights.bin   embed.weight [32000, 768]
+//                                   head.weight  [32000, 768]
+//   models/kai-native/tokenizer.json  151643 base + 22 added = 151665 ids
+//   kai_transformer_export_710k/model_info.txt:
+//       "vocab_size=32000 (BPE capped from qwen2 full vocab)"
+//
+// So config.json is CORRECT and the weights agree with it. This is NOT a wrong
+// tokenizer — it is the RIGHT tokenizer with a deliberately capped prefix: ids
+// 0..31999 of this Qwen2 BPE are exactly the classes the model was trained on.
+//
+// That means decoding SAMPLED ids (always 0..31999) through this tokenizer is
+// already correct — the output side was never broken.
+//
+// The real defect is on the INPUT side. `kai_native_decode` mapped every prompt
+// id >= 32000 to the literal id 1, which in this tokenizer is the character '"'.
+// Measured on ordinary English, ~9% of prompt tokens land above the cap
+// (`Ġlattice`=54272, `Ġfox`=38835, `Ġjumps`=34208, `Ġpoem`=32794 …), so roughly
+// one word in eleven was being replaced by a double-quote before the model ever
+// saw it. Precisely the content words that carry the question.
+//
+// THE FIX, AT INFERENCE TIME
+// --------------------------
+// Qwen2 is a BYTE-LEVEL BPE: its 256 byte-proxy characters occupy ids 0..255,
+// all far below the cap (verified — every single-character token has id <= 255,
+// and exactly 32000 vocab entries have id < 32000). So any out-of-range token
+// can be re-expressed as in-range pieces by greedy longest-match, with the byte
+// alphabet as a floor that is guaranteed to terminate. No retraining, no loss of
+// information — the same bytes reach the model, just spelled in smaller pieces.
+
+/// PURE. The OLD behaviour, named so it can be tested and compared against.
+/// Maps every out-of-range id to `1` — which is the character `"` in this
+/// tokenizer. Kept only as the documented baseline for `remap_prompt_ids`.
+pub fn clamp_prompt_ids_legacy(ids: &[u32], limit: u32) -> Vec<u32> {
+    ids.iter().map(|&id| if id < limit { id } else { 1 }).collect()
+}
+
+/// PURE. Greedy longest-match re-encoding of ONE token's surface form into ids
+/// strictly below `limit`.
+///
+/// `in_range_vocab` must map surface strings to ids and contain the tokenizer's
+/// single-character (byte-proxy) tokens; those are the termination floor.
+/// Returns `None` if some character has no in-range representation at all — i.e.
+/// the tokenizer is not byte-level — so callers can fall back rather than emit
+/// nonsense.
+pub fn reencode_in_range(
+    surface: &str,
+    in_range_vocab: &HashMap<String, u32>,
+    limit: u32,
+) -> Option<Vec<u32>> {
+    if surface.is_empty() {
+        return Some(Vec::new());
+    }
+    let chars: Vec<char> = surface.chars().collect();
+    let mut out: Vec<u32> = Vec::new();
+    let mut i = 0usize;
+    while i < chars.len() {
+        let mut consumed = 0usize;
+        // Longest prefix first; stop at the first in-range hit.
+        for end in (i + 1..=chars.len()).rev() {
+            let piece: String = chars[i..end].iter().collect();
+            if let Some(&id) = in_range_vocab.get(&piece) {
+                if id < limit {
+                    out.push(id);
+                    consumed = end - i;
+                    break;
+                }
+            }
+        }
+        if consumed == 0 {
+            // Byte-level floor. In a byte-level BPE this always exists.
+            let piece: String = chars[i..i + 1].iter().collect();
+            match in_range_vocab.get(&piece) {
+                Some(&id) if id < limit => out.push(id),
+                _ => return None,
+            }
+            consumed = 1;
+        }
+        i += consumed;
+    }
+    Some(out)
+}
+
+/// PURE. Re-encode a whole prompt so every id is a class the model can actually
+/// represent. Returns `(ids, n_repaired)`; `n_repaired` counts the ORIGINAL
+/// out-of-range ids that were rewritten (0 means the prompt was already clean).
+///
+/// Ids that cannot be re-encoded are DROPPED rather than replaced by a stray
+/// character — dropping a token is a smaller lie than substituting `"` for it.
+pub fn remap_prompt_ids<F>(
+    ids: &[u32],
+    limit: u32,
+    in_range_vocab: &HashMap<String, u32>,
+    id_to_surface: F,
+) -> (Vec<u32>, usize)
+where
+    F: Fn(u32) -> Option<String>,
+{
+    let mut out: Vec<u32> = Vec::with_capacity(ids.len());
+    let mut repaired = 0usize;
+    for &id in ids {
+        if id < limit {
+            out.push(id);
+            continue;
+        }
+        repaired += 1;
+        if let Some(surface) = id_to_surface(id) {
+            if let Some(pieces) = reencode_in_range(&surface, in_range_vocab, limit) {
+                out.extend(pieces);
+            }
+        }
+        // else: unrepresentable — drop it.
+    }
+    (out, repaired)
+}
+
+/// Cached surface→id map restricted to the model's class range. Built once from
+/// the KAI-native tokenizer; ~32k entries, negligible next to the weights.
+///
+/// There is only ever one KAI-native model per process, so the cached `limit` is
+/// stable. It is also self-correcting if it were not: `reencode_in_range` re-checks
+/// `id < limit` on every lookup, so a cache built with a LARGER limit is filtered
+/// at use, and one built with a SMALLER limit merely falls back to shorter pieces.
+/// Either way it can never emit an id the model cannot represent.
+static KAI_NATIVE_INRANGE_VOCAB: std::sync::OnceLock<HashMap<String, u32>> =
+    std::sync::OnceLock::new();
+
+fn kai_native_inrange_vocab(tok: &Tokenizer, limit: u32) -> &'static HashMap<String, u32> {
+    KAI_NATIVE_INRANGE_VOCAB.get_or_init(|| {
+        tok.get_vocab(true)
+            .into_iter()
+            .filter(|(_, id)| *id < limit)
+            .collect()
+    })
+}
+
 // RUNTIME PROOF the native BitNet brain is actually CONTRIBUTING, not just mounted.
 pub static NATIVE_DECODE_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 pub fn native_decode_count() -> u64 {
@@ -1962,6 +2389,201 @@ mod tests {
 
         let sim = a.cosine(&b);
         assert!((sim - 0.6667).abs() < 0.01, "Expected ~0.667, got {}", sim);
+    }
+
+    // ── KAI-native reachability / vocab-cap tests (unit #8) ──────────────────
+    // All pure. No model load, no 11.5GB boot, no global warehouse.
+
+    /// The real numbers from models/kai-native (verified against weights.bin
+    /// tensor headers and tokenizer.json on 2026-08-05).
+    fn real_facts() -> KaiNativeFacts {
+        KaiNativeFacts {
+            mounted: true,
+            config_vocab_size: 32000,
+            head_vocab_size: 32000,
+            embed_rows: 32000,
+            tokenizer_vocab_len: 151_665,
+            hidden_size: 768,
+            n_layers: 6,
+            n_heads: 12,
+            max_seq_len: 512,
+        }
+    }
+
+    #[test]
+    fn verdict_matches_the_real_shipped_model() {
+        // config.json and weights.bin agree; the tokenizer is a superset.
+        assert_eq!(
+            kai_native_vocab_verdict(&real_facts()),
+            KaiNativeVocabVerdict::TokenizerSupersetCapped
+        );
+        assert!(kai_native_vocab_verdict(&real_facts()).correctable_at_inference());
+    }
+
+    #[test]
+    fn verdict_flags_every_other_pairing() {
+        let mut f = KaiNativeFacts::default();
+        assert_eq!(kai_native_vocab_verdict(&f), KaiNativeVocabVerdict::NotMounted);
+
+        f = real_facts();
+        f.tokenizer_vocab_len = 32000;
+        assert_eq!(kai_native_vocab_verdict(&f), KaiNativeVocabVerdict::Aligned);
+
+        f = real_facts();
+        f.tokenizer_vocab_len = 16000;
+        assert_eq!(kai_native_vocab_verdict(&f), KaiNativeVocabVerdict::TokenizerTooSmall);
+        assert!(!kai_native_vocab_verdict(&f).correctable_at_inference());
+
+        f = real_facts();
+        f.tokenizer_vocab_len = 0;
+        assert_eq!(kai_native_vocab_verdict(&f), KaiNativeVocabVerdict::NoTokenizer);
+
+        // weights.bin is ground truth — a stale config.json must be caught.
+        f = real_facts();
+        f.config_vocab_size = 151_665;
+        assert_eq!(
+            kai_native_vocab_verdict(&f),
+            KaiNativeVocabVerdict::WeightsDisagreeWithConfig
+        );
+
+        // embed and head must describe the same class count.
+        f = real_facts();
+        f.embed_rows = 31000;
+        assert_eq!(
+            kai_native_vocab_verdict(&f),
+            KaiNativeVocabVerdict::WeightsDisagreeWithConfig
+        );
+    }
+
+    #[test]
+    fn health_value_reports_the_mismatch_honestly() {
+        let v = kai_native_health_value(&real_facts(), false, false, 0);
+        // `cargo test --lib language_warehouse -- --nocapture` prints the shape
+        // that /api/status would surface.
+        println!("{}", serde_json::to_string_pretty(&v).unwrap());
+        assert_eq!(v["mounted"], true);
+        assert_eq!(v["config_vocab_size"], 32000);
+        assert_eq!(v["head_vocab_size"], 32000);
+        assert_eq!(v["tokenizer_vocab_len"], 151_665);
+        // The headline: they do NOT match.
+        assert_eq!(v["vocab_match"], false);
+        assert_eq!(v["vocab_verdict"], "tokenizer_superset_capped");
+        assert_eq!(v["correctable_at_inference"], true);
+        // Mounted but not reachable — the whole point of this unit.
+        assert_eq!(v["reachable_for_replies"], false);
+        assert_eq!(v["known_limitations"]["no_kv_cache"], true);
+        assert_eq!(v["known_limitations"]["no_reachable_eos"], true);
+    }
+
+    #[test]
+    fn health_value_is_safe_before_the_warehouse_exists() {
+        let v = kai_native_health_value(&KaiNativeFacts::default(), false, false, 0);
+        assert_eq!(v["mounted"], false);
+        assert_eq!(v["vocab_verdict"], "not_mounted");
+        assert_eq!(v["vocab_match"], false);
+    }
+
+    /// Miniature byte-level BPE: single chars 0..=3 are the byte floor, plus two
+    /// merged tokens, plus one deliberately out-of-range token.
+    fn toy_vocab() -> HashMap<String, u32> {
+        let mut v = HashMap::new();
+        v.insert("a".to_string(), 0);
+        v.insert("b".to_string(), 1);
+        v.insert("c".to_string(), 2);
+        v.insert("d".to_string(), 3);
+        v.insert("ab".to_string(), 10);
+        v.insert("abc".to_string(), 11);
+        v.insert("abcd".to_string(), 900); // above the cap
+        v
+    }
+
+    #[test]
+    fn reencode_prefers_the_longest_in_range_piece() {
+        let v = toy_vocab();
+        // "abcd" itself is id 900 (out of range) so it must decompose; the
+        // longest in-range prefix is "abc"(11), then "d"(3).
+        assert_eq!(reencode_in_range("abcd", &v, 100), Some(vec![11, 3]));
+        assert_eq!(reencode_in_range("ab", &v, 100), Some(vec![10]));
+        // Tighten the cap and it must fall further back.
+        assert_eq!(reencode_in_range("abcd", &v, 11), Some(vec![10, 2, 3]));
+        // Cap below every merge → pure byte floor.
+        assert_eq!(reencode_in_range("abcd", &v, 4), Some(vec![0, 1, 2, 3]));
+        assert_eq!(reencode_in_range("", &v, 100), Some(vec![]));
+    }
+
+    #[test]
+    fn reencode_refuses_when_there_is_no_byte_floor() {
+        let v = toy_vocab();
+        // 'z' has no representation at all — must return None, never guess.
+        assert_eq!(reencode_in_range("az", &v, 100), None);
+    }
+
+    #[test]
+    fn remap_repairs_only_out_of_range_ids() {
+        let v = toy_vocab();
+        let surface = |id: u32| match id {
+            900 => Some("abcd".to_string()),
+            901 => Some("zz".to_string()), // unrepresentable
+            _ => None,
+        };
+        // In-range ids pass through untouched, and nothing is counted as repaired.
+        let (out, n) = remap_prompt_ids(&[0, 1, 2], 100, &v, surface);
+        assert_eq!(out, vec![0, 1, 2]);
+        assert_eq!(n, 0);
+
+        // The over-cap id is expanded in place.
+        let (out, n) = remap_prompt_ids(&[0, 900, 3], 100, &v, surface);
+        assert_eq!(out, vec![0, 11, 3, 3]);
+        assert_eq!(n, 1);
+
+        // Unrepresentable ids are DROPPED, not turned into a stray character.
+        let (out, n) = remap_prompt_ids(&[0, 901, 3], 100, &v, surface);
+        assert_eq!(out, vec![0, 3]);
+        assert_eq!(n, 1);
+    }
+
+    #[test]
+    fn remap_is_strictly_better_than_the_legacy_clamp() {
+        let v = toy_vocab();
+        let surface = |id: u32| (id == 900).then(|| "abcd".to_string());
+        let ids = [0u32, 900, 3];
+
+        // OLD: every over-cap token collapses to id 1 — in the real tokenizer
+        // that is the character '"', which is how ~9% of prompt words were lost.
+        assert_eq!(clamp_prompt_ids_legacy(&ids, 100), vec![0, 1, 3]);
+
+        // NEW: the token's actual bytes survive, spelled in smaller pieces.
+        let (out, _) = remap_prompt_ids(&ids, 100, &v, surface);
+        assert_eq!(out, vec![0, 11, 3, 3]);
+        assert_ne!(out, clamp_prompt_ids_legacy(&ids, 100));
+    }
+
+    #[test]
+    fn native_mouth_gates_are_closed_when_nothing_is_mounted() {
+        // No warehouse is initialised in unit tests, so every backend is absent
+        // and BOTH gates must stay closed regardless of the flag's value.
+        assert!(!has_kai_native());
+        assert!(!has_native_transformer());
+        assert!(!has_dense_expert());
+        assert!(!native_mouth_available());
+        assert!(!native_transformer_or_kai_native());
+    }
+
+    #[test]
+    fn reencode_is_insensitive_to_a_stale_cached_vocab() {
+        // The in-range vocab is cached in a OnceLock, so a caller could in
+        // principle hand it a different limit later. Both directions must stay
+        // CORRECT (at worst suboptimal), never emit an out-of-range id.
+        let v = toy_vocab();
+        for limit in [4u32, 11, 12, 100, 1000] {
+            let out = reencode_in_range("abcd", &v, limit).expect("byte floor exists");
+            assert!(
+                out.iter().all(|&id| id < limit),
+                "limit {} produced an out-of-range id: {:?}",
+                limit,
+                out
+            );
+        }
     }
 }
 
