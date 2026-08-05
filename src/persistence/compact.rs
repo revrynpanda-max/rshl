@@ -429,6 +429,8 @@ pub fn deserialize_synapses(data: &[u8]) -> Result<crate::core::SynapticLayer, C
         total_ltd: 0,
         total_pruned: 0,
         surprise_level: 0.0,
+        // Came off disk -> arm the one-time idle-clock rebase.
+        loaded_from_disk: true,
     })
 }
 

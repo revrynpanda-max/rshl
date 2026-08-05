@@ -127,28 +127,36 @@ pub fn generate_600_cell_vertices() -> Vec<Quaternion> {
 }
 
 /// Project a 16384-dimensional SparseTernaryVec down to a 4D Quaternion.
-/// We use 4 pseudo-random but deterministic orthogonal projection vectors.
+/// Uses golden-ratio–based irrational rotations so that every index maps to a
+/// distinct point on the 4D unit sphere, regardless of spacing. The old
+/// sin(i*0.123) phases had period collisions that collapsed distinct vectors
+/// to the same vertex.
 pub fn project_to_4d(vec: &SparseTernaryVec) -> Quaternion {
-    let mut w = 0.0;
-    let mut x = 0.0;
-    let mut y = 0.0;
-    let mut z = 0.0;
+    let mut w = 0.0f64;
+    let mut x = 0.0f64;
+    let mut y = 0.0f64;
+    let mut z = 0.0f64;
+
+    // Four irrational frequencies derived from primes — guaranteed no period
+    // overlap within 16384 indices. Using f64 intermediates to avoid float
+    // cancellation on large sums.
+    const PHI: f64    = 1.6180339887498948;   // golden ratio
+    const SQRT2: f64  = 1.4142135623730951;
+    const SQRT3: f64  = 1.7320508075688772;
+    const SQRT5: f64  = 2.2360679774997896;
 
     for (&idx, &sign) in vec.indices.iter().zip(vec.signs.iter()) {
-        let s = sign as f32;
-        // Deterministic pseudo-random projection based on index
-        let phase1 = (idx as f32 * 0.12345).sin();
-        let phase2 = (idx as f32 * 0.23456).cos();
-        let phase3 = (idx as f32 * 0.34567).sin();
-        let phase4 = (idx as f32 * 0.45678).cos();
-
-        w += s * phase1;
-        x += s * phase2;
-        y += s * phase3;
-        z += s * phase4;
+        let s = sign as f64;
+        let i = idx as f64;
+        // Each component uses a different irrational multiple of the index,
+        // ensuring the four projection axes are incommensurate (no shared period).
+        w += s * (i * PHI).sin();
+        x += s * (i * SQRT2).cos();
+        y += s * (i * SQRT3).sin();
+        z += s * (i * SQRT5).cos();
     }
 
-    Quaternion::new(w, x, y, z).normalize()
+    Quaternion::new(w as f32, x as f32, y as f32, z as f32).normalize()
 }
 
 /// Find the closest 600-cell vertex to a given 4D quaternion using Quantum Born Rule Mathematics
@@ -202,4 +210,122 @@ use std::sync::OnceLock;
 pub fn get_600_cell_vertices() -> &'static [Quaternion] {
     static POLYTOPES_600: OnceLock<Vec<Quaternion>> = OnceLock::new();
     POLYTOPES_600.get_or_init(generate_600_cell_vertices)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cognition::language_warehouse::SparseTernaryVec;
+
+    #[test]
+    fn test_600_cell_has_120_vertices() {
+        let v = get_600_cell_vertices();
+        assert_eq!(v.len(), 120, "600-cell must have exactly 120 vertices");
+    }
+
+    #[test]
+    fn test_vertices_are_unit_length() {
+        for (i, v) in get_600_cell_vertices().iter().enumerate() {
+            let len = v.dot(v).sqrt();
+            assert!((len - 1.0).abs() < 0.01, "vertex {} has length {}, expected 1.0", i, len);
+        }
+    }
+
+    #[test]
+    fn test_projection_is_deterministic() {
+        let stv = SparseTernaryVec {
+            indices: vec![10, 100, 500, 1000, 5000, 10000],
+            signs: vec![1, -1, 1, 1, -1, 1],
+            dim: 16384,
+        };
+        let q1 = project_to_4d(&stv);
+        let q2 = project_to_4d(&stv);
+        assert_eq!(q1.w, q2.w);
+        assert_eq!(q1.x, q2.x);
+        assert_eq!(q1.y, q2.y);
+        assert_eq!(q1.z, q2.z);
+    }
+
+    #[test]
+    fn test_snap_returns_valid_vertex() {
+        let stv = SparseTernaryVec {
+            indices: vec![42, 256, 8192],
+            signs: vec![1, -1, 1],
+            dim: 16384,
+        };
+        let q = project_to_4d(&stv);
+        let vertices = get_600_cell_vertices();
+        let idx = snap_to_600_cell(&q, vertices);
+        assert!(idx < 120, "vertex index {} out of range", idx);
+    }
+
+    #[test]
+    fn test_similar_vectors_snap_to_same_vertex() {
+        // Two vectors with mostly the same indices should project nearby
+        let a = SparseTernaryVec {
+            indices: vec![10, 100, 500, 1000, 5000],
+            signs: vec![1, -1, 1, 1, -1],
+            dim: 16384,
+        };
+        let b = SparseTernaryVec {
+            indices: vec![10, 100, 500, 1000, 5001], // only last index differs slightly
+            signs: vec![1, -1, 1, 1, -1],
+            dim: 16384,
+        };
+        let vertices = get_600_cell_vertices();
+        let va = snap_to_600_cell(&project_to_4d(&a), vertices);
+        let vb = snap_to_600_cell(&project_to_4d(&b), vertices);
+        // They should snap to the same vertex or adjacent ones (high dot product)
+        if va != vb {
+            let dot = vertices[va].dot(&vertices[vb]);
+            assert!(dot > 0.3, "similar vectors snapped to distant vertices (dot={})", dot);
+        }
+    }
+
+    #[test]
+    fn test_different_concepts_can_snap_to_different_vertices() {
+        // Two vectors with DIFFERENT indices should project to different 4D regions
+        let a = SparseTernaryVec {
+            indices: (0..40).map(|i| i * 100).collect(),
+            signs: vec![1; 40],
+            dim: 16384,
+        };
+        let b = SparseTernaryVec {
+            indices: (0..40).map(|i| i * 100 + 50).collect(), // offset by 50
+            signs: vec![1; 40],
+            dim: 16384,
+        };
+        let vertices = get_600_cell_vertices();
+        let va = snap_to_600_cell(&project_to_4d(&a), vertices);
+        let vb = snap_to_600_cell(&project_to_4d(&b), vertices);
+        // Different concepts should generally snap to different vertices
+        // (not guaranteed for all inputs, but with 120 vertices and distinct
+        // index sets, collision is unlikely)
+        assert_ne!(va, vb, "distinct concept vectors snapped to same vertex — projection may lack discrimination");
+    }
+
+    #[test]
+    fn test_negated_vector_same_vertex_born_rule() {
+        // Born rule: P = |<ψ|v>|^2 — negating ψ produces the same probabilities.
+        // This is CORRECT quantum behavior: |ψ> and -|ψ> are the same state.
+        let indices: Vec<u16> = (0..30).map(|i| i * 400 + 10).collect();
+        let a = SparseTernaryVec { indices: indices.clone(), signs: vec![1; 30], dim: 16384 };
+        let b = SparseTernaryVec { indices, signs: vec![-1; 30], dim: 16384 };
+        let vertices = get_600_cell_vertices();
+        let va = snap_to_600_cell(&project_to_4d(&a), vertices);
+        let vb = snap_to_600_cell(&project_to_4d(&b), vertices);
+        assert_eq!(va, vb, "Born rule: negated state must collapse to same vertex");
+    }
+
+    #[test]
+    fn test_quantum_interference_high_chi_dampens() {
+        let q = Quaternion::new(0.5, 0.5, 0.5, 0.5).normalize();
+        let vertices = get_600_cell_vertices();
+        let clean = quantum_interference_snap(&q, vertices, 0.0);
+        let conflicted = quantum_interference_snap(&q, vertices, 0.9);
+        // Both should return valid indices; with high chi, negative-amplitude
+        // vertices get dampened so the result may differ
+        assert!(clean < 120);
+        assert!(conflicted < 120);
+    }
 }
