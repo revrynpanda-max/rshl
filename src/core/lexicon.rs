@@ -15,6 +15,7 @@
 //! This is pure math: edit distance is the resonance between character
 //! sequences, and frequency rank is the gravitational pull of common usage.
 use std::collections::HashMap;
+use std::sync::OnceLock;
 
 /// The raw word list, embedded at compile time.
 /// No file I/O at runtime — the words are baked into the binary.
@@ -30,6 +31,11 @@ pub struct Lexicon {
     words: HashMap<String, usize>,
     /// Ordered list for random access by rank
     ordered: Vec<String>,
+    /// Lazily-built basis table: every lexicon word paired with its encoded
+    /// `SparseVec`. Building it costs ~10k `SparseVec::encode` calls, so it is
+    /// computed on first use and reused for every subsequent decode.
+    /// Invalidated by `add_word`.
+    basis: OnceLock<Vec<(String, super::SparseVec)>>,
 }
 
 impl Lexicon {
@@ -49,7 +55,35 @@ impl Lexicon {
             }
         }
 
-        Self { words, ordered }
+        Self {
+            words,
+            ordered,
+            basis: OnceLock::new(),
+        }
+    }
+
+    /// Build a lexicon from an explicit word list, ranked in the order given.
+    ///
+    /// Used by tests and benchmarks that need a small, fully-controlled
+    /// vocabulary instead of the 10k embedded list.
+    pub fn from_words<S: AsRef<str>>(list: &[S]) -> Self {
+        let mut words = HashMap::new();
+        let mut ordered = Vec::new();
+        for (rank, w) in list.iter().enumerate() {
+            let word = w.as_ref().trim().to_lowercase();
+            if word.is_empty() {
+                continue;
+            }
+            if !words.contains_key(&word) {
+                words.insert(word.clone(), rank);
+                ordered.push(word);
+            }
+        }
+        Self {
+            words,
+            ordered,
+            basis: OnceLock::new(),
+        }
     }
 
     /// Check if a word is known.
@@ -72,6 +106,9 @@ impl Lexicon {
             let rank = self.ordered.len() + 100_000; // rare rank — won't beat common words
             self.words.insert(lower.clone(), rank);
             self.ordered.push(lower);
+            // The cached basis table no longer covers the vocabulary — drop it
+            // so the next decode rebuilds it including the new word.
+            self.basis = OnceLock::new();
         }
     }
 
@@ -296,19 +333,63 @@ impl Lexicon {
         super::SparseVec::encode(word)
     }
 
+    /// The cached basis table: `(word, SparseVec::encode(word))` for the whole
+    /// vocabulary, built once on first call.
+    ///
+    /// **RSS warning.** For the embedded 10k list this allocates roughly 8 MB of
+    /// `SparseVec`s and never releases them (it is cleared only by `add_word`).
+    /// It is built lazily precisely so the engine never pays for it: nothing on
+    /// the live reply path calls `decode_*`. The first call on the engine's own
+    /// `Lexicon` will permanently add that ~8 MB — acceptable for a benchmark,
+    /// worth knowing before wiring a decoder into a hot path.
+    pub fn basis_table(&self) -> &[(String, super::SparseVec)] {
+        self.basis.get_or_init(|| {
+            self.ordered
+                .iter()
+                .map(|s| (s.clone(), super::SparseVec::encode(s)))
+                .collect()
+        })
+    }
+
     /// Decode a trajectory vector into a sequence of words.
     /// This is the "Generative Head" that replaces string selection.
     ///
-    /// It works by "peeling" words out of the superposition one by one:
-    /// 1. Project the state back to position i using `permute_inv(i)`.
-    /// 2. Find the word whose basis vector resonances most with that position.
-    /// 3. Contrast (inhibit) that word's bits from the state.
-    /// 4. Repeat for the next position.
+    /// Convenience wrapper over [`Lexicon::decode_scored`] using the default
+    /// [`DecodeConfig`] with `max_tokens = max_len`.
     pub fn decode_to_sequence(&self, state: &super::SparseVec, max_len: usize) -> Vec<String> {
+        let cfg = DecodeConfig {
+            max_tokens: max_len,
+            ..DecodeConfig::default()
+        };
+        self.decode_scored(state, &cfg)
+            .tokens
+            .into_iter()
+            .map(|t| t.word)
+            .collect()
+    }
+
+    /// The ORIGINAL (pre-v9.10.51) peel decoder, preserved verbatim so the
+    /// fixed decoder can be A/B measured against it.
+    ///
+    /// It is kept for evidence, not for use. Two defects make its output noise:
+    ///   1. `permute_inv(i)` is applied at EVERY position including `i = 0`, but
+    ///      `SparseVec::permute(0)` is NOT the identity permutation (the seed is
+    ///      run through `mix_permute_seed`, which maps 0 to a nonzero state and
+    ///      then Fisher-Yates shuffles all 16384 dimensions). So even the first
+    ///      token is decoded from a fully scrambled state.
+    ///   2. The winning word is found in permuted space but inhibited in
+    ///      UN-permuted space (`current.contrast(&word_vec)`), so the match is
+    ///      never actually removed from the residual and the loop can re-emit.
+    ///   3. There is no repetition ban and the only stop rule is the hard-coded
+    ///      `> 0.15` cosine floor inside `SparseVec::batch_cosine`.
+    pub fn decode_to_sequence_legacy(
+        &self,
+        state: &super::SparseVec,
+        max_len: usize,
+    ) -> Vec<String> {
         let mut results = Vec::new();
         let mut current = state.clone();
 
-        // High-speed parallel targets (cached word vectors)
         let targets: Vec<(&str, super::SparseVec)> = self
             .ordered
             .iter()
@@ -316,13 +397,9 @@ impl Lexicon {
             .collect();
 
         for i in 0..max_len {
-            // Shift the state back to the current position (Word i)
             let look_at_pos = current.permute_inv(i as u32);
-
-            // Find best word match in the lexicon via parallel resonance search
             if let Some(word) = look_at_pos.batch_cosine(&targets) {
                 results.push(word.clone());
-                // Inhibit the used word's bits to allow the next one to surface
                 let word_vec = super::SparseVec::encode(&word);
                 current = current.contrast(&word_vec);
             } else {
@@ -330,6 +407,192 @@ impl Lexicon {
             }
         }
         results
+    }
+
+    /// Peel words out of a superposed state, reporting the resonance of each
+    /// emitted token and why decoding stopped.
+    ///
+    /// Algorithm, per step `i`:
+    ///   1. **Probe.** `probe = pos_unbind(residual, i)` — the inverse of the
+    ///      positional role permutation. By convention position 0 is the
+    ///      IDENTITY (see [`pos_unbind`]); the codebase's `permute(0)` is a real
+    ///      shuffle, so calling it at position 0 would scramble an unbound state.
+    ///   2. **Search.** Cosine of `probe` against every lexicon basis vector.
+    ///      Already-emitted words are hard-banned (`ban_repeats`) or multiplied
+    ///      by `repetition_penalty ^ times_emitted`.
+    ///   3. **Stop rule.** If the best score is below `min_cosine`, stop. Also
+    ///      stops when the residual is empty, the vocabulary is exhausted, or
+    ///      `max_tokens` is reached.
+    ///   4. **Inhibit.** Remove the winner's support from the residual *in the
+    ///      residual's own basis*: `residual.contrast(pos_bind(word_vec, i))`.
+    ///      This is the step the legacy decoder got wrong — the match lives at
+    ///      permuted indices, so the winner must be pushed FORWARD through the
+    ///      same permutation before contrasting.
+    ///
+    /// Termination:
+    ///   * Always bounded by `max_tokens`.
+    ///   * With `ban_repeats` (the default) also bounded by the vocabulary size,
+    ///     since the candidate set shrinks by one every step.
+    ///   * A winner with a strictly positive cosine shares at least one index
+    ///     with the residual, so `contrast` removes at least one index and the
+    ///     residual's nnz strictly decreases. A winner with cosine <= 0 would
+    ///     NOT shrink the residual, so a non-positive best score always stops
+    ///     decoding regardless of how low `min_cosine` is set — otherwise a
+    ///     caller passing `min_cosine: 0.0, ban_repeats: false` could spin for
+    ///     `max_tokens` iterations emitting anti-correlated noise.
+    pub fn decode_scored(&self, state: &super::SparseVec, cfg: &DecodeConfig) -> DecodeResult {
+        let basis = self.basis_table();
+        let mut tokens: Vec<DecodedToken> = Vec::new();
+        let mut counts: HashMap<&str, u32> = HashMap::new();
+        let mut current = state.clone();
+        let mut stop = DecodeStop::MaxTokens;
+
+        if basis.is_empty() {
+            return DecodeResult {
+                tokens,
+                stop: DecodeStop::VocabExhausted,
+            };
+        }
+
+        for i in 0..cfg.max_tokens {
+            if current.nnz() == 0 {
+                stop = DecodeStop::ResidualEmpty;
+                break;
+            }
+
+            let probe = pos_unbind(&current, i, cfg.positional);
+
+            let mut best: Option<(&str, &super::SparseVec, f32)> = None;
+            for (word, vec) in basis.iter() {
+                let seen = counts.get(word.as_str()).copied().unwrap_or(0);
+                if seen > 0 && cfg.ban_repeats {
+                    continue;
+                }
+                let mut score = probe.cosine(vec);
+                if !score.is_finite() {
+                    continue;
+                }
+                if seen > 0 {
+                    score *= cfg.repetition_penalty.powi(seen as i32);
+                }
+                match best {
+                    Some((_, _, b)) if b >= score => {}
+                    _ => best = Some((word.as_str(), vec, score)),
+                }
+            }
+
+            let Some((word, word_vec, score)) = best else {
+                stop = DecodeStop::VocabExhausted;
+                break;
+            };
+
+            // `score <= 0.0` is an unconditional stop: it means no evidence, and
+            // it is also the only case where `contrast` below would fail to
+            // shrink the residual (see the termination note above).
+            if !score.is_finite() || score <= 0.0 || score < cfg.min_cosine {
+                stop = DecodeStop::BelowThreshold;
+                break;
+            }
+
+            tokens.push(DecodedToken {
+                word: word.to_string(),
+                score,
+            });
+            *counts.entry(word).or_insert(0) += 1;
+
+            // Inhibit the winner in the residual's own basis.
+            let inhibit = pos_bind(word_vec, i, cfg.positional);
+            current = current.contrast(&inhibit);
+        }
+
+        DecodeResult { tokens, stop }
+    }
+}
+
+/// Bind a vector to sequence position `i` (VSA role binding by permutation).
+///
+/// Position 0 is defined as the IDENTITY. `SparseVec::permute(seed)` runs the
+/// seed through `mix_permute_seed`, which maps 0 to `0x9E3779B9` and then
+/// Fisher-Yates shuffles all 16384 dimensions — so `permute(0)` is a genuine
+/// shuffle, not a no-op. Treating position 0 as identity is what makes an
+/// UNBOUND bag-of-words state (which is what every lattice cell actually is)
+/// decodable at step 0, and keeps `pos_bind`/`pos_unbind` a true inverse pair.
+#[inline]
+pub fn pos_bind(v: &super::SparseVec, i: usize, positional: bool) -> super::SparseVec {
+    if !positional || i == 0 {
+        v.clone()
+    } else {
+        v.permute(i as u32)
+    }
+}
+
+/// Inverse of [`pos_bind`]: project a state back to position `i`.
+#[inline]
+pub fn pos_unbind(v: &super::SparseVec, i: usize, positional: bool) -> super::SparseVec {
+    if !positional || i == 0 {
+        v.clone()
+    } else {
+        v.permute_inv(i as u32)
+    }
+}
+
+/// Why [`Lexicon::decode_scored`] stopped emitting.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DecodeStop {
+    /// No input state (empty superposition).
+    NoInput,
+    /// Best remaining candidate scored below `min_cosine`.
+    BelowThreshold,
+    /// Hit the `max_tokens` cap.
+    MaxTokens,
+    /// The residual vector was fully consumed by inhibition.
+    ResidualEmpty,
+    /// Every vocabulary entry has already been emitted (or the vocab is empty).
+    VocabExhausted,
+}
+
+/// A single decoded token and the cosine that produced it.
+#[derive(Clone, Debug)]
+pub struct DecodedToken {
+    pub word: String,
+    pub score: f32,
+}
+
+/// Output of [`Lexicon::decode_scored`].
+#[derive(Clone, Debug)]
+pub struct DecodeResult {
+    pub tokens: Vec<DecodedToken>,
+    pub stop: DecodeStop,
+}
+
+/// Knobs for [`Lexicon::decode_scored`].
+#[derive(Clone, Debug)]
+pub struct DecodeConfig {
+    /// Hard cap on emitted tokens.
+    pub max_tokens: usize,
+    /// Stop as soon as the best candidate resonates below this cosine.
+    /// Chance-level cosine between two independent encodings is ~0.02-0.05,
+    /// so 0.12 is comfortably above noise.
+    pub min_cosine: f32,
+    /// Apply positional role permutation. Only meaningful when the state was
+    /// BUILT with positional binding (see `cognition::compose::encode_positional_sequence`).
+    /// Lattice cells are not, so this defaults to `false`.
+    pub positional: bool,
+    /// Hard-ban words already emitted. When false, `repetition_penalty` applies.
+    pub ban_repeats: bool,
+    /// Multiplier applied per prior emission when `ban_repeats == false`.
+    pub repetition_penalty: f32,
+}
+
+impl Default for DecodeConfig {
+    fn default() -> Self {
+        Self {
+            max_tokens: 12,
+            min_cosine: 0.12,
+            positional: false,
+            ban_repeats: true,
+            repetition_penalty: 0.25,
+        }
     }
 }
 
