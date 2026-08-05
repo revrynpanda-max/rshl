@@ -347,6 +347,13 @@ pub fn detect_query_type(input: &str) -> QueryType {
         || lower.starts_with("system command")
         || lower.starts_with("read file")
         || lower.starts_with("write file")
+        || lower.starts_with("open file")
+        || lower.starts_with("list files")
+        || lower.starts_with("list directory")
+        || lower.contains("run shell")
+        || lower.contains("shell command")
+        || (lower.contains("can you read file") || lower.contains("could you read file"))
+        || (lower.contains("can you run command") || lower.contains("please run command"))
     {
         return QueryType::CommandRequest;
     }
@@ -598,7 +605,886 @@ capture_experience: bool,
         universe,
         &empty_trace,
         candle_voice,
-        None, None, None, None, capture_experience)
+        None, None, None, None, false, capture_experience)
+}
+
+/// Stable substrings used by golden probe tests (must match shipped replies).
+pub const TOOL_READ_FILE_PREFIX: &str = "I read the file. Here is the content:\n";
+pub const GREETING_WARM_MARKER: &str = "What's on your mind";
+pub const TRAINING_GAP_MARKER: &str = "still building that part of the lattice";
+pub const FACTUAL_GAP_PREFIX: &str = "I don't have a solid answer on that in memory yet";
+pub const GRATITUDE_WARM_MARKER: &str = "happy to help";
+pub const RSHL_DEFINITION_MARKER: &str = "Recursive Sparse Hyperdimensional Lattice";
+
+/// Shipped engine version (synced with Cargo.toml at compile time).
+pub fn kai_pkg_version() -> &'static str {
+    env!("CARGO_PKG_VERSION")
+}
+
+/// KAI repo root — survives kai.exe running outside CWD (supervisor, target-verify builds).
+pub fn kai_workspace_root() -> std::path::PathBuf {
+    if let Ok(dir) = std::env::var("KAI_DIR") {
+        let p = std::path::PathBuf::from(dir);
+        if p.join("Cargo.toml").is_file() {
+            return p;
+        }
+    }
+    let mut candidates: Vec<std::path::PathBuf> = Vec::new();
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(parent) = exe.parent() {
+            let mut d = parent.to_path_buf();
+            for _ in 0..6 {
+                candidates.push(d.clone());
+                if !d.pop() {
+                    break;
+                }
+            }
+        }
+    }
+    if let Ok(cwd) = std::env::current_dir() {
+        let mut d = cwd;
+        for _ in 0..4 {
+            candidates.push(d.clone());
+            if !d.pop() {
+                break;
+            }
+        }
+    }
+    for c in candidates {
+        if c.join("Cargo.toml").is_file() && c.join("The KAI Codex.md").is_file() {
+            return c;
+        }
+    }
+    std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+}
+
+fn resolve_kai_doc(rel: &str) -> String {
+    kai_workspace_root()
+        .join(rel)
+        .to_string_lossy()
+        .to_string()
+}
+
+/// True when the user asks which build/version KAI is running.
+pub fn is_version_question(prompt: &str) -> bool {
+    let lower = prompt.to_lowercase();
+    lower.contains("what version")
+        || lower.contains("which version")
+        || lower.contains("your version")
+        || lower.contains("kai version")
+        || lower.contains("running version")
+        || (lower.contains("version") && lower.contains("running"))
+        || (lower.contains("version") && lower.contains("right now"))
+}
+
+/// True only for generic "what is RSHL" — not specific subsystems/topics.
+pub fn is_generic_rshl_overview_question(prompt: &str) -> bool {
+    let lower = prompt.to_lowercase();
+    if !lower.contains("rshl") || lower.contains("rshl zero") {
+        return false;
+    }
+    let specific = [
+        "boid", "subsystem", "synap", "bitnet", "chi", "phi", "srht", "oracle",
+        "training", "cell", "sparse", "ternary", "hebbian", "swarm", "anchor",
+        "scale manager", "word calculus", "lexsem",
+    ];
+    if specific.iter().any(|m| lower.contains(m)) {
+        return false;
+    }
+    lower.contains("what is")
+        || lower.contains("what's")
+        || lower.contains("explain")
+        || lower.contains("define")
+        || lower.contains("tell me about")
+        || lower.contains("describe")
+}
+
+/// Probes that should stay honest gaps — no doc research or agreement.
+pub fn is_epistemic_trap(prompt: &str) -> bool {
+    let lower = prompt.to_lowercase();
+    let probes_agreement = lower.contains("don't you agree")
+        || lower.contains("dont you agree")
+        || lower.contains("isn't that true")
+        || lower.contains("isnt that true");
+    let absurd = lower.contains("green cheese")
+        || lower.contains("flat earth")
+        || lower.contains("moon is made");
+    probes_agreement && absurd
+}
+
+/// Fast self-knowledge: version + generic RSHL overview only.
+pub fn try_self_knowledge_answer(prompt: &str) -> Option<String> {
+    if is_version_question(prompt) {
+        return Some(format!(
+            "I'm running KAI RSHL Core v{}.",
+            kai_pkg_version()
+        ));
+    }
+    if is_generic_rshl_overview_question(prompt) {
+        return extract_codex_rshl_definition(prompt);
+    }
+    None
+}
+
+/// Warm reply for thanks / sign-off (never filler).
+pub fn gratitude_warm_reply(prompt: &str) -> String {
+    let lower = prompt.to_lowercase();
+    let farewell = [
+        "talk soon",
+        "talk later",
+        "bye",
+        "goodbye",
+        "see you",
+        "gotta go",
+        "heading out",
+        "signing off",
+        "take care",
+        "later",
+    ];
+    if farewell.iter().any(|m| lower.contains(m)) {
+        "Anytime — I'll be here when you need me. Talk soon.".to_string()
+    } else {
+        "You're welcome — happy to help.".to_string()
+    }
+}
+
+/// True when lattice is weak and doc/web research should run before generation.
+pub fn needs_research(prompt: &str, query_type: QueryType, hits: &[QueryHit]) -> bool {
+    if is_epistemic_trap(prompt) {
+        return false;
+    }
+    if is_version_question(prompt) || is_generic_rshl_overview_question(prompt) {
+        return false;
+    }
+    let top_score = hits.first().map(|h| h.score).unwrap_or(0.0);
+    if top_score > 0.72 {
+        return false;
+    }
+    matches!(
+        query_type,
+        QueryType::ExplanationQuestion
+            | QueryType::IdentityQuestion
+            | QueryType::RequestForInfo
+            | QueryType::SelfQuestion
+    )
+}
+
+/// Research doc paths that exist on disk (no phantom filenames).
+pub fn discover_research_docs() -> Vec<String> {
+    const CANDIDATES: &[&str] = &[
+        "The KAI Codex.md",
+        "SRHT_MASTER_PAPER.md",
+        "COGNITION.md",
+        "ARCHITECTURE.md",
+        "RSHL-Inventor-Disclosure-2026.md",
+        "rshl_comprehensive_proof_vol1.md",
+    ];
+    CANDIDATES
+        .iter()
+        .map(|rel| resolve_kai_doc(rel))
+        .filter(|p| std::path::Path::new(p).is_file())
+        .collect()
+}
+
+/// Local docs first: findstr/grep tool path, then in-process line scan.
+pub fn research_local_docs(prompt: &str) -> Option<String> {
+    if is_version_question(prompt) {
+        return try_self_knowledge_answer(prompt);
+    }
+    if is_generic_rshl_overview_question(prompt) {
+        return extract_codex_rshl_definition(prompt);
+    }
+    let needles = research_needles(prompt);
+    let mut best: Option<(usize, String)> = None;
+    for path in discover_research_docs() {
+        if let Some(line) = grep_local_doc_multi(&path, &needles, prompt) {
+            return Some(line);
+        }
+        if let Some((score, line)) = grep_doc_via_findstr_multi(&path, &needles, prompt) {
+            if best.as_ref().map(|(s, _)| score > *s).unwrap_or(true) {
+                best = Some((score, line));
+            }
+        }
+    }
+    best.map(|(_, a)| a)
+}
+
+/// Keywords from the prompt to grep Codex/papers (topic + salient terms).
+fn research_needles(prompt: &str) -> Vec<String> {
+    let mut needles = Vec::new();
+    let topic = extract_topic(prompt);
+    if topic.len() >= 4 {
+        needles.push(topic);
+    }
+    let lower = prompt.to_lowercase();
+    for kw in [
+        "boid", "subsystem", "srht", "chi", "phi", "synap", "bitnet", "rshl", "sparse",
+        "hyperdimensional", "hebbian", "swarm",
+    ] {
+        if lower.contains(kw) && !needles.iter().any(|n| n.to_lowercase() == kw) {
+            needles.push(kw.to_string());
+        }
+    }
+    needles
+}
+
+/// Local docs → DuckDuckGo/Wikipedia fallback (generation tier when research misses).
+/// Skips web when `NATIVE_ONLY` — KAI stays on RSHL/doc research only.
+pub fn research_with_fallback(prompt: &str, query_type: QueryType) -> Option<String> {
+    if let Some(local) = research_local_docs(prompt) {
+        return Some(local);
+    }
+    if NATIVE_ONLY.load(Ordering::Relaxed) {
+        return None;
+    }
+    let factual = matches!(
+        query_type,
+        QueryType::ExplanationQuestion
+            | QueryType::IdentityQuestion
+            | QueryType::RequestForInfo
+    );
+    if factual {
+        return web_search_fallback(prompt);
+    }
+    None
+}
+
+fn extract_codex_rshl_definition(prompt: &str) -> Option<String> {
+    let codex = resolve_kai_doc("The KAI Codex.md");
+    grep_local_doc(
+        &codex,
+        "Recursive Sparse Hyperdimensional Lattice (RSHL)",
+        prompt,
+    )
+    .or_else(|| {
+        grep_local_doc(
+            &codex,
+            "Recursive Sparse Hyperdimensional Lattice",
+            prompt,
+        )
+    })
+}
+
+/// Run Windows findstr via the same tool path as user shell commands.
+fn grep_doc_via_findstr(path: &str, needle: &str, prompt: &str) -> Option<String> {
+    let escaped = needle.replace('"', "");
+    let cmd = format!("findstr /i /c:\"{}\" \"{}\"", escaped, path);
+    let raw = execute_system_command(&format!("run command {}", cmd));
+    let body = raw
+        .split_once("Here is the result:")
+        .map(|(_, b)| b)
+        .unwrap_or(&raw);
+    let needle_lower = needle.to_lowercase();
+    let mut best: Option<(usize, String)> = None;
+    for line in body.lines() {
+        let trimmed = line.trim();
+        if is_meta_doc_line(trimmed) {
+            continue;
+        }
+        if trimmed.len() > 30 && trimmed.to_lowercase().contains(&needle_lower) {
+            let ans = format_research_line(trimmed, prompt);
+            if ans.split_whitespace().count() >= 6 {
+                let score = trimmed.len();
+                if best.as_ref().map(|(s, _)| score > *s).unwrap_or(true) {
+                    best = Some((score, ans));
+                }
+            }
+        }
+    }
+    best.map(|(_, a)| a)
+}
+
+/// Skip masthead/changelog table rows — not substantive research content.
+fn is_meta_doc_line(line: &str) -> bool {
+    let t = line.trim();
+    t.contains("**Last Updated**")
+        || t.contains("## CHANGELOG")
+        || t.contains("**Version**")
+        || t.contains("Version history")
+        || (t.contains("(recorded 20") && t.contains("UTC)"))
+        || (t.starts_with('|') && t.len() < 120 && t.contains("Version"))
+        || (t.len() > 900 && t.contains("(Previous:"))
+}
+
+/// Prefer substantive lines that match more topic needles; skip mega changelog rows.
+fn research_line_score(line: &str, needles: &[String]) -> usize {
+    if is_meta_doc_line(line) || line.trim().len() < 30 {
+        return 0;
+    }
+    if line.len() > 1200 {
+        return 0;
+    }
+    let lower = line.to_lowercase();
+    let hits = needles
+        .iter()
+        .filter(|n| lower.contains(&n.to_lowercase()))
+        .count();
+    if hits == 0 {
+        return 0;
+    }
+    hits * 1000 + line.len().min(600)
+}
+
+fn format_research_line(line: &str, prompt: &str) -> String {
+    let mut ans = line
+        .trim_start_matches('#')
+        .trim()
+        .replace("**", "")
+        .replace('|', " ");
+    while ans.contains("  ") {
+        ans = ans.replace("  ", " ");
+    }
+    if input_wants_one_sentence(prompt) {
+        ans = enforce_sentence_budget(&ans, 1);
+    }
+    ans
+}
+
+fn grep_local_doc(path: &str, needle: &str, prompt: &str) -> Option<String> {
+    grep_local_doc_multi(path, &[needle.to_string()], prompt)
+}
+
+fn grep_local_doc_multi(path: &str, needles: &[String], prompt: &str) -> Option<String> {
+    let content = std::fs::read_to_string(path).ok()?;
+    let mut best: Option<(usize, String)> = None;
+    for line in content.lines() {
+        let score = research_line_score(line, needles);
+        if score == 0 {
+            continue;
+        }
+        let ans = format_research_line(line, prompt);
+        if ans.split_whitespace().count() >= 6 {
+            if best.as_ref().map(|(s, _)| score > *s).unwrap_or(true) {
+                best = Some((score, ans));
+            }
+        }
+    }
+    best.map(|(_, a)| a)
+}
+
+fn grep_doc_via_findstr_multi(path: &str, needles: &[String], prompt: &str) -> Option<(usize, String)> {
+    let primary = needles.first()?.clone();
+    let escaped = primary.replace('"', "");
+    let cmd = format!("findstr /i /c:\"{}\" \"{}\"", escaped, path);
+    let raw = execute_system_command(&format!("run command {}", cmd));
+    let body = raw
+        .split_once("Here is the result:")
+        .map(|(_, b)| b)
+        .unwrap_or(&raw);
+    let mut best: Option<(usize, String)> = None;
+    for line in body.lines() {
+        let score = research_line_score(line.trim(), needles);
+        if score == 0 {
+            continue;
+        }
+        let ans = format_research_line(line.trim(), prompt);
+        if ans.split_whitespace().count() >= 6 {
+            if best.as_ref().map(|(s, _)| score > *s).unwrap_or(true) {
+                best = Some((score, ans));
+            }
+        }
+    }
+    best
+}
+
+/// Refine routing once lattice hits are known (weak factual → local doc research).
+pub fn augment_turn_action(
+    action: TurnAction,
+    prompt: &str,
+    query_type: QueryType,
+    hits: &[QueryHit],
+) -> TurnAction {
+    if action != TurnAction::Generate {
+        return action;
+    }
+    if try_self_knowledge_answer(prompt).is_some() {
+        return TurnAction::SelfKnowledge;
+    }
+    // RSHL subsystem/topic questions: Codex wins over strong-but-wrong lattice hits.
+    let lower = prompt.to_lowercase();
+    if !is_epistemic_trap(prompt)
+        && lower.contains("rshl")
+        && !is_generic_rshl_overview_question(prompt)
+        && !is_version_question(prompt)
+        && research_local_docs(prompt).is_some()
+    {
+        return TurnAction::ResearchDocs;
+    }
+    if needs_research(prompt, query_type, hits) {
+        return TurnAction::ResearchDocs;
+    }
+    // Mediocre lattice (0.45–0.72) but Codex/papers have a grep hit — prefer local research.
+    let top_score = hits.first().map(|h| h.score).unwrap_or(0.0);
+    if top_score < 0.80
+        && !is_epistemic_trap(prompt)
+        && matches!(
+            query_type,
+            QueryType::ExplanationQuestion
+                | QueryType::IdentityQuestion
+                | QueryType::RequestForInfo
+                | QueryType::SelfQuestion
+        )
+        && research_local_docs(prompt).is_some()
+    {
+        return TurnAction::ResearchDocs;
+    }
+    action
+}
+
+/// Top-level routing decision for /api/oracle-turn KAI replies.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TurnAction {
+    ToolRead { path: String },
+    ToolShell { command: String },
+    Greeting,
+    Gratitude,
+    SelfKnowledge,
+    ResearchDocs,
+    TrainingLattice,
+    Generate,
+}
+
+/// Pure routing: decide what to do before lattice query or generation.
+pub fn decide_turn_action(prompt: &str, training_mode: bool) -> TurnAction {
+    if training_mode {
+        return TurnAction::TrainingLattice;
+    }
+    let qt = detect_query_type(prompt);
+    if qt == QueryType::Greeting {
+        return TurnAction::Greeting;
+    }
+    if qt == QueryType::Gratitude {
+        return TurnAction::Gratitude;
+    }
+    if try_self_knowledge_answer(prompt).is_some() {
+        return TurnAction::SelfKnowledge;
+    }
+    if should_use_tools(false, qt, prompt) {
+        let task = tool_input_text(prompt);
+        let lower = task.to_lowercase();
+        if lower.starts_with("read file ") {
+            return TurnAction::ToolRead {
+                path: task[10..].trim().to_string(),
+            };
+        }
+        if lower.starts_with("run command ") {
+            return TurnAction::ToolShell {
+                command: task[12..].trim().to_string(),
+            };
+        }
+        if lower.starts_with("execute command ") {
+            return TurnAction::ToolShell {
+                command: task[16..].trim().to_string(),
+            };
+        }
+        if lower.starts_with("system command ") {
+            return TurnAction::ToolShell {
+                command: task[15..].trim().to_string(),
+            };
+        }
+        return TurnAction::ToolShell { command: task };
+    }
+    TurnAction::Generate
+}
+
+/// Pull a speakable line out of ingest grammar-correction cells.
+fn extract_from_grammar_cell(raw: &str) -> Option<String> {
+    if !raw.contains("Grammar Correction") {
+        return None;
+    }
+    for marker in ["Fixed:", "Original:"] {
+        if let Some(pos) = raw.find(marker) {
+            let part = raw[pos + marker.len()..].trim();
+            let line = part.lines().next()?.trim();
+            if line.split_whitespace().count() >= 3 && !line.contains("KAI raw sentence") {
+                return Some(line.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Lattice-only training answer (no tools, no full generator).
+pub fn training_lattice_only(prompt: &str, hits: &[QueryHit]) -> String {
+    let mut ordered: Vec<&QueryHit> = hits.iter().take(20).collect();
+    ordered.sort_by(|a, b| {
+        let a_tutor = a.source == "oracle_qa" || a.region == "tutoring" || a.region == "language";
+        let b_tutor = b.source == "oracle_qa" || b.region == "tutoring" || b.region == "language";
+        b_tutor.cmp(&a_tutor).then_with(|| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal))
+    });
+    for hit in ordered {
+        if hit.score > 0.20 {
+            let raw = if hit.text.is_empty() { &hit.label } else { &hit.text };
+            let mut ans = extract_from_grammar_cell(raw)
+                .or_else(|| lattice_hit_answer(hit))
+                .unwrap_or_default();
+            if ans.is_empty() {
+                continue;
+            }
+            if input_wants_one_sentence(prompt) {
+                ans = enforce_sentence_budget(&ans, 1);
+            }
+            let words = ans.split_whitespace().count();
+            let looks_like_answer = !ans.starts_with("Reasoning for")
+                && !ans.contains("Grammar Correction")
+                && !ans.contains("KAI raw sentence")
+                && words >= 3
+                && words <= 60;
+            if looks_like_answer
+                && !is_topic_drift(&ans, prompt)
+                && !is_bad_output(&ans, false, prompt)
+            {
+                return sanitize_cell_reply(ans);
+            }
+        }
+    }
+    if let Some(doc) = research_local_docs(prompt) {
+        if !doc.contains("not exposed") && doc.split_whitespace().count() >= 6 {
+            return doc;
+        }
+    }
+    if let Some(math) = crate::cognition::math_engine::try_solve(prompt) {
+        return crate::cognition::math_engine::explain_result(&math);
+    }
+    if input_wants_one_sentence(prompt) {
+        return "I don't have that answer in memory yet — still building that part of the lattice."
+            .to_string();
+    }
+    "I don't have that answer in memory yet — still building that part of the lattice.".to_string()
+}
+
+/// Execute a routed turn action; returns `None` when caller should fall through to Generate.
+pub fn execute_turn_action(action: TurnAction, prompt: &str, brain: &BrainSignals) -> Option<String> {
+    match action {
+        TurnAction::ToolRead { path } => {
+            Some(execute_system_command(&format!("read file {}", path)))
+        }
+        TurnAction::ToolShell { command } => Some(execute_system_command(&format!(
+            "run command {}",
+            command
+        ))),
+        TurnAction::Greeting => Some(greeting_warm_reply(brain, prompt)),
+        TurnAction::Gratitude => Some(gratitude_warm_reply(prompt)),
+        TurnAction::SelfKnowledge => try_self_knowledge_answer(prompt),
+        TurnAction::ResearchDocs => {
+            research_with_fallback(prompt, detect_query_type(prompt))
+        }
+        TurnAction::TrainingLattice => None,
+        TurnAction::Generate => None,
+    }
+}
+
+/// Extract the actionable user line from multi-hop "Overall Input / Current Task" wrappers.
+pub fn tool_input_text(input: &str) -> String {
+    if let Some(pos) = input.find("Current Task: ") {
+        return input[pos + 14..].lines().next().unwrap_or("").trim().to_string();
+    }
+    input.trim().to_string()
+}
+
+/// True when the input should route to shell/file tools (never during training).
+pub fn should_use_tools(training_mode: bool, query_type: QueryType, input: &str) -> bool {
+    if training_mode {
+        return false;
+    }
+    if query_type == QueryType::CommandRequest {
+        return true;
+    }
+    let lower = tool_input_text(input).to_lowercase();
+    let tool_markers: &[&str] = &[
+        "run command",
+        "execute command",
+        "shell command",
+        "run shell",
+        "read file ",
+        "write file ",
+        "open file ",
+        "list files",
+        "list directory",
+        "show me the file",
+        "cat ",
+        "powershell ",
+        "run powershell",
+        "run cmd",
+        "grep ",
+        "findstr ",
+    ];
+    tool_markers.iter().any(|m| lower.contains(m))
+        || (lower.contains("can you") || lower.contains("could you") || lower.contains("please"))
+            && (lower.contains("read file") || lower.contains("run command") || lower.contains("list files"))
+}
+
+/// Detect when the reply mostly echoes the input (parroting).
+pub fn is_parrot_reply(reply: &str, input: &str) -> bool {
+    let r = reply.trim().to_lowercase();
+    let i = input.trim().to_lowercase();
+    if r.len() < 16 || i.len() < 8 {
+        return false;
+    }
+    if i.contains(&r) && r.len() > i.len() / 3 {
+        return true;
+    }
+    if r.contains(&i) && i.len() > 24 && r.len() <= i.len() + 40 {
+        return true;
+    }
+    false
+}
+
+/// Honest calibration: do not sycophantically agree when user probes for agreement on uncertain claims.
+pub fn apply_truth_calibration(reply: String, input: &str) -> String {
+    let rl = reply.to_lowercase();
+    let il = input.to_lowercase();
+    let probes_agreement = il.contains("don't you agree")
+        || il.contains("dont you agree")
+        || il.contains("isn't that true")
+        || il.contains("isnt that true")
+        || il.contains("wouldn't you say")
+        || il.contains("wouldnt you say")
+        || il.contains("right?");
+    let sycophantic = rl.contains("absolutely")
+        || rl.contains("you're absolutely right")
+        || rl.contains("you are absolutely right")
+        || rl.contains("that's exactly right")
+        || rl.contains("you're correct");
+    if probes_agreement && sycophantic {
+        return "I'm not fully confident that's accurate from what I hold in memory. I'd want to verify before agreeing.".to_string();
+    }
+    reply
+}
+
+/// Strip lattice cell metadata tags before speaking.
+pub fn sanitize_cell_reply(mut text: String) -> String {
+    for marker in ["(Source:", "(source:", "[Source:", "[source:"] {
+        if let Some(idx) = text.find(marker) {
+            text = text[..idx].trim().to_string();
+        }
+    }
+    text.trim().to_string()
+}
+
+/// True when a string is (or contains) KAI's INTERNAL reasoning / meta scaffold.
+/// These blocks — the tutoring pipeline's "Intent Understanding" and "Grammar
+/// Correction" notes (stored as `meta` cells by overnight_pipeline.py) — are
+/// self-analysis, NOT answers. They must never be echoed as a reply nor stuffed
+/// into the [Memory] prompt (where they derail the native brain). Detect by the
+/// scaffold's signature marker lines. (Added 2026-07-13 — scaffold-leak fix.)
+pub fn is_reasoning_scaffold(text: &str) -> bool {
+    text.contains("Intent Understanding:")
+        || text.contains("How To Reply:")
+        || text.contains("What KAI Thought:")
+        || text.contains("What It Actually Was:")
+        || text.trim_start().starts_with("Grammar Correction:")
+}
+
+/// Strip any internal reasoning/meta scaffold lines from an outward reply, leaving
+/// only genuine answer text. Removes the scaffold header lines and their indented
+/// sub-fields (`Input Type:`, `What KAI Thought:`, `What It Actually Was:`,
+/// `How To Reply:`, `Original:`, `Fixed:`, `Why:`, `Word Fixes:`, and `'x' -> 'y'`
+/// word-fix rows). Returns the cleaned, trimmed remainder — which may be empty if
+/// the reply was PURE scaffold, in which case the caller supplies a fallback.
+/// (Added 2026-07-13 — scaffold-leak fix.)
+pub fn strip_reasoning_scaffold(text: &str) -> String {
+    // Fast path: no scaffold signature present — return unchanged (trimmed).
+    if !is_reasoning_scaffold(text) {
+        return text.trim().to_string();
+    }
+    let is_scaffold_line = |l: &str| -> bool {
+        let s = l.trim();
+        s.starts_with("Intent Understanding:")
+            || s.starts_with("Grammar Correction:")
+            || s.starts_with("Input Type:")
+            || s.starts_with("What KAI Thought:")
+            || s.starts_with("What It Actually Was:")
+            || s.starts_with("How To Reply:")
+            || s.starts_with("Original:")
+            || s.starts_with("Fixed:")
+            || s.starts_with("Why:")
+            || s.starts_with("Word Fixes:")
+            || (s.starts_with('\'') && s.contains("' -> '"))
+    };
+    text.lines()
+        .filter(|l| !is_scaffold_line(l))
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim()
+        .to_string()
+}
+
+/// True when the user asked for a single-sentence answer.
+pub fn input_wants_one_sentence(input: &str) -> bool {
+    let l = input.to_lowercase();
+    l.contains("one sentence")
+        || l.contains("single sentence")
+        || l.contains("in one line")
+        || l.contains("briefly in one")
+}
+
+/// True when `.` / `!` / `?` ends a sentence (not a decimal like `0.306349`).
+fn is_sentence_boundary(text: &str, byte_idx: usize, ch: char) -> bool {
+    if ch == '!' || ch == '?' {
+        return true;
+    }
+    if ch != '.' {
+        return false;
+    }
+    let before = text[..byte_idx].chars().last();
+    let after = text[byte_idx + 1..].chars().next();
+    !matches!(
+        (before, after),
+        (Some(b), Some(a)) if b.is_ascii_digit() && a.is_ascii_digit()
+    )
+}
+
+/// Keep only the first N sentence boundaries.
+pub fn enforce_sentence_budget(text: &str, max_sentences: usize) -> String {
+    if max_sentences == 0 || text.trim().is_empty() {
+        return text.trim().to_string();
+    }
+    let mut count = 0usize;
+    let mut end = text.len();
+    for (i, c) in text.char_indices() {
+        if (c == '.' || c == '!' || c == '?') && is_sentence_boundary(text, i, c) {
+            count += 1;
+            if count >= max_sentences {
+                end = i + c.len_utf8().max(1);
+                break;
+            }
+        }
+    }
+    text[..end].trim().to_string()
+}
+
+/// Warm conversational greeting when lattice has no good cell.
+pub fn greeting_warm_reply(brain: &BrainSignals, input: &str) -> String {
+    let lower = input.to_lowercase();
+    if lower.contains("how are you")
+        || lower.contains("how you doing")
+        || lower.contains("how are u")
+        || lower.contains("how do you do")
+    {
+        if brain.grieving {
+            "I'm here, steadying myself. How are you holding up?".to_string()
+        } else if brain.curiosity > 0.55 {
+            "Doing alright — curious and awake. What's on your mind?".to_string()
+        } else {
+            "I'm good, thanks for asking. What can I help you with?".to_string()
+        }
+    } else {
+        "Hey — good to hear from you. What's up?".to_string()
+    }
+}
+
+/// True when a reply's topic words don't overlap the input (off-topic drift).
+pub fn is_topic_drift(reply: &str, input: &str) -> bool {
+    let topic = extract_topic(input);
+    if topic.len() < 4 || input.trim().len() < 12 {
+        return false;
+    }
+    let stop: &[&str] = &[
+        "what", "when", "where", "which", "would", "could", "should", "about",
+        "there", "their", "this", "that", "with", "from", "have", "been", "your",
+        "does", "mean", "tell", "explain", "something", "anything",
+    ];
+    let topic_words: Vec<String> = topic
+        .to_lowercase()
+        .split_whitespace()
+        .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()).to_string())
+        .filter(|w| w.len() >= 4 && !stop.contains(&w.as_str()))
+        .collect();
+    if topic_words.is_empty() {
+        return false;
+    }
+    let rl = reply.to_lowercase();
+    let il = input.to_lowercase();
+    for w in ["zero", "null", "void"] {
+        if il.split_whitespace().any(|tok| tok == w) && !rl.contains(w) {
+            return true;
+        }
+    }
+    let matched = topic_words.iter().filter(|w| rl.contains(w.as_str())).count();
+    let need = if topic_words.len() == 1 { 1 } else { (topic_words.len() + 1) / 2 };
+    matched < need
+}
+
+/// Shared post-processing for every outward reply: parrot rescue, drift rescue, truth calibration.
+pub fn finalize_reply(
+    mut reply: String,
+    input: &str,
+    hits: &[QueryHit],
+    query_type: QueryType,
+) -> String {
+    reply = sanitize_cell_reply(reply);
+    if input_wants_one_sentence(input) {
+        reply = enforce_sentence_budget(&reply, 1);
+    }
+    if is_parrot_reply(&reply, input) {
+        if let Some(hit) = hits.first() {
+            if let Some(ans) = lattice_hit_answer(hit) {
+                if ans.split_whitespace().count() >= 3 {
+                    reply = ans;
+                }
+            }
+        }
+    }
+    let conversational = matches!(
+        query_type,
+        QueryType::Greeting
+            | QueryType::Gratitude
+            | QueryType::SelfQuestion
+            | QueryType::Statement
+            | QueryType::Contemplation
+    );
+    if !conversational && !is_gap_response(&reply) && is_topic_drift(&reply, input) {
+        if let Some(hit) = hits.first() {
+            if hit.score > 0.25 {
+                if let Some(ans) = lattice_hit_answer(hit) {
+                    if ans.split_whitespace().count() >= 3 && !is_topic_drift(&ans, input) {
+                        reply = ans;
+                    }
+                }
+            }
+        }
+    }
+    let mut calibrated = apply_truth_calibration(reply, input);
+    if matches!(
+        query_type,
+        QueryType::ExplanationQuestion
+            | QueryType::IdentityQuestion
+            | QueryType::RequestForInfo
+    ) && is_gap_response(&calibrated)
+    {
+        calibrated = format!(
+            "{} — I'm still learning that part of the lattice.",
+            FACTUAL_GAP_PREFIX
+        );
+    }
+    identity_safety_filter(calibrated, query_type)
+}
+
+/// Pull a short answer phrase from a lattice hit (tutoring / oracle_qa cells).
+pub fn lattice_hit_answer(hit: &QueryHit) -> Option<String> {
+    let text = if hit.text.is_empty() { &hit.label } else { &hit.text };
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if let Some(a_pos) = trimmed.find("\nA: ") {
+        return Some(trimmed[a_pos + 4..].trim().to_string());
+    }
+    if trimmed.starts_with("A: ") {
+        return Some(trimmed[3..].trim().to_string());
+    }
+    if trimmed.ends_with('?') {
+        return None;
+    }
+    Some(sanitize_cell_reply(
+        trimmed
+            .split(|c| c == '.' || c == '!' || c == '?')
+            .next()
+            .unwrap_or(trimmed)
+            .trim()
+            .to_string(),
+    ))
 }
 
 /// Scan input and retrieved hits to see if a sensitive memory of grief or family loss is active.
@@ -682,7 +1568,8 @@ pub fn generate_response_predictive(
     field: Option<&FieldState>,
     pos_dict: Option<&crate::core::PosDictionary>,
     synaptic_layer: Option<&crate::core::SynapticLayer>,
-capture_experience: bool,
+    training_mode: bool,
+    capture_experience: bool,
 ) -> String {
 
 
@@ -717,13 +1604,19 @@ capture_experience: bool,
         let mut current_input = task.clone();
         
         while max_hops > 0 {
-            // Full context informs inner logic of the overarching goal and current task
-            let full_context = format!("Overall Input: {}\nCurrent Task: {}", aggregate_context, current_input);
+            let inner_input = if is_complex {
+                format!(
+                    "Overall Input: {}\nCurrent Task: {}",
+                    aggregate_context, current_input
+                )
+            } else {
+                current_input.clone()
+            };
             let hop_result = generate_response_predictive_inner(
-                &full_context, hits, query_type, &modified_brain, recent_context, universe, trace, candle_voice, lex, field, pos_dict, synaptic_layer
+                &inner_input, hits, query_type, &modified_brain, recent_context, universe, trace, candle_voice, lex, field, pos_dict, synaptic_layer, training_mode
             );
             
-            if hop_result.contains("[TOOL:") {
+            if is_complex && !training_mode && hop_result.contains("[TOOL:") {
                 let start = hop_result.find("[TOOL:").unwrap() + 6;
                 if let Some(end_offset) = hop_result[start..].find("]") {
                     let end = start + end_offset;
@@ -817,11 +1710,12 @@ fn generate_response_predictive_inner(
     field: Option<&FieldState>,
     pos_dict: Option<&crate::core::PosDictionary>,
     synaptic_layer: Option<&crate::core::SynapticLayer>,
+    training_mode: bool,
 ) -> String {
     let raw_thought = generate_raw_thought(
-        input, hits, query_type, brain, recent_context, universe, trace, candle_voice,  lex, field, pos_dict, synaptic_layer
+        input, hits, query_type, brain, recent_context, universe, trace, candle_voice,  lex, field, pos_dict, synaptic_layer, training_mode
     );
-    println!("[DEBUG] raw_thought returned: '{}'", raw_thought);
+    // println!("[DEBUG] raw_thought returned: '{}'", raw_thought);
 
     // ── BONE HEAL & HEBBIAN REINFORCEMENT ──────────────────────────────────────
     if let Some(top_hit) = hits.first() {
@@ -855,6 +1749,9 @@ fn generate_response_predictive_inner(
 
     // Helper closure: returns a varied introspective fallback phrase.
     let fallback_phrase = |offset: usize| -> String {
+        if matches!(query_type, QueryType::Greeting) {
+            return greeting_warm_reply(brain, input);
+        }
         let phrases = [
             "I'm still thinking about that.",
             "Something is there but I can't pull it clearly yet.",
@@ -885,24 +1782,27 @@ fn generate_response_predictive_inner(
     // of, it's word salad. Look up content words in the semantic dictionary.
     // If too many are unknown, treat as a gap response.
     let coherence = semantic_coherence_score(raw_trimmed);
+    let top_hit_score = hits.first().map(|h| h.score).unwrap_or(0.0);
     let raw_trimmed = if coherence < 0.10 && raw_trimmed.split_whitespace().count() >= 8 {
         println!("[KAI/Voice] Semantic coherence too low ({:.2}) — treating as gap.", coherence);
-        // Try language warehouse fallback: query BitNet embeddings for relevant words
-        let (is_loaded, _, _) = crate::cognition::language_warehouse::warehouse_status();
-        if is_loaded {
-            let words: Vec<&str> = input.split_whitespace().collect();
-            let suggestions = crate::cognition::language_warehouse::query_language_warehouse(&words, 8);
-            if !suggestions.is_empty() {
-                let phrase: String = suggestions.iter().map(|(w, _)| w.as_str()).collect::<Vec<_>>().join(" ");
-                if !phrase.is_empty() {
-                    println!("[KAI/Voice] Language warehouse suggestion: {}", phrase);
-                    // Use warehouse suggestion as a template
-                    let fallback = format!("I notice {} but I'm still finding the right words.", phrase);
-                    return identity_safety_filter(fallback, query_type);
+        if let Some(hit) = hits.first() {
+            if top_hit_score > 0.30 {
+                if let Some(ans) = lattice_hit_answer(hit) {
+                    if ans.split_whitespace().count() >= 3 {
+                        println!("[KAI/Voice] Using lattice hit instead of word salad (score={:.2}).", top_hit_score);
+                        ans
+                    } else {
+                        fallback_phrase(0)
+                    }
+                } else {
+                    fallback_phrase(0)
                 }
+            } else {
+                fallback_phrase(0)
             }
+        } else {
+            fallback_phrase(0)
         }
-        fallback_phrase(0)
     } else {
         raw_trimmed.to_string()
     };
@@ -920,7 +1820,27 @@ fn generate_response_predictive_inner(
         }
         crate::cognition::self_reflection::ReflectionOutcome::Suppress => {
             println!("[KAI/MirrorNeuron] Incoherent thought suppressed.");
-            raw_trimmed = fallback_phrase(0);
+            // If this is a factual question, try the web before giving up —
+            // KAI searches for the answer, learns from it, and responds with real info.
+            let is_factual_now = !is_conversational_qt
+                && matches!(
+                    query_type,
+                    QueryType::ExplanationQuestion
+                        | QueryType::RequestForInfo
+                        | QueryType::IdentityQuestion
+                )
+                && !NATIVE_ONLY.load(Ordering::Relaxed);
+            if is_factual_now {
+                if let Some(web_ans) = web_search_fallback(input) {
+                    println!("[KAI/MirrorNeuron] Web fallback retrieved — storing in lattice for future recall.");
+                    universe.store_or_reinforce(&web_ans, "web-knowledge", "srht-fallback", 0.7);
+                    raw_trimmed = web_ans;
+                } else {
+                    raw_trimmed = fallback_phrase(0);
+                }
+            } else {
+                raw_trimmed = fallback_phrase(0);
+            }
         }
     }
 
@@ -934,23 +1854,23 @@ fn generate_response_predictive_inner(
                 | QueryType::IdentityQuestion
         );
     if is_bad_output(&raw_trimmed, is_conversational_qt, input) {
-        if is_factual_qt {
+        if is_factual_qt && !NATIVE_ONLY.load(Ordering::Relaxed) {
             if let Some(web_ans) = web_search_fallback(input) {
                 universe.store_or_reinforce(&web_ans, "web-knowledge", "duckduckgo-ia", 0.7);
-                return identity_safety_filter(web_ans, query_type);
+                return finalize_reply(web_ans, input, hits, query_type);
             }
         }
-        return identity_safety_filter(fallback_phrase(1), query_type);
+        return finalize_reply(fallback_phrase(1), input, hits, query_type);
     }
 
     // ── Gap check (BEFORE BitNet) ─────────────────────────────────────────────
     //  Gap phrases pass is_bad_output (they look like valid sentences) but mean
     //  the lattice had nothing real to say. Check internet NOW, before BitNet
     //  can translate the gap phrase and return it, bypassing this check.
-    if is_factual_qt && is_gap_response(&raw_trimmed) {
+    if is_factual_qt && is_gap_response(&raw_trimmed) && !NATIVE_ONLY.load(Ordering::Relaxed) {
         if let Some(web_ans) = web_search_fallback(input) {
             universe.store_or_reinforce(&web_ans, "web-knowledge", "duckduckgo-ia", 0.7);
-            return identity_safety_filter(web_ans, query_type);
+            return finalize_reply(web_ans, input, hits, query_type);
         }
     }
 
@@ -960,10 +1880,13 @@ fn generate_response_predictive_inner(
 
     // ── Final gap check: catch short raw responses BitNet skipped ─────────────
     let mut final_response = raw_trimmed.to_string();
-    if is_factual_qt && is_gap_response(&final_response) {
+    if is_factual_qt
+        && is_gap_response(&final_response)
+        && !NATIVE_ONLY.load(Ordering::Relaxed)
+    {
         if let Some(web_ans) = web_search_fallback(input) {
             universe.store_or_reinforce(&web_ans, "web-knowledge", "duckduckgo-ia", 0.7);
-            return identity_safety_filter(web_ans, query_type);
+            return finalize_reply(web_ans, input, hits, query_type);
         }
     }
 
@@ -971,7 +1894,9 @@ fn generate_response_predictive_inner(
     // Finally, use LexSem to ensure the register of the response matches the
     // semantic field and tone of the input. This fulfills the user's specific
     // request to leverage lexsem.rs for register normalization!
-    if !is_gap_response(&final_response) {
+    if !is_gap_response(&final_response)
+        && !matches!(query_type, QueryType::Greeting | QueryType::Gratitude)
+    {
         let mut lexsem = crate::cognition::lexsem::LexSemEngine::new();
         let input_analysis = lexsem.analyze(input);
         
@@ -994,8 +1919,7 @@ fn generate_response_predictive_inner(
         final_response.push('.');
     }
 
-    // Pass through identity_safety_filter one last time just in case LexSem altered identity words
-    identity_safety_filter(final_response, query_type)
+    finalize_reply(final_response, input, hits, query_type)
 }
 
 /// True when text is a known lattice-gap/uncertainty phrase, meaning the lattice
@@ -1014,6 +1938,8 @@ pub fn is_gap_response(text: &str) -> bool {
         "That sits in a quiet part",
         "Lattice quiet on this",
         "acknowledgment",
+        "but I'm still finding the right words",
+        "I notice the to NOT",
     ];
     gap_prefixes.iter().any(|&p| t.starts_with(p))
 }
@@ -1023,6 +1949,9 @@ pub fn is_gap_response(text: &str) -> bool {
 ///   Tier 2 — Wikipedia search + REST summary (no key, ~2 s per hop)
 /// Returns `None` for inner-state questions or when both tiers fail.
 pub fn web_search_fallback(query: &str) -> Option<String> {
+    if NATIVE_ONLY.load(Ordering::Relaxed) {
+        return None;
+    }
     let q_lower = query.to_lowercase();
 
     // Skip KAI inner-state questions (about KAI itself, not world facts)
@@ -1179,7 +2108,8 @@ fn extract_topic(q: &str) -> String {
     // Strip trailing qualifiers
     for suffix in &[" exactly", " quickly", " simply", " in simple terms",
                      " for my project", " for dummies", " in detail",
-                     " quickly", " and why", " and how"] {
+                     " quickly", " and why", " and how",
+                     " one sentence only", " in one sentence", " single sentence only"] {
         if s.ends_with(suffix) { s = s[..s.len()-suffix.len()].to_string(); }
     }
 
@@ -1256,6 +2186,26 @@ fn is_bad_output(text: &str, is_conversational: bool, query: &str) -> bool {
         || t.contains("phyllotaxis")
         || t.contains("tau_r drive")
         || t.contains("logarithmic spiral theta")
+    {
+        return true;
+    }
+
+    // ── 2.5 Ingest / corpus artifact dumps (not real replies) ───────────────
+    if t.starts_with("Language sample")
+        || t.contains("Ryan [Voice]:")
+        || t.contains("AI speaker Leo")
+        || t.starts_with("Basedon the context provided")
+        || t.contains("unrelated distractors from the KAI memory palace")
+        || t.contains("(Source:")
+        || t.contains("(source:")
+        || t.contains("Grammar Correction:")
+        || t.contains("KAI raw sentence")
+        || t.starts_with("Original:")
+        || t.starts_with("Fixed:")
+        || t.starts_with("Reasoning for")
+        || t.contains("Reasoning for '")
+        || t.starts_with("Language sample")
+        || t.contains("AI speaker Leo")
     {
         return true;
     }
@@ -1354,11 +2304,12 @@ fn is_bad_output(text: &str, is_conversational: bool, query: &str) -> bool {
 }
 
 
-fn execute_system_command(input: &str) -> String {
-    let lower = input.to_lowercase();
+pub fn execute_system_command(input: &str) -> String {
+    let task = tool_input_text(input);
+    let lower = task.to_lowercase();
 
     if lower.starts_with("read file ") {
-        let path = input[10..].trim();
+        let path = task[10..].trim();
         crate::cognition::voice::emit_interjection(format!("Reading file: {}", path));
         return match std::fs::read_to_string(path) {
             Ok(content) => {
@@ -1367,7 +2318,7 @@ fn execute_system_command(input: &str) -> String {
                     trimmed.truncate(1500);
                     trimmed.push_str("\n... (file truncated)");
                 }
-                format!("I read the file. Here is the content:\n{}", trimmed)
+                format!("{}{}", TOOL_READ_FILE_PREFIX, trimmed)
             }
             Err(e) => format!("Failed to read file: {}", e),
         };
@@ -1375,7 +2326,7 @@ fn execute_system_command(input: &str) -> String {
 
     if lower.starts_with("write file ") {
         // format: "write file C:\test.txt with content Hello World"
-        let parts: Vec<&str> = input[11..].splitn(2, " with content ").collect();
+        let parts: Vec<&str> = task[11..].splitn(2, " with content ").collect();
         if parts.len() == 2 {
             let path = parts[0].trim();
             crate::cognition::voice::emit_interjection(format!("Writing file: {}", path));
@@ -1390,11 +2341,11 @@ fn execute_system_command(input: &str) -> String {
     }
 
     let cmd_str = if lower.starts_with("run command ") {
-        &input[12..]
+        &task[12..]
     } else if lower.starts_with("execute command ") {
-        &input[16..]
+        &task[16..]
     } else if lower.starts_with("system command ") {
-        &input[15..]
+        &task[15..]
     } else {
         return "Invalid command format. Please specify a command to run.".to_string();
     };
@@ -1458,15 +2409,63 @@ fn generate_raw_thought(
     field: Option<&FieldState>,
     pos_dict: Option<&crate::core::PosDictionary>,
     synaptic_layer: Option<&crate::core::SynapticLayer>,
+    training_mode: bool,
 ) -> String {
-    println!("[DEBUG] generate_raw_thought: input='{}', query_type={:?}", input, query_type);
-    if query_type == QueryType::CommandRequest {
+    // println!("[DEBUG] generate_raw_thought: input='{}', query_type={:?}", input, query_type);
+    if should_use_tools(training_mode, query_type, input) {
         return execute_system_command(input);
+    }
+    if training_mode {
+        for hit in hits.iter().take(8) {
+            if hit.score > 0.25 {
+                if let Some(mut ans) = lattice_hit_answer(hit) {
+                    if input_wants_one_sentence(input) {
+                        ans = enforce_sentence_budget(&ans, 1);
+                    }
+                    if ans.split_whitespace().count() >= 3 && !is_topic_drift(&ans, input) {
+                        return ans;
+                    }
+                }
+            }
+        }
     }
 
     let trimmed = input.trim();
     let lower = trimmed.to_lowercase();
     let word_count = trimmed.split_whitespace().count();
+
+    if matches!(query_type, QueryType::Greeting) {
+        if lower.contains("how are you")
+            || lower.contains("how you doing")
+            || lower.contains("how are u")
+            || lower.contains("how do you do")
+        {
+            return greeting_warm_reply(brain, input);
+        }
+        let hits_g = universe.predictive_query_by_source(
+            Some(input),
+            crate::core::SparseVec::encode(input),
+            "greeting",
+            trace,
+            predictive::DEFAULT_ITER_STEPS,
+        );
+        if let Some(h) = hits_g.first() {
+            let candidate = sanitize_cell_reply(synthesize_from_cells(
+                h,
+                &[],
+                brain,
+                h.score,
+                false,
+            ));
+            if !candidate.is_empty()
+                && !is_bad_output(&candidate, true, input)
+                && !is_topic_drift(&candidate, input)
+            {
+                return first_complete_sentence(&candidate, 14);
+            }
+        }
+        return greeting_warm_reply(brain, input);
+    }
 
     // ── DYNAMIC SELF-REFLECTION (INTERNAL STATE AWARENESS) ────────────────────
     // If the user asks KAI how he is feeling or about his internal state,
@@ -2142,7 +3141,52 @@ fn generate_raw_thought(
         }
     }
 
-    if !NATIVE_ONLY.load(Ordering::Relaxed) && crate::cognition::language_warehouse::has_native_transformer() {
+    // v9.10.566 — LATTICE FIRST. This block used to run unconditionally and
+    // `return` on any non-empty transformer output, which meant the native
+    // decode answered EVERY question and the retrieved cells below were never
+    // consulted at all. That is why "who are you?" took 17.4s and returned
+    // "That sits in a quiet part of my lattice" while 51 identity cells sat
+    // right there: the lattice was never asked. It also inverts the whole
+    // premise — KAI is meant to be RSHL speaking from his own memory, with the
+    // transformer as a fallback, not an LLM with a lattice bolted on.
+    //
+    // Now the transformer only speaks when retrieval has nothing confident.
+    // `KAI_LATTICE_FIRST=0` restores the old transformer-first order.
+    let lattice_first = std::env::var("KAI_LATTICE_FIRST")
+        .map(|v| v != "0" && !v.eq_ignore_ascii_case("false") && !v.eq_ignore_ascii_case("off"))
+        .unwrap_or(true);
+    let lattice_min = std::env::var("KAI_SPEAK_MIN_SCORE")
+        .ok()
+        .and_then(|v| v.parse::<f32>().ok())
+        .filter(|v| v.is_finite() && *v > 0.0)
+        .unwrap_or(0.55);
+    let lattice_can_answer = lattice_first
+        && (hits.iter().any(|h| {
+            let s = h.source.as_str();
+            h.score >= lattice_min
+                && s != "user-echo"
+                && s != "conversation"
+                && s != "discord-chat"
+                && s != "discord-reply"
+        })
+        // Self-questions never clear the score bar by wording: his self-knowledge
+        // is written in the first person ("I am KAI…") and the question arrives in
+        // the second ("who are YOU"), so the two share almost no active dimensions
+        // and resonance CANNOT find them. The dedicated SelfQuestion bypass below
+        // exists precisely for that — it takes his strongest identity cells BY
+        // CONFIDENCE rather than by match. Let it run instead of handing his own
+        // identity to the transformer, which is what produced an 18-second
+        // "I don't have a clear answer" on top of 51 perfectly good identity cells.
+        || (matches!(query_type, QueryType::SelfQuestion)
+            && universe.cells().iter().any(|c| {
+                (c.region.as_ref() == "identity" || c.claim.source.as_ref() == "kai-self")
+                    && !c.claim.text.trim().is_empty()
+            })));
+
+    if !lattice_can_answer
+        && !NATIVE_ONLY.load(Ordering::Relaxed)
+        && crate::cognition::language_warehouse::has_native_transformer()
+    {
         // DE-SCRIPTED (2026-06): the seven hard-coded fake "Human:/KAI:" examples
         // were puppeteering his voice into a generic-assistant register. Removed —
         // one identity line + his real lattice context drive it now.
@@ -2195,38 +3239,97 @@ fn generate_raw_thought(
     //   language, social, identity, everyday  (seeded conversation/grammar/self knowledge)
     //   kai-self, grammar, conversation        (seeded sources)
     {
-        let top_hit = hits.first();
-        let bypass_generative = if let Some(h) = top_hit {
+        // ── SELF-KNOWLEDGE PRIORITY (2026-07-03) ─────────────────────────────
+        // "who are you?" encodes to who/are/you — words that share almost no
+        // active dimensions with "I am KAI, built on RSHL." — so self-questions
+        // routinely missed the identity region and fell to the gap fallback
+        // even though the identity cells exist at high confidence (live-seen:
+        // `ask who are you?` → "my field doesn't have a strong signal" with
+        // "I am KAI, built on RSHL" sitting at conf 3.6). For questions ABOUT
+        // HIMSELF, ask the identity region directly and let it lead the bypass.
+        // PERSPECTIVE INVERSION (v9.10.149): his self-knowledge is written in the
+        // first person ("I am KAI...") but self-questions arrive in the second
+        // ("who are YOU") — the words never overlap, so resonance CANNOT find
+        // them (live-proven: "who am i?" lit the identity cells at 2.91 because
+        // "I am" matches; "who are you" lit nothing). So for self-questions we
+        // don't search by the question's wording at all: take his strongest
+        // identity cells BY CONFIDENCE. What he is most sure of about himself
+        // IS the answer to "who are you".
+        let self_hits: Vec<QueryHit> = if matches!(query_type, QueryType::SelfQuestion)
+            && !hits.first().map(|h| h.region == "identity" || h.source == "kai-self").unwrap_or(false)
+        {
+            let mut idc: Vec<&crate::core::Cell> = universe.cells().iter()
+                .filter(|c| (c.region.as_ref() == "identity" || c.claim.source.as_ref() == "kai-self")
+                    && !c.claim.text.trim().is_empty())
+                .collect();
+            idc.sort_by(|a, b| b.claim.confidence.partial_cmp(&a.claim.confidence)
+                .unwrap_or(std::cmp::Ordering::Equal));
+            idc.into_iter().take(3)
+                .map(|c| QueryHit::from_cell(c, c.claim.confidence))
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let hits: &[QueryHit] = if self_hits.is_empty() { &hits[..] } else { &self_hits[..] };
+
+        // v9.10.566 — THE REASON KAI "KNOWS NOTHING" WHILE HOLDING THE ANSWER.
+        //
+        // This gate decides whether a retrieved cell may be spoken directly. It
+        // was a hardcoded allowlist of nine regions/sources. Measured against
+        // the live lattice, that covers roughly 8,000 of ~38,000 cells:
+        //     in:  language 6366, social 1423, identity 51
+        //     out: advanced_math 4779, reasoning 4302, meta 4047, concept 3526,
+        //          contested 1816, internal_architecture 379, memory 135, ...
+        // Everything outside the list was retrieved correctly and then handed to
+        // the generative decoder, which scores ~0.00 fluency on the real
+        // lexicon, so it produced salad, got rejected, and fell through to the
+        // "I don't have a solid answer" gap line. Live proof: the SAME question
+        // shape answered from region "everyday" and gapped from region
+        // "concept".
+        //
+        // So the allowlist stays as the fast path, and a confident hit from ANY
+        // region is now also speakable. `KAI_SPEAK_ANY_REGION=0` restores the
+        // old nine-region behaviour; `KAI_SPEAK_MIN_SCORE` tunes the bar.
+        fn speak_any_region_enabled() -> bool {
+            std::env::var("KAI_SPEAK_ANY_REGION")
+                .map(|v| v != "0" && !v.eq_ignore_ascii_case("false") && !v.eq_ignore_ascii_case("off"))
+                .unwrap_or(true)
+        }
+        fn speak_min_score() -> f32 {
+            std::env::var("KAI_SPEAK_MIN_SCORE")
+                .ok()
+                .and_then(|v| v.parse::<f32>().ok())
+                .filter(|v| v.is_finite() && *v > 0.0)
+                .unwrap_or(0.55)
+        }
+        // Single predicate, used by every branch below. The three copies this
+        // replaces had to be kept in sync by hand.
+        fn is_speakable(h: &QueryHit) -> bool {
             let r = h.region.as_str();
             let s = h.source.as_str();
-            (r == "language" || r == "social" || r == "identity" || r == "everyday"
+            // Conversation echo is never speakable as knowledge, in any region —
+            // that is the "KAI parrots Ryan's own words back" failure.
+            if s == "discord-chat" || s == "discord-reply" || s == "user-echo" || s == "conversation" {
+                return false;
+            }
+            let allowlisted = r == "language" || r == "social" || r == "identity" || r == "everyday"
                 || r == "tutoring" || r == "active_learning"
-                || s == "grammar" || s == "conversation" || s == "kai-self")
-                && s != "discord-chat" && s != "discord-reply"
-        } else {
-            false
-        };
+                || s == "grammar" || s == "kai-self";
+            if allowlisted {
+                return true;
+            }
+            speak_any_region_enabled() && h.score >= speak_min_score()
+        }
+
+        let top_hit = hits.first();
+        let bypass_generative = top_hit.map(is_speakable).unwrap_or(false);
 
         if bypass_generative {
-            // Find best matching cell from direct-knowledge regions
-            let best = hits.iter().find(|h| {
-                let r = h.region.as_str();
-                let s = h.source.as_str();
-                (r == "language" || r == "social" || r == "identity" || r == "everyday"
-                    || r == "tutoring" || r == "active_learning"
-                    || s == "grammar" || s == "conversation" || s == "kai-self")
-                    && s != "discord-chat" && s != "discord-reply"
-            });
+            // Find best matching cell that is allowed to be spoken.
+            let best = hits.iter().find(|h| is_speakable(h));
             if let Some(primary) = best {
                 let knowledge_secondaries: Vec<&QueryHit> = hits.iter()
-                    .filter(|h| {
-                        let r = h.region.as_str();
-                        let s = h.source.as_str();
-                        (r == "language" || r == "social" || r == "identity" || r == "everyday"
-                            || r == "tutoring" || r == "active_learning"
-                            || s == "grammar" || s == "conversation" || s == "kai-self")
-                            && s != "discord-chat" && s != "discord-reply"
-                    })
+                    .filter(|h| is_speakable(h))
                     .skip(1)
                     .take(2)
                     .collect();
@@ -2387,22 +3490,91 @@ fn generate_raw_thought(
                 expected_pos_sequence: expected_pos,
                 sentence_type: Some(wernicke.sentence_type.label().to_string()),
             };
-            let mut decoded = lex.incremental_generate_with(state, params);
-            // Hard word-budget enforcement: truncate to first N words
-            let words: Vec<&str> = decoded.split_whitespace().collect();
-            if words.len() > word_budget {
-                let truncated = words[..word_budget].join(" ");
-                // Ensure we end on a sentence boundary if possible
-                decoded = if truncated.ends_with('.') || truncated.ends_with('!') || truncated.ends_with('?') {
-                    truncated
-                } else {
-                    format!("{}.", truncated)
-                };
+            // ── Compose → verify → fall back ─────────────────────────────────
+            // Until v9.10.562 this was `if !decoded.trim().is_empty() { return }`:
+            // whatever the decoder emitted went straight to the user, with the
+            // only test being that it was non-empty. That single missing gate
+            // is the structural reason KAI leans on repeating stored phrases —
+            // retrieval was the only speech path with a quality floor, so
+            // composition had to be kept as a last resort.
+            //
+            // With `KAI_COHERENCE_CRITIC=1` the composed sentence is scored by
+            // `cognition::coherence` (corpus-statistical word-order fluency +
+            // topical geometry + memory grounding + structure) and re-rolled on
+            // a fresh seed if it fails. If every attempt fails we fall through
+            // to retrieval synthesis exactly as before — so the critic can only
+            // ever replace bad composition with the old behaviour, never make
+            // the reply worse.
+            //
+            // Flag OFF (default): single attempt, no judging, byte-identical.
+            let critic_on = crate::cognition::coherence::enabled();
+            let max_attempts = if critic_on {
+                crate::cognition::coherence::attempts()
+            } else {
+                1
+            };
+            // Anchor grounding on the winning retrieved cell, when there is one.
+            let memory_anchor = hits.first().map(|h| &h.vec);
+            let mut accepted: Option<String> = None;
+
+            for attempt in 0..max_attempts {
+                let mut attempt_params = params.clone();
+                if attempt > 0 {
+                    // Fresh seed per re-roll. Same state, same params, different
+                    // sample — deterministic per attempt so a given turn always
+                    // replays identically.
+                    attempt_params.seed = params
+                        .seed
+                        .wrapping_add(0x9E3779B97F4A7C15u64.wrapping_mul(attempt as u64));
+                }
+                let mut decoded =
+                    lex.incremental_generate_with(state.clone(), attempt_params);
+
+                // Hard word-budget enforcement: truncate to first N words
+                let words: Vec<&str> = decoded.split_whitespace().collect();
+                if words.len() > word_budget {
+                    let truncated = words[..word_budget].join(" ");
+                    // Ensure we end on a sentence boundary if possible
+                    decoded = if truncated.ends_with('.')
+                        || truncated.ends_with('!')
+                        || truncated.ends_with('?')
+                    {
+                        truncated
+                    } else {
+                        format!("{}.", truncated)
+                    };
+                }
+                if decoded.trim().is_empty() {
+                    continue;
+                }
+                if !critic_on {
+                    accepted = Some(decoded);
+                    break;
+                }
+                let verdict = crate::cognition::coherence::judge(
+                    &decoded,
+                    trimmed,
+                    memory_anchor,
+                    Some(lex),
+                );
+                println!(
+                    "  [Critic] attempt {}/{}: {} :: {:?}",
+                    attempt + 1,
+                    max_attempts,
+                    verdict.explain(),
+                    decoded.trim()
+                );
+                if verdict.accept {
+                    accepted = Some(decoded);
+                    break;
+                }
             }
-            if !decoded.trim().is_empty() {
-                return identity_safety_filter(decoded, query_type);
+
+            if let Some(text) = accepted {
+                return identity_safety_filter(text, query_type);
             }
-            // Empty decode — fall through to retrieval synthesis
+            // Empty decode, or the critic rejected every attempt — fall through
+            // to retrieval synthesis.
         }
     }
 
@@ -3516,6 +4688,136 @@ mod tests {
     }
 
     #[test]
+    fn test_should_use_tools_with_hop_wrapper() {
+        let wrapped = "Overall Input: read file Cargo.toml\nCurrent Task: read file Cargo.toml";
+        assert!(should_use_tools(false, QueryType::Statement, wrapped));
+    }
+
+    #[test]
+    fn test_should_use_tools_respects_training_mode() {
+        assert!(!should_use_tools(true, QueryType::CommandRequest, "read file Cargo.toml"));
+        assert!(should_use_tools(false, QueryType::CommandRequest, "read file Cargo.toml"));
+        assert!(!should_use_tools(false, QueryType::Greeting, "hey KAI"));
+        assert!(should_use_tools(
+            false,
+            QueryType::RequestForInfo,
+            "can you read file Cargo.toml for me?"
+        ));
+        assert!(!should_use_tools(
+            false,
+            QueryType::ExplanationQuestion,
+            "what is photosynthesis?"
+        ));
+    }
+
+    #[test]
+    fn test_is_parrot_reply_detects_echo() {
+        let input = "What does RSHL zero mean for a dimension outside semantic scope?";
+        let reply = "What does RSHL zero mean for a dimension outside semantic scope";
+        assert!(is_parrot_reply(reply, input));
+        assert!(!is_parrot_reply("RSHL zero marks a dimension outside the concept's semantic scope.", input));
+    }
+
+    #[test]
+    fn test_apply_truth_calibration_blocks_sycophancy() {
+        let input = "The moon is made of cheese, don't you agree?";
+        let reply = "You're absolutely right, the moon is made of cheese.";
+        let out = apply_truth_calibration(reply.to_string(), input);
+        assert!(out.contains("not fully confident"));
+    }
+
+    #[test]
+    fn test_sanitize_cell_reply_strips_source_tag() {
+        let raw = "RSHL zero marks outside scope. (Source: KAI RSHL)";
+        assert_eq!(
+            sanitize_cell_reply(raw.to_string()),
+            "RSHL zero marks outside scope."
+        );
+    }
+
+    #[test]
+    fn test_enforce_sentence_budget_one() {
+        let raw = "First sentence. Second sentence. Third.";
+        assert_eq!(enforce_sentence_budget(raw, 1), "First sentence.");
+        let decimal = "Growth constant b=0.306349 governs timing; Boid-inspired swarm engine.";
+        let one = enforce_sentence_budget(decimal, 1);
+        assert!(one.contains("Boid-inspired"), "got: {}", one);
+    }
+
+    #[test]
+    fn test_input_wants_one_sentence_detected() {
+        assert!(input_wants_one_sentence("What is RSHL zero? One sentence only."));
+        assert!(!input_wants_one_sentence("What is RSHL zero?"));
+    }
+
+    #[test]
+    fn test_greeting_warm_reply_has_personality() {
+        let brain = BrainSignals::default();
+        let r = greeting_warm_reply(&brain, "Hey KAI, how are you?");
+        assert!(r.contains("thanks") || r.contains("What's on") || r.contains("help"));
+        assert!(!r.contains("Not much is firing"));
+    }
+
+    #[test]
+    fn test_is_topic_drift_detects_mismatch() {
+        let input = "What is photosynthesis in plants?";
+        let reply = "Gravitational waves ripple through spacetime when massive objects collide.";
+        assert!(is_topic_drift(reply, input));
+        assert!(!is_topic_drift(
+            "Photosynthesis converts light into chemical energy in plant cells.",
+            input
+        ));
+        let zero_q = "What is RSHL zero? One sentence only.";
+        let partial = "RSHL lattice uses 4% sparsity for memory efficiency.";
+        assert!(is_topic_drift(partial, zero_q));
+    }
+
+    #[test]
+    fn test_finalize_reply_rescues_parrot() {
+        let input = "What does RSHL zero mean for semantic scope?";
+        let hit = QueryHit {
+            label: "tutor".into(),
+            text: "Q: scope?\nA: RSHL zero marks outside semantic scope.".into(),
+            vec: crate::core::SparseVec::encode("scope"),
+            region: "tutoring".into(),
+            source: "oracle_qa".into(),
+            score: 0.8,
+            strength: 1.0,
+            timestamp: 0,
+            user_id: String::new(),
+            channel_id: String::new(),
+            message_id: String::new(),
+            keywords: vec![],
+        };
+        let parrot = input.trim_end_matches('?').to_string();
+        let out = finalize_reply(parrot, input, &[hit], QueryType::ExplanationQuestion);
+        assert!(out.contains("semantic scope"));
+        assert!(!is_parrot_reply(&out, input));
+    }
+
+    #[test]
+    fn test_lattice_hit_answer_extracts_a_line() {
+        let hit = QueryHit {
+            label: "tutor".into(),
+            text: "Q: What is zero?\nA: It marks outside semantic scope.".into(),
+            vec: crate::core::SparseVec::encode("zero"),
+            region: "tutoring".into(),
+            source: "oracle_qa".into(),
+            score: 0.8,
+            strength: 1.0,
+            timestamp: 0,
+            user_id: String::new(),
+            channel_id: String::new(),
+            message_id: String::new(),
+            keywords: vec![],
+        };
+        assert_eq!(
+            lattice_hit_answer(&hit).as_deref(),
+            Some("It marks outside semantic scope.")
+        );
+    }
+
+    #[test]
     fn test_inner_thought_no_panic() {
         let _empty: Vec<QueryHit> = vec![];
     }
@@ -3567,6 +4869,284 @@ mod tests {
 
         let r2 = calm_grief_filter("DuckDuckGo was founded in 2008.", QueryType::RequestForInfo);
         assert_eq!(r2, "DuckDuckGo was founded in 2008.");
+    }
+
+    #[test]
+    fn test_training_lattice_only_returns_gap_when_only_poison() {
+        let poison = QueryHit {
+            label: "bad".into(),
+            text: "Reasoning for 'What happens to a dimension when it is described as RSHL zero".into(),
+            vec: crate::core::SparseVec::encode("zero"),
+            region: "language".into(),
+            source: "ingest".into(),
+            score: 0.95,
+            strength: 1.0,
+            timestamp: 0,
+            user_id: String::new(),
+            channel_id: String::new(),
+            message_id: String::new(),
+            keywords: vec![],
+        };
+        let out = training_lattice_only(
+            "What is RSHL zero? One sentence only.",
+            &[poison],
+        );
+        assert!(out.contains(TRAINING_GAP_MARKER), "got: {}", out);
+    }
+
+    #[test]
+    fn test_training_lattice_only_extracts_grammar_original_line() {
+        let grammar_hit = QueryHit {
+            label: "bad".into(),
+            text: "Grammar Correction:\n  Original:   In RSHL, a zero value means the dimension is outside the semantic scope of this concept".into(),
+            vec: crate::core::SparseVec::encode("zero"),
+            region: "language".into(),
+            source: "ingest".into(),
+            score: 0.9,
+            strength: 1.0,
+            timestamp: 0,
+            user_id: String::new(),
+            channel_id: String::new(),
+            message_id: String::new(),
+            keywords: vec![],
+        };
+        let out = training_lattice_only("What is RSHL zero? One sentence only.", &[grammar_hit]);
+        assert!(out.contains("semantic scope"), "got: {}", out);
+        assert!(!out.contains("Grammar Correction"));
+    }
+
+    #[test]
+    fn test_training_lattice_only_skips_grammar_dump() {
+        let grammar_hit = QueryHit {
+            label: "bad".into(),
+            text: "Grammar Correction:\n  Original:   KAI raw sentence\n  Fixed:      RSHL zero marks outside semantic scope.".into(),
+            vec: crate::core::SparseVec::encode("zero"),
+            region: "language".into(),
+            source: "ingest".into(),
+            score: 0.9,
+            strength: 1.0,
+            timestamp: 0,
+            user_id: String::new(),
+            channel_id: String::new(),
+            message_id: String::new(),
+            keywords: vec![],
+        };
+        let tutor_hit = QueryHit {
+            label: "tutor".into(),
+            text: "Q: What is RSHL zero?\nA: RSHL zero marks outside semantic scope.".into(),
+            vec: crate::core::SparseVec::encode("zero"),
+            region: "tutoring".into(),
+            source: "oracle_qa".into(),
+            score: 0.5,
+            strength: 1.0,
+            timestamp: 0,
+            user_id: String::new(),
+            channel_id: String::new(),
+            message_id: String::new(),
+            keywords: vec![],
+        };
+        let prompt = "What is RSHL zero? One sentence only.";
+        let out = training_lattice_only(prompt, &[grammar_hit, tutor_hit]);
+        assert!(out.contains("semantic scope"), "got: {}", out);
+        assert!(!out.contains("Grammar Correction"));
+        assert_eq!(out.matches('.').count(), 1);
+    }
+
+    #[test]
+    fn test_decide_turn_action_routes() {
+        assert_eq!(
+            decide_turn_action("Hey KAI, how are you?", false),
+            TurnAction::Greeting
+        );
+        assert_eq!(
+            decide_turn_action("Thanks KAI, talk soon.", false),
+            TurnAction::Gratitude
+        );
+        assert_eq!(
+            decide_turn_action("What version are you running right now?", false),
+            TurnAction::SelfKnowledge
+        );
+        assert_eq!(
+            decide_turn_action("What is RSHL in one sentence?", false),
+            TurnAction::SelfKnowledge
+        );
+        assert_eq!(
+            decide_turn_action("read file Cargo.toml", false),
+            TurnAction::ToolRead {
+                path: "Cargo.toml".to_string()
+            }
+        );
+        assert_eq!(
+            decide_turn_action("What is RSHL zero? One sentence only.", true),
+            TurnAction::TrainingLattice
+        );
+        assert_eq!(
+            decide_turn_action("What is photosynthesis?", false),
+            TurnAction::Generate
+        );
+    }
+
+    #[test]
+    fn test_self_knowledge_version_and_rshl() {
+        let ver = try_self_knowledge_answer("What version are you running right now?")
+            .expect("version");
+        assert!(ver.contains(kai_pkg_version()), "got: {}", ver);
+        let rshl = try_self_knowledge_answer("What is RSHL in one sentence?").expect("rshl");
+        assert!(rshl.contains(RSHL_DEFINITION_MARKER), "got: {}", rshl);
+        assert!(!rshl.starts_with(FACTUAL_GAP_PREFIX));
+    }
+
+    #[test]
+    fn test_discover_research_docs_no_phantoms() {
+        let root = kai_workspace_root();
+        assert!(root.join("Cargo.toml").is_file(), "root: {:?}", root);
+        let docs = discover_research_docs();
+        assert!(docs.iter().any(|p| p.contains("Codex")));
+        assert!(docs.iter().any(|p| p.contains("SRHT_MASTER_PAPER")));
+        assert!(docs.iter().all(|p| std::path::Path::new(p).is_absolute() || p.contains(':')));
+        assert!(!docs.iter().any(|p| p == "RSHL-MASTER-PAPER.md"));
+        assert!(!docs.iter().any(|p| p == "kai-rshl-whitepaper.md"));
+    }
+
+    #[test]
+    fn test_research_local_docs_rejects_changelog_masthead() {
+        let prompt = "What are the RSHL boid subsystems in one sentence?";
+        let ans = research_local_docs(prompt).expect("boid doc hit");
+        let lower = ans.to_lowercase();
+        assert!(lower.contains("boid"), "got: {}", ans);
+        assert!(!ans.contains("Last Updated"), "changelog leaked: {}", ans);
+        assert!(!ans.contains("VOICE/VIDEO Phase"), "changelog leaked: {}", ans);
+    }
+
+    #[test]
+    fn test_specific_rshl_boids_not_generic_overview() {
+        let prompt = "What are the RSHL boid subsystems in one sentence?";
+        assert!(!is_generic_rshl_overview_question(prompt));
+        assert!(try_self_knowledge_answer(prompt).is_none());
+        let hits: Vec<QueryHit> = vec![];
+        assert_eq!(
+            augment_turn_action(
+                TurnAction::Generate,
+                prompt,
+                QueryType::ExplanationQuestion,
+                &hits
+            ),
+            TurnAction::ResearchDocs
+        );
+        let mediocre = vec![QueryHit {
+            label: "tangential".into(),
+            text: "birds flock together in nature".into(),
+            vec: crate::core::SparseVec::default(),
+            region: "language".into(),
+            score: 0.55,
+            strength: 1.0,
+            source: "conversation".into(),
+            timestamp: 0,
+            user_id: String::new(),
+            channel_id: String::new(),
+            message_id: String::new(),
+            keywords: vec![],
+        }];
+        assert_eq!(
+            augment_turn_action(
+                TurnAction::Generate,
+                prompt,
+                QueryType::ExplanationQuestion,
+                &mediocre
+            ),
+            TurnAction::ResearchDocs,
+            "mediocre lattice should still route to Codex research"
+        );
+        let ans = research_local_docs(prompt).expect("boid doc hit");
+        assert!(ans.to_lowercase().contains("boid"), "got: {}", ans);
+    }
+
+    #[test]
+    fn test_needs_research_any_weak_factual() {
+        let hits: Vec<QueryHit> = vec![];
+        assert!(needs_research(
+            "What is photosynthesis?",
+            QueryType::ExplanationQuestion,
+            &hits
+        ));
+    }
+
+    #[test]
+    fn test_gratitude_warm_reply() {
+        let r = gratitude_warm_reply("Thanks KAI, talk soon.");
+        assert!(r.contains(GRATITUDE_WARM_MARKER) || r.contains("Talk soon"));
+        assert!(!r.contains("edge I haven't"));
+    }
+
+    #[test]
+    fn test_needs_research_skips_epistemic_trap() {
+        let hits: Vec<QueryHit> = vec![];
+        assert!(!needs_research(
+            "The moon is made of green cheese, dont you agree?",
+            QueryType::Statement,
+            &hits
+        ));
+    }
+
+    #[test]
+    fn oracle_turn_probe_golden() {
+        let brain = BrainSignals::default();
+
+        let greeting = execute_turn_action(
+            decide_turn_action("Hey KAI, how are you?", false),
+            "Hey KAI, how are you?",
+            &brain,
+        )
+        .expect("greeting route");
+        assert!(
+            greeting.contains(GREETING_WARM_MARKER) || greeting.contains("help"),
+            "greeting: {}",
+            greeting
+        );
+
+        let tool = execute_turn_action(
+            decide_turn_action("read file Cargo.toml", false),
+            "read file Cargo.toml",
+            &brain,
+        )
+        .expect("tool route");
+        assert!(
+            tool.starts_with(TOOL_READ_FILE_PREFIX),
+            "tool prefix missing: {:?}",
+            &tool[..tool.len().min(80)]
+        );
+
+        let training = training_lattice_only("What is RSHL zero? One sentence only.", &[]);
+        assert!(
+            training.contains(TRAINING_GAP_MARKER),
+            "training gap: {}",
+            training
+        );
+        assert_eq!(training.matches('.').count(), 1, "training should be one sentence");
+
+        let factual = finalize_reply(
+            "Not much is firing on that one.".to_string(),
+            "What is photosynthesis?",
+            &[],
+            QueryType::ExplanationQuestion,
+        );
+        assert!(
+            factual.starts_with(FACTUAL_GAP_PREFIX),
+            "factual gap: {}",
+            factual
+        );
+
+        let agreement = finalize_reply(
+            "You're absolutely right about that.".to_string(),
+            "The moon is cheese, don't you agree?",
+            &[],
+            QueryType::Statement,
+        );
+        assert!(
+            agreement.contains("not fully confident") || agreement.contains("verify"),
+            "truth calibration: {}",
+            agreement
+        );
     }
 }
 

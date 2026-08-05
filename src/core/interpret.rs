@@ -100,7 +100,7 @@ pub fn get_feature_map() -> Arc<RwLock<Option<SemanticFeatureMap>>> {
 
 /// Helper to trigger a rebuild of the map in a background thread.
 /// Returns `true` if a new build was started, `false` if one is already running.
-pub fn rebuild_feature_map(universe_mtx: Arc<std::sync::Mutex<Universe>>) -> bool {
+pub fn rebuild_feature_map(universe_mtx: Arc<std::sync::RwLock<Universe>>) -> bool {
     if BUILD_IN_PROGRESS
         .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
         .is_err()
@@ -113,7 +113,7 @@ pub fn rebuild_feature_map(universe_mtx: Arc<std::sync::Mutex<Universe>>) -> boo
         println!("[Interpretability] Extracting cell data for Feature Map...");
         let mut extracted_data = Vec::new();
         {
-            let u = universe_mtx.lock().unwrap();
+            let u = universe_mtx.read().unwrap_or_else(|e| e.into_inner());
             let cells = u.cells();
             extracted_data.reserve(cells.len());
             for cell in cells {

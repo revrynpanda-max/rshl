@@ -99,6 +99,23 @@ fn is_suspicious_source(source: &str, confidence: f32, text: &str) -> bool {
     from_auto && confidence < 1.5 && is_question_text(text)
 }
 
+/// Fleet thrash / provider-error log lines that sometimes get bulk-ingested as
+/// "facts". These are scars for the *ops* layer (failure-memory / thrash proto),
+/// not lattice knowledge — quarantine them so geometry routes away.
+fn is_ops_thrash_poison(text: &str) -> bool {
+    let lower = text.to_lowercase();
+    lower.contains("neural_failure")
+        || lower.contains("neural_recovery")
+        || lower.contains("circuitbreaker")
+        || lower.contains("resource_exhausted")
+        || lower.contains("too_many_requests")
+        || lower.contains("http 429")
+        || (lower.contains("429") && (lower.contains("cooldown") || lower.contains("quota") || lower.contains("rate limit")))
+        || lower.contains("failing over to cerebras")
+        || lower.contains("failing over to ollama")
+        || lower.contains("provider gemini") && lower.contains("streak")
+}
+
 /// Returns `true` if this cell is "poisoned" — a question masquerading as
 /// a fact in KAI's lattice.
 fn is_poisoned(text: &str, source: &str, confidence: f32, region: &str) -> bool {
@@ -112,6 +129,10 @@ fn is_poisoned(text: &str, source: &str, confidence: f32, region: &str) -> bool 
     }
     // Secondary rule: automated source + low trust + interrogative structure
     if is_suspicious_source(source, confidence, text) {
+        return true;
+    }
+    // Tertiary: ops thrash log lines (429 storms, circuit-breaker spam)
+    if is_ops_thrash_poison(text) {
         return true;
     }
     false

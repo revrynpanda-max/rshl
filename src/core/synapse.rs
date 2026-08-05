@@ -99,6 +99,44 @@ pub struct Synapse {
     pub fire_count: u64,
 }
 
+/// What one LTD sweep did (or, in dry-run mode, would have done).
+///
+/// Returned rather than logged so the caller decides what to surface. The old
+/// `ltd_sweep()` returned `()`, which is part of why nobody noticed it had
+/// never run: there was nothing to print and nothing to assert on.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct LtdReport {
+    /// Synapses examined this pass.
+    pub examined: usize,
+    /// Synapses past the idle threshold that lost weight.
+    pub weakened: usize,
+    /// Synapses that fell below MIN_WEIGHT and were removed.
+    pub pruned: usize,
+    /// This pass performed the one-time post-load idle-clock rebase and
+    /// deliberately skipped decay. See `ltd_sweep_inner`.
+    pub rebased: bool,
+    /// Nothing was mutated.
+    pub dry_run: bool,
+}
+
+impl LtdReport {
+    pub fn summary(&self) -> String {
+        if self.rebased {
+            return format!(
+                "rebased idle clock for {} synapses (no decay this pass)",
+                self.examined
+            );
+        }
+        format!(
+            "{}examined={} weakened={} pruned={}",
+            if self.dry_run { "DRY-RUN " } else { "" },
+            self.examined,
+            self.weakened,
+            self.pruned
+        )
+    }
+}
+
 // ── SynapticLayer ─────────────────────────────────────────────────────────────
 
 /// Manages all explicit synaptic connections in the lattice.
@@ -123,6 +161,15 @@ pub struct SynapticLayer {
     /// Only consulted when SURPRISE_GATED is enabled. Set via set_surprise.
     #[serde(default)]
     pub surprise_level: f32,
+    /// Runtime-only. Set by the persistence loader; never written to disk (the
+    /// synapse blob uses a custom binary format and the metadata a separate
+    /// `SynapticLayerV4` struct, so `serde(skip)` keeps both formats unchanged).
+    ///
+    /// Guards the one-time idle-clock rebase in `ltd_sweep`. See the comment
+    /// there — without it, turning LTD on for the first time would treat the
+    /// ENTIRE persisted graph as simultaneously idle.
+    #[serde(skip)]
+    pub loaded_from_disk: bool,
 }
 
 impl SynapticLayer {
@@ -150,7 +197,21 @@ impl SynapticLayer {
         tick: u64,
         lattice_size: usize,
     ) {
-        self.tick = tick;
+        // v9.10.565 — THE LTD BUG. This was `self.tick = tick`, a plain
+        // assignment, and every one of the four production call sites passes
+        // `0` (oracle_server.rs:1373, 4375, 5126, 6099). So each co-firing
+        // RESET the layer's clock to zero, wiping whatever `ltd_sweep` had
+        // accumulated — `ltd_sweep` does increment (`self.tick += 1`), it just
+        // never got to keep the result. With the clock pinned at 0,
+        // `idle = tick - last_fire_tick` was always 0, never exceeded
+        // `LTD_IDLE_TICKS`, and LTD could not fire even once. The live brain
+        // shows exactly that: total_ltp 110,824,577 / total_ltd 0 /
+        // total_pruned 0, with max last_fire_tick across 6,996,506 synapses = 211.
+        //
+        // Monotonic now: a caller with a real tick can advance the clock, a
+        // caller passing 0 can no longer rewind it.
+        self.tick = self.tick.max(tick);
+        let now = self.tick;
         if labels.len() < 2 { return; }
 
         // Contradiction suppresses bonding — contradicting cells shouldn't wire together
@@ -173,7 +234,11 @@ impl SynapticLayer {
         for i in 0..labels.len() {
             for j in 0..labels.len() {
                 if i == j { continue; }
-                self.apply_ltp(&labels[i], &labels[j], ltp_gain, tick, lattice_size);
+                // Stamp with the layer's own monotonic clock, not the caller's
+                // argument — otherwise `last_fire_tick` is set to 0 by the four
+                // call sites that pass 0, and a synapse that just fired looks
+                // maximally stale the moment the clock does start moving.
+                self.apply_ltp(&labels[i], &labels[j], ltp_gain, now, lattice_size);
             }
         }
     }
@@ -208,9 +273,64 @@ impl SynapticLayer {
     ///
     /// Call this on a slow tick (e.g., every 30 world ticks).
     /// Prunes synapses that fall below MIN_WEIGHT.
-    pub fn ltd_sweep(&mut self) {
+    pub fn ltd_sweep(&mut self) -> LtdReport {
+        self.ltd_sweep_inner(false)
+    }
+
+    /// Identical analysis, mutates nothing. Run this first on a large brain: it
+    /// reports exactly what a live sweep would weaken and prune, so turning a
+    /// garbage collector loose on millions of edges is an informed decision
+    /// rather than a hopeful one.
+    pub fn ltd_sweep_dry(&mut self) -> LtdReport {
+        self.ltd_sweep_inner(true)
+    }
+
+    fn ltd_sweep_inner(&mut self, dry_run: bool) -> LtdReport {
         self.tick += 1;
         let tick = self.tick;
+        let examined = self.synapses.len();
+
+        // ── One-time idle-clock rebase after loading from disk ───────────────
+        //
+        // This guard is why turning LTD on does not detonate the graph. Because
+        // the clock was pinned at 0 for the whole life of this brain, all
+        // ~7M persisted synapses carry `last_fire_tick` in the range 0..=211.
+        // The instant the clock passes LTD_IDLE_TICKS, EVERY synapse — the ones
+        // firing constantly and the ones untouched for months alike — becomes
+        // "idle" simultaneously and decays at the same rate. That erases the
+        // recent-vs-stale distinction that LTD exists to draw, which is the
+        // opposite of the intended effect.
+        //
+        // The same reasoning covers a long shutdown: idleness should measure
+        // "not used while running", never wall-clock absence. So if the stamps
+        // are further behind the clock than the idle threshold, they carry no
+        // usable information — reset them and start the clock fairly from now.
+        if self.loaded_from_disk {
+            let max_lft = self.synapses.iter().map(|s| s.last_fire_tick).max().unwrap_or(0);
+            if tick.saturating_sub(max_lft) > LTD_IDLE_TICKS {
+                if dry_run {
+                    // Report the rebase without performing it, and leave the
+                    // flag armed so the first LIVE sweep still does it. A dry
+                    // run that silently consumed the one-shot rebase would let
+                    // the real sweep proceed straight to decaying everything.
+                    self.tick = self.tick.saturating_sub(1);
+                } else {
+                    self.loaded_from_disk = false;
+                    for syn in self.synapses.iter_mut() {
+                        syn.last_fire_tick = tick;
+                    }
+                }
+                return LtdReport {
+                    examined,
+                    weakened: 0,
+                    pruned: 0,
+                    rebased: true,
+                    dry_run,
+                };
+            }
+            // Stamps are usable; consume the one-shot regardless.
+            self.loaded_from_disk = false;
+        }
 
         // Surprise-Gated forgetting (opt-in): low-surprise, rarely-reinforced
         // associations decay a touch faster. Conservative and only active when on.
@@ -218,6 +338,7 @@ impl SynapticLayer {
         let surprise_level = self.surprise_level;
 
         let mut to_prune: Vec<usize> = Vec::new();
+        let mut weakened = 0usize;
 
         for (idx, syn) in self.synapses.iter_mut().enumerate() {
             let idle = tick.saturating_sub(syn.last_fire_tick);
@@ -227,13 +348,30 @@ impl SynapticLayer {
                 if surprise_gated && syn.fire_count <= 2 && surprise_level < 0.25 {
                     loss *= 1.5;
                 }
-                syn.weight = (syn.weight - loss).max(0.0);
-                self.total_ltd += 1;
-                if syn.weight < MIN_WEIGHT {
+                let new_weight = (syn.weight - loss).max(0.0);
+                weakened += 1;
+                if !dry_run {
+                    syn.weight = new_weight;
+                    self.total_ltd += 1;
+                }
+                if new_weight < MIN_WEIGHT {
                     to_prune.push(idx);
                 }
             }
         }
+
+        if dry_run {
+            // Undo the clock advance so a dry run is fully side-effect free.
+            self.tick = self.tick.saturating_sub(1);
+            return LtdReport {
+                examined,
+                weakened,
+                pruned: to_prune.len(),
+                rebased: false,
+                dry_run: true,
+            };
+        }
+        let pruned_count = to_prune.len();
 
         // Prune weakest synapses (reverse order to preserve indices)
         for idx in to_prune.into_iter().rev() {
@@ -261,8 +399,22 @@ impl SynapticLayer {
             self.total_pruned += 1;
         }
 
-        // Rebuild index after pruning (indices shifted)
-        self.rebuild_index();
+        // Rebuild index after pruning (indices shifted).
+        // Only when something was actually removed — this walks every synapse
+        // and on a 7M-edge graph it is the expensive part of the sweep. The
+        // common case is "nothing crossed MIN_WEIGHT this pass", and paying for
+        // a full rebuild then is what would make a periodic sweep unaffordable.
+        if pruned_count > 0 {
+            self.rebuild_index();
+        }
+
+        LtdReport {
+            examined,
+            weakened,
+            pruned: pruned_count,
+            rebased: false,
+            dry_run: false,
+        }
     }
 
     /// Returns the current synaptic weight between two labels, or 0.0 if no synapse.
@@ -691,6 +843,96 @@ mod tests {
         let w_after = sl.weight("old_a", "old_b");
         assert!(w_after < w_before,
             "idle synapse should weaken via LTD: {:.4} → {:.4}", w_before, w_after);
+    }
+
+    /// **The regression test for the actual bug.** Production passes `tick = 0`
+    /// from all four `record_co_firing` call sites. The old code did
+    /// `self.tick = tick`, so every co-firing reset the clock to zero and LTD
+    /// could never fire — 110,824,577 LTP events on the live brain against
+    /// 0 LTD, 0 pruned. The clock must be monotonic: a caller may advance it,
+    /// never rewind it.
+    #[test]
+    fn co_firing_cannot_rewind_the_clock() {
+        let mut sl = SynapticLayer::new();
+        sl.tick = 5_000;
+        // Exactly what production does — tick argument hardcoded to 0.
+        sl.record_co_firing(&make_labels(&["a", "b"]), 0.5, 0.5, 0.2, 0, 400_000);
+        assert_eq!(sl.tick, 5_000, "a tick=0 caller must not rewind the clock");
+
+        sl.record_co_firing(&make_labels(&["c", "d"]), 0.5, 0.5, 0.2, 9_000, 400_000);
+        assert_eq!(sl.tick, 9_000, "a real tick should still advance the clock");
+    }
+
+    /// A synapse that just fired must be stamped with the layer's real clock,
+    /// not the caller's `0` — otherwise it looks maximally stale the instant
+    /// the clock starts moving, and LTD eats the freshest edges first.
+    #[test]
+    fn fresh_synapse_is_not_immediately_idle() {
+        let mut sl = SynapticLayer::new();
+        sl.tick = 10_000;
+        sl.record_co_firing(&make_labels(&["hot_a", "hot_b"]), 0.5, 0.5, 0.2, 0, 400_000);
+        let w_before = sl.weight("hot_a", "hot_b");
+        let report = sl.ltd_sweep();
+        assert_eq!(report.weakened, 0, "a just-fired synapse must not be swept");
+        assert!(
+            (sl.weight("hot_a", "hot_b") - w_before).abs() < 1e-6,
+            "fresh synapse lost weight"
+        );
+    }
+
+    /// The migration guard. Every synapse on the live brain carries a
+    /// `last_fire_tick` written while the clock was pinned at 0, so the first
+    /// sweep after the fix would otherwise find the ENTIRE graph idle at once
+    /// and decay everything uniformly — destroying the recent-vs-stale
+    /// distinction LTD exists to draw.
+    #[test]
+    fn first_sweep_after_load_rebases_instead_of_decaying() {
+        let mut sl = SynapticLayer::new();
+        sl.record_co_firing(&make_labels(&["legacy_a", "legacy_b"]), 0.5, 0.5, 0.2, 0, 400_000);
+        let w_before = sl.weight("legacy_a", "legacy_b");
+
+        // Simulate the persisted state: stamps at ~0, clock far ahead.
+        sl.tick = LTD_IDLE_TICKS * 4;
+        sl.loaded_from_disk = true;
+
+        let report = sl.ltd_sweep();
+        assert!(report.rebased, "first post-load sweep should rebase: {}", report.summary());
+        assert_eq!(report.weakened, 0, "rebase pass must not decay");
+        assert!(
+            (sl.weight("legacy_a", "legacy_b") - w_before).abs() < 1e-6,
+            "rebase pass changed a weight"
+        );
+
+        // Rebase happens once; genuine idleness after it still decays.
+        sl.tick += LTD_IDLE_TICKS * 2;
+        let report2 = sl.ltd_sweep();
+        assert!(!report2.rebased, "rebase must be one-shot");
+        assert!(report2.weakened > 0, "real idleness should still decay: {}", report2.summary());
+    }
+
+    /// A dry run must report the same analysis while touching nothing — this is
+    /// what makes it safe to point a garbage collector at 7M live edges.
+    #[test]
+    fn dry_run_reports_without_mutating() {
+        let mut sl = SynapticLayer::new();
+        sl.record_co_firing(&make_labels(&["x", "y"]), 0.5, 0.5, 0.2, 0, 400_000);
+        sl.tick = LTD_IDLE_TICKS + 50;
+
+        let w_before = sl.weight("x", "y");
+        let tick_before = sl.tick;
+        let ltd_before = sl.total_ltd;
+
+        let dry = sl.ltd_sweep_dry();
+        assert!(dry.dry_run);
+        assert!(dry.weakened > 0, "dry run should still SEE the idle synapse");
+        assert_eq!(sl.weight("x", "y"), w_before, "dry run mutated a weight");
+        assert_eq!(sl.tick, tick_before, "dry run advanced the clock");
+        assert_eq!(sl.total_ltd, ltd_before, "dry run bumped the counter");
+
+        // And the live sweep then actually does it.
+        let live = sl.ltd_sweep();
+        assert_eq!(live.weakened, dry.weakened, "dry run should predict the live result");
+        assert!(sl.weight("x", "y") < w_before);
     }
 
     #[test]

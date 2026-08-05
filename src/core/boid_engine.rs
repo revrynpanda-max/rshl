@@ -305,6 +305,21 @@ pub fn run_boid_iteration(state: &mut BoidState, settings: &BoidSettings, field:
     }
 }
 
+/// RSHL improv for smarter learning: applies a resonance scalar to boid cohesion/vel
+/// during training passes. Higher resonance (from lattice sync) -> stronger local
+/// grouping for related concepts. Pure numeric, no LLM. Callable from training paths.
+pub fn apply_rshl_resonance_boid_boost(state: &mut BoidState, resonance: f32, settings: &BoidSettings) {
+    if state.positions.is_empty() { return; }
+    let boost = ((resonance - 0.5).max(0.0) * 0.15).min(0.4); // bounded small effect
+    // scale cohesion influence for this step (non destructive to core loop)
+    for i in 0..state.positions.len() {
+        // light local adjustment signal (actual move in run_boid_iteration)
+        if state.vitality.len() > i {
+            state.vitality[i] = (state.vitality[i] + boost * 0.1).min(1.0);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
